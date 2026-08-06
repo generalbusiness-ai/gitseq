@@ -210,6 +210,10 @@ func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Reques
 		write(writer, nil, err)
 		return
 	}
+	// Expire and reconcile old leases before consulting the session binding.
+	// Without this sweep, a crashed client can block reuse of its session ID by
+	// a different actor until some unrelated status or presence read occurs.
+	s.liveSnapshot()
 	ttl := time.Duration(input.TTLMS) * time.Millisecond
 	if ttl <= 0 || ttl > 2*time.Minute {
 		ttl = 30 * time.Second

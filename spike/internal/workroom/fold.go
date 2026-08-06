@@ -270,6 +270,11 @@ func (f *foldState) addRoleGrant(actor, role, statement, ratification string) {
 }
 
 func (f *foldState) roleGrantActive(grant roleGrant, before int) bool {
+	// Known cold-fold cost: authority checks rebuild the live supersession set
+	// for each grant, so authority-heavy histories are O(n²)-shaped (or worse
+	// when grants grow with history). The resident head cache hides this only
+	// for unchanged projections. A production fold should memoize prefix
+	// retirement sets or maintain equivalent position-aware state incrementally.
 	retired := f.retiredBefore(before)
 	if retired[grant.statement] || f.decisions[grant.statement].Verdict != Effective {
 		return false
