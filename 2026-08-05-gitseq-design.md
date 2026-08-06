@@ -1,7 +1,7 @@
 ---
-date: 2026-08-05, revised 2026-08-06 (seventh wave)
+date: 2026-08-05, revised 2026-08-06 (eighth wave)
 status: draft/discussion, moving forward — kernel spiked; bootstrap
-  plan ratified and review-repaired (BOOTSTRAP.md). This repo's own first-parent history
+  plan ratified, review-repaired, and simplified (BOOTSTRAP.md). This repo's own first-parent history
   is the first (hand-run) log; refs/seq/design carries it.
   Restructured after adversarial review (kernel / collaboration
   profile / application profiles); the six-case adversarial spike
@@ -603,4 +603,17 @@ artifact-reference act); one golden work session as acceptance story;
 the MCP layer targets the stateless MCP spec only; and this note's
 saga sentence repaired — mutual reference is a hash cycle, which
 content addressing makes inexpressible; the saga is acyclic
-offer → accept → settle, as the spike always had it.
+offer → accept → settle, as the spike always had it. Eighth wave
+(simplification): the workroom vocabulary collapsed from thirteen
+act types to **three verbs — `state`, `ratify`, `supersede`** —
+everything else (observation, claim, proposal, dissent, work items,
+artifact references, roster, infra keys, seal) is a payload `kind`;
+a decision is a ratified proposal, a closed work item is a
+superseded open one, dissent is a statement resting on what it
+contests, and the attestation ladder derives from actor role plus
+ratification rather than act type. Capabilities left the bootstrap
+scope entirely — the static allowlist serves both services while
+every actor is operator-approved, and the designed capability chain
+activates when the first stranger arrives, as an audited event.
+Promotion is `state` with frames embedded as evidence; the MCP
+surface is eight tools. The vocabulary does not grow; kinds do.

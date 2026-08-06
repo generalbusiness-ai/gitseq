@@ -1,103 +1,76 @@
 ---
 name: workroom
-description: How to work in the gitseq workroom over its MCP server —
-  acts, conversation, promotion, and the discipline that keeps the log
-  meaningful. Normative for agent actors; the MCP implementation must
-  match this contract.
+description: How to work in the gitseq workroom over its MCP server.
+  Normative for agent actors; the implementation must match this
+  contract.
 ---
 
 # Working in the workroom
 
 You are an actor in a shared, append-only workroom. Your MCP server
-signs everything you do with your actor key; every durable act you
-make is permanent, ordered, attributed to you, and visible to
-everyone — including acts that turn out ineffective. Work accordingly:
-talk freely, commit deliberately.
+signs everything you do with your actor key; every durable act is
+permanent, ordered, attributed to you, and visible to everyone —
+including acts that turn out ineffective. Talk freely, commit
+deliberately.
 
-## The two channels
+## Two channels
 
-**Ephemeral** (`say`, in a conversation): sequenced and signed but
-forgotten when all participants leave. Use it for thinking out loud,
-questions, drafts, disagreement-in-progress. It is cheap — prefer it.
-It is NOT private: any participant can keep a copy forever.
+**Ephemeral** (`say`): sequenced and signed but forgotten when all
+participants leave. Use it for thinking out loud, questions, drafts,
+disagreement-in-progress. Cheap — prefer it. NOT private: any
+participant can keep a copy forever.
 
-**Durable** (acts): the permanent record. Every durable act must cite
-its basis via `rests_on`. Never commit chatter durably; never leave a
-real decision only in chatter — promote it.
+**Durable** (`state`, `ratify`, `supersede`): the permanent record.
+Every durable act cites its basis in `rests_on`.
 
 ## Tools
 
-- `whoami` — your actor name, key fingerprint, and current session.
-- `presence` / `status` — who is here now; current workroom snapshot
-  plus a **composite cursor** (durable log frontier + live position).
-  Take `status` before acting on state you haven't watched change.
-- `wait` — long-poll for the next changes after your cursor; pass the
-  cursor back each time. Use a status→wait loop to follow live work;
-  do not poll on a timer. If `wait` reports a live reset, your
-  durable frontier is still good: the server replays the durable
-  delta and hands you a fresh live position — presence and
-  conversation context are gone, durable state is not.
-- `say {conversation, text}` — ephemeral frame. Conversations are
-  anchored to what they are about; open one with `converse {about}`
-  if none fits.
-- `observe {text, rests_on}` — durable observation: a fact you
-  witnessed, no judgment attached.
-- `claim {text, rests_on}` — durable assertion you believe and can
-  ground. Cite what grounds it.
-- `decide {text, rests_on}` — durable decision. Agents propose
-  decisions only when asked to; a decision's force comes from
-  ratification, not from the act itself.
-- `dissent {target, text}` — durable disagreement, attached forever
-  to what it contests. Use it honestly; it travels in provenance.
+- `whoami` / `presence` — who you are; who is here now.
+- `status` — workroom snapshot plus a composite cursor.
+- `wait` — long-poll for changes after your cursor; pass it back each
+  time. On a live reset your durable frontier is still good: the
+  server replays the durable delta; presence and conversations are
+  gone, durable state is not.
+- `say {about, text}` — ephemeral frame in the conversation anchored
+  at `about` (minted if none is open).
+- `state {kind, text, rests_on, evidence?}` — durable assertion.
+  Kinds: `observation`, `claim`, `proposal`, `dissent`, `work`,
+  `artifact`, plus governance kinds you will rarely use. Promotion
+  from a conversation is `state` with the selected signed frames
+  embedded as `evidence` — a stranger can then verify it after the
+  conversation is forgotten. Select honestly, summarize faithfully.
+- `ratify {target}` — confers collective force. **Agent ratifications
+  are ineffective by fold rule**; using this without a ratifier role
+  produces a visible ineffective attempt.
 - `supersede {target, text, rests_on}` — retire a prior act,
   propagating staleness to everything resting on it. Prefer
-  supersession to contradiction: never just assert the opposite.
-- `ratify {target}` — converts an extracted/asserted act into
-  collective commitment. **Agent ratifications are ineffective by
-  fold rule.** The tool exists for you anyway; using it without a
-  ratifier role produces a visible ineffective attempt — do not do
-  this except when explicitly demonstrating that property.
-- `promote {conversation, frames, draft}` — draft a durable act from
-  ephemeral discussion. The selected signed frames are **embedded**
-  in the act as evidence (plus their hashes), so a stranger can
-  verify the promotion after the conversation is forgotten. This is
-  the normal path from talk to record: select honestly, summarize
-  faithfully, and let a human ratify.
+  supersession to contradiction; closing a work item is superseding
+  its open statement.
 
 ## Discipline
 
 1. **Cite or don't commit.** A durable act with an empty `rests_on`
-   is almost always wrong. If you can't name what an act stands on,
-   it isn't ready to be durable.
+   is almost always wrong.
 2. **Attribution is real.** Acts are signed as you. Never speak for
-   another actor, never restate someone's position as an act of
-   yours — cite their event instead.
-3. **Your extractions are drafts.** Anything you derive (summaries,
-   claims from documents, minutes) enters as your asserted act and
-   gains force only when ratified. Expect and welcome dissent.
-4. **Ineffective ≠ deleted.** If the fold judges your act ineffective
-   (lost a race, lacked a role), it stays visible as an attempt. Do
-   not retry blindly; read the current state, then act on it.
-5. **Ephemeral is not secret.** Say nothing in a conversation you
-   would not have quoted back; participants may retain copies. Never
-   put credentials or secrets in either channel.
-6. **Idempotency is handled for you.** The server keys retries; if a
-   submit reports a replay, your act already landed — do not submit
-   a variant.
-7. **Follow, then act.** Before substantive work: `status`, then
-   `wait` in a loop while working alongside others. Acting on a stale
-   snapshot wastes a turn as an ineffective attempt.
-8. **Bridge real work.** When you implement a ratified decision, the
-   source commit message carries `Rests-On: <decision-event>`, and
-   you record an `artifact-reference` act citing both the commit and
-   its governing decisions. Work that skips the bridge is invisible
-   to staleness tracking — the workroom then lies by omission, which
-   is the one failure the whole system exists to prevent.
+   another actor — cite their event instead.
+3. **Your statements are drafts.** What you derive gains force only
+   when ratified. Expect and welcome dissent.
+4. **Ineffective ≠ deleted.** A judged-ineffective act stays visible
+   as an attempt. Don't retry blindly; read current state first.
+5. **Ephemeral is not secret.** Never put secrets in either channel.
+6. **Idempotency is handled.** A replay report means your act already
+   landed; don't submit a variant.
+7. **Follow, then act.** `status`, then `wait` in a loop while
+   working alongside others.
+8. **Bridge real work.** An implementing source commit carries
+   `Rests-On: <decision-event>`; then `state {kind: artifact}` cites
+   both the commit and its governing decisions. Unbridged work is
+   invisible to staleness tracking — the workroom then lies by
+   omission, the one failure this system exists to prevent.
 
-## The shape of good work
+## The loop
 
-Talk in the conversation until something crystallizes; `promote` a
-faithful summary citing the frames; a human ratifies or dissents; the
-status projection updates; anything resting on a superseded basis
-flares stale and someone — often you — picks it up. That loop is the
-product. Leave a log a stranger could audit and understand.
+Talk until something crystallizes; `state` a proposal embedding the
+frames; a human ratifies or dissents; the projection updates;
+whatever rests on a superseded basis flares stale and someone — often
+you — picks it up. Leave a log a stranger could audit and understand.
