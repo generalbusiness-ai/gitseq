@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8f3b4cf00526513a91e177f05bd4fd87e6e34d26"}
+{"kind":"propose","text":"Keep the fold pure and total; unknown kinds remain opaque and all services translate verified records only."}
