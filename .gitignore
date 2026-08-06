@@ -1,1 +1,3 @@
 /bin/
+ui/node_modules/
+ui/tsconfig.tsbuildinfo

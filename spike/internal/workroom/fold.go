@@ -57,8 +57,21 @@ type Artifact struct {
 	Stale  bool   `json:"stale"`
 }
 
+// Act is a ratify or supersede event in client-friendly form: what it
+// targeted, who performed it, and how the fold judged it.
+type Act struct {
+	Event   string  `json:"event"`
+	Actor   string  `json:"actor"`
+	Type    string  `json:"type"`
+	Target  string  `json:"target"`
+	Text    string  `json:"text,omitempty"`
+	Verdict Verdict `json:"verdict"`
+	Reason  string  `json:"reason"`
+}
+
 type Projection struct {
 	Decisions   []Decision          `json:"decisions"`
+	Acts        []Act               `json:"acts"`
 	Statements  []Statement         `json:"statements"`
 	Commitments []Commitment        `json:"commitments"`
 	Artifacts   []Artifact          `json:"artifacts"`
@@ -387,7 +400,7 @@ func (f *foldState) project() Projection {
 	retired := f.retired()
 	stale := f.stale(retired)
 	projection := Projection{
-		Decisions: []Decision{}, Statements: []Statement{}, Commitments: []Commitment{}, Artifacts: []Artifact{},
+		Decisions: []Decision{}, Acts: []Act{}, Statements: []Statement{}, Commitments: []Commitment{}, Artifacts: []Artifact{},
 		Roles: make(map[string][]string), Provenance: make(map[string][]string),
 		OpaqueKinds: make(map[string][]string),
 	}
@@ -395,6 +408,12 @@ func (f *foldState) project() Projection {
 		projection.Decisions = append(projection.Decisions, record.decision)
 		if _, exists := projection.Provenance[record.record.ID]; !exists {
 			projection.Provenance[record.record.ID] = append([]string(nil), record.record.RestsOn...)
+		}
+		switch act := record.body.(type) {
+		case *Ratify:
+			projection.Acts = append(projection.Acts, Act{Event: record.record.ID, Actor: record.record.Actor, Type: "ratify", Target: act.Target, Verdict: record.decision.Verdict, Reason: record.decision.Reason})
+		case *Supersede:
+			projection.Acts = append(projection.Acts, Act{Event: record.record.ID, Actor: record.record.Actor, Type: "supersede", Target: act.Target, Text: act.Text, Verdict: record.decision.Verdict, Reason: record.decision.Reason})
 		}
 		state, ok := record.body.(*State)
 		if !ok {

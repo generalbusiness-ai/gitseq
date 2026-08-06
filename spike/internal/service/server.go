@@ -71,7 +71,11 @@ func New(workspace *app.Workspace) (*Server, error) {
 func (s *Server) Handler() http.Handler { return s.mux }
 
 func (s *Server) routes() {
-	s.mux.HandleFunc("GET /", s.handleDemo)
+	s.mux.Handle("GET /", uiHandler())
+	s.mux.HandleFunc("GET /legacy", s.handleDemo)
+	s.mux.HandleFunc("GET /v0/graph", s.handleGraph)
+	s.mux.HandleFunc("GET /v0/actors", s.handleActors)
+	s.mux.HandleFunc("POST /v0/act", s.handleAct)
 	s.mux.HandleFunc("GET /v0/status", s.handleStatus)
 	s.mux.HandleFunc("POST /v0/wait", s.handleWait)
 	s.mux.HandleFunc("GET /v0/watch", s.handleWatch)
