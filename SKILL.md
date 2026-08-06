@@ -29,10 +29,14 @@ real decision only in chatter — promote it.
 
 - `whoami` — your actor name, key fingerprint, and current session.
 - `presence` / `status` — who is here now; current workroom snapshot
-  plus a cursor. Take `status` before acting on state you haven't
-  watched change.
-- `wait` — block for the next changes after your cursor. Use a
-  status→wait loop to follow live work; do not poll.
+  plus a **composite cursor** (durable log frontier + live position).
+  Take `status` before acting on state you haven't watched change.
+- `wait` — long-poll for the next changes after your cursor; pass the
+  cursor back each time. Use a status→wait loop to follow live work;
+  do not poll on a timer. If `wait` reports a live reset, your
+  durable frontier is still good: the server replays the durable
+  delta and hands you a fresh live position — presence and
+  conversation context are gone, durable state is not.
 - `say {conversation, text}` — ephemeral frame. Conversations are
   anchored to what they are about; open one with `converse {about}`
   if none fits.
@@ -54,9 +58,11 @@ real decision only in chatter — promote it.
   ratifier role produces a visible ineffective attempt — do not do
   this except when explicitly demonstrating that property.
 - `promote {conversation, frames, draft}` — draft a durable act from
-  ephemeral discussion, citing the frame hashes. This is the normal
-  path from talk to record: summarize faithfully, cite precisely,
-  and let a human ratify.
+  ephemeral discussion. The selected signed frames are **embedded**
+  in the act as evidence (plus their hashes), so a stranger can
+  verify the promotion after the conversation is forgotten. This is
+  the normal path from talk to record: select honestly, summarize
+  faithfully, and let a human ratify.
 
 ## Discipline
 
@@ -81,6 +87,12 @@ real decision only in chatter — promote it.
 7. **Follow, then act.** Before substantive work: `status`, then
    `wait` in a loop while working alongside others. Acting on a stale
    snapshot wastes a turn as an ineffective attempt.
+8. **Bridge real work.** When you implement a ratified decision, the
+   source commit message carries `Rests-On: <decision-event>`, and
+   you record an `artifact-reference` act citing both the commit and
+   its governing decisions. Work that skips the bridge is invisible
+   to staleness tracking — the workroom then lies by omission, which
+   is the one failure the whole system exists to prevent.
 
 ## The shape of good work
 

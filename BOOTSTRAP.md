@@ -2,127 +2,225 @@
 
 > Companion to [`2026-08-05-gitseq-design.md`](2026-08-05-gitseq-design.md).
 > The design note owns the contracts; this file owns the plan for living
-> on them. Status: plan ratified, nothing built.
+> on them. Status: plan ratified and review-repaired; nothing built.
 
 ## The move
 
 Build the system we use to build the system — and that *is* the demo.
 The project's working substance becomes one log: decisions, dissent,
-supersessions, roster changes, infrastructure acts. Every visible
-artifact is a projection that can answer "what do you rest on?". A
-visitor doesn't watch a staged scene; they clone the project and audit
-it offline. The three demo stories collapse into views of this
-workroom: the flight recorder is the project's own log rendered; honest
-minutes are how design sessions actually run; the document that knows
-when it's wrong is the project's own status page.
+supersessions, roster changes, infrastructure acts, work items. Every
+visible artifact is a projection that can answer "what do you rest
+on?". A visitor doesn't watch a staged scene; they clone the project
+and audit it offline. The demo stories collapse into views of this
+workroom: the flight recorder is the project's own log rendered;
+honest minutes are how design sessions actually run; the document that
+knows when it's wrong is the project's own status page.
 
-The bootstrap is uniquely low-risk because the substrate is git: if the
-tooling collapses, we are left standing on ordinary git commits —
-exactly the hand-run practice that produced Seq 1–6. The amnesiac layer
-is the only part that can fail, and its loss is, by contract, a dropped
-call.
+The bootstrap is uniquely low-risk because the substrate is git: if
+the tooling collapses, we are left standing on ordinary git commits —
+exactly the hand-run practice that produced the log so far. The
+amnesiac layer is the only part that can fail, and its loss is, by
+contract, a dropped call.
 
 ## Log taxonomy
 
 - **The workroom log** (`refs/seq/<genesis>`, one security domain =
   this repo): durable acts only. Decisions, ratifications,
-  supersessions, roster and infrastructure events, status items.
+  supersessions, roster and infrastructure events, work items.
   Chatter never lands here.
 - **The design-note log** (`refs/seq/design`, currently hand-run):
-  sealed via the continuation convention as the first production act —
-  final checkpoint event, successor genesis minted by the real
-  sequencer citing the predecessor's genesis and sealed head. Prose
-  keeps its own cadence in the successor stream.
+  sealed via the continuation convention — but only after the
+  continuation gate below passes. Prose keeps its own cadence in the
+  successor stream.
 - **Ephemeral conversations**: minted per discussion, anchored at the
-  coordinate they are about (the workroom genesis, a decision event, a
-  file). Sequenced, signed, forgotten when everyone leaves. Promotion
-  copies what mattered into the workroom log, citing frame hashes.
+  coordinate they are about. Sequenced, signed, forgotten when
+  everyone leaves. Promotion copies what mattered into the workroom
+  log — embedding the signed frames, not merely citing them.
 
-Logs are cheap; further splits (per-artifact streams) are later acts,
-themselves audited.
+Logs are cheap; further splits are later acts, themselves audited.
 
-## Staging
+## Stages
 
-**Stage 0 — the smallest thing we can live in.**
+**Stage 1 — profile core (the fold is the product).**
+Before any HTTP, nexus, or MCP code: the workroom application profile
+as a specification plus a pure projector, tested against golden
+fixtures. It must define, exactly:
+
+- Payload schemas for every act (`workroom/<type>@0`).
+- Effective / ineffective / `disputed` rules, per act type.
+- Proposed versus ratified decisions, and who may ratify (roster and
+  ratifier authority as fold rules).
+- Supersession semantics and **transitive staleness** — what flares
+  when a basis dies, and how far the walk goes.
+- The **work-item lifecycle** (open → progress → done/abandoned),
+  as acts with schemas, not just a mention.
+- The deterministic status/provenance projection: given a log, the
+  projector emits the status document and the provenance walk for any
+  item, byte-stable. Golden transcript fixtures are its test suite.
+
+**Stage 2 — durable workroom (dogfooding begins here).**
 Resident sequencer (the spike kernel grown an HTTP face: `submit`,
-`watch` SSE), a `gs` CLI, two actor keys (operator + one agent), the
-act vocabulary below, and a static-allowlist pre-append hook. From day
-one, design decisions are events first; note edits cite them.
+`watch`), the `gs` CLI, the **artifact bridge** (below), `gs attach`
+for clone/audit, and the **continuation dry run**. Admission by
+static pubkey allowlist. From this point, design decisions are events
+first and source commits cite them.
 
-**Stage 1 — multiple agents, live (the scope of the bootstrap).**
-The nexus hub as a real service: presence, ephemeral conversations,
-capability issuance. One MCP server instance per actor (stdio,
-custodial key). Roster fold governs membership; the capability chain
-below replaces the static allowlist — that replacement is itself an
-audited event. Agents and humans work concurrently with live
-discussion, decisions, and real work.
+**Stage 3 — live collaboration.**
+Nexus hub (presence, ephemeral conversations, capability issuance),
+MCP servers, the composite cursor contract (below), roster-fold
+membership replacing the static allowlist as an audited event.
+Multiple agents with live discussion, decisions, and real work.
 
-**Stage 2 — the demonstration surface.**
-`STATUS.md` (or a small page) rendered on every head advance: open
-questions and active work items, each resting on the decisions that
-framed them; superseding a decision flares its dependents stale, with
-one-click provenance walks. Demo A on our own work; demos B and C fall
-out of stages 1 and 0 respectively.
+**Stage 4 — demo surface.**
+The live page and guided five-minute tour over genuine project
+history, backed by the same projector as `STATUS.md`. Only polish
+lives here; every capability it shows already exists by stage 3.
+
+## The golden work session (acceptance story)
+
+One authentic transcript is both the acceptance test and the demo
+script. It must run on this repository, not a fixture world:
+
+1. A human and two agents appear live (presence).
+2. They discuss a real implementation question ephemerally.
+3. An agent promotes selected signed frames into a proposed decision.
+4. The human ratifies it; an agent ratification attempt remains
+   visibly ineffective.
+5. An implementation commit cites the decision and appears as an
+   artifact-reference act.
+6. The decision is superseded; the artifact visibly becomes stale.
+7. The nexus is killed: presence and conversation disappear; durable
+   acts remain; a restarted nexus resumes cold.
+8. A fresh clone elsewhere verifies offline and walks from the stale
+   artifact to its superseded basis.
+
+If that works here, it is dogfood. If a visitor can follow it in five
+minutes through a small live page backed by the same projector, it is
+a great demo.
 
 ## Identity and auth (minimal but real)
 
-- **Actor identity is an Ed25519 keypair, custodially held by that
-  actor's MCP server.** LLM sessions never see private keys. Honesty
-  statement (the CO1 statement): an actor signature proves which
-  custodian key signed, not that the model "meant" it. The custody
-  chain is short and inspectable: intent ← actor key ← key file ← MCP
-  server launched under the operator's OS account with per-actor
-  config.
-- **Session→actor binding is transport auth; at stage 1 the transport
-  is the OS.** One stdio MCP server per actor; filesystem permissions
-  on the key file are the credential. Concurrent sessions as one actor
-  are distinguished at the presence layer (session nonce in the
-  announcement annotation and app-level payload metadata — never in
-  the kernel intent).
-- **The roster is a fold.** `actor-added {name, role, pubkey}` events,
-  operator-ratified. The operator key is the root of *ratification*,
-  not of the kernel (kernel roots stay in genesis).
-- **Admission**: stage 0 = static pubkey allowlist in the sequencer
-  hook (the roster events are the record, the config is the
-  enforcement; drift between them is visible and accepted
-  temporarily). Stage 1 = the designed chain: the nexus checks the
-  roster at announce time and issues a short-lived signed capability
-  (actor key, coordinate, claims `append`+`advertise`, expiry,
-  renewed on heartbeat); the intent's capability hash binds it; the
-  sequencer verifies the nexus signature offline and stays stateless.
+- **Actor identity is an Ed25519 keypair held by a custodian proxy
+  (the MCP server), not by the model.** Honesty statement, corrected
+  after review: custody prevents *accidental* key handling — keys
+  never enter model context or transcripts — but it is **not
+  isolation from a tool-capable local agent**: a shell-capable agent
+  running under the same OS account can read the key files. True
+  isolation requires separate OS principals or an inaccessible
+  keychain boundary, and arrives later as an audited hardening step
+  if the threat model ever warrants it. Until then the guarantee is
+  stated at its real strength.
+- **Topology**: stdio MCP means **one server process per client
+  session, configured for an actor**. Several sessions may share an
+  actor identity deliberately; sessions are distinguished at the
+  presence layer (session nonce in the announcement annotation and
+  app-level payload metadata — never in the kernel intent).
+- **The roster is a fold.** `actor-added {name, role, pubkey}`
+  events, operator-ratified. The operator key is the root of
+  *ratification*, not of the kernel.
+- **Admission**: stage 2 = static pubkey allowlist in the sequencer
+  hook (roster events are the record, config is the enforcement,
+  drift visible and accepted temporarily). Stage 3 = the designed
+  chain: the nexus checks the roster at announce time and issues a
+  short-lived signed capability (actor key, coordinate, claims
+  `append`+`advertise`, expiry, renewed on heartbeat); the intent's
+  capability hash binds it; the sequencer verifies offline.
 - **Nexus issuer key is anchored as an event** (`nexus-key`,
-  operator-ratified) in the workroom log — for one deployment, the
-  workroom log is the profile's config log.
-- **Roles are enforced by the fold, not the doorstep.** No
-  schema-scoped capability claims: an agent that submits a
-  ratify-shaped event lands in the log as a visible ineffective
-  attempt. That is admission ≠ validity working, and it is a demo
-  beat (injection produces an audited attempt, not a silent success).
+  operator-ratified) in the workroom log.
+- **Roles are enforced by the fold, not the doorstep.** An agent that
+  submits a ratify-shaped event lands as a visible ineffective
+  attempt — admission ≠ validity working, and a demo beat.
 
-Deferred without guilt: identity logs (until a key actually rotates),
-`read`/`discover` claim enforcement (one domain; forge ACL is the
-boundary), witnesses and checkpoint cadence (meaningless at this
-scale). Each arrives later as an event in a log that shows it landing.
+## The composite cursor
+
+`status` and `wait` span two regimes: durable log frontiers (never
+reset) and the nexus's live cursor (reset on restart). One contract:
+
+```
+cursor {
+  frontier: [(genesis, head-hash, depth) ...]   // durable, exact
+  live:     {generation, position}              // nexus, resettable
+}
+```
+
+- **Capture order is subscribe-before-snapshot**: take the nexus
+  cursor *first*, then read durable heads. A durable commit landing
+  between the two appears as a live change after the cursor —
+  duplicated, never lost; clients dedupe by per-log depth
+  monotonicity.
+- **Reset algorithm**: on `ErrReset` (new nexus generation or
+  trimmed history), the frontier remains valid — replay the durable
+  delta from the frontier, retake a live snapshot, resume. Durable
+  state is never lost to a live-layer reset; only presence and
+  conversations are, by contract.
+
+## The provenance chain, closed
+
+- **`gs attach` / `gs clone`**: a normal git clone does not fetch
+  `refs/seq/*`. The CLI configures the refspec, fetches the log
+  namespaces, and runs the verifier — one command from URL to
+  offline-auditable.
+- **Promotion embeds evidence.** A promoted act carries the selected
+  signed frames (or a transcript bundle) as attachments, plus the
+  frame hashes. A stranger can verify honest minutes after the
+  conversation is forgotten without hunting for a participant's
+  copy; the degrading-reference grades still apply to whatever was
+  *not* embedded.
+- **The artifact bridge** — the piece that makes this dogfood on the
+  critical path rather than a parallel journal:
+  1. A decision event lands in the workroom log.
+  2. The implementing source commit carries
+     `Rests-On: <decision-event>` in its message.
+  3. An `artifact-reference` act cites both the source commit and its
+     governing decisions, so the projector can flare the artifact
+     stale when a governing decision is superseded.
+
+## The continuation gate
+
+The genesis descriptor currently has **no continuation fields**;
+sealing `refs/seq/design` before the format exists would discover the
+format by irreversible act. Order of operations, hard gate:
+
+1. Extend the genesis descriptor with predecessor fields (predecessor
+   genesis, sealed head) and the `seal` act.
+2. Build a **candidate successor** for a scratch copy of the hand-run
+   log.
+3. Acceptance: a fresh reader traverses predecessor → seal →
+   successor and reproduces the projection across the seam.
+4. Only then seal the real `refs/seq/design`. Migration is the
+   acceptance test for continuation, not the act that discovers it.
+
+## MCP: stateless by design
+
+The MCP server targets the 2026-07-28 stateless MCP spec only — no
+legacy-protocol compatibility, no session affinity, no server-held
+subscription state. Every request is self-contained; `wait` is a
+long-poll carrying the composite cursor; resumability *is* the
+cursor, and the durable log is the queue. This is not an adaptation:
+the design's snapshot+cursor and log-as-durable-queue contracts are
+already the stateless shape, so the MCP layer stays thin.
 
 ## Act vocabulary v0 (application profile)
 
 Schema ids `workroom/<type>@0`. The engine set: `observation`,
 `claim`, `decision`, `supersession`, `artifact-reference`; the human
-acts `ratify`, `dissent`; the governance acts `actor-added`,
-`nexus-key`, `seal`/`continue`. Payloads are small JSON; `rests_on`
-carries what an act stands on — every durable act cites its basis.
-The vocabulary never grows in the kernel; it grows here, by events.
+acts `ratify`, `dissent`; the work-item family `work-opened`,
+`work-progress`, `work-closed`; the governance acts `actor-added`,
+`nexus-key`, `seal`/`continue`. Exact payload schemas are the stage-1
+deliverable; `rests_on` carries what an act stands on — every durable
+act cites its basis. The vocabulary never grows in the kernel; it
+grows here, by events.
 
 ## The tax, stated
 
-Dogfooding pre-alpha tooling on the critical path invites the workroom
-to demand features until the kernel/profile discipline erodes from
-above. Mitigations: the workroom is an application profile; its
-vocabulary lives in the log; anything it wants from the kernel arrives
-as a designed wave, not a convenience patch. Event-first working adds
-friction versus just talking; the ephemeral layer is the mitigation —
-chatter stays cheap and forgettable, only promotion costs a deliberate
-act, which is the practice working, not overhead.
+Dogfooding pre-alpha tooling on the critical path invites the
+workroom to demand features until the kernel/profile discipline
+erodes from above. Mitigations: the workroom is an application
+profile; its vocabulary lives in the log; anything it wants from the
+kernel arrives as a designed wave, not a convenience patch.
+Event-first working adds friction versus just talking; the ephemeral
+layer is the mitigation — chatter stays cheap and forgettable, only
+promotion costs a deliberate act.
 
 ## Agent guidance
 

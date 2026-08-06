@@ -1,7 +1,7 @@
 ---
-date: 2026-08-05, revised 2026-08-06 (sixth wave)
+date: 2026-08-05, revised 2026-08-06 (seventh wave)
 status: draft/discussion, moving forward — kernel spiked; bootstrap
-  plan ratified (BOOTSTRAP.md). This repo's own first-parent history
+  plan ratified and review-repaired (BOOTSTRAP.md). This repo's own first-parent history
   is the first (hand-run) log; refs/seq/design carries it.
   Restructured after adversarial review (kernel / collaboration
   profile / application profiles); the six-case adversarial spike
@@ -309,10 +309,12 @@ Learned from woo's presence races, stated as contract:
   present names its state as a frontier; retrieval is
   causal-closure-best-effort with *explicitly reported* unavailable
   logs (absence is a stated fact, never silent). Cross-log
-  transitions choose between saga (two events, two logs, each
-  resting on the other's) and putting the whole transition in one
-  authority log — an application choice the profile names but does
-  not make.
+  transitions choose between an **acyclic saga** — offer → accept →
+  settle, each later step resting on the earlier one's hash;
+  content addressing makes a mutual-reference cycle impossible, so
+  "each rests on the other" is not an expressible shape — and
+  putting the whole transition in one authority log. An application
+  choice the profile names but does not make.
 
 ### Ephemeral conversation (amnesiac by design)
 
@@ -583,3 +585,22 @@ first production act; the minimal-but-real MCP identity chain
 as a fold, static allowlist → nexus capability as an audited
 transition, roles enforced by the fold so ineffective attempts stay
 visible); and the agent usage contract ([SKILL.md](SKILL.md)).
+Seventh wave (bootstrap review): the plan reshaped fold-first — the
+application profile (schemas, effectiveness rules, work-item
+lifecycle, deterministic projector with golden fixtures) is stage 1,
+before any service code; a **continuation gate** (the genesis
+descriptor has no continuation fields yet — build and audit a
+candidate successor on a scratch copy before sealing the real
+hand-run log); the custody claim corrected to its real strength
+(accidental-handling prevention, not isolation from a tool-capable
+same-account agent) and the stdio topology corrected (one server per
+session, configured for an actor); a **composite cursor** contract
+(durable frontier + resettable live position, subscribe-before-
+snapshot, dedupe by depth); the provenance chain closed (`gs attach`
+refspecs, promotion **embeds** signed frames, and the artifact
+bridge: decision event → source commit `Rests-On:` trailer →
+artifact-reference act); one golden work session as acceptance story;
+the MCP layer targets the stateless MCP spec only; and this note's
+saga sentence repaired — mutual reference is a hash cycle, which
+content addressing makes inexpressible; the saga is acyclic
+offer → accept → settle, as the spike always had it.
