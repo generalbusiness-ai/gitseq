@@ -3,7 +3,7 @@
 > Companion to [`2026-08-05-gitseq-design.md`](2026-08-05-gitseq-design.md).
 > The design note owns the contracts; this file owns the plan for
 > living on them. Status: plan ratified, review-repaired, simplified;
-> dogfood implementation in progress.
+> dogfood implementation and acceptance walkthrough complete.
 
 ## The move
 
@@ -152,6 +152,13 @@ not before.
    non-operator-trusted actor arrives, as an audited event.
 4. **Demo surface.** A small live page and guided five-minute tour —
    the same projector as `STATUS.md`, only polish.
+
+The first implementation pass completed all four stages on this
+repository. The acceptance story below was exercised through the CLI,
+HTTP service, MCP adapter, browser surface, a cold nexus restart, and
+an independently fetched clone. Rotation, checkpoint/witness formats,
+capability tokens, and latency targets remain deliberate production
+hardening work rather than hidden claims of this spike.
 
 ## The golden work session (acceptance story)
 
