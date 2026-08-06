@@ -75,20 +75,62 @@ Statement `kind`s follow the Language-Action conventions
   by ratification.
 
 **The conversation-for-action loop** is a projection, never
-admission: a promise is open until its report is ratified *by the
-requester* (fulfilled), superseded by its maker (withdrawn,
-visibly), or its request is superseded by the requester (cancelled).
-Completion is declared by the requester, not the performer. A report
-resting on nothing projects as dangling; nothing is refused at the
-door. The status page's columns fall out: open requests, open
-promises, unratified reports, withdrawn, stale, disputed.
+admission. The chain:
 
-Lineage, honestly: this adopts Winograd/Flores at the durable layer
-while honoring Suchman's critique of The Coordinator at the
-ephemeral one — chatter is never typed; you classify what you
-promote, never what you say. The verbs are the ontology that never
-grows; kinds are its designated growth seat, and a forty-year-tested
-convention beats inventing one gradually.
+```
+requester:  state{kind: request}   body: to, conditions of
+                                   satisfaction, optional due
+performer:  state{kind: promise}   rests_on the request
+performer:  state{kind: report}    rests_on the promise
+requester:  ratify the report   →  satisfied
+```
+
+Satisfaction is declared by the requester; the performer only
+reports. `ratify` is context-sensitive: proposals and governance
+statements take roster-derived ratifier authority; a report takes
+exactly the authority of its originating requester; anything else is
+visible but ineffective. A **free-standing promise lands but
+projects dangling in v0** — without a request there is no
+structurally identified party to declare satisfaction; if offers
+ever matter, their acceptance gets modeled explicitly later rather
+than weakening the loop now.
+
+Terminal and interim states, morally distinct — the ledger must
+preserve these differences or it becomes a blame instrument:
+
+- request superseded by requester, unanswered → **withdrawn**
+- request superseded after a promise → **cancelled** (the performer
+  is released; the historical promise stays visible)
+- promise superseded by its maker → **reneged**, never neutral
+- report superseded by its maker → report withdrawn; the promise
+  **reopens**
+- report ratified by the requester → **satisfied**
+- report unratified → **reported**, awaiting satisfaction — not
+  performer failure
+- a governing basis dies → **stale**
+- structural ambiguity → **disputed**
+
+The status page's center falls out: who is waiting on whom, for
+what, under which still-live basis.
+
+Lineage, stated carefully: The Coordinator accepted free-form text,
+but users opened *typed conversations* and were offered
+state-dependent response menus; gitseq applies kinds only at
+deliberate durable promotion, with all exploratory conversation
+outside the grammar — a direct repair of that classic
+interaction-design failure. It does **not** make Suchman's broader
+objection disappear: a commitment ledger can itself become an
+imposed accountability regime. Optional promotion, append-only
+dissent, and visible ineffective acts make that power contestable,
+not absent — the politics of durable accountability stay visible.
+The history is a controversy, not a simple failure (Winograd 1987,
+Suchman 1994, Winograd's 1994 response). The verbs are the ontology
+that never grows; kinds are its designated growth seat, and a
+forty-year-tested convention beats inventing one gradually.
+Custody's saga fold and this loop share primitives (causal indexing,
+target resolution, effectiveness, staleness traversal), not a state
+machine — a common abstraction may emerge after both folds exist,
+not before.
 
 ## Stages
 

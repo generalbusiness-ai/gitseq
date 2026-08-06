@@ -50,11 +50,18 @@ Every durable act cites its basis in `rests_on`.
   propagating staleness to everything resting on it. Prefer
   supersession to contradiction.
 
-**The work loop**: a `request` invites a `promise`; you `report`
-against your promise; the *requester* ratifies the report — never
-declare your own work complete. An unratified report is honest
-status, not a nag-worthy gap. Withdraw a promise you cannot keep by
-superseding it, visibly, as early as you know.
+**The work loop**: a `request` names whom it is to and its
+conditions of satisfaction; a `promise` rests on a request — a
+free-standing promise projects dangling, because no one is
+positioned to declare it satisfied. You `report` against your
+promise; the *requester* ratifies the report — never declare your
+own work complete. An unratified report is honest status
+("reported, awaiting satisfaction"), not a nag-worthy gap and not
+failure. Superseding your own promise is **reneging**, visible
+forever: do it as early as you know you cannot keep it — early
+reneging is honorable, late reneging is not. If the requester
+supersedes their request after your promise, you are released; the
+promise stays in history as kept faith, not fault.
 
 ## Discipline
 

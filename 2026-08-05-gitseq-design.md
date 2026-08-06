@@ -1,5 +1,5 @@
 ---
-date: 2026-08-05, revised 2026-08-06 (ninth wave)
+date: 2026-08-05, revised 2026-08-06 (tenth wave)
 status: draft/discussion, moving forward — kernel spiked; bootstrap
   plan ratified, review-repaired, and simplified (BOOTSTRAP.md). This repo's own first-parent history
   is the first (hand-run) log; refs/seq/design carries it.
@@ -632,4 +632,23 @@ files, branches, and PRs in the same repo; statements cite
 the trust shape of ephemeral chat and is handled by the same
 promotion rule (embed quotes, URL as hint); `gs attach` adopts any
 existing repo, and removal leaves a normal one — the overlay adds
-meaning and never takes hostages.
+meaning and never takes hostages. Tenth wave (loop review, adopted):
+free-standing promises project **dangling** in v0 (no structurally
+identified satisfier; offers get explicit acceptance later, not a
+weakened loop); the terminal states carry their moral distinctions —
+withdrawn ≠ cancelled ≠ **reneged**; report-withdrawn reopens the
+promise; **satisfied** (declared by the requester) replaces
+"fulfilled"; unratified = reported-awaiting, never performer
+failure; `ratify` is context-sensitive (roster authority for
+proposals/governance, the originating requester's authority for
+reports); a request's body requires `to` and conditions of
+satisfaction — the structured-body contract's first real use. The
+lineage language is corrected from "structurally immune" to the
+defensible claim: gitseq repairs The Coordinator's interaction
+design (kinds only at deliberate promotion; The Coordinator typed
+conversations up front with state-dependent menus) while keeping
+the politics of durable accountability visible — contestable, not
+absent; the history is the classic controversy (Winograd 1987,
+Suchman 1994, Winograd 1994), not a simple failure. Custody and the
+loop share fold primitives, not a state machine; any common
+abstraction waits until both folds exist.
