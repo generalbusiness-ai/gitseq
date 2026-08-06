@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Dogfood workroom implementation from pure fold through live demo.","body":{"commit":"2a0024b9842a8f83e76fdca31d82bff54f7d30b6","path":"."}}
+{"kind":"artifact","text":"Fresh-clone provenance renderer correction.","body":{"commit":"9951a9cbf2fc59648bcb54c24242c90db68d9c6a","path":"spike/internal/workroom"}}
