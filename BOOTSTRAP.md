@@ -3,7 +3,7 @@
 > Companion to [`2026-08-05-gitseq-design.md`](2026-08-05-gitseq-design.md).
 > The design note owns the contracts; this file owns the plan for
 > living on them. Status: plan ratified, review-repaired, simplified;
-> nothing built.
+> dogfood implementation in progress.
 
 ## The move
 
@@ -194,7 +194,7 @@ Works here → dogfood. Followable by a visitor in five minutes → demo.
 live position (reset on restart):
 
 ```
-cursor { frontier: [(genesis, head) ...], live: {generation, position} }
+cursor { frontier: [(genesis, head, depth) ...], live: {generation, position} }
 ```
 
 Capture is subscribe-before-snapshot (duplicates possible, loss

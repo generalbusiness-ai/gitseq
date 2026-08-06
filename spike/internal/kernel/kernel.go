@@ -26,6 +26,8 @@ type GenesisDescriptor struct {
 	ObjectFormat       string
 	PayloadCeiling     uint64
 	SequencerPublicKey string
+	PredecessorGenesis string
+	SealedHead         string
 }
 
 type Request struct {
@@ -62,6 +64,8 @@ type Event struct {
 	Intent      intent.Intent
 	Signed      intent.Signed
 	PayloadTree string
+	Payload     []byte
+	Attachments map[string][]byte
 }
 
 func deterministicModes() (cbor.EncMode, cbor.DecMode) {
@@ -79,6 +83,9 @@ func deterministicModes() (cbor.EncMode, cbor.DecMode) {
 func encodeGenesis(desc GenesisDescriptor) ([]byte, error) {
 	if desc.Version != 0 || (desc.ObjectFormat != "sha1" && desc.ObjectFormat != "sha256") || desc.PayloadCeiling == 0 || desc.SequencerPublicKey == "" {
 		return nil, errors.New("invalid genesis descriptor")
+	}
+	if (desc.PredecessorGenesis == "") != (desc.SealedHead == "") {
+		return nil, errors.New("continuation requires both predecessor genesis and sealed head")
 	}
 	enc, _ := deterministicModes()
 	return enc.Marshal(desc)
@@ -118,6 +125,14 @@ func parseGenesisMessage(message string) (GenesisDescriptor, error) {
 }
 
 func Ref(genesis string) string { return "refs/seq/" + genesis }
+
+func Descriptor(ctx context.Context, store gitstore.Store, genesis string) (GenesisDescriptor, error) {
+	message, err := store.CommitMessage(ctx, genesis)
+	if err != nil {
+		return GenesisDescriptor{}, err
+	}
+	return parseGenesisMessage(message)
+}
 
 func Create(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, signingKey string) (string, error) {
 	format, err := store.ObjectFormat(ctx)
@@ -309,6 +324,79 @@ type Verification struct {
 	Head    string
 	Depth   int
 	Events  int
+}
+
+// Load verifies a log before returning its application records. Consumers do
+// not get a convenient unverified read path by accident.
+func Load(ctx context.Context, store gitstore.Store, genesis string) ([]Event, Verification, error) {
+	verification, err := Verify(ctx, store, genesis)
+	if err != nil {
+		return nil, Verification{}, err
+	}
+	commits, err := store.RevList(ctx, Ref(genesis))
+	if err != nil {
+		return nil, Verification{}, err
+	}
+	events := make([]Event, 0, len(commits)-1)
+	for _, commit := range commits[1:] {
+		message, err := store.CommitMessage(ctx, commit)
+		if err != nil {
+			return nil, Verification{}, err
+		}
+		signed, _, err := intent.ParseEnvelope(message)
+		if err != nil {
+			return nil, Verification{}, err
+		}
+		decoded, err := intent.Verify(signed)
+		if err != nil {
+			return nil, Verification{}, err
+		}
+		payload, err := store.ReadFile(ctx, commit, "event")
+		if err != nil {
+			return nil, Verification{}, err
+		}
+		attachments := make(map[string][]byte)
+		paths, err := store.ListFiles(ctx, commit, "attachments")
+		if err != nil {
+			return nil, Verification{}, err
+		}
+		for _, path := range paths {
+			content, err := store.ReadFile(ctx, commit, path)
+			if err != nil {
+				return nil, Verification{}, err
+			}
+			attachments[strings.TrimPrefix(path, "attachments/")] = content
+		}
+		if len(attachments) == 0 {
+			attachments = nil
+		}
+		events = append(events, Event{Commit: commit, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree, Payload: payload, Attachments: attachments})
+	}
+	return events, verification, nil
+}
+
+type ContinuationVerification struct {
+	Predecessor Verification `json:"predecessor"`
+	Successor   Verification `json:"successor"`
+}
+
+func VerifyContinuation(ctx context.Context, predecessorStore gitstore.Store, predecessorGenesis string, successorStore gitstore.Store, successorGenesis string) (ContinuationVerification, error) {
+	predecessor, err := Verify(ctx, predecessorStore, predecessorGenesis)
+	if err != nil {
+		return ContinuationVerification{}, fmt.Errorf("predecessor: %w", err)
+	}
+	successor, err := Verify(ctx, successorStore, successorGenesis)
+	if err != nil {
+		return ContinuationVerification{}, fmt.Errorf("successor: %w", err)
+	}
+	descriptor, err := Descriptor(ctx, successorStore, successorGenesis)
+	if err != nil {
+		return ContinuationVerification{}, err
+	}
+	if descriptor.PredecessorGenesis != predecessor.Genesis || descriptor.SealedHead != predecessor.Head {
+		return ContinuationVerification{}, errors.New("successor does not continue the verified predecessor frontier")
+	}
+	return ContinuationVerification{Predecessor: predecessor, Successor: successor}, nil
 }
 
 func Verify(ctx context.Context, store gitstore.Store, genesis string) (Verification, error) {

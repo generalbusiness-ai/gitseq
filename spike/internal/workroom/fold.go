@@ -1,0 +1,502 @@
+package workroom
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
+type Verdict string
+
+const (
+	Effective   Verdict = "effective"
+	Ineffective Verdict = "ineffective"
+	Disputed    Verdict = "disputed"
+)
+
+type Record struct {
+	ID          string            `json:"id"`
+	Actor       string            `json:"actor"`
+	Schema      string            `json:"schema"`
+	RestsOn     []string          `json:"rests_on"`
+	Payload     []byte            `json:"payload"`
+	Attachments map[string][]byte `json:"attachments,omitempty"`
+}
+
+type Decision struct {
+	Event   string  `json:"event"`
+	Verdict Verdict `json:"verdict"`
+	Reason  string  `json:"reason"`
+}
+
+type Statement struct {
+	Event    string            `json:"event"`
+	Actor    string            `json:"actor"`
+	Kind     Kind              `json:"kind"`
+	Text     string            `json:"text"`
+	Body     map[string]string `json:"body,omitempty"`
+	Ratified bool              `json:"ratified,omitempty"`
+	Retired  bool              `json:"retired,omitempty"`
+	Stale    bool              `json:"stale,omitempty"`
+}
+
+type Commitment struct {
+	Request   string `json:"request"`
+	Requester string `json:"requester"`
+	Performer string `json:"performer,omitempty"`
+	Promise   string `json:"promise,omitempty"`
+	Report    string `json:"report,omitempty"`
+	Status    string `json:"status"`
+	WaitingOn string `json:"waiting_on,omitempty"`
+}
+
+type Artifact struct {
+	Event  string `json:"event"`
+	Path   string `json:"path"`
+	Commit string `json:"commit"`
+	Stale  bool   `json:"stale"`
+}
+
+type Projection struct {
+	Decisions   []Decision          `json:"decisions"`
+	Statements  []Statement         `json:"statements"`
+	Commitments []Commitment        `json:"commitments"`
+	Artifacts   []Artifact          `json:"artifacts"`
+	Roles       map[string][]string `json:"roles"`
+	Provenance  map[string][]string `json:"provenance"`
+	OpaqueKinds map[string][]string `json:"opaque_kinds,omitempty"`
+}
+
+type parsedRecord struct {
+	record Record
+	body   any
+	index  int
+}
+
+type foldState struct {
+	records       []parsedRecord
+	byID          map[string]*parsedRecord
+	decisions     map[string]Decision
+	effectiveSup  map[string]string
+	roles         map[string]map[string]bool
+	ratifications map[string][]string
+}
+
+func Fold(records []Record) Projection {
+	state := &foldState{
+		byID: make(map[string]*parsedRecord), decisions: make(map[string]Decision),
+		effectiveSup: make(map[string]string), roles: make(map[string]map[string]bool),
+		ratifications: make(map[string][]string),
+	}
+	for index, record := range records {
+		state.append(index, record)
+	}
+	return state.project()
+}
+
+func (f *foldState) append(index int, record Record) {
+	decision := Decision{Event: record.ID, Verdict: Ineffective}
+	if record.ID == "" || record.Actor == "" {
+		decision.Reason = "event id and actor are required"
+		f.addDecision(record, nil, index, decision)
+		return
+	}
+	if _, exists := f.byID[record.ID]; exists {
+		decision.Verdict = Disputed
+		decision.Reason = "duplicate event id"
+		f.addDecision(record, nil, index, decision)
+		return
+	}
+	body, err := Decode(record.Schema, record.Payload)
+	if err != nil {
+		decision.Reason = err.Error()
+		f.addDecision(record, nil, index, decision)
+		return
+	}
+	parsed := &parsedRecord{record: record, body: body, index: index}
+	switch value := body.(type) {
+	case *State:
+		decision = f.decideState(parsed, *value)
+	case *Ratify:
+		decision = f.decideRatify(parsed, *value)
+	case *Supersede:
+		decision = f.decideSupersede(parsed, *value)
+	}
+	f.addDecision(record, parsed, index, decision)
+	if decision.Verdict != Effective {
+		return
+	}
+	switch value := body.(type) {
+	case *State:
+		if value.Kind == KindRoster && index == 0 {
+			f.grant(value.Body["actor"], value.Body["role"])
+		}
+	case *Ratify:
+		f.ratifications[value.Target] = append(f.ratifications[value.Target], record.ID)
+		if target := f.byID[value.Target]; target != nil {
+			if roster, ok := target.body.(*State); ok && roster.Kind == KindRoster {
+				f.grant(roster.Body["actor"], roster.Body["role"])
+			}
+		}
+	case *Supersede:
+		f.effectiveSup[record.ID] = value.Target
+	}
+}
+
+func (f *foldState) addDecision(record Record, parsed *parsedRecord, index int, decision Decision) {
+	if decision.Event == "" {
+		decision.Event = record.ID
+	}
+	if decision.Reason == "" {
+		decision.Reason = string(decision.Verdict)
+	}
+	f.decisions[record.ID] = decision
+	if parsed == nil {
+		parsed = &parsedRecord{record: record, index: index}
+	}
+	f.records = append(f.records, *parsed)
+	if record.ID != "" {
+		f.byID[record.ID] = parsed
+	}
+}
+
+func (f *foldState) decideState(record *parsedRecord, state State) Decision {
+	decision := Decision{Event: record.record.ID, Verdict: Effective, Reason: "statement recorded"}
+	if record.index == 0 {
+		if state.Kind != KindRoster || state.Body["actor"] != record.record.Actor || state.Body["role"] != "operator" {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "first event must self-seed the operator roster"}
+		}
+		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "operator roster seed"}
+	}
+	if state.Kind == KindPromise {
+		requests := f.basesOfKind(record.record.RestsOn, KindRequest)
+		if len(requests) == 0 {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "dangling promise has no request"}
+		}
+		if len(requests) != 1 {
+			return Decision{Event: record.record.ID, Verdict: Disputed, Reason: "promise rests on multiple requests"}
+		}
+		request := requests[0].body.(*State)
+		if request.Body["to"] != record.record.Actor {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "promise actor is not the requested performer"}
+		}
+	}
+	if state.Kind == KindReport {
+		promises := f.basesOfKind(record.record.RestsOn, KindPromise)
+		if len(promises) == 0 {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "report has no promise"}
+		}
+		if len(promises) != 1 {
+			return Decision{Event: record.record.ID, Verdict: Disputed, Reason: "report rests on multiple promises"}
+		}
+		if promises[0].record.Actor != record.record.Actor {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "only the promisor may report completion"}
+		}
+	}
+	if !knownKinds[state.Kind] {
+		decision.Reason = "opaque statement kind recorded"
+	}
+	return decision
+}
+
+func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
+	target := f.byID[ratify.Target]
+	if target == nil {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "ratify target is unknown"}
+	}
+	if len(record.record.RestsOn) != 1 || record.record.RestsOn[0] != ratify.Target {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "ratify must rest on exactly its target"}
+	}
+	statement, ok := target.body.(*State)
+	if !ok {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "only statements may be ratified"}
+	}
+	if statement.Kind == KindReport {
+		request := f.originatingRequest(target)
+		if request == nil {
+			return Decision{Event: record.record.ID, Verdict: Disputed, Reason: "report has no unique originating requester"}
+		}
+		if request.record.Actor != record.record.Actor {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "only the requester may declare satisfaction"}
+		}
+		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "requester declared satisfaction"}
+	}
+	if statement.Kind == KindPropose || isGovernance(statement.Kind) {
+		if !f.hasRole(record.record.Actor, "ratifier") && !f.hasRole(record.record.Actor, "operator") {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor lacks ratifier role"}
+		}
+		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized ratification"}
+	}
+	return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "statement kind is not ratifiable"}
+}
+
+func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) Decision {
+	target := f.byID[supersede.Target]
+	if target == nil {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "supersede target is unknown"}
+	}
+	if len(record.record.RestsOn) == 0 || record.record.RestsOn[0] != supersede.Target {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "supersede must rest first on its target"}
+	}
+	if target.record.Actor == record.record.Actor || f.hasRole(record.record.Actor, "ratifier") || f.hasRole(record.record.Actor, "operator") {
+		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized supersession"}
+	}
+	return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor may not supersede target"}
+}
+
+func isGovernance(kind Kind) bool {
+	return kind == KindRoster || kind == KindInfraKey || kind == KindSeal
+}
+
+func (f *foldState) grant(actor, role string) {
+	if actor == "" || role == "" {
+		return
+	}
+	if f.roles[actor] == nil {
+		f.roles[actor] = make(map[string]bool)
+	}
+	f.roles[actor][role] = true
+	if role == "operator" {
+		f.roles[actor]["ratifier"] = true
+	}
+}
+
+func (f *foldState) hasRole(actor, role string) bool {
+	return f.roles[actor][role]
+}
+
+func (f *foldState) basesOfKind(refs []string, kind Kind) []*parsedRecord {
+	var found []*parsedRecord
+	for _, ref := range refs {
+		record := f.byID[ref]
+		if record == nil || f.decisions[ref].Verdict != Effective {
+			continue
+		}
+		state, ok := record.body.(*State)
+		if ok && state.Kind == kind {
+			found = append(found, record)
+		}
+	}
+	return found
+}
+
+func (f *foldState) originatingRequest(report *parsedRecord) *parsedRecord {
+	promises := f.basesOfKind(report.record.RestsOn, KindPromise)
+	if len(promises) != 1 {
+		return nil
+	}
+	requests := f.basesOfKind(promises[0].record.RestsOn, KindRequest)
+	if len(requests) != 1 {
+		return nil
+	}
+	return requests[0]
+}
+
+// retired computes live supersessions from newest to oldest. Because a
+// supersession can only target an earlier event, this is deterministic and a
+// supersession of a supersession naturally resurrects the original target.
+func (f *foldState) retired() map[string]bool {
+	retired := make(map[string]bool)
+	for index := len(f.records) - 1; index >= 0; index-- {
+		record := f.records[index]
+		if retired[record.record.ID] || f.decisions[record.record.ID].Verdict != Effective {
+			continue
+		}
+		if target, ok := f.effectiveSup[record.record.ID]; ok {
+			retired[target] = true
+		}
+	}
+	return retired
+}
+
+func (f *foldState) stale(retired map[string]bool) map[string]bool {
+	stale := make(map[string]bool)
+	for _, record := range f.records {
+		if f.decisions[record.record.ID].Verdict != Effective {
+			continue
+		}
+		for _, basis := range record.record.RestsOn {
+			if target, ok := f.effectiveSup[record.record.ID]; ok && target == basis {
+				continue
+			}
+			if retired[basis] || stale[basis] {
+				stale[record.record.ID] = true
+				break
+			}
+		}
+	}
+	return stale
+}
+
+func (f *foldState) ratified(target string, retired map[string]bool) bool {
+	for _, event := range f.ratifications[target] {
+		if !retired[event] && f.decisions[event].Verdict == Effective {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *foldState) project() Projection {
+	retired := f.retired()
+	stale := f.stale(retired)
+	projection := Projection{
+		Decisions: []Decision{}, Statements: []Statement{}, Commitments: []Commitment{}, Artifacts: []Artifact{},
+		Roles: make(map[string][]string), Provenance: make(map[string][]string),
+		OpaqueKinds: make(map[string][]string),
+	}
+	for _, record := range f.records {
+		projection.Decisions = append(projection.Decisions, f.decisions[record.record.ID])
+		projection.Provenance[record.record.ID] = append([]string(nil), record.record.RestsOn...)
+		state, ok := record.body.(*State)
+		if !ok {
+			continue
+		}
+		projection.Statements = append(projection.Statements, Statement{
+			Event: record.record.ID, Actor: record.record.Actor, Kind: state.Kind,
+			Text: state.Text, Body: state.Body, Ratified: f.ratified(record.record.ID, retired),
+			Retired: retired[record.record.ID], Stale: stale[record.record.ID],
+		})
+		if !knownKinds[state.Kind] {
+			projection.OpaqueKinds[string(state.Kind)] = append(projection.OpaqueKinds[string(state.Kind)], record.record.ID)
+		}
+		if state.Kind == KindArtifact {
+			projection.Artifacts = append(projection.Artifacts, Artifact{Event: record.record.ID, Path: state.Body["path"], Commit: state.Body["commit"], Stale: retired[record.record.ID] || stale[record.record.ID]})
+		}
+	}
+	for actor, roles := range f.roles {
+		for role := range roles {
+			projection.Roles[actor] = append(projection.Roles[actor], role)
+		}
+		sort.Strings(projection.Roles[actor])
+	}
+	projection.Commitments = f.projectCommitments(retired, stale)
+	if projection.Commitments == nil {
+		projection.Commitments = []Commitment{}
+	}
+	if len(projection.OpaqueKinds) == 0 {
+		projection.OpaqueKinds = nil
+	}
+	return projection
+}
+
+func (f *foldState) projectCommitments(retired, stale map[string]bool) []Commitment {
+	var commitments []Commitment
+	for _, requestRecord := range f.records {
+		request, ok := requestRecord.body.(*State)
+		if !ok || request.Kind != KindRequest || f.decisions[requestRecord.record.ID].Verdict != Effective {
+			continue
+		}
+		promises := f.directDependents(requestRecord.record.ID, KindPromise)
+		if len(promises) == 0 {
+			status := "requested"
+			if retired[requestRecord.record.ID] {
+				status = "withdrawn"
+			} else if stale[requestRecord.record.ID] {
+				status = "stale"
+			}
+			commitments = append(commitments, Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, Performer: request.Body["to"], Status: status, WaitingOn: request.Body["to"]})
+			continue
+		}
+		for _, promiseRecord := range promises {
+			entry := Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, Performer: promiseRecord.record.Actor, Promise: promiseRecord.record.ID, Status: "promised", WaitingOn: promiseRecord.record.Actor}
+			switch {
+			case retired[requestRecord.record.ID]:
+				entry.Status = "cancelled"
+				entry.WaitingOn = ""
+			case retired[promiseRecord.record.ID]:
+				entry.Status = "reneged"
+				entry.WaitingOn = ""
+			case stale[requestRecord.record.ID] || stale[promiseRecord.record.ID]:
+				entry.Status = "stale"
+			default:
+				reports := f.directDependents(promiseRecord.record.ID, KindReport)
+				for index := len(reports) - 1; index >= 0; index-- {
+					report := reports[index]
+					if retired[report.record.ID] {
+						continue
+					}
+					entry.Report = report.record.ID
+					entry.Status = "reported"
+					entry.WaitingOn = requestRecord.record.Actor
+					if stale[report.record.ID] {
+						entry.Status = "stale"
+					} else if f.ratified(report.record.ID, retired) {
+						entry.Status = "satisfied"
+						entry.WaitingOn = ""
+					}
+					break
+				}
+			}
+			commitments = append(commitments, entry)
+		}
+	}
+	return commitments
+}
+
+func (f *foldState) directDependents(target string, kind Kind) []*parsedRecord {
+	var found []*parsedRecord
+	for _, record := range f.records {
+		if f.decisions[record.record.ID].Verdict != Effective || !contains(record.record.RestsOn, target) {
+			continue
+		}
+		state, ok := record.body.(*State)
+		if ok && state.Kind == kind {
+			found = append(found, &f.records[record.index])
+		}
+	}
+	return found
+}
+
+func contains(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func (p Projection) Explain(event string) []string {
+	seen := make(map[string]bool)
+	var result []string
+	var walk func(string)
+	walk = func(current string) {
+		if current == "" || seen[current] {
+			return
+		}
+		seen[current] = true
+		result = append(result, current)
+		for _, basis := range p.Provenance[current] {
+			walk(basis)
+		}
+	}
+	walk(event)
+	return result
+}
+
+func (p Projection) Decision(event string) (Decision, bool) {
+	for _, decision := range p.Decisions {
+		if decision.Event == event {
+			return decision, true
+		}
+	}
+	return Decision{}, false
+}
+
+func (p Projection) Summary() string {
+	counts := make(map[string]int)
+	for _, commitment := range p.Commitments {
+		counts[commitment.Status]++
+	}
+	keys := make([]string, 0, len(counts))
+	for key := range counts {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var parts []string
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", key, counts[key]))
+	}
+	return strings.Join(parts, " ")
+}

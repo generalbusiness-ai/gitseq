@@ -306,6 +306,69 @@ func TestVerifierRejectsRebindingAndTrailerMutation(t *testing.T) {
 	}
 }
 
+func TestLoadReturnsVerifiedPayloadAndAttachments(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	request := f.request(t, private, "load", []byte("payload"), nil)
+	request.Attachments = map[string][]byte{"evidence.json": []byte(`{"signed":true}`)}
+	tree, err := f.scratch.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded := mustVerifyIntent(t, request.Signed)
+	request.Signed, err = intent.Sign(intent.Intent{
+		Version: decoded.Version, Target: decoded.Target, Schema: decoded.Schema,
+		PayloadTree:   "git:" + f.format + ":" + tree,
+		IdempotencyNS: decoded.IdempotencyNS, IdempotencyKey: decoded.IdempotencyKey,
+	}, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	events, verification, err := Load(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verification.Events != 1 || len(events) != 1 || string(events[0].Payload) != "payload" || string(events[0].Attachments["evidence.json"]) != `{"signed":true}` {
+		t.Fatalf("unexpected load: verification=%+v events=%+v", verification, events)
+	}
+}
+
+func TestContinuationBindsVerifiedSealedFrontier(t *testing.T) {
+	predecessor := newFixture(t, "sha1")
+	request := predecessor.request(t, actor(t), "seal", []byte("seal"), nil)
+	if _, err := Submit(predecessor.ctx, predecessor.store, request, Options{SigningKey: predecessor.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := Verify(predecessor.ctx, predecessor.store, predecessor.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	successorStore, err := gitstore.InitBare(predecessor.ctx, filepath.Join(root, "successor.git"), "sha1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := filepath.Join(root, "sequencer")
+	publicKey, err := gitstore.GenerateSSHKey(predecessor.ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	successor, err := Create(predecessor.ctx, successorStore, GenesisDescriptor{Version: 0, ObjectFormat: "sha1", PayloadCeiling: 1 << 20, SequencerPublicKey: publicKey, PredecessorGenesis: sealed.Genesis, SealedHead: sealed.Head}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verification, err := VerifyContinuation(predecessor.ctx, predecessor.store, predecessor.genesis, successorStore, successor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verification.Predecessor.Head != sealed.Head || verification.Successor.Genesis != successor {
+		t.Fatalf("unexpected continuation: %+v", verification)
+	}
+}
+
 func mustVerifyIntent(t *testing.T, signed intent.Signed) intent.Intent {
 	t.Helper()
 	decoded, err := intent.Verify(signed)

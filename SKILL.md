@@ -33,7 +33,7 @@ Every durable act cites its basis in `rests_on`.
   gone, durable state is not.
 - `say {about, text}` — ephemeral frame in the conversation anchored
   at `about` (minted if none is open).
-- `state {kind, text, rests_on, evidence?}` — durable utterance.
+- `state {kind, text, body?, rests_on, evidence?}` — durable utterance.
   Kinds are speech acts: `assert` (a claim you can ground),
   `propose` (seeks ratification), `request` (asks an actor to act),
   `promise` (an undertaking — never one you can't keep), `report`
@@ -43,9 +43,9 @@ Every durable act cites its basis in `rests_on`.
   conversation is `state` with the selected signed frames embedded
   as `evidence` — a stranger can then verify it after the
   conversation is forgotten. Select honestly, summarize faithfully.
-- `ratify {target}` — confers collective force. **Agent ratifications
-  are ineffective by fold rule**; using this without a ratifier role
-  produces a visible ineffective attempt.
+- `ratify {target}` — confers force when you hold the target-specific
+  authority: the requester for a report, a ratifier for proposals and
+  governance. Any other attempt is visibly ineffective.
 - `supersede {target, text, rests_on}` — retire a prior act,
   propagating staleness to everything resting on it. Prefer
   supersession to contradiction.

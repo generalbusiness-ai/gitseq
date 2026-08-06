@@ -1,14 +1,16 @@
-# gitseq adversarial spike
+# gitseq implementation and adversarial spike
 
-This is a disposable executable test of the contracts in
-`../2026-08-05-gitseq-design.md`. It deliberately uses real Git object and
-ref plumbing. It is not a production server.
+This began as a disposable executable test of the contracts in
+`../2026-08-05-gitseq-design.md`. The proven kernel remains the adversarial
+fixture; the bootstrap now grows beside it as `internal/workroom`,
+`internal/app`, `internal/service`, `cmd/gs`, and `cmd/gitseq-mcp`.
 
 The kernel commands are one-shot processes: every invocation is a cold
 failover, so repository state and signing keys are the only durable truth.
-The nexus model is the sole stateful component because its amnesia is part of
-the collaboration-profile contract. It is an in-memory Go state machine, not a
-production network service.
+The nexus is the sole stateful component because its amnesia is part of the
+collaboration-profile contract. The resident workroom service exposes it and
+the durable sequencer over localhost HTTP; the stdio MCP process remains a
+thin per-actor adapter.
 
 Run the fast evidence lane:
 

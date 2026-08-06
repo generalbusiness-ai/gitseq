@@ -78,6 +78,7 @@ type conversation struct {
 	next    uint64
 	last    []byte
 	genesis []byte
+	frames  []Frame
 }
 
 type Hub struct {
@@ -159,7 +160,14 @@ func (h *Hub) Depart(id string) Change {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.presence, id)
-	return h.append("departure", id, "")
+	change := h.append("departure", id, "")
+	if len(h.presence) == 0 {
+		for conversation := range h.convs {
+			delete(h.convs, conversation)
+			h.append("forgotten", conversation, "")
+		}
+	}
+	return change
 }
 
 func (h *Hub) OpenConversation() (string, Change, error) {
@@ -277,8 +285,21 @@ func (h *Hub) Publish(conversationID string, payload []byte, actorPrivateKey ed2
 	}
 	conversation.last = digest
 	conversation.next++
+	conversation.frames = append(conversation.frames, frame)
 	h.append("frame", conversationID, fmt.Sprint(frame.Sequence))
 	return frame, nil
+}
+
+func (h *Hub) Frames(conversationID string) ([]Frame, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	conversation, ok := h.convs[conversationID]
+	if !ok {
+		return nil, errors.New("unknown conversation")
+	}
+	frames := make([]Frame, len(conversation.frames))
+	copy(frames, conversation.frames)
+	return frames, nil
 }
 
 func FrameHash(frame Frame) ([]byte, error) {

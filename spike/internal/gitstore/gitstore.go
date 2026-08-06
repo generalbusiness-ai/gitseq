@@ -184,6 +184,24 @@ func (s Store) ReadFile(ctx context.Context, commit, path string) ([]byte, error
 	return output, nil
 }
 
+func (s Store) ListFiles(ctx context.Context, commit, directory string) ([]string, error) {
+	if commit == "" || strings.ContainsAny(directory, "\x00\r\n:") {
+		return nil, errors.New("invalid commit or tree path")
+	}
+	args := []string{"ls-tree", "-r", "--name-only", commit}
+	if directory != "" {
+		args = append(args, "--", directory)
+	}
+	output, err := s.run(ctx, nil, nil, args...)
+	if err != nil {
+		return nil, err
+	}
+	if len(output) == 0 {
+		return nil, nil
+	}
+	return strings.Fields(string(output)), nil
+}
+
 // ValidatePayloadTree checks the kernel's only payload semantics: one event
 // blob, optional flat attachments, and a total inline byte ceiling.
 func (s Store) ValidatePayloadTree(ctx context.Context, tree string, ceiling uint64) error {
