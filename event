@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Corrected contract-repair implementation and verification pointer","body":{"commit":"0ca56b57505ed935f7492a6fc5761e30bfc87075","path":"."}}
+{"kind":"artifact","text":"Expired-session sweep and documented cold-fold cost","body":{"commit":"b2d0effdf257a6784f47365dde840c6ea87c498c","path":"spike/internal"}}
