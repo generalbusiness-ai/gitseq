@@ -121,6 +121,14 @@ func TestProjectionIsByteStable(t *testing.T) {
 	}
 }
 
+func TestProvenanceRendersBranchesAtTheirActualDepth(t *testing.T) {
+	projection := Projection{Provenance: map[string][]string{"artifact": {"decision", "commit"}, "decision": {"seed"}}}
+	want := "artifact\n  decision\n    seed\n  commit\n"
+	if got := string(RenderProvenance(projection, "artifact")); got != want {
+		t.Fatalf("provenance:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestEmptyCollectionsRenderAsArrays(t *testing.T) {
 	projection := Fold(nil)
 	encoded, err := RenderJSON(projection)

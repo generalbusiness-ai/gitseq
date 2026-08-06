@@ -57,9 +57,24 @@ func RenderStatus(projection Projection) []byte {
 
 func RenderProvenance(projection Projection, event string) []byte {
 	var output bytes.Buffer
-	for index, item := range projection.Explain(event) {
-		fmt.Fprintf(&output, "%s%s\n", strings.Repeat("  ", index), item)
+	seen := make(map[string]bool)
+	var walk func(string, int)
+	walk = func(current string, depth int) {
+		if current == "" {
+			return
+		}
+		fmt.Fprintf(&output, "%s%s", strings.Repeat("  ", depth), current)
+		if seen[current] {
+			output.WriteString(" (already shown)\n")
+			return
+		}
+		output.WriteByte('\n')
+		seen[current] = true
+		for _, basis := range projection.Provenance[current] {
+			walk(basis, depth+1)
+		}
 	}
+	walk(event, 0)
 	return output.Bytes()
 }
 
