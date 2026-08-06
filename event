@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f6fc0c4e0a42967fe2d267ad88920418ebbb39a1","text":"The commitment ledger is the product; the live page is one projection, not the primary story."}
+{"kind":"artifact","text":"Accepted dogfood checkpoint","body":{"commit":"e76c377","path":"BOOTSTRAP.md"}}
