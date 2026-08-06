@@ -1,0 +1,20 @@
+services:
+  forge:
+    profiles: [forge]
+    image: docker.gitea.com/gitea:1.24.6
+    environment:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__server__ROOT_URL: http://localhost:3300/
+    ports:
+      - "3300:3000"
+    volumes:
+      - gitseq-forge-data:/data
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:3000/api/healthz]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+volumes:
+  gitseq-forge-data:

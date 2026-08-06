@@ -1,9 +1,11 @@
 ---
 date: 2026-08-05, revised 2026-08-06 (third wave)
-status: draft/discussion, moving forward — nothing built. This repo's
+status: draft/discussion, moving forward — kernel spiked. This repo's
   own first-parent history is the first (hand-run) log;
-  refs/seq/design carries it. Restructured after adversarial review:
-  kernel / collaboration profile / application profiles.
+  refs/seq/design carries it. Restructured after adversarial review
+  (kernel / collaboration profile / application profiles); the
+  six-case adversarial spike under spike/ passes against real git
+  (evidence in spike/.spike/).
 origin: spinoff from the woo "engine over log" discussion (Beyond Zero →
   orchestration locus → event-log engine). This note is deliberately
   self-contained and woo-free.
@@ -90,7 +92,12 @@ need no sequencer.
   no width cap, no second representation. (The earlier design spent
   git's extra parents on intra-log causality; review retired it —
   two representations of one concept, merge-rendering noise, and a
-  width policy, for reachability that folds never used.)
+  width policy, for reachability that folds never used.) The causal
+  references live **inside the signed intent** (authoritative) and
+  are repeated as commit-message trailers — a *derived projection
+  for stock-git tooling* (`git log --grep`), legal under the design's
+  own derived-copy rules because the verifier enforces equality
+  between the two. Trust the intent, grep the trailer.
 - **Author** = the submitting actor. What the actor asserted, carried
   as the signed submission intent (below).
 - **Committer** = the sequencer, and the commit is **signed by the
@@ -169,7 +176,11 @@ watch(log, from)                         → head notices
   envelope, hence in the log; the authoritative used-key record is a
   projection of the log, rebuildable by any successor. The in-memory
   reply cache is an optimization; eviction can never cause a
-  duplicate append.
+  duplicate append. **The dedup identity is actor-scoped** —
+  (target, actor key, namespace, key) — so no actor can burn or
+  squat another actor's idempotency keys; a replay must present the
+  same signed intent, and the same key under a different intent is
+  refused terminally.
 - **Back-pressure is explicit**: at capacity, refuse before chaining,
   cheaply, and say so.
 - **Logs are cheap is a performance requirement**: applications mint
@@ -372,15 +383,25 @@ Recorded so applications converge; the base runs none of it:
   shape; whether an admitted event is *effective* ("take the mug"
   when the mug is gone; "ratify" from a non-chair) is decided by a
   deterministic, total, versioned fold every replayer runs to the
-  same answer. Ineffective events remain in history as what they are:
-  attempts, audit-relevant. Hooks are economics — rate, size,
-  doorsteps — never correctness; a stateful hook consulting a fold is
-  how semantic-freedom dies. Fold definitions are themselves logged
-  in the practice's own log, so the rules are governed by the moves
-  they govern.
+  same answer. **Total means every event receives a decision** —
+  including system-level ambiguity, which is a typed outcome
+  (`disputed`), never an error: a fold that throws gives late joiners
+  no projection at all, while `disputed` is a rendering. Ineffective
+  events remain in history as what they are: attempts,
+  audit-relevant. Hooks are economics — rate, size, doorsteps —
+  never correctness; a stateful hook consulting a fold is how
+  semantic-freedom dies. Fold definitions are themselves logged in
+  the practice's own log, so the rules are governed by the moves they
+  govern.
 - **An entity with sequenced state is a log.** Custody of a mug that
   moves between rooms double-spends if rooms own it; give the mug a
   log and custody has one total order, rooms merely reference it.
+  *Spike-backed*: the custody case ran the saga alternative (events
+  in the parties' logs) and found that two completed sagas are
+  unorderable — ambiguity survives and must be `disputed` by policy.
+  The entity-own-log pattern excludes that ambiguity by construction;
+  the saga is the exception you choose knowingly, paying for it with
+  a dispute state.
 - **Identity logs.** Actors worth addressing durably are logs: genesis
   is the stable identity, events bind and rotate keys, the fold
   answers "which keys speak for this actor now." Bare keys may act; a
@@ -428,7 +449,10 @@ sequencer is **a bot account with a protected ref namespace**, and a
 v0 nexus a webhook-to-SSE relay grown a capability table (in-memory,
 expiring; its loss drops conversations and un-issued capabilities,
 which is the stated contract). A security domain is a repo; minting
-one is `git init` plus an ACL. The whole thing deploys today on
+one is `git init` plus an ACL. One operational note: CAS losers and
+refused-after-objects submissions leave unreferenced objects in the
+object database — ordinary `git gc` collects them; a deployment just
+has to actually run it. The whole thing deploys today on
 infrastructure everyone already runs.
 
 ## Prior art (nods, and deltas)
@@ -486,21 +510,21 @@ hypothetical application architecture.
 
 ## Open questions
 
-1. **Canonical intent encoding** — deterministic CBOR vs. canonical
-   JSON vs. git-native trailer form; the spike decides, the spec then
-   fixes it.
-2. **Ephemeral ordering** — nexus counter vs. causal-only with
-   client-rendered arrival; spike-level.
-3. **Timestamp trust** — committer time is sequencer-asserted; a
+1. **Ephemeral ordering** — nexus counter vs. causal-only with
+   client-rendered arrival. The spike showed the counter is cheap to
+   implement; it deliberately did *not* establish that total
+   ephemeral order belongs in the minimal profile, so the question
+   stays open on merit, not feasibility.
+2. **Timestamp trust** — committer time is sequencer-asserted; a
    witness cosignature carries an independent observation time — is
    that enough, or does RFC 3161 / roughtime earn a kernel seat?
-4. **Checkpoint cadence and witness-set vocabulary** — deployment
+3. **Checkpoint cadence and witness-set vocabulary** — deployment
    policy; does the kernel need vocabulary for *stating* the policy,
    or does it live wholly above?
-5. **Knock visibility** — is a refused doorstep capability
+4. **Knock visibility** — is a refused doorstep capability
    distinguishable from absence? A values choice; a per-coordinate
    policy bit in the profile, not a convention.
-6. **Payload-encryption profile** — confidentiality from the domain
+5. **Payload-encryption profile** — confidentiality from the domain
    operator; future, explicitly not load-bearing now.
 
 Resolution ledger. First pass: log identity (genesis), trust anchor
@@ -527,4 +551,23 @@ replaces "compaction as same identity"; "everything addressable is a
 log" corrected to "every independent ordering domain is a log"; the
 numerical-symmetry rhetoric dropped — minimality is independent
 responsibilities and complete contracts; and the small gitseq
-verifier admitted as a kernel deliverable.
+verifier admitted as a kernel deliverable. Fourth wave (the
+executable spike, `spike/`): all six adversarial cases pass against
+real git plumbing, sha1 and sha256, including actual process-death
+failover and a real smart-HTTP domain-boundary probe with a positive
+control. Decisions the spike made and this note now ratifies:
+**canonical intent encoding** is core-deterministic fixed-array CBOR
+with a domain-separation tag and Ed25519 actor signatures, decode ∘
+encode proven bijective by fuzzing (7.3M executions); sequencer
+commits carry git SSH signatures; **dedup identity is actor-scoped**;
+**Rests-On trailers are a verifier-checked derived projection** of
+the signed intent; **fold totality** means every event gets a
+decision, with `disputed` as a typed outcome rather than an error
+(the custody spike errored on ambiguity — the one place the spike
+and this contract now disagree, resolved in favor of `disputed`);
+and the entity-own-log custody pattern is spike-backed — the saga
+alternative demonstrably leaves settlement ambiguity to policy.
+Evidence: `spike/.spike/SPIKE-RESULTS.md` and `evidence.json`; the
+retained-ephemera result (frames verify only against an externally
+anchored nexus key) confirms the profile's config-log anchor
+decision.
