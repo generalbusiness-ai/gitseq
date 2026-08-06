@@ -1,1 +1,1 @@
-{"kind":"propose","text":"Repair the post-build contract gaps before further dogfood: temporal role revocation, canonical actor addressing, bounded verified snapshots, exact MCP envelopes, and honest live custody."}
+{"kind":"artifact","text":"Contract-repair implementation and verification","body":{"commit":"0ca56b52050dc4bb27a4329148325d04011dc00b","path":"."}}
