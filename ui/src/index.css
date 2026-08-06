@@ -91,3 +91,11 @@ body {
 .rise {
   animation: rise 0.25s ease-out both;
 }
+
+/* Respect the platform's motion preference: cards land and dots sit still. */
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .pulse-dot {
+    animation: none;
+  }
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Actor, type Cursor, type GraphCommit, type Statement, type Status } from "./api";
+import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status } from "./api";
 
 export interface Workroom {
   status?: Status;
@@ -102,4 +102,89 @@ export function provenanceClosure(
     if (commit.rests_on?.some((cited) => events.has(cited))) commitSet.add(commit.hash);
   }
   return { events, commits: commitSet };
+}
+
+// Ticket numbers: every durable event's 1-based position in log order.
+// #N is the human handle; the hex event id stays one hover behind.
+export function ticketsOf(projection?: Projection): Map<string, number> {
+  const map = new Map<string, number>();
+  projection?.decisions.forEach((decision, index) => map.set(decision.event, index + 1));
+  return map;
+}
+
+// Why is this item stale? Walk provenance down to every retired ancestor and
+// name the live supersession that retired it. The item itself is excluded:
+// being superseded yourself is "retired", not "stale".
+export interface StaleCause {
+  act: Act; // the effective supersede
+  target: string; // the retired ancestor it replaced
+}
+
+export function staleCauses(event: string, projection: Projection): StaleCause[] {
+  const supersedes = new Map<string, Act>();
+  for (const act of projection.acts) {
+    if (act.type === "supersede" && act.verdict === "effective") supersedes.set(act.target, act);
+  }
+  const causes: StaleCause[] = [];
+  const seen = new Set<string>();
+  const walk = (id: string) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    const act = supersedes.get(id);
+    if (act && id !== event) causes.push({ act, target: id });
+    for (const basis of projection.provenance[id] ?? []) walk(basis);
+  };
+  walk(event);
+  return causes;
+}
+
+// A free-standing promise the fold judged dangling: it landed, but nobody is
+// structurally positioned to declare it satisfied.
+export function danglingPromises(projection: Projection): Statement[] {
+  const reasons = new Map(projection.decisions.map((d) => [d.event, d]));
+  return projection.statements.filter(
+    (s) => s.kind === "promise" && reasons.get(s.event)?.reason.includes("dangling"),
+  );
+}
+
+export const OPEN_COMMITMENT_STATUSES = ["requested", "promised", "reported"];
+export const ATTENTION_COMMITMENT_STATUSES = ["stale", "disputed"];
+
+// The header chip's summary of the Work drawer, computed from the projection.
+export function workSummary(projection?: Projection): { stale: number; open: number; done: number } {
+  if (!projection) return { stale: 0, open: 0, done: 0 };
+  const staleCount =
+    projection.artifacts.filter((a) => a.stale).length +
+    projection.commitments.filter((c) => ATTENTION_COMMITMENT_STATUSES.includes(c.status)).length +
+    danglingPromises(projection).length;
+  return {
+    stale: staleCount,
+    open: projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status)).length,
+    done: projection.commitments.filter((c) => c.status === "satisfied").length,
+  };
+}
+
+// The stream's three weights: plain talk renders as light message rows;
+// settled record entries as compact one-line rows; only what still awaits a
+// response — active commitments and open proposals — earns card chrome.
+export function statementWeight(
+  statement: Statement,
+  projection: Projection,
+  commitment?: Commitment,
+): "card" | "compact" {
+  if (statement.retired || statement.stale) {
+    // Stale commitments still need someone's attention: keep the card.
+    if (commitment && ATTENTION_COMMITMENT_STATUSES.includes(commitment.status)) return "card";
+    return "compact";
+  }
+  if (statement.kind === "request") {
+    return commitment && [...OPEN_COMMITMENT_STATUSES, ...ATTENTION_COMMITMENT_STATUSES].includes(commitment.status)
+      ? "card"
+      : "compact";
+  }
+  if (statement.kind === "propose") {
+    const verdict = projection.decisions.find((d) => d.event === statement.event)?.verdict;
+    return !statement.ratified && verdict === "effective" ? "card" : "compact";
+  }
+  return "compact";
 }

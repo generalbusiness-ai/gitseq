@@ -5,24 +5,30 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// One color language across the whole surface.
+// One color language across the whole surface. Kind tags are deliberately
+// neutral: green is reserved for satisfied/ratified/current, red for
+// stale/reneged/disputed/dissent, amber for selection/focus only.
+export const neutralKind = "text-muted border-border";
 export const kindTint: Record<string, string> = {
-  request: "text-warn border-warn/30 bg-warn/10",
-  promise: "text-ok border-ok/30 bg-ok/10",
-  report: "text-info border-info/30 bg-info/10",
-  propose: "text-violet border-violet/30 bg-violet/10",
-  assert: "text-foreground border-border bg-elevated",
-  dissent: "text-danger border-danger/30 bg-danger/10",
-  artifact: "text-teal border-teal/30 bg-teal/10",
-  roster: "text-muted border-border bg-elevated",
-  "infra-key": "text-muted border-border bg-elevated",
-  seal: "text-muted border-border bg-elevated",
+  request: neutralKind,
+  promise: neutralKind,
+  report: neutralKind,
+  propose: neutralKind,
+  assert: neutralKind,
+  dissent: "text-danger border-danger/40",
+  artifact: neutralKind,
+  roster: neutralKind,
+  "infra-key": neutralKind,
+  seal: neutralKind,
 };
+
+// Statement kinds wear their plain names in the UI; "assert" reads as jargon.
+export const kindLabel: Record<string, string> = { assert: "note", propose: "proposal" };
 
 export const statusTint: Record<string, string> = {
   satisfied: "text-ok",
-  reported: "text-info",
-  promised: "text-accent",
+  reported: "text-muted",
+  promised: "text-muted",
   requested: "text-muted",
   withdrawn: "text-faint",
   cancelled: "text-faint",
@@ -31,8 +37,9 @@ export const statusTint: Record<string, string> = {
   disputed: "text-danger",
 };
 
-// Stable per-actor hues for chat authorship.
-const actorHues = ["text-ok", "text-info", "text-violet", "text-warn", "text-teal", "text-danger"];
+// Stable per-actor hues for chat authorship — none of the semantic ok/danger
+// hues, so an author's color never reads as a verdict.
+const actorHues = ["text-info", "text-violet", "text-teal", "text-foreground/80"];
 export function actorTint(name: string): string {
   let hash = 0;
   for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) | 0;
@@ -50,6 +57,13 @@ export async function fingerprintOfKey(base64Key: string): Promise<string> {
     .join("");
   fingerprintCache.set(base64Key, hex);
   return hex;
+}
+
+// Honest label for a client-side arrival time: this is when *we* first saw
+// the frame, not when it was said — the room keeps no clock for chatter.
+export function seenAt(ms: number): string {
+  const d = new Date(ms);
+  return `seen ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 export function timeAgo(seconds: number): string {

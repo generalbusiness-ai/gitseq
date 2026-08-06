@@ -2,8 +2,8 @@ import { useMemo } from "react";
 import { BadgeCheck, CircleSlash, FileWarning, MessageSquareX, Scale, Undo2 } from "lucide-react";
 import type { Act, Actor, Projection, Statement } from "../lib/api";
 import { shortEvent } from "../lib/api";
-import type { Selection } from "../lib/store";
-import { cn, kindTint, statusTint } from "../lib/util";
+import { ticketsOf, type Selection } from "../lib/store";
+import { cn, kindLabel, kindTint, statusTint } from "../lib/util";
 import { PaneTitle } from "./Railway";
 
 // The sequence renders statements only; ratifications, supersessions,
@@ -25,6 +25,7 @@ export function SequencePane({
   const nameOf = useMemo(() => makeNamer(actors, projection), [actors, projection]);
   const statements = projection?.statements ?? [];
   const byEvent = useMemo(() => new Map(statements.map((s) => [s.event, s])), [statements]);
+  const tickets = useMemo(() => ticketsOf(projection), [projection]);
 
   const annotations = useMemo(() => {
     const map = new Map<string, Annotation[]>();
@@ -53,11 +54,11 @@ export function SequencePane({
   const orphanActs = (projection?.acts ?? []).filter((act) => !byEvent.has(act.target));
 
   return (
-    <section className="flex min-h-0 flex-col bg-background">
+    <section className="flex h-full min-h-0 flex-col bg-background">
       <PaneTitle icon={<Scale className="h-3.5 w-3.5" />} title="durable record" hint="signed, ordered, every attempt visible — force is the fold's judgment" />
       {projection && projection.commitments.length > 0 && (
         <div className="border-b border-border/60 px-4 py-3">
-          <div className="mb-2 text-[10.5px] uppercase tracking-[0.16em] text-faint">who waits on whom</div>
+          <div className="mb-2 text-xs uppercase tracking-[0.16em] text-faint">who waits on whom</div>
           <div className="space-y-1.5">
             {projection.commitments.map((commitment) => (
               <button
@@ -72,7 +73,7 @@ export function SequencePane({
                   {byEvent.get(commitment.request)?.text ?? shortEvent(commitment.request)}
                 </span>
                 {commitment.waiting_on && (
-                  <span className="ml-auto shrink-0 text-[10.5px] text-faint">⏳ {nameOf(commitment.waiting_on)}</span>
+                  <span className="ml-auto shrink-0 text-xs text-faint">⏳ {nameOf(commitment.waiting_on)}</span>
                 )}
               </button>
             ))}
@@ -89,6 +90,7 @@ export function SequencePane({
               <StatementCard
                 key={statement.event}
                 statement={statement}
+                ticket={tickets.get(statement.event)}
                 annotations={annotations.get(statement.event) ?? []}
                 nameOf={nameOf}
                 bright={highlight.events.has(statement.event)}
@@ -97,7 +99,7 @@ export function SequencePane({
               />
             ))}
           {orphanActs.map((act) => (
-            <li key={act.event} className="px-2 py-1 text-[11.5px] text-faint">
+            <li key={act.event} className="px-2 py-1 text-xs text-faint">
               <CircleSlash className="mr-1 inline h-3 w-3" />
               {nameOf(act.actor)} — {act.reason}
             </li>
@@ -116,6 +118,7 @@ interface Annotation {
 
 function StatementCard({
   statement,
+  ticket,
   annotations,
   nameOf,
   bright,
@@ -123,6 +126,7 @@ function StatementCard({
   onSelect,
 }: {
   statement: Statement;
+  ticket?: number;
   annotations: Annotation[];
   nameOf: (fingerprint: string) => string;
   bright: boolean;
@@ -141,23 +145,23 @@ function StatementCard({
         )}
       >
         <div className="flex items-center gap-2">
-          <span className={cn("shrink-0 border px-1.5 text-[10px] uppercase leading-4 tracking-wide", kindTint[statement.kind] ?? "text-muted border-border")}>
-            {statement.kind}
+          <span className={cn("shrink-0 border px-1.5 text-xs uppercase leading-4 tracking-wide", kindTint[statement.kind] ?? "text-muted border-border")}>
+            {kindLabel[statement.kind] ?? statement.kind}
           </span>
           <span className={cn("truncate text-[13px]", dead ? "text-faint line-through" : "text-foreground")}>
             {statement.text}
           </span>
           {statement.ratified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-ok" />}
           {statement.stale && !dead && (
-            <span className="flex shrink-0 items-center gap-1 text-[10px] uppercase text-danger">
+            <span className="flex shrink-0 items-center gap-1 text-xs uppercase text-danger">
               <FileWarning className="h-3 w-3" /> stale
             </span>
           )}
-          <code className="ml-auto shrink-0 text-[10px] text-faint opacity-0 transition-opacity group-hover:opacity-100">
-            {shortEvent(statement.event)}
-          </code>
+          <span className="ml-auto shrink-0 font-mono text-xs text-faint" title={statement.event}>
+            {ticket ? `#${ticket}` : shortEvent(statement.event)}
+          </span>
         </div>
-        <div className="mt-0.5 flex items-center gap-2 text-[10.5px] text-faint">
+        <div className="mt-0.5 flex items-center gap-2 text-xs text-faint">
           <span>by {nameOf(statement.actor)}</span>
           {statement.body?.to && <span>→ {nameOf(statement.body.to)}</span>}
           {statement.body?.path && (
@@ -184,7 +188,7 @@ function StatementCard({
 function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string) => string }) {
   if (note.dissent) {
     return (
-      <div className="flex items-start gap-1.5 text-[11px] text-danger">
+      <div className="flex items-start gap-1.5 text-xs text-danger">
         <MessageSquareX className="mt-0.5 h-3 w-3 shrink-0" />
         <span>
           dissent, {nameOf(note.dissent.actor)}: <span className="text-muted">{note.dissent.text}</span>
@@ -195,7 +199,7 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
   const act = note.act!;
   if (act.verdict === "effective" && act.type === "ratify") {
     return (
-      <div className="flex items-center gap-1.5 text-[11px] text-ok">
+      <div className="flex items-center gap-1.5 text-xs text-ok">
         <BadgeCheck className="h-3 w-3 shrink-0" />
         ratified by {nameOf(act.actor)}
       </div>
@@ -203,7 +207,7 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
   }
   if (act.verdict === "effective" && act.type === "supersede") {
     return (
-      <div className="flex items-start gap-1.5 text-[11px] text-danger">
+      <div className="flex items-start gap-1.5 text-xs text-danger">
         <Undo2 className="mt-0.5 h-3 w-3 shrink-0" />
         <span>
           superseded by {nameOf(act.actor)}
@@ -213,7 +217,7 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
     );
   }
   return (
-    <div className={cn("flex items-start gap-1.5 text-[11px]", act.verdict === "disputed" ? "text-danger" : "text-accent-deep")}>
+    <div className={cn("flex items-start gap-1.5 text-xs", act.verdict === "disputed" ? "text-danger" : "text-accent-deep")}>
       <CircleSlash className="mt-0.5 h-3 w-3 shrink-0" />
       <span>
         {nameOf(act.actor)} tried to {act.type} — {act.reason}

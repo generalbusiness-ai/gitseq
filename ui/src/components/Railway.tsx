@@ -75,7 +75,7 @@ export function Railway({
     selection?.kind === "commit" ? commits.find((commit) => commit.hash === selection.id) : undefined;
 
   return (
-    <section className="flex min-h-0 flex-col bg-background">
+    <section className="flex h-full min-h-0 flex-col bg-background">
       <PaneTitle icon={<GitBranch className="h-3.5 w-3.5" />} title="git railway" hint="the repo underneath — ordinary commits, branches, PRs" />
       <div className="relative min-h-0 flex-1 overflow-auto">
         {nodes.length === 0 && (
@@ -103,12 +103,12 @@ export function Railway({
                   <div className="flex items-center gap-2">
                     <span className="truncate text-[13px] text-foreground">{commit.subject}</span>
                     {commit.refs?.map((ref) => (
-                      <span key={ref} className="shrink-0 border border-ok/40 px-1.5 text-[10px] leading-4 text-ok">
+                      <span key={ref} className="shrink-0 border border-ok/40 px-1.5 text-xs leading-4 text-ok">
                         {ref}
                       </span>
                     ))}
                   </div>
-                  <div className="flex items-center gap-2 text-[10.5px] text-faint">
+                  <div className="flex items-center gap-2 text-xs text-faint">
                     <code className="text-accent-deep">{shortHash(commit.hash)}</code>
                     <span>{commit.author}</span>
                     <span>{timeAgo(commit.time)}</span>
@@ -208,12 +208,12 @@ function CommitDetail({
           <div className="flex items-center gap-2">
             <span className="truncate font-display text-[15px] text-foreground">{commit.subject}</span>
             {commit.refs?.map((ref) => (
-              <span key={ref} className="shrink-0 border border-ok/40 px-1.5 text-[10px] leading-4 text-ok">
+              <span key={ref} className="shrink-0 border border-ok/40 px-1.5 text-xs leading-4 text-ok">
                 {ref}
               </span>
             ))}
           </div>
-          <div className="mt-0.5 flex items-center gap-2 text-[10.5px] text-faint">
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-faint">
             <code className="text-accent-deep">{commit.hash}</code>
             <span>{commit.author}</span>
             <span>{timeAgo(commit.time)}</span>
@@ -224,7 +224,7 @@ function CommitDetail({
         </button>
       </div>
       {commit.body && (
-        <pre className="mt-2 whitespace-pre-wrap border-l-2 border-border pl-3 font-mono text-[11.5px] leading-relaxed text-muted">
+        <pre className="mt-2 whitespace-pre-wrap border-l-2 border-border pl-3 font-mono text-xs leading-relaxed text-muted">
           {commit.body}
         </pre>
       )}
@@ -256,14 +256,14 @@ function BridgeChip({
   return (
     <button
       onClick={() => onSelect({ kind: "event", id })}
-      className="flex w-full items-center gap-2 border border-border/60 px-2 py-1 text-left text-[11.5px] transition-colors hover:border-accent-deep"
+      className="flex w-full items-center gap-2 border border-border/60 px-2 py-1 text-left text-xs transition-colors hover:border-accent-deep"
     >
-      <span className="flex shrink-0 items-center gap-1 text-[10px] uppercase tracking-wide text-accent">
+      <span className="flex shrink-0 items-center gap-1 text-xs uppercase tracking-wide text-accent">
         <Link2 className="h-3 w-3" /> {label}
       </span>
       {statement ? (
         <>
-          <span className={cn("shrink-0 border px-1 text-[9.5px] uppercase leading-4", kindTint[statement.kind] ?? "text-muted border-border")}>
+          <span className={cn("shrink-0 border px-1 text-xs uppercase leading-4", kindTint[statement.kind] ?? "text-muted border-border")}>
             {statement.kind}
           </span>
           <span className="truncate text-foreground">{statement.text}</span>
@@ -278,11 +278,11 @@ function BridgeChip({
 export function PaneTitle({ icon, title, hint }: { icon: React.ReactNode; title: string; hint: string }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-border/60 px-4 py-2.5">
-      <span className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[11px] uppercase tracking-[0.16em] text-muted">
+      <span className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs uppercase tracking-[0.16em] text-muted">
         {icon}
         {title}
       </span>
-      <span className="hidden max-w-[65%] truncate text-[10.5px] text-faint xl:inline">{hint}</span>
+      <span className="hidden max-w-[65%] truncate text-xs text-faint xl:inline">{hint}</span>
     </div>
   );
 }
