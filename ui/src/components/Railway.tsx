@@ -76,11 +76,9 @@ export function Railway({
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-background">
-      <PaneTitle icon={<GitBranch className="h-3.5 w-3.5" />} title="git railway" hint="the repo underneath — ordinary commits, branches, PRs" />
+      <PaneTitle icon={<GitBranch className="h-3.5 w-3.5" />} title="git railway" />
       <div className="relative min-h-0 flex-1 overflow-auto">
-        {nodes.length === 0 && (
-          <p className="p-6 text-sm text-faint">No commits yet — the railway begins with your first ordinary git commit.</p>
-        )}
+        {nodes.length === 0 && <p className="p-6 text-sm text-faint">No commits yet.</p>}
         <div className="relative" style={{ height }}>
           {/* Rows first; the graph SVG paints on top so selection tint never hides it. */}
           {nodes.map((node) => {
@@ -275,14 +273,13 @@ function BridgeChip({
   );
 }
 
-export function PaneTitle({ icon, title, hint }: { icon: React.ReactNode; title: string; hint: string }) {
+export function PaneTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border/60 px-4 py-2.5">
+    <div className="flex items-center gap-2 border-b border-border/60 px-4 py-2.5">
       <span className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs uppercase tracking-[0.16em] text-muted">
         {icon}
         {title}
       </span>
-      <span className="hidden max-w-[65%] truncate text-xs text-faint xl:inline">{hint}</span>
     </div>
   );
 }

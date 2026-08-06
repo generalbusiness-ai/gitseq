@@ -26,10 +26,37 @@ export interface ComposerContext {
 
 export const emptyComposer: ComposerContext = { type: "say", restsOn: [], frames: [] };
 
+// The unified cite gesture, shared by the stream and the thread pane: a chat
+// line and a recorded act select the same way, into the same tray; the
+// system routes them (rests_on vs evidence) at send. Citing anything from
+// plain Say turns the draft into a Note.
+function typeAfterCite(context: ComposerContext): ComposerType {
+  return context.mode === undefined && context.type === "say" ? "assert" : context.type;
+}
+
+export function toggleCiteEvent(context: ComposerContext, onContext: (c: ComposerContext) => void, event: string): void {
+  const exists = context.restsOn.includes(event);
+  onContext({
+    ...context,
+    type: exists ? context.type : typeAfterCite(context),
+    restsOn: exists ? context.restsOn.filter((e) => e !== event) : [...context.restsOn, event],
+  });
+}
+
+export function toggleCiteFrame(context: ComposerContext, onContext: (c: ComposerContext) => void, frame: FrameView): void {
+  const key = (f: FrameView) => `${f.conversation}:${f.sequence}`;
+  const exists = context.frames.some((f) => key(f) === key(frame));
+  onContext({
+    ...context,
+    type: exists ? context.type : typeAfterCite(context),
+    frames: exists ? context.frames.filter((f) => key(f) !== key(frame)) : [...context.frames, frame],
+  });
+}
+
 const modeCopy: Record<ComposerMode, { banner: string; noun: string; placeholder: string }> = {
-  promise: { banner: "a promise — resting on the request", noun: "promise", placeholder: "what you undertake…" },
-  report: { banner: "reporting done — the requester declares satisfaction", noun: "report", placeholder: "what was done…" },
-  dissent: { banner: "an objection — resting on what it contests, visible forever", noun: "objection", placeholder: "what do you object to…" },
+  promise: { banner: "promise", noun: "promise", placeholder: "what you undertake…" },
+  report: { banner: "report", noun: "report", placeholder: "what was done…" },
+  dissent: { banner: "objection", noun: "objection", placeholder: "what do you object to…" },
 };
 
 const pills: { type: ComposerType; label: string }[] = [
@@ -199,11 +226,7 @@ export function Composer({
   return (
     <div className="border-t border-border bg-surface/60 px-4 py-3 sm:px-5">
       <div className="mx-auto max-w-3xl">
-        {lastHolder && (
-          <p className="mb-1.5 text-xs italic text-faint">
-            You're the last one holding this conversation — what leaves with you is forgotten.
-          </p>
-        )}
+        {lastHolder && <p className="mb-1.5 text-xs italic text-faint">Only you are holding this conversation.</p>}
         <div className="mb-2 flex flex-wrap items-center gap-2">
           {mode ? (
             <>
@@ -383,7 +406,7 @@ export function Composer({
         </div>
         {absentMention && (
           <p className="mt-1.5 text-xs text-faint">
-            {absentMention} isn't here — chat won't reach them;{" "}
+            {absentMention} isn't here —{" "}
             <button
               onClick={() => {
                 onContext({ ...context, type: "request" });

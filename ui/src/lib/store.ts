@@ -147,6 +147,38 @@ export function danglingPromises(projection: Projection): Statement[] {
   );
 }
 
+// A durable act's thread: everything resting on it, transitively — the
+// folded promise/report chain, dissents, follow-on statements — plus the
+// ratify/supersede acts that touched any of them. Statements come back in
+// log order; the thread pane renders them flat, Slack-style.
+export interface ThreadContent {
+  statements: Statement[];
+  acts: Act[];
+}
+
+export function threadChildren(event: string, projection: Projection): ThreadContent {
+  // provenance maps every durable event (statements and acts alike) to its
+  // bases; invert it once and walk down from the root.
+  const children = new Map<string, string[]>();
+  for (const [id, bases] of Object.entries(projection.provenance)) {
+    // Go marshals a nil rests_on slice as null; treat it as no bases.
+    for (const basis of bases ?? []) children.set(basis, [...(children.get(basis) ?? []), id]);
+  }
+  const descendants = new Set<string>();
+  const queue = [event];
+  while (queue.length > 0) {
+    for (const child of children.get(queue.shift()!) ?? []) {
+      if (descendants.has(child)) continue;
+      descendants.add(child);
+      queue.push(child);
+    }
+  }
+  return {
+    statements: (projection.statements ?? []).filter((s) => s.event !== event && descendants.has(s.event)),
+    acts: (projection.acts ?? []).filter((a) => a.target === event || descendants.has(a.event) || descendants.has(a.target)),
+  };
+}
+
 // Folded promise/report events render inside their request's card; jumping
 // to one lands on the request row instead.
 export function foldAnchor(event: string, projection?: Projection): string {

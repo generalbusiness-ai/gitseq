@@ -61,9 +61,15 @@ export async function fingerprintOfKey(base64Key: string): Promise<string> {
 
 // Honest label for a client-side arrival time: this is when *we* first saw
 // the frame, not when it was said — the room keeps no clock for chatter.
-export function seenAt(ms: number): string {
+// The word "seen" carries that honesty; clock() is the bare Slack-style time
+// for message headers, with the same caveat in its hover title upstream.
+export function clock(ms: number): string {
   const d = new Date(ms);
-  return `seen ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+export function seenAt(ms: number): string {
+  return `seen ${clock(ms)}`;
 }
 
 export function timeAgo(seconds: number): string {

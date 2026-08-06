@@ -252,6 +252,10 @@ type sayRequest struct {
 	About        string `json:"about"`
 	Conversation string `json:"conversation,omitempty"`
 	Text         string `json:"text"`
+	// Re threads a frame under an earlier one, as "<conversation>:<sequence>".
+	// Purely a payload annotation: the hub sequences reply frames like any
+	// other; clients that understand it render the frame in that thread.
+	Re string `json:"re,omitempty"`
 }
 
 func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
@@ -296,7 +300,11 @@ func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
 		write(writer, nil, err)
 		return
 	}
-	payload, _ := json.Marshal(map[string]string{"about": input.About, "text": input.Text})
+	body := map[string]string{"about": input.About, "text": input.Text}
+	if input.Re != "" {
+		body["re"] = input.Re
+	}
+	payload, _ := json.Marshal(body)
 	frame, err := s.hub.Publish(conversation, payload, private)
 	if err == nil {
 		if s.participants[conversation] == nil {

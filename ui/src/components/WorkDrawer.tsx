@@ -148,7 +148,7 @@ function WorkSections({
     <div className="space-y-5 px-4 py-4">
       <section>
         <SectionTitle icon={<FileWarning className="h-3.5 w-3.5 text-danger" />} title="Needs attention" />
-        {!needsAttention && <Empty>Nothing is stale, disputed, or dangling.</Empty>}
+        {!needsAttention && <Empty>All clear.</Empty>}
         {staleArtifacts.map((artifact) => (
           <div key={artifact.event} className="rounded-md px-2 py-1.5 hover:bg-elevated/60">
             <Row onClick={() => onSelect({ kind: "commit", id: artifact.commit })} bare>
@@ -183,7 +183,7 @@ function WorkSections({
         {dangling.map((promise) => (
           <Row key={promise.event} onClick={() => onJumpEvent(promise.event)}>
             <span className="w-16 shrink-0 text-xs font-semibold text-danger">dangling</span>
-            <span className="truncate text-muted" title="a promise with no request — nobody can declare it satisfied">
+            <span className="truncate text-muted" title="a promise with no request behind it">
               {promise.text}
             </span>
             <span className="ml-auto shrink-0">
@@ -194,7 +194,7 @@ function WorkSections({
       </section>
       <section>
         <SectionTitle title={`Open commitments (${open.length})`} />
-        {open.length === 0 && <Empty>Nobody owes anything.</Empty>}
+        {open.length === 0 && <Empty>Nothing open.</Empty>}
         {open.map((commitment) => (
           <Row key={commitment.request + (commitment.promise ?? "")} onClick={() => onJumpEvent(commitment.request)}>
             <span className={cn("w-16 shrink-0 text-xs font-semibold", statusTint[commitment.status])}>{commitment.status}</span>
@@ -208,7 +208,7 @@ function WorkSections({
       </section>
       <section>
         <SectionTitle icon={<BadgeCheck className="h-3.5 w-3.5 text-ok" />} title="Standing decisions" />
-        {standing.length === 0 && <Empty>Nothing ratified and still standing.</Empty>}
+        {standing.length === 0 && <Empty>Nothing standing.</Empty>}
         {standing.map((decision) => (
           <Row key={decision.event} onClick={() => onJumpEvent(decision.event)}>
             <span className="truncate font-serif text-[13px]">{decision.text}</span>
@@ -220,7 +220,7 @@ function WorkSections({
       </section>
       <section>
         <SectionTitle title="Completed" />
-        {done.length === 0 && currentGroups.length === 0 && <Empty>Nothing completed yet.</Empty>}
+        {done.length === 0 && currentGroups.length === 0 && <Empty>Nothing yet.</Empty>}
         {done.map((commitment) => (
           <Row key={commitment.request} onClick={() => onJumpEvent(commitment.report ?? commitment.request)}>
             <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-ok" />
@@ -249,9 +249,6 @@ function WorkSections({
           </div>
         ))}
       </section>
-      <p className="pt-1 text-xs italic text-faint/80">
-        stock git underneath — clone this room, verify offline; you leave with everything.
-      </p>
     </div>
   );
 }

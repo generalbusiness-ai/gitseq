@@ -103,7 +103,7 @@ export interface Actor {
 export interface Frame {
   Conversation: string;
   Sequence: number;
-  Payload: string; // base64 of {"about","text"}
+  Payload: string; // base64 of {"about","text","re"?}
   ActorKey: string;
 }
 
@@ -112,8 +112,16 @@ export interface FrameView {
   sequence: number;
   about: string;
   text: string;
+  re?: string; // "<conversation>:<sequence>" of the frame this replies to
   actor: string;
+  fingerprint: string; // sha256 of the actor key — avatars and profiles key on this
+  seen: number; // when this browser first saw the frame (ms)
   raw: Frame; // the complete signed frame — promotion embeds THIS
+}
+
+// The thread handle of a frame: replies carry this value in their `re`.
+export function frameKey(frame: { conversation: string; sequence: number }): string {
+  return `${frame.conversation}:${frame.sequence}`;
 }
 
 async function json<T>(response: Response): Promise<T> {
@@ -144,11 +152,11 @@ export const api = {
     }).then((r) => json<{ status: Status; reset?: boolean }>(r)),
   frames: (conversation: string) =>
     fetch(`/v0/conversations/${encodeURIComponent(conversation)}/frames`).then((r) => json<Frame[]>(r)),
-  say: (session: string, about: string, text: string, conversation?: string) =>
+  say: (session: string, about: string, text: string, conversation?: string, re?: string) =>
     fetch("/v0/say", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session, about, text, conversation }),
+      body: JSON.stringify({ session, about, text, conversation, re }),
     }).then((r) => json<unknown>(r)),
   announce: (actor: string, session: string) =>
     fetch("/v0/presence", {
@@ -177,15 +185,19 @@ export interface ActInput {
   idempotency_key?: string;
 }
 
-export function decodeFrame(frame: Frame, actors: Actor[]): FrameView {
+// Decode a frame's payload; actor name and fingerprint are resolved by the
+// caller (useFrames), which recomputes the sha256 of the actor key.
+export function decodeFrame(frame: Frame): Omit<FrameView, "fingerprint" | "seen"> {
   let about = "";
   let text = "";
+  let re: string | undefined;
   try {
     // atob yields Latin-1 code units; frames are UTF-8 JSON.
     const bytes = Uint8Array.from(atob(frame.Payload), (c) => c.charCodeAt(0));
-    const payload = JSON.parse(new TextDecoder().decode(bytes)) as { about?: string; text?: string };
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as { about?: string; text?: string; re?: string };
     about = payload.about ?? "";
     text = payload.text ?? "";
+    re = payload.re || undefined;
   } catch {
     text = "(unreadable frame)";
   }
@@ -194,16 +206,10 @@ export function decodeFrame(frame: Frame, actors: Actor[]): FrameView {
     sequence: frame.Sequence,
     about,
     text,
-    actor: actorNameByKey(frame.ActorKey, actors),
+    re,
+    actor: frame.ActorKey ? frame.ActorKey.slice(0, 8) : "unknown",
     raw: frame,
   };
-}
-
-// The frame carries the raw actor public key (base64); actors list carries
-// sha256 fingerprints. Match by recomputing is overkill for a demo pane, so
-// frames display the key tail when no presence name matches.
-function actorNameByKey(key: string, _actors: Actor[]): string {
-  return key ? key.slice(0, 8) : "unknown";
 }
 
 export function shortEvent(id: string): string {

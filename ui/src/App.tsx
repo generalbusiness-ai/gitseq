@@ -1,19 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkroom, provenanceClosure, foldAnchor, type Selection } from "./lib/store";
 import { useSession } from "./lib/session";
+import { useFrames } from "./lib/frames";
+import { api, type ActInput } from "./lib/api";
 import { TopBar } from "./components/TopBar";
 import { Stream, type PendingSay } from "./components/Stream";
-import { Composer, emptyComposer, type ComposerContext } from "./components/Composer";
+import { Composer, emptyComposer, type ComposerContext, type ComposerMode } from "./components/Composer";
 import { WorkDrawer } from "./components/WorkDrawer";
+import { ThreadPane, type ThreadTarget } from "./components/ThreadPane";
+import { ProfilePane } from "./components/ProfilePane";
+import { Avatar } from "./components/Avatar";
 
-// The Room is the only permanent center; Work, the repository, and the
-// durable record live behind the header chip, in an overlay drawer.
+// One right-hand slot, Slack-style: the thread pane, a profile, or the Work
+// drawer — whichever opened last wins; Escape closes it.
+type Pane =
+  | { kind: "work" }
+  | { kind: "thread"; target: ThreadTarget }
+  | { kind: "profile"; fingerprint: string }
+  | undefined;
+
+// The Room is the only permanent center; everything else lives in the pane.
 export default function App() {
   const workroom = useWorkroom();
   const session = useSession();
+  const { frames, deliveries } = useFrames(workroom);
   const [selection, setSelection] = useState<Selection>();
   const [composer, setComposer] = useState<ComposerContext>(emptyComposer);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pane, setPane] = useState<Pane>();
   // Optimistic say echoes: appended on send, reconciled when the frame lands.
   const [pending, setPending] = useState<PendingSay[]>([]);
 
@@ -31,8 +44,8 @@ export default function App() {
     );
   const jump = useCallback((next: Selection) => setSelection(next), []);
 
-  // The header's "for you" chip jumps the stream to a durable event; folded
-  // promise/report events land on their request's card.
+  // Jump the stream to a durable event; folded promise/report events land on
+  // their request's card.
   const jumpToEvent = useCallback(
     (event: string) => {
       setSelection({ kind: "event", id: event });
@@ -42,9 +55,9 @@ export default function App() {
     [projection],
   );
 
-  const echoSay = useCallback((text: string) => {
+  const echoSay = useCallback((text: string, re?: string) => {
     const id = crypto.randomUUID();
-    setPending((list) => [...list, { id, text, at: Date.now() }]);
+    setPending((list) => [...list, { id, text, at: Date.now(), re }]);
     return id;
   }, []);
   const dropPending = useCallback(
@@ -55,39 +68,112 @@ export default function App() {
     [],
   );
 
+  // A one-flight, one-key guard per user intention: double-clicks and retries
+  // reuse the same idempotency key, so at most one durable event results.
+  const inFlight = useRef(new Set<string>());
+  const [actError, setActError] = useState<string>();
+  const doAct = useCallback(
+    async (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => {
+      if (inFlight.current.has(intent)) return;
+      inFlight.current.add(intent);
+      setActError(undefined);
+      try {
+        await api.act({ ...input, session: session.id, idempotency_key: intent });
+      } catch (error) {
+        setActError(error instanceof Error ? error.message : String(error));
+      } finally {
+        inFlight.current.delete(intent);
+      }
+    },
+    [session.id],
+  );
+
+  // Semantic actions never manufacture text — they open the main composer in
+  // the right mode with the basis prefilled, and the human says the words.
+  const route = useCallback(
+    (mode: ComposerMode, basis: string, prefill: string) =>
+      setComposer({ type: "say", mode, restsOn: [basis], frames: [], prefill }),
+    [],
+  );
+
+  const openThread = useCallback((target: ThreadTarget) => setPane({ kind: "thread", target }), []);
+  const openProfile = useCallback((fingerprint: string) => fingerprint && setPane({ kind: "profile", fingerprint }), []);
+  const closePane = useCallback(() => setPane(undefined), []);
+
   return (
     <div className="flex h-full flex-col">
-      <TopBar workroom={workroom} session={session} onOpenWork={() => setDrawerOpen(true)} onJumpEvent={jumpToEvent} />
-      <main className="flex min-h-0 flex-1 flex-col">
-        <Stream
-          workroom={workroom}
-          session={session}
-          highlight={highlight}
-          selection={selection}
-          onSelect={select}
-          onJump={jump}
-          composer={composer}
-          onComposer={setComposer}
-          pending={pending}
-          onReconcile={dropPending}
-        />
-        <Composer
-          workroom={workroom}
-          session={session}
-          context={composer}
-          onContext={setComposer}
-          onSay={echoSay}
-          onSayFailed={dropPending}
-        />
-      </main>
-      {drawerOpen && (
+      <TopBar
+        workroom={workroom}
+        session={session}
+        onOpenWork={() => setPane({ kind: "work" })}
+        onJumpEvent={jumpToEvent}
+        onOpenProfile={openProfile}
+      />
+      <div className="flex min-h-0 flex-1">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <Stream
+            workroom={workroom}
+            session={session}
+            frames={frames}
+            deliveries={deliveries}
+            highlight={highlight}
+            selection={selection}
+            onSelect={select}
+            onJump={jump}
+            composer={composer}
+            onComposer={setComposer}
+            pending={pending}
+            onReconcile={dropPending}
+            onOpenThread={openThread}
+            onOpenProfile={openProfile}
+            doAct={doAct}
+            actError={actError}
+          />
+          <Composer
+            workroom={workroom}
+            session={session}
+            context={composer}
+            onContext={setComposer}
+            onSay={echoSay}
+            onSayFailed={dropPending}
+          />
+        </main>
+        {pane?.kind === "thread" && (
+          <ThreadPane
+            workroom={workroom}
+            session={session}
+            frames={frames}
+            target={pane.target}
+            pending={pending}
+            composer={composer}
+            onComposer={setComposer}
+            onClose={closePane}
+            onJumpTo={jumpToEvent}
+            onOpenProfile={openProfile}
+            onRoute={route}
+            doAct={doAct}
+            onSay={echoSay}
+            onSayFailed={dropPending}
+          />
+        )}
+        {pane?.kind === "profile" && (
+          <ProfilePane
+            workroom={workroom}
+            session={session}
+            fingerprint={pane.fingerprint}
+            onClose={closePane}
+            onJumpTo={jumpToEvent}
+          />
+        )}
+      </div>
+      {pane?.kind === "work" && (
         <WorkDrawer
           workroom={workroom}
           highlight={highlight}
           selection={selection}
           onSelect={select}
           onJump={jump}
-          onClose={() => setDrawerOpen(false)}
+          onClose={closePane}
         />
       )}
       {!session.actor && <JoinGate workroom={workroom} onJoin={session.setActor} />}
@@ -109,10 +195,7 @@ function JoinGate({ workroom, onJoin }: { workroom: ReturnType<typeof useWorkroo
         <h2 id="join-title" className="font-serif text-lg font-semibold">
           Join the workroom
         </h2>
-        <p className="mt-1 text-xs leading-relaxed text-muted">
-          Everything you set down is signed as the identity you choose, permanently and publicly.
-          This service holds the keys; choose who you are.
-        </p>
+        <p className="mt-1 text-xs text-muted">Everything you do is signed as who you choose.</p>
         <div className="mt-4 space-y-1.5">
           {workroom.actors.length === 0 && <p className="text-xs italic text-faint">Waiting for the room…</p>}
           {workroom.actors.map((actor, index) => (
@@ -120,10 +203,11 @@ function JoinGate({ workroom, onJoin }: { workroom: ReturnType<typeof useWorkroo
               key={actor.name}
               ref={index === 0 ? first : undefined}
               onClick={() => onJoin(actor.name)}
-              className="flex w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-left text-sm hover:border-accent/50 hover:bg-elevated focus-visible:outline focus-visible:outline-accent"
+              className="flex w-full items-center gap-3 rounded-lg border border-border px-3 py-2 text-left text-sm hover:border-accent/50 hover:bg-elevated focus-visible:outline focus-visible:outline-accent"
             >
+              <Avatar fingerprint={actor.fingerprint} name={actor.name} size={28} />
               <span className="font-medium">{actor.name}</span>
-              <span className="text-xs text-faint">{actor.role}</span>
+              <span className="ml-auto text-xs text-faint">{actor.role}</span>
             </button>
           ))}
         </div>

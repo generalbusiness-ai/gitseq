@@ -4,28 +4,32 @@ import { forYouItems, workSummary, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
 import { shortHash } from "../lib/api";
-import { actorTint, cn } from "../lib/util";
+import { cn } from "../lib/util";
+import { Avatar } from "./Avatar";
 
 export function TopBar({
   workroom,
   session,
   onOpenWork,
   onJumpEvent,
+  onOpenProfile,
 }: {
   workroom: Workroom;
   session: Session;
   onOpenWork: () => void;
   onJumpEvent: (event: string) => void;
+  onOpenProfile: (fingerprint: string) => void;
 }) {
   const durable = workroom.status?.durable;
   const people = Object.values(workroom.status?.live.presence ?? {});
   const summary = workSummary(durable?.projection);
+  const fingerprintOf = (name: string) => workroom.actors.find((a) => a.name === name)?.fingerprint ?? "";
 
   // "For you": durable acts addressed to me since the stored watermark.
   // Clicking steps to the oldest unseen one and marks it read; each click
   // advances one act, so nothing addressed to you can be skipped unseen.
   const genesis = durable?.genesis ?? "";
-  const myFingerprint = workroom.actors.find((a) => a.name === session.actor)?.fingerprint ?? "";
+  const myFingerprint = fingerprintOf(session.actor ?? "");
   const [watermark, setWatermark] = useState(0);
   useEffect(() => {
     setWatermark(loadForYouWatermark(genesis, myFingerprint));
@@ -40,31 +44,27 @@ export function TopBar({
   };
 
   return (
-    <header className="flex items-center justify-between gap-3 border-b border-border px-3 py-3 sm:gap-6 sm:px-6">
+    <header className="flex items-center justify-between gap-3 border-b border-border px-3 py-2.5 sm:gap-6 sm:px-6">
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
         <h1 className="truncate font-serif text-lg font-semibold tracking-tight sm:text-xl">The Workroom</h1>
-        <span className="hidden text-xs text-faint lg:inline">
-          talk freely · commit deliberately · everything auditable
-        </span>
       </div>
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
-        <div className="hidden items-center -space-x-1 sm:flex">
+        <div className="hidden items-center -space-x-1.5 sm:flex">
           {people.length === 0 ? (
-            <span className="text-xs text-faint">nobody here — durable state remains</span>
+            <span className="text-xs text-faint">nobody here</span>
           ) : (
             people.map((person) => {
               const name = person.split(" ")[0];
+              const fingerprint = fingerprintOf(name);
               return (
-                <span
+                <Avatar
                   key={person}
-                  title={person}
-                  className={cn(
-                    "flex h-6 w-6 items-center justify-center rounded-full border border-border bg-elevated text-xs font-semibold uppercase",
-                    actorTint(name),
-                  )}
-                >
-                  {name.slice(0, 2)}
-                </span>
+                  fingerprint={fingerprint}
+                  name={name}
+                  size={24}
+                  onClick={() => onOpenProfile(fingerprint)}
+                  className="ring-2 ring-background"
+                />
               );
             })
           )}
@@ -72,7 +72,7 @@ export function TopBar({
         {unseen.length > 0 && (
           <button
             onClick={readOldest}
-            title="durable acts addressed to you — click to read the oldest unseen"
+            title="for you"
             className="flex items-center gap-1 rounded-md border border-accent/50 bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20 focus-visible:outline focus-visible:outline-accent"
           >
             <AtSign className="h-3 w-3" />
@@ -82,19 +82,17 @@ export function TopBar({
         )}
         {session.actor && (
           <button
-            onClick={() => {
-              localStorage.removeItem("workroom.actor");
-              location.reload();
-            }}
-            title="signing as — click to leave and rejoin as someone else"
-            className={cn("rounded-md border border-border px-2 py-0.5 text-xs", actorTint(session.actor))}
+            onClick={() => onOpenProfile(myFingerprint)}
+            title="you"
+            className="flex items-center gap-1.5 rounded-md border border-border px-1.5 py-0.5 text-xs text-foreground/85 hover:bg-elevated focus-visible:outline focus-visible:outline-accent"
           >
+            <Avatar fingerprint={myFingerprint} name={session.actor} size={18} />
             {session.actor}
           </button>
         )}
         <button
           onClick={onOpenWork}
-          title="Work — what needs attention, what's owed, what stands"
+          title="Work"
           className={cn(
             "flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted transition-colors hover:bg-elevated hover:text-foreground focus-visible:outline focus-visible:outline-accent",
           )}
@@ -113,7 +111,7 @@ export function TopBar({
         <div className="hidden h-4 w-px bg-border sm:block" />
         <div className="flex items-center gap-2 text-xs text-faint">
           {workroom.offline ? (
-            <span className="text-danger">offline — durable data still in git</span>
+            <span className="text-danger">offline</span>
           ) : durable ? (
             <>
               <span className={cn("inline-block h-1.5 w-1.5 rounded-full", session.live ? "pulse-dot bg-ok" : "bg-faint")} />
