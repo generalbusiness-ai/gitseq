@@ -1,96 +1,113 @@
 # gitseq
 
+Conversation that can become a verifiable shared record — without
+turning every conversation into paperwork.
+
 ## Why
 
 Every document in your organization is a cache, and nothing
 invalidates it. The spec, the quote, the onboarding doc, the
 dashboard, the slide — each is a cached rendering of some
-conversation-state, serving reads long after the underlying
-discussion moved on. Organizations run entirely on stale caches with
-no coherence protocol; the workaround is humans doing cache
-invalidation by gossip ("wait, is this deck current?"), which is
-exactly as reliable as it sounds.
+conversation-state, serving reads long after the discussion moved
+on. The workaround is humans doing cache invalidation by gossip
+("wait, is this deck current?"), which is exactly as reliable as it
+sounds. Agents make it worse: more is said, more is done, and it
+matters more who stands behind each act.
 
-So the lever is one of the two famous hard problems: cache
-invalidation. Git solved the other one — naming things — with
-content addressing. That is the exact complementarity: a hash
-answers "is this the same bytes I saw before?"; it cannot answer "is
-this still true?" Identity versus currency. Currency is only
-definable relative to a clock — valid as of when, compared to what
-now — and none of git's clocks is final or total across writers:
-main's order is editorial and revisable, every branch is another
-partial order, every rebase moves the hands. A sequenced log is a
-monotonic clock with a journal attached. Add it to git and you have
-both halves: immutable names for *what*, an immutable position for
-*when, relative to everything else*.
+Git already solved half of this — naming things — with content
+addressing. A hash answers "is this the same bytes I saw before?";
+it cannot answer "is this still true?" Currency needs a clock, and
+git deliberately has no final one: main's order is editorial and
+revisable, every branch is another partial order, every rebase moves
+the hands. That is the right design for source code and the wrong
+one for commitments. Gitseq adds the missing half — a sequenced log,
+a monotonic clock with a journal attached, carried in ordinary git
+refs. Immutable names for *what*; one final position for *when,
+relative to everything else*.
 
-The ladder is three rungs, each small, and the power is only in
-their composition:
+On that clock, gitseq separates conversation from commitment. People
+and agents talk freely in a workroom; the chatter is ephemeral and
+honestly forgotten when the room empties — forgetting is enforced,
+not accidental. When something matters, a participant deliberately
+**sets it down**: a signed act at one final position, carrying the
+evidence and the prior acts it rests on. What the acts are called —
+a request, a decision, a claim — belongs to the room's practice, not
+to the substrate: gitseq has no ontology.
 
-1. **Every statement gets a ticket number.** Signed at the door,
-   final, the same number for every reader. Now "as of #4312" means
-   one exact thing, forever — something no amount of merging can
-   give you, because merge-order is written by participants, later,
-   revisably.
-2. **Statements point backward.** "Rests on #4290." "Replaces
-   #4101." Now the organization's knowledge has a dependency graph
-   pinned to the clock — not a wiki's link-soup, but edges with
-   before/after facts attached. Which retirements *count* is decided
-   by a referee every reader can re-run: the same rules, the same
-   verdicts, no server to trust.
-3. **Every artifact gets stamped with the ticket it was rendered
-   at.** "Projected from #4312." Now *is this still true?* stops
-   being a question you ask a person and becomes arithmetic: walk
-   the log from the stamp to the head; if anything in the gap
-   retires an ancestor of the stamp, the document knows it is wrong —
-   and can say which section, because of which event, decided by
-   whom.
+The mechanism is three small rungs, and the power is only in their
+composition:
 
-Rung 1 is a small sequencing service. Rungs 2 and 3 are
-commit-message trailers plus that re-runnable referee. The product
-of the lever is **the document that knows when it's wrong** — and
-the other demos are the same primitive at different scales. Honest
-minutes are rung 1 plus the right to remain off the record: the
-record takes only what is deliberately set down, numbered and
-unarguable, and the room honestly forgets the rest — forgetting is
-enforced, not accidental. The agent flight recorder is rungs 1–2
-under adversarial conditions: enterprise agent security is the
-demand that every action be attributable, ordered, and
-tamper-evident by construction rather than by trust in a platform —
-a signed total order wearing a security costume. A standards body is
-all three rungs plus a ratification convention. One primitive, every
-scale.
+1. **Every act gets a ticket number.** Signed at the door, final,
+   the same number for every reader. "As of #4312" means one exact
+   thing, forever — something no amount of merging can give you,
+   because merge-order is written by participants, later, revisably.
+2. **Acts point backward.** "Rests on #4290." "Replaces #4101." The
+   organization's knowledge becomes a dependency graph pinned to the
+   clock — not a wiki's link-soup, but edges with before/after facts
+   attached.
+3. **Every artifact is stamped with the ticket it was rendered at.**
+   "Projected from #4312." Now *is this still true?* stops being a
+   question you ask a person and becomes arithmetic: walk the log
+   from the stamp to the head; if anything in the gap retires an
+   ancestor of the stamp, the document knows it is wrong — and can
+   say which section, because of which event, decided by whom.
 
-There are two components because coherence always takes two. A
-hardware cache-coherence protocol needs a memory order (who wrote
-first) and a snoop bus (tell the other caches *now* that their line
-is dirty). The sequencer is the memory order; the nexus is the snoop
-bus. Version numbers without invalidation broadcasts give you
-correct-but-lazy staleness — you find out you are stale when you
-check. The bell turns "you could find out" into "you get told,"
-which is the difference between an audit capability and a coherent
-system. Collaborative editors already run this protocol inside one
+So the record can answer the ordinary questions:
+
+- What did we agree to?
+- Who is waiting on whom?
+- What evidence supports this claim?
+- Was this adopted, disputed, withdrawn, replaced?
+- Is this document still current — and if not, what made it stale?
+
+The answers are projections, not decrees from a trusted server.
+Every reader replays the same deterministic fold over the signed
+record and reaches the same verdicts; invalid and unauthorized
+attempts remain visible without gaining force.
+
+The product of the lever is **the document that knows when it is
+wrong**. The same primitive at other scales yields honest meeting
+records (the record takes what was set down; the room forgets the
+rest), agent flight recorders (every action attributable, ordered,
+and tamper-evident by construction — a signed total order wearing a
+security costume), and ratified standards. These are applications
+reading one small substrate, not features built into it.
+
+There are two components because coherence always takes two: a
+memory order (who wrote first) and a snoop bus (tell the other
+caches *now* that their line is dirty). The sequencer is the memory
+order; the nexus is the snoop bus. Version numbers alone give you
+correct-but-lazy staleness — you find out when you check. The bell
+turns "you could find out" into "you get told," which is the
+difference between an audit capability and a coherent system.
+Collaborative editors already run this protocol inside one
 document's bytes; nothing runs it across the dependencies *between*
 an organization's claims — from the quote to the pricing decision to
 the meeting where it changed.
 
-And the reason to build it now: this architecture was always sound
-and always unaffordable — capture and re-rendering costs killed
-every prior attempt. Ambient recording and LLMs collapsed those
-costs, and agents supply the demand side: they multiply both the
-volume of statements and the need for attribution. What remains is
-small: a wire discipline and two thin services over an ordinary git
-repository.
+This is practical now because models have made it cheap to extract
+and re-render the few statements worth keeping, while agents have
+made attribution and coordination urgent. The architecture was
+always sound and always unaffordable; the costs collapsed. What
+remains is small.
 
-Ordinary is load-bearing: everything here is stock git. Clone the
-whole room, verify every signature offline, fork it and continue
-under your own authority — you leave with everything. The overlay
-adds meaning; it never takes hostages.
+## What ships
 
-Gitseq is that overlay, smallest-possible: a signed, totally ordered
-durable log; deterministic application folds; and an amnesiac live
-rendezvous. The first application is the workroom used to build
-gitseq itself. The design is in
+Two thin services over an ordinary git repository: a **sequencer**
+that admits signed events into one final order, and an amnesiac
+**nexus** for presence, ephemeral conversation, and immediate change
+notification. Folds — the deterministic readings that give events
+meaning — belong to applications and to readers; gitseq defines the
+record, never its interpretation, and never runs a fold on your
+behalf.
+
+The durable layer is stock git. Clone the whole room, verify every
+signature offline, fork it, and continue under your own authority —
+you leave with everything. The overlay adds meaning; it never takes
+hostages.
+
+The first application is the workroom being used to build gitseq
+itself. The design is in
 [`2026-08-05-gitseq-design.md`](2026-08-05-gitseq-design.md), the
 dogfood plan in [`BOOTSTRAP.md`](BOOTSTRAP.md), the agent contract
 in [`SKILL.md`](SKILL.md), and the demo cases in
