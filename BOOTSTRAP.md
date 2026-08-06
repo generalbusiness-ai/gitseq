@@ -26,27 +26,69 @@ commits — the current hand-run practice.
 
 One security domain: this repo.
 
-## Three acts
+## The repo underneath
+
+The workroom is an overlay on an ordinary git repository — the same
+one. **It stores no artifacts, ever**: artifacts are files in the
+working tree, committed on branches, merged through PRs, exactly as
+always. The workroom is coordination in parallel refs of the same
+clone — why, on what basis, who promised what, what's stale. Git
+answers what/who/when; the workroom answers why/on-what-basis.
+Statements cite artifacts as `path@commit`; documents are never
+copied into events. Forge-hosted coordination (issues, PR threads,
+reviews) is mutable, deletable, and outside the log — exactly the
+trust shape of ephemeral chat, and handled the same way: discuss
+freely there, promote what crystallizes with quotes embedded and the
+URL as a hint. Adoption is `gs attach` on any existing repo; removal
+leaves a normal repo — workroom refs are inert extras, trailers are
+inert text. The overlay adds meaning; it never takes hostages.
+
+## Three acts, Language-Action kinds
 
 The entire durable vocabulary, schemas `workroom/<act>@0`:
 
-- **`state`** — an attributed assertion. A payload `kind`
-  distinguishes observation, claim, proposal, dissent, work item,
-  artifact reference, roster entry, infrastructure key, seal.
-  `rests_on` carries its basis; evidence (e.g. promoted conversation
-  frames) rides as attachments. Statements are always on the record.
-- **`ratify`** — confers collective force on a statement. A decision
-  is a ratified proposal; the roster is ratified roster-statements;
-  ratifier authority is itself a fold rule over the roster.
+- **`state`** — an attributed utterance. `rests_on` carries its
+  basis; evidence (promoted conversation frames, quoted forge
+  threads) rides as attachments. Statements are always on the
+  record.
+- **`ratify`** — confers collective force on a statement (Searle's
+  declarative). A decision is a ratified proposal; the roster is
+  ratified roster-statements; ratifier authority is itself a fold
+  rule over the roster.
 - **`supersede`** — retires an act, driving transitive staleness
-  through `rests_on`. A closed work item is a superseded open one.
-  Supersessions are acts and can themselves be superseded; staleness
-  is computed from live supersessions only.
+  through `rests_on`. Supersessions can themselves be superseded;
+  staleness is computed from live supersessions only.
 
-Everything else — attestation level (asserted/extracted), open work,
-disputes, dissent-in-provenance — is derived by the fold from actor
-role, ratification, and these three verbs. The vocabulary does not
-grow; kinds do.
+Statement `kind`s follow the Language-Action conventions
+(Winograd/Flores):
+
+- `assert` — assertive: a claim or observation, evidence-bearing.
+- `propose` — decision-seeking; ratification adopts it.
+- `request` — directive: asking an actor to act.
+- `promise` — commissive: an undertaking, resting on a request or
+  free-standing. (Named `promise`, never `commit` — this system
+  layers over git, and "commit" is taken.)
+- `report` — completion claim, resting on the promise.
+- `dissent` — decline or objection, resting on what it contests.
+- `artifact` — a record pointer (`path@commit`), not a speech act.
+- governance: `roster`, `infra-key`, `seal` — declaratives, effected
+  by ratification.
+
+**The conversation-for-action loop** is a projection, never
+admission: a promise is open until its report is ratified *by the
+requester* (fulfilled), superseded by its maker (withdrawn,
+visibly), or its request is superseded by the requester (cancelled).
+Completion is declared by the requester, not the performer. A report
+resting on nothing projects as dangling; nothing is refused at the
+door. The status page's columns fall out: open requests, open
+promises, unratified reports, withdrawn, stale, disputed.
+
+Lineage, honestly: this adopts Winograd/Flores at the durable layer
+while honoring Suchman's critique of The Coordinator at the
+ephemeral one — chatter is never typed; you classify what you
+promote, never what you say. The verbs are the ontology that never
+grows; kinds are its designated growth seat, and a forty-year-tested
+convention beats inventing one gradually.
 
 ## Stages
 

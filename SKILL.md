@@ -33,19 +33,28 @@ Every durable act cites its basis in `rests_on`.
   gone, durable state is not.
 - `say {about, text}` — ephemeral frame in the conversation anchored
   at `about` (minted if none is open).
-- `state {kind, text, rests_on, evidence?}` — durable assertion.
-  Kinds: `observation`, `claim`, `proposal`, `dissent`, `work`,
-  `artifact`, plus governance kinds you will rarely use. Promotion
-  from a conversation is `state` with the selected signed frames
-  embedded as `evidence` — a stranger can then verify it after the
+- `state {kind, text, rests_on, evidence?}` — durable utterance.
+  Kinds are speech acts: `assert` (a claim you can ground),
+  `propose` (seeks ratification), `request` (asks an actor to act),
+  `promise` (an undertaking — never one you can't keep), `report`
+  (claims completion of your promise), `dissent` (objection, resting
+  on what it contests), `artifact` (cites `path@commit`), plus
+  governance kinds you will rarely use. Promotion from a
+  conversation is `state` with the selected signed frames embedded
+  as `evidence` — a stranger can then verify it after the
   conversation is forgotten. Select honestly, summarize faithfully.
 - `ratify {target}` — confers collective force. **Agent ratifications
   are ineffective by fold rule**; using this without a ratifier role
   produces a visible ineffective attempt.
 - `supersede {target, text, rests_on}` — retire a prior act,
   propagating staleness to everything resting on it. Prefer
-  supersession to contradiction; closing a work item is superseding
-  its open statement.
+  supersession to contradiction.
+
+**The work loop**: a `request` invites a `promise`; you `report`
+against your promise; the *requester* ratifies the report — never
+declare your own work complete. An unratified report is honest
+status, not a nag-worthy gap. Withdraw a promise you cannot keep by
+superseding it, visibly, as early as you know.
 
 ## Discipline
 
@@ -67,6 +76,29 @@ Every durable act cites its basis in `rests_on`.
    both the commit and its governing decisions. Unbridged work is
    invisible to staleness tracking — the workroom then lies by
    omission, the one failure this system exists to prevent.
+
+## The repo underneath
+
+The workroom is an overlay on the ordinary git repo you are already
+working in. Artifacts never live in the workroom — they are files,
+branches, commits, and PRs, exactly as always. Your git work does
+not change; the workroom carries the why.
+
+- Cite artifacts as `path@commit`. Never copy a document into an
+  event.
+- Implementing commits carry `Rests-On: <decision-event>` trailers
+  (discipline 8); then `state {kind: artifact}` ties commit and
+  decisions together.
+- A PR that matters durably is cited by its **head commit hash**
+  (truth) with the URL as a hint.
+- GitHub issues, PR reviews, and comment threads are conversations
+  hosted on a forge: mutable, deletable, outside the log. Treat them
+  like ephemeral chat — participate freely there; when something
+  crystallizes, promote it: `state` the outcome with the relevant
+  quotes embedded as evidence and the URL as a hint. Never rest a
+  durable act on a bare URL.
+- Design documents evolve by ordinary commits resting on the
+  decisions that motivated them.
 
 ## The loop
 

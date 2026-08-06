@@ -1,5 +1,5 @@
 ---
-date: 2026-08-05, revised 2026-08-06 (eighth wave)
+date: 2026-08-05, revised 2026-08-06 (ninth wave)
 status: draft/discussion, moving forward — kernel spiked; bootstrap
   plan ratified, review-repaired, and simplified (BOOTSTRAP.md). This repo's own first-parent history
   is the first (hand-run) log; refs/seq/design carries it.
@@ -617,3 +617,19 @@ every actor is operator-approved, and the designed capability chain
 activates when the first stranger arrives, as an audited event.
 Promotion is `state` with frames embedded as evidence; the MCP
 surface is eight tools. The vocabulary does not grow; kinds do.
+Ninth wave: the kinds align with the **Language-Action conventions**
+(Winograd/Flores) — assert, propose, request, `promise` (never
+"commit"; git owns that word), report, dissent — giving the missing
+commissive layer and the conversation-for-action loop as fold rules:
+a promise is open until its report is ratified *by the requester*;
+completion is declared, never self-claimed. The loop is projection,
+never admission; chatter stays untyped (Winograd at the durable
+layer, Suchman honored at the ephemeral one — classify what you
+promote, never what you say). And the **overlay posture** is stated:
+the workroom stores no artifacts, ever — artifacts are ordinary
+files, branches, and PRs in the same repo; statements cite
+`path@commit`; forge-hosted coordination (issues, PR threads) has
+the trust shape of ephemeral chat and is handled by the same
+promotion rule (embed quotes, URL as hint); `gs attach` adopts any
+existing repo, and removal leaves a normal one — the overlay adds
+meaning and never takes hostages.
