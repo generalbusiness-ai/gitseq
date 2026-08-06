@@ -68,9 +68,17 @@ type Projection struct {
 }
 
 type parsedRecord struct {
-	record Record
-	body   any
-	index  int
+	record   Record
+	body     any
+	index    int
+	decision Decision
+}
+
+type roleGrant struct {
+	actor        string
+	role         string
+	statement    string
+	ratification string
 }
 
 type foldState struct {
@@ -78,14 +86,14 @@ type foldState struct {
 	byID          map[string]*parsedRecord
 	decisions     map[string]Decision
 	effectiveSup  map[string]string
-	roles         map[string]map[string]bool
+	roleGrants    []roleGrant
 	ratifications map[string][]string
 }
 
 func Fold(records []Record) Projection {
 	state := &foldState{
 		byID: make(map[string]*parsedRecord), decisions: make(map[string]Decision),
-		effectiveSup: make(map[string]string), roles: make(map[string]map[string]bool),
+		effectiveSup:  make(map[string]string),
 		ratifications: make(map[string][]string),
 	}
 	for index, record := range records {
@@ -129,13 +137,13 @@ func (f *foldState) append(index int, record Record) {
 	switch value := body.(type) {
 	case *State:
 		if value.Kind == KindRoster && index == 0 {
-			f.grant(value.Body["actor"], value.Body["role"])
+			f.addRoleGrant(value.Body["actor"], value.Body["role"], record.ID, "")
 		}
 	case *Ratify:
 		f.ratifications[value.Target] = append(f.ratifications[value.Target], record.ID)
 		if target := f.byID[value.Target]; target != nil {
 			if roster, ok := target.body.(*State); ok && roster.Kind == KindRoster {
-				f.grant(roster.Body["actor"], roster.Body["role"])
+				f.addRoleGrant(roster.Body["actor"], roster.Body["role"], value.Target, record.ID)
 			}
 		}
 	case *Supersede:
@@ -150,13 +158,16 @@ func (f *foldState) addDecision(record Record, parsed *parsedRecord, index int, 
 	if decision.Reason == "" {
 		decision.Reason = string(decision.Verdict)
 	}
-	f.decisions[record.ID] = decision
 	if parsed == nil {
 		parsed = &parsedRecord{record: record, index: index}
 	}
+	parsed.decision = decision
 	f.records = append(f.records, *parsed)
 	if record.ID != "" {
-		f.byID[record.ID] = parsed
+		if _, exists := f.byID[record.ID]; !exists {
+			f.byID[record.ID] = parsed
+			f.decisions[record.ID] = decision
+		}
 	}
 }
 
@@ -167,6 +178,9 @@ func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "first event must self-seed the operator roster"}
 		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "operator roster seed"}
+	}
+	if state.Kind == KindRequest && !f.hasActor(state.Body["to"], record.index) {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "requested performer is not in the live roster"}
 	}
 	if state.Kind == KindPromise {
 		requests := f.basesOfKind(record.record.RestsOn, KindRequest)
@@ -221,8 +235,8 @@ func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
 		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "requester declared satisfaction"}
 	}
-	if statement.Kind == KindPropose || isGovernance(statement.Kind) {
-		if !f.hasRole(record.record.Actor, "ratifier") && !f.hasRole(record.record.Actor, "operator") {
+	if statement.Kind == KindAssert || statement.Kind == KindPropose || isGovernance(statement.Kind) {
+		if !f.hasRole(record.record.Actor, "ratifier", record.index) {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor lacks ratifier role"}
 		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized ratification"}
@@ -238,7 +252,7 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 	if len(record.record.RestsOn) == 0 || record.record.RestsOn[0] != supersede.Target {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "supersede must rest first on its target"}
 	}
-	if target.record.Actor == record.record.Actor || f.hasRole(record.record.Actor, "ratifier") || f.hasRole(record.record.Actor, "operator") {
+	if target.record.Actor == record.record.Actor || f.hasRole(record.record.Actor, "ratifier", record.index) {
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized supersession"}
 	}
 	return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor may not supersede target"}
@@ -248,21 +262,43 @@ func isGovernance(kind Kind) bool {
 	return kind == KindRoster || kind == KindInfraKey || kind == KindSeal
 }
 
-func (f *foldState) grant(actor, role string) {
+func (f *foldState) addRoleGrant(actor, role, statement, ratification string) {
 	if actor == "" || role == "" {
 		return
 	}
-	if f.roles[actor] == nil {
-		f.roles[actor] = make(map[string]bool)
-	}
-	f.roles[actor][role] = true
-	if role == "operator" {
-		f.roles[actor]["ratifier"] = true
-	}
+	f.roleGrants = append(f.roleGrants, roleGrant{actor: actor, role: role, statement: statement, ratification: ratification})
 }
 
-func (f *foldState) hasRole(actor, role string) bool {
-	return f.roles[actor][role]
+func (f *foldState) roleGrantActive(grant roleGrant, before int) bool {
+	retired := f.retiredBefore(before)
+	if retired[grant.statement] || f.decisions[grant.statement].Verdict != Effective {
+		return false
+	}
+	if grant.ratification == "" {
+		return true
+	}
+	return !retired[grant.ratification] && f.decisions[grant.ratification].Verdict == Effective
+}
+
+func (f *foldState) hasRole(actor, role string, before int) bool {
+	for _, grant := range f.roleGrants {
+		if grant.actor != actor || !f.roleGrantActive(grant, before) {
+			continue
+		}
+		if grant.role == role || grant.role == "operator" && role == "ratifier" {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *foldState) hasActor(actor string, before int) bool {
+	for _, grant := range f.roleGrants {
+		if grant.actor == actor && f.roleGrantActive(grant, before) {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *foldState) basesOfKind(refs []string, kind Kind) []*parsedRecord {
@@ -295,11 +331,14 @@ func (f *foldState) originatingRequest(report *parsedRecord) *parsedRecord {
 // retired computes live supersessions from newest to oldest. Because a
 // supersession can only target an earlier event, this is deterministic and a
 // supersession of a supersession naturally resurrects the original target.
-func (f *foldState) retired() map[string]bool {
+func (f *foldState) retiredBefore(before int) map[string]bool {
 	retired := make(map[string]bool)
-	for index := len(f.records) - 1; index >= 0; index-- {
+	if before > len(f.records) {
+		before = len(f.records)
+	}
+	for index := before - 1; index >= 0; index-- {
 		record := f.records[index]
-		if retired[record.record.ID] || f.decisions[record.record.ID].Verdict != Effective {
+		if retired[record.record.ID] || record.decision.Verdict != Effective {
 			continue
 		}
 		if target, ok := f.effectiveSup[record.record.ID]; ok {
@@ -309,10 +348,12 @@ func (f *foldState) retired() map[string]bool {
 	return retired
 }
 
+func (f *foldState) retired() map[string]bool { return f.retiredBefore(len(f.records)) }
+
 func (f *foldState) stale(retired map[string]bool) map[string]bool {
 	stale := make(map[string]bool)
 	for _, record := range f.records {
-		if f.decisions[record.record.ID].Verdict != Effective {
+		if record.decision.Verdict != Effective {
 			continue
 		}
 		for _, basis := range record.record.RestsOn {
@@ -346,8 +387,10 @@ func (f *foldState) project() Projection {
 		OpaqueKinds: make(map[string][]string),
 	}
 	for _, record := range f.records {
-		projection.Decisions = append(projection.Decisions, f.decisions[record.record.ID])
-		projection.Provenance[record.record.ID] = append([]string(nil), record.record.RestsOn...)
+		projection.Decisions = append(projection.Decisions, record.decision)
+		if _, exists := projection.Provenance[record.record.ID]; !exists {
+			projection.Provenance[record.record.ID] = append([]string(nil), record.record.RestsOn...)
+		}
 		state, ok := record.body.(*State)
 		if !ok {
 			continue
@@ -364,10 +407,16 @@ func (f *foldState) project() Projection {
 			projection.Artifacts = append(projection.Artifacts, Artifact{Event: record.record.ID, Path: state.Body["path"], Commit: state.Body["commit"], Stale: retired[record.record.ID] || stale[record.record.ID]})
 		}
 	}
-	for actor, roles := range f.roles {
-		for role := range roles {
-			projection.Roles[actor] = append(projection.Roles[actor], role)
+	for _, grant := range f.roleGrants {
+		if !f.roleGrantActive(grant, len(f.records)) {
+			continue
 		}
+		projection.Roles[grant.actor] = appendUnique(projection.Roles[grant.actor], grant.role)
+		if grant.role == "operator" {
+			projection.Roles[grant.actor] = appendUnique(projection.Roles[grant.actor], "ratifier")
+		}
+	}
+	for actor := range projection.Roles {
 		sort.Strings(projection.Roles[actor])
 	}
 	projection.Commitments = f.projectCommitments(retired, stale)
@@ -384,7 +433,7 @@ func (f *foldState) projectCommitments(retired, stale map[string]bool) []Commitm
 	var commitments []Commitment
 	for _, requestRecord := range f.records {
 		request, ok := requestRecord.body.(*State)
-		if !ok || request.Kind != KindRequest || f.decisions[requestRecord.record.ID].Verdict != Effective {
+		if !ok || request.Kind != KindRequest || requestRecord.decision.Verdict != Effective {
 			continue
 		}
 		promises := f.directDependents(requestRecord.record.ID, KindPromise)
@@ -437,7 +486,7 @@ func (f *foldState) projectCommitments(retired, stale map[string]bool) []Commitm
 func (f *foldState) directDependents(target string, kind Kind) []*parsedRecord {
 	var found []*parsedRecord
 	for _, record := range f.records {
-		if f.decisions[record.record.ID].Verdict != Effective || !contains(record.record.RestsOn, target) {
+		if record.decision.Verdict != Effective || !contains(record.record.RestsOn, target) {
 			continue
 		}
 		state, ok := record.body.(*State)
@@ -446,6 +495,13 @@ func (f *foldState) directDependents(target string, kind Kind) []*parsedRecord {
 		}
 	}
 	return found
+}
+
+func appendUnique(values []string, value string) []string {
+	if !contains(values, value) {
+		return append(values, value)
+	}
+	return values
 }
 
 func contains(values []string, wanted string) bool {

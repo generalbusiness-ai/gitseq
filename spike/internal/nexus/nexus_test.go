@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"gitseq/spike/internal/gitstore"
 )
@@ -79,6 +80,7 @@ func TestCrashChangesGenerationAndOldCursorResets(t *testing.T) {
 
 func TestRetainedFramesVerifyWithoutHub(t *testing.T) {
 	hub := newHub(t, 16)
+	hub.Announce("session", "actor")
 	conversationID, _, err := hub.OpenConversation()
 	if err != nil {
 		t.Fatal(err)
@@ -110,6 +112,7 @@ func TestRetainedFramesVerifyWithoutHub(t *testing.T) {
 func TestSelfAssertedNexusKeyIsNotTrust(t *testing.T) {
 	trusted := newHub(t, 4)
 	attacker := newHub(t, 4)
+	attacker.Announce("session", "attacker")
 	conversationID, _, err := attacker.OpenConversation()
 	if err != nil {
 		t.Fatal(err)
@@ -156,5 +159,21 @@ func TestNexusDoesNotTouchGit(t *testing.T) {
 	}
 	if after := gitState(); before != after {
 		t.Fatalf("ephemeral nexus changed Git state\nbefore: %s\nafter: %s", before, after)
+	}
+}
+
+func TestPresenceLeaseExpiresAndForgetsConversations(t *testing.T) {
+	hub := newHub(t, 16)
+	hub.AnnounceFor("session", "actor", time.Hour)
+	conversation, _, err := hub.OpenConversation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub.Expire(time.Now().Add(2 * time.Hour))
+	if snapshot := hub.Snapshot(); len(snapshot.Presence) != 0 || len(snapshot.Conversations) != 0 {
+		t.Fatalf("expired live state retained: %+v", snapshot)
+	}
+	if _, err := hub.Frames(conversation); err == nil {
+		t.Fatal("expired conversation frames remained available")
 	}
 }

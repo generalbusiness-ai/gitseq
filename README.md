@@ -49,6 +49,11 @@ submit directly or through the resident sequencer:
 later `ratify`, `supersede`, provenance, and source-commit `Rests-On:`
 trailers.
 
+The resident service deliberately refuses non-loopback listeners: it is a
+trusted local multi-actor custodian, not a remotely authenticated server.
+Request performers may be written as `codex`, `@codex`, or the actor
+fingerprint; the signed event always contains the fingerprint.
+
 ## MCP
 
 Run one custodial stdio process per client session, configured for exactly one
@@ -61,7 +66,13 @@ actor:
 The adapter implements the stateless MCP `2026-07-28` shape: no initialize
 handshake or protocol session, `server/discover`, cacheable `tools/list`, and
 the eight tools in `SKILL.md`. `status` returns a composite cursor; pass it
-back to `wait` explicitly.
+back to `wait` explicitly. Presence is leased and session-bound. If the
+resident service is down, durable tools continue directly against the local
+sequencer and report a `degraded` live cursor; ephemeral tools remain
+unavailable.
+
+The canonical event identifier used by tools and `Rests-On:` trailers is
+`git:<object-format>:<genesis>#git:<object-format>:<event-commit>`.
 
 ## Offline audit after a normal clone
 

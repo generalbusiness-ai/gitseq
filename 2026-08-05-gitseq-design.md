@@ -652,3 +652,24 @@ absent; the history is the classic controversy (Winograd 1987,
 Suchman 1994, Winograd 1994), not a simple failure. Custody and the
 loop share fold primitives, not a state machine; any common
 abstraction waits until both folds exist.
+Eleventh wave (adversarial dogfood review, adopted): roster authority is
+**temporal and source-aware** — only effective, ratified, unsuperseded roster
+statements at the act's position confer a role, so demotion changes later
+authority without rewriting earlier verdicts and superseding the demotion can
+restore it. Application edges resolve request performers written as a name,
+`@name`, or fingerprint to the fingerprint embedded in the signed payload;
+the fold rejects an unknown or currently revoked performer at the request.
+Assertions join proposals and governance as roster-ratifiable statements;
+duplicate IDs cannot overwrite the first record in the pure fold. The
+canonical event/trailer form is
+`git:<object-format>:<genesis>#git:<object-format>:<event-commit>` (the earlier
+`gitseq://` trailer is retained as visible history, not precedent). Kernel
+loads enumerate the immutable head they verified; the resident projector
+caches that verified snapshot by head, turning unchanged wait polling into a
+cheap ref read. The MCP adapter now uses the exact 2026-07-28 per-request and
+complete-result envelopes and degrades honestly: durable calls fall back to
+the local sequencer while the absent live layer is labeled `degraded`.
+Finally, the resident service admits loopback listeners only, binds speech to
+leased sessions, renews MCP presence, and forgets a conversation when its last
+participant departs or expires. These are contract repairs found by running
+the real workroom, not new kernel responsibilities.

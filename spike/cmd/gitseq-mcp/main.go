@@ -14,8 +14,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"gitseq/spike/internal/app"
+	"gitseq/spike/internal/nexus"
+	"gitseq/spike/internal/service"
 	"gitseq/spike/internal/workroom"
 )
 
@@ -43,7 +46,11 @@ type rpcError struct {
 type toolCall struct {
 	Name      string         `json:"name"`
 	Arguments map[string]any `json:"arguments"`
-	Meta      map[string]any `json:"_meta,omitempty"`
+}
+
+type protocolMeta struct {
+	Version            string         `json:"io.modelcontextprotocol/protocolVersion"`
+	ClientCapabilities map[string]any `json:"io.modelcontextprotocol/clientCapabilities"`
 }
 
 type mcpServer struct {
@@ -71,9 +78,14 @@ func main() {
 	}
 	server := &mcpServer{workspace: workspace, actor: *actor, baseURL: strings.TrimRight(*serverURL, "/"), session: "mcp:" + randomID(), client: &http.Client{}}
 	if err := server.announce(context.Background()); err != nil {
-		fatal(err)
+		fmt.Fprintln(os.Stderr, "gitseq-mcp: presence degraded:", err)
 	}
-	defer server.depart(context.Background())
+	presenceContext, stopPresence := context.WithCancel(context.Background())
+	go server.heartbeat(presenceContext, os.Stderr)
+	defer func() {
+		stopPresence()
+		server.depart(context.Background())
+	}()
 	if err := server.run(context.Background(), os.Stdin, os.Stdout); err != nil {
 		fatal(err)
 	}
@@ -93,11 +105,31 @@ func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) 
 			continue
 		}
 		response := rpcResponse{JSONRPC: "2.0", ID: request.ID}
+		if request.JSONRPC != "2.0" {
+			response.Error = &rpcError{Code: -32600, Message: "invalid JSON-RPC request"}
+			if err := encoder.Encode(response); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := validateProtocolMeta(request.Params); err != nil {
+			response.Error = &rpcError{Code: -32602, Message: err.Error()}
+			if err := encoder.Encode(response); err != nil {
+				return err
+			}
+			continue
+		}
 		switch request.Method {
 		case "server/discover":
-			response.Result = map[string]any{"protocolVersion": protocolVersion, "serverInfo": map[string]string{"name": "gitseq-workroom", "version": "0.1.0"}, "capabilities": map[string]any{"tools": map[string]any{}}}
+			response.Result = complete(map[string]any{
+				"supportedVersions": []string{protocolVersion},
+				"capabilities":      map[string]any{"tools": map[string]any{}},
+				"instructions":      "Use status and wait to follow the workroom; say ephemerally and promote deliberate acts with state.",
+				"ttlMs":             3600000,
+				"cacheScope":        "public",
+			})
 		case "tools/list":
-			response.Result = map[string]any{"tools": tools(), "ttlMs": 3600000, "cacheScope": "public"}
+			response.Result = complete(map[string]any{"tools": tools(), "ttlMs": 3600000, "cacheScope": "public"})
 		case "tools/call":
 			var call toolCall
 			if err := json.Unmarshal(request.Params, &call); err != nil {
@@ -106,10 +138,10 @@ func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) 
 			}
 			value, err := s.call(ctx, call)
 			if err != nil {
-				response.Result = map[string]any{"isError": true, "content": []map[string]string{{"type": "text", "text": err.Error()}}}
+				response.Result = complete(map[string]any{"isError": true, "content": []map[string]string{{"type": "text", "text": err.Error()}}})
 			} else {
 				encoded, _ := json.MarshalIndent(value, "", "  ")
-				response.Result = map[string]any{"content": []map[string]string{{"type": "text", "text": string(encoded)}}, "structuredContent": value}
+				response.Result = complete(map[string]any{"isError": false, "content": []map[string]string{{"type": "text", "text": string(encoded)}}, "structuredContent": value})
 			}
 		default:
 			response.Error = &rpcError{Code: -32601, Message: "method not found"}
@@ -121,9 +153,45 @@ func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) 
 	return scanner.Err()
 }
 
+func validateProtocolMeta(params json.RawMessage) error {
+	var envelope struct {
+		Meta protocolMeta `json:"_meta"`
+	}
+	if len(params) == 0 {
+		return errors.New("request params must contain protocol _meta")
+	}
+	if err := json.Unmarshal(params, &envelope); err != nil {
+		return fmt.Errorf("invalid request params: %w", err)
+	}
+	if envelope.Meta.Version != protocolVersion {
+		return fmt.Errorf("unsupported protocol version %q", envelope.Meta.Version)
+	}
+	if envelope.Meta.ClientCapabilities == nil {
+		return errors.New("request _meta must include io.modelcontextprotocol/clientCapabilities")
+	}
+	return nil
+}
+
+func complete(fields map[string]any) map[string]any {
+	result := make(map[string]any, len(fields)+2)
+	result["resultType"] = "complete"
+	result["_meta"] = map[string]any{"io.modelcontextprotocol/serverInfo": map[string]string{"name": "gitseq-workroom", "version": "0.1.0"}}
+	for key, value := range fields {
+		result[key] = value
+	}
+	return result
+}
+
 func tools() []map[string]any {
 	object := func(properties map[string]any, required ...string) map[string]any {
-		return map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false}
+		schema := map[string]any{"type": "object", "additionalProperties": false}
+		if properties != nil {
+			schema["properties"] = properties
+		}
+		if len(required) > 0 {
+			schema["required"] = required
+		}
+		return schema
 	}
 	stringField := map[string]string{"type": "string"}
 	return []map[string]any{
@@ -132,7 +200,7 @@ func tools() []map[string]any {
 		{"name": "status", "description": "Project durable workroom state plus a composite cursor.", "inputSchema": object(nil)},
 		{"name": "wait", "description": "Long-poll after a composite cursor.", "inputSchema": object(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}, "cursor")},
 		{"name": "say", "description": "Publish a signed ephemeral frame, opening a conversation at about when needed.", "inputSchema": object(map[string]any{"about": stringField, "text": stringField, "conversation": stringField}, "about", "text")},
-		{"name": "state", "description": "Append a durable attributed utterance. Evidence values are embedded attachments.", "inputSchema": object(map[string]any{"kind": stringField, "text": stringField, "body": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "rests_on": map[string]any{"type": "array", "items": stringField}, "evidence": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "idempotency_key": stringField}, "kind", "text", "rests_on")},
+		{"name": "state", "description": "Append a durable attributed utterance. Evidence values are embedded attachments. A request body addresses its performer as name, @name, or fingerprint; the signed event stores the fingerprint.", "inputSchema": object(map[string]any{"kind": stringField, "text": stringField, "body": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "rests_on": map[string]any{"type": "array", "items": stringField}, "evidence": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "idempotency_key": stringField}, "kind", "text", "rests_on")},
 		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(map[string]any{"target": stringField, "idempotency_key": stringField}, "target")},
 		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}, "target", "text")},
 	}
@@ -146,12 +214,20 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 	case "presence":
 		return s.get(ctx, "/v0/presence")
 	case "status":
-		return s.get(ctx, "/v0/status")
+		value, err := s.get(ctx, "/v0/status")
+		if isTransportError(err) {
+			return s.localStatus(ctx)
+		}
+		return value, err
 	case "wait":
-		return s.post(ctx, "/v0/wait", call.Arguments)
+		value, err := s.post(ctx, "/v0/wait", call.Arguments)
+		if isTransportError(err) {
+			return s.waitDurable(ctx, call.Arguments)
+		}
+		return value, err
 	case "say":
 		arguments := clone(call.Arguments)
-		arguments["actor"] = s.actor
+		arguments["session"] = s.session
 		return s.post(ctx, "/v0/say", arguments)
 	case "state":
 		kind, _ := call.Arguments["kind"].(string)
@@ -184,12 +260,39 @@ func (s *mcpServer) submit(ctx context.Context, schema string, payload any, rest
 	if err != nil {
 		return nil, err
 	}
-	return s.post(ctx, "/v0/submit", request)
+	value, err := s.post(ctx, "/v0/submit", request)
+	if !isTransportError(err) {
+		return value, err
+	}
+	result, err := s.workspace.Accept(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	record, err := s.workspace.Record(ctx, result.Commit)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"result": result, "record": record, "degraded": true}, nil
 }
 
 func (s *mcpServer) announce(ctx context.Context) error {
-	_, err := s.post(ctx, "/v0/presence", map[string]string{"actor": s.actor, "session": s.session})
+	_, err := s.post(ctx, "/v0/presence", map[string]any{"actor": s.actor, "session": s.session, "ttl_ms": 30000})
 	return err
+}
+
+func (s *mcpServer) heartbeat(ctx context.Context, errorsTo io.Writer) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.announce(ctx); err != nil {
+				fmt.Fprintln(errorsTo, "gitseq-mcp: presence renewal degraded:", err)
+			}
+		}
+	}
 }
 
 func (s *mcpServer) depart(ctx context.Context) {
@@ -218,7 +321,7 @@ func (s *mcpServer) post(ctx context.Context, path string, value any) (any, erro
 func (s *mcpServer) do(request *http.Request) (any, error) {
 	response, err := s.client.Do(request)
 	if err != nil {
-		return nil, err
+		return nil, transportError{err}
 	}
 	defer response.Body.Close()
 	var value any
@@ -227,11 +330,79 @@ func (s *mcpServer) do(request *http.Request) (any, error) {
 	}
 	if response.StatusCode >= 400 {
 		if object, ok := value.(map[string]any); ok {
-			return nil, errors.New(stringValue(object["error"]))
+			return nil, httpStatusError{status: response.StatusCode, message: stringValue(object["error"])}
 		}
-		return nil, fmt.Errorf("HTTP %s", response.Status)
+		return nil, httpStatusError{status: response.StatusCode, message: "HTTP " + response.Status}
 	}
 	return value, nil
+}
+
+type transportError struct{ error }
+
+func isTransportError(err error) bool {
+	var target transportError
+	return errors.As(err, &target)
+}
+
+type httpStatusError struct {
+	status  int
+	message string
+}
+
+func (e httpStatusError) Error() string { return e.message }
+
+func (s *mcpServer) localStatus(ctx context.Context) (service.Status, error) {
+	durable, err := s.workspace.Snapshot(ctx)
+	if err != nil {
+		return service.Status{}, err
+	}
+	live := nexus.Snapshot{Cursor: nexus.Cursor{Generation: "degraded"}, Presence: map[string]string{}}
+	return service.Status{
+		Durable: durable,
+		Live:    live,
+		Cursor: service.Cursor{
+			Frontier: []service.Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}},
+			Live:     live.Cursor,
+		},
+	}, nil
+}
+
+func (s *mcpServer) waitDurable(ctx context.Context, arguments map[string]any) (service.WaitResponse, error) {
+	encoded, err := json.Marshal(arguments)
+	if err != nil {
+		return service.WaitResponse{}, err
+	}
+	var input service.WaitRequest
+	if err := json.Unmarshal(encoded, &input); err != nil {
+		return service.WaitResponse{}, err
+	}
+	timeout := time.Duration(input.TimeoutMS) * time.Millisecond
+	if timeout <= 0 || timeout > 30*time.Second {
+		timeout = 25 * time.Second
+	}
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		status, err := s.localStatus(ctx)
+		if err != nil {
+			return service.WaitResponse{}, err
+		}
+		frontier := status.Cursor.Frontier[0]
+		durableChanged := len(input.Cursor.Frontier) != 1 || input.Cursor.Frontier[0] != frontier
+		reset := input.Cursor.Live.Generation != "" && input.Cursor.Live.Generation != "degraded"
+		if durableChanged || reset {
+			return service.WaitResponse{Status: status, Reset: reset}, nil
+		}
+		select {
+		case <-ctx.Done():
+			return service.WaitResponse{}, ctx.Err()
+		case <-deadline.C:
+			return service.WaitResponse{Status: status}, nil
+		case <-ticker.C:
+		}
+	}
 }
 
 func clone(input map[string]any) map[string]any {

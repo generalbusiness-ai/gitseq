@@ -46,11 +46,13 @@ type WaitResponse struct {
 }
 
 type Server struct {
-	workspace *app.Workspace
-	hub       *nexus.Hub
-	mux       *http.ServeMux
-	mu        sync.Mutex
-	about     map[string]string
+	workspace    *app.Workspace
+	hub          *nexus.Hub
+	mux          *http.ServeMux
+	mu           sync.Mutex
+	about        map[string]string
+	sessions     map[string]string
+	participants map[string]map[string]bool
 }
 
 func New(workspace *app.Workspace) (*Server, error) {
@@ -58,7 +60,10 @@ func New(workspace *app.Workspace) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	server := &Server{workspace: workspace, hub: hub, mux: http.NewServeMux(), about: make(map[string]string)}
+	server := &Server{
+		workspace: workspace, hub: hub, mux: http.NewServeMux(),
+		about: make(map[string]string), sessions: make(map[string]string), participants: make(map[string]map[string]bool),
+	}
 	server.routes()
 	return server, nil
 }
@@ -90,7 +95,7 @@ func (s *Server) handleWatch(writer http.ResponseWriter, request *http.Request) 
 	}
 	deadline := time.NewTimer(time.Duration(timeout) * time.Millisecond)
 	defer deadline.Stop()
-	ticker := time.NewTicker(50 * time.Millisecond)
+	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		status, err := s.status(request.Context())
@@ -112,7 +117,7 @@ func (s *Server) handleWatch(writer http.ResponseWriter, request *http.Request) 
 func (s *Server) status(ctx context.Context) (Status, error) {
 	// Capture live first. A concurrent durable append is then either in the
 	// durable snapshot or strictly beyond its returned frontier.
-	live := s.hub.Snapshot()
+	live := s.liveSnapshot()
 	durable, err := s.workspace.Snapshot(ctx)
 	if err != nil {
 		return Status{}, err
@@ -137,7 +142,7 @@ func (s *Server) handleWait(writer http.ResponseWriter, request *http.Request) {
 	}
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
-	ticker := time.NewTicker(50 * time.Millisecond)
+	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		status, err := s.status(request.Context())
@@ -182,12 +187,13 @@ func (s *Server) handleSubmit(writer http.ResponseWriter, request *http.Request)
 }
 
 func (s *Server) handlePresence(writer http.ResponseWriter, _ *http.Request) {
-	write(writer, s.hub.Snapshot(), nil)
+	write(writer, s.liveSnapshot(), nil)
 }
 
 type presenceRequest struct {
 	Actor   string `json:"actor"`
 	Session string `json:"session"`
+	TTLMS   int    `json:"ttl_ms,omitempty"`
 }
 
 func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Request) {
@@ -204,22 +210,36 @@ func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Reques
 		write(writer, nil, err)
 		return
 	}
-	change := s.hub.Announce(input.Session, actor.Name+" ("+actor.Fingerprint[:12]+")")
+	ttl := time.Duration(input.TTLMS) * time.Millisecond
+	if ttl <= 0 || ttl > 2*time.Minute {
+		ttl = 30 * time.Second
+	}
+	s.mu.Lock()
+	if bound, exists := s.sessions[input.Session]; exists && bound != input.Actor {
+		s.mu.Unlock()
+		write(writer, nil, errors.New("session is already bound to another actor"))
+		return
+	}
+	s.sessions[input.Session] = input.Actor
+	change := s.hub.AnnounceFor(input.Session, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl)
+	s.mu.Unlock()
 	write(writer, change, nil)
 }
 
 func (s *Server) handleDepart(writer http.ResponseWriter, request *http.Request) {
-	change := s.hub.Depart(request.PathValue("session"))
-	if len(s.hub.Snapshot().Presence) == 0 {
-		s.mu.Lock()
-		s.about = make(map[string]string)
-		s.mu.Unlock()
+	session := request.PathValue("session")
+	s.mu.Lock()
+	forgotten := s.removeSessionLocked(session)
+	change := s.hub.Depart(session)
+	for _, conversation := range forgotten {
+		s.hub.ForgetConversation(conversation)
 	}
+	s.mu.Unlock()
 	write(writer, change, nil)
 }
 
 type sayRequest struct {
-	Actor        string `json:"actor"`
+	Session      string `json:"session"`
 	About        string `json:"about"`
 	Conversation string `json:"conversation,omitempty"`
 	Text         string `json:"text"`
@@ -231,16 +251,28 @@ func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
 		write(writer, nil, err)
 		return
 	}
-	_, private, err := s.workspace.Actor(input.Actor)
-	if err != nil || input.About == "" || input.Text == "" {
-		if err == nil {
-			err = errors.New("about and text are required")
+	if input.Session == "" || input.About == "" || input.Text == "" {
+		write(writer, nil, errors.New("session, about, and text are required"))
+		return
+	}
+	s.mu.Lock()
+	actorName, exists := s.sessions[input.Session]
+	if !exists || !s.hub.HasPresence(input.Session) {
+		forgotten := s.removeSessionLocked(input.Session)
+		for _, conversation := range forgotten {
+			s.hub.ForgetConversation(conversation)
 		}
+		s.mu.Unlock()
+		write(writer, nil, errors.New("session is not present"))
+		return
+	}
+	_, private, err := s.workspace.Actor(actorName)
+	if err != nil {
+		s.mu.Unlock()
 		write(writer, nil, err)
 		return
 	}
 	conversation := input.Conversation
-	s.mu.Lock()
 	if conversation == "" {
 		conversation = s.about[input.About]
 	}
@@ -250,19 +282,65 @@ func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
 			s.about[input.About] = conversation
 		}
 	}
-	s.mu.Unlock()
 	if err != nil {
+		s.mu.Unlock()
 		write(writer, nil, err)
 		return
 	}
 	payload, _ := json.Marshal(map[string]string{"about": input.About, "text": input.Text})
 	frame, err := s.hub.Publish(conversation, payload, private)
+	if err == nil {
+		if s.participants[conversation] == nil {
+			s.participants[conversation] = make(map[string]bool)
+		}
+		s.participants[conversation][input.Session] = true
+	}
+	s.mu.Unlock()
 	write(writer, frame, err)
 }
 
 func (s *Server) handleFrames(writer http.ResponseWriter, request *http.Request) {
+	s.liveSnapshot()
 	frames, err := s.hub.Frames(request.PathValue("conversation"))
 	write(writer, frames, err)
+}
+
+func (s *Server) liveSnapshot() nexus.Snapshot {
+	live := s.hub.Snapshot()
+	s.mu.Lock()
+	var forgotten []string
+	for session := range s.sessions {
+		if _, present := live.Presence[session]; !present {
+			forgotten = append(forgotten, s.removeSessionLocked(session)...)
+		}
+	}
+	for _, conversation := range forgotten {
+		s.hub.ForgetConversation(conversation)
+	}
+	s.mu.Unlock()
+	if len(forgotten) > 0 {
+		live = s.hub.Snapshot()
+	}
+	return live
+}
+
+func (s *Server) removeSessionLocked(session string) []string {
+	delete(s.sessions, session)
+	var forgotten []string
+	for conversation, participants := range s.participants {
+		delete(participants, session)
+		if len(participants) != 0 {
+			continue
+		}
+		delete(s.participants, conversation)
+		for about, candidate := range s.about {
+			if candidate == conversation {
+				delete(s.about, about)
+			}
+		}
+		forgotten = append(forgotten, conversation)
+	}
+	return forgotten
 }
 
 func (s *Server) handleDemo(writer http.ResponseWriter, _ *http.Request) {

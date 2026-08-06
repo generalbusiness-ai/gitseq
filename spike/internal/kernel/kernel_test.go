@@ -369,6 +369,28 @@ func TestContinuationBindsVerifiedSealedFrontier(t *testing.T) {
 	}
 }
 
+func TestLoadVerifiedPinsTheApprovedFrontier(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "one", []byte("one"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	approved, err := Verify(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "two", []byte("two"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	events, loaded, err := loadVerified(f.ctx, f.store, approved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Head != approved.Head || len(events) != 1 || string(events[0].Payload) != "one" {
+		t.Fatalf("load crossed verified frontier: approved=%+v loaded=%+v events=%+v", approved, loaded, events)
+	}
+}
+
 func mustVerifyIntent(t *testing.T, signed intent.Signed) intent.Intent {
 	t.Helper()
 	decoded, err := intent.Verify(signed)

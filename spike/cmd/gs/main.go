@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -149,15 +150,6 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	body, err := pairs(bodyValues)
 	if err != nil {
 		return err
-	}
-	for field, value := range body {
-		if strings.HasPrefix(value, "@") {
-			actor, ok := workspace.Config.Actors[strings.TrimPrefix(value, "@")]
-			if !ok {
-				return fmt.Errorf("unknown actor alias %q", value)
-			}
-			body[field] = actor.Fingerprint
-		}
 	}
 	attachments, err := files(evidence)
 	if err != nil {
@@ -328,6 +320,9 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
+	if err := validateLoopbackListen(*listen); err != nil {
+		return err
+	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
 		return err
@@ -342,6 +337,21 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n", *listen)
 	httpServer := &http.Server{Addr: *listen, Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	return httpServer.ListenAndServe()
+}
+
+func validateLoopbackListen(address string) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("invalid --listen address: %w", err)
+	}
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return errors.New("--listen must name a loopback address; the resident service is a trusted local multi-actor custodian")
+	}
+	return nil
 }
 
 func attachCommand(ctx context.Context, arguments []string) error {

@@ -3,7 +3,8 @@
 > Companion to [`2026-08-05-gitseq-design.md`](2026-08-05-gitseq-design.md).
 > The design note owns the contracts; this file owns the plan for
 > living on them. Status: plan ratified, review-repaired, simplified;
-> dogfood implementation and acceptance walkthrough complete.
+> dogfood implementation, acceptance walkthrough, and first contract-repair
+> pass complete.
 
 ## The move
 
@@ -86,8 +87,8 @@ requester:  ratify the report   →  satisfied
 ```
 
 Satisfaction is declared by the requester; the performer only
-reports. `ratify` is context-sensitive: proposals and governance
-statements take roster-derived ratifier authority; a report takes
+reports. `ratify` is context-sensitive: assertions, proposals, and
+governance statements take roster-derived ratifier authority; a report takes
 exactly the authority of its originating requester; anything else is
 visible but ineffective. A **free-standing promise lands but
 projects dangling in v0** — without a request there is no
@@ -153,12 +154,15 @@ not before.
 4. **Demo surface.** A small live page and guided five-minute tour —
    the same projector as `STATUS.md`, only polish.
 
-The first implementation pass completed all four stages on this
+The implementation completed all four stages on this
 repository. The acceptance story below was exercised through the CLI,
 HTTP service, MCP adapter, browser surface, a cold nexus restart, and
-an independently fetched clone. Rotation, checkpoint/witness formats,
-capability tokens, and latency targets remain deliberate production
-hardening work rather than hidden claims of this spike.
+an independently fetched clone. The first adversarial dogfood review also
+landed temporal role revocation, canonical actor addressing, pinned and
+cached verification, exact MCP envelopes, degraded durable operation, and
+leased live sessions. Rotation, checkpoint/witness formats, capability
+tokens, and latency targets remain deliberate production hardening work
+rather than hidden claims of this spike.
 
 ## The golden work session (acceptance story)
 
@@ -187,13 +191,22 @@ Works here → dogfood. Followable by a visitor in five minutes → demo.
   tool-capable agent on the same OS account. Real isolation (separate
   principals or a keychain boundary) is a later audited hardening
   step.
-- Session→actor binding is transport auth; for stdio the OS is the
-  transport. Sessions sharing an actor are distinguished at the
-  presence layer (session nonce in annotations, never in the intent).
+- The resident HTTP service is a trusted, loopback-only multi-actor
+  custodian. It must not be exposed as a network service without a new auth
+  design. For stdio MCP, the OS is the transport and each process is
+  configured for one actor.
+- Session→actor bindings are leased for 30 seconds and renewed by the MCP
+  adapter every 10 seconds. Sessions sharing an actor remain distinct in the
+  presence layer (session nonce, never in the durable intent). A session may
+  speak only as its bound actor; when the last participant in a conversation
+  departs or expires, the resident service forgets its frames.
 - The operator key is the root of ratification, not of the kernel.
 - The nexus signing key lands as a ratified `state{kind:infra-key}`.
-- Roles are enforced by the fold, never the doorstep: an unauthorized
-  ratification is a visible ineffective attempt — a demo beat.
+- Roles are enforced by the fold, never the doorstep: each authority check
+  consults effective, ratified, unsuperseded roster statements at that log
+  position. Demotion affects later acts without rewriting earlier verdicts;
+  an unauthorized ratification is a visible ineffective attempt — a demo
+  beat.
 
 ## The composite cursor
 
@@ -215,6 +228,8 @@ What keeps the workroom on the critical path instead of beside it:
 a decision lands → the implementing source commit carries
 `Rests-On: <decision-event>` → an artifact statement cites both, so
 the projector flares the artifact when a governing decision dies.
+The canonical event identifier, including in `Rests-On:` trailers, is
+`git:<object-format>:<genesis>#git:<object-format>:<event-commit>`.
 
 ## The continuation gate
 
@@ -229,12 +244,17 @@ it.
 ## MCP: stateless
 
 Targets the 2026-07-28 stateless MCP spec only. Every request is
-self-contained; `wait` is a long-poll carrying the composite cursor;
+self-contained and carries the required protocol version and client
+capabilities metadata; complete results carry `resultType` and server info.
+`wait` is a long-poll carrying the composite cursor;
 the durable log is the queue. Snapshot+cursor already *is* the
 stateless shape, so the MCP layer stays thin. Tools: `say`, `state`,
 `ratify`, `supersede`, `status`, `wait`, `presence`, `whoami` —
 eight; `say` mints a conversation when none is open at the
-coordinate; promotion is `state` with frames embedded.
+coordinate; promotion is `state` with frames embedded. If the resident
+service is down, `state`, `ratify`, and `supersede` submit through the local
+durable sequencer, while `status` and `wait` project the Git log with a
+`degraded` live cursor. Presence and `say` correctly remain unavailable.
 
 ## The tax, stated
 

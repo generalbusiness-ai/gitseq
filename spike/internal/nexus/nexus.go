@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 )
@@ -81,6 +82,11 @@ type conversation struct {
 	frames  []Frame
 }
 
+type presenceEntry struct {
+	value     string
+	expiresAt time.Time
+}
+
 type Hub struct {
 	mu         sync.Mutex
 	generation string
@@ -88,7 +94,7 @@ type Hub struct {
 	base       uint64
 	historyCap int
 	history    []Change
-	presence   map[string]string
+	presence   map[string]presenceEntry
 	convs      map[string]*conversation
 	publicKey  ed25519.PublicKey
 	privateKey ed25519.PrivateKey
@@ -119,7 +125,7 @@ func NewWithSigningKey(historyCap int, privateKey ed25519.PrivateKey) (*Hub, err
 	return &Hub{
 		generation: "generation:" + hex.EncodeToString(generationBytes),
 		historyCap: historyCap,
-		presence:   make(map[string]string),
+		presence:   make(map[string]presenceEntry),
 		convs:      make(map[string]*conversation),
 		publicKey:  bytes.Clone(publicKey),
 		privateKey: bytes.Clone(privateKey),
@@ -150,9 +156,20 @@ func (h *Hub) append(kind, id, value string) Change {
 }
 
 func (h *Hub) Announce(id, value string) Change {
+	return h.AnnounceFor(id, value, 30*time.Second)
+}
+
+func (h *Hub) AnnounceFor(id, value string, ttl time.Duration) Change {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.presence[id] = value
+	if ttl <= 0 {
+		ttl = 30 * time.Second
+	}
+	existing, exists := h.presence[id]
+	h.presence[id] = presenceEntry{value: value, expiresAt: time.Now().Add(ttl)}
+	if exists && existing.value == value {
+		return Change{Cursor: Cursor{Generation: h.generation, Position: h.position}, Kind: "renewal", ID: id, Value: value}
+	}
 	return h.append("presence", id, value)
 }
 
@@ -161,13 +178,53 @@ func (h *Hub) Depart(id string) Change {
 	defer h.mu.Unlock()
 	delete(h.presence, id)
 	change := h.append("departure", id, "")
-	if len(h.presence) == 0 {
-		for conversation := range h.convs {
-			delete(h.convs, conversation)
-			h.append("forgotten", conversation, "")
+	h.forgetAllIfEmpty()
+	return change
+}
+
+func (h *Hub) Expire(now time.Time) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(now)
+}
+
+func (h *Hub) expire(now time.Time) {
+	for id, entry := range h.presence {
+		if !entry.expiresAt.After(now) {
+			delete(h.presence, id)
+			h.append("expiration", id, "")
 		}
 	}
-	return change
+	h.forgetAllIfEmpty()
+}
+
+func (h *Hub) forgetAllIfEmpty() {
+	if len(h.presence) != 0 {
+		return
+	}
+	for conversation := range h.convs {
+		delete(h.convs, conversation)
+		h.append("forgotten", conversation, "")
+	}
+}
+
+func (h *Hub) HasPresence(id string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+	_, exists := h.presence[id]
+	return exists
+}
+
+func (h *Hub) ForgetConversation(id string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, exists := h.convs[id]; !exists {
+		return false
+	}
+	delete(h.convs, id)
+	h.append("forgotten", id, "")
+	return true
 }
 
 func (h *Hub) OpenConversation() (string, Change, error) {
@@ -198,9 +255,10 @@ func (h *Hub) OpenConversation() (string, Change, error) {
 func (h *Hub) Snapshot() Snapshot {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.expire(time.Now())
 	presence := make(map[string]string, len(h.presence))
-	for id, value := range h.presence {
-		presence[id] = value
+	for id, entry := range h.presence {
+		presence[id] = entry.value
 	}
 	conversations := make([]string, 0, len(h.convs))
 	for id := range h.convs {
@@ -216,6 +274,7 @@ func (h *Hub) Snapshot() Snapshot {
 func (h *Hub) ChangesSince(cursor Cursor) ([]Change, Cursor, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.expire(time.Now())
 	current := Cursor{Generation: h.generation, Position: h.position}
 	if cursor.Generation != h.generation || cursor.Position < h.base || cursor.Position > h.position {
 		return nil, current, ErrReset
@@ -257,6 +316,7 @@ func verifyBytes(domain string, key ed25519.PublicKey, value any, signature []by
 func (h *Hub) Publish(conversationID string, payload []byte, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.expire(time.Now())
 	conversation, ok := h.convs[conversationID]
 	if !ok {
 		return Frame{}, errors.New("unknown conversation")
@@ -293,6 +353,7 @@ func (h *Hub) Publish(conversationID string, payload []byte, actorPrivateKey ed2
 func (h *Hub) Frames(conversationID string) ([]Frame, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.expire(time.Now())
 	conversation, ok := h.convs[conversationID]
 	if !ok {
 		return nil, errors.New("unknown conversation")

@@ -25,11 +25,11 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	_, _, err = workspace.AddActor(ctx, "human", "agent", "agent")
 	if err != nil {
 		t.Fatal(err)
 	}
-	request, err := workspace.Submit(ctx, "human", workroom.SchemaState, workroom.State{Kind: workroom.KindRequest, Text: "build", Body: map[string]string{"to": agent.Fingerprint, "conditions": "tests pass"}}, []string{seed.ID}, nil, "request")
+	request, err := workspace.Submit(ctx, "human", workroom.SchemaState, workroom.State{Kind: workroom.KindRequest, Text: "build", Body: map[string]string{"to": "agent", "conditions": "tests pass"}}, []string{seed.ID}, nil, "request")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,5 +53,67 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	}
 	if _, err := Open(ctx, repo); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, address := range []string{"agent", "@agent", agent.Fingerprint} {
+		record, err := workspace.Submit(ctx, "human", workroom.SchemaState, workroom.State{
+			Kind: workroom.KindRequest, Text: "address", Body: map[string]string{"to": address, "conditions": "canonical"},
+		}, []string{workspace.EventID(workspace.Config.Genesis)}, nil, "address-"+string(rune('a'+index)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoded, err := workroom.Decode(record.Schema, record.Payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := decoded.(*workroom.State).Body["to"]; got != agent.Fingerprint {
+			t.Fatalf("address %q encoded as %q", address, got)
+		}
+	}
+	if _, err := workspace.Submit(ctx, "human", workroom.SchemaState, workroom.State{
+		Kind: workroom.KindRequest, Text: "bad", Body: map[string]string{"to": "missing", "conditions": "never"},
+	}, []string{workspace.EventID(workspace.Config.Genesis)}, nil, "bad-address"); err == nil {
+		t.Fatal("unknown request performer was accepted by the application edge")
+	}
+}
+
+func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cached := workspace.snapshotCache
+	second, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workspace.snapshotCache != cached || first.Head != second.Head {
+		t.Fatal("unchanged head did not reuse the verified snapshot")
+	}
+	if _, err := workspace.Submit(ctx, "human", workroom.SchemaState, workroom.State{Kind: workroom.KindAssert, Text: "advance"}, []string{workspace.EventID(workspace.Config.Genesis)}, nil, "advance"); err != nil {
+		t.Fatal(err)
+	}
+	third, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workspace.snapshotCache == cached || third.Head == first.Head || third.Depth != first.Depth+1 {
+		t.Fatalf("advanced head reused stale snapshot: first=%+v third=%+v", first, third)
 	}
 }

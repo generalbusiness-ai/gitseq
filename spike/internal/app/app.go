@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"gitseq/spike/internal/gitstore"
 	"gitseq/spike/internal/intent"
@@ -47,6 +48,9 @@ type Workspace struct {
 	MetaDir string
 	Store   gitstore.Store
 	Config  Config
+
+	snapshotMu    sync.Mutex
+	snapshotCache *Snapshot
 }
 
 type Snapshot struct {
@@ -259,7 +263,11 @@ func (w *Workspace) submitWithPrivate(ctx context.Context, private ed25519.Priva
 }
 
 func (w *Workspace) BuildRequest(ctx context.Context, private ed25519.PrivateKey, actorName, schema string, payload any, rests []string, attachments map[string][]byte, key string) (kernel.Request, error) {
-	encoded, err := workroom.Encode(payload)
+	normalized, err := w.normalizePayload(schema, payload)
+	if err != nil {
+		return kernel.Request{}, err
+	}
+	encoded, err := workroom.Encode(normalized)
 	if err != nil {
 		return kernel.Request{}, err
 	}
@@ -284,6 +292,66 @@ func (w *Workspace) BuildRequest(ctx context.Context, private ed25519.PrivateKey
 	return kernel.Request{Signed: signed, Payload: encoded, Attachments: attachments}, nil
 }
 
+func (w *Workspace) normalizePayload(schema string, payload any) (any, error) {
+	if schema != workroom.SchemaState {
+		return payload, nil
+	}
+	var state workroom.State
+	switch value := payload.(type) {
+	case workroom.State:
+		state = value
+	case *workroom.State:
+		state = *value
+	default:
+		return payload, nil
+	}
+	state.Body = cloneBody(state.Body)
+	for field, address := range state.Body {
+		if !strings.HasPrefix(address, "@") {
+			continue
+		}
+		actor, err := w.ResolveActorAddress(address)
+		if err != nil {
+			return nil, fmt.Errorf("body %s: %w", field, err)
+		}
+		state.Body[field] = actor.Fingerprint
+	}
+	if state.Kind == workroom.KindRequest {
+		actor, err := w.ResolveActorAddress(state.Body["to"])
+		if err != nil {
+			return nil, fmt.Errorf("request performer: %w", err)
+		}
+		state.Body["to"] = actor.Fingerprint
+	}
+	return state, nil
+}
+
+func cloneBody(input map[string]string) map[string]string {
+	if input == nil {
+		return nil
+	}
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
+}
+
+// ResolveActorAddress accepts the human-facing forms used at application
+// edges. Durable request payloads always carry the actor fingerprint.
+func (w *Workspace) ResolveActorAddress(address string) (Actor, error) {
+	name := strings.TrimPrefix(address, "@")
+	if actor, ok := w.Config.Actors[name]; ok {
+		return actor, nil
+	}
+	for _, actor := range w.Config.Actors {
+		if actor.Fingerprint == address {
+			return actor, nil
+		}
+	}
+	return Actor{}, fmt.Errorf("unknown actor address %q", address)
+}
+
 func (w *Workspace) Accept(ctx context.Context, request kernel.Request) (kernel.Result, error) {
 	if w.Config.ReadOnly {
 		return kernel.Result{}, errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
@@ -296,14 +364,6 @@ func (w *Workspace) allowlist(_ context.Context, admission kernel.Admission) err
 	for _, actor := range w.Config.Actors {
 		if actor.Fingerprint == fingerprint {
 			return nil
-		}
-	}
-	// The first operator event is submitted before config is persisted.
-	if len(w.Config.Actors) == 1 {
-		for _, actor := range w.Config.Actors {
-			if actor.Fingerprint == fingerprint && actor.Role == "operator" {
-				return nil
-			}
 		}
 	}
 	return errors.New("actor is not in the static allowlist")
@@ -335,6 +395,15 @@ func (w *Workspace) Record(ctx context.Context, commit string) (workroom.Record,
 }
 
 func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
+	w.snapshotMu.Lock()
+	defer w.snapshotMu.Unlock()
+	head, err := w.Store.Head(ctx, kernel.Ref(w.Config.Genesis))
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if w.snapshotCache != nil && w.snapshotCache.Head == head {
+		return *w.snapshotCache, nil
+	}
 	events, verification, err := kernel.Load(ctx, w.Store, w.Config.Genesis)
 	if err != nil {
 		return Snapshot{}, err
@@ -343,7 +412,9 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	for _, event := range events {
 		records = append(records, workroom.Record{ID: w.EventID(event.Commit), Actor: intent.ActorFingerprint(event.Signed.ActorKey), Schema: event.Intent.Schema, RestsOn: event.Intent.RestsOn, Payload: event.Payload, Attachments: event.Attachments})
 	}
-	return Snapshot{Genesis: verification.Genesis, Head: verification.Head, Depth: verification.Depth, Projection: workroom.Fold(records)}, nil
+	snapshot := Snapshot{Genesis: verification.Genesis, Head: verification.Head, Depth: verification.Depth, Projection: workroom.Fold(records)}
+	w.snapshotCache = &snapshot
+	return snapshot, nil
 }
 
 func (w *Workspace) Verify(ctx context.Context) (kernel.Verification, error) {

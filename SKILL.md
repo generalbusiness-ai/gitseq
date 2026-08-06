@@ -16,7 +16,7 @@ deliberately.
 ## Two channels
 
 **Ephemeral** (`say`): sequenced and signed but forgotten when all
-participants leave. Use it for thinking out loud, questions, drafts,
+participants leave or their presence leases expire. Use it for thinking out loud, questions, drafts,
 disagreement-in-progress. Cheap — prefer it. NOT private: any
 participant can keep a copy forever.
 
@@ -30,7 +30,9 @@ Every durable act cites its basis in `rests_on`.
 - `wait` — long-poll for changes after your cursor; pass it back each
   time. On a live reset your durable frontier is still good: the
   server replays the durable delta; presence and conversations are
-  gone, durable state is not.
+  gone, durable state is not. If the resident service is unavailable,
+  durable status and waiting continue with a `degraded` live cursor;
+  presence and `say` do not pretend to survive.
 - `say {about, text}` — ephemeral frame in the conversation anchored
   at `about` (minted if none is open).
 - `state {kind, text, body?, rests_on, evidence?}` — durable utterance.
@@ -43,9 +45,12 @@ Every durable act cites its basis in `rests_on`.
   conversation is `state` with the selected signed frames embedded
   as `evidence` — a stranger can then verify it after the
   conversation is forgotten. Select honestly, summarize faithfully.
+- A request's `body.to` accepts a configured actor name, `@name`, or
+  fingerprint. The application signs the fingerprint, and the fold requires
+  that it identify a live roster actor at that position.
 - `ratify {target}` — confers force when you hold the target-specific
-  authority: the requester for a report, a ratifier for proposals and
-  governance. Any other attempt is visibly ineffective.
+  authority: the requester for a report, a ratifier for assertions,
+  proposals, and governance. Any other attempt is visibly ineffective.
 - `supersede {target, text, rests_on}` — retire a prior act,
   propagating staleness to everything resting on it. Prefer
   supersession to contradiction.
@@ -96,6 +101,8 @@ not change; the workroom carries the why.
 - Implementing commits carry `Rests-On: <decision-event>` trailers
   (discipline 8); then `state {kind: artifact}` ties commit and
   decisions together.
+- Always use the canonical full event ID:
+  `git:<object-format>:<genesis>#git:<object-format>:<event-commit>`.
 - A PR that matters durably is cited by its **head commit hash**
   (truth) with the URL as a hint.
 - GitHub issues, PR reviews, and comment threads are conversations

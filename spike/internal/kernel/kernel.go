@@ -333,9 +333,19 @@ func Load(ctx context.Context, store gitstore.Store, genesis string) ([]Event, V
 	if err != nil {
 		return nil, Verification{}, err
 	}
-	commits, err := store.RevList(ctx, Ref(genesis))
+	return loadVerified(ctx, store, verification)
+}
+
+// loadVerified reads exactly the immutable frontier that Verify approved.
+// Enumerating the moving ref again would allow a concurrent append to enter
+// the returned event set without having been verified.
+func loadVerified(ctx context.Context, store gitstore.Store, verification Verification) ([]Event, Verification, error) {
+	commits, err := store.RevList(ctx, verification.Head)
 	if err != nil {
 		return nil, Verification{}, err
+	}
+	if len(commits) == 0 || commits[0] != verification.Genesis || commits[len(commits)-1] != verification.Head || len(commits)-1 != verification.Depth {
+		return nil, Verification{}, errors.New("verified frontier no longer resolves to its approved chain")
 	}
 	events := make([]Event, 0, len(commits)-1)
 	for _, commit := range commits[1:] {
