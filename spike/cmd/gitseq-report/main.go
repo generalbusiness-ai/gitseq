@@ -79,8 +79,8 @@ var definitions = []caseDefinition{
 	}, "The snapshot cursor and state share one barrier; the next transition appears strictly after that cursor."},
 	{6, "Conflicting multi-log custody transition", []string{
 		"gitseq/spike/internal/custody.TestThreeStepSagaAcrossSecurityDomains",
-		"gitseq/spike/internal/custody.TestMultipleCompletedSettlementsRequirePolicy",
-	}, "The saga branch (party-log custody) leaves competing settlements unorderable, so ambiguity falls to application policy; an asset-owned log excludes it by construction — evidence for the entity-log default."},
+		"gitseq/spike/internal/custody.TestMultipleCompletedSettlementsBecomeDisputed",
+	}, "The saga branch leaves competing settlements unorderable but total: every event projects as disputed. An asset-owned log excludes that dispute by construction — evidence for the entity-log default."},
 }
 
 func main() {
@@ -139,10 +139,36 @@ func main() {
 	if err := os.WriteFile(filepath.Join(directory, "SPIKE-RESULTS.md"), markdown(report, stderr.String()), 0o644); err != nil {
 		fatal(err)
 	}
-	fmt.Printf("%s: wrote %s and %s\n", report.Status, filepath.Join(directory, "evidence.json"), filepath.Join(directory, "SPIKE-RESULTS.md"))
+	if err := os.WriteFile("SPIKE-RESULTS.md", stableMarkdown(report), 0o644); err != nil {
+		fatal(err)
+	}
+	fmt.Printf("%s: wrote %s, %s, and SPIKE-RESULTS.md\n", report.Status, filepath.Join(directory, "evidence.json"), filepath.Join(directory, "SPIKE-RESULTS.md"))
 	if report.Status != "pass" {
 		os.Exit(1)
 	}
+}
+
+func stableMarkdown(report evidence) []byte {
+	var text strings.Builder
+	text.WriteString("# gitseq spike results\n\n")
+	text.WriteString("This tracked file is the stable projection of the six adversarial cases. Run-specific tool versions, timings, and JSON evidence are regenerated under ignored `.spike/`.\n\n")
+	fmt.Fprintf(&text, "Overall: **%s**\n\n", report.Status)
+	text.WriteString("| Case | Result | Evidence |\n|---|---|---|\n")
+	for _, result := range report.Cases {
+		tests := append([]testResult(nil), result.Tests...)
+		sort.Slice(tests, func(i, j int) bool { return tests[i].Test < tests[j].Test })
+		names := make([]string, 0, len(tests))
+		for _, test := range tests {
+			names = append(names, fmt.Sprintf("`%s` (%s)", test.Test, test.Status))
+		}
+		fmt.Fprintf(&text, "| %d. %s | %s | %s |\n", result.Number, result.Name, result.Status, strings.Join(names, "<br>"))
+	}
+	text.WriteString("\n## Findings\n\n")
+	for _, result := range report.Cases {
+		fmt.Fprintf(&text, "%d. %s\n", result.Number, result.Finding)
+	}
+	text.WriteString("\nRegenerate with `go run ./cmd/gitseq-report` from this directory.\n")
+	return []byte(text.String())
 }
 
 func markdown(report evidence, stderr string) []byte {

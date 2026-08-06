@@ -23,8 +23,9 @@ Run the intent mutation fuzzer for a bounded interval:
 go test ./internal/intent -fuzz=FuzzDecode -fuzztime=10s
 ```
 
-`go run ./cmd/gitseq-report` runs the named adversarial cases and writes a
-machine-readable result plus its Markdown projection under `.spike/`.
+`go run ./cmd/gitseq-report` runs the named adversarial cases, refreshes the
+tracked stable projection in `SPIKE-RESULTS.md`, and writes machine-specific
+JSON, timings, and a detailed Markdown report under ignored `.spike/`.
 
 The optional forge lane is described in `FORGE.md` and uses the `forge`
 Docker Compose profile. It is separate because pulling and booting a forge
@@ -38,10 +39,11 @@ a nexus-assigned per-conversation counter. The counter proves that ordering is
 cheap; it does not prove that total ephemeral order belongs in the minimal
 profile.
 
-The custody case uses an acyclic offer → accept → settle saga. It deliberately
-returns an ambiguity error for multiple completed settlements: conflict policy
-belongs to the application fold, not the kernel. The forge profile is also not
-certified by the normal test lane; only the smart-HTTP repository boundary is.
+The custody case uses an acyclic offer → accept → settle saga. Competing
+completed settlements produce a typed `disputed` state and a decision for
+every event; choosing a winner remains application policy, not kernel behavior.
+The forge profile is also not certified by the normal test lane; only the
+smart-HTTP repository boundary is.
 
 Checkpoint/witness formats, key rotation, a network watch service, frontier
 retrieval, capability token semantics, and throughput/latency targets remain

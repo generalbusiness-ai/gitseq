@@ -1,11 +1,11 @@
 ---
-date: 2026-08-05, revised 2026-08-06 (third wave)
+date: 2026-08-05, revised 2026-08-06 (fifth wave)
 status: draft/discussion, moving forward — kernel spiked. This repo's
   own first-parent history is the first (hand-run) log;
   refs/seq/design carries it. Restructured after adversarial review
   (kernel / collaboration profile / application profiles); the
   six-case adversarial spike under spike/ passes against real git
-  (evidence in spike/.spike/).
+  (stable evidence projection in spike/SPIKE-RESULTS.md).
 origin: spinoff from the woo "engine over log" discussion (Beyond Zero →
   orchestration locus → event-log engine). This note is deliberately
   self-contained and woo-free.
@@ -563,11 +563,12 @@ commits carry git SSH signatures; **dedup identity is actor-scoped**;
 **Rests-On trailers are a verifier-checked derived projection** of
 the signed intent; **fold totality** means every event gets a
 decision, with `disputed` as a typed outcome rather than an error
-(the custody spike errored on ambiguity — the one place the spike
-and this contract now disagree, resolved in favor of `disputed`);
+(the original custody spike errored on ambiguity — the finding that
+changed the contract; Seq 5 aligned the executable with `disputed`);
 and the entity-own-log custody pattern is spike-backed — the saga
 alternative demonstrably leaves settlement ambiguity to policy.
-Evidence: `spike/.spike/SPIKE-RESULTS.md` and `evidence.json`; the
+Stable evidence: `spike/SPIKE-RESULTS.md`; per-run JSON, timings, and
+detailed output regenerate under ignored `spike/.spike/`. The
 retained-ephemera result (frames verify only against an externally
 anchored nexus key) confirms the profile's config-log anchor
 decision.

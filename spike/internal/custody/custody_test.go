@@ -112,6 +112,9 @@ func TestThreeStepSagaAcrossSecurityDomains(t *testing.T) {
 	if state.Owner != domainB.target {
 		t.Fatalf("owner = %s, want %s", state.Owner, domainB.target)
 	}
+	if state.Status != Resolved || stateFromB.Status != Resolved {
+		t.Fatalf("completed saga should resolve: A=%#v B=%#v", state, stateFromB)
+	}
 	if stateFromB.Owner != state.Owner {
 		t.Fatalf("folds diverged by observation order: A=%s B=%s", state.Owner, stateFromB.Owner)
 	}
@@ -124,10 +127,10 @@ func TestThreeStepSagaAcrossSecurityDomains(t *testing.T) {
 			t.Fatalf("folds disagree on %s: A=%s B=%s", decision.ID, statuses[decision.ID], decision.Status)
 		}
 	}
-	if statuses[offer.ID] != "settled" || statuses[acceptance.ID] != "settled" || statuses[settlement.ID] != "settled" {
+	if statuses[offer.ID] != Settled || statuses[acceptance.ID] != Settled || statuses[settlement.ID] != Settled {
 		t.Fatalf("completed saga not settled: %#v", statuses)
 	}
-	if statuses[losingOffer.ID] != "ineffective" {
+	if statuses[losingOffer.ID] != Ineffective {
 		t.Fatalf("losing offer disappeared or gained effect: %#v", statuses)
 	}
 	for _, candidate := range []domain{domainA, domainB} {
@@ -138,7 +141,7 @@ func TestThreeStepSagaAcrossSecurityDomains(t *testing.T) {
 	}
 }
 
-func TestMultipleCompletedSettlementsRequirePolicy(t *testing.T) {
+func TestMultipleCompletedSettlementsBecomeDisputed(t *testing.T) {
 	asset, a, b := "asset", "a", "b"
 	records := []Record{
 		{ID: "offer-1", Log: a, Body: Body{Type: Offer, Asset: asset, From: a, To: b}},
@@ -148,7 +151,19 @@ func TestMultipleCompletedSettlementsRequirePolicy(t *testing.T) {
 		{ID: "accept-2", Log: b, RestsOn: []string{"offer-2"}, Body: Body{Type: Accept, Asset: asset, From: a, To: b}},
 		{ID: "settle-2", Log: a, RestsOn: []string{"accept-2"}, Body: Body{Type: Settle, Asset: asset, From: a, To: b}},
 	}
-	if _, err := Fold(asset, a, records); err == nil {
-		t.Fatal("competing completed settlements need an explicit application policy")
+	state, err := Fold(asset, a, records)
+	if err != nil {
+		t.Fatalf("ambiguity must be a projection, not an error: %v", err)
+	}
+	if state.Status != Disputed || state.Owner != a {
+		t.Fatalf("competing settlements = %#v, want disputed at last resolved owner", state)
+	}
+	if len(state.Decisions) != len(records) {
+		t.Fatalf("fold omitted decisions: got %d want %d", len(state.Decisions), len(records))
+	}
+	for _, decision := range state.Decisions {
+		if decision.Status != Disputed {
+			t.Fatalf("event %s = %s, want disputed", decision.ID, decision.Status)
+		}
 	}
 }

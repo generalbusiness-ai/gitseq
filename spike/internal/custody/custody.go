@@ -8,9 +8,13 @@ import (
 )
 
 const (
-	Offer  = "offer"
-	Accept = "accept"
-	Settle = "settle"
+	Offer       = "offer"
+	Accept      = "accept"
+	Settle      = "settle"
+	Resolved    = "resolved"
+	Disputed    = "disputed"
+	Ineffective = "ineffective"
+	Settled     = "settled"
 )
 
 type Body struct {
@@ -36,6 +40,7 @@ type Decision struct {
 type State struct {
 	Asset     string     `json:"asset"`
 	Owner     string     `json:"owner"`
+	Status    string     `json:"status"`
 	Decisions []Decision `json:"decisions"`
 }
 
@@ -52,8 +57,8 @@ func first(values []string) string {
 
 // Fold keeps policy out of Git: logs establish identity, ordering and causal
 // references; this projection decides whether those facts transfer custody.
-// The spike rejects ambiguous multiple settlements rather than inventing a
-// cross-log tie breaker.
+// Ambiguity is data: competing completed settlements produce a disputed state
+// and a decision for every event, never a partial projection or fold error.
 func Fold(asset, initialOwner string, records []Record) (State, error) {
 	if asset == "" || initialOwner == "" {
 		return State{}, errors.New("asset and initial owner are required")
@@ -72,6 +77,7 @@ func Fold(asset, initialOwner string, records []Record) (State, error) {
 	decisions := make(map[string]Decision, len(records))
 	type completed struct {
 		settlement Record
+		acceptance Record
 		offer      Record
 	}
 	var completedSagas []completed
@@ -82,50 +88,56 @@ func Fold(asset, initialOwner string, records []Record) (State, error) {
 		acceptID, ok := oneReference(settlement)
 		acceptance, found := byID[acceptID]
 		if !ok || !found || acceptance.Body.Type != Accept {
-			decisions[settlement.ID] = Decision{ID: settlement.ID, Status: "ineffective", Reason: "settlement does not reference one acceptance"}
+			decisions[settlement.ID] = Decision{ID: settlement.ID, Status: Ineffective, Reason: "settlement does not reference one acceptance"}
 			continue
 		}
 		offerID, ok := oneReference(acceptance)
 		offer, found := byID[offerID]
 		if !ok || !found || offer.Body.Type != Offer {
-			decisions[settlement.ID] = Decision{ID: settlement.ID, Status: "ineffective", Reason: "acceptance does not reference one offer"}
+			decisions[settlement.ID] = Decision{ID: settlement.ID, Status: Ineffective, Reason: "acceptance does not reference one offer"}
 			continue
 		}
 		matching := offer.Body.From == settlement.Body.From && offer.Body.To == settlement.Body.To &&
 			acceptance.Body.From == offer.Body.From && acceptance.Body.To == offer.Body.To &&
 			offer.Log == offer.Body.From && acceptance.Log == offer.Body.To && settlement.Log == offer.Body.From
 		if !matching {
-			decisions[settlement.ID] = Decision{ID: settlement.ID, Status: "ineffective", Reason: "party or authority log mismatch"}
+			decisions[settlement.ID] = Decision{ID: settlement.ID, Status: Ineffective, Reason: "party or authority log mismatch"}
 			continue
 		}
-		completedSagas = append(completedSagas, completed{settlement: settlement, offer: offer})
+		completedSagas = append(completedSagas, completed{settlement: settlement, acceptance: acceptance, offer: offer})
 	}
 	if len(completedSagas) > 1 {
-		return State{}, errors.New("ambiguous competing settlements require application policy")
+		for _, saga := range completedSagas {
+			for _, record := range []Record{saga.offer, saga.acceptance, saga.settlement} {
+				decisions[record.ID] = Decision{ID: record.ID, Status: Disputed, Reason: "part of competing completed custody sagas"}
+			}
+		}
+		return projectedState(asset, initialOwner, Disputed, records, decisions), nil
 	}
 
 	owner := initialOwner
 	if len(completedSagas) == 1 {
 		saga := completedSagas[0]
 		if saga.offer.Body.From != owner {
-			decisions[saga.settlement.ID] = Decision{ID: saga.settlement.ID, Status: "ineffective", Reason: "offeror did not hold custody"}
+			decisions[saga.settlement.ID] = Decision{ID: saga.settlement.ID, Status: Ineffective, Reason: "offeror did not hold custody"}
 		} else {
-			acceptID, _ := oneReference(saga.settlement)
-			offerID, _ := oneReference(byID[acceptID])
 			owner = saga.offer.Body.To
-			decisions[offerID] = Decision{ID: offerID, Status: "settled"}
-			decisions[acceptID] = Decision{ID: acceptID, Status: "settled"}
-			decisions[saga.settlement.ID] = Decision{ID: saga.settlement.ID, Status: "settled"}
+			decisions[saga.offer.ID] = Decision{ID: saga.offer.ID, Status: Settled}
+			decisions[saga.acceptance.ID] = Decision{ID: saga.acceptance.ID, Status: Settled}
+			decisions[saga.settlement.ID] = Decision{ID: saga.settlement.ID, Status: Settled}
 		}
 	}
+	return projectedState(asset, owner, Resolved, records, decisions), nil
+}
 
+func projectedState(asset, owner, status string, records []Record, decisions map[string]Decision) State {
 	ordered := make([]Decision, 0, len(records))
 	for _, record := range records {
 		decision, exists := decisions[record.ID]
 		if !exists {
-			decision = Decision{ID: record.ID, Status: "ineffective", Reason: "not part of a completed custody saga"}
+			decision = Decision{ID: record.ID, Status: Ineffective, Reason: "not part of a completed custody saga"}
 		}
 		ordered = append(ordered, decision)
 	}
-	return State{Asset: asset, Owner: owner, Decisions: ordered}, nil
+	return State{Asset: asset, Owner: owner, Status: status, Decisions: ordered}
 }
