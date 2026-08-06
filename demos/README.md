@@ -1,13 +1,14 @@
 # Demo cases
 
-Five staged scenes, each built around one property nothing mainstream
-has. The wow is never the ordering — total order, CAS, and signatures
-are table stakes and invisible — it is what the ordering makes
-possible. Each demo stages exactly one moment of surprise.
+**A is the product; the others are the same primitive at different
+scales.** The wow is never the ordering — total order, CAS, and
+signatures are table stakes and invisible — it is what the ordering
+makes possible (see the README's Why). Each demo stages exactly one
+moment of surprise.
 
 | # | Scene | The one property | Status |
 |---|---|---|---|
-| [A](A-the-document-that-knows.md) | The document that knows when it's wrong | artifacts under feedback control | projector not built |
+| [A](A-the-document-that-knows.md) | **The document that knows when it's wrong** | the product of the lever | projector not built |
 | [B](B-honest-minutes.md) | Minutes that are honest about memory | promotion + honest forgetting | nearly free |
 | [C](C-agent-flight-recorder.md) | The agent flight recorder | per-action provenance, zero instrumentation | essentially built |
 | [D](D-two-rooms-one-mug.md) | Two rooms, one mug | durability/liveness split; entity-own-log | folded into B and C |
