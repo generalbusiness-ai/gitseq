@@ -256,6 +256,31 @@ service is down, `state`, `ratify`, and `supersede` submit through the local
 durable sequencer, while `status` and `wait` project the Git log with a
 `degraded` live cursor. Presence and `say` correctly remain unavailable.
 
+
+## The witness (secretary role)
+
+Ephemerality's ergonomic gap is filled by a participant, not a
+feature. A **witness** is an ordinary agent actor with a recognized
+roster role: it sits in the room, notices when talk crystallizes,
+and **proposes** set-downs — never ratifies. Its exit-time behavior
+is speech, not a dialog: "Before we lose this — three things looked
+decisional; shall I set them down?", each a proposal with the signed
+frames embedded as evidence, one click for a human to ratify. The
+division of labor honors the Coordinator lesson: machines do the
+classification work, humans keep commitment authority. No new
+substrate: SKILL.md is its instructions, promotion-with-evidence its
+verb, proposal-as-poll its review surface.
+
+The UI floor beneath it (works in agent-free rooms): the room shows
+its own mortality ambiently — unpromoted chat visually ages, and the
+**last holder** sees a quiet inline status ("you're the last one
+holding this conversation") at the only moment a cue is honest,
+because leaving last is the destruction event. Personal memory is
+the client's right, exercised locally: a transcript of sessions you
+attended, marked "your memory, not the room's," never citable as
+force. A modal at departure is refused: it demands recall at the
+wrong moment and reframes forgetting as loss.
+
 ## The tax, stated
 
 Dogfooding pre-alpha tooling invites the workroom to demand features
