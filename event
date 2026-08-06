@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Contract-repair implementation and verification","body":{"commit":"0ca56b52050dc4bb27a4329148325d04011dc00b","path":"."}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bb37cdf1b2056a724614f38f094e0d8ae0529a08","text":"Artifact pointer used an incorrectly copied source hash"}
