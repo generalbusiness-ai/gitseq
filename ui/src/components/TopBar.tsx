@@ -1,13 +1,43 @@
-import { PanelRight } from "lucide-react";
-import { workSummary, type Workroom } from "../lib/store";
+import { useEffect, useState } from "react";
+import { AtSign, PanelRight } from "lucide-react";
+import { forYouItems, workSummary, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
+import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
 import { shortHash } from "../lib/api";
 import { actorTint, cn } from "../lib/util";
 
-export function TopBar({ workroom, session, onOpenWork }: { workroom: Workroom; session: Session; onOpenWork: () => void }) {
+export function TopBar({
+  workroom,
+  session,
+  onOpenWork,
+  onJumpEvent,
+}: {
+  workroom: Workroom;
+  session: Session;
+  onOpenWork: () => void;
+  onJumpEvent: (event: string) => void;
+}) {
   const durable = workroom.status?.durable;
   const people = Object.values(workroom.status?.live.presence ?? {});
   const summary = workSummary(durable?.projection);
+
+  // "For you": durable acts addressed to me since the stored watermark.
+  // Clicking steps to the oldest unseen one and marks it read; each click
+  // advances one act, so nothing addressed to you can be skipped unseen.
+  const genesis = durable?.genesis ?? "";
+  const myFingerprint = workroom.actors.find((a) => a.name === session.actor)?.fingerprint ?? "";
+  const [watermark, setWatermark] = useState(0);
+  useEffect(() => {
+    setWatermark(loadForYouWatermark(genesis, myFingerprint));
+  }, [genesis, myFingerprint]);
+  const unseen = forYouItems(durable?.projection, myFingerprint || undefined, watermark);
+  const readOldest = () => {
+    const oldest = unseen[0];
+    if (!oldest) return;
+    onJumpEvent(oldest.event);
+    saveForYouWatermark(genesis, myFingerprint, oldest.ticket);
+    setWatermark(oldest.ticket);
+  };
 
   return (
     <header className="flex items-center justify-between gap-3 border-b border-border px-3 py-3 sm:gap-6 sm:px-6">
@@ -39,6 +69,17 @@ export function TopBar({ workroom, session, onOpenWork }: { workroom: Workroom; 
             })
           )}
         </div>
+        {unseen.length > 0 && (
+          <button
+            onClick={readOldest}
+            title="durable acts addressed to you — click to read the oldest unseen"
+            className="flex items-center gap-1 rounded-md border border-accent/50 bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20 focus-visible:outline focus-visible:outline-accent"
+          >
+            <AtSign className="h-3 w-3" />
+            {unseen.length}
+            <span className="hidden sm:inline"> for you</span>
+          </button>
+        )}
         {session.actor && (
           <button
             onClick={() => {

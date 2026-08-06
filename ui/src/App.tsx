@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useWorkroom, provenanceClosure, type Selection } from "./lib/store";
+import { useWorkroom, provenanceClosure, foldAnchor, type Selection } from "./lib/store";
 import { useSession } from "./lib/session";
 import { TopBar } from "./components/TopBar";
 import { Stream, type PendingSay } from "./components/Stream";
-import { Composer, type ComposerContext } from "./components/Composer";
+import { Composer, emptyComposer, type ComposerContext } from "./components/Composer";
 import { WorkDrawer } from "./components/WorkDrawer";
-
-const emptyComposer: ComposerContext = { setDown: false, restsOn: [], frames: [] };
 
 // The Room is the only permanent center; Work, the repository, and the
 // durable record live behind the header chip, in an overlay drawer.
@@ -33,6 +31,17 @@ export default function App() {
     );
   const jump = useCallback((next: Selection) => setSelection(next), []);
 
+  // The header's "for you" chip jumps the stream to a durable event; folded
+  // promise/report events land on their request's card.
+  const jumpToEvent = useCallback(
+    (event: string) => {
+      setSelection({ kind: "event", id: event });
+      const anchor = foldAnchor(event, projection);
+      requestAnimationFrame(() => document.getElementById("evt-" + anchor)?.scrollIntoView({ block: "center" }));
+    },
+    [projection],
+  );
+
   const echoSay = useCallback((text: string) => {
     const id = crypto.randomUUID();
     setPending((list) => [...list, { id, text, at: Date.now() }]);
@@ -48,7 +57,7 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar workroom={workroom} session={session} onOpenWork={() => setDrawerOpen(true)} />
+      <TopBar workroom={workroom} session={session} onOpenWork={() => setDrawerOpen(true)} onJumpEvent={jumpToEvent} />
       <main className="flex min-h-0 flex-1 flex-col">
         <Stream
           workroom={workroom}

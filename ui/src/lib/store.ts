@@ -147,6 +147,40 @@ export function danglingPromises(projection: Projection): Statement[] {
   );
 }
 
+// Folded promise/report events render inside their request's card; jumping
+// to one lands on the request row instead.
+export function foldAnchor(event: string, projection?: Projection): string {
+  for (const commitment of projection?.commitments ?? []) {
+    if (commitment.promise === event || commitment.report === event) return commitment.request;
+  }
+  return event;
+}
+
+// "For you": durable effective acts addressed to me — a mention in
+// body.mentions or a request whose body.to is my fingerprint — newer than
+// the given watermark ticket, oldest first. My own acts are not news to me.
+export interface ForYouItem {
+  event: string;
+  ticket: number;
+}
+
+export function forYouItems(projection: Projection | undefined, me: string | undefined, watermark: number): ForYouItem[] {
+  if (!projection || !me) return [];
+  const effective = new Set(projection.decisions.filter((d) => d.verdict === "effective").map((d) => d.event));
+  const tickets = ticketsOf(projection);
+  const items: ForYouItem[] = [];
+  for (const statement of projection.statements) {
+    if (statement.actor === me || !effective.has(statement.event)) continue;
+    const mentioned = (statement.body?.mentions ?? "").split(/\s+/).includes(me);
+    const requested = statement.kind === "request" && statement.body?.to === me;
+    if (!mentioned && !requested) continue;
+    const ticket = tickets.get(statement.event);
+    if (!ticket || ticket <= watermark) continue;
+    items.push({ event: statement.event, ticket });
+  }
+  return items.sort((a, b) => a.ticket - b.ticket);
+}
+
 export const OPEN_COMMITMENT_STATUSES = ["requested", "promised", "reported"];
 export const ATTENTION_COMMITMENT_STATUSES = ["stale", "disputed"];
 

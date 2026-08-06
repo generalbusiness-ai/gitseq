@@ -4,8 +4,9 @@ import { api, decodeFrame, type ActInput, type Commitment, type Decision, type F
 import { staleCauses, ticketsOf, statementWeight, type Workroom, type Selection } from "../lib/store";
 import type { Session } from "../lib/session";
 import { loadMemory, rememberFrames, type MemoryEntry } from "../lib/memory";
+import { mentionedFingerprints, mentionsActor, mentionTokens } from "../lib/mentions";
 import { actorTint, cn, fingerprintOfKey, kindLabel, kindTint, seenAt, statusTint } from "../lib/util";
-import type { ComposerContext, ComposerMode } from "./Composer";
+import { type ComposerContext, type ComposerMode } from "./Composer";
 
 export interface PendingSay {
   id: string;
@@ -62,12 +63,16 @@ export function Stream({
   }, []);
 
   const byFingerprint = useMemo(() => new Map(workroom.actors.map((a) => [a.fingerprint, a.name])), [workroom.actors]);
+  const actorNames = useMemo(() => new Set(workroom.actors.map((a) => a.name.toLowerCase())), [workroom.actors]);
   const myFingerprint = workroom.actors.find((a) => a.name === session.actor)?.fingerprint;
   const nameOf = (fp: string) =>
     byFingerprint.get(fp) ??
     projection?.statements.find((s) => s.kind === "roster" && s.body?.actor === fp)?.body?.name ??
     fp.slice(0, 8);
 
+  // Counts completed frame deliveries: the first one is the state of the room
+  // as we opened it, so nothing in it should knock (title-flash below).
+  const frameDeliveries = useRef(0);
   useEffect(() => {
     let stopped = false;
     Promise.all(
@@ -85,7 +90,11 @@ export function Stream({
           )
           .catch(() => [] as FrameView[]),
       ),
-    ).then((groups) => !stopped && setFrames(groups.flat()));
+    ).then((groups) => {
+      if (stopped) return;
+      frameDeliveries.current += 1;
+      setFrames(groups.flat());
+    });
     return () => {
       stopped = true;
     };
@@ -116,6 +125,41 @@ export function Stream({
       .map((p) => p.id);
     if (matched.length > 0) onReconcile(matched);
   }, [frames, pending, session.actor, onReconcile]);
+
+  // Being addressed is worth a knock: when someone else's chat line mentions
+  // my actor while this tab is unfocused, flash the title until focus returns.
+  // Frames already in the room when the page opened (the first delivery)
+  // don't knock.
+  const flashSeen = useRef(new Set<string>());
+  const flashTimer = useRef<number | undefined>(undefined);
+  const baseTitle = useRef(document.title);
+  useEffect(() => {
+    const fresh = frames.filter((f) => !flashSeen.current.has(`${f.conversation}:${f.sequence}`));
+    for (const f of fresh) flashSeen.current.add(`${f.conversation}:${f.sequence}`);
+    if (frameDeliveries.current <= 1) return;
+    const addressed = fresh.some((f) => f.actor !== session.actor && mentionsActor(f.text, session.actor));
+    if (addressed && !document.hasFocus() && flashTimer.current === undefined) {
+      let on = false;
+      flashTimer.current = window.setInterval(() => {
+        on = !on;
+        document.title = on ? `● @${session.actor} — you're mentioned` : baseTitle.current;
+      }, 1000);
+    }
+  }, [frames, session.actor]);
+  useEffect(() => {
+    const stop = () => {
+      if (flashTimer.current !== undefined) {
+        clearInterval(flashTimer.current);
+        flashTimer.current = undefined;
+        document.title = baseTitle.current;
+      }
+    };
+    window.addEventListener("focus", stop);
+    return () => {
+      window.removeEventListener("focus", stop);
+      stop();
+    };
+  }, []);
 
   // A one-flight, one-key guard per user intention: double-clicks and retries
   // reuse the same idempotency key, so at most one durable event results.
@@ -163,7 +207,30 @@ export function Stream({
   // Semantic actions never manufacture text — they open the composer in the
   // right mode with the basis prefilled, and the human says the words.
   const route = (mode: ComposerMode, basis: string, prefill: string) =>
-    onComposer({ setDown: true, mode, restsOn: [basis], frames: [], prefill });
+    onComposer({ type: "say", mode, restsOn: [basis], frames: [], prefill });
+
+  // The unified cite gesture: a chat line and a recorded act select the same
+  // way, into the same tray; the system routes them (rests_on vs evidence)
+  // at send. Citing anything from plain Say turns the draft into a Note.
+  const typeAfterCite = composer.mode === undefined && composer.type === "say" ? ("assert" as const) : composer.type;
+  const citeEvent = (event: string) => {
+    const exists = composer.restsOn.includes(event);
+    onComposer({
+      ...composer,
+      type: exists ? composer.type : typeAfterCite,
+      restsOn: exists ? composer.restsOn.filter((e) => e !== event) : [...composer.restsOn, event],
+    });
+  };
+  const citeFrame = (frame: FrameView) => {
+    const exists = composer.frames.some((f) => f.conversation === frame.conversation && f.sequence === frame.sequence);
+    onComposer({
+      ...composer,
+      type: exists ? composer.type : typeAfterCite,
+      frames: exists
+        ? composer.frames.filter((f) => !(f.conversation === frame.conversation && f.sequence === frame.sequence))
+        : [...composer.frames, frame],
+    });
+  };
 
   const items = useMemo(() => {
     const order = orderRef.current;
@@ -248,18 +315,10 @@ export function Stream({
           frame={item.frame}
           showActor={showActor}
           ageClass={age > 30 * 60000 ? "opacity-60" : age > 10 * 60000 ? "opacity-80" : undefined}
+          known={actorNames}
+          myName={session.actor}
           selected={composer.frames.some((f) => f.conversation === item.frame!.conversation && f.sequence === item.frame!.sequence)}
-          onToggle={() => {
-            const f = item.frame!;
-            const exists = composer.frames.some((x) => x.conversation === f.conversation && x.sequence === f.sequence);
-            onComposer({
-              ...composer,
-              setDown: composer.setDown || !exists,
-              frames: exists
-                ? composer.frames.filter((x) => !(x.conversation === f.conversation && x.sequence === f.sequence))
-                : [...composer.frames, f],
-            });
-          }}
+          onToggle={() => citeFrame(item.frame!)}
         />,
       );
       previousFrame = { actor: item.frame.actor, seen };
@@ -273,31 +332,24 @@ export function Stream({
       statement,
       ticket: tickets.get(statement.event),
       decision: decisions.get(statement.event),
+      commitment,
       projection,
       tickets,
       nameOf,
+      me: myFingerprint,
       bright: highlight.events.has(statement.event),
       selected: selection?.kind === "event" && selection.id === statement.event,
+      cited: composer.restsOn.includes(statement.event),
       onSelect: () => onSelect({ kind: "event", id: statement.event }),
       onJumpTo: jumpTo,
+      onCite: () => citeEvent(statement.event),
+      onRoute: route,
+      doAct,
     };
     if (statementWeight(statement, projection, commitment) === "compact") {
       rendered.push(<CompactRow key={item.key} {...common} notes={annotations} />);
     } else {
-      rendered.push(
-        <Card
-          key={item.key}
-          {...common}
-          commitment={commitment}
-          notes={annotations}
-          me={myFingerprint}
-          onRoute={route}
-          onReply={(event) =>
-            onComposer({ ...composer, setDown: true, restsOn: composer.restsOn.includes(event) ? composer.restsOn : [...composer.restsOn, event] })
-          }
-          doAct={doAct}
-        />,
-      );
+      rendered.push(<Card key={item.key} {...common} notes={annotations} />);
     }
   }
   for (const say of pending) {
@@ -359,38 +411,104 @@ export function Stream({
   );
 }
 
+// The one cite affordance, identical on chat lines and recorded acts: same
+// icon, same size, same right-edge position, same hover reveal. Selecting is
+// the same gesture everywhere; the system files the difference.
+function CiteButton({ selected, onToggle, what }: { selected: boolean; onToggle: () => void; what: string }) {
+  const label = selected ? "remove citation" : `cite this ${what} in your next message`;
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      aria-pressed={selected}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "shrink-0 rounded p-1 transition-opacity focus-visible:opacity-100 focus-visible:outline focus-visible:outline-accent hover:bg-elevated hover:text-foreground",
+        selected ? "text-accent opacity-100" : "text-faint opacity-0 group-hover:opacity-100 max-lg:opacity-60 pointer-coarse:opacity-60",
+      )}
+    >
+      <CornerUpLeft className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
+// Free text with @name tokens highlighted; my own name glows warmer.
+function MentionText({ text, known, myName, className }: { text: string; known: Set<string>; myName?: string; className?: string }) {
+  const tokens = mentionTokens(text);
+  return (
+    <span className={className}>
+      {tokens.map((token, index) =>
+        token.mention && known.has(token.mention.toLowerCase()) ? (
+          <span
+            key={index}
+            className={cn(
+              "font-medium",
+              myName && token.mention.toLowerCase() === myName.toLowerCase() ? "text-accent" : "text-info",
+            )}
+          >
+            {token.text}
+          </span>
+        ) : (
+          <span key={index}>{token.text}</span>
+        ),
+      )}
+    </span>
+  );
+}
+
+// "→ @ada" badges: whom a durable act addresses, resolved from the
+// space-separated fingerprints the composer filed in body.mentions.
+function MentionBadges({ body, nameOf, me }: { body?: Record<string, string>; nameOf: (fp: string) => string; me?: string }) {
+  const fingerprints = mentionedFingerprints(body);
+  if (fingerprints.length === 0) return null;
+  return (
+    <>
+      {fingerprints.map((fp) => (
+        <span
+          key={fp}
+          title={fp}
+          className={cn(
+            "shrink-0 self-center rounded border px-1 text-[11px] leading-4",
+            me && fp === me ? "border-accent/50 text-accent" : "border-border text-muted",
+          )}
+        >
+          → @{nameOf(fp)}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function MessageLine({
   frame,
   showActor,
   ageClass,
+  known,
+  myName,
   selected,
   onToggle,
 }: {
   frame: FrameView;
   showActor: boolean;
   ageClass?: string;
+  known: Set<string>;
+  myName?: string;
   selected: boolean;
   onToggle: () => void;
 }) {
+  // Being addressed lights the whole line — someone else said my name.
+  const addressed = frame.actor !== myName && mentionsActor(frame.text, myName);
   return (
-    <div className={cn("group rounded-md px-2", selected && "bg-accent/10", ageClass)}>
+    <div className={cn("group rounded-md px-2", selected ? "bg-accent/10" : addressed && "bg-info/10", ageClass)}>
       {showActor && <div className={cn("pt-1 text-xs font-semibold", actorTint(frame.actor))}>{frame.actor}</div>}
       <div className="flex gap-3 py-0.5">
-        <button
-          onClick={onToggle}
-          aria-pressed={selected}
-          aria-label={selected ? "remove from evidence" : "select as evidence for a formal act"}
-          title={selected ? "remove from evidence" : "select as evidence"}
-          className={cn(
-            "mt-1 h-3.5 w-3.5 shrink-0 rounded-sm border transition-opacity focus-visible:opacity-100 focus-visible:outline focus-visible:outline-accent",
-            selected
-              ? "border-accent bg-accent/70 opacity-100"
-              : "border-border opacity-0 group-hover:opacity-100 max-lg:opacity-60 pointer-coarse:opacity-60",
-          )}
-        />
-        <div className="min-w-0">
-          <span className="text-sm leading-relaxed text-foreground/90">{frame.text}</span>
+        <div className="min-w-0 flex-1">
+          <MentionText text={frame.text} known={known} myName={myName} className="text-sm leading-relaxed text-foreground/90" />
         </div>
+        <CiteButton selected={selected} onToggle={onToggle} what="message" />
       </div>
     </div>
   );
@@ -464,123 +582,37 @@ export function WhyStale({ event, projection, tickets, nameOf, onJumpTo }: { eve
   );
 }
 
-// Weight (b): a settled record entry — kind tag, text, ticket. One line, no
-// card chrome; its basis and (if stale) explanation ride quietly below.
-function CompactRow({
+// The uniform reply shortcuts — Agree/Disagree/Accept/Report done/Needs
+// work/Withdraw — one shape, one size, one footer position on every row that
+// has any. Authorization gating and the one-flight idempotency key are
+// unchanged; only the rendering is unified.
+function ActionsRow({
   statement,
-  ticket,
-  decision,
-  projection,
-  tickets,
-  notes,
-  nameOf,
-  bright,
-  selected,
-  onSelect,
-  onJumpTo,
-}: {
-  statement: Statement;
-  ticket?: number;
-  decision?: Decision;
-  projection: Projection;
-  tickets: Map<string, number>;
-  notes: Map<string, { act?: Projection["acts"][number]; dissent?: Statement }[]>;
-  nameOf: (fp: string) => string;
-  bright: boolean;
-  selected: boolean;
-  onSelect: () => void;
-  onJumpTo: (event: string) => void;
-}) {
-  const dead = statement.retired;
-  const ineffective = decision && decision.verdict !== "effective";
-  const ratifiedNote = (notes.get(statement.event) ?? []).some((n) => n.act?.type === "ratify" && n.act.verdict === "effective");
-  return (
-    <div
-      id={"evt-" + statement.event}
-      className={cn(
-        "rounded-md px-2 py-1",
-        selected ? "bg-accent/10" : bright && "bg-accent/5",
-      )}
-    >
-      <div className="flex items-baseline gap-2">
-        <button
-          onClick={onSelect}
-          className={cn("shrink-0 rounded border px-1.5 py-px text-xs font-medium uppercase tracking-wide focus-visible:outline focus-visible:outline-accent", kindTint[statement.kind] ?? "border-border text-muted")}
-        >
-          {kindLabel[statement.kind] ?? statement.kind}
-        </button>
-        <span className={cn("min-w-0 truncate font-serif text-sm", dead ? "text-faint line-through" : "text-foreground/90")} title={statement.text}>
-          {statement.text}
-        </span>
-        {(statement.ratified || ratifiedNote) && !dead && <BadgeCheck aria-label="ratified" className="h-3.5 w-3.5 shrink-0 self-center text-ok" />}
-        {statement.stale && !dead && (
-          <span className="flex shrink-0 items-center gap-1 self-center text-xs font-medium uppercase text-danger">
-            <FileWarning className="h-3 w-3" /> stale
-          </span>
-        )}
-        {ineffective && !dead && (
-          <span className="flex shrink-0 items-center gap-1 self-center text-xs text-faint" title={decision!.reason}>
-            <CircleSlash className="h-3 w-3" /> not in force
-          </span>
-        )}
-        {statement.body?.path && (
-          <span className="shrink-0 text-xs text-muted" title={`${statement.body.path}@${statement.body.commit}`}>
-            {statement.body.path === "." ? "this repository" : statement.body.path}
-          </span>
-        )}
-        <span className="ml-auto flex shrink-0 items-baseline gap-2">
-          <RestsOn event={statement.event} projection={projection} tickets={tickets} onJumpTo={onJumpTo} className="hidden sm:inline" />
-          <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
-        </span>
-      </div>
-      {statement.stale && !dead && <WhyStale event={statement.event} projection={projection} tickets={tickets} nameOf={nameOf} onJumpTo={onJumpTo} />}
-    </div>
-  );
-}
-
-// Weight (c): the rich card — only for what still awaits a response.
-// Semantic next actions, not wire verbs. The fold still judges everything.
-function Card({
-  statement,
-  ticket,
-  decision,
   commitment,
+  decision,
   projection,
-  tickets,
-  notes,
-  nameOf,
   me,
-  bright,
-  selected,
-  onSelect,
-  onJumpTo,
   onRoute,
-  onReply,
   doAct,
+  className,
+  withdrawable = true,
 }: {
   statement: Statement;
-  ticket?: number;
-  decision?: Decision;
   commitment?: Commitment;
+  decision?: Decision;
   projection: Projection;
-  tickets: Map<string, number>;
-  notes: Map<string, { act?: Projection["acts"][number]; dissent?: Statement }[]>;
-  nameOf: (fp: string) => string;
   me?: string;
-  bright: boolean;
-  selected: boolean;
-  onSelect: () => void;
-  onJumpTo: (event: string) => void;
   onRoute: (mode: ComposerMode, basis: string, prefill: string) => void;
-  onReply: (event: string) => void;
   doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
+  className?: string;
+  // Compact settled rows keep the reply shortcuts but not Withdraw: a
+  // one-liner under every record you authored would drown the stream.
+  withdrawable?: boolean;
 }) {
   const [withdrawing, setWithdrawing] = useState(false);
   const [reason, setReason] = useState("");
   const dead = statement.retired;
   const ineffective = decision && decision.verdict !== "effective";
-  const chain = commitment ? chainOf(commitment, projection) : [];
-  const tallies = statement.kind === "propose" ? tallyOf(statement.event, notes) : undefined;
   // Already effectively ratified by me → agreeing again is meaningless; hide.
   const myRatify = projection.acts.some((a) => a.type === "ratify" && a.target === statement.event && a.actor === me && a.verdict === "effective");
 
@@ -599,8 +631,193 @@ function Card({
       actions.push({ label: "Accept", tone: "ok", run: () => doAct(key("satisfy"), { act: "ratify", target: commitment.report! }) });
       actions.push({ label: "Needs work", tone: "danger", run: () => onRoute("dissent", commitment.report!, "") });
     }
-    if (me === statement.actor && !withdrawing) actions.push({ label: "Withdraw", tone: "danger", run: () => setWithdrawing(true) });
+    if (withdrawable && me === statement.actor && !withdrawing) actions.push({ label: "Withdraw", tone: "danger", run: () => setWithdrawing(true) });
   }
+  if (actions.length === 0 && !withdrawing) return null;
+
+  return (
+    <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
+      {!withdrawing &&
+        actions.map((action) => (
+          <button
+            key={action.label}
+            onClick={action.run}
+            className={cn(
+              "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-accent",
+              action.tone === "ok" && "border-ok/40 text-ok hover:bg-ok/10",
+              action.tone === "danger" && "border-danger/40 text-danger hover:bg-danger/10",
+              !action.tone && "border-border text-muted hover:bg-elevated",
+            )}
+          >
+            {action.label}
+          </button>
+        ))}
+      {withdrawing && (
+        <>
+          <input
+            autoFocus
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                doAct(`supersede:${statement.event}`, { act: "supersede", target: statement.event, text: reason || "withdrawn" });
+                setWithdrawing(false);
+              }
+              if (e.key === "Escape") setWithdrawing(false);
+            }}
+            placeholder="why — visible forever"
+            className="min-w-0 flex-1 rounded-md border border-input bg-surface px-2.5 py-1 text-xs outline-none placeholder:text-faint focus:border-danger/60"
+          />
+          <Undo2 className="h-3.5 w-3.5 text-danger" />
+        </>
+      )}
+    </div>
+  );
+}
+
+// Weight (b): a settled record entry — kind tag, text, ticket. One line, no
+// card chrome; its basis, mentions, reply shortcuts, and (if stale) the
+// explanation ride quietly below or beside it.
+function CompactRow({
+  statement,
+  ticket,
+  decision,
+  commitment,
+  projection,
+  tickets,
+  notes,
+  nameOf,
+  me,
+  bright,
+  selected,
+  cited,
+  onSelect,
+  onJumpTo,
+  onCite,
+  onRoute,
+  doAct,
+}: {
+  statement: Statement;
+  ticket?: number;
+  decision?: Decision;
+  commitment?: Commitment;
+  projection: Projection;
+  tickets: Map<string, number>;
+  notes: Map<string, { act?: Projection["acts"][number]; dissent?: Statement }[]>;
+  nameOf: (fp: string) => string;
+  me?: string;
+  bright: boolean;
+  selected: boolean;
+  cited: boolean;
+  onSelect: () => void;
+  onJumpTo: (event: string) => void;
+  onCite: () => void;
+  onRoute: (mode: ComposerMode, basis: string, prefill: string) => void;
+  doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
+}) {
+  const dead = statement.retired;
+  const ineffective = decision && decision.verdict !== "effective";
+  const ratifiedNote = (notes.get(statement.event) ?? []).some((n) => n.act?.type === "ratify" && n.act.verdict === "effective");
+  return (
+    <div
+      id={"evt-" + statement.event}
+      className={cn(
+        "group rounded-md px-2 py-1",
+        selected ? "bg-accent/10" : bright && "bg-accent/5",
+      )}
+    >
+      <div className="flex items-baseline gap-2">
+        <button
+          onClick={onSelect}
+          className={cn("shrink-0 rounded border px-1.5 py-px text-xs font-medium uppercase tracking-wide focus-visible:outline focus-visible:outline-accent", kindTint[statement.kind] ?? "border-border text-muted")}
+        >
+          {kindLabel[statement.kind] ?? statement.kind}
+        </button>
+        <span className={cn("min-w-0 truncate font-serif text-sm", dead ? "text-faint line-through" : "text-foreground/90")} title={statement.text}>
+          {statement.text}
+        </span>
+        <MentionBadges body={statement.body} nameOf={nameOf} me={me} />
+        {(statement.ratified || ratifiedNote) && !dead && <BadgeCheck aria-label="ratified" className="h-3.5 w-3.5 shrink-0 self-center text-ok" />}
+        {statement.stale && !dead && (
+          <span className="flex shrink-0 items-center gap-1 self-center text-xs font-medium uppercase text-danger">
+            <FileWarning className="h-3 w-3" /> stale
+          </span>
+        )}
+        {ineffective && !dead && (
+          <span className="flex shrink-0 items-center gap-1 self-center text-xs text-faint" title={decision!.reason}>
+            <CircleSlash className="h-3 w-3" /> not in force
+          </span>
+        )}
+        {statement.body?.path && (
+          <span className="shrink-0 text-xs text-muted" title={`${statement.body.path}@${statement.body.commit}`}>
+            {statement.body.path === "." ? "this repository" : statement.body.path}
+          </span>
+        )}
+        <span className="ml-auto flex shrink-0 items-center gap-1 self-center">
+          <RestsOn event={statement.event} projection={projection} tickets={tickets} onJumpTo={onJumpTo} className="hidden sm:inline" />
+          <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
+          <CiteButton selected={cited} onToggle={onCite} what="act" />
+        </span>
+      </div>
+      {statement.stale && !dead && <WhyStale event={statement.event} projection={projection} tickets={tickets} nameOf={nameOf} onJumpTo={onJumpTo} />}
+      <ActionsRow
+        statement={statement}
+        commitment={commitment}
+        decision={decision}
+        projection={projection}
+        me={me}
+        onRoute={onRoute}
+        doAct={doAct}
+        className="mt-1"
+        withdrawable={false}
+      />
+    </div>
+  );
+}
+
+// Weight (c): the rich card — only for what still awaits a response.
+// Semantic next actions, not wire verbs. The fold still judges everything.
+function Card({
+  statement,
+  ticket,
+  decision,
+  commitment,
+  projection,
+  tickets,
+  notes,
+  nameOf,
+  me,
+  bright,
+  selected,
+  cited,
+  onSelect,
+  onJumpTo,
+  onCite,
+  onRoute,
+  doAct,
+}: {
+  statement: Statement;
+  ticket?: number;
+  decision?: Decision;
+  commitment?: Commitment;
+  projection: Projection;
+  tickets: Map<string, number>;
+  notes: Map<string, { act?: Projection["acts"][number]; dissent?: Statement }[]>;
+  nameOf: (fp: string) => string;
+  me?: string;
+  bright: boolean;
+  selected: boolean;
+  cited: boolean;
+  onSelect: () => void;
+  onJumpTo: (event: string) => void;
+  onCite: () => void;
+  onRoute: (mode: ComposerMode, basis: string, prefill: string) => void;
+  doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
+}) {
+  const dead = statement.retired;
+  const ineffective = decision && decision.verdict !== "effective";
+  const chain = commitment ? chainOf(commitment, projection) : [];
+  const tallies = statement.kind === "propose" ? tallyOf(statement.event, notes) : undefined;
 
   return (
     <div
@@ -620,6 +837,7 @@ function Card({
           {nameOf(statement.actor)}
           {statement.body?.to && <> → {nameOf(statement.body.to)}</>}
         </span>
+        <MentionBadges body={statement.body} nameOf={nameOf} me={me} />
         {statement.ratified && <BadgeCheck aria-label="ratified" className="h-3.5 w-3.5 text-ok" />}
         {commitment && <span className={cn("text-xs font-semibold", statusTint[commitment.status])}>{commitment.status}</span>}
         {statement.stale && !dead && (
@@ -629,14 +847,7 @@ function Card({
         )}
         <span className="ml-auto flex items-center gap-1">
           <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
-          <button
-            onClick={() => onReply(statement.event)}
-            aria-label="reply — a new act resting on this"
-            title="reply — a new act resting on this"
-            className="rounded p-1 text-faint opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline focus-visible:outline-accent group-hover:opacity-100 max-lg:opacity-60 pointer-coarse:opacity-60 hover:bg-elevated hover:text-foreground"
-          >
-            <CornerUpLeft className="h-3.5 w-3.5" />
-          </button>
+          <CiteButton selected={cited} onToggle={onCite} what="act" />
         </span>
       </div>
       {ineffective && (
@@ -681,44 +892,16 @@ function Card({
         </div>
       )}
       <Notes notes={notes.get(statement.event) ?? []} nameOf={nameOf} />
-      {(actions.length > 0 || withdrawing) && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          {!withdrawing &&
-            actions.map((action) => (
-              <button
-                key={action.label}
-                onClick={action.run}
-                className={cn(
-                  "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-accent",
-                  action.tone === "ok" && "border-ok/40 text-ok hover:bg-ok/10",
-                  action.tone === "danger" && "border-danger/40 text-danger hover:bg-danger/10",
-                  !action.tone && "border-border text-muted hover:bg-elevated",
-                )}
-              >
-                {action.label}
-              </button>
-            ))}
-          {withdrawing && (
-            <>
-              <input
-                autoFocus
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    doAct(`supersede:${statement.event}`, { act: "supersede", target: statement.event, text: reason || "withdrawn" });
-                    setWithdrawing(false);
-                  }
-                  if (e.key === "Escape") setWithdrawing(false);
-                }}
-                placeholder="why — visible forever"
-                className="min-w-0 flex-1 rounded-md border border-input bg-surface px-2.5 py-1 text-xs outline-none placeholder:text-faint focus:border-danger/60"
-              />
-              <Undo2 className="h-3.5 w-3.5 text-danger" />
-            </>
-          )}
-        </div>
-      )}
+      <ActionsRow
+        statement={statement}
+        commitment={commitment}
+        decision={decision}
+        projection={projection}
+        me={me}
+        onRoute={onRoute}
+        doAct={doAct}
+        className="mt-2.5"
+      />
     </div>
   );
 }

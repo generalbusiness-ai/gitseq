@@ -41,6 +41,31 @@ export function rememberFrames(genesis: string, entries: MemoryEntry[]): void {
   }
 }
 
+// "For you" watermark: the highest ticket already seen among durable acts
+// addressed to this identity — keyed by room genesis AND actor fingerprint,
+// so switching identity (or room) keeps separate read positions.
+function forYouKey(genesis: string, fingerprint: string): string {
+  return `workroom.foryou.${genesis}.${fingerprint}`;
+}
+
+export function loadForYouWatermark(genesis: string, fingerprint: string): number {
+  if (!genesis || !fingerprint) return 0;
+  try {
+    return Number(localStorage.getItem(forYouKey(genesis, fingerprint))) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveForYouWatermark(genesis: string, fingerprint: string, ticket: number): void {
+  if (!genesis || !fingerprint) return;
+  try {
+    localStorage.setItem(forYouKey(genesis, fingerprint), String(ticket));
+  } catch {
+    /* best-effort */
+  }
+}
+
 // Composer draft: survives a refresh, cleared on send.
 const DRAFT_KEY = "workroom.draft";
 
