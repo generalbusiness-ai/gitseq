@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b15de2f8788788a1afe970d6d077f7843862ebf2"}
+{"kind":"request","text":"Complete the dogfood-to-demo verification and document the runnable path.","body":{"conditions":"full tests, browser QA, and fresh-clone audit pass","to":"5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"}}
