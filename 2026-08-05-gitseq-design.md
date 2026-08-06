@@ -1,11 +1,12 @@
 ---
-date: 2026-08-05, revised 2026-08-06 (fifth wave)
-status: draft/discussion, moving forward — kernel spiked. This repo's
-  own first-parent history is the first (hand-run) log;
-  refs/seq/design carries it. Restructured after adversarial review
-  (kernel / collaboration profile / application profiles); the
-  six-case adversarial spike under spike/ passes against real git
-  (stable evidence projection in spike/SPIKE-RESULTS.md).
+date: 2026-08-05, revised 2026-08-06 (sixth wave)
+status: draft/discussion, moving forward — kernel spiked; bootstrap
+  plan ratified (BOOTSTRAP.md). This repo's own first-parent history
+  is the first (hand-run) log; refs/seq/design carries it.
+  Restructured after adversarial review (kernel / collaboration
+  profile / application profiles); the six-case adversarial spike
+  under spike/ passes against real git (stable evidence projection in
+  spike/SPIKE-RESULTS.md).
 origin: spinoff from the woo "engine over log" discussion (Beyond Zero →
   orchestration locus → event-log engine). This note is deliberately
   self-contained and woo-free.
@@ -571,4 +572,14 @@ Stable evidence: `spike/SPIKE-RESULTS.md`; per-run JSON, timings, and
 detailed output regenerate under ignored `spike/.spike/`. The
 retained-ephemera result (frames verify only against an externally
 anchored nexus key) confirms the profile's config-log anchor
-decision.
+decision. Sixth wave: the **bootstrap plan** ([BOOTSTRAP.md]
+(BOOTSTRAP.md)) — the project moves onto its own substrate (the
+workroom), which is also the demonstration: multiple agents with
+live discussion, decisions, and real work (stage 1), a staleness-
+flaring status projection (stage 2). Ratified there: the workroom
+log taxonomy; the continuation-migration of this hand-run log as the
+first production act; the minimal-but-real MCP identity chain
+(custodial Ed25519 per actor, OS-transport session binding, roster
+as a fold, static allowlist → nexus capability as an audited
+transition, roles enforced by the fold so ineffective attempts stay
+visible); and the agent usage contract ([SKILL.md](SKILL.md)).
