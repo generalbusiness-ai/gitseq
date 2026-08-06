@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bb37cdf1b2056a724614f38f094e0d8ae0529a08","text":"Artifact pointer used an incorrectly copied source hash"}
+{"kind":"artifact","text":"Corrected contract-repair implementation and verification pointer","body":{"commit":"0ca56b57505ed935f7492a6fc5761e30bfc87075","path":"."}}
