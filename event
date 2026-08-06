@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Fresh-clone provenance renderer correction.","body":{"commit":"9951a9cbf2fc59648bcb54c24242c90db68d9c6a","path":"spike/internal/workroom"}}
+{"kind":"report","text":"Dogfood-to-demo verification passed: full tests, vet, race, 7.28M-case fuzz, visual QA, and fresh-clone offline audit.","body":{"result":"make test; make vet; make race; fuzz; browser; fresh clone"}}
