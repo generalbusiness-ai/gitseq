@@ -15,3 +15,7 @@ build:
 	mkdir -p bin
 	cd spike && $(GO) build -o ../bin/gs ./cmd/gs
 	cd spike && $(GO) build -o ../bin/gitseq-mcp ./cmd/gitseq-mcp
+
+ui:
+	cd ui && npm run build
+

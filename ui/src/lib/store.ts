@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type Actor, type Cursor, type GraphCommit, type Statement, type Status } from "./api";
 
 export interface Workroom {
@@ -15,20 +15,19 @@ export function useWorkroom(): Workroom {
   const [commits, setCommits] = useState<GraphCommit[]>([]);
   const [actors, setActors] = useState<Actor[]>([]);
   const [offline, setOffline] = useState(false);
-  const headRef = useRef<string>("");
 
   useEffect(() => {
     let stopped = false;
     let cursor: Cursor | undefined;
 
-    const refreshGraph = async (head: string) => {
-      if (head === headRef.current) return;
-      headRef.current = head;
+    // Refreshed every cycle, decoupled from the workroom head: ordinary git
+    // activity changes the railway too, and a failed fetch simply retries.
+    const refreshGraph = async () => {
       try {
         const graph = await api.graph();
         if (!stopped) setCommits(graph.commits);
       } catch {
-        /* graph is decoration; the durable pane still renders */
+        /* keep the previous railway; retry next cycle */
       }
     };
 
@@ -37,7 +36,7 @@ export function useWorkroom(): Workroom {
       setStatus(next);
       setOffline(false);
       cursor = next.cursor;
-      void refreshGraph(next.durable.head);
+      void refreshGraph();
     };
 
     const loop = async () => {

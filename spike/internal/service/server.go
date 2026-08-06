@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -356,7 +357,30 @@ func (s *Server) handleDemo(writer http.ResponseWriter, _ *http.Request) {
 	_, _ = writer.Write([]byte(demoHTML))
 }
 
+// guardMutation is the browser-facing boundary for state-changing calls:
+// JSON content type only (text/plain is CORS-safelisted and needs no
+// preflight), and when a browser identifies the request's provenance the
+// origin must be this host and the fetch site same-origin. Non-browser
+// clients (CLI, MCP) send neither header and pass.
+func guardMutation(request *http.Request) error {
+	if contentType := request.Header.Get("Content-Type"); request.Method != http.MethodDelete && !strings.HasPrefix(contentType, "application/json") {
+		return errors.New("mutations require application/json")
+	}
+	if origin := request.Header.Get("Origin"); origin != "" {
+		if parsed, err := url.Parse(origin); err != nil || parsed.Host != request.Host {
+			return errors.New("cross-origin mutation refused")
+		}
+	}
+	if site := request.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		return errors.New("cross-site mutation refused")
+	}
+	return nil
+}
+
 func decode(request *http.Request, target any) error {
+	if err := guardMutation(request); err != nil {
+		return err
+	}
 	decoder := json.NewDecoder(http.MaxBytesReader(nil, request.Body, 2<<20))
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(target)

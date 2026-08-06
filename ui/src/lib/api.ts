@@ -113,6 +113,7 @@ export interface FrameView {
   about: string;
   text: string;
   actor: string;
+  raw: Frame; // the complete signed frame — promotion embeds THIS
 }
 
 async function json<T>(response: Response): Promise<T> {
@@ -194,6 +195,7 @@ export function decodeFrame(frame: Frame, actors: Actor[]): FrameView {
     about,
     text,
     actor: actorNameByKey(frame.ActorKey, actors),
+    raw: frame,
   };
 }
 

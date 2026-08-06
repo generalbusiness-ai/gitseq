@@ -17,12 +17,12 @@ function mintSessionID(): string {
   return "web:" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export function useSession(defaultActor?: string): Session {
+export function useSession(): Session {
   const [actor, setActorState] = useState<string | undefined>(
     () => localStorage.getItem("workroom.actor") ?? undefined,
   );
   const [live, setLive] = useState(false);
-  const effective = actor ?? defaultActor;
+  const effective = actor;
   const id = useMemo(mintSessionID, [effective]);
 
   useEffect(() => {

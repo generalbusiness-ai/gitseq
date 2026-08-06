@@ -40,6 +40,9 @@ type actorSummary struct {
 	Role        string `json:"role"`
 }
 
+// handleActors lists CUSTODIAL identities this service can sign for — who a
+// browser may join as. The folded roster (names, roles, revocations) is the
+// projection's business; these are deliberately separate concepts.
 func (s *Server) handleActors(writer http.ResponseWriter, _ *http.Request) {
 	actors := make([]actorSummary, 0)
 	for _, name := range s.workspace.ActorNames() {

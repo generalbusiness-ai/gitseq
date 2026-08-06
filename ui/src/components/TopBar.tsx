@@ -37,6 +37,18 @@ export function TopBar({ workroom, session }: { workroom: Workroom; session: Ses
             })
           )}
         </div>
+        {session.actor && (
+          <button
+            onClick={() => {
+              localStorage.removeItem("workroom.actor");
+              location.reload();
+            }}
+            title="signing as — click to leave and rejoin as someone else"
+            className={cn("rounded-md border border-border px-2 py-0.5 text-xs", actorTint(session.actor))}
+          >
+            {session.actor}
+          </button>
+        )}
         <div className="h-4 w-px bg-border" />
         <div className="flex items-center gap-2 text-xs text-faint">
           {workroom.offline ? (
