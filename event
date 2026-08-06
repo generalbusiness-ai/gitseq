@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Accepted dogfood checkpoint","body":{"commit":"e76c377","path":"BOOTSTRAP.md"}}
+{"kind":"propose","text":"Repair the post-build contract gaps before further dogfood: temporal role revocation, canonical actor addressing, bounded verified snapshots, exact MCP envelopes, and honest live custody."}
