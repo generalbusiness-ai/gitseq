@@ -1,1 +1,1 @@
-{"kind":"assert","text":"Did the \"withdrawn\" notice link the replacement item?  It's not shown in UI.  If not linked - was that a skill issue?"}
+{"kind":"assert","text":"This item is marked stale because it links another - was not intending that"}
