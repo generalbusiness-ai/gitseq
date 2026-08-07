@@ -1,1 +1,1 @@
-{"kind":"assert","text":"Should we prevent multiple local servers running against the same repo path?  (Seems like a sensible defense against accidental misconfig)"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:898b8c2972b435eebf70717b19cd04afd38c1bd5"}
