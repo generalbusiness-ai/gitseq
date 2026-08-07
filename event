@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:815513a3642d9bc3bcfca86d089afaa4fc64b523"}
+{"kind":"artifact","text":"Merged task/bootstrap-cycle approved exact head e88800781977d1eee693291072e10ba26bfacde8 into main as 8878cdb125c3c84b6ec6d0cad942c0a84f7be994; post-merge vet, test, and build passed.","body":{"approved_head":"e88800781977d1eee693291072e10ba26bfacde8","commit":"8878cdb125c3c84b6ec6d0cad942c0a84f7be994","path":"AGENTS.md,notes/2026-08-07-bootstrap-task-cycle.md"}}
