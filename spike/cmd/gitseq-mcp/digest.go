@@ -54,6 +54,7 @@ type eventView struct {
 	Kind    string `json:"kind,omitempty"`
 	Verdict string `json:"verdict"`
 	Reason  string `json:"reason,omitempty"`
+	Target  string `json:"target,omitempty"`
 	Text    string `json:"text,omitempty"`
 }
 
@@ -65,6 +66,7 @@ type totals struct {
 	Artifacts        int            `json:"artifacts"`
 	StaleArtifacts   int            `json:"stale_artifacts"`
 	IneffectiveActs  int            `json:"ineffective_acts"`
+	DisputedActs     int            `json:"disputed_acts"`
 	Statements       int            `json:"statements"`
 	FullProjectionAt string         `json:"full_projection_at"`
 }
@@ -76,12 +78,21 @@ type liveView struct {
 	Degraded   bool     `json:"degraded,omitempty"`
 }
 
+// actionableStatuses is an allow-list on purpose. A commitment that is
+// waiting is one someone can still act on; anything else — satisfied,
+// withdrawn, reneged, or stale because its basis was retired — is history or
+// needs a decision, not a queue entry. An allow-list also fails safe: a status
+// added later stays out of the actionable lists until someone decides it
+// belongs, rather than silently appearing as work.
+var actionableStatuses = map[string]bool{"requested": true, "promised": true, "reported": true}
+
 type actorStatus struct {
 	You            actorView          `json:"you"`
 	Frontier       []service.Frontier `json:"frontier"`
 	Cursor         service.Cursor     `json:"cursor"`
 	WaitingOnYou   []commitmentView   `json:"waiting_on_you"`
 	YouAreWaiting  []commitmentView   `json:"you_are_waiting_on"`
+	NotActionable  []commitmentView   `json:"not_actionable,omitempty"`
 	YourAttention  []eventView        `json:"needs_your_attention,omitempty"`
 	Totals         totals             `json:"totals"`
 	Live           liveView           `json:"live"`
@@ -119,6 +130,14 @@ func name(projection workroom.Projection, fingerprint string) string {
 	return fingerprint
 }
 
+func actIndex(projection workroom.Projection) map[string]workroom.Act {
+	index := make(map[string]workroom.Act, len(projection.Acts))
+	for _, act := range projection.Acts {
+		index[act.Event] = act
+	}
+	return index
+}
+
 func statementIndex(projection workroom.Projection) map[string]workroom.Statement {
 	index := make(map[string]workroom.Statement, len(projection.Statements))
 	for _, statement := range projection.Statements {
@@ -153,10 +172,16 @@ func summarizeTotals(snapshot workroom.Projection, depth int) totals {
 			stale++
 		}
 	}
-	ineffective := 0
+	// Ineffective and disputed are different verdicts and the fold keeps them
+	// apart deliberately; collapsing them here would erase that distinction in
+	// the one view most readers see.
+	ineffective, disputed := 0, 0
 	for _, decision := range snapshot.Decisions {
-		if decision.Verdict != workroom.Effective {
+		switch decision.Verdict {
+		case workroom.Ineffective:
 			ineffective++
+		case workroom.Disputed:
+			disputed++
 		}
 	}
 	return totals{
@@ -165,6 +190,7 @@ func summarizeTotals(snapshot workroom.Projection, depth int) totals {
 		Artifacts:        len(snapshot.Artifacts),
 		StaleArtifacts:   stale,
 		IneffectiveActs:  ineffective,
+		DisputedActs:     disputed,
 		Statements:       len(snapshot.Statements),
 		FullProjectionAt: "GET /v0/status, or gs status --repo <path>",
 	}
@@ -214,32 +240,49 @@ func digestStatus(status service.Status, fingerprint, actorName string, degraded
 		}
 	}
 	for _, commitment := range projection.Commitments {
-		if commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
+		mine := commitment.WaitingOn == fingerprint ||
+			(commitment.Requester == fingerprint && commitment.WaitingOn != "")
+		if !mine || commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
 			continue
 		}
-		switch {
-		case commitment.WaitingOn == fingerprint:
-			digest.WaitingOnYou = append(digest.WaitingOnYou, viewCommitment(projection, statements, commitment))
-		case commitment.Requester == fingerprint && commitment.WaitingOn != "":
-			digest.YouAreWaiting = append(digest.YouAreWaiting, viewCommitment(projection, statements, commitment))
+		view := viewCommitment(projection, statements, commitment)
+		if !actionableStatuses[commitment.Status] {
+			// Still open, but nobody can discharge it as it stands. Reporting a
+			// stale review as work waiting on someone is the projection lying in
+			// the quiet direction, so it is shown apart rather than counted in.
+			digest.NotActionable = append(digest.NotActionable, view)
+			continue
+		}
+		if commitment.WaitingOn == fingerprint {
+			digest.WaitingOnYou = append(digest.WaitingOnYou, view)
+		} else {
+			digest.YouAreWaiting = append(digest.YouAreWaiting, view)
 		}
 	}
+	// An act that failed to take force is what an actor is least likely to
+	// notice, so this must cover every kind of act they can make. Statements
+	// carry state kinds; ratify and supersede live in Acts, and joining only
+	// through statements would silently hide exactly the authority failures an
+	// agent most needs to see.
+	acts := actIndex(projection)
 	for _, decision := range projection.Decisions {
 		if decision.Verdict == workroom.Effective {
 			continue
 		}
-		statement, ok := statements[decision.Event]
-		if !ok || statement.Actor != fingerprint {
+		view := eventView{Event: decision.Event, Verdict: string(decision.Verdict), Reason: decision.Reason}
+		switch {
+		case statements[decision.Event].Actor == fingerprint:
+			statement := statements[decision.Event]
+			view.Kind, view.Text = string(statement.Kind), truncate(statement.Text)
+		case acts[decision.Event].Actor == fingerprint:
+			act := acts[decision.Event]
+			view.Kind, view.Text = act.Type, truncate(act.Text)
+			view.Target = act.Target
+		default:
 			continue
 		}
-		digest.YourAttention = append(digest.YourAttention, eventView{
-			Event:   decision.Event,
-			Actor:   actorName,
-			Kind:    string(statement.Kind),
-			Verdict: string(decision.Verdict),
-			Reason:  decision.Reason,
-			Text:    truncate(statement.Text),
-		})
+		view.Actor = actorName
+		digest.YourAttention = append(digest.YourAttention, view)
 	}
 	return digest
 }
@@ -283,10 +326,7 @@ func digestWait(response service.WaitResponse, requested service.Cursor, fingerp
 		delta.Durable = append(delta.Durable, view)
 	}
 	for _, commitment := range projection.Commitments {
-		if commitment.WaitingOn != fingerprint {
-			continue
-		}
-		if commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
+		if commitment.WaitingOn != fingerprint || !actionableStatuses[commitment.Status] {
 			continue
 		}
 		delta.WaitingOnYou = append(delta.WaitingOnYou, viewCommitment(projection, statements, commitment))
@@ -305,9 +345,9 @@ func summarize(tool string, value any) string {
 	switch shaped := value.(type) {
 	case actorStatus:
 		return fmt.Sprintf(
-			"depth %d, %d waiting on you, %d you are waiting on, %d of your acts ineffective; live %s",
-			shaped.Totals.Depth, len(shaped.WaitingOnYou), len(shaped.YouAreWaiting), len(shaped.YourAttention),
-			liveLabel(shaped.Live))
+			"depth %d, %d waiting on you, %d you are waiting on, %d not actionable, %d of your acts did not take force; live %s",
+			shaped.Totals.Depth, len(shaped.WaitingOnYou), len(shaped.YouAreWaiting), len(shaped.NotActionable),
+			len(shaped.YourAttention), liveLabel(shaped.Live))
 	case waitDelta:
 		reset := ""
 		if shaped.Reset {

@@ -213,3 +213,96 @@ func TestSummaryDoesNotRestateTheStructuredPayload(t *testing.T) {
 		}
 	}
 }
+
+// An act that failed to take force must surface whatever kind it was. Ratify
+// and supersede are not statements, and joining only through statements hid
+// exactly the authority failures an agent most needs to see.
+func TestAttentionCoversRatifyAndSupersedeNotJustStatements(t *testing.T) {
+	status := sampleStatus(5)
+	projection := &status.Durable.Projection
+	projection.Acts = append(projection.Acts,
+		workroom.Act{Event: "act:my-ratify", Actor: mine, Type: "ratify", Target: "something",
+			Verdict: workroom.Ineffective, Reason: "actor lacks ratifier role"},
+		workroom.Act{Event: "act:their-ratify", Actor: theirs, Type: "ratify", Target: "other",
+			Verdict: workroom.Ineffective, Reason: "actor lacks ratifier role"})
+	projection.Decisions = append(projection.Decisions,
+		workroom.Decision{Event: "act:my-ratify", Verdict: workroom.Ineffective, Reason: "actor lacks ratifier role"},
+		workroom.Decision{Event: "act:their-ratify", Verdict: workroom.Ineffective, Reason: "actor lacks ratifier role"})
+
+	digest := digestStatus(status, mine, "me", false)
+	var found *eventView
+	for index, view := range digest.YourAttention {
+		if view.Event == "act:my-ratify" {
+			found = &digest.YourAttention[index]
+		}
+		if view.Event == "act:their-ratify" {
+			t.Fatal("another actor's failed act appeared in my attention")
+		}
+	}
+	if found == nil {
+		t.Fatalf("my failed ratify is invisible: %#v", digest.YourAttention)
+	}
+	if found.Kind != "ratify" || found.Target != "something" {
+		t.Fatalf("failed act does not say what it was or what it aimed at: %#v", *found)
+	}
+}
+
+// A commitment nobody can discharge is not work waiting on someone. Reporting
+// it as such is the projection lying in the quiet direction.
+func TestNonActionableCommitmentsAreSeparatedFromWaiting(t *testing.T) {
+	status := sampleStatus(5)
+	projection := &status.Durable.Projection
+	projection.Commitments = append(projection.Commitments,
+		workroom.Commitment{Request: "request:stale", Requester: theirs, Performer: mine, Status: "stale", WaitingOn: mine},
+		workroom.Commitment{Request: "request:reneged", Requester: mine, Performer: theirs, Status: "reneged", WaitingOn: theirs})
+
+	digest := digestStatus(status, mine, "me", false)
+	for _, view := range digest.WaitingOnYou {
+		if view.Status == "stale" || view.Status == "reneged" {
+			t.Fatalf("a non-actionable commitment is presented as waiting on me: %#v", view)
+		}
+	}
+	for _, view := range digest.YouAreWaiting {
+		if view.Status == "stale" || view.Status == "reneged" {
+			t.Fatalf("a non-actionable commitment is presented as awaited: %#v", view)
+		}
+	}
+	// Separated, not discarded: both must still be visible.
+	seen := map[string]bool{}
+	for _, view := range digest.NotActionable {
+		seen[view.Request] = true
+	}
+	if !seen["request:stale"] || !seen["request:reneged"] {
+		t.Fatalf("non-actionable commitments were dropped rather than separated: %#v", digest.NotActionable)
+	}
+	if !strings.Contains(summarize("status", digest), "not actionable") {
+		t.Fatalf("summary hides them: %q", summarize("status", digest))
+	}
+
+	// The delta must apply the same rule, or wait would reintroduce the lie.
+	requested := service.Cursor{Frontier: []service.Frontier{{Genesis: "genesis", Depth: status.Durable.Depth}}}
+	delta := digestWait(service.WaitResponse{Status: status}, requested, mine, "me", false)
+	for _, view := range delta.WaitingOnYou {
+		if view.Status == "stale" {
+			t.Fatalf("wait reintroduced a stale commitment as waiting: %#v", view)
+		}
+	}
+}
+
+// Ineffective and disputed are distinct verdicts; the totals must not collapse
+// a distinction the fold keeps deliberately.
+func TestTotalsKeepIneffectiveAndDisputedApart(t *testing.T) {
+	status := sampleStatus(3)
+	projection := &status.Durable.Projection
+	projection.Decisions = append(projection.Decisions,
+		workroom.Decision{Event: "d:disputed", Verdict: workroom.Disputed, Reason: "duplicate event id"})
+	digest := digestStatus(status, mine, "me", false)
+	if digest.Totals.DisputedActs != 1 {
+		t.Fatalf("disputed acts = %d, want 1", digest.Totals.DisputedActs)
+	}
+	// The sample carries two ineffective decisions of its own; the disputed one
+	// added here must not be counted among them.
+	if digest.Totals.IneffectiveActs != 2 {
+		t.Fatalf("ineffective acts = %d, want 2; disputed appears to have been folded in", digest.Totals.IneffectiveActs)
+	}
+}
