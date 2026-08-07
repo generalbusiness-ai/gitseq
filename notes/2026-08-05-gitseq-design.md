@@ -584,7 +584,7 @@ first production act; the minimal-but-real MCP identity chain
 (custodial Ed25519 per actor, OS-transport session binding, roster
 as a fold, static allowlist → nexus capability as an audited
 transition, roles enforced by the fold so ineffective attempts stay
-visible); and the agent usage contract ([SKILL.md](SKILL.md)).
+visible); and the agent usage contract ([SKILL.md](../SKILL.md)).
 Seventh wave (bootstrap review): the plan reshaped fold-first — the
 application profile (schemas, effectiveness rules, work-item
 lifecycle, deterministic projector with golden fixtures) is stage 1,

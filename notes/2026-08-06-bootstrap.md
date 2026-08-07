@@ -304,6 +304,6 @@ relief valve — only promotion costs a deliberate act.
 
 ## Agent guidance
 
-[`SKILL.md`](SKILL.md) is the normative usage contract for agent
+[`SKILL.md`](../SKILL.md) is the normative usage contract for agent
 actors. The implementation must match it; when they disagree, one of
 them changes by an audited act.
