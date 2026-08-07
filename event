@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:898b8c2972b435eebf70717b19cd04afd38c1bd5"}
+{"kind":"assert","text":"After restarting Codex, the configured and enabled gitseq MCP entry was still absent from this session tool inventory; manual modern discovery succeeded, so I fell back to the CLI. This reproduces the client-era compatibility problem addressed by task/mcp-dual-era.","body":{"configured":"true","fallback":"cli","tool_inventory":"false"}}
