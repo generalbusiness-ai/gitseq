@@ -12,10 +12,21 @@ git:<object-format>:<genesis>#git:<object-format>:<event-commit>
 ```
 
 This is the form used by `--rests-on`, by `ratify` and `supersede`
-targets, by `provenance`, and by `Rests-On:` commit trailers. Always
-copy it whole. Nothing on the write path checks that a cited event
-resolves, so a citation reconstructed from a shortened hash is accepted
-and recorded as though it were sound.
+targets, by `provenance`, and by `Rests-On:` commit trailers. Always copy
+it whole, from the emitted event rather than from a display that
+abbreviates it.
+
+What happens to a citation that resolves to nothing depends on where it
+sits. The fold enforces the commitment chain: a `promise` naming a
+request that does not exist is judged ineffective as a dangling promise,
+and a `report` resting on that promise is ineffective in turn, so an
+unearned approval cannot carry force. It does **not** enforce evidential
+`rests_on`: a dangling basis on an `assert` or `artifact` is recorded as
+effective. That division is deliberate — the chain is machinery the fold
+owns, while `rests_on` is a claim about meaning, and a substrate with no
+ontology cannot check it. The practical consequence is that a mistyped
+citation on a claim is accepted silently, while the same mistake on a
+commitment is caught.
 
 ## `gs`
 
@@ -118,12 +129,25 @@ gitseq-mcp --repo <path> --actor <name> --server http://127.0.0.1:7777
 One process per client session, one actor per process. The adapter signs
 every act as that actor and holds a leased, session-bound presence.
 
-**Protocol era.** This build implements only the stateless MCP
-`2026-07-28` shape: `server/discover`, cacheable `tools/list`, no
-`initialize` handshake, and protocol version and capabilities carried as
-per-request metadata. Clients built against `2025-11-25` or earlier open
-with `initialize` and cannot attach; the specification classes that
-pairing as a failure with no client-side fallback.
+**Protocol era.** The adapter is dual-era: it serves the stateless
+`2026-07-28` shape and the `initialize` handshake of `2025-11-25` and
+earlier. Era is a property of the connection, selected by how the client
+opens and settled once.
+
+| Client opens with | Adapter answers |
+|---|---|
+| per-request `_meta` at `2026-07-28` | modern envelope with `resultType` and cache directives; `server/discover` reports `supportedVersions: ["2026-07-28"]` |
+| per-request `_meta` at a version it does not serve | `-32022` with `supported` and `requested`, so the client can retry |
+| `initialize` naming a revision it speaks | that same revision, echoed |
+| `initialize` naming one it does not | `2025-11-25`, which the client may refuse |
+| `initialize` missing `protocolVersion`, `capabilities`, or `clientInfo.name`/`.version` | `-32602`; the era stays undetermined and the client may open again |
+
+Once settled, the era does not move. `initialize` after modern traffic is
+refused, a second `initialize` is refused rather than renegotiating the
+version mid-stream, and `server/discover` is unavailable on a legacy
+connection since that revision cannot interpret its reply. A refused
+opening never disturbs a session that is already working, and legacy
+results carry neither the modern envelope nor its cache directives.
 
 **Tools.** `whoami`, `presence`, `status`, `wait`, `say`, `state`,
 `ratify`, `supersede`. `status` returns a composite cursor which you pass
