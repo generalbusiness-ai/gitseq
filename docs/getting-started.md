@@ -26,7 +26,7 @@ from inside a *different* repository:
 
 ```sh
 export PATH="$PWD/bin:$PATH"
-gs actors --repo . >/dev/null 2>&1 || true   # `gs` now resolves
+command -v gs        # should print .../bin/gs
 ```
 
 If you would rather not change `PATH`, substitute the absolute path to
@@ -191,8 +191,15 @@ whenever you want others to see new events — it is the step that makes
 the record shared rather than local:
 
 ```sh
-git push origin '+refs/seq/*:refs/seq/*'
+git push origin 'refs/seq/*:refs/seq/*'
 ```
+
+The refspec deliberately has no leading `+`. A sequence only ever
+advances, so publishing is always a fast-forward, and a push that git
+refuses is telling you the remote holds something your copy does not.
+Forcing it would overwrite published history — in a record whose whole
+purpose is that positions are final, that is the one thing you must not
+be able to do by habit.
 
 Then, as the auditor, clone and attach. `attach` adds the matching fetch
 rule and pulls the sequence down:
@@ -205,7 +212,9 @@ gs provenance --repo /tmp/audit '<artifact-event>'
 ```
 
 If `attach` reports `Needed a single revision` for a `refs/seq/...` ref,
-the sequence was never pushed; run the push above and clone again.
+the sequence was never published. Run the push above in the workroom's
+repository, then rerun `attach` in the clone you already have — the
+clone itself is fine, only the refs were missing.
 
 `provenance` walks back from any event through everything it rests on.
 Attached clones are read-only unless local actor custody and a sequencer

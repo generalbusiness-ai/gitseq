@@ -77,8 +77,13 @@ Git ignores `refs/seq/*` in both directions. `attach` arranges the fetch
 side; nothing arranges the push side, so publishing is a deliberate act:
 
 ```sh
-git push origin '+refs/seq/*:refs/seq/*'
+git push origin 'refs/seq/*:refs/seq/*'
 ```
+
+No leading `+`. A sequence only advances, so publishing is always a
+fast-forward; a rejected push means the remote is ahead of you, and
+forcing it would rewind published history, which the record exists to
+make impossible.
 
 Until that runs, the workroom exists only in the repository that created
 it, and an auditor's `attach` fails on a missing ref rather than on
