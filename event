@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Bootstrap discipline repair, unmerged: discovered-work, breakdown, review order, reproducible baseline, and observed outcomes.","body":{"commit":"23b670eb4881f380d11f5c987f5a432b09d25c55","path":"AGENTS.md,notes/2026-08-07-bootstrap-task-cycle.md"}}
+{"kind":"report","text":"Task 2 is ready for re-review at exact 23b670eb4881f380d11f5c987f5a432b09d25c55. Both prior findings are repaired; current sustained-use outcomes are recorded; test, vet, and diff gates pass.","body":{"outcome":"ready-for-review"}}
