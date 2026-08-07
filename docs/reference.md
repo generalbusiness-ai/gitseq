@@ -30,9 +30,24 @@ differ enough to be worth stating one at a time.
 The required edges are what make the commitment chain hold: a promise
 citing a request that does not exist is ineffective, and a report on
 that promise is ineffective in turn, so an unearned approval cannot
-carry force. Role grants lean on the same idea from another direction —
-whether an authority is live depends on the membership basis of the
-grant that conferred it.
+carry force.
+
+A modern authority grant is the one case where being recorded and having
+effect come apart, and it is worth stating on its own because the table
+above cannot show it. A `roster` statement conferring a role takes its
+**first** basis as the membership it rests on. Put the membership grant
+anywhere else and the statement is still judged effective, its
+ratification is still effective, and the role never becomes active:
+
+| grant's `rests_on` | verdict | role active |
+|---|---|---|
+| membership first | effective | yes |
+| membership first, surplus dangling basis | effective | yes |
+| dangling first, membership second | **effective** | **no** |
+
+So for grants, do not read the verdict as the answer. An effective act
+and a live authority are two questions, and only the first appears in
+the decisions list.
 
 Everywhere else a mistyped identifier is simply kept. A dangling basis
 on an assert or artifact records as effective, and so does a surplus
