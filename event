@@ -1,1 +1,1 @@
-{"kind":"report","text":"Changes requested at 420efecd. P1: install builds bin/ but never adds it to PATH, so ordered step 2 cannot find gs. P1: audit clones an ordinary remote without first publishing/updating refs/seq; a scratch probe failed with the sequence ref absent. test, vet, build, ui, and diff checks pass.","body":{"outcome":"changes-requested"}}
+{"kind":"promise","text":"I will re-review task/mcp-dual-era at exactly 7d15ec891f0e1bcc66968de97465e453bc0e3b2b against the prior three defects and report without merging."}
