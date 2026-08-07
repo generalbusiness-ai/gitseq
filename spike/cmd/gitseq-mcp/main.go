@@ -153,15 +153,19 @@ func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) 
 		}
 		// A legacy client opens with `initialize`, which predates `_meta` and so
 		// cannot carry it; answering that request is what puts the connection
-		// into legacy era for every request that follows. The *opening* selects
-		// the era: a connection that has already spoken modern cannot hand
-		// itself back to the legacy handshake, or a client could shed the
-		// per-request metadata this revision requires simply by asking.
+		// into legacy era for every request that follows.
+		//
+		// Initialization opens a connection, so it must come first and happen
+		// once. Arriving after modern traffic, it would let a client shed the
+		// per-request metadata that revision requires; arriving a second time,
+		// it would renegotiate the version mid-stream and change what the
+		// client has already been told. In both cases the era is settled, so
+		// the request is refused without disturbing it.
 		if request.Method == "initialize" {
-			if s.era == eraModern {
+			if s.era != eraUndetermined {
 				response.Error = &rpcError{
-					Code:    -32601,
-					Message: "initialize is not available on a connection already using protocol version " + protocolVersion,
+					Code:    -32600,
+					Message: "initialize must be the first request on a connection; the protocol era is already established",
 				}
 			} else if result, failure := s.initializeLegacy(request.Params); failure != nil {
 				response.Error = failure

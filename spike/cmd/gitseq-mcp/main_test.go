@@ -142,6 +142,43 @@ func TestLegacyHandshakeServesToolsWithoutPerRequestMetadata(t *testing.T) {
 	}
 }
 
+// Initialization opens a connection, so it happens once. A second one would
+// renegotiate the version mid-stream and change what the client was already
+// told the connection is speaking.
+func TestSecondInitializeIsRejectedAndDoesNotChangeTheNegotiatedVersion(t *testing.T) {
+	server := &mcpServer{}
+	open := func(version string) string {
+		return "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"" + version +
+			"\",\"capabilities\":{},\"clientInfo\":{\"name\":\"legacy\",\"version\":\"1\"}}}\n"
+	}
+	input := strings.NewReader(open("2025-06-18") + strings.Replace(open("2024-11-05"), "\"id\":1", "\"id\":2", 1))
+	var output bytes.Buffer
+	if err := server.run(context.Background(), input, &output); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected two replies, got %d: %s", len(lines), output.String())
+	}
+	var first, second map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatal(err)
+	}
+	negotiated := first["result"].(map[string]any)["protocolVersion"]
+	if negotiated != "2025-06-18" {
+		t.Fatalf("first initialize negotiated %v", negotiated)
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &second); err != nil {
+		t.Fatal(err)
+	}
+	if second["result"] != nil || second["error"] == nil {
+		t.Fatalf("second initialize accepted, renegotiating the version: %#v", second)
+	}
+	if server.era != eraLegacy {
+		t.Fatalf("era disturbed by the refused second initialize: %v", server.era)
+	}
+}
+
 // The opening selects the era once. A connection that has spoken modern must
 // not be able to hand itself back to the legacy handshake, because doing so
 // would shed the per-request metadata the modern revision requires.
