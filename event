@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d7cbf62f5a08702a437a30a5ff187520f3e9bed3","text":"Retracted: this artifact cited a stale prior review chain; an exact-head artifact with only live bases follows."}
+{"kind":"artifact","text":"Bootstrap task-cycle discipline and measured outcomes at review-repaired head","body":{"commit":"e88800781977d1eee693291072e10ba26bfacde8","path":"AGENTS.md,notes/2026-08-07-bootstrap-task-cycle.md"}}
