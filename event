@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ad9939cdb7750d4d67b083d17b0c2794c79b16e1"}
+{"kind":"artifact","text":"Declared-kinds application and UI wave is implemented at exact clean head a9f2f18900822d0d323a1a32a83aa66cdabe8ed8 on branch task/declared-kinds-wave1.","body":{"commit":"a9f2f18900822d0d323a1a32a83aa66cdabe8ed8","path":"."}}
