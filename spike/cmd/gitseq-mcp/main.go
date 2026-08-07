@@ -153,9 +153,21 @@ func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) 
 		}
 		// A legacy client opens with `initialize`, which predates `_meta` and so
 		// cannot carry it; answering that request is what puts the connection
-		// into legacy era for every request that follows.
+		// into legacy era for every request that follows. The *opening* selects
+		// the era: a connection that has already spoken modern cannot hand
+		// itself back to the legacy handshake, or a client could shed the
+		// per-request metadata this revision requires simply by asking.
 		if request.Method == "initialize" {
-			response.Result = s.initializeLegacy(request.Params)
+			if s.era == eraModern {
+				response.Error = &rpcError{
+					Code:    -32601,
+					Message: "initialize is not available on a connection already using protocol version " + protocolVersion,
+				}
+			} else if result, failure := s.initializeLegacy(request.Params); failure != nil {
+				response.Error = failure
+			} else {
+				response.Result = result
+			}
 			if err := encoder.Encode(response); err != nil {
 				return err
 			}
@@ -186,6 +198,16 @@ func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) 
 		case "ping":
 			response.Result = s.result(map[string]any{})
 		case "server/discover":
+			// Discovery belongs to the modern revision. Answering it on a legacy
+			// connection would hand back an envelope that revision has no
+			// meaning for, so it is simply absent from what was negotiated.
+			if s.era == eraLegacy {
+				response.Error = &rpcError{
+					Code:    -32601,
+					Message: "server/discover is not available on protocol version " + newestLegacyVersion,
+				}
+				break
+			}
 			response.Result = complete(map[string]any{
 				"supportedVersions": []string{protocolVersion},
 				"capabilities":      map[string]any{"tools": map[string]any{}},
@@ -246,14 +268,37 @@ func validateProtocolMeta(params json.RawMessage) error {
 // into legacy era. The reply names a version the client already knows: its own
 // when we speak it, otherwise the newest legacy revision we support, which the
 // client is free to refuse.
-func (s *mcpServer) initializeLegacy(params json.RawMessage) map[string]any {
+//
+// The handshake is validated before it is honoured. Latching the era is a
+// commitment for the rest of the connection — everything after it may omit the
+// per-request metadata — so it must not be made on a request that never
+// established what the client speaks. On any failure the era is left
+// undetermined and the client may open again.
+func (s *mcpServer) initializeLegacy(params json.RawMessage) (map[string]any, *rpcError) {
 	var request struct {
-		ProtocolVersion string `json:"protocolVersion"`
+		ProtocolVersion *string         `json:"protocolVersion"`
+		Capabilities    *map[string]any `json:"capabilities"`
+		ClientInfo      *struct {
+			Name *string `json:"name"`
+		} `json:"clientInfo"`
 	}
-	_ = json.Unmarshal(params, &request)
+	if len(params) == 0 {
+		return nil, &rpcError{Code: -32602, Message: "initialize requires params"}
+	}
+	if err := json.Unmarshal(params, &request); err != nil {
+		return nil, &rpcError{Code: -32602, Message: "invalid initialize params: " + err.Error()}
+	}
+	switch {
+	case request.ProtocolVersion == nil || *request.ProtocolVersion == "":
+		return nil, &rpcError{Code: -32602, Message: "initialize requires protocolVersion"}
+	case request.Capabilities == nil:
+		return nil, &rpcError{Code: -32602, Message: "initialize requires capabilities"}
+	case request.ClientInfo == nil || request.ClientInfo.Name == nil || *request.ClientInfo.Name == "":
+		return nil, &rpcError{Code: -32602, Message: "initialize requires clientInfo.name"}
+	}
 	version := newestLegacyVersion
-	if legacyVersions[request.ProtocolVersion] {
-		version = request.ProtocolVersion
+	if legacyVersions[*request.ProtocolVersion] {
+		version = *request.ProtocolVersion
 	}
 	s.era = eraLegacy
 	return map[string]any{
@@ -261,7 +306,7 @@ func (s *mcpServer) initializeLegacy(params json.RawMessage) map[string]any {
 		"capabilities":    map[string]any{"tools": map[string]any{}},
 		"serverInfo":      map[string]any{"name": "gitseq-workroom", "version": "0.1.0"},
 		"instructions":    instructions,
-	}
+	}, nil
 }
 
 // result shapes a tool-bearing reply for the connection's era. Legacy results
