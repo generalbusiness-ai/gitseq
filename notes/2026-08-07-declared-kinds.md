@@ -260,8 +260,11 @@ identical projection bytes, with the seam fixtures as the check.
 
 Every unmet prerequisite is typed and named, never folded into a
 generic failure: `uninterpretable: interpreter not held` (objects
-unreachable), `toolchain not held`, `vendor incomplete`,
-`interface unsupported`, `fixture mismatch`. The reproducibility
+unreachable), `toolchain not held`, `vendor incomplete`, `does not
+build` (the entry package is invalid, or compilation or
+construction fails — build success is itself a prerequisite, and a
+raw compiler error is not a projection outcome), `interface
+unsupported`, `fixture mismatch`. The reproducibility
 claim is correspondingly conditional and stated: reproducing
 meaning requires holding the published fold refs and the pinned
 toolchain. A reader lacking either still holds a fully verified
@@ -284,8 +287,9 @@ gap where meaning would be. Never a silent one.
   is ambient, and this makes it an explicit decision. A cautious
   auditor can verify the activation chain and match the named
   source against others' attestations without executing anything.
-  Reproducible builds and the pure-library shape keep "run what the
-  log names" from meaning "trust a blob."
+  Reproducible projection bytes — fixture-checked across machines
+  and toolchain builds — and the pure-library shape keep "run what
+  the log names" from meaning "trust a blob."
 
 ## Growth pressure, relocated honestly
 
