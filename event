@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review the deployment design note at exact head f9af5400df01607ad716286c12a593d7ae4547c5 against the requested security, durability, discoverability, and operational conditions, then report approved or changes-requested.","body":{"head":"f9af5400df01607ad716286c12a593d7ae4547c5","scope":"deployment-design-review"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:603d45061792ea9277257ed943e61c70b04bd405"}
