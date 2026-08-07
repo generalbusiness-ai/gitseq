@@ -202,7 +202,11 @@ purpose is that positions are final, that is the one thing you must not
 be able to do by habit.
 
 Then, as the auditor, clone and attach. `attach` adds the matching fetch
-rule and pulls the sequence down:
+rule and pulls the sequence down. The rule is deliberately non-forcing:
+later attaches and ordinary fetches accept only initial or fast-forward
+sequence refs. If an older build installed a forced sequence rule, `attach`
+replaces it before fetching. A remote that has rewound is rejected without
+moving the auditor's last observed sequence head.
 
 ```sh
 git clone <your-repo> /tmp/audit

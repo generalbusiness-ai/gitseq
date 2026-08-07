@@ -412,14 +412,7 @@ func attachCommand(ctx context.Context, arguments []string) error {
 	if *genesis == "" {
 		return errors.New("attach requires --genesis")
 	}
-	refspec := "+refs/seq/*:refs/seq/*"
-	existing, _ := git(ctx, *repo, "config", "--get-all", "remote."+*remote+".fetch")
-	if !containsLine(existing, refspec) {
-		if _, err := git(ctx, *repo, "config", "--add", "remote."+*remote+".fetch", refspec); err != nil {
-			return err
-		}
-	}
-	if _, err := git(ctx, *repo, "fetch", *remote, refspec); err != nil {
+	if err := fetchSequenceRefs(ctx, *repo, *remote); err != nil {
 		return err
 	}
 	formatOutput, err := git(ctx, *repo, "rev-parse", "--show-object-format")
@@ -435,6 +428,30 @@ func attachCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	return printJSON(verification)
+}
+
+const (
+	sequenceFetchRefspec       = "refs/seq/*:refs/seq/*"
+	forcedSequenceFetchRefspec = "+" + sequenceFetchRefspec
+)
+
+func fetchSequenceRefs(ctx context.Context, repo, remote string) error {
+	key := "remote." + remote + ".fetch"
+	existing, _ := git(ctx, repo, "config", "--get-all", key)
+	if containsLine(existing, forcedSequenceFetchRefspec) {
+		if _, err := git(ctx, repo, "config", "--fixed-value", "--unset-all", key, forcedSequenceFetchRefspec); err != nil {
+			return fmt.Errorf("remove legacy forced sequence fetch rule: %w", err)
+		}
+	}
+	if !containsLine(existing, sequenceFetchRefspec) {
+		if _, err := git(ctx, repo, "config", "--add", key, sequenceFetchRefspec); err != nil {
+			return err
+		}
+	}
+	if _, err := git(ctx, repo, "fetch", "--atomic", "--no-tags", remote, sequenceFetchRefspec); err != nil {
+		return fmt.Errorf("fetch sequence refs without rewind: %w", err)
+	}
+	return nil
 }
 
 func git(ctx context.Context, repo string, arguments ...string) (string, error) {
