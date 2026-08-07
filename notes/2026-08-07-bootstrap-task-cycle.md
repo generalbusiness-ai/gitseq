@@ -33,14 +33,17 @@ review without a human carrying state between them.
   signoff.
 - Unexpected ineffective, disputed, duplicate, or abandoned acts.
 - Implementing commits and artifacts that can be traced to their task events.
-- MCP response size and tool/context cost. Reproducible baseline at durable
+- MCP response size and tool/context cost. Historical baseline at durable
   depth 42: capture the single JSON-RPC stdout line from one MCP `status`
-  `tools/call`, count the line including its newline with `wc -c`, then decode
-  it and count UTF-8 bytes for `result.content[0].text` and compact JSON bytes
-  for `result.structuredContent`. That measured 106,192 total bytes: 56,512
-  content-text bytes and 47,418 structured-content bytes. The earlier 51,356
-  byte observation at depth 24 did not retain its counting method and is not a
-  comparison baseline.
+  `tools/call`; the recorded total counts its UTF-8 bytes **without** the
+  terminating newline. Decode the line, count UTF-8 bytes for
+  `result.content[0].text`, and count
+  `json.dumps(result["structuredContent"]).encode("utf-8")` using Python's
+  default separators (including their spaces), not compact JSON. That method
+  measured 106,192 total bytes: 56,512 content-text bytes and 47,418
+  structured-content bytes. Future comparisons must state and use one method
+  consistently. The earlier 51,356 byte observation at depth 24 did not retain
+  its counting method and is not a comparison baseline.
 - Whether a fresh clone can verify the log and explain the work without chat
   transcripts.
 
