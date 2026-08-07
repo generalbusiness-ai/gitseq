@@ -84,20 +84,23 @@ type conversation struct {
 
 type presenceEntry struct {
 	value     string
+	actor     string
 	expiresAt time.Time
 }
 
 type Hub struct {
-	mu         sync.Mutex
-	generation string
-	position   uint64
-	base       uint64
-	historyCap int
-	history    []Change
-	presence   map[string]presenceEntry
-	convs      map[string]*conversation
-	publicKey  ed25519.PublicKey
-	privateKey ed25519.PrivateKey
+	mu           sync.Mutex
+	generation   string
+	position     uint64
+	base         uint64
+	historyCap   int
+	history      []Change
+	presence     map[string]presenceEntry
+	convs        map[string]*conversation
+	about        map[string]string
+	participants map[string]map[string]bool
+	publicKey    ed25519.PublicKey
+	privateKey   ed25519.PrivateKey
 }
 
 func New(historyCap int) (*Hub, error) {
@@ -123,12 +126,14 @@ func NewWithSigningKey(historyCap int, privateKey ed25519.PrivateKey) (*Hub, err
 	}
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	return &Hub{
-		generation: "generation:" + hex.EncodeToString(generationBytes),
-		historyCap: historyCap,
-		presence:   make(map[string]presenceEntry),
-		convs:      make(map[string]*conversation),
-		publicKey:  bytes.Clone(publicKey),
-		privateKey: bytes.Clone(privateKey),
+		generation:   "generation:" + hex.EncodeToString(generationBytes),
+		historyCap:   historyCap,
+		presence:     make(map[string]presenceEntry),
+		convs:        make(map[string]*conversation),
+		about:        make(map[string]string),
+		participants: make(map[string]map[string]bool),
+		publicKey:    bytes.Clone(publicKey),
+		privateKey:   bytes.Clone(privateKey),
 	}, nil
 }
 
@@ -155,19 +160,28 @@ func (h *Hub) append(kind, id, value string) Change {
 	return change
 }
 
-func (h *Hub) Announce(id, value string) Change {
-	return h.AnnounceFor(id, value, 30*time.Second)
-}
-
-func (h *Hub) AnnounceFor(id, value string, ttl time.Duration) Change {
+// AnnounceSession leases a session to exactly one custodial actor. Presence,
+// binding and expiry are updated under the same lock as conversation retention.
+func (h *Hub) AnnounceSession(id, actor, value string, ttl time.Duration) (Change, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if id == "" || actor == "" {
+		return Change{}, errors.New("session and actor are required")
+	}
+	h.expire(time.Now())
+	if existing, exists := h.presence[id]; exists && existing.actor != actor {
+		return Change{}, errors.New("session is already bound to another actor")
+	}
+	return h.announceFor(id, actor, value, ttl), nil
+}
+
+func (h *Hub) announceFor(id, actor, value string, ttl time.Duration) Change {
 	if ttl <= 0 {
 		ttl = 30 * time.Second
 	}
 	existing, exists := h.presence[id]
-	h.presence[id] = presenceEntry{value: value, expiresAt: time.Now().Add(ttl)}
-	if exists && existing.value == value {
+	h.presence[id] = presenceEntry{value: value, actor: actor, expiresAt: time.Now().Add(ttl)}
+	if exists && existing.value == value && existing.actor == actor {
 		return Change{Cursor: Cursor{Generation: h.generation, Position: h.position}, Kind: "renewal", ID: id, Value: value}
 	}
 	return h.append("presence", id, value)
@@ -178,6 +192,7 @@ func (h *Hub) Depart(id string) Change {
 	defer h.mu.Unlock()
 	delete(h.presence, id)
 	change := h.append("departure", id, "")
+	h.removeParticipant(id)
 	h.forgetAllIfEmpty()
 	return change
 }
@@ -193,6 +208,7 @@ func (h *Hub) expire(now time.Time) {
 		if !entry.expiresAt.After(now) {
 			delete(h.presence, id)
 			h.append("expiration", id, "")
+			h.removeParticipant(id)
 		}
 	}
 	h.forgetAllIfEmpty()
@@ -203,37 +219,43 @@ func (h *Hub) forgetAllIfEmpty() {
 		return
 	}
 	for conversation := range h.convs {
-		delete(h.convs, conversation)
-		h.append("forgotten", conversation, "")
+		h.forgetConversation(conversation)
 	}
 }
 
-func (h *Hub) HasPresence(id string) bool {
+func (h *Hub) SessionActor(id string) (string, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.expire(time.Now())
-	_, exists := h.presence[id]
-	return exists
+	entry, exists := h.presence[id]
+	return entry.actor, exists && entry.actor != ""
 }
 
-func (h *Hub) ForgetConversation(id string) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+func (h *Hub) forgetConversation(id string) bool {
 	if _, exists := h.convs[id]; !exists {
 		return false
 	}
 	delete(h.convs, id)
+	delete(h.participants, id)
+	for about, conversation := range h.about {
+		if conversation == id {
+			delete(h.about, about)
+		}
+	}
 	h.append("forgotten", id, "")
 	return true
 }
 
-func (h *Hub) OpenConversation() (string, Change, error) {
-	nonce := make([]byte, 32)
-	if _, err := rand.Read(nonce); err != nil {
-		return "", Change{}, err
+func (h *Hub) removeParticipant(session string) {
+	for conversation, participants := range h.participants {
+		delete(participants, session)
+		if len(participants) == 0 {
+			h.forgetConversation(conversation)
+		}
 	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
+}
+
+func (h *Hub) openConversation(nonce []byte) (string, Change, error) {
 	genesis, err := encode(struct {
 		_          struct{} `cbor:",toarray"`
 		Version    uint64
@@ -313,10 +335,42 @@ func verifyBytes(domain string, key ed25519.PublicKey, value any, signature []by
 	return err == nil && ed25519.Verify(key, append([]byte(domain), encoded...), signature)
 }
 
-func (h *Hub) Publish(conversationID string, payload []byte, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
+// PublishForSession resolves the about anchor, opens a conversation when
+// necessary, records participation and publishes as one live-room operation.
+func (h *Hub) PublishForSession(session, about, conversationID string, payload []byte, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.expire(time.Now())
+	if _, exists := h.presence[session]; !exists {
+		return Frame{}, errors.New("session is not present")
+	}
+	if conversationID == "" {
+		conversationID = h.about[about]
+	}
+	if conversationID == "" {
+		nonce := make([]byte, 32)
+		if _, err := rand.Read(nonce); err != nil {
+			return Frame{}, err
+		}
+		var err error
+		conversationID, _, err = h.openConversation(nonce)
+		if err != nil {
+			return Frame{}, err
+		}
+		h.about[about] = conversationID
+	}
+	frame, err := h.publish(conversationID, payload, actorPrivateKey)
+	if err != nil {
+		return Frame{}, err
+	}
+	if h.participants[conversationID] == nil {
+		h.participants[conversationID] = make(map[string]bool)
+	}
+	h.participants[conversationID][session] = true
+	return frame, nil
+}
+
+func (h *Hub) publish(conversationID string, payload []byte, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
 	conversation, ok := h.convs[conversationID]
 	if !ok {
 		return Frame{}, errors.New("unknown conversation")

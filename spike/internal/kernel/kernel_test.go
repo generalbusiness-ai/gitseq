@@ -369,7 +369,7 @@ func TestContinuationBindsVerifiedSealedFrontier(t *testing.T) {
 	}
 }
 
-func TestLoadVerifiedPinsTheApprovedFrontier(t *testing.T) {
+func TestScanHeadPinsTheApprovedFrontier(t *testing.T) {
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "one", []byte("one"), nil), Options{SigningKey: f.signingKey}); err != nil {
@@ -382,10 +382,11 @@ func TestLoadVerifiedPinsTheApprovedFrontier(t *testing.T) {
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "two", []byte("two"), nil), Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	events, loaded, err := loadVerified(f.ctx, f.store, approved)
+	log, err := scanHead(f.ctx, f.store, approved.Genesis, approved.Head, true)
 	if err != nil {
 		t.Fatal(err)
 	}
+	events, loaded := log.Events, log.Verification
 	if loaded.Head != approved.Head || len(events) != 1 || string(events[0].Payload) != "one" {
 		t.Fatalf("load crossed verified frontier: approved=%+v loaded=%+v events=%+v", approved, loaded, events)
 	}

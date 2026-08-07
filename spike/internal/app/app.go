@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -28,18 +27,26 @@ import (
 type Actor struct {
 	Name        string `json:"name"`
 	Fingerprint string `json:"fingerprint"`
-	Role        string `json:"role"`
 	KeyFile     string `json:"key_file"`
 }
 
+type ActorView struct {
+	Name        string   `json:"name"`
+	Fingerprint string   `json:"fingerprint"`
+	Kind        string   `json:"kind,omitempty"`
+	Roles       []string `json:"roles"`
+	Custody     bool     `json:"custody"`
+}
+
 type Config struct {
-	Version        int              `json:"version"`
-	Genesis        string           `json:"genesis"`
-	ObjectFormat   string           `json:"object_format"`
-	PayloadCeiling uint64           `json:"payload_ceiling"`
-	SequencerKey   string           `json:"sequencer_key,omitempty"`
-	ReadOnly       bool             `json:"read_only,omitempty"`
-	Actors         map[string]Actor `json:"actors,omitempty"`
+	Version              int              `json:"version"`
+	Genesis              string           `json:"genesis"`
+	ObjectFormat         string           `json:"object_format"`
+	PayloadCeiling       uint64           `json:"payload_ceiling"`
+	IdempotencyNamespace string           `json:"idempotency_namespace,omitempty"`
+	SequencerKey         string           `json:"sequencer_key,omitempty"`
+	ReadOnly             bool             `json:"read_only,omitempty"`
+	Actors               map[string]Actor `json:"actors,omitempty"`
 }
 
 type Workspace struct {
@@ -58,6 +65,33 @@ type Snapshot struct {
 	Head       string              `json:"head"`
 	Depth      int                 `json:"depth"`
 	Projection workroom.Projection `json:"projection"`
+}
+
+type Verb string
+
+const (
+	VerbState     Verb = "state"
+	VerbRatify    Verb = "ratify"
+	VerbSupersede Verb = "supersede"
+)
+
+// Act is the one application command accepted by every local adapter. RestsOn
+// contains all bases for state and only additional bases for supersede; ratify
+// and supersede always place their target first.
+type Act struct {
+	Verb           Verb
+	Kind           workroom.Kind
+	Text           string
+	Body           map[string]string
+	Target         string
+	RestsOn        []string
+	Attachments    map[string][]byte
+	IdempotencyKey string
+}
+
+type Submission struct {
+	Result kernel.Result   `json:"result"`
+	Record workroom.Record `json:"record"`
 }
 
 func ResolveGitDir(ctx context.Context, repo string) (string, error) {
@@ -129,19 +163,25 @@ func Init(ctx context.Context, repo, operatorName string, ceiling uint64) (*Work
 		return nil, workroom.Record{}, err
 	}
 	workspace := &Workspace{Repo: repo, GitDir: gitDir, MetaDir: metaDir, Store: store, Config: Config{
-		Version: 0, Genesis: genesis, ObjectFormat: format, PayloadCeiling: ceiling,
-		SequencerKey: sequencerKey, Actors: map[string]Actor{operatorName: {Name: operatorName, Fingerprint: fingerprint, Role: "operator", KeyFile: actorPath}},
+		Version: 0, Genesis: genesis, ObjectFormat: format, PayloadCeiling: ceiling, IdempotencyNamespace: "workroom/v0",
+		SequencerKey: sequencerKey, Actors: map[string]Actor{operatorName: {Name: operatorName, Fingerprint: fingerprint, KeyFile: actorPath}},
 	}}
-	payload := workroom.State{Kind: workroom.KindRoster, Text: operatorName + " begins the workroom", Body: map[string]string{"actor": fingerprint, "name": operatorName, "role": "operator"}}
-	result, err := workspace.submitWithPrivate(ctx, private, operatorName, workroom.SchemaState, payload, nil, nil, "bootstrap")
+	request, err := workspace.BuildActRequest(ctx, private, operatorName, Act{
+		Verb: VerbState, Kind: workroom.KindRoster, Text: operatorName + " begins the workroom",
+		Body:           map[string]string{"actor": fingerprint, "kind": "human", "name": operatorName, "role": "operator"},
+		IdempotencyKey: "bootstrap",
+	})
+	if err != nil {
+		return nil, workroom.Record{}, err
+	}
+	submission, err := workspace.AcceptSubmission(ctx, request)
 	if err != nil {
 		return nil, workroom.Record{}, err
 	}
 	if err := workspace.save(); err != nil {
 		return nil, workroom.Record{}, err
 	}
-	record, err := workspace.Record(ctx, result.Commit)
-	return workspace, record, err
+	return workspace, submission.Record, nil
 }
 
 func generateActor(directory, name string) (ed25519.PrivateKey, string, string, error) {
@@ -210,27 +250,32 @@ func (w *Workspace) Actor(name string) (Actor, ed25519.PrivateKey, error) {
 	return actor, private, err
 }
 
-func (w *Workspace) AddActor(ctx context.Context, operatorName, name, role string) (Actor, []workroom.Record, error) {
+func (w *Workspace) AddActor(ctx context.Context, operatorName, name, kind string) (Actor, []workroom.Record, error) {
 	if _, exists := w.Config.Actors[name]; exists {
 		return Actor{}, nil, fmt.Errorf("actor %q already exists", name)
 	}
-	if role == "" {
-		role = "agent"
+	if kind == "" {
+		kind = "agent"
+	}
+	if kind != "human" && kind != "agent" && kind != "service" {
+		return Actor{}, nil, fmt.Errorf("actor kind must be human, agent, or service, got %q", kind)
 	}
 	private, fingerprint, path, err := generateActor(filepath.Join(w.MetaDir, "actors"), name)
 	if err != nil {
 		return Actor{}, nil, err
 	}
 	_ = private
-	actor := Actor{Name: name, Fingerprint: fingerprint, Role: role, KeyFile: path}
-	state, err := w.Submit(ctx, operatorName, workroom.SchemaState, workroom.State{Kind: workroom.KindRoster, Text: name + " joins as " + role, Body: map[string]string{"actor": fingerprint, "name": name, "role": role}}, []string{w.EventID(w.Config.Genesis)}, nil, "actor-"+name)
+	actor := Actor{Name: name, Fingerprint: fingerprint, KeyFile: path}
+	stateSubmission, err := w.Act(ctx, operatorName, Act{Verb: VerbState, Kind: workroom.KindRoster, Text: name + " joins as " + kind, Body: map[string]string{"actor": fingerprint, "kind": kind, "name": name, "role": "participant"}, RestsOn: []string{w.EventID(w.Config.Genesis)}, IdempotencyKey: "actor-" + name})
 	if err != nil {
 		return Actor{}, nil, err
 	}
-	ratification, err := w.Submit(ctx, operatorName, workroom.SchemaRatify, workroom.Ratify{Target: state.ID}, []string{state.ID}, nil, "actor-"+name+"-ratify")
+	state := stateSubmission.Record
+	ratificationSubmission, err := w.Act(ctx, operatorName, Act{Verb: VerbRatify, Target: state.ID, IdempotencyKey: "actor-" + name + "-ratify"})
 	if err != nil {
 		return Actor{}, nil, err
 	}
+	ratification := ratificationSubmission.Record
 	w.Config.Actors[name] = actor
 	if err := w.save(); err != nil {
 		return Actor{}, nil, err
@@ -238,31 +283,133 @@ func (w *Workspace) AddActor(ctx context.Context, operatorName, name, role strin
 	return actor, []workroom.Record{state, ratification}, nil
 }
 
-func (w *Workspace) Submit(ctx context.Context, actorName, schema string, payload any, rests []string, attachments map[string][]byte, key string) (workroom.Record, error) {
+// GrantRole records and ratifies an authority grant independently of the
+// actor's descriptive kind. The fold, not this application edge, decides
+// whether the attempted ratification has authority.
+func (w *Workspace) GrantRole(ctx context.Context, grantorName, actorAddress, role string) ([]workroom.Record, error) {
+	if err := validateAuthorityRole(role); err != nil {
+		return nil, err
+	}
+	actor, err := w.ResolveActorAddress(actorAddress)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := w.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	actorState, exists := snapshot.Projection.Actors[actor.Fingerprint]
+	if !exists || actorState.MembershipEvent == "" {
+		return nil, fmt.Errorf("actor %q has no live roster membership", actor.Name)
+	}
+	if containsRole(actorState.Roles, role) {
+		return nil, fmt.Errorf("actor %q already has role %q", actor.Name, role)
+	}
+	basis := actorState.MembershipEvent
+	key := "role-" + actor.Name + "-" + role + "-" + snapshot.Head
+	stateSubmission, err := w.Act(ctx, grantorName, Act{
+		Verb: VerbState, Kind: workroom.KindRoster, Text: "grant " + role + " to " + actor.Name,
+		Body:    map[string]string{"actor": actor.Fingerprint, "kind": actorState.Kind, "name": actor.Name, "role": role},
+		RestsOn: []string{basis}, IdempotencyKey: key,
+	})
+	if err != nil {
+		return nil, err
+	}
+	state := stateSubmission.Record
+	ratificationSubmission, err := w.Act(ctx, grantorName, Act{Verb: VerbRatify, Target: state.ID, IdempotencyKey: key + "-ratify"})
+	if err != nil {
+		return nil, err
+	}
+	return []workroom.Record{state, ratificationSubmission.Record}, nil
+}
+
+// RevokeRole supersedes every live explicit authority grant. Derived
+// roles, such as operator implying ratifier, must be revoked at their source.
+func (w *Workspace) RevokeRole(ctx context.Context, revokerName, actorAddress, role string) ([]workroom.Record, error) {
+	if err := validateAuthorityRole(role); err != nil {
+		return nil, err
+	}
+	actor, err := w.ResolveActorAddress(actorAddress)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := w.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	actorState := snapshot.Projection.Actors[actor.Fingerprint]
+	targets := append([]string(nil), actorState.RoleSources[role]...)
+	if len(targets) == 0 {
+		if containsRole(actorState.Roles, role) {
+			return nil, fmt.Errorf("role %q for actor %q is derived; revoke its source role", role, actor.Name)
+		}
+		return nil, fmt.Errorf("actor %q has no active explicit role %q", actor.Name, role)
+	}
+	records := make([]workroom.Record, 0, len(targets))
+	for _, target := range targets {
+		submission, err := w.Act(ctx, revokerName, Act{
+			Verb: VerbSupersede, Target: target, Text: "revoke " + role + " from " + actor.Name,
+			IdempotencyKey: "role-revoke-" + target + "-" + snapshot.Head,
+		})
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, submission.Record)
+	}
+	return records, nil
+}
+
+func validateAuthorityRole(role string) error {
+	if role == "" || role == "participant" || role == "agent" || role == "human" || role == "service" {
+		return fmt.Errorf("invalid authority role %q", role)
+	}
+	return nil
+}
+
+func containsRole(roles []string, role string) bool {
+	for _, candidate := range roles {
+		if candidate == role {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *Workspace) Act(ctx context.Context, actorName string, act Act) (Submission, error) {
 	_, private, err := w.Actor(actorName)
 	if err != nil {
-		return workroom.Record{}, err
+		return Submission{}, err
 	}
-	request, err := w.BuildRequest(ctx, private, actorName, schema, payload, rests, attachments, key)
+	request, err := w.BuildActRequest(ctx, private, actorName, act)
 	if err != nil {
-		return workroom.Record{}, err
+		return Submission{}, err
 	}
-	result, err := w.Accept(ctx, request)
-	if err != nil {
-		return workroom.Record{}, err
-	}
-	return w.Record(ctx, result.Commit)
+	return w.AcceptSubmission(ctx, request)
 }
 
-func (w *Workspace) submitWithPrivate(ctx context.Context, private ed25519.PrivateKey, actorName, schema string, payload any, rests []string, attachments map[string][]byte, key string) (kernel.Result, error) {
-	request, err := w.BuildRequest(ctx, private, actorName, schema, payload, rests, attachments, key)
-	if err != nil {
-		return kernel.Result{}, err
+func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act) (kernel.Request, error) {
+	var schema string
+	var payload any
+	rests := append([]string(nil), act.RestsOn...)
+	switch act.Verb {
+	case VerbState:
+		schema = workroom.SchemaState
+		payload = workroom.State{Kind: act.Kind, Text: act.Text, Body: act.Body}
+	case VerbRatify:
+		schema = workroom.SchemaRatify
+		payload = workroom.Ratify{Target: act.Target}
+		rests = []string{act.Target}
+	case VerbSupersede:
+		schema = workroom.SchemaSupersede
+		payload = workroom.Supersede{Target: act.Target, Text: act.Text}
+		rests = append([]string{act.Target}, rests...)
+	default:
+		return kernel.Request{}, fmt.Errorf("unknown act verb %q", act.Verb)
 	}
-	return w.Accept(ctx, request)
+	return w.buildRequest(ctx, private, actorName, schema, payload, rests, act.Attachments, act.IdempotencyKey)
 }
 
-func (w *Workspace) BuildRequest(ctx context.Context, private ed25519.PrivateKey, actorName, schema string, payload any, rests []string, attachments map[string][]byte, key string) (kernel.Request, error) {
+func (w *Workspace) buildRequest(ctx context.Context, private ed25519.PrivateKey, actorName, schema string, payload any, rests []string, attachments map[string][]byte, key string) (kernel.Request, error) {
 	normalized, err := w.normalizePayload(schema, payload)
 	if err != nil {
 		return kernel.Request{}, err
@@ -281,10 +428,16 @@ func (w *Workspace) BuildRequest(ctx context.Context, private ed25519.PrivateKey
 			return kernel.Request{}, err
 		}
 	}
+	namespace := w.Config.IdempotencyNamespace
+	if namespace == "" {
+		// Workrooms created before the stable namespace field keep their original
+		// retry identity. Changing it in place could replay an outstanding act.
+		namespace = "gs/" + actorName
+	}
 	signed, err := intent.Sign(intent.Intent{
 		Version: intent.Version, Target: "git:" + w.Config.ObjectFormat + ":" + w.Config.Genesis,
 		Schema: schema, PayloadTree: "git:" + w.Config.ObjectFormat + ":" + tree,
-		RestsOn: rests, IdempotencyNS: "gs/" + actorName, IdempotencyKey: key,
+		RestsOn: rests, IdempotencyNS: namespace, IdempotencyKey: key,
 	}, private)
 	if err != nil {
 		return kernel.Request{}, err
@@ -352,11 +505,34 @@ func (w *Workspace) ResolveActorAddress(address string) (Actor, error) {
 	return Actor{}, fmt.Errorf("unknown actor address %q", address)
 }
 
-func (w *Workspace) Accept(ctx context.Context, request kernel.Request) (kernel.Result, error) {
+func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request) (Submission, error) {
 	if w.Config.ReadOnly {
-		return kernel.Result{}, errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
+		return Submission{}, errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
 	}
-	return kernel.Submit(ctx, w.Store, request, kernel.Options{SigningKey: w.Config.SequencerKey, PreAppend: w.allowlist})
+	result, err := kernel.Submit(ctx, w.Store, request, kernel.Options{SigningKey: w.Config.SequencerKey, PreAppend: w.allowlist})
+	if err != nil {
+		return Submission{}, err
+	}
+	decoded, err := intent.Verify(request.Signed)
+	if err != nil {
+		return Submission{}, err
+	}
+	return Submission{Result: result, Record: workroom.Record{
+		ID: w.EventID(result.Commit), Actor: intent.ActorFingerprint(request.Signed.ActorKey),
+		Schema: decoded.Schema, RestsOn: append([]string(nil), decoded.RestsOn...),
+		Payload: append([]byte(nil), request.Payload...), Attachments: cloneAttachments(request.Attachments),
+	}}, nil
+}
+
+func cloneAttachments(input map[string][]byte) map[string][]byte {
+	if len(input) == 0 {
+		return nil
+	}
+	output := make(map[string][]byte, len(input))
+	for name, content := range input {
+		output[name] = append([]byte(nil), content...)
+	}
+	return output
 }
 
 func (w *Workspace) allowlist(_ context.Context, admission kernel.Admission) error {
@@ -379,19 +555,6 @@ func randomKey() (string, error) {
 
 func (w *Workspace) EventID(commit string) string {
 	return "git:" + w.Config.ObjectFormat + ":" + w.Config.Genesis + "#git:" + w.Config.ObjectFormat + ":" + commit
-}
-
-func (w *Workspace) Record(ctx context.Context, commit string) (workroom.Record, error) {
-	events, _, err := kernel.Load(ctx, w.Store, w.Config.Genesis)
-	if err != nil {
-		return workroom.Record{}, err
-	}
-	for _, event := range events {
-		if event.Commit == commit {
-			return workroom.Record{ID: w.EventID(commit), Actor: intent.ActorFingerprint(event.Signed.ActorKey), Schema: event.Intent.Schema, RestsOn: append([]string(nil), event.Intent.RestsOn...), Payload: event.Payload, Attachments: event.Attachments}, nil
-		}
-	}
-	return workroom.Record{}, errors.New("event not found")
 }
 
 func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
@@ -421,16 +584,32 @@ func (w *Workspace) Verify(ctx context.Context) (kernel.Verification, error) {
 	return kernel.Verify(ctx, w.Store, w.Config.Genesis)
 }
 
-func (w *Workspace) ActorNames() []string {
-	names := make([]string, 0, len(w.Config.Actors))
-	for name := range w.Config.Actors {
-		names = append(names, name)
+func (w *Workspace) ActorViews(ctx context.Context) ([]ActorView, error) {
+	snapshot, err := w.Snapshot(ctx)
+	if err != nil {
+		return nil, err
 	}
-	sort.Strings(names)
-	return names
-}
-
-func HashEvidence(content []byte) string {
-	digest := sha256.Sum256(content)
-	return "sha256:" + hex.EncodeToString(digest[:])
+	custody := make(map[string]Actor, len(w.Config.Actors))
+	for _, actor := range w.Config.Actors {
+		custody[actor.Fingerprint] = actor
+	}
+	views := make([]ActorView, 0, len(snapshot.Projection.Actors))
+	for fingerprint, state := range snapshot.Projection.Actors {
+		local, held := custody[fingerprint]
+		name := state.Name
+		if name == "" {
+			name = local.Name
+		}
+		views = append(views, ActorView{
+			Name: name, Fingerprint: fingerprint, Kind: state.Kind,
+			Roles: append([]string(nil), state.Roles...), Custody: held,
+		})
+	}
+	sort.Slice(views, func(i, j int) bool {
+		if views[i].Name == views[j].Name {
+			return views[i].Fingerprint < views[j].Fingerprint
+		}
+		return views[i].Name < views[j].Name
+	})
+	return views, nil
 }

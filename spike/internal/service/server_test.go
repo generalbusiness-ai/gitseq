@@ -155,10 +155,33 @@ func TestExpiredSessionBindingDoesNotBlockRebind(t *testing.T) {
 	if status := announce("other", 30000); status != http.StatusOK {
 		t.Fatalf("expired session could not be rebound: status = %d", status)
 	}
-	server.mu.Lock()
-	bound := server.sessions["reused"]
-	server.mu.Unlock()
+	bound, present := server.hub.SessionActor("reused")
+	if !present {
+		t.Fatal("rebound session is not present")
+	}
 	if bound != "other" {
 		t.Fatalf("session remained bound to %q", bound)
+	}
+}
+
+func TestWatchSurfaceIsRemoved(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/v0/watch?after_depth=0", nil)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("removed watch surface returned %d", response.Code)
 	}
 }

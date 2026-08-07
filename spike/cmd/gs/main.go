@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"gitseq/spike/internal/app"
-	"gitseq/spike/internal/kernel"
 	"gitseq/spike/internal/service"
 	"gitseq/spike/internal/workroom"
 )
@@ -41,6 +40,10 @@ func main() {
 		err = initCommand(ctx, os.Args[2:])
 	case "actor-add":
 		err = actorAddCommand(ctx, os.Args[2:])
+	case "role-grant":
+		err = roleGrantCommand(ctx, os.Args[2:])
+	case "role-revoke":
+		err = roleRevokeCommand(ctx, os.Args[2:])
 	case "actors":
 		err = actorsCommand(ctx, os.Args[2:])
 	case "state":
@@ -69,7 +72,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actors|state|ratify|supersede|status|provenance|verify|serve|attach> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|role-grant|role-revoke|actors|state|ratify|supersede|status|provenance|verify|serve|attach> [flags]")
 	os.Exit(2)
 }
 
@@ -98,7 +101,7 @@ func actorAddCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("actor-add", arguments)
 	as := set.String("as", "operator", "operator actor")
 	name := set.String("name", "", "new actor name")
-	role := set.String("role", "agent", "new actor role")
+	kind := set.String("kind", "agent", "principal kind: human, agent, or service")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -106,11 +109,57 @@ func actorAddCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	actor, records, err := workspace.AddActor(ctx, *as, *name, *role)
+	actor, records, err := workspace.AddActor(ctx, *as, *name, *kind)
 	if err != nil {
 		return err
 	}
 	return printJSON(map[string]any{"actor": actor, "events": []string{records[0].ID, records[1].ID}})
+}
+
+func roleGrantCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("role-grant", arguments)
+	as := set.String("as", "operator", "granting actor")
+	actor := set.String("actor", "", "actor name, @name, or fingerprint")
+	role := set.String("role", "", "durable authority role")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	records, err := workspace.GrantRole(ctx, *as, *actor, *role)
+	if err != nil {
+		return err
+	}
+	events := make([]string, 0, len(records))
+	for _, record := range records {
+		events = append(events, record.ID)
+	}
+	return printJSON(map[string]any{"actor": *actor, "role": *role, "events": events})
+}
+
+func roleRevokeCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("role-revoke", arguments)
+	as := set.String("as", "operator", "revoking actor")
+	actor := set.String("actor", "", "actor name, @name, or fingerprint")
+	role := set.String("role", "", "durable authority role")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	records, err := workspace.RevokeRole(ctx, *as, *actor, *role)
+	if err != nil {
+		return err
+	}
+	events := make([]string, 0, len(records))
+	for _, record := range records {
+		events = append(events, record.ID)
+	}
+	return printJSON(map[string]any{"actor": *actor, "role": *role, "events": events})
 }
 
 func actorsCommand(ctx context.Context, arguments []string) error {
@@ -122,9 +171,9 @@ func actorsCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	actors := make([]app.Actor, 0, len(workspace.Config.Actors))
-	for _, name := range workspace.ActorNames() {
-		actors = append(actors, workspace.Config.Actors[name])
+	actors, err := workspace.ActorViews(ctx)
+	if err != nil {
+		return err
 	}
 	return printJSON(actors)
 }
@@ -155,7 +204,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	record, err := submit(ctx, workspace, *serverURL, *as, workroom.SchemaState, workroom.State{Kind: workroom.Kind(*kind), Text: *message, Body: body}, rests, attachments, *key)
+	record, err := submitAct(ctx, workspace, *serverURL, *as, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: *message, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key})
 	if err != nil {
 		return err
 	}
@@ -179,7 +228,7 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	target := set.Arg(0)
-	record, err := submit(ctx, workspace, *serverURL, *as, workroom.SchemaRatify, workroom.Ratify{Target: target}, []string{target}, nil, *key)
+	record, err := submitAct(ctx, workspace, *serverURL, *as, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: *key})
 	if err != nil {
 		return err
 	}
@@ -206,8 +255,7 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	target := set.Arg(0)
-	bases := append([]string{target}, rests...)
-	record, err := submit(ctx, workspace, *serverURL, *as, workroom.SchemaSupersede, workroom.Supersede{Target: target, Text: *message}, bases, nil, *key)
+	record, err := submitAct(ctx, workspace, *serverURL, *as, app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key})
 	if err != nil {
 		return err
 	}
@@ -215,15 +263,16 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-func submit(ctx context.Context, workspace *app.Workspace, serverURL, actorName, schema string, payload any, rests []string, attachments map[string][]byte, key string) (workroom.Record, error) {
+func submitAct(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, act app.Act) (workroom.Record, error) {
 	if serverURL == "" {
-		return workspace.Submit(ctx, actorName, schema, payload, rests, attachments, key)
+		submission, err := workspace.Act(ctx, actorName, act)
+		return submission.Record, err
 	}
 	_, private, err := workspace.Actor(actorName)
 	if err != nil {
 		return workroom.Record{}, err
 	}
-	request, err := workspace.BuildRequest(ctx, private, actorName, schema, payload, rests, attachments, key)
+	request, err := workspace.BuildActRequest(ctx, private, actorName, act)
 	if err != nil {
 		return workroom.Record{}, err
 	}
@@ -234,9 +283,8 @@ func submit(ctx context.Context, workspace *app.Workspace, serverURL, actorName,
 	}
 	defer response.Body.Close()
 	var result struct {
-		Record workroom.Record `json:"record"`
-		Error  string          `json:"error"`
-		Result kernel.Result   `json:"result"`
+		app.Submission
+		Error string `json:"error"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		return workroom.Record{}, err

@@ -131,10 +131,18 @@ resident service, CLI, MCP adapter, and demo live alongside it.
 
 ```sh
 ./bin/gs init --repo . --operator hugh
-./bin/gs actor-add --repo . --as hugh --name codex --role agent
+./bin/gs actor-add --repo . --as hugh --name codex --kind agent
+./bin/gs role-grant --repo . --as hugh --actor codex --role ratifier
 ./bin/gs actors --repo .
 ./bin/gs serve --repo . --listen 127.0.0.1:7777
 ```
+
+Actor `kind` (`human`, `agent`, or `service`) describes the principal; it
+never grants authority. Roles are independent, durable authority grants. A role
+grant is ratified through the workroom fold and `role-revoke` retires its
+explicit grant, so an agent may be a ratifier without ceasing to be an agent.
+“Capability” is reserved for the profile's short-lived nexus-signed bearer
+tokens and their orthogonal claims.
 
 Open <http://127.0.0.1:7777> for the live projection. Durable commands may
 submit directly or through the resident sequencer:

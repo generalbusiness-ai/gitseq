@@ -24,9 +24,13 @@ func newHub(t *testing.T, historyCap int) *Hub {
 
 func TestSnapshotWatchBarrierCannotMissTransition(t *testing.T) {
 	hub := newHub(t, 16)
-	hub.Announce("alice", "ready")
+	if _, err := hub.AnnounceSession("alice", "alice", "ready", time.Hour); err != nil {
+		t.Fatal(err)
+	}
 	snapshot := hub.Snapshot()
-	hub.Announce("bob", "ready")
+	if _, err := hub.AnnounceSession("bob", "bob", "ready", time.Hour); err != nil {
+		t.Fatal(err)
+	}
 	changes, current, err := hub.ChangesSince(snapshot.Cursor)
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +52,11 @@ func TestCrashChangesGenerationAndOldCursorResets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := before.OpenConversation(); err != nil {
+	if _, err := before.AnnounceSession("session", "actor", "actor", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	_, actorKey, _ := ed25519.GenerateKey(rand.Reader)
+	if _, err := before.PublishForSession("session", "topic", "", []byte("live"), actorKey); err != nil {
 		t.Fatal(err)
 	}
 	cursor := before.Snapshot().Cursor
@@ -70,9 +78,11 @@ func TestCrashChangesGenerationAndOldCursorResets(t *testing.T) {
 	}
 
 	initial := after.Snapshot().Cursor
-	after.Announce("a", "1")
-	after.Announce("b", "2")
-	after.Announce("c", "3")
+	for _, id := range []string{"a", "b", "c"} {
+		if _, err := after.AnnounceSession(id, id, id, time.Hour); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, _, err := after.ChangesSince(initial); !errors.Is(err, ErrReset) {
 		t.Fatalf("expired cursor should reset, got %v", err)
 	}
@@ -80,20 +90,18 @@ func TestCrashChangesGenerationAndOldCursorResets(t *testing.T) {
 
 func TestRetainedFramesVerifyWithoutHub(t *testing.T) {
 	hub := newHub(t, 16)
-	hub.Announce("session", "actor")
-	conversationID, _, err := hub.OpenConversation()
-	if err != nil {
+	if _, err := hub.AnnounceSession("session", "actor", "actor", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	_, actorPrivateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := hub.Publish(conversationID, []byte("offer"), actorPrivateKey)
+	first, err := hub.PublishForSession("session", "topic", "", []byte("offer"), actorPrivateKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := hub.Publish(conversationID, []byte("accept"), actorPrivateKey)
+	second, err := hub.PublishForSession("session", "topic", first.Conversation, []byte("accept"), actorPrivateKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,16 +120,14 @@ func TestRetainedFramesVerifyWithoutHub(t *testing.T) {
 func TestSelfAssertedNexusKeyIsNotTrust(t *testing.T) {
 	trusted := newHub(t, 4)
 	attacker := newHub(t, 4)
-	attacker.Announce("session", "attacker")
-	conversationID, _, err := attacker.OpenConversation()
-	if err != nil {
+	if _, err := attacker.AnnounceSession("session", "attacker", "attacker", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	_, actorKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame, err := attacker.Publish(conversationID, []byte("forged"), actorKey)
+	frame, err := attacker.PublishForSession("session", "topic", "", []byte("forged"), actorKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,8 +159,11 @@ func TestNexusDoesNotTouchGit(t *testing.T) {
 	}
 	before := gitState()
 	hub := newHub(t, 8)
-	hub.Announce("alice", "online")
-	if _, _, err := hub.OpenConversation(); err != nil {
+	if _, err := hub.AnnounceSession("alice", "alice", "online", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	_, actorKey, _ := ed25519.GenerateKey(rand.Reader)
+	if _, err := hub.PublishForSession("alice", "topic", "", []byte("live"), actorKey); err != nil {
 		t.Fatal(err)
 	}
 	if after := gitState(); before != after {
@@ -164,16 +173,54 @@ func TestNexusDoesNotTouchGit(t *testing.T) {
 
 func TestPresenceLeaseExpiresAndForgetsConversations(t *testing.T) {
 	hub := newHub(t, 16)
-	hub.AnnounceFor("session", "actor", time.Hour)
-	conversation, _, err := hub.OpenConversation()
+	if _, err := hub.AnnounceSession("session", "actor", "actor", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	_, actorKey, _ := ed25519.GenerateKey(rand.Reader)
+	frame, err := hub.PublishForSession("session", "topic", "", []byte("live"), actorKey)
 	if err != nil {
 		t.Fatal(err)
 	}
+	conversation := frame.Conversation
 	hub.Expire(time.Now().Add(2 * time.Hour))
 	if snapshot := hub.Snapshot(); len(snapshot.Presence) != 0 || len(snapshot.Conversations) != 0 {
 		t.Fatalf("expired live state retained: %+v", snapshot)
 	}
 	if _, err := hub.Frames(conversation); err == nil {
 		t.Fatal("expired conversation frames remained available")
+	}
+}
+
+func TestSessionBindingAndConversationRetentionHaveOneOwner(t *testing.T) {
+	hub := newHub(t, 32)
+	if _, err := hub.AnnounceSession("one", "alice", "Alice", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hub.AnnounceSession("one", "mallory", "Mallory", time.Hour); err == nil {
+		t.Fatal("live session rebound to another actor")
+	}
+	if _, err := hub.AnnounceSession("two", "bob", "Bob", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	_, aliceKey, _ := ed25519.GenerateKey(rand.Reader)
+	_, bobKey, _ := ed25519.GenerateKey(rand.Reader)
+	first, err := hub.PublishForSession("one", "topic", "", []byte("one"), aliceKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := hub.PublishForSession("two", "topic", "", []byte("two"), bobKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Conversation != second.Conversation {
+		t.Fatal("about anchor opened two conversations")
+	}
+	hub.Depart("one")
+	if frames, err := hub.Frames(first.Conversation); err != nil || len(frames) != 2 {
+		t.Fatalf("conversation forgot while a participant remained: frames=%d err=%v", len(frames), err)
+	}
+	hub.Depart("two")
+	if _, err := hub.Frames(first.Conversation); err == nil {
+		t.Fatal("conversation survived its last participant")
 	}
 }

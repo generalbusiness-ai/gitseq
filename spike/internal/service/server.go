@@ -2,17 +2,12 @@ package service
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
-	"strings"
-	"sync"
 	"time"
 
 	"gitseq/spike/internal/app"
-	"gitseq/spike/internal/intent"
 	"gitseq/spike/internal/kernel"
 	"gitseq/spike/internal/nexus"
 )
@@ -46,13 +41,9 @@ type WaitResponse struct {
 }
 
 type Server struct {
-	workspace    *app.Workspace
-	hub          *nexus.Hub
-	mux          *http.ServeMux
-	mu           sync.Mutex
-	about        map[string]string
-	sessions     map[string]string
-	participants map[string]map[string]bool
+	workspace *app.Workspace
+	hub       *nexus.Hub
+	mux       *http.ServeMux
 }
 
 func New(workspace *app.Workspace) (*Server, error) {
@@ -60,10 +51,7 @@ func New(workspace *app.Workspace) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	server := &Server{
-		workspace: workspace, hub: hub, mux: http.NewServeMux(),
-		about: make(map[string]string), sessions: make(map[string]string), participants: make(map[string]map[string]bool),
-	}
+	server := &Server{workspace: workspace, hub: hub, mux: http.NewServeMux()}
 	server.routes()
 	return server, nil
 }
@@ -71,47 +59,15 @@ func New(workspace *app.Workspace) (*Server, error) {
 func (s *Server) Handler() http.Handler { return s.mux }
 
 func (s *Server) routes() {
-	s.mux.HandleFunc("GET /", s.handleDemo)
+	s.mux.HandleFunc("GET /{$}", s.handleDemo)
 	s.mux.HandleFunc("GET /v0/status", s.handleStatus)
 	s.mux.HandleFunc("POST /v0/wait", s.handleWait)
-	s.mux.HandleFunc("GET /v0/watch", s.handleWatch)
 	s.mux.HandleFunc("POST /v0/submit", s.handleSubmit)
 	s.mux.HandleFunc("GET /v0/presence", s.handlePresence)
 	s.mux.HandleFunc("POST /v0/presence", s.handleAnnounce)
 	s.mux.HandleFunc("DELETE /v0/presence/{session}", s.handleDepart)
 	s.mux.HandleFunc("POST /v0/say", s.handleSay)
 	s.mux.HandleFunc("GET /v0/conversations/{conversation}/frames", s.handleFrames)
-}
-
-func (s *Server) handleWatch(writer http.ResponseWriter, request *http.Request) {
-	after, err := strconv.Atoi(request.URL.Query().Get("after_depth"))
-	if err != nil || after < 0 {
-		write(writer, nil, errors.New("after_depth must be a non-negative integer"))
-		return
-	}
-	timeout := TimeoutFromQuery(request.URL.Query().Get("timeout_ms"))
-	if timeout <= 0 || timeout > 30000 {
-		timeout = 25000
-	}
-	deadline := time.NewTimer(time.Duration(timeout) * time.Millisecond)
-	defer deadline.Stop()
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		status, err := s.status(request.Context())
-		if err != nil || status.Durable.Depth > after {
-			write(writer, status, err)
-			return
-		}
-		select {
-		case <-request.Context().Done():
-			return
-		case <-deadline.C:
-			write(writer, status, nil)
-			return
-		case <-ticker.C:
-		}
-	}
 }
 
 func (s *Server) status(ctx context.Context) (Status, error) {
@@ -136,7 +92,39 @@ func (s *Server) handleWait(writer http.ResponseWriter, request *http.Request) {
 		write(writer, nil, err)
 		return
 	}
-	timeout := time.Duration(input.TimeoutMS) * time.Millisecond
+	var response WaitResponse
+	changed, err := Poll(request.Context(), input.TimeoutMS, func() (bool, error) {
+		status, err := s.status(request.Context())
+		if err != nil {
+			return false, err
+		}
+		changes, _, liveErr := s.hub.ChangesSince(input.Cursor.Live)
+		reset := errors.Is(liveErr, nexus.ErrReset)
+		response = WaitResponse{Status: status, LiveChanges: changes, Reset: reset}
+		return reset || DurableChanged(input.Cursor.Frontier, status.Durable) || len(changes) > 0, nil
+	})
+	if err != nil {
+		if request.Context().Err() != nil {
+			return
+		}
+		write(writer, nil, err)
+		return
+	}
+	if !changed {
+		response.LiveChanges = nil
+		response.Reset = false
+	}
+	write(writer, response, nil)
+}
+
+func DurableChanged(frontier []Frontier, durable app.Snapshot) bool {
+	return len(frontier) != 1 || frontier[0].Genesis != durable.Genesis || frontier[0].Head != durable.Head || frontier[0].Depth != durable.Depth
+}
+
+// Poll is the single wait clock used by composite service waits and durable-only
+// degraded clients. It checks immediately and reports false on ordinary timeout.
+func Poll(ctx context.Context, timeoutMS int, check func() (bool, error)) (bool, error) {
+	timeout := time.Duration(timeoutMS) * time.Millisecond
 	if timeout <= 0 || timeout > 30*time.Second {
 		timeout = 25 * time.Second
 	}
@@ -145,24 +133,15 @@ func (s *Server) handleWait(writer http.ResponseWriter, request *http.Request) {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		status, err := s.status(request.Context())
-		if err != nil {
-			write(writer, nil, err)
-			return
-		}
-		changes, _, liveErr := s.hub.ChangesSince(input.Cursor.Live)
-		reset := errors.Is(liveErr, nexus.ErrReset)
-		durableChanged := len(input.Cursor.Frontier) != 1 || input.Cursor.Frontier[0].Genesis != status.Durable.Genesis || input.Cursor.Frontier[0].Head != status.Durable.Head || input.Cursor.Frontier[0].Depth != status.Durable.Depth
-		if reset || durableChanged || len(changes) > 0 {
-			write(writer, WaitResponse{Status: status, LiveChanges: changes, Reset: reset}, nil)
-			return
+		done, err := check()
+		if err != nil || done {
+			return done, err
 		}
 		select {
-		case <-request.Context().Done():
-			return
+		case <-ctx.Done():
+			return false, ctx.Err()
 		case <-deadline.C:
-			write(writer, WaitResponse{Status: status}, nil)
-			return
+			return false, nil
 		case <-ticker.C:
 		}
 	}
@@ -174,16 +153,12 @@ func (s *Server) handleSubmit(writer http.ResponseWriter, request *http.Request)
 		write(writer, nil, err)
 		return
 	}
-	result, err := s.workspace.Accept(request.Context(), submission)
+	result, err := s.workspace.AcceptSubmission(request.Context(), submission)
 	if err != nil {
 		write(writer, nil, err)
 		return
 	}
-	record, err := s.workspace.Record(request.Context(), result.Commit)
-	write(writer, struct {
-		Result kernel.Result `json:"result"`
-		Record any           `json:"record"`
-	}{Result: result, Record: record}, err)
+	write(writer, result, nil)
 }
 
 func (s *Server) handlePresence(writer http.ResponseWriter, _ *http.Request) {
@@ -210,35 +185,17 @@ func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Reques
 		write(writer, nil, err)
 		return
 	}
-	// Expire and reconcile old leases before consulting the session binding.
-	// Without this sweep, a crashed client can block reuse of its session ID by
-	// a different actor until some unrelated status or presence read occurs.
-	s.liveSnapshot()
 	ttl := time.Duration(input.TTLMS) * time.Millisecond
 	if ttl <= 0 || ttl > 2*time.Minute {
 		ttl = 30 * time.Second
 	}
-	s.mu.Lock()
-	if bound, exists := s.sessions[input.Session]; exists && bound != input.Actor {
-		s.mu.Unlock()
-		write(writer, nil, errors.New("session is already bound to another actor"))
-		return
-	}
-	s.sessions[input.Session] = input.Actor
-	change := s.hub.AnnounceFor(input.Session, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl)
-	s.mu.Unlock()
-	write(writer, change, nil)
+	change, err := s.hub.AnnounceSession(input.Session, input.Actor, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl)
+	write(writer, change, err)
 }
 
 func (s *Server) handleDepart(writer http.ResponseWriter, request *http.Request) {
 	session := request.PathValue("session")
-	s.mu.Lock()
-	forgotten := s.removeSessionLocked(session)
 	change := s.hub.Depart(session)
-	for _, conversation := range forgotten {
-		s.hub.ForgetConversation(conversation)
-	}
-	s.mu.Unlock()
 	write(writer, change, nil)
 }
 
@@ -259,47 +216,18 @@ func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
 		write(writer, nil, errors.New("session, about, and text are required"))
 		return
 	}
-	s.mu.Lock()
-	actorName, exists := s.sessions[input.Session]
-	if !exists || !s.hub.HasPresence(input.Session) {
-		forgotten := s.removeSessionLocked(input.Session)
-		for _, conversation := range forgotten {
-			s.hub.ForgetConversation(conversation)
-		}
-		s.mu.Unlock()
+	actorName, exists := s.hub.SessionActor(input.Session)
+	if !exists {
 		write(writer, nil, errors.New("session is not present"))
 		return
 	}
 	_, private, err := s.workspace.Actor(actorName)
 	if err != nil {
-		s.mu.Unlock()
-		write(writer, nil, err)
-		return
-	}
-	conversation := input.Conversation
-	if conversation == "" {
-		conversation = s.about[input.About]
-	}
-	if conversation == "" {
-		conversation, _, err = s.hub.OpenConversation()
-		if err == nil {
-			s.about[input.About] = conversation
-		}
-	}
-	if err != nil {
-		s.mu.Unlock()
 		write(writer, nil, err)
 		return
 	}
 	payload, _ := json.Marshal(map[string]string{"about": input.About, "text": input.Text})
-	frame, err := s.hub.Publish(conversation, payload, private)
-	if err == nil {
-		if s.participants[conversation] == nil {
-			s.participants[conversation] = make(map[string]bool)
-		}
-		s.participants[conversation][input.Session] = true
-	}
-	s.mu.Unlock()
+	frame, err := s.hub.PublishForSession(input.Session, input.About, input.Conversation, payload, private)
 	write(writer, frame, err)
 }
 
@@ -310,41 +238,7 @@ func (s *Server) handleFrames(writer http.ResponseWriter, request *http.Request)
 }
 
 func (s *Server) liveSnapshot() nexus.Snapshot {
-	live := s.hub.Snapshot()
-	s.mu.Lock()
-	var forgotten []string
-	for session := range s.sessions {
-		if _, present := live.Presence[session]; !present {
-			forgotten = append(forgotten, s.removeSessionLocked(session)...)
-		}
-	}
-	for _, conversation := range forgotten {
-		s.hub.ForgetConversation(conversation)
-	}
-	s.mu.Unlock()
-	if len(forgotten) > 0 {
-		live = s.hub.Snapshot()
-	}
-	return live
-}
-
-func (s *Server) removeSessionLocked(session string) []string {
-	delete(s.sessions, session)
-	var forgotten []string
-	for conversation, participants := range s.participants {
-		delete(participants, session)
-		if len(participants) != 0 {
-			continue
-		}
-		delete(s.participants, conversation)
-		for about, candidate := range s.about {
-			if candidate == conversation {
-				delete(s.about, about)
-			}
-		}
-		forgotten = append(forgotten, conversation)
-	}
-	return forgotten
+	return s.hub.Snapshot()
 }
 
 func (s *Server) handleDemo(writer http.ResponseWriter, _ *http.Request) {
@@ -367,30 +261,6 @@ func write(writer http.ResponseWriter, value any, err error) {
 		return
 	}
 	_ = json.NewEncoder(writer).Encode(value)
-}
-
-func EncodeCursor(cursor Cursor) string {
-	data, _ := json.Marshal(cursor)
-	return base64.RawURLEncoding.EncodeToString(data)
-}
-
-func DecodeCursor(value string) (Cursor, error) {
-	data, err := base64.RawURLEncoding.DecodeString(value)
-	if err != nil {
-		return Cursor{}, err
-	}
-	var cursor Cursor
-	err = json.Unmarshal(data, &cursor)
-	return cursor, err
-}
-
-func ActorFingerprintFromSubmission(submission kernel.Request) string {
-	return intent.ActorFingerprint(submission.Signed.ActorKey)
-}
-
-func TimeoutFromQuery(value string) int {
-	timeout, _ := strconv.Atoi(strings.TrimSpace(value))
-	return timeout
 }
 
 const demoHTML = `<!doctype html>
