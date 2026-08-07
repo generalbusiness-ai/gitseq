@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ea42714b164813209725a5ab191d3bbd8f1c6089","text":"Replaced by the revised multi-event focus and breakdown-discipline request."}
+{"kind":"assert","text":"UI: need a \"temporary reply to an item\" in the thread panel.  Full use case: UI select -\u003e opens thread panel -\u003e temporary discussions all related to that thread."}
