@@ -334,9 +334,14 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, ok := value.(service.Status)
-	if !ok || status.Durable.Depth != 1 || status.Live.Cursor.Generation != "degraded" {
+	// The MCP surface answers with an actor digest, but degradation must still
+	// be stated rather than papered over, and durable depth must still be real.
+	digest, ok := value.(actorStatus)
+	if !ok || digest.Totals.Depth != 1 || !digest.Live.Degraded {
 		t.Fatalf("unexpected degraded status: %#v", value)
+	}
+	if digest.Live.Generation != "" {
+		t.Fatalf("degraded status invented a live generation: %#v", digest.Live)
 	}
 
 	value, err = server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
@@ -350,7 +355,7 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 		t.Fatalf("direct durable submission was not marked degraded: %#v", result)
 	}
 
-	status, err = server.localStatus(context.Background())
+	status, err := server.localStatus(context.Background())
 	if err != nil || status.Durable.Depth != 2 {
 		t.Fatalf("durable append did not land: status=%+v err=%v", status, err)
 	}
@@ -358,8 +363,8 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response := waited.(service.WaitResponse); response.Status.Durable.Depth != 2 || response.Reset {
-		t.Fatalf("unexpected degraded wait response: %+v", response)
+	if delta := waited.(waitDelta); delta.Totals.Depth != 2 || delta.Reset {
+		t.Fatalf("unexpected degraded wait response: %+v", delta)
 	}
 
 	projection, err := workspace.Snapshot(context.Background())
