@@ -119,19 +119,28 @@ signs with that session's actor key — ephemeral frames through
 session's lease on request.
 
 Session identifiers are therefore never published. Presence and the
-change stream name each session by a one-way `session:` handle instead,
-which is stable enough to follow a renewal or notice a departure and
-grants nothing. A live session cannot be rebound to a different actor.
+change stream name each session by an opaque minted `session:` handle
+instead — drawn from system randomness, with no derivation from the
+identifier in either direction — which is stable enough to follow a
+renewal or notice a departure and grants nothing. A live session cannot be rebound to a different actor.
 
 What remains trusted is the loopback boundary itself, and it is worth
 being exact about how much it carries. Anything that can reach the
 listening port can announce a session for any actor the repository holds
 custody for, and then act as that actor — **not only ephemeral speech**.
 `/v0/act` resolves the session the same way `/v0/say` does, selects that
-actor's custodial key, and appends a durable, signed event to the log.
-A durable act made this way is genuine: correctly signed, and accepted
-by the fold, because the fold checks that a signature is valid, not that
-the machine holding the key meant it.
+actor's custodial key, and appends a durable event to the log.
+
+Two layers are worth separating here, because conflating them overstates
+what an attacker gets. Possession of a session makes the custodian
+produce a **genuinely actor-signed** event: the kernel authenticates that
+signature and retains the event, and no later reader can tell it from one
+the actor intended, because cryptography answers who holds the key and
+not who meant it. What the event then *means* is judged separately — the
+profile fold reads already-decoded records, checks no signatures at all,
+and can rule a perfectly signed act ineffective or disputed on its
+merits. So the boundary buys an attacker authentic authorship, not
+automatic force.
 
 There is no authentication below that line, by design — this is a
 trusted local multi-actor custodian, not a remotely authenticated
