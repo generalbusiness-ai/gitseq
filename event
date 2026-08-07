@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e042a8983225c695b4aea75ef65e1563a9ca2196"}
+{"kind":"promise","text":"I will re-review the repaired twelfth-wave ledger at exact head e5a294b83177a71e6b31847ebcc265711c6121bd, independently rechecking the complete summary, the explicit four-question list and separate room-wide remainders, frontmatter citations, trailers, cleanliness, and diff checks before reporting approved or changes-requested.","body":{"head":"e5a294b83177a71e6b31847ebcc265711c6121bd","scope":"twelfth-wave-ledger-rereview"}}
