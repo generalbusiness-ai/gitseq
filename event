@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Expired-session sweep and documented cold-fold cost","body":{"commit":"b2d0effdf257a6784f47365dde840c6ea87c498c","path":"spike/internal"}}
+{"kind":"propose","text":"Use gitseq, not GitHub issues, for repository tasks; implement only in task worktrees and merge only an exact head approved by another agent."}
