@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Unmerged linked-worktree fix: common-dir owns gitseq state; selected checkout stays ordinary context. Regression plus test, vet, race, CLI and MCP probes pass.","body":{"commit":"9c1c87fe3fd2796959872b8b66aba1a4f709a215","path":"spike"}}
+{"kind":"report","text":"Task 2a is ready for review at exact 9c1c87fe3fd2796959872b8b66aba1a4f709a215. Common-dir sharing works from main and linked paths; all requested gates pass; nothing is merged.","body":{"outcome":"ready-for-review"}}
