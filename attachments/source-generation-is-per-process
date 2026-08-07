@@ -1,0 +1,11 @@
+spike/internal/nexus/nexus.go, Hub construction:
+
+  generationBytes := make([]byte, 16)
+  if _, err := rand.Read(generationBytes); err != nil { return nil, err }
+  ...
+  generation:   "generation:" + hex.EncodeToString(generationBytes),
+  presence:     make(map[string]presenceEntry),
+  convs:        make(map[string]*conversation),
+  participants: make(map[string]map[string]bool),
+
+All live state is in-process; the generation is fresh random per start.

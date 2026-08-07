@@ -1,0 +1,5 @@
+spike/cmd/gs/main.go, serveCommand:
+
+  fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n", *listen)
+  httpServer := &http.Server{Addr: *listen, Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second}
+  return httpServer.ListenAndServe()

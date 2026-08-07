@@ -1,0 +1,8 @@
+spike/internal/kernel/kernel.go:
+
+  if err := store.UpdateRef(ctx, ref, commit, head); err != nil {
+      current, headErr := store.Head(ctx, ref)
+      if headErr == nil && current != head { continue }
+
+with maxRetries defaulting to 32, and gitstore.UpdateRef running:
+  git update-ref <ref> <newOID> <oldOID>
