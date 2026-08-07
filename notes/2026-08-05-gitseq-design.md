@@ -690,9 +690,16 @@ closure, six individually typed unmet prerequisites, and reproducibility
 claimed over projection bytes, never builds. The contract carrier is
 [notes/2026-08-07-declared-kinds.md](2026-08-07-declared-kinds.md), adopted
 after three rounds of independent adversarial review; the ratified decision
-and its review chain live in the workroom log. Deliberately left open there:
-the algebra's ratified enumeration (a candidate is stated), the
-`governs`/`cites` basis-edge distinction that a live staleness incident
-demonstrated, and the standing projection-honesty and artifact-world-basis
-remainders. The wave's one-line lesson: genesis anchors the keys, the log
-anchors the meaning, the repo carries both.
+and its review chain live in the workroom log. The note leaves four
+questions open, all four deliberately: the constraint algebra's ratified
+enumeration, where a candidate is stated but not adopted; whether render
+classes belong in kind-definitions or in a separate projector profile;
+whether a room may adopt another room's definitions by reference rather
+than by copying, which would draw the foreign domain into its audit
+closure; and whether changing the rules of interpretation deserves more
+authority than a bare ratifier grant, which the machinery supports either
+way. Open elsewhere, and not settled by this wave: the `governs`/`cites`
+basis-edge distinction that a live staleness incident demonstrated, and
+the standing projection-honesty and artifact-world-basis remainders. The
+wave's one-line lesson: genesis anchors the keys, the log anchors the
+meaning, the repo carries both.
