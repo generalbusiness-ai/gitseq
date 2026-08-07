@@ -16,25 +16,34 @@ targets, by `provenance`, and by `Rests-On:` commit trailers. Always copy
 it whole, from the emitted event rather than from a display that
 abbreviates it.
 
-The fold checks exactly one thing about your citations, and it is worth
-knowing precisely which. A `promise` must find an effective `request`
-among its bases, and a `report` an effective `promise`; that single
-required edge is what makes the commitment chain hold, so a promise
+How much of `rests_on` the fold checks depends on the act, and the rules
+differ enough to be worth stating one at a time.
+
+| Act | What must resolve | Surplus bases |
+|---|---|---|
+| `assert`, `artifact`, `propose`, and other statements | nothing | carried unchecked |
+| `promise` | one basis must be an effective `request` | carried unchecked |
+| `report` | one basis must be an effective `promise` | carried unchecked |
+| `supersede` | the target, and it must be the **first** basis | carried unchecked |
+| `ratify` | the target, and it must be the **only** basis | **refused** |
+
+The required edges are what make the commitment chain hold: a promise
 citing a request that does not exist is ineffective, and a report on
-that promise is ineffective in turn. An unearned approval cannot carry
-force.
+that promise is ineffective in turn, so an unearned approval cannot
+carry force. Role grants lean on the same idea from another direction —
+whether an authority is live depends on the membership basis of the
+grant that conferred it.
 
-Nothing else in `rests_on` is validated. A dangling basis on an `assert`
-or `artifact` is recorded as effective, and so is an *extra* dangling
-basis on a promise or report that already has its required edge — the
-chain is satisfied, and the surplus citation is simply carried. So a
-mistyped identifier is caught only when it is the one link the chain
-depends on, and is silently kept everywhere else.
+Everywhere else a mistyped identifier is simply kept. A dangling basis
+on an assert or artifact records as effective, and so does a surplus
+dangling basis on a promise, report or supersede that already has its
+required edge. `ratify` is the single act strict enough to reject an
+extra citation outright.
 
-That division is deliberate. The chain is machinery the fold owns;
+The division is deliberate. Those edges are machinery the fold owns;
 `rests_on` otherwise asserts that one thing bears on another, which is a
 claim about meaning, and a substrate with no ontology cannot check it.
-The practical rule for an author is unchanged either way: copy
+The practical rule for an author does not vary with the table: copy
 identifiers whole, from the emitted event.
 
 ## `gs`
