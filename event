@@ -1,1 +1,1 @@
-{"kind":"report","text":"Changes requested at 7d15ec89. P2: legacy clientInfo requires name and version, but initializeLegacy validates only name. A live request omitting version was accepted, latched legacy, and enabled metadata-free tools/list. The prior era-switch and legacy-discover defects are fixed; test, vet, race, diff, and clean-head gates pass.","body":{"outcome":"changes-requested"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ed57d24d68dff120747212ea11f91e09e0d7beed"}
