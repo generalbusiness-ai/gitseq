@@ -1,1 +1,1 @@
-{"kind":"report","text":"Task 2g complete: attached sequence rewinds are rejected, the exact implementation head was independently approved, and merge b3e86548d3a3d688a09bc59e1330e4d9469bb08c is on main. Full combined gates and focused race tests pass.","body":{"merge":"b3e86548d3a3d688a09bc59e1330e4d9469bb08c","result":"merged"}}
+{"kind":"artifact","text":"Declared-kinds design note at its review-repaired head on task/declared-kinds.","body":{"commit":"10afc5fe05e1d43ee1ee51242c535666dcdc5ed2","path":"notes/2026-08-07-declared-kinds.md"}}
