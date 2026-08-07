@@ -412,10 +412,6 @@ func attachCommand(ctx context.Context, arguments []string) error {
 	if *genesis == "" {
 		return errors.New("attach requires --genesis")
 	}
-	gitDir, err := app.ResolveGitDir(ctx, *repo)
-	if err != nil {
-		return err
-	}
 	refspec := "+refs/seq/*:refs/seq/*"
 	existing, _ := git(ctx, *repo, "config", "--get-all", "remote."+*remote+".fetch")
 	if !containsLine(existing, refspec) {
@@ -426,12 +422,11 @@ func attachCommand(ctx context.Context, arguments []string) error {
 	if _, err := git(ctx, *repo, "fetch", *remote, refspec); err != nil {
 		return err
 	}
-	store := filepath.Clean(gitDir)
 	formatOutput, err := git(ctx, *repo, "rev-parse", "--show-object-format")
 	if err != nil {
 		return err
 	}
-	workspace, err := app.AttachConfig(*repo, store, *genesis, strings.TrimSpace(formatOutput))
+	workspace, err := app.AttachConfig(ctx, *repo, *genesis, strings.TrimSpace(formatOutput))
 	if err != nil {
 		return err
 	}

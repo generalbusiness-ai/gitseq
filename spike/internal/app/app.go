@@ -50,11 +50,12 @@ type Config struct {
 }
 
 type Workspace struct {
-	Repo    string
-	GitDir  string
-	MetaDir string
-	Store   gitstore.Store
-	Config  Config
+	Repo      string
+	GitDir    string
+	CommonDir string
+	MetaDir   string
+	Store     gitstore.Store
+	Config    Config
 
 	snapshotMu    sync.Mutex
 	snapshotCache *Snapshot
@@ -94,24 +95,31 @@ type Submission struct {
 	Record workroom.Record `json:"record"`
 }
 
-func ResolveGitDir(ctx context.Context, repo string) (string, error) {
+// ResolveGitDirs keeps the selected checkout distinct from repository-wide
+// state. Linked worktrees have their own GitDir, while objects, refs, gitseq
+// configuration, and actor custody belong to CommonDir.
+func ResolveGitDirs(ctx context.Context, repo string) (gitDir, commonDir string, err error) {
 	if repo == "" {
 		repo = "."
 	}
-	cmd := exec.CommandContext(ctx, "git", "-C", repo, "rev-parse", "--absolute-git-dir")
+	cmd := exec.CommandContext(ctx, "git", "-C", repo, "rev-parse", "--path-format=absolute", "--absolute-git-dir", "--git-common-dir")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("resolve git dir: %w: %s", err, strings.TrimSpace(string(output)))
+		return "", "", fmt.Errorf("resolve git dirs: %w: %s", err, strings.TrimSpace(string(output)))
 	}
-	return strings.TrimSpace(string(output)), nil
+	paths := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(paths) != 2 {
+		return "", "", fmt.Errorf("resolve git dirs: expected worktree and common paths, got %q", strings.TrimSpace(string(output)))
+	}
+	return strings.TrimSpace(paths[0]), strings.TrimSpace(paths[1]), nil
 }
 
 func Open(ctx context.Context, repo string) (*Workspace, error) {
-	gitDir, err := ResolveGitDir(ctx, repo)
+	gitDir, commonDir, err := ResolveGitDirs(ctx, repo)
 	if err != nil {
 		return nil, err
 	}
-	metaDir := filepath.Join(gitDir, "gitseq")
+	metaDir := filepath.Join(commonDir, "gitseq")
 	content, err := os.ReadFile(filepath.Join(metaDir, "config.json"))
 	if err != nil {
 		return nil, fmt.Errorf("read gitseq config (run `gs init` first): %w", err)
@@ -123,7 +131,7 @@ func Open(ctx context.Context, repo string) (*Workspace, error) {
 	if config.Version != 0 || config.Genesis == "" || config.ObjectFormat == "" || (!config.ReadOnly && config.SequencerKey == "") {
 		return nil, errors.New("invalid gitseq config")
 	}
-	return &Workspace{Repo: repo, GitDir: gitDir, MetaDir: metaDir, Store: gitstore.Store{Repo: gitDir}, Config: config}, nil
+	return &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir}, Config: config}, nil
 }
 
 func Init(ctx context.Context, repo, operatorName string, ceiling uint64) (*Workspace, workroom.Record, error) {
@@ -133,18 +141,18 @@ func Init(ctx context.Context, repo, operatorName string, ceiling uint64) (*Work
 	if ceiling == 0 {
 		ceiling = 1 << 20
 	}
-	gitDir, err := ResolveGitDir(ctx, repo)
+	gitDir, commonDir, err := ResolveGitDirs(ctx, repo)
 	if err != nil {
 		return nil, workroom.Record{}, err
 	}
-	metaDir := filepath.Join(gitDir, "gitseq")
+	metaDir := filepath.Join(commonDir, "gitseq")
 	if _, err := os.Stat(filepath.Join(metaDir, "config.json")); err == nil {
 		return nil, workroom.Record{}, errors.New("workroom already initialized")
 	}
 	if err := os.MkdirAll(filepath.Join(metaDir, "actors"), 0o700); err != nil {
 		return nil, workroom.Record{}, err
 	}
-	store := gitstore.Store{Repo: gitDir}
+	store := gitstore.Store{Repo: commonDir}
 	format, err := store.ObjectFormat(ctx)
 	if err != nil {
 		return nil, workroom.Record{}, err
@@ -162,7 +170,7 @@ func Init(ctx context.Context, repo, operatorName string, ceiling uint64) (*Work
 	if err != nil {
 		return nil, workroom.Record{}, err
 	}
-	workspace := &Workspace{Repo: repo, GitDir: gitDir, MetaDir: metaDir, Store: store, Config: Config{
+	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: store, Config: Config{
 		Version: 0, Genesis: genesis, ObjectFormat: format, PayloadCeiling: ceiling, IdempotencyNamespace: "workroom/v0",
 		SequencerKey: sequencerKey, Actors: map[string]Actor{operatorName: {Name: operatorName, Fingerprint: fingerprint, KeyFile: actorPath}},
 	}}
@@ -229,12 +237,16 @@ func (w *Workspace) save() error {
 	return os.Rename(temporary, filepath.Join(w.MetaDir, "config.json"))
 }
 
-func AttachConfig(repo, gitDir, genesis, objectFormat string) (*Workspace, error) {
-	metaDir := filepath.Join(gitDir, "gitseq")
+func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Workspace, error) {
+	gitDir, commonDir, err := ResolveGitDirs(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	metaDir := filepath.Join(commonDir, "gitseq")
 	if err := os.MkdirAll(metaDir, 0o700); err != nil {
 		return nil, err
 	}
-	workspace := &Workspace{Repo: repo, GitDir: gitDir, MetaDir: metaDir, Store: gitstore.Store{Repo: gitDir}, Config: Config{Version: 0, Genesis: genesis, ObjectFormat: objectFormat, ReadOnly: true}}
+	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir}, Config: Config{Version: 0, Genesis: genesis, ObjectFormat: objectFormat, ReadOnly: true}}
 	if err := workspace.save(); err != nil {
 		return nil, err
 	}

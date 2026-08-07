@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -52,6 +53,47 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	}
 	if _, err := Open(ctx, repo); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLinkedWorktreeSharesRepositoryWorkroom(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed").CombinedOutput(); err != nil {
+		t.Fatalf("seed ordinary history: %v: %s", err, output)
+	}
+	workspace, seed, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked := filepath.Join(t.TempDir(), "linked checkout")
+	if output, err := exec.Command("git", "-C", repo, "worktree", "add", "-qb", "linked", linked).CombinedOutput(); err != nil {
+		t.Fatalf("add linked worktree: %v: %s", err, output)
+	}
+	fromLinked, err := Open(ctx, linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromLinked.GitDir == workspace.GitDir {
+		t.Fatalf("linked checkout reused main git dir %q", fromLinked.GitDir)
+	}
+	if fromLinked.CommonDir != workspace.CommonDir || fromLinked.MetaDir != workspace.MetaDir || fromLinked.Store.Repo != workspace.Store.Repo {
+		t.Fatalf("linked checkout did not share repository state: main=%+v linked=%+v", workspace, fromLinked)
+	}
+	if _, err := os.Stat(filepath.Join(fromLinked.CommonDir, "gitseq", "config.json")); err != nil {
+		t.Fatalf("common gitseq config: %v", err)
+	}
+	before, err := fromLinked.Verify(ctx)
+	if err != nil || before.Depth != 1 {
+		t.Fatalf("verify linked worktree: verification=%+v err=%v", before, err)
+	}
+	actRecord(t, ctx, fromLinked, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "written from linked checkout",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "linked-write",
+	})
+	after, err := workspace.Snapshot(ctx)
+	if err != nil || after.Depth != 2 {
+		t.Fatalf("main checkout did not observe linked append: snapshot=%+v err=%v", after, err)
 	}
 }
 
@@ -215,7 +257,7 @@ func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
 		t.Fatal(err)
 	}
 	attached := &Workspace{
-		Repo: workspace.Repo, GitDir: workspace.GitDir, Store: workspace.Store,
+		Repo: workspace.Repo, GitDir: workspace.GitDir, CommonDir: workspace.CommonDir, Store: workspace.Store,
 		Config: Config{Version: 0, Genesis: workspace.Config.Genesis, ObjectFormat: workspace.Config.ObjectFormat, ReadOnly: true},
 	}
 	views, err := attached.ActorViews(ctx)
