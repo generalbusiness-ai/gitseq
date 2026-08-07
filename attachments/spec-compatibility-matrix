@@ -1,3 +1,0 @@
-MCP 2026-07-28, Versioning and Compatibility (https://modelcontextprotocol.io/specification/2026-07-28/basic/lifecycle):
-Client Legacy / Server Modern -> "Fails. stdio: the server rejects initialize with a JSON-RPC error... Legacy clients have no fall-forward mechanism."
-"A server that wishes to support both legacy clients and modern clients MAY implement both behaviors."

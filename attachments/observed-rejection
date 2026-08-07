@@ -1,4 +1,0 @@
-Claude Code attaching to gitseq-mcp over stdio:
-gitseq: bin/gitseq-mcp -actor claude -repo ~/play/gitseq -server http://127.0.0.1:7777
-  -> Failed to connect - -32602: MCP error -32602: unsupported protocol version ""
-The empty version is the absent _meta of a legacy initialize request.
