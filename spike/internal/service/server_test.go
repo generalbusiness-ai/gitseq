@@ -113,7 +113,7 @@ func TestConversationIsForgottenWhenItsLastParticipantDeparts(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&live); err != nil {
 		t.Fatal(err)
 	}
-	if _, present := live.Presence["bystander"]; !present {
+	if _, present := live.Presence[nexus.SessionHandle("bystander")]; !present {
 		t.Fatal("unrelated presence was removed with the conversation")
 	}
 }

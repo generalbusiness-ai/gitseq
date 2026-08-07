@@ -25,6 +25,27 @@ const (
 
 var ErrReset = errors.New("nexus cursor is no longer available; take a new snapshot")
 
+// sessionHandleDomain separates handle hashing from every other use of
+// SHA-256 in this package, so a handle can never collide with a digest
+// computed for some other purpose.
+const sessionHandleDomain = "gitseq.nexus.session-handle.v0\x00"
+
+// SessionHandle names a session in public without disclosing it. A session
+// identifier authorizes speech: whoever presents one has the service sign
+// frames with that session's actor key, and can end its lease. It is
+// therefore a bearer credential, and observers must never be handed one.
+//
+// Observers still need to tell sessions apart — to follow a renewal, notice a
+// departure, or count who is here — so presence is published under this
+// stable, one-way handle instead. Knowing a handle grants nothing.
+func SessionHandle(id string) string {
+	if id == "" {
+		return ""
+	}
+	sum := sha256.Sum256(append([]byte(sessionHandleDomain), id...))
+	return "session:" + hex.EncodeToString(sum[:8])
+}
+
 type Cursor struct {
 	Generation string `json:"generation"`
 	Position   uint64 `json:"position"`
@@ -182,16 +203,16 @@ func (h *Hub) announceFor(id, actor, value string, ttl time.Duration) Change {
 	existing, exists := h.presence[id]
 	h.presence[id] = presenceEntry{value: value, actor: actor, expiresAt: time.Now().Add(ttl)}
 	if exists && existing.value == value && existing.actor == actor {
-		return Change{Cursor: Cursor{Generation: h.generation, Position: h.position}, Kind: "renewal", ID: id, Value: value}
+		return Change{Cursor: Cursor{Generation: h.generation, Position: h.position}, Kind: "renewal", ID: SessionHandle(id), Value: value}
 	}
-	return h.append("presence", id, value)
+	return h.append("presence", SessionHandle(id), value)
 }
 
 func (h *Hub) Depart(id string) Change {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.presence, id)
-	change := h.append("departure", id, "")
+	change := h.append("departure", SessionHandle(id), "")
 	h.removeParticipant(id)
 	h.forgetAllIfEmpty()
 	return change
@@ -207,7 +228,7 @@ func (h *Hub) expire(now time.Time) {
 	for id, entry := range h.presence {
 		if !entry.expiresAt.After(now) {
 			delete(h.presence, id)
-			h.append("expiration", id, "")
+			h.append("expiration", SessionHandle(id), "")
 			h.removeParticipant(id)
 		}
 	}
@@ -278,9 +299,11 @@ func (h *Hub) Snapshot() Snapshot {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.expire(time.Now())
+	// Keyed by handle: an observer learns who is here and can follow each
+	// session across renewals without receiving the credential itself.
 	presence := make(map[string]string, len(h.presence))
 	for id, entry := range h.presence {
-		presence[id] = entry.value
+		presence[SessionHandle(id)] = entry.value
 	}
 	conversations := make([]string, 0, len(h.convs))
 	for id := range h.convs {
