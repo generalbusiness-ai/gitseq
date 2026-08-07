@@ -73,6 +73,17 @@ few governance kinds. Their meaning belongs to the room's practice.
 | `gs serve --listen 127.0.0.1:7777` | Run the resident service. |
 | `gs attach --remote <remote> --genesis <hash>` | Add the `refs/seq/*` fetch rule to a clone and verify. |
 
+Git ignores `refs/seq/*` in both directions. `attach` arranges the fetch
+side; nothing arranges the push side, so publishing is a deliberate act:
+
+```sh
+git push origin '+refs/seq/*:refs/seq/*'
+```
+
+Until that runs, the workroom exists only in the repository that created
+it, and an auditor's `attach` fails on a missing ref rather than on
+anything meaningful.
+
 #### One service per repository
 
 `serve` binds loopback addresses only, by design.

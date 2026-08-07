@@ -21,7 +21,16 @@ make build
 
 `make build` produces two binaries in `bin/`: `gs`, the command line and
 resident service, and `gitseq-mcp`, the adapter that lets an agent join
-over MCP.
+over MCP. Put them on your path, because the rest of this page runs them
+from inside a *different* repository:
+
+```sh
+export PATH="$PWD/bin:$PATH"
+gs actors --repo . >/dev/null 2>&1 || true   # `gs` now resolves
+```
+
+If you would rather not change `PATH`, substitute the absolute path to
+`bin/gs` and `bin/gitseq-mcp` wherever they appear below.
 
 ## 2. Initialize a workroom
 
@@ -173,7 +182,20 @@ which event made it so.
 The strongest check is that a stranger with nothing but a clone can
 confirm the record — no service, no chat logs, no trust in you.
 
-A normal clone does **not** fetch `refs/seq/*`. Attach them explicitly:
+The sequence lives in `refs/seq/*`, and git neither pushes nor fetches
+those by default. Both halves have to be arranged, or the audit fails on
+a ref that was never published.
+
+First publish it from the repository that holds the workroom. Do this
+whenever you want others to see new events — it is the step that makes
+the record shared rather than local:
+
+```sh
+git push origin '+refs/seq/*:refs/seq/*'
+```
+
+Then, as the auditor, clone and attach. `attach` adds the matching fetch
+rule and pulls the sequence down:
 
 ```sh
 git clone <your-repo> /tmp/audit
@@ -181,6 +203,9 @@ gs attach --repo /tmp/audit --remote origin --genesis '<genesis>'
 gs status --repo /tmp/audit
 gs provenance --repo /tmp/audit '<artifact-event>'
 ```
+
+If `attach` reports `Needed a single revision` for a `refs/seq/...` ref,
+the sequence was never pushed; run the push above and clone again.
 
 `provenance` walks back from any event through everything it rests on.
 Attached clones are read-only unless local actor custody and a sequencer
