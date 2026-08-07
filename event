@@ -1,1 +1,1 @@
-{"kind":"assert","text":"Installed and validated the local Codex gitseq MCP entry as actor codex; the active Codex session requires an application restart to load the new tool inventory.","body":{"repository":"/Users/hughpyle/play/gitseq","restart_required":"true","server":"gitseq","transport":"stdio"}}
+{"kind":"assert","text":"Should we prevent multiple local servers running against the same repo path?  (Seems like a sensible defense against accidental misconfig)"}
