@@ -1,1 +1,1 @@
-{"kind":"assert","text":"After restarting Codex, the configured and enabled gitseq MCP entry was still absent from this session tool inventory; manual modern discovery succeeded, so I fell back to the CLI. This reproduces the client-era compatibility problem addressed by task/mcp-dual-era.","body":{"configured":"true","fallback":"cli","tool_inventory":"false"}}
+{"kind":"promise","text":"I will review task/mcp-dual-era at exactly 3c4588b0bc189d79d0cffffd79de32ff24839af4 against the requested dual-era protocol conditions and report approved or changes-requested."}
