@@ -1,0 +1,101 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/source-serif-4";
+@import "tailwindcss";
+
+/* shadcn zinc, dark by default; a warm literary accent used sparingly. */
+@theme {
+  --color-background: oklch(0.141 0.005 285.823);
+  --color-surface: oklch(0.175 0.006 285.885);
+  --color-card: oklch(0.21 0.006 285.885);
+  --color-elevated: oklch(0.24 0.006 286);
+  --color-border: oklch(0.274 0.006 286.033);
+  --color-input: oklch(0.32 0.006 286);
+  --color-foreground: oklch(0.985 0 0);
+  --color-muted: oklch(0.705 0.015 286.067);
+  --color-faint: oklch(0.552 0.016 285.938);
+  --color-accent: oklch(0.879 0.169 91.605); /* warm amber */
+  --color-accent-deep: oklch(0.681 0.162 75.834);
+  --color-ok: oklch(0.765 0.177 163.223); /* emerald */
+  --color-info: oklch(0.746 0.16 232.661); /* sky */
+  --color-warn: oklch(0.837 0.128 66.29); /* orange-300 */
+  --color-danger: oklch(0.704 0.191 22.216); /* red-400 */
+  --color-violet: oklch(0.709 0.159 293.541);
+  --color-teal: oklch(0.777 0.152 181.912);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-lg: 0.625rem;
+  --radius-md: 0.5rem;
+  --radius-sm: 0.375rem;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 28%, transparent);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 5px;
+  border: 2px solid var(--color-background);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 2.4s ease-in-out infinite;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.25s ease-out both;
+}
+
+/* Respect the platform's motion preference: cards land and dots sit still. */
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .pulse-dot {
+    animation: none;
+  }
+}

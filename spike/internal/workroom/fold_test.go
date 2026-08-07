@@ -264,10 +264,28 @@ func TestEmptyCollectionsRenderAsArrays(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range [][]byte{[]byte(`"decisions": []`), []byte(`"statements": []`), []byte(`"commitments": []`), []byte(`"artifacts": []`)} {
+	for _, field := range [][]byte{[]byte(`"decisions": []`), []byte(`"acts": []`), []byte(`"statements": []`), []byte(`"commitments": []`), []byte(`"artifacts": []`)} {
 		if !bytes.Contains(encoded, field) {
 			t.Fatalf("projection omitted stable empty array %s: %s", field, encoded)
 		}
+	}
+}
+
+func TestProjectionIncludesEverySemanticReplyAct(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindPropose, Text: "proposal"}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaSupersede, Supersede{Target: "e1", Text: "reason"}, "e1"),
+	})
+	if len(projection.Acts) != 2 {
+		t.Fatalf("acts = %#v", projection.Acts)
+	}
+	if projection.Acts[0].Type != "ratify" || projection.Acts[0].Target != "e1" || projection.Acts[0].Verdict != Effective {
+		t.Fatalf("ratify projection = %#v", projection.Acts[0])
+	}
+	if projection.Acts[1].Type != "supersede" || projection.Acts[1].Text != "reason" {
+		t.Fatalf("supersede projection = %#v", projection.Acts[1])
 	}
 }
 

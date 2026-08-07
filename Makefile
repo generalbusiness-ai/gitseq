@@ -1,4 +1,4 @@
-.PHONY: test race vet build
+.PHONY: test race vet build ui
 
 GO ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
 
@@ -15,3 +15,6 @@ build:
 	mkdir -p bin
 	cd spike && $(GO) build -o ../bin/gs ./cmd/gs
 	cd spike && $(GO) build -o ../bin/gitseq-mcp ./cmd/gitseq-mcp
+
+ui:
+	cd ui && npm run build

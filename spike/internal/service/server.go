@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"gitseq/spike/internal/app"
@@ -59,7 +61,11 @@ func New(workspace *app.Workspace) (*Server, error) {
 func (s *Server) Handler() http.Handler { return s.mux }
 
 func (s *Server) routes() {
-	s.mux.HandleFunc("GET /{$}", s.handleDemo)
+	s.mux.Handle("GET /", uiHandler())
+	s.mux.HandleFunc("GET /legacy", s.handleDemo)
+	s.mux.HandleFunc("GET /v0/graph", s.handleGraph)
+	s.mux.HandleFunc("GET /v0/actors", s.handleActors)
+	s.mux.HandleFunc("POST /v0/act", s.handleAct)
 	s.mux.HandleFunc("GET /v0/status", s.handleStatus)
 	s.mux.HandleFunc("POST /v0/wait", s.handleWait)
 	s.mux.HandleFunc("POST /v0/submit", s.handleSubmit)
@@ -204,6 +210,9 @@ type sayRequest struct {
 	About        string `json:"about"`
 	Conversation string `json:"conversation,omitempty"`
 	Text         string `json:"text"`
+	// Re threads a frame under an earlier one, as "<conversation>:<sequence>".
+	// It remains a payload annotation; the nexus sequences replies normally.
+	Re string `json:"re,omitempty"`
 }
 
 func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
@@ -226,7 +235,11 @@ func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
 		write(writer, nil, err)
 		return
 	}
-	payload, _ := json.Marshal(map[string]string{"about": input.About, "text": input.Text})
+	body := map[string]string{"about": input.About, "text": input.Text}
+	if input.Re != "" {
+		body["re"] = input.Re
+	}
+	payload, _ := json.Marshal(body)
 	frame, err := s.hub.PublishForSession(input.Session, input.About, input.Conversation, payload, private)
 	write(writer, frame, err)
 }
@@ -246,7 +259,30 @@ func (s *Server) handleDemo(writer http.ResponseWriter, _ *http.Request) {
 	_, _ = writer.Write([]byte(demoHTML))
 }
 
+// guardMutation is the browser-facing boundary for state-changing calls:
+// JSON content type only (text/plain is CORS-safelisted and needs no
+// preflight), and when a browser identifies the request's provenance the
+// origin must be this host and the fetch site same-origin. Non-browser
+// clients send neither provenance header and pass.
+func guardMutation(request *http.Request) error {
+	if contentType := request.Header.Get("Content-Type"); request.Method != http.MethodDelete && !strings.HasPrefix(contentType, "application/json") {
+		return errors.New("mutations require application/json")
+	}
+	if origin := request.Header.Get("Origin"); origin != "" {
+		if parsed, err := url.Parse(origin); err != nil || parsed.Host != request.Host {
+			return errors.New("cross-origin mutation refused")
+		}
+	}
+	if site := request.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		return errors.New("cross-site mutation refused")
+	}
+	return nil
+}
+
 func decode(request *http.Request, target any) error {
+	if err := guardMutation(request); err != nil {
+		return err
+	}
 	decoder := json.NewDecoder(http.MaxBytesReader(nil, request.Body, 2<<20))
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(target)
