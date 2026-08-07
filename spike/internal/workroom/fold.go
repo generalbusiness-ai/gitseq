@@ -109,20 +109,36 @@ type roleGrant struct {
 	membershipBasis string
 }
 
+type actorRole struct {
+	actor string
+	role  string
+}
+
+type actorStatement struct {
+	actor     string
+	statement string
+}
+
 type foldState struct {
-	records       []parsedRecord
-	byID          map[string]*parsedRecord
-	decisions     map[string]Decision
-	effectiveSup  map[string]string
-	roleGrants    []roleGrant
-	ratifications map[string][]string
+	records          []parsedRecord
+	byID             map[string]*parsedRecord
+	decisions        map[string]Decision
+	effectiveSup     map[string]string
+	retirementCauses map[string]int
+	roleGrants       []roleGrant
+	roleGrantsByRole map[actorRole][]roleGrant
+	membershipGrants map[actorStatement][]roleGrant
+	ratifications    map[string][]string
 }
 
 func Fold(records []Record) Projection {
 	state := &foldState{
 		byID: make(map[string]*parsedRecord), decisions: make(map[string]Decision),
-		effectiveSup:  make(map[string]string),
-		ratifications: make(map[string][]string),
+		effectiveSup:     make(map[string]string),
+		retirementCauses: make(map[string]int),
+		roleGrantsByRole: make(map[actorRole][]roleGrant),
+		membershipGrants: make(map[actorStatement][]roleGrant),
+		ratifications:    make(map[string][]string),
 	}
 	for index, record := range records {
 		state.append(index, record)
@@ -176,6 +192,7 @@ func (f *foldState) append(index int, record Record) {
 		}
 	case *Supersede:
 		f.effectiveSup[record.ID] = value.Target
+		f.changeRetirement(value.Target, 1)
 	}
 }
 
@@ -207,7 +224,7 @@ func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "operator roster seed"}
 	}
-	if state.Kind == KindRequest && !f.hasActor(state.Body["to"], record.index) {
+	if state.Kind == KindRequest && !f.hasActor(state.Body["to"]) {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "requested performer is not in the live roster"}
 	}
 	if state.Kind == KindPromise {
@@ -264,7 +281,7 @@ func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "requester declared satisfaction"}
 	}
 	if statement.Kind == KindAssert || statement.Kind == KindPropose || isGovernance(statement.Kind) {
-		if !f.hasRole(record.record.Actor, "ratifier", record.index) {
+		if !f.hasRole(record.record.Actor, "ratifier") {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor lacks ratifier role"}
 		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized ratification"}
@@ -280,7 +297,7 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 	if len(record.record.RestsOn) == 0 || record.record.RestsOn[0] != supersede.Target {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "supersede must rest first on its target"}
 	}
-	if target.record.Actor == record.record.Actor || f.hasRole(record.record.Actor, "ratifier", record.index) {
+	if target.record.Actor == record.record.Actor || f.hasRole(record.record.Actor, "ratifier") {
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized supersession"}
 	}
 	return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor may not supersede target"}
@@ -321,57 +338,64 @@ func (f *foldState) addRoleGrant(actor, name, kind, role, statement, ratificatio
 		grant.membershipBasis = restsOn[0]
 	}
 	f.roleGrants = append(f.roleGrants, grant)
+	f.indexRoleGrant(grant, grant.role)
+	if grant.membership && grant.role != "participant" {
+		f.indexRoleGrant(grant, "participant")
+	}
+	if grant.role == "operator" {
+		f.indexRoleGrant(grant, "ratifier")
+	}
+	if grant.membership {
+		key := actorStatement{actor: grant.actor, statement: grant.statement}
+		f.membershipGrants[key] = append(f.membershipGrants[key], grant)
+	}
 }
 
-func (f *foldState) roleGrantActive(grant roleGrant, before int) bool {
-	// Known cold-fold cost: authority checks rebuild the live supersession set
-	// for each grant, so authority-heavy histories are O(n²)-shaped (or worse
-	// when grants grow with history). The resident head cache hides this only
-	// for unchanged projections. A production fold should memoize prefix
-	// retirement sets or maintain equivalent position-aware state incrementally.
-	if !f.roleGrantDirectActive(grant, before) {
+func (f *foldState) indexRoleGrant(grant roleGrant, role string) {
+	key := actorRole{actor: grant.actor, role: role}
+	f.roleGrantsByRole[key] = append(f.roleGrantsByRole[key], grant)
+}
+
+func (f *foldState) roleGrantActive(grant roleGrant) bool {
+	if !f.roleGrantDirectActive(grant) {
 		return false
 	}
 	if grant.membership {
 		return true
 	}
-	return grant.membershipBasis != "" && f.membershipGrantActive(grant.actor, grant.membershipBasis, before)
+	return grant.membershipBasis != "" && f.membershipGrantActive(grant.actor, grant.membershipBasis)
 }
 
-func (f *foldState) roleGrantDirectActive(grant roleGrant, before int) bool {
-	retired := f.retiredBefore(before)
-	if retired[grant.statement] || f.decisions[grant.statement].Verdict != Effective {
+func (f *foldState) roleGrantDirectActive(grant roleGrant) bool {
+	if f.retirementCauses[grant.statement] != 0 || f.decisions[grant.statement].Verdict != Effective {
 		return false
 	}
 	if grant.ratification == "" {
 		return true
 	}
-	return !retired[grant.ratification] && f.decisions[grant.ratification].Verdict == Effective
+	return f.retirementCauses[grant.ratification] == 0 && f.decisions[grant.ratification].Verdict == Effective
 }
 
-func (f *foldState) membershipGrantActive(actor, statement string, before int) bool {
-	for _, grant := range f.roleGrants {
-		if grant.actor == actor && grant.statement == statement && grant.membership && f.roleGrantDirectActive(grant, before) {
+func (f *foldState) membershipGrantActive(actor, statement string) bool {
+	for _, grant := range f.membershipGrants[actorStatement{actor: actor, statement: statement}] {
+		if f.roleGrantDirectActive(grant) {
 			return true
 		}
 	}
 	return false
 }
 
-func (f *foldState) hasRole(actor, role string, before int) bool {
-	for _, grant := range f.roleGrants {
-		if grant.actor != actor || !f.roleGrantActive(grant, before) {
-			continue
-		}
-		if grant.role == role || (grant.membership && role == "participant") || (grant.role == "operator" && role == "ratifier") {
+func (f *foldState) hasRole(actor, role string) bool {
+	for _, grant := range f.roleGrantsByRole[actorRole{actor: actor, role: role}] {
+		if f.roleGrantActive(grant) {
 			return true
 		}
 	}
 	return false
 }
 
-func (f *foldState) hasActor(actor string, before int) bool {
-	return f.hasRole(actor, "participant", before)
+func (f *foldState) hasActor(actor string) bool {
+	return f.hasRole(actor, "participant")
 }
 
 func (f *foldState) basesOfKind(refs []string, kind Kind) []*parsedRecord {
@@ -401,27 +425,44 @@ func (f *foldState) originatingRequest(report *parsedRecord) *parsedRecord {
 	return requests[0]
 }
 
-// retired computes live supersessions from newest to oldest. Because a
-// supersession can only target an earlier event, this is deterministic and a
-// supersession of a supersession naturally resurrects the original target.
-func (f *foldState) retiredBefore(before int) map[string]bool {
-	retired := make(map[string]bool)
-	if before > len(f.records) {
-		before = len(f.records)
+// changeRetirement maintains the live supersession projection as each
+// effective supersession lands. A target changes state only when its count of
+// live superseders crosses zero. If the target is itself a supersession, that
+// transition removes or restores its effect and continues down the chain.
+func (f *foldState) changeRetirement(target string, delta int) {
+	for target != "" {
+		before := f.retirementCauses[target]
+		after := before + delta
+		if after <= 0 {
+			after = 0
+			delete(f.retirementCauses, target)
+		} else {
+			f.retirementCauses[target] = after
+		}
+		wasRetired, isRetired := before != 0, after != 0
+		if wasRetired == isRetired {
+			return
+		}
+		next, supersession := f.effectiveSup[target]
+		if !supersession {
+			return
+		}
+		if isRetired {
+			delta = -1
+		} else {
+			delta = 1
+		}
+		target = next
 	}
-	for index := before - 1; index >= 0; index-- {
-		record := f.records[index]
-		if retired[record.record.ID] || record.decision.Verdict != Effective {
-			continue
-		}
-		if target, ok := f.effectiveSup[record.record.ID]; ok {
-			retired[target] = true
-		}
+}
+
+func (f *foldState) retired() map[string]bool {
+	retired := make(map[string]bool, len(f.retirementCauses))
+	for event := range f.retirementCauses {
+		retired[event] = true
 	}
 	return retired
 }
-
-func (f *foldState) retired() map[string]bool { return f.retiredBefore(len(f.records)) }
 
 func (f *foldState) stale(retired map[string]bool) map[string]bool {
 	stale := make(map[string]bool)
@@ -487,7 +528,7 @@ func (f *foldState) project() Projection {
 		}
 	}
 	for _, grant := range f.roleGrants {
-		if !f.roleGrantActive(grant, len(f.records)) {
+		if !f.roleGrantActive(grant) {
 			continue
 		}
 		actor := projection.Actors[grant.actor]
