@@ -1,1 +1,1 @@
-{"kind":"request","text":"Task 2g: make attached sequence fetches reject remote rewinds.","body":{"conditions":"Remove or guard the forced refs/seq fetch; after an auditor has observed a later head, a rewound remote must fail without changing the local ref; initial attach and forward fetch still work; handle existing forced fetch config safely; add black-box tests and exact-head review.","to":"5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:239e4e66a130cb9eb5ee502b1fe9c0eaa9d71a44"}
