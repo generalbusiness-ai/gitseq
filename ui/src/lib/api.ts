@@ -102,6 +102,16 @@ export interface GraphCommit {
   rests_on?: string[];
 }
 
+// Ephemeral repository state from /v0/worktrees. It is deliberately separate
+// from Status: none of these fields belong to the durable workroom projection.
+export interface WorktreeView {
+  checkout: string;
+  branch?: string;
+  head?: string;
+  state: "clean" | "dirty" | "unavailable";
+  current?: boolean;
+}
+
 export interface Actor {
   name: string;
   fingerprint: string;
@@ -153,6 +163,10 @@ export const api = {
           rests_on: commit.rests_on ?? undefined,
         })),
       })),
+  worktrees: () =>
+    fetch("/v0/worktrees", { cache: "no-store" })
+      .then((r) => json<{ worktrees: WorktreeView[] }>(r))
+      .then((local) => local.worktrees ?? []),
   actors: () => fetch("/v0/actors").then((r) => json<Actor[]>(r)),
   wait: (cursor: Cursor, timeoutMS = 25000) =>
     fetch("/v0/wait", {

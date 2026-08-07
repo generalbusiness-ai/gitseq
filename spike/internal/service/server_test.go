@@ -49,6 +49,25 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	if status.Durable.Depth != 1 || len(status.Live.Presence) != 1 || status.Cursor.Frontier[0].Depth != 1 {
 		t.Fatalf("unexpected status: %+v", status)
 	}
+	response, err = http.Get(httpServer.URL + "/v0/worktrees")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var local worktreesResponse
+	if err := json.NewDecoder(response.Body).Decode(&local); err != nil {
+		t.Fatal(err)
+	}
+	if len(local.Worktrees) != 1 || !local.Worktrees[0].Current || local.Worktrees[0].Checkout != "repo" {
+		t.Fatalf("unexpected local worktree projection: %+v", local)
+	}
+	encoded, err := json.Marshal(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encoded, []byte(repo)) {
+		t.Fatalf("local projection exposed absolute repository path: %s", encoded)
+	}
 }
 
 func TestConversationIsForgottenWhenItsLastParticipantDeparts(t *testing.T) {

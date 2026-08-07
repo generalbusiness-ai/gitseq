@@ -61,6 +61,18 @@ func (s *Server) handleGraph(writer http.ResponseWriter, request *http.Request) 
 	write(writer, graphResponse{Commits: commits}, err)
 }
 
+type worktreesResponse struct {
+	Worktrees []app.WorktreeView `json:"worktrees"`
+}
+
+func (s *Server) handleWorktrees(writer http.ResponseWriter, request *http.Request) {
+	worktrees, err := s.workspace.LocalWorktrees(request.Context())
+	if worktrees == nil {
+		worktrees = []app.WorktreeView{}
+	}
+	write(writer, worktreesResponse{Worktrees: worktrees}, err)
+}
+
 // actRequest is a session-bound durable act: the same custody model as
 // session-bound speech, extended to the three workroom verbs. The service
 // signs with the custodial key of the actor the session announced as.

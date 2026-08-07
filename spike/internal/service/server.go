@@ -64,6 +64,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /", uiHandler())
 	s.mux.HandleFunc("GET /legacy", s.handleDemo)
 	s.mux.HandleFunc("GET /v0/graph", s.handleGraph)
+	s.mux.HandleFunc("GET /v0/worktrees", s.handleWorktrees)
 	s.mux.HandleFunc("GET /v0/actors", s.handleActors)
 	s.mux.HandleFunc("POST /v0/act", s.handleAct)
 	s.mux.HandleFunc("GET /v0/status", s.handleStatus)

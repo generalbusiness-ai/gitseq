@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gitseq/spike/internal/intent"
@@ -102,6 +103,63 @@ func TestLinkedWorktreeSharesRepositoryWorkroom(t *testing.T) {
 	final, err := fromLinked.Snapshot(ctx)
 	if err != nil || final.Depth != 3 {
 		t.Fatalf("resident cache did not recover from external advance: snapshot=%+v err=%v", final, err)
+	}
+}
+
+func TestLocalWorktreesProjectsLinkedCheckoutStateWithoutPaths(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed").CombinedOutput(); err != nil {
+		t.Fatalf("seed ordinary history: %v: %s", err, output)
+	}
+	workspace, _, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainBranchOutput, err := exec.Command("git", "-C", repo, "branch", "--show-current").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainBranch := strings.TrimSpace(string(mainBranchOutput))
+	linked := filepath.Join(t.TempDir(), "linked checkout")
+	if output, err := exec.Command("git", "-C", repo, "worktree", "add", "-qb", "task/local-view", linked).CombinedOutput(); err != nil {
+		t.Fatalf("add linked worktree: %v: %s", err, output)
+	}
+	if err := os.WriteFile(filepath.Join(linked, "unfinished.txt"), []byte("local only\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	views, err := workspace.LocalWorktrees(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(views) != 2 {
+		t.Fatalf("worktrees = %#v", views)
+	}
+	byBranch := make(map[string]WorktreeView, len(views))
+	for _, view := range views {
+		byBranch[view.Branch] = view
+		if strings.Contains(view.Checkout, string(filepath.Separator)) {
+			t.Fatalf("checkout exposed a path: %#v", view)
+		}
+	}
+	if main := byBranch[mainBranch]; !main.Current || main.State != "clean" || main.Head == "" {
+		t.Fatalf("main checkout = %#v", main)
+	}
+	if linkedView := byBranch["task/local-view"]; linkedView.Current || linkedView.State != "dirty" || linkedView.Checkout != "linked checkout" || linkedView.Head == "" {
+		t.Fatalf("linked checkout = %#v", linkedView)
+	}
+
+	fromLinked, err := Open(ctx, linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkedViews, err := fromLinked.LocalWorktrees(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(linkedViews) != 2 || linkedViews[0].Branch != "task/local-view" || !linkedViews[0].Current {
+		t.Fatalf("selected linked checkout not projected first: %#v", linkedViews)
 	}
 }
 

@@ -70,6 +70,17 @@ type Snapshot struct {
 	Projection workroom.Projection `json:"projection"`
 }
 
+// WorktreeView is local repository state, never part of the durable workroom
+// projection. Checkout is a display label rather than an absolute path so the
+// service does not disclose host layout to browser clients.
+type WorktreeView struct {
+	Checkout string `json:"checkout"`
+	Branch   string `json:"branch,omitempty"`
+	Head     string `json:"head,omitempty"`
+	State    string `json:"state"` // clean | dirty | unavailable
+	Current  bool   `json:"current,omitempty"`
+}
+
 type Verb string
 
 const (
@@ -114,6 +125,88 @@ func ResolveGitDirs(ctx context.Context, repo string) (gitDir, commonDir string,
 		return "", "", fmt.Errorf("resolve git dirs: expected worktree and common paths, got %q", strings.TrimSpace(string(output)))
 	}
 	return strings.TrimSpace(paths[0]), strings.TrimSpace(paths[1]), nil
+}
+
+// LocalWorktrees projects every linked checkout of this repository without
+// writing anything to git or the workroom. Git's porcelain -z format keeps
+// spaces and other path characters unambiguous; only basenames leave this
+// boundary.
+func (w *Workspace) LocalWorktrees(ctx context.Context) ([]WorktreeView, error) {
+	output, err := exec.CommandContext(ctx, "git", "-C", w.Repo, "worktree", "list", "--porcelain", "-z").Output()
+	if err != nil {
+		return nil, fmt.Errorf("list worktrees: %w", err)
+	}
+	type entry struct {
+		path   string
+		head   string
+		branch string
+	}
+	var entries []entry
+	var current entry
+	flush := func() {
+		if current.path != "" {
+			entries = append(entries, current)
+		}
+		current = entry{}
+	}
+	for _, field := range strings.Split(string(output), "\x00") {
+		if field == "" {
+			flush()
+			continue
+		}
+		key, value, _ := strings.Cut(field, " ")
+		switch key {
+		case "worktree":
+			current.path = value
+		case "HEAD":
+			current.head = value
+		case "branch":
+			current.branch = strings.TrimPrefix(value, "refs/heads/")
+		case "detached":
+			current.branch = "detached"
+		}
+	}
+	flush()
+
+	canonicalPath := func(path string) string {
+		absolute, absErr := filepath.Abs(path)
+		if absErr != nil {
+			return filepath.Clean(path)
+		}
+		if resolved, resolveErr := filepath.EvalSymlinks(absolute); resolveErr == nil {
+			absolute = resolved
+		}
+		return filepath.Clean(absolute)
+	}
+	selected := canonicalPath(w.Repo)
+	views := make([]WorktreeView, 0, len(entries))
+	for _, item := range entries {
+		view := WorktreeView{
+			Checkout: filepath.Base(filepath.Clean(item.path)),
+			Branch:   item.branch,
+			Head:     item.head,
+			State:    "unavailable",
+			Current:  canonicalPath(item.path) == selected,
+		}
+		status, statusErr := exec.CommandContext(ctx, "git", "-C", item.path, "status", "--porcelain=v1", "--untracked-files=normal").Output()
+		if statusErr == nil {
+			view.State = "clean"
+			if len(status) > 0 {
+				view.State = "dirty"
+			}
+		}
+		views = append(views, view)
+	}
+	sort.SliceStable(views, func(i, j int) bool {
+		if views[i].Current != views[j].Current {
+			return views[i].Current
+		}
+		if views[i].Branch != views[j].Branch {
+			return views[i].Branch < views[j].Branch
+		}
+		return views[i].Checkout < views[j].Checkout
+	})
+	return views, nil
 }
 
 func Open(ctx context.Context, repo string) (*Workspace, error) {

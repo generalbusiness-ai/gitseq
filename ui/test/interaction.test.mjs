@@ -6,6 +6,7 @@ import { RetryKeys, parsePresenceLabel, threadTargetKey } from "../src/lib/inter
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { belongsInRoom, statusLabel } from "../src/lib/util.ts";
+import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
   let next = 0;
@@ -90,6 +91,92 @@ test("the room hides work records and translates workflow status", () => {
   assert.equal(statusLabel("promised"), "in progress");
   assert.equal(statusLabel("reported"), "ready");
   assert.equal(statusLabel("satisfied"), "done");
+});
+
+test("work groups distinguish available, in-progress, and review commitments", () => {
+  const commitment = (request, status) => ({ request, requester: "human", performer: "agent", status });
+  const groups = groupOpenWork([
+    commitment("available", "requested"),
+    commitment("building", "promised"),
+    commitment("review", "reported"),
+    commitment("attention", "stale"),
+  ]);
+  assert.deepEqual(groups.available.map((item) => item.request), ["available"]);
+  assert.deepEqual(groups.inProgress.map((item) => item.request), ["building"]);
+  assert.deepEqual(groups.review.map((item) => item.request), ["review"]);
+});
+
+test("local worktrees join current promise, docs report, and exact commit-trailer shapes", () => {
+  const commitment = { request: "request", requester: "human", performer: "agent", promise: "promise", report: "report", status: "reported" };
+  const projection = {
+    decisions: [],
+    acts: [],
+    statements: [
+      { event: "request", actor: "human", kind: "request", text: "implement" },
+      { event: "promise", actor: "agent", kind: "promise", text: "working", body: { branch: "task/current" } },
+      { event: "report", actor: "agent", kind: "report", text: "ready", body: { head: "review-head" } },
+    ],
+    commitments: [commitment],
+    artifacts: [{ event: "artifact", path: ".", commit: "artifact-head", stale: false }],
+    actors: {},
+    provenance: { request: [], promise: ["request"], report: ["promise"], artifact: ["report"] },
+  };
+  const commits = [{ hash: "trailer-head", parents: null, subject: "implementation", author: "agent", time: 1, rests_on: ["request"] }];
+  const worktrees = [
+    { checkout: "current", branch: "task/current", head: "advanced-head", state: "dirty", current: true },
+    { checkout: "docs", branch: "task/docs", head: "review-head", state: "clean" },
+    { checkout: "bootstrap", branch: "task/bootstrap", head: "artifact-head", state: "clean" },
+    { checkout: "trailer", branch: "task/trailer", head: "trailer-head", state: "clean" },
+    { checkout: "unrelated", branch: "task/else", head: "other", state: "clean" },
+  ];
+  const associations = worktreesForCommitment(commitment, projection, commits, worktrees);
+  assert.deepEqual(
+    associations.map((association) => association.worktree.checkout),
+    ["current", "docs", "trailer"],
+  );
+  assert.equal(associations[0].headMatches, false);
+  assert.equal(associations.some((association) => association.worktree.checkout === "unrelated"), false);
+});
+
+test("artifact provenance joins bootstrap-style reports without explicit head fields", () => {
+  const commitment = { request: "bootstrap-request", requester: "human", performer: "agent", promise: "bootstrap-promise", report: "bootstrap-report", status: "reported" };
+  const projection = {
+    decisions: [], acts: [], actors: {}, commitments: [commitment],
+    statements: [
+      { event: "bootstrap-request", actor: "human", kind: "request", text: "bootstrap" },
+      { event: "bootstrap-promise", actor: "agent", kind: "promise", text: "working" },
+      { event: "bootstrap-report", actor: "agent", kind: "report", text: "ready" },
+    ],
+    artifacts: [{ event: "bootstrap-artifact", path: ".", commit: "bootstrap-head", stale: false }],
+    provenance: {
+      "bootstrap-request": [],
+      "bootstrap-promise": ["bootstrap-request"],
+      "bootstrap-report": ["bootstrap-promise"],
+      "bootstrap-artifact": ["bootstrap-report"],
+    },
+  };
+  const [association] = worktreesForCommitment(commitment, projection, [], [
+    { checkout: "bootstrap", branch: "task/bootstrap", head: "bootstrap-head", state: "clean" },
+  ]);
+  assert.equal(association.worktree.checkout, "bootstrap");
+  assert.equal(association.headMatches, true);
+});
+
+test("a single exact review head marks an associated branch that moved", () => {
+  const commitment = { request: "request", requester: "human", performer: "agent", promise: "promise", report: "report", status: "reported" };
+  const projection = {
+    decisions: [], acts: [], artifacts: [], actors: {}, commitments: [commitment], provenance: {},
+    statements: [
+      { event: "request", actor: "human", kind: "request", text: "implement" },
+      { event: "promise", actor: "agent", kind: "promise", text: "working", body: { branch: "task/review" } },
+      { event: "report", actor: "agent", kind: "report", text: "ready", body: { head: "approved-head" } },
+    ],
+  };
+  const [association] = worktreesForCommitment(commitment, projection, [], [
+    { checkout: "review", branch: "task/review", head: "new-head", state: "clean" },
+  ]);
+  assert.equal(association.expectedHead, "approved-head");
+  assert.equal(association.headMatches, false);
 });
 
 test("the everyday surface does not expose record taxonomy or authority roles", () => {
