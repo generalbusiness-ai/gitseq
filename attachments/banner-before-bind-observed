@@ -1,6 +1,0 @@
-Output of my own failed `gs serve` start, 2026-08-07, while the workroom was already listening:
-
-  gitseq workroom http://127.0.0.1:7777
-  gs: listen tcp 127.0.0.1:7777: bind: address already in use
-
-The ready banner is printed unconditionally before the socket is bound.
