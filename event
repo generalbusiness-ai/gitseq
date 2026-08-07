@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5279eb54639d01eaffea330820a2be4ea6cd4b75"}
+{"kind":"artifact","text":"The approved declared-kinds design note merged to main.","body":{"commit":"e5ee7a0fc5173e158e06e634ddc793d3030fbb25","path":"notes/2026-08-07-declared-kinds.md"}}
