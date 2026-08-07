@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2f03c16db3c007ee3742ada67e23ffc792e9260","text":"Replaced by the repaired bootstrap-cycle report at exact head e888007."}
+{"kind":"artifact","text":"Bootstrap task-cycle discipline and measured outcomes, review-repaired","body":{"commit":"e88800781977d1eee693291072e10ba26bfacde8","path":"AGENTS.md,notes/2026-08-07-bootstrap-task-cycle.md"}}
