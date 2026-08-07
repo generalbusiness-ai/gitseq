@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/fxamacker/cbor/v2"
 
@@ -49,6 +50,41 @@ type Options struct {
 	Failpoint  func(string)
 	MaxRetries int
 	PreAppend  func(context.Context, Admission) error
+}
+
+// Submitter is the resident sequencing path. It retains only a log state that
+// scanHead has fully verified, and reuses it only while the target ref still
+// names that exact head. A cold submit or an externally advanced ref therefore
+// pays for a full scan; successive local appends update the verified dedup state
+// after their compare-and-swap succeeds.
+//
+// Submit remains the stateless failover path. Keeping the cache here, rather
+// than in an HTTP or application adapter, makes the trust boundary identical
+// for every resident caller.
+type Submitter struct {
+	store   gitstore.Store
+	options Options
+
+	mu    sync.Mutex
+	cache submitCache
+}
+
+type submitCache struct {
+	target    string
+	head      string
+	log       scannedLog
+	fullScans int
+	cacheHits int
+}
+
+func NewSubmitter(store gitstore.Store, options Options) *Submitter {
+	return &Submitter{store: store, options: options}
+}
+
+func (s *Submitter) Submit(ctx context.Context, request Request) (Result, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return submit(ctx, s.store, request, s.options, &s.cache)
 }
 
 // Admission deliberately has no payload field. A profile hook can inspect the
@@ -178,6 +214,10 @@ func fail(options Options, name string) {
 }
 
 func Submit(ctx context.Context, store gitstore.Store, request Request, options Options) (Result, error) {
+	return submit(ctx, store, request, options, nil)
+}
+
+func submit(ctx context.Context, store gitstore.Store, request Request, options Options, cache *submitCache) (Result, error) {
 	decoded, err := intent.Verify(request.Signed)
 	if err != nil {
 		return Result{}, err
@@ -244,18 +284,33 @@ func Submit(ctx context.Context, store gitstore.Store, request Request, options 
 	if maxRetries == 0 {
 		maxRetries = 32
 	}
+	key, err := request.Signed.DedupKey()
+	if err != nil {
+		return Result{}, err
+	}
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		head, err := store.Head(ctx, ref)
 		if err != nil {
 			return Result{}, err
 		}
-		log, err := scanHead(ctx, store, targetOID, head, false)
-		if err != nil {
-			return Result{}, err
-		}
-		key, err := request.Signed.DedupKey()
-		if err != nil {
-			return Result{}, err
+		var log scannedLog
+		if cache != nil && cache.target == targetOID && cache.head == head {
+			log = cache.log
+			cache.cacheHits++
+		} else {
+			log, err = scanHead(ctx, store, targetOID, head, false)
+			if err != nil {
+				return Result{}, err
+			}
+			if cache != nil {
+				// Submission needs the verified frontier and dedup projection, not
+				// a second resident copy of the event stream.
+				log.Events = nil
+				cache.target = targetOID
+				cache.head = head
+				cache.log = log
+				cache.fullScans++
+			}
 		}
 		if prior, ok := log.Dedup[key]; ok {
 			if !prior.Signed.Equal(request.Signed) {
@@ -281,11 +336,27 @@ func Submit(ctx context.Context, store gitstore.Store, request Request, options 
 			}
 			return Result{}, err
 		}
+		if cache != nil {
+			event := Event{Commit: commit, Intent: decoded, Signed: cloneSigned(request.Signed), PayloadTree: decoded.PayloadTree}
+			cache.log.Dedup[key] = event
+			cache.log.Verification.Head = commit
+			cache.log.Verification.Depth++
+			cache.log.Verification.Events++
+			cache.head = commit
+		}
 		fail(options, "after_ref_cas")
 		fail(options, "before_reply")
 		return Result{Commit: commit, Head: commit, CASRetries: attempt}, nil
 	}
 	return Result{}, errors.New("CAS retry limit exceeded")
+}
+
+func cloneSigned(signed intent.Signed) intent.Signed {
+	return intent.Signed{
+		Intent:    bytes.Clone(signed.Intent),
+		ActorKey:  bytes.Clone(signed.ActorKey),
+		Signature: bytes.Clone(signed.Signature),
+	}
 }
 
 type Verification struct {
