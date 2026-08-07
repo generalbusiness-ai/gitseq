@@ -49,6 +49,9 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	if status.Durable.Depth != 1 || len(status.Live.Presence) != 1 || status.Cursor.Frontier[0].Depth != 1 {
 		t.Fatalf("unexpected status: %+v", status)
 	}
+	if len(status.Durable.Vocabulary.Definitions) != 12 || status.Durable.Vocabulary.Binding.Status != "unbound" {
+		t.Fatalf("status did not serve the room vocabulary and binding state: %+v", status.Durable.Vocabulary)
+	}
 }
 
 func TestConversationIsForgottenWhenItsLastParticipantDeparts(t *testing.T) {

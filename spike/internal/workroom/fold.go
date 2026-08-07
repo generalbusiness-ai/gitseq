@@ -9,9 +9,11 @@ import (
 type Verdict string
 
 const (
-	Effective   Verdict = "effective"
-	Ineffective Verdict = "ineffective"
-	Disputed    Verdict = "disputed"
+	Effective       Verdict = "effective"
+	Ineffective     Verdict = "ineffective"
+	Disputed        Verdict = "disputed"
+	UndefinedKind   Verdict = "undefined-kind"
+	Uninterpretable Verdict = "uninterpretable"
 )
 
 type Record struct {
@@ -92,10 +94,12 @@ type Projection struct {
 }
 
 type parsedRecord struct {
-	record   Record
-	body     any
-	index    int
-	decision Decision
+	record     Record
+	body       any
+	index      int
+	decision   Decision
+	definition *KindDefinition
+	declared   *KindDefinition
 }
 
 type roleGrant struct {
@@ -120,30 +124,44 @@ type actorStatement struct {
 }
 
 type foldState struct {
-	records          []parsedRecord
-	byID             map[string]*parsedRecord
-	decisions        map[string]Decision
-	effectiveSup     map[string]string
-	retirementCauses map[string]int
-	roleGrants       []roleGrant
-	roleGrantsByRole map[actorRole][]roleGrant
-	membershipGrants map[actorStatement][]roleGrant
-	ratifications    map[string][]string
+	records            []parsedRecord
+	byID               map[string]*parsedRecord
+	decisions          map[string]Decision
+	effectiveSup       map[string]string
+	retirementCauses   map[string]int
+	roleGrants         []roleGrant
+	roleGrantsByRole   map[actorRole][]roleGrant
+	membershipGrants   map[actorStatement][]roleGrant
+	ratifications      map[string][]string
+	definitions        map[Kind]KindDefinition
+	definitionVersions map[Kind][]*parsedRecord
+	transitions        []FoldTransition
 }
 
-func Fold(records []Record) Projection {
+type FoldResult struct {
+	Projection Projection
+	Vocabulary Vocabulary
+}
+
+func Evaluate(records []Record) FoldResult {
 	state := &foldState{
 		byID: make(map[string]*parsedRecord), decisions: make(map[string]Decision),
-		effectiveSup:     make(map[string]string),
-		retirementCauses: make(map[string]int),
-		roleGrantsByRole: make(map[actorRole][]roleGrant),
-		membershipGrants: make(map[actorStatement][]roleGrant),
-		ratifications:    make(map[string][]string),
+		effectiveSup:       make(map[string]string),
+		retirementCauses:   make(map[string]int),
+		roleGrantsByRole:   make(map[actorRole][]roleGrant),
+		membershipGrants:   make(map[actorStatement][]roleGrant),
+		ratifications:      make(map[string][]string),
+		definitions:        starterCatalog(),
+		definitionVersions: make(map[Kind][]*parsedRecord),
 	}
 	for index, record := range records {
 		state.append(index, record)
 	}
-	return state.project()
+	return FoldResult{Projection: state.project(), Vocabulary: state.vocabulary()}
+}
+
+func Fold(records []Record) Projection {
+	return Evaluate(records).Projection
 }
 
 func (f *foldState) append(index int, record Record) {
@@ -166,6 +184,12 @@ func (f *foldState) append(index int, record Record) {
 		return
 	}
 	parsed := &parsedRecord{record: record, body: body, index: index}
+	if len(f.transitions) != 0 {
+		decision.Verdict = Uninterpretable
+		decision.Reason = "uninterpretable: activated interpreter execution is not held"
+		f.addDecision(record, parsed, index, decision)
+		return
+	}
 	switch value := body.(type) {
 	case *State:
 		decision = f.decideState(parsed, *value)
@@ -183,16 +207,31 @@ func (f *foldState) append(index int, record Record) {
 		if value.Kind == KindRoster && index == 0 {
 			f.addRoleGrant(value.Body["actor"], value.Body["name"], value.Body["kind"], value.Body["role"], record.ID, "", record.RestsOn)
 		}
+		if value.Kind == KindKindDef && parsed.declared != nil {
+			f.definitionVersions[parsed.declared.Name] = append(f.definitionVersions[parsed.declared.Name], parsed)
+		}
 	case *Ratify:
 		f.ratifications[value.Target] = append(f.ratifications[value.Target], record.ID)
 		if target := f.byID[value.Target]; target != nil {
 			if roster, ok := target.body.(*State); ok && roster.Kind == KindRoster {
 				f.addRoleGrant(roster.Body["actor"], roster.Body["name"], roster.Body["kind"], roster.Body["role"], value.Target, record.ID, target.record.RestsOn)
 			}
+			if statement, ok := target.body.(*State); ok && statement.Kind == KindKindDef {
+				f.refreshDefinition(target.declared.Name)
+			}
+			if statement, ok := target.body.(*State); ok && statement.Kind == KindFoldActivation {
+				f.transitions = append(f.transitions, FoldTransition{
+					Activation: value.Target, Ratification: record.ID,
+					Fold: statement.Body["fold"], Entry: statement.Body["entry"],
+					Interface: statement.Body["interface"], Toolchain: statement.Body["toolchain"],
+					Prefix: statement.Body["prefix"] == "genesis",
+				})
+			}
 		}
 	case *Supersede:
 		f.effectiveSup[record.ID] = value.Target
-		f.changeRetirement(value.Target, 1)
+		changed := f.changeRetirement(value.Target, 1)
+		f.refreshDefinitionsAffectedBy(changed)
 	}
 }
 
@@ -218,44 +257,174 @@ func (f *foldState) addDecision(record Record, parsed *parsedRecord, index int, 
 
 func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 	decision := Decision{Event: record.record.ID, Verdict: Effective, Reason: "statement recorded"}
+	definition, exists := f.definitions[state.Kind]
+	if !exists {
+		return Decision{Event: record.record.ID, Verdict: UndefinedKind, Reason: fmt.Sprintf("undefined kind %q", state.Kind)}
+	}
+	record.definition = &definition
+	if err := validateFields(definition, state.Body); err != nil {
+		verdict := Ineffective
+		if state.Kind == KindKindDef || state.Kind == KindFoldActivation {
+			verdict = Uninterpretable
+		}
+		return Decision{Event: record.record.ID, Verdict: verdict, Reason: err.Error()}
+	}
+	if state.Kind == KindKindDef {
+		declared, err := decodeKindDefinition(state, record.record.ID)
+		if err != nil {
+			return Decision{Event: record.record.ID, Verdict: Uninterpretable, Reason: "uninterpretable kind definition: " + err.Error()}
+		}
+		for _, constraint := range declared.Basis {
+			for _, kind := range constraint.Kinds {
+				if _, defined := f.definitions[kind]; !defined {
+					return Decision{Event: record.record.ID, Verdict: Uninterpretable, Reason: fmt.Sprintf("uninterpretable kind definition: basis kind %q is undefined", kind)}
+				}
+			}
+		}
+		record.declared = &declared
+	}
 	if record.index == 0 {
 		if state.Kind != KindRoster || state.Body["actor"] != record.record.Actor || state.Body["role"] != "operator" {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "first event must self-seed the operator roster"}
 		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "operator roster seed"}
 	}
-	if state.Kind == KindRequest && !f.hasActor(state.Body["to"]) {
+	if err := f.validateBasis(record, definition); err != nil {
+		return *err
+	}
+	if definition.Lifecycle == LifecycleRequest && !f.hasActor(state.Body["to"]) {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "requested performer is not in the live roster"}
 	}
-	if state.Kind == KindPromise {
-		requests := f.basesOfKind(record.record.RestsOn, KindRequest)
-		if len(requests) == 0 {
-			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "dangling promise has no request"}
-		}
+	if definition.Lifecycle == LifecyclePromise {
+		requests := f.basesOfLifecycle(record.record.RestsOn, LifecycleRequest)
 		if len(requests) != 1 {
-			return Decision{Event: record.record.ID, Verdict: Disputed, Reason: "promise rests on multiple requests"}
+			verdict := Ineffective
+			if len(requests) > 1 {
+				verdict = Disputed
+			}
+			return Decision{Event: record.record.ID, Verdict: verdict, Reason: fmt.Sprintf("promise lifecycle basis count is %d, want exactly one request", len(requests))}
 		}
 		request := requests[0].body.(*State)
 		if request.Body["to"] != record.record.Actor {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "promise actor is not the requested performer"}
 		}
 	}
-	if state.Kind == KindReport {
-		promises := f.basesOfKind(record.record.RestsOn, KindPromise)
-		if len(promises) == 0 {
-			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "report has no promise"}
-		}
+	if definition.Lifecycle == LifecycleReport {
+		promises := f.basesOfLifecycle(record.record.RestsOn, LifecyclePromise)
 		if len(promises) != 1 {
-			return Decision{Event: record.record.ID, Verdict: Disputed, Reason: "report rests on multiple promises"}
+			verdict := Ineffective
+			if len(promises) > 1 {
+				verdict = Disputed
+			}
+			return Decision{Event: record.record.ID, Verdict: verdict, Reason: fmt.Sprintf("report lifecycle basis count is %d, want exactly one promise", len(promises))}
 		}
 		if promises[0].record.Actor != record.record.Actor {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "only the promisor may report completion"}
 		}
 	}
-	if !knownKinds[state.Kind] {
-		decision.Reason = "opaque statement kind recorded"
+	if state.Kind == KindRoster && state.Body["role"] == "participant" && state.Body["kind"] == "" {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "participant roster state requires body.kind"}
 	}
 	return decision
+}
+
+func (f *foldState) validateBasis(record *parsedRecord, definition KindDefinition) *Decision {
+	for _, constraint := range definition.Basis {
+		allowed := make(map[Kind]bool, len(constraint.Kinds))
+		for _, kind := range constraint.Kinds {
+			allowed[kind] = true
+		}
+		count := 0
+		for _, reference := range record.record.RestsOn {
+			basis := f.byID[reference]
+			if basis == nil || f.decisions[reference].Verdict != Effective {
+				continue
+			}
+			statement, ok := basis.body.(*State)
+			if ok && allowed[statement.Kind] {
+				count++
+			}
+		}
+		if count >= constraint.Min && count <= constraint.Max {
+			continue
+		}
+		verdict := Ineffective
+		if count > constraint.Max {
+			verdict = Disputed
+		}
+		reason := fmt.Sprintf("%s basis count is %d, want %d..%d of [%s]", definition.Name, count, constraint.Min, constraint.Max, joinKinds(constraint.Kinds))
+		switch definition.Lifecycle {
+		case LifecyclePromise:
+			if count == 0 {
+				reason = "dangling promise has no request"
+			} else {
+				reason = "promise rests on multiple requests"
+			}
+		case LifecycleReport:
+			if count == 0 {
+				reason = "report has no promise"
+			} else {
+				reason = "report rests on multiple promises"
+			}
+		}
+		return &Decision{Event: record.record.ID, Verdict: verdict, Reason: reason}
+	}
+	return nil
+}
+
+func joinKinds(kinds []Kind) string {
+	values := make([]string, len(kinds))
+	for index, kind := range kinds {
+		values[index] = string(kind)
+	}
+	return strings.Join(values, ",")
+}
+
+func (f *foldState) refreshDefinition(name Kind) {
+	if starter, exists := starterCatalog()[name]; exists {
+		f.definitions[name] = starter
+	} else {
+		delete(f.definitions, name)
+	}
+	retired := f.retired()
+	for _, record := range f.definitionVersions[name] {
+		if record.decision.Verdict != Effective || retired[record.record.ID] || !f.ratified(record.record.ID, retired) {
+			continue
+		}
+		definition := *record.declared
+		definition.RatifiedBy = f.activeRatification(record.record.ID, retired)
+		f.definitions[definition.Name] = definition
+	}
+}
+
+func (f *foldState) refreshDefinitionsAffectedBy(events []string) {
+	names := make(map[Kind]bool)
+	for _, event := range events {
+		record := f.byID[event]
+		if record == nil {
+			continue
+		}
+		if record.declared != nil {
+			names[record.declared.Name] = true
+		}
+		if ratification, ok := record.body.(*Ratify); ok {
+			if target := f.byID[ratification.Target]; target != nil && target.declared != nil {
+				names[target.declared.Name] = true
+			}
+		}
+	}
+	for name := range names {
+		f.refreshDefinition(name)
+	}
+}
+
+func (f *foldState) activeRatification(target string, retired map[string]bool) string {
+	for _, event := range f.ratifications[target] {
+		if !retired[event] && f.decisions[event].Verdict == Effective {
+			return event
+		}
+	}
+	return ""
 }
 
 func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
@@ -266,11 +435,26 @@ func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
 	if len(record.record.RestsOn) != 1 || record.record.RestsOn[0] != ratify.Target {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "ratify must rest on exactly its target"}
 	}
-	statement, ok := target.body.(*State)
+	_, ok := target.body.(*State)
 	if !ok {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "only statements may be ratified"}
 	}
-	if statement.Kind == KindReport {
+	if target.decision.Verdict != Effective {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "ratify target is not effective"}
+	}
+	if f.retirementCauses[ratify.Target] != 0 {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "retired statement cannot be ratified"}
+	}
+	if target.definition == nil {
+		return Decision{Event: record.record.ID, Verdict: Uninterpretable, Reason: "ratify target has no kind definition"}
+	}
+	if target.declared != nil {
+		if active, exists := f.definitions[target.declared.Name]; exists && active.Source != "starter" && active.Source != target.record.ID {
+			return Decision{Event: record.record.ID, Verdict: Disputed, Reason: "kind definition has a live predecessor; supersede it before ratifying a replacement"}
+		}
+	}
+	satisfier := target.definition.Satisfier
+	if satisfier == SatisfierOriginatingRequester {
 		request := f.originatingRequest(target)
 		if request == nil {
 			return Decision{Event: record.record.ID, Verdict: Disputed, Reason: "report has no unique originating requester"}
@@ -280,9 +464,10 @@ func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
 		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "requester declared satisfaction"}
 	}
-	if statement.Kind == KindAssert || statement.Kind == KindPropose || isGovernance(statement.Kind) {
-		if !f.hasRole(record.record.Actor, "ratifier") {
-			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor lacks ratifier role"}
+	if strings.HasPrefix(satisfier, "role:") {
+		role := strings.TrimPrefix(satisfier, "role:")
+		if !f.hasRole(record.record.Actor, role) {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: fmt.Sprintf("actor lacks %s role", role)}
 		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized ratification"}
 	}
@@ -301,10 +486,6 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized supersession"}
 	}
 	return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor may not supersede target"}
-}
-
-func isGovernance(kind Kind) bool {
-	return kind == KindRoster || kind == KindInfraKey || kind == KindSeal
 }
 
 func (f *foldState) addRoleGrant(actor, name, kind, role, statement, ratification string, restsOn []string) {
@@ -414,11 +595,11 @@ func (f *foldState) basesOfKind(refs []string, kind Kind) []*parsedRecord {
 }
 
 func (f *foldState) originatingRequest(report *parsedRecord) *parsedRecord {
-	promises := f.basesOfKind(report.record.RestsOn, KindPromise)
+	promises := f.basesOfLifecycle(report.record.RestsOn, LifecyclePromise)
 	if len(promises) != 1 {
 		return nil
 	}
-	requests := f.basesOfKind(promises[0].record.RestsOn, KindRequest)
+	requests := f.basesOfLifecycle(promises[0].record.RestsOn, LifecycleRequest)
 	if len(requests) != 1 {
 		return nil
 	}
@@ -429,7 +610,8 @@ func (f *foldState) originatingRequest(report *parsedRecord) *parsedRecord {
 // effective supersession lands. A target changes state only when its count of
 // live superseders crosses zero. If the target is itself a supersession, that
 // transition removes or restores its effect and continues down the chain.
-func (f *foldState) changeRetirement(target string, delta int) {
+func (f *foldState) changeRetirement(target string, delta int) []string {
+	var changed []string
 	for target != "" {
 		before := f.retirementCauses[target]
 		after := before + delta
@@ -441,11 +623,12 @@ func (f *foldState) changeRetirement(target string, delta int) {
 		}
 		wasRetired, isRetired := before != 0, after != 0
 		if wasRetired == isRetired {
-			return
+			return changed
 		}
+		changed = append(changed, target)
 		next, supersession := f.effectiveSup[target]
 		if !supersession {
-			return
+			return changed
 		}
 		if isRetired {
 			delta = -1
@@ -454,6 +637,7 @@ func (f *foldState) changeRetirement(target string, delta int) {
 		}
 		target = next
 	}
+	return changed
 }
 
 func (f *foldState) retired() map[string]bool {
@@ -470,11 +654,19 @@ func (f *foldState) stale(retired map[string]bool) map[string]bool {
 		if record.decision.Verdict != Effective {
 			continue
 		}
+		if record.definition != nil && record.definition.Staleness == StalenessExempt {
+			continue
+		}
 		for _, basis := range record.record.RestsOn {
 			if target, ok := f.effectiveSup[record.record.ID]; ok && target == basis {
 				continue
 			}
-			if retired[basis] || stale[basis] {
+			basisRecord := f.byID[basis]
+			mode := StalenessPropagates
+			if basisRecord != nil && basisRecord.definition != nil {
+				mode = basisRecord.definition.Staleness
+			}
+			if (retired[basis] && mode != StalenessExempt) || (stale[basis] && mode == StalenessPropagates) {
 				stale[record.record.ID] = true
 				break
 			}
@@ -520,10 +712,10 @@ func (f *foldState) project() Projection {
 			Text: state.Text, Body: state.Body, Ratified: f.ratified(record.record.ID, retired),
 			Retired: retired[record.record.ID], Stale: stale[record.record.ID],
 		})
-		if !knownKinds[state.Kind] {
+		if record.decision.Verdict == UndefinedKind {
 			projection.OpaqueKinds[string(state.Kind)] = append(projection.OpaqueKinds[string(state.Kind)], record.record.ID)
 		}
-		if state.Kind == KindArtifact {
+		if record.definition != nil && record.definition.Render == RenderArtifact {
 			projection.Artifacts = append(projection.Artifacts, Artifact{Event: record.record.ID, Path: state.Body["path"], Commit: state.Body["commit"], Stale: retired[record.record.ID] || stale[record.record.ID]})
 		}
 	}
@@ -568,6 +760,16 @@ func (f *foldState) project() Projection {
 	return projection
 }
 
+func (f *foldState) vocabulary() Vocabulary {
+	binding := FoldBinding{Status: "unbound", Reason: "no ratified seed or prefix binding", Transitions: []FoldTransition{}}
+	if len(f.transitions) != 0 {
+		binding.Status = "uninterpretable"
+		binding.Reason = "activated interpreter execution is not held"
+		binding.Transitions = append(binding.Transitions, f.transitions...)
+	}
+	return Vocabulary{Definitions: sortedDefinitions(f.definitions), Binding: binding}
+}
+
 func addActorRole(actor *ActorState, role, source string) {
 	actor.Roles = appendUnique(actor.Roles, role)
 	if source != "" {
@@ -579,10 +781,10 @@ func (f *foldState) projectCommitments(retired, stale map[string]bool) []Commitm
 	var commitments []Commitment
 	for _, requestRecord := range f.records {
 		request, ok := requestRecord.body.(*State)
-		if !ok || request.Kind != KindRequest || requestRecord.decision.Verdict != Effective {
+		if !ok || requestRecord.definition == nil || requestRecord.definition.Lifecycle != LifecycleRequest || requestRecord.decision.Verdict != Effective {
 			continue
 		}
-		promises := f.directDependents(requestRecord.record.ID, KindPromise)
+		promises := f.directDependents(requestRecord.record.ID, LifecyclePromise)
 		if len(promises) == 0 {
 			status := "requested"
 			if retired[requestRecord.record.ID] {
@@ -605,7 +807,7 @@ func (f *foldState) projectCommitments(retired, stale map[string]bool) []Commitm
 			case stale[requestRecord.record.ID] || stale[promiseRecord.record.ID]:
 				entry.Status = "stale"
 			default:
-				reports := f.directDependents(promiseRecord.record.ID, KindReport)
+				reports := f.directDependents(promiseRecord.record.ID, LifecycleReport)
 				for index := len(reports) - 1; index >= 0; index-- {
 					report := reports[index]
 					if retired[report.record.ID] {
@@ -629,15 +831,29 @@ func (f *foldState) projectCommitments(retired, stale map[string]bool) []Commitm
 	return commitments
 }
 
-func (f *foldState) directDependents(target string, kind Kind) []*parsedRecord {
+func (f *foldState) directDependents(target string, lifecycle Lifecycle) []*parsedRecord {
 	var found []*parsedRecord
 	for _, record := range f.records {
 		if record.decision.Verdict != Effective || !contains(record.record.RestsOn, target) {
 			continue
 		}
-		state, ok := record.body.(*State)
-		if ok && state.Kind == kind {
+		_, ok := record.body.(*State)
+		if ok && record.definition != nil && record.definition.Lifecycle == lifecycle {
 			found = append(found, &f.records[record.index])
+		}
+	}
+	return found
+}
+
+func (f *foldState) basesOfLifecycle(refs []string, lifecycle Lifecycle) []*parsedRecord {
+	var found []*parsedRecord
+	for _, ref := range refs {
+		record := f.byID[ref]
+		if record == nil || f.decisions[ref].Verdict != Effective || record.definition == nil {
+			continue
+		}
+		if record.definition.Lifecycle == lifecycle {
+			found = append(found, record)
 		}
 	}
 	return found

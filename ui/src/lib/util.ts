@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { Vocabulary } from "./api";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -9,7 +10,7 @@ export function cn(...inputs: ClassValue[]) {
 // neutral: green is reserved for satisfied/ratified/current, red for
 // stale/reneged/disputed/dissent, amber for selection/focus only.
 export const neutralKind = "text-muted border-border";
-export const kindTint: Record<string, string> = {
+const legacyKindTint: Record<string, string> = {
   request: neutralKind,
   promise: neutralKind,
   report: neutralKind,
@@ -22,8 +23,19 @@ export const kindTint: Record<string, string> = {
   seal: neutralKind,
 };
 
-// Statement kinds wear their plain names in the UI; "assert" reads as jargon.
-export const kindLabel: Record<string, string> = { assert: "note", propose: "proposal" };
+export function kindTint(kind: string, vocabulary?: Vocabulary): string {
+  const render = definitionOf(kind, vocabulary)?.render;
+  return render === "dissent" ? "text-danger border-danger/40" : legacyKindTint[kind] ?? neutralKind;
+}
+
+// The room's render declaration supplies familiar UI language. A legacy map
+// remains only for clients connected to a pre-vocabulary service.
+export function kindLabel(kind: string, vocabulary?: Vocabulary): string {
+  const render = definitionOf(kind, vocabulary)?.render;
+  if (render === "note" || render === "proposal") return render;
+  if (!vocabulary) return kind === "assert" ? "note" : kind === "propose" ? "proposal" : kind;
+  return kind;
+}
 
 export const statusTint: Record<string, string> = {
   satisfied: "text-ok",
@@ -53,10 +65,16 @@ export function statusLabel(status: string): string {
   return familiarStatus[status] ?? status;
 }
 
-const workOnlyKinds = new Set(["roster", "infra-key", "seal", "artifact"]);
+const legacyWorkOnlyKinds = new Set(["roster", "infra-key", "seal", "artifact"]);
 
-export function belongsInRoom(kind: string): boolean {
-  return !workOnlyKinds.has(kind);
+export function belongsInRoom(kind: string, vocabulary?: Vocabulary): boolean {
+  const render = definitionOf(kind, vocabulary)?.render;
+  if (render) return render !== "governance" && render !== "artifact";
+  return !legacyWorkOnlyKinds.has(kind);
+}
+
+export function definitionOf(kind: string, vocabulary?: Vocabulary) {
+  return vocabulary?.definitions.find((definition) => definition.name === kind);
 }
 
 // Stable per-actor hues for chat authorship — none of the semantic ok/danger

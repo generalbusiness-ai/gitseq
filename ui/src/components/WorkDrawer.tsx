@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
-import { BadgeCheck, FileWarning, X } from "lucide-react";
-import type { Artifact, Projection } from "../lib/api";
+import { BadgeCheck, BookOpen, CircleSlash, FileWarning, X } from "lucide-react";
+import type { Artifact, Projection, Vocabulary } from "../lib/api";
 import { ATTENTION_COMMITMENT_STATUSES, OPEN_COMMITMENT_STATUSES, danglingPromises, ticketsOf, type Selection, type Workroom } from "../lib/store";
-import { cn, statusLabel, statusTint } from "../lib/util";
+import { cn, definitionOf, statusLabel, statusTint } from "../lib/util";
 import { Railway } from "./Railway";
 import { Ticket, WhyStale } from "./Stream";
 
@@ -65,7 +65,7 @@ export function WorkDrawer({
           {!projection ? (
             <p className="p-4 text-sm text-faint">Loading…</p>
           ) : (
-            <WorkSections projection={projection} tickets={tickets} nameOf={nameOf} onSelect={onSelect} onJumpEvent={jumpEvent} />
+            <WorkSections projection={projection} vocabulary={workroom.status?.durable.vocabulary} tickets={tickets} nameOf={nameOf} onSelect={onSelect} onJumpEvent={jumpEvent} />
           )}
           <section className="border-t border-border px-4 py-3">
             <h3 className="mb-2 text-xs font-medium text-faint">History</h3>
@@ -89,12 +89,14 @@ export function WorkDrawer({
 // stands, and what's completed. Human labels; hashes ride in hover titles.
 function WorkSections({
   projection,
+  vocabulary,
   tickets,
   nameOf,
   onSelect,
   onJumpEvent,
 }: {
   projection: Projection;
+  vocabulary?: Vocabulary;
   tickets: Map<string, number>;
   nameOf: (fp: string) => string;
   onSelect: (selection: Selection) => void;
@@ -104,17 +106,36 @@ function WorkSections({
   const attention = projection.commitments.filter((c) => ATTENTION_COMMITMENT_STATUSES.includes(c.status));
   const dangling = danglingPromises(projection);
   const open = projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status));
-  const standing = projection.statements.filter((s) => s.kind === "propose" && s.ratified && !s.retired && !s.stale);
+  const standing = projection.statements.filter((s) => (definitionOf(s.kind, vocabulary)?.render === "proposal" || (!vocabulary && s.kind === "propose")) && s.ratified && !s.retired && !s.stale);
+  const interpretationGaps = projection.decisions.filter((decision) => decision.verdict === "undefined-kind" || decision.verdict === "uninterpretable");
+  const bindingGap = vocabulary && vocabulary.binding.status !== "bound";
   const done = projection.commitments.filter((c) => c.status === "satisfied");
   const currentGroups = groupArtifacts(projection.artifacts.filter((a) => !a.stale));
   const requestText = (event: string) => projection.statements.find((s) => s.event === event)?.text ?? event;
-  const needsAttention = staleArtifacts.length + attention.length + dangling.length > 0;
+  const needsAttention = staleArtifacts.length + attention.length + dangling.length + interpretationGaps.length + (bindingGap ? 1 : 0) > 0;
 
   return (
     <div className="space-y-5 px-4 py-4">
       <section>
         <SectionTitle icon={<FileWarning className="h-3.5 w-3.5 text-danger" />} title="Needs attention" />
         {!needsAttention && <Empty>All clear.</Empty>}
+        {bindingGap && (
+          <div className="mb-1 rounded-md border border-danger/30 bg-danger/5 px-2 py-2 text-xs">
+            <div className="flex items-center gap-1.5 font-semibold text-danger">
+              <CircleSlash className="h-3.5 w-3.5" /> fold {vocabulary.binding.status}
+            </div>
+            <p className="mt-0.5 text-muted">{vocabulary.binding.reason}</p>
+          </div>
+        )}
+        {interpretationGaps.map((gap) => (
+          <Row key={gap.event} onClick={() => onJumpEvent(gap.event)}>
+            <span className="w-24 shrink-0 text-xs font-semibold text-danger">{gap.verdict}</span>
+            <span className="truncate text-muted" title={gap.reason}>{gap.reason}</span>
+            <span className="ml-auto shrink-0">
+              <Ticket ticket={tickets.get(gap.event)} event={gap.event} onSelect={() => onJumpEvent(gap.event)} />
+            </span>
+          </Row>
+        ))}
         {staleArtifacts.map((artifact) => (
           <div key={artifact.event} className="rounded-md px-2 py-1.5 hover:bg-elevated/60">
             <Row onClick={() => onSelect({ kind: "commit", id: artifact.commit })} bare>
@@ -184,6 +205,27 @@ function WorkSections({
           </Row>
         ))}
       </section>
+      {vocabulary && (
+        <section>
+          <SectionTitle icon={<BookOpen className="h-3.5 w-3.5 text-muted" />} title={`Vocabulary (${vocabulary.definitions.length})`} />
+          <div className="space-y-1">
+            {vocabulary.definitions.map((definition) => (
+              <details key={definition.name} className="rounded-md border border-border/70 px-2 py-1.5 text-xs">
+                <summary className="cursor-pointer list-none font-medium text-foreground/90">
+                  <span>{definition.name}</span>
+                  <span className="ml-2 font-normal text-faint">{definition.render} · {definition.source === "starter" ? "starter" : "declared"}</span>
+                </summary>
+                <p className="mt-1.5 leading-relaxed text-muted">{definition.guidance}</p>
+                <dl className="mt-1 grid grid-cols-[5rem_1fr] gap-x-2 text-faint">
+                  <dt>satisfier</dt><dd>{definition.satisfier}</dd>
+                  <dt>staleness</dt><dd>{definition.staleness}</dd>
+                  <dt>lifecycle</dt><dd>{definition.lifecycle}</dd>
+                </dl>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
       <section>
         <SectionTitle title="Completed" />
         {done.length === 0 && currentGroups.length === 0 && <Empty>Nothing yet.</Empty>}

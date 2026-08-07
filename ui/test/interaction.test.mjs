@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { RetryKeys, parsePresenceLabel, threadTargetKey } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
-import { belongsInRoom, statusLabel } from "../src/lib/util.ts";
+import { belongsInRoom, kindLabel, statusLabel } from "../src/lib/util.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
   let next = 0;
@@ -90,6 +90,18 @@ test("the room hides work records and translates workflow status", () => {
   assert.equal(statusLabel("promised"), "in progress");
   assert.equal(statusLabel("reported"), "ready");
   assert.equal(statusLabel("satisfied"), "done");
+});
+
+test("declared render classes, not kind names, place new vocabulary in the UI", () => {
+  const definition = (name, render) => ({ name, render });
+  const vocabulary = {
+    definitions: [definition("finding", "note"), definition("policy", "governance"), definition("release", "artifact")],
+    binding: { status: "unbound", transitions: [] },
+  };
+  assert.equal(belongsInRoom("finding", vocabulary), true);
+  assert.equal(kindLabel("finding", vocabulary), "note");
+  assert.equal(belongsInRoom("policy", vocabulary), false);
+  assert.equal(belongsInRoom("release", vocabulary), false);
 });
 
 test("the everyday surface does not expose record taxonomy or authority roles", () => {

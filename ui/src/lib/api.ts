@@ -2,7 +2,7 @@
 
 export interface Decision {
   event: string;
-  verdict: "effective" | "ineffective" | "disputed";
+  verdict: "effective" | "ineffective" | "disputed" | "undefined-kind" | "uninterpretable";
   reason: string;
 }
 
@@ -40,7 +40,7 @@ export interface Act {
   type: "ratify" | "supersede";
   target: string;
   text?: string;
-  verdict: "effective" | "ineffective" | "disputed";
+  verdict: "effective" | "ineffective" | "disputed" | "undefined-kind" | "uninterpretable";
   reason: string;
 }
 
@@ -67,6 +67,53 @@ export interface DurableSnapshot {
   head: string;
   depth: number;
   projection: Projection;
+  vocabulary: Vocabulary;
+}
+
+export interface FieldConstraint {
+  op: "present" | "type" | "matches" | "one-of";
+  name: string;
+  type?: "string" | "event-id" | "actor-ref" | "path-commit";
+  pattern?: string;
+  values?: string[];
+}
+
+export interface BasisConstraint {
+  kinds: string[];
+  min: number;
+  max: number;
+}
+
+export interface KindDefinition {
+  name: string;
+  fields: FieldConstraint[];
+  basis: BasisConstraint[];
+  satisfier: string;
+  render: "note" | "proposal" | "commitment" | "result" | "dissent" | "artifact" | "governance";
+  staleness: "propagates" | "terminal" | "exempt";
+  lifecycle: "none" | "request" | "promise" | "report";
+  guidance: string;
+  source: string;
+  ratified_by?: string;
+}
+
+export interface FoldTransition {
+  activation: string;
+  ratification: string;
+  fold: string;
+  entry: string;
+  interface: string;
+  toolchain: string;
+  prefix: boolean;
+}
+
+export interface Vocabulary {
+  definitions: KindDefinition[];
+  binding: {
+    status: "unbound" | "uninterpretable" | "bound";
+    reason?: string;
+    transitions: FoldTransition[];
+  };
 }
 
 export interface LiveCursor {

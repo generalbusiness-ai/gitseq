@@ -68,6 +68,7 @@ type Snapshot struct {
 	Head       string              `json:"head"`
 	Depth      int                 `json:"depth"`
 	Projection workroom.Projection `json:"projection"`
+	Vocabulary workroom.Vocabulary `json:"vocabulary"`
 }
 
 type Verb string
@@ -592,7 +593,11 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	for _, event := range events {
 		records = append(records, workroom.Record{ID: w.EventID(event.Commit), Actor: intent.ActorFingerprint(event.Signed.ActorKey), Schema: event.Intent.Schema, RestsOn: event.Intent.RestsOn, Payload: event.Payload, Attachments: event.Attachments})
 	}
-	snapshot := Snapshot{Genesis: verification.Genesis, Head: verification.Head, Depth: verification.Depth, Projection: workroom.Fold(records)}
+	fold := workroom.Evaluate(records)
+	snapshot := Snapshot{
+		Genesis: verification.Genesis, Head: verification.Head, Depth: verification.Depth,
+		Projection: fold.Projection, Vocabulary: fold.Vocabulary,
+	}
 	w.snapshotCache = &snapshot
 	return snapshot, nil
 }

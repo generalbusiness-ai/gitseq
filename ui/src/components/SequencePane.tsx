@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { BadgeCheck, CircleSlash, FileWarning, MessageSquareX, Scale, Undo2 } from "lucide-react";
-import type { Act, Actor, Projection, Statement } from "../lib/api";
+import type { Act, Actor, Projection, Statement, Vocabulary } from "../lib/api";
 import { shortEvent } from "../lib/api";
 import { ticketsOf, type Selection } from "../lib/store";
 import { cn, kindLabel, kindTint, statusTint } from "../lib/util";
@@ -11,12 +11,14 @@ import { PaneTitle } from "./Railway";
 // the log reads as a narrative while every attempt stays visible.
 export function SequencePane({
   projection,
+  vocabulary,
   actors,
   highlight,
   selection,
   onSelect,
 }: {
   projection?: Projection;
+  vocabulary?: Vocabulary;
   actors: Actor[];
   highlight: { events: Set<string>; commits: Set<string> };
   selection?: Selection;
@@ -90,6 +92,7 @@ export function SequencePane({
               <StatementCard
                 key={statement.event}
                 statement={statement}
+                vocabulary={vocabulary}
                 ticket={tickets.get(statement.event)}
                 annotations={annotations.get(statement.event) ?? []}
                 nameOf={nameOf}
@@ -118,6 +121,7 @@ interface Annotation {
 
 function StatementCard({
   statement,
+  vocabulary,
   ticket,
   annotations,
   nameOf,
@@ -126,6 +130,7 @@ function StatementCard({
   onSelect,
 }: {
   statement: Statement;
+  vocabulary?: Vocabulary;
   ticket?: number;
   annotations: Annotation[];
   nameOf: (fingerprint: string) => string;
@@ -145,8 +150,8 @@ function StatementCard({
         )}
       >
         <div className="flex items-center gap-2">
-          <span className={cn("shrink-0 border px-1.5 text-xs uppercase leading-4 tracking-wide", kindTint[statement.kind] ?? "text-muted border-border")}>
-            {kindLabel[statement.kind] ?? statement.kind}
+          <span className={cn("shrink-0 border px-1.5 text-xs uppercase leading-4 tracking-wide", kindTint(statement.kind, vocabulary))}>
+            {kindLabel(statement.kind, vocabulary)}
           </span>
           <span className={cn("truncate text-[13px]", dead ? "text-faint line-through" : "text-foreground")}>
             {statement.text}
