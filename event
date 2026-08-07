@@ -1,1 +1,1 @@
-{"kind":"report","text":"Task 2f complete: authority-heavy folding is linear, the exact implementation head was independently approved, and merge bd3e2d781d7d47387fb59e3c150a9b568ea97cd8 is on main. Full combined gates and focused race tests pass.","body":{"merge":"bd3e2d781d7d47387fb59e3c150a9b568ea97cd8","result":"merged"}}
+{"kind":"artifact","text":"Merged task/seq-rewind at its independently approved exact head. Combined-main vet, test, build, and focused race gates pass.","body":{"commit":"b3e86548d3a3d688a09bc59e1330e4d9469bb08c","path":"spike/cmd/gs,docs"}}
