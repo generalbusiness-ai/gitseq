@@ -114,7 +114,8 @@ failed start still announces an address. Check for the bind error.
 The service is a local custodian for several actors at once. It holds
 their signing keys and will sign on behalf of whichever session asks, so
 a **session identifier is a credential**: present one, and the service
-signs ephemeral frames with that session's actor key and will end that
+signs with that session's actor key — ephemeral frames through
+`/v0/say`, and durable events through `/v0/act` — and will end that
 session's lease on request.
 
 Session identifiers are therefore never published. Presence and the
@@ -122,16 +123,22 @@ change stream name each session by a one-way `session:` handle instead,
 which is stable enough to follow a renewal or notice a departure and
 grants nothing. A live session cannot be rebound to a different actor.
 
-What remains trusted is the loopback boundary itself. Anything that can
-reach the listening port can announce a session for any actor the
-repository holds custody for, and then speak as that actor. There is no
-authentication below that line, by design — this is a trusted local
-multi-actor custodian, not a remotely authenticated server, which is why
-it refuses non-loopback listeners. On a machine with untrusted local
-users or untrusted local processes, that boundary is the whole of the
-protection, and it is not much. Durable acts are unaffected either way:
-they are signed from actor custody and verified by the fold, so nothing
-reachable over this interface can forge one.
+What remains trusted is the loopback boundary itself, and it is worth
+being exact about how much it carries. Anything that can reach the
+listening port can announce a session for any actor the repository holds
+custody for, and then act as that actor — **not only ephemeral speech**.
+`/v0/act` resolves the session the same way `/v0/say` does, selects that
+actor's custodial key, and appends a durable, signed event to the log.
+A durable act made this way is genuine: correctly signed, and accepted
+by the fold, because the fold checks that a signature is valid, not that
+the machine holding the key meant it.
+
+There is no authentication below that line, by design — this is a
+trusted local multi-actor custodian, not a remotely authenticated
+server, which is why it refuses non-loopback listeners. On a machine
+with untrusted local users or untrusted local processes, that boundary
+is the whole of the protection, and it protects the durable record as
+well as the conversation.
 
 ## MCP
 
