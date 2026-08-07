@@ -96,6 +96,225 @@ func TestMissingPerRequestMetadataIsRejected(t *testing.T) {
 	}
 }
 
+// A legacy client opens with initialize and then omits _meta entirely. Both
+// halves matter: rejecting either one leaves such a client unable to attach,
+// with no fall-forward mechanism of its own.
+func TestLegacyHandshakeServesToolsWithoutPerRequestMetadata(t *testing.T) {
+	server := &mcpServer{}
+	input := strings.NewReader(
+		"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"legacy\",\"version\":\"1\"}}}\n" +
+			"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n" +
+			"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}\n")
+	var output bytes.Buffer
+	if err := server.run(context.Background(), input, &output); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected one reply per request, got %d: %s", len(lines), output.String())
+	}
+	var initialize map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &initialize); err != nil {
+		t.Fatal(err)
+	}
+	result, ok := initialize["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("initialize rejected: %#v", initialize)
+	}
+	// The client's own revision is echoed back, so it need not downgrade.
+	if result["protocolVersion"] != "2025-06-18" || result["serverInfo"] == nil {
+		t.Fatalf("non-conforming initialize result: %#v", result)
+	}
+	var list map[string]any
+	if err := json.Unmarshal([]byte(lines[1]), &list); err != nil {
+		t.Fatal(err)
+	}
+	listResult, ok := list["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("legacy tools/list rejected: %#v", list)
+	}
+	if len(listResult["tools"].([]any)) == 0 {
+		t.Fatalf("legacy tools/list served no tools: %#v", listResult)
+	}
+	// Modern envelope fields are meaningless to a client that negotiated once.
+	if listResult["resultType"] != nil || listResult["ttlMs"] != nil || listResult["_meta"] != nil {
+		t.Fatalf("legacy result carries modern envelope: %#v", listResult)
+	}
+}
+
+// Initialization opens a connection, so it happens once. A second one would
+// renegotiate the version mid-stream and change what the client was already
+// told the connection is speaking.
+func TestSecondInitializeIsRejectedAndDoesNotChangeTheNegotiatedVersion(t *testing.T) {
+	server := &mcpServer{}
+	open := func(version string) string {
+		return "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"" + version +
+			"\",\"capabilities\":{},\"clientInfo\":{\"name\":\"legacy\",\"version\":\"1\"}}}\n"
+	}
+	input := strings.NewReader(open("2025-06-18") + strings.Replace(open("2024-11-05"), "\"id\":1", "\"id\":2", 1))
+	var output bytes.Buffer
+	if err := server.run(context.Background(), input, &output); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected two replies, got %d: %s", len(lines), output.String())
+	}
+	var first, second map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatal(err)
+	}
+	negotiated := first["result"].(map[string]any)["protocolVersion"]
+	if negotiated != "2025-06-18" {
+		t.Fatalf("first initialize negotiated %v", negotiated)
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &second); err != nil {
+		t.Fatal(err)
+	}
+	if second["result"] != nil || second["error"] == nil {
+		t.Fatalf("second initialize accepted, renegotiating the version: %#v", second)
+	}
+	if server.era != eraLegacy {
+		t.Fatalf("era disturbed by the refused second initialize: %v", server.era)
+	}
+}
+
+// The opening selects the era once. A connection that has spoken modern must
+// not be able to hand itself back to the legacy handshake, because doing so
+// would shed the per-request metadata the modern revision requires.
+func TestInitializeAfterModernRequestIsRejectedAndDoesNotChangeEra(t *testing.T) {
+	server := &mcpServer{}
+	meta := `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}`
+	input := strings.NewReader(
+		"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{" + meta + "}}\n" +
+			"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"legacy\",\"version\":\"1\"}}}\n" +
+			"{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\",\"params\":{}}\n")
+	var output bytes.Buffer
+	if err := server.run(context.Background(), input, &output); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected three replies, got %d: %s", len(lines), output.String())
+	}
+	var modern, crossed, after map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &modern); err != nil {
+		t.Fatal(err)
+	}
+	if modern["result"] == nil {
+		t.Fatalf("modern tools/list rejected: %#v", modern)
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &crossed); err != nil {
+		t.Fatal(err)
+	}
+	if crossed["result"] != nil || crossed["error"] == nil {
+		t.Fatalf("initialize accepted on a modern connection: %#v", crossed)
+	}
+	if server.era != eraModern {
+		t.Fatalf("era changed away from modern: %v", server.era)
+	}
+	// The decisive check: metadata may not become optional afterwards.
+	if err := json.Unmarshal([]byte(lines[2]), &after); err != nil {
+		t.Fatal(err)
+	}
+	if after["result"] != nil {
+		t.Fatalf("metadata-free request served after rejected initialize: %#v", after)
+	}
+}
+
+// Latching the era is a commitment for the whole connection, so it must not be
+// made on a handshake that never established what the client speaks.
+func TestMalformedInitializeIsRejectedAndLeavesEraUndetermined(t *testing.T) {
+	for name, params := range map[string]string{
+		"empty object":               `{}`,
+		"missing capabilities":       `{"protocolVersion":"2025-06-18","clientInfo":{"name":"x"}}`,
+		"missing clientInfo":         `{"protocolVersion":"2025-06-18","capabilities":{}}`,
+		"missing clientInfo.version": `{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"x"}}`,
+		"empty protocolVersion":      `{"protocolVersion":"","capabilities":{},"clientInfo":{"name":"x"}}`,
+		"wrong types":                `{"protocolVersion":7,"capabilities":[],"clientInfo":"nope"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := &mcpServer{}
+			input := strings.NewReader(
+				"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":" + params + "}\n" +
+					"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}\n")
+			var output bytes.Buffer
+			if err := server.run(context.Background(), input, &output); err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+			var initialize, follow map[string]any
+			if err := json.Unmarshal([]byte(lines[0]), &initialize); err != nil {
+				t.Fatal(err)
+			}
+			failure, ok := initialize["error"].(map[string]any)
+			if !ok || failure["code"] != float64(-32602) {
+				t.Fatalf("malformed initialize accepted: %#v", initialize)
+			}
+			if server.era != eraUndetermined {
+				t.Fatalf("era latched by a malformed handshake: %v", server.era)
+			}
+			if err := json.Unmarshal([]byte(lines[1]), &follow); err != nil {
+				t.Fatal(err)
+			}
+			if follow["result"] != nil {
+				t.Fatalf("metadata-free request served after malformed initialize: %#v", follow)
+			}
+		})
+	}
+}
+
+// server/discover belongs to the modern revision; a legacy connection must not
+// receive the modern envelope through it.
+func TestDiscoverIsUnavailableOnALegacyConnection(t *testing.T) {
+	server := &mcpServer{}
+	input := strings.NewReader(
+		"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"legacy\",\"version\":\"1\"}}}\n" +
+			"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"server/discover\",\"params\":{}}\n")
+	var output bytes.Buffer
+	if err := server.run(context.Background(), input, &output); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	var discover map[string]any
+	if err := json.Unmarshal([]byte(lines[1]), &discover); err != nil {
+		t.Fatal(err)
+	}
+	if discover["result"] != nil {
+		t.Fatalf("legacy connection received a modern discover envelope: %#v", discover)
+	}
+	if discover["error"].(map[string]any)["code"] != float64(-32601) {
+		t.Fatalf("unexpected discover error: %#v", discover)
+	}
+}
+
+// A modern client that names a version we do not speak must be told what we do
+// speak, so it can retry rather than give up.
+func TestUnsupportedModernVersionNamesSupportedVersions(t *testing.T) {
+	server := &mcpServer{}
+	input := strings.NewReader("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"1900-01-01\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}\n")
+	var output bytes.Buffer
+	if err := server.run(context.Background(), input, &output); err != nil {
+		t.Fatal(err)
+	}
+	var response map[string]any
+	if err := json.Unmarshal(output.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	failure, ok := response["error"].(map[string]any)
+	if !ok || failure["code"] != float64(-32022) {
+		t.Fatalf("expected UnsupportedProtocolVersionError: %#v", response)
+	}
+	data, ok := failure["data"].(map[string]any)
+	if !ok || data["requested"] != "1900-01-01" {
+		t.Fatalf("error does not echo the requested version: %#v", failure)
+	}
+	supported, ok := data["supported"].([]any)
+	if !ok || len(supported) == 0 || supported[0] != protocolVersion {
+		t.Fatalf("error does not name supported versions: %#v", failure)
+	}
+}
+
 func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
