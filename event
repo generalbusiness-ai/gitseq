@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged task/fold-linear at its independently approved exact head. Combined-main vet, test, build, and focused race gates pass.","body":{"commit":"bd3e2d781d7d47387fb59e3c150a9b568ea97cd8","path":"spike/internal/workroom"}}
+{"kind":"report","text":"Task 2f complete: authority-heavy folding is linear, the exact implementation head was independently approved, and merge bd3e2d781d7d47387fb59e3c150a9b568ea97cd8 is on main. Full combined gates and focused race tests pass.","body":{"merge":"bd3e2d781d7d47387fb59e3c150a9b568ea97cd8","result":"merged"}}
