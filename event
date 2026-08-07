@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will make gitseq operate correctly from linked Git worktrees in branch task/linked-worktrees, prove the CLI and MCP paths, add regression coverage, and request independent exact-head review before merge."}
+{"kind":"assert","text":"Task 2a implementation now resolves repository-wide gitseq state through Git common-dir; linked-checkout regression, full tests, vet, and race gate pass. Black-box CLI and MCP checks are in progress.","body":{"branch":"task/linked-worktrees","gates":"go-test,go-vet,go-test-race"}}
