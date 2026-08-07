@@ -254,7 +254,12 @@ func TestNonActionableCommitmentsAreSeparatedFromWaiting(t *testing.T) {
 	projection := &status.Durable.Projection
 	projection.Commitments = append(projection.Commitments,
 		workroom.Commitment{Request: "request:stale", Requester: theirs, Performer: mine, Status: "stale", WaitingOn: mine},
-		workroom.Commitment{Request: "request:reneged", Requester: mine, Performer: theirs, Status: "reneged", WaitingOn: theirs})
+		// The fold clears WaitingOn for reneged and cancelled commitments, so a
+		// fixture that sets it would test a state that cannot occur — which is
+		// how the previous version of this test passed while the code could
+		// never surface a real reneging.
+		workroom.Commitment{Request: "request:reneged", Requester: mine, Performer: theirs, Status: "reneged"},
+		workroom.Commitment{Request: "request:cancelled", Requester: theirs, Performer: mine, Status: "cancelled"})
 
 	digest := digestStatus(status, mine, "me", false)
 	for _, view := range digest.WaitingOnYou {
@@ -272,7 +277,7 @@ func TestNonActionableCommitmentsAreSeparatedFromWaiting(t *testing.T) {
 	for _, view := range digest.NotActionable {
 		seen[view.Request] = true
 	}
-	if !seen["request:stale"] || !seen["request:reneged"] {
+	if !seen["request:stale"] || !seen["request:reneged"] || !seen["request:cancelled"] {
 		t.Fatalf("non-actionable commitments were dropped rather than separated: %#v", digest.NotActionable)
 	}
 	if !strings.Contains(summarize("status", digest), "not actionable") {
@@ -286,6 +291,40 @@ func TestNonActionableCommitmentsAreSeparatedFromWaiting(t *testing.T) {
 		if view.Status == "stale" {
 			t.Fatalf("wait reintroduced a stale commitment as waiting: %#v", view)
 		}
+	}
+	// The delta must also deliver them rather than dropping them; a commitment
+	// that goes stale or reneged after a caller's last status is precisely what
+	// they need the delta to tell them.
+	delivered := map[string]bool{}
+	for _, view := range delta.NotActionable {
+		delivered[view.Request] = true
+	}
+	if !delivered["request:stale"] || !delivered["request:reneged"] || !delivered["request:cancelled"] {
+		t.Fatalf("wait dropped non-actionable commitments instead of delivering them: %#v", delta.NotActionable)
+	}
+}
+
+// A ratify or supersede arriving after the cursor must be recognisable. The
+// status view was repaired for this; the delta was not, and a blank actor and
+// kind is the same omission in the surface an agent polls most.
+func TestWaitDeltaResolvesActsNotOnlyStatements(t *testing.T) {
+	status := sampleStatus(4)
+	projection := &status.Durable.Projection
+	projection.Acts = append(projection.Acts, workroom.Act{
+		Event: "act:late-ratify", Actor: mine, Type: "ratify", Target: "request:for-me",
+		Verdict: workroom.Ineffective, Reason: "actor lacks ratifier role", Text: "tried to ratify"})
+	projection.Decisions = append(projection.Decisions, workroom.Decision{
+		Event: "act:late-ratify", Verdict: workroom.Ineffective, Reason: "actor lacks ratifier role"})
+	status.Durable.Depth = len(projection.Decisions)
+
+	requested := service.Cursor{Frontier: []service.Frontier{{Genesis: "genesis", Depth: status.Durable.Depth - 1}}}
+	delta := digestWait(service.WaitResponse{Status: status}, requested, mine, "me", false)
+	if len(delta.Durable) != 1 {
+		t.Fatalf("expected the one new event: %#v", delta.Durable)
+	}
+	view := delta.Durable[0]
+	if view.Actor == "" || view.Kind != "ratify" || view.Target != "request:for-me" {
+		t.Fatalf("a ratify arrived unrecognisable in the delta: %#v", view)
 	}
 }
 

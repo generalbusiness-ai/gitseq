@@ -86,6 +86,16 @@ type liveView struct {
 // belongs, rather than silently appearing as work.
 var actionableStatuses = map[string]bool{"requested": true, "promised": true, "reported": true}
 
+// involves decides whether a commitment is any of this actor's business.
+// Membership must not be read from WaitingOn: the fold clears it for reneged
+// and cancelled commitments, so keying on it made exactly the terminal states
+// a party most needs to hear about unreachable.
+func involves(commitment workroom.Commitment, fingerprint string) bool {
+	return commitment.Requester == fingerprint ||
+		commitment.Performer == fingerprint ||
+		commitment.WaitingOn == fingerprint
+}
+
 type actorStatus struct {
 	You            actorView          `json:"you"`
 	Frontier       []service.Frontier `json:"frontier"`
@@ -105,6 +115,7 @@ type waitDelta struct {
 	Durable      []eventView      `json:"durable,omitempty"`
 	Skipped      int              `json:"durable_skipped,omitempty"`
 	WaitingOnYou []commitmentView `json:"waiting_on_you,omitempty"`
+	NotActionable []commitmentView `json:"not_actionable,omitempty"`
 	Live         []nexus.Change   `json:"live,omitempty"`
 	Totals       totals           `json:"totals"`
 }
@@ -240,9 +251,7 @@ func digestStatus(status service.Status, fingerprint, actorName string, degraded
 		}
 	}
 	for _, commitment := range projection.Commitments {
-		mine := commitment.WaitingOn == fingerprint ||
-			(commitment.Requester == fingerprint && commitment.WaitingOn != "")
-		if !mine || commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
+		if !involves(commitment, fingerprint) || commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
 			continue
 		}
 		view := viewCommitment(projection, statements, commitment)
@@ -255,7 +264,7 @@ func digestStatus(status service.Status, fingerprint, actorName string, degraded
 		}
 		if commitment.WaitingOn == fingerprint {
 			digest.WaitingOnYou = append(digest.WaitingOnYou, view)
-		} else {
+		} else if commitment.WaitingOn != "" {
 			digest.YouAreWaiting = append(digest.YouAreWaiting, view)
 		}
 	}
@@ -316,20 +325,37 @@ func digestWait(response service.WaitResponse, requested service.Cursor, fingerp
 		delta.Skipped = len(fresh) - deltaCap
 		fresh = fresh[len(fresh)-deltaCap:]
 	}
+	// Ratify and supersede are not statements. Joining only through statements
+	// left them blank in the delta, so a failed ratification arriving after the
+	// cursor was unrecognisable — the very thing a delta is for.
+	acts := actIndex(projection)
 	for _, decision := range fresh {
 		view := eventView{Event: decision.Event, Verdict: string(decision.Verdict), Reason: decision.Reason}
 		if statement, ok := statements[decision.Event]; ok {
 			view.Actor = name(projection, statement.Actor)
 			view.Kind = string(statement.Kind)
 			view.Text = truncate(statement.Text)
+		} else if act, ok := acts[decision.Event]; ok {
+			view.Actor = name(projection, act.Actor)
+			view.Kind = act.Type
+			view.Target = act.Target
+			view.Text = truncate(act.Text)
 		}
 		delta.Durable = append(delta.Durable, view)
 	}
 	for _, commitment := range projection.Commitments {
-		if commitment.WaitingOn != fingerprint || !actionableStatuses[commitment.Status] {
+		if !involves(commitment, fingerprint) || commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
 			continue
 		}
-		delta.WaitingOnYou = append(delta.WaitingOnYou, viewCommitment(projection, statements, commitment))
+		view := viewCommitment(projection, statements, commitment)
+		switch {
+		case !actionableStatuses[commitment.Status]:
+			// A commitment that went stale or reneged since the caller last
+			// looked is exactly what a delta exists to deliver.
+			delta.NotActionable = append(delta.NotActionable, view)
+		case commitment.WaitingOn == fingerprint:
+			delta.WaitingOnYou = append(delta.WaitingOnYou, view)
+		}
 	}
 	if degraded {
 		delta.Cursor.Live = nexus.Cursor{Generation: "degraded"}
@@ -357,8 +383,8 @@ func summarize(tool string, value any) string {
 		if shaped.Skipped > 0 {
 			skipped = fmt.Sprintf(", %d older events omitted", shaped.Skipped)
 		}
-		return fmt.Sprintf("depth %d, %d new durable events%s%s, %d waiting on you",
-			shaped.Totals.Depth, len(shaped.Durable), skipped, reset, len(shaped.WaitingOnYou))
+		return fmt.Sprintf("depth %d, %d new durable events%s%s, %d waiting on you, %d not actionable",
+			shaped.Totals.Depth, len(shaped.Durable), skipped, reset, len(shaped.WaitingOnYou), len(shaped.NotActionable))
 	default:
 		return tool + " ok"
 	}
