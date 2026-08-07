@@ -16,17 +16,26 @@ targets, by `provenance`, and by `Rests-On:` commit trailers. Always copy
 it whole, from the emitted event rather than from a display that
 abbreviates it.
 
-What happens to a citation that resolves to nothing depends on where it
-sits. The fold enforces the commitment chain: a `promise` naming a
-request that does not exist is judged ineffective as a dangling promise,
-and a `report` resting on that promise is ineffective in turn, so an
-unearned approval cannot carry force. It does **not** enforce evidential
-`rests_on`: a dangling basis on an `assert` or `artifact` is recorded as
-effective. That division is deliberate — the chain is machinery the fold
-owns, while `rests_on` is a claim about meaning, and a substrate with no
-ontology cannot check it. The practical consequence is that a mistyped
-citation on a claim is accepted silently, while the same mistake on a
-commitment is caught.
+The fold checks exactly one thing about your citations, and it is worth
+knowing precisely which. A `promise` must find an effective `request`
+among its bases, and a `report` an effective `promise`; that single
+required edge is what makes the commitment chain hold, so a promise
+citing a request that does not exist is ineffective, and a report on
+that promise is ineffective in turn. An unearned approval cannot carry
+force.
+
+Nothing else in `rests_on` is validated. A dangling basis on an `assert`
+or `artifact` is recorded as effective, and so is an *extra* dangling
+basis on a promise or report that already has its required edge — the
+chain is satisfied, and the surplus citation is simply carried. So a
+mistyped identifier is caught only when it is the one link the chain
+depends on, and is silently kept everywhere else.
+
+That division is deliberate. The chain is machinery the fold owns;
+`rests_on` otherwise asserts that one thing bears on another, which is a
+claim about meaning, and a substrate with no ontology cannot check it.
+The practical rule for an author is unchanged either way: copy
+identifiers whole, from the emitted event.
 
 ## `gs`
 
