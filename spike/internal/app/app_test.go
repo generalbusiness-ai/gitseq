@@ -95,6 +95,14 @@ func TestLinkedWorktreeSharesRepositoryWorkroom(t *testing.T) {
 	if err != nil || after.Depth != 2 {
 		t.Fatalf("main checkout did not observe linked append: snapshot=%+v err=%v", after, err)
 	}
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "written after linked checkout",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "main-after-linked",
+	})
+	final, err := fromLinked.Snapshot(ctx)
+	if err != nil || final.Depth != 3 {
+		t.Fatalf("resident cache did not recover from external advance: snapshot=%+v err=%v", final, err)
+	}
 }
 
 func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {

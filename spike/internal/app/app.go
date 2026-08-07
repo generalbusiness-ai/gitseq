@@ -59,6 +59,8 @@ type Workspace struct {
 
 	snapshotMu    sync.Mutex
 	snapshotCache *Snapshot
+	submitterOnce sync.Once
+	submitter     *kernel.Submitter
 }
 
 type Snapshot struct {
@@ -521,7 +523,10 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 	if w.Config.ReadOnly {
 		return Submission{}, errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
 	}
-	result, err := kernel.Submit(ctx, w.Store, request, kernel.Options{SigningKey: w.Config.SequencerKey, PreAppend: w.allowlist})
+	w.submitterOnce.Do(func() {
+		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{SigningKey: w.Config.SequencerKey, PreAppend: w.allowlist})
+	})
+	result, err := w.submitter.Submit(ctx, request)
 	if err != nil {
 		return Submission{}, err
 	}

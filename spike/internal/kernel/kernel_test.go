@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -25,7 +26,7 @@ type fixtureState struct {
 	format     string
 }
 
-func newFixture(t *testing.T, format string) fixtureState {
+func newFixture(t testing.TB, format string) fixtureState {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -52,7 +53,7 @@ func newFixture(t *testing.T, format string) fixtureState {
 	return fixtureState{ctx: ctx, store: store, scratch: scratch, signingKey: keyPath, publicKey: publicKey, genesis: genesis, format: format}
 }
 
-func (f fixtureState) request(t *testing.T, private ed25519.PrivateKey, key string, payload []byte, rests []string) Request {
+func (f fixtureState) request(t testing.TB, private ed25519.PrivateKey, key string, payload []byte, rests []string) Request {
 	t.Helper()
 	tree, err := f.scratch.WritePayloadTree(f.ctx, payload, nil)
 	if err != nil {
@@ -70,7 +71,7 @@ func (f fixtureState) request(t *testing.T, private ed25519.PrivateKey, key stri
 	return Request{Signed: signed, Payload: payload}
 }
 
-func actor(t *testing.T) ed25519.PrivateKey {
+func actor(t testing.TB) ed25519.PrivateKey {
 	t.Helper()
 	_, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -101,6 +102,144 @@ func TestCreateSubmitReplayVerifyObjectFormats(t *testing.T) {
 			}
 			if verified.Events != 1 || verified.Head != first.Commit {
 				t.Fatalf("verification = %#v", verified)
+			}
+		})
+	}
+}
+
+func TestSubmitterReusesExactHeadAndRebuildsAfterExternalAdvance(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
+
+	first := f.request(t, private, "first", []byte("first"), nil)
+	if _, err := submitter.Submit(f.ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	second := f.request(t, private, "second", []byte("second"), nil)
+	if _, err := submitter.Submit(f.ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	if submitter.cache.fullScans != 1 || submitter.cache.cacheHits != 1 {
+		t.Fatalf("warm cache counts = scans %d hits %d, want 1 and 1", submitter.cache.fullScans, submitter.cache.cacheHits)
+	}
+	first.Signed.Intent[0] ^= 0xff
+	firstReplay := f.request(t, private, "first", []byte("first"), nil)
+	if replay, err := submitter.Submit(f.ctx, firstReplay); err != nil || !replay.Replay {
+		t.Fatalf("caller mutation corrupted cached intent: replay=%+v err=%v", replay, err)
+	}
+
+	external := f.request(t, private, "external", []byte("external"), nil)
+	if _, err := Submit(f.ctx, f.store, external, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	afterExternal := f.request(t, private, "after-external", []byte("after-external"), nil)
+	if _, err := submitter.Submit(f.ctx, afterExternal); err != nil {
+		t.Fatal(err)
+	}
+	if submitter.cache.fullScans != 2 {
+		t.Fatalf("external advance left full scans at %d, want 2", submitter.cache.fullScans)
+	}
+
+	replay, err := submitter.Submit(f.ctx, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !replay.Replay {
+		t.Fatal("warm submitter did not preserve idempotent replay")
+	}
+	conflict := f.request(t, private, "second", []byte("different"), nil)
+	if _, err := submitter.Submit(f.ctx, conflict); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("cached idempotency conflict = %v", err)
+	}
+	verified, err := Verify(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.Events != 4 || verified.Head != submitter.cache.head {
+		t.Fatalf("verification = %+v cache head = %s", verified, submitter.cache.head)
+	}
+}
+
+func TestSubmitterRebuildsAndRetriesAfterCASLoss(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	arrived := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, Failpoint: func(name string) {
+		if name == "before_ref_cas" {
+			once.Do(func() {
+				close(arrived)
+				<-release
+			})
+		}
+	}})
+
+	type outcome struct {
+		result Result
+		err    error
+	}
+	completed := make(chan outcome, 1)
+	residentRequest := f.request(t, private, "resident", []byte("resident"), nil)
+	go func() {
+		result, err := submitter.Submit(f.ctx, residentRequest)
+		completed <- outcome{result: result, err: err}
+	}()
+	<-arrived
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "external", []byte("external"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	out := <-completed
+	if out.err != nil {
+		t.Fatal(out.err)
+	}
+	if out.result.CASRetries != 1 {
+		t.Fatalf("CAS retries = %d, want 1", out.result.CASRetries)
+	}
+	if submitter.cache.fullScans != 2 {
+		t.Fatalf("CAS loss full scans = %d, want 2", submitter.cache.fullScans)
+	}
+	verified, err := Verify(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.Events != 2 || verified.Head != out.result.Head {
+		t.Fatalf("verification = %+v result = %+v", verified, out.result)
+	}
+}
+
+func BenchmarkSubmitSequence(b *testing.B) {
+	for _, resident := range []bool{false, true} {
+		name := "stateless"
+		if resident {
+			name = "resident"
+		}
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			f := newFixture(b, "sha1")
+			private := actor(b)
+			requests := make([]Request, b.N)
+			for index := range requests {
+				key := "event-" + strconv.Itoa(index)
+				requests[index] = f.request(b, private, key, []byte(key), nil)
+			}
+			var submitter *Submitter
+			if resident {
+				submitter = NewSubmitter(f.store, Options{SigningKey: f.signingKey})
+			}
+			b.ResetTimer()
+			for _, request := range requests {
+				var err error
+				if resident {
+					_, err = submitter.Submit(f.ctx, request)
+				} else {
+					_, err = Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey})
+				}
+				if err != nil {
+					b.Fatal(err)
+				}
 			}
 		})
 	}
