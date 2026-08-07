@@ -279,7 +279,11 @@ func (s *mcpServer) initializeLegacy(params json.RawMessage) (map[string]any, *r
 		ProtocolVersion *string         `json:"protocolVersion"`
 		Capabilities    *map[string]any `json:"capabilities"`
 		ClientInfo      *struct {
-			Name *string `json:"name"`
+			// The legacy revisions type clientInfo as Implementation, which
+			// requires both fields; accepting a half-populated one would latch
+			// the era on a handshake the client never completed.
+			Name    *string `json:"name"`
+			Version *string `json:"version"`
 		} `json:"clientInfo"`
 	}
 	if len(params) == 0 {
@@ -295,6 +299,8 @@ func (s *mcpServer) initializeLegacy(params json.RawMessage) (map[string]any, *r
 		return nil, &rpcError{Code: -32602, Message: "initialize requires capabilities"}
 	case request.ClientInfo == nil || request.ClientInfo.Name == nil || *request.ClientInfo.Name == "":
 		return nil, &rpcError{Code: -32602, Message: "initialize requires clientInfo.name"}
+	case request.ClientInfo.Version == nil || *request.ClientInfo.Version == "":
+		return nil, &rpcError{Code: -32602, Message: "initialize requires clientInfo.version"}
 	}
 	version := newestLegacyVersion
 	if legacyVersions[*request.ProtocolVersion] {

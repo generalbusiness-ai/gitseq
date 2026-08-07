@@ -150,7 +150,7 @@ func TestInitializeAfterModernRequestIsRejectedAndDoesNotChangeEra(t *testing.T)
 	meta := `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}`
 	input := strings.NewReader(
 		"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{" + meta + "}}\n" +
-			"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"legacy\"}}}\n" +
+			"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"legacy\",\"version\":\"1\"}}}\n" +
 			"{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\",\"params\":{}}\n")
 	var output bytes.Buffer
 	if err := server.run(context.Background(), input, &output); err != nil {
@@ -189,11 +189,12 @@ func TestInitializeAfterModernRequestIsRejectedAndDoesNotChangeEra(t *testing.T)
 // made on a handshake that never established what the client speaks.
 func TestMalformedInitializeIsRejectedAndLeavesEraUndetermined(t *testing.T) {
 	for name, params := range map[string]string{
-		"empty object":          `{}`,
-		"missing capabilities":  `{"protocolVersion":"2025-06-18","clientInfo":{"name":"x"}}`,
-		"missing clientInfo":    `{"protocolVersion":"2025-06-18","capabilities":{}}`,
-		"empty protocolVersion": `{"protocolVersion":"","capabilities":{},"clientInfo":{"name":"x"}}`,
-		"wrong types":           `{"protocolVersion":7,"capabilities":[],"clientInfo":"nope"}`,
+		"empty object":               `{}`,
+		"missing capabilities":       `{"protocolVersion":"2025-06-18","clientInfo":{"name":"x"}}`,
+		"missing clientInfo":         `{"protocolVersion":"2025-06-18","capabilities":{}}`,
+		"missing clientInfo.version": `{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"x"}}`,
+		"empty protocolVersion":      `{"protocolVersion":"","capabilities":{},"clientInfo":{"name":"x"}}`,
+		"wrong types":                `{"protocolVersion":7,"capabilities":[],"clientInfo":"nope"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			server := &mcpServer{}
@@ -231,7 +232,7 @@ func TestMalformedInitializeIsRejectedAndLeavesEraUndetermined(t *testing.T) {
 func TestDiscoverIsUnavailableOnALegacyConnection(t *testing.T) {
 	server := &mcpServer{}
 	input := strings.NewReader(
-		"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"legacy\"}}}\n" +
+		"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"legacy\",\"version\":\"1\"}}}\n" +
 			"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"server/discover\",\"params\":{}}\n")
 	var output bytes.Buffer
 	if err := server.run(context.Background(), input, &output); err != nil {
