@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will review task/docs-era at exact head 1bc7220f53474f78ccffe3376c6d48264a73d858 by probing each documented protocol-era behavior against a binary built from merged main, checking the reference table and narrowed citation claim, sweeping docs for stale pre-merge language, and reporting approved or changes-requested without merging.","body":{"head":"1bc7220f53474f78ccffe3376c6d48264a73d858","scope":"docs-era-review"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5e4e09780dc632ecdbfad4d4f8e14bba10619099"}
