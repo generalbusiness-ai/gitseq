@@ -2,6 +2,7 @@ package workroom
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 )
 
@@ -11,13 +12,49 @@ const (
 	other    = "actor:other"
 )
 
-func event(t *testing.T, id, actor, schema string, payload any, rests ...string) Record {
+func event(t testing.TB, id, actor, schema string, payload any, rests ...string) Record {
 	t.Helper()
 	encoded, err := Encode(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return Record{ID: id, Actor: actor, Schema: schema, Payload: encoded, RestsOn: rests}
+}
+
+func BenchmarkFoldRosterHeavy(b *testing.B) {
+	for _, actors := range []int{100, 1000, 5000} {
+		records := rosterHeavyHistory(b, actors)
+		b.Run(fmt.Sprintf("actors-%d", actors), func(b *testing.B) {
+			for b.Loop() {
+				Fold(records)
+			}
+		})
+	}
+}
+
+func rosterHeavyHistory(t testing.TB, actors int) []Record {
+	t.Helper()
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+	}
+	for index := range actors {
+		actor := fmt.Sprintf("actor:%d", index)
+		membership := fmt.Sprintf("membership:%d", index)
+		membershipRatification := fmt.Sprintf("membership-ratification:%d", index)
+		grant := fmt.Sprintf("grant:%d", index)
+		grantRatification := fmt.Sprintf("grant-ratification:%d", index)
+		proposal := fmt.Sprintf("proposal:%d", index)
+		ratification := fmt.Sprintf("proposal-ratification:%d", index)
+		records = append(records,
+			event(t, membership, operator, SchemaState, State{Kind: KindRoster, Text: "join", Body: map[string]string{"actor": actor, "kind": "agent", "name": actor, "role": "participant"}}, "e0"),
+			event(t, membershipRatification, operator, SchemaRatify, Ratify{Target: membership}, membership),
+			event(t, grant, operator, SchemaState, State{Kind: KindRoster, Text: "grant", Body: map[string]string{"actor": actor, "kind": "agent", "name": actor, "role": "ratifier"}}, membership),
+			event(t, grantRatification, operator, SchemaRatify, Ratify{Target: grant}, grant),
+			event(t, proposal, operator, SchemaState, State{Kind: KindPropose, Text: "proposal"}, "e0"),
+			event(t, ratification, actor, SchemaRatify, Ratify{Target: proposal}, proposal),
+		)
+	}
+	return records
 }
 
 func golden(t *testing.T) Projection {
@@ -229,6 +266,32 @@ func TestSupersedingSupersessionResurrectsTarget(t *testing.T) {
 	})
 	if projection.Statements[1].Retired {
 		t.Fatal("proposal did not resurrect")
+	}
+}
+
+func TestIncrementalRetirementHandlesMultipleCausesAndNestedResurrection(t *testing.T) {
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindPropose, Text: "proposal"}, "e0"),
+		event(t, "e2", operator, SchemaSupersede, Supersede{Target: "e1", Text: "first retirement"}, "e1"),
+		event(t, "e3", operator, SchemaSupersede, Supersede{Target: "e1", Text: "second retirement"}, "e1"),
+		event(t, "e4", operator, SchemaSupersede, Supersede{Target: "e2", Text: "remove first cause"}, "e2"),
+		event(t, "e5", operator, SchemaSupersede, Supersede{Target: "e3", Text: "remove second cause"}, "e3"),
+		event(t, "e6", operator, SchemaSupersede, Supersede{Target: "e4", Text: "restore first cause"}, "e4"),
+	}
+	wantRetired := []bool{false, true, true, true, false, true}
+	for offset, want := range wantRetired {
+		projection := Fold(records[:offset+2])
+		var got bool
+		for _, statement := range projection.Statements {
+			if statement.Event == "e1" {
+				got = statement.Retired
+				break
+			}
+		}
+		if got != want {
+			t.Errorf("prefix through e%d: retired = %v, want %v", offset+1, got, want)
+		}
 	}
 }
 
