@@ -71,7 +71,7 @@ few governance kinds. Their meaning belongs to the room's practice.
 | Command | Purpose |
 |---|---|
 | `gs serve --listen 127.0.0.1:7777` | Run the resident service. |
-| `gs attach --remote <remote> --genesis <hash>` | Add the `refs/seq/*` fetch rule to a clone and verify. |
+| `gs attach --remote <remote> --genesis <hash>` | Add a non-forcing `refs/seq/*` fetch rule to a clone and verify. |
 
 Git ignores `refs/seq/*` in both directions. `attach` arranges the fetch
 side; nothing arranges the push side, so publishing is a deliberate act:
@@ -84,6 +84,11 @@ No leading `+`. A sequence only advances, so publishing is always a
 fast-forward; a rejected push means the remote is ahead of you, and
 forcing it would rewind published history, which the record exists to
 make impossible.
+
+The same rule applies on fetch. `attach` replaces the forced sequence
+refspec written by older builds, then fetches atomically without `+`. Initial
+and fast-forward fetches work; a remote rewind fails without moving the
+auditor's existing `refs/seq/*` frontier.
 
 Until that runs, the workroom exists only in the repository that created
 it, and an auditor's `attach` fails on a missing ref rather than on
