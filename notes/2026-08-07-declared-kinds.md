@@ -110,11 +110,20 @@ superseding its definition — an audited act). Addressed in part,
 with the predecessor requests staying open for the remainder:
 projection-honesty retains the staleness-through-ineffective-bases
 policy and the status page's treatment of ratified decisions and
-opaque acts; artifact-world-basis retains the distinct
-describes-superseded-world projection, the handling of unbridged or
-empty-basis artifacts, and verification that a cited commit carries
-its `Rests-On:` trailer — a mandatory artifact basis narrows that
-request, it does not absorb it. And no definition can know the
+opaque acts — and, after this note's first review, a live incident
+(assert 2503e6de) added a further remainder: `rests_on` conflates
+**governing basis** with **historical lineage**, so retiring a
+draft flared an active chain that merely cited its review.
+Distinguishing those two relations joins the projection-honesty
+remainder, and the candidate algebra above cannot express it —
+`count(kind-set, min..max)` classes edges by kind alone. A
+candidate extension — basis edges classed `governs` or `cites`,
+with staleness flowing only along `governs` — is noted for the
+implementing wave, not adopted here. Artifact-world-basis retains
+the distinct describes-superseded-world projection, the handling of
+unbridged or empty-basis artifacts, and verification that a cited
+commit carries its `Rests-On:` trailer — a mandatory artifact basis
+narrows that request, it does not absorb it. And no definition can know the
 world changed; it can only require the citation that lets the
 change propagate. The commitment loop's attribution logic (who
 superseded, who may declare satisfaction) stays interpreter
@@ -150,36 +159,73 @@ concrete.
 Something must bootstrap, and it must not smuggle in a second
 interpreter. Judging an activation "effective, ratified,
 unsuperseded" is fold vocabulary — so the meta-rule never performs
-that judgment itself. **The incumbent judges the succession**:
+that judgment itself. **The incumbent judges the succession**, and
+**transitions are irrevocable**:
 
-> Walk the log with the bundled fold governing from genesis. The
-> incumbent fold judges every act — including activation statements,
-> their ratifications, and their supersessions. When the incumbent's
-> own projection shows an activation ratified, governance switches
-> to the named fold beginning at the position immediately after the
-> ratifying event. When the governing projection shows the current
-> activation superseded, governance reverts to the previous
-> interval's fold from the position immediately after the
-> superseding event, unless a successor activation has already taken
-> effect. The log's total order makes same-position transitions
-> inexpressible.
+> Walk the log with the initially bound fold governing from
+> genesis. The incumbent fold judges every act — including
+> activation statements and everything later done to them. When the
+> incumbent's own projection shows an activation ratified,
+> governance transitions to the named fold at the position
+> immediately after the ratifying event. A transition, once
+> crossed, is a permanent fact of the timeline: governance changes
+> again only at the next ratified activation. The log's total order
+> makes same-position transitions inexpressible.
 
 This is the constitutional pattern: the old rules govern the
 adoption of the new rules. The circularity is gone because
 "effective, ratified, unsuperseded" is the incumbent's judgment,
-made with the semantics that were already in force. And the interval
-algebra is deterministic by construction: every boundary is the
-position of a ratifying or superseding event, fixed in the total
-order. An activation confers nothing in the span between its
-statement and its ratification, so replay before and after the
-ratification lands agrees about that span; a supersession changes
-nothing behind its own position, so no historical span is ever
-re-governed. Verdicts stay append-fixed because interval boundaries
-only ever extend forward.
+made with the semantics that were already in force. Irrevocability
+makes the protocol total over everything actors can legally do to
+activation-related acts, because there is no retirement state
+machine to leave uncovered:
 
-The meta-rule paragraph earns the status of the canonical intent
-encoding: kernel-adjacent, exactly specified, versioned almost
-never. It is the only interpreter left outside the log.
+- A supersession of the activation *statement* that lands before
+  its ratification prevents the transition — the incumbent judges
+  ratification of a retired statement ineffective. Superseding that
+  supersession before ratification restores ratifiability. All of
+  this is ordinary incumbent jurisdiction over ordinary acts.
+- A supersession targeting the activation or its ratification after
+  the transition necessarily lands after the ratifying event (total
+  order), hence after the transition: it is visible dissent with no
+  governance effect.
+- Retiring a predecessor activation while a successor governs has
+  no governance effect, and no later event can be stranded by it,
+  because fallback does not exist: **reversion is re-activation** —
+  to govern by an earlier fold again, activate it again, through
+  the same ratified path.
+
+Governance is therefore monotone: every boundary is the position of
+a ratifying event, fixed in the total order; no forward event
+rewrites, re-governs, or reverts an earlier span; and there is no
+fallback target that might itself have been retired. An activation
+confers nothing between its statement and its ratification, so
+replay agrees about that span before and after the ratification
+lands. Verdicts stay append-fixed by construction.
+
+**The initial binding.** The span before the first transition must
+not keep the ambient-build ambiguity this design exists to end. A
+new workroom names its initial fold in the profile's seed statement
+— the same act that seeds the roster — under the same publication
+contract; reading that one field is meta-rule vocabulary, as the
+genesis descriptor's fields are kernel vocabulary. An existing
+workroom's first activation carries an explicit **prefix binding**:
+the named fold governs from genesis to the transition. This binds
+the previously unbound — it changes no in-band verdict, because the
+prefix had none; it replaces each reader's ambient build with one
+declared, ratified, contestable choice. It carries one consistency
+obligation, checkable by any reader: judged under the named prefix
+fold, the first activation and its ratification must themselves
+come out effective — a prefix binding that invalidates its own
+adoption is `uninterpretable`, typed. A log with neither seed
+binding nor ratified prefix binding projects as **unbound** — a
+stated condition, not a silent default.
+
+The meta-rule — walk, delegate judgment to the incumbent,
+transition irrevocably after ratification, read the initial
+binding — earns the status of the canonical intent encoding:
+kernel-adjacent, exactly specified, versioned almost never. It is
+the only interpreter left outside the log.
 
 ### Publishing a fold
 
@@ -201,14 +247,26 @@ toolchain, or dependency closure, so the activation body carries
 all four: the entry package, the meta-interface version it
 implements — the interface the meta-rule drives, comprising
 judgment, projection, and the state-handoff function invoked at a
-seam — and the pinned toolchain. The fold is a pure library: no
-cgo, no ambient I/O, its dependency closure carried by the repo's
-module graph at the cited commit. Reproducing meaning means
-building the cited source with the pinned toolchain and driving it
-through the versioned meta-interface; the golden fixtures at each
-seam pin the expected bytes. A fold declaring a meta-interface
-version the reader's meta-rule implementation does not support is
-`uninterpretable`, typed, exactly as a missing object is.
+seam — and the pinned toolchain. Content closure is the repo's:
+the cited commit must **vendor its entire module closure**, so the
+fold builds from repository objects alone — no network, no proxy,
+no resolution. The pinned toolchain is the one input the
+repository does not carry, and it is named as exactly that. The
+fold must be platform-independent pure Go — no cgo, no unsafe, no
+ambient I/O, no platform conditionals — and its determinism
+obligation is over *bytes, not builds*: readers on different
+machines building the same pinned toolchain version must produce
+identical projection bytes, with the seam fixtures as the check.
+
+Every unmet prerequisite is typed and named, never folded into a
+generic failure: `uninterpretable: interpreter not held` (objects
+unreachable), `toolchain not held`, `vendor incomplete`,
+`interface unsupported`, `fixture mismatch`. The reproducibility
+claim is correspondingly conditional and stated: reproducing
+meaning requires holding the published fold refs and the pinned
+toolchain. A reader lacking either still holds a fully verified
+record — signatures, order, intent bindings — plus a typed, named
+gap where meaning would be. Never a silent one.
 
 ### Consequences
 
@@ -255,9 +313,11 @@ one level up.
    total semantics, as the first implementing deliverable —
    separately reviewed, adopting or amending the candidate above.
 3. The first fold-activation names the fold implementing this note,
-   at its merge commit, published under `refs/folds/*`. History
-   before it is governed by the bundled fold, per the meta-rule's
-   default — the eighth-wave reinterpretation stays as it is, now
+   at its merge commit, published under `refs/folds/*`, and carries
+   the prefix binding: the same fold governs from genesis to the
+   transition — which is what every current reader already
+   computes, now declared and checkable under the consistency
+   obligation. The eighth-wave reinterpretation stays as it is,
    stated rather than implied.
 4. `undefined kind` and `uninterpretable` join `disputed` as typed
    projection outcomes.
