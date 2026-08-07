@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aab8759657b07b6d92db1ad322d8cbe1a2e13c6d","text":"Withdrawn: superseded by the repair of the one remaining execution-closure amendment; the repaired head is re-reported."}
+{"kind":"artifact","text":"Declared-kinds design note at its third review-repaired head on task/declared-kinds.","body":{"commit":"3a8db0fd8d80c6f429fb27e65629c0cc73282126","path":"notes/2026-08-07-declared-kinds.md"}}
