@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BadgeCheck, BookOpen, CircleSlash, CornerUpLeft, FileWarning, MessageSquareText, MessageSquareX, ThumbsUp, Undo2 } from "lucide-react";
+import { BadgeCheck, Bookmark, BookmarkPlus, CircleSlash, FileWarning, Link2, MessageSquareText, MessageSquareX, ThumbsUp } from "lucide-react";
 import { frameKey, type ActInput, type Commitment, type Decision, type FrameView, type Projection, type Statement } from "../lib/api";
-import { staleCauses, ticketsOf, statementWeight, threadChildren, type ThreadContent, type Workroom, type Selection } from "../lib/store";
+import { buildThreadIndex, staleCauses, ticketsOf, type ThreadSummary, type Workroom, type Selection } from "../lib/store";
 import type { Session } from "../lib/session";
-import { loadMemory, rememberFrames, type MemoryEntry } from "../lib/memory";
 import { mentionedFingerprints, mentionsActor, mentionTokens } from "../lib/mentions";
-import { actorTint, clock, cn, kindLabel, kindTint, seenAt, statusTint } from "../lib/util";
+import { actorTint, belongsInRoom, clock, cn, kindLabel, kindTint, seenAt, statusLabel, statusTint } from "../lib/util";
 import { Avatar } from "./Avatar";
-import { RowToolbar, ToolbarButton, WithdrawInput, semanticActions } from "./Toolbar";
-import { toggleCiteEvent, toggleCiteFrame, type ComposerContext, type ComposerMode } from "./Composer";
+import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
+import { toggleLinkEvent, toggleLinkFrame, type ComposerContext } from "./Composer";
 import type { ThreadTarget } from "./ThreadPane";
 
 export interface PendingSay {
@@ -18,10 +17,8 @@ export interface PendingSay {
   re?: string; // thread replies echo in the thread pane, not the stream
 }
 
-// One stream, three weights: plain talk as light message rows; settled record
-// entries as compact one-liners; only what still awaits a response — active
-// commitments and open proposals — as rich cards. Chat replies (frames with a
-// `re` target) live in their thread pane; the parent row wears the indicator.
+// One room, one message shape. Temporary chat and kept items differ by a
+// bookmark, not by typography or card chrome.
 export function Stream({
   workroom,
   session,
@@ -36,6 +33,7 @@ export function Stream({
   pending,
   onReconcile,
   onOpenThread,
+  onRoute,
   onOpenProfile,
   doAct,
   actError,
@@ -53,13 +51,12 @@ export function Stream({
   pending: PendingSay[];
   onReconcile: (ids: string[]) => void;
   onOpenThread: (target: ThreadTarget) => void;
+  onRoute: (mode: SemanticReplyMode, basis: string, prefill: string) => void;
   onOpenProfile: (fingerprint: string) => void;
   doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
   actError?: string;
 }) {
   const projection = workroom.status?.durable.projection;
-  const genesis = workroom.status?.durable.genesis ?? "";
-  const [memoryOpen, setMemoryOpen] = useState(false);
   const orderRef = useRef(new Map<string, number>());
   const counterRef = useRef(0);
   const scroller = useRef<HTMLDivElement>(null);
@@ -78,16 +75,6 @@ export function Stream({
     byFingerprint.get(fp) ??
     projection?.statements.find((s) => s.kind === "roster" && s.body?.actor === fp)?.body?.name ??
     fp.slice(0, 8);
-
-  // Personal memory: append what this session witnessed to a local, capped
-  // transcript. Local only — the room's amnesia is the contract; this is mine.
-  useEffect(() => {
-    if (!genesis || frames.length === 0) return;
-    rememberFrames(
-      genesis,
-      frames.map((f) => ({ key: frameKey(f), actor: f.actor, text: f.text, at: f.seen })),
-    );
-  }, [genesis, frames]);
 
   // Optimistic-echo reconciliation: a pending line is replaced by its real
   // frame when one with the same author and text arrives.
@@ -154,14 +141,7 @@ export function Stream({
     }
     return map;
   }, [projection]);
-  // Every durable event's thread — what rests on it, transitively. Drives
-  // the "N replies" indicator and the thread pane's content alike.
-  const threads = useMemo(() => {
-    const map = new Map<string, ThreadContent>();
-    if (!projection) return map;
-    for (const statement of projection.statements) map.set(statement.event, threadChildren(statement.event, projection));
-    return map;
-  }, [projection]);
+  const threadIndex = useMemo(() => (projection ? buildThreadIndex(projection) : undefined), [projection]);
   // Chat replies keyed by the frame they rest under.
   const frameReplies = useMemo(() => {
     const map = new Map<string, FrameView[]>();
@@ -179,14 +159,9 @@ export function Stream({
     requestAnimationFrame(() => document.getElementById("evt-" + anchor)?.scrollIntoView({ block: "center" }));
   };
 
-  // Semantic actions never manufacture text — they open the composer in the
-  // right mode with the basis prefilled, and the human says the words.
-  const route = (mode: ComposerMode, basis: string, prefill: string) =>
-    onComposer({ type: "say", mode, restsOn: [basis], frames: [], prefill });
-
   // The unified cite gesture, shared with the thread pane (see Composer).
-  const citeEvent = (event: string) => toggleCiteEvent(composer, onComposer, event);
-  const citeFrame = (frame: FrameView) => toggleCiteFrame(composer, onComposer, frame);
+  const linkEvent = (event: string) => toggleLinkEvent(composer, onComposer, event);
+  const linkFrame = (frame: FrameView) => toggleLinkFrame(composer, onComposer, frame);
 
   const items = useMemo(() => {
     const order = orderRef.current;
@@ -196,6 +171,7 @@ export function Stream({
     };
     const list: { key: string; order: number; statement?: Statement; frame?: FrameView }[] = [];
     for (const statement of projection?.statements ?? []) {
+      if (!belongsInRoom(statement.kind)) continue;
       // promise/report cards fold into their request's card
       const commitment = commitmentByEvent.get(statement.event);
       if (commitment && statement.event !== commitment.request && decisions.get(statement.event)?.verdict === "effective") continue;
@@ -236,13 +212,6 @@ export function Stream({
     return map;
   }, [projection]);
 
-  // Past local entries: what I witnessed that is no longer in the live room.
-  const memory = useMemo(() => {
-    if (!memoryOpen || !genesis) return [] as MemoryEntry[];
-    const liveKeys = new Set(frames.map((f) => frameKey(f)));
-    return loadMemory(genesis).filter((entry) => !liveKeys.has(entry.key));
-  }, [memoryOpen, genesis, frames]);
-
   // Build the rendered sequence with client-side "seen" dividers between
   // gaps in arrival time, and consecutive same-actor messages grouped under
   // one avatar, Slack-style.
@@ -274,7 +243,18 @@ export function Stream({
           known={actorNames}
           myName={session.actor}
           selected={composer.frames.some((f) => frameKey(f) === frameKey(item.frame!))}
-          onToggle={() => citeFrame(item.frame!)}
+          onToggle={() => linkFrame(item.frame!)}
+          onKeep={() =>
+            onComposer({
+              type: "assert",
+              restsOn: composer.restsOn,
+              frames: composer.frames.some((frame) => frameKey(frame) === frameKey(item.frame!))
+                ? composer.frames
+                : [...composer.frames, item.frame!],
+              prefill: item.frame!.text,
+              prefillID: crypto.randomUUID(),
+            })
+          }
           replies={frameReplies.get(frameKey(item.frame)) ?? []}
           onOpenThread={() => onOpenThread({ kind: "frame", conversation: item.frame!.conversation, sequence: item.frame!.sequence })}
           onOpenProfile={onOpenProfile}
@@ -299,20 +279,16 @@ export function Stream({
       bright: highlight.events.has(statement.event),
       selected: selection?.kind === "event" && selection.id === statement.event,
       cited: composer.restsOn.includes(statement.event),
-      thread: threads.get(statement.event),
+      thread: threadIndex?.summary(statement.event),
       onSelect: () => onSelect({ kind: "event", id: statement.event }),
       onJumpTo: jumpTo,
-      onCite: () => citeEvent(statement.event),
+      onCite: () => linkEvent(statement.event),
       onOpenThread: () => onOpenThread({ kind: "event", event: statement.event }),
       onOpenProfile,
-      onRoute: route,
+      onRoute,
       doAct,
     };
-    if (statementWeight(statement, projection, commitment) === "compact") {
-      rendered.push(<CompactRow key={item.key} {...common} notes={annotations} />);
-    } else {
-      rendered.push(<Card key={item.key} {...common} notes={annotations} />);
-    }
+    rendered.push(<RecordedMessage key={item.key} {...common} notes={annotations} />);
   }
   for (const say of pending) {
     if (say.re) continue; // thread replies echo in the pane
@@ -330,32 +306,6 @@ export function Stream({
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
         <div className="mx-auto max-w-3xl space-y-1">
-          <div className="flex justify-end">
-            <button
-              onClick={() => setMemoryOpen((open) => !open)}
-              aria-pressed={memoryOpen}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs focus-visible:outline focus-visible:outline-accent",
-                memoryOpen ? "text-muted" : "text-faint hover:text-muted",
-              )}
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-              Your memory
-            </button>
-          </div>
-          {memoryOpen && (
-            <div className="mb-3 rounded-lg border border-dashed border-border/70 px-3 py-2">
-              {memory.length === 0 && <p className="text-xs text-faint">Nothing kept.</p>}
-              <div className="max-h-56 space-y-0.5 overflow-y-auto">
-                {memory.map((entry) => (
-                  <p key={entry.key} className="text-sm text-faint">
-                    <span className="mr-2 text-xs font-semibold">{entry.actor}</span>
-                    {entry.text}
-                  </p>
-                ))}
-              </div>
-            </div>
-          )}
           {items.length === 0 && pending.length === 0 && (
             <p className="py-10 text-center font-serif text-[15px] italic text-faint">A quiet room.</p>
           )}
@@ -472,6 +422,7 @@ function MessageLine({
   myName,
   selected,
   onToggle,
+  onKeep,
   replies,
   onOpenThread,
   onOpenProfile,
@@ -483,6 +434,7 @@ function MessageLine({
   myName?: string;
   selected: boolean;
   onToggle: () => void;
+  onKeep: () => void;
   replies: FrameView[];
   onOpenThread: () => void;
   onOpenProfile: (fingerprint: string) => void;
@@ -521,11 +473,12 @@ function MessageLine({
       </div>
       <RowToolbar>
         <ToolbarButton
-          icon={<CornerUpLeft className="h-3.5 w-3.5" />}
-          label={selected ? "remove citation" : "cite"}
+          icon={<Link2 className="h-3.5 w-3.5" />}
+          label={selected ? "remove link" : "link"}
           active={selected}
           onClick={onToggle}
         />
+        <ToolbarButton icon={<BookmarkPlus className="h-3.5 w-3.5" />} label="keep this message" onClick={onKeep} />
         <ToolbarButton icon={<MessageSquareText className="h-3.5 w-3.5" />} label="reply in thread" onClick={onOpenThread} />
       </RowToolbar>
     </div>
@@ -551,13 +504,13 @@ export function Ticket({ ticket, event, onSelect, className }: { ticket?: number
   );
 }
 
-// What a recorded act rests on, as ticket links — in-log bases only.
+// Ordinary links to other kept messages. The full graph stays in Work.
 function RestsOn({ event, projection, tickets, onJumpTo, className }: { event: string; projection: Projection; tickets: Map<string, number>; onJumpTo: (event: string) => void; className?: string }) {
   const bases = (projection.provenance[event] ?? []).filter((basis) => tickets.has(basis));
   if (bases.length === 0) return null;
   return (
     <span className={cn("text-xs text-faint", className)}>
-      rests on{" "}
+      linked to{" "}
       {bases.map((basis, index) => (
         <span key={basis}>
           {index > 0 && ", "}
@@ -613,7 +566,6 @@ function ActToolbar({
   onOpenThread,
   onRoute,
   doAct,
-  onWithdraw,
 }: {
   statement: Statement;
   commitment?: Commitment;
@@ -623,23 +575,22 @@ function ActToolbar({
   cited: boolean;
   onCite: () => void;
   onOpenThread: () => void;
-  onRoute: (mode: ComposerMode, basis: string, prefill: string) => void;
+  onRoute: (mode: SemanticReplyMode, basis: string, prefill: string) => void;
   doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
-  onWithdraw: () => void;
 }) {
-  const actions = semanticActions({ statement, commitment, decision, projection, me, onRoute, doAct, onWithdraw });
+  const actions = semanticActions({ statement, commitment, decision, projection, me, onRoute, doAct });
   return (
     <RowToolbar>
       <ToolbarButton
-        icon={<CornerUpLeft className="h-3.5 w-3.5" />}
-        label={cited ? "remove citation" : "cite"}
+        icon={<Link2 className="h-3.5 w-3.5" />}
+        label={cited ? "remove link" : "link"}
         active={cited}
         onClick={onCite}
       />
       <ToolbarButton icon={<MessageSquareText className="h-3.5 w-3.5" />} label="open thread" onClick={onOpenThread} />
       {actions.length > 0 && <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />}
       {actions.map((action) => (
-        <ToolbarButton key={action.label} label={action.label} showLabel tone={action.tone} onClick={action.run} />
+        <ToolbarButton key={action.label} label={action.label} icon={<span aria-hidden>{action.symbol}</span>} tone={action.tone} onClick={action.run} />
       ))}
     </RowToolbar>
   );
@@ -658,19 +609,19 @@ interface RowProps {
   bright: boolean;
   selected: boolean;
   cited: boolean;
-  thread?: ThreadContent;
+  thread?: ThreadSummary;
   onSelect: () => void;
   onJumpTo: (event: string) => void;
   onCite: () => void;
   onOpenThread: () => void;
   onOpenProfile: (fingerprint: string) => void;
-  onRoute: (mode: ComposerMode, basis: string, prefill: string) => void;
+  onRoute: (mode: SemanticReplyMode, basis: string, prefill: string) => void;
   doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
 }
 
-// Weight (b): a settled record entry — small avatar, kind tag, text, ticket.
-// One line, no card chrome; every affordance lives in the hover toolbar.
-function CompactRow({
+// Kept items use the same author/text/thread grammar as temporary messages.
+// A bookmark and ticket carry permanence without turning the row into a card.
+function RecordedMessage({
   statement,
   ticket,
   decision,
@@ -692,11 +643,104 @@ function CompactRow({
   onRoute,
   doAct,
 }: RowProps) {
-  const [withdrawing, setWithdrawing] = useState(false);
+  const dead = statement.retired;
+  const ineffective = decision && decision.verdict !== "effective";
+  const tallies = statement.kind === "propose" ? tallyOf(statement.event, notes) : undefined;
+  const repliers = (thread?.people ?? []).map((fingerprint) => ({ fingerprint, name: nameOf(fingerprint) }));
+  const ratified = statement.ratified || (notes.get(statement.event) ?? []).some((note) => note.act?.type === "ratify" && note.act.verdict === "effective");
+
+  return (
+    <div
+      id={"evt-" + statement.event}
+      tabIndex={-1}
+      className={cn(
+        "group relative rounded-md px-2 py-1 outline-none",
+        selected ? "bg-accent/10" : bright && "bg-accent/5",
+        ineffective && "opacity-75",
+      )}
+    >
+      <div className="flex gap-2.5">
+        <div className="w-9 shrink-0 pt-1">
+          <Avatar fingerprint={statement.actor} name={nameOf(statement.actor)} size={36} onClick={() => onOpenProfile(statement.actor)} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
+            <button
+              onClick={() => onOpenProfile(statement.actor)}
+              className={cn("text-sm font-semibold hover:underline focus-visible:outline focus-visible:outline-accent", actorTint(nameOf(statement.actor)))}
+            >
+              {nameOf(statement.actor)}
+            </button>
+            <span className="flex items-center gap-1 text-xs text-faint" title="kept">
+              <Bookmark className="h-3 w-3 fill-current" /> kept
+            </span>
+            {statement.body?.to && <span className="text-xs text-faint">for {nameOf(statement.body.to)}</span>}
+            {commitment && <span className={cn("text-xs", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>}
+            {ratified && !dead && <BadgeCheck aria-label="agreed" className="h-3.5 w-3.5 text-ok" />}
+            {statement.stale && !dead && <span className="text-xs text-danger">stale</span>}
+            {ineffective && !dead && <span className="text-xs text-faint" title={decision!.reason}>not active</span>}
+            <span className="ml-auto"><Ticket ticket={ticket} event={statement.event} onSelect={onSelect} /></span>
+          </div>
+          <p className={cn("text-sm leading-relaxed", dead ? "text-faint line-through" : "text-foreground/90")}>{statement.text}</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-faint">
+            {statement.body?.conditions && <span>when {statement.body.conditions}</span>}
+            <MentionBadges body={statement.body} nameOf={nameOf} me={me} />
+            <RestsOn event={statement.event} projection={projection} tickets={tickets} onJumpTo={onJumpTo} />
+          </div>
+          {statement.stale && !dead && <WhyStale event={statement.event} projection={projection} tickets={tickets} nameOf={nameOf} onJumpTo={onJumpTo} />}
+          {tallies && (tallies.up > 0 || tallies.down > 0) && (
+            <div className="mt-1 flex items-center gap-3 text-xs">
+              {tallies.up > 0 && <span className="text-ok">👍 {tallies.up}</span>}
+              {tallies.down > 0 && <span className="text-danger">👎 {tallies.down}</span>}
+            </div>
+          )}
+          <ThreadIndicator people={repliers} count={thread?.count ?? 0} onOpen={onOpenThread} />
+        </div>
+      </div>
+      <ActToolbar
+        statement={statement}
+        commitment={commitment}
+        decision={decision}
+        projection={projection}
+        me={me}
+        cited={cited}
+        onCite={onCite}
+        onOpenThread={onOpenThread}
+        onRoute={onRoute}
+        doAct={doAct}
+      />
+    </div>
+  );
+}
+
+// Weight (b): a settled record entry — small avatar, kind tag, text, ticket.
+// One line, no card chrome; every affordance lives in the hover toolbar.
+export function CompactRow({
+  statement,
+  ticket,
+  decision,
+  commitment,
+  projection,
+  tickets,
+  notes,
+  nameOf,
+  me,
+  bright,
+  selected,
+  cited,
+  thread,
+  onSelect,
+  onJumpTo,
+  onCite,
+  onOpenThread,
+  onOpenProfile,
+  onRoute,
+  doAct,
+}: RowProps) {
   const dead = statement.retired;
   const ineffective = decision && decision.verdict !== "effective";
   const ratifiedNote = (notes.get(statement.event) ?? []).some((n) => n.act?.type === "ratify" && n.act.verdict === "effective");
-  const replies = thread?.statements.length ?? 0;
+  const replies = thread?.count ?? 0;
   return (
     <div
       id={"evt-" + statement.event}
@@ -744,7 +788,6 @@ function CompactRow({
         </span>
       </div>
       {statement.stale && !dead && <WhyStale event={statement.event} projection={projection} tickets={tickets} nameOf={nameOf} onJumpTo={onJumpTo} />}
-      {withdrawing && <WithdrawInput statement={statement} doAct={doAct} onDone={() => setWithdrawing(false)} />}
       <ActToolbar
         statement={statement}
         commitment={commitment}
@@ -756,7 +799,6 @@ function CompactRow({
         onOpenThread={onOpenThread}
         onRoute={onRoute}
         doAct={doAct}
-        onWithdraw={() => setWithdrawing(true)}
       />
     </div>
   );
@@ -766,7 +808,7 @@ function CompactRow({
 // Semantic next actions live in the hover toolbar; the fold still judges
 // everything. The promise/report chain lives in the thread pane, reached by
 // the reply indicator.
-function Card({
+export function Card({
   statement,
   ticket,
   decision,
@@ -788,12 +830,11 @@ function Card({
   onRoute,
   doAct,
 }: RowProps) {
-  const [withdrawing, setWithdrawing] = useState(false);
   const dead = statement.retired;
   const ineffective = decision && decision.verdict !== "effective";
   const tallies = statement.kind === "propose" ? tallyOf(statement.event, notes) : undefined;
   const repliers = [
-    ...new Map((thread?.statements ?? []).map((s) => [s.actor, { fingerprint: s.actor, name: nameOf(s.actor) }])).values(),
+    ...(thread?.people ?? []).map((fingerprint) => ({ fingerprint, name: nameOf(fingerprint) })),
   ];
 
   return (
@@ -861,9 +902,7 @@ function Card({
           )}
         </div>
       )}
-      <Notes notes={notes.get(statement.event) ?? []} nameOf={nameOf} />
-      <ThreadIndicator people={repliers} count={thread?.statements.length ?? 0} onOpen={onOpenThread} />
-      {withdrawing && <WithdrawInput statement={statement} doAct={doAct} onDone={() => setWithdrawing(false)} />}
+      <ThreadIndicator people={repliers} count={thread?.count ?? 0} onOpen={onOpenThread} />
       <ActToolbar
         statement={statement}
         commitment={commitment}
@@ -875,52 +914,7 @@ function Card({
         onOpenThread={onOpenThread}
         onRoute={onRoute}
         doAct={doAct}
-        onWithdraw={() => setWithdrawing(true)}
       />
-    </div>
-  );
-}
-
-function Notes({ notes, nameOf }: { notes: { act?: Projection["acts"][number]; dissent?: Statement }[]; nameOf: (f: string) => string }) {
-  if (notes.length === 0) return null;
-  return (
-    <div className="mt-2 space-y-1 border-l border-border pl-3">
-      {notes.map((note, i) => {
-        if (note.dissent)
-          return (
-            <div key={i} className="flex items-start gap-1.5 text-xs text-danger">
-              <MessageSquareX className="mt-0.5 h-3 w-3 shrink-0" />
-              <span>
-                {nameOf(note.dissent.actor)} disagrees: <span className="text-muted">{note.dissent.text}</span>
-              </span>
-            </div>
-          );
-        const act = note.act!;
-        if (act.verdict === "effective" && act.type === "ratify")
-          return (
-            <div key={i} className="flex items-center gap-1.5 text-xs text-ok">
-              <BadgeCheck className="h-3 w-3 shrink-0" /> agreed by {nameOf(act.actor)}
-            </div>
-          );
-        if (act.verdict === "effective")
-          return (
-            <div key={i} className="flex items-start gap-1.5 text-xs text-danger">
-              <Undo2 className="mt-0.5 h-3 w-3 shrink-0" />
-              <span>
-                withdrawn by {nameOf(act.actor)}
-                {act.text && <span className="text-muted"> — {act.text}</span>}
-              </span>
-            </div>
-          );
-        return (
-          <div key={i} className={cn("flex items-start gap-1.5 text-xs", act.verdict === "disputed" ? "text-danger" : "text-accent-deep")}>
-            <CircleSlash className="mt-0.5 h-3 w-3 shrink-0" />
-            <span>
-              {nameOf(act.actor)} tried to {act.type} — {act.reason}
-            </span>
-          </div>
-        );
-      })}
     </div>
   );
 }

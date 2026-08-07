@@ -1,4 +1,4 @@
-.PHONY: test race vet build
+.PHONY: test race vet build ui
 
 GO ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
 
@@ -18,4 +18,3 @@ build:
 
 ui:
 	cd ui && npm run build
-

@@ -3,7 +3,7 @@ import { GitBranch, Link2, X } from "lucide-react";
 import type { GraphCommit, Statement } from "../lib/api";
 import { shortEvent, shortHash } from "../lib/api";
 import type { Selection } from "../lib/store";
-import { cn, kindTint, timeAgo } from "../lib/util";
+import { cn, timeAgo } from "../lib/util";
 
 const ROW = 46;
 const LANE = 24;
@@ -113,7 +113,7 @@ export function Railway({
                     {commit.rests_on && commit.rests_on.length > 0 && (
                       <span className="flex items-center gap-1 text-accent">
                         <Link2 className="h-3 w-3" />
-                        rests on {commit.rests_on.length} agreed
+                        {commit.rests_on.length} linked
                       </span>
                     )}
                   </div>
@@ -229,10 +229,10 @@ function CommitDetail({
       {(cited.length > 0 || citing.length > 0) && (
         <div className="mt-2.5 space-y-1">
           {cited.map(({ id, statement }) => (
-            <BridgeChip key={id} label="rests on" id={id} statement={statement} onSelect={onSelect} />
+            <BridgeChip key={id} label="linked to" id={id} statement={statement} onSelect={onSelect} />
           ))}
           {citing.map((statement) => (
-            <BridgeChip key={statement.event} label="cited by" id={statement.event} statement={statement} onSelect={onSelect} />
+            <BridgeChip key={statement.event} label="linked from" id={statement.event} statement={statement} onSelect={onSelect} />
           ))}
         </div>
       )}
@@ -260,12 +260,7 @@ function BridgeChip({
         <Link2 className="h-3 w-3" /> {label}
       </span>
       {statement ? (
-        <>
-          <span className={cn("shrink-0 border px-1 text-xs uppercase leading-4", kindTint[statement.kind] ?? "text-muted border-border")}>
-            {statement.kind}
-          </span>
-          <span className="truncate text-foreground">{statement.text}</span>
-        </>
+        <span className="truncate text-foreground">{statement.text}</span>
       ) : (
         <code className="text-faint">{shortEvent(id)}</code>
       )}

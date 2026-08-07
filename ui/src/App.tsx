@@ -5,17 +5,18 @@ import { useFrames } from "./lib/frames";
 import { api, type ActInput } from "./lib/api";
 import { TopBar } from "./components/TopBar";
 import { Stream, type PendingSay } from "./components/Stream";
-import { Composer, emptyComposer, type ComposerContext, type ComposerMode } from "./components/Composer";
+import { Composer, emptyComposer, type ComposerContext } from "./components/Composer";
 import { WorkDrawer } from "./components/WorkDrawer";
-import { ThreadPane, type ThreadTarget } from "./components/ThreadPane";
+import { ThreadPane, type ThreadRoute, type ThreadTarget } from "./components/ThreadPane";
 import { ProfilePane } from "./components/ProfilePane";
 import { Avatar } from "./components/Avatar";
+import { RetryKeys, threadTargetKey } from "./lib/interaction";
 
 // One right-hand slot, Slack-style: the thread pane, a profile, or the Work
 // drawer — whichever opened last wins; Escape closes it.
 type Pane =
   | { kind: "work" }
-  | { kind: "thread"; target: ThreadTarget }
+  | { kind: "thread"; target: ThreadTarget; route?: ThreadRoute }
   | { kind: "profile"; fingerprint: string }
   | undefined;
 
@@ -71,14 +72,18 @@ export default function App() {
   // A one-flight, one-key guard per user intention: double-clicks and retries
   // reuse the same idempotency key, so at most one durable event results.
   const inFlight = useRef(new Set<string>());
+  const actKeys = useRef(new RetryKeys());
   const [actError, setActError] = useState<string>();
   const doAct = useCallback(
     async (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => {
       if (inFlight.current.has(intent)) return;
       inFlight.current.add(intent);
       setActError(undefined);
+      const payload = JSON.stringify(input);
+      const key = actKeys.current.forAttempt(intent, payload);
       try {
-        await api.act({ ...input, session: session.id, idempotency_key: intent });
+        await api.act({ ...input, session: session.id, idempotency_key: key });
+        actKeys.current.succeeded(intent, key);
       } catch (error) {
         setActError(error instanceof Error ? error.message : String(error));
       } finally {
@@ -88,11 +93,15 @@ export default function App() {
     [session.id],
   );
 
-  // Semantic actions never manufacture text — they open the main composer in
-  // the right mode with the basis prefilled, and the human says the words.
+  // Every text-bearing response opens the target's thread composer. The room
+  // composer remains available beside it, following the familiar Slack model.
   const route = useCallback(
-    (mode: ComposerMode, basis: string, prefill: string) =>
-      setComposer({ type: "say", mode, restsOn: [basis], frames: [], prefill }),
+    (mode: ThreadRoute["mode"], basis: string, prefill: string) =>
+      setPane({
+        kind: "thread",
+        target: { kind: "event", event: basis },
+        route: { id: crypto.randomUUID(), mode, prefill },
+      }),
     [],
   );
 
@@ -125,6 +134,7 @@ export default function App() {
             pending={pending}
             onReconcile={dropPending}
             onOpenThread={openThread}
+            onRoute={route}
             onOpenProfile={openProfile}
             doAct={doAct}
             actError={actError}
@@ -140,10 +150,12 @@ export default function App() {
         </main>
         {pane?.kind === "thread" && (
           <ThreadPane
+            key={`${threadTargetKey(pane.target)}:${pane.route?.id ?? "plain"}`}
             workroom={workroom}
             session={session}
             frames={frames}
             target={pane.target}
+            route={pane.route}
             pending={pending}
             composer={composer}
             onComposer={setComposer}
@@ -207,7 +219,6 @@ function JoinGate({ workroom, onJoin }: { workroom: ReturnType<typeof useWorkroo
             >
               <Avatar fingerprint={actor.fingerprint} name={actor.name} size={28} />
               <span className="font-medium">{actor.name}</span>
-              <span className="ml-auto text-xs text-faint">{actor.role}</span>
             </button>
           ))}
         </div>

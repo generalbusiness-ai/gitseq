@@ -144,6 +144,9 @@ func validateState(state State) error {
 			return fmt.Errorf("%s state requires body.%s", state.Kind, field)
 		}
 	}
+	if state.Kind == KindRoster && state.Body["role"] == "participant" && state.Body["kind"] == "" {
+		return errors.New("participant roster state requires body.kind")
+	}
 	return nil
 }
 

@@ -210,7 +210,11 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 	switch call.Name {
 	case "whoami":
 		actor := s.workspace.Config.Actors[s.actor]
-		return map[string]any{"actor": actor, "session": s.session, "protocol": protocolVersion}, nil
+		snapshot, err := s.workspace.Snapshot(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"actor": actor, "durable": snapshot.Projection.Actors[actor.Fingerprint], "session": s.session, "protocol": protocolVersion}, nil
 	case "presence":
 		return s.get(ctx, "/v0/presence")
 	case "status":
@@ -238,25 +242,24 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 		for name, content := range stringMap(call.Arguments["evidence"]) {
 			evidence[name] = []byte(content)
 		}
-		return s.submit(ctx, workroom.SchemaState, workroom.State{Kind: workroom.Kind(kind), Text: text, Body: body}, rests, evidence, stringValue(call.Arguments["idempotency_key"]))
+		return s.submit(ctx, app.Act{Verb: app.VerbState, Kind: workroom.Kind(kind), Text: text, Body: body, RestsOn: rests, Attachments: evidence, IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
 	case "ratify":
 		target := stringValue(call.Arguments["target"])
-		return s.submit(ctx, workroom.SchemaRatify, workroom.Ratify{Target: target}, []string{target}, nil, stringValue(call.Arguments["idempotency_key"]))
+		return s.submit(ctx, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
 	case "supersede":
 		target := stringValue(call.Arguments["target"])
-		rests := append([]string{target}, stringSlice(call.Arguments["rests_on"])...)
-		return s.submit(ctx, workroom.SchemaSupersede, workroom.Supersede{Target: target, Text: stringValue(call.Arguments["text"])}, rests, nil, stringValue(call.Arguments["idempotency_key"]))
+		return s.submit(ctx, app.Act{Verb: app.VerbSupersede, Target: target, Text: stringValue(call.Arguments["text"]), RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
 	default:
 		return nil, fmt.Errorf("unknown tool %q", call.Name)
 	}
 }
 
-func (s *mcpServer) submit(ctx context.Context, schema string, payload any, rests []string, attachments map[string][]byte, key string) (any, error) {
+func (s *mcpServer) submit(ctx context.Context, act app.Act) (any, error) {
 	_, private, err := s.workspace.Actor(s.actor)
 	if err != nil {
 		return nil, err
 	}
-	request, err := s.workspace.BuildRequest(ctx, private, s.actor, schema, payload, rests, attachments, key)
+	request, err := s.workspace.BuildActRequest(ctx, private, s.actor, act)
 	if err != nil {
 		return nil, err
 	}
@@ -264,15 +267,11 @@ func (s *mcpServer) submit(ctx context.Context, schema string, payload any, rest
 	if !isTransportError(err) {
 		return value, err
 	}
-	result, err := s.workspace.Accept(ctx, request)
+	submission, err := s.workspace.AcceptSubmission(ctx, request)
 	if err != nil {
 		return nil, err
 	}
-	record, err := s.workspace.Record(ctx, result.Commit)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{"result": result, "record": record, "degraded": true}, nil
+	return map[string]any{"result": submission.Result, "record": submission.Record, "degraded": true}, nil
 }
 
 func (s *mcpServer) announce(ctx context.Context) error {
@@ -356,6 +355,10 @@ func (s *mcpServer) localStatus(ctx context.Context) (service.Status, error) {
 	if err != nil {
 		return service.Status{}, err
 	}
+	return statusFromDurable(durable), nil
+}
+
+func statusFromDurable(durable app.Snapshot) service.Status {
 	live := nexus.Snapshot{Cursor: nexus.Cursor{Generation: "degraded"}, Presence: map[string]string{}}
 	return service.Status{
 		Durable: durable,
@@ -364,7 +367,7 @@ func (s *mcpServer) localStatus(ctx context.Context) (service.Status, error) {
 			Frontier: []service.Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}},
 			Live:     live.Cursor,
 		},
-	}, nil
+	}
 }
 
 func (s *mcpServer) waitDurable(ctx context.Context, arguments map[string]any) (service.WaitResponse, error) {
@@ -376,33 +379,24 @@ func (s *mcpServer) waitDurable(ctx context.Context, arguments map[string]any) (
 	if err := json.Unmarshal(encoded, &input); err != nil {
 		return service.WaitResponse{}, err
 	}
-	timeout := time.Duration(input.TimeoutMS) * time.Millisecond
-	if timeout <= 0 || timeout > 30*time.Second {
-		timeout = 25 * time.Second
-	}
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		status, err := s.localStatus(ctx)
+	var response service.WaitResponse
+	changed, err := service.Poll(ctx, input.TimeoutMS, func() (bool, error) {
+		durable, err := s.workspace.Snapshot(ctx)
 		if err != nil {
-			return service.WaitResponse{}, err
+			return false, err
 		}
-		frontier := status.Cursor.Frontier[0]
-		durableChanged := len(input.Cursor.Frontier) != 1 || input.Cursor.Frontier[0] != frontier
+		status := statusFromDurable(durable)
 		reset := input.Cursor.Live.Generation != "" && input.Cursor.Live.Generation != "degraded"
-		if durableChanged || reset {
-			return service.WaitResponse{Status: status, Reset: reset}, nil
-		}
-		select {
-		case <-ctx.Done():
-			return service.WaitResponse{}, ctx.Err()
-		case <-deadline.C:
-			return service.WaitResponse{Status: status}, nil
-		case <-ticker.C:
-		}
+		response = service.WaitResponse{Status: status, Reset: reset}
+		return service.DurableChanged(input.Cursor.Frontier, durable) || reset, nil
+	})
+	if err != nil {
+		return service.WaitResponse{}, err
 	}
+	if !changed {
+		response.Reset = false
+	}
+	return response, nil
 }
 
 func clone(input map[string]any) map[string]any {

@@ -155,10 +155,162 @@ func TestExpiredSessionBindingDoesNotBlockRebind(t *testing.T) {
 	if status := announce("other", 30000); status != http.StatusOK {
 		t.Fatalf("expired session could not be rebound: status = %d", status)
 	}
-	server.mu.Lock()
-	bound := server.sessions["reused"]
-	server.mu.Unlock()
+	bound, present := server.hub.SessionActor("reused")
+	if !present {
+		t.Fatal("rebound session is not present")
+	}
 	if bound != "other" {
 		t.Fatalf("session remained bound to %q", bound)
+	}
+}
+
+func TestWatchSurfaceIsRemoved(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/v0/watch?after_depth=0", nil)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("removed watch surface returned %d", response.Code)
+	}
+}
+
+func TestMutationGuardRejectsBrowserCrossOriginAndSafelistedContent(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		origin      string
+		site        string
+	}{
+		{name: "safelisted content", contentType: "text/plain"},
+		{name: "foreign origin", contentType: "application/json", origin: "https://elsewhere.example"},
+		{name: "cross site", contentType: "application/json", site: "cross-site"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "http://workroom.example/v0/act", bytes.NewReader([]byte(`{}`)))
+			request.Header.Set("Content-Type", test.contentType)
+			request.Header.Set("Origin", test.origin)
+			request.Header.Set("Sec-Fetch-Site", test.site)
+			if err := guardMutation(request); err == nil {
+				t.Fatal("mutation guard accepted hostile browser request")
+			}
+		})
+	}
+	request := httptest.NewRequest(http.MethodPost, "http://workroom.example/v0/act", bytes.NewReader([]byte(`{}`)))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://workroom.example")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	if err := guardMutation(request); err != nil {
+		t.Fatalf("same-origin JSON mutation rejected: %v", err)
+	}
+}
+
+func TestActEndpointUsesSessionCustodyAndReplaysSameIdempotencyKey(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "Ada Lovelace", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorsResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(actorsResponse, httptest.NewRequest(http.MethodGet, "/v0/actors", nil))
+	var actors []app.ActorView
+	if err := json.NewDecoder(actorsResponse.Body).Decode(&actors); err != nil {
+		t.Fatal(err)
+	}
+	if len(actors) != 1 || actors[0].Name != "Ada Lovelace" || actors[0].Kind != "human" || !actors[0].Custody {
+		t.Fatalf("actor views = %+v", actors)
+	}
+	announce, _ := json.Marshal(presenceRequest{Actor: "Ada Lovelace", Session: "browser"})
+	presence := httptest.NewRequest(http.MethodPost, "/v0/presence", bytes.NewReader(announce))
+	presence.Header.Set("Content-Type", "application/json")
+	server.Handler().ServeHTTP(httptest.NewRecorder(), presence)
+
+	body, _ := json.Marshal(actRequest{Session: "browser", Act: "state", Kind: "propose", Text: "One proposal", IdempotencyKey: "proposal-retry"})
+	var firstID string
+	for attempt := 0; attempt < 2; attempt++ {
+		request := httptest.NewRequest(http.MethodPost, "/v0/act", bytes.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("attempt %d returned %d: %s", attempt, response.Code, response.Body.String())
+		}
+		var record struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&record); err != nil {
+			t.Fatal(err)
+		}
+		if attempt == 0 {
+			firstID = record.ID
+		} else if record.ID != firstID {
+			t.Fatalf("retry appended %q after %q", record.ID, firstID)
+		}
+	}
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Depth != 2 {
+		t.Fatalf("retry depth = %d, want genesis + one act", snapshot.Depth)
+	}
+}
+
+func TestSayPreservesReplyTarget(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, genesis, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	announce, _ := json.Marshal(presenceRequest{Actor: "human", Session: "speaker"})
+	request := httptest.NewRequest(http.MethodPost, "/v0/presence", bytes.NewReader(announce))
+	request.Header.Set("Content-Type", "application/json")
+	server.Handler().ServeHTTP(httptest.NewRecorder(), request)
+	say, _ := json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Text: "reply", Re: "conversation:7"})
+	request = httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(say))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("say returned %d: %s", response.Code, response.Body.String())
+	}
+	var frame nexus.Frame
+	if err := json.NewDecoder(response.Body).Decode(&frame); err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["re"] != "conversation:7" {
+		t.Fatalf("reply target = %q", payload["re"])
 	}
 }

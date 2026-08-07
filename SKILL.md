@@ -50,7 +50,9 @@ Every durable act cites its basis in `rests_on`.
   that it identify a live roster actor at that position.
 - `ratify {target}` — confers force when you hold the target-specific
   authority: the requester for a report, a ratifier for assertions,
-  proposals, and governance. Any other attempt is visibly ineffective.
+  proposals, and governance. Human or agent is an identity kind, not an
+  authority test; an agent with a live ratifier grant may ratify. Any other
+  attempt is visibly ineffective.
 - `supersede {target, text, rests_on}` — retire a prior act,
   propagating staleness to everything resting on it. Prefer
   supersession to contradiction.
@@ -117,6 +119,7 @@ not change; the workroom carries the why.
 ## The loop
 
 Talk until something crystallizes; `state` a proposal embedding the
-frames; a human ratifies or dissents; the projection updates;
-whatever rests on a superseded basis flares stale and someone — often
-you — picks it up. Leave a log a stranger could audit and understand.
+frames; an authorized ratifier adopts it or a participant dissents;
+the projection updates; whatever rests on a superseded basis flares
+stale and someone — often you — picks it up. Leave a log a stranger
+could audit and understand.

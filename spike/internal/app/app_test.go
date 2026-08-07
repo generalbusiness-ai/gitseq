@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitseq/spike/internal/intent"
 	"gitseq/spike/internal/workroom"
 )
 
@@ -16,6 +17,15 @@ func testRepo(t *testing.T) string {
 		t.Fatalf("git init: %v: %s", err, output)
 	}
 	return repo
+}
+
+func actRecord(t *testing.T, ctx context.Context, workspace *Workspace, actor string, act Act) workroom.Record {
+	t.Helper()
+	submission, err := workspace.Act(ctx, actor, act)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return submission.Record
 }
 
 func TestWorkspaceLifecycle(t *testing.T) {
@@ -29,21 +39,10 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request, err := workspace.Submit(ctx, "human", workroom.SchemaState, workroom.State{Kind: workroom.KindRequest, Text: "build", Body: map[string]string{"to": "agent", "conditions": "tests pass"}}, []string{seed.ID}, nil, "request")
-	if err != nil {
-		t.Fatal(err)
-	}
-	promise, err := workspace.Submit(ctx, "agent", workroom.SchemaState, workroom.State{Kind: workroom.KindPromise, Text: "I promise"}, []string{request.ID}, nil, "promise")
-	if err != nil {
-		t.Fatal(err)
-	}
-	report, err := workspace.Submit(ctx, "agent", workroom.SchemaState, workroom.State{Kind: workroom.KindReport, Text: "done"}, []string{promise.ID}, nil, "report")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := workspace.Submit(ctx, "human", workroom.SchemaRatify, workroom.Ratify{Target: report.ID}, []string{report.ID}, nil, "satisfy"); err != nil {
-		t.Fatal(err)
-	}
+	request := actRecord(t, ctx, workspace, "human", Act{Verb: VerbState, Kind: workroom.KindRequest, Text: "build", Body: map[string]string{"to": "agent", "conditions": "tests pass"}, RestsOn: []string{seed.ID}, IdempotencyKey: "request"})
+	promise := actRecord(t, ctx, workspace, "agent", Act{Verb: VerbState, Kind: workroom.KindPromise, Text: "I promise", RestsOn: []string{request.ID}, IdempotencyKey: "promise"})
+	report := actRecord(t, ctx, workspace, "agent", Act{Verb: VerbState, Kind: workroom.KindReport, Text: "done", RestsOn: []string{promise.ID}, IdempotencyKey: "report"})
+	actRecord(t, ctx, workspace, "human", Act{Verb: VerbRatify, Target: report.ID, IdempotencyKey: "satisfy"})
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -67,12 +66,10 @@ func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 	for index, address := range []string{"agent", "@agent", agent.Fingerprint} {
-		record, err := workspace.Submit(ctx, "human", workroom.SchemaState, workroom.State{
-			Kind: workroom.KindRequest, Text: "address", Body: map[string]string{"to": address, "conditions": "canonical"},
-		}, []string{workspace.EventID(workspace.Config.Genesis)}, nil, "address-"+string(rune('a'+index)))
-		if err != nil {
-			t.Fatal(err)
-		}
+		record := actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindRequest, Text: "address", Body: map[string]string{"to": address, "conditions": "canonical"},
+			RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "address-" + string(rune('a'+index)),
+		})
 		decoded, err := workroom.Decode(record.Schema, record.Payload)
 		if err != nil {
 			t.Fatal(err)
@@ -81,10 +78,157 @@ func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {
 			t.Fatalf("address %q encoded as %q", address, got)
 		}
 	}
-	if _, err := workspace.Submit(ctx, "human", workroom.SchemaState, workroom.State{
-		Kind: workroom.KindRequest, Text: "bad", Body: map[string]string{"to": "missing", "conditions": "never"},
-	}, []string{workspace.EventID(workspace.Config.Genesis)}, nil, "bad-address"); err == nil {
+	if _, err := workspace.Act(ctx, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "bad", Body: map[string]string{"to": "missing", "conditions": "never"},
+		RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "bad-address",
+	}); err == nil {
 		t.Fatal("unknown request performer was accepted by the application edge")
+	}
+}
+
+func TestIdempotencyNamespaceIsStableAndLegacySafe(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := func(key string) string {
+		request, err := workspace.BuildActRequest(ctx, private, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: key,
+			RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: key,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoded, err := intent.Verify(request.Signed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return decoded.IdempotencyNS
+	}
+	if got := build("stable"); got != "workroom/v0" {
+		t.Fatalf("new namespace = %q", got)
+	}
+	workspace.Config.IdempotencyNamespace = ""
+	if got := build("legacy"); got != "gs/human" {
+		t.Fatalf("legacy namespace = %q", got)
+	}
+}
+
+func TestAgentRatifierAuthorityLifecycle(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal := func(key string) workroom.Record {
+		return actRecord(t, ctx, workspace, "human", Act{Verb: VerbState, Kind: workroom.KindPropose, Text: key, RestsOn: []string{seed.ID}, IdempotencyKey: key})
+	}
+	ratifyAsAgent := func(target, key string) workroom.Record {
+		return actRecord(t, ctx, workspace, "agent", Act{Verb: VerbRatify, Target: target, IdempotencyKey: key})
+	}
+	verdict := func(event string) workroom.Verdict {
+		snapshot, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decision, ok := snapshot.Projection.Decision(event)
+		if !ok {
+			t.Fatalf("missing decision for %s", event)
+		}
+		return decision.Verdict
+	}
+
+	before := ratifyAsAgent(proposal("before-grant").ID, "before-grant-ratify")
+	if got := verdict(before.ID); got != workroom.Ineffective {
+		t.Fatalf("ordinary agent ratification = %s, want ineffective", got)
+	}
+	if _, err := workspace.GrantRole(ctx, "agent", "agent", "ratifier"); err != nil {
+		t.Fatal(err)
+	}
+	selfGranted := ratifyAsAgent(proposal("after-self-grant").ID, "after-self-grant-ratify")
+	if got := verdict(selfGranted.ID); got != workroom.Ineffective {
+		t.Fatalf("self-granted agent ratification = %s, want ineffective", got)
+	}
+	grant, err := workspace.GrantRole(ctx, "human", "agent", "ratifier")
+	if err != nil {
+		t.Fatal(err)
+	}
+	grantState, err := workroom.Decode(grant[0].Schema, grant[0].Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := grantState.(*workroom.State).Body["kind"]; got != "agent" {
+		t.Fatalf("modern role grant kind = %q, want agent", got)
+	}
+	during := ratifyAsAgent(proposal("during-grant").ID, "during-grant-ratify")
+	if got := verdict(during.ID); got != workroom.Effective {
+		t.Fatalf("ratifier agent ratification = %s, want effective", got)
+	}
+	if _, err := workspace.RevokeRole(ctx, "human", "agent", "ratifier"); err != nil {
+		t.Fatal(err)
+	}
+	after := ratifyAsAgent(proposal("after-revoke").ID, "after-revoke-ratify")
+	if got := verdict(after.ID); got != workroom.Ineffective {
+		t.Fatalf("revoked agent ratification = %s, want ineffective", got)
+	}
+
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorState := snapshot.Projection.Actors[agent.Fingerprint]
+	if got := actorState.Kind; got != "agent" {
+		t.Fatalf("projected actor kind = %q, want agent", got)
+	}
+	roles := actorState.Roles
+	if len(roles) != 1 || roles[0] != "participant" {
+		t.Fatalf("roles after revocation = %#v, want participant only", roles)
+	}
+	if len(actorState.RoleSources["participant"]) != 1 || actorState.MembershipEvent == "" {
+		t.Fatalf("actor projection omitted membership provenance: %+v", actorState)
+	}
+	views, err := workspace.ActorViews(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(views) != 2 || views[0].Name != "agent" || views[0].Kind != "agent" || len(views[0].Roles) != 1 || views[0].Roles[0] != "participant" || !views[0].Custody {
+		t.Fatalf("actor views did not join custody to durable state: %+v", views)
+	}
+}
+
+func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "agent", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	attached := &Workspace{
+		Repo: workspace.Repo, GitDir: workspace.GitDir, Store: workspace.Store,
+		Config: Config{Version: 0, Genesis: workspace.Config.Genesis, ObjectFormat: workspace.Config.ObjectFormat, ReadOnly: true},
+	}
+	views, err := attached.ActorViews(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(views) != 2 || views[0].Name != "agent" || views[1].Name != "human" {
+		t.Fatalf("attached actor views omitted durable actors: %+v", views)
+	}
+	for _, view := range views {
+		if view.Custody {
+			t.Fatalf("attached view falsely reports local custody: %+v", view)
+		}
 	}
 }
 
@@ -106,9 +250,7 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 	if workspace.snapshotCache != cached || first.Head != second.Head {
 		t.Fatal("unchanged head did not reuse the verified snapshot")
 	}
-	if _, err := workspace.Submit(ctx, "human", workroom.SchemaState, workroom.State{Kind: workroom.KindAssert, Text: "advance"}, []string{workspace.EventID(workspace.Config.Genesis)}, nil, "advance"); err != nil {
-		t.Fatal(err)
-	}
+	actRecord(t, ctx, workspace, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "advance", RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "advance"})
 	third, err := workspace.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)

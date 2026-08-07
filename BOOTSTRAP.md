@@ -141,7 +141,7 @@ not before.
    tested against golden transcript fixtures. Pure library; no
    services.
 2. **Durable workroom (dogfooding begins).** Resident sequencer
-   (`submit` + `watch` HTTP over the spike kernel), `gs` CLI,
+   (`submit` + `status`/`wait` HTTP over the spike kernel), `gs` CLI,
    `gs attach` (configure `refs/seq/*` refspecs, fetch, verify — a
    normal clone doesn't), the artifact bridge, the continuation dry
    run. Admission: static pubkey allowlist.
@@ -171,8 +171,8 @@ Run on this repository, not a fixture world:
 1. A human and two agents appear live.
 2. They discuss a real implementation question ephemerally.
 3. An agent states a proposal, embedding the selected signed frames.
-4. The human ratifies it; an agent ratification stays visibly
-   ineffective.
+4. An ordinary agent's ratification stays visibly ineffective; an agent with
+   an explicit ratifier grant ratifies it successfully.
 5. An implementation commit cites the decision; an artifact statement
    lands.
 6. The decision is superseded; the artifact visibly flares stale.
@@ -202,11 +202,22 @@ Works here → dogfood. Followable by a visitor in five minutes → demo.
   departs or expires, the resident service forgets its frames.
 - The operator key is the root of ratification, not of the kernel.
 - The nexus signing key lands as a ratified `state{kind:infra-key}`.
+- Principal kind (`human`, `agent`, or `service`) is descriptive identity,
+  projected separately from authority. Every admitted principal has the
+  neutral `participant` role; independently ratified roster statements grant
+  authority roles such as `ratifier` and `witness`. Humanity never implies
+  authority, and agenthood never excludes it.
 - Roles are enforced by the fold, never the doorstep: each authority check
   consults effective, ratified, unsuperseded roster statements at that log
-  position. Demotion affects later acts without rewriting earlier verdicts;
-  an unauthorized ratification is a visible ineffective attempt — a demo
-  beat.
+  position. An authority grant is live only while the participant membership
+  it rests on remains live. Demotion affects later acts without rewriting
+  earlier verdicts; an unauthorized ratification is a visible ineffective
+  attempt — a demo beat.
+- New workrooms use the stable application idempotency namespace
+  `workroom/v0`; actor fingerprint remains a separate part of dedup identity.
+  Existing workrooms without that config field retain their historical
+  `gs/<actor-name>` namespace so an outstanding retry cannot append twice
+  during upgrade.
 
 ## The composite cursor
 
@@ -255,6 +266,33 @@ coordinate; promotion is `state` with frames embedded. If the resident
 service is down, `state`, `ratify`, and `supersede` submit through the local
 durable sequencer, while `status` and `wait` project the Git log with a
 `degraded` live cursor. Presence and `say` correctly remain unavailable.
+
+
+## The witness (secretary role)
+
+Ephemerality's ergonomic gap is filled by a participant, not a
+feature. A **witness** is an ordinary agent actor with a recognized
+roster role: it sits in the room, notices when talk crystallizes,
+and **proposes** set-downs. The witness role itself never confers
+ratification, though the same agent may independently hold a ratifier
+grant. Its exit-time behavior
+is speech, not a dialog: "Before we lose this — three things looked
+decisional; shall I set them down?", each a proposal with the signed
+frames embedded as evidence, one act for an authorized ratifier to adopt. The
+division of labor honors the Coordinator lesson: witnessing performs
+classification without silently acquiring commitment authority. No new
+substrate: SKILL.md is its instructions, promotion-with-evidence its
+verb, proposal-as-poll its review surface.
+
+The UI floor beneath it (works in agent-free rooms): the room shows
+its own mortality ambiently — unpromoted chat visually ages, and the
+**last holder** sees a quiet inline status ("you're the last one
+holding this conversation") at the only moment a cue is honest,
+because leaving last is the destruction event. Personal memory is
+the client's right, exercised locally: a transcript of sessions you
+attended, marked "your memory, not the room's," never citable as
+force. A modal at departure is refused: it demands recall at the
+wrong moment and reframes forgetting as loss.
 
 ## The tax, stated
 

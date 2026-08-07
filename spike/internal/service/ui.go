@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 
+	"gitseq/spike/internal/app"
 	"gitseq/spike/internal/gitstore"
 	"gitseq/spike/internal/workroom"
 )
@@ -34,22 +35,18 @@ func uiHandler() http.Handler {
 	})
 }
 
-type actorSummary struct {
-	Name        string `json:"name"`
-	Fingerprint string `json:"fingerprint"`
-	Role        string `json:"role"`
-}
-
 // handleActors lists CUSTODIAL identities this service can sign for — who a
 // browser may join as. The folded roster (names, roles, revocations) is the
 // projection's business; these are deliberately separate concepts.
-func (s *Server) handleActors(writer http.ResponseWriter, _ *http.Request) {
-	actors := make([]actorSummary, 0)
-	for _, name := range s.workspace.ActorNames() {
-		actor := s.workspace.Config.Actors[name]
-		actors = append(actors, actorSummary{Name: actor.Name, Fingerprint: actor.Fingerprint, Role: actor.Role})
+func (s *Server) handleActors(writer http.ResponseWriter, request *http.Request) {
+	views, err := s.workspace.ActorViews(request.Context())
+	actors := make([]app.ActorView, 0, len(views))
+	for _, actor := range views {
+		if actor.Custody {
+			actors = append(actors, actor)
+		}
 	}
-	write(writer, actors, nil)
+	write(writer, actors, err)
 }
 
 type graphResponse struct {
@@ -89,34 +86,12 @@ func (s *Server) handleAct(writer http.ResponseWriter, request *http.Request) {
 		write(writer, nil, errors.New("session is required"))
 		return
 	}
-	s.mu.Lock()
-	actorName, exists := s.sessions[input.Session]
-	present := exists && s.hub.HasPresence(input.Session)
-	s.mu.Unlock()
+	actorName, present := s.hub.SessionActor(input.Session)
 	if !present {
 		write(writer, nil, errors.New("session is not present"))
 		return
 	}
 
-	var schema string
-	var payload any
-	rests := input.RestsOn
-	switch input.Act {
-	case "state":
-		schema = workroom.SchemaState
-		payload = workroom.State{Kind: workroom.Kind(input.Kind), Text: input.Text, Body: input.Body}
-	case "ratify":
-		schema = workroom.SchemaRatify
-		payload = workroom.Ratify{Target: input.Target}
-		rests = []string{input.Target}
-	case "supersede":
-		schema = workroom.SchemaSupersede
-		payload = workroom.Supersede{Target: input.Target, Text: input.Text}
-		rests = append([]string{input.Target}, rests...)
-	default:
-		write(writer, nil, errors.New("act must be state, ratify, or supersede"))
-		return
-	}
 	var attachments map[string][]byte
 	if len(input.Evidence) > 0 {
 		attachments = make(map[string][]byte, len(input.Evidence))
@@ -124,6 +99,10 @@ func (s *Server) handleAct(writer http.ResponseWriter, request *http.Request) {
 			attachments[name] = []byte(content)
 		}
 	}
-	record, err := s.workspace.Submit(request.Context(), actorName, schema, payload, rests, attachments, input.IdempotencyKey)
-	write(writer, record, err)
+	submission, err := s.workspace.Act(request.Context(), actorName, app.Act{
+		Verb: app.Verb(input.Act), Kind: workroom.Kind(input.Kind), Text: input.Text,
+		Body: input.Body, Target: input.Target, RestsOn: input.RestsOn,
+		Attachments: attachments, IdempotencyKey: input.IdempotencyKey,
+	})
+	write(writer, submission.Record, err)
 }

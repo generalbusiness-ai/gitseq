@@ -55,7 +55,7 @@ export function SequencePane({
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-background">
-      <PaneTitle icon={<Scale className="h-3.5 w-3.5" />} title="durable record" />
+      <PaneTitle icon={<Scale className="h-3.5 w-3.5" />} title="history" />
       {projection && projection.commitments.length > 0 && (
         <div className="border-b border-border/60 px-4 py-3">
           <div className="mb-2 text-xs uppercase tracking-[0.16em] text-faint">who waits on whom</div>

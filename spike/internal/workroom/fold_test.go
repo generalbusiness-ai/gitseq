@@ -115,8 +115,82 @@ func TestRosterSupersessionRevokesAndResurrectionRestoresAuthority(t *testing.T)
 			t.Errorf("%s = %s (%s), want %s", event, decision.Verdict, decision.Reason, want)
 		}
 	}
-	if got := projection.Roles[other]; len(got) != 1 || got[0] != "ratifier" {
+	actor := projection.Actors[other]
+	if got := actor.Kind; got != "unspecified" {
+		t.Fatalf("legacy actor kind = %q, want unspecified", got)
+	}
+	if got := actor.Roles; len(got) != 2 || got[0] != "participant" || got[1] != "ratifier" {
 		t.Fatalf("restored roles = %#v", got)
+	}
+}
+
+func TestMembershipRevocationRevokesDependentAuthority(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRoster, Text: "grant ratifier", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "ratifier"}}, "e1"),
+		event(t, "e4", operator, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+		event(t, "e5", operator, SchemaState, State{Kind: KindPropose, Text: "before departure"}, "e0"),
+		event(t, "e6", agent, SchemaRatify, Ratify{Target: "e5"}, "e5"),
+		event(t, "e7", operator, SchemaSupersede, Supersede{Target: "e1", Text: "remove agent"}, "e1"),
+		event(t, "e8", operator, SchemaState, State{Kind: KindPropose, Text: "after departure"}, "e0"),
+		event(t, "e9", agent, SchemaRatify, Ratify{Target: "e8"}, "e8"),
+	})
+	for event, want := range map[string]Verdict{"e6": Effective, "e9": Ineffective} {
+		decision, _ := projection.Decision(event)
+		if decision.Verdict != want {
+			t.Errorf("%s = %s (%s), want %s", event, decision.Verdict, decision.Reason, want)
+		}
+	}
+	if _, exists := projection.Actors[agent]; exists {
+		t.Fatalf("revoked member retained a projected actor: %+v", projection.Actors[agent])
+	}
+}
+
+func TestModernOperatorGrantPreservesAgentKindAndMembershipBasis(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRoster, Text: "grant operator", Body: map[string]string{"actor": agent, "kind": "human", "name": "Wrong name", "role": "operator"}}, "e1"),
+		event(t, "e4", operator, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+	})
+	actor := projection.Actors[agent]
+	if actor.Name != "Agent" || actor.Kind != "agent" || actor.MembershipEvent != "e1" {
+		t.Fatalf("operator grant changed identity or membership basis: %+v", actor)
+	}
+	want := []string{"operator", "participant", "ratifier"}
+	if len(actor.Roles) != len(want) {
+		t.Fatalf("roles = %#v, want %#v", actor.Roles, want)
+	}
+	for index := range want {
+		if actor.Roles[index] != want[index] {
+			t.Fatalf("roles = %#v, want %#v", actor.Roles, want)
+		}
+	}
+}
+
+func TestAuthorityGrantCannotSubstituteForMembership(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "grant without membership", Body: map[string]string{"actor": other, "kind": "agent", "name": "Other", "role": "ratifier"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRequest, Text: "not a participant", Body: map[string]string{"to": other, "conditions": "never"}}, "e0"),
+		event(t, "e4", operator, SchemaState, State{Kind: KindPropose, Text: "not a ratifier"}, "e0"),
+		event(t, "e5", other, SchemaRatify, Ratify{Target: "e4"}, "e4"),
+	})
+	for event, reason := range map[string]string{
+		"e3": "requested performer is not in the live roster",
+		"e5": "actor lacks ratifier role",
+	} {
+		decision, _ := projection.Decision(event)
+		if decision.Verdict != Ineffective || decision.Reason != reason {
+			t.Errorf("%s = %+v, want ineffective %q", event, decision, reason)
+		}
+	}
+	if _, exists := projection.Actors[other]; exists {
+		t.Fatalf("authority-only record projected a participant: %+v", projection.Actors[other])
 	}
 }
 
@@ -190,15 +264,40 @@ func TestEmptyCollectionsRenderAsArrays(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range [][]byte{[]byte(`"decisions": []`), []byte(`"statements": []`), []byte(`"commitments": []`), []byte(`"artifacts": []`)} {
+	for _, field := range [][]byte{[]byte(`"decisions": []`), []byte(`"acts": []`), []byte(`"statements": []`), []byte(`"commitments": []`), []byte(`"artifacts": []`)} {
 		if !bytes.Contains(encoded, field) {
 			t.Fatalf("projection omitted stable empty array %s: %s", field, encoded)
 		}
 	}
 }
 
+func TestProjectionIncludesEverySemanticReplyAct(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindPropose, Text: "proposal"}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaSupersede, Supersede{Target: "e1", Text: "reason"}, "e1"),
+	})
+	if len(projection.Acts) != 2 {
+		t.Fatalf("acts = %#v", projection.Acts)
+	}
+	if projection.Acts[0].Type != "ratify" || projection.Acts[0].Target != "e1" || projection.Acts[0].Verdict != Effective {
+		t.Fatalf("ratify projection = %#v", projection.Acts[0])
+	}
+	if projection.Acts[1].Type != "supersede" || projection.Acts[1].Text != "reason" {
+		t.Fatalf("supersede projection = %#v", projection.Acts[1])
+	}
+}
+
 func TestCanonicalPayloadRejectsAlternateEncoding(t *testing.T) {
 	if _, err := Decode(SchemaState, []byte(`{"text":"x","kind":"assert"}`)); err == nil {
 		t.Fatal("accepted non-canonical field order")
+	}
+}
+
+func TestParticipantRosterRequiresActorKind(t *testing.T) {
+	_, err := Encode(State{Kind: KindRoster, Text: "joins", Body: map[string]string{"actor": agent, "name": "Agent", "role": "participant"}})
+	if err == nil {
+		t.Fatal("participant roster without an actor kind was accepted")
 	}
 }

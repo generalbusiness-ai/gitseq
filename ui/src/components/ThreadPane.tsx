@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BadgeCheck, CircleSlash, CornerUpLeft, Feather, FileWarning, SendHorizonal, Undo2, X } from "lucide-react";
+import { BadgeCheck, Bookmark, CircleSlash, Link2, SendHorizonal, Undo2, X } from "lucide-react";
 import { api, frameKey, type ActInput, type FrameView, type Statement } from "../lib/api";
-import { threadChildren, ticketsOf, type Workroom } from "../lib/store";
+import { buildThreadIndex, ticketsOf, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { mentionFingerprints } from "../lib/mentions";
-import { actorTint, clock, cn, kindLabel, kindTint, seenAt } from "../lib/util";
+import { RetryKeys, threadTargetKey } from "../lib/interaction";
+import { actorTint, clock, cn, seenAt } from "../lib/util";
 import { Avatar } from "./Avatar";
-import { RowToolbar, ToolbarButton, WithdrawInput, semanticActions } from "./Toolbar";
-import { toggleCiteEvent, toggleCiteFrame, type ComposerContext, type ComposerMode } from "./Composer";
+import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
+import { toggleLinkEvent, toggleLinkFrame, type ComposerContext } from "./Composer";
 import { MentionText, Ticket } from "./Stream";
 import type { PendingSay } from "./Stream";
 
@@ -16,11 +17,11 @@ export type ThreadTarget =
   | { kind: "event"; event: string }
   | { kind: "frame"; conversation: string; sequence: number };
 
-const durableTypes = [
-  { type: "assert" as const, label: "Note" },
-  { type: "propose" as const, label: "Proposal" },
-  { type: "request" as const, label: "Request" },
-];
+export interface ThreadRoute {
+  id: string;
+  mode: SemanticReplyMode;
+  prefill: string;
+}
 
 // The Slack-style thread pane: parent at top, everything resting on it below,
 // composer at the bottom. For a durable act the replies are the provenance
@@ -32,6 +33,7 @@ export function ThreadPane({
   session,
   frames,
   target,
+  route,
   pending,
   composer,
   onComposer,
@@ -47,13 +49,14 @@ export function ThreadPane({
   session: Session;
   frames: FrameView[];
   target: ThreadTarget;
+  route?: ThreadRoute;
   pending: PendingSay[];
   composer: ComposerContext;
   onComposer: (context: ComposerContext) => void;
   onClose: () => void;
   onJumpTo: (event: string) => void;
   onOpenProfile: (fingerprint: string) => void;
-  onRoute: (mode: ComposerMode, basis: string, prefill: string) => void;
+  onRoute: (mode: SemanticReplyMode, basis: string, prefill: string) => void;
   doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
   onSay: (text: string, re: string) => string;
   onSayFailed: (id: string) => void;
@@ -84,17 +87,20 @@ export function ThreadPane({
 
   const root = target.kind === "event" ? projection?.statements.find((s) => s.event === target.event) : undefined;
   const parentFrame = target.kind === "frame" ? frames.find((f) => f.conversation === target.conversation && f.sequence === target.sequence) : undefined;
+  const threadIndex = useMemo(() => (projection ? buildThreadIndex(projection) : undefined), [projection]);
   const thread = useMemo(
-    () => (target.kind === "event" && projection ? threadChildren(target.event, projection) : undefined),
-    [target, projection],
+    () => (target.kind === "event" ? threadIndex?.content(target.event) : undefined),
+    [target, threadIndex],
   );
+  const statementByEvent = useMemo(() => new Map((thread?.statements ?? []).map((statement) => [statement.event, statement])), [thread]);
+  const actByEvent = useMemo(() => new Map((thread?.acts ?? []).map((act) => [act.event, act])), [thread]);
   const reKey = target.kind === "frame" ? `${target.conversation}:${target.sequence}` : undefined;
   const replies = useMemo(() => (reKey ? frames.filter((f) => f.re === reKey) : []), [frames, reKey]);
   const pendingHere = pending.filter((p) => p.re === reKey);
 
   // Follow the tail as replies arrive.
   const scroller = useRef<HTMLDivElement>(null);
-  const replyCount = (thread?.statements.length ?? 0) + replies.length + pendingHere.length;
+  const replyCount = (thread?.statements.length ?? 0) + (thread?.acts.length ?? 0) + replies.length + pendingHere.length;
   useEffect(() => {
     requestAnimationFrame(() => scroller.current?.scrollTo({ top: 1e9 }));
   }, [replyCount]);
@@ -109,7 +115,7 @@ export function ThreadPane({
       className="fixed inset-0 z-40 flex flex-col border-border bg-background outline-none sm:static sm:z-auto sm:w-[24rem] sm:shrink-0 sm:border-l"
     >
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <h2 className="text-xs font-medium uppercase tracking-[0.16em] text-muted">Thread</h2>
+        <h2 className="text-sm font-semibold text-foreground/90">Thread</h2>
         <button onClick={onClose} aria-label="close thread" className="rounded p-1 text-faint hover:text-foreground focus-visible:outline focus-visible:outline-accent">
           <X className="h-4 w-4" />
         </button>
@@ -124,7 +130,7 @@ export function ThreadPane({
                 nameOf={nameOf}
                 root
                 cited={composer.restsOn.includes(root.event)}
-                onCite={() => toggleCiteEvent(composer, onComposer, root.event)}
+                onCite={() => toggleLinkEvent(composer, onComposer, root.event)}
                 onJumpTo={onJumpTo}
                 onOpenProfile={onOpenProfile}
                 actions={
@@ -137,57 +143,57 @@ export function ThreadPane({
                         me: myFingerprint,
                         onRoute,
                         doAct,
-                        onWithdraw: () => {},
                       })
                     : []
                 }
-                doAct={doAct}
               />
               <div className="my-2 flex items-center gap-2" aria-hidden>
                 <span className="h-px flex-1 bg-border/60" />
                 <span className="text-xs text-faint">
-                  {thread?.statements.length ?? 0} {thread?.statements.length === 1 ? "reply" : "replies"}
+                  {(thread?.statements.length ?? 0) + (thread?.acts.length ?? 0)}{" "}
+                  {(thread?.statements.length ?? 0) + (thread?.acts.length ?? 0) === 1 ? "reply" : "replies"}
                 </span>
                 <span className="h-px flex-1 bg-border/60" />
               </div>
-              {thread?.statements.map((statement) => (
-                <ThreadStatement
-                  key={statement.event}
-                  statement={statement}
-                  ticket={tickets.get(statement.event)}
-                  nameOf={nameOf}
-                  cited={composer.restsOn.includes(statement.event)}
-                  onCite={() => toggleCiteEvent(composer, onComposer, statement.event)}
-                  onJumpTo={onJumpTo}
-                  onOpenProfile={onOpenProfile}
-                  actions={
-                    projection
-                      ? semanticActions({
-                          statement,
-                          commitment: (projection.commitments ?? []).find((c) => [c.request, c.promise, c.report].includes(statement.event)),
-                          decision: (projection.decisions ?? []).find((d) => d.event === statement.event),
-                          projection,
-                          me: myFingerprint,
-                          onRoute,
-                          doAct,
-                          onWithdraw: () => {},
-                        })
-                      : []
-                  }
-                  doAct={doAct}
-                />
-              ))}
-              {thread?.acts.map((act) => (
-                <div key={act.event} className={cn("ml-9 flex items-start gap-1.5 px-2 py-0.5 text-xs", act.verdict === "effective" ? (act.type === "ratify" ? "text-ok" : "text-danger") : "text-faint")}>
-                  {act.type === "ratify" ? <BadgeCheck className="mt-0.5 h-3 w-3 shrink-0" /> : <Undo2 className="mt-0.5 h-3 w-3 shrink-0" />}
-                  <span>
-                    {act.verdict === "effective"
-                      ? `${act.type === "ratify" ? "agreed" : "withdrawn"} by ${nameOf(act.actor)}`
-                      : `${nameOf(act.actor)} tried to ${act.type} — ${act.reason}`}
-                    {act.text && <span className="text-muted"> — {act.text}</span>}
-                  </span>
-                </div>
-              ))}
+              {thread?.events.map((event) => {
+                const statement = statementByEvent.get(event);
+                if (statement) {
+                  return (
+                    <ThreadStatement
+                      key={event}
+                      statement={statement}
+                      ticket={tickets.get(event)}
+                      nameOf={nameOf}
+                      cited={composer.restsOn.includes(event)}
+                      onCite={() => toggleLinkEvent(composer, onComposer, event)}
+                      onJumpTo={onJumpTo}
+                      onOpenProfile={onOpenProfile}
+                      actions={semanticActions({
+                        statement,
+                        commitment: (projection.commitments ?? []).find((c) => [c.request, c.promise, c.report].includes(event)),
+                        decision: (projection.decisions ?? []).find((d) => d.event === event),
+                        projection,
+                        me: myFingerprint,
+                        onRoute,
+                        doAct,
+                      })}
+                    />
+                  );
+                }
+                const act = actByEvent.get(event);
+                if (!act) return null;
+                return (
+                  <div key={event} className={cn("ml-9 flex items-start gap-1.5 px-2 py-0.5 text-xs", act.verdict === "effective" ? (act.type === "ratify" ? "text-ok" : "text-danger") : "text-faint")}>
+                    {act.type === "ratify" ? <BadgeCheck className="mt-0.5 h-3 w-3 shrink-0" /> : <Undo2 className="mt-0.5 h-3 w-3 shrink-0" />}
+                    <span>
+                      {act.verdict === "effective"
+                        ? `${act.type === "ratify" ? "agreed" : "withdrawn"} by ${nameOf(act.actor)}`
+                        : `${nameOf(act.actor)} tried to ${act.type} — ${act.reason}`}
+                      {act.text && <span className="text-muted"> — {act.text}</span>}
+                    </span>
+                  </div>
+                );
+              })}
             </>
           ) : (
             <p className="px-2 py-4 text-xs text-faint">Gone.</p>
@@ -200,7 +206,7 @@ export function ThreadPane({
                 known={actorNames}
                 myName={session.actor}
                 cited={composer.frames.some((f) => frameKey(f) === frameKey(parentFrame))}
-                onCite={() => toggleCiteFrame(composer, onComposer, parentFrame)}
+                onCite={() => toggleLinkFrame(composer, onComposer, parentFrame)}
                 onOpenProfile={onOpenProfile}
               />
               <div className="my-2 flex items-center gap-2" aria-hidden>
@@ -217,7 +223,7 @@ export function ThreadPane({
                   known={actorNames}
                   myName={session.actor}
                   cited={composer.frames.some((f) => frameKey(f) === frameKey(frame))}
-                  onCite={() => toggleCiteFrame(composer, onComposer, frame)}
+                  onCite={() => toggleLinkFrame(composer, onComposer, frame)}
                   onOpenProfile={onOpenProfile}
                 />
               ))}
@@ -236,6 +242,7 @@ export function ThreadPane({
         workroom={workroom}
         session={session}
         target={target}
+        route={route}
         parentFrame={parentFrame}
         boxRef={box}
         onSay={onSay}
@@ -257,7 +264,6 @@ function ThreadStatement({
   onJumpTo,
   onOpenProfile,
   actions,
-  doAct,
 }: {
   statement: Statement;
   ticket?: number;
@@ -267,21 +273,16 @@ function ThreadStatement({
   onCite: () => void;
   onJumpTo: (event: string) => void;
   onOpenProfile: (fingerprint: string) => void;
-  actions: { label: string; tone?: "ok" | "danger"; run: () => void }[];
-  doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
+  actions: { label: string; symbol: string; tone?: "ok" | "danger"; run: () => void }[];
 }) {
-  const [withdrawing, setWithdrawing] = useState(false);
   const dead = statement.retired;
-  const dissent = statement.kind === "dissent";
-  // Withdraw arrives via the shared semanticActions when we wire onWithdraw.
-  const rowActions = actions.map((a) => (a.label === "Withdraw" ? { ...a, run: () => setWithdrawing(true) } : a));
   return (
-    <div tabIndex={-1} className={cn("group relative rounded-md px-2 py-1.5 outline-none", root && "rounded-lg border border-border bg-card")}>
-      <div className="flex items-start gap-2">
+    <div tabIndex={-1} className={cn("group relative rounded-md px-2 py-1 outline-none", root && "mb-1")}>
+      <div className="flex items-start gap-2.5">
         <Avatar
           fingerprint={statement.actor}
           name={nameOf(statement.actor)}
-          size={root ? 28 : 24}
+          size={28}
           onClick={() => onOpenProfile(statement.actor)}
         />
         <div className="min-w-0 flex-1">
@@ -292,29 +293,24 @@ function ThreadStatement({
             >
               {nameOf(statement.actor)}
             </button>
-            <span className={cn("shrink-0 rounded border px-1 text-[10px] font-medium uppercase leading-4 tracking-wide", dissent ? "border-danger/40 text-danger" : kindTint[statement.kind] ?? "border-border text-muted")}>
-              {kindLabel[statement.kind] ?? statement.kind}
+            <span className="flex items-center gap-1 text-[11px] text-faint" title="kept">
+              <Bookmark className="h-3 w-3 fill-current" /> kept
             </span>
             {statement.ratified && !dead && <BadgeCheck aria-label="ratified" className="h-3 w-3 shrink-0 text-ok" />}
-            {statement.stale && !dead && (
-              <span className="flex shrink-0 items-center gap-0.5 text-[10px] font-medium uppercase text-danger">
-                <FileWarning className="h-3 w-3" /> stale
-              </span>
-            )}
+            {statement.stale && !dead && <span className="text-[11px] text-danger">stale</span>}
             <span className="ml-auto">
               <Ticket ticket={ticket} event={statement.event} onSelect={() => onJumpTo(statement.event)} />
             </span>
           </div>
-          <p className={cn("mt-0.5 font-serif text-sm leading-relaxed", dead ? "text-faint line-through" : "text-foreground/90")}>{statement.text}</p>
-          {statement.body?.conditions && <p className="text-xs text-faint">satisfied when: {statement.body.conditions}</p>}
-          {withdrawing && <WithdrawInput statement={statement} doAct={doAct} onDone={() => setWithdrawing(false)} />}
+          <p className={cn("mt-0.5 text-sm leading-relaxed", dead ? "text-faint line-through" : "text-foreground/90")}>{statement.text}</p>
+          {statement.body?.conditions && <p className="text-xs text-faint">when {statement.body.conditions}</p>}
         </div>
       </div>
       <RowToolbar>
-        <ToolbarButton icon={<CornerUpLeft className="h-3.5 w-3.5" />} label={cited ? "remove citation" : "cite"} active={cited} onClick={onCite} />
-        {rowActions.length > 0 && <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />}
-        {rowActions.map((action) => (
-          <ToolbarButton key={action.label} label={action.label} showLabel tone={action.tone} onClick={action.run} />
+        <ToolbarButton icon={<Link2 className="h-3.5 w-3.5" />} label={cited ? "remove link" : "link"} active={cited} onClick={onCite} />
+        {actions.length > 0 && <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />}
+        {actions.map((action) => (
+          <ToolbarButton key={action.label} label={action.label} icon={<span aria-hidden>{action.symbol}</span>} tone={action.tone} onClick={action.run} />
         ))}
       </RowToolbar>
     </div>
@@ -338,8 +334,8 @@ function ThreadMessage({
   onOpenProfile: (fingerprint: string) => void;
 }) {
   return (
-    <div tabIndex={-1} className="group relative flex gap-2 rounded-md px-2 py-1 outline-none">
-      <Avatar fingerprint={frame.fingerprint} name={frame.actor} size={24} onClick={() => onOpenProfile(frame.fingerprint)} />
+    <div tabIndex={-1} className="group relative flex gap-2.5 rounded-md px-2 py-1 outline-none">
+      <Avatar fingerprint={frame.fingerprint} name={frame.actor} size={28} onClick={() => onOpenProfile(frame.fingerprint)} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <button
@@ -355,20 +351,19 @@ function ThreadMessage({
         <MentionText text={frame.text} known={known} myName={myName} className="block text-sm leading-relaxed text-foreground/90" />
       </div>
       <RowToolbar>
-        <ToolbarButton icon={<CornerUpLeft className="h-3.5 w-3.5" />} label={cited ? "remove citation" : "cite"} active={cited} onClick={onCite} />
+        <ToolbarButton icon={<Link2 className="h-3.5 w-3.5" />} label={cited ? "remove link" : "link"} active={cited} onClick={onCite} />
       </RowToolbar>
     </div>
   );
 }
 
-// The thread's own composer. A chat thread replies with say-with-re by
-// default and can flip to a durable type — the durable reply then cites the
-// parent frame as evidence automatically. An act thread replies durably,
-// resting on the act; Note is the default.
+// Thread replies are temporary under temporary chat and kept under a kept
+// root. Chat replies can be bookmarked without exposing record kinds.
 function ThreadComposer({
   workroom,
   session,
   target,
+  route,
   parentFrame,
   boxRef,
   onSay,
@@ -377,20 +372,21 @@ function ThreadComposer({
   workroom: Workroom;
   session: Session;
   target: ThreadTarget;
+  route?: ThreadRoute;
   parentFrame?: FrameView;
   boxRef: React.RefObject<HTMLTextAreaElement | null>;
   onSay: (text: string, re: string) => string;
   onSayFailed: (id: string) => void;
 }) {
   const chat = target.kind === "frame";
-  const [type, setType] = useState<"say" | "assert" | "propose" | "request">(chat ? "say" : "assert");
-  const [text, setText] = useState("");
-  const [to, setTo] = useState("");
-  const [conditions, setConditions] = useState("");
+  type ReplyType = "say" | "assert" | SemanticReplyMode;
+  const defaultType: ReplyType = chat ? "say" : "assert";
+  const [activeRoute, setActiveRoute] = useState(route);
+  const [type, setType] = useState<ReplyType>(route?.mode ?? defaultType);
+  const [text, setText] = useState(route?.prefill ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  // One idempotency key per user intention, held across retries.
-  const intentKey = useMemo(() => crypto.randomUUID(), [type, busy === false && text]);
+  const retryKeys = useRef(new RetryKeys());
   const durable = type !== "say";
 
   const send = async () => {
@@ -415,11 +411,6 @@ function ThreadComposer({
     }
     try {
       const body: Record<string, string> = {};
-      if (type === "request") {
-        if (!to || !conditions.trim()) throw new Error("a request names its performer and conditions");
-        body.to = "@" + to;
-        body.conditions = conditions.trim();
-      }
       const mentioned = mentionFingerprints(line, workroom.actors);
       if (mentioned.length > 0) body.mentions = mentioned.join(" ");
       // A reply rests on the act it answers; a durable reply in a chat
@@ -427,20 +418,31 @@ function ThreadComposer({
       // evidence — verifiable after the conversation is forgotten.
       const evidence =
         chat && parentFrame ? { "frames.json": JSON.stringify([parentFrame.raw], null, 2) } : undefined;
-      await api.act({
-        session: session.id,
-        act: "state",
-        kind: type,
-        text: line,
-        body: Object.keys(body).length ? body : undefined,
-        rests_on: target.kind === "event" ? [target.event] : [],
-        evidence,
-        idempotency_key: intentKey,
-      });
+      const input: ActInput =
+        type === "withdraw"
+          ? {
+              session: session.id,
+              act: "supersede",
+              target: target.kind === "event" ? target.event : undefined,
+              text: line,
+            }
+          : {
+              session: session.id,
+              act: "state",
+              kind: type,
+              text: line,
+              body: Object.keys(body).length ? body : undefined,
+              rests_on: target.kind === "event" ? [target.event] : [],
+              evidence,
+            };
+      const scope = `${threadTargetKey(target)}:${type}`;
+      const payload = JSON.stringify(input);
+      const intentKey = retryKeys.current.forAttempt(scope, payload);
+      await api.act({ ...input, idempotency_key: intentKey });
+      retryKeys.current.succeeded(scope, intentKey);
       setText("");
-      setTo("");
-      setConditions("");
-      if (chat) setType("say");
+      setActiveRoute(undefined);
+      setType(defaultType);
     } catch (thrown) {
       setError(thrown instanceof Error ? thrown.message : String(thrown));
     } finally {
@@ -451,41 +453,63 @@ function ThreadComposer({
   return (
     <div className="border-t border-border px-3 py-2.5">
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-        {chat && (
-          <TypePill label="Reply" active={type === "say"} onClick={() => setType("say")} />
+        {activeRoute ? (
+          <>
+            <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-0.5 text-xs text-foreground">
+              {activeRoute.mode === "promise"
+                ? "Accept"
+                : activeRoute.mode === "report"
+                  ? "Mark done"
+                  : activeRoute.mode === "dissent"
+                    ? "Disagree"
+                    : "Withdraw"}
+            </span>
+            <button
+              onClick={() => {
+                setActiveRoute(undefined);
+                setType(defaultType);
+                setText("");
+              }}
+              aria-label="cancel reply action"
+              className="rounded p-1 text-faint hover:text-foreground focus-visible:outline focus-visible:outline-accent"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </>
+        ) : chat ? (
+          <button
+            onClick={() => setType(durable ? "say" : "assert")}
+            aria-pressed={durable}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium focus-visible:outline focus-visible:outline-accent",
+              durable ? "bg-accent/12 text-accent-deep" : "text-faint hover:bg-elevated hover:text-muted",
+            )}
+          >
+            <Bookmark className={cn("h-3.5 w-3.5", durable && "fill-current")} /> {durable ? "Kept" : "Temporary"}
+          </button>
+        ) : (
+          <span className="flex items-center gap-1 text-xs text-faint">
+            <Bookmark className="h-3 w-3 fill-current" /> kept
+          </span>
         )}
-        {durableTypes.map((pill) => (
-          <TypePill key={pill.type} label={pill.label} active={type === pill.type} onClick={() => setType(pill.type)} />
-        ))}
       </div>
-      {type === "request" && (
-        <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs">
-          <label className="text-faint">to</label>
-          <select value={to} onChange={(e) => setTo(e.target.value)} className="rounded-md border border-input bg-surface px-2 py-1 outline-none focus:border-accent/60">
-            <option value="">choose…</option>
-            {workroom.actors
-              .filter((a) => a.name !== session.actor)
-              .map((a) => (
-                <option key={a.name} value={a.name}>
-                  {a.name}
-                </option>
-              ))}
-          </select>
-          <input
-            value={conditions}
-            onChange={(e) => setConditions(e.target.value)}
-            placeholder="satisfied when…"
-            className="min-w-0 flex-1 rounded-md border border-input bg-surface px-2 py-1 outline-none placeholder:text-faint focus:border-accent/60"
-          />
-        </div>
-      )}
       <div className="flex items-end gap-2">
         <textarea
           ref={boxRef}
           value={text}
           rows={1}
-          placeholder={durable ? "reply for the record…" : "reply…"}
-          aria-label="thread reply"
+          placeholder={
+            type === "withdraw"
+              ? "why — visible forever…"
+              : type === "dissent"
+                ? "what should be understood differently…"
+                : type === "promise"
+                  ? "what you undertake…"
+                  : type === "report"
+                    ? "what was done…"
+                    : "Reply…"
+          }
+          aria-label={type === "withdraw" ? "withdraw reason" : "thread reply"}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -494,21 +518,20 @@ function ThreadComposer({
             }
           }}
           className={cn(
-            "min-w-0 flex-1 resize-none rounded-lg border border-input bg-surface px-3 py-1.5 text-sm outline-none placeholder:text-faint",
-            durable ? "font-serif focus:border-accent/60" : "focus:border-input",
+            "min-w-0 flex-1 resize-none rounded-lg border border-input bg-surface px-3 py-1.5 text-sm outline-none placeholder:text-faint focus:border-accent/60",
           )}
         />
         <button
           onClick={() => void send()}
           disabled={busy || !text.trim() || !session.live}
-          aria-label={durable ? "set it down" : "reply"}
+          aria-label={type === "withdraw" ? "withdraw" : "send reply"}
           title={session.live ? undefined : "not present yet"}
           className={cn(
             "flex h-8 w-8 items-center justify-center rounded-lg transition-colors focus-visible:outline focus-visible:outline-accent disabled:opacity-40",
-            durable ? "bg-accent text-background hover:bg-accent/90" : "border border-border text-muted hover:bg-elevated hover:text-foreground",
+            "bg-accent text-background hover:bg-accent/90",
           )}
         >
-          {durable ? <Feather className="h-3.5 w-3.5" /> : <SendHorizonal className="h-3.5 w-3.5" />}
+          {type === "withdraw" ? <Undo2 className="h-3.5 w-3.5" /> : <SendHorizonal className="h-3.5 w-3.5" />}
         </button>
       </div>
       {error && (
@@ -516,22 +539,6 @@ function ThreadComposer({
           <CircleSlash className="h-3 w-3" /> {error}
         </p>
       )}
-      {chat && durable && parentFrame && <p className="mt-1 text-xs text-faint">cites the parent message</p>}
     </div>
-  );
-}
-
-function TypePill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "rounded-md px-2 py-0.5 text-xs font-medium focus-visible:outline focus-visible:outline-accent",
-        active ? "border border-accent/50 bg-accent/10 text-foreground" : "text-faint hover:text-muted",
-      )}
-    >
-      {label}
-    </button>
   );
 }

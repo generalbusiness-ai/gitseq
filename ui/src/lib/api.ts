@@ -50,8 +50,16 @@ export interface Projection {
   statements: Statement[];
   commitments: Commitment[];
   artifacts: Artifact[];
-  roles: Record<string, string[]>;
+  actors: Record<string, ActorState>;
   provenance: Record<string, string[]>;
+}
+
+export interface ActorState {
+  name: string;
+  kind?: string;
+  roles: string[];
+  membership_event?: string;
+  role_sources: Record<string, string[]>;
 }
 
 export interface DurableSnapshot {
@@ -97,7 +105,9 @@ export interface GraphCommit {
 export interface Actor {
   name: string;
   fingerprint: string;
-  role: string;
+  kind?: string;
+  roles: string[];
+  custody: boolean;
 }
 
 export interface Frame {

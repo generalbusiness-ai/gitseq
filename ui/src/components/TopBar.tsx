@@ -3,9 +3,9 @@ import { AtSign, PanelRight } from "lucide-react";
 import { forYouItems, workSummary, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
-import { shortHash } from "../lib/api";
 import { cn } from "../lib/util";
 import { Avatar } from "./Avatar";
+import { parsePresenceLabel } from "../lib/interaction";
 
 export function TopBar({
   workroom,
@@ -54,7 +54,7 @@ export function TopBar({
             <span className="text-xs text-faint">nobody here</span>
           ) : (
             people.map((person) => {
-              const name = person.split(" ")[0];
+              const name = parsePresenceLabel(person).name;
               const fingerprint = fingerprintOf(name);
               return (
                 <Avatar
@@ -113,12 +113,11 @@ export function TopBar({
           {workroom.offline ? (
             <span className="text-danger">offline</span>
           ) : durable ? (
-            <>
-              <span className={cn("inline-block h-1.5 w-1.5 rounded-full", session.live ? "pulse-dot bg-ok" : "bg-faint")} />
-              <span className="hidden sm:inline">
-                {durable.depth} events · <code className="text-muted">{shortHash(durable.head)}</code>
-              </span>
-            </>
+            <span
+              className={cn("inline-block h-1.5 w-1.5 rounded-full", session.live ? "pulse-dot bg-ok" : "bg-faint")}
+              aria-label={session.live ? "connected" : "connecting"}
+              title={session.live ? "connected" : "connecting"}
+            />
           ) : (
             "connecting…"
           )}

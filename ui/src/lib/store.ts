@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status } from "./api";
+export { buildThreadIndex, threadChildren } from "./threads";
+export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
 export interface Workroom {
   status?: Status;
@@ -145,38 +147,6 @@ export function danglingPromises(projection: Projection): Statement[] {
   return projection.statements.filter(
     (s) => s.kind === "promise" && reasons.get(s.event)?.reason.includes("dangling"),
   );
-}
-
-// A durable act's thread: everything resting on it, transitively — the
-// folded promise/report chain, dissents, follow-on statements — plus the
-// ratify/supersede acts that touched any of them. Statements come back in
-// log order; the thread pane renders them flat, Slack-style.
-export interface ThreadContent {
-  statements: Statement[];
-  acts: Act[];
-}
-
-export function threadChildren(event: string, projection: Projection): ThreadContent {
-  // provenance maps every durable event (statements and acts alike) to its
-  // bases; invert it once and walk down from the root.
-  const children = new Map<string, string[]>();
-  for (const [id, bases] of Object.entries(projection.provenance)) {
-    // Go marshals a nil rests_on slice as null; treat it as no bases.
-    for (const basis of bases ?? []) children.set(basis, [...(children.get(basis) ?? []), id]);
-  }
-  const descendants = new Set<string>();
-  const queue = [event];
-  while (queue.length > 0) {
-    for (const child of children.get(queue.shift()!) ?? []) {
-      if (descendants.has(child)) continue;
-      descendants.add(child);
-      queue.push(child);
-    }
-  }
-  return {
-    statements: (projection.statements ?? []).filter((s) => s.event !== event && descendants.has(s.event)),
-    acts: (projection.acts ?? []).filter((a) => a.target === event || descendants.has(a.event) || descendants.has(a.target)),
-  };
 }
 
 // Folded promise/report events render inside their request's card; jumping

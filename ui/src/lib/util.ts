@@ -37,6 +37,28 @@ export const statusTint: Record<string, string> = {
   disputed: "text-danger",
 };
 
+const familiarStatus: Record<string, string> = {
+  requested: "waiting",
+  promised: "in progress",
+  reported: "ready",
+  satisfied: "done",
+  withdrawn: "closed",
+  cancelled: "closed",
+  reneged: "stopped",
+  stale: "stale",
+  disputed: "disputed",
+};
+
+export function statusLabel(status: string): string {
+  return familiarStatus[status] ?? status;
+}
+
+const workOnlyKinds = new Set(["roster", "infra-key", "seal", "artifact"]);
+
+export function belongsInRoom(kind: string): boolean {
+  return !workOnlyKinds.has(kind);
+}
+
 // Stable per-actor hues for chat authorship — none of the semantic ok/danger
 // hues, so an author's color never reads as a verdict.
 const actorHues = ["text-info", "text-violet", "text-teal", "text-foreground/80"];

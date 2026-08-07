@@ -69,15 +69,26 @@ type Act struct {
 	Reason  string  `json:"reason"`
 }
 
+// ActorState is the fold's complete durable view of a principal. Local
+// configuration may hold custody for the same fingerprint, but names, kinds,
+// membership and authority come from effective roster statements here.
+type ActorState struct {
+	Name            string              `json:"name"`
+	Kind            string              `json:"kind,omitempty"`
+	Roles           []string            `json:"roles"`
+	MembershipEvent string              `json:"membership_event,omitempty"`
+	RoleSources     map[string][]string `json:"role_sources"`
+}
+
 type Projection struct {
-	Decisions   []Decision          `json:"decisions"`
-	Acts        []Act               `json:"acts"`
-	Statements  []Statement         `json:"statements"`
-	Commitments []Commitment        `json:"commitments"`
-	Artifacts   []Artifact          `json:"artifacts"`
-	Roles       map[string][]string `json:"roles"`
-	Provenance  map[string][]string `json:"provenance"`
-	OpaqueKinds map[string][]string `json:"opaque_kinds,omitempty"`
+	Decisions   []Decision            `json:"decisions"`
+	Acts        []Act                 `json:"acts"`
+	Statements  []Statement           `json:"statements"`
+	Commitments []Commitment          `json:"commitments"`
+	Artifacts   []Artifact            `json:"artifacts"`
+	Actors      map[string]ActorState `json:"actors"`
+	Provenance  map[string][]string   `json:"provenance"`
+	OpaqueKinds map[string][]string   `json:"opaque_kinds,omitempty"`
 }
 
 type parsedRecord struct {
@@ -88,10 +99,14 @@ type parsedRecord struct {
 }
 
 type roleGrant struct {
-	actor        string
-	role         string
-	statement    string
-	ratification string
+	actor           string
+	name            string
+	kind            string
+	role            string
+	statement       string
+	ratification    string
+	membership      bool
+	membershipBasis string
 }
 
 type foldState struct {
@@ -150,13 +165,13 @@ func (f *foldState) append(index int, record Record) {
 	switch value := body.(type) {
 	case *State:
 		if value.Kind == KindRoster && index == 0 {
-			f.addRoleGrant(value.Body["actor"], value.Body["role"], record.ID, "")
+			f.addRoleGrant(value.Body["actor"], value.Body["name"], value.Body["kind"], value.Body["role"], record.ID, "", record.RestsOn)
 		}
 	case *Ratify:
 		f.ratifications[value.Target] = append(f.ratifications[value.Target], record.ID)
 		if target := f.byID[value.Target]; target != nil {
 			if roster, ok := target.body.(*State); ok && roster.Kind == KindRoster {
-				f.addRoleGrant(roster.Body["actor"], roster.Body["role"], value.Target, record.ID)
+				f.addRoleGrant(roster.Body["actor"], roster.Body["name"], roster.Body["kind"], roster.Body["role"], value.Target, record.ID, target.record.RestsOn)
 			}
 		}
 	case *Supersede:
@@ -275,11 +290,37 @@ func isGovernance(kind Kind) bool {
 	return kind == KindRoster || kind == KindInfraKey || kind == KindSeal
 }
 
-func (f *foldState) addRoleGrant(actor, role, statement, ratification string) {
+func (f *foldState) addRoleGrant(actor, name, kind, role, statement, ratification string, restsOn []string) {
 	if actor == "" || role == "" {
 		return
 	}
-	f.roleGrants = append(f.roleGrants, roleGrant{actor: actor, role: role, statement: statement, ratification: ratification})
+	grant := roleGrant{
+		actor: actor, name: name, kind: kind, role: role,
+		statement: statement, ratification: ratification,
+	}
+	if kind == "" {
+		// Before kind and authority became independent, every roster record
+		// admitted its actor and stored either a descriptive kind or an
+		// authority in role. Treat all such records uniformly as combined
+		// membership records; a kind-bearing record is the wire discriminator
+		// for the modern split model.
+		grant.membership = true
+		switch role {
+		case "agent", "human", "service":
+			grant.kind, grant.role = role, "participant"
+		case "operator":
+			grant.kind = "human"
+		default:
+			grant.kind = "unspecified"
+		}
+	} else if role == "participant" || ratification == "" {
+		// The only unratified grant is the genesis operator seed, which is
+		// necessarily both membership and authority.
+		grant.membership = true
+	} else if len(restsOn) != 0 {
+		grant.membershipBasis = restsOn[0]
+	}
+	f.roleGrants = append(f.roleGrants, grant)
 }
 
 func (f *foldState) roleGrantActive(grant roleGrant, before int) bool {
@@ -288,6 +329,16 @@ func (f *foldState) roleGrantActive(grant roleGrant, before int) bool {
 	// when grants grow with history). The resident head cache hides this only
 	// for unchanged projections. A production fold should memoize prefix
 	// retirement sets or maintain equivalent position-aware state incrementally.
+	if !f.roleGrantDirectActive(grant, before) {
+		return false
+	}
+	if grant.membership {
+		return true
+	}
+	return grant.membershipBasis != "" && f.membershipGrantActive(grant.actor, grant.membershipBasis, before)
+}
+
+func (f *foldState) roleGrantDirectActive(grant roleGrant, before int) bool {
 	retired := f.retiredBefore(before)
 	if retired[grant.statement] || f.decisions[grant.statement].Verdict != Effective {
 		return false
@@ -298,12 +349,21 @@ func (f *foldState) roleGrantActive(grant roleGrant, before int) bool {
 	return !retired[grant.ratification] && f.decisions[grant.ratification].Verdict == Effective
 }
 
+func (f *foldState) membershipGrantActive(actor, statement string, before int) bool {
+	for _, grant := range f.roleGrants {
+		if grant.actor == actor && grant.statement == statement && grant.membership && f.roleGrantDirectActive(grant, before) {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *foldState) hasRole(actor, role string, before int) bool {
 	for _, grant := range f.roleGrants {
 		if grant.actor != actor || !f.roleGrantActive(grant, before) {
 			continue
 		}
-		if grant.role == role || grant.role == "operator" && role == "ratifier" {
+		if grant.role == role || (grant.membership && role == "participant") || (grant.role == "operator" && role == "ratifier") {
 			return true
 		}
 	}
@@ -311,12 +371,7 @@ func (f *foldState) hasRole(actor, role string, before int) bool {
 }
 
 func (f *foldState) hasActor(actor string, before int) bool {
-	for _, grant := range f.roleGrants {
-		if grant.actor == actor && f.roleGrantActive(grant, before) {
-			return true
-		}
-	}
-	return false
+	return f.hasRole(actor, "participant", before)
 }
 
 func (f *foldState) basesOfKind(refs []string, kind Kind) []*parsedRecord {
@@ -401,7 +456,7 @@ func (f *foldState) project() Projection {
 	stale := f.stale(retired)
 	projection := Projection{
 		Decisions: []Decision{}, Acts: []Act{}, Statements: []Statement{}, Commitments: []Commitment{}, Artifacts: []Artifact{},
-		Roles: make(map[string][]string), Provenance: make(map[string][]string),
+		Actors: make(map[string]ActorState), Provenance: make(map[string][]string),
 		OpaqueKinds: make(map[string][]string),
 	}
 	for _, record := range f.records {
@@ -435,13 +490,32 @@ func (f *foldState) project() Projection {
 		if !f.roleGrantActive(grant, len(f.records)) {
 			continue
 		}
-		projection.Roles[grant.actor] = appendUnique(projection.Roles[grant.actor], grant.role)
-		if grant.role == "operator" {
-			projection.Roles[grant.actor] = appendUnique(projection.Roles[grant.actor], "ratifier")
+		actor := projection.Actors[grant.actor]
+		if actor.RoleSources == nil {
+			actor.RoleSources = make(map[string][]string)
 		}
+		addActorRole(&actor, grant.role, grant.statement)
+		if grant.membership {
+			if grant.name != "" {
+				actor.Name = grant.name
+			}
+			if grant.kind != "" {
+				actor.Kind = grant.kind
+			}
+			actor.MembershipEvent = grant.statement
+			addActorRole(&actor, "participant", grant.statement)
+		}
+		if grant.role == "operator" {
+			addActorRole(&actor, "ratifier", "")
+		}
+		projection.Actors[grant.actor] = actor
 	}
-	for actor := range projection.Roles {
-		sort.Strings(projection.Roles[actor])
+	for fingerprint, actor := range projection.Actors {
+		sort.Strings(actor.Roles)
+		for role := range actor.RoleSources {
+			sort.Strings(actor.RoleSources[role])
+		}
+		projection.Actors[fingerprint] = actor
 	}
 	projection.Commitments = f.projectCommitments(retired, stale)
 	if projection.Commitments == nil {
@@ -451,6 +525,13 @@ func (f *foldState) project() Projection {
 		projection.OpaqueKinds = nil
 	}
 	return projection
+}
+
+func addActorRole(actor *ActorState, role, source string) {
+	actor.Roles = appendUnique(actor.Roles, role)
+	if source != "" {
+		actor.RoleSources[role] = appendUnique(actor.RoleSources[role], source)
+	}
 }
 
 func (f *foldState) projectCommitments(retired, stale map[string]bool) []Commitment {

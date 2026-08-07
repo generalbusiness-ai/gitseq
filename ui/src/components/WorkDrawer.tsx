@@ -1,15 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { BadgeCheck, FileWarning, X } from "lucide-react";
 import type { Artifact, Projection } from "../lib/api";
 import { ATTENTION_COMMITMENT_STATUSES, OPEN_COMMITMENT_STATUSES, danglingPromises, ticketsOf, type Selection, type Workroom } from "../lib/store";
-import { cn, statusTint } from "../lib/util";
+import { cn, statusLabel, statusTint } from "../lib/util";
 import { Railway } from "./Railway";
-import { SequencePane } from "./SequencePane";
 import { Ticket, WhyStale } from "./Stream";
 
-// The Work drawer: the room is the only permanent center; everything else —
-// what needs attention, what's owed, what stands, and the audit panes — lives
-// behind the header chip, as an overlay at every breakpoint.
+// Work state and the Git history live behind the header chip, separate from
+// the conversational room.
 export function WorkDrawer({
   workroom,
   highlight,
@@ -26,7 +24,6 @@ export function WorkDrawer({
   onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
-  const [inspect, setInspect] = useState<"repo" | "record">("repo");
   const projection = workroom.status?.durable.projection;
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
   const nameOf = useMemo(() => {
@@ -59,7 +56,7 @@ export function WorkDrawer({
         className="absolute inset-y-0 right-0 flex w-[min(26rem,92vw)] flex-col border-l border-border bg-background shadow-2xl outline-none"
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-          <h2 className="text-xs font-medium uppercase tracking-[0.16em] text-muted">Work</h2>
+          <h2 className="text-sm font-semibold text-foreground/90">Work</h2>
           <button onClick={onClose} aria-label="close" className="rounded p-1 text-faint hover:text-foreground focus-visible:outline focus-visible:outline-accent">
             <X className="h-4 w-4" />
           </button>
@@ -71,46 +68,15 @@ export function WorkDrawer({
             <WorkSections projection={projection} tickets={tickets} nameOf={nameOf} onSelect={onSelect} onJumpEvent={jumpEvent} />
           )}
           <section className="border-t border-border px-4 py-3">
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-faint">Inspect</h3>
-            <div className="mb-2 flex gap-1" role="tablist">
-              {(
-                [
-                  ["repo", "Repository"],
-                  ["record", "Durable record"],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  role="tab"
-                  aria-selected={inspect === key}
-                  onClick={() => setInspect(key)}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-accent",
-                    inspect === key ? "bg-elevated text-foreground" : "text-faint hover:text-muted",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <h3 className="mb-2 text-xs font-medium text-faint">History</h3>
             <div className="h-[26rem] overflow-hidden rounded-lg border border-border">
-              {inspect === "repo" ? (
-                <Railway
-                  commits={workroom.commits}
-                  statements={projection?.statements ?? []}
-                  highlight={highlight}
-                  selection={selection}
-                  onSelect={onSelect}
-                />
-              ) : (
-                <SequencePane
-                  projection={projection}
-                  actors={workroom.actors}
-                  highlight={highlight}
-                  selection={selection}
-                  onSelect={onSelect}
-                />
-              )}
+              <Railway
+                commits={workroom.commits}
+                statements={projection?.statements ?? []}
+                highlight={highlight}
+                selection={selection}
+                onSelect={onSelect}
+              />
             </div>
           </section>
         </div>
@@ -168,7 +134,7 @@ function WorkSections({
           return (
             <div key={commitment.request + (commitment.promise ?? "")} className="rounded-md px-2 py-1.5 hover:bg-elevated/60">
               <Row onClick={() => onJumpEvent(commitment.request)} bare>
-                <span className={cn("w-16 shrink-0 text-xs font-semibold", statusTint[commitment.status])}>{commitment.status}</span>
+                <span className={cn("w-16 shrink-0 text-xs font-semibold", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>
                 <span className="truncate text-muted">{requestText(commitment.request)}</span>
                 <span className="ml-auto shrink-0">
                   <Ticket ticket={tickets.get(commitment.request)} event={commitment.request} onSelect={() => onJumpEvent(commitment.request)} />
@@ -182,8 +148,8 @@ function WorkSections({
         })}
         {dangling.map((promise) => (
           <Row key={promise.event} onClick={() => onJumpEvent(promise.event)}>
-            <span className="w-16 shrink-0 text-xs font-semibold text-danger">dangling</span>
-            <span className="truncate text-muted" title="a promise with no request behind it">
+            <span className="w-16 shrink-0 text-xs font-semibold text-danger">unlinked</span>
+            <span className="truncate text-muted" title="unlinked work item">
               {promise.text}
             </span>
             <span className="ml-auto shrink-0">
@@ -193,11 +159,11 @@ function WorkSections({
         ))}
       </section>
       <section>
-        <SectionTitle title={`Open commitments (${open.length})`} />
+        <SectionTitle title={`Open (${open.length})`} />
         {open.length === 0 && <Empty>Nothing open.</Empty>}
         {open.map((commitment) => (
           <Row key={commitment.request + (commitment.promise ?? "")} onClick={() => onJumpEvent(commitment.request)}>
-            <span className={cn("w-16 shrink-0 text-xs font-semibold", statusTint[commitment.status])}>{commitment.status}</span>
+            <span className={cn("w-16 shrink-0 text-xs font-semibold", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>
             <span className="truncate text-muted">{requestText(commitment.request)}</span>
             <span className="ml-auto flex shrink-0 items-center gap-2">
               {commitment.waiting_on && <span className="text-xs text-faint">⏳ {nameOf(commitment.waiting_on)}</span>}
@@ -207,7 +173,7 @@ function WorkSections({
         ))}
       </section>
       <section>
-        <SectionTitle icon={<BadgeCheck className="h-3.5 w-3.5 text-ok" />} title="Standing decisions" />
+        <SectionTitle icon={<BadgeCheck className="h-3.5 w-3.5 text-ok" />} title="Decisions" />
         {standing.length === 0 && <Empty>Nothing standing.</Empty>}
         {standing.map((decision) => (
           <Row key={decision.event} onClick={() => onJumpEvent(decision.event)}>

@@ -1,8 +1,7 @@
-import { useState } from "react";
-import { Undo2 } from "lucide-react";
 import type { ActInput, Commitment, Decision, Projection, Statement } from "../lib/api";
 import { cn } from "../lib/util";
-import type { ComposerMode } from "./Composer";
+
+export type SemanticReplyMode = "promise" | "report" | "dissent" | "withdraw";
 
 // The one row affordance, Slack-shaped: a small raised card that floats at
 // the top-right of a row on hover or focus, holding every action the row
@@ -64,6 +63,7 @@ export function ToolbarButton({
 
 export interface SemanticAction {
   label: string;
+  symbol: string;
   tone?: "ok" | "danger";
   run: () => void;
 }
@@ -80,16 +80,14 @@ export function semanticActions({
   me,
   onRoute,
   doAct,
-  onWithdraw,
 }: {
   statement: Statement;
   commitment?: Commitment;
   decision?: Decision;
   projection: Projection;
   me?: string;
-  onRoute: (mode: ComposerMode, basis: string, prefill: string) => void;
+  onRoute: (mode: SemanticReplyMode, basis: string, prefill: string) => void;
   doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
-  onWithdraw: () => void;
 }): SemanticAction[] {
   const actions: SemanticAction[] = [];
   if (statement.retired || (decision && decision.verdict !== "effective")) return actions;
@@ -99,51 +97,18 @@ export function semanticActions({
     (a) => a.type === "ratify" && a.target === statement.event && a.actor === me && a.verdict === "effective",
   );
   if (statement.kind === "request" && commitment && !commitment.promise && me && statement.body?.to === me)
-    actions.push({ label: "Accept", tone: "ok", run: () => onRoute("promise", statement.event, "I will do this.") });
+    actions.push({ label: "accept", symbol: "👍", tone: "ok", run: () => onRoute("promise", statement.event, "I will do this.") });
   if (statement.kind === "propose") {
-    if (!myRatify) actions.push({ label: "Agree", tone: "ok", run: () => doAct(key("ratify"), { act: "ratify", target: statement.event }) });
-    actions.push({ label: "Disagree", tone: "danger", run: () => onRoute("dissent", statement.event, "") });
+    if (!myRatify) actions.push({ label: "agree", symbol: "👍", tone: "ok", run: () => doAct(key("ratify"), { act: "ratify", target: statement.event }) });
+    actions.push({ label: "disagree", symbol: "👎", tone: "danger", run: () => onRoute("dissent", statement.event, "") });
   }
   if (commitment?.promise && me === commitment.performer && commitment.status === "promised")
-    actions.push({ label: "Report done", tone: "ok", run: () => onRoute("report", commitment.promise!, "") });
+    actions.push({ label: "mark done", symbol: "✓", tone: "ok", run: () => onRoute("report", commitment.promise!, "") });
   if (commitment?.report && me === commitment.requester && commitment.status === "reported") {
-    actions.push({ label: "Accept", tone: "ok", run: () => doAct(key("satisfy"), { act: "ratify", target: commitment.report! }) });
-    actions.push({ label: "Needs work", tone: "danger", run: () => onRoute("dissent", commitment.report!, "") });
+    actions.push({ label: "accept", symbol: "👍", tone: "ok", run: () => doAct(key("satisfy"), { act: "ratify", target: commitment.report! }) });
+    actions.push({ label: "needs work", symbol: "👎", tone: "danger", run: () => onRoute("dissent", commitment.report!, "") });
   }
-  if (me === statement.actor) actions.push({ label: "Withdraw", tone: "danger", run: onWithdraw });
+  if (me === statement.actor)
+    actions.push({ label: "withdraw", symbol: "↩", tone: "danger", run: () => onRoute("withdraw", statement.event, "") });
   return actions;
-}
-
-// The withdraw reason input, opened by the toolbar's Withdraw shortcut.
-// Superseding yourself is visible forever; the reason field says so.
-export function WithdrawInput({
-  statement,
-  doAct,
-  onDone,
-}: {
-  statement: Statement;
-  doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
-  onDone: () => void;
-}) {
-  const [reason, setReason] = useState("");
-  return (
-    <div className="mt-1 flex items-center gap-1.5">
-      <input
-        autoFocus
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            doAct(`supersede:${statement.event}`, { act: "supersede", target: statement.event, text: reason || "withdrawn" });
-            onDone();
-          }
-          if (e.key === "Escape") onDone();
-        }}
-        placeholder="why — visible forever"
-        aria-label="withdraw reason"
-        className="min-w-0 flex-1 rounded-md border border-input bg-surface px-2.5 py-1 text-xs outline-none placeholder:text-faint focus:border-danger/60"
-      />
-      <Undo2 className="h-3.5 w-3.5 text-danger" />
-    </div>
-  );
 }

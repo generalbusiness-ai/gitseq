@@ -3,11 +3,11 @@ import type { Actor } from "./api";
 // Mentions: "@name" tokens in free text. One grammar for chat and durable
 // statements — the author just writes; the system resolves who was addressed
 // (to roster fingerprints at set-down time) and files it.
-export const MENTION_PATTERN = /@([A-Za-z0-9][A-Za-z0-9_.-]*)/g;
+export const MENTION_PATTERN = /@(?:"([^"]+)"|([A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?))/g;
 
 export function mentionNames(text: string): string[] {
   const names: string[] = [];
-  for (const match of text.matchAll(MENTION_PATTERN)) names.push(match[1]);
+  for (const match of text.matchAll(MENTION_PATTERN)) names.push(match[1] ?? match[2]);
   return names;
 }
 
@@ -30,11 +30,13 @@ export function mentionsActor(text: string, name?: string): boolean {
 }
 
 // The mention token being typed at the caret, if any — drives autocomplete.
-export function mentionAt(text: string, caret: number): { start: number; partial: string } | undefined {
+export function mentionAt(text: string, caret: number): { start: number; partial: string; quoted: boolean } | undefined {
   const head = text.slice(0, caret);
-  const match = /(^|[\s(])@([A-Za-z0-9_.-]*)$/.exec(head);
-  if (!match) return undefined;
-  return { start: caret - match[2].length - 1, partial: match[2] };
+  const quoted = /(^|[\s(])@"([^"]*)$/.exec(head);
+  if (quoted) return { start: caret - quoted[2].length - 2, partial: quoted[2], quoted: true };
+  const simple = /(^|[\s(])@([A-Za-z0-9_.-]*)$/.exec(head);
+  if (!simple) return undefined;
+  return { start: caret - simple[2].length - 1, partial: simple[2], quoted: false };
 }
 
 // Split text into plain and mention tokens for highlighted rendering.
@@ -44,7 +46,7 @@ export function mentionTokens(text: string): { text: string; mention?: string }[
   for (const match of text.matchAll(MENTION_PATTERN)) {
     const index = match.index ?? 0;
     if (index > last) tokens.push({ text: text.slice(last, index) });
-    tokens.push({ text: match[0], mention: match[1] });
+    tokens.push({ text: match[0], mention: match[1] ?? match[2] });
     last = index + match[0].length;
   }
   if (last < text.length) tokens.push({ text: text.slice(last) });
