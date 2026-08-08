@@ -12,6 +12,9 @@ The project should build using its own discipline.
 
 Use gitseq requests instead of GitHub issues.
 
+User-facing notes, documentation and other communications prefer plain English,
+per ISO 24495-1, for a technical audience.
+
 1. Read `SKILL.md` and current `status`. Work begins with a durable request;
    claim it with a promise. If work is discovered mid-flight, create a child
    request resting on the current request or promise before implementing it.
