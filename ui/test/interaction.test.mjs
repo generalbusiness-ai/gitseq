@@ -135,6 +135,7 @@ test("local worktrees join current promise, docs report, and exact commit-traile
     ["current", "docs", "trailer"],
   );
   assert.equal(associations[0].headMatches, false);
+  assert.equal(associations.find((association) => association.worktree.checkout === "trailer").evidence, "local-trailer");
   assert.equal(associations.some((association) => association.worktree.checkout === "unrelated"), false);
 });
 
@@ -176,6 +177,46 @@ test("a single exact review head marks an associated branch that moved", () => {
     { checkout: "review", branch: "task/review", head: "new-head", state: "clean" },
   ]);
   assert.equal(association.expectedHead, "approved-head");
+  assert.equal(association.headMatches, false);
+});
+
+test("artifact provenance stops at a different commitment boundary", () => {
+  const commitment = { request: "wanted-request", requester: "human", performer: "agent", promise: "wanted-promise", status: "promised" };
+  const projection = {
+    decisions: [], acts: [], actors: {}, commitments: [commitment],
+    statements: [
+      { event: "wanted-request", actor: "human", kind: "request", text: "wanted" },
+      { event: "wanted-promise", actor: "agent", kind: "promise", text: "working", body: { branch: "task/wanted" } },
+      { event: "other-request", actor: "human", kind: "request", text: "next" },
+      { event: "other-artifact", actor: "agent", kind: "artifact", text: "other", body: { path: ".", commit: "other-head" } },
+    ],
+    artifacts: [{ event: "other-artifact", path: ".", commit: "other-head", stale: false }],
+    provenance: {
+      "wanted-request": [], "wanted-promise": ["wanted-request"],
+      "other-request": ["wanted-promise"], "other-artifact": ["other-request"],
+    },
+  };
+  const associations = worktreesForCommitment(commitment, projection, [], [
+    { checkout: "wanted", branch: "task/wanted", head: "wanted-head", state: "clean" },
+    { checkout: "other", branch: "task/other", head: "other-head", state: "clean" },
+  ]);
+  assert.deepEqual(associations.map((association) => association.worktree.checkout), ["wanted"]);
+});
+
+test("multiple declared heads still mark a branch at neither head as moved", () => {
+  const commitment = { request: "request", requester: "human", performer: "agent", promise: "promise", report: "report", status: "reported" };
+  const projection = {
+    decisions: [], acts: [], artifacts: [], actors: {}, commitments: [commitment], provenance: {},
+    statements: [
+      { event: "request", actor: "human", kind: "request", text: "implement" },
+      { event: "promise", actor: "agent", kind: "promise", text: "working", body: { branch: "task/review", head: "old-head" } },
+      { event: "report", actor: "agent", kind: "report", text: "ready", body: { head: "review-head" } },
+    ],
+  };
+  const [association] = worktreesForCommitment(commitment, projection, [], [
+    { checkout: "review", branch: "task/review", head: "different-head", state: "clean" },
+  ]);
+  assert.deepEqual(association.expectedHeads, ["old-head", "review-head"]);
   assert.equal(association.headMatches, false);
 });
 

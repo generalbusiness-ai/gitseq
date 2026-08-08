@@ -3,7 +3,9 @@ import type { Commitment, GraphCommit, Projection, WorktreeView } from "./api";
 export interface WorktreeAssociation {
   worktree: WorktreeView;
   expectedHead?: string;
+  expectedHeads?: string[];
   headMatches?: boolean;
+  evidence: "durable" | "local-trailer";
 }
 
 export interface WorkGroups {
@@ -45,35 +47,45 @@ export function worktreesForCommitment(
   const artifactHeads = new Set<string>();
   if (explicitHeads.size === 0) {
     for (const artifact of projection.artifacts) {
-      if (!artifact.stale && dependsOnAny(artifact.event, anchors, projection.provenance)) artifactHeads.add(artifact.commit);
+      if (!artifact.stale && dependsOnAny(artifact.event, anchors, projection.provenance, statements)) artifactHeads.add(artifact.commit);
     }
   }
   const expectedHeads = explicitHeads.size > 0 ? explicitHeads : artifactHeads;
 
   const commitsByHead = new Map(commits.map((commit) => [commit.hash, commit]));
-  return worktrees
-    .filter((worktree) => {
-      if (worktree.branch && branchHints.has(worktree.branch)) return true;
-      if (worktree.head && expectedHeads.has(worktree.head)) return true;
+  return worktrees.flatMap((worktree) => {
+    let evidence: WorktreeAssociation["evidence"] | undefined;
+    if (worktree.branch && branchHints.has(worktree.branch)) evidence = "durable";
+    if (worktree.head && expectedHeads.has(worktree.head)) evidence = "durable";
+    if (!evidence) {
       const commit = worktree.head ? commitsByHead.get(worktree.head) : undefined;
-      return commit?.rests_on?.some((basis) => anchors.has(basis)) ?? false;
-    })
-    .map((worktree) => {
-      const expectedHead = expectedHeads.size === 1 ? [...expectedHeads][0] : undefined;
-      return {
-        worktree,
-        expectedHead,
-        headMatches: expectedHead && worktree.head ? expectedHead === worktree.head : undefined,
-      };
-    });
+      if (commit?.rests_on?.some((basis) => anchors.has(basis))) evidence = "local-trailer";
+    }
+    if (!evidence) return [];
+    const allExpected = [...expectedHeads];
+    return [{
+      worktree,
+      expectedHead: allExpected.length === 1 ? allExpected[0] : undefined,
+      expectedHeads: allExpected.length > 0 ? allExpected : undefined,
+      headMatches: allExpected.length > 0 && worktree.head ? expectedHeads.has(worktree.head) : undefined,
+      evidence,
+    }];
+  });
 }
 
-function dependsOnAny(event: string, anchors: Set<string>, provenance: Record<string, string[]>): boolean {
+function dependsOnAny(
+  event: string,
+  anchors: Set<string>,
+  provenance: Record<string, string[]>,
+  statements: Map<string, Projection["statements"][number]>,
+): boolean {
   const seen = new Set<string>();
   const visit = (current: string): boolean => {
     if (anchors.has(current)) return true;
     if (seen.has(current)) return false;
     seen.add(current);
+    const kind = statements.get(current)?.kind;
+    if (kind === "request" || kind === "promise" || kind === "report") return false;
     return (provenance[current] ?? []).some(visit);
   };
   return visit(event);

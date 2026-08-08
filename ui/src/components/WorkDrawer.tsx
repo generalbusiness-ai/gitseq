@@ -79,6 +79,7 @@ export function WorkDrawer({
           )}
           <section className="border-t border-border px-4 py-3">
             <h3 className="mb-2 text-xs font-medium text-faint">History</h3>
+            {workroom.graphTruncated && <p className="mb-2 text-[11px] text-warn">Showing the newest 80 commits; older local trailer associations may be absent.</p>}
             <div className="h-[26rem] overflow-hidden rounded-lg border border-border">
               <Railway
                 commits={workroom.commits}
@@ -135,7 +136,7 @@ function WorkSections({
         {localOffline && <Empty>Local checkout state unavailable. Durable work is unchanged.</Empty>}
         {!localOffline && !worktrees && <Empty>Reading local checkout state…</Empty>}
         {worktrees?.length === 0 && <Empty>No checkouts found.</Empty>}
-        {worktrees?.map((worktree) => <WorktreePill key={`${worktree.branch}:${worktree.checkout}`} worktree={worktree} />)}
+        {worktrees?.map((worktree, index) => <WorktreePill key={`${worktree.checkout}:${worktree.head}:${index}`} worktree={worktree} />)}
       </section>
       <section>
         <SectionTitle icon={<FileWarning className="h-3.5 w-3.5 text-danger" />} title="Needs attention" />
@@ -262,12 +263,14 @@ function WorktreeAssociations({ associations }: { associations: WorktreeAssociat
   if (associations.length === 0) return null;
   return (
     <div className="ml-16 mt-1 space-y-1 border-l border-border pl-2">
-      {associations.map((association) => (
+      {associations.map((association, index) => (
         <WorktreePill
-          key={`${association.worktree.branch}:${association.worktree.checkout}`}
+          key={`${association.worktree.checkout}:${association.worktree.head}:${index}`}
           worktree={association.worktree}
           expectedHead={association.expectedHead}
+          expectedHeads={association.expectedHeads}
           headMatches={association.headMatches}
+          evidence={association.evidence}
           compact
         />
       ))}
@@ -278,15 +281,19 @@ function WorktreeAssociations({ associations }: { associations: WorktreeAssociat
 function WorktreePill({
   worktree,
   expectedHead,
+  expectedHeads,
   headMatches,
+  evidence,
   compact,
 }: {
   worktree: WorktreeView;
   expectedHead?: string;
+  expectedHeads?: string[];
   headMatches?: boolean;
+  evidence?: WorktreeAssociation["evidence"];
   compact?: boolean;
 }) {
-  const branch = worktree.branch || "unborn";
+  const branch = worktree.detached ? "detached" : worktree.state === "bare" ? "bare" : worktree.branch || "unborn";
   const head = worktree.head?.slice(0, 8) || "no HEAD";
   const moved = headMatches === false;
   const title = [
@@ -295,6 +302,7 @@ function WorktreePill({
     `HEAD ${worktree.head || "unborn"}`,
     worktree.state,
     expectedHead ? `review head ${expectedHead}` : "",
+    expectedHeads && expectedHeads.length > 1 ? `review heads ${expectedHeads.join(", ")}` : "",
     "local only — not durable workroom state",
   ]
     .filter(Boolean)
@@ -311,8 +319,11 @@ function WorktreePill({
       <span className="truncate font-medium text-foreground/80">{worktree.checkout}</span>
       <span className="truncate">{branch}</span>
       <code className="shrink-0 text-faint">@{head}</code>
+      <span className="shrink-0 text-faint">local</span>
+      {evidence === "local-trailer" && <span className="shrink-0 text-warn">unverified trailer</span>}
       {worktree.current && <span className="shrink-0 text-info">serving</span>}
       {worktree.state === "dirty" && <span className="shrink-0 text-warn">dirty</span>}
+      {!["clean", "dirty"].includes(worktree.state) && <span className="shrink-0 text-warn">{worktree.state}</span>}
       {moved && <span className="shrink-0 text-danger">moved</span>}
     </div>
   );

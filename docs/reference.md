@@ -48,6 +48,13 @@ authority grants, and they are independent of kind.
 `--evidence name=path`, each repeatable, plus `--idempotency-key` for
 safe retries.
 
+For implementation requests, promises, and reports, `body.branch` is an
+optional branch hint and `body.head` (or `body.commit`) is an optional exact
+ordinary-Git head hint. The Work drawer uses these signed durable fields only
+to associate local checkouts with a commitment; they do not claim the checkout
+is clean or current. An `artifact` remains the durable statement that points
+to implementation truth as `path@commit`.
+
 `ratify` and `supersede` take their target as a positional argument, and
 flag parsing stops at the first positional. **Put every flag before the
 event**, or the flags after it are read as further arguments and the
@@ -65,6 +72,15 @@ few governance kinds. Their meaning belongs to the room's practice.
 | `gs status` | Project current state. `--json` for machine output; `--server` to include live presence. |
 | `gs verify` | Check every signature and the sequence integrity. |
 | `gs provenance <event>` | Walk back through everything an event rests on. |
+
+The browser's Work drawer also reads local worktree state. That endpoint emits
+only checkout basenames, branch/HEAD, and explicit clean, dirty, detached,
+bare, locked, prunable, or unavailable state; it never enters the durable
+projection. A checkout associated only through an ordinary commit's
+`Rests-On:` trailer is visibly marked **unverified trailer**, because trailer
+text is not an actor-signed workroom statement. The railway is a newest-80
+window and says when it is truncated, so older trailer associations may be
+absent without being mistaken for durable evidence.
 
 ### Serving and attaching
 

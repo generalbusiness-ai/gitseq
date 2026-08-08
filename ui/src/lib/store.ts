@@ -6,6 +6,7 @@ export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 export interface Workroom {
   status?: Status;
   commits: GraphCommit[];
+  graphTruncated: boolean;
   worktrees?: WorktreeView[];
   actors: Actor[];
   offline: boolean;
@@ -17,6 +18,7 @@ export interface Workroom {
 export function useWorkroom(): Workroom {
   const [status, setStatus] = useState<Status>();
   const [commits, setCommits] = useState<GraphCommit[]>([]);
+  const [graphTruncated, setGraphTruncated] = useState(false);
   const [worktrees, setWorktrees] = useState<WorktreeView[]>();
   const [actors, setActors] = useState<Actor[]>([]);
   const [offline, setOffline] = useState(false);
@@ -31,7 +33,10 @@ export function useWorkroom(): Workroom {
     const refreshGraph = async () => {
       try {
         const graph = await api.graph();
-        if (!stopped) setCommits(graph.commits);
+        if (!stopped) {
+          setCommits(graph.commits);
+          setGraphTruncated(graph.truncated);
+        }
       } catch {
         /* keep the previous railway; retry next cycle */
       }
@@ -85,7 +90,7 @@ export function useWorkroom(): Workroom {
       }
     };
     void refreshWorktrees();
-    const worktreeTimer = window.setInterval(() => void refreshWorktrees(), 5000);
+    const worktreeTimer = window.setInterval(() => void refreshWorktrees(), 10000);
     void loop();
     return () => {
       stopped = true;
@@ -93,7 +98,7 @@ export function useWorkroom(): Workroom {
     };
   }, []);
 
-  return { status, commits, worktrees, actors, offline, localOffline };
+  return { status, commits, graphTruncated, worktrees, actors, offline, localOffline };
 }
 
 export interface Selection {

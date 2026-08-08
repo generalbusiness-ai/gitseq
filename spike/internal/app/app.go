@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"gitseq/spike/internal/gitstore"
 	"gitseq/spike/internal/intent"
@@ -61,6 +62,10 @@ type Workspace struct {
 	snapshotCache *Snapshot
 	submitterOnce sync.Once
 	submitter     *kernel.Submitter
+
+	worktreesMu       sync.Mutex
+	worktreesCached   []WorktreeView
+	worktreesCachedAt time.Time
 }
 
 type Snapshot struct {
@@ -77,8 +82,9 @@ type WorktreeView struct {
 	Checkout string `json:"checkout"`
 	Branch   string `json:"branch,omitempty"`
 	Head     string `json:"head,omitempty"`
-	State    string `json:"state"` // clean | dirty | unavailable
+	State    string `json:"state"` // clean | dirty | unavailable | bare | locked | prunable
 	Current  bool   `json:"current,omitempty"`
+	Detached bool   `json:"detached,omitempty"`
 }
 
 type Verb string
@@ -132,14 +138,23 @@ func ResolveGitDirs(ctx context.Context, repo string) (gitDir, commonDir string,
 // spaces and other path characters unambiguous; only basenames leave this
 // boundary.
 func (w *Workspace) LocalWorktrees(ctx context.Context) ([]WorktreeView, error) {
-	output, err := exec.CommandContext(ctx, "git", "-C", w.Repo, "worktree", "list", "--porcelain", "-z").Output()
+	w.worktreesMu.Lock()
+	defer w.worktreesMu.Unlock()
+	if age := time.Since(w.worktreesCachedAt); !w.worktreesCachedAt.IsZero() && age >= 0 && age < 8*time.Second {
+		return append([]WorktreeView(nil), w.worktreesCached...), nil
+	}
+	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", w.Repo, "worktree", "list", "--porcelain", "-z").Output()
 	if err != nil {
 		return nil, fmt.Errorf("list worktrees: %w", err)
 	}
 	type entry struct {
-		path   string
-		head   string
-		branch string
+		path     string
+		head     string
+		branch   string
+		detached bool
+		bare     bool
+		locked   bool
+		prunable bool
 	}
 	var entries []entry
 	var current entry
@@ -163,10 +178,19 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) ([]WorktreeView, error) 
 		case "branch":
 			current.branch = strings.TrimPrefix(value, "refs/heads/")
 		case "detached":
-			current.branch = "detached"
+			current.detached = true
+		case "bare":
+			current.bare = true
+		case "locked":
+			current.locked = true
+		case "prunable":
+			current.prunable = true
 		}
 	}
 	flush()
+	if len(entries) > 128 {
+		return nil, fmt.Errorf("repository has %d worktrees; local projection limit is 128", len(entries))
+	}
 
 	canonicalPath := func(path string) string {
 		absolute, absErr := filepath.Abs(path)
@@ -178,8 +202,14 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) ([]WorktreeView, error) 
 		}
 		return filepath.Clean(absolute)
 	}
-	selected := canonicalPath(w.Repo)
+	selectedPath := w.Repo
+	if top, topErr := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", w.Repo, "rev-parse", "--show-toplevel").Output(); topErr == nil {
+		selectedPath = strings.TrimSpace(string(top))
+	}
+	selected := canonicalPath(selectedPath)
 	views := make([]WorktreeView, 0, len(entries))
+	inspectionCtx, cancelInspection := context.WithTimeout(ctx, 3*time.Second)
+	defer cancelInspection()
 	for _, item := range entries {
 		view := WorktreeView{
 			Checkout: filepath.Base(filepath.Clean(item.path)),
@@ -187,12 +217,24 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) ([]WorktreeView, error) 
 			Head:     item.head,
 			State:    "unavailable",
 			Current:  canonicalPath(item.path) == selected,
+			Detached: item.detached,
 		}
-		status, statusErr := exec.CommandContext(ctx, "git", "-C", item.path, "status", "--porcelain=v1", "--untracked-files=normal").Output()
-		if statusErr == nil {
-			view.State = "clean"
-			if len(status) > 0 {
-				view.State = "dirty"
+		switch {
+		case item.bare:
+			view.State = "bare"
+		case item.prunable:
+			view.State = "prunable"
+		case item.locked:
+			view.State = "locked"
+		default:
+			statusCtx, cancel := context.WithTimeout(inspectionCtx, 750*time.Millisecond)
+			status, statusErr := exec.CommandContext(statusCtx, "git", "--no-optional-locks", "-C", item.path, "status", "--porcelain=v1", "--untracked-files=normal").Output()
+			cancel()
+			if statusErr == nil {
+				view.State = "clean"
+				if len(status) > 0 {
+					view.State = "dirty"
+				}
 			}
 		}
 		views = append(views, view)
@@ -206,7 +248,9 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) ([]WorktreeView, error) 
 		}
 		return views[i].Checkout < views[j].Checkout
 	})
-	return views, nil
+	w.worktreesCached = append(w.worktreesCached[:0], views...)
+	w.worktreesCachedAt = time.Now()
+	return append([]WorktreeView(nil), views...), nil
 }
 
 func Open(ctx context.Context, repo string) (*Workspace, error) {

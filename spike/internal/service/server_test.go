@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -67,6 +68,43 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	}
 	if bytes.Contains(encoded, []byte(repo)) {
 		t.Fatalf("local projection exposed absolute repository path: %s", encoded)
+	}
+}
+
+func TestGraphEndpointDisclosesItsNewestEightyWindow(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	for index := 0; index < 81; index++ {
+		if output, err := exec.Command("git", "-C", repo,
+			"-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+			"commit", "--allow-empty", "-qm", "ordinary-"+strconv.Itoa(index)).CombinedOutput(); err != nil {
+			t.Fatalf("ordinary commit %d: %v: %s", index, err, output)
+		}
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+	response, err := http.Get(httpServer.URL + "/v0/graph")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var graph graphResponse
+	if err := json.NewDecoder(response.Body).Decode(&graph); err != nil {
+		t.Fatal(err)
+	}
+	if !graph.Truncated || len(graph.Commits) != 80 {
+		t.Fatalf("graph window = %d commits, truncated=%v", len(graph.Commits), graph.Truncated)
 	}
 }
 

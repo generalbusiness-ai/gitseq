@@ -108,8 +108,9 @@ export interface WorktreeView {
   checkout: string;
   branch?: string;
   head?: string;
-  state: "clean" | "dirty" | "unavailable";
+  state: "clean" | "dirty" | "unavailable" | "bare" | "locked" | "prunable";
   current?: boolean;
+  detached?: boolean;
 }
 
 export interface Actor {
@@ -154,7 +155,7 @@ export const api = {
   status: () => fetch("/v0/status", { cache: "no-store" }).then((r) => json<Status>(r)),
   graph: () =>
     fetch("/v0/graph", { cache: "no-store" })
-      .then((r) => json<{ commits: GraphCommit[] }>(r))
+      .then((r) => json<{ commits: GraphCommit[]; truncated?: boolean }>(r))
       .then((graph) => ({
         // Go marshals nil slices as null; the root commit has no parents.
         commits: (graph.commits ?? []).map((commit) => ({
@@ -162,6 +163,7 @@ export const api = {
           parents: commit.parents ?? [],
           rests_on: commit.rests_on ?? undefined,
         })),
+        truncated: graph.truncated ?? false,
       })),
   worktrees: () =>
     fetch("/v0/worktrees", { cache: "no-store" })
