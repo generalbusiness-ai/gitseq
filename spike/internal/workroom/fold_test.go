@@ -2,6 +2,7 @@ package workroom
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"testing"
 )
@@ -32,6 +33,52 @@ func BenchmarkFoldRosterHeavy(b *testing.B) {
 	}
 }
 
+func BenchmarkFoldRequestHeavy(b *testing.B) {
+	for _, requests := range []int{1000, 5000, 20000} {
+		records := requestHeavyHistory(b, requests)
+		b.Run(fmt.Sprintf("requests-%d", requests), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				Fold(records)
+			}
+		})
+	}
+}
+
+func BenchmarkFolderAppendToProjectionRequestHeavy(b *testing.B) {
+	records := requestHeavyHistory(b, 20000)
+	b.ReportAllocs()
+	for index := 0; index < b.N; index++ {
+		b.StopTimer()
+		folder := NewFolder(records)
+		record := event(b, fmt.Sprintf("append:%d", index), operator, SchemaState, State{
+			Kind: KindRequest, Text: "request", Body: map[string]string{"to": agent, "conditions": "done"},
+		}, "e0")
+		b.StartTimer()
+		folder.Append(record)
+		projection := folder.Projection()
+		if len(projection.Commitments) != 20001 {
+			b.Fatalf("commitments = %d", len(projection.Commitments))
+		}
+	}
+}
+
+func requestHeavyHistory(t testing.TB, requests int) []Record {
+	t.Helper()
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+		event(t, "agent", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "agent-ratified", operator, SchemaRatify, Ratify{Target: "agent"}, "agent"),
+	}
+	for index := range requests {
+		id := fmt.Sprintf("request:%d", index)
+		records = append(records, event(t, id, operator, SchemaState, State{
+			Kind: KindRequest, Text: "request", Body: map[string]string{"to": agent, "conditions": "done"},
+		}, "e0"))
+	}
+	return records
+}
+
 func rosterHeavyHistory(t testing.TB, actors int) []Record {
 	t.Helper()
 	records := []Record{
@@ -59,7 +106,12 @@ func rosterHeavyHistory(t testing.TB, actors int) []Record {
 
 func golden(t *testing.T) Projection {
 	t.Helper()
-	return Fold([]Record{
+	return Fold(goldenRecords(t))
+}
+
+func goldenRecords(t testing.TB) []Record {
+	t.Helper()
+	return []Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "Operator begins the workroom", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
 		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "Agent joins", Body: map[string]string{"actor": agent, "name": "Agent", "role": "agent"}}, "e0"),
 		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
@@ -70,7 +122,7 @@ func golden(t *testing.T) Projection {
 		event(t, "e7", operator, SchemaRatify, Ratify{Target: "e5"}, "e5"),
 		event(t, "e8", agent, SchemaState, State{Kind: KindArtifact, Text: "Projector implementation", Body: map[string]string{"path": "internal/workroom", "commit": "abc123"}}, "e3", "e7"),
 		event(t, "e9", operator, SchemaSupersede, Supersede{Target: "e3", Text: "Requirements changed"}, "e3"),
-	})
+	}
 }
 
 func TestGoldenCommitmentAndArtifactProjection(t *testing.T) {
@@ -88,6 +140,37 @@ func TestGoldenCommitmentAndArtifactProjection(t *testing.T) {
 	decision, _ = projection.Decision("e7")
 	if decision.Verdict != Effective {
 		t.Fatalf("requester satisfaction = %s: %s", decision.Verdict, decision.Reason)
+	}
+}
+
+func TestResidentFolderMatchesWholeFoldAtEveryPrefix(t *testing.T) {
+	records := goldenRecords(t)
+	folder := NewFolder(nil)
+	for index, record := range records {
+		folder.Append(record)
+		got, err := json.Marshal(folder.Projection())
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := json.Marshal(Fold(records[:index+1]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("prefix %d incremental projection differs\ngot  %s\nwant %s", index+1, got, want)
+		}
+	}
+}
+
+func TestResidentFolderProjectionMutationDoesNotCorruptState(t *testing.T) {
+	folder := NewFolder(goldenRecords(t))
+	projection := folder.Projection()
+	projection.Statements[0].Body["actor"] = "attacker"
+	projection.Statements[0].Body["role"] = "none"
+
+	fresh := folder.Projection()
+	if fresh.Statements[0].Body["actor"] != operator || fresh.Statements[0].Body["role"] != "operator" {
+		t.Fatalf("projection mutation corrupted resident state: %+v", fresh.Statements[0].Body)
 	}
 }
 

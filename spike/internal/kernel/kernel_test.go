@@ -137,8 +137,8 @@ func TestSubmitterReusesExactHeadAndRebuildsAfterExternalAdvance(t *testing.T) {
 	if _, err := submitter.Submit(f.ctx, afterExternal); err != nil {
 		t.Fatal(err)
 	}
-	if submitter.cache.fullScans != 2 {
-		t.Fatalf("external advance left full scans at %d, want 2", submitter.cache.fullScans)
+	if submitter.cache.fullScans != 1 || submitter.cache.deltaScans != 1 {
+		t.Fatalf("external advance scans = full %d delta %d, want 1 and 1", submitter.cache.fullScans, submitter.cache.deltaScans)
 	}
 
 	replay, err := submitter.Submit(f.ctx, second)
@@ -198,8 +198,8 @@ func TestSubmitterRebuildsAndRetriesAfterCASLoss(t *testing.T) {
 	if out.result.CASRetries != 1 {
 		t.Fatalf("CAS retries = %d, want 1", out.result.CASRetries)
 	}
-	if submitter.cache.fullScans != 2 {
-		t.Fatalf("CAS loss full scans = %d, want 2", submitter.cache.fullScans)
+	if submitter.cache.fullScans != 1 || submitter.cache.deltaScans != 1 {
+		t.Fatalf("CAS loss scans = full %d delta %d, want 1 and 1", submitter.cache.fullScans, submitter.cache.deltaScans)
 	}
 	verified, err := Verify(f.ctx, f.store, f.genesis)
 	if err != nil {
@@ -238,6 +238,106 @@ func BenchmarkSubmitSequence(b *testing.B) {
 					_, err = Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey})
 				}
 				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkWarmSubmitAtResidentDepth20000(b *testing.B) {
+	f := newFixture(b, "sha1")
+	private := actor(b)
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
+	base, err := scanHead(f.ctx, f.store, f.genesis, f.genesis, false)
+	if err != nil {
+		b.Fatal(err)
+	}
+	base.Verification.Depth = 20000
+	base.Verification.Events = 20000
+	for index := 0; index < 20000; index++ {
+		base.Dedup["synthetic:"+strconv.Itoa(index)] = Event{Commit: "synthetic"}
+	}
+	submitter.cache = submitCache{target: f.genesis, head: f.genesis, log: base, fullScans: 1}
+	requests := make([]Request, b.N)
+	for index := range requests {
+		key := "warm-" + strconv.Itoa(index)
+		requests[index] = f.request(b, private, key, []byte(key), nil)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for _, request := range requests {
+		if _, err := submitter.Submit(f.ctx, request); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkCatchUpAtResidentDepth20000(b *testing.B) {
+	f := newFixture(b, "sha1")
+	private := actor(b)
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
+	heads := make(map[int]string)
+	for index := 1; index <= 100; index++ {
+		key := "delta-" + strconv.Itoa(index)
+		result, err := submitter.Submit(f.ctx, f.request(b, private, key, []byte(key), nil))
+		if err != nil {
+			b.Fatal(err)
+		}
+		if index == 1 || index == 10 || index == 100 {
+			heads[index] = result.Head
+		}
+	}
+	for _, count := range []int{1, 10, 100} {
+		b.Run(strconv.Itoa(count), func(b *testing.B) {
+			base := scannedLog{
+				Verification: Verification{Genesis: f.genesis, Head: f.genesis, Depth: 20000, Events: 20000},
+				Dedup:        make(map[string]Event, 20000),
+			}
+			for index := 0; index < 20000; index++ {
+				base.Dedup["synthetic:"+strconv.Itoa(index)] = Event{Commit: "synthetic"}
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for iteration := 0; iteration < b.N; iteration++ {
+				loaded, err := scanAfter(f.ctx, f.store, base, heads[count], true)
+				if err != nil {
+					b.Fatal(err)
+				}
+				b.StopTimer()
+				for _, event := range loaded.Events {
+					key, err := event.Signed.DedupKey()
+					if err != nil {
+						b.Fatal(err)
+					}
+					delete(base.Dedup, key)
+				}
+				b.StartTimer()
+			}
+		})
+	}
+}
+
+func BenchmarkColdAudit(b *testing.B) {
+	f := newFixture(b, "sha1")
+	private := actor(b)
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
+	heads := make(map[int]string)
+	for index := 1; index <= 100; index++ {
+		key := "cold-" + strconv.Itoa(index)
+		result, err := submitter.Submit(f.ctx, f.request(b, private, key, []byte(key), nil))
+		if err != nil {
+			b.Fatal(err)
+		}
+		if index == 1 || index == 10 || index == 100 {
+			heads[index] = result.Head
+		}
+	}
+	for _, count := range []int{1, 10, 100} {
+		b.Run(strconv.Itoa(count), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := scanHead(f.ctx, f.store, f.genesis, heads[count], true); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -472,6 +572,145 @@ func TestLoadReturnsVerifiedPayloadAndAttachments(t *testing.T) {
 	}
 	if verification.Events != 1 || len(events) != 1 || string(events[0].Payload) != "payload" || string(events[0].Attachments["evidence.json"]) != `{"signed":true}` {
 		t.Fatalf("unexpected load: verification=%+v events=%+v", verification, events)
+	}
+}
+
+func TestReaderLoadsColdThenVerifiesDescendantDeltas(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
+	reader := NewReader(f.store)
+
+	cold, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cold.Full || len(cold.Events) != 0 || cold.Verification.Events != 0 || reader.fullScans != 1 {
+		t.Fatalf("cold load = %+v, scans = %d", cold, reader.fullScans)
+	}
+	exact, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exact.Full || len(exact.Events) != 0 || exact.BaseHead != cold.Verification.Head || reader.cacheHits != 1 {
+		t.Fatalf("exact load = %+v, hits = %d", exact, reader.cacheHits)
+	}
+
+	total := 0
+	for _, count := range []int{1, 10, 100} {
+		base := reader.head
+		for index := 0; index < count; index++ {
+			key := "delta-" + strconv.Itoa(total+index)
+			if _, err := submitter.Submit(f.ctx, f.request(t, private, key, []byte(key), nil)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		total += count
+		loaded, err := reader.Load(f.ctx, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.Full || loaded.BaseHead != base || len(loaded.Events) != count || loaded.Verification.Events != total {
+			t.Fatalf("delta %d load = %+v", count, loaded)
+		}
+		for index, event := range loaded.Events {
+			want := "delta-" + strconv.Itoa(total-count+index)
+			if string(event.Payload) != want {
+				t.Fatalf("delta %d event %d payload = %q, want %q", count, index, event.Payload, want)
+			}
+		}
+	}
+	if reader.fullScans != 1 || reader.deltaScans != 3 {
+		t.Fatalf("reader scans = full %d delta %d, want 1 and 3", reader.fullScans, reader.deltaScans)
+	}
+	if reader.log.Verification.Events != total || reader.log.Verification.Head != reader.head {
+		t.Fatalf("reader verification = %+v, head = %s", reader.log.Verification, reader.head)
+	}
+}
+
+func TestReaderFallsBackToFullAuditAfterRefRewind(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	reader := NewReader(f.store)
+	first, err := Submit(f.ctx, f.store, f.request(t, private, "first", []byte("first"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Submit(f.ctx, f.store, f.request(t, private, "second", []byte("second"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), first.Head, second.Head); err != nil {
+		t.Fatal(err)
+	}
+	rewound, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rewound.Full || len(rewound.Events) != 1 || string(rewound.Events[0].Payload) != "first" {
+		t.Fatalf("rewound load = %+v", rewound)
+	}
+	if reader.fullScans != 2 || reader.deltaScans != 1 {
+		t.Fatalf("rewind scans = full %d delta %d, want 2 and 1", reader.fullScans, reader.deltaScans)
+	}
+}
+
+func TestReaderRejectsInvalidDeltaWithoutMutatingVerifiedCache(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	reader := NewReader(f.store)
+	valid, err := Submit(f.ctx, f.store, f.request(t, private, "valid", []byte("valid"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	trusted := reader.log.Verification
+	request := f.request(t, private, "invalid", []byte("invalid"), []string{"git:sha1:external#git:sha1:event"})
+	decoded := mustVerifyIntent(t, request.Signed)
+	_, signedTree, err := gitstore.ParseTypedOID(decoded.PayloadTree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := f.store.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tree != signedTree {
+		t.Fatalf("copied payload tree = %s, signed = %s", tree, signedTree)
+	}
+	malicious, err := f.store.SignedCommit(f.ctx, tree, valid.Head, intent.Envelope(request.Signed, []string{"git:sha1:altered#git:sha1:event"}), f.signingKey, gitstore.CommitIdentity{
+		AuthorName: "attacker", AuthorEmail: "attacker@example.invalid",
+		CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), malicious, valid.Head); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err == nil {
+		t.Fatal("reader accepted altered causal trailers in delta")
+	}
+	if reader.head != trusted.Head || reader.log.Verification != trusted || reader.deltaScans != 0 {
+		t.Fatalf("failed delta mutated reader: head=%s verification=%+v scans=%d", reader.head, reader.log.Verification, reader.deltaScans)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), valid.Head, malicious); err != nil {
+		t.Fatal(err)
+	}
+	exact, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exact.Verification != trusted || reader.cacheHits != 1 {
+		t.Fatalf("restored exact load = %+v, hits=%d", exact, reader.cacheHits)
 	}
 }
 

@@ -57,10 +57,12 @@ type Workspace struct {
 	Store     gitstore.Store
 	Config    Config
 
-	snapshotMu    sync.Mutex
-	snapshotCache *Snapshot
-	submitterOnce sync.Once
-	submitter     *kernel.Submitter
+	snapshotMu     sync.Mutex
+	snapshotCache  *Snapshot
+	snapshotFolder *workroom.Folder
+	reader         *kernel.Reader
+	submitterOnce  sync.Once
+	submitter      *kernel.Submitter
 }
 
 type Snapshot struct {
@@ -534,11 +536,35 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 	if err != nil {
 		return Submission{}, err
 	}
-	return Submission{Result: result, Record: workroom.Record{
+	record := workroom.Record{
 		ID: w.EventID(result.Commit), Actor: intent.ActorFingerprint(request.Signed.ActorKey),
 		Schema: decoded.Schema, RestsOn: append([]string(nil), decoded.RestsOn...),
 		Payload: append([]byte(nil), request.Payload...), Attachments: cloneAttachments(request.Attachments),
-	}}, nil
+	}
+	w.acceptSnapshot(result, record)
+	return Submission{Result: result, Record: record}, nil
+}
+
+// acceptSnapshot applies a commit just authenticated, sequenced, and CASed by
+// this workspace without making the reader audit it a second time before the
+// local notice. If the projection is absent or its frontier differs (for
+// example after a concurrent external append), Snapshot performs the normal
+// verified catch-up instead.
+func (w *Workspace) acceptSnapshot(result kernel.Result, record workroom.Record) {
+	if result.Replay {
+		return
+	}
+	w.snapshotMu.Lock()
+	defer w.snapshotMu.Unlock()
+	if w.snapshotCache == nil || w.snapshotFolder == nil || w.snapshotCache.Head != result.BaseHead {
+		return
+	}
+	w.snapshotFolder.Append(record)
+	snapshot := Snapshot{
+		Genesis: w.snapshotCache.Genesis, Head: result.Head, Depth: w.snapshotCache.Depth + 1,
+		Projection: w.snapshotFolder.Projection(),
+	}
+	w.snapshotCache = &snapshot
 }
 
 func cloneAttachments(input map[string][]byte) map[string][]byte {
@@ -584,17 +610,58 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	if w.snapshotCache != nil && w.snapshotCache.Head == head {
 		return *w.snapshotCache, nil
 	}
-	events, verification, err := kernel.Load(ctx, w.Store, w.Config.Genesis)
+	if w.reader == nil {
+		w.reader = kernel.NewReader(w.Store)
+	}
+	loaded, err := w.reader.Load(ctx, w.Config.Genesis)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	records := make([]workroom.Record, 0, len(events))
-	for _, event := range events {
-		records = append(records, workroom.Record{ID: w.EventID(event.Commit), Actor: intent.ActorFingerprint(event.Signed.ActorKey), Schema: event.Intent.Schema, RestsOn: event.Intent.RestsOn, Payload: event.Payload, Attachments: event.Attachments})
+	if !loaded.Full && w.snapshotCache != nil && w.snapshotCache.Head == loaded.Verification.Head {
+		return *w.snapshotCache, nil
 	}
-	snapshot := Snapshot{Genesis: verification.Genesis, Head: verification.Head, Depth: verification.Depth, Projection: workroom.Fold(records)}
+	start := 0
+	if !loaded.Full && w.snapshotCache != nil && w.snapshotFolder != nil && w.snapshotCache.Head != loaded.BaseHead {
+		start = -1
+		for index, event := range loaded.Events {
+			if event.Commit == w.snapshotCache.Head {
+				start = index + 1
+				break
+			}
+		}
+	}
+	if !loaded.Full && (w.snapshotCache == nil || w.snapshotFolder == nil || start < 0) {
+		// The application projection and verified reader must advance as a
+		// pair. If local application state was discarded or mismatched,
+		// deliberately replace the reader and perform a cold full audit.
+		w.reader = kernel.NewReader(w.Store)
+		loaded, err = w.reader.Load(ctx, w.Config.Genesis)
+		if err != nil {
+			return Snapshot{}, err
+		}
+	}
+	if loaded.Full {
+		records := make([]workroom.Record, 0, len(loaded.Events))
+		for _, event := range loaded.Events {
+			records = append(records, w.record(event))
+		}
+		w.snapshotFolder = workroom.NewFolder(records)
+	} else {
+		for _, event := range loaded.Events[start:] {
+			w.snapshotFolder.Append(w.record(event))
+		}
+	}
+	snapshot := Snapshot{Genesis: loaded.Verification.Genesis, Head: loaded.Verification.Head, Depth: loaded.Verification.Depth, Projection: w.snapshotFolder.Projection()}
 	w.snapshotCache = &snapshot
 	return snapshot, nil
+}
+
+func (w *Workspace) record(event kernel.Event) workroom.Record {
+	return workroom.Record{
+		ID: w.EventID(event.Commit), Actor: intent.ActorFingerprint(event.Signed.ActorKey),
+		Schema: event.Intent.Schema, RestsOn: event.Intent.RestsOn,
+		Payload: event.Payload, Attachments: event.Attachments,
+	}
 }
 
 func (w *Workspace) Verify(ctx context.Context) (kernel.Verification, error) {

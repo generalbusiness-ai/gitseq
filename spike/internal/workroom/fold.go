@@ -119,6 +119,11 @@ type actorStatement struct {
 	statement string
 }
 
+type dependentKind struct {
+	basis string
+	kind  Kind
+}
+
 type foldState struct {
 	records          []parsedRecord
 	byID             map[string]*parsedRecord
@@ -129,9 +134,24 @@ type foldState struct {
 	roleGrantsByRole map[actorRole][]roleGrant
 	membershipGrants map[actorStatement][]roleGrant
 	ratifications    map[string][]string
+	dependents       map[dependentKind][]*parsedRecord
+}
+
+// Folder retains the verified application state for a resident reader. It is
+// deliberately not concurrency-safe; the application owns serialization.
+// Projection may be called after any append and preserves Fold's output.
+type Folder struct {
+	state *foldState
 }
 
 func Fold(records []Record) Projection {
+	folder := NewFolder(records)
+	return folder.Projection()
+}
+
+// NewFolder constructs the same state as Fold while allowing later verified
+// records to be applied without decoding and judging the prefix again.
+func NewFolder(records []Record) *Folder {
 	state := &foldState{
 		byID: make(map[string]*parsedRecord), decisions: make(map[string]Decision),
 		effectiveSup:     make(map[string]string),
@@ -139,11 +159,22 @@ func Fold(records []Record) Projection {
 		roleGrantsByRole: make(map[actorRole][]roleGrant),
 		membershipGrants: make(map[actorStatement][]roleGrant),
 		ratifications:    make(map[string][]string),
+		dependents:       make(map[dependentKind][]*parsedRecord),
 	}
 	for index, record := range records {
 		state.append(index, record)
 	}
-	return state.project()
+	return &Folder{state: state}
+}
+
+// Append applies the next verified record in sequence order.
+func (f *Folder) Append(record Record) {
+	f.state.append(len(f.state.records), record)
+}
+
+// Projection renders the current deterministic workroom view.
+func (f *Folder) Projection() Projection {
+	return f.state.project()
 }
 
 func (f *foldState) append(index int, record Record) {
@@ -177,6 +208,20 @@ func (f *foldState) append(index int, record Record) {
 	f.addDecision(record, parsed, index, decision)
 	if decision.Verdict != Effective {
 		return
+	}
+	if state, ok := body.(*State); ok {
+		// A record may repeat a basis. directDependents historically returned
+		// the record once because it used contains; preserve that behavior while
+		// indexing every effective statement in one pass.
+		seen := make(map[string]struct{}, len(record.RestsOn))
+		for _, basis := range record.RestsOn {
+			if _, exists := seen[basis]; exists {
+				continue
+			}
+			seen[basis] = struct{}{}
+			key := dependentKind{basis: basis, kind: state.Kind}
+			f.dependents[key] = append(f.dependents[key], parsed)
+		}
 	}
 	switch value := body.(type) {
 	case *State:
@@ -517,7 +562,7 @@ func (f *foldState) project() Projection {
 		}
 		projection.Statements = append(projection.Statements, Statement{
 			Event: record.record.ID, Actor: record.record.Actor, Kind: state.Kind,
-			Text: state.Text, Body: state.Body, Ratified: f.ratified(record.record.ID, retired),
+			Text: state.Text, Body: cloneStringMap(state.Body), Ratified: f.ratified(record.record.ID, retired),
 			Retired: retired[record.record.ID], Stale: stale[record.record.ID],
 		})
 		if !knownKinds[state.Kind] {
@@ -566,6 +611,17 @@ func (f *foldState) project() Projection {
 		projection.OpaqueKinds = nil
 	}
 	return projection
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if input == nil {
+		return nil
+	}
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
 }
 
 func addActorRole(actor *ActorState, role, source string) {
@@ -630,17 +686,7 @@ func (f *foldState) projectCommitments(retired, stale map[string]bool) []Commitm
 }
 
 func (f *foldState) directDependents(target string, kind Kind) []*parsedRecord {
-	var found []*parsedRecord
-	for _, record := range f.records {
-		if record.decision.Verdict != Effective || !contains(record.record.RestsOn, target) {
-			continue
-		}
-		state, ok := record.body.(*State)
-		if ok && state.Kind == kind {
-			found = append(found, &f.records[record.index])
-		}
-	}
-	return found
+	return f.dependents[dependentKind{basis: target, kind: kind}]
 }
 
 func appendUnique(values []string, value string) []string {

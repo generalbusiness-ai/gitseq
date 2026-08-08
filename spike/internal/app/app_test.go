@@ -2,16 +2,18 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"gitseq/spike/internal/intent"
 	"gitseq/spike/internal/workroom"
 )
 
-func testRepo(t *testing.T) string {
+func testRepo(t testing.TB) string {
 	t.Helper()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -27,6 +29,55 @@ func actRecord(t *testing.T, ctx context.Context, workspace *Workspace, actor st
 		t.Fatal(err)
 	}
 	return submission.Record
+}
+
+func BenchmarkWarmAppendToSnapshotAtResidentDepth20000(b *testing.B) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(b), "human", 1<<20)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if _, err := workspace.Snapshot(ctx); err != nil {
+		b.Fatal(err)
+	}
+	actor := workspace.Config.Actors["human"].Fingerprint
+	encode := func(payload any) []byte {
+		encoded, err := workroom.Encode(payload)
+		if err != nil {
+			b.Fatal(err)
+		}
+		return encoded
+	}
+	records := make([]workroom.Record, 0, 20000)
+	records = append(records, workroom.Record{
+		ID: "synthetic:0", Actor: actor, Schema: workroom.SchemaState,
+		Payload: encode(workroom.State{Kind: workroom.KindRoster, Text: "seed", Body: map[string]string{"actor": actor, "kind": "human", "name": "Human", "role": "operator"}}),
+	})
+	for index := 1; index < 20000; index++ {
+		records = append(records, workroom.Record{
+			ID: fmt.Sprintf("synthetic:%d", index), Actor: actor, Schema: workroom.SchemaState, RestsOn: []string{"synthetic:0"},
+			Payload: encode(workroom.State{Kind: workroom.KindRequest, Text: "request", Body: map[string]string{"to": actor, "conditions": "done"}}),
+		})
+	}
+	workspace.snapshotFolder = workroom.NewFolder(records)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		key := fmt.Sprintf("warm-snapshot-%d", index)
+		if _, err := workspace.Act(ctx, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "warm append",
+			RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: key,
+		}); err != nil {
+			b.Fatal(err)
+		}
+		snapshot, err := workspace.Snapshot(ctx)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(snapshot.Projection.Commitments) != 19999 {
+			b.Fatalf("commitments = %d", len(snapshot.Projection.Commitments))
+		}
+	}
 }
 
 func TestWorkspaceLifecycle(t *testing.T) {
@@ -293,6 +344,7 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	cached := workspace.snapshotCache
+	folder := workspace.snapshotFolder
 	second, err := workspace.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -305,7 +357,43 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if workspace.snapshotCache == cached || third.Head == first.Head || third.Depth != first.Depth+1 {
+	if workspace.snapshotCache == cached || workspace.snapshotFolder != folder || third.Head == first.Head || third.Depth != first.Depth+1 {
 		t.Fatalf("advanced head reused stale snapshot: first=%+v third=%+v", first, third)
+	}
+
+	external, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actRecord(t, ctx, external, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "external advance", RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "external-advance"})
+	fourth, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workspace.snapshotFolder != folder || fourth.Depth != third.Depth+1 || fourth.Head == third.Head {
+		t.Fatalf("external descendant did not extend resident folder: third=%+v fourth=%+v", third, fourth)
+	}
+	coldWorkspace, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cold, err := coldWorkspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(fourth, cold) {
+		t.Fatalf("resident delta projection differs from independent cold fold:\nresident=%+v\ncold=%+v", fourth, cold)
+	}
+
+	// If application projection state is discarded independently, the reader
+	// is intentionally replaced so recovery is a full audit rather than an
+	// unverifiable attempt to reconstruct a missing prefix from a delta.
+	workspace.snapshotCache = nil
+	recovered, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workspace.snapshotFolder == folder || recovered.Head != fourth.Head || recovered.Depth != fourth.Depth {
+		t.Fatalf("discarded projection did not recover by full audit: fourth=%+v recovered=%+v", fourth, recovered)
 	}
 }

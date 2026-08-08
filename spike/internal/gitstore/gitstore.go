@@ -161,6 +161,21 @@ func (s Store) RevList(ctx context.Context, ref string) ([]string, error) {
 	return strings.Fields(string(output)), nil
 }
 
+// RevListAfter returns the first-parent commits strictly after base and
+// reachable from head, oldest first. Callers must still verify that the first
+// returned commit names base as its sole parent: git's range syntax alone does
+// not prove that base is an ancestor of head.
+func (s Store) RevListAfter(ctx context.Context, base, head string) ([]string, error) {
+	output, err := s.run(ctx, nil, nil, "rev-list", "--first-parent", "--reverse", base+".."+head)
+	if err != nil {
+		return nil, err
+	}
+	if len(output) == 0 {
+		return nil, nil
+	}
+	return strings.Fields(string(output)), nil
+}
+
 func (s Store) CommitMessage(ctx context.Context, oid string) (string, error) {
 	output, err := s.run(ctx, nil, nil, "show", "-s", "--format=%B", oid)
 	return string(output) + "\n", err
