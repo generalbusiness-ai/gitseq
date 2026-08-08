@@ -51,30 +51,45 @@ Authority grants then need a paragraph of their own, for a different
 reason. For every other act, effectiveness is settled once, when the
 act is appended, and stays settled. A grant can satisfy every rule, be
 judged effective, be ratified — and still confer nothing, for as long
-while the conditions below do not all hold at once. Those conditions
-are not symmetric, and the ratification one in particular is weaker
-than it looks:
+as the conditions below do not hold. Which conditions apply depends on
+what kind of grant it is, and the two kinds are not the same shape:
 
-- the **grant statement** is live, and
-- its **membership basis** is live, and
-- **at least one** effective ratification of it is live.
+- A **membership grant** — the one that makes someone a participant —
+  is live when the **grant statement** is live and **at least one**
+  effective ratification of it is live. It does not rest on a
+  membership, because it *is* the membership.
+- A **non-membership authority grant** — `ratifier`, `reviewer`, any
+  named role — needs both of those *and* the **membership basis it
+  named** to be live. That basis is its first citation, and the fold
+  looks nowhere else.
+- The **genesis seed** is the sole exception to the ratification
+  requirement, and confers without one, because there is no prior
+  ratifier to give it.
 
-The last is a disjunction, not a single named act. One roster
-statement may be ratified more than once, and any surviving
+Reading the membership condition as universal is the easy error, and it
+is wrong in the direction that matters: it invites you to look for a
+basis under an ordinary membership grant, find none, and conclude the
+grant is defective. Measured: retire the genesis seed after Bob has
+joined, and Alice — seeded — disappears from the roster while Bob
+remains `[participant]`, because his own membership grant never
+depended on hers.
+
+The ratification condition is a disjunction, not a single named act.
+One roster statement may be ratified more than once, and any surviving
 ratification keeps the role. Measured: grant Alice `reviewer`, have a
 second ratifier ratify the same grant, retire the first ratification
 and Alice is still `[participant, reviewer]`; retire the second and
 `reviewer` goes. Writing "its ratification" invites the reader to
 retire the one they can see and conclude the role is gone.
 
-The exception is the genesis seed, which confers without a ratification
-because there is no prior ratifier to give one.
-
-There are two ways that happens, and they are different questions.
+A grant can therefore fail to confer in two ways, and they are
+different questions asked at different times. Both of the following
+concern the **membership basis**, so both are about non-membership
+authority grants only — a membership grant has no basis to get wrong.
 
 **Citation order, at the moment of appending.** A `roster` statement
-conferring a role takes its **first** basis as the membership it rests
-on, and looks nowhere else:
+conferring a non-membership role takes its **first** basis as the
+membership it rests on, and looks nowhere else:
 
 | grant's `rests_on` | verdict | role active |
 |---|---|---|
@@ -82,9 +97,9 @@ on, and looks nowhere else:
 | membership first, surplus dangling basis | effective | yes |
 | dangling first, membership second | **effective** | **no** |
 
-**Liveness, at the moment of asking.** Current authority also requires
-that both the grant and the membership it rests on are still live. Two
-distinct retirements, with different blast radii:
+**Liveness, at the moment of asking.** Current authority for such a
+grant also requires that both it and the membership it rests on are
+still live. Two distinct retirements, with different blast radii:
 
 - Retiring the explicit grant — what `gs role-revoke` does — retires
   the role it named **and every role derived from it**. Measured:
@@ -94,8 +109,10 @@ distinct retirements, with different blast radii:
   ordinary `ratifier` revocation looks like it retires one role only —
   `[participant, ratifier]` to `[participant]` — but that is because
   `ratifier` has nothing derived from it, not because revocation is
-  narrow. If the grant took force through a ratification, retiring the
-  ratification has the same effect.
+  narrow. Retiring ratifications can also end a grant, but only by
+  exhausting them: because the ratification condition is a disjunction,
+  the role survives until **every** live effective ratification of that
+  grant is retired. Retiring one of two changes nothing.
 - Retiring the **membership** removes membership itself, and with it
   every non-membership role that named that membership as its basis.
   One supersede, and the principal is no longer a participant.
