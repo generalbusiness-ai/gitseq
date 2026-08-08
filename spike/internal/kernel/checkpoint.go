@@ -172,7 +172,7 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gi
 		if decoded.Target != "git:"+stored.ObjectFormat+":"+stored.Genesis {
 			return scannedLog{}, fmt.Errorf("event %d target does not name checkpoint genesis", index)
 		}
-		actualSigned, trailers, err := intent.ParseEnvelope(position.Message)
+		actualSigned, trailers, err := intent.ParseEnvelope(position.Message, desc.PayloadCeiling)
 		if err != nil {
 			return scannedLog{}, fmt.Errorf("event %d commit envelope: %w", index, err)
 		}
@@ -189,7 +189,8 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gi
 		if position.Tree != tree {
 			return scannedLog{}, fmt.Errorf("event %d commit tree differs from signed intent", index)
 		}
-		if err := payloadWithinCeiling(cached.Payload, cached.Attachments, desc.PayloadCeiling); err != nil {
+		remaining := desc.PayloadCeiling - uint64(len(position.Message))
+		if err := payloadWithinCeiling(cached.Payload, cached.Attachments, remaining); err != nil {
 			return scannedLog{}, fmt.Errorf("event %d: %w", index, err)
 		}
 		calculated, err := gitstore.HashPayloadTree(stored.ObjectFormat, cached.Payload, cached.Attachments)

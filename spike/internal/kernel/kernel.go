@@ -260,16 +260,21 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 	if err != nil {
 		return Result{}, err
 	}
-	inlineSize := uint64(len(request.Payload))
+	message := intent.Envelope(request.Signed, decoded.RestsOn)
+	eventSize := uint64(len(message))
+	if eventSize > desc.PayloadCeiling || uint64(len(request.Payload)) > desc.PayloadCeiling-eventSize {
+		return Result{}, errors.New("event exceeds genesis ceiling")
+	}
+	eventSize += uint64(len(request.Payload))
 	for _, attachment := range request.Attachments {
 		size := uint64(len(attachment))
-		if inlineSize > desc.PayloadCeiling || size > desc.PayloadCeiling-inlineSize {
-			return Result{}, errors.New("payload exceeds genesis ceiling")
+		if eventSize > desc.PayloadCeiling || size > desc.PayloadCeiling-eventSize {
+			return Result{}, errors.New("event exceeds genesis ceiling")
 		}
-		inlineSize += size
+		eventSize += size
 	}
-	if inlineSize > desc.PayloadCeiling {
-		return Result{}, errors.New("payload exceeds genesis ceiling")
+	if eventSize > desc.PayloadCeiling {
+		return Result{}, errors.New("event exceeds genesis ceiling")
 	}
 	if options.PreAppend != nil {
 		admission := Admission{Intent: decoded, ActorKey: bytes.Clone(request.Signed.ActorKey), CapabilityProof: bytes.Clone(request.CapabilityProof)}
@@ -388,7 +393,6 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 			}
 			return Result{Commit: prior.Commit, Head: prior.Commit, Replay: true, CASRetries: attempt, BaseHead: head}, nil
 		}
-		message := intent.Envelope(request.Signed, decoded.RestsOn)
 		actorID := intent.ActorFingerprint(request.Signed.ActorKey)
 		commit, err := store.SignedCommit(ctx, writtenTree, head, message, options.SigningKey, gitstore.CommitIdentity{
 			AuthorName: "actor " + actorID[:16], AuthorEmail: actorID[:16] + "@actor.gitseq.invalid",
@@ -800,7 +804,7 @@ func loadEvent(ctx context.Context, store gitstore.Store, desc GenesisDescriptor
 	if err != nil {
 		return Event{}, err
 	}
-	signed, trailers, err := intent.ParseEnvelope(message)
+	signed, trailers, err := intent.ParseEnvelope(message, desc.PayloadCeiling)
 	if err != nil {
 		return Event{}, err
 	}
@@ -825,7 +829,8 @@ func loadEvent(ctx context.Context, store gitstore.Store, desc GenesisDescriptor
 	if actualTree != treeOID {
 		return Event{}, errors.New("commit tree differs from signed intent")
 	}
-	if err := store.ValidatePayloadTree(ctx, actualTree, desc.PayloadCeiling); err != nil {
+	remaining := desc.PayloadCeiling - uint64(len(message))
+	if err := store.ValidatePayloadTree(ctx, actualTree, remaining); err != nil {
 		return Event{}, fmt.Errorf("commit %s payload shape: %w", commit, err)
 	}
 	event := Event{Commit: commit, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
