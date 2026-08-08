@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged approved Task2b worktree visibility exact head dfa02060c3e3b9f2c0c052150a28ba3491ca47d4 into main by fast-forward.","body":{"branch":"main","commit":"dfa02060c3e3b9f2c0c052150a28ba3491ca47d4","path":"."}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:01dbb0ebf455b5da9d24f41c02f80886f9fe5752"}
