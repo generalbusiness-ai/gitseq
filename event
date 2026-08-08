@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:333522bc8e88cf817b862731c896f4a55dd78fa0","text":"Retire Task2b artifact at ad5e0c6; exact-head repair is frozen at dfa0206."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cce68919996c546f9699bb48c5fb0946b55c9f70","text":"Retire Task2b ready report for ad5e0c6; replacement report will cite exact repaired head dfa0206."}
