@@ -141,6 +141,88 @@ func TestReviewGuardRefusesAdvancedCheckoutBeforeVerdict(t *testing.T) {
 	}
 }
 
+func TestReviewGuardRefusesAnotherActorsPromise(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "operator", "other-reviewer", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	foreignRequest, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review assigned to someone else",
+		Body: map[string]string{
+			"to": fixture.workspace.Config.Actors["other-reviewer"].Fingerprint, "conditions": "exact head",
+		},
+		RestsOn: []string{fixture.artifact}, IdempotencyKey: "foreign-review-request",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignPromise, err := fixture.workspace.Act(fixture.ctx, "other-reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "another reviewer's promise",
+		RestsOn: []string{foreignRequest.Record.ID}, IdempotencyKey: "foreign-review-promise",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := fixture.snapshot(t).Depth
+	err = reviewCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "reviewer", "--checkout", fixture.feature,
+		"--artifact", fixture.artifact, "--promise", foreignPromise.Record.ID,
+		"--verdict", "approved", "--text", "must not be signed",
+	})
+	if err == nil || !strings.Contains(err.Error(), "review actor did not make the named promise") {
+		t.Fatalf("foreign promise review error = %v", err)
+	}
+	if after := fixture.snapshot(t).Depth; after != before {
+		t.Fatalf("foreign promise signed a verdict: depth %d -> %d", before, after)
+	}
+}
+
+func TestReviewGuardRefusesCheckoutFromAnotherRepository(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	foreign := filepath.Join(t.TempDir(), "foreign")
+	testGit(t, "", "clone", fixture.repo, foreign)
+	before := fixture.snapshot(t).Depth
+	err := reviewCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "reviewer", "--checkout", foreign,
+		"--artifact", fixture.artifact, "--promise", fixture.promise,
+		"--verdict", "approved", "--text", "must not be signed",
+	})
+	if err == nil || !strings.Contains(err.Error(), "checkout does not belong to the workroom repository") {
+		t.Fatalf("foreign checkout review error = %v", err)
+	}
+	if after := fixture.snapshot(t).Depth; after != before {
+		t.Fatalf("foreign checkout signed a verdict: depth %d -> %d", before, after)
+	}
+}
+
+func TestReviewGuardRefusesBasisChangeBeforeSigning(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	calls := 0
+	validate := func(ctx context.Context, workspace *app.Workspace, actorName, checkout, artifact, promise string) (string, string, error) {
+		head, request, err := validateReview(ctx, workspace, actorName, checkout, artifact, promise)
+		calls++
+		if calls == 2 && err == nil {
+			return head, request + "-changed", nil
+		}
+		return head, request, err
+	}
+	before := fixture.snapshot(t).Depth
+	err := reviewCommandWithValidator(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "reviewer", "--checkout", fixture.feature,
+		"--artifact", fixture.artifact, "--promise", fixture.promise,
+		"--verdict", "approved", "--text", "must not be signed",
+	}, validate)
+	if err == nil || !strings.Contains(err.Error(), "review basis changed while validating") {
+		t.Fatalf("changed review basis error = %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("review validation calls = %d, want 2", calls)
+	}
+	if after := fixture.snapshot(t).Depth; after != before {
+		t.Fatalf("changed review basis signed a verdict: depth %d -> %d", before, after)
+	}
+}
+
 func TestMergeGuardMergesOnlyRatifiedApprovedExactHead(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	approval := fixture.review(t)
@@ -205,6 +287,50 @@ func TestMergeGuardRefusesUnratifiedApproval(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "not ratified") {
 		t.Fatalf("unratified approval error = %v", err)
+	}
+}
+
+func TestMergeGuardRefusesRatifiedChangesRequestedVerdict(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.reviewVerdict(t, "changes-requested")
+	fixture.ratify(t, approval)
+	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+	})
+	if err == nil || !strings.Contains(err.Error(), "review verdict is not approved") {
+		t.Fatalf("changes-requested merge error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != base {
+		t.Fatalf("changes-requested merge moved HEAD to %s, want %s", got, base)
+	}
+}
+
+func TestMergeGuardRefusesApprovalNotRestingOnNamedArtifact(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approvalSubmission, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindReport, Text: "approval with an ungrounded artifact field",
+		Body: map[string]string{
+			"verdict": "approved", "head": fixture.candidate, "artifact": fixture.artifact,
+		},
+		RestsOn: []string{fixture.promise, fixture.request}, IdempotencyKey: "ungrounded-artifact-approval",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval := approvalSubmission.Record.ID
+	fixture.ratify(t, approval)
+	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	err = mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+	})
+	if err == nil || !strings.Contains(err.Error(), "approval does not rest on its named artifact") {
+		t.Fatalf("ungrounded artifact approval error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != base {
+		t.Fatalf("ungrounded artifact merge moved HEAD to %s, want %s", got, base)
 	}
 }
 
@@ -288,12 +414,16 @@ func (f workflowFixture) snapshot(t *testing.T) app.Snapshot {
 }
 
 func (f workflowFixture) review(t *testing.T) string {
+	return f.reviewVerdict(t, "approved")
+}
+
+func (f workflowFixture) reviewVerdict(t *testing.T, verdict string) string {
 	t.Helper()
 	before := f.snapshot(t).Depth
 	if err := reviewCommand(f.ctx, []string{
 		"--repo", f.repo, "--as", "reviewer", "--checkout", f.feature,
 		"--artifact", f.artifact, "--promise", f.promise,
-		"--verdict", "approved", "--text", "APPROVED exact head",
+		"--verdict", verdict, "--text", strings.ToUpper(verdict) + " exact head",
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -218,7 +218,13 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
+type reviewValidator func(context.Context, *app.Workspace, string, string, string, string) (string, string, error)
+
 func reviewCommand(ctx context.Context, arguments []string) error {
+	return reviewCommandWithValidator(ctx, arguments, validateReview)
+}
+
+func reviewCommandWithValidator(ctx context.Context, arguments []string, validate reviewValidator) error {
 	set, repo := flags("review", arguments)
 	as := set.String("as", "", "reviewer actor name")
 	checkout := set.String("checkout", "", "checkout reviewed")
@@ -244,13 +250,13 @@ func reviewCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	reviewedHead, request, err := validateReview(ctx, workspace, *as, *checkout, *artifact, *promise)
+	reviewedHead, request, err := validate(ctx, workspace, *as, *checkout, *artifact, *promise)
 	if err != nil {
 		return err
 	}
 	// Re-read immediately before signing. The verdict names the immutable
 	// commit, so a later checkout movement cannot retarget it.
-	if head, repeatedRequest, err := validateReview(ctx, workspace, *as, *checkout, *artifact, *promise); err != nil {
+	if head, repeatedRequest, err := validate(ctx, workspace, *as, *checkout, *artifact, *promise); err != nil {
 		return err
 	} else if head != reviewedHead || repeatedRequest != request {
 		return errors.New("review basis changed while validating")
