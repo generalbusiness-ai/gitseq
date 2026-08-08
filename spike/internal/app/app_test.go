@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gitseq/spike/internal/intent"
@@ -30,6 +31,15 @@ func actRecord(t *testing.T, ctx context.Context, workspace *Workspace, actor st
 		t.Fatal(err)
 	}
 	return submission.Record
+}
+
+func eventCommit(t *testing.T, format, event string) string {
+	t.Helper()
+	_, commit, ok := strings.Cut(event, "#git:"+format+":")
+	if !ok || commit == "" {
+		t.Fatalf("invalid event id %q", event)
+	}
+	return commit
 }
 
 // Run with -benchtime=1x. Setup constructs one ordinary signed chain, then
@@ -430,6 +440,53 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 }
 
 func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
+	t.Run("rewind then sibling advance", func(t *testing.T) {
+		ctx := context.Background()
+		workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := workspace.Snapshot(ctx); err != nil {
+			t.Fatal(err)
+		}
+		first := actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "first branch",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-branch-first",
+		})
+		second := actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "rewound branch",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-branch-second",
+		})
+		firstCommit := eventCommit(t, workspace.Config.ObjectFormat, first.ID)
+		secondCommit := eventCommit(t, workspace.Config.ObjectFormat, second.ID)
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), firstCommit, secondCommit); err != nil {
+			t.Fatal(err)
+		}
+		external, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actRecord(t, ctx, external, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "sibling branch",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-branch-sibling",
+		})
+		got, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		coldWorkspace, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := coldWorkspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("rewind/sibling recovery differs from cold fold:\nresident=%+v\ncold=%+v", got, want)
+		}
+	})
+
 	t.Run("base head mismatch", func(t *testing.T) {
 		ctx := context.Background()
 		workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)

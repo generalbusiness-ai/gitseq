@@ -198,6 +198,9 @@ func Create(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, s
 	if err != nil {
 		return "", err
 	}
+	if err := store.VerifySSHCommit(ctx, commit, "sequencer", desc.SequencerPublicKey); err != nil {
+		return "", fmt.Errorf("genesis sequencer signature: %w", err)
+	}
 	if err := store.UpdateRef(ctx, Ref(commit), commit, ""); err != nil {
 		return "", err
 	}
