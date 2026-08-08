@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b63ca04e2bee94c038a9bab62c9e7cba5844f17"}
+{"kind":"artifact","text":"Merged approved sequencer-key-validation exact head 707ddde86e3e5b8ce65b901a777af452f9a0836d into main at d4236c5b78bcf5ca1b2e189b5daeca1cd5a53f8f.","body":{"commit":"d4236c5b78bcf5ca1b2e189b5daeca1cd5a53f8f","path":"/Users/hughpyle/play/gitseq"}}
