@@ -107,6 +107,29 @@ func TestCreateSubmitReplayVerifyObjectFormats(t *testing.T) {
 	}
 }
 
+func TestSubmitRefusesWrongSequencerKeyBeforeCAS(t *testing.T) {
+	f := newFixture(t, "sha1")
+	wrongKey := filepath.Join(t.TempDir(), "wrong-sequencer")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
+		t.Fatal(err)
+	}
+	request := f.request(t, actor(t), "wrong-sequencer", []byte("wrong-sequencer"), nil)
+	before, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Submit(f.ctx, f.store, request, Options{SigningKey: wrongKey}); err == nil {
+		t.Fatal("submission signed by a non-descriptor sequencer was accepted")
+	}
+	after, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("rejected submission advanced ref: before=%s after=%s", before, after)
+	}
+}
+
 func TestSubmitterReusesExactHeadAndRebuildsAfterExternalAdvance(t *testing.T) {
 	f := newFixture(t, "sha1")
 	private := actor(t)
@@ -240,79 +263,6 @@ func BenchmarkSubmitSequence(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-			}
-		})
-	}
-}
-
-func BenchmarkWarmSubmitAtResidentDepth20000(b *testing.B) {
-	f := newFixture(b, "sha1")
-	private := actor(b)
-	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
-	base, err := scanHead(f.ctx, f.store, f.genesis, f.genesis, false)
-	if err != nil {
-		b.Fatal(err)
-	}
-	base.Verification.Depth = 20000
-	base.Verification.Events = 20000
-	for index := 0; index < 20000; index++ {
-		base.Dedup["synthetic:"+strconv.Itoa(index)] = Event{Commit: "synthetic"}
-	}
-	submitter.cache = submitCache{target: f.genesis, head: f.genesis, log: base, fullScans: 1}
-	requests := make([]Request, b.N)
-	for index := range requests {
-		key := "warm-" + strconv.Itoa(index)
-		requests[index] = f.request(b, private, key, []byte(key), nil)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for _, request := range requests {
-		if _, err := submitter.Submit(f.ctx, request); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkCatchUpAtResidentDepth20000(b *testing.B) {
-	f := newFixture(b, "sha1")
-	private := actor(b)
-	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
-	heads := make(map[int]string)
-	for index := 1; index <= 100; index++ {
-		key := "delta-" + strconv.Itoa(index)
-		result, err := submitter.Submit(f.ctx, f.request(b, private, key, []byte(key), nil))
-		if err != nil {
-			b.Fatal(err)
-		}
-		if index == 1 || index == 10 || index == 100 {
-			heads[index] = result.Head
-		}
-	}
-	for _, count := range []int{1, 10, 100} {
-		b.Run(strconv.Itoa(count), func(b *testing.B) {
-			base := scannedLog{
-				Verification: Verification{Genesis: f.genesis, Head: f.genesis, Depth: 20000, Events: 20000},
-				Dedup:        make(map[string]Event, 20000),
-			}
-			for index := 0; index < 20000; index++ {
-				base.Dedup["synthetic:"+strconv.Itoa(index)] = Event{Commit: "synthetic"}
-			}
-			b.ReportAllocs()
-			b.ResetTimer()
-			for iteration := 0; iteration < b.N; iteration++ {
-				loaded, err := scanAfter(f.ctx, f.store, base, heads[count], true)
-				if err != nil {
-					b.Fatal(err)
-				}
-				b.StopTimer()
-				for _, event := range loaded.Events {
-					key, err := event.Signed.DedupKey()
-					if err != nil {
-						b.Fatal(err)
-					}
-					delete(base.Dedup, key)
-				}
-				b.StartTimer()
 			}
 		})
 	}
@@ -711,6 +661,62 @@ func TestReaderRejectsInvalidDeltaWithoutMutatingVerifiedCache(t *testing.T) {
 	}
 	if exact.Verification != trusted || reader.cacheHits != 1 {
 		t.Fatalf("restored exact load = %+v, hits=%d", exact, reader.cacheHits)
+	}
+}
+
+func TestReaderRejectsWrongSequencerDeltaWithoutMutatingVerifiedCache(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	reader := NewReader(f.store)
+	valid, err := Submit(f.ctx, f.store, f.request(t, private, "valid-sequencer", []byte("valid"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	trustedHead := reader.head
+	trustedTarget := reader.target
+	trustedVerification := reader.log.Verification
+	trustedDedup := make(map[string]Event, len(reader.log.Dedup))
+	for key, event := range reader.log.Dedup {
+		trustedDedup[key] = event
+	}
+
+	request := f.request(t, private, "wrong-sequencer-delta", []byte("invalid"), nil)
+	decoded := mustVerifyIntent(t, request.Signed)
+	tree, err := f.store.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongKey := filepath.Join(t.TempDir(), "wrong-sequencer")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
+		t.Fatal(err)
+	}
+	commit, err := f.store.SignedCommit(f.ctx, tree, valid.Head, intent.Envelope(request.Signed, decoded.RestsOn), wrongKey, gitstore.CommitIdentity{
+		AuthorName: "wrong sequencer", AuthorEmail: "wrong@example.invalid",
+		CommitterName: "wrong sequencer", CommitterEmail: "wrong@example.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, valid.Head); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err == nil {
+		t.Fatal("reader accepted a delta signed by a non-descriptor sequencer")
+	}
+	if reader.head != trustedHead || reader.target != trustedTarget || reader.log.Verification != trustedVerification || reader.deltaScans != 0 {
+		t.Fatalf("failed delta mutated reader: head=%s target=%s verification=%+v scans=%d", reader.head, reader.target, reader.log.Verification, reader.deltaScans)
+	}
+	if len(reader.log.Dedup) != len(trustedDedup) {
+		t.Fatalf("failed delta changed dedup size: got=%d want=%d", len(reader.log.Dedup), len(trustedDedup))
+	}
+	for key, want := range trustedDedup {
+		got, ok := reader.log.Dedup[key]
+		if !ok || got.Commit != want.Commit || !got.Signed.Equal(want.Signed) {
+			t.Fatalf("failed delta changed dedup entry %q", key)
+		}
 	}
 }
 

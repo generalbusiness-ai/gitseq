@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"gitseq/spike/internal/intent"
+	"gitseq/spike/internal/kernel"
 	"gitseq/spike/internal/workroom"
 )
 
@@ -31,51 +32,81 @@ func actRecord(t *testing.T, ctx context.Context, workspace *Workspace, actor st
 	return submission.Record
 }
 
-func BenchmarkWarmAppendToSnapshotAtResidentDepth20000(b *testing.B) {
+// Run with -benchtime=1x. Setup constructs one ordinary signed chain, then
+// compares a cold full Snapshot with the resident delta Snapshot at the same
+// successor head. A warm implementation that regresses to a full scan makes
+// the two arms converge, so the benchmark detects the failure it guards.
+func BenchmarkColdVersusResidentDeltaAtRealDepth(b *testing.B) {
+	if b.N != 1 {
+		b.Skip("run with -benchtime=1x")
+	}
 	ctx := context.Background()
-	workspace, _, err := Init(ctx, testRepo(b), "human", 1<<20)
+	workspace, seed, err := Init(ctx, testRepo(b), "human", 1<<20)
 	if err != nil {
 		b.Fatal(err)
 	}
-	if _, err := workspace.Snapshot(ctx); err != nil {
+	heads := map[int]string{}
+	head, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	if err != nil {
 		b.Fatal(err)
 	}
-	actor := workspace.Config.Actors["human"].Fingerprint
-	encode := func(payload any) []byte {
-		encoded, err := workroom.Encode(payload)
-		if err != nil {
-			b.Fatal(err)
-		}
-		return encoded
-	}
-	records := make([]workroom.Record, 0, 20000)
-	records = append(records, workroom.Record{
-		ID: "synthetic:0", Actor: actor, Schema: workroom.SchemaState,
-		Payload: encode(workroom.State{Kind: workroom.KindRoster, Text: "seed", Body: map[string]string{"actor": actor, "kind": "human", "name": "Human", "role": "operator"}}),
-	})
-	for index := 1; index < 20000; index++ {
-		records = append(records, workroom.Record{
-			ID: fmt.Sprintf("synthetic:%d", index), Actor: actor, Schema: workroom.SchemaState, RestsOn: []string{"synthetic:0"},
-			Payload: encode(workroom.State{Kind: workroom.KindRequest, Text: "request", Body: map[string]string{"to": actor, "conditions": "done"}}),
+	heads[1] = head
+	for depth := 2; depth <= 351; depth++ {
+		submission, err := workspace.Act(ctx, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "real depth",
+			RestsOn: []string{seed.ID}, IdempotencyKey: fmt.Sprintf("real-depth-%d", depth),
 		})
-	}
-	workspace.snapshotFolder = workroom.NewFolder(records)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for index := 0; index < b.N; index++ {
-		key := fmt.Sprintf("warm-snapshot-%d", index)
-		if _, err := workspace.Act(ctx, "human", Act{
-			Verb: VerbState, Kind: workroom.KindAssert, Text: "warm append",
-			RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: key,
-		}); err != nil {
-			b.Fatal(err)
-		}
-		snapshot, err := workspace.Snapshot(ctx)
 		if err != nil {
 			b.Fatal(err)
 		}
-		if len(snapshot.Projection.Commitments) != 19999 {
-			b.Fatalf("commitments = %d", len(snapshot.Projection.Commitments))
+		heads[depth] = submission.Result.Head
+	}
+	current := heads[351]
+	for _, depth := range []int{25, 100, 350} {
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), heads[depth], current); err != nil {
+			b.Fatal(err)
+		}
+		current = heads[depth]
+		warm, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if _, err := warm.Snapshot(ctx); err != nil {
+			b.Fatal(err)
+		}
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), heads[depth+1], current); err != nil {
+			b.Fatal(err)
+		}
+		current = heads[depth+1]
+		cold, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			b.Fatal(err)
+		}
+		var coldSnapshot, warmSnapshot Snapshot
+		b.Run(fmt.Sprintf("depth-%d/cold", depth), func(bench *testing.B) {
+			if bench.N != 1 {
+				bench.Skip("run with -benchtime=1x")
+			}
+			bench.ReportAllocs()
+			bench.ResetTimer()
+			coldSnapshot, err = cold.Snapshot(ctx)
+			if err != nil {
+				bench.Fatal(err)
+			}
+		})
+		b.Run(fmt.Sprintf("depth-%d/delta", depth), func(bench *testing.B) {
+			if bench.N != 1 {
+				bench.Skip("run with -benchtime=1x")
+			}
+			bench.ReportAllocs()
+			bench.ResetTimer()
+			warmSnapshot, err = warm.Snapshot(ctx)
+			if err != nil {
+				bench.Fatal(err)
+			}
+		})
+		if !reflect.DeepEqual(warmSnapshot, coldSnapshot) {
+			b.Fatalf("depth %d resident delta differs from cold snapshot", depth)
 		}
 	}
 }
@@ -396,4 +427,76 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 	if workspace.snapshotFolder == folder || recovered.Head != fourth.Head || recovered.Depth != fourth.Depth {
 		t.Fatalf("discarded projection did not recover by full audit: fourth=%+v recovered=%+v", fourth, recovered)
 	}
+}
+
+func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
+	t.Run("base head mismatch", func(t *testing.T) {
+		ctx := context.Background()
+		workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := workspace.Snapshot(ctx); err != nil {
+			t.Fatal(err)
+		}
+		external, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actRecord(t, ctx, external, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "external",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-external",
+		})
+		actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "local",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-local",
+		})
+		got, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		coldWorkspace, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := coldWorkspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("base-head guard lost an external event:\nresident=%+v\ncold=%+v", got, want)
+		}
+	})
+
+	t.Run("replay", func(t *testing.T) {
+		ctx := context.Background()
+		workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := workspace.Snapshot(ctx); err != nil {
+			t.Fatal(err)
+		}
+		act := Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "once",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-replay",
+		}
+		actRecord(t, ctx, workspace, "human", act)
+		actRecord(t, ctx, workspace, "human", act)
+		got, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		coldWorkspace, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := coldWorkspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("replay guard applied one event twice:\nresident=%+v\ncold=%+v", got, want)
+		}
+	})
 }

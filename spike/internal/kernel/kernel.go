@@ -347,6 +347,13 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 			return Result{}, err
 		}
 		fail(options, "after_commit_written")
+		// Eager application is safe only if the commit is acceptable to the
+		// chain's ordinary auditor. In particular, local custody may have been
+		// rotated without changing the genesis descriptor; never advance the ref
+		// with a commit signed by that unrelated key.
+		if err := store.VerifySSHCommit(ctx, commit, "sequencer", desc.SequencerPublicKey); err != nil {
+			return Result{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)
+		}
 		fail(options, "before_ref_cas")
 		if err := store.UpdateRef(ctx, ref, commit, head); err != nil {
 			current, headErr := store.Head(ctx, ref)

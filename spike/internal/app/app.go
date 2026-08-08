@@ -65,6 +65,8 @@ type Workspace struct {
 	submitter      *kernel.Submitter
 }
 
+// Snapshot is an immutable borrowed view. A Workspace may return its resident
+// cached maps and slices directly; callers must not mutate them.
 type Snapshot struct {
 	Genesis    string              `json:"genesis"`
 	Head       string              `json:"head"`

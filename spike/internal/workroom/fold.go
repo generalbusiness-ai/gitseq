@@ -191,6 +191,11 @@ func (f *foldState) append(index int, record Record) {
 		return
 	}
 	body, err := Decode(record.Schema, record.Payload)
+	// The decoded body is the fold input retained below. Payload bytes and
+	// attachments are transport material and must not stay pinned for the
+	// resident process lifetime.
+	record.Payload = nil
+	record.Attachments = nil
 	if err != nil {
 		decision.Reason = err.Error()
 		f.addDecision(record, nil, index, decision)

@@ -63,6 +63,24 @@ func BenchmarkFolderAppendToProjectionRequestHeavy(b *testing.B) {
 	}
 }
 
+func TestFolderDoesNotRetainTransportPayloads(t *testing.T) {
+	payload, err := Encode(State{Kind: KindAssert, Text: "decoded"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder := NewFolder([]Record{{
+		ID: "event", Actor: "actor", Schema: SchemaState, Payload: payload,
+		Attachments: map[string][]byte{"evidence": []byte("large transport bytes")},
+	}})
+	if len(folder.state.records) != 1 {
+		t.Fatalf("records = %d", len(folder.state.records))
+	}
+	retained := folder.state.records[0].record
+	if retained.Payload != nil || retained.Attachments != nil {
+		t.Fatalf("folder retained transport bytes: payload=%d attachments=%d", len(retained.Payload), len(retained.Attachments))
+	}
+}
+
 func requestHeavyHistory(t testing.TB, requests int) []Record {
 	t.Helper()
 	records := []Record{

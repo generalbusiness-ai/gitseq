@@ -66,6 +66,10 @@ few governance kinds. Their meaning belongs to the room's practice.
 | `gs verify` | Check every signature and the sequence integrity. |
 | `gs provenance <event>` | Walk back through everything an event rests on. |
 
+Resident snapshots are immutable borrowed views. In-process consumers may
+receive maps and slices owned by the workspace cache and must not mutate them;
+JSON and MCP adapters only serialize those values.
+
 ### Serving and attaching
 
 | Command | Purpose |
