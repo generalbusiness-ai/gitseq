@@ -46,6 +46,8 @@ validation before the value can become an OpenSSH allowed-signers entry.
 | Command | Purpose |
 |---|---|
 | `gs state --as <actor> --kind <kind> --text <text>` | Append a durable utterance. |
+| `gs review --as <actor> --checkout <path> --artifact <event> --promise <event> --verdict <approved\|changes-requested> --text <text>` | Check the exact artifact checkout, then sign a review report. |
+| `gs merge --checkout <path> --candidate <full-commit> --approval <event>` | Merge only the exact head named by a live ratified approval. |
 | `gs ratify --as <actor> <event>` | Confer force, if you hold the authority for that target. |
 | `gs supersede --as <actor> --text <reason> <event>` | Retire an act and propagate staleness. |
 
@@ -97,6 +99,27 @@ projection. A checkout associated only through an ordinary commit's
 text is not an actor-signed workroom statement. The railway is a newest-80
 window and says when it is truncated, so older trailer associations may be
 absent without being mistaken for durable evidence.
+
+### Exact-head workflow guards
+
+`review` is the enforced verdict boundary. The named artifact must be effective
+and live, the named promise must be effective, live, and owned by the reviewer,
+and its originating request is copied from the durable graph rather than typed
+again. The checkout must belong to the same repository, be clean (including no
+untracked files), and have the artifact's full commit ID checked out. The
+resulting report names that immutable head and rests on the promise, request,
+and artifact. Running tests, a built CLI, or Git-plumbing experiments remains
+review evidence: those probes help a reviewer reach a verdict, while `review`
+guards the state at which the verdict is signed.
+
+After the review requester ratifies an approved report, `merge` enforces the
+other boundary. It refuses an ineffective, unratified, retired, or stale
+approval; a non-approval verdict; a candidate other than the report and
+artifact's exact head; a dirty target checkout; and a checkout from another
+repository. It passes the approved full object ID to `git merge --no-ff`, never
+a branch name, so advancing the reviewed branch cannot retarget the merge.
+Record the resulting merge artifact separately as required by the workroom
+discipline.
 
 ### Serving and attaching
 

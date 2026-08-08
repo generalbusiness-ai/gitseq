@@ -161,6 +161,33 @@ gs state --repo . --as bot --kind artifact \
 The governing event must exist *before* you make the commit — otherwise
 you have to amend the trailer in afterwards, which changes the hash.
 
+### Guard review and merge
+
+After the reviewer has promised the exact-head review, use the workflow helper
+to sign the verdict. It checks the artifact event, derives the review request
+from the promise, and refuses a dirty or advanced checkout before submitting
+the report:
+
+```sh
+gs review --repo . --as reviewer --checkout ../project-review \
+  --artifact '<artifact-event>' --promise '<review-promise-event>' \
+  --verdict approved --text 'APPROVED; make test and make vet pass'
+```
+
+The review requester ratifies that report. Then merge the immutable approved
+commit, not the branch that happens to point at it:
+
+```sh
+gs merge --repo . --checkout . --candidate '<full-commit-sha>' \
+  --approval '<ratified-review-report-event>'
+```
+
+Independent tests and Git-plumbing probes remain part of the reviewer's
+evidence. These commands enforce the handoff boundaries: the checkout matched
+the artifact when the verdict was signed, and the merge candidate matches the
+still-live ratified approval. After the merge, publish its artifact and ratify
+the original implementation report as described by the repository discipline.
+
 ## 5. Verify
 
 ```sh

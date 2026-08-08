@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -89,6 +90,246 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 	if got := testGit(t, auditor, "rev-parse", ref); got != second {
 		t.Fatalf("ordinary fetch rewound local sequence head to %s, want %s", got, second)
 	}
+}
+
+func TestReviewGuardAcceptsExactCleanArtifactHead(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	before := fixture.snapshot(t).Depth
+	approval := fixture.review(t)
+	after := fixture.snapshot(t)
+	if after.Depth != before+1 {
+		t.Fatalf("review depth = %d, want %d", after.Depth, before+1)
+	}
+	statement := statementByEvent(t, after.Projection, approval)
+	if statement.Body["head"] != fixture.candidate || statement.Body["artifact"] != fixture.artifact || statement.Body["verdict"] != "approved" {
+		t.Fatalf("review body = %#v", statement.Body)
+	}
+	if !contains(after.Projection.Provenance[approval], fixture.promise) || !contains(after.Projection.Provenance[approval], fixture.request) || !contains(after.Projection.Provenance[approval], fixture.artifact) {
+		t.Fatalf("review provenance = %#v", after.Projection.Provenance[approval])
+	}
+}
+
+func TestReviewGuardRefusesDirtyCheckoutBeforeVerdict(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	if err := os.WriteFile(filepath.Join(fixture.feature, "feature.txt"), []byte("dirty\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := fixture.snapshot(t).Depth
+	err := fixture.reviewError()
+	if err == nil || !strings.Contains(err.Error(), "checkout is dirty") {
+		t.Fatalf("dirty review error = %v", err)
+	}
+	if after := fixture.snapshot(t).Depth; after != before {
+		t.Fatalf("dirty review signed a verdict: depth %d -> %d", before, after)
+	}
+}
+
+func TestReviewGuardRefusesAdvancedCheckoutBeforeVerdict(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	if err := os.WriteFile(filepath.Join(fixture.feature, "later.txt"), []byte("later\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, fixture.feature, "add", "later.txt")
+	testGit(t, fixture.feature, "commit", "-m", "advance feature")
+	before := fixture.snapshot(t).Depth
+	err := fixture.reviewError()
+	if err == nil || !strings.Contains(err.Error(), "does not equal artifact head") {
+		t.Fatalf("advanced review error = %v", err)
+	}
+	if after := fixture.snapshot(t).Depth; after != before {
+		t.Fatalf("advanced review signed a verdict: depth %d -> %d", before, after)
+	}
+}
+
+func TestMergeGuardMergesOnlyRatifiedApprovedExactHead(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("git", "-C", fixture.repo, "merge-base", "--is-ancestor", fixture.candidate, "HEAD").CombinedOutput(); err != nil {
+		t.Fatalf("approved candidate was not merged: %v: %s", err, output)
+	}
+}
+
+func TestMergeGuardRefusesChangedCandidate(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--checkout", fixture.repo,
+		"--candidate", base, "--approval", approval,
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not equal approved head") {
+		t.Fatalf("changed candidate error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != base {
+		t.Fatalf("refused merge moved HEAD to %s, want %s", got, base)
+	}
+}
+
+func TestMergeGuardRefusesStaleApproval(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	if _, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
+		Verb: app.VerbSupersede, Target: fixture.promise, Text: "review promise withdrawn",
+		IdempotencyKey: "retire-review-promise",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+	})
+	if err == nil || !strings.Contains(err.Error(), "stale or retired") {
+		t.Fatalf("stale approval error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != base {
+		t.Fatalf("stale approval merge moved HEAD to %s, want %s", got, base)
+	}
+}
+
+func TestMergeGuardRefusesUnratifiedApproval(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+	})
+	if err == nil || !strings.Contains(err.Error(), "not ratified") {
+		t.Fatalf("unratified approval error = %v", err)
+	}
+}
+
+type workflowFixture struct {
+	t         *testing.T
+	ctx       context.Context
+	repo      string
+	feature   string
+	workspace *app.Workspace
+	candidate string
+	artifact  string
+	request   string
+	promise   string
+}
+
+func newWorkflowFixture(t *testing.T) workflowFixture {
+	t.Helper()
+	ctx := context.Background()
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	feature := filepath.Join(root, "feature")
+	testGit(t, "", "init", "-b", "main", repo)
+	testGit(t, repo, "config", "user.name", "Test")
+	testGit(t, repo, "config", "user.email", "test@example.invalid")
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, repo, "add", "base.txt")
+	testGit(t, repo, "commit", "-m", "base")
+	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "operator", "reviewer", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, repo, "worktree", "add", "-b", "feature", feature)
+	if err := os.WriteFile(filepath.Join(feature, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, feature, "add", "feature.txt")
+	testGit(t, feature, "commit", "-m", "feature")
+	candidate := testGit(t, feature, "rev-parse", "HEAD")
+	artifactSubmission, err := workspace.Act(ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "feature artifact",
+		Body:    map[string]string{"path": feature, "commit": candidate},
+		RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "artifact",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestSubmission, err := workspace.Act(ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
+		Body:    map[string]string{"to": workspace.Config.Actors["reviewer"].Fingerprint, "conditions": "exact head"},
+		RestsOn: []string{artifactSubmission.Record.ID}, IdempotencyKey: "review-request",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	promiseSubmission, err := workspace.Act(ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "review exact head",
+		RestsOn: []string{requestSubmission.Record.ID}, IdempotencyKey: "review-promise",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return workflowFixture{
+		t: t, ctx: ctx, repo: repo, feature: feature, workspace: workspace,
+		candidate: candidate, artifact: artifactSubmission.Record.ID,
+		request: requestSubmission.Record.ID, promise: promiseSubmission.Record.ID,
+	}
+}
+
+func (f workflowFixture) snapshot(t *testing.T) app.Snapshot {
+	t.Helper()
+	snapshot, err := f.workspace.Snapshot(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
+}
+
+func (f workflowFixture) review(t *testing.T) string {
+	t.Helper()
+	before := f.snapshot(t).Depth
+	if err := reviewCommand(f.ctx, []string{
+		"--repo", f.repo, "--as", "reviewer", "--checkout", f.feature,
+		"--artifact", f.artifact, "--promise", f.promise,
+		"--verdict", "approved", "--text", "APPROVED exact head",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := f.snapshot(t)
+	if snapshot.Depth != before+1 {
+		t.Fatalf("review depth = %d, want %d", snapshot.Depth, before+1)
+	}
+	return snapshot.Projection.Statements[len(snapshot.Projection.Statements)-1].Event
+}
+
+func (f workflowFixture) reviewError() error {
+	return reviewCommand(f.ctx, []string{
+		"--repo", f.repo, "--as", "reviewer", "--checkout", f.feature,
+		"--artifact", f.artifact, "--promise", f.promise,
+		"--verdict", "approved", "--text", "APPROVED exact head",
+	})
+}
+
+func (f workflowFixture) ratify(t *testing.T, approval string) {
+	t.Helper()
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbRatify, Target: approval, IdempotencyKey: "ratify-" + approval,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func statementByEvent(t *testing.T, projection workroom.Projection, event string) workroom.Statement {
+	t.Helper()
+	for _, statement := range projection.Statements {
+		if statement.Event == event {
+			return statement
+		}
+	}
+	t.Fatalf("statement %s not found", event)
+	return workroom.Statement{}
 }
 
 func testGit(t *testing.T, repo string, arguments ...string) string {

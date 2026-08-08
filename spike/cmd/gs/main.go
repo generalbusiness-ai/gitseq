@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -48,6 +50,10 @@ func main() {
 		err = actorsCommand(ctx, os.Args[2:])
 	case "state":
 		err = stateCommand(ctx, os.Args[2:])
+	case "review":
+		err = reviewCommand(ctx, os.Args[2:])
+	case "merge":
+		err = mergeCommand(ctx, os.Args[2:])
 	case "ratify":
 		err = ratifyCommand(ctx, os.Args[2:])
 	case "supersede":
@@ -72,7 +78,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|role-grant|role-revoke|actors|state|ratify|supersede|status|provenance|verify|serve|attach> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|status|provenance|verify|serve|attach> [flags]")
 	os.Exit(2)
 }
 
@@ -210,6 +216,284 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	}
 	fmt.Println(record.ID)
 	return nil
+}
+
+func reviewCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("review", arguments)
+	as := set.String("as", "", "reviewer actor name")
+	checkout := set.String("checkout", "", "checkout reviewed")
+	artifact := set.String("artifact", "", "artifact event naming the reviewed head")
+	promise := set.String("promise", "", "review promise event")
+	verdict := set.String("verdict", "", "approved or changes-requested")
+	message := set.String("text", "", "review report")
+	serverURL := set.String("server", "", "resident sequencer URL")
+	key := set.String("idempotency-key", "", "stable retry key")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return errors.New("review takes no positional arguments")
+	}
+	if *as == "" || *checkout == "" || *artifact == "" || *promise == "" || *message == "" {
+		return errors.New("review requires --as, --checkout, --artifact, --promise, and --text")
+	}
+	if *verdict != "approved" && *verdict != "changes-requested" {
+		return errors.New("review --verdict must be approved or changes-requested")
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	reviewedHead, request, err := validateReview(ctx, workspace, *as, *checkout, *artifact, *promise)
+	if err != nil {
+		return err
+	}
+	// Re-read immediately before signing. The verdict names the immutable
+	// commit, so a later checkout movement cannot retarget it.
+	if head, repeatedRequest, err := validateReview(ctx, workspace, *as, *checkout, *artifact, *promise); err != nil {
+		return err
+	} else if head != reviewedHead || repeatedRequest != request {
+		return errors.New("review basis changed while validating")
+	}
+	record, err := submitAct(ctx, workspace, *serverURL, *as, app.Act{
+		Verb: app.VerbState, Kind: workroom.KindReport, Text: *message,
+		Body:    map[string]string{"verdict": *verdict, "head": reviewedHead, "artifact": *artifact},
+		RestsOn: []string{*promise, request, *artifact}, IdempotencyKey: *key,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println(record.ID)
+	return nil
+}
+
+func mergeCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("merge", arguments)
+	checkout := set.String("checkout", "", "checkout receiving the merge")
+	candidate := set.String("candidate", "", "full approved commit ID")
+	approval := set.String("approval", "", "ratified approval report event")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return errors.New("merge takes no positional arguments")
+	}
+	if *checkout == "" || *candidate == "" || *approval == "" {
+		return errors.New("merge requires --checkout, --candidate, and --approval")
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
+		return err
+	}
+	// Repeat the durable and local checks directly before invoking Git. The
+	// merge argument remains the approved object ID, never a movable ref.
+	if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
+		return err
+	}
+	if _, err := git(ctx, *checkout, "merge", "--no-ff", "--no-edit", "--", *candidate); err != nil {
+		return err
+	}
+	head, err := git(ctx, *checkout, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	fmt.Println(strings.TrimSpace(head))
+	return nil
+}
+
+func validateReview(ctx context.Context, workspace *app.Workspace, actorName, checkout, artifactEvent, promiseEvent string) (string, string, error) {
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	projection := snapshot.Projection
+	artifact, err := liveArtifact(projection, artifactEvent)
+	if err != nil {
+		return "", "", err
+	}
+	promise, err := liveStatement(projection, promiseEvent, workroom.KindPromise)
+	if err != nil {
+		return "", "", err
+	}
+	actor, _, err := workspace.Actor(actorName)
+	if err != nil {
+		return "", "", err
+	}
+	if promise.Actor != actor.Fingerprint {
+		return "", "", errors.New("review actor did not make the named promise")
+	}
+	request, err := uniqueLiveBasis(projection, promiseEvent, workroom.KindRequest)
+	if err != nil {
+		return "", "", fmt.Errorf("review promise: %w", err)
+	}
+	if err := validateCheckout(ctx, workspace.Repo, checkout, artifact.Commit, true); err != nil {
+		return "", "", err
+	}
+	return artifact.Commit, request.Event, nil
+}
+
+func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent string) error {
+	if err := validateCheckout(ctx, workspace.Repo, checkout, candidate, false); err != nil {
+		return err
+	}
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	projection := snapshot.Projection
+	approval, err := liveStatement(projection, approvalEvent, workroom.KindReport)
+	if err != nil {
+		return fmt.Errorf("approval: %w", err)
+	}
+	if !approval.Ratified {
+		return errors.New("approval report is not ratified by its requester")
+	}
+	if approval.Body["verdict"] != "approved" {
+		return errors.New("review verdict is not approved")
+	}
+	if approval.Body["head"] != candidate {
+		return fmt.Errorf("candidate %s does not equal approved head %s", candidate, approval.Body["head"])
+	}
+	artifactEvent := approval.Body["artifact"]
+	if artifactEvent == "" || !slices.Contains(projection.Provenance[approvalEvent], artifactEvent) {
+		return errors.New("approval does not rest on its named artifact")
+	}
+	artifact, err := liveArtifact(projection, artifactEvent)
+	if err != nil {
+		return fmt.Errorf("approval artifact: %w", err)
+	}
+	if artifact.Commit != candidate {
+		return fmt.Errorf("approved artifact head %s does not equal candidate %s", artifact.Commit, candidate)
+	}
+	return nil
+}
+
+func validateCheckout(ctx context.Context, workroomRepo, checkout, commit string, requireHead bool) error {
+	want, err := canonicalCommit(ctx, checkout, commit)
+	if err != nil {
+		return err
+	}
+	if want != commit {
+		return fmt.Errorf("commit must be the full canonical object ID: got %s, resolved %s", commit, want)
+	}
+	_, workroomCommon, err := app.ResolveGitDirs(ctx, workroomRepo)
+	if err != nil {
+		return err
+	}
+	_, checkoutCommon, err := app.ResolveGitDirs(ctx, checkout)
+	if err != nil {
+		return err
+	}
+	if canonicalPath(workroomCommon) != canonicalPath(checkoutCommon) {
+		return errors.New("checkout does not belong to the workroom repository")
+	}
+	status, err := git(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=normal")
+	if err != nil {
+		return err
+	}
+	if status != "" {
+		return errors.New("checkout is dirty")
+	}
+	if requireHead {
+		head, err := git(ctx, checkout, "rev-parse", "HEAD")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(head) != commit {
+			return fmt.Errorf("checkout HEAD %s does not equal artifact head %s", strings.TrimSpace(head), commit)
+		}
+	}
+	return nil
+}
+
+func canonicalCommit(ctx context.Context, repo, commit string) (string, error) {
+	format, err := git(ctx, repo, "rev-parse", "--show-object-format")
+	if err != nil {
+		return "", err
+	}
+	wantBytes := 20
+	if strings.TrimSpace(format) == "sha256" {
+		wantBytes = 32
+	}
+	decoded, err := hex.DecodeString(commit)
+	if err != nil || len(decoded) != wantBytes || strings.ToLower(commit) != commit {
+		return "", errors.New("candidate must be a full lowercase commit object ID")
+	}
+	resolved, err := git(ctx, repo, "rev-parse", "--verify", "--end-of-options", commit+"^{commit}")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(resolved), nil
+}
+
+func canonicalPath(path string) string {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		absolute = resolved
+	}
+	return filepath.Clean(absolute)
+}
+
+func liveArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
+	if !decisionEffective(projection, event) {
+		return workroom.Artifact{}, errors.New("artifact is not effective")
+	}
+	for _, artifact := range projection.Artifacts {
+		if artifact.Event == event {
+			if artifact.Stale {
+				return workroom.Artifact{}, errors.New("artifact is stale or retired")
+			}
+			return artifact, nil
+		}
+	}
+	return workroom.Artifact{}, errors.New("artifact event is unknown")
+}
+
+func liveStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
+	if !decisionEffective(projection, event) {
+		return workroom.Statement{}, errors.New("statement is not effective")
+	}
+	for _, statement := range projection.Statements {
+		if statement.Event == event {
+			if statement.Kind != kind {
+				return workroom.Statement{}, fmt.Errorf("statement is %s, want %s", statement.Kind, kind)
+			}
+			if statement.Retired || statement.Stale {
+				return workroom.Statement{}, errors.New("statement is stale or retired")
+			}
+			return statement, nil
+		}
+	}
+	return workroom.Statement{}, errors.New("statement event is unknown")
+}
+
+func uniqueLiveBasis(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
+	var found []workroom.Statement
+	for _, basis := range projection.Provenance[event] {
+		statement, err := liveStatement(projection, basis, kind)
+		if err == nil {
+			found = append(found, statement)
+		}
+	}
+	if len(found) != 1 {
+		return workroom.Statement{}, fmt.Errorf("expected one live %s basis, found %d", kind, len(found))
+	}
+	return found[0], nil
+}
+
+func decisionEffective(projection workroom.Projection, event string) bool {
+	for _, decision := range projection.Decisions {
+		if decision.Event == event {
+			return decision.Verdict == workroom.Effective
+		}
+	}
+	return false
 }
 
 func ratifyCommand(ctx context.Context, arguments []string) error {
