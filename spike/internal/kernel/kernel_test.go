@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -1166,6 +1167,10 @@ func TestCheckpointEnvelopeGuardsFallBackToFullAudit(t *testing.T) {
 			data, _ := json.Marshal(stored)
 			publishCheckpointBytes(t, f, append([]byte("\n"), data...), f.signingKey, "", checkpointMarker)
 		}},
+		{name: "trailing json", publish: func(t *testing.T, f fixtureState, stored checkpoint) {
+			data, _ := json.Marshal(stored)
+			publishCheckpointBytes(t, f, append(data, []byte(`{}`)...), f.signingKey, "", checkpointMarker)
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1213,6 +1218,12 @@ func TestCheckpointIdentityAndCachedEventGuardsFallBackToFullAudit(t *testing.T)
 		{name: "fabricated commit id", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
 			stored.Events[0].Commit = strings.Repeat("a", 40)
 		}},
+		{name: "wrong-length commit id", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
+			stored.Events[0].Commit = strings.Repeat("a", 39)
+		}},
+		{name: "nonhex commit id", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
+			stored.Events[0].Commit = strings.Repeat("z", 40)
+		}},
 		{name: "duplicate commit id", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
 			stored.Events[1].Commit = stored.Events[0].Commit
 		}},
@@ -1229,16 +1240,6 @@ func TestCheckpointIdentityAndCachedEventGuardsFallBackToFullAudit(t *testing.T)
 		}},
 		{name: "payload tree", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
 			stored.Events[0].Payload = []byte("substituted")
-		}},
-		{name: "duplicate dedup", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
-			stored.Events[1].Signed = cloneSigned(stored.Events[0].Signed)
-			stored.Events[1].Payload = append([]byte(nil), stored.Events[0].Payload...)
-		}},
-		{name: "dedup conflict", mutate: func(t *testing.T, _ fixtureState, private ed25519.PrivateKey, stored *checkpoint) {
-			first := mustVerifyIntent(t, stored.Events[0].Signed)
-			second := mustVerifyIntent(t, stored.Events[1].Signed)
-			second.IdempotencyKey = first.IdempotencyKey
-			stored.Events[1].Signed = mustSignIntent(t, second, private)
 		}},
 	}
 	for _, test := range tests {
@@ -1271,6 +1272,144 @@ func TestCheckpointMetadataRequiresOneExactParentAtEveryPosition(t *testing.T) {
 	}
 }
 
+func TestCheckpointSequencePositionGuards(t *testing.T) {
+	t.Run("named head", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 1)
+		sequence, err := f.store.RevListMetadata(f.ctx, stored.Head)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validateNamedSequence(stored.Head, sequence); err != nil {
+			t.Fatalf("valid named sequence rejected: %v", err)
+		}
+		if err := validateNamedSequence(strings.Repeat("f", 40), sequence); err == nil {
+			t.Fatal("sequence ending elsewhere accepted as the named head")
+		}
+	})
+
+	t.Run("named genesis", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 1)
+		sequence, err := f.store.RevListMetadata(f.ctx, stored.Head)
+		if err != nil {
+			t.Fatal(err)
+		}
+		desc, err := Descriptor(f.ctx, f.store, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sequence[0].OID = strings.Repeat("f", 40)
+		if _, err := validateCheckpoint(stored, desc, sequence); err == nil || !strings.Contains(err.Error(), "does not begin the named sequence") {
+			t.Fatalf("checkpoint beginning outside the named sequence error = %v", err)
+		}
+	})
+
+	t.Run("parentless genesis", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 1)
+		sequence, err := f.store.RevListMetadata(f.ctx, stored.Head)
+		if err != nil {
+			t.Fatal(err)
+		}
+		desc, err := Descriptor(f.ctx, f.store, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sequence[0].Parents = []string{strings.Repeat("f", 40)}
+		if _, err := validateCheckpoint(stored, desc, sequence); err == nil || !strings.Contains(err.Error(), "genesis has a parent") {
+			t.Fatalf("parented genesis error = %v", err)
+		}
+	})
+
+	t.Run("empty frontier", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 0)
+		sequence, err := f.store.RevListMetadata(f.ctx, stored.Head)
+		if err != nil {
+			t.Fatal(err)
+		}
+		desc, err := Descriptor(f.ctx, f.store, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored.Head = strings.Repeat("f", 40)
+		if _, err := validateCheckpoint(stored, desc, sequence); err == nil || !strings.Contains(err.Error(), "empty checkpoint head is not genesis") {
+			t.Fatalf("empty non-genesis frontier error = %v", err)
+		}
+	})
+}
+
+func TestCheckpointMetadataRejectsSelfConsistentDuplicateDedupKeys(t *testing.T) {
+	f, private, _, original := checkpointState(t, 2)
+	originalSequence, err := f.store.RevListMetadata(f.ctx, original.Head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc, err := Descriptor(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateCheckpoint(original, desc, originalSequence); err != nil {
+		t.Fatalf("valid checkpoint rejected: %v", err)
+	}
+
+	t.Run("exact duplicate", func(t *testing.T) {
+		stored := cloneCheckpoint(t, original)
+		sequence := append([]gitstore.CommitMetadata(nil), originalSequence...)
+		stored.Events[1].Signed = cloneSigned(stored.Events[0].Signed)
+		stored.Events[1].Payload = bytes.Clone(stored.Events[0].Payload)
+		stored.Events[1].Attachments = cloneByteMap(stored.Events[0].Attachments)
+		decoded := mustVerifyIntent(t, stored.Events[1].Signed)
+		sequence[2].Message = intent.Envelope(stored.Events[1].Signed, decoded.RestsOn)
+		sequence[2].Tree = sequence[1].Tree
+		if _, err := validateCheckpoint(stored, desc, sequence); err == nil || !strings.Contains(err.Error(), "duplicates idempotent event") {
+			t.Fatalf("self-consistent duplicate checkpoint error = %v", err)
+		}
+	})
+
+	t.Run("conflict", func(t *testing.T) {
+		stored := cloneCheckpoint(t, original)
+		sequence := append([]gitstore.CommitMetadata(nil), originalSequence...)
+		first := mustVerifyIntent(t, stored.Events[0].Signed)
+		second := mustVerifyIntent(t, stored.Events[1].Signed)
+		second.IdempotencyNS = first.IdempotencyNS
+		second.IdempotencyKey = first.IdempotencyKey
+		stored.Events[1].Signed = mustSignIntent(t, second, private)
+		sequence[2].Message = intent.Envelope(stored.Events[1].Signed, second.RestsOn)
+		if _, err := validateCheckpoint(stored, desc, sequence); !errors.Is(err, ErrIdempotencyConflict) {
+			t.Fatalf("self-consistent dedup conflict error = %v", err)
+		}
+	})
+}
+
+func TestCheckpointObjectIDValidationCoversBothFormats(t *testing.T) {
+	for _, test := range []struct {
+		format string
+		length int
+	}{{format: "sha1", length: 40}, {format: "sha256", length: 64}} {
+		if err := validateObjectID(test.format, strings.Repeat("a", test.length)); err != nil {
+			t.Fatalf("valid %s object ID rejected: %v", test.format, err)
+		}
+	}
+	if err := validateObjectID("sha1", strings.Repeat("a", 39)); err == nil || !strings.Contains(err.Error(), "length") {
+		t.Fatalf("wrong-length object ID error = %v", err)
+	}
+	if err := validateObjectID("sha1", strings.Repeat("z", 40)); err == nil || !strings.Contains(err.Error(), "hexadecimal") {
+		t.Fatalf("nonhex object ID error = %v", err)
+	}
+}
+
+func TestCheckpointDecoderRejectsTrailingJSONAtItsBoundary(t *testing.T) {
+	stored := checkpoint{Schema: checkpointSchema, Profile: "fold@1"}
+	data, err := json.Marshal(stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeCheckpoint(data); err != nil {
+		t.Fatalf("canonical checkpoint rejected: %v", err)
+	}
+	if _, err := decodeCheckpoint(append(data, []byte(`{}`)...)); err == nil || !strings.Contains(err.Error(), "trailing JSON") {
+		t.Fatalf("trailing JSON error = %v", err)
+	}
+}
+
 func TestCheckpointCachedPayloadSharesEnvelopeCeiling(t *testing.T) {
 	f, _, _, stored := checkpointState(t, 1)
 	sequence, err := f.store.RevListMetadata(f.ctx, stored.Head)
@@ -1291,6 +1430,34 @@ func TestCheckpointCachedPayloadSharesEnvelopeCeiling(t *testing.T) {
 	}
 }
 
+func TestCheckpointPayloadAndAttachmentsShareOneCeiling(t *testing.T) {
+	payload := []byte("1234")
+	attachments := map[string][]byte{"first": []byte("123"), "second": []byte("456")}
+	if err := payloadWithinCeiling(payload, attachments, 10); err != nil {
+		t.Fatalf("exact combined ceiling rejected: %v", err)
+	}
+	if err := payloadWithinCeiling(payload, attachments, 9); err == nil {
+		t.Fatal("attachments individually under but jointly over the remaining ceiling were accepted")
+	}
+}
+
+func TestCheckpointMarshalEnforcesDocumentedSizeLimit(t *testing.T) {
+	if maxCheckpointBytes != 256<<20 {
+		t.Fatalf("checkpoint limit = %d, want 256 MiB", maxCheckpointBytes)
+	}
+	stored := checkpoint{Schema: checkpointSchema, Profile: "fold@1"}
+	data, err := json.Marshal(stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := marshalCheckpoint(stored, len(data)); err != nil {
+		t.Fatalf("checkpoint at limit rejected: %v", err)
+	}
+	if _, err := marshalCheckpoint(stored, len(data)-1); err == nil {
+		t.Fatal("checkpoint over configured size limit was accepted")
+	}
+}
+
 func TestCheckpointMetadataBindsEnvelopeTrailersAndTreeIndependently(t *testing.T) {
 	f, private, _, original := checkpointState(t, 1)
 	originalSequence, err := f.store.RevListMetadata(f.ctx, original.Head)
@@ -1303,20 +1470,30 @@ func TestCheckpointMetadataBindsEnvelopeTrailersAndTreeIndependently(t *testing.
 	}
 	tests := []struct {
 		name   string
+		want   string
 		mutate func(*checkpoint, []gitstore.CommitMetadata)
 	}{
-		{name: "envelope", mutate: func(stored *checkpoint, _ []gitstore.CommitMetadata) {
+		{name: "envelope", want: "cached intent differs", mutate: func(stored *checkpoint, _ []gitstore.CommitMetadata) {
 			decoded := mustVerifyIntent(t, stored.Events[0].Signed)
 			decoded.Schema += ".forged"
 			stored.Events[0].Signed = mustSignIntent(t, decoded, private)
 		}},
-		{name: "causal trailers", mutate: func(stored *checkpoint, sequence []gitstore.CommitMetadata) {
+		{name: "causal trailers", want: "causal trailers differ", mutate: func(stored *checkpoint, sequence []gitstore.CommitMetadata) {
 			decoded := mustVerifyIntent(t, stored.Events[0].Signed)
 			trailers := append(append([]string(nil), decoded.RestsOn...), "git:sha1:"+strings.Repeat("f", 40))
 			sequence[1].Message = intent.Envelope(stored.Events[0].Signed, trailers)
 		}},
-		{name: "commit tree", mutate: func(_ *checkpoint, sequence []gitstore.CommitMetadata) {
+		{name: "commit tree", want: "commit tree differs", mutate: func(_ *checkpoint, sequence []gitstore.CommitMetadata) {
 			sequence[1].Tree = strings.Repeat("f", 40)
+		}},
+		{name: "commit envelope", want: "commit envelope", mutate: func(_ *checkpoint, sequence []gitstore.CommitMetadata) {
+			sequence[1].Message = "not a signed envelope"
+		}},
+		{name: "payload tree identity", want: "payload tree identity", mutate: func(stored *checkpoint, sequence []gitstore.CommitMetadata) {
+			decoded := mustVerifyIntent(t, stored.Events[0].Signed)
+			decoded.PayloadTree = "not-a-typed-object-id"
+			stored.Events[0].Signed = mustSignIntent(t, decoded, private)
+			sequence[1].Message = intent.Envelope(stored.Events[0].Signed, decoded.RestsOn)
 		}},
 	}
 	for _, test := range tests {
@@ -1324,8 +1501,8 @@ func TestCheckpointMetadataBindsEnvelopeTrailersAndTreeIndependently(t *testing.
 			stored := cloneCheckpoint(t, original)
 			sequence := append([]gitstore.CommitMetadata(nil), originalSequence...)
 			test.mutate(&stored, sequence)
-			if _, err := validateCheckpoint(stored, desc, sequence); err == nil {
-				t.Fatal("checkpoint accepted metadata mutation")
+			if _, err := validateCheckpoint(stored, desc, sequence); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("checkpoint metadata mutation error = %v, want %q", err, test.want)
 			}
 		})
 	}
@@ -1386,6 +1563,15 @@ func TestReaderRetriesCheckpointWriteAfterFailure(t *testing.T) {
 	}
 	if reader.checkpointFailures != 2 || reader.checkpointWrites != 0 {
 		t.Fatalf("failed write was postponed by cadence: failures=%d writes=%d", reader.checkpointFailures, reader.checkpointWrites)
+	}
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "three", []byte("three"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	if reader.checkpointFailures != 3 || reader.checkpointWrites != 0 {
+		t.Fatalf("gated failure advanced cadence: failures=%d writes=%d", reader.checkpointFailures, reader.checkpointWrites)
 	}
 }
 

@@ -98,8 +98,8 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	if err != nil {
 		return scannedLog{}, false, fmt.Errorf("%w: sequence: %v", ErrNoUsableCheckpoint, err)
 	}
-	if len(commits) == 0 || commits[len(commits)-1].OID != head {
-		return scannedLog{}, false, fmt.Errorf("%w: sequence does not end at named head", ErrNoUsableCheckpoint)
+	if err := validateNamedSequence(head, commits); err != nil {
+		return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
 	log, err := validateCheckpoint(stored, desc, commits)
 	if err != nil {
@@ -235,12 +235,9 @@ func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, 
 			Commit: event.Commit, Signed: cloneSigned(event.Signed), Payload: bytes.Clone(event.Payload), Attachments: cloneByteMap(event.Attachments),
 		})
 	}
-	data, err := json.Marshal(stored)
+	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
 	if err != nil {
 		return err
-	}
-	if len(data) > maxCheckpointBytes {
-		return fmt.Errorf("checkpoint size %d exceeds limit %d", len(data), maxCheckpointBytes)
 	}
 	tree, err := store.WriteSingleFileTree(ctx, checkpointFile, data)
 	if err != nil {
@@ -256,6 +253,24 @@ func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, 
 	ref := CheckpointRef(log.Verification.Genesis)
 	old, _ := store.Head(ctx, ref)
 	return store.UpdateRef(ctx, ref, commit, old)
+}
+
+func validateNamedSequence(head string, commits []gitstore.CommitMetadata) error {
+	if len(commits) == 0 || commits[len(commits)-1].OID != head {
+		return errors.New("sequence does not end at named head")
+	}
+	return nil
+}
+
+func marshalCheckpoint(stored checkpoint, limit int) ([]byte, error) {
+	data, err := json.Marshal(stored)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > limit {
+		return nil, fmt.Errorf("checkpoint size %d exceeds limit %d", len(data), limit)
+	}
+	return data, nil
 }
 
 func decodeCheckpoint(data []byte) (checkpoint, error) {
