@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"path/filepath"
 	"strconv"
@@ -51,6 +52,110 @@ func newFixture(t testing.TB, format string) fixtureState {
 		t.Fatal(err)
 	}
 	return fixtureState{ctx: ctx, store: store, scratch: scratch, signingKey: keyPath, publicKey: publicKey, genesis: genesis, format: format}
+}
+
+func TestGenesisDescriptorRoundTripsOnlyCanonicalSequencerKey(t *testing.T) {
+	f := newFixture(t, "sha1")
+	desc, err := Descriptor(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := encodeGenesis(desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeGenesis(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.SequencerPublicKey != f.publicKey {
+		t.Fatalf("decoded key = %q, want %q", decoded.SequencerPublicKey, f.publicKey)
+	}
+
+	attackerKey := filepath.Join(t.TempDir(), "attacker")
+	attackerPublic, err := gitstore.GenerateSSHKey(f.ctx, attackerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	malicious := desc
+	malicious.SequencerPublicKey = f.publicKey + "\nsequencer " + attackerPublic
+	if _, err := encodeGenesis(malicious); err == nil {
+		t.Fatal("genesis creation accepted an injected allowed signer")
+	}
+	enc, _ := deterministicModes()
+	maliciousBytes, err := enc.Marshal(malicious)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeGenesis(maliciousBytes); err == nil {
+		t.Fatal("auditor decode accepted an injected allowed signer")
+	}
+}
+
+func TestInjectedGenesisSignerCannotVerifyASequence(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store, err := gitstore.InitBare(ctx, filepath.Join(root, "domain.git"), "sha1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	honestKey := filepath.Join(root, "honest")
+	honestPublic, err := gitstore.GenerateSSHKey(ctx, honestKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attackerKey := filepath.Join(root, "attacker")
+	attackerPublic, err := gitstore.GenerateSSHKey(ctx, attackerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc := GenesisDescriptor{
+		Version: 0, ObjectFormat: "sha1", PayloadCeiling: 1 << 20,
+		SequencerPublicKey: honestPublic + "\nsequencer " + attackerPublic,
+	}
+	enc, _ := deterministicModes()
+	encoded, err := enc.Marshal(desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := store.EmptyTree(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := genesisMarker + "\nDescriptor: " + base64.RawURLEncoding.EncodeToString(encoded) + "\n"
+	genesis, err := store.SignedCommit(ctx, tree, "", message, honestKey, gitstore.CommitIdentity{
+		AuthorName: "genesis", AuthorEmail: "genesis@example.invalid",
+		CommitterName: "genesis", CommitterEmail: "genesis@example.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte("forged")
+	payloadTree, err := store.WritePayloadTree(ctx, payload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := actor(t)
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version, Target: "git:sha1:" + genesis, Schema: "forged.v0",
+		PayloadTree: "git:sha1:" + payloadTree, IdempotencyNS: "test", IdempotencyKey: "forged",
+	}, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged, err := store.SignedCommit(ctx, payloadTree, genesis, intent.Envelope(signed, nil), attackerKey, gitstore.CommitIdentity{
+		AuthorName: "attacker", AuthorEmail: "attacker@example.invalid",
+		CommitterName: "attacker", CommitterEmail: "attacker@example.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateRef(ctx, Ref(genesis), forged, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(ctx, store, genesis); err == nil {
+		t.Fatal("sequence signed by an injected second sequencer verified")
+	}
 }
 
 func (f fixtureState) request(t testing.TB, private ed25519.PrivateKey, key string, payload []byte, rests []string) Request {

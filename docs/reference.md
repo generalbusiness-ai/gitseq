@@ -36,6 +36,11 @@ and directly to the local log when not.
 `kind` describes the principal and confers no authority; roles are the
 authority grants, and they are independent of kind.
 
+Genesis pins exactly one canonical `ssh-ed25519` sequencer public key: the key
+type, one ASCII space, and the base64 wire key, with no options, principals,
+comments, or additional lines. Creation and auditor decoding apply the same
+validation before the value can become an OpenSSH allowed-signers entry.
+
 ### Speaking
 
 | Command | Purpose |
