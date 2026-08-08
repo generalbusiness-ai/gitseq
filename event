@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will make the named kernel trust guards mutation-sensitive under request 27e563c54b26a1054d8cd3124e9c41186c60989e. I will isolate each guard with a positive control, repair altered-trailer dedup identity, record a mutation matrix, run the full repository discipline, and request independent exact-head review."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:92ac060b2d846fa553cf56aa500af19126fe6c65"}
