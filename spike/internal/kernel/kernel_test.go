@@ -8,6 +8,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -385,6 +386,73 @@ func TestSizeCeilingAndEnvelopeOnlyAdmissionHook(t *testing.T) {
 	verification, err := Verify(f.ctx, f.store, f.genesis)
 	if err != nil || verification.Events != 0 {
 		t.Fatalf("refused admissions changed the log: %#v, %v", verification, err)
+	}
+}
+
+func TestOversizedEnvelopeIsRefusedWithoutPoisoningTheLog(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	ref := strings.Repeat("r", intent.MaxStringBytes)
+	large := f.request(t, private, "large-valid-envelope", []byte("valid"), []string{ref, ref, ref})
+	if _, err := Submit(f.ctx, f.store, large, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tooManyBytes := make([]string, 33)
+	for index := range tooManyBytes {
+		tooManyBytes[index] = ref
+	}
+	oversized := f.request(t, private, "oversized-envelope", []byte("refuse"), tooManyBytes)
+	if _, err := Submit(f.ctx, f.store, oversized, Options{SigningKey: f.signingKey}); err == nil || !strings.Contains(err.Error(), "event exceeds genesis ceiling") {
+		t.Fatalf("oversized envelope error = %v", err)
+	}
+	after, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("refused envelope moved sequence: before=%s after=%s", before, after)
+	}
+	verified, err := Verify(f.ctx, f.store, f.genesis)
+	if err != nil || verified.Events != 1 || verified.Head != before {
+		t.Fatalf("log after refused envelope = %+v, %v", verified, err)
+	}
+}
+
+func TestVerifierAppliesCeilingToEnvelopeAndPayloadTogether(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	ref := strings.Repeat("r", intent.MaxStringBytes)
+	request := f.request(t, private, "combined-overflow", make([]byte, 900<<10), []string{ref, ref, ref})
+	decoded := mustVerifyIntent(t, request.Signed)
+	tree, err := f.store.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, signedTree, err := gitstore.ParseTypedOID(decoded.PayloadTree)
+	if err != nil || tree != signedTree {
+		t.Fatalf("payload tree = %s, signed = %s, err=%v", tree, signedTree, err)
+	}
+	message := intent.Envelope(request.Signed, decoded.RestsOn)
+	if len(message)+len(request.Payload) <= 1<<20 {
+		t.Fatalf("test event is only %d bytes", len(message)+len(request.Payload))
+	}
+	commit, err := f.store.SignedCommit(f.ctx, tree, f.genesis, message, f.signingKey, gitstore.CommitIdentity{
+		AuthorName: "malicious sequencer", AuthorEmail: "sequencer@example.invalid",
+		CommitterName: "malicious sequencer", CommitterEmail: "sequencer@example.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), "payload exceeds genesis ceiling") {
+		t.Fatalf("combined envelope and payload verification error = %v", err)
 	}
 }
 

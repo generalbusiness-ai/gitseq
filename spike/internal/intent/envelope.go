@@ -1,7 +1,6 @@
 package intent
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -27,15 +26,17 @@ func Envelope(s Signed, restsOn []string) string {
 	return b.String()
 }
 
-func ParseEnvelope(message string) (Signed, []string, error) {
-	scanner := bufio.NewScanner(strings.NewReader(message))
-	if !scanner.Scan() || scanner.Text() != eventMarker {
+func ParseEnvelope(message string, maxBytes uint64) (Signed, []string, error) {
+	if maxBytes == 0 || uint64(len(message)) > maxBytes {
+		return Signed{}, nil, fmt.Errorf("event envelope exceeds %d bytes", maxBytes)
+	}
+	lines := strings.Split(message, "\n")
+	if len(lines) == 0 || lines[0] != eventMarker {
 		return Signed{}, nil, errors.New("not a gitseq event envelope")
 	}
 	values := map[string]string{}
 	var rests []string
-	for scanner.Scan() {
-		line := scanner.Text()
+	for _, line := range lines[1:] {
 		if line == "" {
 			continue
 		}
@@ -51,9 +52,6 @@ func ParseEnvelope(message string) (Signed, []string, error) {
 			return Signed{}, nil, fmt.Errorf("duplicate envelope field %s", key)
 		}
 		values[key] = value
-	}
-	if err := scanner.Err(); err != nil {
-		return Signed{}, nil, err
 	}
 	if len(values) != 3 {
 		return Signed{}, nil, errors.New("event envelope requires exactly three signed fields")
