@@ -94,6 +94,21 @@ refspec written by older builds, then fetches atomically without `+`. Initial
 and fast-forward fetches work; a remote rewind fails without moving the
 auditor's existing `refs/seq/*` frontier.
 
+The resident may also maintain a local
+`refs/gitseq/checkpoints/<genesis>` ref. Its parentless commit contains the
+original actor-signed events at one fully audited sequence head and is signed
+by that log's sequencer key. On restart, gitseq checks the checkpoint's object
+format, genesis, exact head, fold-profile version, commit signature, actor
+signatures, payload ceilings, dedup keys, and payload-tree identities, then
+audits only a descendant sequence delta. A missing, malformed, mismatched,
+oversized, or non-descendant checkpoint is only a cache miss: gitseq performs
+the ordinary full audit and, when it holds sequencer custody, replaces the
+checkpoint. A writing resident refreshes the ref every 256 accepted events,
+so its own next cold restart audits at most 255 sequence commits beyond a
+successfully written checkpoint. `gs verify` remains an explicit full audit and never consults this
+resident cache. Checkpoint refs are local implementation artifacts; `attach`
+does not fetch them and the documented sequence push does not publish them.
+
 Until that runs, the workroom exists only in the repository that created
 it, and an auditor's `attach` fails on a missing ref rather than on
 anything meaningful.

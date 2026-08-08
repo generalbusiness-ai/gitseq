@@ -500,3 +500,56 @@ func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
 		}
 	})
 }
+
+func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "checkpointed", RestsOn: []string{seed.ID}, IdempotencyKey: "checkpointed",
+	})
+	want, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpointRef := kernel.CheckpointRef(workspace.Config.Genesis)
+	checkpointHead, err := workspace.Store.Head(ctx, checkpointRef)
+	if err != nil {
+		t.Fatalf("checkpoint ref: %v", err)
+	}
+
+	restarted, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := restarted.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("checkpoint projection differs from verified source:\nwant=%+v\ngot=%+v", want, got)
+	}
+	if unchanged, err := workspace.Store.Head(ctx, checkpointRef); err != nil || unchanged != checkpointHead {
+		t.Fatalf("exact restart rewrote checkpoint: before=%s after=%s err=%v", checkpointHead, unchanged, err)
+	}
+
+	if err := workspace.Store.UpdateRef(ctx, checkpointRef, workspace.Config.Genesis, checkpointHead); err != nil {
+		t.Fatal(err)
+	}
+	repairing, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repaired, err := repairing.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(repaired, want) {
+		t.Fatalf("corrupt checkpoint fallback changed projection:\nwant=%+v\ngot=%+v", want, repaired)
+	}
+	if repairedHead, err := workspace.Store.Head(ctx, checkpointRef); err != nil || repairedHead == workspace.Config.Genesis {
+		t.Fatalf("full audit did not repair checkpoint ref: head=%s err=%v", repairedHead, err)
+	}
+}

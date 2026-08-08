@@ -47,7 +47,12 @@ every event; choosing a winner remains application policy, not kernel behavior.
 The forge profile is also not certified by the normal test lane; only the
 smart-HTTP repository boundary is.
 
-Checkpoint/witness formats, key rotation, production multi-domain watch and
-frontier retrieval, capability token semantics, and throughput/latency
+The resident now keeps a local sequencer-signed Git checkpoint for fast cold
+restart. It contains original actor-signed events rather than a projected
+authority answer; recovery rechecks actor signatures and payload-tree
+bindings, rebuilds the profile fold, and verifies only the descendant delta.
+Any checkpoint failure falls back to the ordinary full audit. Witness
+cosignatures and cadence policy, key rotation, production multi-domain watch
+and frontier retrieval, capability token semantics, and throughput/latency
 targets remain outside this spike. The pre-append hook is present, but ships
 with no capability policy.

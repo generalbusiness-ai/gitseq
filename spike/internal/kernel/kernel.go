@@ -50,10 +50,11 @@ type Result struct {
 }
 
 type Options struct {
-	SigningKey string
-	Failpoint  func(string)
-	MaxRetries int
-	PreAppend  func(context.Context, Admission) error
+	SigningKey        string
+	CheckpointProfile string
+	Failpoint         func(string)
+	MaxRetries        int
+	PreAppend         func(context.Context, Admission) error
 }
 
 // Submitter is the resident sequencing path. It retains only a log state that
@@ -74,12 +75,17 @@ type Submitter struct {
 }
 
 type submitCache struct {
-	target     string
-	head       string
-	log        scannedLog
-	fullScans  int
-	deltaScans int
-	cacheHits  int
+	target              string
+	head                string
+	log                 scannedLog
+	fullScans           int
+	deltaScans          int
+	cacheHits           int
+	checkpointLoads     int
+	checkpointFallbacks int
+	checkpointWrites    int
+	checkpointEvents    []Event
+	checkpointAttempt   int
 }
 
 func NewSubmitter(store gitstore.Store, options Options) *Submitter {
@@ -304,8 +310,11 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 			cache.cacheHits++
 		} else {
 			fullScan := false
+			checkpointReset := false
+			checkpointCurrent := false
+			checkpointOptions := CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: options.SigningKey}
 			if cache != nil && cache.target == targetOID && cache.head != "" {
-				log, err = scanAfter(ctx, store, cache.log, head, false)
+				log, err = scanAfter(ctx, store, cache.log, head, options.CheckpointProfile != "")
 				if err == nil {
 					cache.deltaScans++
 				} else if !errors.Is(err, ErrNotDescendant) {
@@ -313,15 +322,46 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 				}
 			}
 			if cache == nil || cache.target != targetOID || cache.head == "" || errors.Is(err, ErrNotDescendant) {
-				log, err = scanHead(ctx, store, targetOID, head, false)
-				fullScan = true
+				checkpointReset = true
+				loadedCheckpoint := false
+				checkpointAdvanced := false
+				if cache != nil && options.CheckpointProfile != "" {
+					log, checkpointAdvanced, err = loadCheckpoint(ctx, store, targetOID, head, checkpointOptions)
+					if err == nil {
+						loadedCheckpoint = true
+						cache.checkpointLoads++
+					} else {
+						cache.checkpointFallbacks++
+					}
+				}
+				if !loadedCheckpoint {
+					loadPayload := cache != nil && options.CheckpointProfile != ""
+					log, err = scanHead(ctx, store, targetOID, head, loadPayload)
+					fullScan = true
+				}
+				if err == nil && options.CheckpointProfile != "" {
+					checkpointCurrent = loadedCheckpoint && !checkpointAdvanced
+					if !checkpointCurrent && writeCheckpoint(ctx, store, log, checkpointOptions) == nil {
+						cache.checkpointWrites++
+						checkpointCurrent = true
+					}
+				}
 			}
 			if err != nil {
 				return Result{}, err
 			}
 			if cache != nil {
+				if options.CheckpointProfile != "" {
+					if checkpointReset {
+						cache.checkpointEvents = cloneEvents(log.Events)
+						cache.checkpointAttempt = log.Verification.Depth
+					} else {
+						cache.checkpointEvents = append(cache.checkpointEvents, cloneEvents(log.Events)...)
+					}
+				}
 				// Submission needs the verified frontier and dedup projection, not
-				// a second resident copy of the event stream.
+				// a second application-facing copy of the event stream. Checkpoint
+				// events are retained separately only while checkpointing is enabled.
 				log.Events = nil
 				cache.target = targetOID
 				cache.head = head
@@ -363,12 +403,26 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 			return Result{}, err
 		}
 		if cache != nil {
-			event := Event{Commit: commit, Intent: decoded, Signed: cloneSigned(request.Signed), PayloadTree: decoded.PayloadTree}
+			event := Event{
+				Commit: commit, Intent: decoded, Signed: cloneSigned(request.Signed), PayloadTree: decoded.PayloadTree,
+				Payload: bytes.Clone(request.Payload), Attachments: cloneByteMap(request.Attachments),
+			}
 			cache.log.Dedup[key] = event
 			cache.log.Verification.Head = commit
 			cache.log.Verification.Depth++
 			cache.log.Verification.Events++
 			cache.head = commit
+			if options.CheckpointProfile != "" {
+				cache.checkpointEvents = append(cache.checkpointEvents, cloneEvent(event))
+				if checkpointDue(cache.log.Verification.Depth, cache.checkpointAttempt) {
+					cache.checkpointAttempt = cache.log.Verification.Depth
+					checkpointLog := cache.log
+					checkpointLog.Events = cache.checkpointEvents
+					if writeCheckpoint(ctx, store, checkpointLog, CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: options.SigningKey}) == nil {
+						cache.checkpointWrites++
+					}
+				}
+			}
 		}
 		fail(options, "after_ref_cas")
 		fail(options, "before_reply")
@@ -406,6 +460,7 @@ type LoadResult struct {
 	Verification Verification
 	BaseHead     string
 	Full         bool
+	Checkpoint   bool
 }
 
 // Reader retains a verified frontier and dedup index while leaving the full
@@ -415,16 +470,28 @@ type LoadResult struct {
 type Reader struct {
 	store gitstore.Store
 
-	mu         sync.Mutex
-	target     string
-	head       string
-	log        scannedLog
-	fullScans  int
-	deltaScans int
-	cacheHits  int
+	mu                  sync.Mutex
+	target              string
+	head                string
+	log                 scannedLog
+	fullScans           int
+	deltaScans          int
+	cacheHits           int
+	checkpoint          CheckpointOptions
+	checkpointLoads     int
+	checkpointFallbacks int
+	checkpointWrites    int
+	checkpointEvents    []Event
+	checkpointAttempt   int
 }
 
-func NewReader(store gitstore.Store) *Reader { return &Reader{store: store} }
+func NewReader(store gitstore.Store, checkpoint ...CheckpointOptions) *Reader {
+	reader := &Reader{store: store}
+	if len(checkpoint) > 0 {
+		reader.checkpoint = checkpoint[0]
+	}
+	return reader
+}
 
 func (r *Reader) Load(ctx context.Context, genesis string) (LoadResult, error) {
 	r.mu.Lock()
@@ -442,6 +509,17 @@ func (r *Reader) Load(ctx context.Context, genesis string) (LoadResult, error) {
 		log, deltaErr := scanAfter(ctx, r.store, r.log, head, true)
 		if deltaErr == nil {
 			events := log.Events
+			if r.checkpoint.Profile != "" && r.checkpoint.SigningKey != "" {
+				r.checkpointEvents = append(r.checkpointEvents, cloneEvents(events)...)
+				if checkpointDue(log.Verification.Depth, r.checkpointAttempt) {
+					r.checkpointAttempt = log.Verification.Depth
+					checkpointLog := log
+					checkpointLog.Events = r.checkpointEvents
+					if writeCheckpoint(ctx, r.store, checkpointLog, r.checkpoint) == nil {
+						r.checkpointWrites++
+					}
+				}
+			}
 			log.Events = nil
 			r.head, r.log = head, log
 			r.deltaScans++
@@ -451,15 +529,38 @@ func (r *Reader) Load(ctx context.Context, genesis string) (LoadResult, error) {
 			return LoadResult{}, deltaErr
 		}
 	}
-	log, err := scanHead(ctx, r.store, genesis, head, true)
-	if err != nil {
-		return LoadResult{}, err
+	var log scannedLog
+	fromCheckpoint := false
+	checkpointAdvanced := false
+	if r.checkpoint.Profile != "" {
+		log, checkpointAdvanced, err = loadCheckpoint(ctx, r.store, genesis, head, r.checkpoint)
+		if err == nil {
+			fromCheckpoint = true
+			r.checkpointLoads++
+		} else {
+			r.checkpointFallbacks++
+		}
+	}
+	if !fromCheckpoint {
+		log, err = scanHead(ctx, r.store, genesis, head, true)
+		if err != nil {
+			return LoadResult{}, err
+		}
+		r.fullScans++
+	}
+	if r.checkpoint.SigningKey != "" && (!fromCheckpoint || checkpointAdvanced) {
+		if writeCheckpoint(ctx, r.store, log, r.checkpoint) == nil {
+			r.checkpointWrites++
+		}
 	}
 	events := log.Events
+	if r.checkpoint.Profile != "" && r.checkpoint.SigningKey != "" {
+		r.checkpointEvents = cloneEvents(events)
+		r.checkpointAttempt = log.Verification.Depth
+	}
 	log.Events = nil
 	r.target, r.head, r.log = genesis, head, log
-	r.fullScans++
-	return LoadResult{Events: events, Verification: log.Verification, Full: true}, nil
+	return LoadResult{Events: events, Verification: log.Verification, Full: true, Checkpoint: fromCheckpoint}, nil
 }
 
 // Load verifies a log before returning its application records. Consumers do

@@ -295,6 +295,53 @@ func BenchmarkColdAudit(b *testing.B) {
 	}
 }
 
+// Run with -benchtime=1x. Setup deliberately constructs an ordinary 20,000
+// event history through the signed resident submission path; only restart is
+// timed.
+func BenchmarkCheckpointRestartAtDepth20000(b *testing.B) {
+	if b.N != 1 {
+		b.Skip("run with -benchtime=1x")
+	}
+	f := newFixture(b, "sha1")
+	private := actor(b)
+	options := Options{SigningKey: f.signingKey, CheckpointProfile: "benchmark-fold@1"}
+	submitter := NewSubmitter(f.store, options)
+	for index := 0; index < 20000; index++ {
+		key := "checkpoint-20k-" + strconv.Itoa(index)
+		if _, err := submitter.Submit(f.ctx, f.request(b, private, key, []byte(key), nil)); err != nil {
+			b.Fatal(err)
+		}
+	}
+	checkpointCommit, err := f.store.Head(f.ctx, CheckpointRef(f.genesis))
+	if err != nil {
+		b.Fatal(err)
+	}
+	data, err := f.store.ReadFileLimit(f.ctx, checkpointCommit, checkpointFile, maxCheckpointBytes)
+	if err != nil {
+		b.Fatal(err)
+	}
+	stored, err := decodeCheckpoint(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if behind := 20000 - stored.Depth; behind < 0 || behind >= checkpointInterval {
+		b.Fatalf("checkpoint depth %d leaves unbounded delta %d", stored.Depth, behind)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	reader := NewReader(f.store, CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: f.signingKey})
+	loaded, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.StopTimer()
+	b.ReportMetric(float64(stored.Depth), "checkpoint_events")
+	b.ReportMetric(float64(20000-stored.Depth), "delta_events")
+	if !loaded.Checkpoint || loaded.Verification.Events != 20000 || reader.fullScans != 0 {
+		b.Fatalf("20k restart = %+v, full scans=%d", loaded, reader.fullScans)
+	}
+}
+
 func TestConcurrentCASProducesOneLinearChain(t *testing.T) {
 	f := newFixture(t, "sha1")
 	private := actor(t)
@@ -575,6 +622,198 @@ func TestReaderLoadsColdThenVerifiesDescendantDeltas(t *testing.T) {
 	}
 	if reader.log.Verification.Events != total || reader.log.Verification.Head != reader.head {
 		t.Fatalf("reader verification = %+v, head = %s", reader.log.Verification, reader.head)
+	}
+}
+
+func TestReaderRestartsFromSignedCheckpointAndAuditsDescendantDelta(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	for index := 0; index < 3; index++ {
+		key := "checkpoint-" + strconv.Itoa(index)
+		if _, err := Submit(f.ctx, f.store, f.request(t, private, key, []byte(key), nil), Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	options := CheckpointOptions{Profile: "test-fold@1", SigningKey: f.signingKey}
+	writer := NewReader(f.store, options)
+	full, err := writer.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if full.Checkpoint || writer.fullScans != 1 || writer.checkpointWrites != 1 {
+		t.Fatalf("initial load = %+v, scans=%d writes=%d", full, writer.fullScans, writer.checkpointWrites)
+	}
+	checkpointHead, err := f.store.Head(f.ctx, CheckpointRef(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewReader(f.store, options)
+	cached, err := restarted.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cached.Full || !cached.Checkpoint || restarted.fullScans != 0 || restarted.checkpointLoads != 1 || len(cached.Events) != 3 {
+		t.Fatalf("checkpoint load = %+v, full=%d loads=%d", cached, restarted.fullScans, restarted.checkpointLoads)
+	}
+	if afterRestart, err := f.store.Head(f.ctx, CheckpointRef(f.genesis)); err != nil || afterRestart != checkpointHead {
+		t.Fatalf("exact checkpoint restart rewrote ref: before=%s after=%s err=%v", checkpointHead, afterRestart, err)
+	}
+	for index, event := range cached.Events {
+		if got, want := string(event.Payload), "checkpoint-"+strconv.Itoa(index); got != want {
+			t.Fatalf("event %d payload = %q, want %q", index, got, want)
+		}
+	}
+
+	result, err := Submit(f.ctx, f.store, f.request(t, private, "after-checkpoint", []byte("after-checkpoint"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deltaRestart := NewReader(f.store, options)
+	advanced, err := deltaRestart.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !advanced.Checkpoint || advanced.Verification.Head != result.Head || len(advanced.Events) != 4 || string(advanced.Events[3].Payload) != "after-checkpoint" {
+		t.Fatalf("checkpoint delta load = %+v", advanced)
+	}
+}
+
+func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T) {
+	t.Run("profile", func(t *testing.T) {
+		f := newFixture(t, "sha1")
+		private := actor(t)
+		if _, err := Submit(f.ctx, f.store, f.request(t, private, "one", []byte("one"), nil), Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewReader(f.store, CheckpointOptions{Profile: "fold@1", SigningKey: f.signingKey}).Load(f.ctx, f.genesis); err != nil {
+			t.Fatal(err)
+		}
+		reader := NewReader(f.store, CheckpointOptions{Profile: "fold@2"})
+		loaded, err := reader.Load(f.ctx, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.Checkpoint || reader.fullScans != 1 || reader.checkpointFallbacks != 1 {
+			t.Fatalf("profile mismatch = %+v, scans=%d fallbacks=%d", loaded, reader.fullScans, reader.checkpointFallbacks)
+		}
+	})
+
+	t.Run("payload", func(t *testing.T) {
+		f := newFixture(t, "sha1")
+		private := actor(t)
+		result, err := Submit(f.ctx, f.store, f.request(t, private, "one", []byte("one"), nil), Options{SigningKey: f.signingKey})
+		if err != nil {
+			t.Fatal(err)
+		}
+		log, err := scanHead(f.ctx, f.store, f.genesis, result.Head, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		log.Events[0].Payload = []byte("substituted")
+		if err := writeCheckpoint(f.ctx, f.store, log, CheckpointOptions{Profile: "fold@1", SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+		reader := NewReader(f.store, CheckpointOptions{Profile: "fold@1"})
+		loaded, err := reader.Load(f.ctx, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.Checkpoint || string(loaded.Events[0].Payload) != "one" || reader.fullScans != 1 {
+			t.Fatalf("substituted checkpoint did not fall back: %+v", loaded)
+		}
+	})
+
+	t.Run("non-descendant", func(t *testing.T) {
+		f := newFixture(t, "sha1")
+		private := actor(t)
+		first, err := Submit(f.ctx, f.store, f.request(t, private, "first", []byte("first"), nil), Options{SigningKey: f.signingKey})
+		if err != nil {
+			t.Fatal(err)
+		}
+		options := CheckpointOptions{Profile: "fold@1", SigningKey: f.signingKey}
+		if _, err := NewReader(f.store, options).Load(f.ctx, f.genesis); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), f.genesis, first.Head); err != nil {
+			t.Fatal(err)
+		}
+		alternate, err := Submit(f.ctx, f.store, f.request(t, private, "alternate", []byte("alternate"), nil), Options{SigningKey: f.signingKey})
+		if err != nil {
+			t.Fatal(err)
+		}
+		reader := NewReader(f.store, CheckpointOptions{Profile: "fold@1"})
+		loaded, err := reader.Load(f.ctx, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.Checkpoint || loaded.Verification.Head != alternate.Head || string(loaded.Events[0].Payload) != "alternate" || reader.fullScans != 1 {
+			t.Fatalf("non-descendant checkpoint did not fall back: %+v", loaded)
+		}
+	})
+}
+
+func TestSubmitterColdStartUsesSignedCheckpointDedup(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	prior := f.request(t, private, "prior", []byte("prior"), nil)
+	if _, err := Submit(f.ctx, f.store, prior, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := CheckpointOptions{Profile: "test-fold@1", SigningKey: f.signingKey}
+	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointProfile: checkpoint.Profile})
+	if replay, err := submitter.Submit(f.ctx, prior); err != nil || !replay.Replay {
+		t.Fatalf("checkpoint-backed replay = %+v, %v", replay, err)
+	}
+	if submitter.cache.checkpointLoads != 1 || submitter.cache.fullScans != 0 {
+		t.Fatalf("submitter checkpoint loads=%d full scans=%d", submitter.cache.checkpointLoads, submitter.cache.fullScans)
+	}
+}
+
+func TestSubmitterRefreshesCheckpointOnBoundedCadence(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	prior := f.request(t, private, "prior", []byte("prior"), nil)
+	if _, err := Submit(f.ctx, f.store, prior, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := CheckpointOptions{Profile: "test-fold@1", SigningKey: f.signingKey}
+	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	before, err := f.store.Head(f.ctx, CheckpointRef(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointProfile: checkpoint.Profile})
+	if replay, err := submitter.Submit(f.ctx, prior); err != nil || !replay.Replay {
+		t.Fatalf("load checkpoint = %+v, %v", replay, err)
+	}
+	// Move only the cadence counter; the next real append must publish the
+	// complete valid event set retained from the checkpoint.
+	submitter.cache.checkpointAttempt = submitter.cache.log.Verification.Depth - checkpointInterval + 1
+	next := f.request(t, private, "next", []byte("next"), nil)
+	result, err := submitter.Submit(f.ctx, next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := f.store.Head(f.ctx, CheckpointRef(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after == before || submitter.cache.checkpointWrites != 1 {
+		t.Fatalf("checkpoint was not refreshed: before=%s after=%s writes=%d", before, after, submitter.cache.checkpointWrites)
+	}
+	reader := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile})
+	loaded, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Checkpoint || loaded.Verification.Head != result.Head || len(loaded.Events) != 2 {
+		t.Fatalf("refreshed checkpoint = %+v", loaded)
 	}
 }
 

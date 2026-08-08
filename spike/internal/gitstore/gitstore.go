@@ -3,8 +3,12 @@ package gitstore
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -76,6 +80,105 @@ func (s Store) EmptyTree(ctx context.Context) (string, error) {
 func (s Store) WriteBlob(ctx context.Context, content []byte) (string, error) {
 	output, err := s.run(ctx, content, nil, "hash-object", "-w", "--stdin")
 	return string(output), err
+}
+
+// WriteSingleFileTree writes one ordinary blob-backed Git tree. It is used by
+// local, content-addressed metadata such as verified checkpoints; the caller
+// still decides whether and where the resulting object is referenced.
+func (s Store) WriteSingleFileTree(ctx context.Context, name string, content []byte) (string, error) {
+	if !attachmentName.MatchString(name) {
+		return "", fmt.Errorf("invalid tree entry name %q", name)
+	}
+	oid, err := s.WriteBlob(ctx, content)
+	if err != nil {
+		return "", err
+	}
+	entry := fmt.Sprintf("100644 blob %s\t%s\n", oid, name)
+	output, err := s.run(ctx, []byte(entry), nil, "mktree")
+	return string(output), err
+}
+
+// HashPayloadTree reproduces WritePayloadTree's object identity without
+// writing objects or invoking Git. Checkpoint recovery uses it to prove that
+// cached payload bytes still match the payload tree in the actor-signed
+// intent; the checkpoint signer cannot substitute application content.
+func HashPayloadTree(objectFormat string, event []byte, attachments map[string][]byte) (string, error) {
+	eventOID, err := hashObject(objectFormat, "blob", event)
+	if err != nil {
+		return "", err
+	}
+	root := []treeEntry{{mode: "100644", name: "event", oid: eventOID}}
+	if len(attachments) > 0 {
+		names := make([]string, 0, len(attachments))
+		for name := range attachments {
+			if !attachmentName.MatchString(name) {
+				return "", fmt.Errorf("invalid attachment name %q", name)
+			}
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		entries := make([]treeEntry, 0, len(names))
+		for _, name := range names {
+			oid, err := hashObject(objectFormat, "blob", attachments[name])
+			if err != nil {
+				return "", err
+			}
+			entries = append(entries, treeEntry{mode: "100644", name: name, oid: oid})
+		}
+		attachmentsOID, err := hashTree(objectFormat, entries)
+		if err != nil {
+			return "", err
+		}
+		root = append(root, treeEntry{mode: "40000", name: "attachments", oid: attachmentsOID, directory: true})
+	}
+	return hashTree(objectFormat, root)
+}
+
+type treeEntry struct {
+	mode      string
+	name      string
+	oid       string
+	directory bool
+}
+
+func hashTree(objectFormat string, entries []treeEntry) (string, error) {
+	sort.Slice(entries, func(i, j int) bool {
+		left, right := entries[i].name, entries[j].name
+		if entries[i].directory {
+			left += "/"
+		}
+		if entries[j].directory {
+			right += "/"
+		}
+		return left < right
+	})
+	var content bytes.Buffer
+	for _, entry := range entries {
+		rawOID, err := hex.DecodeString(entry.oid)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&content, "%s %s", entry.mode, entry.name)
+		content.WriteByte(0)
+		content.Write(rawOID)
+	}
+	return hashObject(objectFormat, "tree", content.Bytes())
+}
+
+func hashObject(objectFormat, kind string, content []byte) (string, error) {
+	var digest hash.Hash
+	switch objectFormat {
+	case "sha1":
+		digest = sha1.New()
+	case "sha256":
+		digest = sha256.New()
+	default:
+		return "", fmt.Errorf("unsupported object format %q", objectFormat)
+	}
+	fmt.Fprintf(digest, "%s %d", kind, len(content))
+	digest.Write([]byte{0})
+	digest.Write(content)
+	return hex.EncodeToString(digest.Sum(nil)), nil
 }
 
 func (s Store) WritePayloadTree(ctx context.Context, event []byte, attachments map[string][]byte) (string, error) {
@@ -197,6 +300,26 @@ func (s Store) ReadFile(ctx context.Context, commit, path string) ([]byte, error
 		return nil, fmt.Errorf("git show file: %w: %s", err, bytes.TrimSpace(output))
 	}
 	return output, nil
+}
+
+// ReadFileLimit checks the blob size before reading it, so a corrupt metadata
+// ref cannot force an unbounded allocation before its contents are verified.
+func (s Store) ReadFileLimit(ctx context.Context, commit, path string, limit int64) ([]byte, error) {
+	if commit == "" || path == "" || limit < 0 || strings.ContainsAny(path, "\x00\r\n:") {
+		return nil, errors.New("invalid commit, tree path, or byte limit")
+	}
+	output, err := s.run(ctx, nil, nil, "cat-file", "-s", commit+":"+path)
+	if err != nil {
+		return nil, err
+	}
+	size, err := strconv.ParseInt(string(output), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse blob size: %w", err)
+	}
+	if size > limit {
+		return nil, fmt.Errorf("blob size %d exceeds limit %d", size, limit)
+	}
+	return s.ReadFile(ctx, commit, path)
 }
 
 func (s Store) ListFiles(ctx context.Context, commit, directory string) ([]string, error) {
