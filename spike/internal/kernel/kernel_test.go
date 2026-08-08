@@ -1134,6 +1134,46 @@ func TestCheckpointCachedPayloadSharesEnvelopeCeiling(t *testing.T) {
 	}
 }
 
+func TestCheckpointMetadataBindsEnvelopeTrailersAndTreeIndependently(t *testing.T) {
+	f, private, _, original := checkpointState(t, 1)
+	originalSequence, err := f.store.RevListMetadata(f.ctx, original.Head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc, err := Descriptor(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name   string
+		mutate func(*checkpoint, []gitstore.CommitMetadata)
+	}{
+		{name: "envelope", mutate: func(stored *checkpoint, _ []gitstore.CommitMetadata) {
+			decoded := mustVerifyIntent(t, stored.Events[0].Signed)
+			decoded.Schema += ".forged"
+			stored.Events[0].Signed = mustSignIntent(t, decoded, private)
+		}},
+		{name: "causal trailers", mutate: func(stored *checkpoint, sequence []gitstore.CommitMetadata) {
+			decoded := mustVerifyIntent(t, stored.Events[0].Signed)
+			trailers := append(append([]string(nil), decoded.RestsOn...), "git:sha1:"+strings.Repeat("f", 40))
+			sequence[1].Message = intent.Envelope(stored.Events[0].Signed, trailers)
+		}},
+		{name: "commit tree", mutate: func(_ *checkpoint, sequence []gitstore.CommitMetadata) {
+			sequence[1].Tree = strings.Repeat("f", 40)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stored := cloneCheckpoint(t, original)
+			sequence := append([]gitstore.CommitMetadata(nil), originalSequence...)
+			test.mutate(&stored, sequence)
+			if _, err := validateCheckpoint(stored, desc, sequence); err == nil {
+				t.Fatal("checkpoint accepted metadata mutation")
+			}
+		})
+	}
+}
+
 func TestTruncatedCheckpointCannotPoisonSubmitterDedup(t *testing.T) {
 	f, _, requests, stored := checkpointState(t, 3)
 	stored.Events = append([]checkpointEvent(nil), stored.Events[1:]...)
