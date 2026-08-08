@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cce68919996c546f9699bb48c5fb0946b55c9f70","text":"Retire Task2b ready report for ad5e0c6; replacement report will cite exact repaired head dfa0206."}
+{"kind":"artifact","text":"Task2b repaired worktree visibility implementation at exact head dfa02060c3e3b9f2c0c052150a28ba3491ca47d4.","body":{"commit":"dfa02060c3e3b9f2c0c052150a28ba3491ca47d4","path":"."}}
