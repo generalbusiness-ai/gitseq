@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	Version   uint64 = 0
-	domainTag        = "gitseq.intent.v0\x00"
+	Version             uint64 = 0
+	domainTag                  = "gitseq.intent.v0\x00"
+	MaxStringBytes             = 32 << 10
+	MaxCausalReferences        = 4096
 )
 
 var (
@@ -75,12 +77,18 @@ func (i Intent) Validate() error {
 		if value == "" {
 			return fmt.Errorf("%s is required", name)
 		}
+		if len(value) > MaxStringBytes {
+			return fmt.Errorf("%s exceeds %d bytes", name, MaxStringBytes)
+		}
 		if strings.ContainsAny(value, "\r\n\x00") {
 			return fmt.Errorf("%s contains a forbidden control byte", name)
 		}
 	}
+	if len(i.RestsOn) > MaxCausalReferences {
+		return fmt.Errorf("causal references exceed %d entries", MaxCausalReferences)
+	}
 	for _, ref := range i.RestsOn {
-		if ref == "" || strings.ContainsAny(ref, "\r\n\x00") {
+		if ref == "" || len(ref) > MaxStringBytes || strings.ContainsAny(ref, "\r\n\x00") {
 			return errors.New("invalid causal reference")
 		}
 	}
