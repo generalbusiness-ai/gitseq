@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review deployment note exact head 497c290cce9de539602c1b85cbada19125723f10, model the claim/publication/mirror reconciliation states including lost or concurrent claims, verify the canonical decoded intent-text byte anchor, re-audit every spike case for cannot-fail structure, run repository gates, and report APPROVED or CHANGES-REQUESTED against that exact head."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9471f7f16c25abda7271b430681545bc225a8e01"}
