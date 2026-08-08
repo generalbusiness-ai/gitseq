@@ -649,8 +649,8 @@ func scanAfter(ctx context.Context, store gitstore.Store, base scannedLog, head 
 		if parentErr != nil {
 			return scannedLog{}, parentErr
 		}
-		if len(parents) != 1 || parents[0] != expectedParent {
-			return scannedLog{}, fmt.Errorf("%w: commit %s does not follow %s", ErrNotDescendant, commit, expectedParent)
+		if err := validateChainParents(1, parents, expectedParent); err != nil {
+			return scannedLog{}, fmt.Errorf("%w: commit %s does not follow %s: %v", ErrNotDescendant, commit, expectedParent, err)
 		}
 		if err := store.VerifySSHCommit(ctx, commit, "sequencer", desc.SequencerPublicKey); err != nil {
 			return scannedLog{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)

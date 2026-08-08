@@ -320,6 +320,18 @@ func TestSubmitRefusesWrongSequencerKeyBeforeCAS(t *testing.T) {
 	}
 }
 
+func TestVerifierRejectsWrongSequencerSignatureOnColdAudit(t *testing.T) {
+	f := newFixture(t, "sha1")
+	wrongKey := filepath.Join(t.TempDir(), "wrong-sequencer")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
+		t.Fatal(err)
+	}
+	appendExternalCommit(t, f, f.request(t, actor(t), "wrong-sequencer-cold", []byte("wrong"), nil), f.genesis, wrongKey)
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), "sequencer signature") {
+		t.Fatalf("wrong sequencer cold-audit error = %v", err)
+	}
+}
+
 func TestSubmitterReusesExactHeadAndRebuildsAfterExternalAdvance(t *testing.T) {
 	f := newFixture(t, "sha1")
 	private := actor(t)
@@ -625,6 +637,35 @@ func TestSizeCeilingAndEnvelopeOnlyAdmissionHook(t *testing.T) {
 	verification, err := Verify(f.ctx, f.store, f.genesis)
 	if err != nil || verification.Events != 0 {
 		t.Fatalf("refused admissions changed the log: %#v, %v", verification, err)
+	}
+}
+
+func TestSubmitChargesPayloadAndAllAttachmentsToOneCeiling(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	payload := make([]byte, 600<<10)
+	attachments := map[string][]byte{"first.bin": make([]byte, 220<<10), "second.bin": make([]byte, 220<<10)}
+	tree, err := f.scratch.WritePayloadTree(f.ctx, payload, attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := intent.Sign(intent.Intent{Version: intent.Version, Target: "git:" + f.format + ":" + f.genesis, Schema: "ceiling.v0", PayloadTree: "git:" + f.format + ":" + tree, IdempotencyNS: "ceiling", IdempotencyKey: "combined-attachments"}, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Submit(f.ctx, f.store, Request{Signed: signed, Payload: payload, Attachments: attachments}, Options{SigningKey: f.signingKey}); err == nil || !strings.Contains(err.Error(), "event exceeds genesis ceiling") {
+		t.Fatalf("combined payload and attachments error = %v", err)
+	}
+	after, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("combined ceiling refusal moved sequence: before=%s after=%s", before, after)
 	}
 }
 
