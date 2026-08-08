@@ -7,6 +7,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -211,6 +213,36 @@ func appendExternalCommit(t *testing.T, f fixtureState, request Request, parent,
 		t.Fatal(err)
 	}
 	return commit
+}
+
+func signedCommitWithParents(t *testing.T, f fixtureState, tree string, parents []string, message, signingKey string) string {
+	t.Helper()
+	arguments := []string{"--git-dir", f.store.Repo, "-c", "gpg.format=ssh", "-c", "user.signingKey=" + signingKey, "commit-tree", "-S", tree}
+	for _, parent := range parents {
+		arguments = append(arguments, "-p", parent)
+	}
+	command := exec.Command("git", arguments...)
+	command.Stdin = strings.NewReader(message)
+	command.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=hostile fixture", "GIT_AUTHOR_EMAIL=hostile@example.invalid", "GIT_AUTHOR_DATE=1700000000 +0000",
+		"GIT_COMMITTER_NAME=gitseq sequencer", "GIT_COMMITTER_EMAIL=sequencer@gitseq.invalid", "GIT_COMMITTER_DATE=1700000000 +0000",
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("signed commit-tree: %v: %s", err, output)
+	}
+	return strings.TrimSpace(string(output))
+}
+
+func rawTree(t *testing.T, store gitstore.Store, listing string) string {
+	t.Helper()
+	command := exec.Command("git", "--git-dir", store.Repo, "mktree")
+	command.Stdin = strings.NewReader(listing)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mktree: %v: %s", err, output)
+	}
+	return strings.TrimSpace(string(output))
 }
 
 func TestCreateRejectsSigningKeyThatDoesNotMatchDescriptor(t *testing.T) {
@@ -663,7 +695,7 @@ func TestVerifierAppliesCeilingToEnvelopeAndPayloadTogether(t *testing.T) {
 	}
 }
 
-func TestVerifierRejectsRebindingAndTrailerMutation(t *testing.T) {
+func TestVerifierRejectsIntentReboundToAnotherLog(t *testing.T) {
 	fA := newFixture(t, "sha1")
 	fB := newFixture(t, "sha1")
 	private := actor(t)
@@ -700,9 +732,21 @@ func TestVerifierRejectsRebindingAndTrailerMutation(t *testing.T) {
 	if _, err := Verify(fB.ctx, fB.store, fB.genesis); err == nil {
 		t.Fatal("verifier accepted an intent rebound into another log")
 	}
+}
 
-	// The original log is valid; replace its trailer in another maliciously
-	// sequenced commit and ensure intent-to-envelope consistency catches it.
+func TestVerifierRejectsAlteredCausalTrailersWithFreshIdentity(t *testing.T) {
+	fA := newFixture(t, "sha1")
+	private := actor(t)
+	request := fA.request(t, private, "altered-trailers-fresh", []byte("claim"), []string{"git:sha1:external#git:sha1:event"})
+	decoded := mustVerifyIntent(t, request.Signed)
+	writtenTree, err := fA.store.WritePayloadTree(fA.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, signedTree, err := gitstore.ParseTypedOID(decoded.PayloadTree)
+	if err != nil || writtenTree != signedTree {
+		t.Fatalf("payload tree = %s, signed = %s, err=%v", writtenTree, signedTree, err)
+	}
 	headA, _ := fA.store.Head(fA.ctx, Ref(fA.genesis))
 	mutatedMessage := intent.Envelope(request.Signed, []string{"git:sha1:altered#git:sha1:event"})
 	mutated, err := fA.store.SignedCommit(fA.ctx, signedTree, headA, mutatedMessage, fA.signingKey, gitstore.CommitIdentity{
@@ -715,8 +759,176 @@ func TestVerifierRejectsRebindingAndTrailerMutation(t *testing.T) {
 	if err := fA.store.UpdateRef(fA.ctx, Ref(fA.genesis), mutated, headA); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Verify(fA.ctx, fA.store, fA.genesis); err == nil {
-		t.Fatal("verifier accepted altered causal trailers")
+	if _, err := Verify(fA.ctx, fA.store, fA.genesis); err == nil || !strings.Contains(err.Error(), "causal trailers differ") {
+		t.Fatalf("altered causal trailer error = %v", err)
+	}
+}
+
+func TestSequenceBoundsPinNamedGenesisAndHeadIndependently(t *testing.T) {
+	commits := []string{"genesis", "event", "head"}
+	if err := validateSequenceBounds(commits, "genesis", "head"); err != nil {
+		t.Fatalf("valid sequence bounds rejected: %v", err)
+	}
+	if err := validateSequenceBounds(commits, "other-genesis", "head"); err == nil || !strings.Contains(err.Error(), "named genesis") {
+		t.Fatalf("wrong genesis boundary error = %v", err)
+	}
+	if err := validateSequenceBounds(commits, "genesis", "other-head"); err == nil || !strings.Contains(err.Error(), "named head") {
+		t.Fatalf("wrong head boundary error = %v", err)
+	}
+}
+
+func TestChainParentGuardsPinGenesisAndEventsIndependently(t *testing.T) {
+	if err := validateChainParents(0, nil, ""); err != nil {
+		t.Fatalf("parentless genesis rejected: %v", err)
+	}
+	if err := validateChainParents(0, []string{"ancestor"}, ""); err == nil || !strings.Contains(err.Error(), "genesis has a parent") {
+		t.Fatalf("parented genesis error = %v", err)
+	}
+	if err := validateChainParents(1, []string{"prior"}, "prior"); err != nil {
+		t.Fatalf("single-parent event rejected: %v", err)
+	}
+	if err := validateChainParents(1, []string{"prior", "other"}, "prior"); err == nil || !strings.Contains(err.Error(), "single-parent") {
+		t.Fatalf("merge event error = %v", err)
+	}
+	if err := validateChainParents(1, []string{"other"}, "prior"); err == nil || !strings.Contains(err.Error(), "single-parent") {
+		t.Fatalf("wrong-parent event error = %v", err)
+	}
+}
+
+func TestVerifierRejectsSequencerSignedEventWithInvalidActorSignature(t *testing.T) {
+	f := newFixture(t, "sha1")
+	request := f.request(t, actor(t), "invalid-actor-signature", []byte("payload"), nil)
+	decoded := mustVerifyIntent(t, request.Signed)
+	tree, err := f.store.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Signed.Signature[0] ^= 0xff
+	commit, err := f.store.SignedCommit(f.ctx, tree, f.genesis, intent.Envelope(request.Signed, decoded.RestsOn), f.signingKey, gitstore.CommitIdentity{
+		AuthorName: "hostile", AuthorEmail: "hostile@example.invalid", CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), "invalid actor signature") {
+		t.Fatalf("invalid actor signature error = %v", err)
+	}
+}
+
+func TestVerifierRejectsCommitTreeDifferentFromSignedPayloadTree(t *testing.T) {
+	f := newFixture(t, "sha1")
+	request := f.request(t, actor(t), "tree-substitution", []byte("signed"), nil)
+	decoded := mustVerifyIntent(t, request.Signed)
+	substitutedTree, err := f.store.WritePayloadTree(f.ctx, []byte("substituted"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := f.store.SignedCommit(f.ctx, substitutedTree, f.genesis, intent.Envelope(request.Signed, decoded.RestsOn), f.signingKey, gitstore.CommitIdentity{
+		AuthorName: "hostile", AuthorEmail: "hostile@example.invalid", CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), "commit tree differs from signed intent") {
+		t.Fatalf("substituted tree error = %v", err)
+	}
+}
+
+func TestVerifierRejectsExtraPayloadTreeEntry(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	eventOID, err := f.store.WriteBlob(f.ctx, []byte("event"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	extraOID, err := f.store.WriteBlob(f.ctx, []byte("extra"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := rawTree(t, f.store, "100644 blob "+eventOID+"\tevent\n100644 blob "+extraOID+"\textra\n")
+	signed, err := intent.Sign(intent.Intent{Version: intent.Version, Target: "git:" + f.format + ":" + f.genesis, Schema: "shape.v0", PayloadTree: "git:" + f.format + ":" + tree, IdempotencyNS: "shape", IdempotencyKey: "extra-entry"}, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := f.store.SignedCommit(f.ctx, tree, f.genesis, intent.Envelope(signed, nil), f.signingKey, gitstore.CommitIdentity{AuthorName: "hostile", AuthorEmail: "hostile@example.invalid", CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), "payload shape") {
+		t.Fatalf("extra payload entry error = %v", err)
+	}
+}
+
+func TestVerifierRejectsInvalidAttachmentName(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	eventOID, err := f.store.WriteBlob(f.ctx, []byte("event"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attachmentOID, err := f.store.WriteBlob(f.ctx, []byte("evidence"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attachments := rawTree(t, f.store, "100644 blob "+attachmentOID+"\t.hidden\n")
+	tree := rawTree(t, f.store, "100644 blob "+eventOID+"\tevent\n040000 tree "+attachments+"\tattachments\n")
+	signed, err := intent.Sign(intent.Intent{Version: intent.Version, Target: "git:" + f.format + ":" + f.genesis, Schema: "shape.v0", PayloadTree: "git:" + f.format + ":" + tree, IdempotencyNS: "shape", IdempotencyKey: "bad-attachment"}, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := f.store.SignedCommit(f.ctx, tree, f.genesis, intent.Envelope(signed, nil), f.signingKey, gitstore.CommitIdentity{AuthorName: "hostile", AuthorEmail: "hostile@example.invalid", CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), "invalid payload path") {
+		t.Fatalf("invalid attachment name error = %v", err)
+	}
+}
+
+func TestVerifierRejectsExternallySequencedDedupConflict(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	first, err := Submit(f.ctx, f.store, f.request(t, private, "conflict", []byte("first"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendExternalCommit(t, f, f.request(t, private, "conflict", []byte("second"), nil), first.Head, f.signingKey)
+	if _, err := Verify(f.ctx, f.store, f.genesis); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("external dedup conflict error = %v", err)
+	}
+}
+
+func TestVerifierRejectsSequencerSignedMergeEvent(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	first, err := Submit(f.ctx, f.store, f.request(t, private, "first-parent", []byte("first"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := f.request(t, private, "merge-event", []byte("merge"), nil)
+	decoded := mustVerifyIntent(t, request.Signed)
+	tree, err := f.store.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit := signedCommitWithParents(t, f, tree, []string{first.Head, f.genesis}, intent.Envelope(request.Signed, decoded.RestsOn), f.signingKey)
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, first.Head); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), "single-parent chained") {
+		t.Fatalf("merge event error = %v", err)
 	}
 }
 
