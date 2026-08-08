@@ -32,12 +32,17 @@ citing a request that does not exist is ineffective, and a report on
 that promise is ineffective in turn, so an unearned approval cannot
 carry force.
 
-A modern authority grant is the one case where being recorded and having
-effect come apart, and it is worth stating on its own because the table
-above cannot show it. A `roster` statement conferring a role takes its
-**first** basis as the membership it rests on. Put the membership grant
-anywhere else and the statement is still judged effective, its
-ratification is still effective, and the role never becomes active:
+Authority grants need a paragraph of their own, because for them the
+table above is not the whole story. Everywhere else in it, a citation
+that satisfies the rule gives an act its force. For a grant it does not:
+a grant can satisfy every citation rule, be judged effective, be
+ratified, and still confer nothing.
+
+There are two ways that happens, and they are different questions.
+
+**Citation order, at the moment of appending.** A `roster` statement
+conferring a role takes its **first** basis as the membership it rests
+on, and looks nowhere else:
 
 | grant's `rests_on` | verdict | role active |
 |---|---|---|
@@ -45,9 +50,25 @@ ratification is still effective, and the role never becomes active:
 | membership first, surplus dangling basis | effective | yes |
 | dangling first, membership second | **effective** | **no** |
 
-So for grants, do not read the verdict as the answer. An effective act
-and a live authority are two questions, and only the first appears in
-the decisions list.
+**Liveness, at the moment of asking.** Current authority also requires
+that both the grant and the membership it rests on are still live. Two
+distinct retirements, with different blast radii:
+
+- Retiring the explicit grant — what `gs role-revoke` does — retires
+  that role and nothing else. If the grant took force through a
+  ratification, retiring the ratification has the same effect.
+- Retiring the **membership** removes membership itself, and with it
+  every non-membership role that named that membership as its basis.
+  One supersede, and the principal is no longer a participant.
+
+So for grants, do not read the verdict as the answer. Whether an act was
+effective and whether an authority is live now are two questions, asked
+at two different times, and only the first appears in the decisions
+list. `gs actors` answers the second.
+
+This is narrower than "a record can be recorded without effect", which
+is true of the whole log and is what the verdicts exist to say. What is
+peculiar to grants is that the verdict does not carry the answer.
 
 Everywhere else a mistyped identifier is simply kept. A dangling basis
 on an assert or artifact records as effective, and so does a surplus
