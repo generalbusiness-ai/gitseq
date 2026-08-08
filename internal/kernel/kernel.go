@@ -13,8 +13,8 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 
-	"gitseq/spike/internal/gitstore"
-	"gitseq/spike/internal/intent"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 )
 
 const genesisMarker = "gitseq-genesis-v0"

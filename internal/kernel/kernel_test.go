@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"gitseq/spike/internal/gitstore"
-	"gitseq/spike/internal/intent"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 )
 
 type fixtureState struct {

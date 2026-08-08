@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"gitseq/spike/internal/app"
-	"gitseq/spike/internal/nexus"
+	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 )
 
 func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {

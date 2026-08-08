@@ -19,10 +19,10 @@ import (
 	"sync"
 	"time"
 
-	"gitseq/spike/internal/gitstore"
-	"gitseq/spike/internal/intent"
-	"gitseq/spike/internal/kernel"
-	"gitseq/spike/internal/workroom"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 type Actor struct {

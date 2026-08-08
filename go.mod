@@ -1,4 +1,4 @@
-module gitseq/spike
+module github.com/generalbusiness-ai/gitseq
 
 go 1.26.0
 

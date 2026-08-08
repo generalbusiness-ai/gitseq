@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"gitseq/spike/internal/gitstore"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 )
 
 func newHub(t *testing.T, historyCap int) *Hub {

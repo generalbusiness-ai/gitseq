@@ -88,7 +88,7 @@ func TestHandleIsNotDerivableFromTheSessionIdentifier(t *testing.T) {
 	for name, candidate := range map[string]string{
 		"plain sha256":  "session:" + hex.EncodeToString(sum(guessable)[:8]),
 		"full sha256":   "session:" + hex.EncodeToString(sum(guessable)),
-		"domain-tagged": "session:" + hex.EncodeToString(sum("gitseq.nexus.session-handle.v0\x00"+guessable)[:8]),
+		"domain-tagged": "session:" + hex.EncodeToString(sum("gitseq.nexus.session-handle.v0\x00" + guessable)[:8]),
 	} {
 		if handle == candidate {
 			t.Fatalf("handle is reproducible offline via %s; it is an oracle for guessing the identifier", name)

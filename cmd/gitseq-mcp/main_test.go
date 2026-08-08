@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"gitseq/spike/internal/app"
-	"gitseq/spike/internal/service"
-	"gitseq/spike/internal/workroom"
+	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/service"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 	"net/http/httptest"
 )
 

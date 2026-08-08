@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"gitseq/spike/internal/intent"
-	"gitseq/spike/internal/kernel"
-	"gitseq/spike/internal/workroom"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 func testRepo(t testing.TB) string {

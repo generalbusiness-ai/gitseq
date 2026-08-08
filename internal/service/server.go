@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"gitseq/spike/internal/app"
-	"gitseq/spike/internal/kernel"
-	"gitseq/spike/internal/nexus"
+	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 )
 
 type Frontier struct {

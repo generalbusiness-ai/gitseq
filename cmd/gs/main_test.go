@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitseq/spike/internal/app"
-	"gitseq/spike/internal/workroom"
+	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 func TestValidateLoopbackListen(t *testing.T) {

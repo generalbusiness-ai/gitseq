@@ -377,8 +377,10 @@ ephemeral state does not survive, and the adapter will not imply it did.
 
 | Path | Contents |
 |---|---|
+| `cmd/` | Shipping `gs` and `gitseq-mcp` commands. |
 | `docs/` | User documentation. |
+| `internal/` | Production kernel, workroom profile, nexus, and service packages. |
 | `SKILL.md` | Normative contract for agents in a workroom. |
 | `notes/` | Dated design and implementation notes. |
-| `spike/` | Implementation: kernel, workroom profile, service, CLI, MCP adapter. |
+| `spike/` | Adversarial CLI, report generator, forge fixture, and six-case evidence. |
 | `ui/` | The live projection served at the listen address. |

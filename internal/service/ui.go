@@ -6,9 +6,9 @@ import (
 	"io/fs"
 	"net/http"
 
-	"gitseq/spike/internal/app"
-	"gitseq/spike/internal/gitstore"
-	"gitseq/spike/internal/workroom"
+	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 // The built chat-first UI. Committed build output so `go build` needs no
