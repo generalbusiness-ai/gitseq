@@ -32,19 +32,27 @@ citing a request that does not exist is ineffective, and a report on
 that promise is ineffective in turn, so an unearned approval cannot
 carry force.
 
-Citations are necessary and not sufficient. The fold also checks **who
-signed**, and the table above does not show it: a promise citing a
-perfectly effective request is still ineffective when its author is not
-the performer the request named — measured, the reason reads `promise
-actor is not the requested performer`. A report needs the promisor's own
-signature in the same way, and `ratify` needs authority over that
-particular target. So satisfying the citation rule earns an act a
-hearing, not its force.
+**For the acts that have a required edge**, that edge is necessary and
+not sufficient — the fold also checks **who signed**, which the table
+does not show. A promise citing a perfectly effective request is still
+ineffective when its author is not the performer the request named;
+measured, the reason reads `promise actor is not the requested
+performer`. A report needs the promisor's own signature in the same
+way, `ratify` needs authority over that particular target, and
+`supersede` is likewise constrained. For those acts, satisfying the
+citation rule earns a hearing, not force.
+
+That qualification matters: `assert`, `artifact`, `propose` and the
+other ordinary statements require no resolving citation at all, so
+there is nothing for a citation to be insufficient *for*. The row that
+says "nothing" means it.
 
 Authority grants then need a paragraph of their own, for a different
-reason. For every other act, effectiveness is settled once, when the act
-is appended. A grant can satisfy every rule, be judged effective, be
-ratified — and still confer nothing, either then or later.
+reason. For every other act, effectiveness is settled once, when the
+act is appended, and stays settled. A grant can satisfy every rule, be
+judged effective, be ratified — and still confer nothing, for as long
+as its grant, its ratification and its membership basis are not **all
+live at once**.
 
 There are two ways that happens, and they are different questions.
 
@@ -76,10 +84,20 @@ distinct retirements, with different blast radii:
   every non-membership role that named that membership as its basis.
   One supersede, and the principal is no longer a participant.
 
+**Liveness is reversible, and a verdict is not.** Retirement can itself
+be retired, and authority comes back. Measured: superseding a
+membership takes a principal from `[participant]` to absent from the
+roster entirely, and superseding *that supersession* returns them to
+`[participant]`. So "this grant confers nothing" is never a permanent
+fact about the grant — it is a statement about right now, and the same
+grant may confer tomorrow without anyone appending a new one. Decisions
+are history and do not move; authority is current and does.
+
 So for grants, do not read the verdict as the answer. Whether an act was
 effective and whether an authority is live now are two questions, asked
 at two different times, and only the first appears in the decisions
-list. `gs actors` answers the second.
+list. `gs actors` answers the second, and answers it only for the
+moment you ask.
 
 This is narrower than "a record can be recorded without effect", which
 is true of the whole log and is what the verdicts exist to say. What is
