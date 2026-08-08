@@ -285,7 +285,7 @@ func (s Store) VerifySSHCommit(ctx context.Context, oid, principal, publicKey st
 // OpenSSH allowed-signers line.
 func ValidateSSHPublicKey(publicKey string) error {
 	fields := strings.Split(publicKey, " ")
-	if len(fields) != 2 || fields[0] != "ssh-ed25519" || fields[1] == "" {
+	if len(fields) != 2 || fields[0] != "ssh-ed25519" {
 		return errors.New("sequencer public key must be canonical ssh-ed25519")
 	}
 	raw, err := base64.StdEncoding.DecodeString(fields[1])
