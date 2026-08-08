@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6c7d1c55ce3b796cd8377d52d4bcf1f1c69a5cc5","text":"Retire Task2g ready report for 1b3df0ec; replacement report will cite the exact repaired head 65ab3f68."}
+{"kind":"artifact","text":"Task2g resident trust and benchmark repair is frozen at exact head 65ab3f68ad64f47db9ecfe80857d879d41ee233e.","body":{"commit":"65ab3f68ad64f47db9ecfe80857d879d41ee233e","path":"."}}
