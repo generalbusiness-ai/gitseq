@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a939aa11e1f5ab5595a6b35cec3835f366feb496"}
+{"kind":"promise","text":"I will review deployment round 13 at exact head fbed0df7020b61f275eff622557c457cc7933d0f. I will probe the header/root/parent roles, content-addressed profile sufficiency, base and entry-count falsifiability, cross-actor aliases and ref serialization, plus the repaired case controls, then report approved or changes-requested."}
