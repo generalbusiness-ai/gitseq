@@ -59,7 +59,11 @@ func RenderStatus(projection Projection) []byte {
 			if artifact.SuccessionUnrecorded {
 				successionUnrecorded++
 				successionPaths[artifact.Path] = struct{}{}
-				notes = append(notes, "succession not recorded")
+				note := "succession not recorded"
+				if artifact.LivePredecessors > 1 {
+					note = fmt.Sprintf("succession not recorded (%d live predecessors)", artifact.LivePredecessors)
+				}
+				notes = append(notes, note)
 			}
 			fmt.Fprintf(&output, "| %s | %s@%s | %s | %s |\n", status, escape(artifact.Path), short(artifact.Commit), short(artifact.Event), escape(strings.Join(notes, ", ")))
 		}
@@ -70,7 +74,11 @@ func RenderStatus(projection Projection) []byte {
 			fmt.Fprintf(&output, "%d cite no basis and can never go stale; their silence is not currency.\n", unableToFlare)
 		}
 		if successionUnrecorded > 0 {
-			fmt.Fprintf(&output, "%d follow a live artifact at the same path without superseding it, across %d paths; anything resting on those predecessors still reads current.\n", successionUnrecorded, len(successionPaths))
+			// Count supersessions owed, not the artifacts noticing them and not
+			// the paths they sit on. With A, B and C at one path, the repair is
+			// two supersessions, and superseding A clears B's warning without
+			// touching C's.
+			fmt.Fprintf(&output, "%d omitted supersessions across %d paths: %d artifacts follow a live artifact at the same path without superseding it, and anything resting on those predecessors still reads current.\n", projection.OmittedSupersessions, len(successionPaths), successionUnrecorded)
 		}
 	}
 	output.WriteString("\n## Attempts\n\n")

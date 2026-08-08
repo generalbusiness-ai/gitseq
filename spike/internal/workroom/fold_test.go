@@ -617,9 +617,103 @@ func TestStatusPageCountsSuccessionPathsAsWellAsArtifacts(t *testing.T) {
 		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "four", Body: map[string]string{"path": "ui", "commit": "b1"}}, "w0"),
 		event(t, "w7", agent, SchemaState, State{Kind: KindArtifact, Text: "five", Body: map[string]string{"path": "ui", "commit": "b2"}}, "w0"),
 	)
-	page := RenderStatus(Fold(records))
-	want := "3 follow a live artifact at the same path without superseding it, across 2 paths"
+	projection := Fold(records)
+	// Three supersessions are owed: a1 and a2 on the spike path, b1 on ui.
+	// Not two, which is the path count.
+	if projection.OmittedSupersessions != 3 {
+		t.Fatalf("owed supersessions = %d, want 3", projection.OmittedSupersessions)
+	}
+	page := RenderStatus(projection)
+	want := "3 omitted supersessions across 2 paths: 3 artifacts follow a live artifact"
 	if !bytes.Contains(page, []byte(want)) {
-		t.Fatalf("page does not separate rows from situations, want %q\n%s", want, page)
+		t.Fatalf("page does not separate owed acts from rows and paths, want %q\n%s", want, page)
+	}
+}
+
+// Rows and owed acts agree in the fixture above, so it cannot show the
+// aggregate is the right quantity. A fourth artifact on one path makes them
+// differ: four rows notice a live ancestor while four supersessions are owed
+// and a naive sum of per-row figures would give seven.
+func TestOwedSupersessionsDivergeFromRowCount(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "one", Body: map[string]string{"path": "spike", "commit": "a1"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "two", Body: map[string]string{"path": "spike", "commit": "a2"}}, "w0"),
+		event(t, "w5", agent, SchemaState, State{Kind: KindArtifact, Text: "three", Body: map[string]string{"path": "spike", "commit": "a3"}}, "w0"),
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "four", Body: map[string]string{"path": "spike", "commit": "a4"}}, "w0"),
+		event(t, "w7", agent, SchemaState, State{Kind: KindArtifact, Text: "five", Body: map[string]string{"path": "ui", "commit": "b1"}}, "w0"),
+		event(t, "w8", agent, SchemaState, State{Kind: KindArtifact, Text: "six", Body: map[string]string{"path": "ui", "commit": "b2"}}, "w0"),
+	)
+	projection := Fold(records)
+	if projection.OmittedSupersessions != 4 {
+		t.Fatalf("owed supersessions = %d, want 4 (a1, a2, a3, b1)", projection.OmittedSupersessions)
+	}
+	sum := 0
+	for _, artifact := range projection.Artifacts {
+		sum += artifact.LivePredecessors
+		if artifact.Commit == "a4" && artifact.LivePredecessors != 3 {
+			t.Fatalf("a4 live predecessors = %d, want 3", artifact.LivePredecessors)
+		}
+	}
+	if sum == projection.OmittedSupersessions {
+		t.Fatalf("per-row sum %d equals the owed count; the fixture cannot tell them apart", sum)
+	}
+}
+
+// Retiring the immediate predecessor must not clear the warning while an
+// earlier artifact at the same path is still live.
+func TestRetiringOnePredecessorDoesNotHideAnEarlierLiveOne(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "one", Body: map[string]string{"path": "spike", "commit": "a1"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "two", Body: map[string]string{"path": "spike", "commit": "a2"}}, "w0"),
+		event(t, "w5", operator, SchemaSupersede, Supersede{Target: "w4", Text: "retire the middle one"}, "w4"),
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "three", Body: map[string]string{"path": "spike", "commit": "a3"}}, "w0"),
+	)
+	projection := Fold(records)
+	seen := false
+	for _, artifact := range projection.Artifacts {
+		if artifact.Commit != "a3" {
+			continue
+		}
+		seen = true
+		if !artifact.SuccessionUnrecorded {
+			t.Fatal("a3 reports a recorded succession while a1 is still live")
+		}
+		if artifact.LivePredecessors != 1 {
+			t.Fatalf("a3 live predecessors = %d, want 1 (a1 only; a2 retired)", artifact.LivePredecessors)
+		}
+	}
+	if !seen {
+		t.Fatal("a3 missing from the projection")
+	}
+}
+
+// A statement citing only events the log does not contain is as unable to
+// flare as one citing nothing: supersede needs a resolvable target.
+func TestArtifactCitingOnlyUnresolvableBasesCannotFlare(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "dangling", Body: map[string]string{"path": "spike", "commit": "a1"}}, "does-not-exist"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "anchored", Body: map[string]string{"path": "ui", "commit": "b1"}}, "w0"),
+	)
+	projection := Fold(records)
+	checked := 0
+	for _, artifact := range projection.Artifacts {
+		switch artifact.Commit {
+		case "a1":
+			checked++
+			if !artifact.UnableToFlare {
+				t.Fatal("artifact citing only an unresolvable basis reads as able to flare")
+			}
+		case "b1":
+			// Positive control: one resolvable basis is a handle a future
+			// supersession can take. Without this the assertion above passes
+			// for an implementation marking every artifact unable to flare.
+			checked++
+			if artifact.UnableToFlare {
+				t.Fatal("artifact with a resolvable basis marked unable to flare")
+			}
+		}
+	}
+	if checked != 2 {
+		t.Fatalf("checked %d artifacts, want 2", checked)
 	}
 }

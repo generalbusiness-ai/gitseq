@@ -62,10 +62,18 @@ type Artifact struct {
 	Stale  bool   `json:"stale"`
 	// DescribesSupersededWorld carries the same narrowing as on Statement.
 	DescribesSupersededWorld bool `json:"describes_superseded_world,omitempty"`
-	// UnableToFlare records that this artifact cites no basis, so no
-	// supersession anywhere can ever make it stale. Its silence is not
-	// currency and the projection must not let it read as currency.
+	// UnableToFlare records that this artifact has no basis that any act could
+	// ever retire, so no supersession anywhere can make it stale. Its silence
+	// is not currency and the projection must not let it read as currency.
+	// Citing nothing is one way to get here; citing only events that are not
+	// in the log is the other, because supersede needs a target it can resolve.
 	UnableToFlare bool `json:"unable_to_flare,omitempty"`
+	// LivePredecessors counts earlier artifacts at the identical path that are
+	// still live, so a reader can tell two forgotten retirements from one. It
+	// is a per-row figure and must not be summed across rows: with A, B and C
+	// at one path, B counts A and C counts both, so the total double-counts A.
+	// The situation count is Projection.OmittedSupersessions.
+	LivePredecessors int `json:"live_predecessors,omitempty"`
 	// SuccessionUnrecorded records that an earlier artifact for the identical
 	// path is still live: a probable forgotten supersession. It is a warning
 	// about practice, not a verdict — the act itself stays effective. Paths
@@ -106,6 +114,11 @@ type Projection struct {
 	Actors      map[string]ActorState `json:"actors"`
 	Provenance  map[string][]string   `json:"provenance"`
 	OpaqueKinds map[string][]string   `json:"opaque_kinds,omitempty"`
+	// OmittedSupersessions counts artifacts that a later artifact at the same
+	// path should have retired and did not, each counted once. It is the number
+	// of supersessions still owed — not the number of artifacts noticing one,
+	// and not the number of paths, both of which understate the repair.
+	OmittedSupersessions int `json:"omitted_supersessions,omitempty"`
 }
 
 type parsedRecord struct {
@@ -573,6 +586,20 @@ func (f *foldState) isArtifact(event string) bool {
 	return ok && state.Kind == KindArtifact
 }
 
+// unableToFlare reports whether nothing in the log could ever make a statement
+// with these bases stale. Citing nothing qualifies; so does citing only events
+// the log does not contain, since supersede requires a resolvable target and
+// no act can retire what is not there. One resolvable basis is enough to
+// escape — it is a handle a future supersession can take hold of.
+func (f *foldState) unableToFlare(restsOn []string) bool {
+	for _, basis := range restsOn {
+		if _, exists := f.byID[basis]; exists {
+			return false
+		}
+	}
+	return true
+}
+
 func (f *foldState) ratified(target string, retired map[string]bool) bool {
 	for _, event := range f.ratifications[target] {
 		if !retired[event] && f.decisions[event].Verdict == Effective {
@@ -587,7 +614,10 @@ func (f *foldState) project() Projection {
 	stale, world := f.staleness(retired)
 	// Most recent artifact per exact path, so a later artifact for the same
 	// path can see whether its immediate predecessor was ever superseded.
-	lastByPath := make(map[string]string)
+	// Every artifact seen at a path, not only the most recent. Tracking just
+	// the immediate predecessor let a retirement hide a live ancestor: with A,
+	// B and C at one path, retiring B cleared C's warning while A stayed live.
+	seenByPath := make(map[string][]string)
 	projection := Projection{
 		Decisions: []Decision{}, Acts: []Act{}, Statements: []Statement{}, Commitments: []Commitment{}, Artifacts: []Artifact{},
 		Actors: make(map[string]ActorState), Provenance: make(map[string][]string),
@@ -619,15 +649,31 @@ func (f *foldState) project() Projection {
 		}
 		if state.Kind == KindArtifact {
 			path := state.Body["path"]
-			predecessor, hadPredecessor := lastByPath[path]
+			live := 0
+			for _, predecessor := range seenByPath[path] {
+				if !retired[predecessor] {
+					live++
+				}
+			}
 			projection.Artifacts = append(projection.Artifacts, Artifact{
 				Event: record.record.ID, Path: path, Commit: state.Body["commit"],
 				Stale:                    retired[record.record.ID] || stale[record.record.ID],
 				DescribesSupersededWorld: world[record.record.ID],
-				UnableToFlare:            len(record.record.RestsOn) == 0,
-				SuccessionUnrecorded:     hadPredecessor && !retired[predecessor],
+				UnableToFlare:            f.unableToFlare(record.record.RestsOn),
+				SuccessionUnrecorded:     live > 0,
+				LivePredecessors:         live,
 			})
-			lastByPath[path] = record.record.ID
+			seenByPath[path] = append(seenByPath[path], record.record.ID)
+		}
+	}
+	// Each un-retired artifact that something later replaced is one supersession
+	// still owed. Counted here rather than summed from LivePredecessors, which
+	// would count a shared ancestor once per successor.
+	for _, events := range seenByPath {
+		for _, event := range events[:max(0, len(events)-1)] {
+			if !retired[event] {
+				projection.OmittedSupersessions++
+			}
 		}
 	}
 	for _, grant := range f.roleGrants {
