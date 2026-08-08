@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged requester-ratified exact-head workflow guard approval at exact implementation head eccd1d4947aa8c1313128e8b0ac042db9c168ca3 into main at 02f56a5c8f05e4ac0421b1c677aaf5b6e6a0492d. Merge second parent is the approved exact head. Fresh make vet, test, race, build and diff check pass.","body":{"commit":"02f56a5c8f05e4ac0421b1c677aaf5b6e6a0492d","path":"/Users/hughpyle/play/gitseq"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a939aa11e1f5ab5595a6b35cec3835f366feb496"}
