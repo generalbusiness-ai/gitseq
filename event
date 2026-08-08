@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will bridge and report the completed Task 2e repair against the live replacement request, preserving exact-head re-review before merge.","body":{"branch":"task/fresh-session-orientation","scope":"task-2e-review-repair-live"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a4321e4b4e21578a95df26fc9e1bb3171a80a01","text":"Retracted: this artifact inherited transitive staleness from the retired exact-head review chain. The implementation remains at the same source head; a live-basis bridge and replacement artifact follow."}
