@@ -85,6 +85,10 @@ few governance kinds. Their meaning belongs to the room's practice.
 | `gs verify` | Check every signature and the sequence integrity. |
 | `gs provenance <event>` | Walk back through everything an event rests on. |
 
+Resident snapshots are immutable borrowed views. In-process consumers may
+receive maps and slices owned by the workspace cache and must not mutate them;
+JSON and MCP adapters only serialize those values.
+
 The browser's Work drawer also reads local worktree state. That endpoint emits
 only checkout basenames, branch/HEAD, and explicit clean, dirty, detached,
 bare, locked, prunable, or unavailable state; it never enters the durable

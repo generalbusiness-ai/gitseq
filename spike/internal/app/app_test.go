@@ -3,18 +3,21 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"gitseq/spike/internal/intent"
+	"gitseq/spike/internal/kernel"
 	"gitseq/spike/internal/workroom"
 )
 
-func testRepo(t *testing.T) string {
+func testRepo(t testing.TB) string {
 	t.Helper()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -30,6 +33,94 @@ func actRecord(t *testing.T, ctx context.Context, workspace *Workspace, actor st
 		t.Fatal(err)
 	}
 	return submission.Record
+}
+
+func eventCommit(t *testing.T, format, event string) string {
+	t.Helper()
+	_, commit, ok := strings.Cut(event, "#git:"+format+":")
+	if !ok || commit == "" {
+		t.Fatalf("invalid event id %q", event)
+	}
+	return commit
+}
+
+// Run with -benchtime=1x. Setup constructs one ordinary signed chain, then
+// compares a cold full Snapshot with the resident delta Snapshot at the same
+// successor head. A warm implementation that regresses to a full scan makes
+// the two arms converge, so the benchmark detects the failure it guards.
+func BenchmarkColdVersusResidentDeltaAtRealDepth(b *testing.B) {
+	if b.N != 1 {
+		b.Skip("run with -benchtime=1x")
+	}
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(b), "human", 1<<20)
+	if err != nil {
+		b.Fatal(err)
+	}
+	heads := map[int]string{}
+	head, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	if err != nil {
+		b.Fatal(err)
+	}
+	heads[1] = head
+	for depth := 2; depth <= 351; depth++ {
+		submission, err := workspace.Act(ctx, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "real depth",
+			RestsOn: []string{seed.ID}, IdempotencyKey: fmt.Sprintf("real-depth-%d", depth),
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+		heads[depth] = submission.Result.Head
+	}
+	current := heads[351]
+	for _, depth := range []int{25, 100, 350} {
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), heads[depth], current); err != nil {
+			b.Fatal(err)
+		}
+		current = heads[depth]
+		warm, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if _, err := warm.Snapshot(ctx); err != nil {
+			b.Fatal(err)
+		}
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), heads[depth+1], current); err != nil {
+			b.Fatal(err)
+		}
+		current = heads[depth+1]
+		cold, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			b.Fatal(err)
+		}
+		var coldSnapshot, warmSnapshot Snapshot
+		b.Run(fmt.Sprintf("depth-%d/cold", depth), func(bench *testing.B) {
+			if bench.N != 1 {
+				bench.Skip("run with -benchtime=1x")
+			}
+			bench.ReportAllocs()
+			bench.ResetTimer()
+			coldSnapshot, err = cold.Snapshot(ctx)
+			if err != nil {
+				bench.Fatal(err)
+			}
+		})
+		b.Run(fmt.Sprintf("depth-%d/delta", depth), func(bench *testing.B) {
+			if bench.N != 1 {
+				bench.Skip("run with -benchtime=1x")
+			}
+			bench.ReportAllocs()
+			bench.ResetTimer()
+			warmSnapshot, err = warm.Snapshot(ctx)
+			if err != nil {
+				bench.Fatal(err)
+			}
+		})
+		if !reflect.DeepEqual(warmSnapshot, coldSnapshot) {
+			b.Fatalf("depth %d resident delta differs from cold snapshot", depth)
+		}
+	}
 }
 
 func TestWorkspaceLifecycle(t *testing.T) {
@@ -486,6 +577,7 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	cached := workspace.snapshotCache
+	folder := workspace.snapshotFolder
 	second, err := workspace.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -498,7 +590,162 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if workspace.snapshotCache == cached || third.Head == first.Head || third.Depth != first.Depth+1 {
+	if workspace.snapshotCache == cached || workspace.snapshotFolder != folder || third.Head == first.Head || third.Depth != first.Depth+1 {
 		t.Fatalf("advanced head reused stale snapshot: first=%+v third=%+v", first, third)
 	}
+
+	external, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actRecord(t, ctx, external, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "external advance", RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "external-advance"})
+	fourth, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workspace.snapshotFolder != folder || fourth.Depth != third.Depth+1 || fourth.Head == third.Head {
+		t.Fatalf("external descendant did not extend resident folder: third=%+v fourth=%+v", third, fourth)
+	}
+	coldWorkspace, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cold, err := coldWorkspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(fourth, cold) {
+		t.Fatalf("resident delta projection differs from independent cold fold:\nresident=%+v\ncold=%+v", fourth, cold)
+	}
+
+	// If application projection state is discarded independently, the reader
+	// is intentionally replaced so recovery is a full audit rather than an
+	// unverifiable attempt to reconstruct a missing prefix from a delta.
+	workspace.snapshotCache = nil
+	recovered, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workspace.snapshotFolder == folder || recovered.Head != fourth.Head || recovered.Depth != fourth.Depth {
+		t.Fatalf("discarded projection did not recover by full audit: fourth=%+v recovered=%+v", fourth, recovered)
+	}
+}
+
+func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
+	t.Run("rewind then sibling advance", func(t *testing.T) {
+		ctx := context.Background()
+		workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := workspace.Snapshot(ctx); err != nil {
+			t.Fatal(err)
+		}
+		first := actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "first branch",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-branch-first",
+		})
+		second := actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "rewound branch",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-branch-second",
+		})
+		firstCommit := eventCommit(t, workspace.Config.ObjectFormat, first.ID)
+		secondCommit := eventCommit(t, workspace.Config.ObjectFormat, second.ID)
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), firstCommit, secondCommit); err != nil {
+			t.Fatal(err)
+		}
+		external, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actRecord(t, ctx, external, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "sibling branch",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-branch-sibling",
+		})
+		got, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		coldWorkspace, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := coldWorkspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("rewind/sibling recovery differs from cold fold:\nresident=%+v\ncold=%+v", got, want)
+		}
+	})
+
+	t.Run("base head mismatch", func(t *testing.T) {
+		ctx := context.Background()
+		workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := workspace.Snapshot(ctx); err != nil {
+			t.Fatal(err)
+		}
+		external, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actRecord(t, ctx, external, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "external",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-external",
+		})
+		actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "local",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-local",
+		})
+		got, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		coldWorkspace, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := coldWorkspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("base-head guard lost an external event:\nresident=%+v\ncold=%+v", got, want)
+		}
+	})
+
+	t.Run("replay", func(t *testing.T) {
+		ctx := context.Background()
+		workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := workspace.Snapshot(ctx); err != nil {
+			t.Fatal(err)
+		}
+		act := Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "once",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-replay",
+		}
+		actRecord(t, ctx, workspace, "human", act)
+		actRecord(t, ctx, workspace, "human", act)
+		got, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		coldWorkspace, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := coldWorkspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("replay guard applied one event twice:\nresident=%+v\ncold=%+v", got, want)
+		}
+	})
 }

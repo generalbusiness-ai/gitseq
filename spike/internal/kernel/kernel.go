@@ -19,7 +19,10 @@ import (
 
 const genesisMarker = "gitseq-genesis-v0"
 
-var ErrIdempotencyConflict = errors.New("idempotency key reused with different intent")
+var (
+	ErrIdempotencyConflict = errors.New("idempotency key reused with different intent")
+	ErrNotDescendant       = errors.New("head is not a descendant of verified frontier")
+)
 
 type GenesisDescriptor struct {
 	_                  struct{} `cbor:",toarray"`
@@ -43,6 +46,7 @@ type Result struct {
 	Head       string `json:"head"`
 	Replay     bool   `json:"replay"`
 	CASRetries int    `json:"cas_retries"`
+	BaseHead   string `json:"-"`
 }
 
 type Options struct {
@@ -54,9 +58,9 @@ type Options struct {
 
 // Submitter is the resident sequencing path. It retains only a log state that
 // scanHead has fully verified, and reuses it only while the target ref still
-// names that exact head. A cold submit or an externally advanced ref therefore
-// pays for a full scan; successive local appends update the verified dedup state
-// after their compare-and-swap succeeds.
+// names that exact head. A cold or non-descendant submit pays for a full scan;
+// descendant external advances verify only their delta, and successive local
+// appends update the verified dedup state after their compare-and-swap succeeds.
 //
 // Submit remains the stateless failover path. Keeping the cache here, rather
 // than in an HTTP or application adapter, makes the trust boundary identical
@@ -70,11 +74,12 @@ type Submitter struct {
 }
 
 type submitCache struct {
-	target    string
-	head      string
-	log       scannedLog
-	fullScans int
-	cacheHits int
+	target     string
+	head       string
+	log        scannedLog
+	fullScans  int
+	deltaScans int
+	cacheHits  int
 }
 
 func NewSubmitter(store gitstore.Store, options Options) *Submitter {
@@ -206,6 +211,9 @@ func Create(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, s
 	if err != nil {
 		return "", err
 	}
+	if err := store.VerifySSHCommit(ctx, commit, "sequencer", desc.SequencerPublicKey); err != nil {
+		return "", fmt.Errorf("genesis sequencer signature: %w", err)
+	}
 	if err := store.UpdateRef(ctx, Ref(commit), commit, ""); err != nil {
 		return "", err
 	}
@@ -316,7 +324,19 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 			log = cache.log
 			cache.cacheHits++
 		} else {
-			log, err = scanHead(ctx, store, targetOID, head, false)
+			fullScan := false
+			if cache != nil && cache.target == targetOID && cache.head != "" {
+				log, err = scanAfter(ctx, store, cache.log, head, false)
+				if err == nil {
+					cache.deltaScans++
+				} else if !errors.Is(err, ErrNotDescendant) {
+					return Result{}, err
+				}
+			}
+			if cache == nil || cache.target != targetOID || cache.head == "" || errors.Is(err, ErrNotDescendant) {
+				log, err = scanHead(ctx, store, targetOID, head, false)
+				fullScan = true
+			}
 			if err != nil {
 				return Result{}, err
 			}
@@ -327,14 +347,16 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 				cache.target = targetOID
 				cache.head = head
 				cache.log = log
-				cache.fullScans++
+				if fullScan {
+					cache.fullScans++
+				}
 			}
 		}
 		if prior, ok := log.Dedup[key]; ok {
 			if !prior.Signed.Equal(request.Signed) {
 				return Result{}, ErrIdempotencyConflict
 			}
-			return Result{Commit: prior.Commit, Head: prior.Commit, Replay: true, CASRetries: attempt}, nil
+			return Result{Commit: prior.Commit, Head: prior.Commit, Replay: true, CASRetries: attempt, BaseHead: head}, nil
 		}
 		actorID := intent.ActorFingerprint(request.Signed.ActorKey)
 		commit, err := store.SignedCommit(ctx, writtenTree, head, message, options.SigningKey, gitstore.CommitIdentity{
@@ -345,6 +367,13 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 			return Result{}, err
 		}
 		fail(options, "after_commit_written")
+		// Eager application is safe only if the commit is acceptable to the
+		// chain's ordinary auditor. In particular, local custody may have been
+		// rotated without changing the genesis descriptor; never advance the ref
+		// with a commit signed by that unrelated key.
+		if err := store.VerifySSHCommit(ctx, commit, "sequencer", desc.SequencerPublicKey); err != nil {
+			return Result{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)
+		}
 		fail(options, "before_ref_cas")
 		if err := store.UpdateRef(ctx, ref, commit, head); err != nil {
 			current, headErr := store.Head(ctx, ref)
@@ -363,7 +392,7 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 		}
 		fail(options, "after_ref_cas")
 		fail(options, "before_reply")
-		return Result{Commit: commit, Head: commit, CASRetries: attempt}, nil
+		return Result{Commit: commit, Head: commit, CASRetries: attempt, BaseHead: head}, nil
 	}
 	return Result{}, errors.New("CAS retry limit exceeded")
 }
@@ -387,6 +416,70 @@ type scannedLog struct {
 	Verification Verification
 	Events       []Event
 	Dedup        map[string]Event
+}
+
+// LoadResult is a verified resident read. Full means Events contains the
+// complete log. Otherwise Events contains only commits after BaseHead; an
+// empty delta means the verified frontier was already current.
+type LoadResult struct {
+	Events       []Event
+	Verification Verification
+	BaseHead     string
+	Full         bool
+}
+
+// Reader retains a verified frontier and dedup index while leaving the full
+// event stream to the application projection that consumes it. Descendant
+// advances verify only their delta; cold and non-descendant reads remain full
+// audits.
+type Reader struct {
+	store gitstore.Store
+
+	mu         sync.Mutex
+	target     string
+	head       string
+	log        scannedLog
+	fullScans  int
+	deltaScans int
+	cacheHits  int
+}
+
+func NewReader(store gitstore.Store) *Reader { return &Reader{store: store} }
+
+func (r *Reader) Load(ctx context.Context, genesis string) (LoadResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	head, err := r.store.Head(ctx, Ref(genesis))
+	if err != nil {
+		return LoadResult{}, err
+	}
+	if r.target == genesis && r.head == head {
+		r.cacheHits++
+		return LoadResult{Verification: r.log.Verification, BaseHead: head}, nil
+	}
+	if r.target == genesis && r.head != "" {
+		base := r.head
+		log, deltaErr := scanAfter(ctx, r.store, r.log, head, true)
+		if deltaErr == nil {
+			events := log.Events
+			log.Events = nil
+			r.head, r.log = head, log
+			r.deltaScans++
+			return LoadResult{Events: events, Verification: log.Verification, BaseHead: base}, nil
+		}
+		if !errors.Is(deltaErr, ErrNotDescendant) {
+			return LoadResult{}, deltaErr
+		}
+	}
+	log, err := scanHead(ctx, r.store, genesis, head, true)
+	if err != nil {
+		return LoadResult{}, err
+	}
+	events := log.Events
+	log.Events = nil
+	r.target, r.head, r.log = genesis, head, log
+	r.fullScans++
+	return LoadResult{Events: events, Verification: log.Verification, Full: true}, nil
 }
 
 // Load verifies a log before returning its application records. Consumers do
@@ -439,9 +532,10 @@ func Verify(ctx context.Context, store gitstore.Store, genesis string) (Verifica
 	return log.Verification, nil
 }
 
-// scanHead is the kernel's sole history reader. It verifies the immutable head
-// and, in the same traversal, builds the event stream and actor-scoped dedup
-// index. loadPayload controls only whether verified payload bytes are retained.
+// scanHead performs the explicit cold/non-descendant full audit. It verifies
+// the immutable head and, in the same traversal, builds the event stream and
+// actor-scoped dedup index. loadPayload controls only whether verified payload
+// bytes are retained.
 func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, loadPayload bool) (scannedLog, error) {
 	commits, err := store.RevList(ctx, head)
 	if err != nil {
@@ -483,74 +577,171 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 		if len(parents) != 1 || parents[0] != commits[index-1] {
 			return scannedLog{}, fmt.Errorf("commit %s is not single-parent chained", commit)
 		}
-		message, err := store.CommitMessage(ctx, commit)
+		event, err := loadEvent(ctx, store, desc, genesis, commit, loadPayload)
 		if err != nil {
 			return scannedLog{}, err
 		}
-		signed, trailers, err := intent.ParseEnvelope(message, desc.PayloadCeiling)
-		if err != nil {
-			return scannedLog{}, err
-		}
-		decoded, err := intent.Verify(signed)
-		if err != nil {
-			return scannedLog{}, err
-		}
-		if decoded.Target != "git:"+desc.ObjectFormat+":"+genesis {
-			return scannedLog{}, errors.New("intent target does not name chain genesis")
-		}
-		if !intent.EqualRefs(decoded.RestsOn, trailers) {
-			return scannedLog{}, errors.New("causal trailers differ from signed intent")
-		}
-		_, treeOID, err := gitstore.ParseTypedOID(decoded.PayloadTree)
-		if err != nil {
-			return scannedLog{}, err
-		}
-		actualTree, err := store.CommitTree(ctx, commit)
-		if err != nil {
-			return scannedLog{}, err
-		}
-		if actualTree != treeOID {
-			return scannedLog{}, errors.New("commit tree differs from signed intent")
-		}
-		remaining := desc.PayloadCeiling - uint64(len(message))
-		if err := store.ValidatePayloadTree(ctx, actualTree, remaining); err != nil {
-			return scannedLog{}, fmt.Errorf("commit %s payload shape: %w", commit, err)
-		}
-		event := Event{Commit: commit, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
-		if loadPayload {
-			event.Payload, err = store.ReadFile(ctx, commit, "event")
-			if err != nil {
-				return scannedLog{}, err
-			}
-			paths, listErr := store.ListFiles(ctx, commit, "attachments")
-			if listErr != nil {
-				return scannedLog{}, listErr
-			}
-			if len(paths) > 0 {
-				event.Attachments = make(map[string][]byte, len(paths))
-			}
-			for _, path := range paths {
-				content, readErr := store.ReadFile(ctx, commit, path)
-				if readErr != nil {
-					return scannedLog{}, readErr
-				}
-				event.Attachments[strings.TrimPrefix(path, "attachments/")] = content
-			}
-		}
-		key, err := signed.DedupKey()
+		key, err := event.Signed.DedupKey()
 		if err != nil {
 			return scannedLog{}, err
 		}
 		if prior, exists := log.Dedup[key]; exists {
-			if !prior.Signed.Equal(signed) {
+			if !prior.Signed.Equal(event.Signed) {
 				return scannedLog{}, fmt.Errorf("commit %s: %w", commit, ErrIdempotencyConflict)
 			}
 			return scannedLog{}, fmt.Errorf("commit %s duplicates idempotent event %s", commit, prior.Commit)
 		}
-		log.Dedup[key] = event
+		log.Dedup[key] = eventWithoutPayload(event)
 		log.Events = append(log.Events, event)
 	}
 	return log, nil
+}
+
+// scanAfter extends a previously verified log only when head descends from its
+// exact frontier on the first-parent chain. The base dedup map is not mutated
+// until every new commit verifies, so a failed catch-up leaves trusted resident
+// state intact.
+func scanAfter(ctx context.Context, store gitstore.Store, base scannedLog, head string, loadPayload bool) (scannedLog, error) {
+	genesis := base.Verification.Genesis
+	if genesis == "" || base.Verification.Head == "" {
+		return scannedLog{}, ErrNotDescendant
+	}
+	commits, err := store.RevListAfter(ctx, base.Verification.Head, head)
+	if err != nil {
+		return scannedLog{}, err
+	}
+	if len(commits) == 0 {
+		if head != base.Verification.Head {
+			return scannedLog{}, ErrNotDescendant
+		}
+		base.Events = nil
+		return base, nil
+	}
+	desc, err := Descriptor(ctx, store, genesis)
+	if err != nil {
+		return scannedLog{}, err
+	}
+	expectedParent := base.Verification.Head
+	events := make([]Event, 0, len(commits))
+	additions := make(map[string]Event, len(commits))
+	for _, commit := range commits {
+		parents, parentErr := store.CommitParents(ctx, commit)
+		if parentErr != nil {
+			return scannedLog{}, parentErr
+		}
+		if len(parents) != 1 || parents[0] != expectedParent {
+			return scannedLog{}, fmt.Errorf("%w: commit %s does not follow %s", ErrNotDescendant, commit, expectedParent)
+		}
+		if err := store.VerifySSHCommit(ctx, commit, "sequencer", desc.SequencerPublicKey); err != nil {
+			return scannedLog{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)
+		}
+		event, err := loadEvent(ctx, store, desc, genesis, commit, loadPayload)
+		if err != nil {
+			return scannedLog{}, err
+		}
+		key, err := event.Signed.DedupKey()
+		if err != nil {
+			return scannedLog{}, err
+		}
+		if prior, exists := base.Dedup[key]; exists {
+			if !prior.Signed.Equal(event.Signed) {
+				return scannedLog{}, fmt.Errorf("commit %s: %w", commit, ErrIdempotencyConflict)
+			}
+			return scannedLog{}, fmt.Errorf("commit %s duplicates idempotent event %s", commit, prior.Commit)
+		}
+		if prior, exists := additions[key]; exists {
+			if !prior.Signed.Equal(event.Signed) {
+				return scannedLog{}, fmt.Errorf("commit %s: %w", commit, ErrIdempotencyConflict)
+			}
+			return scannedLog{}, fmt.Errorf("commit %s duplicates idempotent event %s", commit, prior.Commit)
+		}
+		additions[key] = eventWithoutPayload(event)
+		events = append(events, event)
+		expectedParent = commit
+	}
+	if expectedParent != head {
+		return scannedLog{}, ErrNotDescendant
+	}
+	if base.Dedup == nil {
+		base.Dedup = make(map[string]Event, len(additions))
+	}
+	for key, event := range additions {
+		base.Dedup[key] = event
+	}
+	base.Verification.Head = head
+	base.Verification.Depth += len(commits)
+	base.Verification.Events += len(commits)
+	base.Events = events
+	return base, nil
+}
+
+// loadEvent is the one decoder/verifier for an event commit after its position
+// and sequencer signature have been established. Full and descendant scans
+// deliberately share every envelope, actor signature, target, trailer, tree,
+// and payload check.
+func loadEvent(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, genesis, commit string, loadPayload bool) (Event, error) {
+	message, err := store.CommitMessage(ctx, commit)
+	if err != nil {
+		return Event{}, err
+	}
+	signed, trailers, err := intent.ParseEnvelope(message, desc.PayloadCeiling)
+	if err != nil {
+		return Event{}, err
+	}
+	decoded, err := intent.Verify(signed)
+	if err != nil {
+		return Event{}, err
+	}
+	if decoded.Target != "git:"+desc.ObjectFormat+":"+genesis {
+		return Event{}, errors.New("intent target does not name chain genesis")
+	}
+	if !intent.EqualRefs(decoded.RestsOn, trailers) {
+		return Event{}, errors.New("causal trailers differ from signed intent")
+	}
+	_, treeOID, err := gitstore.ParseTypedOID(decoded.PayloadTree)
+	if err != nil {
+		return Event{}, err
+	}
+	actualTree, err := store.CommitTree(ctx, commit)
+	if err != nil {
+		return Event{}, err
+	}
+	if actualTree != treeOID {
+		return Event{}, errors.New("commit tree differs from signed intent")
+	}
+	remaining := desc.PayloadCeiling - uint64(len(message))
+	if err := store.ValidatePayloadTree(ctx, actualTree, remaining); err != nil {
+		return Event{}, fmt.Errorf("commit %s payload shape: %w", commit, err)
+	}
+	event := Event{Commit: commit, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
+	if !loadPayload {
+		return event, nil
+	}
+	event.Payload, err = store.ReadFile(ctx, commit, "event")
+	if err != nil {
+		return Event{}, err
+	}
+	paths, err := store.ListFiles(ctx, commit, "attachments")
+	if err != nil {
+		return Event{}, err
+	}
+	if len(paths) > 0 {
+		event.Attachments = make(map[string][]byte, len(paths))
+	}
+	for _, path := range paths {
+		content, err := store.ReadFile(ctx, commit, path)
+		if err != nil {
+			return Event{}, err
+		}
+		event.Attachments[strings.TrimPrefix(path, "attachments/")] = content
+	}
+	return event, nil
+}
+
+func eventWithoutPayload(event Event) Event {
+	event.Payload = nil
+	event.Attachments = nil
+	return event
 }
 
 // ExitFailpoint is used only by the one-shot spike CLI. It makes a selected

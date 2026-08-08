@@ -186,6 +186,58 @@ func actor(t testing.TB) ed25519.PrivateKey {
 	return private
 }
 
+func appendExternalCommit(t *testing.T, f fixtureState, request Request, parent, signingKey string) string {
+	t.Helper()
+	decoded := mustVerifyIntent(t, request.Signed)
+	tree, err := f.store.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, signedTree, err := gitstore.ParseTypedOID(decoded.PayloadTree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tree != signedTree {
+		t.Fatalf("external payload tree = %s, signed = %s", tree, signedTree)
+	}
+	commit, err := f.store.SignedCommit(f.ctx, tree, parent, intent.Envelope(request.Signed, decoded.RestsOn), signingKey, gitstore.CommitIdentity{
+		AuthorName: "external sequencer", AuthorEmail: "external@example.invalid",
+		CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, parent); err != nil {
+		t.Fatal(err)
+	}
+	return commit
+}
+
+func TestCreateRejectsSigningKeyThatDoesNotMatchDescriptor(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store, err := gitstore.InitBare(ctx, filepath.Join(root, "domain.git"), "sha1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedKey := filepath.Join(root, "expected")
+	expectedPublic, err := gitstore.GenerateSSHKey(ctx, expectedKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongKey := filepath.Join(root, "wrong")
+	if _, err := gitstore.GenerateSSHKey(ctx, wrongKey); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Create(ctx, store, GenesisDescriptor{
+		Version: 0, ObjectFormat: "sha1", PayloadCeiling: 1 << 20,
+		SequencerPublicKey: expectedPublic,
+	}, wrongKey)
+	if err == nil || !strings.Contains(err.Error(), "genesis sequencer signature") {
+		t.Fatalf("Create with mismatched signing key = %v, want signature refusal", err)
+	}
+}
+
 func TestCreateSubmitReplayVerifyObjectFormats(t *testing.T) {
 	for _, format := range []string{"sha1", "sha256"} {
 		t.Run(format, func(t *testing.T) {
@@ -210,6 +262,29 @@ func TestCreateSubmitReplayVerifyObjectFormats(t *testing.T) {
 				t.Fatalf("verification = %#v", verified)
 			}
 		})
+	}
+}
+
+func TestSubmitRefusesWrongSequencerKeyBeforeCAS(t *testing.T) {
+	f := newFixture(t, "sha1")
+	wrongKey := filepath.Join(t.TempDir(), "wrong-sequencer")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
+		t.Fatal(err)
+	}
+	request := f.request(t, actor(t), "wrong-sequencer", []byte("wrong-sequencer"), nil)
+	before, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Submit(f.ctx, f.store, request, Options{SigningKey: wrongKey}); err == nil {
+		t.Fatal("submission signed by a non-descriptor sequencer was accepted")
+	}
+	after, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("rejected submission advanced ref: before=%s after=%s", before, after)
 	}
 }
 
@@ -243,8 +318,8 @@ func TestSubmitterReusesExactHeadAndRebuildsAfterExternalAdvance(t *testing.T) {
 	if _, err := submitter.Submit(f.ctx, afterExternal); err != nil {
 		t.Fatal(err)
 	}
-	if submitter.cache.fullScans != 2 {
-		t.Fatalf("external advance left full scans at %d, want 2", submitter.cache.fullScans)
+	if submitter.cache.fullScans != 1 || submitter.cache.deltaScans != 1 {
+		t.Fatalf("external advance scans = full %d delta %d, want 1 and 1", submitter.cache.fullScans, submitter.cache.deltaScans)
 	}
 
 	replay, err := submitter.Submit(f.ctx, second)
@@ -304,8 +379,8 @@ func TestSubmitterRebuildsAndRetriesAfterCASLoss(t *testing.T) {
 	if out.result.CASRetries != 1 {
 		t.Fatalf("CAS retries = %d, want 1", out.result.CASRetries)
 	}
-	if submitter.cache.fullScans != 2 {
-		t.Fatalf("CAS loss full scans = %d, want 2", submitter.cache.fullScans)
+	if submitter.cache.fullScans != 1 || submitter.cache.deltaScans != 1 {
+		t.Fatalf("CAS loss scans = full %d delta %d, want 1 and 1", submitter.cache.fullScans, submitter.cache.deltaScans)
 	}
 	verified, err := Verify(f.ctx, f.store, f.genesis)
 	if err != nil {
@@ -344,6 +419,33 @@ func BenchmarkSubmitSequence(b *testing.B) {
 					_, err = Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey})
 				}
 				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkColdAudit(b *testing.B) {
+	f := newFixture(b, "sha1")
+	private := actor(b)
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
+	heads := make(map[int]string)
+	for index := 1; index <= 100; index++ {
+		key := "cold-" + strconv.Itoa(index)
+		result, err := submitter.Submit(f.ctx, f.request(b, private, key, []byte(key), nil))
+		if err != nil {
+			b.Fatal(err)
+		}
+		if index == 1 || index == 10 || index == 100 {
+			heads[index] = result.Head
+		}
+	}
+	for _, count := range []int{1, 10, 100} {
+		b.Run(strconv.Itoa(count), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := scanHead(f.ctx, f.store, f.genesis, heads[count], true); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -645,6 +747,292 @@ func TestLoadReturnsVerifiedPayloadAndAttachments(t *testing.T) {
 	}
 	if verification.Events != 1 || len(events) != 1 || string(events[0].Payload) != "payload" || string(events[0].Attachments["evidence.json"]) != `{"signed":true}` {
 		t.Fatalf("unexpected load: verification=%+v events=%+v", verification, events)
+	}
+}
+
+func TestReaderLoadsColdThenVerifiesDescendantDeltas(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
+	reader := NewReader(f.store)
+
+	cold, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cold.Full || len(cold.Events) != 0 || cold.Verification.Events != 0 || reader.fullScans != 1 {
+		t.Fatalf("cold load = %+v, scans = %d", cold, reader.fullScans)
+	}
+	exact, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exact.Full || len(exact.Events) != 0 || exact.BaseHead != cold.Verification.Head || reader.cacheHits != 1 {
+		t.Fatalf("exact load = %+v, hits = %d", exact, reader.cacheHits)
+	}
+
+	total := 0
+	for _, count := range []int{1, 10, 100} {
+		base := reader.head
+		for index := 0; index < count; index++ {
+			key := "delta-" + strconv.Itoa(total+index)
+			if _, err := submitter.Submit(f.ctx, f.request(t, private, key, []byte(key), nil)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		total += count
+		loaded, err := reader.Load(f.ctx, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.Full || loaded.BaseHead != base || len(loaded.Events) != count || loaded.Verification.Events != total {
+			t.Fatalf("delta %d load = %+v", count, loaded)
+		}
+		for index, event := range loaded.Events {
+			want := "delta-" + strconv.Itoa(total-count+index)
+			if string(event.Payload) != want {
+				t.Fatalf("delta %d event %d payload = %q, want %q", count, index, event.Payload, want)
+			}
+		}
+	}
+	if reader.fullScans != 1 || reader.deltaScans != 3 {
+		t.Fatalf("reader scans = full %d delta %d, want 1 and 3", reader.fullScans, reader.deltaScans)
+	}
+	if reader.log.Verification.Events != total || reader.log.Verification.Head != reader.head {
+		t.Fatalf("reader verification = %+v, head = %s", reader.log.Verification, reader.head)
+	}
+}
+
+func TestReaderFallsBackToFullAuditAfterRefRewind(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	reader := NewReader(f.store)
+	first, err := Submit(f.ctx, f.store, f.request(t, private, "first", []byte("first"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Submit(f.ctx, f.store, f.request(t, private, "second", []byte("second"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), first.Head, second.Head); err != nil {
+		t.Fatal(err)
+	}
+	rewound, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rewound.Full || len(rewound.Events) != 1 || string(rewound.Events[0].Payload) != "first" {
+		t.Fatalf("rewound load = %+v", rewound)
+	}
+	if reader.fullScans != 2 || reader.deltaScans != 1 {
+		t.Fatalf("rewind scans = full %d delta %d, want 2 and 1", reader.fullScans, reader.deltaScans)
+	}
+}
+
+func TestReaderFallsBackToFullAuditAfterSiblingAdvance(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	first, err := Submit(f.ctx, f.store, f.request(t, private, "fork-first", []byte("first"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Submit(f.ctx, f.store, f.request(t, private, "fork-second", []byte("second"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := NewReader(f.store)
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), first.Head, second.Head); err != nil {
+		t.Fatal(err)
+	}
+	sibling := appendExternalCommit(t, f, f.request(t, private, "fork-sibling", []byte("sibling"), nil), first.Head, f.signingKey)
+	loaded, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Full || loaded.Verification.Head != sibling || len(loaded.Events) != 2 || string(loaded.Events[1].Payload) != "sibling" {
+		t.Fatalf("sibling load did not force an exact full audit: %+v", loaded)
+	}
+	if reader.fullScans != 2 || reader.deltaScans != 0 {
+		t.Fatalf("sibling scans = full %d delta %d, want 2 and 0", reader.fullScans, reader.deltaScans)
+	}
+}
+
+func TestReaderDeltaRejectsExternalReplayLikeColdAudit(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	request := f.request(t, private, "external-replay", []byte("once"), nil)
+	first, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := NewReader(f.store)
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	duplicate := appendExternalCommit(t, f, request, first.Head, f.signingKey)
+	if _, err := reader.Load(f.ctx, f.genesis); err == nil || !strings.Contains(err.Error(), "duplicates idempotent event") {
+		t.Fatalf("resident delta accepted external replay %s: %v", duplicate, err)
+	}
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), "duplicates idempotent event") {
+		t.Fatalf("cold audit did not reject the same replay: %v", err)
+	}
+	if reader.head != first.Head || reader.deltaScans != 0 {
+		t.Fatalf("rejected replay mutated resident frontier: head=%s delta=%d", reader.head, reader.deltaScans)
+	}
+}
+
+func TestFailedMultiCommitDeltaDoesNotLeakDedupAdditions(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	base, err := Submit(f.ctx, f.store, f.request(t, private, "leak-base", []byte("base"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := NewReader(f.store)
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	trustedDedup := len(reader.log.Dedup)
+	valid := appendExternalCommit(t, f, f.request(t, private, "leak-valid", []byte("valid"), nil), base.Head, f.signingKey)
+	wrongKey := filepath.Join(t.TempDir(), "wrong-sequencer")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
+		t.Fatal(err)
+	}
+	invalid := appendExternalCommit(t, f, f.request(t, private, "leak-invalid", []byte("invalid"), nil), valid, wrongKey)
+	if _, err := reader.Load(f.ctx, f.genesis); err == nil || !strings.Contains(err.Error(), "sequencer signature") {
+		t.Fatalf("reader accepted failed two-commit delta: %v", err)
+	}
+	if reader.head != base.Head || len(reader.log.Dedup) != trustedDedup || reader.deltaScans != 0 {
+		t.Fatalf("failed delta leaked state: head=%s dedup=%d delta=%d", reader.head, len(reader.log.Dedup), reader.deltaScans)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), valid, invalid); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatalf("valid prefix was poisoned by failed suffix: %v", err)
+	}
+	if loaded.Full || len(loaded.Events) != 1 || loaded.Events[0].Commit != valid || len(reader.log.Dedup) != trustedDedup+1 {
+		t.Fatalf("valid prefix catch-up = %+v, dedup=%d", loaded, len(reader.log.Dedup))
+	}
+}
+
+func TestReaderRejectsInvalidDeltaWithoutMutatingVerifiedCache(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	reader := NewReader(f.store)
+	valid, err := Submit(f.ctx, f.store, f.request(t, private, "valid", []byte("valid"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	trusted := reader.log.Verification
+	request := f.request(t, private, "invalid", []byte("invalid"), []string{"git:sha1:external#git:sha1:event"})
+	decoded := mustVerifyIntent(t, request.Signed)
+	_, signedTree, err := gitstore.ParseTypedOID(decoded.PayloadTree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := f.store.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tree != signedTree {
+		t.Fatalf("copied payload tree = %s, signed = %s", tree, signedTree)
+	}
+	malicious, err := f.store.SignedCommit(f.ctx, tree, valid.Head, intent.Envelope(request.Signed, []string{"git:sha1:altered#git:sha1:event"}), f.signingKey, gitstore.CommitIdentity{
+		AuthorName: "attacker", AuthorEmail: "attacker@example.invalid",
+		CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), malicious, valid.Head); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err == nil {
+		t.Fatal("reader accepted altered causal trailers in delta")
+	}
+	if reader.head != trusted.Head || reader.log.Verification != trusted || reader.deltaScans != 0 {
+		t.Fatalf("failed delta mutated reader: head=%s verification=%+v scans=%d", reader.head, reader.log.Verification, reader.deltaScans)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), valid.Head, malicious); err != nil {
+		t.Fatal(err)
+	}
+	exact, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exact.Verification != trusted || reader.cacheHits != 1 {
+		t.Fatalf("restored exact load = %+v, hits=%d", exact, reader.cacheHits)
+	}
+}
+
+func TestReaderRejectsWrongSequencerDeltaWithoutMutatingVerifiedCache(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	reader := NewReader(f.store)
+	valid, err := Submit(f.ctx, f.store, f.request(t, private, "valid-sequencer", []byte("valid"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	trustedHead := reader.head
+	trustedTarget := reader.target
+	trustedVerification := reader.log.Verification
+	trustedDedup := make(map[string]Event, len(reader.log.Dedup))
+	for key, event := range reader.log.Dedup {
+		trustedDedup[key] = event
+	}
+
+	request := f.request(t, private, "wrong-sequencer-delta", []byte("invalid"), nil)
+	decoded := mustVerifyIntent(t, request.Signed)
+	tree, err := f.store.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongKey := filepath.Join(t.TempDir(), "wrong-sequencer")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
+		t.Fatal(err)
+	}
+	commit, err := f.store.SignedCommit(f.ctx, tree, valid.Head, intent.Envelope(request.Signed, decoded.RestsOn), wrongKey, gitstore.CommitIdentity{
+		AuthorName: "wrong sequencer", AuthorEmail: "wrong@example.invalid",
+		CommitterName: "wrong sequencer", CommitterEmail: "wrong@example.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, valid.Head); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err == nil {
+		t.Fatal("reader accepted a delta signed by a non-descriptor sequencer")
+	}
+	if reader.head != trustedHead || reader.target != trustedTarget || reader.log.Verification != trustedVerification || reader.deltaScans != 0 {
+		t.Fatalf("failed delta mutated reader: head=%s target=%s verification=%+v scans=%d", reader.head, reader.target, reader.log.Verification, reader.deltaScans)
+	}
+	if len(reader.log.Dedup) != len(trustedDedup) {
+		t.Fatalf("failed delta changed dedup size: got=%d want=%d", len(reader.log.Dedup), len(trustedDedup))
+	}
+	for key, want := range trustedDedup {
+		got, ok := reader.log.Dedup[key]
+		if !ok || got.Commit != want.Commit || !got.Signed.Equal(want.Signed) {
+			t.Fatalf("failed delta changed dedup entry %q", key)
+		}
 	}
 }
 
