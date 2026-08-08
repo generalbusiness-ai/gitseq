@@ -39,7 +39,8 @@ func RenderStatus(projection Projection) []byte {
 		unableToFlare, successionUnrecorded := 0, 0
 		// One unrecorded succession at a long-lived path repeats on every later
 		// link of that chain, so the count of artifacts overstates how many
-		// situations a reader has to act on. Both numbers are reported.
+		// situations a reader has to act on. Rows and paths are both reported,
+		// alongside the count of supersessions actually owed.
 		successionPaths := make(map[string]struct{})
 		output.WriteString("| state | artifact | event | notes |\n")
 		output.WriteString("|---|---|---|---|\n")
@@ -74,11 +75,13 @@ func RenderStatus(projection Projection) []byte {
 			fmt.Fprintf(&output, "%d cite no basis and can never go stale; their silence is not currency.\n", unableToFlare)
 		}
 		if successionUnrecorded > 0 {
-			// Count supersessions owed, not the artifacts noticing them and not
-			// the paths they sit on. With A, B and C at one path, the repair is
-			// two supersessions, and superseding A clears B's warning without
-			// touching C's.
-			fmt.Fprintf(&output, "%d omitted supersessions across %d paths: %d artifacts follow a live artifact at the same path without superseding it, and anything resting on those predecessors still reads current.\n", projection.OmittedSupersessions, len(successionPaths), successionUnrecorded)
+			// Rows record what happened; the owed count is what to do about it,
+			// and the two differ. With A, B and C at one path the repair is two
+			// supersessions, and superseding A clears B's warning without
+			// touching C's. Where every later artifact was itself withdrawn the
+			// row still stands as history while nothing is owed, so the two
+			// figures are stated separately rather than as one number.
+			fmt.Fprintf(&output, "%d artifacts across %d paths follow a live artifact at the same path without superseding it; supersessions still owed: %d, counting once each predecessor a live successor stands in for.\n", successionUnrecorded, len(successionPaths), projection.OmittedSupersessions)
 		}
 	}
 	output.WriteString("\n## Attempts\n\n")

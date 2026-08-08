@@ -624,9 +624,38 @@ func TestStatusPageCountsSuccessionPathsAsWellAsArtifacts(t *testing.T) {
 		t.Fatalf("owed supersessions = %d, want 3", projection.OmittedSupersessions)
 	}
 	page := RenderStatus(projection)
-	want := "3 omitted supersessions across 2 paths: 3 artifacts follow a live artifact"
+	want := "3 artifacts across 2 paths follow a live artifact at the same path without superseding it; supersessions still owed: 3"
 	if !bytes.Contains(page, []byte(want)) {
 		t.Fatalf("page does not separate owed acts from rows and paths, want %q\n%s", want, page)
+	}
+}
+
+// A predecessor owes its retirement only while something live stands in its
+// place. Withdraw the successor and the predecessor is the current artifact
+// for its path again, so following an owed-supersession warning there would
+// retire the current artifact for a replacement that no longer exists.
+func TestWithdrawnSuccessorLeavesNothingOwed(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "one", Body: map[string]string{"path": "spike", "commit": "a1"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "two", Body: map[string]string{"path": "spike", "commit": "a2"}}, "w0"),
+		event(t, "w5", agent, SchemaSupersede, Supersede{Target: "w4", Text: "withdrawn; a1 stands again"}, "w4"),
+		// Positive control: a live successor on another path still owes one.
+		// Without it this passes for an implementation that counts nothing.
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "three", Body: map[string]string{"path": "ui", "commit": "b1"}}, "w0"),
+		event(t, "w7", agent, SchemaState, State{Kind: KindArtifact, Text: "four", Body: map[string]string{"path": "ui", "commit": "b2"}}, "w0"),
+	)
+	projection := Fold(records)
+	withdrawn := artifactByEvent(t, projection, "w4")
+	if !withdrawn.Stale {
+		t.Fatal("a2 is not retired; the supersession was ineffective and the case is untested")
+	}
+	if projection.OmittedSupersessions != 1 {
+		t.Fatalf("owed supersessions = %d, want 1 (b1 only; a1's only successor was withdrawn)", projection.OmittedSupersessions)
+	}
+	// The row stays as history — a2 really did follow a live a1 — while the
+	// owed count says there is nothing left to do about it.
+	if !withdrawn.SuccessionUnrecorded {
+		t.Fatal("a2 stopped recording that it followed a live a1")
 	}
 }
 

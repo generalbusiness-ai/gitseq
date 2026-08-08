@@ -114,10 +114,12 @@ type Projection struct {
 	Actors      map[string]ActorState `json:"actors"`
 	Provenance  map[string][]string   `json:"provenance"`
 	OpaqueKinds map[string][]string   `json:"opaque_kinds,omitempty"`
-	// OmittedSupersessions counts artifacts that a later artifact at the same
-	// path should have retired and did not, each counted once. It is the number
-	// of supersessions still owed — not the number of artifacts noticing one,
-	// and not the number of paths, both of which understate the repair.
+	// OmittedSupersessions counts live artifacts that a later live artifact at
+	// the same path should have retired and did not, each counted once. It is
+	// the number of supersessions still owed — not the number of artifacts
+	// noticing one, and not the number of paths, both of which understate the
+	// repair. A predecessor whose every successor was withdrawn owes nothing:
+	// it is the current artifact for its path again.
 	OmittedSupersessions int `json:"omitted_supersessions,omitempty"`
 }
 
@@ -612,11 +614,10 @@ func (f *foldState) ratified(target string, retired map[string]bool) bool {
 func (f *foldState) project() Projection {
 	retired := f.retired()
 	stale, world := f.staleness(retired)
-	// Most recent artifact per exact path, so a later artifact for the same
-	// path can see whether its immediate predecessor was ever superseded.
-	// Every artifact seen at a path, not only the most recent. Tracking just
-	// the immediate predecessor let a retirement hide a live ancestor: with A,
-	// B and C at one path, retiring B cleared C's warning while A stayed live.
+	// Every artifact seen at a path, in order, not only the most recent.
+	// Tracking just the immediate predecessor let a retirement hide a live
+	// ancestor: with A, B and C at one path, retiring B cleared C's warning
+	// while A stayed live.
 	seenByPath := make(map[string][]string)
 	projection := Projection{
 		Decisions: []Decision{}, Acts: []Act{}, Statements: []Statement{}, Commitments: []Commitment{}, Artifacts: []Artifact{},
@@ -666,14 +667,23 @@ func (f *foldState) project() Projection {
 			seenByPath[path] = append(seenByPath[path], record.record.ID)
 		}
 	}
-	// Each un-retired artifact that something later replaced is one supersession
-	// still owed. Counted here rather than summed from LivePredecessors, which
-	// would count a shared ancestor once per successor.
+	// A live artifact owes its retirement only while a live artifact later at
+	// the same path stands in its place. A successor that was itself withdrawn
+	// asks for nothing: acting on that warning would retire the current
+	// artifact because of a replacement that no longer exists. Walking each
+	// path backwards, a live artifact is owed a supersession when a live one
+	// has already been passed. Counted here rather than summed from
+	// LivePredecessors, which counts a shared ancestor once per successor.
 	for _, events := range seenByPath {
-		for _, event := range events[:max(0, len(events)-1)] {
-			if !retired[event] {
+		successor := false
+		for i := len(events) - 1; i >= 0; i-- {
+			if retired[events[i]] {
+				continue
+			}
+			if successor {
 				projection.OmittedSupersessions++
 			}
+			successor = true
 		}
 	}
 	for _, grant := range f.roleGrants {
