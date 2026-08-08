@@ -51,8 +51,24 @@ Authority grants then need a paragraph of their own, for a different
 reason. For every other act, effectiveness is settled once, when the
 act is appended, and stays settled. A grant can satisfy every rule, be
 judged effective, be ratified — and still confer nothing, for as long
-as its grant, its ratification and its membership basis are not **all
-live at once**.
+while the conditions below do not all hold at once. Those conditions
+are not symmetric, and the ratification one in particular is weaker
+than it looks:
+
+- the **grant statement** is live, and
+- its **membership basis** is live, and
+- **at least one** effective ratification of it is live.
+
+The last is a disjunction, not a single named act. One roster
+statement may be ratified more than once, and any surviving
+ratification keeps the role. Measured: grant Alice `reviewer`, have a
+second ratifier ratify the same grant, retire the first ratification
+and Alice is still `[participant, reviewer]`; retire the second and
+`reviewer` goes. Writing "its ratification" invites the reader to
+retire the one they can see and conclude the role is gone.
+
+The exception is the genesis seed, which confers without a ratification
+because there is no prior ratifier to give one.
 
 There are two ways that happens, and they are different questions.
 
