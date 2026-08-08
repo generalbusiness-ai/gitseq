@@ -125,13 +125,21 @@ func TestConversationIsForgottenWhenItsLastParticipantDeparts(t *testing.T) {
 	httpServer := httptest.NewServer(server.Handler())
 	defer httpServer.Close()
 
+	// The handle is minted by the service and returned on announce; a client
+	// cannot compute it from the session it chose.
+	handles := map[string]string{}
 	for _, session := range []string{"speaker", "bystander"} {
 		body, _ := json.Marshal(presenceRequest{Actor: "human", Session: session})
 		response, err := http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(body))
 		if err != nil {
 			t.Fatal(err)
 		}
+		var announced nexus.Change
+		if err := json.NewDecoder(response.Body).Decode(&announced); err != nil {
+			t.Fatal(err)
+		}
 		response.Body.Close()
+		handles[session] = announced.ID
 	}
 	say, _ := json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Text: "ephemeral only"})
 	response, err := http.Post(httpServer.URL+"/v0/say", "application/json", bytes.NewReader(say))
@@ -170,7 +178,7 @@ func TestConversationIsForgottenWhenItsLastParticipantDeparts(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&live); err != nil {
 		t.Fatal(err)
 	}
-	if _, present := live.Presence["bystander"]; !present {
+	if _, present := live.Presence[handles["bystander"]]; !present {
 		t.Fatal("unrelated presence was removed with the conversation")
 	}
 }
@@ -369,5 +377,63 @@ func TestSayPreservesReplyTarget(t *testing.T) {
 	}
 	if payload["re"] != "conversation:7" {
 		t.Fatalf("reply target = %q", payload["re"])
+	}
+}
+
+// A published handle must not authorize anything, and /v0/act is the case that
+// matters most: it appends a durable, signed event under the session's actor
+// key. Testing this only at the nexus level would have covered speech and
+// departure while leaving the durable path unexamined.
+func TestPublishedHandleCannotAuthorizeDurableActs(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "Ada Lovelace", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	announce, _ := json.Marshal(presenceRequest{Actor: "Ada Lovelace", Session: "private-session"})
+	request := httptest.NewRequest(http.MethodPost, "/v0/presence", bytes.NewReader(announce))
+	request.Header.Set("Content-Type", "application/json")
+	announced := httptest.NewRecorder()
+	server.Handler().ServeHTTP(announced, request)
+	if announced.Code != http.StatusOK {
+		t.Fatalf("announce returned %d: %s", announced.Code, announced.Body.String())
+	}
+	var change nexus.Change
+	if err := json.Unmarshal(announced.Body.Bytes(), &change); err != nil {
+		t.Fatal(err)
+	}
+	handle := change.ID
+	if handle == "" || handle == "private-session" {
+		t.Fatalf("presence published %q for the session; it must publish a distinct handle", handle)
+	}
+
+	// This is exactly what an observer of /v0/presence holds.
+	body, _ := json.Marshal(actRequest{Session: handle, Act: "state", Kind: "assert",
+		Text: "forged with a published handle", IdempotencyKey: "handle-forgery"})
+	forged := httptest.NewRequest(http.MethodPost, "/v0/act", bytes.NewReader(body))
+	forged.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, forged)
+	if response.Code == http.StatusOK {
+		t.Fatalf("a published handle authorized a durable act: %s", response.Body.String())
+	}
+
+	// The owner of the identifier is unaffected.
+	owned, _ := json.Marshal(actRequest{Session: "private-session", Act: "state", Kind: "assert",
+		Text: "the owner can still act", IdempotencyKey: "owner-act"})
+	ownRequest := httptest.NewRequest(http.MethodPost, "/v0/act", bytes.NewReader(owned))
+	ownRequest.Header.Set("Content-Type", "application/json")
+	ownResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(ownResponse, ownRequest)
+	if ownResponse.Code != http.StatusOK {
+		t.Fatalf("the session's owner was refused: %d %s", ownResponse.Code, ownResponse.Body.String())
 	}
 }

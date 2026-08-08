@@ -35,10 +35,11 @@ func TestSnapshotWatchBarrierCannotMissTransition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Presence["alice"] != "ready" || snapshot.Presence["bob"] != "" {
+	// Presence is published by handle; the identifiers stay private.
+	if snapshot.Presence[hub.HandleFor("alice")] != "ready" || snapshot.Presence[hub.HandleFor("bob")] != "" {
 		t.Fatalf("bad snapshot: %#v", snapshot.Presence)
 	}
-	if len(changes) != 1 || changes[0].ID != "bob" || current.Position != snapshot.Cursor.Position+1 {
+	if len(changes) != 1 || changes[0].ID != hub.HandleFor("bob") || current.Position != snapshot.Cursor.Position+1 {
 		t.Fatalf("transition was missed: %#v, current %#v", changes, current)
 	}
 }

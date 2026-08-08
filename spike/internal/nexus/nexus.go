@@ -25,6 +25,31 @@ const (
 
 var ErrReset = errors.New("nexus cursor is no longer available; take a new snapshot")
 
+// mintHandle produces a public name for a session that is unrelated to the
+// session itself.
+//
+// A session identifier authorizes speech and durable acts: whoever presents
+// one has the service sign with that session's actor key. It is a bearer
+// credential, so observers must never be handed one — but they still need to
+// tell sessions apart, to follow a renewal or notice a departure, so presence
+// is published under a handle.
+//
+// The handle is drawn from the system's randomness rather than derived from
+// the identifier. Deriving it would publish an oracle: an observer could
+// guess a candidate identifier, hash it, and compare against the published
+// handle to confirm the guess, then present the confirmed identifier and act.
+// That is only as strong as the weakest identifier any client ever chooses,
+// and the service does not constrain that choice. An unrelated handle carries
+// no such relation to test, so a guess can be confirmed only by using it,
+// which is the check that already exists.
+func mintHandle() (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return "session:" + hex.EncodeToString(raw), nil
+}
+
 type Cursor struct {
 	Generation string `json:"generation"`
 	Position   uint64 `json:"position"`
@@ -85,6 +110,7 @@ type conversation struct {
 type presenceEntry struct {
 	value     string
 	actor     string
+	handle    string
 	expiresAt time.Time
 }
 
@@ -172,26 +198,35 @@ func (h *Hub) AnnounceSession(id, actor, value string, ttl time.Duration) (Chang
 	if existing, exists := h.presence[id]; exists && existing.actor != actor {
 		return Change{}, errors.New("session is already bound to another actor")
 	}
-	return h.announceFor(id, actor, value, ttl), nil
+	return h.announceFor(id, actor, value, ttl)
 }
 
-func (h *Hub) announceFor(id, actor, value string, ttl time.Duration) Change {
+func (h *Hub) announceFor(id, actor, value string, ttl time.Duration) (Change, error) {
 	if ttl <= 0 {
 		ttl = 30 * time.Second
 	}
 	existing, exists := h.presence[id]
-	h.presence[id] = presenceEntry{value: value, actor: actor, expiresAt: time.Now().Add(ttl)}
-	if exists && existing.value == value && existing.actor == actor {
-		return Change{Cursor: Cursor{Generation: h.generation, Position: h.position}, Kind: "renewal", ID: id, Value: value}
+	handle := existing.handle
+	if handle == "" {
+		minted, err := mintHandle()
+		if err != nil {
+			return Change{}, err
+		}
+		handle = minted
 	}
-	return h.append("presence", id, value)
+	h.presence[id] = presenceEntry{value: value, actor: actor, handle: handle, expiresAt: time.Now().Add(ttl)}
+	if exists && existing.value == value && existing.actor == actor {
+		return Change{Cursor: Cursor{Generation: h.generation, Position: h.position}, Kind: "renewal", ID: handle, Value: value}, nil
+	}
+	return h.append("presence", handle, value), nil
 }
 
 func (h *Hub) Depart(id string) Change {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	handle := h.presence[id].handle
 	delete(h.presence, id)
-	change := h.append("departure", id, "")
+	change := h.append("departure", handle, "")
 	h.removeParticipant(id)
 	h.forgetAllIfEmpty()
 	return change
@@ -207,7 +242,7 @@ func (h *Hub) expire(now time.Time) {
 	for id, entry := range h.presence {
 		if !entry.expiresAt.After(now) {
 			delete(h.presence, id)
-			h.append("expiration", id, "")
+			h.append("expiration", entry.handle, "")
 			h.removeParticipant(id)
 		}
 	}
@@ -221,6 +256,15 @@ func (h *Hub) forgetAllIfEmpty() {
 	for conversation := range h.convs {
 		h.forgetConversation(conversation)
 	}
+}
+
+// HandleFor reports the public handle of a live session, for callers that
+// hold the identifier legitimately. There is no inverse: a handle cannot be
+// turned back into the identifier that authorizes acts.
+func (h *Hub) HandleFor(id string) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.presence[id].handle
 }
 
 func (h *Hub) SessionActor(id string) (string, bool) {
@@ -278,9 +322,11 @@ func (h *Hub) Snapshot() Snapshot {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.expire(time.Now())
+	// Keyed by handle: an observer learns who is here and can follow each
+	// session across renewals without receiving the credential itself.
 	presence := make(map[string]string, len(h.presence))
-	for id, entry := range h.presence {
-		presence[id] = entry.value
+	for _, entry := range h.presence {
+		presence[entry.handle] = entry.value
 	}
 	conversations := make([]string, 0, len(h.convs))
 	for id := range h.convs {
