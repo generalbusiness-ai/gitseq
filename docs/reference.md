@@ -48,6 +48,13 @@ authority grants, and they are independent of kind.
 `--evidence name=path`, each repeatable, plus `--idempotency-key` for
 safe retries.
 
+Every actor-controlled string in the signed intent is limited to 32 KiB, and
+one intent may cite at most 4,096 causal references. The complete signed commit
+envelope plus inline payload and attachment contents must fit the workroom's
+genesis `payload_ceiling`; oversize input is refused before the sequence ref
+moves. Readers enforce the same envelope ceiling explicitly, so the write path
+cannot admit a commit that later fails only because of a parser line limit.
+
 For implementation requests, promises, and reports, `body.branch` is an
 optional branch hint and `body.head` (or `body.commit`) is an optional exact
 ordinary-Git head hint. The Work drawer uses these signed durable fields only

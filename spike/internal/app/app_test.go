@@ -150,6 +150,37 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	}
 }
 
+func TestOversizedCausalReferenceDoesNotPoisonSnapshot(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	workspace, _, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = workspace.Act(ctx, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "refuse oversized causality",
+		RestsOn: []string{strings.Repeat("r", intent.MaxStringBytes+1)}, IdempotencyKey: "oversized-causality",
+	})
+	if err == nil {
+		t.Fatal("oversized causal reference was appended")
+	}
+	after, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("refused act changed snapshot: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+	}
+	verified, err := workspace.Verify(ctx)
+	if err != nil || verified.Head != before.Head || verified.Depth != before.Depth {
+		t.Fatalf("verify after refused act = %+v, %v", verified, err)
+	}
+}
+
 func TestLinkedWorktreeSharesRepositoryWorkroom(t *testing.T) {
 	ctx := context.Background()
 	repo := testRepo(t)
