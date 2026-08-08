@@ -3,6 +3,7 @@ package intent
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"strings"
 	"testing"
 )
 
@@ -45,7 +46,7 @@ func TestIntentRoundTripAndBinding(t *testing.T) {
 func TestEnvelopeRejectsAlteredCausality(t *testing.T) {
 	_, signed := fixture(t)
 	message := Envelope(signed, []string{"git:sha1:abc#git:sha1:123"})
-	parsed, refs, err := ParseEnvelope(message)
+	parsed, refs, err := ParseEnvelope(message, uint64(len(message)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,6 +59,62 @@ func TestEnvelopeRejectsAlteredCausality(t *testing.T) {
 	}
 	if EqualRefs([]string{"git:sha1:other#git:sha1:123"}, i.RestsOn) {
 		t.Fatal("altered causal trailer matched signed intent")
+	}
+}
+
+func TestIntentBoundsEveryStringAndCausalCount(t *testing.T) {
+	original, _ := fixture(t)
+	oversized := strings.Repeat("x", MaxStringBytes+1)
+	tests := map[string]func(*Intent){
+		"target":                func(value *Intent) { value.Target = oversized },
+		"schema":                func(value *Intent) { value.Schema = oversized },
+		"payload tree":          func(value *Intent) { value.PayloadTree = oversized },
+		"idempotency namespace": func(value *Intent) { value.IdempotencyNS = oversized },
+		"idempotency key":       func(value *Intent) { value.IdempotencyKey = oversized },
+		"causal reference":      func(value *Intent) { value.RestsOn = []string{oversized} },
+		"causal count": func(value *Intent) {
+			value.RestsOn = make([]string, MaxCausalReferences+1)
+			for index := range value.RestsOn {
+				value.RestsOn[index] = "r"
+			}
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			changed := original
+			mutate(&changed)
+			if _, err := Encode(changed); err == nil {
+				t.Fatalf("oversized %s was encoded", name)
+			}
+		})
+	}
+}
+
+func TestEnvelopeParserUsesExplicitAggregateBound(t *testing.T) {
+	original, _ := fixture(t)
+	ref := strings.Repeat("r", MaxStringBytes)
+	original.RestsOn = []string{ref, ref, ref}
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := Sign(original, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := Envelope(signed, original.RestsOn)
+	if len(message) <= 64<<10 {
+		t.Fatalf("test envelope is only %d bytes", len(message))
+	}
+	if _, _, err := ParseEnvelope(message, uint64(len(message)-1)); err == nil {
+		t.Fatal("parser accepted an envelope above its explicit bound")
+	}
+	parsed, refs, err := ParseEnvelope(message, uint64(len(message)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !parsed.Equal(signed) || !EqualRefs(refs, original.RestsOn) {
+		t.Fatal("large bounded envelope changed during parsing")
 	}
 }
 
