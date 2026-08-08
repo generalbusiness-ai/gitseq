@@ -30,8 +30,13 @@ per ISO 24495-1, for a technical audience.
    `changes-requested`; the review requester ratifies that report. Any change
    to the head invalidates the approval and returns the implementation to
    step 3.
-5. Merge only an approved exact head. Record the merge artifact; only then may
-   the original requester ratify the implementation report.
+5. Merge only an approved exact head. Record the merge artifact, superseding
+   the prior artifact for the same path in the same step; only then may the
+   original requester ratify the implementation report.
+
+Documentation that describes behaviour rests on the artifacts for that
+behaviour, not only on the task that produced it. Superseding the predecessor
+at step 5 is what makes those pages flare when the world moves under them.
 
 Talk and routine progress stay ephemeral. Promote a breakdown only when it
 changes scope, a condition of satisfaction, or creates follow-up work. Never

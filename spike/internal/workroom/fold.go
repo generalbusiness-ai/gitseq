@@ -38,6 +38,11 @@ type Statement struct {
 	Ratified bool              `json:"ratified,omitempty"`
 	Retired  bool              `json:"retired,omitempty"`
 	Stale    bool              `json:"stale,omitempty"`
+	// DescribesSupersededWorld narrows Stale: the retired ancestor that made
+	// this statement stale is itself an artifact, so what moved is the world
+	// the statement describes rather than the argument it stands on. Both are
+	// staleness; only this one means go and re-read the code.
+	DescribesSupersededWorld bool `json:"describes_superseded_world,omitempty"`
 }
 
 type Commitment struct {
@@ -55,6 +60,18 @@ type Artifact struct {
 	Path   string `json:"path"`
 	Commit string `json:"commit"`
 	Stale  bool   `json:"stale"`
+	// DescribesSupersededWorld carries the same narrowing as on Statement.
+	DescribesSupersededWorld bool `json:"describes_superseded_world,omitempty"`
+	// UnableToFlare records that this artifact cites no basis, so no
+	// supersession anywhere can ever make it stale. Its silence is not
+	// currency and the projection must not let it read as currency.
+	UnableToFlare bool `json:"unable_to_flare,omitempty"`
+	// SuccessionUnrecorded records that an earlier artifact for the identical
+	// path is still live: a probable forgotten supersession. It is a warning
+	// about practice, not a verdict — the act itself stays effective. Paths
+	// are compared as exact strings, because path is a free body field and
+	// inferring which spellings mean the same tree would be guesswork.
+	SuccessionUnrecorded bool `json:"succession_unrecorded,omitempty"`
 }
 
 // Act is a ratify or supersede event in client-friendly form: what it
@@ -514,8 +531,15 @@ func (f *foldState) retired() map[string]bool {
 	return retired
 }
 
-func (f *foldState) stale(retired map[string]bool) map[string]bool {
+// staleness returns transitive staleness and, narrowing it, the records whose
+// staleness traces back to a retired artifact. A record is world-stale when a
+// retired artifact is the basis that made it stale, or when it rests on
+// something already world-stale, so the distinction survives any number of
+// hops. Records are visited in sequence order and a basis is always cited
+// before its dependent, so one pass settles both maps.
+func (f *foldState) staleness(retired map[string]bool) (map[string]bool, map[string]bool) {
 	stale := make(map[string]bool)
+	world := make(map[string]bool)
 	for _, record := range f.records {
 		if record.decision.Verdict != Effective {
 			continue
@@ -524,13 +548,29 @@ func (f *foldState) stale(retired map[string]bool) map[string]bool {
 			if target, ok := f.effectiveSup[record.record.ID]; ok && target == basis {
 				continue
 			}
-			if retired[basis] || stale[basis] {
-				stale[record.record.ID] = true
+			if !retired[basis] && !stale[basis] {
+				continue
+			}
+			stale[record.record.ID] = true
+			if world[basis] || (retired[basis] && f.isArtifact(basis)) {
+				world[record.record.ID] = true
 				break
 			}
 		}
 	}
-	return stale
+	return stale, world
+}
+
+// isArtifact reports whether an event is an effective artifact statement. It
+// is the whole basis of the world-staleness distinction: what the fold can
+// tell about a dead ancestor is the kind its author gave it.
+func (f *foldState) isArtifact(event string) bool {
+	record, ok := f.byID[event]
+	if !ok || record.decision.Verdict != Effective {
+		return false
+	}
+	state, ok := record.body.(*State)
+	return ok && state.Kind == KindArtifact
 }
 
 func (f *foldState) ratified(target string, retired map[string]bool) bool {
@@ -544,7 +584,10 @@ func (f *foldState) ratified(target string, retired map[string]bool) bool {
 
 func (f *foldState) project() Projection {
 	retired := f.retired()
-	stale := f.stale(retired)
+	stale, world := f.staleness(retired)
+	// Most recent artifact per exact path, so a later artifact for the same
+	// path can see whether its immediate predecessor was ever superseded.
+	lastByPath := make(map[string]string)
 	projection := Projection{
 		Decisions: []Decision{}, Acts: []Act{}, Statements: []Statement{}, Commitments: []Commitment{}, Artifacts: []Artifact{},
 		Actors: make(map[string]ActorState), Provenance: make(map[string][]string),
@@ -569,12 +612,22 @@ func (f *foldState) project() Projection {
 			Event: record.record.ID, Actor: record.record.Actor, Kind: state.Kind,
 			Text: state.Text, Body: cloneStringMap(state.Body), Ratified: f.ratified(record.record.ID, retired),
 			Retired: retired[record.record.ID], Stale: stale[record.record.ID],
+			DescribesSupersededWorld: world[record.record.ID],
 		})
 		if !knownKinds[state.Kind] {
 			projection.OpaqueKinds[string(state.Kind)] = append(projection.OpaqueKinds[string(state.Kind)], record.record.ID)
 		}
 		if state.Kind == KindArtifact {
-			projection.Artifacts = append(projection.Artifacts, Artifact{Event: record.record.ID, Path: state.Body["path"], Commit: state.Body["commit"], Stale: retired[record.record.ID] || stale[record.record.ID]})
+			path := state.Body["path"]
+			predecessor, hadPredecessor := lastByPath[path]
+			projection.Artifacts = append(projection.Artifacts, Artifact{
+				Event: record.record.ID, Path: path, Commit: state.Body["commit"],
+				Stale:                    retired[record.record.ID] || stale[record.record.ID],
+				DescribesSupersededWorld: world[record.record.ID],
+				UnableToFlare:            len(record.record.RestsOn) == 0,
+				SuccessionUnrecorded:     hadPredecessor && !retired[predecessor],
+			})
+			lastByPath[path] = record.record.ID
 		}
 	}
 	for _, grant := range f.roleGrants {

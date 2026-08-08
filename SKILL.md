@@ -90,6 +90,18 @@ promise stays in history as kept faith, not fault.
    both the commit and its governing decisions. Unbridged work is
    invisible to staleness tracking — the workroom then lies by
    omission, the one failure this system exists to prevent.
+   Two rules follow, one on each side of a document. **Describing
+   behaviour**, rest on the artifacts for the implementation you
+   describe, not only on the task that produced the document: ask
+   whether retiring a basis would mean the prose needs re-checking,
+   and a task request never does. **Changing behaviour**, supersede
+   the prior artifact for the same path as part of stating the new
+   one — that supersession is what makes the prose flare, and it is
+   yours to make because you are the one who moved the world. The
+   projection marks what you skip: an artifact citing nothing reads
+   *unable to flare*, and one whose predecessor at the same path is
+   still live reads *succession not recorded*. A flare means
+   re-check this, not this is wrong.
 
 ## The repo underneath
 

@@ -36,14 +36,36 @@ func RenderStatus(projection Projection) []byte {
 	if len(projection.Artifacts) == 0 {
 		output.WriteString("No artifacts.\n")
 	} else {
-		output.WriteString("| state | artifact | event |\n")
-		output.WriteString("|---|---|---|\n")
+		unableToFlare, successionUnrecorded := 0, 0
+		output.WriteString("| state | artifact | event | notes |\n")
+		output.WriteString("|---|---|---|---|\n")
 		for _, artifact := range projection.Artifacts {
 			status := "current"
-			if artifact.Stale {
+			switch {
+			case artifact.DescribesSupersededWorld:
+				status = "STALE — describes a superseded world"
+			case artifact.Stale:
 				status = "STALE"
 			}
-			fmt.Fprintf(&output, "| %s | %s@%s | %s |\n", status, escape(artifact.Path), short(artifact.Commit), short(artifact.Event))
+			var notes []string
+			if artifact.UnableToFlare {
+				unableToFlare++
+				notes = append(notes, "unable to flare")
+			}
+			if artifact.SuccessionUnrecorded {
+				successionUnrecorded++
+				notes = append(notes, "succession not recorded")
+			}
+			fmt.Fprintf(&output, "| %s | %s@%s | %s | %s |\n", status, escape(artifact.Path), short(artifact.Commit), short(artifact.Event), escape(strings.Join(notes, ", ")))
+		}
+		if unableToFlare > 0 || successionUnrecorded > 0 {
+			output.WriteString("\n")
+		}
+		if unableToFlare > 0 {
+			fmt.Fprintf(&output, "%d cite no basis and can never go stale; their silence is not currency.\n", unableToFlare)
+		}
+		if successionUnrecorded > 0 {
+			fmt.Fprintf(&output, "%d follow a live artifact at the same path without superseding it, so anything resting on that predecessor still reads current.\n", successionUnrecorded)
 		}
 	}
 	output.WriteString("\n## Attempts\n\n")

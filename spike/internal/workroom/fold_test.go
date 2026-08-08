@@ -465,3 +465,143 @@ func TestParticipantRosterRequiresActorKind(t *testing.T) {
 		t.Fatal("participant roster without an actor kind was accepted")
 	}
 }
+
+// worldRecords seeds a roster and appends the case under test.
+func worldRecords(t testing.TB, extra ...Record) []Record {
+	t.Helper()
+	base := []Record{
+		event(t, "w0", operator, SchemaState, State{Kind: KindRoster, Text: "Operator begins the workroom", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "w1", operator, SchemaState, State{Kind: KindRoster, Text: "Agent joins", Body: map[string]string{"actor": agent, "name": "Agent", "role": "agent"}}, "w0"),
+		event(t, "w2", operator, SchemaRatify, Ratify{Target: "w1"}, "w1"),
+	}
+	return append(base, extra...)
+}
+
+func artifactByEvent(t *testing.T, projection Projection, id string) Artifact {
+	t.Helper()
+	for _, artifact := range projection.Artifacts {
+		if artifact.Event == id {
+			return artifact
+		}
+	}
+	t.Fatalf("no artifact projected for %s", id)
+	return Artifact{}
+}
+
+func statementByEvent(t *testing.T, projection Projection, id string) Statement {
+	t.Helper()
+	for _, statement := range projection.Statements {
+		if statement.Event == id {
+			return statement
+		}
+	}
+	t.Fatalf("no statement projected for %s", id)
+	return Statement{}
+}
+
+// A retired artifact under a document means the world moved, and the mark must
+// survive intermediate hops. The distinction is the whole point: only this
+// kind of staleness means go and re-read the code.
+func TestRetiredArtifactMarksDependentsAsDescribingASupersededWorld(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI reference page", Body: map[string]string{"path": "docs/reference/gs.md", "commit": "bbb222"}}, "w3"),
+		event(t, "w5", agent, SchemaState, State{Kind: KindAssert, Text: "The reference documents every subcommand"}, "w4"),
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation, replacing aaa111", Body: map[string]string{"path": "spike/cmd/gs", "commit": "ccc333"}}, "w0"),
+		event(t, "w7", agent, SchemaSupersede, Supersede{Target: "w3", Text: "Behaviour replaced at ccc333"}, "w3", "w6"),
+	)
+	projection := Fold(records)
+
+	page := artifactByEvent(t, projection, "w4")
+	if !page.Stale || !page.DescribesSupersededWorld {
+		t.Fatalf("page resting on a retired artifact: stale=%v world=%v", page.Stale, page.DescribesSupersededWorld)
+	}
+	claim := statementByEvent(t, projection, "w5")
+	if !claim.Stale || !claim.DescribesSupersededWorld {
+		t.Fatalf("second hop lost the distinction: stale=%v world=%v", claim.Stale, claim.DescribesSupersededWorld)
+	}
+}
+
+// Ordinary staleness must not claim the world moved. The golden fixture's
+// artifact goes stale because its governing request died, which is the
+// argument dying, not the code changing.
+func TestRetiredArgumentIsStaleWithoutDescribingASupersededWorld(t *testing.T) {
+	artifact := golden(t).Artifacts[0]
+	if !artifact.Stale {
+		t.Fatal("golden artifact is no longer stale; the fixture no longer tests this")
+	}
+	if artifact.DescribesSupersededWorld {
+		t.Fatal("a retired request was reported as the world moving")
+	}
+}
+
+// The succession warning is a to-do, so doing the work must clear it.
+func TestSuccessionWarningAppearsUntilThePredecessorIsSuperseded(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation, replacing aaa111", Body: map[string]string{"path": "spike/cmd/gs", "commit": "ccc333"}}, "w0"),
+		event(t, "w5", agent, SchemaSupersede, Supersede{Target: "w3", Text: "Behaviour replaced at ccc333"}, "w3", "w4"),
+	)
+
+	before := Fold(records[:len(records)-1])
+	if !artifactByEvent(t, before, "w4").SuccessionUnrecorded {
+		t.Fatal("a live predecessor at the same path raised no warning")
+	}
+	after := Fold(records)
+	if artifactByEvent(t, after, "w4").SuccessionUnrecorded {
+		t.Fatal("warning survived the supersession that answers it")
+	}
+	if artifactByEvent(t, after, "w3").SuccessionUnrecorded {
+		t.Fatal("the first artifact at a path warned about a predecessor it does not have")
+	}
+}
+
+// A different path is a different thing; the fold must not infer that two
+// spellings mean the same tree.
+func TestSuccessionWarningComparesPathsExactly(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI and its docs", Body: map[string]string{"path": "spike/cmd/gs,docs", "commit": "ccc333"}}, "w0"),
+	)
+	if artifactByEvent(t, Fold(records), "w4").SuccessionUnrecorded {
+		t.Fatal("a comma-joined path was treated as succeeding one of its members")
+	}
+}
+
+// An artifact with no basis can never go stale, so its silence must not read
+// as currency.
+func TestUnbridgedArtifactIsMarkedUnableToFlare(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "Unbridged work", Body: map[string]string{"path": "spike", "commit": "aaa111"}}),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "Bridged work", Body: map[string]string{"path": "ui", "commit": "bbb222"}}, "w0"),
+	)
+	projection := Fold(records)
+	if !artifactByEvent(t, projection, "w3").UnableToFlare {
+		t.Fatal("an artifact citing nothing was not marked unable to flare")
+	}
+	if artifactByEvent(t, projection, "w4").UnableToFlare {
+		t.Fatal("an artifact citing a basis was marked unable to flare")
+	}
+}
+
+// The marks are for humans, so they must reach the human page and not only
+// the JSON.
+func TestStatusPageCarriesTheArtifactMarks(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI reference page", Body: map[string]string{"path": "docs/reference/gs.md", "commit": "bbb222"}}, "w3"),
+		event(t, "w5", agent, SchemaState, State{Kind: KindArtifact, Text: "Unbridged work", Body: map[string]string{"path": "ui", "commit": "ccc333"}}),
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation again", Body: map[string]string{"path": "spike/cmd/gs", "commit": "ddd444"}}, "w0"),
+		event(t, "w7", agent, SchemaSupersede, Supersede{Target: "w3", Text: "Behaviour replaced at ddd444"}, "w3", "w6"),
+	)
+	page := string(RenderStatus(Fold(records)))
+	for _, want := range []string{
+		"STALE — describes a superseded world",
+		"unable to flare",
+		"cite no basis and can never go stale",
+	} {
+		if !bytes.Contains([]byte(page), []byte(want)) {
+			t.Fatalf("status page omits %q\n%s", want, page)
+		}
+	}
+}
