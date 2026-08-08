@@ -32,11 +32,19 @@ citing a request that does not exist is ineffective, and a report on
 that promise is ineffective in turn, so an unearned approval cannot
 carry force.
 
-Authority grants need a paragraph of their own, because for them the
-table above is not the whole story. Everywhere else in it, a citation
-that satisfies the rule gives an act its force. For a grant it does not:
-a grant can satisfy every citation rule, be judged effective, be
-ratified, and still confer nothing.
+Citations are necessary and not sufficient. The fold also checks **who
+signed**, and the table above does not show it: a promise citing a
+perfectly effective request is still ineffective when its author is not
+the performer the request named — measured, the reason reads `promise
+actor is not the requested performer`. A report needs the promisor's own
+signature in the same way, and `ratify` needs authority over that
+particular target. So satisfying the citation rule earns an act a
+hearing, not its force.
+
+Authority grants then need a paragraph of their own, for a different
+reason. For every other act, effectiveness is settled once, when the act
+is appended. A grant can satisfy every rule, be judged effective, be
+ratified — and still confer nothing, either then or later.
 
 There are two ways that happens, and they are different questions.
 
@@ -55,8 +63,15 @@ that both the grant and the membership it rests on are still live. Two
 distinct retirements, with different blast radii:
 
 - Retiring the explicit grant — what `gs role-revoke` does — retires
-  that role and nothing else. If the grant took force through a
-  ratification, retiring the ratification has the same effect.
+  the role it named **and every role derived from it**. Measured:
+  revoking `operator` takes a principal from
+  `[operator, participant, ratifier]` to `[participant]`, because
+  `ratifier` was riding on `operator` and had no grant of its own. The
+  ordinary `ratifier` revocation looks like it retires one role only —
+  `[participant, ratifier]` to `[participant]` — but that is because
+  `ratifier` has nothing derived from it, not because revocation is
+  narrow. If the grant took force through a ratification, retiring the
+  ratification has the same effect.
 - Retiring the **membership** removes membership itself, and with it
   every non-membership role that named that membership as its basis.
   One supersede, and the principal is no longer a participant.
