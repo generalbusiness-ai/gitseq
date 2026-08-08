@@ -52,16 +52,42 @@ func capList[T any](items []T, limit int) ([]T, int) {
 	return items[len(items)-limit:], len(items) - limit
 }
 
-// capListHead keeps the first entries instead of the last, and exists for
-// lists the fold has already sorted into a meaningful order rather than
-// appended in time order. Roles are sorted alphabetically, so "most recent"
-// means nothing for them, while the conventional names a reader is looking
-// for sort early.
-func capListHead[T any](items []T, limit int) ([]T, int) {
-	if len(items) <= limit {
-		return items, 0
+// foldSemanticRoles are the roles the fold itself assigns meaning to, as
+// opposed to the arbitrary names a roster statement may confer. They are kept
+// through truncation because dropping them changes what the answer means: an
+// actor who cannot see "ratifier" concludes they cannot ratify.
+var foldSemanticRoles = map[string]bool{"operator": true, "participant": true, "ratifier": true}
+
+// capRoles bounds an actor's role set while keeping the roles that carry
+// authority. Alphabetical head-retention was the previous attempt and its
+// stated reason was simply false: twenty roles named aaa-NNNN sort ahead of
+// operator, participant and ratifier, so the cap returned the arbitrary names
+// and dropped all three that matter. Role names are submitter-chosen, so no
+// ordering rule can be trusted to put the meaningful ones first — they have to
+// be named. The remainder of the budget is filled in the fold's own order so
+// the result stays deterministic.
+func capRoles(roles []string, limit int) ([]string, int) {
+	if len(roles) <= limit {
+		return roles, 0
 	}
-	return items[:limit], len(items) - limit
+	kept := make([]string, 0, limit)
+	seen := make(map[string]bool, limit)
+	for _, role := range roles {
+		if len(kept) < limit && foldSemanticRoles[role] {
+			kept = append(kept, role)
+			seen[role] = true
+		}
+	}
+	for _, role := range roles {
+		if len(kept) >= limit {
+			break
+		}
+		if !seen[role] {
+			kept = append(kept, role)
+			seen[role] = true
+		}
+	}
+	return kept, len(roles) - len(kept)
 }
 
 // actorView carries the caller's own standing. Roles is capped like every
@@ -300,7 +326,7 @@ func digestStatus(status service.Status, fingerprint, actorName string, degraded
 	}
 	digest.Frontier = status.Cursor.Frontier
 	if actor, ok := projection.Actors[fingerprint]; ok {
-		digest.You.Roles, digest.You.RolesSkipped = capListHead(actor.Roles, listCap)
+		digest.You.Roles, digest.You.RolesSkipped = capRoles(actor.Roles, listCap)
 		if actor.Name != "" {
 			digest.You.Name = actor.Name
 		}
@@ -442,8 +468,9 @@ func summarize(tool string, value any) string {
 		// lying, so every shortened list says so in the one line most readers
 		// actually read.
 		return fmt.Sprintf(
-			"depth %d, %s waiting on you, %s you are waiting on, %s not actionable, %s of your acts did not take force; live %s",
+			"depth %d, you hold %s roles, %s waiting on you, %s you are waiting on, %s not actionable, %s of your acts did not take force; live %s",
 			shaped.Totals.Depth,
+			shown(len(shaped.You.Roles), shaped.You.RolesSkipped),
 			shown(len(shaped.WaitingOnYou), shaped.WaitingOnYouSkipped),
 			shown(len(shaped.YouAreWaiting), shaped.YouAreWaitingSkipped),
 			shown(len(shaped.NotActionable), shaped.NotActionableSkipped),

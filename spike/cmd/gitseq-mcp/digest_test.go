@@ -545,11 +545,8 @@ func TestYourOwnRolesAreBounded(t *testing.T) {
 	if digest.You.RolesSkipped != 2001-listCap {
 		t.Fatalf("roles skipped = %d, want %d", digest.You.RolesSkipped, 2001-listCap)
 	}
-	// Kept from the front, because the fold sorts roles and the conventional
-	// names sort early; keeping the tail would drop exactly the ones a reader
-	// is looking for.
-	if digest.You.Roles[0] != roles[0] {
-		t.Fatalf("roles were kept from the wrong end: got %q, want %q", digest.You.Roles[0], roles[0])
+	if !containsRole(digest.You.Roles, roles[0]) {
+		t.Fatalf("deterministic fill dropped the first role: %#v", digest.You.Roles)
 	}
 	encoded, err := json.Marshal(digest)
 	if err != nil {
@@ -557,5 +554,48 @@ func TestYourOwnRolesAreBounded(t *testing.T) {
 	}
 	if !strings.Contains(string(encoded), "roles_skipped") {
 		t.Fatalf("truncated roles without saying so: %s", encoded)
+	}
+}
+
+func containsRole(roles []string, want string) bool {
+	for _, role := range roles {
+		if role == want {
+			return true
+		}
+	}
+	return false
+}
+
+// The previous cap kept the alphabetical head, on the stated grounds that the
+// conventional roles sort early. They do not: any name a roster statement
+// chooses can sort ahead of them, and the earlier fixture used role-NNNN,
+// which happens to sort after "operator" and so masked the adversary
+// completely. Role names are submitter-chosen, so the roles that carry
+// authority have to be named rather than inferred from an ordering.
+func TestRoleCapKeepsTheRolesThatCarryAuthority(t *testing.T) {
+	roles := []string{}
+	for index := range 20 {
+		roles = append(roles, fmt.Sprintf("aaa-%04d", index))
+	}
+	roles = append(roles, "operator", "participant", "ratifier")
+	sort.Strings(roles)
+
+	status := sampleStatus(4)
+	actor := status.Durable.Projection.Actors[mine]
+	actor.Roles = roles
+	status.Durable.Projection.Actors[mine] = actor
+	digest := digestStatus(status, mine, "me", false)
+
+	for _, role := range []string{"operator", "participant", "ratifier"} {
+		if !containsRole(digest.You.Roles, role) {
+			t.Fatalf("truncation dropped %q, which decides what the actor may do: %#v", role, digest.You.Roles)
+		}
+	}
+	if len(digest.You.Roles) != listCap || digest.You.RolesSkipped != len(roles)-listCap {
+		t.Fatalf("cap or count wrong: %d listed, %d skipped, %d total", len(digest.You.Roles), digest.You.RolesSkipped, len(roles))
+	}
+	// And the omission is stated in the line a human reads, not only on the wire.
+	if line := summarize("status", digest); !strings.Contains(line, fmt.Sprintf("%d of %d roles", listCap, len(roles))) {
+		t.Fatalf("summary hides the role truncation: %q", line)
 	}
 }
