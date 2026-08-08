@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a6c44fda558c7d350dec9259e4513cd62372c018","text":"Superseded by the repaired exact-head workflow guard artifact after changes-requested review."}
+{"kind":"artifact","text":"Exact-head review/merge workflow guard repaired after changes-requested review at immutable head eccd1d4947aa8c1313128e8b0ac042db9c168ca3.","body":{"commit":"eccd1d4947aa8c1313128e8b0ac042db9c168ca3","path":"task/exact-head-workflow-guard"}}
