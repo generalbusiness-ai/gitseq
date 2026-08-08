@@ -161,8 +161,8 @@ func TestWaitDeltaCarriesOnlyWhatIsNewAfterTheCursor(t *testing.T) {
 	if delta.Durable[len(delta.Durable)-1].Event != last {
 		t.Fatalf("delta does not end at the frontier: %#v", delta.Durable)
 	}
-	if len(delta.WaitingOnYou) != 1 {
-		t.Fatalf("delta should still say what waits on me: %#v", delta.WaitingOnYou)
+	if len(delta.CurrentWaitingOnYou) != 1 {
+		t.Fatalf("delta should still say what waits on me: %#v", delta.CurrentWaitingOnYou)
 	}
 }
 
@@ -287,20 +287,195 @@ func TestNonActionableCommitmentsAreSeparatedFromWaiting(t *testing.T) {
 	// The delta must apply the same rule, or wait would reintroduce the lie.
 	requested := service.Cursor{Frontier: []service.Frontier{{Genesis: "genesis", Depth: status.Durable.Depth}}}
 	delta := digestWait(service.WaitResponse{Status: status}, requested, mine, "me", false)
-	for _, view := range delta.WaitingOnYou {
+	for _, view := range delta.CurrentWaitingOnYou {
 		if view.Status == "stale" {
 			t.Fatalf("wait reintroduced a stale commitment as waiting: %#v", view)
 		}
 	}
-	// The delta must also deliver them rather than dropping them; a commitment
-	// that goes stale or reneged after a caller's last status is precisely what
-	// they need the delta to tell them.
 	delivered := map[string]bool{}
-	for _, view := range delta.NotActionable {
+	for _, view := range delta.CurrentNotActionable {
 		delivered[view.Request] = true
 	}
 	if !delivered["request:stale"] || !delivered["request:reneged"] || !delivered["request:cancelled"] {
-		t.Fatalf("wait dropped non-actionable commitments instead of delivering them: %#v", delta.NotActionable)
+		t.Fatalf("wait dropped non-actionable commitments instead of carrying them: %#v", delta.CurrentNotActionable)
+	}
+}
+
+// What the previous version of this file got wrong is worth stating, because
+// the same shape of mistake is easy to repeat: it set the requested frontier
+// to the current depth, appended commitments with no causal decisions, and
+// then asserted that every current terminal row appeared — which a full
+// current-state echo satisfies without delivering any transition at all. The
+// assertion could not fail for the reason it was written.
+//
+// The honest property is the one below. Commitment lists in a delta are
+// current state and are deliberately *not* cut at the cursor: the fold records
+// no depth at which a commitment's status changed, so a commitment-level cut
+// is not computable from a projection alone. Only Durable is a true delta.
+// Pinning that here means a later change which quietly starts filtering — or
+// quietly stops — has to come past this test and say so.
+func TestWaitCommitmentListsAreCurrentStateAndOnlyDurableIsCut(t *testing.T) {
+	status := sampleStatus(30)
+	depth := status.Durable.Depth
+	projection := &status.Durable.Projection
+	projection.Commitments = append(projection.Commitments,
+		workroom.Commitment{Request: "request:reneged", Requester: mine, Performer: theirs, Status: "reneged"})
+
+	atFrontier := digestWait(service.WaitResponse{Status: status},
+		service.Cursor{Frontier: []service.Frontier{{Genesis: "genesis", Depth: depth}}}, mine, "me", false)
+	fromScratch := digestWait(service.WaitResponse{Status: status},
+		service.Cursor{Frontier: []service.Frontier{{Genesis: "genesis", Depth: 0}}}, mine, "me", false)
+
+	// Durable is genuinely cut: caught up sees nothing new, a fresh reader sees
+	// history. If these were equal the cursor would not be doing anything.
+	if len(atFrontier.Durable) != 0 {
+		t.Fatalf("a caller at the frontier should receive no new events: %#v", atFrontier.Durable)
+	}
+	if len(fromScratch.Durable) == 0 {
+		t.Fatalf("a caller from zero should receive history")
+	}
+	// The commitment lists are not cut, and must be identical across the two.
+	if !sameCommitments(atFrontier.CurrentNotActionable, fromScratch.CurrentNotActionable) {
+		t.Fatalf("commitment lists varied with the cursor: %#v vs %#v",
+			atFrontier.CurrentNotActionable, fromScratch.CurrentNotActionable)
+	}
+	if !sameCommitments(atFrontier.CurrentWaitingOnYou, fromScratch.CurrentWaitingOnYou) {
+		t.Fatalf("waiting lists varied with the cursor: %#v vs %#v",
+			atFrontier.CurrentWaitingOnYou, fromScratch.CurrentWaitingOnYou)
+	}
+	// And a caller sitting exactly at the frontier still learns its situation,
+	// which is why they are carried at all.
+	if len(atFrontier.CurrentNotActionable) == 0 {
+		t.Fatal("a caught-up caller learned nothing about its terminal commitments")
+	}
+	// The JSON names must say "current", or a reader will take them for a cut.
+	encoded, err := json.Marshal(atFrontier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"current_not_actionable", "current_waiting_on_you"} {
+		if !strings.Contains(string(encoded), field) {
+			t.Fatalf("wire name %q missing, so the payload implies a cut it does not make: %s", field, encoded)
+		}
+	}
+}
+
+func sameCommitments(left, right []commitmentView) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+// sampleTerminalStatus grows the dimension sampleStatus deliberately does not:
+// commitment cardinality. Terminal commitments and an actor's own ineffective
+// acts are the two things that accumulate and are never discharged, so they
+// are the two an "is it bounded?" test has to scale. Padding decisions while
+// holding commitments at four — which is what the earlier bounded test did —
+// cannot detect an unbounded commitment list, and did not.
+func sampleTerminalStatus(terminal int) service.Status {
+	status := sampleStatus(4)
+	projection := status.Durable.Projection
+	for index := range terminal {
+		request := fmt.Sprintf("request:stale-%d", index)
+		failed := fmt.Sprintf("act:mine-failed-%d", index)
+		projection.Statements = append(projection.Statements,
+			workroom.Statement{Event: request, Actor: theirs, Kind: workroom.KindRequest, Text: "an old review that was withdrawn"},
+			workroom.Statement{Event: failed, Actor: mine, Kind: workroom.KindPromise, Text: "another promise that did not take force"})
+		projection.Decisions = append(projection.Decisions,
+			workroom.Decision{Event: request, Verdict: workroom.Effective, Reason: "statement recorded"},
+			workroom.Decision{Event: failed, Verdict: workroom.Ineffective, Reason: "dangling promise has no request"})
+		// WaitingOn stays empty because the fold clears it for reneged
+		// commitments; membership comes from requester/performer via involves.
+		projection.Commitments = append(projection.Commitments,
+			workroom.Commitment{Request: request, Requester: theirs, Performer: mine, Status: "reneged"})
+	}
+	status.Durable.Projection = projection
+	status.Durable.Depth = len(projection.Decisions)
+	status.Cursor.Frontier = []service.Frontier{{Genesis: "genesis", Head: "head", Depth: status.Durable.Depth}}
+	return status
+}
+
+// The bound has to hold in the dimension the actor-oriented lists actually
+// grow in. A workroom accrues terminal commitments and failed acts forever;
+// without a cap, "what is my situation?" costs more every month while the
+// answer stays the same size, which is the exact cost this view exists to
+// remove.
+func TestTerminalCommitmentsAndFailedActsAreBounded(t *testing.T) {
+	// Under the cap, everything is listed and nothing is claimed skipped.
+	small := digestStatus(sampleTerminalStatus(5), mine, "me", false)
+	if len(small.NotActionable) != 5 || small.NotActionableSkipped != 0 {
+		t.Fatalf("a short list must be complete: %d listed, %d skipped", len(small.NotActionable), small.NotActionableSkipped)
+	}
+
+	large := digestStatus(sampleTerminalStatus(500), mine, "me", false)
+	if len(large.NotActionable) != listCap {
+		t.Fatalf("terminal commitments are unbounded: %d listed", len(large.NotActionable))
+	}
+	if large.NotActionableSkipped != 500-listCap {
+		t.Fatalf("skipped count = %d, want %d", large.NotActionableSkipped, 500-listCap)
+	}
+	// sampleStatus already contributes one ineffective act of mine.
+	if len(large.YourAttention) != listCap || large.YourAttentionSkipped != 501-listCap {
+		t.Fatalf("failed acts unbounded: %d listed, %d skipped", len(large.YourAttention), large.YourAttentionSkipped)
+	}
+	// Truncation that does not say so is worse than truncation. Both the wire
+	// payload and the human-readable line must carry the omission.
+	encoded, err := json.Marshal(large)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), "not_actionable_skipped") {
+		t.Fatalf("payload truncates silently: %s", encoded)
+	}
+	if line := summarize("status", large); !strings.Contains(line, fmt.Sprintf("%d of 500", listCap)) {
+		t.Fatalf("summary states a truncated count as if it were the whole: %q", line)
+	}
+
+	// The size property, measured where it matters. Ten times the terminal
+	// commitments must not mean ten times the answer: the digest may widen by
+	// the digits its counters and request ids gained, and by nothing else.
+	// The tolerance is generous on purpose — the discrimination that matters
+	// is logarithmic growth against linear, and an uncapped list would add
+	// hundreds of entries here, not tens of bytes.
+	smallStatus, largeStatus := sampleTerminalStatus(100), sampleTerminalStatus(1000)
+	hundred, err := json.Marshal(digestStatus(smallStatus, mine, "me", false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	thousand, err := json.Marshal(digestStatus(largeStatus, mine, "me", false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if growth := len(thousand) - len(hundred); growth > 200 {
+		t.Fatalf("digest grew %d bytes for ten times the terminal commitments: %d then %d", growth, len(hundred), len(thousand))
+	}
+	// …and the input has to have genuinely grown, or the assertion above is
+	// measuring nothing. This is the guard the earlier bounded test lacked in
+	// this dimension.
+	smallFull, err := json.Marshal(smallStatus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	largeFull, err := json.Marshal(largeStatus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(largeFull) < 5*len(smallFull) {
+		t.Fatalf("the projection under test did not actually grow: %d then %d bytes", len(smallFull), len(largeFull))
+	}
+
+	// The delta carries the same lists, so it needs the same bound.
+	requested := service.Cursor{Frontier: []service.Frontier{{Genesis: "genesis", Depth: 0}}}
+	delta := digestWait(service.WaitResponse{Status: sampleTerminalStatus(500)}, requested, mine, "me", false)
+	if len(delta.CurrentNotActionable) != listCap || delta.CurrentNotActionableSkipped != 500-listCap {
+		t.Fatalf("wait is unbounded in terminal commitments: %d listed, %d skipped",
+			len(delta.CurrentNotActionable), delta.CurrentNotActionableSkipped)
 	}
 }
 

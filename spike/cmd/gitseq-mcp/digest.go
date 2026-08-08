@@ -32,6 +32,26 @@ const deltaCap = 50
 // event id; what an agent needs here is enough to recognise the act.
 const textCap = 240
 
+// listCap bounds every per-actor list in these views. Two of them grow with
+// the log rather than with open work and would otherwise be unbounded:
+// terminal commitments (stale, reneged, cancelled) are never discharged and
+// never leave, and acts the fold judged ineffective accumulate the same way.
+// Leaving those uncapped would reintroduce, in a narrower dimension, the very
+// cost this view exists to avoid. The actionable lists are capped on the same
+// terms so that no list here can grow without a stated count of what it
+// dropped.
+const listCap = 20
+
+// capList keeps the most recent entries and reports how many older ones it
+// dropped. Recency is the right end to keep: the fold appends in admission
+// order, so the tail is what the actor has least likely already seen.
+func capList[T any](items []T, limit int) ([]T, int) {
+	if len(items) <= limit {
+		return items, 0
+	}
+	return items[len(items)-limit:], len(items) - limit
+}
+
 type actorView struct {
 	Name        string   `json:"name"`
 	Fingerprint string   `json:"fingerprint"`
@@ -96,28 +116,46 @@ func involves(commitment workroom.Commitment, fingerprint string) bool {
 		commitment.WaitingOn == fingerprint
 }
 
+// Every list here carries its own skipped count rather than a single shared
+// one, because the lists are bounded independently and a reader needs to know
+// which of them was shortened. Totals still give the whole-projection figures,
+// so a skipped count is about this view and not about the record.
 type actorStatus struct {
-	You            actorView          `json:"you"`
-	Frontier       []service.Frontier `json:"frontier"`
-	Cursor         service.Cursor     `json:"cursor"`
-	WaitingOnYou   []commitmentView   `json:"waiting_on_you"`
-	YouAreWaiting  []commitmentView   `json:"you_are_waiting_on"`
-	NotActionable  []commitmentView   `json:"not_actionable,omitempty"`
-	YourAttention  []eventView        `json:"needs_your_attention,omitempty"`
-	Totals         totals             `json:"totals"`
-	Live           liveView           `json:"live"`
-	FollowWithWait string             `json:"follow_with_wait"`
+	You                  actorView          `json:"you"`
+	Frontier             []service.Frontier `json:"frontier"`
+	Cursor               service.Cursor     `json:"cursor"`
+	WaitingOnYou         []commitmentView   `json:"waiting_on_you"`
+	WaitingOnYouSkipped  int                `json:"waiting_on_you_skipped,omitempty"`
+	YouAreWaiting        []commitmentView   `json:"you_are_waiting_on"`
+	YouAreWaitingSkipped int                `json:"you_are_waiting_on_skipped,omitempty"`
+	NotActionable        []commitmentView   `json:"not_actionable,omitempty"`
+	NotActionableSkipped int                `json:"not_actionable_skipped,omitempty"`
+	YourAttention        []eventView        `json:"needs_your_attention,omitempty"`
+	YourAttentionSkipped int                `json:"needs_your_attention_skipped,omitempty"`
+	Totals               totals             `json:"totals"`
+	Live                 liveView           `json:"live"`
+	FollowWithWait       string             `json:"follow_with_wait"`
 }
 
+// waitDelta mixes two kinds of thing, and the distinction matters. Durable is
+// a true delta: it is cut at the caller's frontier and contains only what was
+// admitted at or after it. The commitment lists are not — they are current
+// actor-scoped state, restated so that a caller waking from a long wait knows
+// what is on its plate without a second round trip. The fold records no depth
+// at which a commitment's status changed, so a commitment-level delta is not
+// computable here; saying so is better than implying a cut that does not
+// exist.
 type waitDelta struct {
-	Cursor       service.Cursor   `json:"cursor"`
-	Reset        bool             `json:"reset,omitempty"`
-	Durable      []eventView      `json:"durable,omitempty"`
-	Skipped      int              `json:"durable_skipped,omitempty"`
-	WaitingOnYou []commitmentView `json:"waiting_on_you,omitempty"`
-	NotActionable []commitmentView `json:"not_actionable,omitempty"`
-	Live         []nexus.Change   `json:"live,omitempty"`
-	Totals       totals           `json:"totals"`
+	Cursor                      service.Cursor   `json:"cursor"`
+	Reset                       bool             `json:"reset,omitempty"`
+	Durable                     []eventView      `json:"durable,omitempty"`
+	Skipped                     int              `json:"durable_skipped,omitempty"`
+	CurrentWaitingOnYou         []commitmentView `json:"current_waiting_on_you,omitempty"`
+	CurrentWaitingSkipped       int              `json:"current_waiting_on_you_skipped,omitempty"`
+	CurrentNotActionable        []commitmentView `json:"current_not_actionable,omitempty"`
+	CurrentNotActionableSkipped int              `json:"current_not_actionable_skipped,omitempty"`
+	Live                        []nexus.Change   `json:"live,omitempty"`
+	Totals                      totals           `json:"totals"`
 }
 
 func truncate(text string) string {
@@ -293,6 +331,13 @@ func digestStatus(status service.Status, fingerprint, actorName string, degraded
 		view.Actor = actorName
 		digest.YourAttention = append(digest.YourAttention, view)
 	}
+	// Bound last, once every list is assembled, so the caps apply to what the
+	// actor would actually have seen rather than to an arbitrary prefix of the
+	// scan.
+	digest.WaitingOnYou, digest.WaitingOnYouSkipped = capList(digest.WaitingOnYou, listCap)
+	digest.YouAreWaiting, digest.YouAreWaitingSkipped = capList(digest.YouAreWaiting, listCap)
+	digest.NotActionable, digest.NotActionableSkipped = capList(digest.NotActionable, listCap)
+	digest.YourAttention, digest.YourAttentionSkipped = capList(digest.YourAttention, listCap)
 	return digest
 }
 
@@ -350,13 +395,19 @@ func digestWait(response service.WaitResponse, requested service.Cursor, fingerp
 		view := viewCommitment(projection, statements, commitment)
 		switch {
 		case !actionableStatuses[commitment.Status]:
-			// A commitment that went stale or reneged since the caller last
-			// looked is exactly what a delta exists to deliver.
-			delta.NotActionable = append(delta.NotActionable, view)
+			// Current state, not a cut: this is every terminal commitment the
+			// actor is party to, whenever it turned. A caller that wants only
+			// what turned since its cursor must read Durable, which is the
+			// part that is genuinely cut at the frontier.
+			delta.CurrentNotActionable = append(delta.CurrentNotActionable, view)
 		case commitment.WaitingOn == fingerprint:
-			delta.WaitingOnYou = append(delta.WaitingOnYou, view)
+			delta.CurrentWaitingOnYou = append(delta.CurrentWaitingOnYou, view)
 		}
 	}
+	// Terminal commitments never leave the projection, so this list grows with
+	// the log until it is bounded.
+	delta.CurrentWaitingOnYou, delta.CurrentWaitingSkipped = capList(delta.CurrentWaitingOnYou, listCap)
+	delta.CurrentNotActionable, delta.CurrentNotActionableSkipped = capList(delta.CurrentNotActionable, listCap)
 	if degraded {
 		delta.Cursor.Live = nexus.Cursor{Generation: "degraded"}
 	}
@@ -370,10 +421,17 @@ func digestWait(response service.WaitResponse, requested service.Cursor, fingerp
 func summarize(tool string, value any) string {
 	switch shaped := value.(type) {
 	case actorStatus:
+		// A count that silently means "capped at 20" would be the summary
+		// lying, so every shortened list says so in the one line most readers
+		// actually read.
 		return fmt.Sprintf(
-			"depth %d, %d waiting on you, %d you are waiting on, %d not actionable, %d of your acts did not take force; live %s",
-			shaped.Totals.Depth, len(shaped.WaitingOnYou), len(shaped.YouAreWaiting), len(shaped.NotActionable),
-			len(shaped.YourAttention), liveLabel(shaped.Live))
+			"depth %d, %s waiting on you, %s you are waiting on, %s not actionable, %s of your acts did not take force; live %s",
+			shaped.Totals.Depth,
+			shown(len(shaped.WaitingOnYou), shaped.WaitingOnYouSkipped),
+			shown(len(shaped.YouAreWaiting), shaped.YouAreWaitingSkipped),
+			shown(len(shaped.NotActionable), shaped.NotActionableSkipped),
+			shown(len(shaped.YourAttention), shaped.YourAttentionSkipped),
+			liveLabel(shaped.Live))
 	case waitDelta:
 		reset := ""
 		if shaped.Reset {
@@ -383,11 +441,22 @@ func summarize(tool string, value any) string {
 		if shaped.Skipped > 0 {
 			skipped = fmt.Sprintf(", %d older events omitted", shaped.Skipped)
 		}
-		return fmt.Sprintf("depth %d, %d new durable events%s%s, %d waiting on you, %d not actionable",
-			shaped.Totals.Depth, len(shaped.Durable), skipped, reset, len(shaped.WaitingOnYou), len(shaped.NotActionable))
+		return fmt.Sprintf("depth %d, %d new durable events%s%s; currently %s waiting on you, %s not actionable",
+			shaped.Totals.Depth, len(shaped.Durable), skipped, reset,
+			shown(len(shaped.CurrentWaitingOnYou), shaped.CurrentWaitingSkipped),
+			shown(len(shaped.CurrentNotActionable), shaped.CurrentNotActionableSkipped))
 	default:
 		return tool + " ok"
 	}
+}
+
+// shown renders a capped list's size honestly: bare when nothing was dropped,
+// and "20 of 63" when it was.
+func shown(listed, skipped int) string {
+	if skipped == 0 {
+		return fmt.Sprintf("%d", listed)
+	}
+	return fmt.Sprintf("%d of %d", listed, listed+skipped)
 }
 
 func liveLabel(live liveView) string {
