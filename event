@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently re-review docs-era at exact head 0ed2b627660c6e293bf9aafd434567c41cb60ba3 and status-projection at exact head ae601b52b6842ed8b282de6f9d53ac74b29125a4, verify the repaired semantics and citation graph with mutation-sensitive probes, run proportional gates, and report separate exact-head verdicts.","body":{"docs_head":"0ed2b627660c6e293bf9aafd434567c41cb60ba3","status_head":"ae601b52b6842ed8b282de6f9d53ac74b29125a4"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8393d8d1949dc0bdbfc8d73f84f6b5a05509e2ba"}
