@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will finish the performance investigation, write a concrete design ticket with measured causes, explicit default/full status contracts, invalidation and trust boundaries, and reproducible acceptance criteria, then request ratification. I will not implement the status changes before that design is approved.","body":{"branch":"task/status-fast-usable"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a2b1ef47623d8769a529f8c0fcb75e81e4ce3af"}
