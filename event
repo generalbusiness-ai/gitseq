@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8b24a4fc2f855d1ba7f8c73f513e1397a899f51a","text":"Retire Task2g artifact at 1b3df0ec; the ratified review repair is frozen at 65ab3f68."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6c7d1c55ce3b796cd8377d52d4bcf1f1c69a5cc5","text":"Retire Task2g ready report for 1b3df0ec; replacement report will cite the exact repaired head 65ab3f68."}
