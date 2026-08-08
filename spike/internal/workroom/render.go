@@ -37,6 +37,10 @@ func RenderStatus(projection Projection) []byte {
 		output.WriteString("No artifacts.\n")
 	} else {
 		unableToFlare, successionUnrecorded := 0, 0
+		// One unrecorded succession at a long-lived path repeats on every later
+		// link of that chain, so the count of artifacts overstates how many
+		// situations a reader has to act on. Both numbers are reported.
+		successionPaths := make(map[string]struct{})
 		output.WriteString("| state | artifact | event | notes |\n")
 		output.WriteString("|---|---|---|---|\n")
 		for _, artifact := range projection.Artifacts {
@@ -54,6 +58,7 @@ func RenderStatus(projection Projection) []byte {
 			}
 			if artifact.SuccessionUnrecorded {
 				successionUnrecorded++
+				successionPaths[artifact.Path] = struct{}{}
 				notes = append(notes, "succession not recorded")
 			}
 			fmt.Fprintf(&output, "| %s | %s@%s | %s | %s |\n", status, escape(artifact.Path), short(artifact.Commit), short(artifact.Event), escape(strings.Join(notes, ", ")))
@@ -65,7 +70,7 @@ func RenderStatus(projection Projection) []byte {
 			fmt.Fprintf(&output, "%d cite no basis and can never go stale; their silence is not currency.\n", unableToFlare)
 		}
 		if successionUnrecorded > 0 {
-			fmt.Fprintf(&output, "%d follow a live artifact at the same path without superseding it, so anything resting on that predecessor still reads current.\n", successionUnrecorded)
+			fmt.Fprintf(&output, "%d follow a live artifact at the same path without superseding it, across %d paths; anything resting on those predecessors still reads current.\n", successionUnrecorded, len(successionPaths))
 		}
 	}
 	output.WriteString("\n## Attempts\n\n")

@@ -605,3 +605,21 @@ func TestStatusPageCarriesTheArtifactMarks(t *testing.T) {
 		}
 	}
 }
+
+// One unrecorded succession at a long-lived path repeats on every later link
+// of that chain, so the page must report situations as well as rows. A mark
+// that trains readers to scroll past it is worse than no mark.
+func TestStatusPageCountsSuccessionPathsAsWellAsArtifacts(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "one", Body: map[string]string{"path": "spike", "commit": "a1"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "two", Body: map[string]string{"path": "spike", "commit": "a2"}}, "w0"),
+		event(t, "w5", agent, SchemaState, State{Kind: KindArtifact, Text: "three", Body: map[string]string{"path": "spike", "commit": "a3"}}, "w0"),
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "four", Body: map[string]string{"path": "ui", "commit": "b1"}}, "w0"),
+		event(t, "w7", agent, SchemaState, State{Kind: KindArtifact, Text: "five", Body: map[string]string{"path": "ui", "commit": "b2"}}, "w0"),
+	)
+	page := RenderStatus(Fold(records))
+	want := "3 follow a live artifact at the same path without superseding it, across 2 paths"
+	if !bytes.Contains(page, []byte(want)) {
+		t.Fatalf("page does not separate rows from situations, want %q\n%s", want, page)
+	}
+}
