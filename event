@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cbb7d526613b257829fc885c17c161e367247dbc"}
+{"kind":"artifact","text":"Task2g.1 checkpoint-backed resident restart is frozen at exact integrated head 332e683643fa1ac171cb07a0e37cc88f9307e0d8 on task/resident-checkpoint.","body":{"branch":"task/resident-checkpoint","commit":"332e683643fa1ac171cb07a0e37cc88f9307e0d8","path":"."}}
