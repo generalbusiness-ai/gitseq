@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/sha1"
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -435,6 +437,9 @@ func (s Store) CommitParents(ctx context.Context, oid string) ([]string, error) 
 }
 
 func (s Store) VerifySSHCommit(ctx context.Context, oid, principal, publicKey string) error {
+	if err := ValidateSSHPublicKey(publicKey); err != nil {
+		return err
+	}
 	dir, err := os.MkdirTemp("", "gitseq-allowed-signers-")
 	if err != nil {
 		return err
@@ -453,6 +458,42 @@ func (s Store) VerifySSHCommit(ctx context.Context, oid, principal, publicKey st
 	return err
 }
 
+// ValidateSSHPublicKey accepts the one canonical key form gitseq generates and
+// pins in genesis. Keeping comments, options, principals, and line breaks out
+// of this value is security-critical: it is embedded after the principal in an
+// OpenSSH allowed-signers line.
+func ValidateSSHPublicKey(publicKey string) error {
+	fields := strings.Split(publicKey, " ")
+	if len(fields) != 2 || fields[0] != "ssh-ed25519" {
+		return errors.New("sequencer public key must be canonical ssh-ed25519")
+	}
+	raw, err := base64.StdEncoding.DecodeString(fields[1])
+	if err != nil || base64.StdEncoding.EncodeToString(raw) != fields[1] {
+		return errors.New("sequencer public key has non-canonical base64")
+	}
+	algorithm, rest, ok := sshWireString(raw)
+	if !ok || string(algorithm) != fields[0] {
+		return errors.New("sequencer public key algorithm mismatch")
+	}
+	key, rest, ok := sshWireString(rest)
+	if !ok || len(key) != 32 || len(rest) != 0 {
+		return errors.New("sequencer public key has invalid ed25519 body")
+	}
+	return nil
+}
+
+func sshWireString(data []byte) (value, rest []byte, ok bool) {
+	if len(data) < 4 {
+		return nil, nil, false
+	}
+	size := uint64(binary.BigEndian.Uint32(data[:4]))
+	if size > uint64(len(data)-4) {
+		return nil, nil, false
+	}
+	end := 4 + int(size)
+	return data[4:end], data[end:], true
+}
+
 func GenerateSSHKey(ctx context.Context, path string) (publicKey string, err error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", err
@@ -469,5 +510,9 @@ func GenerateSSHKey(ctx context.Context, path string) (publicKey string, err err
 	if len(fields) < 2 {
 		return "", errors.New("malformed ssh public key")
 	}
-	return fields[0] + " " + fields[1], nil
+	publicKey = fields[0] + " " + fields[1]
+	if err := ValidateSSHPublicKey(publicKey); err != nil {
+		return "", err
+	}
+	return publicKey, nil
 }

@@ -129,11 +129,8 @@ func deterministicModes() (cbor.EncMode, cbor.DecMode) {
 }
 
 func encodeGenesis(desc GenesisDescriptor) ([]byte, error) {
-	if desc.Version != 0 || (desc.ObjectFormat != "sha1" && desc.ObjectFormat != "sha256") || desc.PayloadCeiling == 0 || desc.SequencerPublicKey == "" {
-		return nil, errors.New("invalid genesis descriptor")
-	}
-	if (desc.PredecessorGenesis == "") != (desc.SealedHead == "") {
-		return nil, errors.New("continuation requires both predecessor genesis and sealed head")
+	if err := validateGenesisDescriptor(desc); err != nil {
+		return nil, err
 	}
 	enc, _ := deterministicModes()
 	return enc.Marshal(desc)
@@ -149,7 +146,23 @@ func decodeGenesis(data []byte) (GenesisDescriptor, error) {
 	if err != nil || !bytes.Equal(reencoded, data) {
 		return GenesisDescriptor{}, errors.New("non-deterministic genesis descriptor")
 	}
+	if err := validateGenesisDescriptor(desc); err != nil {
+		return GenesisDescriptor{}, err
+	}
 	return desc, nil
+}
+
+func validateGenesisDescriptor(desc GenesisDescriptor) error {
+	if desc.Version != 0 || (desc.ObjectFormat != "sha1" && desc.ObjectFormat != "sha256") || desc.PayloadCeiling == 0 {
+		return errors.New("invalid genesis descriptor")
+	}
+	if err := gitstore.ValidateSSHPublicKey(desc.SequencerPublicKey); err != nil {
+		return fmt.Errorf("invalid genesis sequencer key: %w", err)
+	}
+	if (desc.PredecessorGenesis == "") != (desc.SealedHead == "") {
+		return errors.New("continuation requires both predecessor genesis and sealed head")
+	}
+	return nil
 }
 
 func genesisMessage(desc GenesisDescriptor) (string, error) {
@@ -204,6 +217,9 @@ func Create(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, s
 	})
 	if err != nil {
 		return "", err
+	}
+	if err := store.VerifySSHCommit(ctx, commit, "sequencer", desc.SequencerPublicKey); err != nil {
+		return "", fmt.Errorf("genesis sequencer signature: %w", err)
 	}
 	if err := store.UpdateRef(ctx, Ref(commit), commit, ""); err != nil {
 		return "", err
