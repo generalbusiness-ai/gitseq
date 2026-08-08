@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
-import { BadgeCheck, FileWarning, X } from "lucide-react";
-import type { Artifact, Projection } from "../lib/api";
+import { BadgeCheck, FileWarning, GitBranch, X } from "lucide-react";
+import type { Artifact, Projection, WorktreeView } from "../lib/api";
 import { ATTENTION_COMMITMENT_STATUSES, OPEN_COMMITMENT_STATUSES, danglingPromises, ticketsOf, type Selection, type Workroom } from "../lib/store";
 import { cn, statusLabel, statusTint } from "../lib/util";
+import { groupOpenWork, worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
 import { Railway } from "./Railway";
 import { Ticket, WhyStale } from "./Stream";
 
@@ -65,10 +66,20 @@ export function WorkDrawer({
           {!projection ? (
             <p className="p-4 text-sm text-faint">Loading…</p>
           ) : (
-            <WorkSections projection={projection} tickets={tickets} nameOf={nameOf} onSelect={onSelect} onJumpEvent={jumpEvent} />
+            <WorkSections
+              projection={projection}
+              commits={workroom.commits}
+              worktrees={workroom.worktrees}
+              localOffline={workroom.localOffline}
+              tickets={tickets}
+              nameOf={nameOf}
+              onSelect={onSelect}
+              onJumpEvent={jumpEvent}
+            />
           )}
           <section className="border-t border-border px-4 py-3">
             <h3 className="mb-2 text-xs font-medium text-faint">History</h3>
+            {workroom.graphTruncated && <p className="mb-2 text-[11px] text-warn">Showing the newest 80 commits; older local trailer associations may be absent.</p>}
             <div className="h-[26rem] overflow-hidden rounded-lg border border-border">
               <Railway
                 commits={workroom.commits}
@@ -89,12 +100,18 @@ export function WorkDrawer({
 // stands, and what's completed. Human labels; hashes ride in hover titles.
 function WorkSections({
   projection,
+  commits,
+  worktrees,
+  localOffline,
   tickets,
   nameOf,
   onSelect,
   onJumpEvent,
 }: {
   projection: Projection;
+  commits: Workroom["commits"];
+  worktrees?: WorktreeView[];
+  localOffline: boolean;
   tickets: Map<string, number>;
   nameOf: (fp: string) => string;
   onSelect: (selection: Selection) => void;
@@ -104,6 +121,7 @@ function WorkSections({
   const attention = projection.commitments.filter((c) => ATTENTION_COMMITMENT_STATUSES.includes(c.status));
   const dangling = danglingPromises(projection);
   const open = projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status));
+  const workGroups = groupOpenWork(open);
   const standing = projection.statements.filter((s) => s.kind === "propose" && s.ratified && !s.retired && !s.stale);
   const done = projection.commitments.filter((c) => c.status === "satisfied");
   const currentGroups = groupArtifacts(projection.artifacts.filter((a) => !a.stale));
@@ -112,6 +130,14 @@ function WorkSections({
 
   return (
     <div className="space-y-5 px-4 py-4">
+      <section>
+        <SectionTitle icon={<GitBranch className="h-3.5 w-3.5 text-info" />} title="Local checkouts" />
+        <p className="mb-2 text-[11px] leading-4 text-faint">Read-only state from this machine; it is not part of the durable workroom.</p>
+        {localOffline && <Empty>Local checkout state unavailable. Durable work is unchanged.</Empty>}
+        {!localOffline && !worktrees && <Empty>Reading local checkout state…</Empty>}
+        {worktrees?.length === 0 && <Empty>No checkouts found.</Empty>}
+        {worktrees?.map((worktree, index) => <WorktreePill key={`${worktree.checkout}:${worktree.head}:${index}`} worktree={worktree} />)}
+      </section>
       <section>
         <SectionTitle icon={<FileWarning className="h-3.5 w-3.5 text-danger" />} title="Needs attention" />
         {!needsAttention && <Empty>All clear.</Empty>}
@@ -131,6 +157,7 @@ function WorkSections({
         ))}
         {attention.map((commitment) => {
           const anchor = commitment.report ?? commitment.promise ?? commitment.request;
+          const associations = worktreesForCommitment(commitment, projection, commits, worktrees ?? []);
           return (
             <div key={commitment.request + (commitment.promise ?? "")} className="rounded-md px-2 py-1.5 hover:bg-elevated/60">
               <Row onClick={() => onJumpEvent(commitment.request)} bare>
@@ -140,6 +167,7 @@ function WorkSections({
                   <Ticket ticket={tickets.get(commitment.request)} event={commitment.request} onSelect={() => onJumpEvent(commitment.request)} />
                 </span>
               </Row>
+              <WorktreeAssociations associations={associations} />
               {commitment.status === "stale" && (
                 <WhyStale event={anchor} projection={projection} tickets={tickets} nameOf={nameOf} onJumpTo={onJumpEvent} />
               )}
@@ -158,20 +186,32 @@ function WorkSections({
           </Row>
         ))}
       </section>
-      <section>
-        <SectionTitle title={`Open (${open.length})`} />
-        {open.length === 0 && <Empty>Nothing open.</Empty>}
-        {open.map((commitment) => (
-          <Row key={commitment.request + (commitment.promise ?? "")} onClick={() => onJumpEvent(commitment.request)}>
-            <span className={cn("w-16 shrink-0 text-xs font-semibold", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>
-            <span className="truncate text-muted">{requestText(commitment.request)}</span>
-            <span className="ml-auto flex shrink-0 items-center gap-2">
-              {commitment.waiting_on && <span className="text-xs text-faint">⏳ {nameOf(commitment.waiting_on)}</span>}
-              <Ticket ticket={tickets.get(commitment.request)} event={commitment.request} onSelect={() => onJumpEvent(commitment.request)} />
-            </span>
-          </Row>
-        ))}
-      </section>
+      {[
+        { title: "Available", items: workGroups.available, empty: "Nothing available." },
+        { title: "In progress", items: workGroups.inProgress, empty: "Nothing in progress." },
+        { title: "Review", items: workGroups.review, empty: "Nothing ready for review." },
+      ].map((group) => (
+        <section key={group.title}>
+          <SectionTitle title={`${group.title} (${group.items.length})`} />
+          {group.items.length === 0 && <Empty>{group.empty}</Empty>}
+          {group.items.map((commitment) => {
+            const associations = worktreesForCommitment(commitment, projection, commits, worktrees ?? []);
+            return (
+              <div key={commitment.request + (commitment.promise ?? "")} className="rounded-md px-2 py-1 hover:bg-elevated/60">
+                <Row onClick={() => onJumpEvent(commitment.request)} bare>
+                  <span className={cn("w-16 shrink-0 text-xs font-semibold", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>
+                  <span className="truncate text-muted">{requestText(commitment.request)}</span>
+                  <span className="ml-auto flex shrink-0 items-center gap-2">
+                    {commitment.waiting_on && <span className="text-xs text-faint">⏳ {nameOf(commitment.waiting_on)}</span>}
+                    <Ticket ticket={tickets.get(commitment.request)} event={commitment.request} onSelect={() => onJumpEvent(commitment.request)} />
+                  </span>
+                </Row>
+                <WorktreeAssociations associations={associations} />
+              </div>
+            );
+          })}
+        </section>
+      ))}
       <section>
         <SectionTitle icon={<BadgeCheck className="h-3.5 w-3.5 text-ok" />} title="Decisions" />
         {standing.length === 0 && <Empty>Nothing standing.</Empty>}
@@ -215,6 +255,76 @@ function WorkSections({
           </div>
         ))}
       </section>
+    </div>
+  );
+}
+
+function WorktreeAssociations({ associations }: { associations: WorktreeAssociation[] }) {
+  if (associations.length === 0) return null;
+  return (
+    <div className="ml-16 mt-1 space-y-1 border-l border-border pl-2">
+      {associations.map((association, index) => (
+        <WorktreePill
+          key={`${association.worktree.checkout}:${association.worktree.head}:${index}`}
+          worktree={association.worktree}
+          expectedHead={association.expectedHead}
+          expectedHeads={association.expectedHeads}
+          headMatches={association.headMatches}
+          evidence={association.evidence}
+          compact
+        />
+      ))}
+    </div>
+  );
+}
+
+function WorktreePill({
+  worktree,
+  expectedHead,
+  expectedHeads,
+  headMatches,
+  evidence,
+  compact,
+}: {
+  worktree: WorktreeView;
+  expectedHead?: string;
+  expectedHeads?: string[];
+  headMatches?: boolean;
+  evidence?: WorktreeAssociation["evidence"];
+  compact?: boolean;
+}) {
+  const branch = worktree.detached ? "detached" : worktree.state === "bare" ? "bare" : worktree.branch || "unborn";
+  const head = worktree.head?.slice(0, 8) || "no HEAD";
+  const moved = headMatches === false;
+  const title = [
+    `local checkout ${worktree.checkout}`,
+    `branch ${branch}`,
+    `HEAD ${worktree.head || "unborn"}`,
+    worktree.state,
+    expectedHead ? `review head ${expectedHead}` : "",
+    expectedHeads && expectedHeads.length > 1 ? `review heads ${expectedHeads.join(", ")}` : "",
+    "local only — not durable workroom state",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <div
+      title={title}
+      className={cn(
+        "flex min-w-0 items-center gap-1.5 rounded border border-border bg-surface/70 text-[11px] text-muted",
+        compact ? "px-1.5 py-0.5" : "mb-1 px-2 py-1",
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", worktree.state === "clean" ? "bg-ok" : worktree.state === "dirty" ? "bg-warn" : "bg-faint")} />
+      <span className="truncate font-medium text-foreground/80">{worktree.checkout}</span>
+      <span className="truncate">{branch}</span>
+      <code className="shrink-0 text-faint">@{head}</code>
+      <span className="shrink-0 text-faint">local</span>
+      {evidence === "local-trailer" && <span className="shrink-0 text-warn">unverified trailer</span>}
+      {worktree.current && <span className="shrink-0 text-info">serving</span>}
+      {worktree.state === "dirty" && <span className="shrink-0 text-warn">dirty</span>}
+      {!["clean", "dirty"].includes(worktree.state) && <span className="shrink-0 text-warn">{worktree.state}</span>}
+      {moved && <span className="shrink-0 text-danger">moved</span>}
     </div>
   );
 }

@@ -50,15 +50,32 @@ func (s *Server) handleActors(writer http.ResponseWriter, request *http.Request)
 }
 
 type graphResponse struct {
-	Commits []gitstore.GraphCommit `json:"commits"`
+	Commits   []gitstore.GraphCommit `json:"commits"`
+	Truncated bool                   `json:"truncated,omitempty"`
 }
 
 func (s *Server) handleGraph(writer http.ResponseWriter, request *http.Request) {
-	commits, err := s.workspace.Store.Graph(request.Context(), 80)
+	commits, err := s.workspace.Store.Graph(request.Context(), 81)
+	truncated := len(commits) > 80
+	if truncated {
+		commits = commits[:80]
+	}
 	if commits == nil {
 		commits = []gitstore.GraphCommit{}
 	}
-	write(writer, graphResponse{Commits: commits}, err)
+	write(writer, graphResponse{Commits: commits, Truncated: truncated}, err)
+}
+
+type worktreesResponse struct {
+	Worktrees []app.WorktreeView `json:"worktrees"`
+}
+
+func (s *Server) handleWorktrees(writer http.ResponseWriter, request *http.Request) {
+	worktrees, err := s.workspace.LocalWorktrees(request.Context())
+	if worktrees == nil {
+		worktrees = []app.WorktreeView{}
+	}
+	write(writer, worktreesResponse{Worktrees: worktrees}, err)
 }
 
 // actRequest is a session-bound durable act: the same custody model as

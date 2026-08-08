@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status } from "./api";
+import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type WorktreeView } from "./api";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
 export interface Workroom {
   status?: Status;
   commits: GraphCommit[];
+  graphTruncated: boolean;
+  worktrees?: WorktreeView[];
   actors: Actor[];
   offline: boolean;
+  localOffline: boolean;
 }
 
 // One wait-loop drives the whole page: the composite cursor is the only
@@ -15,8 +18,11 @@ export interface Workroom {
 export function useWorkroom(): Workroom {
   const [status, setStatus] = useState<Status>();
   const [commits, setCommits] = useState<GraphCommit[]>([]);
+  const [graphTruncated, setGraphTruncated] = useState(false);
+  const [worktrees, setWorktrees] = useState<WorktreeView[]>();
   const [actors, setActors] = useState<Actor[]>([]);
   const [offline, setOffline] = useState(false);
+  const [localOffline, setLocalOffline] = useState(false);
 
   useEffect(() => {
     let stopped = false;
@@ -27,9 +33,35 @@ export function useWorkroom(): Workroom {
     const refreshGraph = async () => {
       try {
         const graph = await api.graph();
-        if (!stopped) setCommits(graph.commits);
+        if (!stopped) {
+          setCommits(graph.commits);
+          setGraphTruncated(graph.truncated);
+        }
       } catch {
         /* keep the previous railway; retry next cycle */
+      }
+    };
+
+    // Local checkout state changes independently of both the durable frontier
+    // and the live nexus cursor, so it has its own small read-only poll. A
+    // failed read clears the projection instead of presenting stale dirtiness.
+    let refreshingWorktrees = false;
+    const refreshWorktrees = async () => {
+      if (refreshingWorktrees) return;
+      refreshingWorktrees = true;
+      try {
+        const next = await api.worktrees();
+        if (!stopped) {
+          setWorktrees(next);
+          setLocalOffline(false);
+        }
+      } catch {
+        if (!stopped) {
+          setWorktrees(undefined);
+          setLocalOffline(true);
+        }
+      } finally {
+        refreshingWorktrees = false;
       }
     };
 
@@ -57,13 +89,16 @@ export function useWorkroom(): Workroom {
         }
       }
     };
+    void refreshWorktrees();
+    const worktreeTimer = window.setInterval(() => void refreshWorktrees(), 10000);
     void loop();
     return () => {
       stopped = true;
+      window.clearInterval(worktreeTimer);
     };
   }, []);
 
-  return { status, commits, actors, offline };
+  return { status, commits, graphTruncated, worktrees, actors, offline, localOffline };
 }
 
 export interface Selection {
