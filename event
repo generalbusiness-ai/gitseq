@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged approved resident-cache exact head 1ad0f21aa304841b036c841a5da8a4ca9b7d1030 into main at 069e6b94e9ed5c20cf4411f98038ee4d6e08c621 after the approved sequencer-key merge. Fresh combined make vet test race build passes.","body":{"commit":"069e6b94e9ed5c20cf4411f98038ee4d6e08c621","path":"/Users/hughpyle/play/gitseq"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a6a7c590c8c1ec5c99060278cad062169b41d64b"}
