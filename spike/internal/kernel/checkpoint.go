@@ -94,14 +94,25 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	if stored.Schema != checkpointSchema || stored.ObjectFormat != format || stored.ObjectFormat != desc.ObjectFormat || stored.Genesis != genesis || stored.Profile != options.Profile {
 		return scannedLog{}, false, fmt.Errorf("%w: identity or profile mismatch", ErrNoUsableCheckpoint)
 	}
-	log, err := validateCheckpoint(stored, desc)
+	commits, err := store.RevListMetadata(ctx, head)
+	if err != nil {
+		return scannedLog{}, false, fmt.Errorf("%w: sequence: %v", ErrNoUsableCheckpoint, err)
+	}
+	if len(commits) == 0 || commits[len(commits)-1].OID != head {
+		return scannedLog{}, false, fmt.Errorf("%w: sequence does not end at named head", ErrNoUsableCheckpoint)
+	}
+	log, err := validateCheckpoint(stored, desc, commits)
 	if err != nil {
 		return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
 	prefix := append([]Event(nil), log.Events...)
 	advanced := stored.Head != head
 	if advanced {
-		extended, err := scanAfter(ctx, store, log, head, true)
+		suffix := make([]string, 0, len(commits)-stored.Depth-1)
+		for _, commit := range commits[stored.Depth+1:] {
+			suffix = append(suffix, commit.OID)
+		}
+		extended, err := scanListedAfter(ctx, store, log, head, suffix, true)
 		if err != nil {
 			return scannedLog{}, false, fmt.Errorf("%w: checkpoint frontier: %v", ErrNoUsableCheckpoint, err)
 		}
@@ -111,9 +122,20 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	return log, advanced, nil
 }
 
-func validateCheckpoint(stored checkpoint, desc GenesisDescriptor) (scannedLog, error) {
+func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gitstore.CommitMetadata) (scannedLog, error) {
 	if stored.Depth < 0 || stored.Depth != len(stored.Events) {
 		return scannedLog{}, errors.New("checkpoint depth does not match event count")
+	}
+	if len(sequence) < stored.Depth+1 || sequence[0].OID != stored.Genesis {
+		return scannedLog{}, errors.New("checkpoint does not begin the named sequence")
+	}
+	if len(sequence[0].Parents) != 0 {
+		return scannedLog{}, errors.New("checkpoint genesis has a parent")
+	}
+	for index := 1; index <= stored.Depth; index++ {
+		if len(sequence[index].Parents) != 1 || sequence[index].Parents[0] != sequence[index-1].OID {
+			return scannedLog{}, fmt.Errorf("checkpoint event %d is not single-parent chained", index-1)
+		}
 	}
 	if stored.Depth == 0 {
 		if stored.Head != stored.Genesis {
@@ -122,20 +144,27 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor) (scannedLog, 
 	} else if stored.Events[len(stored.Events)-1].Commit != stored.Head {
 		return scannedLog{}, errors.New("checkpoint head does not match final event")
 	}
+	if sequence[stored.Depth].OID != stored.Head {
+		return scannedLog{}, errors.New("checkpoint head is not the claimed sequence frontier")
+	}
 	log := scannedLog{
 		Verification: Verification{Genesis: stored.Genesis, Head: stored.Head, Depth: stored.Depth, Events: stored.Depth},
 		Events:       make([]Event, 0, stored.Depth),
 		Dedup:        make(map[string]Event, stored.Depth),
 	}
-	commits := make(map[string]struct{}, stored.Depth)
+	seenCommits := make(map[string]struct{}, stored.Depth)
 	for index, cached := range stored.Events {
 		if err := validateObjectID(stored.ObjectFormat, cached.Commit); err != nil {
 			return scannedLog{}, fmt.Errorf("event %d commit: %w", index, err)
 		}
-		if _, exists := commits[cached.Commit]; exists {
+		if _, exists := seenCommits[cached.Commit]; exists {
 			return scannedLog{}, fmt.Errorf("event %d repeats commit %s", index, cached.Commit)
 		}
-		commits[cached.Commit] = struct{}{}
+		position := sequence[index+1]
+		if cached.Commit != position.OID {
+			return scannedLog{}, fmt.Errorf("event %d commit does not match sequence", index)
+		}
+		seenCommits[cached.Commit] = struct{}{}
 		decoded, err := intent.Verify(cached.Signed)
 		if err != nil {
 			return scannedLog{}, fmt.Errorf("event %d actor signature: %w", index, err)
@@ -143,9 +172,22 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor) (scannedLog, 
 		if decoded.Target != "git:"+stored.ObjectFormat+":"+stored.Genesis {
 			return scannedLog{}, fmt.Errorf("event %d target does not name checkpoint genesis", index)
 		}
+		actualSigned, trailers, err := intent.ParseEnvelope(position.Message)
+		if err != nil {
+			return scannedLog{}, fmt.Errorf("event %d commit envelope: %w", index, err)
+		}
+		if !actualSigned.Equal(cached.Signed) {
+			return scannedLog{}, fmt.Errorf("event %d cached intent differs from sequence commit", index)
+		}
+		if !intent.EqualRefs(decoded.RestsOn, trailers) {
+			return scannedLog{}, fmt.Errorf("event %d causal trailers differ from signed intent", index)
+		}
 		format, tree, err := gitstore.ParseTypedOID(decoded.PayloadTree)
 		if err != nil || format != stored.ObjectFormat {
 			return scannedLog{}, fmt.Errorf("event %d payload tree identity", index)
+		}
+		if position.Tree != tree {
+			return scannedLog{}, fmt.Errorf("event %d commit tree differs from signed intent", index)
 		}
 		if err := payloadWithinCeiling(cached.Payload, cached.Attachments, desc.PayloadCeiling); err != nil {
 			return scannedLog{}, fmt.Errorf("event %d: %w", index, err)

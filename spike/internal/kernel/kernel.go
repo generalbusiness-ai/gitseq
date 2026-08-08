@@ -84,6 +84,7 @@ type submitCache struct {
 	checkpointLoads     int
 	checkpointFallbacks int
 	checkpointWrites    int
+	checkpointFailures  int
 	checkpointEvents    []Event
 	checkpointAttempt   int
 }
@@ -299,6 +300,8 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 	if err != nil {
 		return Result{}, err
 	}
+	checkpointEnabled := cache != nil && options.CheckpointProfile != ""
+	checkpointWritable := checkpointEnabled && options.SigningKey != ""
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		head, err := store.Head(ctx, ref)
 		if err != nil {
@@ -314,7 +317,7 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 			checkpointCurrent := false
 			checkpointOptions := CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: options.SigningKey}
 			if cache != nil && cache.target == targetOID && cache.head != "" {
-				log, err = scanAfter(ctx, store, cache.log, head, options.CheckpointProfile != "")
+				log, err = scanAfter(ctx, store, cache.log, head, checkpointEnabled)
 				if err == nil {
 					cache.deltaScans++
 				} else if !errors.Is(err, ErrNotDescendant) {
@@ -325,7 +328,7 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 				checkpointReset = true
 				loadedCheckpoint := false
 				checkpointAdvanced := false
-				if cache != nil && options.CheckpointProfile != "" {
+				if checkpointEnabled {
 					log, checkpointAdvanced, err = loadCheckpoint(ctx, store, targetOID, head, checkpointOptions)
 					if err == nil {
 						loadedCheckpoint = true
@@ -335,15 +338,19 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 					}
 				}
 				if !loadedCheckpoint {
-					loadPayload := cache != nil && options.CheckpointProfile != ""
+					loadPayload := checkpointEnabled
 					log, err = scanHead(ctx, store, targetOID, head, loadPayload)
 					fullScan = true
 				}
-				if err == nil && options.CheckpointProfile != "" {
+				if err == nil && checkpointEnabled {
 					checkpointCurrent = loadedCheckpoint && !checkpointAdvanced
-					if !checkpointCurrent && writeCheckpoint(ctx, store, log, checkpointOptions) == nil {
-						cache.checkpointWrites++
-						checkpointCurrent = true
+					if !checkpointCurrent && checkpointWritable {
+						if writeCheckpoint(ctx, store, log, checkpointOptions) == nil {
+							cache.checkpointWrites++
+							checkpointCurrent = true
+						} else {
+							cache.checkpointFailures++
+						}
 					}
 				}
 			}
@@ -351,10 +358,14 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 				return Result{}, err
 			}
 			if cache != nil {
-				if options.CheckpointProfile != "" {
+				if checkpointEnabled {
 					if checkpointReset {
 						cache.checkpointEvents = cloneEvents(log.Events)
-						cache.checkpointAttempt = log.Verification.Depth
+						if checkpointCurrent {
+							cache.checkpointAttempt = log.Verification.Depth
+						} else {
+							cache.checkpointAttempt = log.Verification.Depth - checkpointInterval
+						}
 					} else {
 						cache.checkpointEvents = append(cache.checkpointEvents, cloneEvents(log.Events)...)
 					}
@@ -412,14 +423,16 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 			cache.log.Verification.Depth++
 			cache.log.Verification.Events++
 			cache.head = commit
-			if options.CheckpointProfile != "" {
+			if checkpointEnabled {
 				cache.checkpointEvents = append(cache.checkpointEvents, cloneEvent(event))
-				if checkpointDue(cache.log.Verification.Depth, cache.checkpointAttempt) {
-					cache.checkpointAttempt = cache.log.Verification.Depth
+				if checkpointWritable && checkpointDue(cache.log.Verification.Depth, cache.checkpointAttempt) {
 					checkpointLog := cache.log
 					checkpointLog.Events = cache.checkpointEvents
 					if writeCheckpoint(ctx, store, checkpointLog, CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: options.SigningKey}) == nil {
 						cache.checkpointWrites++
+						cache.checkpointAttempt = cache.log.Verification.Depth
+					} else {
+						cache.checkpointFailures++
 					}
 				}
 			}
@@ -481,6 +494,7 @@ type Reader struct {
 	checkpointLoads     int
 	checkpointFallbacks int
 	checkpointWrites    int
+	checkpointFailures  int
 	checkpointEvents    []Event
 	checkpointAttempt   int
 }
@@ -512,11 +526,13 @@ func (r *Reader) Load(ctx context.Context, genesis string) (LoadResult, error) {
 			if r.checkpoint.Profile != "" && r.checkpoint.SigningKey != "" {
 				r.checkpointEvents = append(r.checkpointEvents, cloneEvents(events)...)
 				if checkpointDue(log.Verification.Depth, r.checkpointAttempt) {
-					r.checkpointAttempt = log.Verification.Depth
 					checkpointLog := log
 					checkpointLog.Events = r.checkpointEvents
 					if writeCheckpoint(ctx, r.store, checkpointLog, r.checkpoint) == nil {
 						r.checkpointWrites++
+						r.checkpointAttempt = log.Verification.Depth
+					} else {
+						r.checkpointFailures++
 					}
 				}
 			}
@@ -548,15 +564,23 @@ func (r *Reader) Load(ctx context.Context, genesis string) (LoadResult, error) {
 		}
 		r.fullScans++
 	}
-	if r.checkpoint.SigningKey != "" && (!fromCheckpoint || checkpointAdvanced) {
+	checkpointCurrent := fromCheckpoint && !checkpointAdvanced
+	if r.checkpoint.Profile != "" && r.checkpoint.SigningKey != "" && !checkpointCurrent {
 		if writeCheckpoint(ctx, r.store, log, r.checkpoint) == nil {
 			r.checkpointWrites++
+			checkpointCurrent = true
+		} else {
+			r.checkpointFailures++
 		}
 	}
 	events := log.Events
 	if r.checkpoint.Profile != "" && r.checkpoint.SigningKey != "" {
 		r.checkpointEvents = cloneEvents(events)
-		r.checkpointAttempt = log.Verification.Depth
+		if checkpointCurrent {
+			r.checkpointAttempt = log.Verification.Depth
+		} else {
+			r.checkpointAttempt = log.Verification.Depth - checkpointInterval
+		}
 	}
 	log.Events = nil
 	r.target, r.head, r.log = genesis, head, log
@@ -683,13 +707,24 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 // until every new commit verifies, so a failed catch-up leaves trusted resident
 // state intact.
 func scanAfter(ctx context.Context, store gitstore.Store, base scannedLog, head string, loadPayload bool) (scannedLog, error) {
-	genesis := base.Verification.Genesis
-	if genesis == "" || base.Verification.Head == "" {
+	if base.Verification.Genesis == "" || base.Verification.Head == "" {
 		return scannedLog{}, ErrNotDescendant
 	}
 	commits, err := store.RevListAfter(ctx, base.Verification.Head, head)
 	if err != nil {
 		return scannedLog{}, err
+	}
+	return scanListedAfter(ctx, store, base, head, commits, loadPayload)
+}
+
+// scanListedAfter verifies an already enumerated first-parent suffix. Checkpoint
+// recovery supplies the suffix from the same RevList that binds every cached
+// event to the current sequence, avoiding a second, potentially drifting view
+// of the ref while retaining the ordinary delta verifier's trust checks.
+func scanListedAfter(ctx context.Context, store gitstore.Store, base scannedLog, head string, commits []string, loadPayload bool) (scannedLog, error) {
+	genesis := base.Verification.Genesis
+	if genesis == "" || base.Verification.Head == "" {
+		return scannedLog{}, ErrNotDescendant
 	}
 	if len(commits) == 0 {
 		if head != base.Verification.Head {

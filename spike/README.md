@@ -49,10 +49,16 @@ smart-HTTP repository boundary is.
 
 The resident now keeps a local sequencer-signed Git checkpoint for fast cold
 restart. It contains original actor-signed events rather than a projected
-authority answer; recovery rechecks actor signatures and payload-tree
-bindings, rebuilds the profile fold, and verifies only the descendant delta.
-Any checkpoint failure falls back to the ordinary full audit. Witness
-cosignatures and cadence policy, key rotation, production multi-domain watch
+authority answer. Recovery proves the exact first-parent commit sequence with
+one local metadata enumeration, binds every cached envelope and tree back to
+its actual commit, rechecks actor signatures and cached payload bytes, rebuilds
+the profile fold, and performs full commit verification on the descendant
+tail. Any checkpoint failure falls back to the ordinary full audit. Writes
+replace the whole bounded snapshot; failed writes retry on the next accepted
+event instead of silently postponing another 256 events. Restart acceleration
+is tail-dependent rather than a fixed multiplier; the depth-1,000 benchmark
+with a 232-event tail measured 3.71x on an Apple M5 Max. Witness
+cosignatures and configurable cadence policy, key rotation, production multi-domain watch
 and frontier retrieval, capability token semantics, and throughput/latency
 targets remain outside this spike. The pre-append hook is present, but ships
 with no capability policy.

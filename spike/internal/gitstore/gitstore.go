@@ -25,6 +25,18 @@ type Store struct {
 	Repo string
 }
 
+// CommitMetadata is the identity-bearing portion of a commit needed to bind a
+// cached event back to the immutable sequence object that originally carried
+// it. It deliberately omits author and signature headers: checkpoint recovery
+// authenticates the checkpoint once, then verifies the actor envelope and tree
+// mapping for every cached event.
+type CommitMetadata struct {
+	OID     string
+	Tree    string
+	Parents []string
+	Message string
+}
+
 func InitBare(ctx context.Context, path, objectFormat string) (Store, error) {
 	if objectFormat != "sha1" && objectFormat != "sha256" {
 		return Store{}, fmt.Errorf("unsupported object format %q", objectFormat)
@@ -262,6 +274,35 @@ func (s Store) RevList(ctx context.Context, ref string) ([]string, error) {
 		return nil, nil
 	}
 	return strings.Fields(string(output)), nil
+}
+
+// RevListMetadata returns the first-parent history oldest first, including the
+// tree and complete message for each commit, from one local Git enumeration.
+// Git commit messages cannot contain NUL, so -z plus NUL field separators do
+// not depend on intent-level character restrictions.
+func (s Store) RevListMetadata(ctx context.Context, ref string) ([]CommitMetadata, error) {
+	output, err := s.run(ctx, nil, nil, "log", "-z", "--first-parent", "--reverse", "--format=%H%x00%T%x00%P%x00%B", ref)
+	if err != nil {
+		return nil, err
+	}
+	if len(output) == 0 {
+		return nil, nil
+	}
+	fields := bytes.Split(output, []byte{0})
+	if len(fields) < 5 || len(fields[len(fields)-1]) != 0 || (len(fields)-1)%4 != 0 {
+		return nil, errors.New("malformed git log metadata framing")
+	}
+	metadata := make([]CommitMetadata, 0, (len(fields)-1)/4)
+	for index := 0; index < len(fields)-1; index += 4 {
+		if len(fields[index]) == 0 || len(fields[index+1]) == 0 {
+			return nil, errors.New("malformed git log metadata identity")
+		}
+		metadata = append(metadata, CommitMetadata{
+			OID: string(fields[index]), Tree: string(fields[index+1]),
+			Parents: strings.Fields(string(fields[index+2])), Message: string(fields[index+3]),
+		})
+	}
+	return metadata, nil
 }
 
 // RevListAfter returns the first-parent commits strictly after base and
