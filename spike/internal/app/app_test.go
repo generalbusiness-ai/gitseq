@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"gitseq/spike/internal/intent"
 	"gitseq/spike/internal/kernel"
@@ -194,6 +196,165 @@ func TestLinkedWorktreeSharesRepositoryWorkroom(t *testing.T) {
 	final, err := fromLinked.Snapshot(ctx)
 	if err != nil || final.Depth != 3 {
 		t.Fatalf("resident cache did not recover from external advance: snapshot=%+v err=%v", final, err)
+	}
+}
+
+func TestLocalWorktreesProjectsLinkedCheckoutStateWithoutPaths(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed").CombinedOutput(); err != nil {
+		t.Fatalf("seed ordinary history: %v: %s", err, output)
+	}
+	workspace, _, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainBranchOutput, err := exec.Command("git", "-C", repo, "branch", "--show-current").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainBranch := strings.TrimSpace(string(mainBranchOutput))
+	linked := filepath.Join(t.TempDir(), "linked checkout")
+	if output, err := exec.Command("git", "-C", repo, "worktree", "add", "-qb", "task/local-view", linked).CombinedOutput(); err != nil {
+		t.Fatalf("add linked worktree: %v: %s", err, output)
+	}
+	if err := os.WriteFile(filepath.Join(linked, "unfinished.txt"), []byte("local only\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	views, err := workspace.LocalWorktrees(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(views) != 2 {
+		t.Fatalf("worktrees = %#v", views)
+	}
+	byBranch := make(map[string]WorktreeView, len(views))
+	for _, view := range views {
+		byBranch[view.Branch] = view
+		if strings.Contains(view.Checkout, string(filepath.Separator)) {
+			t.Fatalf("checkout exposed a path: %#v", view)
+		}
+	}
+	if main := byBranch[mainBranch]; !main.Current || main.State != "clean" || main.Head == "" {
+		t.Fatalf("main checkout = %#v", main)
+	}
+	if linkedView := byBranch["task/local-view"]; linkedView.Current || linkedView.State != "dirty" || linkedView.Checkout != "linked checkout" || linkedView.Head == "" {
+		t.Fatalf("linked checkout = %#v", linkedView)
+	}
+	encoded, err := json.Marshal(views)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), repo) || strings.Contains(string(encoded), linked) {
+		t.Fatalf("local view exposed checkout path: %s", encoded)
+	}
+
+	fromLinked, err := Open(ctx, linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkedViews, err := fromLinked.LocalWorktrees(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(linkedViews) != 2 || linkedViews[0].Branch != "task/local-view" || !linkedViews[0].Current {
+		t.Fatalf("selected linked checkout not projected first: %#v", linkedViews)
+	}
+
+	subdir := filepath.Join(repo, "nested", "directory")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fromSubdir, err := Open(ctx, subdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subdirViews, err := fromSubdir.LocalWorktrees(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(subdirViews) != 2 || !subdirViews[0].Current || subdirViews[0].Branch != mainBranch {
+		t.Fatalf("repository subdirectory did not resolve current checkout: %#v", subdirViews)
+	}
+
+	index := filepath.Join(repo, ".git", "index")
+	old := time.Unix(946702800, 0)
+	if err := os.Chtimes(index, old, old); err != nil {
+		t.Fatal(err)
+	}
+	uncached, err := Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uncached.LocalWorktrees(ctx); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(old) {
+		t.Fatalf("read-only worktree inspection rewrote index mtime: got %s want %s", info.ModTime(), old)
+	}
+}
+
+func TestLocalWorktreesDistinguishesDetachedLockedPrunableAndBare(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed").CombinedOutput(); err != nil {
+		t.Fatalf("seed ordinary history: %v: %s", err, output)
+	}
+	workspace, _, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(t.TempDir(), "locked checkout")
+	if output, err := exec.Command("git", "-C", repo, "worktree", "add", "-qb", "detached", locked).CombinedOutput(); err != nil {
+		t.Fatalf("add legal detached branch: %v: %s", err, output)
+	}
+	if output, err := exec.Command("git", "-C", repo, "worktree", "lock", locked).CombinedOutput(); err != nil {
+		t.Fatalf("lock worktree: %v: %s", err, output)
+	}
+	detached := filepath.Join(t.TempDir(), "actual detached")
+	if output, err := exec.Command("git", "-C", repo, "worktree", "add", "--detach", detached, "HEAD").CombinedOutput(); err != nil {
+		t.Fatalf("add detached worktree: %v: %s", err, output)
+	}
+	prunable := filepath.Join(t.TempDir(), "gone checkout")
+	if output, err := exec.Command("git", "-C", repo, "worktree", "add", "-qb", "task/gone", prunable).CombinedOutput(); err != nil {
+		t.Fatalf("add prunable worktree: %v: %s", err, output)
+	}
+	if err := os.RemoveAll(prunable); err != nil {
+		t.Fatal(err)
+	}
+	views, err := workspace.LocalWorktrees(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byCheckout := make(map[string]WorktreeView, len(views))
+	for _, view := range views {
+		byCheckout[view.Checkout] = view
+	}
+	if got := byCheckout["locked checkout"]; got.Branch != "detached" || got.Detached || got.State != "locked" {
+		t.Fatalf("legal detached branch/locked state conflated: %#v", got)
+	}
+	if got := byCheckout["actual detached"]; got.Branch != "" || !got.Detached || got.State != "clean" {
+		t.Fatalf("detached checkout = %#v", got)
+	}
+	if got := byCheckout["gone checkout"]; got.State != "prunable" {
+		t.Fatalf("prunable checkout = %#v", got)
+	}
+
+	bare := filepath.Join(t.TempDir(), "bare.git")
+	if output, err := exec.Command("git", "clone", "-q", "--bare", repo, bare).CombinedOutput(); err != nil {
+		t.Fatalf("clone bare: %v: %s", err, output)
+	}
+	bareViews, err := (&Workspace{Repo: bare}).LocalWorktrees(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bareViews) != 1 || bareViews[0].State != "bare" || bareViews[0].Branch != "" {
+		t.Fatalf("bare worktree = %#v", bareViews)
 	}
 }
 

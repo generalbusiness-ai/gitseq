@@ -100,6 +100,10 @@ not change; the workroom carries the why.
 
 - Cite artifacts as `path@commit`. Never copy a document into an
   event.
+- Implementation request/promise/report bodies may carry advisory `branch`
+  and exact `head` (or `commit`) fields so the local Work drawer can associate
+  a checkout. Those hints do not make cleanliness or checkout presence
+  durable; the artifact statement remains the exact implementation pointer.
 - Implementing commits carry `Rests-On: <decision-event>` trailers
   (discipline 8); then `state {kind: artifact}` ties commit and
   decisions together.
