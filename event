@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c0656ba6b3c4a6ac59cf2a411a1552fc27bb2dc"}
+{"kind":"artifact","text":"Exact-head workflow guard implementation at clean exact head b548c0e9bd8020bfa8a31aeb84f44a172f093f5e. Adds gs review and gs merge with immutable commit targeting, live durable approval validation, same-repository cleanliness checks, and boundary-specific regression coverage.","body":{"commit":"b548c0e9bd8020bfa8a31aeb84f44a172f093f5e","path":"/Users/hughpyle/play/gitseq-worktrees/exact-head-workflow-guard"}}
