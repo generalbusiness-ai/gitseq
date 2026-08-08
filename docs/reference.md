@@ -12,10 +12,141 @@ git:<object-format>:<genesis>#git:<object-format>:<event-commit>
 ```
 
 This is the form used by `--rests-on`, by `ratify` and `supersede`
-targets, by `provenance`, and by `Rests-On:` commit trailers. Always
-copy it whole. Nothing on the write path checks that a cited event
-resolves, so a citation reconstructed from a shortened hash is accepted
-and recorded as though it were sound.
+targets, by `provenance`, and by `Rests-On:` commit trailers. Always copy
+it whole, from the emitted event rather than from a display that
+abbreviates it.
+
+How much of `rests_on` the fold checks depends on the act, and the rules
+differ enough to be worth stating one at a time.
+
+| Act | What must resolve | Surplus bases |
+|---|---|---|
+| `assert`, `artifact`, `propose`, and other statements | nothing | carried unchecked |
+| `promise` | one basis must be an effective `request` | carried unchecked |
+| `report` | one basis must be an effective `promise` | carried unchecked |
+| `supersede` | the target, and it must be the **first** basis | carried unchecked |
+| `ratify` | the target, and it must be the **only** basis | **refused** |
+
+The required edges are what make the commitment chain hold: a promise
+citing a request that does not exist is ineffective, and a report on
+that promise is ineffective in turn, so an unearned approval cannot
+carry force.
+
+**For the acts that have a required edge**, that edge is necessary and
+not sufficient — the fold also checks **who signed**, which the table
+does not show. A promise citing a perfectly effective request is still
+ineffective when its author is not the performer the request named;
+measured, the reason reads `promise actor is not the requested
+performer`. A report needs the promisor's own signature in the same
+way, `ratify` needs authority over that particular target, and
+`supersede` is likewise constrained. For those acts, satisfying the
+citation rule earns a hearing, not force.
+
+That qualification matters: `assert`, `artifact`, `propose` and the
+other ordinary statements require no resolving citation at all, so
+there is nothing for a citation to be insufficient *for*. The row that
+says "nothing" means it.
+
+Authority grants then need a paragraph of their own, for a different
+reason. For every other act, effectiveness is settled once, when the
+act is appended, and stays settled. A grant can satisfy every rule, be
+judged effective, be ratified — and still confer nothing, for as long
+as the conditions below do not hold. Which conditions apply depends on
+what kind of grant it is, and the two kinds are not the same shape:
+
+- A **membership grant** — the one that makes someone a participant —
+  is live when the **grant statement** is live and **at least one**
+  effective ratification of it is live. It does not rest on a
+  membership, because it *is* the membership.
+- A **non-membership authority grant** — `ratifier`, `reviewer`, any
+  named role — needs both of those *and* the **membership basis it
+  named** to be live. That basis is its first citation, and the fold
+  looks nowhere else.
+- The **genesis seed** is the sole exception to the ratification
+  requirement, and confers without one, because there is no prior
+  ratifier to give it.
+
+Reading the membership condition as universal is the easy error, and it
+is wrong in the direction that matters: it invites you to look for a
+basis under an ordinary membership grant, find none, and conclude the
+grant is defective. Measured: retire the genesis seed after Bob has
+joined, and Alice — seeded — disappears from the roster while Bob
+remains `[participant]`, because his own membership grant never
+depended on hers.
+
+The ratification condition is a disjunction, not a single named act.
+One roster statement may be ratified more than once, and any surviving
+ratification keeps the role. Measured: grant Alice `reviewer`, have a
+second ratifier ratify the same grant, retire the first ratification
+and Alice is still `[participant, reviewer]`; retire the second and
+`reviewer` goes. Writing "its ratification" invites the reader to
+retire the one they can see and conclude the role is gone.
+
+A grant can therefore fail to confer in two ways, and they are
+different questions asked at different times. Both of the following
+concern the **membership basis**, so both are about non-membership
+authority grants only — a membership grant has no basis to get wrong.
+
+**Citation order, at the moment of appending.** A `roster` statement
+conferring a non-membership role takes its **first** basis as the
+membership it rests on, and looks nowhere else:
+
+| grant's `rests_on` | verdict | role active |
+|---|---|---|
+| membership first | effective | yes |
+| membership first, surplus dangling basis | effective | yes |
+| dangling first, membership second | **effective** | **no** |
+
+**Liveness, at the moment of asking.** Current authority for such a
+grant also requires that both it and the membership it rests on are
+still live. Two distinct retirements, with different blast radii:
+
+- Retiring the explicit grant — what `gs role-revoke` does — retires
+  the role it named **and every role derived from it**. Measured:
+  revoking `operator` takes a principal from
+  `[operator, participant, ratifier]` to `[participant]`, because
+  `ratifier` was riding on `operator` and had no grant of its own. The
+  ordinary `ratifier` revocation looks like it retires one role only —
+  `[participant, ratifier]` to `[participant]` — but that is because
+  `ratifier` has nothing derived from it, not because revocation is
+  narrow. Retiring ratifications can also end a grant, but only by
+  exhausting them: because the ratification condition is a disjunction,
+  the role survives until **every** live effective ratification of that
+  grant is retired. Retiring one of two changes nothing.
+- Retiring the **membership** removes membership itself, and with it
+  every non-membership role that named that membership as its basis.
+  One supersede, and the principal is no longer a participant.
+
+**Liveness is reversible, and a verdict is not.** Retirement can itself
+be retired, and authority comes back. Measured: superseding a
+membership takes a principal from `[participant]` to absent from the
+roster entirely, and superseding *that supersession* returns them to
+`[participant]`. So "this grant confers nothing" is never a permanent
+fact about the grant — it is a statement about right now, and the same
+grant may confer tomorrow without anyone appending a new one. Decisions
+are history and do not move; authority is current and does.
+
+So for grants, do not read the verdict as the answer. Whether an act was
+effective and whether an authority is live now are two questions, asked
+at two different times, and only the first appears in the decisions
+list. `gs actors` answers the second, and answers it only for the
+moment you ask.
+
+This is narrower than "a record can be recorded without effect", which
+is true of the whole log and is what the verdicts exist to say. What is
+peculiar to grants is that the verdict does not carry the answer.
+
+Everywhere else a mistyped identifier is simply kept. A dangling basis
+on an assert or artifact records as effective, and so does a surplus
+dangling basis on a promise, report or supersede that already has its
+required edge. `ratify` is the single act strict enough to reject an
+extra citation outright.
+
+The division is deliberate. Those edges are machinery the fold owns;
+`rests_on` otherwise asserts that one thing bears on another, which is a
+claim about meaning, and a substrate with no ontology cannot check it.
+The practical rule for an author does not vary with the table: copy
+identifiers whole, from the emitted event.
 
 ## `gs`
 
@@ -190,12 +321,25 @@ gitseq-mcp --repo <path> --actor <name> --server http://127.0.0.1:7777
 One process per client session, one actor per process. The adapter signs
 every act as that actor and holds a leased, session-bound presence.
 
-**Protocol era.** This build implements only the stateless MCP
-`2026-07-28` shape: `server/discover`, cacheable `tools/list`, no
-`initialize` handshake, and protocol version and capabilities carried as
-per-request metadata. Clients built against `2025-11-25` or earlier open
-with `initialize` and cannot attach; the specification classes that
-pairing as a failure with no client-side fallback.
+**Protocol era.** The adapter is dual-era: it serves the stateless
+`2026-07-28` shape and the `initialize` handshake of `2025-11-25` and
+earlier. Era is a property of the connection, selected by how the client
+opens and settled once.
+
+| Client opens with | Adapter answers |
+|---|---|
+| per-request `_meta` at `2026-07-28` | modern envelope with `resultType` and cache directives; `server/discover` reports `supportedVersions: ["2026-07-28"]` |
+| per-request `_meta` at a version it does not serve | `-32022` with `supported` and `requested`, so the client can retry |
+| `initialize` naming a revision it speaks | that same revision, echoed |
+| `initialize` naming one it does not | `2025-11-25`, which the client may refuse |
+| `initialize` missing `protocolVersion`, `capabilities`, or `clientInfo.name`/`.version` | `-32602`; the era stays undetermined and the client may open again |
+
+Once settled, the era does not move. `initialize` after modern traffic is
+refused, a second `initialize` is refused rather than renegotiating the
+version mid-stream, and `server/discover` is unavailable on a legacy
+connection since that revision cannot interpret its reply. A refused
+opening never disturbs a session that is already working, and legacy
+results carry neither the modern envelope nor its cache directives.
 
 **Tools.** `whoami`, `presence`, `status`, `wait`, `say`, `state`,
 `ratify`, `supersede`. `status` returns a composite cursor which you pass

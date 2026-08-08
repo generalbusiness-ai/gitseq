@@ -85,13 +85,25 @@ Point your MCP client at that command. It exposes eight tools —
 normative contract for agents working in a workroom. Read it before
 acting as one.
 
-> **Client compatibility.** This adapter currently implements only the
-> stateless MCP `2026-07-28` shape: no `initialize` handshake, a
-> `server/discover` probe, and per-request protocol metadata. Clients
-> built against `2025-11-25` or earlier open with `initialize` and
-> **cannot attach to this build** — the specification classes that
-> combination as a failure with no client-side fallback. If your client
-> reports an unsupported protocol version, this is why.
+> **Client compatibility.** The adapter speaks both MCP eras, so you do
+> not need to know which one your client uses. How it opens decides:
+>
+> - A **modern** client (`2026-07-28`) sends protocol metadata on every
+>   request and may probe with `server/discover`, which answers
+>   `supportedVersions: ["2026-07-28"]`. Naming a version the adapter
+>   does not serve returns `-32022` listing what it does, so the client
+>   can retry rather than give up.
+> - A **legacy** client (`2025-11-25` or earlier) opens with
+>   `initialize`. The adapter answers in your own revision when it speaks
+>   it, and otherwise in `2025-11-25`, which you are free to refuse.
+>   After that, requests need no per-request metadata.
+>
+> The opening selects one era, once. A connection that has already spoken
+> modern will refuse a later `initialize`, a second `initialize` is
+> refused rather than renegotiating the version out from under you, and
+> `server/discover` is not offered on a legacy connection because that
+> revision has no meaning for its reply. A refused opening leaves a
+> working session working.
 
 ## 4. Do a piece of work
 
