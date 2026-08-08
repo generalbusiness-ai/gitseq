@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 
@@ -518,5 +519,43 @@ func TestTotalsKeepIneffectiveAndDisputedApart(t *testing.T) {
 	// added here must not be counted among them.
 	if digest.Totals.IneffectiveActs != 2 {
 		t.Fatalf("ineffective acts = %d, want 2; disputed appears to have been folded in", digest.Totals.IneffectiveActs)
+	}
+}
+
+// Role names are not a closed vocabulary — a roster statement may confer any
+// name — so an actor's role set grows with what the log has granted them and
+// is bounded by nothing the substrate fixes. That makes it the same kind of
+// list as the terminal commitments, and it was missed because the obvious
+// reading of "roles" is the three or four the room's practice uses.
+func TestYourOwnRolesAreBounded(t *testing.T) {
+	status := sampleStatus(4)
+	roles := make([]string, 0, 2001)
+	for index := range 2001 {
+		roles = append(roles, fmt.Sprintf("role-%04d", index))
+	}
+	sort.Strings(roles)
+	actor := status.Durable.Projection.Actors[mine]
+	actor.Roles = roles
+	status.Durable.Projection.Actors[mine] = actor
+
+	digest := digestStatus(status, mine, "me", false)
+	if len(digest.You.Roles) != listCap {
+		t.Fatalf("own roles are unbounded: %d listed", len(digest.You.Roles))
+	}
+	if digest.You.RolesSkipped != 2001-listCap {
+		t.Fatalf("roles skipped = %d, want %d", digest.You.RolesSkipped, 2001-listCap)
+	}
+	// Kept from the front, because the fold sorts roles and the conventional
+	// names sort early; keeping the tail would drop exactly the ones a reader
+	// is looking for.
+	if digest.You.Roles[0] != roles[0] {
+		t.Fatalf("roles were kept from the wrong end: got %q, want %q", digest.You.Roles[0], roles[0])
+	}
+	encoded, err := json.Marshal(digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), "roles_skipped") {
+		t.Fatalf("truncated roles without saying so: %s", encoded)
 	}
 }

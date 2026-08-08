@@ -52,10 +52,27 @@ func capList[T any](items []T, limit int) ([]T, int) {
 	return items[len(items)-limit:], len(items) - limit
 }
 
+// capListHead keeps the first entries instead of the last, and exists for
+// lists the fold has already sorted into a meaningful order rather than
+// appended in time order. Roles are sorted alphabetically, so "most recent"
+// means nothing for them, while the conventional names a reader is looking
+// for sort early.
+func capListHead[T any](items []T, limit int) ([]T, int) {
+	if len(items) <= limit {
+		return items, 0
+	}
+	return items[:limit], len(items) - limit
+}
+
+// actorView carries the caller's own standing. Roles is capped like every
+// other list here: role names are not a closed vocabulary — a roster
+// statement may confer any name — so an actor's role set grows with what the
+// log has granted them and is not bounded by anything the substrate fixes.
 type actorView struct {
-	Name        string   `json:"name"`
-	Fingerprint string   `json:"fingerprint"`
-	Roles       []string `json:"roles,omitempty"`
+	Name         string   `json:"name"`
+	Fingerprint  string   `json:"fingerprint"`
+	Roles        []string `json:"roles,omitempty"`
+	RolesSkipped int      `json:"roles_skipped,omitempty"`
 }
 
 type commitmentView struct {
@@ -283,7 +300,7 @@ func digestStatus(status service.Status, fingerprint, actorName string, degraded
 	}
 	digest.Frontier = status.Cursor.Frontier
 	if actor, ok := projection.Actors[fingerprint]; ok {
-		digest.You.Roles = actor.Roles
+		digest.You.Roles, digest.You.RolesSkipped = capListHead(actor.Roles, listCap)
 		if actor.Name != "" {
 			digest.You.Name = actor.Name
 		}
