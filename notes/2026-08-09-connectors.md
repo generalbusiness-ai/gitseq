@@ -1,6 +1,8 @@
 ---
 date: 2026-08-09
-status: draft — not yet reviewed or adopted
+status: draft — round one review by codex returned
+  changes-requested (report b8c98009, ratified); this revision answers
+  all five findings and awaits re-review
 origin: a design conversation with hugh on 2026-08-09, held outside
   the workroom and summarized here. No signed frames exist to carry
   as evidence; this note is the author's faithful summary and stands
@@ -33,12 +35,14 @@ note asks the kernel or the workroom fold to learn what GitHub is.
 The obvious framing is bidirectional sync: mirror the foreign
 system into the log, mirror the log back out, reconcile. Reject it.
 
-Symmetric sync requires conflict resolution, and conflict
-resolution over an append-only signed log has no honest
-implementation. There is no merge in this substrate — corrections
-are new events, and mutation is refused outright. A sync engine that
-wants to reconcile two divergent states must either forge
-signatures or invent a merge semantics the substrate does not have.
+Reconciliation itself is not dishonest: a corrective act citing the
+observations it revises is a perfectly good move, and the log is
+built for exactly that. What has no honest implementation is
+*automatic* reconciliation. There is no merge in this substrate —
+corrections are new events, and mutation is refused outright — so an
+engine asked to make two divergent states agree without a
+participant deciding must either forge signatures or invent a merge
+semantics the substrate does not have.
 
 What the framing is actually reaching for is traceability in both
 directions and status flowing both ways. Two asymmetric operations
@@ -71,6 +75,31 @@ Delivery failure then appears in the room as an unkept promise
 rather than as a silent error in a log nobody reads. The connector's
 own reliability becomes visible in the same terms as everyone
 else's, which is the point of having the loop at all.
+
+Commands have a crash boundary that renderings do not, and the note
+must not skate over it. The side effect can succeed and the
+connector can die before reporting. Retrying then duplicates the
+comment; leaving the promise open hides an action that already
+happened. Neither the work loop nor the kernel's idempotency helps
+here, because both protect the *room* side of the boundary and the
+damage is on the foreign side.
+
+A command specification must therefore say, per system, which of
+these it uses:
+
+1. **A foreign idempotency key**, where the system offers one. Best
+   case: the retry is the foreign system's problem.
+2. **A correlation marker plus readback**, where it does not. The
+   connector writes a marker it can recognise — usually the
+   commanding event ID in the posted content — and before retrying,
+   searches for its own marker. Recovery is a read, not a guess.
+3. **Durable intent before effect**: state the attempt, act, then
+   state the outcome, so a reader can see the ambiguous window
+   rather than having it silently resolved.
+
+The prohibition on reading back applies to connector-owned
+renderings. It does not extend to commands, where readback is the
+recovery mechanism.
 
 ### Never read back your own writing
 
@@ -146,10 +175,39 @@ The charter declares:
 
 This follows the substrate's own rule that the rules are governed by
 the moves they govern: fold definitions live in the practice's own
-log. It has a consequence worth wanting. Change the mapping by
-superseding the charter, and everything projected under the old
-mapping flares stale. Revocation is not a config change nobody
-notices; it is a visible event with visible downstream effects.
+log.
+
+Staleness does not propagate by good intentions. It propagates along
+`rests_on`, so the charter only flares its consequences if the acts
+enacted under it actually cite it. That is a requirement, not a
+hope:
+
+> Every durable act a connector originates rests on the live charter
+> event, and — where the act depends on them — on the live alias
+> claim and the live doorstep admission it relied upon.
+
+With that edge in place, superseding the charter flares everything
+derived under the old mapping, and revocation stops being a
+configuration change nobody notices. Without it the charter is
+decoration.
+
+### What the charter does not do
+
+The charter is a statement of policy that an honest connector
+follows. It is not an enforcement mechanism, and this note would be
+lying if it implied otherwise.
+
+The pre-append hook checks only that the submitting key is on the
+static allowlist (`spike/internal/app/app.go:734`@0a66e85). The fold
+does not read charter bodies and does not know what a charter is. So
+an allowlisted connector whose key is stolen can state anything a
+connector may state, including requests it was never chartered to
+file, and the charter will not stop it. What the charter gives is
+detection and attribution after the fact, not prevention.
+
+Whether that should change — an admission rule at the profile
+boundary that refuses acts not resting on a live charter — is an
+open question below, not something this note settles.
 
 ### The charter is what makes automation legitimate
 
@@ -160,11 +218,15 @@ common way to run a process and the design must support it.
 
 It is better founded than it first appears, because of who holds the
 requester position. A report is ratified by the requester
-(`SKILL.md:53`@0a66e85). If the connector filed the request from
+(`SKILL.md:51`@0a66e85). If the connector filed the request from
 the pull request, the connector *is* the requester, and it is
 already the authorized ratifier for reports against that request. No
-new authority is needed and nothing is forged; the loop closes with
-the rules the workroom already has.
+role grant is needed and nothing is forged; the loop closes with the
+rules the workroom already has.
+
+**This is the whole of the automatic design, and the boundary is
+deliberate.** A connector may ratify reports against requests it
+filed itself. It may not ratify anything else.
 
 What is not automatic is the meaning. An approving review is not
 inherently a ratification. It becomes one through a durable,
@@ -174,10 +236,21 @@ ratified delegation that says so:
 > satisfies requests I filed from pull requests, and
 > `github-connector` may enact this.
 
-Ratified in the log, revocable by supersession. For assertions and
-proposals rather than reports, the connector additionally needs the
-`ratifier` role, granted and revoked through the existing role
-machinery (`spike/internal/app/app.go:456` and `:495`@0a66e85).
+Ratified in the log, revocable by supersession.
+
+The temptation is to go further and grant the connector the
+`ratifier` role so it can ratify assertions and proposals too.
+Resist it, because that role does not have the shape the charter
+implies. It is granted room-wide through the existing role machinery
+(`spike/internal/app/app.go:456` and `:495`@0a66e85) and carries no
+repository, team, or event-kind scope. A connector holding it can
+ratify anything in the room that a ratifier can ratify, charter or
+no charter. Granting it and then describing the result as narrow
+charter delegation would be false.
+
+Scoped ratification — authority bounded to a class of acts — is a
+mechanism the profile does not have. Naming it as missing is more
+useful than pretending the charter supplies it.
 
 The same connector binary then serves the whole spectrum. One room's
 charter says a human converts every issue into a request; another's
@@ -186,15 +259,26 @@ document, not a fork of the code.
 
 ### Say the containment cost out loud
 
-A connector that may only observe can lie visibly but cannot decide
-anything. That containment weakens exactly as far as the charter
-delegates, and it should be stated rather than discovered.
+A connector that only observes can lie visibly but cannot decide
+anything. Automatic mapping gives up part of that, and the amount
+given up should be stated rather than discovered.
 
-The trade is still favourable. The delegation is written down,
-dated, attributed, and revocable, and every act enacted under it is
-traceable to it. The equivalent power in an ordinary webhook
-automation exists too — it is simply invisible, held in a
-configuration screen nobody audits.
+Stated precisely: the containment that remains is *mechanical* only
+where the fold enforces it. The fold enforces that a report is
+ratified by its requester, so a connector's reach over reports is
+genuinely bounded to requests it filed. Everything else the charter
+says — which principals pass the doorstep, which events map to what
+— is honoured by an honest connector and by nothing else. A stolen
+connector key is bounded by the roles the fold knows about, not by
+the charter's prose.
+
+The trade is still favourable, but for a narrower reason than
+"delegation is bounded". It is favourable because the delegation is
+written down, dated, attributed, revocable, and cited by the acts
+made under it, so both compliance and violation are legible after
+the fact. The equivalent power in an ordinary webhook automation
+exists too — it is simply invisible, held in a configuration screen
+nobody audits.
 
 ## What is durable and what is not
 
@@ -281,12 +365,20 @@ same public surface every other actor uses. The seams already exist:
 
 Two consequences follow.
 
-**A connector keeps no database.** Its correspondence between
-foreign objects and events is a fold over durable acts carrying
-source and external identifiers, and its deduplication ledger is the
-log. It is stateless modulo the log: restartable, auditable, and
-reconstructible by any reader. A connector that needs private state
-to be correct has a design problem.
+**A connector keeps no database, on one condition.** Its
+correspondence between foreign objects and events is a fold over
+durable acts carrying source and external identifiers, and its
+inbound deduplication ledger is the log. It is stateless modulo the
+log: restartable, auditable, and reconstructible by any reader.
+
+The condition is the command boundary above. Statelessness survives
+only where every foreign effect is either idempotent under a key the
+connector can recompute, or discoverable by reading back a marker
+the connector wrote. Where neither holds, the correlation must
+become durable — stated in the log before the effect — rather than
+hidden in local state. A connector that needs *private* state to be
+correct has a design problem; a connector that needs *durable*
+correlation is simply being honest about an ambiguous boundary.
 
 **Shared code is a library, not a framework.** Cursor handling,
 idempotency key derivation, the correspondence fold, frontier
@@ -307,6 +399,14 @@ attack surface of automatic mapping, more than anything outbound.
 The charter must gate durable effects by principal — collaborators,
 organization members, aliased actors — and the connector must
 enforce that gate before submitting, not after.
+
+The gate is adequate against strangers, which is what it is for. It
+is not adequate against a compromised connector, because nothing
+below the connector checks it. An act admitted this way should cite
+the doorstep claim it relied on, so a reader can see which
+admission was asserted and audit it later; whether the profile
+should also *refuse* acts that cite no live charter is the open
+question below.
 
 **Alias escalation.** If the charter lets alias-backed observations
 trigger ratification, then compromising alice's GitHub account is
@@ -346,10 +446,34 @@ key to `gs`, which destroys the custody property that makes
 `/v0/submit` the right boundary.
 
 Since chatter-as-ephemeral is the default inbound path, this is on
-the critical path. It needs a frame submission that accepts a signed
-envelope and verifies it against the roster — consistent with the
-collaboration profile's rule that everything the nexus carries is
-enveloped and signed.
+the critical path. "Accept a signed envelope" is not a sufficient
+specification, because of what the actor signature currently covers.
+
+The actor signs a body containing the nexus generation, the
+conversation identifier, the nexus-assigned sequence number, and the
+previous frame's hash (`spike/internal/nexus/nexus.go:360`@0a66e85),
+and those last two are assigned at publish time
+(`:438`@0a66e85). A remote signer cannot know them in advance, and
+under concurrent speakers they change between deciding to speak and
+being ordered. Some protocol has to close that gap. Two shapes are
+available:
+
+1. **Reserve then sign.** The nexus issues a position and previous
+   hash, the client signs that exact body, and the reservation
+   expires if unused. Preserves the current frame format; adds a
+   round trip and a reservation to manage.
+2. **Sign the payload, let the nexus order it.** The client signs a
+   detached body that binds the actor, conversation, and payload but
+   not the position; the nexus verifies it against the roster,
+   assigns the order, and co-signs. Single round trip; changes what
+   the actor signature attests, so the frame format and its verifier
+   both move.
+
+The second is closer to how durable submission already works, where
+the actor signs an intent and the sequencer supplies the position.
+Whichever is chosen, the design must also say how a session lease
+binds the key, how roster membership is checked at publish time, and
+how replay and stale-tip races behave.
 
 A second, smaller constraint: state bodies are flat string maps
 (`spike/internal/workroom/schema.go:52`@0a66e85). That is enough for
@@ -374,19 +498,33 @@ the branch that carries this note.
    governance kind of its own? A proposal reuses existing machinery;
    a distinct kind makes the delegation legible to a reader who does
    not know to look for it.
-2. **Reopening.** A pull request closed unmerged is the connector
+2. **Should the charter be enforced, not merely followed?** As
+   written it is policy an honest connector obeys. A profile-level
+   admission rule could refuse a connector act that does not rest on
+   a live charter, which would turn the doorstep from prose into
+   mechanism. The cost is a hook that consults durable state, which
+   is close to the boundary the kernel deliberately keeps clear of
+   correctness. Worth deciding explicitly rather than inheriting.
+3. **Scoped ratification.** The `ratifier` role is room-wide.
+   Automatic forge approval only ever wants "reports on requests
+   this actor filed against repository `o/r`". The requester-owned
+   case covers today's design without a role, but any wider
+   automation needs bounded authority the profile does not have. Is
+   that a missing profile mechanism, or a sign that wider automation
+   should not exist?
+4. **Reopening.** A pull request closed unmerged is the connector
    superseding its own request, which cleanly releases any promise.
    A reopened pull request cannot unsupersede. A new request resting
    on the retired one is probably right, but it needs deciding.
-3. **Backfill.** Importing an existing repository's open issues
+5. **Backfill.** Importing an existing repository's open issues
    produces a burst of observations at the tail with foreign
    timestamps spanning years. Is that acceptable as-is, or does
    backfill need a distinct treatment so readers do not mistake it
    for a sudden flurry of work?
-4. **Aliases and the roster.** Does an alias extend the roster kind,
+6. **Aliases and the roster.** Does an alias extend the roster kind,
    or is it a separate ratified assertion? The fold keys actors by
    fingerprint either way.
-5. **Which system is second?** GitHub proves the forge shape. Slack
+7. **Which system is second?** GitHub proves the forge shape. Slack
    would prove the chatter-only shape, SARIF the machine-observation
    shape with no conversation at all. The second connector is what
    tells us whether the library boundary is drawn in the right
