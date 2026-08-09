@@ -36,23 +36,26 @@ Every durable act cites its basis in `rests_on`.
 - `say {about, text}` — ephemeral frame in the conversation anchored
   at `about` (minted if none is open).
 - `state {kind, text, body?, rests_on, evidence?}` — durable utterance.
-  Kinds are speech acts: `assert` (a claim you can ground),
-  `propose` (seeks ratification), `request` (asks an actor to act),
-  `promise` (an undertaking — never one you can't keep), `report`
-  (claims completion of your promise), `dissent` (objection, resting
-  on what it contests), `artifact` (cites `path@commit`), plus
-  governance kinds you will rarely use. Promotion from a
-  conversation is `state` with the selected signed frames embedded
-  as `evidence` — a stranger can then verify it after the
+  Read `status.durable.vocabulary.definitions` before choosing a
+  kind. That governed vocabulary is the source of truth for required
+  fields, basis constraints, ratification authority, render class,
+  staleness, lifecycle participation, and actor guidance; this file
+  deliberately does not carry a second per-kind catalog. Promotion
+  from a conversation is `state` with the selected signed frames
+  embedded as `evidence` — a stranger can then verify it after the
   conversation is forgotten. Select honestly, summarize faithfully.
+- `status.durable.vocabulary.binding` states whether the record has a
+  fold binding. `unbound` and `uninterpretable` are real audit gaps,
+  not warnings to click through. Likewise, a durable decision of
+  `undefined-kind` or `uninterpretable` stays visible but has no
+  semantic force. Surface the gap; do not improvise ambient meaning.
 - A request's `body.to` accepts a configured actor name, `@name`, or
   fingerprint. The application signs the fingerprint, and the fold requires
   that it identify a live roster actor at that position.
-- `ratify {target}` — confers force when you hold the target-specific
-  authority: the requester for a report, a ratifier for assertions,
-  proposals, and governance. Human or agent is an identity kind, not an
-  authority test; an agent with a live ratifier grant may ratify. Any other
-  attempt is visibly ineffective.
+- `ratify {target}` — confers force only when the target's active kind
+  definition names you as its satisfier. Human or agent is an identity
+  kind, not an authority test; authority comes from the live roster and
+  the declared satisfier. Any other attempt is visibly ineffective.
 - `supersede {target, text, rests_on}` — retire a prior act,
   propagating staleness to everything resting on it. Prefer
   supersession to contradiction.

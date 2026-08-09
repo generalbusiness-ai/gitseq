@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { Columns3, GitBranch, List, Search } from "lucide-react";
-import type { Projection, WorktreeView } from "../lib/api";
+import { BookOpen, CircleSlash, Columns3, GitBranch, List, Search } from "lucide-react";
+import type { Projection, Vocabulary, WorktreeView } from "../lib/api";
 import type { Session } from "../lib/session";
 import { ticketsOf, type Selection, type Workroom } from "../lib/store";
 import {
@@ -13,7 +13,7 @@ import {
   type WorkTopic,
 } from "../lib/work";
 import { worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
-import { cn, commitmentRelationship, statusLabel, statusTint } from "../lib/util";
+import { cn, commitmentRelationship, interpretationGaps, statusLabel, statusTint, type InterpretationGap } from "../lib/util";
 import { EventTime } from "./EventTime";
 import { Railway } from "./Railway";
 
@@ -37,6 +37,7 @@ export function WorkView({
   onOpenThread: (event: string) => void;
 }) {
   const projection = workroom.status?.durable.projection;
+  const vocabulary = workroom.status?.durable.vocabulary;
   const [presentation, setPresentation] = useState<Presentation>("list");
   const [filters, setFilters] = useState<WorkFilters>({ open: true, attention: true, closed: false });
   const work = useMemo(() => (projection ? buildWorkProjection(projection) : undefined), [projection]);
@@ -51,6 +52,8 @@ export function WorkView({
   }, [projection, workroom.actors]);
   const me = workroom.actors.find((actor) => actor.name === session.actor)?.fingerprint;
   const itemCount = visible?.topics.reduce((sum, topic) => sum + topic.items.length, 0) ?? 0;
+  const gaps = useMemo(() => interpretationGaps(projection), [projection]);
+  const bindingGap = vocabulary && vocabulary.binding.status !== "bound" ? vocabulary.binding : undefined;
 
   const updateFlag = (key: "open" | "attention" | "closed", value: boolean) =>
     setFilters((current) => ({ ...current, [key]: value }));
@@ -112,6 +115,7 @@ export function WorkView({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+        <InterpretationAttention gaps={gaps} binding={bindingGap} tickets={tickets} onOpenThread={onOpenThread} />
         {!projection || !visible ? (
           <p className="py-12 text-center text-sm text-faint">Loading work…</p>
         ) : visible.topics.length === 0 && visible.attention.length === 0 ? (
@@ -146,8 +150,83 @@ export function WorkView({
             </div>
           </div>
         </details>
+
+        <VocabularyPanel vocabulary={vocabulary} />
       </div>
     </div>
+  );
+}
+
+// What the room can currently say, and what it cannot read. An unbound or
+// uninterpretable fold is one row however many acts it refuses, and each
+// distinct refusal is one row however many events share it: a list that grows
+// with the log buries everything else here.
+function InterpretationAttention({ gaps, binding, tickets, onOpenThread }: {
+  gaps: InterpretationGap[];
+  binding?: Vocabulary["binding"];
+  tickets: Map<string, number>;
+  onOpenThread: (event: string) => void;
+}) {
+  if (gaps.length === 0 && !binding) return null;
+  return (
+    <section aria-labelledby="interpretation-heading" className="mx-auto mb-4 max-w-5xl rounded-lg border border-danger/35 bg-danger/5 p-2">
+      <h2 id="interpretation-heading" className="px-1 pb-1.5 text-xs font-semibold text-danger">
+        Interpretation ({gaps.length + (binding ? 1 : 0)})
+        <span className="ml-2 font-normal text-faint">acts this room cannot read</span>
+      </h2>
+      {binding && (
+        <div className="mb-1 rounded-md border border-danger/30 px-2 py-2 text-xs">
+          <div className="flex items-center gap-1.5 font-semibold text-danger">
+            <CircleSlash className="h-3.5 w-3.5" /> fold {binding.status}
+          </div>
+          <p className="mt-0.5 text-muted">{binding.reason}</p>
+        </div>
+      )}
+      {gaps.map((gap) => (
+        <button
+          key={`${gap.verdict} ${gap.reason}`}
+          type="button"
+          onClick={() => onOpenThread(gap.events[0])}
+          className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent"
+        >
+          <span className="w-24 shrink-0 font-semibold text-danger">{gap.verdict}</span>
+          <span className="min-w-0 flex-1 truncate text-muted" title={gap.reason}>{gap.reason}</span>
+          {gap.events.length > 1 && <span className="shrink-0 text-faint">×{gap.events.length}</span>}
+          <span className="shrink-0 font-mono text-[11px] text-faint" title={gap.events[0]}>#{tickets.get(gap.events[0]) ?? "?"}</span>
+        </button>
+      ))}
+    </section>
+  );
+}
+
+// The kinds the room currently interprets, each with the rules it is judged
+// against, and whether the definition came with the room or was declared in
+// the log.
+function VocabularyPanel({ vocabulary }: { vocabulary?: Vocabulary }) {
+  if (!vocabulary) return null;
+  return (
+    <details className="mx-auto mt-3 max-w-7xl rounded-lg border border-border bg-surface/30">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted focus-visible:outline focus-visible:outline-accent">
+        <BookOpen aria-hidden className="mr-1.5 inline h-3.5 w-3.5" />
+        Vocabulary ({vocabulary.definitions.length})
+      </summary>
+      <div className="space-y-1 border-t border-border p-3">
+        {vocabulary.definitions.map((definition) => (
+          <details key={definition.name} className="rounded-md border border-border/70 px-2 py-1.5 text-xs">
+            <summary className="cursor-pointer list-none font-medium text-foreground/90">
+              <span>{definition.name}</span>
+              <span className="ml-2 font-normal text-faint">{definition.render} · {definition.source === "starter" ? "starter" : "declared"}</span>
+            </summary>
+            <p className="mt-1.5 leading-relaxed text-muted">{definition.guidance}</p>
+            <dl className="mt-1 grid grid-cols-[5rem_1fr] gap-x-2 text-faint">
+              <dt>satisfier</dt><dd>{definition.satisfier}</dd>
+              <dt>staleness</dt><dd>{definition.staleness}</dd>
+              <dt>lifecycle</dt><dd>{definition.lifecycle}</dd>
+            </dl>
+          </details>
+        ))}
+      </div>
+    </details>
   );
 }
 

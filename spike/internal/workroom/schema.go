@@ -35,17 +35,11 @@ const (
 	KindSeal     Kind = "seal"
 )
 
-var knownKinds = map[Kind]bool{
-	KindAssert: true, KindPropose: true, KindRequest: true,
-	KindPromise: true, KindReport: true, KindDissent: true,
-	KindArtifact: true, KindRoster: true, KindInfraKey: true,
-	KindSeal: true,
-}
-
 // State is a durable attributed utterance. Body is intentionally restricted to
 // string fields in v0: it is enough for stable identifiers, paths, keys, roles,
-// conditions, and dates while keeping the canonical representation tiny.
-// Unknown kinds and body keys survive decoding and project as opaque records.
+// conditions, dates, and canonical constraint expressions while keeping the
+// representation tiny. Semantic validation belongs to the position-aware fold:
+// unknown kinds and body keys survive decoding and remain visible there.
 type State struct {
 	Kind Kind              `json:"kind"`
 	Text string            `json:"text"`
@@ -133,23 +127,6 @@ func validateState(state State) error {
 		if key == "" || value == "" {
 			return errors.New("state body keys and values must be non-empty")
 		}
-	}
-	if !knownKinds[state.Kind] {
-		return nil
-	}
-	required := map[Kind][]string{
-		KindRequest:  {"to", "conditions"},
-		KindRoster:   {"actor", "name", "role"},
-		KindInfraKey: {"service", "public_key"},
-		KindArtifact: {"path", "commit"},
-	}
-	for _, field := range required[state.Kind] {
-		if state.Body[field] == "" {
-			return fmt.Errorf("%s state requires body.%s", state.Kind, field)
-		}
-	}
-	if state.Kind == KindRoster && state.Body["role"] == "participant" && state.Body["kind"] == "" {
-		return errors.New("participant roster state requires body.kind")
 	}
 	return nil
 }
