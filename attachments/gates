@@ -1,0 +1,1 @@
+make vet/test/race/build; UI 34/34 plus build; make spike stable; git diff clean; local Markdown links/anchors; actionlint v1.7.12; main-only bare remote and fresh documented install all pass
