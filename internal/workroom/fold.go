@@ -65,7 +65,15 @@ type Artifact struct {
 	Event  string `json:"event"`
 	Path   string `json:"path"`
 	Commit string `json:"commit"`
-	Stale  bool   `json:"stale"`
+	// Retired records that this artifact statement was itself superseded. The
+	// pointer has been withdrawn and nothing may rest on it again.
+	Retired bool `json:"retired,omitempty"`
+	// Stale records that a basis under this artifact was retired. It is a
+	// different fact from Retired, and carrying both in one boolean cost every
+	// reader the ability to tell a withdrawn pointer from a moved world. The
+	// commit named here is immutable either way: staleness is a reason to
+	// re-check the reasoning, not evidence that the pointer stopped pointing.
+	Stale bool `json:"stale"`
 	// DescribesSupersededWorld carries the same narrowing as on Statement.
 	DescribesSupersededWorld bool `json:"describes_superseded_world,omitempty"`
 	// UnableToFlare records that this artifact has no basis that any act could
@@ -880,7 +888,8 @@ func (f *foldState) project() Projection {
 			}
 			projection.Artifacts = append(projection.Artifacts, Artifact{
 				Event: record.record.ID, Path: path, Commit: state.Body["commit"],
-				Stale:                    f.retired(record.record.ID) || stale[record.record.ID],
+				Retired:                  f.retired(record.record.ID),
+				Stale:                    stale[record.record.ID],
 				DescribesSupersededWorld: world[record.record.ID],
 				UnableToFlare:            f.unableToFlare(record.record.RestsOn),
 				SuccessionUnrecorded:     live > 0,

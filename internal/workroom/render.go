@@ -55,6 +55,8 @@ func RenderStatus(projection Projection) []byte {
 		for _, artifact := range projection.Artifacts {
 			status := "current"
 			switch {
+			case artifact.Retired:
+				status = "RETIRED"
 			case artifact.DescribesSupersededWorld:
 				status = "STALE — describes a superseded world"
 			case artifact.Stale:

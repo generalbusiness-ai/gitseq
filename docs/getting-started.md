@@ -228,6 +228,12 @@ An artifact turns **stale** when something it rests on is retired.
 That is the whole point: the document finds out it is wrong, and can say
 which event made it so.
 
+Stale is not the same as retired. Retired means this act was superseded;
+stale means something underneath it was. A stale artifact still names the
+commit it always named, so `gs review` will still review it and will
+record in the verdict what had moved. `gs merge` is stricter and refuses,
+because there is no reviewer present at that step to weigh it.
+
 ## 6. Audit from a fresh clone
 
 The strongest check is that a stranger with nothing but a clone can

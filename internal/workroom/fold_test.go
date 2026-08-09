@@ -1208,6 +1208,33 @@ func TestRetiredArtifactMarksDependentsAsDescribingASupersededWorld(t *testing.T
 	}
 }
 
+// Being withdrawn and standing over a withdrawal are two facts, and an artifact
+// has to carry them apart. Fused into one boolean they read the same to every
+// caller, and a gate that must refuse the first while admitting the second has
+// nothing to read.
+func TestArtifactCarriesRetirementAndStalenessApart(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "feature built on it", Body: map[string]string{"path": "spike/cmd/feature", "commit": "bbb222"}}, "w3"),
+		event(t, "w5", agent, SchemaSupersede, Supersede{Target: "w3", Text: "Behaviour replaced"}, "w3"),
+	)
+	projection := Fold(records)
+
+	replaced := artifactByEvent(t, projection, "w3")
+	if !replaced.Retired || replaced.Stale {
+		t.Fatalf("the superseded artifact: retired=%v stale=%v, want retired and not stale", replaced.Retired, replaced.Stale)
+	}
+	standing := artifactByEvent(t, projection, "w4")
+	if standing.Retired || !standing.Stale {
+		t.Fatalf("the artifact above it: retired=%v stale=%v, want stale and not retired", standing.Retired, standing.Stale)
+	}
+	// bbb222 is still bbb222. Staleness is a reason to re-read the reasoning,
+	// never evidence that the pointer stopped pointing.
+	if standing.Commit != "bbb222" {
+		t.Fatalf("stale artifact commit = %q", standing.Commit)
+	}
+}
+
 // Ordinary staleness must not claim the world moved. The golden fixture's
 // artifact goes stale because its governing request died, which is the
 // argument dying, not the code changing.
@@ -1332,7 +1359,7 @@ func TestWithdrawnSuccessorLeavesNothingOwed(t *testing.T) {
 	)
 	projection := Fold(records)
 	withdrawn := artifactByEvent(t, projection, "w4")
-	if !withdrawn.Stale {
+	if !withdrawn.Retired {
 		t.Fatal("a2 is not retired; the supersession was ineffective and the case is untested")
 	}
 	if projection.OmittedSupersessions != 1 {
