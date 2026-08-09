@@ -35,6 +35,7 @@ func TestPublicRepositorySurface(t *testing.T) {
 			publicRepository + ".git",
 			"[MIT License](LICENSE)",
 			"[security policy](SECURITY.md)",
+			"vulnerability reports go through GitHub's private advisory channel, not a public issue or workroom",
 		},
 		"docs/getting-started.md": {
 			"git clone " + publicRepository + ".git",
@@ -46,6 +47,7 @@ func TestPublicRepositorySurface(t *testing.T) {
 			"There are no supported release branches",
 			"GitHub Issues are public",
 			"suitable for ordinary use and support questions",
+			"Do not put a vulnerability, exploit, credential, private repository content, or personal data in an issue or in a gitseq workroom",
 			"not open a public issue for a security report",
 			"GitHub settings outside this source tree",
 			"Source CI cannot guarantee those settings",
