@@ -4,7 +4,8 @@ import { ticketsOf, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { cn } from "../lib/util";
 import { Avatar } from "./Avatar";
-import { parsePresenceLabel } from "../lib/interaction";
+import { EventTime } from "./EventTime";
+import { fingerprintsIdentifySameActor, presentActors } from "../lib/interaction";
 import { Ticket } from "./Stream";
 
 // The profile pane: who an actor is and where they stand — computed entirely
@@ -36,8 +37,11 @@ export function ProfilePane({
     })();
   const name = actor?.name ?? fingerprint.slice(0, 8);
 
-  // Online when any live session announces this actor's name.
-  const online = Object.values(workroom.status?.live.presence ?? {}).some((value) => parsePresenceLabel(value).name === name);
+  // Presence carries a short fingerprint. Display names are not identities:
+  // two custodians may intentionally share one.
+  const online = presentActors(workroom.status?.live.presence).some((person) =>
+    fingerprintsIdentifySameActor(person.fingerprint, fingerprint),
+  );
   const isMe = session.actor === name;
 
   // Their recent durable acts, newest first — each row jumps the stream.
@@ -124,7 +128,8 @@ export function ProfilePane({
                 <span className={cn("min-w-0 truncate", statement.retired ? "text-faint line-through" : "text-foreground/90")}>
                   {statement.text}
                 </span>
-                <span className="ml-auto shrink-0">
+                <EventTime timestamp={statement.timestamp} className="ml-auto" />
+                <span className="shrink-0">
                   <Ticket ticket={tickets.get(statement.event)} event={statement.event} onSelect={() => onJumpTo(statement.event)} />
                 </span>
               </button>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BadgeCheck, Bookmark, CircleSlash, Link2, SendHorizonal, Undo2, X } from "lucide-react";
 import { api, frameKey, type ActInput, type FrameView, type Statement } from "../lib/api";
+import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { buildThreadIndex, ticketsOf, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { mentionFingerprints } from "../lib/mentions";
@@ -9,6 +10,7 @@ import { actorTint, clock, cn, seenAt } from "../lib/util";
 import { Avatar } from "./Avatar";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
 import { toggleLinkEvent, toggleLinkFrame, type ComposerContext } from "./Composer";
+import { EventTime } from "./EventTime";
 import { MentionText, Ticket } from "./Stream";
 import type { PendingSay } from "./Stream";
 
@@ -182,6 +184,7 @@ export function ThreadPane({
                 }
                 const act = actByEvent.get(event);
                 if (!act) return null;
+                const linkedItem = projection ? soleCurrentSupersedeBasis(act, projection) : undefined;
                 return (
                   <div key={event} className={cn("ml-9 flex items-start gap-1.5 px-2 py-0.5 text-xs", act.verdict === "effective" ? (act.type === "ratify" ? "text-ok" : "text-danger") : "text-faint")}>
                     {act.type === "ratify" ? <BadgeCheck className="mt-0.5 h-3 w-3 shrink-0" /> : <Undo2 className="mt-0.5 h-3 w-3 shrink-0" />}
@@ -190,7 +193,20 @@ export function ThreadPane({
                         ? `${act.type === "ratify" ? "agreed" : "withdrawn"} by ${nameOf(act.actor)}`
                         : `${nameOf(act.actor)} tried to ${act.type} — ${act.reason}`}
                       {act.text && <span className="text-muted"> — {act.text}</span>}
+                      {linkedItem && (
+                        <span className="text-muted">
+                          {" · linked item "}
+                          <button
+                            onClick={() => onJumpTo(linkedItem)}
+                            title={linkedItem}
+                            className="text-foreground/80 hover:underline focus-visible:outline focus-visible:outline-accent"
+                          >
+                            #{tickets.get(linkedItem) ?? "?"}
+                          </button>
+                        </span>
+                      )}
                     </span>
+                    <EventTime timestamp={act.timestamp} className="ml-auto" />
                   </div>
                 );
               })}
@@ -298,7 +314,8 @@ function ThreadStatement({
             </span>
             {statement.ratified && !dead && <BadgeCheck aria-label="ratified" className="h-3 w-3 shrink-0 text-ok" />}
             {statement.stale && !dead && <span className="text-[11px] text-danger">stale</span>}
-            <span className="ml-auto">
+            <EventTime timestamp={statement.timestamp} className="ml-auto" />
+            <span>
               <Ticket ticket={ticket} event={statement.event} onSelect={() => onJumpTo(statement.event)} />
             </span>
           </div>

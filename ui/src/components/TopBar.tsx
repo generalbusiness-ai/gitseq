@@ -1,28 +1,32 @@
 import { useEffect, useState } from "react";
-import { AtSign, PanelRight } from "lucide-react";
+import { AtSign, ClipboardList, MessagesSquare } from "lucide-react";
 import { forYouItems, workSummary, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
 import { cn } from "../lib/util";
 import { Avatar } from "./Avatar";
-import { parsePresenceLabel } from "../lib/interaction";
+import { fingerprintOfPresentActor, presentActors } from "../lib/interaction";
 
 export function TopBar({
   workroom,
   session,
-  onOpenWork,
+  mainView,
+  onShowWork,
+  onShowActivity,
   onJumpEvent,
   onOpenProfile,
 }: {
   workroom: Workroom;
   session: Session;
-  onOpenWork: () => void;
+  mainView: "work" | "activity";
+  onShowWork: () => void;
+  onShowActivity: () => void;
   onJumpEvent: (event: string) => void;
   onOpenProfile: (fingerprint: string) => void;
 }) {
   const durable = workroom.status?.durable;
-  const people = Object.values(workroom.status?.live.presence ?? {});
-  const summary = workSummary(durable?.projection);
+  const people = presentActors(workroom.status?.live.presence);
+  const summary = workSummary(durable?.projection, durable?.vocabulary);
   const fingerprintOf = (name: string) => workroom.actors.find((a) => a.name === name)?.fingerprint ?? "";
 
   // "For you": durable acts addressed to me since the stored watermark.
@@ -46,25 +50,61 @@ export function TopBar({
   return (
     <header className="flex items-center justify-between gap-3 border-b border-border px-3 py-2.5 sm:gap-6 sm:px-6">
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
-        <h1 className="truncate font-serif text-lg font-semibold tracking-tight sm:text-xl">The Workroom</h1>
+        <h1 className="shrink-0 font-serif text-lg font-semibold tracking-tight sm:text-xl">The Workroom</h1>
+        {workroom.repo && (
+          <span className="truncate font-mono text-xs text-faint" title={workroom.repo}>
+            {workroom.repo}
+          </span>
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+        <nav className="flex rounded-md border border-border p-0.5" aria-label="Main view">
+          <button
+            type="button"
+            aria-pressed={mainView === "work"}
+            onClick={onShowWork}
+            className={cn("flex h-7 items-center gap-1.5 rounded px-2 text-xs focus-visible:outline focus-visible:outline-accent", mainView === "work" ? "bg-elevated text-foreground" : "text-faint hover:text-muted")}
+          >
+            <ClipboardList className="h-3.5 w-3.5" />
+            Work
+            <span className="hidden font-mono text-[10px] sm:inline">{summary.open}</span>
+            {summary.stale > 0 && <span className="hidden font-mono text-[10px] text-danger sm:inline" title={`${summary.stale} need attention`}>+{summary.stale}</span>}
+          </button>
+          <button
+            type="button"
+            aria-pressed={mainView === "activity"}
+            onClick={onShowActivity}
+            className={cn("flex h-7 items-center gap-1.5 rounded px-2 text-xs focus-visible:outline focus-visible:outline-accent", mainView === "activity" ? "bg-elevated text-foreground" : "text-faint hover:text-muted")}
+          >
+            <MessagesSquare className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Activity</span>
+          </button>
+        </nav>
         <div className="hidden items-center -space-x-1.5 sm:flex">
           {people.length === 0 ? (
             <span className="text-xs text-faint">nobody here</span>
           ) : (
             people.map((person) => {
-              const name = parsePresenceLabel(person).name;
-              const fingerprint = fingerprintOf(name);
+              const fingerprint = fingerprintOfPresentActor(person, workroom.actors);
               return (
-                <Avatar
-                  key={person}
-                  fingerprint={fingerprint}
-                  name={name}
-                  size={24}
-                  onClick={() => onOpenProfile(fingerprint)}
-                  className="ring-2 ring-background"
-                />
+                <span key={person.label} className="relative">
+                  <Avatar
+                    fingerprint={fingerprint}
+                    name={person.name}
+                    title={person.sessions > 1 ? `${person.name} — ${person.sessions} sessions` : person.name}
+                    size={24}
+                    onClick={() => onOpenProfile(fingerprint)}
+                    className="ring-2 ring-background"
+                  />
+                  {person.sessions > 1 && (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute -bottom-0.5 -right-0.5 rounded-full bg-elevated px-1 font-mono text-[9px] leading-[1.3] text-muted ring-1 ring-background"
+                    >
+                      {person.sessions}
+                    </span>
+                  )}
+                </span>
               );
             })
           )}
@@ -90,24 +130,6 @@ export function TopBar({
             {session.actor}
           </button>
         )}
-        <button
-          onClick={onOpenWork}
-          title="Work"
-          className={cn(
-            "flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted transition-colors hover:bg-elevated hover:text-foreground focus-visible:outline focus-visible:outline-accent",
-          )}
-        >
-          <PanelRight className="h-3.5 w-3.5" />
-          <span className={cn(summary.stale > 0 && "text-danger")}>{summary.stale} stale</span>
-          <span aria-hidden className="text-faint">
-            ·
-          </span>
-          <span>{summary.open} open</span>
-          <span aria-hidden className="text-faint">
-            ·
-          </span>
-          <span className={cn(summary.done > 0 && "text-ok")}>{summary.done} done</span>
-        </button>
         <div className="hidden h-4 w-px bg-border sm:block" />
         <div className="flex items-center gap-2 text-xs text-faint">
           {workroom.offline ? (

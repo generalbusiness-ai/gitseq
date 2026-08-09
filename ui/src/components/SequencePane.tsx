@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import { BadgeCheck, CircleSlash, FileWarning, MessageSquareX, Scale, Undo2 } from "lucide-react";
-import type { Act, Actor, Projection, Statement } from "../lib/api";
+import type { Act, Actor, Projection, Statement, Vocabulary } from "../lib/api";
 import { shortEvent } from "../lib/api";
+import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { ticketsOf, type Selection } from "../lib/store";
-import { cn, kindLabel, kindTint, statusTint } from "../lib/util";
+import { cn, commitmentRelationship, kindLabel, kindTint, statusTint } from "../lib/util";
+import { EventTime } from "./EventTime";
 import { PaneTitle } from "./Railway";
 
 // The sequence renders statements only; ratifications, supersessions,
@@ -11,12 +13,14 @@ import { PaneTitle } from "./Railway";
 // the log reads as a narrative while every attempt stays visible.
 export function SequencePane({
   projection,
+  vocabulary,
   actors,
   highlight,
   selection,
   onSelect,
 }: {
   projection?: Projection;
+  vocabulary?: Vocabulary;
   actors: Actor[];
   highlight: { events: Set<string>; commits: Set<string> };
   selection?: Selection;
@@ -58,25 +62,27 @@ export function SequencePane({
       <PaneTitle icon={<Scale className="h-3.5 w-3.5" />} title="history" />
       {projection && projection.commitments.length > 0 && (
         <div className="border-b border-border/60 px-4 py-3">
-          <div className="mb-2 text-xs uppercase tracking-[0.16em] text-faint">who waits on whom</div>
+          <div className="mb-2 text-xs uppercase tracking-[0.16em] text-faint">requests and commitments</div>
           <div className="space-y-1.5">
-            {projection.commitments.map((commitment) => (
-              <button
-                key={commitment.request + (commitment.promise ?? "")}
-                onClick={() => onSelect({ kind: "event", id: commitment.report ?? commitment.promise ?? commitment.request })}
-                className="flex w-full items-center gap-2 text-left text-[12px] hover:bg-elevated/60"
-              >
-                <span className={cn("w-20 shrink-0 font-semibold", statusTint[commitment.status] ?? "text-muted")}>
-                  {commitment.status}
-                </span>
-                <span className="truncate text-muted">
-                  {byEvent.get(commitment.request)?.text ?? shortEvent(commitment.request)}
-                </span>
-                {commitment.waiting_on && (
-                  <span className="ml-auto shrink-0 text-xs text-faint">⏳ {nameOf(commitment.waiting_on)}</span>
-                )}
-              </button>
-            ))}
+            {projection.commitments.map((commitment) => {
+              const relationship = commitmentRelationship(commitment, nameOf);
+              return (
+                <button
+                  key={commitment.request + (commitment.promise ?? "")}
+                  onClick={() => onSelect({ kind: "event", id: commitment.report ?? commitment.promise ?? commitment.request })}
+                  className="flex w-full items-center gap-2 text-left text-[12px] hover:bg-elevated/60"
+                >
+                  <span className={cn("w-20 shrink-0 font-semibold", statusTint[commitment.status] ?? "text-muted")}>
+                    {commitment.status}
+                  </span>
+                  <span className="truncate text-muted">
+                    {byEvent.get(commitment.request)?.text ?? shortEvent(commitment.request)}
+                  </span>
+                  <EventTime timestamp={byEvent.get(commitment.request)?.timestamp} className="ml-auto" />
+                  {relationship && <span className="shrink-0 text-xs text-faint">{relationship}</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -90,18 +96,22 @@ export function SequencePane({
               <StatementCard
                 key={statement.event}
                 statement={statement}
+                vocabulary={vocabulary}
                 ticket={tickets.get(statement.event)}
                 annotations={annotations.get(statement.event) ?? []}
                 nameOf={nameOf}
                 bright={highlight.events.has(statement.event)}
                 selected={selection?.kind === "event" && selection.id === statement.event}
+                projection={projection}
+                tickets={tickets}
                 onSelect={onSelect}
               />
             ))}
           {orphanActs.map((act) => (
-            <li key={act.event} className="px-2 py-1 text-xs text-faint">
+            <li key={act.event} className="flex items-center gap-2 px-2 py-1 text-xs text-faint">
               <CircleSlash className="mr-1 inline h-3 w-3" />
-              {nameOf(act.actor)} — {act.reason}
+              <span>{nameOf(act.actor)} — {act.reason}</span>
+              <EventTime timestamp={act.timestamp} className="ml-auto" />
             </li>
           ))}
         </ol>
@@ -118,19 +128,25 @@ interface Annotation {
 
 function StatementCard({
   statement,
+  vocabulary,
   ticket,
   annotations,
   nameOf,
   bright,
   selected,
+  projection,
+  tickets,
   onSelect,
 }: {
   statement: Statement;
+  vocabulary?: Vocabulary;
   ticket?: number;
   annotations: Annotation[];
   nameOf: (fingerprint: string) => string;
   bright: boolean;
   selected: boolean;
+  projection?: Projection;
+  tickets: Map<string, number>;
   onSelect: (selection: Selection) => void;
 }) {
   const dead = statement.retired;
@@ -145,8 +161,8 @@ function StatementCard({
         )}
       >
         <div className="flex items-center gap-2">
-          <span className={cn("shrink-0 border px-1.5 text-xs uppercase leading-4 tracking-wide", kindTint[statement.kind] ?? "text-muted border-border")}>
-            {kindLabel[statement.kind] ?? statement.kind}
+          <span className={cn("shrink-0 border px-1.5 text-xs uppercase leading-4 tracking-wide", kindTint(statement.kind, vocabulary))}>
+            {kindLabel(statement.kind)}
           </span>
           <span className={cn("truncate text-[13px]", dead ? "text-faint line-through" : "text-foreground")}>
             {statement.text}
@@ -157,7 +173,8 @@ function StatementCard({
               <FileWarning className="h-3 w-3" /> stale
             </span>
           )}
-          <span className="ml-auto shrink-0 font-mono text-xs text-faint" title={statement.event}>
+          <EventTime timestamp={statement.timestamp} className="ml-auto" />
+          <span className="shrink-0 font-mono text-xs text-faint" title={statement.event}>
             {ticket ? `#${ticket}` : shortEvent(statement.event)}
           </span>
         </div>
@@ -173,19 +190,31 @@ function StatementCard({
             <span className="hidden truncate group-hover:inline">✓ when: {statement.body.conditions}</span>
           )}
         </div>
-        {annotations.length > 0 && (
-          <div className="mt-1 space-y-0.5 border-l border-border/60 pl-2.5">
-            {annotations.map((note) => (
-              <AnnotationLine key={note.key} note={note} nameOf={nameOf} />
-            ))}
-          </div>
-        )}
       </button>
+      {annotations.length > 0 && (
+        <div className="mx-2.5 mb-1 space-y-0.5 border-l border-border/60 pl-2.5">
+          {annotations.map((note) => (
+            <AnnotationLine key={note.key} note={note} nameOf={nameOf} projection={projection} tickets={tickets} onSelect={onSelect} />
+          ))}
+        </div>
+      )}
     </li>
   );
 }
 
-function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string) => string }) {
+function AnnotationLine({
+  note,
+  nameOf,
+  projection,
+  tickets,
+  onSelect,
+}: {
+  note: Annotation;
+  nameOf: (f: string) => string;
+  projection?: Projection;
+  tickets: Map<string, number>;
+  onSelect: (selection: Selection) => void;
+}) {
   if (note.dissent) {
     return (
       <div className="flex items-start gap-1.5 text-xs text-danger">
@@ -193,15 +222,18 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
         <span>
           dissent, {nameOf(note.dissent.actor)}: <span className="text-muted">{note.dissent.text}</span>
         </span>
+        <EventTime timestamp={note.dissent.timestamp} className="ml-auto" />
       </div>
     );
   }
   const act = note.act!;
+  const linkedItem = projection ? soleCurrentSupersedeBasis(act, projection) : undefined;
   if (act.verdict === "effective" && act.type === "ratify") {
     return (
       <div className="flex items-center gap-1.5 text-xs text-ok">
         <BadgeCheck className="h-3 w-3 shrink-0" />
         ratified by {nameOf(act.actor)}
+        <EventTime timestamp={act.timestamp} className="ml-auto" />
       </div>
     );
   }
@@ -212,7 +244,20 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
         <span>
           superseded by {nameOf(act.actor)}
           {act.text && <span className="text-muted"> — {act.text}</span>}
+          {linkedItem && (
+            <span className="text-muted">
+              {" · linked item "}
+              <button
+                onClick={() => onSelect({ kind: "event", id: linkedItem })}
+                title={linkedItem}
+                className="text-foreground/80 hover:underline focus-visible:outline focus-visible:outline-accent"
+              >
+                #{tickets.get(linkedItem) ?? shortEvent(linkedItem)}
+              </button>
+            </span>
+          )}
         </span>
+        <EventTime timestamp={act.timestamp} className="ml-auto" />
       </div>
     );
   }
@@ -222,6 +267,7 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
       <span>
         {nameOf(act.actor)} tried to {act.type} — {act.reason}
       </span>
+      <EventTime timestamp={act.timestamp} className="ml-auto" />
     </div>
   );
 }

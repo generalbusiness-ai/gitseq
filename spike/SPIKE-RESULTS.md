@@ -22,4 +22,4 @@ Overall: **pass**
 5. The snapshot cursor and state share one barrier; the next transition appears strictly after that cursor.
 6. The saga branch leaves competing settlements unorderable but total: every event projects as disputed. An asset-owned log excludes that dispute by construction — evidence for the entity-log default.
 
-Regenerate with `go run ./cmd/gitseq-report` from this directory.
+Regenerate with `make spike` from the repository root.

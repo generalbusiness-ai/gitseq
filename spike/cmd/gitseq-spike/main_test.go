@@ -12,9 +12,9 @@ import (
 	"runtime"
 	"testing"
 
-	"gitseq/spike/internal/gitstore"
-	"gitseq/spike/internal/intent"
-	"gitseq/spike/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 )
 
 func TestActualProcessExitRecoversFromGitAlone(t *testing.T) {

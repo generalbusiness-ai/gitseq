@@ -1,13 +1,18 @@
 // Types mirror the Go service; the workroom projection is the fold's output.
 
+// One list of verdicts, named once. Declared kinds add refusals the fold can
+// reach, and a second copy of this union is a place for them to go missing.
+export type Verdict = "effective" | "ineffective" | "disputed" | "undefined-kind" | "uninterpretable";
+
 export interface Decision {
   event: string;
-  verdict: "effective" | "ineffective" | "disputed";
+  verdict: Verdict;
   reason: string;
 }
 
 export interface Statement {
   event: string;
+  timestamp?: number;
   actor: string;
   kind: string;
   text: string;
@@ -20,11 +25,17 @@ export interface Statement {
 export interface Commitment {
   request: string;
   requester: string;
+  addressed_to?: string;
   performer?: string;
   promise?: string;
   report?: string;
   status: string;
   waiting_on?: string;
+  // Staleness/dispute can qualify a lifecycle state. These optional fields
+  // let clients preserve the underlying open/promised/reported/terminal
+  // state when the projection supplies the richer shape.
+  stale?: boolean;
+  disputed?: boolean;
 }
 
 export interface Artifact {
@@ -36,11 +47,12 @@ export interface Artifact {
 
 export interface Act {
   event: string;
+  timestamp?: number;
   actor: string;
   type: "ratify" | "supersede";
   target: string;
   text?: string;
-  verdict: "effective" | "ineffective" | "disputed";
+  verdict: Verdict;
   reason: string;
 }
 
@@ -67,6 +79,53 @@ export interface DurableSnapshot {
   head: string;
   depth: number;
   projection: Projection;
+  vocabulary: Vocabulary;
+}
+
+export interface FieldConstraint {
+  op: "present" | "type" | "matches" | "one-of";
+  name: string;
+  type?: "string" | "event-id" | "actor-ref" | "path-commit";
+  pattern?: string;
+  values?: string[];
+}
+
+export interface BasisConstraint {
+  kinds: string[];
+  min: number;
+  max: number;
+}
+
+export interface KindDefinition {
+  name: string;
+  fields: FieldConstraint[];
+  basis: BasisConstraint[];
+  satisfier: string;
+  render: "note" | "proposal" | "commitment" | "result" | "dissent" | "artifact" | "governance";
+  staleness: "propagates" | "terminal" | "exempt";
+  lifecycle: "none" | "request" | "promise" | "report";
+  guidance: string;
+  source: string;
+  ratified_by?: string;
+}
+
+export interface FoldTransition {
+  activation: string;
+  ratification: string;
+  fold: string;
+  entry: string;
+  interface: string;
+  toolchain: string;
+  prefix: boolean;
+}
+
+export interface Vocabulary {
+  definitions: KindDefinition[];
+  binding: {
+    status: "unbound" | "uninterpretable" | "bound";
+    reason?: string;
+    transitions: FoldTransition[];
+  };
 }
 
 export interface LiveCursor {
@@ -104,6 +163,13 @@ export interface GraphCommit {
 
 // Ephemeral repository state from /v0/worktrees. It is deliberately separate
 // from Status: none of these fields belong to the durable workroom projection.
+// `repo` is the absolute path of the checkout the service is serving — the one
+// path it discloses, and only because it refuses to listen off loopback.
+export interface LocalRepo {
+  repo: string;
+  worktrees: WorktreeView[];
+}
+
 export interface WorktreeView {
   checkout: string;
   branch?: string;
@@ -167,8 +233,8 @@ export const api = {
       })),
   worktrees: () =>
     fetch("/v0/worktrees", { cache: "no-store" })
-      .then((r) => json<{ worktrees: WorktreeView[] }>(r))
-      .then((local) => local.worktrees ?? []),
+      .then((r) => json<LocalRepo>(r))
+      .then((local) => ({ repo: local.repo ?? "", worktrees: local.worktrees ?? [] })),
   actors: () => fetch("/v0/actors").then((r) => json<Actor[]>(r)),
   wait: (cursor: Cursor, timeoutMS = 25000) =>
     fetch("/v0/wait", {

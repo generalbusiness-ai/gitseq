@@ -36,3 +36,54 @@ export function parsePresenceLabel(value: string): { name: string; fingerprint: 
   const match = /^(.*) \(([^()]*)\)$/.exec(value);
   return match ? { name: match[1], fingerprint: match[2] } : { name: value, fingerprint: "" };
 }
+
+// Presence is leased per session, and one person runs several: a browser tab,
+// an MCP server per agent session. "Who is here" is a count of people, so the
+// leases fold onto the identity label they all carry, keeping the session
+// count rather than discarding it.
+export interface PresentActor {
+  label: string;
+  name: string;
+  fingerprint: string; // the short fingerprint the label carries
+  sessions: number;
+}
+
+interface KnownActor {
+  name: string;
+  fingerprint: string;
+}
+
+// Presence publishes a short fingerprint while durable actor records carry
+// the full one. Resolve by that identity prefix, never by display name when a
+// fingerprint is present: names are deliberately not unique.
+export function fingerprintOfPresentActor(person: PresentActor, actors: KnownActor[]): string {
+  if (person.fingerprint) {
+    const matches = actors.filter(
+      (actor) =>
+        actor.fingerprint === person.fingerprint ||
+        actor.fingerprint.startsWith(person.fingerprint) ||
+        person.fingerprint.startsWith(actor.fingerprint),
+    );
+    return matches.length === 1 ? matches[0].fingerprint : person.fingerprint;
+  }
+  const matches = actors.filter((actor) => actor.name === person.name);
+  return matches.length === 1 ? matches[0].fingerprint : "";
+}
+
+export function fingerprintsIdentifySameActor(left: string, right: string): boolean {
+  return Boolean(left && right) &&
+    (left === right || left.startsWith(right) || right.startsWith(left));
+}
+
+export function presentActors(presence: Record<string, string> | undefined): PresentActor[] {
+  const people = new Map<string, PresentActor>();
+  for (const label of Object.values(presence ?? {})) {
+    const known = people.get(label);
+    if (known) {
+      known.sessions += 1;
+      continue;
+    }
+    people.set(label, { label, ...parsePresenceLabel(label), sessions: 1 });
+  }
+  return [...people.values()].sort((a, b) => a.label.localeCompare(b.label));
+}

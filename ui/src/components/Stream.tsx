@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BadgeCheck, Bookmark, BookmarkPlus, CircleSlash, FileWarning, Link2, MessageSquareText, MessageSquareX, ThumbsUp } from "lucide-react";
-import { frameKey, type ActInput, type Commitment, type Decision, type FrameView, type Projection, type Statement } from "../lib/api";
+import { frameKey, type ActInput, type Commitment, type Decision, type FrameView, type Projection, type Statement, type Vocabulary } from "../lib/api";
+import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { buildThreadIndex, staleCauses, ticketsOf, type ThreadSummary, type Workroom, type Selection } from "../lib/store";
 import type { Session } from "../lib/session";
 import { mentionedFingerprints, mentionsActor, mentionTokens } from "../lib/mentions";
-import { actorTint, belongsInRoom, clock, cn, kindLabel, kindTint, seenAt, statusLabel, statusTint } from "../lib/util";
+import { actorTint, belongsInRoom, clock, cn, definitionOf, kindLabel, kindTint, seenAt, statusLabel, statusTint } from "../lib/util";
 import { Avatar } from "./Avatar";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
 import { toggleLinkEvent, toggleLinkFrame, type ComposerContext } from "./Composer";
+import { EventTime } from "./EventTime";
 import type { ThreadTarget } from "./ThreadPane";
 
 export interface PendingSay {
@@ -57,6 +59,7 @@ export function Stream({
   actError?: string;
 }) {
   const projection = workroom.status?.durable.projection;
+  const vocabulary = workroom.status?.durable.vocabulary;
   const orderRef = useRef(new Map<string, number>());
   const counterRef = useRef(0);
   const scroller = useRef<HTMLDivElement>(null);
@@ -171,7 +174,7 @@ export function Stream({
     };
     const list: { key: string; order: number; statement?: Statement; frame?: FrameView }[] = [];
     for (const statement of projection?.statements ?? []) {
-      if (!belongsInRoom(statement.kind)) continue;
+      if (!belongsInRoom(statement.kind, vocabulary)) continue;
       // promise/report cards fold into their request's card
       const commitment = commitmentByEvent.get(statement.event);
       if (commitment && statement.event !== commitment.request && decisions.get(statement.event)?.verdict === "effective") continue;
@@ -184,7 +187,7 @@ export function Stream({
       list.push({ key, order: place(key), frame });
     }
     return list.sort((a, b) => a.order - b.order);
-  }, [projection, frames, commitmentByEvent, decisions]);
+  }, [projection, frames, commitmentByEvent, decisions, vocabulary]);
 
   // The room opens on the present: jump to the bottom once when content
   // first arrives, then only follow if the reader is already near the end.
@@ -205,12 +208,12 @@ export function Stream({
     const attach = (t: string, n: { act?: Projection["acts"][number]; dissent?: Statement }) => map.set(t, [...(map.get(t) ?? []), n]);
     for (const act of projection?.acts ?? []) attach(act.target, { act });
     for (const s of projection?.statements ?? []) {
-      if (s.kind !== "dissent") continue;
+      if (definitionOf(s.kind, vocabulary)?.render !== "dissent" && s.kind !== "dissent") continue;
       const target = projection?.provenance[s.event]?.[0];
       if (target) attach(target, { dissent: s });
     }
     return map;
-  }, [projection]);
+  }, [projection, vocabulary]);
 
   // Build the rendered sequence with client-side "seen" dividers between
   // gaps in arrival time, and consecutive same-actor messages grouped under
@@ -273,6 +276,7 @@ export function Stream({
       decision: decisions.get(statement.event),
       commitment,
       projection,
+      vocabulary,
       tickets,
       nameOf,
       me: myFingerprint,
@@ -535,20 +539,32 @@ export function WhyStale({ event, projection, tickets, nameOf, onJumpTo }: { eve
         {open ? "why stale −" : "why stale?"}
       </button>
       {open &&
-        causes.map((cause) => (
-          <p key={cause.act.event} className="mt-0.5 text-xs text-muted">
-            stale because{" "}
-            <button onClick={() => onJumpTo(cause.act.event)} title={cause.act.event} className="text-foreground/80 hover:underline">
-              #{tickets.get(cause.act.event) ?? "?"}
-            </button>{" "}
-            replaced{" "}
-            <button onClick={() => onJumpTo(cause.target)} title={cause.target} className="text-foreground/80 hover:underline">
-              #{tickets.get(cause.target) ?? "?"}
-            </button>{" "}
-            — {nameOf(cause.act.actor)}
-            {cause.act.text && <>: “{cause.act.text}”</>}
-          </p>
-        ))}
+        causes.map((cause) => {
+          const linkedItem = soleCurrentSupersedeBasis(cause.act, projection);
+          return (
+            <p key={cause.act.event} className="mt-0.5 text-xs text-muted">
+              stale because{" "}
+              <button onClick={() => onJumpTo(cause.act.event)} title={cause.act.event} className="text-foreground/80 hover:underline">
+                #{tickets.get(cause.act.event) ?? "?"}
+              </button>{" "}
+              superseded{" "}
+              <button onClick={() => onJumpTo(cause.target)} title={cause.target} className="text-foreground/80 hover:underline">
+                #{tickets.get(cause.target) ?? "?"}
+              </button>{" "}
+              {linkedItem && (
+                <>
+                  · linked item{" "}
+                  <button onClick={() => onJumpTo(linkedItem)} title={linkedItem} className="text-foreground/80 hover:underline">
+                    #{tickets.get(linkedItem) ?? "?"}
+                  </button>{" "}
+                </>
+              )}
+              — {nameOf(cause.act.actor)}
+              {cause.act.text && <>: “{cause.act.text}”</>}
+              {" "}<EventTime timestamp={cause.act.timestamp} />
+            </p>
+          );
+        })}
     </div>
   );
 }
@@ -602,6 +618,7 @@ interface RowProps {
   decision?: Decision;
   commitment?: Commitment;
   projection: Projection;
+  vocabulary?: Vocabulary;
   tickets: Map<string, number>;
   notes: Map<string, { act?: Projection["acts"][number]; dissent?: Statement }[]>;
   nameOf: (fp: string) => string;
@@ -627,6 +644,7 @@ function RecordedMessage({
   decision,
   commitment,
   projection,
+  vocabulary,
   tickets,
   notes,
   nameOf,
@@ -645,7 +663,7 @@ function RecordedMessage({
 }: RowProps) {
   const dead = statement.retired;
   const ineffective = decision && decision.verdict !== "effective";
-  const tallies = statement.kind === "propose" ? tallyOf(statement.event, notes) : undefined;
+  const tallies = definitionOf(statement.kind, vocabulary)?.render === "proposal" || (!vocabulary && statement.kind === "propose") ? tallyOf(statement.event, notes) : undefined;
   const repliers = (thread?.people ?? []).map((fingerprint) => ({ fingerprint, name: nameOf(fingerprint) }));
   const ratified = statement.ratified || (notes.get(statement.event) ?? []).some((note) => note.act?.type === "ratify" && note.act.verdict === "effective");
 
@@ -674,12 +692,21 @@ function RecordedMessage({
             <span className="flex items-center gap-1 text-xs text-faint" title="kept">
               <Bookmark className="h-3 w-3 fill-current" /> kept
             </span>
-            {statement.body?.to && <span className="text-xs text-faint">for {nameOf(statement.body.to)}</span>}
-            {commitment && <span className={cn("text-xs", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>}
+            {commitment?.status === "open" && commitment.addressed_to ? (
+              <span className="text-xs text-faint">open — addressed to {nameOf(commitment.addressed_to)}, unclaimed</span>
+            ) : (
+              <>
+                {statement.body?.to && <span className="text-xs text-faint">for {nameOf(statement.body.to)}</span>}
+                {commitment && <span className={cn("text-xs", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>}
+              </>
+            )}
             {ratified && !dead && <BadgeCheck aria-label="agreed" className="h-3.5 w-3.5 text-ok" />}
             {statement.stale && !dead && <span className="text-xs text-danger">stale</span>}
             {ineffective && !dead && <span className="text-xs text-faint" title={decision!.reason}>not active</span>}
-            <span className="ml-auto"><Ticket ticket={ticket} event={statement.event} onSelect={onSelect} /></span>
+            <span className="ml-auto flex items-center gap-2">
+              <EventTime timestamp={statement.timestamp} />
+              <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
+            </span>
           </div>
           <p className={cn("text-sm leading-relaxed", dead ? "text-faint line-through" : "text-foreground/90")}>{statement.text}</p>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-faint">
@@ -721,6 +748,7 @@ export function CompactRow({
   decision,
   commitment,
   projection,
+  vocabulary,
   tickets,
   notes,
   nameOf,
@@ -757,9 +785,9 @@ export function CompactRow({
         />
         <button
           onClick={onSelect}
-          className={cn("shrink-0 rounded border px-1.5 py-px text-xs font-medium uppercase tracking-wide focus-visible:outline focus-visible:outline-accent", kindTint[statement.kind] ?? "border-border text-muted")}
+          className={cn("shrink-0 rounded border px-1.5 py-px text-xs font-medium uppercase tracking-wide focus-visible:outline focus-visible:outline-accent", kindTint(statement.kind, vocabulary))}
         >
-          {kindLabel[statement.kind] ?? statement.kind}
+          {kindLabel(statement.kind)}
         </button>
         <span className={cn("min-w-0 truncate font-serif text-sm", dead ? "text-faint line-through" : "text-foreground/90")} title={statement.text}>
           {statement.text}
@@ -782,6 +810,7 @@ export function CompactRow({
           </span>
         )}
         <span className="ml-auto flex shrink-0 items-center gap-2 self-center">
+          <EventTime timestamp={statement.timestamp} />
           <ThreadIndicator people={[]} count={replies} onOpen={onOpenThread} compact />
           <RestsOn event={statement.event} projection={projection} tickets={tickets} onJumpTo={onJumpTo} className="hidden sm:inline" />
           <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
@@ -814,6 +843,7 @@ export function Card({
   decision,
   commitment,
   projection,
+  vocabulary,
   tickets,
   notes,
   nameOf,
@@ -832,7 +862,7 @@ export function Card({
 }: RowProps) {
   const dead = statement.retired;
   const ineffective = decision && decision.verdict !== "effective";
-  const tallies = statement.kind === "propose" ? tallyOf(statement.event, notes) : undefined;
+  const tallies = definitionOf(statement.kind, vocabulary)?.render === "proposal" || (!vocabulary && statement.kind === "propose") ? tallyOf(statement.event, notes) : undefined;
   const repliers = [
     ...(thread?.people ?? []).map((fingerprint) => ({ fingerprint, name: nameOf(fingerprint) })),
   ];
@@ -857,8 +887,8 @@ export function Card({
           {nameOf(statement.actor)}
         </button>
         {statement.body?.to && <span className="text-xs text-faint">→ {nameOf(statement.body.to)}</span>}
-        <button onClick={onSelect} className={cn("shrink-0 rounded border px-1.5 py-px text-xs font-medium uppercase tracking-wide focus-visible:outline focus-visible:outline-accent", kindTint[statement.kind] ?? "border-border text-muted")}>
-          {kindLabel[statement.kind] ?? statement.kind}
+        <button onClick={onSelect} className={cn("shrink-0 rounded border px-1.5 py-px text-xs font-medium uppercase tracking-wide focus-visible:outline focus-visible:outline-accent", kindTint(statement.kind, vocabulary))}>
+          {kindLabel(statement.kind)}
         </button>
         <MentionBadges body={statement.body} nameOf={nameOf} me={me} />
         {statement.ratified && <BadgeCheck aria-label="ratified" className="h-3.5 w-3.5 text-ok" />}
@@ -869,6 +899,7 @@ export function Card({
           </span>
         )}
         <span className="ml-auto flex items-center gap-1">
+          <EventTime timestamp={statement.timestamp} className="mr-1" />
           <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
         </span>
       </div>
