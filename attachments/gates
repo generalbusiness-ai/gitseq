@@ -1,0 +1,1 @@
+make vet/test/race/build pass; UI 34/34 and build pass; make spike pass with stable tracked output; git diff --exit-code pass; local Markdown file/anchor gate pass; actionlint v1.7.12 pass; main-only bare remote and fresh documented install pass
