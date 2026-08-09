@@ -676,7 +676,7 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 		return Submission{}, err
 	}
 	record := workroom.Record{
-		ID: w.EventID(result.Commit), Actor: intent.ActorFingerprint(request.Signed.ActorKey),
+		ID: w.EventID(result.Commit), Timestamp: result.Timestamp, Actor: intent.ActorFingerprint(request.Signed.ActorKey),
 		Schema: decoded.Schema, RestsOn: append([]string(nil), decoded.RestsOn...),
 		Payload: append([]byte(nil), request.Payload...), Attachments: cloneAttachments(request.Attachments),
 	}
@@ -797,7 +797,7 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 
 func (w *Workspace) record(event kernel.Event) workroom.Record {
 	return workroom.Record{
-		ID: w.EventID(event.Commit), Actor: intent.ActorFingerprint(event.Signed.ActorKey),
+		ID: w.EventID(event.Commit), Timestamp: event.Timestamp, Actor: intent.ActorFingerprint(event.Signed.ActorKey),
 		Schema: event.Intent.Schema, RestsOn: event.Intent.RestsOn,
 		Payload: event.Payload, Attachments: event.Attachments,
 	}

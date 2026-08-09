@@ -44,6 +44,50 @@ func eventCommit(t *testing.T, format, event string) string {
 	return commit
 }
 
+func TestSubmissionAndReloadPreserveEventTimestamp(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission, err := workspace.Act(ctx, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "timed event",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "timed-event",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if submission.Result.Timestamp <= 0 || submission.Record.Timestamp != submission.Result.Timestamp {
+		t.Fatalf("submission timestamps: result=%d record=%d", submission.Result.Timestamp, submission.Record.Timestamp)
+	}
+	assertTimestamp := func(label string, snapshot Snapshot) {
+		t.Helper()
+		for _, statement := range snapshot.Projection.Statements {
+			if statement.Event == submission.Record.ID {
+				if statement.Timestamp != submission.Result.Timestamp {
+					t.Fatalf("%s timestamp = %d, want %d", label, statement.Timestamp, submission.Result.Timestamp)
+				}
+				return
+			}
+		}
+		t.Fatalf("%s snapshot omitted submitted event", label)
+	}
+	cached, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTimestamp("cached", cached)
+	reopened, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reopened.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTimestamp("reloaded", reloaded)
+}
+
 // Run with -benchtime=1x. Setup constructs one ordinary signed chain, then
 // compares a cold full Snapshot with the resident delta Snapshot at the same
 // successor head. A warm implementation that regresses to a full scan makes

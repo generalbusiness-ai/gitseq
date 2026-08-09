@@ -4,6 +4,7 @@ import { ticketsOf, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { cn } from "../lib/util";
 import { Avatar } from "./Avatar";
+import { EventTime } from "./EventTime";
 import { parsePresenceLabel } from "../lib/interaction";
 import { Ticket } from "./Stream";
 
@@ -124,7 +125,8 @@ export function ProfilePane({
                 <span className={cn("min-w-0 truncate", statement.retired ? "text-faint line-through" : "text-foreground/90")}>
                   {statement.text}
                 </span>
-                <span className="ml-auto shrink-0">
+                <EventTime timestamp={statement.timestamp} className="ml-auto" />
+                <span className="shrink-0">
                   <Ticket ticket={tickets.get(statement.event)} event={statement.event} onSelect={() => onJumpTo(statement.event)} />
                 </span>
               </button>

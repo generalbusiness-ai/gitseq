@@ -436,12 +436,16 @@ func TestEmptyCollectionsRenderAsArrays(t *testing.T) {
 }
 
 func TestProjectionIncludesEverySemanticReplyAct(t *testing.T) {
-	projection := Fold([]Record{
+	records := []Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
 		event(t, "e1", operator, SchemaState, State{Kind: KindPropose, Text: "proposal"}, "e0"),
 		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
 		event(t, "e3", operator, SchemaSupersede, Supersede{Target: "e1", Text: "reason"}, "e1"),
-	})
+	}
+	for index := range records {
+		records[index].Timestamp = int64(100 + index)
+	}
+	projection := Fold(records)
 	if len(projection.Acts) != 2 {
 		t.Fatalf("acts = %#v", projection.Acts)
 	}
@@ -450,6 +454,9 @@ func TestProjectionIncludesEverySemanticReplyAct(t *testing.T) {
 	}
 	if projection.Acts[1].Type != "supersede" || projection.Acts[1].Text != "reason" {
 		t.Fatalf("supersede projection = %#v", projection.Acts[1])
+	}
+	if projection.Statements[1].Timestamp != 101 || projection.Acts[0].Timestamp != 102 || projection.Acts[1].Timestamp != 103 {
+		t.Fatalf("projection lost event timestamps: statements=%#v acts=%#v", projection.Statements, projection.Acts)
 	}
 }
 

@@ -94,6 +94,19 @@ export function seenAt(ms: number): string {
   return `seen ${clock(ms)}`;
 }
 
+// Durable events use the sequencer's signed Git commit time. Keep this
+// visually and semantically distinct from the client-side "seen" clock above.
+export function eventTimestamp(seconds: number): string {
+  const date = new Date(seconds * 1000);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const secondsPart = String(date.getSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}:${secondsPart}`;
+}
+
 export function timeAgo(seconds: number): string {
   const delta = Math.max(0, Date.now() / 1000 - seconds);
   if (delta < 90) return `${Math.round(delta)}s ago`;

@@ -9,6 +9,7 @@ import { actorTint, clock, cn, seenAt } from "../lib/util";
 import { Avatar } from "./Avatar";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
 import { toggleLinkEvent, toggleLinkFrame, type ComposerContext } from "./Composer";
+import { EventTime } from "./EventTime";
 import { MentionText, Ticket } from "./Stream";
 import type { PendingSay } from "./Stream";
 
@@ -191,6 +192,7 @@ export function ThreadPane({
                         : `${nameOf(act.actor)} tried to ${act.type} — ${act.reason}`}
                       {act.text && <span className="text-muted"> — {act.text}</span>}
                     </span>
+                    <EventTime timestamp={act.timestamp} className="ml-auto" />
                   </div>
                 );
               })}
@@ -298,7 +300,8 @@ function ThreadStatement({
             </span>
             {statement.ratified && !dead && <BadgeCheck aria-label="ratified" className="h-3 w-3 shrink-0 text-ok" />}
             {statement.stale && !dead && <span className="text-[11px] text-danger">stale</span>}
-            <span className="ml-auto">
+            <EventTime timestamp={statement.timestamp} className="ml-auto" />
+            <span>
               <Ticket ticket={ticket} event={statement.event} onSelect={() => onJumpTo(statement.event)} />
             </span>
           </div>

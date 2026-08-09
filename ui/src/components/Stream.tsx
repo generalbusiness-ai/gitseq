@@ -8,6 +8,7 @@ import { actorTint, belongsInRoom, clock, cn, kindLabel, kindTint, seenAt, statu
 import { Avatar } from "./Avatar";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
 import { toggleLinkEvent, toggleLinkFrame, type ComposerContext } from "./Composer";
+import { EventTime } from "./EventTime";
 import type { ThreadTarget } from "./ThreadPane";
 
 export interface PendingSay {
@@ -547,6 +548,7 @@ export function WhyStale({ event, projection, tickets, nameOf, onJumpTo }: { eve
             </button>{" "}
             — {nameOf(cause.act.actor)}
             {cause.act.text && <>: “{cause.act.text}”</>}
+            {" "}<EventTime timestamp={cause.act.timestamp} />
           </p>
         ))}
     </div>
@@ -679,7 +681,10 @@ function RecordedMessage({
             {ratified && !dead && <BadgeCheck aria-label="agreed" className="h-3.5 w-3.5 text-ok" />}
             {statement.stale && !dead && <span className="text-xs text-danger">stale</span>}
             {ineffective && !dead && <span className="text-xs text-faint" title={decision!.reason}>not active</span>}
-            <span className="ml-auto"><Ticket ticket={ticket} event={statement.event} onSelect={onSelect} /></span>
+            <span className="ml-auto flex items-center gap-2">
+              <EventTime timestamp={statement.timestamp} />
+              <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
+            </span>
           </div>
           <p className={cn("text-sm leading-relaxed", dead ? "text-faint line-through" : "text-foreground/90")}>{statement.text}</p>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-faint">
@@ -782,6 +787,7 @@ export function CompactRow({
           </span>
         )}
         <span className="ml-auto flex shrink-0 items-center gap-2 self-center">
+          <EventTime timestamp={statement.timestamp} />
           <ThreadIndicator people={[]} count={replies} onOpen={onOpenThread} compact />
           <RestsOn event={statement.event} projection={projection} tickets={tickets} onJumpTo={onJumpTo} className="hidden sm:inline" />
           <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
@@ -869,6 +875,7 @@ export function Card({
           </span>
         )}
         <span className="ml-auto flex items-center gap-1">
+          <EventTime timestamp={statement.timestamp} className="mr-1" />
           <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
         </span>
       </div>

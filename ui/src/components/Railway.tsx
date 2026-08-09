@@ -4,6 +4,7 @@ import type { GraphCommit, Statement } from "../lib/api";
 import { shortEvent, shortHash } from "../lib/api";
 import type { Selection } from "../lib/store";
 import { cn, timeAgo } from "../lib/util";
+import { EventTime } from "./EventTime";
 
 const ROW = 46;
 const LANE = 24;
@@ -260,7 +261,10 @@ function BridgeChip({
         <Link2 className="h-3 w-3" /> {label}
       </span>
       {statement ? (
-        <span className="truncate text-foreground">{statement.text}</span>
+        <>
+          <span className="truncate text-foreground">{statement.text}</span>
+          <EventTime timestamp={statement.timestamp} className="ml-auto" />
+        </>
       ) : (
         <code className="text-faint">{shortEvent(id)}</code>
       )}

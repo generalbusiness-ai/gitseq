@@ -8,6 +8,7 @@ export interface Decision {
 
 export interface Statement {
   event: string;
+  timestamp?: number;
   actor: string;
   kind: string;
   text: string;
@@ -36,6 +37,7 @@ export interface Artifact {
 
 export interface Act {
   event: string;
+  timestamp?: number;
   actor: string;
   type: "ratify" | "supersede";
   target: string;

@@ -16,6 +16,7 @@ const (
 
 type Record struct {
 	ID          string            `json:"id"`
+	Timestamp   int64             `json:"timestamp,omitempty"`
 	Actor       string            `json:"actor"`
 	Schema      string            `json:"schema"`
 	RestsOn     []string          `json:"rests_on"`
@@ -30,14 +31,15 @@ type Decision struct {
 }
 
 type Statement struct {
-	Event    string            `json:"event"`
-	Actor    string            `json:"actor"`
-	Kind     Kind              `json:"kind"`
-	Text     string            `json:"text"`
-	Body     map[string]string `json:"body,omitempty"`
-	Ratified bool              `json:"ratified,omitempty"`
-	Retired  bool              `json:"retired,omitempty"`
-	Stale    bool              `json:"stale,omitempty"`
+	Event     string            `json:"event"`
+	Timestamp int64             `json:"timestamp,omitempty"`
+	Actor     string            `json:"actor"`
+	Kind      Kind              `json:"kind"`
+	Text      string            `json:"text"`
+	Body      map[string]string `json:"body,omitempty"`
+	Ratified  bool              `json:"ratified,omitempty"`
+	Retired   bool              `json:"retired,omitempty"`
+	Stale     bool              `json:"stale,omitempty"`
 	// DescribesSupersededWorld narrows Stale: the retired ancestor that made
 	// this statement stale is itself an artifact, so what moved is the world
 	// the statement describes rather than the argument it stands on. Both are
@@ -85,13 +87,14 @@ type Artifact struct {
 // Act is a ratify or supersede event in client-friendly form: what it
 // targeted, who performed it, and how the fold judged it.
 type Act struct {
-	Event   string  `json:"event"`
-	Actor   string  `json:"actor"`
-	Type    string  `json:"type"`
-	Target  string  `json:"target"`
-	Text    string  `json:"text,omitempty"`
-	Verdict Verdict `json:"verdict"`
-	Reason  string  `json:"reason"`
+	Event     string  `json:"event"`
+	Timestamp int64   `json:"timestamp,omitempty"`
+	Actor     string  `json:"actor"`
+	Type      string  `json:"type"`
+	Target    string  `json:"target"`
+	Text      string  `json:"text,omitempty"`
+	Verdict   Verdict `json:"verdict"`
+	Reason    string  `json:"reason"`
 }
 
 // ActorState is the fold's complete durable view of a principal. Local
@@ -631,16 +634,16 @@ func (f *foldState) project() Projection {
 		}
 		switch act := record.body.(type) {
 		case *Ratify:
-			projection.Acts = append(projection.Acts, Act{Event: record.record.ID, Actor: record.record.Actor, Type: "ratify", Target: act.Target, Verdict: record.decision.Verdict, Reason: record.decision.Reason})
+			projection.Acts = append(projection.Acts, Act{Event: record.record.ID, Timestamp: record.record.Timestamp, Actor: record.record.Actor, Type: "ratify", Target: act.Target, Verdict: record.decision.Verdict, Reason: record.decision.Reason})
 		case *Supersede:
-			projection.Acts = append(projection.Acts, Act{Event: record.record.ID, Actor: record.record.Actor, Type: "supersede", Target: act.Target, Text: act.Text, Verdict: record.decision.Verdict, Reason: record.decision.Reason})
+			projection.Acts = append(projection.Acts, Act{Event: record.record.ID, Timestamp: record.record.Timestamp, Actor: record.record.Actor, Type: "supersede", Target: act.Target, Text: act.Text, Verdict: record.decision.Verdict, Reason: record.decision.Reason})
 		}
 		state, ok := record.body.(*State)
 		if !ok {
 			continue
 		}
 		projection.Statements = append(projection.Statements, Statement{
-			Event: record.record.ID, Actor: record.record.Actor, Kind: state.Kind,
+			Event: record.record.ID, Timestamp: record.record.Timestamp, Actor: record.record.Actor, Kind: state.Kind,
 			Text: state.Text, Body: cloneStringMap(state.Body), Ratified: f.ratified(record.record.ID, retired),
 			Retired: retired[record.record.ID], Stale: stale[record.record.ID],
 			DescribesSupersededWorld: world[record.record.ID],
