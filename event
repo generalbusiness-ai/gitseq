@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review the CI shallow-clone repair at exact head f27f39581d707551b40b7dea303a664533059d00 and report approved or changes-requested."}
+{"kind":"promise","text":"I will independently review notes/2026-08-07-deployment.md at exact clean head 65a09a48ed6f76037eae7d0652bdb20fd80cbedb, re-derive the round-twenty F1/F2 claims, run the requested hostile checks and gates, and report one canonical verdict without modifying the candidate."}
