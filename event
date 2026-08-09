@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cef0648645301ef7a2c5d87bd36e6af4303fb030"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9c2e98bf9ba859faa134c801da4499dca21f863f","text":"Restore the predecessor temporarily: retiring it also staled the repair request that the first merge-artifact records cited. A child provenance-repair request will establish a stable basis before the predecessor is retired again."}
