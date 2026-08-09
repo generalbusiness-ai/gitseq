@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bb979403af87b5f56df46a77b77576dbd991e5a8","text":"Retire the stale pre-merge repair assignment. Live continuation 9d7b16ed carries the same verified finding as evidence on current merged artifact c9e6feda, without inheriting the retired candidate."}
+{"kind":"artifact","text":"Exact live WorkDrawer binding-state copy repair candidate.","body":{"commit":"03d60effe469295f7367fb901ad43c7b86445e76","path":"ui"}}
