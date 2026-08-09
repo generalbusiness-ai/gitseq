@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f193106082f43700237bd7325e0dba402bb3b3aa","text":"Released without a second verdict because concurrent same-actor promise bdc0d9fe completed the same exact-head review first with canonical changes-requested report 0ad30949. Publishing another report would duplicate the review rather than add independent evidence."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0ad30949cab9d93c1aafee40314e92f0fd32144e"}
