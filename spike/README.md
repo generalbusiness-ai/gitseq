@@ -1,9 +1,11 @@
-# gitseq implementation and adversarial spike
+# gitseq adversarial spike
 
 This began as a disposable executable test of the contracts in
-`../2026-08-05-gitseq-design.md`. The proven kernel remains the adversarial
-fixture; the bootstrap now grows beside it as `internal/workroom`,
-`internal/app`, `internal/service`, `cmd/gs`, and `cmd/gitseq-mcp`.
+[`../notes/2026-08-05-gitseq-design.md`](../notes/2026-08-05-gitseq-design.md).
+Shipping commands and packages now live at the repository root. This
+directory keeps the adversarial CLI, report generator, forge fixture, and
+evidence so the bounded claims remain reproducible without presenting the
+spike layout as the product layout.
 
 The kernel commands are one-shot processes: every invocation is a cold
 failover, so repository state and signing keys are the only durable truth.
@@ -12,7 +14,7 @@ collaboration-profile contract. The resident workroom service exposes it and
 the durable sequencer over localhost HTTP; the stdio MCP process remains a
 thin per-actor adapter.
 
-Run the fast evidence lane:
+Run the fast evidence lane from the repository root:
 
 ```sh
 go test ./...
@@ -25,9 +27,10 @@ Run the intent mutation fuzzer for a bounded interval:
 go test ./internal/intent -fuzz=FuzzDecode -fuzztime=10s
 ```
 
-`go run ./cmd/gitseq-report` runs the named adversarial cases, refreshes the
-tracked stable projection in `SPIKE-RESULTS.md`, and writes machine-specific
-JSON, timings, and a detailed Markdown report under ignored `.spike/`.
+`make spike` (or `go run ./spike/cmd/gitseq-report`) runs the named adversarial
+cases, refreshes the tracked stable projection in `spike/SPIKE-RESULTS.md`,
+and writes machine-specific JSON, timings, and a detailed Markdown report
+under ignored `spike/.spike/`.
 
 The optional forge lane is described in `FORGE.md` and uses the `forge`
 Docker Compose profile. It is separate because pulling and booting a forge

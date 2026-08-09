@@ -1,20 +1,24 @@
-.PHONY: test race vet build ui
+.PHONY: test race vet build ui spike
 
 GO ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
 
 test:
-	cd spike && $(GO) test ./...
+	$(GO) test ./...
 
 race:
-	cd spike && $(GO) test -race ./...
+	$(GO) test -race ./...
 
 vet:
-	cd spike && $(GO) vet ./...
+	$(GO) vet ./...
 
 build:
 	mkdir -p bin
-	cd spike && $(GO) build -o ../bin/gs ./cmd/gs
-	cd spike && $(GO) build -o ../bin/gitseq-mcp ./cmd/gitseq-mcp
+	$(GO) build -o bin/gs ./cmd/gs
+	$(GO) build -o bin/gitseq-mcp ./cmd/gitseq-mcp
 
 ui:
 	cd ui && npm run build
+
+# Regenerate the stable six-case evidence without mixing it into shipping code.
+spike:
+	$(GO) run ./spike/cmd/gitseq-report
