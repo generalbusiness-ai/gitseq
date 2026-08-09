@@ -100,22 +100,33 @@ type mcpServer struct {
 	client    *http.Client
 }
 
+// actorEnvironment is how a concurrent instance is told which provisioned
+// identity it is, when the process is not started with an explicit --actor.
+const actorEnvironment = "GITSEQ_ACTOR"
+
 func main() {
 	repo := flag.String("repo", ".", "ordinary Git repository")
-	actor := flag.String("actor", "", "configured actor")
+	actor := flag.String("actor", "", "configured actor; defaults to "+actorEnvironment)
 	serverURL := flag.String("server", "http://127.0.0.1:7777", "resident workroom URL")
 	flag.Parse()
-	if *actor == "" {
-		fatal(errors.New("--actor is required"))
+	name := *actor
+	if name == "" {
+		name = strings.TrimSpace(os.Getenv(actorEnvironment))
+	}
+	if name == "" {
+		fatal(errors.New("no actor identity: pass --actor, or set " + actorEnvironment + " to the identity this instance signs as"))
 	}
 	workspace, err := app.Open(context.Background(), *repo)
 	if err != nil {
 		fatal(err)
 	}
-	if _, _, err := workspace.Actor(*actor); err != nil {
+	if _, _, err := workspace.Actor(name); err != nil {
 		fatal(err)
 	}
-	server := &mcpServer{workspace: workspace, actor: *actor, baseURL: strings.TrimRight(*serverURL, "/"), session: "mcp:" + randomID(), client: &http.Client{}}
+	server := &mcpServer{workspace: workspace, actor: name, baseURL: strings.TrimRight(*serverURL, "/"), session: "mcp:" + randomID(), client: &http.Client{}}
+	if err := server.requireSoleIdentity(context.Background()); err != nil {
+		fatal(err)
+	}
 	if err := server.announce(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "gitseq-mcp: presence degraded:", err)
 	}
@@ -458,6 +469,46 @@ func (s *mcpServer) submit(ctx context.Context, act app.Act) (any, error) {
 		return nil, err
 	}
 	return map[string]any{"result": submission.Result, "record": submission.Record, "degraded": true}, nil
+}
+
+// requireSoleIdentity refuses to attach a second live session to one durable
+// identity. Concurrent instances signing as one name make the log say that a
+// name did something when one of several instances did, and they satisfy the
+// different-agent review rule by spelling rather than by fingerprint. Sharing
+// the name is the path of least resistance, so it is made an error at the door
+// where the operator can still fix it in one command.
+//
+// The check reads live presence, so it is exactly as good as the resident
+// service. When presence cannot be read the instance still starts: a stopped
+// service must not stop the work. That degradation is printed, not assumed
+// away, and it is the stated limit of this guard along with the race between
+// two instances starting at the same moment, which neither will see.
+func (s *mcpServer) requireSoleIdentity(ctx context.Context) error {
+	actor := s.workspace.Config.Actors[s.actor]
+	value, err := s.get(ctx, "/v0/presence")
+	if isTransportError(err) {
+		fmt.Fprintln(os.Stderr, "gitseq-mcp: shared-identity check skipped; the resident service is unavailable:", err)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var snapshot nexus.Snapshot
+	if err := remarshal(value, &snapshot); err != nil {
+		return err
+	}
+	label := actor.Name + " (" + actor.Fingerprint[:12] + ")"
+	held := 0
+	for _, present := range snapshot.Presence {
+		if present == label {
+			held++
+		}
+	}
+	if held == 0 {
+		return nil
+	}
+	return fmt.Errorf("identity %q is already live in %d other session(s); concurrent instances must not share one key. Provision an instance identity — gs actor-add --as <operator> --name %s.2 — and start this instance with %s=%s.2",
+		actor.Name, held, actor.Name, actorEnvironment, actor.Name)
 }
 
 func (s *mcpServer) announce(ctx context.Context) error {

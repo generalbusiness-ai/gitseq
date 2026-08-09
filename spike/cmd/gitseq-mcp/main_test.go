@@ -381,3 +381,70 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 		t.Fatalf("offline durable state did not project: %+v", projection.Projection.Decisions)
 	}
 }
+
+// One identity, one live session. A second instance under the same name would
+// make the log say a name did work that one of several instances did, and
+// would satisfy the different-agent review rule by spelling alone.
+func TestSecondInstanceRefusesToShareALiveIdentity(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(context.Background(), repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(context.Background(), "human", "claude.2", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	workroomServer, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(workroomServer.Handler())
+	defer httpServer.Close()
+	first := &mcpServer{workspace: workspace, actor: "human", baseURL: httpServer.URL, session: "mcp:first", client: httpServer.Client()}
+	if err := first.requireSoleIdentity(context.Background()); err != nil {
+		t.Fatalf("first instance refused a free identity: %v", err)
+	}
+	if err := first.announce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	second := &mcpServer{workspace: workspace, actor: "human", baseURL: httpServer.URL, session: "mcp:second", client: httpServer.Client()}
+	err = second.requireSoleIdentity(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "already live") {
+		t.Fatalf("second instance under one identity = %v", err)
+	}
+	if !strings.Contains(err.Error(), actorEnvironment) {
+		t.Fatalf("refusal does not say how to fix it: %v", err)
+	}
+	distinct := &mcpServer{workspace: workspace, actor: "claude.2", baseURL: httpServer.URL, session: "mcp:distinct", client: httpServer.Client()}
+	if err := distinct.requireSoleIdentity(context.Background()); err != nil {
+		t.Fatalf("a distinct instance identity was refused: %v", err)
+	}
+	first.depart(context.Background())
+	if err := second.requireSoleIdentity(context.Background()); err != nil {
+		t.Fatalf("identity stayed held after its session departed: %v", err)
+	}
+}
+
+// The check is only as good as the resident service, and a stopped service
+// must not stop the work. Starting anyway is the stated limit, not an oversight.
+func TestIdentityCheckIsSkippedWhenPresenceCannotBeRead(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(context.Background(), repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead := httptest.NewServer(nil)
+	baseURL := dead.URL
+	client := dead.Client()
+	dead.Close()
+	server := &mcpServer{workspace: workspace, actor: "human", baseURL: baseURL, session: "mcp:offline", client: client}
+	if err := server.requireSoleIdentity(context.Background()); err != nil {
+		t.Fatalf("unreadable presence blocked startup: %v", err)
+	}
+}

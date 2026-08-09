@@ -37,6 +37,11 @@ type ActorView struct {
 	Kind        string   `json:"kind,omitempty"`
 	Roles       []string `json:"roles"`
 	Custody     bool     `json:"custody"`
+	// Retired mirrors the durable roster: the principal signed events that
+	// remain, and may no longer act. Custody is reported separately because
+	// the two can disagree — a retired principal whose key file survives is a
+	// custody problem this view is meant to make visible.
+	Retired bool `json:"retired,omitempty"`
 }
 
 type Config struct {
@@ -454,7 +459,7 @@ func (w *Workspace) GrantRole(ctx context.Context, grantorName, actorAddress, ro
 		return nil, err
 	}
 	actorState, exists := snapshot.Projection.Actors[actor.Fingerprint]
-	if !exists || actorState.MembershipEvent == "" {
+	if !exists || actorState.Retired || actorState.MembershipEvent == "" {
 		return nil, fmt.Errorf("actor %q has no live roster membership", actor.Name)
 	}
 	if containsRole(actorState.Roles, role) {
@@ -476,6 +481,51 @@ func (w *Workspace) GrantRole(ctx context.Context, grantorName, actorAddress, ro
 		return nil, err
 	}
 	return []workroom.Record{state, ratificationSubmission.Record}, nil
+}
+
+// RetireActor ends a principal's membership and its local custody together.
+// Retirement is a supersession of the membership statement, so the fold keeps
+// the principal visible with no roles rather than forgetting that it acted;
+// what stops it acting again is the removal of its key from local custody,
+// because the durable log admits any allowlisted signer. Leaving the key file
+// behind after retiring the name would enlarge the shared key directory with
+// principals nobody is watching, so it is deleted here.
+func (w *Workspace) RetireActor(ctx context.Context, retirerName, actorAddress string) ([]workroom.Record, error) {
+	actor, err := w.ResolveActorAddress(actorAddress)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := w.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	actorState, exists := snapshot.Projection.Actors[actor.Fingerprint]
+	if !exists || actorState.MembershipEvent == "" {
+		return nil, fmt.Errorf("actor %q has no roster membership", actor.Name)
+	}
+	if actorState.Retired {
+		return nil, fmt.Errorf("actor %q is already retired", actor.Name)
+	}
+	if actor.Name == retirerName {
+		return nil, errors.New("retire another principal; retiring the identity you are signing with would leave the workroom without its custodian")
+	}
+	submission, err := w.Act(ctx, retirerName, Act{
+		Verb: VerbSupersede, Target: actorState.MembershipEvent, Text: "retire " + actor.Name,
+		IdempotencyKey: "actor-retire-" + actor.Name + "-" + snapshot.Head,
+	})
+	if err != nil {
+		return nil, err
+	}
+	delete(w.Config.Actors, actor.Name)
+	if err := w.save(); err != nil {
+		return nil, err
+	}
+	if actor.KeyFile != "" {
+		if err := os.Remove(actor.KeyFile); err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("retired %s durably, but its key file remains: %w", actor.Name, err)
+		}
+	}
+	return []workroom.Record{submission.Record}, nil
 }
 
 // RevokeRole supersedes every live explicit authority grant. Derived
@@ -831,7 +881,7 @@ func (w *Workspace) ActorViews(ctx context.Context) ([]ActorView, error) {
 		}
 		views = append(views, ActorView{
 			Name: name, Fingerprint: fingerprint, Kind: state.Kind,
-			Roles: append([]string(nil), state.Roles...), Custody: held,
+			Roles: append([]string(nil), state.Roles...), Custody: held, Retired: state.Retired,
 		})
 	}
 	sort.Slice(views, func(i, j int) bool {

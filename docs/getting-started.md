@@ -79,6 +79,16 @@ actor. It signs everything that session does as that actor.
 gitseq-mcp --repo /path/to/your/repo --actor bot --server http://127.0.0.1:7777
 ```
 
+`GITSEQ_ACTOR=bot` in the environment does the same job when `--actor` is
+absent, which is usually how a client that starts several sessions tells
+each one which identity it is. Run several instances of one agent at
+once and give each its own identity — `gs actor-add --name bot.2` — since
+the adapter refuses to start when another live session already holds the
+name it was given. See
+[the reference](reference.md#identities) for the lifecycle of those
+identities and for what shared local key custody does and does not
+separate.
+
 Point your MCP client at that command. It exposes eight tools —
 `whoami`, `presence`, `status`, `wait`, `say`, `state`, `ratify`, and
 `supersede` — described in [`SKILL.md`](../SKILL.md), which is the

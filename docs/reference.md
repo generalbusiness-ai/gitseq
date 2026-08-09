@@ -160,12 +160,58 @@ and directly to the local log when not.
 |---|---|
 | `gs init --operator <name>` | Create the workroom; prints the genesis hash. Also takes `--payload-ceiling`. |
 | `gs actor-add --as <operator> --name <name> --kind <human\|agent\|service>` | Add a principal. |
+| `gs actor-retire --as <operator> --actor <name>` | End a principal's membership and delete its local key. |
 | `gs role-grant --as <granter> --actor <name> --role <role>` | Grant durable authority, e.g. `ratifier`. |
 | `gs role-revoke --as <granter> --actor <name> --role <role>` | Retire an explicit grant. |
-| `gs actors` | List principals, roles, and custody. |
+| `gs actors` | List principals, roles, custody, and retirement. |
 
 `kind` describes the principal and confers no authority; roles are the
 authority grants, and they are independent of kind.
+
+### Identities
+
+Every command that signs takes `--as <name>`. When `--as` is absent the
+name comes from the `GITSEQ_ACTOR` environment variable, and when that is
+also absent the command fails. No command falls back to a default name,
+because the default was a name that several concurrent instances shared.
+
+Concurrent instances of one agent are separate principals. Give each its
+own identity with `gs actor-add`, and name them by their agent and an
+instance suffix — `claude.2`, `codex.3` — so a reader can see both which
+agent and which instance signed. The identity is passed to the instance,
+usually as `GITSEQ_ACTOR` in the environment that starts its MCP adapter.
+Nothing else distinguishes instances: two instances signing as one name
+are one principal in the log, and the log will say a name did work that
+one of several instances did.
+
+**Lifecycle.** Instance identities are ordinary durable roster members,
+provisioned when an engagement needs one and retired when it ends.
+`gs actor-retire` supersedes the membership statement and deletes the key
+from local custody. The principal stays in the projection with
+`retired: true` and no roles: it signed events that are permanent, so
+forgetting it would leave those signatures attributed to nothing, and a
+reader must still be able to tell it from a live actor. A retired
+principal cannot be addressed by a request, cannot ratify, and cannot be
+granted a role. Retire an instance identity when its engagement ends
+rather than leaving it live; the roster is meant to say who can act now.
+
+Retirement is one supersession, so re-admitting a name later is an
+ordinary `gs actor-add` under a fresh key and a fresh fingerprint. The
+old fingerprint keeps its history.
+
+**Key custody, plainly.** Every actor's private key is a file in one
+directory — `<git-common-dir>/gitseq/actors/<name>.key`, mode `0600` —
+and the resident service and MCP adapter read from it. Any process
+running as the same user can read every key in that directory and sign as
+any principal in it. Instance identities are therefore separated by
+convention and by process discipline, not by isolation: the log proves
+that a key signed an event, not that the instance you think holds that
+key was the one that used it. `gs actors` reports `custody` for the keys
+this machine holds, so the gap between the roster and the key directory
+is at least visible. Anyone who needs real separation must put the keys
+under separate operating-system users or on separate machines; this
+implementation does not provide it, and the roster should not be read as
+if it did.
 
 Genesis pins exactly one canonical `ssh-ed25519` sequencer public key: the key
 type, one ASCII space, and the base64 wire key, with no options, principals,
@@ -239,16 +285,37 @@ and its originating request is copied from the durable graph rather than typed
 again. The checkout must belong to the same repository, be clean (including no
 untracked files), and have the artifact's full commit ID checked out. The
 resulting report names that immutable head and rests on the promise, request,
-and artifact. Running tests, a built CLI, or Git-plumbing experiments remains
-review evidence: those probes help a reviewer reach a verdict, while `review`
-guards the state at which the verdict is signed.
+and artifact. `review` also refuses a verdict signed by the actor who signed
+the artifact under review. Running tests, a built CLI, or Git-plumbing
+experiments remains review evidence: those probes help a reviewer reach a
+verdict, while `review` guards the state at which the verdict is signed.
+
+**Review independence.** The projection answers, for every report carrying a
+`verdict`, whether the reviewer's fingerprint differs from the fingerprint of
+the actor who signed the artifact for the head reviewed. `projection.reviews`
+carries one entry per such report, with `independence` reading `independent`,
+`self-review`, or `unresolved`, and `resolved_by` recording how the artifact
+was identified: `named` from `body.artifact`, `basis` from a single artifact
+among the report's direct bases, or `head` from artifacts at the reviewed
+commit that all share one author. A report that names none of these is
+`unresolved` — the record does not know, and says so rather than implying
+independence it cannot show. `gs status` prints the three counts and lists
+every review that is not independent.
+
+This is a fingerprint test, not a test of which model or vendor performed the
+review. Two instances of one agent under separate identities are independent
+by this rule; one identity used by two instances is not independent and cannot
+be shown to be. That is the reason instance identities matter.
 
 After the review requester ratifies an approved report, `merge` enforces the
 other boundary. It refuses an ineffective, unratified, retired, or stale
 approval; a non-approval verdict; a candidate other than the report and
 artifact's exact head; a dirty target checkout; and a checkout from another
-repository. It passes the approved full object ID to `git merge --no-ff`, never
-a branch name, so advancing the reviewed branch cannot retarget the merge.
+repository. It also refuses an approval the projection does not call
+`independent`, whether because the reviewer implemented the head or because the
+record cannot say who did. It passes the approved full object ID to
+`git merge --no-ff`, never a branch name, so advancing the reviewed branch
+cannot retarget the merge.
 Record the resulting merge artifact separately as required by the workroom
 discipline.
 
@@ -375,6 +442,17 @@ gitseq-mcp --repo <path> --actor <name> --server http://127.0.0.1:7777
 
 One process per client session, one actor per process. The adapter signs
 every act as that actor and holds a leased, session-bound presence.
+`--actor` may be omitted when `GITSEQ_ACTOR` names the identity; with
+neither, the adapter refuses to start.
+
+The adapter also refuses to start when a live presence lease already
+holds its identity, naming the collision and the command that provisions
+an instance identity. The check reads live presence from the resident
+service, so it has two stated limits: when the service is unavailable the
+adapter starts anyway and prints that the check was skipped, and two
+adapters starting in the same instant will not see each other. Presence
+leases last 30 seconds, so a crashed instance frees its identity without
+intervention.
 
 **Protocol era.** The adapter is dual-era: it serves the stateless
 `2026-07-28` shape and the `initialize` handshake of `2025-11-25` and

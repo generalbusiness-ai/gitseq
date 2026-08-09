@@ -31,6 +31,23 @@ func (v *values) Set(value string) error {
 	return nil
 }
 
+// actorEnvironment is how a concurrent instance is told which provisioned
+// identity it is. Every signing command reads it when --as is absent.
+const actorEnvironment = "GITSEQ_ACTOR"
+
+// signingActor resolves the identity an act is signed with. There is no
+// default name: the default was a name that several concurrent instances
+// shared, which made the log attribute to a group what one instance did.
+func signingActor(flagValue string) (string, error) {
+	if flagValue != "" {
+		return flagValue, nil
+	}
+	if name := strings.TrimSpace(os.Getenv(actorEnvironment)); name != "" {
+		return name, nil
+	}
+	return "", errors.New("no actor identity: pass --as, or set " + actorEnvironment + " to the identity this instance signs as")
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -46,6 +63,8 @@ func main() {
 		err = roleGrantCommand(ctx, os.Args[2:])
 	case "role-revoke":
 		err = roleRevokeCommand(ctx, os.Args[2:])
+	case "actor-retire":
+		err = actorRetireCommand(ctx, os.Args[2:])
 	case "actors":
 		err = actorsCommand(ctx, os.Args[2:])
 	case "state":
@@ -78,7 +97,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|status|provenance|verify|serve|attach> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|status|provenance|verify|serve|attach> [flags]")
 	os.Exit(2)
 }
 
@@ -105,36 +124,73 @@ func initCommand(ctx context.Context, arguments []string) error {
 
 func actorAddCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("actor-add", arguments)
-	as := set.String("as", "operator", "operator actor")
+	as := set.String("as", "", "operator actor")
 	name := set.String("name", "", "new actor name")
 	kind := set.String("kind", "agent", "principal kind: human, agent, or service")
 	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	operator, err := signingActor(*as)
+	if err != nil {
 		return err
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
 		return err
 	}
-	actor, records, err := workspace.AddActor(ctx, *as, *name, *kind)
+	actor, records, err := workspace.AddActor(ctx, operator, *name, *kind)
 	if err != nil {
 		return err
 	}
 	return printJSON(map[string]any{"actor": actor, "events": []string{records[0].ID, records[1].ID}})
 }
 
-func roleGrantCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("role-grant", arguments)
-	as := set.String("as", "operator", "granting actor")
+func actorRetireCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("actor-retire", arguments)
+	as := set.String("as", "", "retiring actor")
 	actor := set.String("actor", "", "actor name, @name, or fingerprint")
-	role := set.String("role", "", "durable authority role")
 	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if *actor == "" {
+		return errors.New("actor-retire requires --actor")
+	}
+	retirer, err := signingActor(*as)
+	if err != nil {
 		return err
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
 		return err
 	}
-	records, err := workspace.GrantRole(ctx, *as, *actor, *role)
+	records, err := workspace.RetireActor(ctx, retirer, *actor)
+	if err != nil {
+		return err
+	}
+	events := make([]string, 0, len(records))
+	for _, record := range records {
+		events = append(events, record.ID)
+	}
+	return printJSON(map[string]any{"actor": *actor, "retired": true, "custody_removed": true, "events": events})
+}
+
+func roleGrantCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("role-grant", arguments)
+	as := set.String("as", "", "granting actor")
+	actor := set.String("actor", "", "actor name, @name, or fingerprint")
+	role := set.String("role", "", "durable authority role")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	grantor, err := signingActor(*as)
+	if err != nil {
+		return err
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	records, err := workspace.GrantRole(ctx, grantor, *actor, *role)
 	if err != nil {
 		return err
 	}
@@ -147,17 +203,21 @@ func roleGrantCommand(ctx context.Context, arguments []string) error {
 
 func roleRevokeCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("role-revoke", arguments)
-	as := set.String("as", "operator", "revoking actor")
+	as := set.String("as", "", "revoking actor")
 	actor := set.String("actor", "", "actor name, @name, or fingerprint")
 	role := set.String("role", "", "durable authority role")
 	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	revoker, err := signingActor(*as)
+	if err != nil {
 		return err
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
 		return err
 	}
-	records, err := workspace.RevokeRole(ctx, *as, *actor, *role)
+	records, err := workspace.RevokeRole(ctx, revoker, *actor, *role)
 	if err != nil {
 		return err
 	}
@@ -198,6 +258,10 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
+	actor, err := signingActor(*as)
+	if err != nil {
+		return err
+	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
 		return err
@@ -210,7 +274,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	record, err := submitAct(ctx, workspace, *serverURL, *as, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: *message, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key})
+	record, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: *message, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key})
 	if err != nil {
 		return err
 	}
@@ -240,8 +304,12 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 	if set.NArg() != 0 {
 		return errors.New("review takes no positional arguments")
 	}
-	if *as == "" || *checkout == "" || *artifact == "" || *promise == "" || *message == "" {
-		return errors.New("review requires --as, --checkout, --artifact, --promise, and --text")
+	if *checkout == "" || *artifact == "" || *promise == "" || *message == "" {
+		return errors.New("review requires --checkout, --artifact, --promise, and --text")
+	}
+	reviewer, err := signingActor(*as)
+	if err != nil {
+		return err
 	}
 	if *verdict != "approved" && *verdict != "changes-requested" {
 		return errors.New("review --verdict must be approved or changes-requested")
@@ -250,18 +318,18 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 	if err != nil {
 		return err
 	}
-	reviewedHead, request, err := validate(ctx, workspace, *as, *checkout, *artifact, *promise)
+	reviewedHead, request, err := validate(ctx, workspace, reviewer, *checkout, *artifact, *promise)
 	if err != nil {
 		return err
 	}
 	// Re-read immediately before signing. The verdict names the immutable
 	// commit, so a later checkout movement cannot retarget it.
-	if head, repeatedRequest, err := validate(ctx, workspace, *as, *checkout, *artifact, *promise); err != nil {
+	if head, repeatedRequest, err := validate(ctx, workspace, reviewer, *checkout, *artifact, *promise); err != nil {
 		return err
 	} else if head != reviewedHead || repeatedRequest != request {
 		return errors.New("review basis changed while validating")
 	}
-	record, err := submitAct(ctx, workspace, *serverURL, *as, app.Act{
+	record, err := submitAct(ctx, workspace, *serverURL, reviewer, app.Act{
 		Verb: app.VerbState, Kind: workroom.KindReport, Text: *message,
 		Body:    map[string]string{"verdict": *verdict, "head": reviewedHead, "artifact": *artifact},
 		RestsOn: []string{*promise, request, *artifact}, IdempotencyKey: *key,
@@ -320,6 +388,10 @@ func validateReview(ctx context.Context, workspace *app.Workspace, actorName, ch
 	if err != nil {
 		return "", "", err
 	}
+	implementation, err := liveStatement(projection, artifactEvent, workroom.KindArtifact)
+	if err != nil {
+		return "", "", fmt.Errorf("reviewed artifact: %w", err)
+	}
 	promise, err := liveStatement(projection, promiseEvent, workroom.KindPromise)
 	if err != nil {
 		return "", "", err
@@ -330,6 +402,12 @@ func validateReview(ctx context.Context, workspace *app.Workspace, actorName, ch
 	}
 	if promise.Actor != actor.Fingerprint {
 		return "", "", errors.New("review actor did not make the named promise")
+	}
+	// Independence is a property of fingerprints, not of names. Refusing here
+	// keeps the self-signed verdict out of the log; the projection still
+	// reports independence for verdicts written any other way.
+	if implementation.Actor == actor.Fingerprint {
+		return "", "", errors.New("review actor signed the artifact under review; an independent reviewer must sign the verdict")
 	}
 	request, err := uniqueLiveBasis(projection, promiseEvent, workroom.KindRequest)
 	if err != nil {
@@ -374,7 +452,22 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	if artifact.Commit != candidate {
 		return fmt.Errorf("approved artifact head %s does not equal candidate %s", artifact.Commit, candidate)
 	}
-	return nil
+	// The rule that review comes from a different agent is checked here rather
+	// than assumed. An approval the projection cannot call independent does not
+	// merge, whether because the reviewer implemented the head or because the
+	// record cannot say who did.
+	review, found := projection.Review(approvalEvent)
+	if !found {
+		return errors.New("approval is not projected as a review")
+	}
+	switch review.Independence {
+	case workroom.IndependenceSelfReview:
+		return errors.New("approval was signed by the actor who implemented this head; an independent review is required")
+	case workroom.IndependenceIndependent:
+		return nil
+	default:
+		return errors.New("the record cannot say whether this approval was independent; name the reviewed artifact in the review report")
+	}
 }
 
 func validateCheckout(ctx context.Context, workroomRepo, checkout, commit string, requireHead bool) error {
@@ -513,12 +606,16 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 	if set.NArg() != 1 {
 		return errors.New("ratify requires one target event")
 	}
+	actor, err := signingActor(*as)
+	if err != nil {
+		return err
+	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
 		return err
 	}
 	target := set.Arg(0)
-	record, err := submitAct(ctx, workspace, *serverURL, *as, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: *key})
+	record, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: *key})
 	if err != nil {
 		return err
 	}
@@ -540,12 +637,16 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	if set.NArg() != 1 {
 		return errors.New("supersede requires one target event")
 	}
+	actor, err := signingActor(*as)
+	if err != nil {
+		return err
+	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
 		return err
 	}
 	target := set.Arg(0)
-	record, err := submitAct(ctx, workspace, *serverURL, *as, app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key})
+	record, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key})
 	if err != nil {
 		return err
 	}
