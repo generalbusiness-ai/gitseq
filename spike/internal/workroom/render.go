@@ -26,10 +26,14 @@ func RenderStatus(projection Projection) []byte {
 	if len(projection.Commitments) == 0 {
 		output.WriteString("No commitments.\n")
 	} else {
-		output.WriteString("| status | requester | performer | request | waiting on |\n")
-		output.WriteString("|---|---|---|---|---|\n")
+		output.WriteString("| status | qualifiers | requester | performer | request | waiting on |\n")
+		output.WriteString("|---|---|---|---|---|---|\n")
 		for _, commitment := range projection.Commitments {
-			fmt.Fprintf(&output, "| %s | %s | %s | %s | %s |\n", escape(commitment.Status), short(commitment.Requester), short(commitment.Performer), short(commitment.Request), short(commitment.WaitingOn))
+			qualifiers := ""
+			if commitment.Stale {
+				qualifiers = "stale"
+			}
+			fmt.Fprintf(&output, "| %s | %s | %s | %s | %s | %s |\n", escape(commitment.Status), qualifiers, short(commitment.Requester), short(commitment.Performer), short(commitment.Request), short(commitment.WaitingOn))
 		}
 	}
 	output.WriteString("\n## Artifacts\n\n")

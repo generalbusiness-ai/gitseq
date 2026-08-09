@@ -210,6 +210,42 @@ func TestReportAwaitsRequester(t *testing.T) {
 	}
 }
 
+func TestStaleCommitmentPreservesReportedTerminalState(t *testing.T) {
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent", Body: map[string]string{"actor": agent, "name": "Agent", "role": "agent"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "basis", operator, SchemaState, State{Kind: KindAssert, Text: "basis"}, "e0"),
+		event(t, "request", operator, SchemaState, State{Kind: KindRequest, Text: "do it", Body: map[string]string{"to": agent, "conditions": "done"}}, "basis"),
+		event(t, "promise", agent, SchemaState, State{Kind: KindPromise, Text: "yes"}, "request"),
+		event(t, "report", agent, SchemaState, State{Kind: KindReport, Text: "done"}, "promise"),
+		event(t, "satisfied", operator, SchemaRatify, Ratify{Target: "report"}, "report"),
+		event(t, "basis-retired", operator, SchemaSupersede, Supersede{Target: "basis", Text: "basis changed"}, "basis"),
+	}
+	projection := Fold(records)
+	commitment := projection.Commitments[0]
+	if commitment.Status != "satisfied" || commitment.Report != "report" || !commitment.Stale || commitment.WaitingOn != "" {
+		t.Fatalf("stale satisfied commitment = %+v", commitment)
+	}
+	if status := RenderStatus(projection); !bytes.Contains(status, []byte("| satisfied | stale |")) {
+		t.Fatalf("status omitted stale qualifier:\n%s", status)
+	}
+	reportedRecords := append([]Record(nil), records[:7]...)
+	reportedRecords = append(reportedRecords, records[8])
+	reported := Fold(reportedRecords).Commitments[0]
+	if reported.Status != "reported" || reported.Report != "report" || !reported.Stale || reported.WaitingOn != operator {
+		t.Fatalf("stale reported commitment = %+v", reported)
+	}
+
+	unreportedRecords := append([]Record(nil), records[:6]...)
+	unreportedRecords = append(unreportedRecords, records[8])
+	unreported := Fold(unreportedRecords)
+	commitment = unreported.Commitments[0]
+	if commitment.Status != "stale" || commitment.Report != "" || !commitment.Stale || commitment.WaitingOn != agent {
+		t.Fatalf("unreported stale commitment changed semantics = %+v", commitment)
+	}
+}
+
 func TestDanglingWrongActorAndAmbiguousActsAreTotal(t *testing.T) {
 	projection := Fold([]Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),

@@ -6,7 +6,7 @@ import { RetryKeys, parsePresenceLabel, threadTargetKey } from "../src/lib/inter
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { belongsInRoom, statusLabel } from "../src/lib/util.ts";
-import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
+import { commitmentNeedsAttention, groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
   let next = 0;
@@ -104,6 +104,12 @@ test("work groups distinguish available, in-progress, and review commitments", (
   assert.deepEqual(groups.available.map((item) => item.request), ["available"]);
   assert.deepEqual(groups.inProgress.map((item) => item.request), ["building"]);
   assert.deepEqual(groups.review.map((item) => item.request), ["review"]);
+});
+
+test("staleness is attention without replacing a commitment lifecycle", () => {
+  const commitment = { request: "request", requester: "human", performer: "agent", report: "report", status: "satisfied", stale: true };
+  assert.equal(commitmentNeedsAttention(commitment), true);
+  assert.equal(commitment.status, "satisfied");
 });
 
 test("local worktrees join current promise, docs report, and exact commit-trailer shapes", () => {

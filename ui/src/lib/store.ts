@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type WorktreeView } from "./api";
+import { commitmentNeedsAttention } from "./worktrees";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
@@ -226,7 +227,7 @@ export function workSummary(projection?: Projection): { stale: number; open: num
   if (!projection) return { stale: 0, open: 0, done: 0 };
   const staleCount =
     projection.artifacts.filter((a) => a.stale).length +
-    projection.commitments.filter((c) => ATTENTION_COMMITMENT_STATUSES.includes(c.status)).length +
+    projection.commitments.filter(commitmentNeedsAttention).length +
     danglingPromises(projection).length;
   return {
     stale: staleCount,
@@ -245,11 +246,11 @@ export function statementWeight(
 ): "card" | "compact" {
   if (statement.retired || statement.stale) {
     // Stale commitments still need someone's attention: keep the card.
-    if (commitment && ATTENTION_COMMITMENT_STATUSES.includes(commitment.status)) return "card";
+    if (commitment && commitmentNeedsAttention(commitment)) return "card";
     return "compact";
   }
   if (statement.kind === "request") {
-    return commitment && [...OPEN_COMMITMENT_STATUSES, ...ATTENTION_COMMITMENT_STATUSES].includes(commitment.status)
+    return commitment && (OPEN_COMMITMENT_STATUSES.includes(commitment.status) || commitmentNeedsAttention(commitment))
       ? "card"
       : "compact";
   }

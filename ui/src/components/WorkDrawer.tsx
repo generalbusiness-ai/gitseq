@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import { BadgeCheck, FileWarning, GitBranch, X } from "lucide-react";
 import type { Artifact, Projection, WorktreeView } from "../lib/api";
-import { ATTENTION_COMMITMENT_STATUSES, OPEN_COMMITMENT_STATUSES, danglingPromises, ticketsOf, type Selection, type Workroom } from "../lib/store";
+import { OPEN_COMMITMENT_STATUSES, danglingPromises, ticketsOf, type Selection, type Workroom } from "../lib/store";
 import { cn, statusLabel, statusTint } from "../lib/util";
-import { groupOpenWork, worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
+import { commitmentNeedsAttention, groupOpenWork, worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
 import { Railway } from "./Railway";
 import { EventTime } from "./EventTime";
 import { Ticket, WhyStale } from "./Stream";
@@ -119,7 +119,7 @@ function WorkSections({
   onJumpEvent: (event: string) => void;
 }) {
   const staleArtifacts = projection.artifacts.filter((a) => a.stale);
-  const attention = projection.commitments.filter((c) => ATTENTION_COMMITMENT_STATUSES.includes(c.status));
+  const attention = projection.commitments.filter(commitmentNeedsAttention);
   const dangling = danglingPromises(projection);
   const open = projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status));
   const workGroups = groupOpenWork(open);
@@ -168,6 +168,7 @@ function WorkSections({
             <div key={commitment.request + (commitment.promise ?? "")} className="rounded-md px-2 py-1.5 hover:bg-elevated/60">
               <Row onClick={() => onJumpEvent(commitment.request)} bare>
                 <span className={cn("w-16 shrink-0 text-xs font-semibold", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>
+                {commitment.stale && commitment.status !== "stale" && <span className="shrink-0 text-xs text-danger">stale</span>}
                 <span className="truncate text-muted">{requestText(commitment.request)}</span>
                 <span className="ml-auto flex shrink-0 items-center gap-2">
                   <EventTime timestamp={timestampByEvent.get(commitment.request)} />
@@ -175,7 +176,7 @@ function WorkSections({
                 </span>
               </Row>
               <WorktreeAssociations associations={associations} />
-              {commitment.status === "stale" && (
+              {commitmentNeedsAttention(commitment) && (
                 <WhyStale event={anchor} projection={projection} tickets={tickets} nameOf={nameOf} onJumpTo={onJumpEvent} />
               )}
             </div>

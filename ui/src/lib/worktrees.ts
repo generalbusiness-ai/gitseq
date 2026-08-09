@@ -14,6 +14,10 @@ export interface WorkGroups {
   review: Commitment[];
 }
 
+export function commitmentNeedsAttention(commitment: Commitment): boolean {
+  return Boolean(commitment.stale) || commitment.status === "stale" || commitment.status === "disputed";
+}
+
 export function groupOpenWork(commitments: Commitment[]): WorkGroups {
   return {
     available: commitments.filter((item) => item.status === "requested"),

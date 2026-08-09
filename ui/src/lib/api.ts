@@ -25,6 +25,7 @@ export interface Commitment {
   promise?: string;
   report?: string;
   status: string;
+  stale?: boolean;
   waiting_on?: string;
 }
 

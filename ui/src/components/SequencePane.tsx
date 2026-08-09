@@ -70,6 +70,7 @@ export function SequencePane({
                 <span className={cn("w-20 shrink-0 font-semibold", statusTint[commitment.status] ?? "text-muted")}>
                   {commitment.status}
                 </span>
+                {commitment.stale && commitment.status !== "stale" && <span className="shrink-0 text-xs text-danger">stale</span>}
                 <span className="truncate text-muted">
                   {byEvent.get(commitment.request)?.text ?? shortEvent(commitment.request)}
                 </span>
