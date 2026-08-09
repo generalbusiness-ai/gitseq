@@ -1231,3 +1231,40 @@ func TestStateCommandSignsAsTheEnvironmentIdentity(t *testing.T) {
 		t.Fatalf("environment identity signed as %s", last.Actor)
 	}
 }
+
+// gs init is where "there is no default identity" is easiest to break, because
+// it is the one command with nobody to sign as yet. Seeding an operator named
+// by nothing but a flag default puts an identity nobody chose at the root of
+// the log.
+func TestInitRefusesToSeedAnOperatorNobodyChose(t *testing.T) {
+	t.Setenv(actorEnvironment, "")
+	repo := filepath.Join(t.TempDir(), "repo")
+	testGit(t, "", "init", "-b", "main", repo)
+	err := initCommand(context.Background(), []string{"--repo", repo})
+	if err == nil || !strings.Contains(err.Error(), actorEnvironment) {
+		t.Fatalf("init without an identity = %v", err)
+	}
+	if !strings.Contains(err.Error(), "--operator") {
+		t.Fatalf("the refusal does not name the flag that carries the identity: %v", err)
+	}
+	if _, err := app.Open(context.Background(), repo); err == nil {
+		t.Fatal("a refused init still made a workroom")
+	}
+
+	// The environment identity is a choice, so it seeds; and it seeds under
+	// that name, not under a default.
+	t.Setenv(actorEnvironment, "alice")
+	if err := initCommand(context.Background(), []string{"--repo", repo}); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := app.Open(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := workspace.Config.Actors["alice"]; !exists {
+		t.Fatalf("the operator was not seeded as alice: %v", workspace.Config.Actors)
+	}
+	if _, exists := workspace.Config.Actors["operator"]; exists {
+		t.Fatal("init seeded a default operator beside the chosen one")
+	}
+}

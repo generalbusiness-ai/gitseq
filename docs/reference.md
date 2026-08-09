@@ -92,9 +92,9 @@ Reading the membership condition as universal is the easy error, and it
 is wrong in the direction that matters: it invites you to look for a
 basis under an ordinary membership grant, find none, and conclude the
 grant is defective. Measured: retire the genesis seed after Bob has
-joined, and Alice — seeded — disappears from the roster while Bob
-remains `[participant]`, because his own membership grant never
-depended on hers.
+joined, and Alice — seeded — is left on the roster with `retired: true`
+and no roles, while Bob remains `[participant]`, because his own
+membership grant never depended on hers.
 
 The ratification condition is a disjunction, not a single named act.
 One roster statement may be ratified more than once, and any surviving
@@ -137,12 +137,16 @@ still live. Two distinct retirements, with different blast radii:
   grant is retired. Retiring one of two changes nothing.
 - Retiring the **membership** removes membership itself, and with it
   every non-membership role that named that membership as its basis.
-  One supersede, and the principal is no longer a participant.
+  One supersede, and the principal is no longer a participant. It stays
+  on the roster, marked `retired: true` with no roles, because the
+  events it signed are permanent and a reader has to be able to tell a
+  retired principal from a live one — see
+  [Identities](#identities).
 
 **Liveness is reversible, and a verdict is not.** Retirement can itself
 be retired, and authority comes back. Measured: superseding a
-membership takes a principal from `[participant]` to absent from the
-roster entirely, and superseding *that supersession* returns them to
+membership takes a principal from `[participant]` to retired with no
+roles, and superseding *that supersession* returns them to
 `[participant]`. So "this grant confers nothing" is never a permanent
 fact about the grant — it is a statement about right now, and the same
 grant may confer tomorrow without anyone appending a new one. Decisions
@@ -192,10 +196,13 @@ authority grants, and they are independent of kind.
 
 ### Identities
 
-Every command that signs takes `--as <name>`. When `--as` is absent the
-name comes from the `GITSEQ_ACTOR` environment variable, and when that is
-also absent the command fails. No command falls back to a default name,
-because the default was a name that several concurrent instances shared.
+Every command that signs takes `--as <name>`, except `gs init`, which
+names the operator it seeds with `--operator <name>`. When the flag is
+absent the name comes from the `GITSEQ_ACTOR` environment variable, and
+when that is also absent the command fails. No command falls back to a
+default name, `gs init` included: the default was a name that several
+concurrent instances shared, and at `init` it put an identity nobody
+chose at the root of the log.
 
 Concurrent instances of one agent are separate principals. Give each its
 own identity with `gs actor-add`, and name them by their agent and an
@@ -216,6 +223,14 @@ reader must still be able to tell it from a live actor. A retired
 principal cannot be addressed by a request, cannot ratify, and cannot be
 granted a role. Retire an instance identity when its engagement ends
 rather than leaving it live; the roster is meant to say who can act now.
+
+Custody follows the fold, not the append. Anyone may sign a supersession
+of another's membership, and the fold will judge most of them
+ineffective — a participant may not retire another participant. The
+attempt stays visible, as every durable act does, and `gs actor-retire`
+reports the refusal and leaves both the membership and the key alone.
+Deleting the key on an ineffective act would leave a live roster member
+that nobody holds a key for.
 
 Retirement is one supersession, so re-admitting a name later is an
 ordinary `gs actor-add` under a fresh key and a fresh fingerprint. The
@@ -403,7 +418,10 @@ carries one entry per such report, with `independence` reading `independent`,
 `self-review`, or `unresolved`, and `resolved_by` recording how the artifact
 was identified: `named` from `body.artifact`, `basis` from a single artifact
 among the report's direct bases, or `head` from artifacts at the reviewed
-commit that all share one author. A report that names none of these is
+commit that all share one author. Every one of those requires the artifact to
+stand at the head the verdict claims, and `named` also requires the report to
+rest on the artifact it names: a name in the body is a claim, and only the
+citation makes it a link. A report that answers none of these ways is
 `unresolved` — the record does not know, and says so rather than implying
 independence it cannot show. `gs status` prints the three counts and lists
 every review that is not independent.

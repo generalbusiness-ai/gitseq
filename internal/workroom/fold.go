@@ -880,9 +880,12 @@ func (f *foldState) project() Projection {
 	// ancestor: with A, B and C at one path, retiring B cleared C's warning
 	// while A stayed live.
 	seenByPath := make(map[string][]string)
-	// Review independence needs the author of the artifact for the head judged.
-	// Both indexes are filled by the same pass that projects the artifacts.
+	// Review independence needs the author of the artifact for the head judged,
+	// and the commit each artifact stands at, so a verdict cannot be paired
+	// with an artifact for some other head. All three indexes are filled by the
+	// same pass that projects the artifacts.
 	implementers := make(map[string]string)
+	artifactCommits := make(map[string]string)
 	artifactsByCommit := make(map[string][]string)
 	var reviewBases []reviewBasis
 	projection := Projection{
@@ -938,6 +941,7 @@ func (f *foldState) project() Projection {
 			if record.decision.Verdict == Effective {
 				implementers[record.record.ID] = record.record.Actor
 				if commit := state.Body["commit"]; commit != "" {
+					artifactCommits[record.record.ID] = commit
 					artifactsByCommit[commit] = append(artifactsByCommit[commit], record.record.ID)
 				}
 			}
@@ -959,7 +963,7 @@ func (f *foldState) project() Projection {
 			reviewBases = append(reviewBases, reviewBasis{named: state.Body["artifact"], restsOn: record.record.RestsOn})
 		}
 	}
-	resolveReviews(projection.Reviews, reviewBases, implementers, artifactsByCommit)
+	resolveReviews(projection.Reviews, reviewBases, implementers, artifactCommits, artifactsByCommit)
 	// A live artifact owes its retirement only while a live artifact later at
 	// the same path stands in its place. A successor that was itself withdrawn
 	// asks for nothing: acting on that warning would retire the current
@@ -1148,9 +1152,9 @@ type reviewBasis struct {
 // Anything less certain stays unresolved. Nothing here judges the report; an
 // unratified or self-signed review is still an effective statement, and this
 // projection only lets a reader see which it is.
-func resolveReviews(reviews []Review, bases []reviewBasis, implementers map[string]string, artifactsByCommit map[string][]string) {
+func resolveReviews(reviews []Review, bases []reviewBasis, implementers, artifactCommits map[string]string, artifactsByCommit map[string][]string) {
 	for index := range reviews {
-		artifact, resolvedBy := resolveReviewed(bases[index], reviews[index].Head, implementers, artifactsByCommit)
+		artifact, resolvedBy := resolveReviewed(bases[index], reviews[index].Head, implementers, artifactCommits, artifactsByCommit)
 		if artifact == "" {
 			continue
 		}
@@ -1164,8 +1168,24 @@ func resolveReviews(reviews []Review, bases []reviewBasis, implementers map[stri
 	}
 }
 
-func resolveReviewed(basis reviewBasis, head string, implementers map[string]string, artifactsByCommit map[string][]string) (string, string) {
-	if _, known := implementers[basis.named]; known {
+// resolveReviewed answers which artifact a verdict judges. Two conditions hold
+// for every answer it gives. The report must rest on the artifact, because a
+// name in the body is a label the reviewer typed and only the citation makes it
+// a link the log can follow. And the artifact must stand at the head the
+// verdict claims, because a review is of a head, not of a name. Trusting the
+// label on its own let an effective verdict claim one head, name an artifact
+// for a different one, and still project as an independent review — the record
+// asserting a fact about work nobody reviewed.
+func resolveReviewed(basis reviewBasis, head string, implementers, artifactCommits map[string]string, artifactsByCommit map[string][]string) (string, string) {
+	// A verdict with no head states none, so there is nothing to match against
+	// and the citation carries the whole weight.
+	judgesTheClaimedHead := func(artifact string) bool {
+		if _, known := implementers[artifact]; !known {
+			return false
+		}
+		return head == "" || artifactCommits[artifact] == head
+	}
+	if judgesTheClaimedHead(basis.named) && contains(basis.restsOn, basis.named) {
 		return basis.named, "named"
 	}
 	var cited []string
@@ -1174,7 +1194,7 @@ func resolveReviewed(basis reviewBasis, head string, implementers map[string]str
 			cited = appendUnique(cited, reference)
 		}
 	}
-	if len(cited) == 1 {
+	if len(cited) == 1 && judgesTheClaimedHead(cited[0]) {
 		return cited[0], "basis"
 	}
 	if len(cited) != 0 || head == "" {

@@ -906,6 +906,49 @@ func TestRetireActorEndsMembershipAndCustodyWhileKeepingThePrincipalVisible(t *t
 	}
 }
 
+// A participant may not retire another principal, and the fold says so. The
+// durable attempt stays visible either way; what must not happen is custody
+// following an act that changed nothing, leaving a live roster member with no
+// key anyone can sign for and a command that called it a success.
+func TestIneffectiveRetirementLeavesMembershipAndCustodyAlone(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "claude.2", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	target, _, err := workspace.AddActor(ctx, "human", "claude.3", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := workspace.mustSnapshot(t, ctx).Depth
+
+	if _, err := workspace.RetireActor(ctx, "claude.2", "claude.3"); err == nil || !strings.Contains(err.Error(), "ineffective") {
+		t.Fatalf("a participant retiring another = %v", err)
+	}
+
+	snapshot := workspace.mustSnapshot(t, ctx)
+	if snapshot.Depth != before+1 {
+		t.Fatalf("depth = %d, want %d: the attempt is durable and stays visible", snapshot.Depth, before+1)
+	}
+	state := snapshot.Projection.Actors[target.Fingerprint]
+	if state.Retired || len(state.Roles) == 0 {
+		t.Fatalf("an ineffective supersession retired the target: %+v", state)
+	}
+	if _, exists := workspace.Config.Actors["claude.3"]; !exists {
+		t.Fatal("an ineffective retirement deleted the target's custody")
+	}
+	if _, err := os.Stat(target.KeyFile); err != nil {
+		t.Fatalf("an ineffective retirement deleted the target's key file: %v", err)
+	}
+	// Custody surviving is what lets the operator finish the job properly.
+	if _, err := workspace.RetireActor(ctx, "human", "claude.3"); err != nil {
+		t.Fatalf("the operator could not retire the target afterwards: %v", err)
+	}
+}
+
 // A retired principal holds no authority and can be given none: the roster
 // must not fill with names a projection cannot distinguish from live ones.
 func TestRetiredActorCannotBeAddressedOrGrantedAuthority(t *testing.T) {

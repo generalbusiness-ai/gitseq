@@ -529,6 +529,24 @@ func (w *Workspace) RetireActor(ctx context.Context, retirerName, actorAddress s
 	if err != nil {
 		return nil, err
 	}
+	// Appending is not prevailing. Whether a supersession retires anything is
+	// the fold's judgement, and a participant superseding another's membership
+	// is judged ineffective. The attempt stays in the log either way, so the
+	// only question left here is whether custody may follow it. Deleting the
+	// key on an ineffective act left a live roster member no one could sign
+	// for, and reported that as a success.
+	after, err := w.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	decision, judged := after.Projection.Decision(submission.Record.ID)
+	if !judged || decision.Verdict != workroom.Effective {
+		reason := "the fold recorded no decision for it"
+		if judged {
+			reason = decision.Reason
+		}
+		return nil, fmt.Errorf("retiring %s was ineffective (%s); its membership and its key are unchanged", actor.Name, reason)
+	}
 	delete(w.Config.Actors, actor.Name)
 	if err := w.save(); err != nil {
 		return nil, err

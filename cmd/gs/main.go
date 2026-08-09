@@ -45,13 +45,20 @@ const actorEnvironment = "GITSEQ_ACTOR"
 // default name: the default was a name that several concurrent instances
 // shared, which made the log attribute to a group what one instance did.
 func signingActor(flagValue string) (string, error) {
+	return signingActorFrom("--as", flagValue)
+}
+
+// signingActorFrom names the flag in its refusal, because the flag that
+// carries the identity is not the same one everywhere: `gs init` mints the
+// operator with --operator, every later command signs with --as.
+func signingActorFrom(flagName, flagValue string) (string, error) {
 	if flagValue != "" {
 		return flagValue, nil
 	}
 	if name := strings.TrimSpace(os.Getenv(actorEnvironment)); name != "" {
 		return name, nil
 	}
-	return "", errors.New("no actor identity: pass --as, or set " + actorEnvironment + " to the identity this instance signs as")
+	return "", errors.New("no actor identity: pass " + flagName + ", or set " + actorEnvironment + " to the identity this instance signs as")
 }
 
 func main() {
@@ -126,16 +133,25 @@ func flags(name string, arguments []string) (*flag.FlagSet, *string) {
 
 func initCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("init", arguments)
-	operator := set.String("operator", "operator", "operator actor name")
+	// No default name. The operator seeded here signs the genesis and every
+	// grant that follows, so who it is has to be a choice someone made:
+	// falling back to "operator" put an identity nobody picked at the root of
+	// the log, and made "there is no default identity" false at the one
+	// command where it matters most.
+	operator := set.String("operator", "", "operator actor name; defaults to "+actorEnvironment)
 	ceiling := set.Uint64("payload-ceiling", 1<<20, "inline payload ceiling")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
-	workspace, seed, err := app.Init(ctx, *repo, *operator, *ceiling)
+	name, err := signingActorFrom("--operator", *operator)
 	if err != nil {
 		return err
 	}
-	return printJSON(map[string]any{"genesis": workspace.Config.Genesis, "operator": workspace.Config.Actors[*operator], "seed": seed.ID})
+	workspace, seed, err := app.Init(ctx, *repo, name, *ceiling)
+	if err != nil {
+		return err
+	}
+	return printJSON(map[string]any{"genesis": workspace.Config.Genesis, "operator": workspace.Config.Actors[name], "seed": seed.ID})
 }
 
 func actorAddCommand(ctx context.Context, arguments []string) error {
