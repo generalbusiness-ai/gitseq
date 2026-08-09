@@ -1,16 +1,22 @@
-import { useMemo, useState } from "react";
-import { Columns3, GitBranch, List, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Bell, BellOff, Columns3, GitBranch, List, Search } from "lucide-react";
 import type { Projection, WorktreeView } from "../lib/api";
 import type { Session } from "../lib/session";
+import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic, type PersonalWorkMemory } from "../lib/memory";
 import { ticketsOf, type Selection, type Workroom } from "../lib/store";
 import {
   buildWorkProjection,
+  filterPersonalWorkProjection,
   filterWorkProjection,
+  topicChangeSince,
+  workItemNeedsAction,
   type WorkFilters,
   type WorkAttentionItem,
   type WorkItem,
   type WorkLane,
+  type PersonalWorkView,
   type WorkTopic,
+  type WorkTopicChange,
 } from "../lib/work";
 import { worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
 import { cn, commitmentRelationship, statusLabel, statusTint } from "../lib/util";
@@ -28,6 +34,9 @@ export function WorkView({
   selection,
   onSelect,
   onOpenThread,
+  initialPresentation = "list",
+  initialPersonalView = "all",
+  initialPersonalMemory,
 }: {
   workroom: Workroom;
   session: Session;
@@ -35,12 +44,15 @@ export function WorkView({
   selection?: Selection;
   onSelect: (selection: Selection) => void;
   onOpenThread: (event: string) => void;
+  initialPresentation?: Presentation;
+  initialPersonalView?: PersonalWorkView;
+  initialPersonalMemory?: PersonalWorkMemory;
 }) {
   const projection = workroom.status?.durable.projection;
-  const [presentation, setPresentation] = useState<Presentation>("list");
+  const [presentation, setPresentation] = useState<Presentation>(initialPresentation);
   const [filters, setFilters] = useState<WorkFilters>({ open: true, attention: true, closed: false });
+  const [personalView, setPersonalView] = useState<PersonalWorkView>(initialPersonalView);
   const work = useMemo(() => (projection ? buildWorkProjection(projection) : undefined), [projection]);
-  const visible = useMemo(() => (work ? filterWorkProjection(work, filters) : undefined), [work, filters]);
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
   const nameOf = useMemo(() => {
     const byFingerprint = new Map(workroom.actors.map((actor) => [actor.fingerprint, actor.name]));
@@ -49,8 +61,58 @@ export function WorkView({
       projection?.statements.find((statement) => statement.kind === "roster" && statement.body?.actor === fingerprint)?.body?.name ??
       fingerprint.slice(0, 8);
   }, [projection, workroom.actors]);
-  const me = workroom.actors.find((actor) => actor.name === session.actor)?.fingerprint;
+  // A name that resolves to more than one configured actor is not enough to
+  // open either actor's personal state. This fails closed instead of showing
+  // another identity's follows or watermarks.
+  const matchingActors = workroom.actors.filter((actor) => actor.name === session.actor);
+  const me = matchingActors.length === 1 ? matchingActors[0].fingerprint : undefined;
+  const genesis = workroom.status?.durable.genesis ?? "";
+  const personalScope = genesis && me ? `${genesis}\u0000${me}` : "";
+  const [personalState, setPersonalState] = useState<{ scope: string; memory: PersonalWorkMemory }>(() =>
+    initialPersonalMemory && personalScope
+      ? { scope: personalScope, memory: initialPersonalMemory }
+      : { scope: "", memory: emptyPersonalWorkMemory() },
+  );
+  useEffect(() => {
+    setPersonalState({ scope: personalScope, memory: loadPersonalWorkMemory(genesis, me ?? "") });
+  }, [genesis, me, personalScope]);
+  const personalMemory = personalState.scope === personalScope ? personalState.memory : emptyPersonalWorkMemory();
+  const remember = useCallback((update: (current: PersonalWorkMemory) => PersonalWorkMemory) => {
+    if (!personalScope) return;
+    setPersonalState((current) => {
+      const memory = current.scope === personalScope ? current.memory : loadPersonalWorkMemory(genesis, me ?? "");
+      const next = update(memory);
+      savePersonalWorkMemory(genesis, me ?? "", next);
+      return { scope: personalScope, memory: next };
+    });
+  }, [genesis, me, personalScope]);
+  const followed = useMemo(() => new Set(personalMemory.followed), [personalMemory.followed]);
+  const lifecycleVisible = useMemo(() => (work ? filterWorkProjection(work, filters) : undefined), [work, filters]);
+  // Personal views select from the complete Work projection. Lifecycle
+  // filters remain intact and resume when "All work" is selected; a closed
+  // unread change or stale responsibility must not disappear merely because
+  // the default lifecycle view omits it.
+  const visible = useMemo(
+    () => work ? filterPersonalWorkProjection(personalView === "all" ? lifecycleVisible! : work, personalView, me, followed, personalMemory.viewed) : undefined,
+    [work, lifecycleVisible, personalView, me, followed, personalMemory.viewed],
+  );
+  const changes = useMemo(() => new Map(
+    (work?.topics ?? []).flatMap((topic) => {
+      const change = topicChangeSince(topic, me, followed, personalMemory.viewed[topic.event] ?? -1);
+      return change ? [[topic.event, change] as const] : [];
+    }),
+  ), [work, me, followed, personalMemory.viewed]);
+  const needsCount = work?.topics.reduce((sum, topic) => sum + topic.items.filter((item) => workItemNeedsAction(item, me)).length, 0) ?? 0;
+  const unreadCount = changes.size;
+  const followingCount = work?.topics.filter((topic) => followed.has(topic.event)).length ?? 0;
   const itemCount = visible?.topics.reduce((sum, topic) => sum + topic.items.length, 0) ?? 0;
+
+  const openWorkItem = (event: string, topic: WorkTopic) => {
+    remember((current) => viewWorkTopic(current, topic.event, topic.latestOrder));
+    onOpenThread(event);
+  };
+  const toggleFollowing = (topic: WorkTopic) =>
+    remember((current) => followWorkTopic(current, topic.event, !current.followed.includes(topic.event), topic.latestOrder));
 
   const updateFlag = (key: "open" | "attention" | "closed", value: boolean) =>
     setFilters((current) => ({ ...current, [key]: value }));
@@ -77,6 +139,12 @@ export function WorkView({
             <FilterCheck label="Attention" checked={filters.attention} count={(work?.topics.reduce((sum, topic) => sum + topic.attentionCount, 0) ?? 0) + (work?.attention.length ?? 0)} tone="danger" onChange={(value) => updateFlag("attention", value)} />
             <FilterCheck label="Closed" checked={filters.closed} count={work?.topics.reduce((sum, topic) => sum + topic.closedCount, 0)} onChange={(value) => updateFlag("closed", value)} />
           </fieldset>
+          {me && <fieldset className="flex items-center gap-1.5" aria-label="Personal work filters">
+            <legend className="sr-only">Personal work filters</legend>
+            <PersonalFilter label="Needs my action" count={needsCount} active={personalView === "needs"} onClick={() => setPersonalView(personalView === "needs" ? "all" : "needs")} />
+            <PersonalFilter label="Unread" count={unreadCount} active={personalView === "unread"} onClick={() => setPersonalView(personalView === "unread" ? "all" : "unread")} />
+            <PersonalFilter label="Following" count={followingCount} active={personalView === "following"} onClick={() => setPersonalView(personalView === "following" ? "all" : "following")} />
+          </fieldset>}
           <div className="flex items-center gap-1.5">
             {me && (
               <button
@@ -108,6 +176,10 @@ export function WorkView({
         <p className="mx-auto mt-2 max-w-7xl text-[11px] text-faint" aria-live="polite">
           {visible?.topics.length ?? 0} {(visible?.topics.length ?? 0) === 1 ? "topic" : "topics"} · {itemCount} visible work {itemCount === 1 ? "item" : "items"}
           {filters.author ? ` · written by ${nameOf(filters.author)}` : ""}
+          {personalView !== "all" ? ` · ${personalView === "needs" ? "needs my action" : personalView}` : ""}
+        </p>
+        <p className="mx-auto mt-1 max-w-7xl text-[10px] text-faint">
+          Read positions and follows are private to this browser and actor; they do not sync across devices. Needs my action comes only from unresolved durable responsibility.
         </p>
       </div>
 
@@ -123,9 +195,9 @@ export function WorkView({
           <>
             <OtherAttention items={visible.attention} tickets={tickets} nameOf={nameOf} onSelect={onSelect} onOpenThread={onOpenThread} />
             {visible.topics.length > 0 && (presentation === "list" ? (
-              <TopicList topics={visible.topics} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} onOpenThread={onOpenThread} />
+              <TopicList topics={visible.topics} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
             ) : (
-              <WorkBoard topics={visible.topics} filters={filters} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} onOpenThread={onOpenThread} />
+              <WorkBoard topics={visible.topics} filters={personalView === "all" ? filters : { open: true, attention: true, closed: true }} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
             ))}
           </>
         )}
@@ -200,7 +272,8 @@ function TopicList(props: WorkRenderProps & { topics: WorkTopic[] }) {
         const descendants = topic.items.filter((item) => item.request.event !== topic.event);
         const shown = isExpanded ? topic.items : [...rootItems, ...descendants].slice(0, 3);
         return <article key={topic.event} className="rounded-lg border border-border bg-card/55 px-3 py-2.5">
-          <button type="button" onClick={() => props.onOpenThread(topic.event)} className="block w-full rounded text-left focus-visible:outline focus-visible:outline-accent">
+          <div className="flex items-start gap-2">
+          <button type="button" onClick={() => props.onOpenWorkItem(topic.event, topic)} className="block min-w-0 flex-1 rounded text-left focus-visible:outline focus-visible:outline-accent">
             <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
               <h2 className="min-w-0 flex-1 font-serif text-[15px] font-semibold leading-5 text-foreground/95">{topic.title}</h2>
               <TopicCounts topic={topic} />
@@ -208,7 +281,10 @@ function TopicList(props: WorkRenderProps & { topics: WorkTopic[] }) {
             <p className="mt-1 text-[11px] text-faint">
               written by {props.nameOf(topic.author)} · latest activity by {props.nameOf(topic.latestActor)} <EventTime timestamp={topic.latestTimestamp} />
             </p>
+            <TopicChange change={props.changes.get(topic.event)} nameOf={props.nameOf} />
           </button>
+          {props.canPersonalize && <TopicFollowButton following={props.followed.has(topic.event)} onClick={() => props.onToggleFollowing(topic)} />}
+          </div>
           <div className="mt-2 space-y-1 border-t border-border/70 pt-2">
             {shown.map((item) => <WorkItemRow key={item.key} item={item} topic={topic} {...props} />)}
             {(topic.items.length > shown.length || isExpanded) && (
@@ -275,14 +351,18 @@ interface WorkRenderProps {
   commits: Workroom["commits"];
   worktrees: WorktreeView[];
   nameOf: (fingerprint: string) => string;
-  onOpenThread: (event: string) => void;
+  canPersonalize: boolean;
+  followed: ReadonlySet<string>;
+  changes: ReadonlyMap<string, WorkTopicChange>;
+  onToggleFollowing: (topic: WorkTopic) => void;
+  onOpenWorkItem: (event: string, topic: WorkTopic) => void;
 }
 
-function WorkItemRow({ item, projection, tickets, commits, worktrees, nameOf, onOpenThread }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
+function WorkItemRow({ item, topic, projection, tickets, commits, worktrees, nameOf, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
   const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
   const relationship = commitmentRelationship(item.commitment, nameOf);
   return (
-    <button type="button" onClick={() => onOpenThread(item.request.event)} className="w-full rounded-md px-2 py-1.5 text-left hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent">
+    <button type="button" onClick={() => onOpenWorkItem(item.request.event, topic)} className="w-full rounded-md px-2 py-1.5 text-left hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent">
       <div className="flex items-start gap-2 text-xs">
         <StatusBadge item={item} />
         <span className="min-w-0 flex-1 text-foreground/85">{item.request.text}</span>
@@ -294,21 +374,50 @@ function WorkItemRow({ item, projection, tickets, commits, worktrees, nameOf, on
   );
 }
 
-function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameOf, onOpenThread }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
+function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameOf, canPersonalize, followed, changes, onToggleFollowing, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
   const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
   const relationship = commitmentRelationship(item.commitment, nameOf);
   return (
-    <button type="button" onClick={() => onOpenThread(item.request.event)} className="block w-full rounded-md border border-border bg-card px-3 py-2.5 text-left shadow-sm hover:border-accent/40 hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent">
+    <article className="rounded-md border border-border bg-card px-3 py-2.5 shadow-sm hover:border-accent/40 hover:bg-elevated/70">
       <div className="flex items-center justify-between gap-2">
         <StatusBadge item={item} />
+        {canPersonalize && <TopicFollowButton following={followed.has(topic.event)} onClick={() => onToggleFollowing(topic)} compact />}
         <span className="font-mono text-[11px] text-faint" title={item.request.event}>#{tickets.get(item.request.event) ?? "?"}</span>
       </div>
+      <button type="button" onClick={() => onOpenWorkItem(item.request.event, topic)} className="block w-full rounded text-left focus-visible:outline focus-visible:outline-accent">
       <p className="mt-1.5 text-sm leading-5 text-foreground/90">{item.request.text}</p>
       {item.request.event !== topic.event && <p className="mt-1 line-clamp-2 text-[11px] text-faint">in {topic.title}</p>}
       <p className="mt-1.5 text-[11px] text-faint">
         asked by {nameOf(item.request.actor)}{relationship && <> · {relationship}</>}
       </p>
+      <TopicChange change={changes.get(topic.event)} nameOf={nameOf} />
       <WorktreeAssociations associations={associations} />
+      </button>
+    </article>
+  );
+}
+
+function TopicChange({ change, nameOf }: { change?: WorkTopicChange; nameOf: (fingerprint: string) => string }) {
+  if (!change) return null;
+  return (
+    <p className="mt-1 text-[11px] font-medium text-accent" aria-label={`Changed since viewed by ${nameOf(change.actor)}, status ${statusLabel(change.status)}`}>
+      changed · {nameOf(change.actor)} <EventTime timestamp={change.timestamp} /> · {statusLabel(change.status)}
+    </p>
+  );
+}
+
+function TopicFollowButton({ following, onClick, compact = false }: { following: boolean; onClick: () => void; compact?: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={following}
+      aria-label={following ? "unfollow topic" : "follow topic"}
+      title={following ? "Unfollow topic" : "Follow topic"}
+      onClick={onClick}
+      className={cn("shrink-0 rounded-md border border-border text-xs focus-visible:outline focus-visible:outline-accent", compact ? "p-1" : "flex h-7 items-center gap-1 px-2", following ? "bg-accent/10 text-accent" : "text-faint hover:bg-elevated hover:text-muted")}
+    >
+      {following ? <BellOff className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
+      {!compact && (following ? "Following" : "Follow")}
     </button>
   );
 }
@@ -340,6 +449,14 @@ function FilterCheck({ label, checked, count, tone, onChange }: { label: string;
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-3.5 w-3.5 accent-[var(--color-accent)]" />
       {label}<span className={cn("font-mono text-[10px]", tone === "danger" && (count ?? 0) > 0 && "text-danger")}>{count ?? 0}</span>
     </label>
+  );
+}
+
+function PersonalFilter({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" aria-pressed={active} onClick={onClick} className={cn(controlClass(active), "flex items-center gap-1.5")}>
+      {label}<span className="font-mono text-[10px]">{count}</span>
+    </button>
   );
 }
 
