@@ -233,16 +233,34 @@ func decodeCanonicalString(value string, destination any) error {
 	return nil
 }
 
+// identifier is the enumerated token grammar for every name a definition can
+// introduce: a kind name, a role name, a required body field name. Lowercase
+// ASCII words joined by single hyphens or underscores — the shape every name in
+// the starter catalog already has. Enumerating it keeps a name that no actor
+// could ever satisfy, such as one carrying a space, out of the catalog instead
+// of leaving it to fail silently at every later position.
+var identifier = regexp.MustCompile(`^[a-z][a-z0-9]*([-_][a-z0-9]+)*$`)
+
+// foldInterpreted names the kinds the fold reads directly rather than through
+// their definition: the two meta kinds it interprets to grow the catalog and
+// bind a fold, and roster, from which it extracts membership and authority.
+// A redefinition of any of them would change what the fold does without
+// changing how the fold reads it, so none of them may be redefined.
+var foldInterpreted = map[Kind]bool{KindKindDef: true, KindFoldActivation: true, KindRoster: true}
+
 func validateDefinition(definition KindDefinition) error {
-	if definition.Name == "" || definition.Guidance == "" {
-		return errors.New("name and guidance are required")
+	if definition.Guidance == "" {
+		return errors.New("guidance is required")
 	}
-	if definition.Name == KindKindDef || definition.Name == KindFoldActivation {
-		return fmt.Errorf("meta kind %q cannot be redefined", definition.Name)
+	if foldInterpreted[definition.Name] {
+		return fmt.Errorf("kind %q is interpreted by the fold and cannot be redefined", definition.Name)
+	}
+	if !identifier.MatchString(string(definition.Name)) {
+		return fmt.Errorf("kind name %q is not an identifier", definition.Name)
 	}
 	for _, field := range definition.Fields {
-		if field.Name == "" {
-			return errors.New("field constraint name is required")
+		if !identifier.MatchString(field.Name) {
+			return fmt.Errorf("field constraint name %q is not an identifier", field.Name)
 		}
 		switch field.Operator {
 		case FieldPresent:
@@ -285,8 +303,11 @@ func validateDefinition(definition KindDefinition) error {
 		}
 		seen := make(map[Kind]bool)
 		for _, kind := range basis.Kinds {
-			if kind == "" || seen[kind] {
-				return errors.New("basis kinds must be non-empty and unique")
+			if seen[kind] {
+				return errors.New("basis kinds must be unique")
+			}
+			if !identifier.MatchString(string(kind)) {
+				return fmt.Errorf("basis kind %q is not an identifier", kind)
 			}
 			seen[kind] = true
 		}
@@ -294,8 +315,8 @@ func validateDefinition(definition KindDefinition) error {
 	if definition.Satisfier != SatisfierNone && definition.Satisfier != SatisfierOriginatingRequester && !strings.HasPrefix(definition.Satisfier, "role:") {
 		return fmt.Errorf("unsupported satisfier %q", definition.Satisfier)
 	}
-	if strings.HasPrefix(definition.Satisfier, "role:") && strings.TrimPrefix(definition.Satisfier, "role:") == "" {
-		return errors.New("role satisfier requires a role name")
+	if role, held := strings.CutPrefix(definition.Satisfier, "role:"); held && !identifier.MatchString(role) {
+		return fmt.Errorf("role name %q is not an identifier", role)
 	}
 	switch definition.Render {
 	case RenderNote, RenderProposal, RenderCommitment, RenderResult, RenderDissent, RenderArtifact, RenderGovernance:

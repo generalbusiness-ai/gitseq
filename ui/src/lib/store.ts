@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type Vocabulary } from "./api";
-import { definitionOf } from "./util";
+import { definitionOf, interpretationGaps } from "./util";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
@@ -190,12 +190,11 @@ export const ATTENTION_COMMITMENT_STATUSES = ["stale", "disputed"];
 // The header chip's summary of the Work drawer, computed from the projection.
 export function workSummary(projection?: Projection, vocabulary?: Vocabulary): { stale: number; open: number; done: number } {
   if (!projection) return { stale: 0, open: 0, done: 0 };
-  const interpretationGaps = projection.decisions.filter((decision) => decision.verdict === "undefined-kind" || decision.verdict === "uninterpretable").length;
   const bindingGap = vocabulary && vocabulary.binding.status !== "bound" ? 1 : 0;
   const staleCount =
     projection.artifacts.filter((a) => a.stale).length +
     projection.commitments.filter((c) => ATTENTION_COMMITMENT_STATUSES.includes(c.status)).length +
-    danglingPromises(projection).length + interpretationGaps + bindingGap;
+    danglingPromises(projection).length + interpretationGaps(projection).length + bindingGap;
   return {
     stale: staleCount,
     open: projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status)).length,

@@ -764,7 +764,7 @@ export function CompactRow({
           onClick={onSelect}
           className={cn("shrink-0 rounded border px-1.5 py-px text-xs font-medium uppercase tracking-wide focus-visible:outline focus-visible:outline-accent", kindTint(statement.kind, vocabulary))}
         >
-          {kindLabel(statement.kind, vocabulary)}
+          {kindLabel(statement.kind)}
         </button>
         <span className={cn("min-w-0 truncate font-serif text-sm", dead ? "text-faint line-through" : "text-foreground/90")} title={statement.text}>
           {statement.text}
@@ -864,7 +864,7 @@ export function Card({
         </button>
         {statement.body?.to && <span className="text-xs text-faint">→ {nameOf(statement.body.to)}</span>}
         <button onClick={onSelect} className={cn("shrink-0 rounded border px-1.5 py-px text-xs font-medium uppercase tracking-wide focus-visible:outline focus-visible:outline-accent", kindTint(statement.kind, vocabulary))}>
-          {kindLabel(statement.kind, vocabulary)}
+          {kindLabel(statement.kind)}
         </button>
         <MentionBadges body={statement.body} nameOf={nameOf} me={me} />
         {statement.ratified && <BadgeCheck aria-label="ratified" className="h-3.5 w-3.5 text-ok" />}

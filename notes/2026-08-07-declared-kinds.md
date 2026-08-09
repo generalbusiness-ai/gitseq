@@ -346,6 +346,22 @@ without pretending the fold-execution runtime already exists:
   `dissent`, `artifact`, or `governance`; staleness modes are
   `propagates`, `terminal`, or `exempt`; lifecycle values are `none`,
   `request`, `promise`, or `report`. There are no extension strings.
+- Every name a definition introduces — the kind, a role in a
+  satisfier, a required body field, a basis kind — must be an
+  identifier: lowercase ASCII words joined by single hyphens or
+  underscores. A name outside that grammar is refused as
+  `uninterpretable` rather than accepted into a catalog where no
+  actor could ever satisfy it.
+- Three kinds are read by the fold directly rather than through their
+  definitions — `kind-def`, `fold-activation`, and `roster`, from
+  which membership and authority are extracted — so none of them may
+  be redefined. Redefining `roster` would let a participant name
+  themselves as the satisfier of their own authority grant.
+- Where several ratified declarations of one kind survive at once,
+  the governing one is whichever holds the live ratification standing
+  latest in the total order. Force arrives at ratification, so
+  contesting a retirement restores a version without displacing one
+  ratified after it, and no already-emitted verdict moves.
 - The ten compatibility definitions and the two meta-kind definitions
   are one catalog used by validation, fold judgment, ratification,
   projection, and UI placement. A pinned legacy transcript fixture
@@ -358,9 +374,12 @@ without pretending the fold-execution runtime already exists:
   `uninterpretable`, and `unbound` rather than hiding an act or selecting
   an ambient interpretation.
 - A prefix activation and its ratification now form an irrevocable
-  recorded boundary. Until the named interpreter can be fetched,
-  checked, built, and handed state, later meaning projects the typed
-  `uninterpretable: activated interpreter execution is not held` gap.
+  recorded boundary. A prefix binding governs from genesis to its
+  transition, so a record reaching no further than the transition
+  projects as `bound`. Until the named interpreter can be fetched,
+  checked, built, and handed state, meaning beyond that seam projects
+  the typed `uninterpretable: activated interpreter execution is not
+  held` gap — one gap, however many acts it refuses.
   The publication/execution trust boundary — `refs/folds/*`, reachability,
   pinned toolchain, vendor closure, construction, interface and seam
   fixtures — is assigned to child request 7bb74568 before implementation,

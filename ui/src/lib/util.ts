@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { Vocabulary } from "./api";
+import type { Projection, Vocabulary } from "./api";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -28,13 +28,14 @@ export function kindTint(kind: string, vocabulary?: Vocabulary): string {
   return render === "dissent" ? "text-danger border-danger/40" : legacyKindTint[kind] ?? neutralKind;
 }
 
-// The room's render declaration supplies familiar UI language. A legacy map
-// remains only for clients connected to a pre-vocabulary service.
-export function kindLabel(kind: string, vocabulary?: Vocabulary): string {
-  const render = definitionOf(kind, vocabulary)?.render;
-  if (render === "note" || render === "proposal") return render;
-  if (!vocabulary) return kind === "assert" ? "note" : kind === "propose" ? "proposal" : kind;
-  return kind;
+// A badge says which kind an act is, so it wears that kind's own name. Only
+// the two founding kinds whose names read as jargon are translated; a room
+// that declares "finding" and "review-note" gets "finding" and "review-note",
+// not one indistinguishable "note" for every note-class kind.
+const familiarKind: Record<string, string> = { assert: "note", propose: "proposal" };
+
+export function kindLabel(kind: string): string {
+  return familiarKind[kind] ?? kind;
 }
 
 export const statusTint: Record<string, string> = {
@@ -71,6 +72,27 @@ export function belongsInRoom(kind: string, vocabulary?: Vocabulary): boolean {
   const render = definitionOf(kind, vocabulary)?.render;
   if (render) return render !== "governance" && render !== "artifact";
   return !legacyWorkOnlyKinds.has(kind);
+}
+
+export interface InterpretationGap {
+  verdict: string;
+  reason: string;
+  events: string[];
+}
+
+// One row per distinct refusal, not one per refused event. An interpreter the
+// room cannot run refuses every act past the seam in the same words: that is
+// one gap to close, and a list that grows with the log buries the others.
+export function interpretationGaps(projection?: Projection): InterpretationGap[] {
+  const gaps = new Map<string, InterpretationGap>();
+  for (const decision of projection?.decisions ?? []) {
+    if (decision.verdict !== "undefined-kind" && decision.verdict !== "uninterpretable") continue;
+    const key = `${decision.verdict} ${decision.reason}`;
+    const gap = gaps.get(key);
+    if (gap) gap.events.push(decision.event);
+    else gaps.set(key, { verdict: decision.verdict, reason: decision.reason, events: [decision.event] });
+  }
+  return [...gaps.values()];
 }
 
 export function definitionOf(kind: string, vocabulary?: Vocabulary) {

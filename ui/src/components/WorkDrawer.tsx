@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { BadgeCheck, BookOpen, CircleSlash, FileWarning, X } from "lucide-react";
 import type { Artifact, Projection, Vocabulary } from "../lib/api";
 import { ATTENTION_COMMITMENT_STATUSES, OPEN_COMMITMENT_STATUSES, danglingPromises, ticketsOf, type Selection, type Workroom } from "../lib/store";
-import { cn, definitionOf, statusLabel, statusTint } from "../lib/util";
+import { cn, definitionOf, interpretationGaps, statusLabel, statusTint } from "../lib/util";
 import { Railway } from "./Railway";
 import { Ticket, WhyStale } from "./Stream";
 
@@ -107,12 +107,12 @@ function WorkSections({
   const dangling = danglingPromises(projection);
   const open = projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status));
   const standing = projection.statements.filter((s) => (definitionOf(s.kind, vocabulary)?.render === "proposal" || (!vocabulary && s.kind === "propose")) && s.ratified && !s.retired && !s.stale);
-  const interpretationGaps = projection.decisions.filter((decision) => decision.verdict === "undefined-kind" || decision.verdict === "uninterpretable");
+  const gaps = interpretationGaps(projection);
   const bindingGap = vocabulary && vocabulary.binding.status !== "bound";
   const done = projection.commitments.filter((c) => c.status === "satisfied");
   const currentGroups = groupArtifacts(projection.artifacts.filter((a) => !a.stale));
   const requestText = (event: string) => projection.statements.find((s) => s.event === event)?.text ?? event;
-  const needsAttention = staleArtifacts.length + attention.length + dangling.length + interpretationGaps.length + (bindingGap ? 1 : 0) > 0;
+  const needsAttention = staleArtifacts.length + attention.length + dangling.length + gaps.length + (bindingGap ? 1 : 0) > 0;
 
   return (
     <div className="space-y-5 px-4 py-4">
@@ -127,12 +127,13 @@ function WorkSections({
             <p className="mt-0.5 text-muted">{vocabulary.binding.reason}</p>
           </div>
         )}
-        {interpretationGaps.map((gap) => (
-          <Row key={gap.event} onClick={() => onJumpEvent(gap.event)}>
+        {gaps.map((gap) => (
+          <Row key={`${gap.verdict} ${gap.reason}`} onClick={() => onJumpEvent(gap.events[0])}>
             <span className="w-24 shrink-0 text-xs font-semibold text-danger">{gap.verdict}</span>
             <span className="truncate text-muted" title={gap.reason}>{gap.reason}</span>
+            {gap.events.length > 1 && <span className="shrink-0 text-xs text-faint">×{gap.events.length}</span>}
             <span className="ml-auto shrink-0">
-              <Ticket ticket={tickets.get(gap.event)} event={gap.event} onSelect={() => onJumpEvent(gap.event)} />
+              <Ticket ticket={tickets.get(gap.events[0])} event={gap.events[0]} onSelect={() => onJumpEvent(gap.events[0])} />
             </span>
           </Row>
         ))}

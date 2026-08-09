@@ -151,7 +151,7 @@ function StatementCard({
       >
         <div className="flex items-center gap-2">
           <span className={cn("shrink-0 border px-1.5 text-xs uppercase leading-4 tracking-wide", kindTint(statement.kind, vocabulary))}>
-            {kindLabel(statement.kind, vocabulary)}
+            {kindLabel(statement.kind)}
           </span>
           <span className={cn("truncate text-[13px]", dead ? "text-faint line-through" : "text-foreground")}>
             {statement.text}

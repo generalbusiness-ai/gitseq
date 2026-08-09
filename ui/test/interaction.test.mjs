@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { RetryKeys, parsePresenceLabel, threadTargetKey } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
-import { belongsInRoom, kindLabel, statusLabel } from "../src/lib/util.ts";
+import { belongsInRoom, interpretationGaps, kindLabel, statusLabel } from "../src/lib/util.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
   let next = 0;
@@ -99,9 +99,30 @@ test("declared render classes, not kind names, place new vocabulary in the UI", 
     binding: { status: "unbound", transitions: [] },
   };
   assert.equal(belongsInRoom("finding", vocabulary), true);
-  assert.equal(kindLabel("finding", vocabulary), "note");
   assert.equal(belongsInRoom("policy", vocabulary), false);
   assert.equal(belongsInRoom("release", vocabulary), false);
+});
+
+test("every kind wears its own name, bar the two whose names read as jargon", () => {
+  assert.equal(kindLabel("assert"), "note");
+  assert.equal(kindLabel("propose"), "proposal");
+  for (const kind of ["finding", "review-note", "request", "promise"]) assert.equal(kindLabel(kind), kind);
+});
+
+test("one interpretation gap per distinct refusal, however many events it refused", () => {
+  const refusal = (event, reason) => ({ event, verdict: "uninterpretable", reason });
+  const gaps = interpretationGaps({
+    decisions: [
+      { event: "e0", verdict: "effective", reason: "statement recorded" },
+      refusal("e1", "activated interpreter execution is not held"),
+      refusal("e2", "activated interpreter execution is not held"),
+      refusal("e3", "activated interpreter execution is not held"),
+      { event: "e4", verdict: "undefined-kind", reason: 'undefined kind "finding"' },
+    ],
+  });
+  assert.equal(gaps.length, 2);
+  assert.deepEqual(gaps[0].events, ["e1", "e2", "e3"]);
+  assert.deepEqual(gaps[1].events, ["e4"]);
 });
 
 test("the everyday surface does not expose record taxonomy or authority roles", () => {
