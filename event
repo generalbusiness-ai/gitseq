@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:63124490dfabe38795a083d8996f106d62ca390b"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e86dfe2cfc2d4cfe2949e408a92ca5fb135cb732","text":"Replace the original release-readiness candidate artifact at .github/workflows/ci.yml with the reviewed merged public technical-preview artifact at 4d91ddaafd66402ccecbae9d073885a16a0992a3."}
