@@ -294,6 +294,42 @@ func TestReportAwaitsRequester(t *testing.T) {
 	}
 }
 
+func TestStaleCommitmentPreservesReportedTerminalState(t *testing.T) {
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent", Body: map[string]string{"actor": agent, "name": "Agent", "role": "agent"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "basis", operator, SchemaState, State{Kind: KindAssert, Text: "basis"}, "e0"),
+		event(t, "request", operator, SchemaState, State{Kind: KindRequest, Text: "do it", Body: map[string]string{"to": agent, "conditions": "done"}}, "basis"),
+		event(t, "promise", agent, SchemaState, State{Kind: KindPromise, Text: "yes"}, "request"),
+		event(t, "report", agent, SchemaState, State{Kind: KindReport, Text: "done"}, "promise"),
+		event(t, "satisfied", operator, SchemaRatify, Ratify{Target: "report"}, "report"),
+		event(t, "basis-retired", operator, SchemaSupersede, Supersede{Target: "basis", Text: "basis changed"}, "basis"),
+	}
+	projection := Fold(records)
+	commitment := projection.Commitments[0]
+	if commitment.Status != "satisfied" || commitment.Report != "report" || !commitment.Stale || commitment.WaitingOn != "" {
+		t.Fatalf("stale satisfied commitment = %+v", commitment)
+	}
+	if status := RenderStatus(projection); !bytes.Contains(status, []byte("| satisfied | stale |")) {
+		t.Fatalf("status omitted stale qualifier:\n%s", status)
+	}
+	reportedRecords := append([]Record(nil), records[:7]...)
+	reportedRecords = append(reportedRecords, records[8])
+	reported := Fold(reportedRecords).Commitments[0]
+	if reported.Status != "reported" || reported.Report != "report" || !reported.Stale || reported.WaitingOn != operator {
+		t.Fatalf("stale reported commitment = %+v", reported)
+	}
+
+	unreportedRecords := append([]Record(nil), records[:6]...)
+	unreportedRecords = append(unreportedRecords, records[8])
+	unreported := Fold(unreportedRecords)
+	commitment = unreported.Commitments[0]
+	if commitment.Status != "stale" || commitment.Report != "" || !commitment.Stale || commitment.WaitingOn != agent {
+		t.Fatalf("unreported stale commitment changed semantics = %+v", commitment)
+	}
+}
+
 func TestUnclaimedRequestIsOpenWithoutWaitingOnItsAddressee(t *testing.T) {
 	records := worldRecords(t,
 		event(t, "w3", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
@@ -317,7 +353,7 @@ func TestUnclaimedRequestIsOpenWithoutWaitingOnItsAddressee(t *testing.T) {
 		}
 	}
 	page := RenderStatus(Fold(records))
-	if !bytes.Contains(page, []byte("| open | actor:operator | addressed to actor:agent — unclaimed | w3 |  |")) {
+	if !bytes.Contains(page, []byte("| open |  | actor:operator | addressed to actor:agent — unclaimed | w3 |  |")) {
 		t.Fatalf("status page does not render the request as addressed and unclaimed:\n%s", page)
 	}
 
@@ -334,7 +370,11 @@ func TestUnclaimedRequestIsOpenWithoutWaitingOnItsAddressee(t *testing.T) {
 	}
 }
 
-func TestStaleCommitmentDoesNotProjectAWaitingParty(t *testing.T) {
+// Staleness is a qualifier beside the status, not a replacement for it, and it
+// does not release the party who still owes something. A promise with no report
+// still reads stale, because there is no outcome to preserve, but the promisor
+// is still the one being waited on.
+func TestStaleCommitmentKeepsItsWaitingParty(t *testing.T) {
 	t.Run("promise", func(t *testing.T) {
 		records := worldRecords(t,
 			event(t, "w3", operator, SchemaState, State{Kind: KindAssert, Text: "basis"}, "w0"),
@@ -343,12 +383,17 @@ func TestStaleCommitmentDoesNotProjectAWaitingParty(t *testing.T) {
 			event(t, "w6", operator, SchemaSupersede, Supersede{Target: "w3", Text: "basis changed"}, "w3"),
 		)
 		commitment := Fold(records).Commitments[0]
-		if commitment.Status != "stale" || commitment.WaitingOn != "" {
+		if commitment.Status != "stale" || !commitment.Stale || commitment.WaitingOn != agent {
 			t.Fatalf("stale promise projects as %+v", commitment)
 		}
 	})
 
-	t.Run("report", func(t *testing.T) {
+	// A reported commitment keeps its outcome when the world moves under it.
+	// Staleness is a qualifier beside the status, not a replacement for it:
+	// flattening this to "stale" hid a kept promise and dropped the requester
+	// who still owes it a ratification. The promise case above has no outcome
+	// to preserve, so it still projects as stale with nobody waiting.
+	t.Run("report keeps its outcome and its waiting party", func(t *testing.T) {
 		records := worldRecords(t,
 			event(t, "w3", operator, SchemaState, State{Kind: KindAssert, Text: "basis"}, "w0"),
 			event(t, "w4", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
@@ -357,7 +402,7 @@ func TestStaleCommitmentDoesNotProjectAWaitingParty(t *testing.T) {
 			event(t, "w7", operator, SchemaSupersede, Supersede{Target: "w3", Text: "basis changed"}, "w3"),
 		)
 		commitment := Fold(records).Commitments[0]
-		if commitment.Status != "stale" || commitment.WaitingOn != "" {
+		if commitment.Status != "reported" || !commitment.Stale || commitment.WaitingOn != operator {
 			t.Fatalf("stale report projects as %+v", commitment)
 		}
 	})

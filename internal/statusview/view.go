@@ -19,17 +19,27 @@ const (
 )
 
 type Totals struct {
-	Commitments     map[string]int `json:"commitments"`
-	Artifacts       int            `json:"artifacts"`
-	StaleArtifacts  int            `json:"stale_artifacts"`
-	IneffectiveActs int            `json:"ineffective_acts"`
-	DisputedActs    int            `json:"disputed_acts"`
-	Statements      int            `json:"statements"`
+	Commitments map[string]int `json:"commitments"`
+	// StaleCommitments counts, per status, how many of those commitments carry
+	// the stale qualifier. Staleness qualifies a status instead of replacing
+	// it, so one count cannot say both things; a reader who only had
+	// Commitments would see "satisfied 98" and never learn that half of those
+	// rest on a basis somebody retired.
+	StaleCommitments map[string]int `json:"stale_commitments,omitempty"`
+	Artifacts        int            `json:"artifacts"`
+	StaleArtifacts   int            `json:"stale_artifacts"`
+	IneffectiveActs  int            `json:"ineffective_acts"`
+	DisputedActs     int            `json:"disputed_acts"`
+	Statements       int            `json:"statements"`
 }
 
 type Commitment struct {
-	Request   string `json:"request"`
-	Status    string `json:"status"`
+	Request string `json:"request"`
+	Status  string `json:"status"`
+	// Stale qualifies Status rather than replacing it. The lifecycle word says
+	// what was last done and who owes the next move; the qualifier says a basis
+	// underneath it was retired, so the outcome is worth re-checking.
+	Stale     bool   `json:"stale,omitempty"`
 	Requester string `json:"requester"`
 	Performer string `json:"performer,omitempty"`
 	WaitingOn string `json:"waiting_on,omitempty"`
@@ -68,10 +78,20 @@ type Summary struct {
 	AttemptsOmitted   int          `json:"attempts_omitted,omitempty"`
 }
 
+// The lanes a commitment can be in. These are exactly the statuses the fold
+// emits (see foldState.projectCommitments): open, promised, reported,
+// satisfied, stale, cancelled, reneged, withdrawn.
+//
 // Open is the current fold vocabulary for an addressed request that has not
 // been claimed. It is actionable without inventing a performer or waiting
 // party, so the global view includes it while preserving those empty fields.
-var actionable = map[string]bool{"open": true, "requested": true, "promised": true, "reported": true}
+var actionable = map[string]bool{"open": true, "promised": true, "reported": true}
+
+// Terminal commitments are done with: nobody owes a next move. They stay out
+// of the bounded lists so the lists show work, not history — unless they carry
+// the stale qualifier, in which case the world moved under a closed outcome
+// and someone has to re-check it.
+var terminal = map[string]bool{"satisfied": true, "withdrawn": true}
 
 // Cap keeps the newest limit entries and reports exactly how many it omitted.
 func Cap[T any](items []T, limit int) ([]T, int) {
@@ -112,15 +132,19 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		statements[statement.Event] = statement
 	}
 	summary := Summary{Genesis: genesis, Head: head, Depth: depth, Totals: Totals{
-		Commitments: make(map[string]int), Artifacts: len(projection.Artifacts), Statements: len(projection.Statements),
+		Commitments: make(map[string]int), StaleCommitments: make(map[string]int),
+		Artifacts: len(projection.Artifacts), Statements: len(projection.Statements),
 	}}
 	for _, commitment := range projection.Commitments {
 		summary.Totals.Commitments[commitment.Status]++
-		if commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
+		if commitment.Stale {
+			summary.Totals.StaleCommitments[commitment.Status]++
+		}
+		if terminal[commitment.Status] && !commitment.Stale {
 			continue
 		}
 		view := Commitment{
-			Request: commitment.Request, Status: commitment.Status,
+			Request: commitment.Request, Status: commitment.Status, Stale: commitment.Stale,
 			Requester: Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
 			WaitingOn: Text(ActorName(projection, commitment.WaitingOn)),
 		}
@@ -208,7 +232,14 @@ func Render(summary Summary, source string) []byte {
 	sort.Strings(keys)
 	var counts []string
 	for _, key := range keys {
-		counts = append(counts, fmt.Sprintf("%s %d", key, summary.Totals.Commitments[key]))
+		count := fmt.Sprintf("%s %d", key, summary.Totals.Commitments[key])
+		// A commitment with no report has no outcome to preserve, so the fold
+		// gives it the status "stale" outright. Repeating the qualifier there
+		// would only say the same word twice.
+		if stale := summary.Totals.StaleCommitments[key]; stale > 0 && key != "stale" {
+			count += fmt.Sprintf(" (%d stale)", stale)
+		}
+		counts = append(counts, count)
 	}
 	fmt.Fprintf(&output, "Commitments: %s. Artifacts: %d current, %d stale. Attempts: %d ineffective, %d disputed.\n",
 		strings.Join(counts, ", "), summary.Totals.Artifacts-summary.Totals.StaleArtifacts, summary.Totals.StaleArtifacts,
@@ -240,7 +271,11 @@ func renderCommitments(output *bytes.Buffer, title string, items []Commitment, o
 		if assignment == "" {
 			assignment = "unclaimed"
 		}
-		fmt.Fprintf(output, "- %s — %s → %s — `%s`", item.Status, item.Requester, assignment, short(item.Request))
+		status := item.Status
+		if item.Stale && item.Status != "stale" {
+			status += " (stale)"
+		}
+		fmt.Fprintf(output, "- %s — %s → %s — `%s`", status, item.Requester, assignment, short(item.Request))
 		if item.Text != "" {
 			fmt.Fprintf(output, ": %s", item.Text)
 		}
