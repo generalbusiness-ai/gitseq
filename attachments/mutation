@@ -1,1 +1,0 @@
-Without contains(basis.restsOn, basis.named), the focused test fails at both assertions.
