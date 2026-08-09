@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4205ad8671e89ada0c26bca0cb8626f4a5f32e74"}
+{"kind":"promise","text":"I will implement admission-profile governance and prefix-based selection on request/admission-profile-governance, keep behavior aligned with the round-17 deployment contract, add activation/supersession/bootstrap/unavailable regression coverage, run the full repository gates, and carry the exact head through independent review before merge.","body":{"branch":"request/admission-profile-governance"}}
