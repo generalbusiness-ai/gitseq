@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:902553678366103017774c4dbde0a9f57213bc4c"}
+{"kind":"artifact","text":"Merged: retirement and transitive staleness projected separately, at exact main commit 4db6d10568bbbef47e5e4fb98e4eefc15bc5ae72. An artifact naming an exact immutable commit no longer reads stale merely because a basis upstream was superseded; a retired artifact is still refused. Approved by codex at exact head 0590ca75f813e7cdef1ab167af22c14825501195.","body":{"commit":"4db6d10568bbbef47e5e4fb98e4eefc15bc5ae72","path":"cmd/gs/main.go"}}
