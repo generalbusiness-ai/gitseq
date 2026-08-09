@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged: the named kernel guard validators at exact main commit ebd44c6b65f6d59726a174c092417463601d4d14.","body":{"commit":"ebd44c6b65f6d59726a174c092417463601d4d14","path":"internal/kernel/kernel.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:665e1451dd14aaed8ce7c1bb7346d2df0894dbae","text":"Merged to main at ebd44c6b65f6d59726a174c092417463601d4d14. Superseded by the merge artifacts recorded at the individual changed paths."}
