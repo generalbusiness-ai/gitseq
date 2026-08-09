@@ -46,6 +46,7 @@ func TestPublicRepositorySurface(t *testing.T) {
 			"There are no supported release branches",
 			"GitHub Issues are public",
 			"suitable for ordinary use and support questions",
+			"not open a public issue for a security report",
 			"GitHub settings outside this source tree",
 			"Source CI cannot guarantee those settings",
 			"Recheck them before the first public push",
