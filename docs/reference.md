@@ -296,16 +296,21 @@ auditor's existing `refs/seq/*` frontier.
 The resident may also maintain a local
 `refs/gitseq/checkpoints/<genesis>` ref. Its parentless commit contains the
 original actor-signed events at one fully audited sequence head and is signed
-by that log's sequencer key. On restart, gitseq checks the checkpoint's object
-format, genesis, exact head, fold-profile version, and commit signature. One
+by the sequencer key current at that head. On restart, gitseq checks the
+checkpoint's object format, genesis, exact head, and fold-profile version. One
 local first-parent metadata enumeration then proves the exact commit sequence
 from genesis through the named head. Every cached event must occupy its claimed
 commit and match that commit's actor envelope, causal trailers, and tree; its
 actor signature, payload ceiling, dedup key, and payload-tree bytes are checked
-again. Only events after the checkpoint frontier require sequencer-signature
-and payload-object reads. A missing, malformed, mismatched, oversized, or
-non-descendant checkpoint is only a cache miss: gitseq performs the ordinary
-full audit and, when it holds sequencer custody, replaces the checkpoint.
+again. Every rotation in the cached prefix is read from its exact sequence
+commit and its signature is checked under the preceding current key. The key
+derived through those verified rotations must then sign the checkpoint itself.
+Cached application-event commits avoid sequencer-signature and payload-object
+reads; cached rotations still require signature checks, and every commit after
+the checkpoint frontier receives the ordinary full verification. A missing,
+malformed, mismatched, oversized, or non-descendant checkpoint is only a cache
+miss: gitseq performs the ordinary full audit and, when it holds sequencer
+custody, replaces the checkpoint.
 
 A writing resident refreshes the ref every 256 accepted events after its last
 successful write. A failed write does not advance that cadence and is retried

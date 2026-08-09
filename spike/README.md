@@ -52,8 +52,10 @@ restart. It contains original actor-signed events rather than a projected
 authority answer. Recovery proves the exact first-parent commit sequence with
 one local metadata enumeration, binds every cached envelope and tree back to
 its actual commit, rechecks actor signatures and cached payload bytes, rebuilds
-the profile fold, and performs full commit verification on the descendant
-tail. Any checkpoint failure falls back to the ordinary full audit. Writes
+the profile fold, and verifies every cached key rotation under the preceding
+current key before the derived frontier key authenticates the checkpoint. The
+descendant tail receives full commit verification. Any checkpoint failure
+falls back to the ordinary full audit. Writes
 replace the whole bounded snapshot; failed writes retry on the next accepted
 event instead of silently postponing another 256 events. Restart acceleration
 is tail-dependent rather than a fixed multiplier; the depth-1,000 benchmark

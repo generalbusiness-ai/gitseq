@@ -65,9 +65,6 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	if err != nil {
 		return scannedLog{}, false, fmt.Errorf("%w: descriptor: %v", ErrNoUsableCheckpoint, err)
 	}
-	if err := store.VerifySSHCommit(ctx, commit, "sequencer", desc.SequencerPublicKey); err != nil {
-		return scannedLog{}, false, fmt.Errorf("%w: signature: %v", ErrNoUsableCheckpoint, err)
-	}
 	parents, err := store.CommitParents(ctx, commit)
 	if err != nil || len(parents) != 0 {
 		return scannedLog{}, false, fmt.Errorf("%w: checkpoint commit must be parentless", ErrNoUsableCheckpoint)
@@ -106,6 +103,14 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	if err != nil {
 		return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
+	sequencerPublicKey, err := verifyCheckpointRotations(ctx, store, stored, desc, commits)
+	if err != nil {
+		return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
+	}
+	if err := store.VerifySSHCommit(ctx, commit, "sequencer", sequencerPublicKey); err != nil {
+		return scannedLog{}, false, fmt.Errorf("%w: signature: %v", ErrNoUsableCheckpoint, err)
+	}
+	log.sequencerPublicKey = sequencerPublicKey
 	prefix := append([]Event(nil), log.Events...)
 	advanced := stored.Head != head
 	if advanced {
@@ -124,8 +129,8 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 }
 
 func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gitstore.CommitMetadata) (scannedLog, error) {
-	if stored.Depth < 0 || stored.Depth != len(stored.Events) {
-		return scannedLog{}, errors.New("checkpoint depth does not match event count")
+	if stored.Depth < 0 || stored.Depth < len(stored.Events) {
+		return scannedLog{}, errors.New("checkpoint depth is smaller than event count")
 	}
 	if len(sequence) < stored.Depth+1 || sequence[0].OID != stored.Genesis {
 		return scannedLog{}, errors.New("checkpoint does not begin the named sequence")
@@ -142,19 +147,34 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gi
 		if stored.Head != stored.Genesis {
 			return scannedLog{}, errors.New("empty checkpoint head is not genesis")
 		}
-	} else if stored.Events[len(stored.Events)-1].Commit != stored.Head {
-		return scannedLog{}, errors.New("checkpoint head does not match final event")
 	}
 	if sequence[stored.Depth].OID != stored.Head {
 		return scannedLog{}, errors.New("checkpoint head is not the claimed sequence frontier")
 	}
+	eventPositions := make([]gitstore.CommitMetadata, 0, len(stored.Events))
+	for index := 1; index <= stored.Depth; index++ {
+		position := sequence[index]
+		if uint64(len(position.Message)) > desc.PayloadCeiling {
+			return scannedLog{}, fmt.Errorf("commit %s envelope exceeds genesis ceiling", position.OID)
+		}
+		_, rotation, err := parseRotationMessage(position.Message)
+		if err != nil {
+			return scannedLog{}, fmt.Errorf("commit %s: %w", position.OID, err)
+		}
+		if !rotation {
+			eventPositions = append(eventPositions, position)
+		}
+	}
+	if len(eventPositions) != len(stored.Events) {
+		return scannedLog{}, errors.New("checkpoint event count does not match sequence prefix")
+	}
 	log := scannedLog{
-		Verification:       Verification{Genesis: stored.Genesis, Head: stored.Head, Depth: stored.Depth, Events: stored.Depth},
-		Events:             make([]Event, 0, stored.Depth),
-		Dedup:              make(map[string]Event, stored.Depth),
+		Verification:       Verification{Genesis: stored.Genesis, Head: stored.Head, Depth: stored.Depth, Events: len(stored.Events)},
+		Events:             make([]Event, 0, len(stored.Events)),
+		Dedup:              make(map[string]Event, len(stored.Events)),
 		sequencerPublicKey: desc.SequencerPublicKey,
 	}
-	seenCommits := make(map[string]struct{}, stored.Depth)
+	seenCommits := make(map[string]struct{}, len(stored.Events))
 	for index, cached := range stored.Events {
 		if err := validateObjectID(stored.ObjectFormat, cached.Commit); err != nil {
 			return scannedLog{}, fmt.Errorf("event %d commit: %w", index, err)
@@ -162,7 +182,7 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gi
 		if _, exists := seenCommits[cached.Commit]; exists {
 			return scannedLog{}, fmt.Errorf("event %d repeats commit %s", index, cached.Commit)
 		}
-		position := sequence[index+1]
+		position := eventPositions[index]
 		if cached.Commit != position.OID {
 			return scannedLog{}, fmt.Errorf("event %d commit does not match sequence", index)
 		}
@@ -222,6 +242,42 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gi
 	return log, nil
 }
 
+// verifyCheckpointRotations derives the key current at the cached frontier
+// only from rotation commits in the exact named sequence. Each transition is
+// authenticated by the key that was current immediately before it; the
+// derived frontier key can then authenticate the checkpoint commit itself.
+func verifyCheckpointRotations(ctx context.Context, store gitstore.Store, stored checkpoint, desc GenesisDescriptor, sequence []gitstore.CommitMetadata) (string, error) {
+	current := desc.SequencerPublicKey
+	emptyTree := ""
+	for index := 1; index <= stored.Depth; index++ {
+		position := sequence[index]
+		successor, rotation, err := parseRotationMessage(position.Message)
+		if err != nil {
+			return "", fmt.Errorf("commit %s: %w", position.OID, err)
+		}
+		if !rotation {
+			continue
+		}
+		if err := store.VerifySSHCommit(ctx, position.OID, "sequencer", current); err != nil {
+			return "", fmt.Errorf("rotation %s sequencer signature: %w", position.OID, err)
+		}
+		if emptyTree == "" {
+			emptyTree, err = store.EmptyTree(ctx)
+			if err != nil {
+				return "", err
+			}
+		}
+		if position.Tree != emptyTree {
+			return "", fmt.Errorf("commit %s rotation tree is not empty", position.OID)
+		}
+		if successor == current {
+			return "", fmt.Errorf("commit %s rotates to the current sequencer key", position.OID)
+		}
+		current = successor
+	}
+	return current, nil
+}
+
 func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, options CheckpointOptions) error {
 	if options.Profile == "" || options.SigningKey == "" || len(log.Events) != log.Verification.Events {
 		return ErrNoUsableCheckpoint
@@ -254,6 +310,9 @@ func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, 
 	})
 	if err != nil {
 		return err
+	}
+	if err := store.VerifySSHCommit(ctx, commit, "sequencer", log.sequencerPublicKey); err != nil {
+		return fmt.Errorf("checkpoint signature does not match current sequencer key: %w", err)
 	}
 	ref := CheckpointRef(log.Verification.Genesis)
 	old, _ := store.Head(ctx, ref)
