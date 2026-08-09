@@ -740,6 +740,62 @@ func TestRestoredDefinitionDoesNotDisplaceALaterRatifiedOne(t *testing.T) {
 	}
 }
 
+// A statement may be ratified more than once: retire the ratification or the
+// statement, restore it, and ratify it again. Force arrives at the newest of
+// those ratifications, so the selector must compare that position and not the
+// oldest one still standing. Here the first version is ratified, retired,
+// beaten by a second version, then restored and ratified again — the second
+// version's own ratification is older than the re-ratification, so the first
+// version governs.
+func TestRepeatedRatificationCarriesItsLatestPosition(t *testing.T) {
+	first := KindDefinition{
+		Name: "finding", Fields: present("topic"), Basis: []BasisConstraint{},
+		Satisfier: SatisfierNone, Render: RenderNote, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleNone, Guidance: "First guidance.",
+	}
+	second := first
+	second.Fields = present("severity")
+	second.Guidance = "Second guidance."
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "d1", operator, SchemaState, kindDefinitionState(t, first), "e0"),
+		event(t, "d2", operator, SchemaState, kindDefinitionState(t, second), "e0"),
+		event(t, "d1r1", operator, SchemaRatify, Ratify{Target: "d1"}, "d1"),
+		event(t, "d1s", operator, SchemaSupersede, Supersede{Target: "d1", Text: "retire the first"}, "d1"),
+		event(t, "d2r", operator, SchemaRatify, Ratify{Target: "d2"}, "d2"),
+		event(t, "d2s", operator, SchemaSupersede, Supersede{Target: "d2", Text: "retire the second"}, "d2"),
+		event(t, "d1ss", operator, SchemaSupersede, Supersede{Target: "d1s", Text: "restore the first"}, "d1s"),
+		event(t, "d1r2", operator, SchemaRatify, Ratify{Target: "d1"}, "d1"),
+		event(t, "d2ss", operator, SchemaSupersede, Supersede{Target: "d2s", Text: "restore the second"}, "d2s"),
+		event(t, "n1", operator, SchemaState, State{Kind: "finding", Text: "under the first", Body: map[string]string{"topic": "fold"}}, "e0"),
+	}
+	result := Evaluate(records)
+	for eventID, want := range map[string]Verdict{"d1r1": Effective, "d2r": Effective, "d1r2": Effective, "n1": Effective} {
+		decision, _ := result.Projection.Decision(eventID)
+		if decision.Verdict != want {
+			t.Errorf("%s = %s (%s), want %s", eventID, decision.Verdict, decision.Reason, want)
+		}
+	}
+	var governing *KindDefinition
+	for index := range result.Vocabulary.Definitions {
+		if result.Vocabulary.Definitions[index].Name == "finding" {
+			governing = &result.Vocabulary.Definitions[index]
+		}
+	}
+	if governing == nil || governing.Source != "d1" || governing.RatifiedBy != "d1r2" || governing.Guidance != first.Guidance {
+		t.Fatalf("governing definition = %+v, want d1 ratified by d1r2", governing)
+	}
+	for length := 1; length <= len(records); length++ {
+		prefix := Fold(records[:length])
+		for _, decision := range prefix.Decisions {
+			settled, _ := result.Projection.Decision(decision.Event)
+			if settled != decision {
+				t.Fatalf("prefix of %d changed the decision for %s: %+v, want %+v", length, decision.Event, decision, settled)
+			}
+		}
+	}
+}
+
 func TestPrefixBindingBindsARecordThatEndsAtItsTransition(t *testing.T) {
 	activation := State{Kind: KindFoldActivation, Text: "activate the next fold", Body: map[string]string{
 		"fold": "spike/internal/workroom@abc123", "entry": "gitseq/spike/internal/workroom",

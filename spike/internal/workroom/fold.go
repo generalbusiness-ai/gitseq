@@ -536,8 +536,16 @@ func (f *foldState) refreshDefinitionsAffectedBy(events []string) {
 	}
 }
 
+// activeRatification returns the surviving effective ratification of a target
+// that stands latest in the total order. A statement may be ratified more than
+// once — retire the ratification, restore the statement, ratify it again — and
+// the governing-version selector compares positions, so it must be handed the
+// latest position and not merely the first one still standing. Ratifications
+// are appended in sequence order, so the last survivor in the list is it.
 func (f *foldState) activeRatification(target string) string {
-	for _, event := range f.ratifications[target] {
+	events := f.ratifications[target]
+	for index := len(events) - 1; index >= 0; index-- {
+		event := events[index]
 		if !f.retired(event) && f.decisions[event].Verdict == Effective {
 			return event
 		}
