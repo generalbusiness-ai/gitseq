@@ -149,9 +149,10 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gi
 		return scannedLog{}, errors.New("checkpoint head is not the claimed sequence frontier")
 	}
 	log := scannedLog{
-		Verification: Verification{Genesis: stored.Genesis, Head: stored.Head, Depth: stored.Depth, Events: stored.Depth},
-		Events:       make([]Event, 0, stored.Depth),
-		Dedup:        make(map[string]Event, stored.Depth),
+		Verification:       Verification{Genesis: stored.Genesis, Head: stored.Head, Depth: stored.Depth, Events: stored.Depth},
+		Events:             make([]Event, 0, stored.Depth),
+		Dedup:              make(map[string]Event, stored.Depth),
+		sequencerPublicKey: desc.SequencerPublicKey,
 	}
 	seenCommits := make(map[string]struct{}, stored.Depth)
 	for index, cached := range stored.Events {

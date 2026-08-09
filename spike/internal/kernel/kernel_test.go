@@ -1200,6 +1200,52 @@ func TestReaderRestartsFromSignedCheckpointAndAuditsDescendantDelta(t *testing.T
 	}
 }
 
+func TestReaderCheckpointContinuationCarriesRotatedSequencerKey(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "before-rotation", []byte("before-rotation"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := CheckpointOptions{Profile: "rotation-fold@1", SigningKey: f.signingKey}
+	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+
+	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
+	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Rotate(f.ctx, f.store, f.genesis, nextPublic, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	afterRotation, err := Submit(f.ctx, f.store, f.request(t, private, "after-rotation", []byte("after-rotation"), nil), Options{SigningKey: nextKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile})
+	loaded, err := restarted.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Checkpoint || loaded.Verification.Head != afterRotation.Head || loaded.Verification.Depth != 3 || loaded.Verification.Events != 2 || len(loaded.Events) != 2 {
+		t.Fatalf("checkpoint continuation across rotation = %+v", loaded)
+	}
+
+	final, err := Submit(f.ctx, f.store, f.request(t, private, "resident-after-rotation", []byte("resident-after-rotation"), nil), Options{SigningKey: nextKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delta, err := restarted.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delta.Full || delta.BaseHead != afterRotation.Head || delta.Verification.Head != final.Head || len(delta.Events) != 1 || string(delta.Events[0].Payload) != "resident-after-rotation" {
+		t.Fatalf("resident continuation under rotated key = %+v", delta)
+	}
+}
+
 func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T) {
 	t.Run("profile", func(t *testing.T) {
 		f := newFixture(t, "sha1")
