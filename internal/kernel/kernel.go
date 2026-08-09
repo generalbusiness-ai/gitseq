@@ -778,11 +778,8 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 	if err != nil {
 		return scannedLog{}, err
 	}
-	if len(commits) == 0 || commits[0] != genesis {
-		return scannedLog{}, errors.New("chain does not begin at named genesis")
-	}
-	if commits[len(commits)-1] != head {
-		return scannedLog{}, errors.New("history does not end at named head")
+	if err := validateSequenceBounds(commits, genesis, head); err != nil {
+		return scannedLog{}, err
 	}
 	genesisMessage, err := store.CommitMessage(ctx, genesis)
 	if err != nil {
@@ -807,13 +804,13 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 			return scannedLog{}, err
 		}
 		if index == 0 {
-			if len(parents) != 0 {
-				return scannedLog{}, errors.New("genesis has a parent")
+			if err := validateChainParents(index, parents, ""); err != nil {
+				return scannedLog{}, err
 			}
 			continue
 		}
-		if len(parents) != 1 || parents[0] != commits[index-1] {
-			return scannedLog{}, fmt.Errorf("commit %s is not single-parent chained", commit)
+		if err := validateChainParents(index, parents, commits[index-1]); err != nil {
+			return scannedLog{}, fmt.Errorf("commit %s: %w", commit, err)
 		}
 		event, successor, rotation, err := loadCommit(ctx, store, desc, genesis, commit, loadPayload)
 		if err != nil {
@@ -841,6 +838,29 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 		log.Verification.Events++
 	}
 	return log, nil
+}
+
+func validateSequenceBounds(commits []string, genesis, head string) error {
+	if len(commits) == 0 || commits[0] != genesis {
+		return errors.New("chain does not begin at named genesis")
+	}
+	if commits[len(commits)-1] != head {
+		return errors.New("history does not end at named head")
+	}
+	return nil
+}
+
+func validateChainParents(index int, parents []string, prior string) error {
+	if index == 0 {
+		if len(parents) != 0 {
+			return errors.New("genesis has a parent")
+		}
+		return nil
+	}
+	if len(parents) != 1 || parents[0] != prior {
+		return errors.New("is not single-parent chained")
+	}
+	return nil
 }
 
 // scanAfter extends a previously verified log only when head descends from its
@@ -886,8 +906,8 @@ func scanListedAfter(ctx context.Context, store gitstore.Store, base scannedLog,
 		if parentErr != nil {
 			return scannedLog{}, parentErr
 		}
-		if len(parents) != 1 || parents[0] != expectedParent {
-			return scannedLog{}, fmt.Errorf("%w: commit %s does not follow %s", ErrNotDescendant, commit, expectedParent)
+		if err := validateChainParents(1, parents, expectedParent); err != nil {
+			return scannedLog{}, fmt.Errorf("%w: commit %s does not follow %s: %v", ErrNotDescendant, commit, expectedParent, err)
 		}
 		if err := store.VerifySSHCommit(ctx, commit, "sequencer", base.sequencerPublicKey); err != nil {
 			return scannedLog{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)

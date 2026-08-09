@@ -47,7 +47,8 @@ export function worktreesForCommitment(
   const artifactHeads = new Set<string>();
   if (explicitHeads.size === 0) {
     for (const artifact of projection.artifacts) {
-      if (!artifact.stale && dependsOnAny(artifact.event, anchors, projection.provenance, statements)) artifactHeads.add(artifact.commit);
+      if (!artifact.retired && !artifact.stale && dependsOnAny(artifact.event, anchors, projection.provenance, statements))
+        artifactHeads.add(artifact.commit);
     }
   }
   const expectedHeads = explicitHeads.size > 0 ? explicitHeads : artifactHeads;

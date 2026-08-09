@@ -401,15 +401,26 @@ absent without being mistaken for durable evidence.
 ### Exact-head workflow guards
 
 `review` is the enforced verdict boundary. The named artifact must be effective
-and live, the named promise must be effective, live, and owned by the reviewer,
-and its originating request is copied from the durable graph rather than typed
-again. The checkout must belong to the same repository, be clean (including no
-untracked files), and have the artifact's full commit ID checked out. The
-resulting report names that immutable head and rests on the promise, request,
-and artifact. `review` also refuses a verdict signed by the actor who signed
-the artifact under review. Running tests, a built CLI, or Git-plumbing
-experiments remains review evidence: those probes help a reviewer reach a
-verdict, while `review` guards the state at which the verdict is signed.
+and must not be retired; the named promise must be effective, not retired, and
+owned by the reviewer; and its originating request is copied from the durable
+graph rather than typed again. The checkout must belong to the same repository,
+be clean (including no untracked files), and have the artifact's full commit ID
+checked out. The resulting report names that immutable head and rests on the
+promise, request, and artifact. `review` also refuses a verdict signed by the
+actor who signed the artifact under review. Running tests, a built CLI, or
+Git-plumbing experiments remains review evidence: those probes help a reviewer
+reach a verdict, while `review` guards the state at which the verdict is signed.
+
+Staleness does not stop a review. Being retired and being stale are two
+different facts, and the projection keeps them apart: retired means this act
+was superseded, stale means something underneath it was. A stale artifact still
+names the commit it always named, and whether the movement matters to that
+commit is the reviewer's question. So `review` goes ahead and records what had
+moved: the verdict body carries `stale=true` and a `staleness` field naming
+which of the artifact, promise and request are stale, whether the movement was
+in the world they describe, and the retired events that caused it. The signed
+report then says plainly that the world had moved and the reviewer signed
+anyway.
 
 **Review independence.** The projection answers, for every report carrying a
 `verdict`, whether the reviewer's fingerprint differs from the fingerprint of
@@ -432,16 +443,17 @@ by this rule; one identity used by two instances is not independent and cannot
 be shown to be. That is the reason instance identities matter.
 
 After the review requester ratifies an approved report, `merge` enforces the
-other boundary. It refuses an ineffective, unratified, retired, or stale
-approval; a non-approval verdict; a candidate other than the report and
-artifact's exact head; a dirty target checkout; and a checkout from another
-repository. It also refuses an approval the projection does not call
-`independent`, whether because the reviewer implemented the head or because the
-record cannot say who did. It passes the approved full object ID to
-`git merge --no-ff`, never a branch name, so advancing the reviewed branch
-cannot retarget the merge.
-Record the resulting merge artifact separately as required by the workroom
-discipline.
+other boundary, and it keeps the strict reading that `review` gives up. It
+refuses an ineffective, unratified, retired, or stale approval or artifact; a
+non-approval verdict; a candidate other than the report and artifact's exact
+head; a dirty target checkout; and a checkout from another repository. It also
+refuses an approval the projection does not call `independent`, whether because
+the reviewer implemented the head or because the record cannot say who did. The
+latitude belongs where a reviewer is present to exercise it. A refused merge
+leaves a signed approval standing and asks only that the record be brought up
+to date. It passes the approved full object ID to `git merge --no-ff`, never a
+branch name, so advancing the reviewed branch cannot retarget the merge. Record
+the resulting merge artifact separately as required by the workroom discipline.
 
 ### Serving and attaching
 
@@ -631,6 +643,15 @@ results carry neither the modern envelope nor its cache directives.
 **Tools.** `whoami`, `presence`, `status`, `wait`, `say`, `state`,
 `ratify`, `supersede`. `status` returns a composite cursor which you pass
 back to `wait` explicitly.
+
+`whoami` returns the effective actor identity and capped roles at an exact
+durable frontier. A current loopback resident is labeled
+`resident_statusview_current`; the client refuses redirects and guards the
+answer with a two-second, 64 KiB, strict-JSON boundary plus matching local
+genesis and head checks. A local fallback sets `degraded: true` and names the
+actual verified path: `verified_signed_checkpoint_tail`,
+`verified_incremental_tail`, or `verified_cold_full_audit`. The response never
+includes the local actor key path, and omitted non-semantic roles are counted.
 
 **Degraded operation.** If the resident service is down, the durable
 tools keep working directly against the local log and report a

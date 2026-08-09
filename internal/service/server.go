@@ -17,6 +17,9 @@ import (
 
 type Frontier = statusview.Frontier
 type Cursor = statusview.Cursor
+type Orientation = statusview.Orientation
+
+const OrientationProjectionVersion = statusview.OrientationProjectionVersion
 
 type Status struct {
 	Durable app.Snapshot   `json:"durable"`
@@ -67,6 +70,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v0/graph", s.handleGraph)
 	s.mux.HandleFunc("GET /v0/worktrees", s.handleWorktrees)
 	s.mux.HandleFunc("GET /v0/actors", s.handleActors)
+	s.mux.HandleFunc("GET /v0/orientation/{fingerprint}", s.handleOrientation)
 	s.mux.HandleFunc("POST /v0/act", s.handleAct)
 	s.mux.HandleFunc("GET /v0/status", s.handleStatus)
 	s.mux.HandleFunc("GET /v0/status-summary", s.handleStatusSummary)
@@ -77,6 +81,28 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /v0/presence/{session}", s.handleDepart)
 	s.mux.HandleFunc("POST /v0/say", s.handleSay)
 	s.mux.HandleFunc("GET /v0/conversations/{conversation}/frames", s.handleFrames)
+}
+
+func (s *Server) handleOrientation(writer http.ResponseWriter, request *http.Request) {
+	fingerprint := request.PathValue("fingerprint")
+	if fingerprint == "" {
+		write(writer, nil, errors.New("fingerprint is required"))
+		return
+	}
+	snapshot, err := s.workspace.Snapshot(request.Context())
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	orientation, ok := statusview.BuildOrientation(snapshot, fingerprint, "")
+	if !ok {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.Header().Set("Cache-Control", "no-store")
+		writer.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(writer).Encode(map[string]string{"error": "actor is not in the effective durable roster"})
+		return
+	}
+	write(writer, orientation, nil)
 }
 
 func (s *Server) status(ctx context.Context) (Status, error) {
