@@ -23,23 +23,24 @@ const (
 type Kind string
 
 const (
-	KindAssert   Kind = "assert"
-	KindPropose  Kind = "propose"
-	KindRequest  Kind = "request"
-	KindPromise  Kind = "promise"
-	KindReport   Kind = "report"
-	KindDissent  Kind = "dissent"
-	KindArtifact Kind = "artifact"
-	KindRoster   Kind = "roster"
-	KindInfraKey Kind = "infra-key"
-	KindSeal     Kind = "seal"
+	KindAssert           Kind = "assert"
+	KindPropose          Kind = "propose"
+	KindRequest          Kind = "request"
+	KindPromise          Kind = "promise"
+	KindReport           Kind = "report"
+	KindDissent          Kind = "dissent"
+	KindArtifact         Kind = "artifact"
+	KindRoster           Kind = "roster"
+	KindInfraKey         Kind = "infra-key"
+	KindSeal             Kind = "seal"
+	KindAdmissionProfile Kind = "admission-profile"
 )
 
 var knownKinds = map[Kind]bool{
 	KindAssert: true, KindPropose: true, KindRequest: true,
 	KindPromise: true, KindReport: true, KindDissent: true,
 	KindArtifact: true, KindRoster: true, KindInfraKey: true,
-	KindSeal: true,
+	KindSeal: true, KindAdmissionProfile: true,
 }
 
 // State is a durable attributed utterance. Body is intentionally restricted to
@@ -138,10 +139,11 @@ func validateState(state State) error {
 		return nil
 	}
 	required := map[Kind][]string{
-		KindRequest:  {"to", "conditions"},
-		KindRoster:   {"actor", "name", "role"},
-		KindInfraKey: {"service", "public_key"},
-		KindArtifact: {"path", "commit"},
+		KindRequest:          {"to", "conditions"},
+		KindRoster:           {"actor", "name", "role"},
+		KindInfraKey:         {"service", "public_key"},
+		KindArtifact:         {"path", "commit"},
+		KindAdmissionProfile: {"bundle", "contract", "genesis"},
 	}
 	for _, field := range required[state.Kind] {
 		if state.Body[field] == "" {
