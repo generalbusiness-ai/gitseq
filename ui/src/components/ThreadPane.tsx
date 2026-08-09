@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BadgeCheck, Bookmark, CircleSlash, Link2, SendHorizonal, Undo2, X } from "lucide-react";
+import { BadgeCheck, Bookmark, CircleSlash, GitBranch, Link2, SendHorizonal, Undo2, X } from "lucide-react";
 import { api, frameKey, type ActInput, type FrameView, type Statement } from "../lib/api";
 import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { buildThreadIndex, ticketsOf, type Workroom } from "../lib/store";
@@ -12,6 +12,7 @@ import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } fr
 import { toggleLinkEvent, toggleLinkFrame, type ComposerContext } from "./Composer";
 import { EventTime } from "./EventTime";
 import { MentionText, Ticket } from "./Stream";
+import { ThreadRailway } from "./ThreadRailway";
 import type { PendingSay } from "./Stream";
 
 // What a thread hangs from: a durable act, or a chat line.
@@ -74,11 +75,13 @@ export function ThreadPane({
     projection?.statements.find((s) => s.kind === "roster" && s.body?.actor === fp)?.body?.name ??
     fp.slice(0, 8);
   const myFingerprint = workroom.actors.find((a) => a.name === session.actor)?.fingerprint;
+  const [view, setView] = useState<"thread" | "railway">("thread");
 
   // Focus discipline: the pane takes focus on open (into its composer) and
   // hands it back on close; Escape closes from anywhere inside.
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
+    setView("thread");
     box.current?.focus();
     return () => opener?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -117,13 +120,43 @@ export function ThreadPane({
       className="fixed inset-0 z-40 flex flex-col border-border bg-background outline-none sm:static sm:z-auto sm:w-[24rem] sm:shrink-0 sm:border-l"
     >
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <h2 className="text-sm font-semibold text-foreground/90">Thread</h2>
+        {target.kind === "event" ? (
+          <div role="tablist" aria-label="Durable thread view" className="flex items-center gap-1">
+            <button
+              role="tab"
+              aria-selected={view === "thread"}
+              onClick={() => setView("thread")}
+              className={cn("rounded-md px-2 py-1 text-xs font-medium focus-visible:outline focus-visible:outline-accent", view === "thread" ? "bg-elevated text-foreground" : "text-faint hover:text-muted")}
+            >
+              Thread
+            </button>
+            <button
+              role="tab"
+              aria-selected={view === "railway"}
+              onClick={() => setView("railway")}
+              className={cn("flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium focus-visible:outline focus-visible:outline-accent", view === "railway" ? "bg-elevated text-foreground" : "text-faint hover:text-muted")}
+            >
+              <GitBranch className="h-3 w-3" /> Railway
+            </button>
+          </div>
+        ) : (
+          <h2 className="text-sm font-semibold text-foreground/90">Thread</h2>
+        )}
         <button onClick={onClose} aria-label="close thread" className="rounded p-1 text-faint hover:text-foreground focus-visible:outline focus-visible:outline-accent">
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <div
+        ref={scroller}
+        role={target.kind === "event" ? "tabpanel" : undefined}
+        aria-label={target.kind === "event" ? `${view === "thread" ? "Thread" : "Railway"} view` : undefined}
+        className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+      >
+        {target.kind === "event" && view === "railway" && root && thread && projection && (
+          <ThreadRailway root={root} thread={thread} projection={projection} tickets={tickets} nameOf={nameOf} onJumpTo={onJumpTo} />
+        )}
         {target.kind === "event" &&
+          view === "thread" &&
           (root && projection ? (
             <>
               <ThreadStatement

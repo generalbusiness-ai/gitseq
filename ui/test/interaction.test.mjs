@@ -6,6 +6,7 @@ import { hueOf, initialsOf } from "../src/lib/avatar.ts";
 import { RetryKeys, fingerprintOfPresentActor, fingerprintsIdentifySameActor, parsePresenceLabel, presentActors, threadTargetKey } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
+import { layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { CLOSED_WORK_STATUSES, buildWorkProjection, filterWorkProjection, workAttentionCount, workItemState } from "../src/lib/work.ts";
 import { belongsInRoom, commitmentRelationship, statusLabel } from "../src/lib/util.ts";
@@ -134,6 +135,30 @@ test("thread indexing keeps citations out of reply summaries and thread content"
   assert.deepEqual(index.content("e1").acts.map((item) => item.event), ["a1"]);
   assert.deepEqual(index.content("e1").events, ["e2", "e3", "a1"]);
   assert.deepEqual(index.content("e0").statements.map((item) => item.event), ["e4"]);
+});
+
+test("thread railway keeps conversation lanes stable and citations secondary", () => {
+  const events = ["root", "first", "first-leaf", "sibling", "merge-note", "act"];
+  const provenance = {
+    root: ["outside-parent"],
+    first: ["root"],
+    "first-leaf": ["first"],
+    sibling: ["root", "outside-citation"],
+    "merge-note": ["sibling", "first-leaf"],
+    act: ["merge-note"],
+  };
+  const layout = layoutThreadRailway(events, provenance);
+  assert.deepEqual(layout.nodes.map(({ event, lane }) => [event, lane]), [
+    ["root", 0],
+    ["first", 0],
+    ["first-leaf", 0],
+    ["sibling", 1],
+    ["merge-note", 1],
+    ["act", 1],
+  ]);
+  assert.equal(layout.lanes, 2);
+  assert.deepEqual(layout.nodes.find((node) => node.event === "sibling").citations, ["outside-citation"]);
+  assert.deepEqual(layout.nodes.find((node) => node.event === "merge-note").citations, ["first-leaf"]);
 });
 
 const originalSupersede = "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eab3b0e6064e5b31a04c2e2c3bababc618997946";

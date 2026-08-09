@@ -8,8 +8,8 @@ import { createServer } from "vite";
 
 const uiRoot = fileURLToPath(new URL("..", import.meta.url));
 
-function workroom(presence) {
-  const projection = {
+function workroom(presence, suppliedProjection) {
+  const projection = suppliedProjection ?? {
     decisions: [],
     acts: [],
     statements: [],
@@ -83,6 +83,78 @@ test("same-name presence stays fingerprint-based at the rendered component bound
       );
     assert.match(profile("a5d35aa7e4799472"), /aria-label="online"/);
     assert.match(profile("0011223344ff5566"), /aria-label="away"/);
+  } finally {
+    await vite.close();
+  }
+});
+
+test("durable threads expose a railway whose rendered edges distinguish citations", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const [{ ThreadPane }, { ThreadRailway }] = await Promise.all([
+      vite.ssrLoadModule("/src/components/ThreadPane.tsx"),
+      vite.ssrLoadModule("/src/components/ThreadRailway.tsx"),
+    ]);
+    const statement = (event, actor, kind, text) => ({ event, actor, kind, text, timestamp: 1_700_000_000 });
+    const statements = [
+      statement("root", "codex", "request", "Build the railway"),
+      statement("first", "claude", "promise", "I will review it"),
+      statement("branch", "hugh", "assert", "Keep the thread local"),
+      statement("join", "codex", "report", "Railway ready"),
+    ];
+    const act = { event: "agree", actor: "hugh", type: "ratify", target: "join", verdict: "effective", reason: "authorized", timestamp: 1_700_000_001 };
+    const projection = {
+      decisions: [...statements.map((item) => ({ event: item.event, verdict: "effective", reason: "recorded" })), { event: act.event, verdict: "effective", reason: "authorized" }],
+      acts: [act],
+      statements,
+      commitments: [],
+      artifacts: [],
+      actors: {},
+      provenance: { root: [], first: ["root"], branch: ["root"], join: ["branch", "first"], agree: ["join"] },
+    };
+    const thread = { statements: statements.slice(1), acts: [act], events: ["first", "branch", "join", "agree"] };
+    const tickets = new Map(projection.decisions.map((decision, index) => [decision.event, index + 1]));
+    const railway = renderToStaticMarkup(
+      React.createElement(ThreadRailway, {
+        root: statements[0],
+        thread,
+        projection,
+        tickets,
+        nameOf: (actor) => actor,
+        onJumpTo() {},
+      }),
+    );
+    assert.match(railway, /data-thread-railway="true"/);
+    assert.equal((railway.match(/data-thread-rail-event=/g) ?? []).length, 5);
+    assert.match(railway, /stroke-dasharray="3 3"/);
+    assert.match(railway, /cites #2/);
+
+    const panel = renderToStaticMarkup(
+      React.createElement(ThreadPane, {
+        workroom: workroom({}, projection),
+        session: { ...session, actor: "codex" },
+        frames: [],
+        target: { kind: "event", event: "root" },
+        pending: [],
+        composer: { restsOn: [], frames: [], type: "assert" },
+        onComposer() {},
+        onClose() {},
+        onJumpTo() {},
+        onOpenProfile() {},
+        onRoute() {},
+        doAct() {},
+        onSay() { return "pending"; },
+        onSayFailed() {},
+      }),
+    );
+    assert.match(panel, /aria-label="Durable thread view"/);
+    assert.match(panel, />Thread<\/button>/);
+    assert.match(panel, / Railway<\/button>/);
   } finally {
     await vite.close();
   }
