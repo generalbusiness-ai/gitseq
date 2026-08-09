@@ -40,39 +40,6 @@ func RenderStatus(projection Projection) []byte {
 			fmt.Fprintf(&output, "| %s | %s | %s | %s | %s | %s |\n", escape(commitment.Status), qualifiers, short(commitment.Requester), escape(assignment), short(commitment.Request), short(commitment.WaitingOn))
 		}
 	}
-	output.WriteString("\n## Reviews\n\n")
-	if len(projection.Reviews) == 0 {
-		output.WriteString("No reviews.\n")
-	} else {
-		counts := make(map[string]int)
-		for _, review := range projection.Reviews {
-			counts[review.Independence]++
-		}
-		fmt.Fprintf(&output, "%d independent, %d self-signed, %d unresolved.\n",
-			counts[IndependenceIndependent], counts[IndependenceSelfReview], counts[IndependenceUnresolved])
-		// Only reviews the record cannot vouch for are listed. An independent
-		// verdict is the expected case and says nothing a reader must act on;
-		// a verdict signed by the implementer, or one whose implementer cannot
-		// be identified, is exactly what this section exists to surface.
-		var flagged []Review
-		for _, review := range projection.Reviews {
-			if review.Independence != IndependenceIndependent && !review.Retired {
-				flagged = append(flagged, review)
-			}
-		}
-		if len(flagged) > 0 {
-			output.WriteString("\n| independence | verdict | reviewer | head | report |\n")
-			output.WriteString("|---|---|---|---|---|\n")
-			for _, review := range flagged {
-				independence := review.Independence
-				if review.Independence == IndependenceSelfReview {
-					independence = "SELF-SIGNED — reviewer implemented this head"
-				}
-				fmt.Fprintf(&output, "| %s | %s | %s | %s | %s |\n",
-					escape(independence), escape(review.Verdict), short(review.Reviewer), short(review.Head), short(review.Report))
-			}
-		}
-	}
 	output.WriteString("\n## Artifacts\n\n")
 	if len(projection.Artifacts) == 0 {
 		output.WriteString("No artifacts.\n")

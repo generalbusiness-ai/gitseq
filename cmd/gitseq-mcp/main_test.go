@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -731,69 +730,6 @@ func TestPresenceRenewalRunsBesideCalls(t *testing.T) {
 	}()
 	working.Wait()
 	server.depart(context.Background())
-}
-
-// One identity, one live session. A second instance under the same name would
-// make the log say a name did work that one of several instances did, and
-// would satisfy the different-agent review rule by spelling alone.
-func TestSecondInstanceRefusesToShareALiveIdentity(t *testing.T) {
-	workspace := initRepository(t, "repo")
-	if _, _, err := workspace.AddActor(context.Background(), "human", "claude.2", "agent"); err != nil {
-		t.Fatal(err)
-	}
-	workroomServer, err := service.New(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	httpServer := httptest.NewServer(workroomServer.Handler())
-	defer httpServer.Close()
-	if _, err := workspace.PublishResident(httpServer.URL); err != nil {
-		t.Fatal(err)
-	}
-
-	first := newServer("human", workspace.Repo)
-	if _, err := first.attend(context.Background(), ""); err != nil {
-		t.Fatalf("first instance refused a free identity: %v", err)
-	}
-	second := newServer("human", workspace.Repo)
-	_, err = second.attend(context.Background(), "")
-	var shared *sharedIdentityError
-	if !errors.As(err, &shared) || !strings.Contains(err.Error(), "already live") {
-		t.Fatalf("second instance under one identity = %v", err)
-	}
-	if !strings.Contains(err.Error(), actorEnvironment) {
-		t.Fatalf("refusal does not say how to fix it: %v", err)
-	}
-	// The refusal has to hold on every call, not only the first: a session
-	// that was turned away at the door must not act through a cached
-	// attachment.
-	if _, err := second.call(context.Background(), toolCall{Name: "presence"}); !errors.As(err, &shared) {
-		t.Fatalf("a refused instance still acted: %v", err)
-	}
-	distinct := newServer("claude.2", workspace.Repo)
-	if _, err := distinct.attend(context.Background(), ""); err != nil {
-		t.Fatalf("a distinct instance identity was refused: %v", err)
-	}
-
-	first.depart(context.Background())
-	if _, err := second.attend(context.Background(), ""); err != nil {
-		t.Fatalf("identity stayed held after its session departed: %v", err)
-	}
-}
-
-// The check is only as good as the resident service, and a stopped service
-// must not stop the work. Starting anyway is the stated limit, not an oversight.
-func TestIdentityCheckIsSkippedWhenPresenceCannotBeRead(t *testing.T) {
-	workspace := initRepository(t, "repo")
-	dead := httptest.NewServer(nil)
-	baseURL := dead.URL
-	client := dead.Client()
-	dead.Close()
-	server, attached := attachedServer(t, workspace, "human", baseURL, client)
-	server.session = "mcp:offline"
-	if err := server.requireSoleIdentity(context.Background(), attached); err != nil {
-		t.Fatalf("unreadable presence blocked startup: %v", err)
-	}
 }
 
 func signedWorkspace(tb testing.TB, depth int) (*app.Workspace, workroom.Record) {

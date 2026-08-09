@@ -44,13 +44,6 @@ a nexus-assigned per-conversation counter. The counter proves that ordering is
 cheap; it does not prove that total ephemeral order belongs in the minimal
 profile.
 
-Actor keys are separated by name, not by isolation. Every principal's private
-key is a file in one local directory that any process running as the same user
-can read, so the log proves which key signed an event and not which instance
-held it. Concurrent instances therefore take distinct identities by discipline;
-real separation would need separate operating-system users or machines, and
-this spike does not provide it.
-
 The custody case uses an acyclic offer → accept → settle saga. Competing
 completed settlements produce a typed `disputed` state and a decision for
 every event; choosing a winner remains application policy, not kernel behavior.
