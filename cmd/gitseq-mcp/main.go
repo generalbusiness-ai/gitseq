@@ -566,10 +566,11 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 		}
 		return s.digest(current, status, false), nil
 	case "wait":
-		requested := requestedCursor(call.Arguments)
-		value, err := s.post(ctx, current, "/v0/wait", call.Arguments)
+		arguments := residentArguments(call.Arguments)
+		requested := requestedCursor(arguments)
+		value, err := s.post(ctx, current, "/v0/wait", arguments)
 		if isTransportError(err) {
-			local, localErr := s.waitDurable(ctx, current, call.Arguments)
+			local, localErr := s.waitDurable(ctx, current, arguments)
 			if localErr != nil {
 				return nil, localErr
 			}
@@ -584,7 +585,7 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 		}
 		return digestWait(response, requested, s.fingerprint(current), s.actor, false), nil
 	case "say":
-		arguments := clone(call.Arguments)
+		arguments := residentArguments(call.Arguments)
 		arguments["session"] = s.session
 		return s.post(ctx, current, "/v0/say", arguments)
 	case "state":
@@ -956,6 +957,14 @@ func clone(input map[string]any) map[string]any {
 	for key, value := range input {
 		output[key] = value
 	}
+	return output
+}
+
+// repo selects the adapter attachment. It is not part of any resident service
+// request, whose strict decoders accept only the endpoint's own wire fields.
+func residentArguments(input map[string]any) map[string]any {
+	output := clone(input)
+	delete(output, "repo")
 	return output
 }
 

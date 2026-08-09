@@ -416,6 +416,19 @@ func initRepository(t *testing.T, name string) *app.Workspace {
 	return workspace
 }
 
+func serveRepository(t *testing.T, workspace *app.Workspace) {
+	t.Helper()
+	workroomServer, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(workroomServer.Handler())
+	t.Cleanup(httpServer.Close)
+	if _, err := workspace.PublishResident(httpServer.URL); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func depth(t *testing.T, workspace *app.Workspace) int {
 	t.Helper()
 	snapshot, err := workspace.Snapshot(context.Background())
@@ -423,6 +436,118 @@ func depth(t *testing.T, workspace *app.Workspace) int {
 		t.Fatal(err)
 	}
 	return snapshot.Depth
+}
+
+// repo is an adapter selector, not a resident wait field. Cover both forms so
+// stripping it cannot make the named call fall back to the default room.
+func TestResidentWaitKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {
+	here := initRepository(t, "here")
+	elsewhere := initRepository(t, "elsewhere")
+	serveRepository(t, here)
+	serveRepository(t, elsewhere)
+	server := newServer("human", here.Repo)
+
+	for _, testCase := range []struct {
+		name      string
+		workspace *app.Workspace
+		arguments map[string]any
+	}{
+		{name: "default repository", workspace: here, arguments: map[string]any{}},
+		{name: "named repository", workspace: elsewhere, arguments: map[string]any{"repo": elsewhere.Repo}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			value, err := server.call(context.Background(), toolCall{Name: "status", Arguments: testCase.arguments})
+			if err != nil {
+				t.Fatal(err)
+			}
+			status := value.(actorStatus)
+			arguments := clone(testCase.arguments)
+			arguments["cursor"] = status.Cursor
+			arguments["timeout_ms"] = 1
+			value, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: arguments})
+			if err != nil {
+				t.Fatal(err)
+			}
+			delta := value.(waitDelta)
+			if len(delta.Cursor.Frontier) != 1 || delta.Cursor.Frontier[0].Genesis != testCase.workspace.Config.Genesis {
+				t.Fatalf("wait answered from the wrong repository: %+v", delta.Cursor.Frontier)
+			}
+			if delta.Cursor.Live.Generation == "degraded" {
+				t.Fatalf("resident wait unexpectedly degraded: %+v", delta.Cursor.Live)
+			}
+		})
+	}
+}
+
+func TestResidentSayKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {
+	here := initRepository(t, "here")
+	elsewhere := initRepository(t, "elsewhere")
+	serveRepository(t, here)
+	serveRepository(t, elsewhere)
+	server := newServer("human", here.Repo)
+
+	for _, testCase := range []struct {
+		name      string
+		workspace *app.Workspace
+		arguments map[string]any
+	}{
+		{name: "default repository", workspace: here, arguments: map[string]any{}},
+		{name: "named repository", workspace: elsewhere, arguments: map[string]any{"repo": elsewhere.Repo}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			arguments := clone(testCase.arguments)
+			arguments["about"] = genesisOf(t, testCase.workspace)
+			arguments["text"] = "spoken in " + testCase.name
+			if _, err := server.call(context.Background(), toolCall{Name: "say", Arguments: arguments}); err != nil {
+				t.Fatal(err)
+			}
+			value, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: testCase.arguments})
+			if err != nil {
+				t.Fatal(err)
+			}
+			conversations, ok := value.(map[string]any)["conversations"].([]any)
+			if !ok || len(conversations) != 1 {
+				t.Fatalf("say did not reach the selected repository: %#v", value)
+			}
+		})
+	}
+}
+
+func TestFallbackWaitPreservesDefaultAndNamedRepositorySelection(t *testing.T) {
+	here := initRepository(t, "here")
+	elsewhere := initRepository(t, "elsewhere")
+	server := newServer("human", here.Repo)
+
+	for _, testCase := range []struct {
+		name      string
+		workspace *app.Workspace
+		arguments map[string]any
+	}{
+		{name: "default repository", workspace: here, arguments: map[string]any{}},
+		{name: "named repository", workspace: elsewhere, arguments: map[string]any{"repo": elsewhere.Repo}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			value, err := server.call(context.Background(), toolCall{Name: "status", Arguments: testCase.arguments})
+			if err != nil {
+				t.Fatal(err)
+			}
+			status := value.(actorStatus)
+			arguments := clone(testCase.arguments)
+			arguments["cursor"] = status.Cursor
+			arguments["timeout_ms"] = 1
+			value, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: arguments})
+			if err != nil {
+				t.Fatal(err)
+			}
+			delta := value.(waitDelta)
+			if len(delta.Cursor.Frontier) != 1 || delta.Cursor.Frontier[0].Genesis != testCase.workspace.Config.Genesis {
+				t.Fatalf("fallback wait answered from the wrong repository: %+v", delta.Cursor.Frontier)
+			}
+			if delta.Cursor.Live.Generation != "degraded" {
+				t.Fatalf("fallback wait invented a resident: %+v", delta.Cursor.Live)
+			}
+		})
+	}
 }
 
 // One installation serves whatever repository a call names. The default is the
