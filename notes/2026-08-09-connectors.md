@@ -25,7 +25,7 @@ configuration schema — those follow once the shape is agreed.
 Connectors live outside the core. The design note already places
 them there: "approval/workflow vocabularies, artifact conventions,
 promotion rituals, executors and connectors: all here or higher"
-(`notes/2026-08-05-gitseq-design.md:418`@2aa63e78). Nothing in this
+(`notes/2026-08-05-gitseq-design.md:418`@0a66e85). Nothing in this
 note asks the kernel or the workroom fold to learn what GitHub is.
 
 ## The refusal: no symmetric sync
@@ -82,7 +82,7 @@ sets — and ingests only what it does not own.
 ## Identity: one connector, principals as data
 
 A connector is a single rostered actor of kind `service`
-(`spike/internal/app/app.go:427`@0a66e85), holding one key. Foreign
+(`spike/internal/app/app.go:428`@0a66e85), holding one key. Foreign
 principals are carried as data in the act body, never as separate
 identities.
 
@@ -160,7 +160,7 @@ common way to run a process and the design must support it.
 
 It is better founded than it first appears, because of who holds the
 requester position. A report is ratified by the requester
-(`SKILL.md:51`@61153471). If the connector filed the request from
+(`SKILL.md:53`@0a66e85). If the connector filed the request from
 the pull request, the connector *is* the requester, and it is
 already the authorized ratifier for reports against that request. No
 new authority is needed and nothing is forged; the loop closes with
@@ -204,7 +204,7 @@ treatment.
 **Chatter** — comments, review remarks, "looks good", "please
 rebase" — is high volume, frequently edited or deleted, and mostly
 worth forgetting. It is ephemeral, exactly as
-`SKILL.md:126`@61153471 already says. When something in it
+`SKILL.md:126`@0a66e85 already says. When something in it
 crystallizes, a room actor promotes it with the relevant quotes as
 evidence.
 
@@ -263,7 +263,7 @@ Pluggable here does not mean a plugin interface in the core process.
 It means a separate process, holding its own key, talking to the
 same public surface every other actor uses. The seams already exist:
 
-- `POST /v0/submit` (`spike/internal/service/server.go:157`@0a66e85)
+- `POST /v0/submit` (`spike/internal/service/server.go:172`@0a66e85)
   accepts a fully client-signed submission. The core never holds the
   connector's key. This is the boundary, and it needs no new code.
 - `POST /v0/wait` provides the composite cursor the render loop
@@ -340,7 +340,7 @@ One gap blocks the ephemeral half of the design. Durable acts can be
 signed by the client and submitted over `/v0/submit`, but ephemeral
 frames cannot: `handleSay` resolves the session's actor and reads
 its private key from server-side custody
-(`spike/internal/service/server.go:229`@0a66e85). A connector that
+(`spike/internal/service/server.go:234`@0a66e85). A connector that
 wants to publish foreign chatter as frames must therefore hand its
 key to `gs`, which destroys the custody property that makes
 `/v0/submit` the right boundary.
@@ -365,7 +365,8 @@ the kernel and the collaboration profile, and on the forge policy in
 `SKILL.md`, which it refines rather than replaces. Code claims cite
 `path@commit` directly rather than resting on directory-level
 artifacts, several of which currently have more than one live head
-for the same path.
+for the same path. Every citation reads at `0a66e85`, the base of
+the branch that carries this note.
 
 ## Open questions
 
