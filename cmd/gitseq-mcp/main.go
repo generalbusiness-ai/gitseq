@@ -11,7 +11,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,8 +21,10 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
+	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -41,6 +45,12 @@ var legacyVersions = map[string]bool{
 }
 
 const instructions = "Use status and wait to follow the workroom; say ephemerally and promote deliberate acts with state."
+
+const (
+	orientationTimeout        = 2 * time.Second
+	orientationResponseLimit  = 64 << 10
+	residentOrientationSource = "resident_statusview_current"
+)
 
 // The era is a property of the connection rather than of a single request:
 // a legacy client announces itself once with `initialize` and thereafter
@@ -113,13 +123,20 @@ func (r *room) endpoint() (string, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.baseURL == "" {
-		url, ok := r.workspace.ResidentURL()
+		published, ok := r.workspace.ResidentURL()
 		if !ok {
 			return "", false
 		}
-		r.baseURL = url
+		r.baseURL = published
 	}
-	return r.baseURL, true
+	validated, err := validateResidentURL(r.baseURL)
+	if err != nil {
+		r.baseURL = ""
+		r.announced = false
+		return "", false
+	}
+	r.baseURL = validated
+	return validated, true
 }
 
 // lost forgets an address that did not answer, and the presence announced
@@ -195,7 +212,7 @@ func newServer(actor, repo string) *mcpServer {
 		actor:       actor,
 		repo:        absolute(repo),
 		session:     "mcp:" + randomID(),
-		client:      &http.Client{},
+		client:      newResidentClient(),
 		byPath:      map[string]*room{},
 		byCommonDir: map[string]*room{},
 	}
@@ -511,18 +528,22 @@ func (s *mcpServer) attach(ctx context.Context, repo string) (*room, error) {
 }
 
 func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
-	current, err := s.attend(ctx, stringValue(call.Arguments["repo"]))
+	var current *room
+	var err error
+	// Whoami's resident read has an explicit two-second bound. Attaching the
+	// selected repository is local; announcing presence is an independent live
+	// side effect and must not move outside that bound by stalling first.
+	if call.Name == "whoami" {
+		current, err = s.attach(ctx, stringValue(call.Arguments["repo"]))
+	} else {
+		current, err = s.attend(ctx, stringValue(call.Arguments["repo"]))
+	}
 	if err != nil {
 		return nil, err
 	}
 	switch call.Name {
 	case "whoami":
-		actor := current.workspace.Config.Actors[s.actor]
-		snapshot, err := current.workspace.Snapshot(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"actor": actor, "repo": current.workspace.CommonDir, "genesis": current.workspace.Config.Genesis, "durable": snapshot.Projection.Actors[actor.Fingerprint], "session": s.session, "protocol": protocolVersion}, nil
+		return s.whoami(ctx, current)
 	case "presence":
 		return s.get(ctx, current, "/v0/presence")
 	case "status":
@@ -585,6 +606,79 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 	default:
 		return nil, fmt.Errorf("unknown tool %q", call.Name)
 	}
+}
+
+func (s *mcpServer) whoami(ctx context.Context, current *room) (any, error) {
+	actor := current.workspace.Config.Actors[s.actor]
+	residentContext, cancel := context.WithTimeout(ctx, orientationTimeout)
+	defer cancel()
+	for attempt := 0; attempt < 2; attempt++ {
+		orientation, err := s.currentResidentOrientation(residentContext, current, actor.Fingerprint)
+		if err == nil {
+			return map[string]any{
+				"actor": publicActor(actor), "durable": orientation.You, "session": s.session, "protocol": protocolVersion,
+				"repo": current.workspace.CommonDir, "genesis": current.workspace.Config.Genesis,
+				"frontier": orientation.Frontier, "source": residentOrientationSource, "degraded": false,
+			}, nil
+		}
+		if residentContext.Err() != nil {
+			break
+		}
+	}
+
+	local, err := current.workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		return nil, err
+	}
+	orientation, ok := statusview.BuildOrientation(local.Snapshot, actor.Fingerprint, actor.Name)
+	if !ok {
+		return nil, errors.New("configured actor is not in the effective durable roster")
+	}
+	return map[string]any{
+		"actor": publicActor(actor), "durable": orientation.You, "session": s.session, "protocol": protocolVersion,
+		"repo": current.workspace.CommonDir, "genesis": current.workspace.Config.Genesis,
+		"frontier": orientation.Frontier, "source": string(local.Source), "degraded": true,
+	}, nil
+}
+
+func (s *mcpServer) currentResidentOrientation(ctx context.Context, current *room, fingerprint string) (service.Orientation, error) {
+	before, err := current.workspace.Store.Head(ctx, kernel.Ref(current.workspace.Config.Genesis))
+	if err != nil {
+		return service.Orientation{}, err
+	}
+	var orientation service.Orientation
+	if err := s.getBoundedJSON(ctx, current, "/v0/orientation/"+fingerprint, orientationResponseLimit, &orientation); err != nil {
+		return service.Orientation{}, err
+	}
+	after, err := current.workspace.Store.Head(ctx, kernel.Ref(current.workspace.Config.Genesis))
+	if err != nil {
+		return service.Orientation{}, err
+	}
+	if before != after {
+		return service.Orientation{}, errors.New("workroom head moved while resident orientation was read")
+	}
+	if orientation.ProjectionVersion != service.OrientationProjectionVersion ||
+		orientation.Frontier.Genesis != current.workspace.Config.Genesis || orientation.Frontier.Head != after ||
+		orientation.Frontier.Depth < 0 || orientation.You.Fingerprint != fingerprint ||
+		orientation.You.Name == "" || orientation.You.Kind == "" || orientation.You.MembershipEvent == "" ||
+		len(orientation.You.Roles) > statusview.ListCap || orientation.You.RolesSkipped < 0 ||
+		!containsString(orientation.You.Roles, "participant") {
+		return service.Orientation{}, errors.New("resident orientation does not match local durable evidence")
+	}
+	return orientation, nil
+}
+
+func publicActor(actor app.Actor) map[string]string {
+	return map[string]string{"name": actor.Name, "fingerprint": actor.Fingerprint}
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any, error) {
@@ -689,6 +783,42 @@ func (s *mcpServer) post(ctx context.Context, current *room, path string, value 
 	return s.do(current, request)
 }
 
+func (s *mcpServer) getBoundedJSON(ctx context.Context, current *room, path string, limit int64, target any) error {
+	base, ok := current.endpoint()
+	if !ok {
+		return transportError{errNoResident}
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+	if err != nil {
+		return err
+	}
+	response, err := s.client.Do(request)
+	if err != nil {
+		current.lost()
+		return transportError{err}
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("resident returned %s", response.Status)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(data)) > limit {
+		return fmt.Errorf("resident response exceeds %d bytes", limit)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return errors.New("resident returned trailing JSON")
+	}
+	return nil
+}
+
 func (s *mcpServer) do(current *room, request *http.Request) (any, error) {
 	response, err := s.client.Do(request)
 	if err != nil {
@@ -722,6 +852,28 @@ type httpStatusError struct {
 }
 
 func (e httpStatusError) Error() string { return e.message }
+
+func validateResidentURL(raw string) (string, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "http" || parsed.Host == "" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return "", errors.New("resident service must be an http loopback URL without credentials")
+	}
+	host := parsed.Hostname()
+	if !strings.EqualFold(host, "localhost") {
+		ip := net.ParseIP(host)
+		if ip == nil || !ip.IsLoopback() {
+			return "", errors.New("resident service must name a loopback address")
+		}
+	}
+	return strings.TrimRight(raw, "/"), nil
+}
+
+func newResidentClient() *http.Client {
+	return &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return errors.New("resident redirects are not allowed")
+	}}
+}
 
 func (s *mcpServer) localStatus(ctx context.Context, current *room) (service.Status, error) {
 	durable, err := current.workspace.Snapshot(ctx)
