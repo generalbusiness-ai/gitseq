@@ -254,23 +254,36 @@ absent without being mistaken for durable evidence.
 ### Exact-head workflow guards
 
 `review` is the enforced verdict boundary. The named artifact must be effective
-and live, the named promise must be effective, live, and owned by the reviewer,
-and its originating request is copied from the durable graph rather than typed
-again. The checkout must belong to the same repository, be clean (including no
-untracked files), and have the artifact's full commit ID checked out. The
-resulting report names that immutable head and rests on the promise, request,
-and artifact. Running tests, a built CLI, or Git-plumbing experiments remains
-review evidence: those probes help a reviewer reach a verdict, while `review`
-guards the state at which the verdict is signed.
+and must not be retired; the named promise must be effective, not retired, and
+owned by the reviewer; and its originating request is copied from the durable
+graph rather than typed again. The checkout must belong to the same repository,
+be clean (including no untracked files), and have the artifact's full commit ID
+checked out. The resulting report names that immutable head and rests on the
+promise, request, and artifact. Running tests, a built CLI, or Git-plumbing
+experiments remains review evidence: those probes help a reviewer reach a
+verdict, while `review` guards the state at which the verdict is signed.
+
+Staleness does not stop a review. Being retired and being stale are two
+different facts, and the projection keeps them apart: retired means this act
+was superseded, stale means something underneath it was. A stale artifact still
+names the commit it always named, and whether the movement matters to that
+commit is the reviewer's question. So `review` goes ahead and records what had
+moved: the verdict body carries `stale=true` and a `staleness` field naming
+which of the artifact, promise and request are stale, whether the movement was
+in the world they describe, and the retired events that caused it. The signed
+report then says plainly that the world had moved and the reviewer signed
+anyway.
 
 After the review requester ratifies an approved report, `merge` enforces the
-other boundary. It refuses an ineffective, unratified, retired, or stale
-approval; a non-approval verdict; a candidate other than the report and
-artifact's exact head; a dirty target checkout; and a checkout from another
-repository. It passes the approved full object ID to `git merge --no-ff`, never
-a branch name, so advancing the reviewed branch cannot retarget the merge.
-Record the resulting merge artifact separately as required by the workroom
-discipline.
+other boundary, and it keeps the strict reading that `review` gives up. It
+refuses an ineffective, unratified, retired, or stale approval or artifact; a
+non-approval verdict; a candidate other than the report and artifact's exact
+head; a dirty target checkout; and a checkout from another repository. The
+latitude belongs where a reviewer is present to exercise it. A refused merge
+leaves a signed approval standing and asks only that the record be brought up
+to date. It passes the approved full object ID to `git merge --no-ff`, never a
+branch name, so advancing the reviewed branch cannot retarget the merge. Record
+the resulting merge artifact separately as required by the workroom discipline.
 
 ### Serving and attaching
 

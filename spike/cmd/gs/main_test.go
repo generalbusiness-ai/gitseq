@@ -275,6 +275,71 @@ func TestReviewGuardAcceptsExactCleanArtifactHead(t *testing.T) {
 	}
 }
 
+// A commit does not stop being the commit it is because something upstream was
+// superseded, and whether that movement matters to this head is the reviewer's
+// question to answer. The gate must let it be asked.
+func TestReviewGuardReviewsAMerelyStaleArtifactAndSaysSoInTheVerdict(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	fixture.moveTheWorld(t)
+	approval := fixture.review(t)
+	statement := statementByEvent(t, fixture.snapshot(t).Projection, approval)
+	if statement.Body["head"] != fixture.candidate || statement.Body["verdict"] != "approved" {
+		t.Fatalf("verdict over a moved world = %#v", statement.Body)
+	}
+	if statement.Body["stale"] != "true" {
+		t.Fatalf("verdict did not record that the world had moved: %#v", statement.Body)
+	}
+	note := statement.Body["staleness"]
+	for _, want := range []string{"artifact", "promise", "request", "describes a superseded world", fixture.ground} {
+		if !strings.Contains(note, want) {
+			t.Fatalf("staleness note %q does not name %q", note, want)
+		}
+	}
+}
+
+// Retirement is the other fact, and it still refuses: a withdrawn pointer
+// names nothing left to review.
+func TestReviewGuardRefusesARetiredArtifact(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	if _, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
+		Verb: app.VerbSupersede, Target: fixture.artifact, Text: "that head is withdrawn",
+		IdempotencyKey: "retire-artifact",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if artifact := artifactByEvent(t, fixture.snapshot(t).Projection, fixture.artifact); !artifact.Retired {
+		t.Fatal("the supersession was ineffective, so this case is untested")
+	}
+	before := fixture.snapshot(t).Depth
+	err := fixture.reviewError()
+	if err == nil || !strings.Contains(err.Error(), "artifact is retired") {
+		t.Fatalf("retired artifact review error = %v", err)
+	}
+	if after := fixture.snapshot(t).Depth; after != before {
+		t.Fatalf("retired artifact signed a verdict: depth %d -> %d", before, after)
+	}
+}
+
+// A reviewer who has withdrawn the promise is no longer undertaking to review,
+// whatever the artifact says.
+func TestReviewGuardRefusesARetiredPromise(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	if _, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
+		Verb: app.VerbSupersede, Target: fixture.promise, Text: "I cannot review this after all",
+		IdempotencyKey: "retire-promise",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before := fixture.snapshot(t).Depth
+	err := fixture.reviewError()
+	if err == nil || !strings.Contains(err.Error(), "statement is retired") {
+		t.Fatalf("retired promise review error = %v", err)
+	}
+	if after := fixture.snapshot(t).Depth; after != before {
+		t.Fatalf("retired promise signed a verdict: depth %d -> %d", before, after)
+	}
+}
+
 func TestReviewGuardRefusesDirtyCheckoutBeforeVerdict(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	if err := os.WriteFile(filepath.Join(fixture.feature, "feature.txt"), []byte("dirty\n"), 0o644); err != nil {
@@ -364,13 +429,13 @@ func TestReviewGuardRefusesCheckoutFromAnotherRepository(t *testing.T) {
 func TestReviewGuardRefusesBasisChangeBeforeSigning(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	calls := 0
-	validate := func(ctx context.Context, workspace *app.Workspace, actorName, checkout, artifact, promise string) (string, string, error) {
-		head, request, err := validateReview(ctx, workspace, actorName, checkout, artifact, promise)
+	validate := func(ctx context.Context, workspace *app.Workspace, actorName, checkout, artifact, promise string) (reviewBasis, error) {
+		basis, err := validateReview(ctx, workspace, actorName, checkout, artifact, promise)
 		calls++
 		if calls == 2 && err == nil {
-			return head, request + "-changed", nil
+			basis.Request += "-changed"
 		}
-		return head, request, err
+		return basis, err
 	}
 	before := fixture.snapshot(t).Depth
 	err := reviewCommandWithValidator(fixture.ctx, []string{
@@ -436,11 +501,32 @@ func TestMergeGuardRefusesStaleApproval(t *testing.T) {
 		"--repo", fixture.repo, "--checkout", fixture.repo,
 		"--candidate", fixture.candidate, "--approval", approval,
 	})
-	if err == nil || !strings.Contains(err.Error(), "stale or retired") {
+	if err == nil || !strings.Contains(err.Error(), "statement is stale") {
 		t.Fatalf("stale approval error = %v", err)
 	}
 	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != base {
 		t.Fatalf("stale approval merge moved HEAD to %s, want %s", got, base)
+	}
+}
+
+// Merge keeps the strict reading that review has given up. The looseness
+// belongs where a reviewer is present to exercise it; this is the step that
+// moves main with nobody weighing anything.
+func TestMergeGuardStillRefusesAMovedWorldAfterAnApprovedReview(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	fixture.moveTheWorld(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+	})
+	if err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("merge over a moved world error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != base {
+		t.Fatalf("refused merge moved HEAD to %s, want %s", got, base)
 	}
 }
 
@@ -508,6 +594,7 @@ type workflowFixture struct {
 	workspace *app.Workspace
 	candidate string
 	artifact  string
+	ground    string
 	request   string
 	promise   string
 }
@@ -540,10 +627,21 @@ func newWorkflowFixture(t *testing.T) workflowFixture {
 	testGit(t, feature, "add", "feature.txt")
 	testGit(t, feature, "commit", "-m", "feature")
 	candidate := testGit(t, feature, "rev-parse", "HEAD")
+	// The feature stands on the base of the repository, exactly as ordinary
+	// work stands on whatever main was when it started. Retiring this is how a
+	// test moves the world without touching the feature commit.
+	groundSubmission, err := workspace.Act(ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "repository base",
+		Body:    map[string]string{"path": ".", "commit": testGit(t, repo, "rev-parse", "HEAD")},
+		RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "ground",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	artifactSubmission, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "feature artifact",
 		Body:    map[string]string{"path": feature, "commit": candidate},
-		RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "artifact",
+		RestsOn: []string{groundSubmission.Record.ID}, IdempotencyKey: "artifact",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -565,8 +663,29 @@ func newWorkflowFixture(t *testing.T) workflowFixture {
 	}
 	return workflowFixture{
 		t: t, ctx: ctx, repo: repo, feature: feature, workspace: workspace,
-		candidate: candidate, artifact: artifactSubmission.Record.ID,
+		candidate: candidate, artifact: artifactSubmission.Record.ID, ground: groundSubmission.Record.ID,
 		request: requestSubmission.Record.ID, promise: promiseSubmission.Record.ID,
+	}
+}
+
+// moveTheWorld retires the base everything under review rests on, leaving the
+// reviewed commit exactly what it was. Nothing here is retired except the
+// base: the artifact, the request and the promise become stale.
+func (f workflowFixture) moveTheWorld(t *testing.T) {
+	t.Helper()
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbSupersede, Target: f.ground, Text: "the base moved on",
+		IdempotencyKey: "retire-ground",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := f.snapshot(t)
+	artifact := artifactByEvent(t, snapshot.Projection, f.artifact)
+	if artifact.Retired || !artifact.Stale {
+		t.Fatalf("feature artifact after the base moved: retired=%v stale=%v, want a stale live artifact", artifact.Retired, artifact.Stale)
+	}
+	if promise := statementByEvent(t, snapshot.Projection, f.promise); promise.Retired || !promise.Stale {
+		t.Fatalf("review promise after the base moved: retired=%v stale=%v, want stale and live", promise.Retired, promise.Stale)
 	}
 }
 
@@ -615,6 +734,17 @@ func (f workflowFixture) ratify(t *testing.T, approval string) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func artifactByEvent(t *testing.T, projection workroom.Projection, event string) workroom.Artifact {
+	t.Helper()
+	for _, artifact := range projection.Artifacts {
+		if artifact.Event == event {
+			return artifact
+		}
+	}
+	t.Fatalf("artifact %s not found", event)
+	return workroom.Artifact{}
 }
 
 func statementByEvent(t *testing.T, projection workroom.Projection, event string) workroom.Statement {

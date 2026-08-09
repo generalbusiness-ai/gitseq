@@ -163,7 +163,7 @@ function OtherAttention({ items, tickets, nameOf, onSelect, onOpenThread }: {
     <details className="mx-auto mb-4 max-w-5xl rounded-lg border border-danger/35 bg-danger/5">
       <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-danger focus-visible:outline focus-visible:outline-accent">
         Other attention ({items.length})
-        <span className="ml-2 font-normal text-faint">stale artifacts and unlinked promises</span>
+        <span className="ml-2 font-normal text-faint">retired or stale artifacts and unlinked promises</span>
       </summary>
       <div className="space-y-0.5 border-t border-danger/20 p-2">
         {items.map((item) => (
@@ -173,7 +173,7 @@ function OtherAttention({ items, tickets, nameOf, onSelect, onOpenThread }: {
             onClick={() => item.kind === "artifact" && item.commit ? onSelect({ kind: "commit", id: item.commit }) : onOpenThread(item.event)}
             className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent"
           >
-            <span className="w-14 shrink-0 font-semibold text-danger">{item.kind === "artifact" ? "stale" : "unlinked"}</span>
+            <span className="w-14 shrink-0 font-semibold text-danger">{item.label}</span>
             <span className="min-w-0 flex-1 text-foreground/85">{item.title}</span>
             {item.actor && <span className="shrink-0 text-faint">{nameOf(item.actor)}</span>}
             <EventTime timestamp={item.timestamp} />

@@ -134,8 +134,16 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		}
 	}
 	for _, artifact := range projection.Artifacts {
+		// Retired and stale are separate facts on the artifact now, and both
+		// mean the same thing to a reader looking for what is current: not
+		// this one. They are kept apart in the state word because a withdrawn
+		// pointer and a moved world call for different work.
 		state := "current"
-		if artifact.Stale {
+		switch {
+		case artifact.Retired:
+			state = "retired"
+			summary.Totals.StaleArtifacts++
+		case artifact.Stale:
 			state = "stale"
 			summary.Totals.StaleArtifacts++
 		}
@@ -150,10 +158,10 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 			notes = append(notes, "succession not recorded")
 		}
 		view := Artifact{Event: artifact.Event, Path: Text(artifact.Path), Commit: artifact.Commit, State: state, Notes: strings.Join(notes, ", ")}
-		if artifact.Stale {
-			summary.StaleArtifacts = append(summary.StaleArtifacts, view)
-		} else {
+		if state == "current" {
 			summary.CurrentArtifacts = append(summary.CurrentArtifacts, view)
+		} else {
+			summary.StaleArtifacts = append(summary.StaleArtifacts, view)
 		}
 	}
 	for _, decision := range projection.Decisions {

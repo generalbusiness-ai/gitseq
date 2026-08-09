@@ -43,6 +43,10 @@ export interface WorkProjection {
 export interface WorkAttentionItem {
   event: string;
   kind: "artifact" | "unlinked-promise";
+  // The one word that says why this row is here. An artifact earns it two
+  // ways now — withdrawn, or standing over a world that moved — so the row
+  // cannot derive it from the kind alone.
+  label: string;
   title: string;
   actor?: string;
   timestamp?: number;
@@ -227,12 +231,16 @@ export function danglingPromises(projection: Projection): Statement[] {
 
 export function otherWorkAttention(projection: Projection): WorkAttentionItem[] {
   const statements = new Map(projection.statements.map((statement) => [statement.event, statement]));
-  const artifacts = projection.artifacts.filter((artifact) => artifact.stale).map((artifact): WorkAttentionItem => {
+  // Retired and stale are separate facts on the projection now; both mean this
+  // artifact is not the current one, which is what this list is about.
+  const artifacts = projection.artifacts.filter((artifact) => artifact.retired || artifact.stale).map((artifact): WorkAttentionItem => {
     const statement = statements.get(artifact.event);
-    const title = `stale artifact: ${artifact.path === "." ? "this repository" : artifact.path} @ ${artifact.commit.slice(0, 8)}`;
+    const what = artifact.retired ? "retired" : "stale";
+    const title = `${what} artifact: ${artifact.path === "." ? "this repository" : artifact.path} @ ${artifact.commit.slice(0, 8)}`;
     return {
       event: artifact.event,
       kind: "artifact",
+      label: what,
       title,
       actor: statement?.actor,
       timestamp: statement?.timestamp,
@@ -243,6 +251,7 @@ export function otherWorkAttention(projection: Projection): WorkAttentionItem[] 
   const unlinked = danglingPromises(projection).map((statement): WorkAttentionItem => ({
     event: statement.event,
     kind: "unlinked-promise",
+    label: "unlinked",
     title: `unlinked promise: ${statement.text}`,
     actor: statement.actor,
     timestamp: statement.timestamp,

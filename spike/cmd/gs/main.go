@@ -221,7 +221,16 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-type reviewValidator func(context.Context, *app.Workspace, string, string, string, string) (string, string, error)
+// reviewBasis is everything a signed verdict has to name: the exact immutable
+// head reviewed, the request the review answers, and whatever had moved
+// underneath while the reviewer signed anyway.
+type reviewBasis struct {
+	Head      string
+	Request   string
+	Staleness string
+}
+
+type reviewValidator func(context.Context, *app.Workspace, string, string, string, string) (reviewBasis, error)
 
 func reviewCommand(ctx context.Context, arguments []string) error {
 	return reviewCommandWithValidator(ctx, arguments, validateReview)
@@ -253,21 +262,29 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 	if err != nil {
 		return err
 	}
-	reviewedHead, request, err := validate(ctx, workspace, *as, *checkout, *artifact, *promise)
+	basis, err := validate(ctx, workspace, *as, *checkout, *artifact, *promise)
 	if err != nil {
 		return err
 	}
 	// Re-read immediately before signing. The verdict names the immutable
 	// commit, so a later checkout movement cannot retarget it.
-	if head, repeatedRequest, err := validate(ctx, workspace, *as, *checkout, *artifact, *promise); err != nil {
+	if repeated, err := validate(ctx, workspace, *as, *checkout, *artifact, *promise); err != nil {
 		return err
-	} else if head != reviewedHead || repeatedRequest != request {
+	} else if repeated != basis {
 		return errors.New("review basis changed while validating")
+	}
+	body := map[string]string{"verdict": *verdict, "head": basis.Head, "artifact": *artifact}
+	// A review over a moved world says so in its own words. Without this the
+	// verdict would read as though nothing had moved, which is the lie the
+	// refusal was there to prevent and a worse one than the refusal.
+	if basis.Staleness != "" {
+		body["stale"] = "true"
+		body["staleness"] = basis.Staleness
 	}
 	record, err := submitAct(ctx, workspace, *serverURL, *as, app.Act{
 		Verb: app.VerbState, Kind: workroom.KindReport, Text: *message,
-		Body:    map[string]string{"verdict": *verdict, "head": reviewedHead, "artifact": *artifact},
-		RestsOn: []string{*promise, request, *artifact}, IdempotencyKey: *key,
+		Body:    body,
+		RestsOn: []string{*promise, basis.Request, *artifact}, IdempotencyKey: *key,
 	})
 	if err != nil {
 		return err
@@ -313,37 +330,140 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-func validateReview(ctx context.Context, workspace *app.Workspace, actorName, checkout, artifactEvent, promiseEvent string) (string, string, error) {
+// validateReview admits a review of a world that has moved. Retirement and
+// ineffectiveness still refuse: a withdrawn pointer names nothing to review,
+// and neither does an act that never took force. Staleness does not refuse,
+// because deciding whether the movement matters to this exact commit is the
+// reviewer's work, and refusing it leaves the question permanently unanswered
+// by the only party positioned to answer it.
+func validateReview(ctx context.Context, workspace *app.Workspace, actorName, checkout, artifactEvent, promiseEvent string) (reviewBasis, error) {
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
-		return "", "", err
+		return reviewBasis{}, err
 	}
 	projection := snapshot.Projection
-	artifact, err := liveArtifact(projection, artifactEvent)
+	artifact, err := standingArtifact(projection, artifactEvent)
 	if err != nil {
-		return "", "", err
+		return reviewBasis{}, err
 	}
-	promise, err := liveStatement(projection, promiseEvent, workroom.KindPromise)
+	promise, err := standingStatement(projection, promiseEvent, workroom.KindPromise)
 	if err != nil {
-		return "", "", err
+		return reviewBasis{}, err
 	}
 	actor, _, err := workspace.Actor(actorName)
 	if err != nil {
-		return "", "", err
+		return reviewBasis{}, err
 	}
 	if promise.Actor != actor.Fingerprint {
-		return "", "", errors.New("review actor did not make the named promise")
+		return reviewBasis{}, errors.New("review actor did not make the named promise")
 	}
-	request, err := uniqueLiveBasis(projection, promiseEvent, workroom.KindRequest)
+	request, err := uniqueStandingBasis(projection, promiseEvent, workroom.KindRequest)
 	if err != nil {
-		return "", "", fmt.Errorf("review promise: %w", err)
+		return reviewBasis{}, fmt.Errorf("review promise: %w", err)
 	}
 	if err := validateCheckout(ctx, workspace.Repo, checkout, artifact.Commit, true); err != nil {
-		return "", "", err
+		return reviewBasis{}, err
 	}
-	return artifact.Commit, request.Event, nil
+	return reviewBasis{Head: artifact.Commit, Request: request.Event, Staleness: reviewStaleness(projection, []reviewPart{
+		{name: "artifact", event: artifact.Event, stale: artifact.Stale, world: artifact.DescribesSupersededWorld},
+		{name: "promise", event: promise.Event, stale: promise.Stale, world: promise.DescribesSupersededWorld},
+		{name: "request", event: request.Event, stale: request.Stale, world: request.DescribesSupersededWorld},
+	})}, nil
 }
 
+// reviewPart is one thing a review stands on, with the two staleness facts the
+// projection keeps about it.
+type reviewPart struct {
+	name  string
+	event string
+	stale bool
+	world bool
+}
+
+// stalenessCauseCap bounds the causes a verdict body names. A verdict is a
+// message, not a projection: past a handful of retired bases a reader goes to
+// gs provenance, and an unbounded body would only get in the way.
+const stalenessCauseCap = 4
+
+// reviewStaleness says in one line what had moved under a review. It names the
+// stale parts, then whether the movement was in the world they describe rather
+// than the argument they stand on, then the retired bases themselves — the
+// last being what a reader actually has to go and look at.
+func reviewStaleness(projection workroom.Projection, parts []reviewPart) string {
+	var moved, roots []string
+	world := false
+	for _, part := range parts {
+		if !part.stale {
+			continue
+		}
+		moved = append(moved, part.name)
+		roots = append(roots, part.event)
+		world = world || part.world
+	}
+	if len(moved) == 0 {
+		return ""
+	}
+	note := strings.Join(moved, ", ") + " stale"
+	if world {
+		note += "; describes a superseded world"
+	}
+	causes := retiredBases(projection, roots)
+	if len(causes) == 0 {
+		return note
+	}
+	suffix := ""
+	if len(causes) > stalenessCauseCap {
+		suffix = fmt.Sprintf(" and %d more", len(causes)-stalenessCauseCap)
+		causes = causes[:stalenessCauseCap]
+	}
+	return note + "; retired bases: " + strings.Join(causes, ", ") + suffix
+}
+
+// retiredBases walks provenance from the given events down to the retired
+// statements underneath them: the acts that actually moved. The walk stops at
+// each retired basis, because that is the nearest act a reader can act on and
+// everything under it is stale only through it. Breadth-first over a visited
+// set, so a shared ancestor is named once and a diamond terminates.
+func retiredBases(projection workroom.Projection, events []string) []string {
+	retired := make(map[string]bool)
+	for _, statement := range projection.Statements {
+		if statement.Retired {
+			retired[statement.Event] = true
+		}
+	}
+	seen := make(map[string]bool, len(events))
+	queue := append([]string(nil), events...)
+	for _, event := range events {
+		seen[event] = true
+	}
+	var found []string
+	for len(queue) > 0 {
+		event := queue[0]
+		queue = queue[1:]
+		for _, basis := range projection.Provenance[event] {
+			if seen[basis] {
+				continue
+			}
+			seen[basis] = true
+			if retired[basis] {
+				found = append(found, basis)
+				continue
+			}
+			queue = append(queue, basis)
+		}
+	}
+	slices.Sort(found)
+	return found
+}
+
+// validateMerge keeps the strict reading that review has given up. Review is a
+// judgement and merge is the machine acting on one: put the latitude where a
+// reviewer is present to exercise it, and keep the refusal where nobody is.
+// A refused review left a question no one could answer; a refused merge leaves
+// a signed approval standing and asks only that the record be brought up to
+// date, which is repair rather than deadlock. It also leaves the meaning of
+// staleness untouched at the one gate that moves main, where a proposal on
+// exactly that question is still in flight.
 func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent string) error {
 	if err := validateCheckout(ctx, workspace.Repo, checkout, candidate, false); err != nil {
 		return err
@@ -449,14 +569,19 @@ func canonicalPath(path string) string {
 	return filepath.Clean(absolute)
 }
 
-func liveArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
+// standingArtifact returns an artifact that may still be acted on. Retirement
+// withdraws the pointer and is a refusal; being judged ineffective means the
+// pointer was never conferred. Staleness is neither: it says a basis moved
+// under the artifact, while the commit it names is immutable and still names
+// exactly what it named. Callers that want the strict reading say so.
+func standingArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
 	if !decisionEffective(projection, event) {
 		return workroom.Artifact{}, errors.New("artifact is not effective")
 	}
 	for _, artifact := range projection.Artifacts {
 		if artifact.Event == event {
-			if artifact.Stale {
-				return workroom.Artifact{}, errors.New("artifact is stale or retired")
+			if artifact.Retired {
+				return workroom.Artifact{}, errors.New("artifact is retired")
 			}
 			return artifact, nil
 		}
@@ -464,7 +589,21 @@ func liveArtifact(projection workroom.Projection, event string) (workroom.Artifa
 	return workroom.Artifact{}, errors.New("artifact event is unknown")
 }
 
-func liveStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
+// liveArtifact is the strict reading: current as well as standing.
+func liveArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
+	artifact, err := standingArtifact(projection, event)
+	if err != nil {
+		return workroom.Artifact{}, err
+	}
+	if artifact.Stale {
+		return workroom.Artifact{}, errors.New("artifact is stale")
+	}
+	return artifact, nil
+}
+
+// standingStatement is the same judgement for a statement: refuse what was
+// retired or judged ineffective, and report staleness rather than refuse it.
+func standingStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
 	if !decisionEffective(projection, event) {
 		return workroom.Statement{}, errors.New("statement is not effective")
 	}
@@ -473,8 +612,8 @@ func liveStatement(projection workroom.Projection, event string, kind workroom.K
 			if statement.Kind != kind {
 				return workroom.Statement{}, fmt.Errorf("statement is %s, want %s", statement.Kind, kind)
 			}
-			if statement.Retired || statement.Stale {
-				return workroom.Statement{}, errors.New("statement is stale or retired")
+			if statement.Retired {
+				return workroom.Statement{}, errors.New("statement is retired")
 			}
 			return statement, nil
 		}
@@ -482,16 +621,28 @@ func liveStatement(projection workroom.Projection, event string, kind workroom.K
 	return workroom.Statement{}, errors.New("statement event is unknown")
 }
 
-func uniqueLiveBasis(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
+// liveStatement is the strict reading: current as well as standing.
+func liveStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
+	statement, err := standingStatement(projection, event, kind)
+	if err != nil {
+		return workroom.Statement{}, err
+	}
+	if statement.Stale {
+		return workroom.Statement{}, errors.New("statement is stale")
+	}
+	return statement, nil
+}
+
+func uniqueStandingBasis(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
 	var found []workroom.Statement
 	for _, basis := range projection.Provenance[event] {
-		statement, err := liveStatement(projection, basis, kind)
+		statement, err := standingStatement(projection, basis, kind)
 		if err == nil {
 			found = append(found, statement)
 		}
 	}
 	if len(found) != 1 {
-		return workroom.Statement{}, fmt.Errorf("expected one live %s basis, found %d", kind, len(found))
+		return workroom.Statement{}, fmt.Errorf("expected one standing %s basis, found %d", kind, len(found))
 	}
 	return found[0], nil
 }
