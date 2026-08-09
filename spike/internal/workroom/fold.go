@@ -389,7 +389,7 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 }
 
 func isGovernance(kind Kind) bool {
-	return kind == KindRoster || kind == KindInfraKey || kind == KindSeal
+	return kind == KindRoster || kind == KindInfraKey || kind == KindSeal || kind == KindAdmissionProfile
 }
 
 func (f *foldState) addRoleGrant(actor, name, kind, role, statement, ratification string, restsOn []string) {
