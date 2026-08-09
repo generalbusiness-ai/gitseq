@@ -276,6 +276,38 @@ refspec written by older builds, then fetches atomically without `+`. Initial
 and fast-forward fetches work; a remote rewind fails without moving the
 auditor's existing `refs/seq/*` frontier.
 
+The resident may also maintain a local
+`refs/gitseq/checkpoints/<genesis>` ref. Its parentless commit contains the
+original actor-signed events at one fully audited sequence head and is signed
+by that log's sequencer key. On restart, gitseq checks the checkpoint's object
+format, genesis, exact head, fold-profile version, and commit signature. One
+local first-parent metadata enumeration then proves the exact commit sequence
+from genesis through the named head. Every cached event must occupy its claimed
+commit and match that commit's actor envelope, causal trailers, and tree; its
+actor signature, payload ceiling, dedup key, and payload-tree bytes are checked
+again. Only events after the checkpoint frontier require sequencer-signature
+and payload-object reads. A missing, malformed, mismatched, oversized, or
+non-descendant checkpoint is only a cache miss: gitseq performs the ordinary
+full audit and, when it holds sequencer custody, replaces the checkpoint.
+
+A writing resident refreshes the ref every 256 accepted events after its last
+successful write. A failed write does not advance that cadence and is retried
+on the next accepted event. Consequently a successful checkpoint leaves at
+most 255 sequence commits for full delta verification, but persistent storage
+or signing failures can make the tail larger. Each write serializes the whole
+cached event prefix; the canonical JSON blob is capped at 256 MiB. Restart is
+therefore linear in total history for the local metadata proof and linear in
+the tail for expensive commit-signature and payload reads. Speedup depends on
+both depth and tail and has no fixed multiplier. On an Apple M5 Max, the
+checked-in `BenchmarkCheckpointRestartAtDepth1000` measured a 768-event
+checkpoint plus 232-event tail at 20.29 seconds and 36.1 MB allocated, versus
+75.31 seconds and 99.7 MB for a cold audit: 3.71x for that exact depth and
+tail. Reproduce it with `go test ./internal/kernel -run '^$' -bench
+'^BenchmarkCheckpointRestartAtDepth1000$' -benchtime=1x -count=1` from
+`spike/`. `gs verify` remains an explicit full audit and never consults this
+resident cache. Checkpoint refs are local implementation artifacts; `attach`
+does not fetch them and the documented sequence push does not publish them.
+
 Until that runs, the workroom exists only in the repository that created
 it, and an auditor's `attach` fails on a missing ref rather than on
 anything meaningful.

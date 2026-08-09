@@ -665,7 +665,9 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 		return Submission{}, errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
 	}
 	w.submitterOnce.Do(func() {
-		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{SigningKey: w.Config.SequencerKey, PreAppend: w.allowlist})
+		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{
+			SigningKey: w.Config.SequencerKey, CheckpointProfile: workroom.ProfileVersion, PreAppend: w.allowlist,
+		})
 	})
 	result, err := w.submitter.Submit(ctx, request)
 	if err != nil {
@@ -750,7 +752,9 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 		return *w.snapshotCache, nil
 	}
 	if w.reader == nil {
-		w.reader = kernel.NewReader(w.Store)
+		w.reader = kernel.NewReader(w.Store, kernel.CheckpointOptions{
+			Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
+		})
 	}
 	loaded, err := w.reader.Load(ctx, w.Config.Genesis)
 	if err != nil {
@@ -773,7 +777,9 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 		// The application projection and verified reader must advance as a
 		// pair. If local application state was discarded or mismatched,
 		// deliberately replace the reader and perform a cold full audit.
-		w.reader = kernel.NewReader(w.Store)
+		w.reader = kernel.NewReader(w.Store, kernel.CheckpointOptions{
+			Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
+		})
 		loaded, err = w.reader.Load(ctx, w.Config.Genesis)
 		if err != nil {
 			return Snapshot{}, err
