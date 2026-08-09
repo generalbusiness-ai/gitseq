@@ -34,6 +34,7 @@ per ISO 24495-1, for a technical audience.
    the prior artifact for the same path in the same step; only then may the
    original requester ratify the implementation report.  Merge commits must
    include a concise plain-language description of the change and its impact.
+6. After a worktree is merged, delete it.
 
 Documentation that describes behaviour rests on the artifacts for that
 behaviour, not only on the task that produced it. Superseding the predecessor
@@ -42,6 +43,3 @@ at step 5 is what makes those pages flare when the world moves under them.
 Talk and routine progress stay ephemeral. Promote a breakdown only when it
 changes scope, a condition of satisfaction, or creates follow-up work. Never
 sign as another actor.
-
-Temporary files during development should go within the worktree `/.tmp/`,
-since the user's `/tmp` is often protected by environmental policy.
