@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5a1dfd4e618942f54ff21011d70f2e5b08894373","text":"Withdrawn because its named pre-promotion head eae6d130 is no longer mergeable with promoted main c24359ea. A fresh Claude review request will name the promoted-root replacement head after all root-layout gates pass."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b67285c77fa5e83ba5cc70bf8a1ca74f4cd06efe"}
