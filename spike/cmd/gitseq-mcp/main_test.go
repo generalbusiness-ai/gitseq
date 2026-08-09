@@ -540,10 +540,16 @@ func TestWhoamiRejectsUntrustedOrUnboundedResidentAnswers(t *testing.T) {
 		t.Fatal("missing effective actor")
 	}
 	base, _ := json.Marshal(orientation)
+	var oversizedValue map[string]any
+	if err := json.Unmarshal(base, &oversizedValue); err != nil {
+		t.Fatal(err)
+	}
+	oversizedValue["you"].(map[string]any)["roles"] = []any{"participant", strings.Repeat("x", orientationResponseLimit)}
+	oversized, _ := json.Marshal(oversizedValue)
 	for name, response := range map[string][]byte{
 		"malformed":     []byte("{"),
 		"trailing json": append(append([]byte(nil), base...), []byte(" {}")...),
-		"oversized":     []byte(`{"padding":"` + strings.Repeat("x", orientationResponseLimit) + `"}`),
+		"oversized":     oversized,
 	} {
 		t.Run(name, func(t *testing.T) {
 			resident := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) { _, _ = writer.Write(response) }))
@@ -561,7 +567,15 @@ func TestWhoamiRejectsUntrustedOrUnboundedResidentAnswers(t *testing.T) {
 		"stale head":     func(value map[string]any) { value["frontier"].(map[string]any)["head"] = snapshot.Genesis },
 		"actor mismatch": func(value map[string]any) { value["you"].(map[string]any)["fingerprint"] = "foreign" },
 		"role mismatch":  func(value map[string]any) { value["you"].(map[string]any)["roles"] = []any{"ratifier"} },
-		"unknown field":  func(value map[string]any) { value["invented"] = true },
+		"role overflow": func(value map[string]any) {
+			roles := []any{"participant"}
+			for index := 0; index < statusview.ListCap; index++ {
+				roles = append(roles, fmt.Sprintf("extra-%d", index))
+			}
+			value["you"].(map[string]any)["roles"] = roles
+		},
+		"negative omission": func(value map[string]any) { value["you"].(map[string]any)["roles_skipped"] = -1 },
+		"unknown field":     func(value map[string]any) { value["invented"] = true },
 	} {
 		t.Run(name, func(t *testing.T) {
 			var value map[string]any

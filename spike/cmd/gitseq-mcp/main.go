@@ -500,6 +500,7 @@ func (s *mcpServer) currentResidentOrientation(ctx context.Context, fingerprint 
 		orientation.Frontier.Genesis != s.workspace.Config.Genesis || orientation.Frontier.Head != after ||
 		orientation.Frontier.Depth < 0 || orientation.You.Fingerprint != fingerprint ||
 		orientation.You.Name == "" || orientation.You.Kind == "" || orientation.You.MembershipEvent == "" ||
+		len(orientation.You.Roles) > statusview.ListCap || orientation.You.RolesSkipped < 0 ||
 		!containsString(orientation.You.Roles, "participant") {
 		return service.Orientation{}, errors.New("resident orientation does not match local durable evidence")
 	}
