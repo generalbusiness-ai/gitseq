@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54fcec153f38ee6d27837ee78d4184c4cd0f6405","text":"The artifact mistyped the implementation commit; the replacement names the exact checked head."}
+{"kind":"artifact","text":"Thread-local event railway implementation at exact checked head 04fa4a38433ab5ee4ee9cf50f9f7ae0267867d45.","body":{"commit":"04fa4a38433ab5ee4ee9cf50f9f7ae0267867d45","path":"ui,spike/internal/service/uidist"}}
