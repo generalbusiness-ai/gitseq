@@ -61,7 +61,8 @@ var definitions = []caseDefinition{
 	}, "Cold processes rebuild head and idempotency from Git; a CAS loser retries into one signed chain."},
 	{2, "Rebinding attacks", []string{
 		"github.com/generalbusiness-ai/gitseq/internal/intent.TestSignedBindingFieldsCannotBeSwapped",
-		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestVerifierRejectsRebindingAndTrailerMutation",
+		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestVerifierRejectsIntentReboundToAnotherLog",
+		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestVerifierRejectsAlteredCausalTrailersWithFreshIdentity",
 		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestIdempotencyConflict",
 		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestSizeCeilingAndEnvelopeOnlyAdmissionHook",
 	}, "Actor intent binds target, payload tree, causal trailers and idempotency identity."},
