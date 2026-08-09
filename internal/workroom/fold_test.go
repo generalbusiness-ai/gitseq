@@ -895,6 +895,16 @@ func TestInvalidConstraintAlgebraIsTypedUninterpretable(t *testing.T) {
 		{name: "invalid regex", fields: `[{"op":"matches","name":"topic","pattern":"["}]`, basis: `[]`, reason: "error parsing regexp"},
 		{name: "null fields", fields: `null`, basis: `[]`, reason: "fields must be a JSON array"},
 		{name: "null basis", fields: `[]`, basis: `null`, reason: "basis must be a JSON array"},
+		// A rejected operand is quoted back into the reason verbatim, so a
+		// definition can put any words at all into the uninterpretable reason
+		// channel — including the fold's own words for the one uninterpretable
+		// case a later interpreter binding does resolve. Readers of that
+		// channel must therefore compare the whole reason, never search it.
+		{
+			name:   "operand quoting the unbound-interpreter reason",
+			fields: `[{"op":"type","name":"topic","type":"interpreter execution is not held"}]`, basis: `[]`,
+			reason: `uninterpretable kind definition: unsupported type "interpreter execution is not held"`,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			invalid := State{Kind: KindKindDef, Text: test.name, Body: map[string]string{

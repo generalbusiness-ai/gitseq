@@ -682,6 +682,20 @@ test("an unreadable act carries its own reason and consequence", () => {
   assert.doesNotMatch(permanent.consequence, /unless one is bound/);
   assert.match(permanent.consequence, /not something a later interpreter would resolve/);
 
+  // The collision the two cases share a channel for. A rejected operand is
+  // quoted back verbatim, so a permanently invalid definition can carry the
+  // fold's own unbound-interpreter words inside its reason — here as a field
+  // type. Binding an interpreter cannot make that type supported, so the copy
+  // must not offer it. Only the whole reason tells the two apart; searching
+  // inside one reads this as remediable. The fold is pinned to emit exactly
+  // this string by TestInvalidConstraintAlgebraIsTypedUninterpretable.
+  const collision = interpretationNotice(
+    "uninterpretable",
+    'uninterpretable kind definition: unsupported type "interpreter execution is not held"',
+  );
+  assert.doesNotMatch(collision.consequence, /unless one is bound/);
+  assert.match(collision.consequence, /not something a later interpreter would resolve/);
+
   // Ordinary verdicts get no notice: this surface is only for acts the room
   // could not read, not for every act that lacks force.
   assert.equal(interpretationNotice("effective", "statement recorded"), undefined);

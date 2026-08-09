@@ -99,13 +99,23 @@ export function isInterpretationGap(verdict?: string): boolean {
 // act the room cannot read still cites what it cited. And an uninterpretable
 // verdict does not always mean "wait for a binding" — the same verdict covers
 // kind definitions that are permanently invalid, which no later interpreter
-// can rescue. Only the unbound-interpreter reason is remediable, and it says
-// so in its own words, so key on that rather than on the verdict alone.
-const unboundInterpreter = "interpreter execution is not held";
+// can rescue. Exactly one reason in that channel is remediable, so key on that
+// reason rather than on the verdict alone.
+//
+// Key on the whole reason, never on a phrase inside it. The fold quotes a
+// rejected operand back verbatim, so a permanently invalid definition can put
+// any words at all into this channel, the words below included: a field typed
+// `interpreter execution is not held` is refused as `uninterpretable kind
+// definition: unsupported type "interpreter execution is not held"`, and no
+// binding makes that type supported. A search inside the reason would offer
+// that definition a rescue that does not exist. The string below is the fold's
+// own, pinned by TestFoldActivationRecordsPrefixBoundaryThenNamesExecutionGap;
+// the collision is pinned by TestInvalidConstraintAlgebraIsTypedUninterpretable.
+const unboundInterpreterReason = "uninterpretable: activated interpreter execution is not held";
 
 export function interpretationNotice(verdict?: string, reason?: string): { verdict: string; reason: string; consequence: string } | undefined {
   if (!isInterpretationGap(verdict)) return undefined;
-  const awaitingBinding = Boolean(reason?.includes(unboundInterpreter));
+  const awaitingBinding = reason === unboundInterpreterReason;
   return {
     verdict: verdict!,
     reason: reason ?? "",
