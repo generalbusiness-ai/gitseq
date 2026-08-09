@@ -7,6 +7,7 @@ import { RetryKeys, fingerprintOfPresentActor, fingerprintsIdentifySameActor, pa
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic } from "../src/lib/memory.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
+import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
 import { belongsInRoom, commitmentRelationship, interpretationGaps, kindLabel, statusLabel } from "../src/lib/util.ts";
@@ -135,6 +136,76 @@ test("thread indexing keeps citations out of reply summaries and thread content"
   assert.deepEqual(index.content("e1").acts.map((item) => item.event), ["a1"]);
   assert.deepEqual(index.content("e1").events, ["e2", "e3", "a1"]);
   assert.deepEqual(index.content("e0").statements.map((item) => item.event), ["e4"]);
+});
+
+test("thread railway keeps conversation lanes stable and citations secondary", () => {
+  const events = ["root", "first", "first-leaf", "sibling", "merge-note", "act"];
+  const provenance = {
+    root: ["outside-parent"],
+    first: ["root"],
+    "first-leaf": ["first"],
+    sibling: ["root", "outside-citation"],
+    "merge-note": ["sibling", "first-leaf"],
+    act: ["merge-note"],
+  };
+  const layout = layoutThreadRailway(events, provenance);
+  assert.deepEqual(layout.nodes.map(({ event, lane }) => [event, lane]), [
+    ["root", 0],
+    ["first", 0],
+    ["first-leaf", 0],
+    ["sibling", 1],
+    ["merge-note", 1],
+    ["act", 1],
+  ]);
+  assert.equal(layout.lanes, 2);
+  assert.deepEqual(layout.nodes.find((node) => node.event === "sibling").citations, ["outside-citation"]);
+  assert.deepEqual(layout.nodes.find((node) => node.event === "merge-note").citations, ["first-leaf"]);
+});
+
+test("a thread rail lane is released when its branch ends and taken by the next branch", () => {
+  // "a" is a leaf, so the lane it held falls free before "e" branches. A rail
+  // that never released a lane would spend a third lane on "e" instead.
+  const events = ["root", "a", "b", "c", "d", "e"];
+  const provenance = { root: [], a: ["root"], b: ["root"], c: ["b"], d: ["c"], e: ["c"] };
+  const layout = layoutThreadRailway(events, provenance);
+  assert.deepEqual(layout.nodes.map(({ event, lane }) => [event, lane]), [
+    ["root", 0],
+    ["a", 0],
+    ["b", 1],
+    ["c", 1],
+    ["d", 1],
+    ["e", 0],
+  ]);
+  assert.equal(layout.lanes, 2);
+  assert.equal(layout.folded, 0);
+  assert.ok(layout.nodes.every((node) => node.folded === false));
+});
+
+test("a thread rail stops at ten lanes and folds the branches that do not fit", () => {
+  // Fifteen branches that all stay open: each child of the root has a reply
+  // of its own that only arrives at the end, so no lane ever falls free.
+  const children = Array.from({ length: 15 }, (_, index) => `child-${index + 1}`);
+  const leaves = children.map((child) => `${child}-leaf`);
+  const events = ["root", ...children, ...leaves];
+  const provenance = { root: [] };
+  for (const child of children) provenance[child] = ["root"];
+  for (const child of children) provenance[`${child}-leaf`] = [child];
+
+  const layout = layoutThreadRailway(events, provenance);
+  assert.equal(RAIL_LANES, 10);
+  assert.equal(layout.lanes, RAIL_LANES);
+  assert.ok(layout.nodes.every((node) => node.lane < RAIL_LANES));
+
+  // Nine branches fit beside the folded lane; the other six fold, and their
+  // replies fold with them rather than reappearing on a lane of their own.
+  const folded = layout.nodes.filter((node) => node.folded).map((node) => node.event);
+  assert.deepEqual(folded, [
+    "child-10", "child-11", "child-12", "child-13", "child-14", "child-15",
+    "child-10-leaf", "child-11-leaf", "child-12-leaf", "child-13-leaf", "child-14-leaf", "child-15-leaf",
+  ]);
+  assert.equal(layout.folded, folded.length);
+  assert.ok(folded.every((event) => layout.nodes.find((node) => node.event === event).lane === RAIL_LANES - 1));
+  assert.ok(layout.nodes.filter((node) => !node.folded).every((node) => node.lane < RAIL_LANES - 1));
 });
 
 const originalSupersede = "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eab3b0e6064e5b31a04c2e2c3bababc618997946";
