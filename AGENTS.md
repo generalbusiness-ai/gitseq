@@ -32,7 +32,8 @@ per ISO 24495-1, for a technical audience.
    step 3.
 5. Merge only an approved exact head. Record the merge artifact, superseding
    the prior artifact for the same path in the same step; only then may the
-   original requester ratify the implementation report.
+   original requester ratify the implementation report.  Merge commits must
+   include a concise plain-language description of the change and its impact.
 
 Documentation that describes behaviour rests on the artifacts for that
 behaviour, not only on the task that produced it. Superseding the predecessor
