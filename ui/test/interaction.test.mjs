@@ -129,6 +129,19 @@ test("retired provenance does not make one live replacement ambiguous", () => {
   assert.equal(replacementForSupersede(act, projection), live.event);
 });
 
+test("a stale-only replacement candidate does not produce a false link", () => {
+  const stale = { event: "stale-evidence", actor: "codex", kind: "report", text: "old finding", stale: true };
+  const { act, projection } = replacementProjection([stale.event], [stale]);
+  assert.equal(replacementForSupersede(act, projection), undefined);
+});
+
+test("stale provenance does not make one current replacement ambiguous", () => {
+  const stale = { event: "stale-evidence", actor: "codex", kind: "report", text: "old finding", stale: true };
+  const live = { event: "current-replacement", actor: "codex", kind: "request", text: "new" };
+  const { act, projection } = replacementProjection([stale.event, live.event], [stale, live]);
+  assert.equal(replacementForSupersede(act, projection), live.event);
+});
+
 test("the room hides work records and translates workflow status", () => {
   assert.equal(belongsInRoom("assert"), true);
   assert.equal(belongsInRoom("request"), true);
