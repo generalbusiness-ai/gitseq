@@ -662,12 +662,16 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	actRecord(t, ctx, external, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "external advance", RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "external-advance"})
-	fourth, err := workspace.Snapshot(ctx)
+	fourthResult, err := workspace.SnapshotWithSource(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	fourth := fourthResult.Snapshot
 	if workspace.snapshotFolder != folder || fourth.Depth != third.Depth+1 || fourth.Head == third.Head {
 		t.Fatalf("external descendant did not extend resident folder: third=%+v fourth=%+v", third, fourth)
+	}
+	if fourthResult.Source != SnapshotSourceIncrementalTail {
+		t.Fatalf("verified descendant tail reported %q", fourthResult.Source)
 	}
 	coldWorkspace, err := Open(ctx, workspace.Repo)
 	if err != nil {
@@ -836,12 +840,16 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := restarted.Snapshot(ctx)
+	restartedResult, err := restarted.SnapshotWithSource(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := restartedResult.Snapshot
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("checkpoint projection differs from verified source:\nwant=%+v\ngot=%+v", want, got)
+	}
+	if restartedResult.Source != SnapshotSourceSignedCheckpointTail {
+		t.Fatalf("signed checkpoint load reported %q", restartedResult.Source)
 	}
 	if unchanged, err := workspace.Store.Head(ctx, checkpointRef); err != nil || unchanged != checkpointHead {
 		t.Fatalf("exact restart rewrote checkpoint: before=%s after=%s err=%v", checkpointHead, unchanged, err)
@@ -854,12 +862,16 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repaired, err := repairing.Snapshot(ctx)
+	repairedResult, err := repairing.SnapshotWithSource(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	repaired := repairedResult.Snapshot
 	if !reflect.DeepEqual(repaired, want) {
 		t.Fatalf("corrupt checkpoint fallback changed projection:\nwant=%+v\ngot=%+v", want, repaired)
+	}
+	if repairedResult.Source != SnapshotSourceColdFullAudit {
+		t.Fatalf("corrupt checkpoint fallback reported %q", repairedResult.Source)
 	}
 	if repairedHead, err := workspace.Store.Head(ctx, checkpointRef); err != nil || repairedHead == workspace.Config.Genesis {
 		t.Fatalf("full audit did not repair checkpoint ref: head=%s err=%v", repairedHead, err)

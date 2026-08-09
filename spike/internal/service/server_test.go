@@ -75,6 +75,31 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 		summary.Durable.Depth != status.Durable.Depth || len(summary.Cursor.Frontier) != 1 || summary.Cursor.Frontier[0].Head != status.Durable.Head {
 		t.Fatalf("summary frontier differs from full status: summary=%+v full=%+v", summary, status)
 	}
+	fingerprint := workspace.Config.Actors["human"].Fingerprint
+	response, err = http.Get(httpServer.URL + "/v0/orientation/" + fingerprint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var orientation Orientation
+	if err := json.NewDecoder(response.Body).Decode(&orientation); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if orientation.ProjectionVersion != OrientationProjectionVersion || orientation.You.Fingerprint != fingerprint ||
+		orientation.Frontier.Head != status.Durable.Head || orientation.Frontier.Depth != status.Durable.Depth ||
+		orientation.You.Kind != "human" || orientation.You.MembershipEvent == "" || len(orientation.You.Roles) == 0 {
+		t.Fatalf("orientation differs from effective status projection: %+v", orientation)
+	}
+	response, err = http.Get(httpServer.URL + "/v0/orientation/unknown")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusNotFound {
+		response.Body.Close()
+		t.Fatalf("unknown actor orientation status = %d", response.StatusCode)
+	}
+	response.Body.Close()
 	response, err = http.Get(httpServer.URL + "/v0/worktrees")
 	if err != nil {
 		t.Fatal(err)

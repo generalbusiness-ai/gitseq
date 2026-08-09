@@ -24,10 +24,25 @@ type Cursor struct {
 }
 
 type ActorView struct {
-	Name         string   `json:"name"`
-	Fingerprint  string   `json:"fingerprint"`
-	Roles        []string `json:"roles,omitempty"`
-	RolesSkipped int      `json:"roles_skipped,omitempty"`
+	Name            string   `json:"name"`
+	Fingerprint     string   `json:"fingerprint"`
+	Kind            string   `json:"kind,omitempty"`
+	MembershipEvent string   `json:"membership_event,omitempty"`
+	Roles           []string `json:"roles,omitempty"`
+	RolesSkipped    int      `json:"roles_skipped,omitempty"`
+}
+
+// OrientationProjectionVersion binds a resident orientation answer to the
+// exact actor projection semantics understood by its client.
+const OrientationProjectionVersion = "statusview-orientation@1"
+
+// Orientation is the bounded effective identity answer needed by a fresh
+// client. You reuses the capped actor view exposed by status; membership is
+// exact, while any omitted non-semantic roles are counted explicitly.
+type Orientation struct {
+	You               ActorView `json:"you"`
+	Frontier          Frontier  `json:"frontier"`
+	ProjectionVersion string    `json:"projection_version"`
 }
 
 type CommitmentView struct {
@@ -211,6 +226,7 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 		Totals: actorTotals(projection, durable.Depth), Live: actorLive(live, degraded),
 		FollowWithWait: "pass cursor back to wait to receive only what changes after it"}
 	if actor, ok := projection.Actors[fingerprint]; ok {
+		digest.You.Kind, digest.You.MembershipEvent = actor.Kind, actor.MembershipEvent
 		digest.You.Roles, digest.You.RolesSkipped = CapRoles(actor.Roles, ListCap)
 		if actor.Name != "" {
 			digest.You.Name = Text(actor.Name)
@@ -253,6 +269,27 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 	digest.NotActionable, digest.NotActionableSkipped = Cap(digest.NotActionable, ListCap)
 	digest.YourAttention, digest.YourAttentionSkipped = Cap(digest.YourAttention, ListCap)
 	return digest
+}
+
+// BuildOrientation selects one effective durable actor from the same
+// projection used by status. Unknown actors are refused rather than being
+// represented by local configuration alone.
+func BuildOrientation(durable app.Snapshot, fingerprint, actorName string) (Orientation, bool) {
+	actor, ok := durable.Projection.Actors[fingerprint]
+	if !ok {
+		return Orientation{}, false
+	}
+	name := actorName
+	if actor.Name != "" {
+		name = actor.Name
+	}
+	roles, skipped := CapRoles(actor.Roles, ListCap)
+	return Orientation{
+		You: ActorView{Name: Text(name), Fingerprint: fingerprint, Kind: actor.Kind, MembershipEvent: actor.MembershipEvent,
+			Roles: roles, RolesSkipped: skipped},
+		Frontier:          Frontier{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth},
+		ProjectionVersion: OrientationProjectionVersion,
+	}, true
 }
 
 func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset bool, requested Cursor, fingerprint, actorName string, degraded bool) WaitDelta {

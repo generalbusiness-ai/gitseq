@@ -60,6 +60,7 @@ type Workspace struct {
 
 	snapshotMu     sync.Mutex
 	snapshotCache  *Snapshot
+	snapshotSource SnapshotSource
 	snapshotFolder *workroom.Folder
 	reader         *kernel.Reader
 	submitterOnce  sync.Once
@@ -78,6 +79,25 @@ type Snapshot struct {
 	Head       string              `json:"head"`
 	Depth      int                 `json:"depth"`
 	Projection workroom.Projection `json:"projection"`
+}
+
+// SnapshotSource says how the verified application projection reached its
+// current frontier. It is deliberately separate from Snapshot so existing
+// status and audit representations do not acquire local cache details.
+type SnapshotSource string
+
+const (
+	SnapshotSourceSignedCheckpointTail SnapshotSource = "verified_signed_checkpoint_tail"
+	SnapshotSourceColdFullAudit        SnapshotSource = "verified_cold_full_audit"
+	SnapshotSourceIncrementalTail      SnapshotSource = "verified_incremental_tail"
+)
+
+// SourcedSnapshot is the local verification result plus its actual load path.
+// Callers that disclose fallback behavior use this instead of guessing from
+// elapsed time or resident availability.
+type SourcedSnapshot struct {
+	Snapshot Snapshot
+	Source   SnapshotSource
 }
 
 // LocalRepo is local repository state, never part of the durable workroom
@@ -718,6 +738,7 @@ func (w *Workspace) acceptSnapshot(result kernel.Result, record workroom.Record)
 		Projection: w.snapshotFolder.Projection(),
 	}
 	w.snapshotCache = &snapshot
+	w.snapshotSource = SnapshotSourceIncrementalTail
 }
 
 func cloneAttachments(input map[string][]byte) map[string][]byte {
@@ -754,14 +775,22 @@ func (w *Workspace) EventID(commit string) string {
 }
 
 func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
+	result, err := w.SnapshotWithSource(ctx)
+	return result.Snapshot, err
+}
+
+// SnapshotWithSource verifies and folds the workroom exactly as Snapshot does,
+// while retaining whether the local projection came from a signed checkpoint,
+// a verified incremental continuation, or a cold full audit.
+func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, error) {
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
 	head, err := w.Store.Head(ctx, kernel.Ref(w.Config.Genesis))
 	if err != nil {
-		return Snapshot{}, err
+		return SourcedSnapshot{}, err
 	}
 	if w.snapshotCache != nil && w.snapshotCache.Head == head {
-		return *w.snapshotCache, nil
+		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
 	}
 	if w.reader == nil {
 		w.reader = kernel.NewReader(w.Store, kernel.CheckpointOptions{
@@ -770,10 +799,10 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 	loaded, err := w.reader.Load(ctx, w.Config.Genesis)
 	if err != nil {
-		return Snapshot{}, err
+		return SourcedSnapshot{}, err
 	}
 	if !loaded.Full && w.snapshotCache != nil && w.snapshotCache.Head == loaded.Verification.Head {
-		return *w.snapshotCache, nil
+		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
 	}
 	start := 0
 	if !loaded.Full && w.snapshotCache != nil && w.snapshotFolder != nil && w.snapshotCache.Head != loaded.BaseHead {
@@ -794,7 +823,14 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 		})
 		loaded, err = w.reader.Load(ctx, w.Config.Genesis)
 		if err != nil {
-			return Snapshot{}, err
+			return SourcedSnapshot{}, err
+		}
+	}
+	source := SnapshotSourceIncrementalTail
+	if loaded.Full {
+		source = SnapshotSourceColdFullAudit
+		if loaded.Checkpoint {
+			source = SnapshotSourceSignedCheckpointTail
 		}
 	}
 	if loaded.Full {
@@ -810,7 +846,8 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 	snapshot := Snapshot{Genesis: loaded.Verification.Genesis, Head: loaded.Verification.Head, Depth: loaded.Verification.Depth, Projection: w.snapshotFolder.Projection()}
 	w.snapshotCache = &snapshot
-	return snapshot, nil
+	w.snapshotSource = source
+	return SourcedSnapshot{Snapshot: snapshot, Source: source}, nil
 }
 
 func (w *Workspace) record(event kernel.Event) workroom.Record {
