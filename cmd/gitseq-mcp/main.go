@@ -13,7 +13,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
@@ -91,33 +93,91 @@ type protocolMeta struct {
 	ClientCapabilities map[string]any `json:"io.modelcontextprotocol/clientCapabilities"`
 }
 
-type mcpServer struct {
-	era       protocolEra
+// room is one attached workroom: the repository's workspace, the resident
+// service holding it when one has published itself, and whether this session
+// has announced its presence there. The last two move as services come and go,
+// and the presence heartbeat reads them while a call is in flight, so they are
+// held behind a lock that is never kept across a request.
+type room struct {
 	workspace *app.Workspace
-	actor     string
+
+	mu        sync.Mutex
 	baseURL   string
-	session   string
-	client    *http.Client
+	announced bool
+}
+
+// endpoint names the service to use, re-reading the repository's published
+// address whenever the last one is gone, so a service started or restarted
+// after the adapter attached is picked up without reconnecting the client.
+func (r *room) endpoint() (string, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.baseURL == "" {
+		url, ok := r.workspace.ResidentURL()
+		if !ok {
+			return "", false
+		}
+		r.baseURL = url
+	}
+	return r.baseURL, true
+}
+
+// lost forgets an address that did not answer, and the presence announced
+// through it, so the next call looks the service up again instead of retrying
+// an address that has gone.
+func (r *room) lost() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.baseURL = ""
+	r.announced = false
+}
+
+func (r *room) joined() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.announced = true
+}
+
+func (r *room) present() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.announced
+}
+
+type mcpServer struct {
+	era     protocolEra
+	actor   string
+	repo    string
+	session string
+	client  *http.Client
+
+	roomsMu     sync.Mutex
+	byPath      map[string]*room
+	byCommonDir map[string]*room
 }
 
 func main() {
-	repo := flag.String("repo", ".", "ordinary Git repository")
+	repo := flag.String("repo", "", "default repository for calls that do not name one (default: working directory)")
 	actor := flag.String("actor", "", "configured actor")
-	serverURL := flag.String("server", "http://127.0.0.1:7777", "resident workroom URL")
+	serverURL := flag.String("server", "", "retired: the resident service is read from the repository")
 	flag.Parse()
 	if *actor == "" {
 		fatal(errors.New("--actor is required"))
 	}
-	workspace, err := app.Open(context.Background(), *repo)
-	if err != nil {
-		fatal(err)
+	// The service belongs to a repository, so naming one here could only ever
+	// be right for a single workroom. Registrations written before that was
+	// true keep working; refusing them would strand a session over an argument
+	// nothing needs.
+	if *serverURL != "" {
+		fmt.Fprintln(os.Stderr, "gitseq-mcp: --server is ignored; the resident service is read from the repository it serves")
 	}
-	if _, _, err := workspace.Actor(*actor); err != nil {
-		fatal(err)
-	}
-	server := &mcpServer{workspace: workspace, actor: *actor, baseURL: strings.TrimRight(*serverURL, "/"), session: "mcp:" + randomID(), client: &http.Client{}}
-	if err := server.announce(context.Background()); err != nil {
-		fmt.Fprintln(os.Stderr, "gitseq-mcp: presence degraded:", err)
+	server := newServer(*actor, *repo)
+	// Attaching the default repository here is a courtesy, not a
+	// precondition: presence appears before the first tool call when there is
+	// a workroom to join, and one installation still serves whatever
+	// repository a later call names.
+	if _, err := server.attend(context.Background(), ""); err != nil {
+		fmt.Fprintln(os.Stderr, "gitseq-mcp:", err)
 	}
 	presenceContext, stopPresence := context.WithCancel(context.Background())
 	go server.heartbeat(presenceContext, os.Stderr)
@@ -127,6 +187,17 @@ func main() {
 	}()
 	if err := server.run(context.Background(), os.Stdin, os.Stdout); err != nil {
 		fatal(err)
+	}
+}
+
+func newServer(actor, repo string) *mcpServer {
+	return &mcpServer{
+		actor:       actor,
+		repo:        absolute(repo),
+		session:     "mcp:" + randomID(),
+		client:      &http.Client{},
+		byPath:      map[string]*room{},
+		byCommonDir: map[string]*room{},
 	}
 }
 
@@ -355,39 +426,115 @@ func tools() []map[string]any {
 		return schema
 	}
 	stringField := map[string]string{"type": "string"}
+	// Every tool names the workroom it acts in the same way, because the
+	// adapter serves whatever repository it is pointed at rather than one
+	// repository chosen when it was installed.
+	repoField := map[string]string{"type": "string", "description": "Repository whose workroom this call acts in; defaults to the working directory the adapter was started in."}
+	withRepo := func(properties map[string]any) map[string]any {
+		fields := map[string]any{"repo": repoField}
+		for name, schema := range properties {
+			fields[name] = schema
+		}
+		return fields
+	}
 	return []map[string]any{
-		{"name": "whoami", "description": "Show the configured durable actor and ephemeral session.", "inputSchema": object(nil)},
-		{"name": "presence", "description": "Show who is present in the amnesiac nexus.", "inputSchema": object(nil)},
-		{"name": "status", "description": "Project durable workroom state plus a composite cursor.", "inputSchema": object(nil)},
-		{"name": "wait", "description": "Long-poll after a composite cursor.", "inputSchema": object(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}, "cursor")},
-		{"name": "say", "description": "Publish a signed ephemeral frame, opening a conversation at about when needed.", "inputSchema": object(map[string]any{"about": stringField, "text": stringField, "conversation": stringField}, "about", "text")},
-		{"name": "state", "description": "Append a durable attributed utterance. Evidence values are embedded attachments. A request body addresses its performer as name, @name, or fingerprint; the signed event stores the fingerprint.", "inputSchema": object(map[string]any{"kind": stringField, "text": stringField, "body": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "rests_on": map[string]any{"type": "array", "items": stringField}, "evidence": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "idempotency_key": stringField}, "kind", "text", "rests_on")},
-		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(map[string]any{"target": stringField, "idempotency_key": stringField}, "target")},
-		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}, "target", "text")},
+		{"name": "whoami", "description": "Show the configured durable actor and ephemeral session.", "inputSchema": object(withRepo(nil))},
+		{"name": "presence", "description": "Show who is present in the amnesiac nexus.", "inputSchema": object(withRepo(nil))},
+		{"name": "status", "description": "Project durable workroom state plus a composite cursor.", "inputSchema": object(withRepo(nil))},
+		{"name": "wait", "description": "Long-poll after a composite cursor.", "inputSchema": object(withRepo(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
+		{"name": "say", "description": "Publish a signed ephemeral frame, opening a conversation at about when needed.", "inputSchema": object(withRepo(map[string]any{"about": stringField, "text": stringField, "conversation": stringField}), "about", "text")},
+		{"name": "state", "description": "Append a durable attributed utterance. Evidence values are embedded attachments. A request body addresses its performer as name, @name, or fingerprint; the signed event stores the fingerprint.", "inputSchema": object(withRepo(map[string]any{"kind": stringField, "text": stringField, "body": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "rests_on": map[string]any{"type": "array", "items": stringField}, "evidence": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "idempotency_key": stringField}), "kind", "text", "rests_on")},
+		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(withRepo(map[string]any{"target": stringField, "idempotency_key": stringField}), "target")},
+		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(withRepo(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}), "target", "text")},
 	}
 }
 
+// absolute names a repository the same way every time, so two calls that mean
+// the same checkout share one attachment and an error can say which directory
+// was actually looked in.
+func absolute(repo string) string {
+	if strings.TrimSpace(repo) == "" {
+		repo = "."
+	}
+	resolved, err := filepath.Abs(repo)
+	if err != nil {
+		return repo
+	}
+	return resolved
+}
+
+// attend attaches the named repository, or the default one when a call does
+// not name it, and announces this session there. Attachment is per repository
+// rather than per process: one installation serves whatever repository a call
+// names, and the resident service is read from that repository, so an act can
+// never be posted to a service holding a different workroom.
+func (s *mcpServer) attend(ctx context.Context, repo string) (*room, error) {
+	current, err := s.attach(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	if !current.present() {
+		if err := s.announce(ctx, current); err == nil {
+			current.joined()
+		}
+	}
+	return current, nil
+}
+
+func (s *mcpServer) attach(ctx context.Context, repo string) (*room, error) {
+	path := s.repo
+	if strings.TrimSpace(repo) != "" {
+		path = absolute(repo)
+	}
+	s.roomsMu.Lock()
+	defer s.roomsMu.Unlock()
+	if existing, ok := s.byPath[path]; ok {
+		return existing, nil
+	}
+	workspace, err := app.Open(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("no gitseq workroom for %s: %w", path, err)
+	}
+	if _, _, err := workspace.Actor(s.actor); err != nil {
+		return nil, fmt.Errorf("actor %q cannot act in the workroom for %s: %w", s.actor, path, err)
+	}
+	// A linked worktree is a checkout of a repository, not a second workroom:
+	// two paths that share a common git directory share one attachment and one
+	// cached projection.
+	current, ok := s.byCommonDir[workspace.CommonDir]
+	if !ok {
+		current = &room{workspace: workspace}
+		s.byCommonDir[workspace.CommonDir] = current
+	}
+	s.byPath[path] = current
+	return current, nil
+}
+
 func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
+	current, err := s.attend(ctx, stringValue(call.Arguments["repo"]))
+	if err != nil {
+		return nil, err
+	}
 	switch call.Name {
 	case "whoami":
-		actor := s.workspace.Config.Actors[s.actor]
-		snapshot, err := s.workspace.Snapshot(ctx)
+		actor := current.workspace.Config.Actors[s.actor]
+		snapshot, err := current.workspace.Snapshot(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"actor": actor, "durable": snapshot.Projection.Actors[actor.Fingerprint], "session": s.session, "protocol": protocolVersion}, nil
+		return map[string]any{"actor": actor, "repo": current.workspace.CommonDir, "genesis": current.workspace.Config.Genesis, "durable": snapshot.Projection.Actors[actor.Fingerprint], "session": s.session, "protocol": protocolVersion}, nil
 	case "presence":
-		return s.get(ctx, "/v0/presence")
+		return s.get(ctx, current, "/v0/presence")
 	case "status":
 		// The digest is applied on both paths so that losing the resident
 		// service changes what is knowable, not the shape of the answer.
-		value, err := s.get(ctx, "/v0/status")
+		value, err := s.get(ctx, current, "/v0/status")
 		if isTransportError(err) {
-			local, localErr := s.localStatus(ctx)
+			local, localErr := s.localStatus(ctx, current)
 			if localErr != nil {
 				return nil, localErr
 			}
-			return s.digest(local, true), nil
+			return s.digest(current, local, true), nil
 		}
 		if err != nil {
 			return nil, err
@@ -396,16 +543,16 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 		if err := remarshal(value, &status); err != nil {
 			return nil, err
 		}
-		return s.digest(status, false), nil
+		return s.digest(current, status, false), nil
 	case "wait":
 		requested := requestedCursor(call.Arguments)
-		value, err := s.post(ctx, "/v0/wait", call.Arguments)
+		value, err := s.post(ctx, current, "/v0/wait", call.Arguments)
 		if isTransportError(err) {
-			local, localErr := s.waitDurable(ctx, call.Arguments)
+			local, localErr := s.waitDurable(ctx, current, call.Arguments)
 			if localErr != nil {
 				return nil, localErr
 			}
-			return digestWait(local, requested, s.fingerprint(), s.actor, true), nil
+			return digestWait(local, requested, s.fingerprint(current), s.actor, true), nil
 		}
 		if err != nil {
 			return nil, err
@@ -414,11 +561,11 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 		if err := remarshal(value, &response); err != nil {
 			return nil, err
 		}
-		return digestWait(response, requested, s.fingerprint(), s.actor, false), nil
+		return digestWait(response, requested, s.fingerprint(current), s.actor, false), nil
 	case "say":
 		arguments := clone(call.Arguments)
 		arguments["session"] = s.session
-		return s.post(ctx, "/v0/say", arguments)
+		return s.post(ctx, current, "/v0/say", arguments)
 	case "state":
 		kind, _ := call.Arguments["kind"].(string)
 		text, _ := call.Arguments["text"].(string)
@@ -428,41 +575,56 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 		for name, content := range stringMap(call.Arguments["evidence"]) {
 			evidence[name] = []byte(content)
 		}
-		return s.submit(ctx, app.Act{Verb: app.VerbState, Kind: workroom.Kind(kind), Text: text, Body: body, RestsOn: rests, Attachments: evidence, IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
+		return s.submit(ctx, current, app.Act{Verb: app.VerbState, Kind: workroom.Kind(kind), Text: text, Body: body, RestsOn: rests, Attachments: evidence, IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
 	case "ratify":
 		target := stringValue(call.Arguments["target"])
-		return s.submit(ctx, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
+		return s.submit(ctx, current, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
 	case "supersede":
 		target := stringValue(call.Arguments["target"])
-		return s.submit(ctx, app.Act{Verb: app.VerbSupersede, Target: target, Text: stringValue(call.Arguments["text"]), RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
+		return s.submit(ctx, current, app.Act{Verb: app.VerbSupersede, Target: target, Text: stringValue(call.Arguments["text"]), RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
 	default:
 		return nil, fmt.Errorf("unknown tool %q", call.Name)
 	}
 }
 
-func (s *mcpServer) submit(ctx context.Context, act app.Act) (any, error) {
-	_, private, err := s.workspace.Actor(s.actor)
+func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any, error) {
+	_, private, err := current.workspace.Actor(s.actor)
 	if err != nil {
 		return nil, err
 	}
-	request, err := s.workspace.BuildActRequest(ctx, private, s.actor, act)
+	request, err := current.workspace.BuildActRequest(ctx, private, s.actor, act)
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.post(ctx, "/v0/submit", request)
+	value, err := s.post(ctx, current, "/v0/submit", request)
 	if !isTransportError(err) {
 		return value, err
 	}
-	submission, err := s.workspace.AcceptSubmission(ctx, request)
+	submission, err := current.workspace.AcceptSubmission(ctx, request)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]any{"result": submission.Result, "record": submission.Record, "degraded": true}, nil
 }
 
-func (s *mcpServer) announce(ctx context.Context) error {
-	_, err := s.post(ctx, "/v0/presence", map[string]any{"actor": s.actor, "session": s.session, "ttl_ms": 30000})
+func (s *mcpServer) announce(ctx context.Context, current *room) error {
+	_, err := s.post(ctx, current, "/v0/presence", map[string]any{"actor": s.actor, "session": s.session, "ttl_ms": 30000})
 	return err
+}
+
+// attended lists the workrooms this session has joined. Presence is a property
+// of a workroom, so a session that has acted in two of them must be renewed
+// and withdrawn in both.
+func (s *mcpServer) attended() []*room {
+	s.roomsMu.Lock()
+	defer s.roomsMu.Unlock()
+	rooms := make([]*room, 0, len(s.byCommonDir))
+	for _, current := range s.byCommonDir {
+		if current.present() {
+			rooms = append(rooms, current)
+		}
+	}
+	return rooms
 }
 
 func (s *mcpServer) heartbeat(ctx context.Context, errorsTo io.Writer) {
@@ -473,39 +635,64 @@ func (s *mcpServer) heartbeat(ctx context.Context, errorsTo io.Writer) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := s.announce(ctx); err != nil {
-				fmt.Fprintln(errorsTo, "gitseq-mcp: presence renewal degraded:", err)
+			for _, current := range s.attended() {
+				if err := s.announce(ctx, current); err != nil {
+					fmt.Fprintln(errorsTo, "gitseq-mcp: presence renewal degraded:", err)
+				}
 			}
 		}
 	}
 }
 
 func (s *mcpServer) depart(ctx context.Context) {
-	request, _ := http.NewRequestWithContext(ctx, http.MethodDelete, s.baseURL+"/v0/presence/"+s.session, nil)
-	response, err := s.client.Do(request)
-	if err == nil {
-		response.Body.Close()
+	for _, current := range s.attended() {
+		base, ok := current.endpoint()
+		if !ok {
+			continue
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodDelete, base+"/v0/presence/"+s.session, nil)
+		if err != nil {
+			continue
+		}
+		response, err := s.client.Do(request)
+		if err == nil {
+			response.Body.Close()
+		}
 	}
 }
 
-func (s *mcpServer) get(ctx context.Context, path string) (any, error) {
-	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+path, nil)
-	return s.do(request)
+// errNoResident is the absence of a resident service, reported as a transport
+// failure so that every caller already written to survive an unreachable
+// service also survives one that was never started.
+var errNoResident = errors.New("no resident service is published for this workroom; run `gs serve` in it for presence and conversation")
+
+func (s *mcpServer) get(ctx context.Context, current *room, path string) (any, error) {
+	base, ok := current.endpoint()
+	if !ok {
+		return nil, transportError{errNoResident}
+	}
+	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+	return s.do(current, request)
 }
 
-func (s *mcpServer) post(ctx context.Context, path string, value any) (any, error) {
+func (s *mcpServer) post(ctx context.Context, current *room, path string, value any) (any, error) {
+	base, ok := current.endpoint()
+	if !ok {
+		return nil, transportError{errNoResident}
+	}
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
-	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+path, bytes.NewReader(encoded))
+	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+path, bytes.NewReader(encoded))
 	request.Header.Set("Content-Type", "application/json")
-	return s.do(request)
+	return s.do(current, request)
 }
 
-func (s *mcpServer) do(request *http.Request) (any, error) {
+func (s *mcpServer) do(current *room, request *http.Request) (any, error) {
 	response, err := s.client.Do(request)
 	if err != nil {
+		current.lost()
 		return nil, transportError{err}
 	}
 	defer response.Body.Close()
@@ -536,8 +723,8 @@ type httpStatusError struct {
 
 func (e httpStatusError) Error() string { return e.message }
 
-func (s *mcpServer) localStatus(ctx context.Context) (service.Status, error) {
-	durable, err := s.workspace.Snapshot(ctx)
+func (s *mcpServer) localStatus(ctx context.Context, current *room) (service.Status, error) {
+	durable, err := current.workspace.Snapshot(ctx)
 	if err != nil {
 		return service.Status{}, err
 	}
@@ -556,7 +743,7 @@ func statusFromDurable(durable app.Snapshot) service.Status {
 	}
 }
 
-func (s *mcpServer) waitDurable(ctx context.Context, arguments map[string]any) (service.WaitResponse, error) {
+func (s *mcpServer) waitDurable(ctx context.Context, current *room, arguments map[string]any) (service.WaitResponse, error) {
 	encoded, err := json.Marshal(arguments)
 	if err != nil {
 		return service.WaitResponse{}, err
@@ -567,7 +754,7 @@ func (s *mcpServer) waitDurable(ctx context.Context, arguments map[string]any) (
 	}
 	var response service.WaitResponse
 	changed, err := service.Poll(ctx, input.TimeoutMS, func() (bool, error) {
-		durable, err := s.workspace.Snapshot(ctx)
+		durable, err := current.workspace.Snapshot(ctx)
 		if err != nil {
 			return false, err
 		}

@@ -964,3 +964,170 @@ func contains(values []string, want string) bool {
 	}
 	return false
 }
+
+// A client should not have to be told where the service is. Serving publishes
+// the address actually bound, beside the workroom config in the repository, and
+// takes the advertisement back when it stops.
+func TestServePublishesWhereItListensAndWithdrawsOnExit(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(context.Background(), repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	served := make(chan error, 1)
+	go func() { served <- serveCommand(ctx, []string{"--repo", repo, "--listen", "127.0.0.1:0"}) }()
+
+	var url string
+	for attempt := 0; attempt < 300 && url == ""; attempt++ {
+		if published, ok := workspace.ResidentURL(); ok {
+			url = published
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if url == "" {
+		stop()
+		t.Fatal("serving never published its address")
+	}
+	response, err := http.Get(url + "/v0/presence")
+	if err != nil {
+		stop()
+		t.Fatalf("the published address does not answer: %v", err)
+	}
+	response.Body.Close()
+
+	stop()
+	if err := <-served; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("serving failed: %v", err)
+	}
+	if published, ok := workspace.ResidentURL(); ok {
+		t.Fatalf("a stopped service is still advertised at %q", published)
+	}
+}
+
+// The test above cancels a context that the command line never handed the
+// command, so on its own it proves only that the withdrawal works when someone
+// asks for it. What a person does is press Ctrl-C, and the whole point of the
+// advertisement is that it must not outlive the process it names. These tests
+// therefore run the real binary and stop it the real way.
+func TestServeWithdrawsWhenTheProcessIsInterrupted(t *testing.T) {
+	binary := buildGS(t)
+	repo, workspace := servableRepository(t)
+
+	serving := startServing(t, binary, repo)
+	url := awaitPublication(t, workspace, "")
+	response, err := http.Get(url + "/v0/presence")
+	if err != nil {
+		t.Fatalf("the published address does not answer: %v", err)
+	}
+	response.Body.Close()
+
+	interrupt(t, serving)
+	if err := serving.Wait(); err != nil {
+		t.Fatalf("stopping normally was reported as a failure: %v", err)
+	}
+	if published, ok := workspace.ResidentURL(); ok {
+		t.Fatalf("an interrupted service is still advertised at %q", published)
+	}
+}
+
+// Withdrawal is conditional for a reason: a service that took the repository
+// over is still serving it, and erasing its record would send every client into
+// degraded mode. Stopping the service it replaced must leave it alone.
+func TestAnInterruptedServiceLeavesItsSuccessorAdvertised(t *testing.T) {
+	binary := buildGS(t)
+	repo, workspace := servableRepository(t)
+
+	replaced := startServing(t, binary, repo)
+	first := awaitPublication(t, workspace, "")
+	successor := startServing(t, binary, repo)
+	second := awaitPublication(t, workspace, first)
+
+	interrupt(t, replaced)
+	if err := replaced.Wait(); err != nil {
+		t.Fatalf("stopping normally was reported as a failure: %v", err)
+	}
+	published, ok := workspace.ResidentURL()
+	if !ok || published != second {
+		t.Fatalf("stopping a replaced service took the successor's advertisement %q down to %q/%v", second, published, ok)
+	}
+	response, err := http.Get(published + "/v0/presence")
+	if err != nil {
+		t.Fatalf("the surviving advertisement does not answer: %v", err)
+	}
+	response.Body.Close()
+
+	interrupt(t, successor)
+	if err := successor.Wait(); err != nil {
+		t.Fatalf("stopping normally was reported as a failure: %v", err)
+	}
+	if published, ok := workspace.ResidentURL(); ok {
+		t.Fatalf("the last service left the repository advertised at %q", published)
+	}
+}
+
+// buildGS compiles the command as it is actually installed. Calling
+// serveCommand in process cannot see the defect these tests exist to catch,
+// because the defect was in what main hands the command.
+func buildGS(t *testing.T) string {
+	t.Helper()
+	binary := filepath.Join(t.TempDir(), "gs")
+	if output, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
+		t.Fatalf("building gs: %v: %s", err, output)
+	}
+	return binary
+}
+
+func servableRepository(t *testing.T) (string, *app.Workspace) {
+	t.Helper()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(context.Background(), repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repo, workspace
+}
+
+func startServing(t *testing.T, binary, repo string) *exec.Cmd {
+	t.Helper()
+	serving := exec.Command(binary, "serve", "--repo", repo, "--listen", "127.0.0.1:0")
+	serving.Stdout, serving.Stderr = os.Stderr, os.Stderr
+	if err := serving.Start(); err != nil {
+		t.Fatalf("starting gs serve: %v", err)
+	}
+	t.Cleanup(func() {
+		if serving.ProcessState == nil {
+			_ = serving.Process.Kill()
+			_ = serving.Wait()
+		}
+	})
+	return serving
+}
+
+// awaitPublication waits for an advertisement other than the one already
+// there, so a successor's record is never mistaken for its predecessor's.
+func awaitPublication(t *testing.T, workspace *app.Workspace, previous string) string {
+	t.Helper()
+	for attempt := 0; attempt < 600; attempt++ {
+		if published, ok := workspace.ResidentURL(); ok && published != previous {
+			return published
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("serving never published its address")
+	return ""
+}
+
+func interrupt(t *testing.T, serving *exec.Cmd) {
+	t.Helper()
+	if err := serving.Process.Signal(os.Interrupt); err != nil {
+		t.Fatalf("interrupting gs serve: %v", err)
+	}
+}

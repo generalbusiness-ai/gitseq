@@ -427,16 +427,26 @@ anything meaningful.
 
 `serve` binds loopback addresses only, by design.
 
-Run **one** service per repository. Nothing currently enforces this: there
-is no lock, and only port contention stops a second one. Two services on
-different ports against the same repository is the case to avoid. The
-durable log stays correct — appends are compare-and-swap on the git ref
-and retry on contention — but presence and ephemeral conversation are
-per-process, so the two form separate rooms whose participants cannot see
-each other and are never told.
+Run **one** service per repository. Nothing enforces this: there is no
+lock. Two services on different ports against the same repository is the
+case to avoid. The durable log stays correct — appends are
+compare-and-swap on the git ref and retry on contention — but presence
+and ephemeral conversation are per-process, so the two form separate
+rooms whose participants cannot see each other and are never told.
 
-Note also that `serve` prints its ready banner before it binds, so a
-failed start still announces an address. Check for the bind error.
+Serving binds before it publishes, so the address written into the
+repository is the one actually being served and a failed start announces
+nothing. Publication is not a lock either: the last service to start wins
+the advertisement, which at least pulls new clients into one room.
+Stopping withdraws the advertisement unless a later service has taken it
+over. Interrupt and terminate both count as stopping, so Ctrl-C and an
+ordinary supervisor shutdown both clean up and both exit reporting
+success. Only a hard kill leaves a record behind, and that costs a client
+one refused connection before it acts locally instead.
+
+`--listen 127.0.0.1:0` takes any free port, which is what you want when
+several repositories are served at once: clients read the port from the
+repository rather than being told it.
 
 #### What loopback still trusts
 
@@ -481,11 +491,26 @@ well as the conversation.
 ## MCP
 
 ```sh
-gitseq-mcp --repo <path> --actor <name> --server http://127.0.0.1:7777
+gitseq-mcp --actor <name> [--repo <path>]
 ```
 
 One process per client session, one actor per process. The adapter signs
 every act as that actor and holds a leased, session-bound presence.
+
+**Which workroom.** The repository is a parameter of the call, not of the
+installation. A call with no `repo` acts in the adapter's working
+directory, or in `--repo` when that was given; any call may name another
+repository instead. A directory with no workroom, or one where the actor
+is not configured, fails that call and says so — it does not stop the
+adapter, which is installed once and pointed at many repositories. Linked
+worktrees of one repository are one workroom, not several.
+
+**Finding the service.** The adapter reads the resident address that
+`serve` published in the target repository, and uses it only when the
+genesis recorded with it matches that workroom, so an act cannot be
+posted to a service holding a different log. An address that stops
+answering is forgotten and looked up again on the next call, so a service
+started or moved later is picked up without reconnecting the client.
 
 **Protocol era.** The adapter is dual-era: it serves the stateless
 `2026-07-28` shape and the `initialize` handshake of `2025-11-25` and

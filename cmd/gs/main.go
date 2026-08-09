@@ -15,9 +15,11 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
@@ -39,7 +41,14 @@ func main() {
 	if len(os.Args) < 2 {
 		usage()
 	}
-	ctx := context.Background()
+	// A person stops a long-running command with an interrupt, so that is the
+	// path the command has to unwind on. Without this, serving died where it
+	// stood and left the repository advertising a process that no longer
+	// exists, sending every later client at a dead address. Cancelling the
+	// whole command's context gives one stop path rather than a second one
+	// that only the tests take.
+	ctx, release := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer release()
 	var err error
 	switch os.Args[1] {
 	case "init":
@@ -78,6 +87,7 @@ func main() {
 		usage()
 	}
 	if err != nil {
+		release()
 		fmt.Fprintln(os.Stderr, "gs:", err)
 		os.Exit(1)
 	}
@@ -1104,9 +1114,39 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n", *listen)
-	httpServer := &http.Server{Addr: *listen, Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second}
-	return httpServer.ListenAndServe()
+	// Bind before publishing, so the address advertised to clients is the one
+	// actually being served — including the port the kernel chose when the
+	// listen address asked for any.
+	listener, err := net.Listen("tcp", *listen)
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+	withdraw, err := workspace.PublishResident("http://" + listener.Addr().String())
+	if err != nil {
+		return err
+	}
+	defer withdraw()
+	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n", listener.Addr())
+	httpServer := &http.Server{Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second}
+	// The watcher retires with the command it serves, so a serving call that
+	// ends some other way does not leave a goroutine holding the server.
+	finished := make(chan struct{})
+	defer close(finished)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = httpServer.Close()
+		case <-finished:
+		}
+	}()
+	// Being told to stop is how serving ends, so ending that way is success.
+	// Reporting it as a failure would make every ordinary stop look like a
+	// fault in the logs of whatever supervises this.
+	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 func validateLoopbackListen(address string) error {

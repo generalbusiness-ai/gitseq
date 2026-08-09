@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
@@ -30,8 +32,8 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 	}
 	httpServer := httptest.NewServer(workroomServer.Handler())
 	defer httpServer.Close()
-	server := &mcpServer{workspace: workspace, actor: "human", baseURL: httpServer.URL, session: "mcp:test", client: httpServer.Client()}
-	if err := server.announce(context.Background()); err != nil {
+	server, attached := attachedServer(t, workspace, "human", httpServer.URL, httpServer.Client())
+	if err := server.announce(context.Background(), attached); err != nil {
 		t.Fatal(err)
 	}
 	defer server.depart(context.Background())
@@ -328,7 +330,7 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 	baseURL := dead.URL
 	client := dead.Client()
 	dead.Close()
-	server := &mcpServer{workspace: workspace, actor: "human", baseURL: baseURL, session: "mcp:offline", client: client}
+	server, attached := attachedServer(t, workspace, "human", baseURL, client)
 
 	value, err := server.call(context.Background(), toolCall{Name: "status"})
 	if err != nil {
@@ -355,7 +357,7 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 		t.Fatalf("direct durable submission was not marked degraded: %#v", result)
 	}
 
-	status, err := server.localStatus(context.Background())
+	status, err := server.localStatus(context.Background(), attached)
 	if err != nil || status.Durable.Depth != 2 {
 		t.Fatalf("durable append did not land: status=%+v err=%v", status, err)
 	}
@@ -380,4 +382,224 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 	if !found {
 		t.Fatalf("offline durable state did not project: %+v", projection.Projection.Decisions)
 	}
+}
+
+// attachedServer builds an adapter that has already joined one repository,
+// which is the state a tool call leaves behind once it has named one.
+func attachedServer(t *testing.T, workspace *app.Workspace, actor, baseURL string, client *http.Client) (*mcpServer, *room) {
+	t.Helper()
+	server := newServer(actor, workspace.Repo)
+	server.session = "mcp:test"
+	server.client = client
+	attached := &room{workspace: workspace, baseURL: strings.TrimRight(baseURL, "/")}
+	server.byPath[server.repo] = attached
+	server.byCommonDir[workspace.CommonDir] = attached
+	return server, attached
+}
+
+func initRepository(t *testing.T, name string) *app.Workspace {
+	t.Helper()
+	repo := filepath.Join(t.TempDir(), name)
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(context.Background(), repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return workspace
+}
+
+func depth(t *testing.T, workspace *app.Workspace) int {
+	t.Helper()
+	snapshot, err := workspace.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot.Depth
+}
+
+// One installation serves whatever repository a call names. The default is the
+// working directory the adapter was started in, so nothing has to be
+// configured for the common case, and an act must land in the workroom the
+// call named rather than in whichever one the adapter happened to open first.
+func TestCallsActInTheRepositoryTheyName(t *testing.T) {
+	here := initRepository(t, "here")
+	elsewhere := initRepository(t, "elsewhere")
+	server := newServer("human", here.Repo)
+
+	if _, err := server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
+		"kind": "assert", "text": "spoken in the default repository", "rests_on": []any{genesisOf(t, here)}, "idempotency_key": "default-repo",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, other := depth(t, here), depth(t, elsewhere); got != 2 || other != 1 {
+		t.Fatalf("default call landed wrong: here=%d elsewhere=%d", got, other)
+	}
+
+	if _, err := server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
+		"repo": elsewhere.Repo, "kind": "assert", "text": "spoken in the named repository", "rests_on": []any{genesisOf(t, elsewhere)}, "idempotency_key": "named-repo",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, other := depth(t, elsewhere), depth(t, here); got != 2 || other != 2 {
+		t.Fatalf("named call landed wrong: elsewhere=%d here=%d", got, other)
+	}
+
+	value, err := server.call(context.Background(), toolCall{Name: "whoami", Arguments: map[string]any{"repo": elsewhere.Repo}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reported := value.(map[string]any)["repo"]; reported != elsewhere.CommonDir {
+		t.Fatalf("whoami named the wrong workroom: %v", reported)
+	}
+}
+
+// A directory with no workroom is an ordinary answer to one call, not a reason
+// to refuse the connection: the adapter is installed once and pointed at many
+// repositories, most of which are not workrooms.
+func TestCallOutsideAWorkroomIsReportedWithoutFailingTheConnection(t *testing.T) {
+	server := newServer("human", t.TempDir())
+	_, err := server.call(context.Background(), toolCall{Name: "status"})
+	if err == nil || !strings.Contains(err.Error(), "no gitseq workroom for") {
+		t.Fatalf("unexpected error outside a workroom: %v", err)
+	}
+	elsewhere := initRepository(t, "elsewhere")
+	if _, err := server.call(context.Background(), toolCall{Name: "status", Arguments: map[string]any{"repo": elsewhere.Repo}}); err != nil {
+		t.Fatalf("a named workroom was unreachable after an unattachable default: %v", err)
+	}
+}
+
+// The service is found in the repository rather than configured, so a client
+// that was told nothing still joins the live workroom, and one that was told
+// about a service holding another workroom does not act through it.
+func TestResidentServiceIsFoundInTheRepository(t *testing.T) {
+	workspace := initRepository(t, "repo")
+	workroomServer, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(workroomServer.Handler())
+	defer httpServer.Close()
+
+	server := newServer("human", workspace.Repo)
+	value, err := server.call(context.Background(), toolCall{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status := value.(actorStatus); !status.Live.Degraded {
+		t.Fatalf("status was not degraded before any service published itself: %+v", status.Live)
+	}
+
+	if _, err := workspace.PublishResident(httpServer.URL); err != nil {
+		t.Fatal(err)
+	}
+	value, err = server.call(context.Background(), toolCall{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, ok := value.(actorStatus)
+	if !ok {
+		t.Fatalf("the published service was not used: %#v", value)
+	}
+	if live.Live.Degraded {
+		t.Fatalf("the published service answered as degraded: %+v", live.Live)
+	}
+	presence, err := server.call(context.Background(), toolCall{Name: "presence"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(presence.(map[string]any)) == 0 {
+		t.Fatal("the session announced no presence through the published service")
+	}
+}
+
+// A published address that stops answering is forgotten rather than retried
+// forever, so a service restarted on another port is picked up without
+// reconnecting the client.
+func TestAServiceThatStopsAnsweringIsLookedUpAgain(t *testing.T) {
+	workspace := initRepository(t, "repo")
+	dead := httptest.NewServer(nil)
+	deadURL := dead.URL
+	dead.Close()
+	if _, err := workspace.PublishResident(deadURL); err != nil {
+		t.Fatal(err)
+	}
+	server := newServer("human", workspace.Repo)
+	if _, err := server.call(context.Background(), toolCall{Name: "status"}); err != nil {
+		t.Fatal(err)
+	}
+
+	workroomServer, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := httptest.NewServer(workroomServer.Handler())
+	defer moved.Close()
+	if _, err := workspace.PublishResident(moved.URL); err != nil {
+		t.Fatal(err)
+	}
+	value, err := server.call(context.Background(), toolCall{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, ok := value.(actorStatus); !ok || status.Live.Degraded {
+		t.Fatalf("the moved service was not found again: %#v", value)
+	}
+}
+
+func genesisOf(t *testing.T, workspace *app.Workspace) string {
+	t.Helper()
+	snapshot, err := workspace.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot.Head
+}
+
+// Presence renewal runs beside whatever call is in flight and reads the same
+// attachment, so the two must not race over where the service is.
+func TestPresenceRenewalRunsBesideCalls(t *testing.T) {
+	workspace := initRepository(t, "repo")
+	workroomServer, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(workroomServer.Handler())
+	defer httpServer.Close()
+	if _, err := workspace.PublishResident(httpServer.URL); err != nil {
+		t.Fatal(err)
+	}
+	server := newServer("human", workspace.Repo)
+	if _, err := server.call(context.Background(), toolCall{Name: "presence"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var working sync.WaitGroup
+	for caller := 0; caller < 4; caller++ {
+		working.Add(1)
+		go func() {
+			defer working.Done()
+			for turn := 0; turn < 10; turn++ {
+				if _, err := server.call(context.Background(), toolCall{Name: "presence"}); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		}()
+	}
+	working.Add(1)
+	go func() {
+		defer working.Done()
+		for turn := 0; turn < 10; turn++ {
+			for _, current := range server.attended() {
+				if err := server.announce(context.Background(), current); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		}
+	}()
+	working.Wait()
+	server.depart(context.Background())
 }
