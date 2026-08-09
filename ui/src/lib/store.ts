@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type WorktreeView } from "./api";
+import { ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, OPEN_WORK_STATUSES } from "./work";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
@@ -218,8 +219,8 @@ export function forYouItems(projection: Projection | undefined, me: string | und
   return items.sort((a, b) => a.ticket - b.ticket);
 }
 
-export const OPEN_COMMITMENT_STATUSES = ["requested", "promised", "reported"];
-export const ATTENTION_COMMITMENT_STATUSES = ["stale", "disputed"];
+export const OPEN_COMMITMENT_STATUSES: string[] = [...OPEN_WORK_STATUSES];
+export const ATTENTION_COMMITMENT_STATUSES: string[] = [...ATTENTION_WORK_STATUSES];
 
 // The header chip's summary of the Work drawer, computed from the projection.
 export function workSummary(projection?: Projection): { stale: number; open: number; done: number } {
@@ -231,7 +232,7 @@ export function workSummary(projection?: Projection): { stale: number; open: num
   return {
     stale: staleCount,
     open: projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status)).length,
-    done: projection.commitments.filter((c) => c.status === "satisfied").length,
+    done: projection.commitments.filter((c) => CLOSED_WORK_STATUSES.includes(c.status as (typeof CLOSED_WORK_STATUSES)[number])).length,
   };
 }
 
