@@ -4,17 +4,23 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
+	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
-	"net/http/httptest"
 )
 
 func TestStatelessDiscoverAndToolList(t *testing.T) {
@@ -386,7 +392,7 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 
 // attachedServer builds an adapter that has already joined one repository,
 // which is the state a tool call leaves behind once it has named one.
-func attachedServer(t *testing.T, workspace *app.Workspace, actor, baseURL string, client *http.Client) (*mcpServer, *room) {
+func attachedServer(t testing.TB, workspace *app.Workspace, actor, baseURL string, client *http.Client) (*mcpServer, *room) {
 	t.Helper()
 	server := newServer(actor, workspace.Repo)
 	server.session = "mcp:test"
@@ -602,4 +608,385 @@ func TestPresenceRenewalRunsBesideCalls(t *testing.T) {
 	}()
 	working.Wait()
 	server.depart(context.Background())
+}
+
+func signedWorkspace(tb testing.TB, depth int) (*app.Workspace, workroom.Record) {
+	tb.Helper()
+	ctx := context.Background()
+	repo := filepath.Join(tb.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		tb.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, genesis, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	for index := 1; index < depth; index++ {
+		if _, err := workspace.Act(ctx, "human", app.Act{
+			Verb: app.VerbState, Kind: workroom.KindAssert, Text: "signed orientation history",
+			RestsOn: []string{genesis.ID}, IdempotencyKey: fmt.Sprintf("orientation-history-%d", index),
+		}); err != nil {
+			tb.Fatal(err)
+		}
+	}
+	return workspace, genesis
+}
+
+func callWhoami(t testing.TB, workspace *app.Workspace, baseURL string, client *http.Client) map[string]any {
+	t.Helper()
+	server, _ := attachedServer(t, workspace, "human", baseURL, client)
+	server.session = "mcp:test-whoami"
+	value, err := server.call(context.Background(), toolCall{Name: "whoami"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value.(map[string]any)
+}
+
+func TestWhoamiUsesBoundedEffectiveResidentOrientationWithoutLocalReplay(t *testing.T) {
+	ctx := context.Background()
+	workspace, genesis := signedWorkspace(t, 2)
+	warm, err := app.Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := warm.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	residentService, err := service.New(warm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resident := httptest.NewServer(residentService.Handler())
+	defer resident.Close()
+
+	fresh, err := app.Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpointRef := kernel.CheckpointRef(workspace.Config.Genesis)
+	checkpointHead, err := workspace.Store.Head(ctx, checkpointRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workspace.Store.UpdateRef(ctx, checkpointRef, workspace.Config.Genesis, checkpointHead); err != nil {
+		t.Fatal(err)
+	}
+	eventCommit := strings.TrimPrefix(snapshot.Projection.Statements[len(snapshot.Projection.Statements)-1].Event, workspace.EventID(""))
+	blobOutput, err := exec.Command("git", "--git-dir", workspace.Store.Repo, "rev-parse", eventCommit+":event").CombinedOutput()
+	if err != nil {
+		t.Fatalf("resolve event blob: %v: %s", err, blobOutput)
+	}
+	blob := strings.TrimSpace(string(blobOutput))
+	if err := os.Remove(filepath.Join(workspace.Store.Repo, "objects", blob[:2], blob[2:])); err != nil {
+		t.Fatal(err)
+	}
+
+	result := callWhoami(t, fresh, resident.URL, resident.Client())
+	if result["source"] != residentOrientationSource || result["degraded"] != false {
+		t.Fatalf("resident fast path not used: %#v", result)
+	}
+	frontier := result["frontier"].(statusview.Frontier)
+	if frontier.Head != snapshot.Head || frontier.Depth != snapshot.Depth {
+		t.Fatalf("resident frontier differs: %+v", frontier)
+	}
+	durable := result["durable"].(statusview.ActorView)
+	if durable.Fingerprint != workspace.Config.Actors["human"].Fingerprint || durable.Kind != "human" || durable.MembershipEvent == "" || !containsString(durable.Roles, "participant") {
+		t.Fatalf("resident lost effective identity: %+v", durable)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encoded, []byte("key_file")) || bytes.Contains(encoded, []byte(workspace.Config.Actors["human"].KeyFile)) || genesis.ID == "" {
+		t.Fatalf("whoami leaked local custody or lost signed basis: %s", encoded)
+	}
+}
+
+func TestWhoamiDisclosesCheckpointAndFullAuditFallbacks(t *testing.T) {
+	ctx := context.Background()
+	workspace, _ := signedWorkspace(t, 3)
+	checkpointWriter, err := app.Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := checkpointWriter.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	checkpointRef := kernel.CheckpointRef(workspace.Config.Genesis)
+	checkpointHead, err := workspace.Store.Head(ctx, checkpointRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead := httptest.NewServer(nil)
+	baseURL, client := dead.URL, dead.Client()
+	dead.Close()
+
+	fresh, err := app.Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := callWhoami(t, fresh, baseURL, client)
+	if checkpoint["source"] != string(app.SnapshotSourceSignedCheckpointTail) || checkpoint["degraded"] != true {
+		t.Fatalf("checkpoint fallback was not disclosed: %#v", checkpoint)
+	}
+	if err := workspace.Store.UpdateRef(ctx, checkpointRef, workspace.Config.Genesis, checkpointHead); err != nil {
+		t.Fatal(err)
+	}
+	cold, err := app.Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := callWhoami(t, cold, baseURL, client)
+	if full["source"] != string(app.SnapshotSourceColdFullAudit) || full["degraded"] != true {
+		t.Fatalf("cold full audit was not disclosed: %#v", full)
+	}
+	for _, result := range []map[string]any{checkpoint, full} {
+		encoded, _ := json.Marshal(result)
+		if bytes.Contains(encoded, []byte("key_file")) {
+			t.Fatalf("fallback leaked custody: %s", encoded)
+		}
+	}
+}
+
+func TestWhoamiRejectsUntrustedOrUnboundedResidentAnswers(t *testing.T) {
+	ctx := context.Background()
+	workspace, _ := signedWorkspace(t, 1)
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	orientation, ok := statusview.BuildOrientation(snapshot, workspace.Config.Actors["human"].Fingerprint, "human")
+	if !ok {
+		t.Fatal("missing effective actor")
+	}
+	base, _ := json.Marshal(orientation)
+	var oversizedValue map[string]any
+	if err := json.Unmarshal(base, &oversizedValue); err != nil {
+		t.Fatal(err)
+	}
+	if orientationResponseLimit != 64<<10 {
+		t.Fatalf("orientation response limit = %d, want 64 KiB", orientationResponseLimit)
+	}
+	oversizedValue["you"].(map[string]any)["roles"] = []any{"participant", strings.Repeat("x", 64<<10)}
+	oversized, _ := json.Marshal(oversizedValue)
+	for name, response := range map[string][]byte{
+		"malformed":     []byte("{"),
+		"trailing json": append(append([]byte(nil), base...), []byte(" {}")...),
+		"oversized":     oversized,
+	} {
+		t.Run(name, func(t *testing.T) {
+			resident := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) { _, _ = writer.Write(response) }))
+			defer resident.Close()
+			result := callWhoami(t, workspace, resident.URL, resident.Client())
+			if result["source"] == residentOrientationSource || result["degraded"] != true {
+				t.Fatalf("invalid resident answer was accepted: %#v", result)
+			}
+		})
+	}
+	for name, mutate := range map[string]func(map[string]any){
+		"projection version mismatch": func(value map[string]any) {
+			value["projection_version"] = "statusview-orientation@0"
+		},
+		"foreign genesis": func(value map[string]any) {
+			value["frontier"].(map[string]any)["genesis"] = strings.Repeat("0", len(snapshot.Genesis))
+		},
+		"stale head":     func(value map[string]any) { value["frontier"].(map[string]any)["head"] = snapshot.Genesis },
+		"negative depth": func(value map[string]any) { value["frontier"].(map[string]any)["depth"] = -1 },
+		"actor mismatch": func(value map[string]any) { value["you"].(map[string]any)["fingerprint"] = "foreign" },
+		"missing name":   func(value map[string]any) { value["you"].(map[string]any)["name"] = "" },
+		"missing kind":   func(value map[string]any) { value["you"].(map[string]any)["kind"] = "" },
+		"missing member": func(value map[string]any) { value["you"].(map[string]any)["membership_event"] = "" },
+		"role mismatch":  func(value map[string]any) { value["you"].(map[string]any)["roles"] = []any{"ratifier"} },
+		"role overflow": func(value map[string]any) {
+			roles := []any{"participant"}
+			for index := 0; index < statusview.ListCap; index++ {
+				roles = append(roles, fmt.Sprintf("extra-%d", index))
+			}
+			value["you"].(map[string]any)["roles"] = roles
+		},
+		"negative omission": func(value map[string]any) { value["you"].(map[string]any)["roles_skipped"] = -1 },
+		"unknown field":     func(value map[string]any) { value["invented"] = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var value map[string]any
+			if err := json.Unmarshal(base, &value); err != nil {
+				t.Fatal(err)
+			}
+			mutate(value)
+			resident := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(writer).Encode(value) }))
+			defer resident.Close()
+			result := callWhoami(t, workspace, resident.URL, resident.Client())
+			if result["source"] == residentOrientationSource || result["degraded"] != true {
+				t.Fatalf("untrusted resident answer was accepted: %#v", result)
+			}
+		})
+	}
+}
+
+func TestWhoamiRetriesOneConcurrentFrontierMove(t *testing.T) {
+	ctx := context.Background()
+	workspace, genesis := signedWorkspace(t, 1)
+	first, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint := workspace.Config.Actors["human"].Fingerprint
+	var calls atomic.Int32
+	resident := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		number := calls.Add(1)
+		current := first
+		if number == 1 {
+			if _, err := workspace.Act(ctx, "human", app.Act{Verb: app.VerbState, Kind: workroom.KindAssert, Text: "concurrent", RestsOn: []string{genesis.ID}, IdempotencyKey: "concurrent"}); err != nil {
+				t.Error(err)
+			}
+		} else {
+			current, err = workspace.Snapshot(ctx)
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		orientation, _ := statusview.BuildOrientation(current, fingerprint, "human")
+		_ = json.NewEncoder(writer).Encode(orientation)
+	}))
+	defer resident.Close()
+	result := callWhoami(t, workspace, resident.URL, resident.Client())
+	if calls.Load() != 2 || result["source"] != residentOrientationSource || result["degraded"] != false {
+		t.Fatalf("concurrent frontier was not retried coherently: calls=%d result=%#v", calls.Load(), result)
+	}
+}
+
+func TestWhoamiBoundsStallsAndRejectsRedirects(t *testing.T) {
+	if orientationTimeout != 2*time.Second {
+		t.Fatalf("orientation timeout = %s, want 2s", orientationTimeout)
+	}
+	workspace, _ := signedWorkspace(t, 1)
+	stalled := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) { <-request.Context().Done() }))
+	started := time.Now()
+	result := callWhoami(t, workspace, stalled.URL, stalled.Client())
+	stalled.Close()
+	if elapsed := time.Since(started); elapsed > 3*time.Second || result["degraded"] != true {
+		t.Fatalf("stalled resident was not bounded: elapsed=%s result=%#v", elapsed, result)
+	}
+	var followed atomic.Int32
+	destination := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { followed.Add(1) }))
+	defer destination.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, destination.URL+request.URL.Path, http.StatusFound)
+	}))
+	defer source.Close()
+	result = callWhoami(t, workspace, source.URL, newResidentClient())
+	if followed.Load() != 0 || result["source"] == residentOrientationSource || result["degraded"] != true {
+		t.Fatalf("resident redirect was followed: followed=%d result=%#v", followed.Load(), result)
+	}
+	for _, raw := range []string{"https://127.0.0.1:7777", "http://example.com", "http://user@127.0.0.1:7777", "http://127.0.0.1:7777/path"} {
+		if _, err := validateResidentURL(raw); err == nil {
+			t.Fatalf("accepted unsafe resident URL %q", raw)
+		}
+	}
+}
+
+func TestWhoamiWarmResidentAtSignedDepthIsSubsecond(t *testing.T) {
+	ctx := context.Background()
+	workspace, _ := signedWorkspace(t, 64)
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil || snapshot.Depth != 64 {
+		t.Fatalf("signed depth = %d, want 64 (err=%v)", snapshot.Depth, err)
+	}
+	residentService, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resident := httptest.NewServer(residentService.Handler())
+	defer resident.Close()
+	fresh, err := app.Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	result := callWhoami(t, fresh, resident.URL, resident.Client())
+	if elapsed := time.Since(started); elapsed >= time.Second || result["source"] != residentOrientationSource {
+		t.Fatalf("warm signed-depth orientation: elapsed=%s result=%#v", elapsed, result)
+	}
+}
+
+func BenchmarkWhoamiAtActualSignedDepth(b *testing.B) {
+	ctx := context.Background()
+	workspace, _ := signedWorkspace(b, 128)
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil || snapshot.Depth != 128 {
+		b.Fatalf("signed benchmark depth = %d, want 128 (err=%v)", snapshot.Depth, err)
+	}
+	residentService, err := service.New(workspace)
+	if err != nil {
+		b.Fatal(err)
+	}
+	resident := httptest.NewServer(residentService.Handler())
+	defer resident.Close()
+	b.Run("warm_resident", func(b *testing.B) {
+		for range b.N {
+			fresh, _ := app.Open(ctx, workspace.Repo)
+			if result := callWhoami(b, fresh, resident.URL, resident.Client()); result["source"] != residentOrientationSource {
+				b.Fatalf("warm source = %#v", result)
+			}
+		}
+	})
+	b.Run("new_resident", func(b *testing.B) {
+		for range b.N {
+			residentWorkspace, _ := app.Open(ctx, workspace.Repo)
+			server, err := service.New(residentWorkspace)
+			if err != nil {
+				b.Fatal(err)
+			}
+			httpServer := httptest.NewServer(server.Handler())
+			fresh, _ := app.Open(ctx, workspace.Repo)
+			result := callWhoami(b, fresh, httpServer.URL, httpServer.Client())
+			httpServer.Close()
+			if result["source"] != residentOrientationSource {
+				b.Fatalf("new resident source = %#v", result)
+			}
+		}
+	})
+	dead := httptest.NewServer(nil)
+	deadURL, deadClient := dead.URL, dead.Client()
+	dead.Close()
+	b.Run("unavailable_signed_checkpoint", func(b *testing.B) {
+		for range b.N {
+			fresh, _ := app.Open(ctx, workspace.Repo)
+			if result := callWhoami(b, fresh, deadURL, deadClient); result["source"] != string(app.SnapshotSourceSignedCheckpointTail) {
+				b.Fatalf("checkpoint source = %#v", result)
+			}
+		}
+	})
+}
+
+func BenchmarkWhoamiColdFullAuditAtActualSignedDepth(b *testing.B) {
+	ctx := context.Background()
+	workspace, _ := signedWorkspace(b, 128)
+	writer, err := app.Open(ctx, workspace.Repo)
+	if err != nil {
+		b.Fatal(err)
+	}
+	snapshot, err := writer.Snapshot(ctx)
+	if err != nil || snapshot.Depth != 128 {
+		b.Fatalf("signed benchmark depth = %d, want 128 (err=%v)", snapshot.Depth, err)
+	}
+	dead := httptest.NewServer(nil)
+	deadURL, deadClient := dead.URL, dead.Client()
+	dead.Close()
+	checkpointRef := kernel.CheckpointRef(workspace.Config.Genesis)
+	for b.Loop() {
+		checkpointHead, err := workspace.Store.Head(ctx, checkpointRef)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := workspace.Store.UpdateRef(ctx, checkpointRef, workspace.Config.Genesis, checkpointHead); err != nil {
+			b.Fatal(err)
+		}
+		fresh, _ := app.Open(ctx, workspace.Repo)
+		if result := callWhoami(b, fresh, deadURL, deadClient); result["source"] != string(app.SnapshotSourceColdFullAudit) {
+			b.Fatalf("full audit source = %#v", result)
+		}
+	}
 }
