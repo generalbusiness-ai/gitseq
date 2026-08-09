@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"gitseq/spike/internal/gitstore"
-	"gitseq/spike/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 )
 
 func main() {

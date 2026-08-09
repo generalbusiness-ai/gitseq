@@ -3,9 +3,31 @@
 Commands, tools, and identifiers. For the ordered walkthrough, start
 with [Getting started](getting-started.md).
 
+## Glossary
+
+An actor performs an act; admitted, it becomes an event; the fold reads it
+back as a statement.
+
+| Term | Meaning |
+|---|---|
+| **event** | One admitted, signed record at a final position in the durable log. |
+| **act** | Something an actor does, such as requesting, promising, reporting, ratifying, or superseding. |
+| **statement** | The fold's projected reading of an event. |
+| **kind** | The named speech or governance classification carried by a statement, such as `request` or `assert`. |
+| **request** | The unit of work: an actor asks another actor to act under stated conditions. |
+| **promise** | An actor's voluntary undertaking to fulfil a request. |
+| **report** | The promisor's claim that the promise's conditions have been met. |
+| **commitment** | The tracked request–promise–report aggregate and its current lifecycle. |
+| **ticket** | The short, one-based position used to refer to an event in one workroom. |
+| **note** | The everyday UI label for an `assert` statement. |
+
+The projection's existing `acts` JSON key for ratify and supersede events is
+retained for wire compatibility. Renaming that key is follow-up work, not part
+of this vocabulary change.
+
 ## Event identifiers
 
-Every durable act has one canonical identifier:
+Every durable event has one canonical identifier:
 
 ```
 git:<object-format>:<genesis>#git:<object-format>:<event-commit>
@@ -16,10 +38,10 @@ targets, by `provenance`, and by `Rests-On:` commit trailers. Always copy
 it whole, from the emitted event rather than from a display that
 abbreviates it.
 
-How much of `rests_on` the fold checks depends on the act, and the rules
+How much of `rests_on` the fold checks depends on the event, and the rules
 differ enough to be worth stating one at a time.
 
-| Act | What must resolve | Surplus bases |
+| Event | What must resolve | Surplus bases |
 |---|---|---|
 | `assert`, `artifact`, `propose`, and other statements | nothing | carried unchecked |
 | `promise` | one basis must be an effective `request` | carried unchecked |
@@ -32,14 +54,14 @@ citing a request that does not exist is ineffective, and a report on
 that promise is ineffective in turn, so an unearned approval cannot
 carry force.
 
-**For the acts that have a required edge**, that edge is necessary and
+**For events that have a required edge**, that edge is necessary and
 not sufficient — the fold also checks **who signed**, which the table
 does not show. A promise citing a perfectly effective request is still
 ineffective when its author is not the performer the request named;
 measured, the reason reads `promise actor is not the requested
 performer`. A report needs the promisor's own signature in the same
 way, `ratify` needs authority over that particular target, and
-`supersede` is likewise constrained. For those acts, satisfying the
+`supersede` is likewise constrained. For those events, satisfying the
 citation rule earns a hearing, not force.
 
 That qualification matters: `assert`, `artifact`, `propose` and the
@@ -48,8 +70,8 @@ there is nothing for a citation to be insufficient *for*. The row that
 says "nothing" means it.
 
 Authority grants then need a paragraph of their own, for a different
-reason. For every other act, effectiveness is settled once, when the
-act is appended, and stays settled. A grant can satisfy every rule, be
+reason. For every other event, effectiveness is settled once, when the
+event is appended, and stays settled. A grant can satisfy every rule, be
 judged effective, be ratified — and still confer nothing, for as long
 as the conditions below do not hold. Which conditions apply depends on
 what kind of grant it is, and the two kinds are not the same shape:
@@ -126,7 +148,7 @@ fact about the grant — it is a statement about right now, and the same
 grant may confer tomorrow without anyone appending a new one. Decisions
 are history and do not move; authority is current and does.
 
-So for grants, do not read the verdict as the answer. Whether an act was
+So for grants, do not read the verdict as the answer. Whether an event was
 effective and whether an authority is live now are two questions, asked
 at two different times, and only the first appears in the decisions
 list. `gs actors` answers the second, and answers it only for the
@@ -139,7 +161,7 @@ peculiar to grants is that the verdict does not carry the answer.
 Everywhere else a mistyped identifier is simply kept. A dangling basis
 on an assert or artifact records as effective, and so does a surplus
 dangling basis on a promise, report or supersede that already has its
-required edge. `ratify` is the single act strict enough to reject an
+required edge. `ratify` is the single operation strict enough to reject an
 extra citation outright.
 
 The division is deliberate. Those edges are machinery the fold owns;
@@ -172,6 +194,20 @@ type, one ASCII space, and the base64 wire key, with no options, principals,
 comments, or additional lines. Creation and auditor decoding apply the same
 validation before the value can become an OpenSSH allowed-signers entry.
 
+The kernel can rotate that key in-band. A rotation is a reserved, empty-tree
+commit signed by the current sequencer key that names one canonical successor
+key. The successor becomes current only after that commit: later commits under
+the retired key are refused, and full and incremental audits both carry the
+current key forward as they walk the sequence. Rotation commits increase the
+sequence depth but are not application events.
+
+Rotation limits damage; it does not recover authority that is already gone. A
+lost current private key cannot sign its successor, so recovery requires an
+out-of-band continuation. Whoever holds a compromised current key can rotate
+to another key before the legitimate operator does. The append-only history
+shows that rotation, but the kernel cannot decide which competing custodian was
+legitimate or undo events the compromised key already signed.
+
 ### Speaking
 
 | Command | Purpose |
@@ -180,11 +216,61 @@ validation before the value can become an OpenSSH allowed-signers entry.
 | `gs review --as <actor> --checkout <path> --artifact <event> --promise <event> --verdict <approved\|changes-requested> --text <text>` | Check the exact artifact checkout, then sign a review report. |
 | `gs merge --checkout <path> --candidate <full-commit> --approval <event>` | Merge only the exact head named by a live ratified approval. |
 | `gs ratify --as <actor> <event>` | Confer force, if you hold the authority for that target. |
-| `gs supersede --as <actor> --text <reason> <event>` | Retire an act and propagate staleness. |
+| `gs supersede --as <actor> --text <reason> <event>` | Retire an event and propagate staleness. |
+| `gs batch --as <actor> <file>` | Append an ordered chain of acts, loading and verifying the log once. |
 
 `state` also takes `--rests-on <event>`, `--body key=value`, and
 `--evidence name=path`, each repeatable, plus `--idempotency-key` for
 safe retries.
+
+### Chains of acts
+
+Each ordinary durable subcommand loads and verifies the whole log before it
+appends, so a chain filed one command at a time pays that cost once per act.
+`gs batch` pays it once for the chain: it opens the workroom, verifies the log,
+and then appends every act against that one resident frontier.
+
+The input is a JSON array of acts, read from a file or from standard input when
+the argument is `-` or absent. Each entry carries an optional `label`, a `verb`
+of `state`, `ratify`, or `supersede`, and that verb's usual fields: `kind`,
+`text`, `body`, `rests_on`, `target`, and `idempotency_key`.
+
+```json
+[
+  {"label": "req", "verb": "state", "kind": "request", "text": "do the thing",
+   "body": {"to": "@worker", "conditions": "tests green"},
+   "rests_on": ["git:sha1:<genesis>#git:sha1:<event>"],
+   "idempotency_key": "thing-request"},
+  {"label": "promise", "verb": "state", "kind": "promise", "text": "I will",
+   "rests_on": ["$req"], "idempotency_key": "thing-promise"}
+]
+```
+
+A later act may cite an earlier act of the same batch as `$label` in `rests_on`
+or `target`, and the label resolves to the event identifier minted for that act.
+The whole file is parsed and every reference checked before the first append, so
+a malformed entry or an unknown or forward label lands nothing. The array must
+be the whole input: anything after it other than whitespace, including a stray
+`]` or a second value, is refused before the first append.
+
+The batch is not atomic. Events are commits on `refs/seq/<genesis>`, and the
+kernel owns the whole write for each one: envelope and actor signature checks,
+the payload ceiling, the admission hook, the dedup index, sequencer signing, and
+the compare-and-swap that publishes the commit. Building a chain of commits
+outside that path so the ref could move once would mean repeating those checks
+where the kernel cannot enforce them. Per-act idempotency keys carry the
+recovery instead: rerunning the same file replays the prefix that already
+landed, without duplicating it, and continues from the first act that did not.
+Acts given no idempotency key are not resumable and land afresh.
+
+`gs batch` prints a JSON report naming, for every act in the chain, its
+position, its label, the event it minted, and its outcome: `landed`,
+`replayed`, `failed`, or `skipped`. A failure adds a typed `error` and exits
+nonzero, so the report says exactly which acts landed and which did not.
+
+`--server` forwards the same signed requests to the resident sequencer one at a
+time. That server holds the single verified frontier, and batch semantics stay
+per-act exactly as they are locally.
 
 Every actor-controlled string in the signed intent is limited to 32 KiB, and
 one intent may cite at most 4,096 causal references. The complete signed commit
@@ -214,18 +300,38 @@ few governance kinds. Their meaning belongs to the room's practice.
 
 | Command | Purpose |
 |---|---|
-| `gs status` | Project current state. `--json` for machine output; `--server` to include live presence. |
+| `gs status` | Project a newest-first bounded current/actionable view. Every list is capped at 20 and reports its exact omitted count; request text is capped at 240 bytes. |
+| `gs status --all` | Render the complete human-readable commitment, artifact, and attempt tables. |
+| `gs status --json` | Emit the complete `Snapshot` JSON without the bounded human view. |
 | `gs verify` | Check every signature and the sequence integrity. |
 | `gs provenance <event>` | Walk back through everything an event rests on. |
+
+An explicit `gs status --server http://127.0.0.1:7777` asks the resident's
+bounded `/v0/status-summary` endpoint for the default view. The CLI accepts
+only an HTTP loopback URL, follows no redirects, limits the response to 64
+KiB and the request to two seconds, and checks that the returned genesis,
+head, depth, and cursor still match the selected local workroom. A refusal,
+timeout, oversized response, stale head, or moving head is named on stderr
+and falls back to the verified local path. `--all` and `--json` use the full
+`/v0/status` response and retain the complete modes.
+
+Local status consumes a sequencer-signed checkpoint and verifies its
+descendant tail. If no checkpoint is usable, it performs the ordinary full
+audit and prints a progress line after one second rather than appearing to
+hang. `gs verify` never uses the checkpoint shortcut: it always audits the
+whole sequence.
 
 Resident snapshots are immutable borrowed views. In-process consumers may
 receive maps and slices owned by the workspace cache and must not mutate them;
 JSON and MCP adapters only serialize those values.
 
-The browser's Work drawer also reads local worktree state. That endpoint emits
-only checkout basenames, branch/HEAD, and explicit clean, dirty, detached,
-bare, locked, prunable, or unavailable state; it never enters the durable
-projection. A checkout associated only through an ordinary commit's
+The browser's Work drawer also reads local worktree state. That endpoint names
+the served checkout's own absolute path, so a reader can tell which repository
+the page is showing, and otherwise emits only checkout basenames, branch/HEAD,
+and explicit clean, dirty, detached, bare, locked, prunable, or unavailable
+state; it never enters the durable projection. Disclosing the served path is
+safe because `gs serve` refuses any listen address that is not loopback: the
+browser reading it is already on the host it names. A checkout associated only through an ordinary commit's
 `Rests-On:` trailer is visibly marked **unverified trailer**, because trailer
 text is not an actor-signed workroom statement. The railway is a newest-80
 window and says when it is truncated, so older trailer associations may be
@@ -276,6 +382,43 @@ refspec written by older builds, then fetches atomically without `+`. Initial
 and fast-forward fetches work; a remote rewind fails without moving the
 auditor's existing `refs/seq/*` frontier.
 
+The resident may also maintain a local
+`refs/gitseq/checkpoints/<genesis>` ref. Its parentless commit contains the
+original actor-signed events at one fully audited sequence head and is signed
+by the sequencer key current at that head. On restart, gitseq checks the
+checkpoint's object format, genesis, exact head, and fold-profile version. One
+local first-parent metadata enumeration then proves the exact commit sequence
+from genesis through the named head. Every cached event must occupy its claimed
+commit and match that commit's actor envelope, causal trailers, and tree; its
+actor signature, payload ceiling, dedup key, and payload-tree bytes are checked
+again. Every rotation in the cached prefix is read from its exact sequence
+commit and its signature is checked under the preceding current key. The key
+derived through those verified rotations must then sign the checkpoint itself.
+Cached application-event commits avoid sequencer-signature and payload-object
+reads; cached rotations still require signature checks, and every commit after
+the checkpoint frontier receives the ordinary full verification. A missing,
+malformed, mismatched, oversized, or non-descendant checkpoint is only a cache
+miss: gitseq performs the ordinary full audit and, when it holds sequencer
+custody, replaces the checkpoint.
+
+A writing resident refreshes the ref every 256 accepted events after its last
+successful write. A failed write does not advance that cadence and is retried
+on the next accepted event. Consequently a successful checkpoint leaves at
+most 255 sequence commits for full delta verification, but persistent storage
+or signing failures can make the tail larger. Each write serializes the whole
+cached event prefix; the canonical JSON blob is capped at 256 MiB. Restart is
+therefore linear in total history for the local metadata proof and linear in
+the tail for expensive commit-signature and payload reads. Speedup depends on
+both depth and tail and has no fixed multiplier. On an Apple M5 Max, the
+checked-in `BenchmarkCheckpointRestartAtDepth1000` measured a 768-event
+checkpoint plus 232-event tail at 20.29 seconds and 36.1 MB allocated, versus
+75.31 seconds and 99.7 MB for a cold audit: 3.71x for that exact depth and
+tail. Reproduce it with `go test ./internal/kernel -run '^$' -bench
+'^BenchmarkCheckpointRestartAtDepth1000$' -benchtime=1x -count=1` from
+`spike/`. `gs verify` remains an explicit full audit and never consults this
+resident cache. Checkpoint refs are local implementation artifacts; `attach`
+does not fetch them and the documented sequence push does not publish them.
+
 Until that runs, the workroom exists only in the repository that created
 it, and an auditor's `attach` fails on a missing ref rather than on
 anything meaningful.
@@ -284,16 +427,26 @@ anything meaningful.
 
 `serve` binds loopback addresses only, by design.
 
-Run **one** service per repository. Nothing currently enforces this: there
-is no lock, and only port contention stops a second one. Two services on
-different ports against the same repository is the case to avoid. The
-durable log stays correct — appends are compare-and-swap on the git ref
-and retry on contention — but presence and ephemeral conversation are
-per-process, so the two form separate rooms whose participants cannot see
-each other and are never told.
+Run **one** service per repository. Nothing enforces this: there is no
+lock. Two services on different ports against the same repository is the
+case to avoid. The durable log stays correct — appends are
+compare-and-swap on the git ref and retry on contention — but presence
+and ephemeral conversation are per-process, so the two form separate
+rooms whose participants cannot see each other and are never told.
 
-Note also that `serve` prints its ready banner before it binds, so a
-failed start still announces an address. Check for the bind error.
+Serving binds before it publishes, so the address written into the
+repository is the one actually being served and a failed start announces
+nothing. Publication is not a lock either: the last service to start wins
+the advertisement, which at least pulls new clients into one room.
+Stopping withdraws the advertisement unless a later service has taken it
+over. Interrupt and terminate both count as stopping, so Ctrl-C and an
+ordinary supervisor shutdown both clean up and both exit reporting
+success. Only a hard kill leaves a record behind, and that costs a client
+one refused connection before it acts locally instead.
+
+`--listen 127.0.0.1:0` takes any free port, which is what you want when
+several repositories are served at once: clients read the port from the
+repository rather than being told it.
 
 #### What loopback still trusts
 
@@ -324,7 +477,7 @@ signature and retains the event, and no later reader can tell it from one
 the actor intended, because cryptography answers who holds the key and
 not who meant it. What the event then *means* is judged separately — the
 profile fold reads already-decoded records, checks no signatures at all,
-and can rule a perfectly signed act ineffective or disputed on its
+and can rule a perfectly signed event ineffective or disputed on its
 merits. So the boundary buys an attacker authentic authorship, not
 automatic force.
 
@@ -338,11 +491,26 @@ well as the conversation.
 ## MCP
 
 ```sh
-gitseq-mcp --repo <path> --actor <name> --server http://127.0.0.1:7777
+gitseq-mcp --actor <name> [--repo <path>]
 ```
 
 One process per client session, one actor per process. The adapter signs
 every act as that actor and holds a leased, session-bound presence.
+
+**Which workroom.** The repository is a parameter of the call, not of the
+installation. A call with no `repo` acts in the adapter's working
+directory, or in `--repo` when that was given; any call may name another
+repository instead. A directory with no workroom, or one where the actor
+is not configured, fails that call and says so — it does not stop the
+adapter, which is installed once and pointed at many repositories. Linked
+worktrees of one repository are one workroom, not several.
+
+**Finding the service.** The adapter reads the resident address that
+`serve` published in the target repository, and uses it only when the
+genesis recorded with it matches that workroom, so an act cannot be
+posted to a service holding a different log. An address that stops
+answering is forgotten and looked up again on the next call, so a service
+started or moved later is picked up without reconnecting the client.
 
 **Protocol era.** The adapter is dual-era: it serves the stateless
 `2026-07-28` shape and the `initialize` handshake of `2025-11-25` and
@@ -377,8 +545,11 @@ ephemeral state does not survive, and the adapter will not imply it did.
 
 | Path | Contents |
 |---|---|
+| `cmd/` | Shipping `gs` and `gitseq-mcp` commands. |
 | `docs/` | User documentation. |
+| `internal/` | Production kernel, workroom profile, nexus, and service packages. |
 | `SKILL.md` | Normative contract for agents in a workroom. |
 | `notes/` | Dated design and implementation notes. |
-| `spike/` | Implementation: kernel, workroom profile, service, CLI, MCP adapter. |
-| `ui/` | The live projection served at the listen address. |
+| `spike/` | Adversarial CLI, report generator, forge fixture, and six-case evidence. |
+| `ui/` | Browser projection source; `make ui` regenerates the committed build. |
+| `internal/service/uidist/` | Committed browser build served at the listen address; `make ui-check` rebuilds and verifies it matches `ui/`. |

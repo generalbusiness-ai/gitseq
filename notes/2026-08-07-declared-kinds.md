@@ -1,8 +1,11 @@
 ---
 date: 2026-08-07
-status: proposal, review-repaired — awaiting ratification; on adoption
-  the design note gains its wave entry by an ordinary commit resting
-  on the decision.
+status: adopted 2026-08-07 — proposal a80d687d ratified by hugh
+  (event 978a9674) after three rounds of independent review; the
+  design note carries the twelfth-wave ledger entry. First
+  catalog/application/UI wave implemented under request fa5e579f and
+  promise b92876eb; published-fold execution split to causal child
+  request 7bb74568.
 origin: the 2026-08-07 design-goal review (assert 95e79d71) and a
   conversation about keep's tag-definition model; crystallizing quotes
   ride as evidence on the proposal act that cites this note.
@@ -328,6 +331,62 @@ one level up.
 5. SKILL.md's per-kind prose moves into definitions' `guidance`;
    SKILL.md keeps the discipline and the loop, and points at the
    room's own vocabulary as the source of kind truth.
+
+### Wave 1 implementation record
+
+The first separately reviewed wave makes the candidate algebra concrete
+without pretending the fold-execution runtime already exists:
+
+- `fields` is canonical JSON containing an array of `{op,name}` records;
+  `type` adds one of `string`, `event-id`, `actor-ref`, or `path-commit`,
+  `matches` adds an RE2 `pattern`, and `one-of` adds a finite `values`
+  array. Operators and operands are closed and rejected when mixed.
+- `basis` is canonical JSON containing zero or more
+  `{kinds,min,max}` count constraints. Every range is finite and every
+  named kind must be defined at the definition statement's position.
+- Satisfiers are `none`, `originating-requester`, or `role:<name>`;
+  render classes are `note`, `proposal`, `commitment`, `result`,
+  `dissent`, `artifact`, or `governance`; staleness modes are
+  `propagates`, `terminal`, or `exempt`; lifecycle values are `none`,
+  `request`, `promise`, or `report`. There are no extension strings.
+- Every name a definition introduces — the kind, a role in a
+  satisfier, a required body field, a basis kind — must be an
+  identifier: lowercase ASCII words joined by single hyphens or
+  underscores. A name outside that grammar is refused as
+  `uninterpretable` rather than accepted into a catalog where no
+  actor could ever satisfy it.
+- Three kinds are read by the fold directly rather than through their
+  definitions — `kind-def`, `fold-activation`, and `roster`, from
+  which membership and authority are extracted — so none of them may
+  be redefined. Redefining `roster` would let a participant name
+  themselves as the satisfier of their own authority grant.
+- Where several ratified declarations of one kind survive at once,
+  the governing one is whichever holds the live ratification standing
+  latest in the total order. Force arrives at ratification, so
+  contesting a retirement restores a version without displacing one
+  ratified after it, and no already-emitted verdict moves.
+- The ten compatibility definitions and the two meta-kind definitions
+  are one catalog used by validation, fold judgment, ratification,
+  projection, and UI placement. A pinned legacy transcript fixture
+  guards the pre-migration projection bytes. Ratified definitions take
+  effect forward from their ratification; retirement removes them and
+  retirement's supersession restores them without revisiting an earlier
+  verdict.
+- Status serves active definitions and their guidance plus the binding
+  state. The application and UI surface `undefined-kind`,
+  `uninterpretable`, and `unbound` rather than hiding an act or selecting
+  an ambient interpretation.
+- A prefix activation and its ratification now form an irrevocable
+  recorded boundary. A prefix binding governs from genesis to its
+  transition, so a record reaching no further than the transition
+  projects as `bound`. Until the named interpreter can be fetched,
+  checked, built, and handed state, meaning beyond that seam projects
+  the typed `uninterpretable: activated interpreter execution is not
+  held` gap — one gap, however many acts it refuses.
+  The publication/execution trust boundary — `refs/folds/*`, reachability,
+  pinned toolchain, vendor closure, construction, interface and seam
+  fixtures — is assigned to child request 7bb74568 before implementation,
+  rather than being smuggled into this UI-facing wave.
 
 ## Lineage
 
