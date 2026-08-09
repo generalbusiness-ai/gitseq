@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0be172538ea08858bf5950d699eb3c8d916924c0","text":"Replaced by the exact test-only repair head 00b7070d872ad404ebc47679504881ebab6d16eb after ratified changes-requested review."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:18fef59a7c146f9e33211078101d3fbdcb90e846","text":"Obsolete ready report for e8ee5cc; replacement evidence is being reported at exact repair head 00b7070."}
