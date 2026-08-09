@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"The reference describes which workroom a call acts in, how the resident service is found and guarded, and how serving publishes and withdraws its address.","body":{"branch":"task/mcp-repo-parameter","commit":"d428ca97f31b758ec07b94796aa323528b3aac79","path":"docs/reference.md"}}
+{"kind":"artifact","text":"Getting started registers the adapter without naming a repository or a service URL.","body":{"branch":"task/mcp-repo-parameter","commit":"d428ca97f31b758ec07b94796aa323528b3aac79","path":"docs/getting-started.md"}}
