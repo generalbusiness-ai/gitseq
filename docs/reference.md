@@ -3,9 +3,31 @@
 Commands, tools, and identifiers. For the ordered walkthrough, start
 with [Getting started](getting-started.md).
 
+## Glossary
+
+An actor performs an act; admitted, it becomes an event; the fold reads it
+back as a statement.
+
+| Term | Meaning |
+|---|---|
+| **event** | One admitted, signed record at a final position in the durable log. |
+| **act** | Something an actor does, such as requesting, promising, reporting, ratifying, or superseding. |
+| **statement** | The fold's projected reading of an event. |
+| **kind** | The named speech or governance classification carried by a statement, such as `request` or `assert`. |
+| **request** | The unit of work: an actor asks another actor to act under stated conditions. |
+| **promise** | An actor's voluntary undertaking to fulfil a request. |
+| **report** | The promisor's claim that the promise's conditions have been met. |
+| **commitment** | The tracked request–promise–report aggregate and its current lifecycle. |
+| **ticket** | The short, one-based position used to refer to an event in one workroom. |
+| **note** | The everyday UI label for an `assert` statement. |
+
+The projection's existing `acts` JSON key for ratify and supersede events is
+retained for wire compatibility. Renaming that key is follow-up work, not part
+of this vocabulary change.
+
 ## Event identifiers
 
-Every durable act has one canonical identifier:
+Every durable event has one canonical identifier:
 
 ```
 git:<object-format>:<genesis>#git:<object-format>:<event-commit>
@@ -16,10 +38,10 @@ targets, by `provenance`, and by `Rests-On:` commit trailers. Always copy
 it whole, from the emitted event rather than from a display that
 abbreviates it.
 
-How much of `rests_on` the fold checks depends on the act, and the rules
+How much of `rests_on` the fold checks depends on the event, and the rules
 differ enough to be worth stating one at a time.
 
-| Act | What must resolve | Surplus bases |
+| Event | What must resolve | Surplus bases |
 |---|---|---|
 | `assert`, `artifact`, `propose`, and other statements | nothing | carried unchecked |
 | `promise` | one basis must be an effective `request` | carried unchecked |
@@ -32,14 +54,14 @@ citing a request that does not exist is ineffective, and a report on
 that promise is ineffective in turn, so an unearned approval cannot
 carry force.
 
-**For the acts that have a required edge**, that edge is necessary and
+**For events that have a required edge**, that edge is necessary and
 not sufficient — the fold also checks **who signed**, which the table
 does not show. A promise citing a perfectly effective request is still
 ineffective when its author is not the performer the request named;
 measured, the reason reads `promise actor is not the requested
 performer`. A report needs the promisor's own signature in the same
 way, `ratify` needs authority over that particular target, and
-`supersede` is likewise constrained. For those acts, satisfying the
+`supersede` is likewise constrained. For those events, satisfying the
 citation rule earns a hearing, not force.
 
 That qualification matters: `assert`, `artifact`, `propose` and the
@@ -48,8 +70,8 @@ there is nothing for a citation to be insufficient *for*. The row that
 says "nothing" means it.
 
 Authority grants then need a paragraph of their own, for a different
-reason. For every other act, effectiveness is settled once, when the
-act is appended, and stays settled. A grant can satisfy every rule, be
+reason. For every other event, effectiveness is settled once, when the
+event is appended, and stays settled. A grant can satisfy every rule, be
 judged effective, be ratified — and still confer nothing, for as long
 as the conditions below do not hold. Which conditions apply depends on
 what kind of grant it is, and the two kinds are not the same shape:
@@ -126,7 +148,7 @@ fact about the grant — it is a statement about right now, and the same
 grant may confer tomorrow without anyone appending a new one. Decisions
 are history and do not move; authority is current and does.
 
-So for grants, do not read the verdict as the answer. Whether an act was
+So for grants, do not read the verdict as the answer. Whether an event was
 effective and whether an authority is live now are two questions, asked
 at two different times, and only the first appears in the decisions
 list. `gs actors` answers the second, and answers it only for the
@@ -139,7 +161,7 @@ peculiar to grants is that the verdict does not carry the answer.
 Everywhere else a mistyped identifier is simply kept. A dangling basis
 on an assert or artifact records as effective, and so does a surplus
 dangling basis on a promise, report or supersede that already has its
-required edge. `ratify` is the single act strict enough to reject an
+required edge. `ratify` is the single operation strict enough to reject an
 extra citation outright.
 
 The division is deliberate. Those edges are machinery the fold owns;
@@ -194,7 +216,7 @@ legitimate or undo events the compromised key already signed.
 | `gs review --as <actor> --checkout <path> --artifact <event> --promise <event> --verdict <approved\|changes-requested> --text <text>` | Check the exact artifact checkout, then sign a review report. |
 | `gs merge --checkout <path> --candidate <full-commit> --approval <event>` | Merge only the exact head named by a live ratified approval. |
 | `gs ratify --as <actor> <event>` | Confer force, if you hold the authority for that target. |
-| `gs supersede --as <actor> --text <reason> <event>` | Retire an act and propagate staleness. |
+| `gs supersede --as <actor> --text <reason> <event>` | Retire an event and propagate staleness. |
 
 `state` also takes `--rests-on <event>`, `--body key=value`, and
 `--evidence name=path`, each repeatable, plus `--idempotency-key` for
@@ -395,7 +417,7 @@ signature and retains the event, and no later reader can tell it from one
 the actor intended, because cryptography answers who holds the key and
 not who meant it. What the event then *means* is judged separately — the
 profile fold reads already-decoded records, checks no signatures at all,
-and can rule a perfectly signed act ineffective or disputed on its
+and can rule a perfectly signed event ineffective or disputed on its
 merits. So the boundary buys an attacker authentic authorship, not
 automatic force.
 

@@ -34,19 +34,19 @@ On that clock, gitseq separates conversation from commitment. People
 and agents talk freely in a workroom; the chatter is ephemeral and
 honestly forgotten when the room empties — forgetting is enforced,
 not accidental. When something matters, a participant deliberately
-**sets it down**: a signed act at one final position, carrying the
-evidence and the prior acts it rests on. What the acts are called —
+**sets it down**: a signed event at one final position, carrying the
+evidence and the prior events it rests on. How the fold reads those events —
 a request, a decision, a claim — belongs to the room's practice, not
 to the substrate: gitseq has no ontology.
 
 The mechanism is three small rungs, and the power is only in their
 composition:
 
-1. **Every act gets a ticket number.** Signed at the door, final,
+1. **Every event gets a ticket number.** Signed at the door, final,
    the same number for every reader. "As of #4312" means one exact
    thing, forever — something no amount of merging can give you,
    because merge-order is written by participants, later, revisably.
-2. **Acts point backward.** "Rests on #4290." "Replaces #4101." The
+2. **Events point backward.** "Rests on #4290." "Replaces #4101." The
    organization's knowledge becomes a dependency graph pinned to the
    clock — not a wiki's link-soup, but edges with before/after facts
    attached.

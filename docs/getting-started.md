@@ -120,7 +120,7 @@ gs state --repo . --server http://127.0.0.1:7777 --as alice \
   --body to=@bot --body conditions='all tests pass'
 ```
 
-Every durable command prints the **event identifier** that later acts
+Every durable command prints the **event identifier** that later events
 cite:
 
 ```
