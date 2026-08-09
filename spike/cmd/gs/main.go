@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,7 +20,9 @@ import (
 	"time"
 
 	"gitseq/spike/internal/app"
+	"gitseq/spike/internal/kernel"
 	"gitseq/spike/internal/service"
+	"gitseq/spike/internal/statusview"
 	"gitseq/spike/internal/workroom"
 )
 
@@ -588,32 +591,206 @@ func submitAct(ctx context.Context, workspace *app.Workspace, serverURL, actorNa
 func statusCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("status", arguments)
 	jsonOutput := set.Bool("json", false, "render JSON")
+	all := set.Bool("all", false, "render complete human-readable status")
 	serverURL := set.String("server", "", "workroom URL including live state")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
-	if *serverURL != "" {
-		response, err := http.Get(strings.TrimRight(*serverURL, "/") + "/v0/status")
-		if err != nil {
-			return err
-		}
-		defer response.Body.Close()
-		_, err = io.Copy(os.Stdout, response.Body)
-		return err
+	if *jsonOutput && *all {
+		return errors.New("status accepts only one of --all and --json")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
 		return err
 	}
-	snapshot, err := workspace.Snapshot(ctx)
+	if *serverURL != "" {
+		if err := validateLoopbackServer(*serverURL); err != nil {
+			return err
+		}
+		if *jsonOutput || *all {
+			status, remoteErr := fetchFullStatus(ctx, *serverURL)
+			if remoteErr == nil {
+				if err := validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head); err == nil {
+					if *jsonOutput {
+						return printJSON(status.Durable)
+					}
+					_, err = os.Stdout.Write(workroom.RenderStatus(status.Durable.Projection))
+					return err
+				} else {
+					remoteErr = err
+				}
+			}
+			fmt.Fprintf(os.Stderr, "gs: resident status unavailable (%v); performing verified local fallback\n", remoteErr)
+		} else {
+			summary, remoteErr := fetchSummary(ctx, workspace, *serverURL)
+			if remoteErr == nil {
+				_, err = os.Stdout.Write(statusview.Render(summary.Durable, "resident summary"))
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "gs: resident summary unavailable (%v); performing verified local fallback\n", remoteErr)
+		}
+	}
+	snapshot, err := snapshotWithProgress(ctx, workspace)
 	if err != nil {
 		return err
 	}
 	if *jsonOutput {
 		return printJSON(snapshot)
 	}
-	_, err = os.Stdout.Write(workroom.RenderStatus(snapshot.Projection))
+	if *all {
+		_, err = os.Stdout.Write(workroom.RenderStatus(snapshot.Projection))
+		return err
+	}
+	source := "verified local"
+	if *serverURL != "" {
+		source = "verified local fallback"
+	}
+	summary := statusview.Build(snapshot.Genesis, snapshot.Head, snapshot.Depth, snapshot.Projection)
+	_, err = os.Stdout.Write(statusview.Render(summary, source))
 	return err
+}
+
+const (
+	summaryResponseLimit = 64 << 10
+	fullResponseLimit    = 64 << 20
+)
+
+func validateLoopbackServer(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "http" || parsed.Host == "" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return errors.New("--server must be an http loopback URL without credentials")
+	}
+	host := parsed.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return errors.New("--server must name a loopback address")
+	}
+	return nil
+}
+
+func boundedClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return errors.New("redirects are not allowed")
+		},
+	}
+}
+
+func getJSON(ctx context.Context, client *http.Client, rawURL string, limit int64, target any) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("resident returned %s", response.Status)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(data)) > limit {
+		return fmt.Errorf("resident response exceeds %d bytes", limit)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return errors.New("resident returned trailing JSON")
+	}
+	return nil
+}
+
+func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (service.SummaryStatus, error) {
+	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	if err != nil {
+		return service.SummaryStatus{}, err
+	}
+	var summary service.SummaryStatus
+	if err := getJSON(ctx, boundedClient(2*time.Second), strings.TrimRight(raw, "/")+"/v0/status-summary", summaryResponseLimit, &summary); err != nil {
+		return service.SummaryStatus{}, err
+	}
+	if err := validateRemoteFrontierAt(ctx, workspace, before, summary.Durable.Genesis, summary.Durable.Head); err != nil {
+		return service.SummaryStatus{}, err
+	}
+	if len(summary.Cursor.Frontier) != 1 || summary.Cursor.Frontier[0].Genesis != summary.Durable.Genesis || summary.Cursor.Frontier[0].Head != summary.Durable.Head || summary.Cursor.Frontier[0].Depth != summary.Durable.Depth {
+		return service.SummaryStatus{}, errors.New("resident summary cursor does not match its durable frontier")
+	}
+	return summary, nil
+}
+
+func fetchFullStatus(ctx context.Context, raw string) (service.Status, error) {
+	var status service.Status
+	err := getJSON(ctx, boundedClient(10*time.Second), strings.TrimRight(raw, "/")+"/v0/status", fullResponseLimit, &status)
+	return status, err
+}
+
+func validateRemoteFrontier(ctx context.Context, workspace *app.Workspace, genesis, head string) error {
+	current, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	if err != nil {
+		return err
+	}
+	return validateRemoteFrontierAt(ctx, workspace, current, genesis, head)
+}
+
+func validateRemoteFrontierAt(ctx context.Context, workspace *app.Workspace, before, genesis, head string) error {
+	after, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	if err != nil {
+		return err
+	}
+	if genesis != workspace.Config.Genesis {
+		return errors.New("resident summary genesis does not match the selected workroom")
+	}
+	if before != after {
+		return errors.New("workroom head moved while resident status was read")
+	}
+	if head != after {
+		return errors.New("resident summary head is not current")
+	}
+	return nil
+}
+
+func snapshotWithProgress(ctx context.Context, workspace *app.Workspace) (app.Snapshot, error) {
+	return loadSnapshotWithProgress(ctx, os.Stderr, workspace.Snapshot)
+}
+
+func loadSnapshotWithProgress(ctx context.Context, progress io.Writer, load func(context.Context) (app.Snapshot, error)) (app.Snapshot, error) {
+	type result struct {
+		snapshot app.Snapshot
+		err      error
+	}
+	ready := make(chan result, 1)
+	go func() {
+		snapshot, err := load(ctx)
+		ready <- result{snapshot: snapshot, err: err}
+	}()
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	select {
+	case result := <-ready:
+		return result.snapshot, result.err
+	case <-timer.C:
+		fmt.Fprintln(progress, "gs: verifying the durable log; this may take a while")
+		select {
+		case result := <-ready:
+			return result.snapshot, result.err
+		case <-ctx.Done():
+			return app.Snapshot{}, ctx.Err()
+		}
+	case <-ctx.Done():
+		return app.Snapshot{}, ctx.Err()
+	}
 }
 
 func provenanceCommand(ctx context.Context, arguments []string) error {

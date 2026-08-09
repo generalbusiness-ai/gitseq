@@ -65,3 +65,11 @@ and frontier retrieval, capability token semantics, and throughput/latency
 targets remain outside this spike. Sequencer key rotation is implemented in
 the kernel; the reference states its recovery limits. The pre-append hook is
 present, but ships with no capability policy.
+
+`gs status` uses that verified read path but renders a bounded operational
+view by default. `--all` retains the complete human tables and `--json`
+retains the complete snapshot. With an explicit loopback `--server`, the
+default mode reads the resident's bounded summary under redirect, byte, time,
+genesis, and head guards; any guard failure is disclosed before a verified
+local fallback. `gs verify` remains a full audit and never consumes the
+checkpoint shortcut.

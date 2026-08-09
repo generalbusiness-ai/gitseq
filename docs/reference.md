@@ -228,9 +228,26 @@ few governance kinds. Their meaning belongs to the room's practice.
 
 | Command | Purpose |
 |---|---|
-| `gs status` | Project current state. `--json` for machine output; `--server` to include live presence. |
+| `gs status` | Project a newest-first bounded current/actionable view. Every list is capped at 20 and reports its exact omitted count; request text is capped at 240 bytes. |
+| `gs status --all` | Render the complete human-readable commitment, artifact, and attempt tables. |
+| `gs status --json` | Emit the complete `Snapshot` JSON without the bounded human view. |
 | `gs verify` | Check every signature and the sequence integrity. |
 | `gs provenance <event>` | Walk back through everything an event rests on. |
+
+An explicit `gs status --server http://127.0.0.1:7777` asks the resident's
+bounded `/v0/status-summary` endpoint for the default view. The CLI accepts
+only an HTTP loopback URL, follows no redirects, limits the response to 64
+KiB and the request to two seconds, and checks that the returned genesis,
+head, depth, and cursor still match the selected local workroom. A refusal,
+timeout, oversized response, stale head, or moving head is named on stderr
+and falls back to the verified local path. `--all` and `--json` use the full
+`/v0/status` response and retain the complete modes.
+
+Local status consumes a sequencer-signed checkpoint and verifies its
+descendant tail. If no checkpoint is usable, it performs the ordinary full
+audit and prints a progress line after one second rather than appearing to
+hang. `gs verify` never uses the checkpoint shortcut: it always audits the
+whole sequence.
 
 Resident snapshots are immutable borrowed views. In-process consumers may
 receive maps and slices owned by the workspace cache and must not mutate them;
