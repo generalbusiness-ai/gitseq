@@ -2,6 +2,6 @@
 ui/node_modules/
 ui/tsconfig.tsbuildinfo
 
-# worktrees and other temporary storage
-.claude
-.tmp
+# Local agent state and temporary work never belong in a public checkout.
+/.claude/
+/.tmp/
