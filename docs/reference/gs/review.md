@@ -2,6 +2,7 @@
 title: gs review
 summary: Check the exact artifact checkout, then sign a review verdict against it.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7bf4086034820826093f3e5b88f6076df77f2856
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e37ac7f4c061410d50e88f2af22bc03da84e7f82
 ---
@@ -71,10 +72,11 @@ gs review --repo "$REPO" --as carol --checkout "$REPO" \
 
 Durable checks:
 
-- the named **artifact** is effective and live, not stale or retired;
-- the named **promise** is effective, live, and owned by the reviewer;
-- the promise rests on exactly one live `request`, which is copied from
-  the graph rather than retyped.
+- the named **artifact** is effective and not retired;
+- the named **promise** is effective, not retired, and owned by the
+  reviewer;
+- the promise rests on exactly one standing `request`, which is copied
+  from the graph rather than retyped.
 
 Local checks on `--checkout`:
 
@@ -89,11 +91,30 @@ commit, so a later checkout movement cannot retarget it.
 A linked worktree is a fine checkout: gitseq state belongs to the common
 directory, and the selected worktree stays an ordinary git context.
 
+## Staleness does not stop a review
+
+Retired and stale are different facts. Retired means this act was
+superseded; stale means something underneath it was. A stale artifact
+still names the commit it always named, and whether the movement matters
+to *that commit* is exactly the reviewer's question. Refusing would leave
+it permanently unanswered by the only party positioned to answer it.
+
+So `review` goes ahead and records what had moved. The verdict body then
+carries `stale=true` and a `staleness` line naming which of the artifact,
+promise and request are stale, whether the movement was in the world they
+describe, and the retired bases that caused it — up to four of them, with
+a count of the rest, because a verdict is a message and
+[`gs provenance`](provenance.md) is the projection.
+
+The signed report therefore says plainly that the world had moved and the
+reviewer signed anyway.
+
 ## What it produces
 
 A `report` resting on the promise, the request, and the artifact, with
-`body.verdict` and `body.head`. The review requester ratifies it; then,
-for an approval, [`gs merge`](merge.md) can use it.
+`body.verdict` and `body.head`, plus `body.stale` and `body.staleness`
+when something underneath had moved. The review requester ratifies it;
+then, for an approval, [`gs merge`](merge.md) can use it.
 
 ## What it does not replace
 

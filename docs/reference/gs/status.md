@@ -2,6 +2,7 @@
 title: gs status
 summary: Project the current state of the workroom, bounded by default.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1e07c1f654274392a11ac43943211dd9609f0205
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a40ed6053a0bb5c1eeed9febb540498d4258799f
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cccadaa785ee972d3154690bb4ad262d1dcd9633
 ---
@@ -56,8 +57,8 @@ fallback`. Then a line of totals, and five sections:
 |---|---|
 | Actionable commitments | Commitments someone can advance now: `open`, `requested`, `promised`, `reported`. |
 | Needs attention | Live commitments in any other state — stale, reneged, cancelled, dangling. |
-| Current artifacts | Artifacts nothing has retired under. |
-| Stale artifacts | Artifacts a retirement reached. |
+| Current artifacts | Artifacts that are neither retired nor stale. |
+| Stale artifacts | Artifacts that were retired, and artifacts a retirement reached. |
 | Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
 
 Satisfied and withdrawn commitments are finished, and are counted in the
@@ -76,8 +77,14 @@ Artifact rows carry a state and any notes:
 
 | State | Meaning |
 |---|---|
-| `current` | Nothing it rests on has been retired. |
+| `current` | It stands, and nothing under it has been retired. |
+| `retired` | This artifact was itself superseded. |
 | `stale` | A basis was retired. Re-check the thing it describes. |
+
+Both non-current states are listed under stale artifacts, because to a
+reader looking for what is current they mean the same thing: not this
+one. They are named apart because a withdrawn pointer and a moved world
+call for different work.
 
 | Note | Meaning |
 |---|---|

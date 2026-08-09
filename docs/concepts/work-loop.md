@@ -2,6 +2,7 @@
 title: The work loop
 summary: Request, promise, report, ratification — and who is allowed to close what.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7bf4086034820826093f3e5b88f6076df77f2856
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:963dcd7e18727d410e7331b1159906a28fac8865
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
 ---
@@ -68,16 +69,21 @@ the branch moves after the verdict is signed, the approval no longer
 describes anything anyone looked at.
 
 [`gs review`](../reference/gs/review.md) enforces that boundary. It
-requires the named artifact to be effective and live, the named promise
-to be effective, live and owned by the reviewer, and the checkout to be
-clean and sitting on the artifact's exact commit. It derives the
-originating request from the durable graph rather than letting you retype
-it, and the report it signs names the immutable head.
+requires the named artifact to be effective and not retired, the named
+promise to be effective, not retired and owned by the reviewer, and the
+checkout to be clean and sitting on the artifact's exact commit. It
+derives the originating request from the durable graph rather than
+letting you retype it, and the report it signs names the immutable head.
+
+Staleness is the one thing it does not refuse. Whether a moved world
+matters to this exact commit is the reviewer's judgement, so the review
+goes ahead and the verdict records what had moved.
 
 After the review requester ratifies an approved report,
-[`gs merge`](../reference/gs/merge.md) enforces the other boundary. It
-refuses an unratified, retired or stale approval, a non-approval verdict,
-a candidate other than the approved head, and a dirty checkout. It hands
+[`gs merge`](../reference/gs/merge.md) enforces the other boundary, and
+keeps the strict reading review gives up. It refuses an unratified,
+retired or stale approval or artifact, a non-approval verdict, a
+candidate other than the approved head, and a dirty checkout. It hands
 git the approved object ID, never a branch name, so advancing the
 reviewed branch cannot retarget the merge.
 

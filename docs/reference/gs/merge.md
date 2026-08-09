@@ -2,6 +2,7 @@
 title: gs merge
 summary: Merge only the exact head named by a live, ratified approval.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7bf4086034820826093f3e5b88f6076df77f2856
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
 ---
 
@@ -68,6 +69,7 @@ It prints the resulting merge commit.
 | Situation | Why |
 |---|---|
 | The approval is ineffective, unratified, retired or stale | An approval that no longer stands approves nothing. |
+| The approved artifact is retired or stale | Same, from the other side of the chain. |
 | The verdict is not `approved` | `changes-requested` is not a merge authorization. |
 | `--candidate` differs from the approved head | The reviewer looked at a different commit. |
 | The approval does not rest on the artifact it names | The chain from verdict to code is broken. |
@@ -77,6 +79,12 @@ It prints the resulting merge commit.
 | `--candidate` is not a full lowercase object ID | An abbreviation could become ambiguous later. |
 
 Every check runs twice, immediately before git is invoked.
+
+`merge` keeps the strict reading of staleness that
+[`gs review`](review.md) gives up. The latitude belongs where a reviewer
+is present to exercise it, and nobody is present here. A refused merge
+leaves the signed approval standing and asks only that the record be
+brought up to date first.
 
 ## Why an object ID and not a branch
 
