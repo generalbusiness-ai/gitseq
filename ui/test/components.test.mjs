@@ -37,7 +37,7 @@ function workroom(presence) {
 
 const session = { id: "browser", live: true, setActor() {} };
 
-test("same-name presence stays fingerprint-based at the rendered component boundary", async () => {
+test("identity and personal Work state stay honest at rendered component boundaries", async () => {
   const vite = await createServer({
     root: uiRoot,
     appType: "custom",
@@ -45,9 +45,10 @@ test("same-name presence stays fingerprint-based at the rendered component bound
     server: { middlewareMode: true },
   });
   try {
-    const [{ TopBar }, { ProfilePane }] = await Promise.all([
+    const [{ TopBar }, { ProfilePane }, { WorkView }] = await Promise.all([
       vite.ssrLoadModule("/src/components/TopBar.tsx"),
       vite.ssrLoadModule("/src/components/ProfilePane.tsx"),
+      vite.ssrLoadModule("/src/components/WorkDrawer.tsx"),
     ]);
     const room = workroom({
       "handle:first": "claude (a5d35aa7e479)",
@@ -80,9 +81,106 @@ test("same-name presence stays fingerprint-based at the rendered component bound
           onClose() {},
           onJumpTo() {},
         }),
-      );
+    );
     assert.match(profile("a5d35aa7e4799472"), /aria-label="online"/);
     assert.match(profile("0011223344ff5566"), /aria-label="away"/);
+    const ambiguousPersonal = renderToStaticMarkup(
+      React.createElement(WorkView, {
+        workroom: room,
+        session: { ...session, actor: "claude" },
+        highlight: { events: new Set(), commits: new Set() },
+        onSelect() {},
+        onOpenThread() {},
+      }),
+    );
+    assert.doesNotMatch(ambiguousPersonal, /aria-label="Personal work filters"|aria-label="follow topic"/);
+
+    const personalRoom = workroom({});
+    personalRoom.actors = [
+      { name: "codex", fingerprint: "codex-fingerprint", roles: [], custody: true },
+      { name: "claude", fingerprint: "claude-fingerprint", roles: [], custody: true },
+    ];
+    personalRoom.status.durable.projection = {
+      decisions: ["request", "change"].map((event) => ({ event, verdict: "effective", reason: "ok" })),
+      acts: [], artifacts: [], actors: {},
+      statements: [
+        { event: "request", actor: "codex-fingerprint", kind: "request", text: "Review the release", body: { to: "codex-fingerprint" }, timestamp: 10 },
+        { event: "change", actor: "claude-fingerprint", kind: "assert", text: "Release changed", timestamp: 20 },
+      ],
+      commitments: [{ request: "request", requester: "codex-fingerprint", addressed_to: "codex-fingerprint", status: "open" }],
+      provenance: { request: [], change: ["request"] },
+    };
+    const markup = renderToStaticMarkup(
+      React.createElement(WorkView, {
+        workroom: personalRoom,
+        session: { ...session, actor: "codex" },
+        highlight: { events: new Set(), commits: new Set() },
+        onSelect() {},
+        onOpenThread() {},
+      }),
+    );
+
+    assert.match(markup, /Needs my action<span[^>]*>1<\/span>/);
+    assert.match(markup, /Unread<span[^>]*>1<\/span>/);
+    assert.match(markup, /Following<span[^>]*>0<\/span>/);
+    assert.match(markup, /private to this browser and actor; they do not sync across devices/);
+    assert.match(markup, /Needs my action comes only from unresolved durable responsibility/);
+    assert.match(markup, /aria-label="follow topic"/);
+    assert.match(markup, /Changed since viewed by claude, status open/);
+
+    const multiRoom = workroom({});
+    multiRoom.actors = personalRoom.actors;
+    multiRoom.status.durable.projection = {
+      decisions: ["open-a", "change-a", "open-b", "change-b", "closed-c", "change-c"].map((event) => ({ event, verdict: "effective", reason: "ok" })),
+      acts: [], artifacts: [], actors: {},
+      statements: [
+        { event: "open-a", actor: "codex-fingerprint", kind: "request", text: "Open A", body: { to: "codex-fingerprint" }, timestamp: 10 },
+        { event: "change-a", actor: "claude-fingerprint", kind: "assert", text: "Changed A", timestamp: 11 },
+        { event: "open-b", actor: "codex-fingerprint", kind: "request", text: "Open B", body: { to: "claude-fingerprint" }, timestamp: 20 },
+        { event: "change-b", actor: "claude-fingerprint", kind: "assert", text: "Changed B", timestamp: 21 },
+        { event: "closed-c", actor: "codex-fingerprint", kind: "request", text: "Closed C", body: { to: "claude-fingerprint" }, timestamp: 30 },
+        { event: "change-c", actor: "claude-fingerprint", kind: "assert", text: "Changed C", timestamp: 31 },
+      ],
+      commitments: [
+        { request: "open-a", requester: "codex-fingerprint", addressed_to: "codex-fingerprint", status: "open" },
+        { request: "open-b", requester: "codex-fingerprint", addressed_to: "claude-fingerprint", status: "open" },
+        { request: "closed-c", requester: "codex-fingerprint", addressed_to: "claude-fingerprint", status: "satisfied" },
+      ],
+      provenance: { "open-a": [], "change-a": ["open-a"], "open-b": [], "change-b": ["open-b"], "closed-c": [], "change-c": ["closed-c"] },
+    };
+    const renderWork = (initial) => renderToStaticMarkup(
+      React.createElement(WorkView, {
+        workroom: multiRoom,
+        session: { ...session, actor: "codex" },
+        highlight: { events: new Set(), commits: new Set() },
+        onSelect() {},
+        onOpenThread() {},
+        ...initial,
+      }),
+    );
+
+    const needsAfterViewing = renderWork({
+      initialPersonalView: "needs",
+      initialPersonalMemory: { followed: [], viewed: { "open-a": 999 } },
+    });
+    assert.match(needsAfterViewing, />Open A</);
+
+    const unread = renderWork({
+      initialPersonalView: "unread",
+      initialPersonalMemory: { followed: ["open-b"], viewed: { "open-a": 999 } },
+    });
+    assert.doesNotMatch(unread, />Open A</);
+    assert.match(unread, />Open B</);
+    assert.match(unread, />Closed C</);
+
+    const board = renderWork({
+      initialPresentation: "board",
+      initialPersonalMemory: { followed: ["open-b"], viewed: { "open-a": 999 } },
+    });
+    assert.match(board, /id="lane-available"/);
+    assert.match(board, />Open B</);
+    assert.match(board, /Changed since viewed by claude, status open/);
+    assert.match(board, /aria-pressed="true" aria-label="unfollow topic"/);
   } finally {
     await vite.close();
   }
