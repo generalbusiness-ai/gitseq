@@ -189,6 +189,9 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	if snapshot.Depth != 7 || len(snapshot.Projection.Commitments) != 1 || snapshot.Projection.Commitments[0].Status != "satisfied" {
 		t.Fatalf("unexpected snapshot: depth=%d commitments=%+v", snapshot.Depth, snapshot.Projection.Commitments)
 	}
+	if len(snapshot.Vocabulary.Definitions) != 13 || snapshot.Vocabulary.Binding.Status != "unbound" {
+		t.Fatalf("snapshot vocabulary = %+v", snapshot.Vocabulary)
+	}
 	if _, err := Open(ctx, repo); err != nil {
 		t.Fatal(err)
 	}

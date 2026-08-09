@@ -9,7 +9,7 @@ import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, saveP
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
-import { belongsInRoom, commitmentRelationship, statusLabel } from "../src/lib/util.ts";
+import { belongsInRoom, commitmentRelationship, interpretationGaps, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
@@ -572,6 +572,39 @@ test("multiple declared heads still mark a branch at neither head as moved", () 
   ]);
   assert.deepEqual(association.expectedHeads, ["old-head", "review-head"]);
   assert.equal(association.headMatches, false);
+});
+
+test("declared render classes, not kind names, place new vocabulary in the UI", () => {
+  const definition = (name, render) => ({ name, render });
+  const vocabulary = {
+    definitions: [definition("finding", "note"), definition("policy", "governance"), definition("release", "artifact")],
+    binding: { status: "unbound", transitions: [] },
+  };
+  assert.equal(belongsInRoom("finding", vocabulary), true);
+  assert.equal(belongsInRoom("policy", vocabulary), false);
+  assert.equal(belongsInRoom("release", vocabulary), false);
+});
+
+test("every kind wears its own name, bar the two whose names read as jargon", () => {
+  assert.equal(kindLabel("assert"), "note");
+  assert.equal(kindLabel("propose"), "proposal");
+  for (const kind of ["finding", "review-note", "request", "promise"]) assert.equal(kindLabel(kind), kind);
+});
+
+test("one interpretation gap per distinct refusal, however many events it refused", () => {
+  const refusal = (event, reason) => ({ event, verdict: "uninterpretable", reason });
+  const gaps = interpretationGaps({
+    decisions: [
+      { event: "e0", verdict: "effective", reason: "statement recorded" },
+      refusal("e1", "activated interpreter execution is not held"),
+      refusal("e2", "activated interpreter execution is not held"),
+      refusal("e3", "activated interpreter execution is not held"),
+      { event: "e4", verdict: "undefined-kind", reason: 'undefined kind "finding"' },
+    ],
+  });
+  assert.equal(gaps.length, 2);
+  assert.deepEqual(gaps[0].events, ["e1", "e2", "e3"]);
+  assert.deepEqual(gaps[1].events, ["e4"]);
 });
 
 test("the everyday surface does not expose record taxonomy or authority roles", () => {

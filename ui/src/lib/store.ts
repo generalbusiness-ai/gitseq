@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type WorktreeView } from "./api";
+import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type Vocabulary, type WorktreeView } from "./api";
 import { ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, OPEN_WORK_STATUSES, workAttentionCount } from "./work";
+import { definitionOf, interpretationGaps } from "./util";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
@@ -223,10 +224,14 @@ export const OPEN_COMMITMENT_STATUSES: string[] = [...OPEN_WORK_STATUSES];
 export const ATTENTION_COMMITMENT_STATUSES: string[] = [...ATTENTION_WORK_STATUSES];
 
 // The header chip's summary of the Work drawer, computed from the projection.
-export function workSummary(projection?: Projection): { stale: number; open: number; done: number } {
+export function workSummary(projection?: Projection, vocabulary?: Vocabulary): { stale: number; open: number; done: number } {
   if (!projection) return { stale: 0, open: 0, done: 0 };
+  // A vocabulary the room cannot interpret is work too: each distinct refusal
+  // counts once, and an unbound interpreter counts once however many acts it
+  // refuses.
+  const bindingGap = vocabulary && vocabulary.binding.status !== "bound" ? 1 : 0;
   return {
-    stale: workAttentionCount(projection),
+    stale: workAttentionCount(projection) + interpretationGaps(projection).length + bindingGap,
     open: projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status)).length,
     done: projection.commitments.filter((c) => CLOSED_WORK_STATUSES.includes(c.status as (typeof CLOSED_WORK_STATUSES)[number])).length,
   };
@@ -239,18 +244,20 @@ export function statementWeight(
   statement: Statement,
   projection: Projection,
   commitment?: Commitment,
+  vocabulary?: Vocabulary,
 ): "card" | "compact" {
   if (statement.retired || statement.stale) {
     // Stale commitments still need someone's attention: keep the card.
     if (commitment && ATTENTION_COMMITMENT_STATUSES.includes(commitment.status)) return "card";
     return "compact";
   }
-  if (statement.kind === "request") {
+  const definition = definitionOf(statement.kind, vocabulary);
+  if (definition?.lifecycle === "request" || (!vocabulary && statement.kind === "request")) {
     return commitment && [...OPEN_COMMITMENT_STATUSES, ...ATTENTION_COMMITMENT_STATUSES].includes(commitment.status)
       ? "card"
       : "compact";
   }
-  if (statement.kind === "propose") {
+  if (definition?.render === "proposal" || (!vocabulary && statement.kind === "propose")) {
     const verdict = projection.decisions.find((d) => d.event === statement.event)?.verdict;
     return !statement.ratified && verdict === "effective" ? "card" : "compact";
   }

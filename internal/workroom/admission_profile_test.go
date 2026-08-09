@@ -1,7 +1,6 @@
 package workroom
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -19,13 +18,23 @@ func admissionProfileHistory(t testing.TB) []Record {
 	}
 }
 
+// Required body fields are enforced by the fold against the kind's active
+// definition, not at encode time: the declared-kinds catalog is what says
+// admission-profile needs bundle, contract and genesis, so an incomplete
+// profile is admitted to the log and judged ineffective there. This is the
+// same shape the request and artifact kinds are checked in.
 func TestAdmissionProfileRequiresGovernanceFields(t *testing.T) {
 	for _, missing := range []string{"bundle", "contract", "genesis"} {
 		body := map[string]string{"bundle": "bundle", "contract": "contract", "genesis": testGenesis}
 		delete(body, missing)
-		_, err := Encode(State{Kind: KindAdmissionProfile, Text: "profile", Body: body})
-		if err == nil || !strings.Contains(err.Error(), "body."+missing) {
-			t.Fatalf("missing %s: %v", missing, err)
+		records := []Record{
+			event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+			event(t, "incomplete", operator, SchemaState, State{Kind: KindAdmissionProfile, Text: "profile", Body: body}, "e0"),
+		}
+		decision, ok := Fold(records).Decision("incomplete")
+		want := "admission-profile state requires body." + missing
+		if !ok || decision.Verdict != Ineffective || decision.Reason != want {
+			t.Fatalf("missing %s: decision = %+v, found=%v, want %q", missing, decision, ok, want)
 		}
 	}
 }

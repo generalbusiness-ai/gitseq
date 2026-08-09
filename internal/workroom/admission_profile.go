@@ -45,14 +45,13 @@ func (f *Folder) AdmissionProfile(genesis string) (AdmissionProfile, error) {
 	if f == nil || f.state == nil {
 		return AdmissionProfile{}, errors.New("admission profile requires a fold prefix")
 	}
-	retired := f.state.retired()
 	for index := len(f.state.records) - 1; index >= 0; index-- {
 		record := &f.state.records[index]
 		state, ok := record.body.(*State)
 		if !ok || state.Kind != KindAdmissionProfile || record.decision.Verdict != Effective {
 			continue
 		}
-		if state.Body["genesis"] != genesis || retired[record.record.ID] || !f.state.ratified(record.record.ID, retired) {
+		if state.Body["genesis"] != genesis || f.state.retired(record.record.ID) || !f.state.ratified(record.record.ID) {
 			continue
 		}
 		return AdmissionProfile{

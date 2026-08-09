@@ -78,6 +78,7 @@ type Snapshot struct {
 	Head       string              `json:"head"`
 	Depth      int                 `json:"depth"`
 	Projection workroom.Projection `json:"projection"`
+	Vocabulary workroom.Vocabulary `json:"vocabulary"`
 }
 
 // LocalRepo is local repository state, never part of the durable workroom
@@ -715,7 +716,7 @@ func (w *Workspace) acceptSnapshot(result kernel.Result, record workroom.Record)
 	w.snapshotFolder.Append(record)
 	snapshot := Snapshot{
 		Genesis: w.snapshotCache.Genesis, Head: result.Head, Depth: w.snapshotCache.Depth + 1,
-		Projection: w.snapshotFolder.Projection(),
+		Projection: w.snapshotFolder.Projection(), Vocabulary: w.snapshotFolder.Vocabulary(),
 	}
 	w.snapshotCache = &snapshot
 }
@@ -808,7 +809,10 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 			w.snapshotFolder.Append(w.record(event))
 		}
 	}
-	snapshot := Snapshot{Genesis: loaded.Verification.Genesis, Head: loaded.Verification.Head, Depth: loaded.Verification.Depth, Projection: w.snapshotFolder.Projection()}
+	snapshot := Snapshot{
+		Genesis: loaded.Verification.Genesis, Head: loaded.Verification.Head, Depth: loaded.Verification.Depth,
+		Projection: w.snapshotFolder.Projection(), Vocabulary: w.snapshotFolder.Vocabulary(),
+	}
 	w.snapshotCache = &snapshot
 	return snapshot, nil
 }
