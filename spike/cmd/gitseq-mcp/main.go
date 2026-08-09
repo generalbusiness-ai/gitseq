@@ -231,8 +231,10 @@ func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) 
 			if err != nil {
 				response.Result = s.result(map[string]any{"isError": true, "content": []map[string]string{{"type": "text", "text": err.Error()}}})
 			} else {
-				encoded, _ := json.MarshalIndent(value, "", "  ")
-				response.Result = s.result(map[string]any{"isError": false, "content": []map[string]string{{"type": "text", "text": string(encoded)}}, "structuredContent": value})
+				// The text block is a summary, not a second copy. Restating the
+				// structured payload as pretty-printed JSON doubled every
+				// response while adding nothing a client could not already read.
+				response.Result = s.result(map[string]any{"isError": false, "content": []map[string]string{{"type": "text", "text": summarize(call.Name, value)}}, "structuredContent": value})
 			}
 		default:
 			response.Error = &rpcError{Code: -32601, Message: "method not found"}
@@ -377,17 +379,42 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 	case "presence":
 		return s.get(ctx, "/v0/presence")
 	case "status":
+		// The digest is applied on both paths so that losing the resident
+		// service changes what is knowable, not the shape of the answer.
 		value, err := s.get(ctx, "/v0/status")
 		if isTransportError(err) {
-			return s.localStatus(ctx)
+			local, localErr := s.localStatus(ctx)
+			if localErr != nil {
+				return nil, localErr
+			}
+			return s.digest(local, true), nil
 		}
-		return value, err
+		if err != nil {
+			return nil, err
+		}
+		var status service.Status
+		if err := remarshal(value, &status); err != nil {
+			return nil, err
+		}
+		return s.digest(status, false), nil
 	case "wait":
+		requested := requestedCursor(call.Arguments)
 		value, err := s.post(ctx, "/v0/wait", call.Arguments)
 		if isTransportError(err) {
-			return s.waitDurable(ctx, call.Arguments)
+			local, localErr := s.waitDurable(ctx, call.Arguments)
+			if localErr != nil {
+				return nil, localErr
+			}
+			return digestWait(local, requested, s.fingerprint(), s.actor, true), nil
 		}
-		return value, err
+		if err != nil {
+			return nil, err
+		}
+		var response service.WaitResponse
+		if err := remarshal(value, &response); err != nil {
+			return nil, err
+		}
+		return digestWait(response, requested, s.fingerprint(), s.actor, false), nil
 	case "say":
 		arguments := clone(call.Arguments)
 		arguments["session"] = s.session

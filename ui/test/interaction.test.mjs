@@ -8,7 +8,7 @@ import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { CLOSED_WORK_STATUSES, buildWorkProjection, filterWorkProjection, workAttentionCount, workItemState } from "../src/lib/work.ts";
-import { belongsInRoom, statusLabel } from "../src/lib/util.ts";
+import { belongsInRoom, commitmentRelationship, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
@@ -222,7 +222,7 @@ test("the room hides work records and translates workflow status", () => {
   assert.equal(belongsInRoom("assert"), true);
   assert.equal(belongsInRoom("request"), true);
   for (const kind of ["roster", "infra-key", "seal", "artifact"]) assert.equal(belongsInRoom(kind), false);
-  assert.equal(statusLabel("requested"), "waiting");
+  assert.equal(statusLabel("open"), "open");
   assert.equal(statusLabel("promised"), "in progress");
   assert.equal(statusLabel("reported"), "ready");
   assert.equal(statusLabel("satisfied"), "done");
@@ -231,7 +231,7 @@ test("the room hides work records and translates workflow status", () => {
 test("work groups distinguish available, in-progress, and review commitments", () => {
   const commitment = (request, status) => ({ request, requester: "human", performer: "agent", status });
   const groups = groupOpenWork([
-    commitment("available", "requested"),
+    commitment("available", "open"),
     commitment("building", "promised"),
     commitment("review", "reported"),
     commitment("attention", "stale"),
@@ -239,6 +239,19 @@ test("work groups distinguish available, in-progress, and review commitments", (
   assert.deepEqual(groups.available.map((item) => item.request), ["available"]);
   assert.deepEqual(groups.inProgress.map((item) => item.request), ["building"]);
   assert.deepEqual(groups.review.map((item) => item.request), ["review"]);
+});
+
+test("unclaimed requests are addressed without waiting on their addressee", () => {
+  const nameOf = (fingerprint) => ({ agent: "Agent", human: "Human" })[fingerprint] ?? fingerprint;
+  const unclaimed = { request: "request", requester: "human", addressed_to: "agent", status: "open" };
+  assert.equal(commitmentRelationship(unclaimed, nameOf), "addressed to Agent · unclaimed");
+  assert.equal(unclaimed.waiting_on, undefined);
+  assert.equal(unclaimed.performer, undefined);
+
+  const promised = { request: "request", requester: "human", performer: "agent", promise: "promise", status: "promised", waiting_on: "agent" };
+  assert.equal(commitmentRelationship(promised, nameOf), "waiting on Agent");
+  const reported = { ...promised, report: "report", status: "reported", waiting_on: "human" };
+  assert.equal(commitmentRelationship(reported, nameOf), "waiting on Human");
 });
 
 test("Work groups by conversational ancestry without treating later citations as parents", () => {
@@ -257,10 +270,10 @@ test("Work groups by conversational ancestry without treating later citations as
       statement("r5", "hugh", "request", "Old closed work"),
     ],
     commitments: [
-      { request: "r1", requester: "hugh", status: "requested" },
+      { request: "r1", requester: "hugh", status: "open" },
       { request: "r2", requester: "claude", performer: "codex", promise: "p2", status: "promised", stale: true },
-      { request: "r3", requester: "claude", status: "requested" },
-      { request: "r4", requester: "claude", status: "requested" },
+      { request: "r3", requester: "claude", status: "open" },
+      { request: "r4", requester: "claude", status: "open" },
       { request: "r5", requester: "hugh", performer: "codex", promise: "old-promise", report: "old-report", status: "satisfied" },
     ],
     artifacts: [{ event: "artifact", path: "notes/deploy.md", commit: "abc", stale: false }],

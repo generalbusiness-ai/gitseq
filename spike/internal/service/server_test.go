@@ -16,6 +16,17 @@ import (
 	"gitseq/spike/internal/nexus"
 )
 
+func TestDemoNamesUnclaimedRequestsWithoutInventingAWait(t *testing.T) {
+	for _, want := range []string{"addressed to ", " · unclaimed", "c.waiting_on?'waiting on '"} {
+		if !bytes.Contains([]byte(demoHTML), []byte(want)) {
+			t.Fatalf("demo omits %q", want)
+		}
+	}
+	if bytes.Contains([]byte(demoHTML), []byte("requester → performer")) {
+		t.Fatal("demo labels an unclaimed addressee as a performer")
+	}
+}
+
 func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")

@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { Commitment } from "./api";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -29,7 +30,7 @@ export const statusTint: Record<string, string> = {
   satisfied: "text-ok",
   reported: "text-muted",
   promised: "text-muted",
-  requested: "text-muted",
+  open: "text-muted",
   withdrawn: "text-faint",
   cancelled: "text-faint",
   reneged: "text-danger",
@@ -38,7 +39,7 @@ export const statusTint: Record<string, string> = {
 };
 
 const familiarStatus: Record<string, string> = {
-  requested: "waiting",
+  open: "open",
   promised: "in progress",
   reported: "ready",
   satisfied: "done",
@@ -51,6 +52,12 @@ const familiarStatus: Record<string, string> = {
 
 export function statusLabel(status: string): string {
   return familiarStatus[status] ?? status;
+}
+
+export function commitmentRelationship(commitment: Commitment, nameOf: (fingerprint: string) => string): string | undefined {
+  if (!commitment.promise && commitment.addressed_to) return `addressed to ${nameOf(commitment.addressed_to)} · unclaimed`;
+  if (commitment.waiting_on) return `waiting on ${nameOf(commitment.waiting_on)}`;
+  return undefined;
 }
 
 const workOnlyKinds = new Set(["roster", "infra-key", "seal", "artifact"]);

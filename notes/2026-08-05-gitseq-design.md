@@ -673,3 +673,33 @@ Finally, the resident service admits loopback listeners only, binds speech to
 leased sessions, renews MCP presence, and forgets a conversation when its last
 participant departs or expires. These are contract repairs found by running
 the real workroom, not new kernel responsibilities.
+Twelfth wave (declared kinds, adopted): the log carries its own ontology and
+its own interpreter binding. Kinds gain **governed definitions** — ordinary
+ratified statements declaring required fields, basis constraints, satisfier
+authority, render class, staleness class, and lifecycle participation as a
+**finite constraint algebra with total semantics**, with a non-normative
+guidance half that the fold never consults; undefined kinds project as typed
+`undefined kind`, definitions are position-aware and forward-only, and
+verdicts stay fixed at append. **Fold activations** bind interpretation to a
+fold implementation published in this repository under `refs/folds/*`, under
+the frozen meta-rule — **the incumbent judges the succession** — with
+transitions irrevocable at the position after ratification, reversion as
+re-activation (no fallback state exists), a reader-checkable initial or
+prefix binding with `unbound` as a stated condition, vendored content
+closure, six individually typed unmet prerequisites, and reproducibility
+claimed over projection bytes, never builds. The contract carrier is
+[notes/2026-08-07-declared-kinds.md](2026-08-07-declared-kinds.md), adopted
+after three rounds of independent adversarial review; the ratified decision
+and its review chain live in the workroom log. The note leaves four
+questions open, all four deliberately: the constraint algebra's ratified
+enumeration, where a candidate is stated but not adopted; whether render
+classes belong in kind-definitions or in a separate projector profile;
+whether a room may adopt another room's definitions by reference rather
+than by copying, which would draw the foreign domain into its audit
+closure; and whether changing the rules of interpretation deserves more
+authority than a bare ratifier grant, which the machinery supports either
+way. Open elsewhere, and not settled by this wave: the `governs`/`cites`
+basis-edge distinction that a live staleness incident demonstrated, and
+the standing projection-honesty and artifact-world-basis remainders. The
+wave's one-line lesson: genesis anchors the keys, the log anchors the
+meaning, the repo carries both.

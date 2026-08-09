@@ -4,7 +4,7 @@ import type { Act, Actor, Projection, Statement } from "../lib/api";
 import { shortEvent } from "../lib/api";
 import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { ticketsOf, type Selection } from "../lib/store";
-import { cn, kindLabel, kindTint, statusTint } from "../lib/util";
+import { cn, commitmentRelationship, kindLabel, kindTint, statusTint } from "../lib/util";
 import { EventTime } from "./EventTime";
 import { PaneTitle } from "./Railway";
 
@@ -60,26 +60,27 @@ export function SequencePane({
       <PaneTitle icon={<Scale className="h-3.5 w-3.5" />} title="history" />
       {projection && projection.commitments.length > 0 && (
         <div className="border-b border-border/60 px-4 py-3">
-          <div className="mb-2 text-xs uppercase tracking-[0.16em] text-faint">who waits on whom</div>
+          <div className="mb-2 text-xs uppercase tracking-[0.16em] text-faint">requests and commitments</div>
           <div className="space-y-1.5">
-            {projection.commitments.map((commitment) => (
-              <button
-                key={commitment.request + (commitment.promise ?? "")}
-                onClick={() => onSelect({ kind: "event", id: commitment.report ?? commitment.promise ?? commitment.request })}
-                className="flex w-full items-center gap-2 text-left text-[12px] hover:bg-elevated/60"
-              >
-                <span className={cn("w-20 shrink-0 font-semibold", statusTint[commitment.status] ?? "text-muted")}>
-                  {commitment.status}
-                </span>
-                <span className="truncate text-muted">
-                  {byEvent.get(commitment.request)?.text ?? shortEvent(commitment.request)}
-                </span>
-                <EventTime timestamp={byEvent.get(commitment.request)?.timestamp} className="ml-auto" />
-                {commitment.waiting_on && (
-                  <span className="shrink-0 text-xs text-faint">⏳ {nameOf(commitment.waiting_on)}</span>
-                )}
-              </button>
-            ))}
+            {projection.commitments.map((commitment) => {
+              const relationship = commitmentRelationship(commitment, nameOf);
+              return (
+                <button
+                  key={commitment.request + (commitment.promise ?? "")}
+                  onClick={() => onSelect({ kind: "event", id: commitment.report ?? commitment.promise ?? commitment.request })}
+                  className="flex w-full items-center gap-2 text-left text-[12px] hover:bg-elevated/60"
+                >
+                  <span className={cn("w-20 shrink-0 font-semibold", statusTint[commitment.status] ?? "text-muted")}>
+                    {commitment.status}
+                  </span>
+                  <span className="truncate text-muted">
+                    {byEvent.get(commitment.request)?.text ?? shortEvent(commitment.request)}
+                  </span>
+                  <EventTime timestamp={byEvent.get(commitment.request)?.timestamp} className="ml-auto" />
+                  {relationship && <span className="shrink-0 text-xs text-faint">{relationship}</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
