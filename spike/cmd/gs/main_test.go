@@ -1,14 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gitseq/spike/internal/app"
+	"gitseq/spike/internal/kernel"
+	"gitseq/spike/internal/service"
+	"gitseq/spike/internal/statusview"
 	"gitseq/spike/internal/workroom"
 )
 
@@ -28,6 +36,164 @@ func TestValidateLoopbackListen(t *testing.T) {
 				t.Fatalf("validateLoopbackListen(%q) success = %v, want %v", address, got, want)
 			}
 		})
+	}
+}
+
+func TestValidateLoopbackServer(t *testing.T) {
+	tests := map[string]bool{
+		"http://127.0.0.1:7777":   true,
+		"http://[::1]:7777":       true,
+		"http://localhost:7777":   true,
+		"https://127.0.0.1:7777":  false,
+		"http://user@127.0.0.1:7": false,
+		"http://192.0.2.1:7777":   false,
+		"http://0.0.0.0:7777":     false,
+		"http://127.0.0.1/x":      false,
+		"http://127.0.0.1/?x=y":   false,
+		"not-a-url":               false,
+	}
+	for raw, want := range tests {
+		t.Run(raw, func(t *testing.T) {
+			if got := validateLoopbackServer(raw) == nil; got != want {
+				t.Fatalf("validateLoopbackServer(%q) success = %v, want %v", raw, got, want)
+			}
+		})
+	}
+}
+
+func statusSummaryFixture(t *testing.T) (*app.Workspace, service.SummaryStatus) {
+	t.Helper()
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	testGit(t, "", "init", "-q", repo)
+	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frontier := service.Frontier{Genesis: snapshot.Genesis, Head: snapshot.Head, Depth: snapshot.Depth}
+	return workspace, service.SummaryStatus{
+		Durable: statusview.Build(snapshot.Genesis, snapshot.Head, snapshot.Depth, snapshot.Projection),
+		Cursor:  service.Cursor{Frontier: []service.Frontier{frontier}},
+	}
+}
+
+func TestFetchSummaryPinsGenesisHeadCursorAndResponseCap(t *testing.T) {
+	if summaryResponseLimit != 64<<10 {
+		t.Fatalf("summary response limit = %d, want 64 KiB", summaryResponseLimit)
+	}
+	ctx := context.Background()
+	workspace, summary := statusSummaryFixture(t)
+	serve := func(handler http.HandlerFunc) *httptest.Server {
+		t.Helper()
+		server := httptest.NewServer(handler)
+		t.Cleanup(server.Close)
+		return server
+	}
+	valid := serve(func(writer http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(writer).Encode(summary) })
+	if got, err := fetchSummary(ctx, workspace, valid.URL); err != nil || got.Durable.Head != summary.Durable.Head {
+		t.Fatalf("valid resident summary = %+v, %v", got, err)
+	}
+
+	wrongGenesis := summary
+	wrongGenesis.Cursor.Frontier = append([]service.Frontier(nil), summary.Cursor.Frontier...)
+	wrongGenesis.Durable.Genesis = "foreign"
+	wrongGenesis.Cursor.Frontier[0].Genesis = "foreign"
+	foreign := serve(func(writer http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(writer).Encode(wrongGenesis) })
+	if _, err := fetchSummary(ctx, workspace, foreign.URL); err == nil || !strings.Contains(err.Error(), "genesis") {
+		t.Fatalf("foreign-genesis error = %v", err)
+	}
+
+	wrongHead := summary
+	wrongHead.Durable.Head = strings.Repeat("0", len(summary.Durable.Head))
+	stale := serve(func(writer http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(writer).Encode(wrongHead) })
+	if _, err := fetchSummary(ctx, workspace, stale.URL); err == nil || !strings.Contains(err.Error(), "head") {
+		t.Fatalf("stale-head error = %v", err)
+	}
+
+	redirect := serve(func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, valid.URL, http.StatusFound)
+	})
+	if _, err := fetchSummary(ctx, workspace, redirect.URL); err == nil || !strings.Contains(err.Error(), "redirect") {
+		t.Fatalf("redirect error = %v", err)
+	}
+
+	oversized := serve(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write(bytes.Repeat([]byte("x"), (64<<10)+1))
+	})
+	if _, err := fetchSummary(ctx, workspace, oversized.URL); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized error = %v", err)
+	}
+}
+
+func TestFetchSummaryRejectsSlowAndMovingResident(t *testing.T) {
+	ctx := context.Background()
+	workspace, summary := statusSummaryFixture(t)
+	slow := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		select {
+		case <-request.Context().Done():
+			return
+		case <-time.After(3 * time.Second):
+			_ = json.NewEncoder(writer).Encode(summary)
+		}
+	}))
+	defer slow.Close()
+	started := time.Now()
+	if _, err := fetchSummary(ctx, workspace, slow.URL); err == nil || time.Since(started) > 2500*time.Millisecond {
+		t.Fatalf("slow resident error = %v after %s", err, time.Since(started))
+	}
+
+	moving := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		basis := workspace.EventID(workspace.Config.Genesis)
+		if _, err := workspace.Act(ctx, "operator", app.Act{
+			Verb: app.VerbState, Kind: workroom.KindAssert, Text: "advance while status is in flight",
+			RestsOn: []string{basis}, IdempotencyKey: "moving-status-head",
+		}); err != nil {
+			t.Errorf("advance head: %v", err)
+			return
+		}
+		advanced, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Errorf("advanced snapshot: %v", err)
+			return
+		}
+		response := service.SummaryStatus{
+			Durable: statusview.Build(advanced.Genesis, advanced.Head, advanced.Depth, advanced.Projection),
+			Cursor:  service.Cursor{Frontier: []service.Frontier{{Genesis: advanced.Genesis, Head: advanced.Head, Depth: advanced.Depth}}},
+		}
+		_ = json.NewEncoder(writer).Encode(response)
+	}))
+	defer moving.Close()
+	if _, err := fetchSummary(ctx, workspace, moving.URL); err == nil || !strings.Contains(err.Error(), "moved") {
+		t.Fatalf("moving-head error = %v", err)
+	}
+	current := testGit(t, workspace.Repo, "rev-parse", kernel.Ref(workspace.Config.Genesis))
+	if current == summary.Durable.Head {
+		t.Fatal("moving-head fixture did not move the durable ref")
+	}
+}
+
+func TestSlowLocalAuditReportsProgressWithoutChangingTheResult(t *testing.T) {
+	want := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 7}
+	var progress bytes.Buffer
+	got, err := loadSnapshotWithProgress(context.Background(), &progress, func(context.Context) (app.Snapshot, error) {
+		time.Sleep(1100 * time.Millisecond)
+		return want, nil
+	})
+	if err != nil || got.Genesis != want.Genesis || got.Head != want.Head || got.Depth != want.Depth {
+		t.Fatalf("slow load = %+v, %v", got, err)
+	}
+	if !strings.Contains(progress.String(), "verifying the durable log") {
+		t.Fatalf("slow audit was silent: %q", progress.String())
+	}
+	progress.Reset()
+	if _, err := loadSnapshotWithProgress(context.Background(), &progress, func(context.Context) (app.Snapshot, error) {
+		return want, nil
+	}); err != nil || progress.Len() != 0 {
+		t.Fatalf("fast audit reported progress: %q, %v", progress.String(), err)
 	}
 }
 

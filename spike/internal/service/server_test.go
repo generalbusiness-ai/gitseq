@@ -61,6 +61,20 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	if status.Durable.Depth != 1 || len(status.Live.Presence) != 1 || status.Cursor.Frontier[0].Depth != 1 {
 		t.Fatalf("unexpected status: %+v", status)
 	}
+	response, err = http.Get(httpServer.URL + "/v0/status-summary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var summary SummaryStatus
+	if err := json.NewDecoder(response.Body).Decode(&summary); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if summary.Durable.Genesis != status.Durable.Genesis || summary.Durable.Head != status.Durable.Head ||
+		summary.Durable.Depth != status.Durable.Depth || len(summary.Cursor.Frontier) != 1 || summary.Cursor.Frontier[0].Head != status.Durable.Head {
+		t.Fatalf("summary frontier differs from full status: summary=%+v full=%+v", summary, status)
+	}
 	response, err = http.Get(httpServer.URL + "/v0/worktrees")
 	if err != nil {
 		t.Fatal(err)
