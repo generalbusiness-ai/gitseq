@@ -181,10 +181,58 @@ validation before the value can become an OpenSSH allowed-signers entry.
 | `gs merge --checkout <path> --candidate <full-commit> --approval <event>` | Merge only the exact head named by a live ratified approval. |
 | `gs ratify --as <actor> <event>` | Confer force, if you hold the authority for that target. |
 | `gs supersede --as <actor> --text <reason> <event>` | Retire an act and propagate staleness. |
+| `gs batch --as <actor> <file>` | Append an ordered chain of acts, loading and verifying the log once. |
 
 `state` also takes `--rests-on <event>`, `--body key=value`, and
 `--evidence name=path`, each repeatable, plus `--idempotency-key` for
 safe retries.
+
+### Chains of acts
+
+Each ordinary durable subcommand loads and verifies the whole log before it
+appends, so a chain filed one command at a time pays that cost once per act.
+`gs batch` pays it once for the chain: it opens the workroom, verifies the log,
+and then appends every act against that one resident frontier.
+
+The input is a JSON array of acts, read from a file or from standard input when
+the argument is `-` or absent. Each entry carries an optional `label`, a `verb`
+of `state`, `ratify`, or `supersede`, and that verb's usual fields: `kind`,
+`text`, `body`, `rests_on`, `target`, and `idempotency_key`.
+
+```json
+[
+  {"label": "req", "verb": "state", "kind": "request", "text": "do the thing",
+   "body": {"to": "@worker", "conditions": "tests green"},
+   "rests_on": ["git:sha1:<genesis>#git:sha1:<event>"],
+   "idempotency_key": "thing-request"},
+  {"label": "promise", "verb": "state", "kind": "promise", "text": "I will",
+   "rests_on": ["$req"], "idempotency_key": "thing-promise"}
+]
+```
+
+A later act may cite an earlier act of the same batch as `$label` in `rests_on`
+or `target`, and the label resolves to the event identifier minted for that act.
+The whole file is parsed and every reference checked before the first append, so
+a malformed entry or an unknown or forward label lands nothing.
+
+The batch is not atomic. Events are commits on `refs/seq/<genesis>`, and the
+kernel owns the whole write for each one: envelope and actor signature checks,
+the payload ceiling, the admission hook, the dedup index, sequencer signing, and
+the compare-and-swap that publishes the commit. Building a chain of commits
+outside that path so the ref could move once would mean repeating those checks
+where the kernel cannot enforce them. Per-act idempotency keys carry the
+recovery instead: rerunning the same file replays the prefix that already
+landed, without duplicating it, and continues from the first act that did not.
+Acts given no idempotency key are not resumable and land afresh.
+
+`gs batch` prints a JSON report naming, for every act in the chain, its
+position, its label, the event it minted, and its outcome: `landed`,
+`replayed`, `failed`, or `skipped`. A failure adds a typed `error` and exits
+nonzero, so the report says exactly which acts landed and which did not.
+
+`--server` forwards the same signed requests to the resident sequencer one at a
+time. That server holds the single verified frontier, and batch semantics stay
+per-act exactly as they are locally.
 
 Every actor-controlled string in the signed intent is limited to 32 KiB, and
 one intent may cite at most 4,096 causal references. The complete signed commit

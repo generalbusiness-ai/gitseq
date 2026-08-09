@@ -2,6 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -332,6 +336,189 @@ func TestMergeGuardRefusesApprovalNotRestingOnNamedArtifact(t *testing.T) {
 	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != base {
 		t.Fatalf("ungrounded artifact merge moved HEAD to %s, want %s", got, base)
 	}
+}
+
+// chainBatch is the ordinary case: a request, then a promise resting on it by
+// intra-batch label. The verb argument is the genesis event the request rests on.
+const chainBatch = `[
+  {"label": "req", "verb": "state", "kind": "request", "text": "do the thing",
+   "body": {"to": "@worker", "conditions": "tests green"},
+   "rests_on": [%q], "idempotency_key": "chain-request"},
+  {"label": "promise", "verb": "state", "kind": "promise", "text": "I will do the thing",
+   "rests_on": ["$req"], "idempotency_key": "chain-promise"}
+]`
+
+func TestBatchLandsChainResolvingIntraBatchLabels(t *testing.T) {
+	fixture := newBatchFixture(t)
+	before := fixture.snapshot().Depth
+	report, err := fixture.run("operator", fmt.Sprintf(chainBatch, fixture.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Landed != 2 || report.Replayed != 0 || report.Error != nil {
+		t.Fatalf("batch report = %#v", report)
+	}
+	for position, want := range []string{"req", "promise"} {
+		outcome := report.Acts[position]
+		if outcome.Position != position || outcome.Label != want || outcome.Outcome != "landed" || outcome.Event == "" {
+			t.Fatalf("act %d outcome = %#v", position, outcome)
+		}
+	}
+	snapshot := fixture.snapshot()
+	if snapshot.Depth != before+2 {
+		t.Fatalf("depth = %d, want %d", snapshot.Depth, before+2)
+	}
+	request, promise := report.Acts[0].Event, report.Acts[1].Event
+	if !contains(snapshot.Projection.Provenance[promise], request) {
+		t.Fatalf("promise provenance = %#v, want the minted request %s", snapshot.Projection.Provenance[promise], request)
+	}
+}
+
+func TestBatchRetryLandsNothingNew(t *testing.T) {
+	fixture := newBatchFixture(t)
+	first, err := fixture.run("operator", fmt.Sprintf(chainBatch, fixture.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	landed := fixture.snapshot()
+	second, err := fixture.run("operator", fmt.Sprintf(chainBatch, fixture.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Landed != 0 || second.Replayed != 2 || second.Error != nil {
+		t.Fatalf("retry report = %#v", second)
+	}
+	for position := range second.Acts {
+		if second.Acts[position].Outcome != "replayed" || second.Acts[position].Event != first.Acts[position].Event {
+			t.Fatalf("retry act %d = %#v, want the first run's event %s", position, second.Acts[position], first.Acts[position].Event)
+		}
+	}
+	after := fixture.snapshot()
+	if after.Head != landed.Head || after.Depth != landed.Depth {
+		t.Fatalf("retry moved the log to %s depth %d, want %s depth %d", after.Head, after.Depth, landed.Head, landed.Depth)
+	}
+}
+
+func TestBatchRefusesUndefinedLabelWithoutLanding(t *testing.T) {
+	fixture := newBatchFixture(t)
+	before := fixture.snapshot()
+	report, err := fixture.run("operator", fmt.Sprintf(`[
+	  {"verb": "state", "kind": "assert", "text": "first", "rests_on": [%q], "idempotency_key": "undefined-first"},
+	  {"verb": "state", "kind": "assert", "text": "second", "rests_on": ["$missing"], "idempotency_key": "undefined-second"}
+	]`, fixture.genesis))
+	var failure *batchError
+	if !errors.As(err, &failure) || failure.Code != "reference" {
+		t.Fatalf("undefined label error = %v", err)
+	}
+	if report.Landed != 0 || report.Replayed != 0 || report.Error == nil || report.Error.Code != "reference" {
+		t.Fatalf("undefined label report = %#v", report)
+	}
+	if report.Acts[0].Outcome != "skipped" || report.Acts[0].Event != "" || report.Acts[1].Outcome != "failed" {
+		t.Fatalf("undefined label acts = %#v", report.Acts)
+	}
+	after := fixture.snapshot()
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("refused batch moved the log to %s depth %d, want %s depth %d", after.Head, after.Depth, before.Head, before.Depth)
+	}
+}
+
+func TestBatchMixesStateAndRatify(t *testing.T) {
+	fixture := newBatchFixture(t)
+	before := fixture.snapshot().Depth
+	report, err := fixture.run("operator", fmt.Sprintf(`[
+	  {"label": "note", "verb": "state", "kind": "assert", "text": "the log is verified once",
+	   "rests_on": [%q], "idempotency_key": "mixed-assert"},
+	  {"verb": "ratify", "target": "$note", "idempotency_key": "mixed-ratify"}
+	]`, fixture.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Landed != 2 || report.Error != nil {
+		t.Fatalf("mixed report = %#v", report)
+	}
+	snapshot := fixture.snapshot()
+	if snapshot.Depth != before+2 {
+		t.Fatalf("depth = %d, want %d", snapshot.Depth, before+2)
+	}
+	if statement := statementByEvent(t, snapshot.Projection, report.Acts[0].Event); !statement.Ratified {
+		t.Fatalf("assert %s is not ratified", report.Acts[0].Event)
+	}
+	ratification := actByEvent(t, snapshot.Projection, report.Acts[1].Event)
+	if ratification.Target != report.Acts[0].Event || ratification.Verdict != workroom.Effective {
+		t.Fatalf("ratify act = %#v, want an effective ratification of %s", ratification, report.Acts[0].Event)
+	}
+}
+
+type batchFixture struct {
+	t         *testing.T
+	ctx       context.Context
+	repo      string
+	workspace *app.Workspace
+	genesis   string
+}
+
+func newBatchFixture(t *testing.T) batchFixture {
+	t.Helper()
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	testGit(t, "", "init", "-b", "main", repo)
+	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "operator", "worker", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	return batchFixture{t: t, ctx: ctx, repo: repo, workspace: workspace, genesis: workspace.EventID(workspace.Config.Genesis)}
+}
+
+func (f batchFixture) snapshot() app.Snapshot {
+	f.t.Helper()
+	snapshot, err := f.workspace.Snapshot(f.ctx)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return snapshot
+}
+
+// run writes the acts to a file, runs the batch command against it, and decodes
+// the report the command prints.
+func (f batchFixture) run(actor, acts string) (batchReport, error) {
+	f.t.Helper()
+	path := filepath.Join(f.t.TempDir(), "batch.json")
+	if err := os.WriteFile(path, []byte(acts), 0o600); err != nil {
+		f.t.Fatal(err)
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	stdout := os.Stdout
+	os.Stdout = writer
+	batchErr := batchCommand(f.ctx, []string{"--repo", f.repo, "--as", actor, path})
+	os.Stdout = stdout
+	writer.Close()
+	printed, err := io.ReadAll(reader)
+	reader.Close()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	var report batchReport
+	if err := json.Unmarshal(printed, &report); err != nil {
+		f.t.Fatalf("decode batch report %q: %v", printed, err)
+	}
+	return report, batchErr
+}
+
+func actByEvent(t *testing.T, projection workroom.Projection, event string) workroom.Act {
+	t.Helper()
+	for _, act := range projection.Acts {
+		if act.Event == event {
+			return act
+		}
+	}
+	t.Fatalf("act %s not found", event)
+	return workroom.Act{}
 }
 
 type workflowFixture struct {

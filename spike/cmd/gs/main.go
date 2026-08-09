@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -58,6 +59,8 @@ func main() {
 		err = ratifyCommand(ctx, os.Args[2:])
 	case "supersede":
 		err = supersedeCommand(ctx, os.Args[2:])
+	case "batch":
+		err = batchCommand(ctx, os.Args[2:])
 	case "status":
 		err = statusCommand(ctx, os.Args[2:])
 	case "provenance":
@@ -78,7 +81,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|status|provenance|verify|serve|attach> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|batch|status|provenance|verify|serve|attach> [flags]")
 	os.Exit(2)
 }
 
@@ -553,23 +556,267 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-func submitAct(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, act app.Act) (workroom.Record, error) {
-	if serverURL == "" {
-		submission, err := workspace.Act(ctx, actorName, act)
-		return submission.Record, err
+// batchAct is one entry of a batch file. Field names and meanings follow
+// app.Act; label is local to the batch and never leaves it.
+type batchAct struct {
+	Label          string            `json:"label,omitempty"`
+	Verb           app.Verb          `json:"verb"`
+	Kind           workroom.Kind     `json:"kind,omitempty"`
+	Text           string            `json:"text,omitempty"`
+	Body           map[string]string `json:"body,omitempty"`
+	Target         string            `json:"target,omitempty"`
+	RestsOn        []string          `json:"rests_on,omitempty"`
+	IdempotencyKey string            `json:"idempotency_key,omitempty"`
+}
+
+// batchError names the class of a batch failure so a caller can branch on it
+// without reading the prose.
+type batchError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func (e *batchError) Error() string { return "batch " + e.Code + ": " + e.Message }
+
+func batchFail(code, format string, arguments ...any) *batchError {
+	return &batchError{Code: code, Message: fmt.Sprintf(format, arguments...)}
+}
+
+// batchOutcome is what became of one act. Landed and replayed both name a
+// durable event: replayed means an earlier run of the same batch already
+// appended it under the same idempotency key.
+type batchOutcome struct {
+	Position int    `json:"position"`
+	Label    string `json:"label,omitempty"`
+	Event    string `json:"event,omitempty"`
+	Outcome  string `json:"outcome"` // landed, replayed, failed, or skipped
+}
+
+type batchReport struct {
+	Acts     []batchOutcome `json:"acts"`
+	Landed   int            `json:"landed"`
+	Replayed int            `json:"replayed"`
+	Error    *batchError    `json:"error,omitempty"`
+}
+
+// batchCommand appends an ordered chain of acts in one process. Opening the
+// workspace once means the log is loaded and verified once: the resident
+// submitter keeps that verified frontier and dedup index, and every further act
+// in the chain only extends it.
+//
+// The input is a JSON array of acts, read from a file or from standard input
+// when the argument is "-" or absent:
+//
+//	[
+//	  {"label": "req", "verb": "state", "kind": "request", "text": "do the thing",
+//	   "body": {"to": "@worker", "conditions": "tests green"},
+//	   "rests_on": ["git:sha1:<genesis>#git:sha1:<event>"],
+//	   "idempotency_key": "thing-request"},
+//	  {"label": "promise", "verb": "state", "kind": "promise", "text": "I will",
+//	   "rests_on": ["$req"], "idempotency_key": "thing-promise"}
+//	]
+//
+// An array rather than one act per line, because the whole file is then parsed
+// before anything lands: a malformed entry anywhere costs nothing. A later act
+// may cite an earlier act of the same batch as "$label" in rests_on or target,
+// and the label resolves to the event id minted for that act. Every reference
+// is checked before the first append, so an unknown or forward label also lands
+// nothing.
+//
+// Acts land one at a time; the batch is not atomic. Events are commits on
+// refs/seq/<genesis>, and the kernel owns the whole write: envelope and actor
+// signature verification, the genesis payload ceiling, the admission hook, the
+// dedup index, sequencer signing, and the compare-and-swap that publishes each
+// commit. There is no multi-event entry point, and building a chain of commits
+// outside that path in order to move the ref once would mean repeating those
+// checks where the kernel cannot enforce them. Per-act idempotency keys carry
+// the recovery instead: rerunning the same file replays the prefix that already
+// landed, without duplicating it, and continues from the first act that did
+// not. Acts given no idempotency key are not resumable and land afresh.
+//
+// With --server the same signed requests are forwarded to the resident
+// sequencer one at a time through /v0/submit. That server holds the single
+// verified frontier, and batch semantics stay per-act exactly as they are
+// locally.
+func batchCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("batch", arguments)
+	as := set.String("as", "", "actor name for every act in the batch")
+	serverURL := set.String("server", "", "resident sequencer URL")
+	if err := set.Parse(arguments); err != nil {
+		return err
 	}
+	if set.NArg() > 1 {
+		return errors.New("batch takes one file, or - for standard input")
+	}
+	if *as == "" {
+		return errors.New("batch requires --as")
+	}
+	acts, err := readBatch(set.Arg(0))
+	if err != nil {
+		return err
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	_, private, err := workspace.Actor(*as)
+	if err != nil {
+		return err
+	}
+	report, err := runBatch(ctx, workspace, *serverURL, *as, private, acts)
+	if printErr := printJSON(report); printErr != nil && err == nil {
+		err = printErr
+	}
+	return err
+}
+
+// readBatch reads the whole input before anything lands. An empty path or "-"
+// reads standard input.
+func readBatch(path string) ([]batchAct, error) {
+	var content []byte
+	var err error
+	if path == "" || path == "-" {
+		content, err = io.ReadAll(os.Stdin)
+	} else {
+		content, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return nil, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	var acts []batchAct
+	if err := decoder.Decode(&acts); err != nil {
+		return nil, batchFail("input", "read batch acts: %v", err)
+	}
+	if decoder.More() {
+		return nil, batchFail("input", "batch input has content after the act array")
+	}
+	if len(acts) == 0 {
+		return nil, batchFail("input", "batch input contains no acts")
+	}
+	return acts, nil
+}
+
+// runBatch checks the whole chain, then appends it act by act against the one
+// verified frontier the workspace already holds.
+func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, acts []batchAct) (batchReport, error) {
+	report := batchReport{Acts: make([]batchOutcome, len(acts))}
+	for position, entry := range acts {
+		report.Acts[position] = batchOutcome{Position: position, Label: entry.Label, Outcome: "skipped"}
+	}
+	if position, failure := checkBatch(acts); failure != nil {
+		report.Acts[position].Outcome = "failed"
+		report.Error = failure
+		return report, failure
+	}
+	minted := make(map[string]string, len(acts))
+	for position, entry := range acts {
+		act := app.Act{
+			Verb: entry.Verb, Kind: entry.Kind, Text: entry.Text, Body: entry.Body,
+			Target: resolveLabel(entry.Target, minted), IdempotencyKey: entry.IdempotencyKey,
+		}
+		for _, reference := range entry.RestsOn {
+			act.RestsOn = append(act.RestsOn, resolveLabel(reference, minted))
+		}
+		submission, err := submitSigned(ctx, workspace, serverURL, actorName, private, act)
+		if err != nil {
+			failure := batchFail("submit", "%v", err)
+			report.Acts[position].Outcome = "failed"
+			report.Error = failure
+			return report, failure
+		}
+		report.Acts[position].Event = submission.Record.ID
+		if submission.Result.Replay {
+			report.Acts[position].Outcome = "replayed"
+			report.Replayed++
+		} else {
+			report.Acts[position].Outcome = "landed"
+			report.Landed++
+		}
+		if entry.Label != "" {
+			minted[entry.Label] = submission.Record.ID
+		}
+	}
+	return report, nil
+}
+
+// checkBatch validates the shape of every act and proves that each intra-batch
+// reference names a label defined by a strictly earlier act. It runs before the
+// first append, so a chain that cannot resolve lands nothing.
+func checkBatch(acts []batchAct) (int, *batchError) {
+	labels := make(map[string]int, len(acts))
+	for position, entry := range acts {
+		switch entry.Verb {
+		case app.VerbState:
+			if entry.Target != "" {
+				return position, batchFail("verb", "state takes no target")
+			}
+		case app.VerbRatify, app.VerbSupersede:
+			if entry.Target == "" {
+				return position, batchFail("verb", "%s requires a target", entry.Verb)
+			}
+		default:
+			return position, batchFail("verb", "unknown verb %q", entry.Verb)
+		}
+		for _, reference := range append([]string{entry.Target}, entry.RestsOn...) {
+			name, cited := strings.CutPrefix(reference, "$")
+			if !cited {
+				continue
+			}
+			if _, defined := labels[name]; !defined {
+				return position, batchFail("reference", "$%s is not a label of an earlier act", name)
+			}
+		}
+		if entry.Label == "" {
+			continue
+		}
+		if strings.HasPrefix(entry.Label, "$") {
+			return position, batchFail("label", "label %q must not begin with $", entry.Label)
+		}
+		if _, exists := labels[entry.Label]; exists {
+			return position, batchFail("label", "label %q is used twice", entry.Label)
+		}
+		labels[entry.Label] = position
+	}
+	return 0, nil
+}
+
+// resolveLabel turns a "$label" citation into the event id minted for that act.
+// Anything else is already a durable identifier and passes through. checkBatch
+// has proved the label belongs to an earlier act, and the batch stops at the
+// first failure, so every label reached here has been minted.
+func resolveLabel(reference string, minted map[string]string) string {
+	if name, cited := strings.CutPrefix(reference, "$"); cited {
+		return minted[name]
+	}
+	return reference
+}
+
+func submitAct(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, act app.Act) (workroom.Record, error) {
 	_, private, err := workspace.Actor(actorName)
 	if err != nil {
 		return workroom.Record{}, err
 	}
+	submission, err := submitSigned(ctx, workspace, serverURL, actorName, private, act)
+	return submission.Record, err
+}
+
+// submitSigned appends one act with custody the caller already holds. A chain
+// of acts therefore reads the actor key once, and a local submission reuses the
+// workspace's resident verified frontier instead of scanning the log again.
+func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, act app.Act) (app.Submission, error) {
 	request, err := workspace.BuildActRequest(ctx, private, actorName, act)
 	if err != nil {
-		return workroom.Record{}, err
+		return app.Submission{}, err
+	}
+	if serverURL == "" {
+		return workspace.AcceptSubmission(ctx, request)
 	}
 	encoded, _ := json.Marshal(request)
 	response, err := http.Post(strings.TrimRight(serverURL, "/")+"/v0/submit", "application/json", bytes.NewReader(encoded))
 	if err != nil {
-		return workroom.Record{}, err
+		return app.Submission{}, err
 	}
 	defer response.Body.Close()
 	var result struct {
@@ -577,12 +824,12 @@ func submitAct(ctx context.Context, workspace *app.Workspace, serverURL, actorNa
 		Error string `json:"error"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
-		return workroom.Record{}, err
+		return app.Submission{}, err
 	}
 	if response.StatusCode != http.StatusOK {
-		return workroom.Record{}, errors.New(result.Error)
+		return app.Submission{}, errors.New(result.Error)
 	}
-	return result.Record, nil
+	return result.Submission, nil
 }
 
 func statusCommand(ctx context.Context, arguments []string) error {
