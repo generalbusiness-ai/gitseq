@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will file the first-ontology specification note on branch task/first-ontology, cite its exact head with an artifact statement, and bring it to ready-for-review with independent review requested from codex.","body":{"branch":"task/first-ontology"}}
+{"kind":"artifact","text":"First-ontology specification note at its initial head on task/first-ontology.","body":{"commit":"3b67ae27f019d7567202a9b24d95e5176ad2ae51","path":"notes/2026-08-08-first-ontology.md"}}
