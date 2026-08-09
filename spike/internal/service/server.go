@@ -12,23 +12,24 @@ import (
 	"gitseq/spike/internal/app"
 	"gitseq/spike/internal/kernel"
 	"gitseq/spike/internal/nexus"
+	"gitseq/spike/internal/statusview"
 )
 
-type Frontier struct {
-	Genesis string `json:"genesis"`
-	Head    string `json:"head"`
-	Depth   int    `json:"depth"`
-}
-
-type Cursor struct {
-	Frontier []Frontier   `json:"frontier"`
-	Live     nexus.Cursor `json:"live"`
-}
+type Frontier = statusview.Frontier
+type Cursor = statusview.Cursor
 
 type Status struct {
 	Durable app.Snapshot   `json:"durable"`
 	Live    nexus.Snapshot `json:"live"`
 	Cursor  Cursor         `json:"cursor"`
+}
+
+// SummaryStatus is the bounded resident response used by the default CLI.
+// /v0/status remains the complete browser and audit projection.
+type SummaryStatus struct {
+	Durable statusview.Summary `json:"durable"`
+	Live    nexus.Snapshot     `json:"live"`
+	Cursor  Cursor             `json:"cursor"`
 }
 
 type WaitRequest struct {
@@ -68,6 +69,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v0/actors", s.handleActors)
 	s.mux.HandleFunc("POST /v0/act", s.handleAct)
 	s.mux.HandleFunc("GET /v0/status", s.handleStatus)
+	s.mux.HandleFunc("GET /v0/status-summary", s.handleStatusSummary)
 	s.mux.HandleFunc("POST /v0/wait", s.handleWait)
 	s.mux.HandleFunc("POST /v0/submit", s.handleSubmit)
 	s.mux.HandleFunc("GET /v0/presence", s.handlePresence)
@@ -91,6 +93,19 @@ func (s *Server) status(ctx context.Context) (Status, error) {
 func (s *Server) handleStatus(writer http.ResponseWriter, request *http.Request) {
 	status, err := s.status(request.Context())
 	write(writer, status, err)
+}
+
+func (s *Server) handleStatusSummary(writer http.ResponseWriter, request *http.Request) {
+	status, err := s.status(request.Context())
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	summary := SummaryStatus{
+		Durable: statusview.Build(status.Durable.Genesis, status.Durable.Head, status.Durable.Depth, status.Durable.Projection),
+		Live:    status.Live, Cursor: status.Cursor,
+	}
+	write(writer, summary, nil)
 }
 
 func (s *Server) handleWait(writer http.ResponseWriter, request *http.Request) {

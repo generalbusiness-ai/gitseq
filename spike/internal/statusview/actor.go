@@ -1,0 +1,343 @@
+package statusview
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"gitseq/spike/internal/app"
+	"gitseq/spike/internal/nexus"
+	"gitseq/spike/internal/workroom"
+)
+
+const DeltaCap = 50
+
+type Frontier struct {
+	Genesis string `json:"genesis"`
+	Head    string `json:"head"`
+	Depth   int    `json:"depth"`
+}
+
+type Cursor struct {
+	Frontier []Frontier   `json:"frontier"`
+	Live     nexus.Cursor `json:"live"`
+}
+
+type ActorView struct {
+	Name         string   `json:"name"`
+	Fingerprint  string   `json:"fingerprint"`
+	Roles        []string `json:"roles,omitempty"`
+	RolesSkipped int      `json:"roles_skipped,omitempty"`
+}
+
+type CommitmentView struct {
+	Request   string `json:"request"`
+	Status    string `json:"status"`
+	Requester string `json:"requester"`
+	Performer string `json:"performer,omitempty"`
+	Text      string `json:"text,omitempty"`
+	Promise   string `json:"promise,omitempty"`
+	Report    string `json:"report,omitempty"`
+}
+
+type EventView struct {
+	Event   string `json:"event"`
+	Actor   string `json:"actor"`
+	Kind    string `json:"kind,omitempty"`
+	Verdict string `json:"verdict"`
+	Reason  string `json:"reason,omitempty"`
+	Target  string `json:"target,omitempty"`
+	Text    string `json:"text,omitempty"`
+}
+
+type ActorTotals struct {
+	Depth            int            `json:"depth"`
+	Commitments      map[string]int `json:"commitments,omitempty"`
+	Artifacts        int            `json:"artifacts"`
+	StaleArtifacts   int            `json:"stale_artifacts"`
+	IneffectiveActs  int            `json:"ineffective_acts"`
+	DisputedActs     int            `json:"disputed_acts"`
+	Statements       int            `json:"statements"`
+	FullProjectionAt string         `json:"full_projection_at"`
+}
+
+type LiveView struct {
+	Generation string   `json:"generation,omitempty"`
+	Position   uint64   `json:"position,omitempty"`
+	Present    []string `json:"present,omitempty"`
+	Degraded   bool     `json:"degraded,omitempty"`
+}
+
+type ActorStatus struct {
+	You                  ActorView        `json:"you"`
+	Frontier             []Frontier       `json:"frontier"`
+	Cursor               Cursor           `json:"cursor"`
+	WaitingOnYou         []CommitmentView `json:"waiting_on_you"`
+	WaitingOnYouSkipped  int              `json:"waiting_on_you_skipped,omitempty"`
+	YouAreWaiting        []CommitmentView `json:"you_are_waiting_on"`
+	YouAreWaitingSkipped int              `json:"you_are_waiting_on_skipped,omitempty"`
+	NotActionable        []CommitmentView `json:"not_actionable,omitempty"`
+	NotActionableSkipped int              `json:"not_actionable_skipped,omitempty"`
+	YourAttention        []EventView      `json:"needs_your_attention,omitempty"`
+	YourAttentionSkipped int              `json:"needs_your_attention_skipped,omitempty"`
+	Totals               ActorTotals      `json:"totals"`
+	Live                 LiveView         `json:"live"`
+	FollowWithWait       string           `json:"follow_with_wait"`
+}
+
+type WaitDelta struct {
+	Cursor                      Cursor           `json:"cursor"`
+	Reset                       bool             `json:"reset,omitempty"`
+	Durable                     []EventView      `json:"durable,omitempty"`
+	Skipped                     int              `json:"durable_skipped,omitempty"`
+	CurrentWaitingOnYou         []CommitmentView `json:"current_waiting_on_you,omitempty"`
+	CurrentWaitingSkipped       int              `json:"current_waiting_on_you_skipped,omitempty"`
+	CurrentNotActionable        []CommitmentView `json:"current_not_actionable,omitempty"`
+	CurrentNotActionableSkipped int              `json:"current_not_actionable_skipped,omitempty"`
+	Live                        []nexus.Change   `json:"live,omitempty"`
+	Totals                      ActorTotals      `json:"totals"`
+}
+
+var semanticRoles = map[string]bool{"operator": true, "participant": true, "ratifier": true}
+
+func CapRoles(roles []string, limit int) ([]string, int) {
+	if len(roles) <= limit {
+		kept := append([]string(nil), roles...)
+		for index := range kept {
+			kept[index] = Text(kept[index])
+		}
+		return kept, 0
+	}
+	kept := make([]string, 0, limit)
+	seen := make(map[string]bool, limit)
+	for _, role := range roles {
+		if len(kept) < limit && semanticRoles[role] {
+			kept = append(kept, role)
+			seen[role] = true
+		}
+	}
+	for _, role := range roles {
+		if len(kept) >= limit {
+			break
+		}
+		if !seen[role] {
+			kept = append(kept, role)
+			seen[role] = true
+		}
+	}
+	for index := range kept {
+		kept[index] = Text(kept[index])
+	}
+	return kept, len(roles) - len(kept)
+}
+
+func statementIndex(projection workroom.Projection) map[string]workroom.Statement {
+	index := make(map[string]workroom.Statement, len(projection.Statements))
+	for _, statement := range projection.Statements {
+		index[statement.Event] = statement
+	}
+	return index
+}
+
+func actIndex(projection workroom.Projection) map[string]workroom.Act {
+	index := make(map[string]workroom.Act, len(projection.Acts))
+	for _, act := range projection.Acts {
+		index[act.Event] = act
+	}
+	return index
+}
+
+func viewCommitment(projection workroom.Projection, statements map[string]workroom.Statement, commitment workroom.Commitment) CommitmentView {
+	view := CommitmentView{
+		Request: commitment.Request, Status: commitment.Status,
+		Requester: Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
+		Promise: commitment.Promise, Report: commitment.Report,
+	}
+	if statement, ok := statements[commitment.Request]; ok {
+		view.Text = Text(statement.Text)
+	}
+	return view
+}
+
+func actorTotals(projection workroom.Projection, depth int) ActorTotals {
+	counts := make(map[string]int)
+	for _, commitment := range projection.Commitments {
+		counts[commitment.Status]++
+	}
+	stale, ineffective, disputed := 0, 0, 0
+	for _, artifact := range projection.Artifacts {
+		if artifact.Stale {
+			stale++
+		}
+	}
+	for _, decision := range projection.Decisions {
+		switch decision.Verdict {
+		case workroom.Ineffective:
+			ineffective++
+		case workroom.Disputed:
+			disputed++
+		}
+	}
+	return ActorTotals{Depth: depth, Commitments: counts, Artifacts: len(projection.Artifacts), StaleArtifacts: stale,
+		IneffectiveActs: ineffective, DisputedActs: disputed, Statements: len(projection.Statements),
+		FullProjectionAt: "GET /v0/status, gs status --all, or gs status --json"}
+}
+
+func actorLive(live nexus.Snapshot, degraded bool) LiveView {
+	view := LiveView{Degraded: degraded}
+	if degraded {
+		return view
+	}
+	view.Generation, view.Position = live.Cursor.Generation, live.Cursor.Position
+	seen := make(map[string]bool, len(live.Presence))
+	for _, who := range live.Presence {
+		if !seen[who] {
+			seen[who] = true
+			view.Present = append(view.Present, Text(who))
+		}
+	}
+	sort.Strings(view.Present)
+	return view
+}
+
+func involves(commitment workroom.Commitment, fingerprint string) bool {
+	return commitment.Requester == fingerprint || commitment.Performer == fingerprint || commitment.WaitingOn == fingerprint
+}
+
+func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, fingerprint, actorName string, degraded bool) ActorStatus {
+	projection := durable.Projection
+	statements := statementIndex(projection)
+	digest := ActorStatus{You: ActorView{Name: Text(actorName), Fingerprint: fingerprint}, Frontier: cursor.Frontier, Cursor: cursor,
+		Totals: actorTotals(projection, durable.Depth), Live: actorLive(live, degraded),
+		FollowWithWait: "pass cursor back to wait to receive only what changes after it"}
+	if actor, ok := projection.Actors[fingerprint]; ok {
+		digest.You.Roles, digest.You.RolesSkipped = CapRoles(actor.Roles, ListCap)
+		if actor.Name != "" {
+			digest.You.Name = Text(actor.Name)
+		}
+	}
+	for _, commitment := range projection.Commitments {
+		if !involves(commitment, fingerprint) || commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
+			continue
+		}
+		view := viewCommitment(projection, statements, commitment)
+		if !actionable[commitment.Status] {
+			digest.NotActionable = append(digest.NotActionable, view)
+		} else if commitment.WaitingOn == fingerprint {
+			digest.WaitingOnYou = append(digest.WaitingOnYou, view)
+		} else if commitment.WaitingOn != "" {
+			digest.YouAreWaiting = append(digest.YouAreWaiting, view)
+		}
+	}
+	acts := actIndex(projection)
+	for _, decision := range projection.Decisions {
+		if decision.Verdict == workroom.Effective {
+			continue
+		}
+		view := EventView{Event: decision.Event, Verdict: string(decision.Verdict), Reason: decision.Reason}
+		switch {
+		case statements[decision.Event].Actor == fingerprint:
+			statement := statements[decision.Event]
+			view.Kind, view.Text = string(statement.Kind), Text(statement.Text)
+		case acts[decision.Event].Actor == fingerprint:
+			act := acts[decision.Event]
+			view.Kind, view.Text, view.Target = act.Type, Text(act.Text), act.Target
+		default:
+			continue
+		}
+		view.Actor = Text(actorName)
+		digest.YourAttention = append(digest.YourAttention, view)
+	}
+	digest.WaitingOnYou, digest.WaitingOnYouSkipped = Cap(digest.WaitingOnYou, ListCap)
+	digest.YouAreWaiting, digest.YouAreWaitingSkipped = Cap(digest.YouAreWaiting, ListCap)
+	digest.NotActionable, digest.NotActionableSkipped = Cap(digest.NotActionable, ListCap)
+	digest.YourAttention, digest.YourAttentionSkipped = Cap(digest.YourAttention, ListCap)
+	return digest
+}
+
+func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset bool, requested Cursor, fingerprint, actorName string, degraded bool) WaitDelta {
+	projection := durable.Projection
+	statements := statementIndex(projection)
+	delta := WaitDelta{Cursor: cursor, Reset: reset, Live: live, Totals: actorTotals(projection, durable.Depth)}
+	from := 0
+	for _, frontier := range requested.Frontier {
+		if frontier.Genesis == "" || frontier.Genesis == durable.Genesis {
+			from = frontier.Depth
+		}
+	}
+	if from < 0 || from > len(projection.Decisions) {
+		from = len(projection.Decisions)
+	}
+	fresh := projection.Decisions[from:]
+	if len(fresh) > DeltaCap {
+		delta.Skipped = len(fresh) - DeltaCap
+		fresh = fresh[len(fresh)-DeltaCap:]
+	}
+	acts := actIndex(projection)
+	for _, decision := range fresh {
+		view := EventView{Event: decision.Event, Verdict: string(decision.Verdict), Reason: decision.Reason}
+		if statement, ok := statements[decision.Event]; ok {
+			view.Actor, view.Kind, view.Text = Text(ActorName(projection, statement.Actor)), string(statement.Kind), Text(statement.Text)
+		} else if act, ok := acts[decision.Event]; ok {
+			view.Actor, view.Kind, view.Target, view.Text = Text(ActorName(projection, act.Actor)), act.Type, act.Target, Text(act.Text)
+		}
+		delta.Durable = append(delta.Durable, view)
+	}
+	for _, commitment := range projection.Commitments {
+		if !involves(commitment, fingerprint) || commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
+			continue
+		}
+		view := viewCommitment(projection, statements, commitment)
+		if !actionable[commitment.Status] {
+			delta.CurrentNotActionable = append(delta.CurrentNotActionable, view)
+		} else if commitment.WaitingOn == fingerprint {
+			delta.CurrentWaitingOnYou = append(delta.CurrentWaitingOnYou, view)
+		}
+	}
+	delta.CurrentWaitingOnYou, delta.CurrentWaitingSkipped = Cap(delta.CurrentWaitingOnYou, ListCap)
+	delta.CurrentNotActionable, delta.CurrentNotActionableSkipped = Cap(delta.CurrentNotActionable, ListCap)
+	if degraded {
+		delta.Cursor.Live = nexus.Cursor{Generation: "degraded"}
+	}
+	return delta
+}
+
+func Summarize(tool string, value any) string {
+	switch shaped := value.(type) {
+	case ActorStatus:
+		return fmt.Sprintf("depth %d, you hold %s roles, %s waiting on you, %s you are waiting on, %s not actionable, %s of your acts did not take force; live %s",
+			shaped.Totals.Depth, Shown(len(shaped.You.Roles), shaped.You.RolesSkipped),
+			Shown(len(shaped.WaitingOnYou), shaped.WaitingOnYouSkipped), Shown(len(shaped.YouAreWaiting), shaped.YouAreWaitingSkipped),
+			Shown(len(shaped.NotActionable), shaped.NotActionableSkipped), Shown(len(shaped.YourAttention), shaped.YourAttentionSkipped), LiveLabel(shaped.Live))
+	case WaitDelta:
+		reset, skipped := "", ""
+		if shaped.Reset {
+			reset = ", live reset"
+		}
+		if shaped.Skipped > 0 {
+			skipped = fmt.Sprintf(", %d older events omitted", shaped.Skipped)
+		}
+		return fmt.Sprintf("depth %d, %d new durable events%s%s; currently %s waiting on you, %s not actionable",
+			shaped.Totals.Depth, len(shaped.Durable), skipped, reset,
+			Shown(len(shaped.CurrentWaitingOnYou), shaped.CurrentWaitingSkipped), Shown(len(shaped.CurrentNotActionable), shaped.CurrentNotActionableSkipped))
+	default:
+		return tool + " ok"
+	}
+}
+
+func Shown(listed, skipped int) string {
+	if skipped == 0 {
+		return fmt.Sprintf("%d", listed)
+	}
+	return fmt.Sprintf("%d of %d", listed, listed+skipped)
+}
+
+func LiveLabel(live LiveView) string {
+	if live.Degraded {
+		return "degraded"
+	}
+	if len(live.Present) == 0 {
+		return "nobody present"
+	}
+	return strings.Join(live.Present, ", ")
+}
