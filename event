@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2bbee486f27c45671ebf3fad0898cd97cd6f604","text":"Superseded by the merge artifact for the same path: the warning is on main at 77a38f6edead059ead93f03ff2b92fc0c19a551a, so the pre-merge branch artifact no longer names where this behaviour lives."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fe2f3d8eff9d9f6387e26f42cc0d8a8f5f128525"}
