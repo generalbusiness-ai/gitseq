@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will pin the resident HTTP Host and origin boundary against browser DNS rebinding while preserving the documented trusted-loopback model, with hostile IPv4, IPv6, and localhost coverage.","body":{"branch":"security/service-boundary-bounds"}}
+{"kind":"promise","text":"I will add explicit deterministic limits and recovery for resident request lifetimes, waiters, sessions, conversations, frames, and retained live bytes, with expiry, exhaustion, recovery, and race coverage.","body":{"branch":"security/service-boundary-bounds"}}
