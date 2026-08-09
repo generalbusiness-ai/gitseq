@@ -3,6 +3,11 @@
 Conversation that can become a verifiable shared record — without
 turning every conversation into paperwork.
 
+> **Technical preview.** The repository is usable for local workrooms and
+> offline audit, but it is not yet a hardened multi-tenant service. The six
+> adversarial cases under `spike/` establish the specific properties they
+> name; they are not a blanket production-security claim.
+
 ## Why
 
 Every document in your organization is a cache, and nothing
@@ -130,6 +135,8 @@ a piece of work, verify it, and audit it from a fresh clone.
 [`docs/reference.md`](docs/reference.md) covers the commands, the MCP
 tools, and the constraints worth knowing before deploying anything.
 
-The implementation currently grows out of the adversarial module under
-`spike/`: the proven kernel remains intact while the workroom profile,
-resident service, CLI, MCP adapter, and demo live alongside it.
+The shipping Go module lives at the repository root. `cmd/gs` and
+`cmd/gitseq-mcp` build the two user-facing binaries, while `internal/` holds
+the kernel, workroom profile, and services. `spike/` is deliberately narrower:
+it keeps the adversarial CLI, report generator, forge fixture, and six-case
+evidence that preceded the technical preview.

@@ -172,6 +172,20 @@ type, one ASCII space, and the base64 wire key, with no options, principals,
 comments, or additional lines. Creation and auditor decoding apply the same
 validation before the value can become an OpenSSH allowed-signers entry.
 
+The kernel can rotate that key in-band. A rotation is a reserved, empty-tree
+commit signed by the current sequencer key that names one canonical successor
+key. The successor becomes current only after that commit: later commits under
+the retired key are refused, and full and incremental audits both carry the
+current key forward as they walk the sequence. Rotation commits increase the
+sequence depth but are not application events.
+
+Rotation limits damage; it does not recover authority that is already gone. A
+lost current private key cannot sign its successor, so recovery requires an
+out-of-band continuation. Whoever holds a compromised current key can rotate
+to another key before the legitimate operator does. The append-only history
+shows that rotation, but the kernel cannot decide which competing custodian was
+legitimate or undo events the compromised key already signed.
+
 ### Speaking
 
 | Command | Purpose |
@@ -299,16 +313,21 @@ auditor's existing `refs/seq/*` frontier.
 The resident may also maintain a local
 `refs/gitseq/checkpoints/<genesis>` ref. Its parentless commit contains the
 original actor-signed events at one fully audited sequence head and is signed
-by that log's sequencer key. On restart, gitseq checks the checkpoint's object
-format, genesis, exact head, fold-profile version, and commit signature. One
+by the sequencer key current at that head. On restart, gitseq checks the
+checkpoint's object format, genesis, exact head, and fold-profile version. One
 local first-parent metadata enumeration then proves the exact commit sequence
 from genesis through the named head. Every cached event must occupy its claimed
 commit and match that commit's actor envelope, causal trailers, and tree; its
 actor signature, payload ceiling, dedup key, and payload-tree bytes are checked
-again. Only events after the checkpoint frontier require sequencer-signature
-and payload-object reads. A missing, malformed, mismatched, oversized, or
-non-descendant checkpoint is only a cache miss: gitseq performs the ordinary
-full audit and, when it holds sequencer custody, replaces the checkpoint.
+again. Every rotation in the cached prefix is read from its exact sequence
+commit and its signature is checked under the preceding current key. The key
+derived through those verified rotations must then sign the checkpoint itself.
+Cached application-event commits avoid sequencer-signature and payload-object
+reads; cached rotations still require signature checks, and every commit after
+the checkpoint frontier receives the ordinary full verification. A missing,
+malformed, mismatched, oversized, or non-descendant checkpoint is only a cache
+miss: gitseq performs the ordinary full audit and, when it holds sequencer
+custody, replaces the checkpoint.
 
 A writing resident refreshes the ref every 256 accepted events after its last
 successful write. A failed write does not advance that cadence and is retried
@@ -429,8 +448,10 @@ ephemeral state does not survive, and the adapter will not imply it did.
 
 | Path | Contents |
 |---|---|
+| `cmd/` | Shipping `gs` and `gitseq-mcp` commands. |
 | `docs/` | User documentation. |
+| `internal/` | Production kernel, workroom profile, nexus, and service packages. |
 | `SKILL.md` | Normative contract for agents in a workroom. |
 | `notes/` | Dated design and implementation notes. |
-| `spike/` | Implementation: kernel, workroom profile, service, CLI, MCP adapter. |
+| `spike/` | Adversarial CLI, report generator, forge fixture, and six-case evidence. |
 | `ui/` | The live projection served at the listen address. |
