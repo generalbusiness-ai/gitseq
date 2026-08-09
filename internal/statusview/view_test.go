@@ -7,11 +7,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -41,6 +43,41 @@ func growthProjection(size int) workroom.Projection {
 	}
 	return projection
 }
+
+func TestOrientationCapsEffectiveRolesWithoutLosingSemanticIdentity(t *testing.T) {
+	roles := []string{"participant", "operator", "ratifier"}
+	for index := 0; index < 2000; index++ {
+		roles = append(roles, fmt.Sprintf("custom-%04d", index))
+	}
+	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 7, Projection: workroom.Projection{Actors: map[string]workroom.ActorState{
+		"fingerprint": {Name: "Ada", Kind: "human", MembershipEvent: "membership", Roles: roles, RoleSources: map[string][]string{"participant": {"membership"}}},
+	}}}
+	orientation, ok := BuildOrientation(snapshot, "fingerprint", "local")
+	if !ok {
+		t.Fatal("effective actor omitted")
+	}
+	if orientation.You.Name != "Ada" || orientation.You.Kind != "human" || orientation.You.MembershipEvent != "membership" ||
+		orientation.Frontier.Depth != 7 || orientation.ProjectionVersion != OrientationProjectionVersion {
+		t.Fatalf("orientation lost exact identity: %+v", orientation)
+	}
+	if len(orientation.You.Roles) != ListCap || orientation.You.RolesSkipped != len(roles)-ListCap {
+		t.Fatalf("orientation cap = %d roles, %d skipped", len(orientation.You.Roles), orientation.You.RolesSkipped)
+	}
+	for _, semantic := range []string{"participant", "operator", "ratifier"} {
+		if !slices.Contains(orientation.You.Roles, semantic) {
+			t.Fatalf("semantic role %q was omitted: %+v", semantic, orientation.You)
+		}
+	}
+	encoded, err := json.Marshal(orientation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) >= orientationResponseLimitForTest {
+		t.Fatalf("bounded orientation grew to %d bytes", len(encoded))
+	}
+}
+
+const orientationResponseLimitForTest = 64 << 10
 
 func TestBuildBoundsEveryGrowthDimensionAndCountsExactly(t *testing.T) {
 	if ListCap != 20 || TextCap != 240 || DeltaCap != 50 {
