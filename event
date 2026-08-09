@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will keep resident dedup entries payload-free, bound checkpoint retention and oversized-checkpoint retry work, add adversarial resource-bound regressions, and return an exact tested head for independent review.","body":{"branch":"request/security-kernel-store-boundaries"}}
+{"kind":"promise","text":"I will pin the resident HTTP Host and origin boundary against browser DNS rebinding while preserving the documented trusted-loopback model, with hostile IPv4, IPv6, and localhost coverage.","body":{"branch":"security/service-boundary-bounds"}}
