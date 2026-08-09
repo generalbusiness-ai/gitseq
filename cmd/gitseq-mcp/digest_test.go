@@ -38,6 +38,7 @@ func sampleStatus(events int) service.Status {
 		})
 	}
 	projection.Statements = append(projection.Statements,
+		workroom.Statement{Event: "request:available", Actor: theirs, Kind: workroom.KindRequest, Text: "available to me"},
 		workroom.Statement{Event: "request:for-me", Actor: theirs, Kind: workroom.KindRequest, Text: "please do the thing"},
 		workroom.Statement{Event: "request:for-them", Actor: mine, Kind: workroom.KindRequest, Text: "please do the other thing"},
 		workroom.Statement{Event: "act:mine-failed", Actor: mine, Kind: workroom.KindPromise, Text: "a promise that did not take"},
@@ -49,6 +50,7 @@ func sampleStatus(events int) service.Status {
 	projection.Statements = append(projection.Statements,
 		workroom.Statement{Event: "act:theirs-failed", Actor: theirs, Kind: workroom.KindPropose, Text: "not my business"})
 	projection.Commitments = []workroom.Commitment{
+		{Request: "request:available", Requester: theirs, AddressedTo: mine, Status: "open"},
 		{Request: "request:for-me", Requester: theirs, Performer: mine, Status: "promised", WaitingOn: mine},
 		{Request: "request:for-them", Requester: mine, Performer: theirs, Status: "promised", WaitingOn: theirs},
 		{Request: "request:done", Requester: theirs, Performer: mine, Status: "satisfied"},
@@ -76,6 +78,9 @@ func TestStatusDigestIsActorOrientedAndBounded(t *testing.T) {
 	status := sampleStatus(400)
 	digest := digestStatus(status, mine, "me", false)
 
+	if len(digest.AvailableToYou) != 1 || digest.AvailableToYou[0].Request != "request:available" || digest.AvailableToYou[0].AddressedTo != "me" {
+		t.Fatalf("available_to_you = %#v", digest.AvailableToYou)
+	}
 	if len(digest.WaitingOnYou) != 1 || digest.WaitingOnYou[0].Request != "request:for-me" {
 		t.Fatalf("waiting_on_you = %#v", digest.WaitingOnYou)
 	}
@@ -344,6 +349,10 @@ func TestWaitCommitmentListsAreCurrentStateAndOnlyDurableIsCut(t *testing.T) {
 		t.Fatalf("waiting lists varied with the cursor: %#v vs %#v",
 			atFrontier.CurrentWaitingOnYou, fromScratch.CurrentWaitingOnYou)
 	}
+	if !sameCommitments(atFrontier.CurrentAvailableToYou, fromScratch.CurrentAvailableToYou) {
+		t.Fatalf("available lists varied with the cursor: %#v vs %#v",
+			atFrontier.CurrentAvailableToYou, fromScratch.CurrentAvailableToYou)
+	}
 	// And a caller sitting exactly at the frontier still learns its situation,
 	// which is why they are carried at all.
 	if len(atFrontier.CurrentNotActionable) == 0 {
@@ -354,7 +363,7 @@ func TestWaitCommitmentListsAreCurrentStateAndOnlyDurableIsCut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{"current_not_actionable", "current_waiting_on_you"} {
+	for _, field := range []string{"current_available_to_you", "current_not_actionable", "current_waiting_on_you"} {
 		if !strings.Contains(string(encoded), field) {
 			t.Fatalf("wire name %q missing, so the payload implies a cut it does not make: %s", field, encoded)
 		}
@@ -477,6 +486,32 @@ func TestTerminalCommitmentsAndFailedActsAreBounded(t *testing.T) {
 	if len(delta.CurrentNotActionable) != listCap || delta.CurrentNotActionableSkipped != 500-listCap {
 		t.Fatalf("wait is unbounded in terminal commitments: %d listed, %d skipped",
 			len(delta.CurrentNotActionable), delta.CurrentNotActionableSkipped)
+	}
+}
+
+func TestAvailableWorkIsBoundedInStatusAndWait(t *testing.T) {
+	status := sampleStatus(4)
+	projection := &status.Durable.Projection
+	// sampleStatus contributes one available request of its own.
+	for index := range 500 {
+		request := fmt.Sprintf("request:available-%03d", index)
+		projection.Statements = append(projection.Statements,
+			workroom.Statement{Event: request, Actor: theirs, Kind: workroom.KindRequest, Text: "available work"})
+		projection.Commitments = append(projection.Commitments,
+			workroom.Commitment{Request: request, Requester: theirs, AddressedTo: mine, Status: "open"})
+	}
+
+	digest := digestStatus(status, mine, "me", false)
+	if len(digest.AvailableToYou) != listCap || digest.AvailableToYouSkipped != 501-listCap {
+		t.Fatalf("available work is unbounded or silently omitted: %d listed, %d skipped", len(digest.AvailableToYou), digest.AvailableToYouSkipped)
+	}
+	if summary := summarize("status", digest); !strings.Contains(summary, fmt.Sprintf("%d of 501 addressed to you", listCap)) {
+		t.Fatalf("status summary hides the complete available count: %q", summary)
+	}
+
+	delta := digestWait(service.WaitResponse{Status: status}, service.Cursor{}, mine, "me", false)
+	if len(delta.CurrentAvailableToYou) != listCap || delta.CurrentAvailableToSkipped != 501-listCap {
+		t.Fatalf("wait available work is unbounded or silently omitted: %d listed, %d skipped", len(delta.CurrentAvailableToYou), delta.CurrentAvailableToSkipped)
 	}
 }
 
