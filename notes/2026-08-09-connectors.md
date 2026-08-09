@@ -1,8 +1,8 @@
 ---
 date: 2026-08-09
-status: draft — round one review by codex returned
-  changes-requested (report b8c98009, ratified); this revision answers
-  all five findings and awaits re-review
+status: draft — two review rounds by codex, both changes-requested
+  (reports b8c98009 and d92ae2a5, both ratified); this revision answers
+  the three findings outstanding from round two and awaits re-review
 origin: a design conversation with hugh on 2026-08-09, held outside
   the workroom and summarized here. No signed frames exist to carry
   as evidence; this note is the author's faithful summary and stands
@@ -27,7 +27,7 @@ configuration schema — those follow once the shape is agreed.
 Connectors live outside the core. The design note already places
 them there: "approval/workflow vocabularies, artifact conventions,
 promotion rituals, executors and connectors: all here or higher"
-(`notes/2026-08-05-gitseq-design.md:418`@0a66e85). Nothing in this
+(`notes/2026-08-05-gitseq-design.md:418`@b4a4454). Nothing in this
 note asks the kernel or the workroom fold to learn what GitHub is.
 
 ## The refusal: no symmetric sync
@@ -97,6 +97,23 @@ these it uses:
    state the outcome, so a reader can see the ambiguous window
    rather than having it silently resolved.
 
+The third is not a recovery mechanism, and the note would be
+cheating to present it as one. It makes the ambiguity visible; it
+does not tell a restarted connector whether the effect happened. So
+it needs a terminal rule:
+
+> A connector may retry a command automatically only where a foreign
+> idempotency key or a readback proof establishes what already
+> happened. Where neither is available, it must not retry. It
+> reports the outcome as unknown and leaves reconciliation to a
+> person.
+
+Which means, in practice, that shapes 1 and 2 are the requirement
+for any command a room wants handled automatically, and shape 3 is
+what honesty looks like for the rest. A connector that silently
+retries into an unknown state has traded a visible gap for an
+invisible duplicate, which is the wrong direction for this project.
+
 The prohibition on reading back applies to connector-owned
 renderings. It does not extend to commands, where readback is the
 recovery mechanism.
@@ -111,7 +128,7 @@ sets — and ingests only what it does not own.
 ## Identity: one connector, principals as data
 
 A connector is a single rostered actor of kind `service`
-(`spike/internal/app/app.go:428`@0a66e85), holding one key. Foreign
+(`internal/app/app.go:428`@b4a4454), holding one key. Foreign
 principals are carried as data in the act body, never as separate
 identities.
 
@@ -180,16 +197,33 @@ log.
 Staleness does not propagate by good intentions. It propagates along
 `rests_on`, so the charter only flares its consequences if the acts
 enacted under it actually cite it. That is a requirement, not a
-hope:
+hope — but it cannot be a blanket one, because not every act may
+choose its own bases.
 
-> Every durable act a connector originates rests on the live charter
-> event, and — where the act depends on them — on the live alias
-> claim and the live doorstep admission it relied upon.
+The rule has to be stated in two parts:
 
-With that edge in place, superseding the charter flares everything
-derived under the old mapping, and revocation stops being a
-configuration change nobody notices. Without it the charter is
-decoration.
+> **Root statements** a connector originates — its observations,
+> the requests it files, the artifacts it cites — rest on the live
+> charter event, and, where the act depends on them, on the live
+> alias claim and the live doorstep admission it relied upon.
+>
+> **Constrained acts** inherit the basis transitively. A `ratify`
+> must rest on exactly its target and nothing else
+> (`internal/workroom/fold.go:353`@b4a4454), so it cannot cite the
+> charter directly. Its legitimacy comes from the chain it closes:
+> a connector may only ratify automatically where the target report
+> and its originating request already carry the live charter and the
+> relevant admission claims.
+
+With those edges in place, superseding the charter flares the root
+statements, and the fold's staleness propagation carries the flare
+through the report and ratification chain that rests on them.
+Without them the charter is decoration.
+
+The two-part shape is not an inconvenience to route around. It is
+the fold refusing to let a ratification quietly acquire bases that
+would change what it means, and the connector design has to fit that
+rather than wish it away.
 
 ### What the charter does not do
 
@@ -198,7 +232,7 @@ follows. It is not an enforcement mechanism, and this note would be
 lying if it implied otherwise.
 
 The pre-append hook checks only that the submitting key is on the
-static allowlist (`spike/internal/app/app.go:734`@0a66e85). The fold
+static allowlist (`internal/app/app.go:734`@b4a4454). The fold
 does not read charter bodies and does not know what a charter is. So
 an allowlisted connector whose key is stolen can state anything a
 connector may state, including requests it was never chartered to
@@ -218,7 +252,7 @@ common way to run a process and the design must support it.
 
 It is better founded than it first appears, because of who holds the
 requester position. A report is ratified by the requester
-(`SKILL.md:51`@0a66e85). If the connector filed the request from
+(`SKILL.md:51`@b4a4454). If the connector filed the request from
 the pull request, the connector *is* the requester, and it is
 already the authorized ratifier for reports against that request. No
 role grant is needed and nothing is forged; the loop closes with the
@@ -242,7 +276,7 @@ The temptation is to go further and grant the connector the
 `ratifier` role so it can ratify assertions and proposals too.
 Resist it, because that role does not have the shape the charter
 implies. It is granted room-wide through the existing role machinery
-(`spike/internal/app/app.go:456` and `:495`@0a66e85) and carries no
+(`internal/app/app.go:456` and `:495`@b4a4454) and carries no
 repository, team, or event-kind scope. A connector holding it can
 ratify anything in the room that a ratifier can ratify, charter or
 no charter. Granting it and then describing the result as narrow
@@ -288,7 +322,7 @@ treatment.
 **Chatter** — comments, review remarks, "looks good", "please
 rebase" — is high volume, frequently edited or deleted, and mostly
 worth forgetting. It is ephemeral, exactly as
-`SKILL.md:126`@0a66e85 already says. When something in it
+`SKILL.md:126`@b4a4454 already says. When something in it
 crystallizes, a room actor promotes it with the relevant quotes as
 evidence.
 
@@ -347,17 +381,17 @@ Pluggable here does not mean a plugin interface in the core process.
 It means a separate process, holding its own key, talking to the
 same public surface every other actor uses. The seams already exist:
 
-- `POST /v0/submit` (`spike/internal/service/server.go:172`@0a66e85)
+- `POST /v0/submit` (`internal/service/server.go:172`@b4a4454)
   accepts a fully client-signed submission. The core never holds the
   connector's key. This is the boundary, and it needs no new code.
 - `POST /v0/wait` provides the composite cursor the render loop
   follows.
 - The pre-append allowlist
-  (`spike/internal/app/app.go:734`@0a66e85) admits the connector's
+  (`internal/app/app.go:734`@b4a4454) admits the connector's
   key; roles constrain what its acts can do.
 - Idempotency is already the right shape. The dedup key is
   target, actor fingerprint, namespace, and key
-  (`spike/internal/intent/intent.go:154`@0a66e85). A connector sets
+  (`internal/intent/intent.go:154`@b4a4454). A connector sets
   its own namespace and uses the foreign delivery identifier as the
   key, and at-least-once webhook redelivery collapses to a replay
   result. The hardest part of any sync system is load-bearing here
@@ -440,7 +474,7 @@ One gap blocks the ephemeral half of the design. Durable acts can be
 signed by the client and submitted over `/v0/submit`, but ephemeral
 frames cannot: `handleSay` resolves the session's actor and reads
 its private key from server-side custody
-(`spike/internal/service/server.go:234`@0a66e85). A connector that
+(`internal/service/server.go:234`@b4a4454). A connector that
 wants to publish foreign chatter as frames must therefore hand its
 key to `gs`, which destroys the custody property that makes
 `/v0/submit` the right boundary.
@@ -451,32 +485,47 @@ specification, because of what the actor signature currently covers.
 
 The actor signs a body containing the nexus generation, the
 conversation identifier, the nexus-assigned sequence number, and the
-previous frame's hash (`spike/internal/nexus/nexus.go:360`@0a66e85),
+previous frame's hash (`internal/nexus/nexus.go:360`@b4a4454),
 and those last two are assigned at publish time
-(`:438`@0a66e85). A remote signer cannot know them in advance, and
+(`:438`@b4a4454). A remote signer cannot know them in advance, and
 under concurrent speakers they change between deciding to speak and
 being ordered. Some protocol has to close that gap. Two shapes are
 available:
 
 1. **Reserve then sign.** The nexus issues a position and previous
    hash, the client signs that exact body, and the reservation
-   expires if unused. Preserves the current frame format; adds a
-   round trip and a reservation to manage.
+   expires if unused. Preserves the current frame format and its
+   verifier; adds a round trip and a reservation to manage. This is
+   the only one of the two compatible with the format as it stands
+   today.
 2. **Sign the payload, let the nexus order it.** The client signs a
    detached body that binds the actor, conversation, and payload but
    not the position; the nexus verifies it against the roster,
    assigns the order, and co-signs. Single round trip; changes what
-   the actor signature attests, so the frame format and its verifier
-   both move.
+   the actor signature attests, so both the frame format and
+   `VerifyFrame` move with it.
 
-The second is closer to how durable submission already works, where
-the actor signs an intent and the sequencer supplies the position.
+The second is analogous to how durable submission already works,
+where the actor signs an intent without a position and the sequencer
+commits it.
+
+Both sketches share a gap worth naming, because it is easy to miss.
+The conversation identifier is inside the signed body, and it is not
+always known to the client: when no conversation is anchored at the
+subject yet, the nexus mints one
+(`internal/nexus/nexus.go:402`@b4a4454). A remote signer speaking
+first into a fresh subject therefore cannot sign the conversation
+identity any more than it can sign the sequence. So the reservation
+must carry and hold the conversation identity together with the
+slot, or the detached protocol needs a separate signed
+conversation-create step that the client can then reference.
+
 Whichever is chosen, the design must also say how a session lease
 binds the key, how roster membership is checked at publish time, and
 how replay and stale-tip races behave.
 
 A second, smaller constraint: state bodies are flat string maps
-(`spike/internal/workroom/schema.go:52`@0a66e85). That is enough for
+(`internal/workroom/schema.go:52`@b4a4454). That is enough for
 identifiers, and structured foreign payloads belong in attachments
 anyway. It should be a stated rule so each connector does not
 rediscover it.
@@ -489,8 +538,11 @@ the kernel and the collaboration profile, and on the forge policy in
 `SKILL.md`, which it refines rather than replaces. Code claims cite
 `path@commit` directly rather than resting on directory-level
 artifacts, several of which currently have more than one live head
-for the same path. Every citation reads at `0a66e85`, the base of
-the branch that carries this note.
+for the same path. Every citation reads at `b4a4454`, the head of
+the branch that carries this note. Round one and two were reviewed
+against `0a66e85`, before the shipping module was promoted out of
+`spike/` to the repository root; the line numbers survived that
+rename unchanged, and only the path prefix moved.
 
 ## Open questions
 
