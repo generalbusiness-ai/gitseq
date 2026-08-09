@@ -121,7 +121,16 @@ type CommitIdentity struct {
 }
 
 func (s Store) SignedCommit(ctx context.Context, tree, parent, message, signingKey string, identity CommitIdentity) (string, error) {
-	now := fmt.Sprintf("%d +0000", time.Now().Unix())
+	commit, _, err := s.SignedCommitWithTimestamp(ctx, tree, parent, message, signingKey, identity)
+	return commit, err
+}
+
+// SignedCommitWithTimestamp returns the Unix commit time written into the
+// signed object. A newly projected event can then use the same durable time as
+// a later historical scan without reading the commit back from Git.
+func (s Store) SignedCommitWithTimestamp(ctx context.Context, tree, parent, message, signingKey string, identity CommitIdentity) (string, int64, error) {
+	timestamp := time.Now().Unix()
+	now := fmt.Sprintf("%d +0000", timestamp)
 	env := []string{
 		"GIT_AUTHOR_NAME=" + identity.AuthorName,
 		"GIT_AUTHOR_EMAIL=" + identity.AuthorEmail,
@@ -139,7 +148,7 @@ func (s Store) SignedCommit(ctx context.Context, tree, parent, message, signingK
 		args = append(args, "-p", parent)
 	}
 	output, err := s.run(ctx, []byte(message), env, args...)
-	return string(output), err
+	return string(output), timestamp, err
 }
 
 func (s Store) UpdateRef(ctx context.Context, ref, newOID, oldOID string) error {
@@ -181,6 +190,25 @@ func (s Store) RevListAfter(ctx context.Context, base, head string) ([]string, e
 func (s Store) CommitMessage(ctx context.Context, oid string) (string, error) {
 	output, err := s.run(ctx, nil, nil, "show", "-s", "--format=%B", oid)
 	return string(output) + "\n", err
+}
+
+// CommitMessageWithTimestamp reads the envelope and signed committer time in
+// one Git process. Event scans already need the message, so exposing the time
+// here does not add a process per historical event.
+func (s Store) CommitMessageWithTimestamp(ctx context.Context, oid string) (string, int64, error) {
+	output, err := s.run(ctx, nil, nil, "show", "-s", "--format=%ct%x00%B", oid)
+	if err != nil {
+		return "", 0, err
+	}
+	parts := bytes.SplitN(output, []byte{0}, 2)
+	if len(parts) != 2 {
+		return "", 0, errors.New("commit metadata is missing its timestamp separator")
+	}
+	timestamp, err := strconv.ParseInt(string(parts[0]), 10, 64)
+	if err != nil {
+		return "", 0, fmt.Errorf("parse commit timestamp: %w", err)
+	}
+	return string(parts[1]) + "\n", timestamp, nil
 }
 
 func (s Store) CommitTree(ctx context.Context, oid string) (string, error) {

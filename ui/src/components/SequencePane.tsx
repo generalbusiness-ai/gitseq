@@ -4,6 +4,7 @@ import type { Act, Actor, Projection, Statement } from "../lib/api";
 import { shortEvent } from "../lib/api";
 import { ticketsOf, type Selection } from "../lib/store";
 import { cn, kindLabel, kindTint, statusTint } from "../lib/util";
+import { EventTime } from "./EventTime";
 import { PaneTitle } from "./Railway";
 
 // The sequence renders statements only; ratifications, supersessions,
@@ -72,8 +73,9 @@ export function SequencePane({
                 <span className="truncate text-muted">
                   {byEvent.get(commitment.request)?.text ?? shortEvent(commitment.request)}
                 </span>
+                <EventTime timestamp={byEvent.get(commitment.request)?.timestamp} className="ml-auto" />
                 {commitment.waiting_on && (
-                  <span className="ml-auto shrink-0 text-xs text-faint">⏳ {nameOf(commitment.waiting_on)}</span>
+                  <span className="shrink-0 text-xs text-faint">⏳ {nameOf(commitment.waiting_on)}</span>
                 )}
               </button>
             ))}
@@ -99,9 +101,10 @@ export function SequencePane({
               />
             ))}
           {orphanActs.map((act) => (
-            <li key={act.event} className="px-2 py-1 text-xs text-faint">
+            <li key={act.event} className="flex items-center gap-2 px-2 py-1 text-xs text-faint">
               <CircleSlash className="mr-1 inline h-3 w-3" />
-              {nameOf(act.actor)} — {act.reason}
+              <span>{nameOf(act.actor)} — {act.reason}</span>
+              <EventTime timestamp={act.timestamp} className="ml-auto" />
             </li>
           ))}
         </ol>
@@ -157,7 +160,8 @@ function StatementCard({
               <FileWarning className="h-3 w-3" /> stale
             </span>
           )}
-          <span className="ml-auto shrink-0 font-mono text-xs text-faint" title={statement.event}>
+          <EventTime timestamp={statement.timestamp} className="ml-auto" />
+          <span className="shrink-0 font-mono text-xs text-faint" title={statement.event}>
             {ticket ? `#${ticket}` : shortEvent(statement.event)}
           </span>
         </div>
@@ -193,6 +197,7 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
         <span>
           dissent, {nameOf(note.dissent.actor)}: <span className="text-muted">{note.dissent.text}</span>
         </span>
+        <EventTime timestamp={note.dissent.timestamp} className="ml-auto" />
       </div>
     );
   }
@@ -202,6 +207,7 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
       <div className="flex items-center gap-1.5 text-xs text-ok">
         <BadgeCheck className="h-3 w-3 shrink-0" />
         ratified by {nameOf(act.actor)}
+        <EventTime timestamp={act.timestamp} className="ml-auto" />
       </div>
     );
   }
@@ -213,6 +219,7 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
           superseded by {nameOf(act.actor)}
           {act.text && <span className="text-muted"> — {act.text}</span>}
         </span>
+        <EventTime timestamp={act.timestamp} className="ml-auto" />
       </div>
     );
   }
@@ -222,6 +229,7 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
       <span>
         {nameOf(act.actor)} tried to {act.type} — {act.reason}
       </span>
+      <EventTime timestamp={act.timestamp} className="ml-auto" />
     </div>
   );
 }

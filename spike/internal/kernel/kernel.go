@@ -47,6 +47,7 @@ type Result struct {
 	Replay     bool   `json:"replay"`
 	CASRetries int    `json:"cas_retries"`
 	BaseHead   string `json:"-"`
+	Timestamp  int64  `json:"timestamp"`
 }
 
 type Options struct {
@@ -102,6 +103,7 @@ type Admission struct {
 
 type Event struct {
 	Commit      string
+	Timestamp   int64
 	Intent      intent.Intent
 	Signed      intent.Signed
 	PayloadTree string
@@ -356,10 +358,10 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 			if !prior.Signed.Equal(request.Signed) {
 				return Result{}, ErrIdempotencyConflict
 			}
-			return Result{Commit: prior.Commit, Head: prior.Commit, Replay: true, CASRetries: attempt, BaseHead: head}, nil
+			return Result{Commit: prior.Commit, Head: prior.Commit, Replay: true, CASRetries: attempt, BaseHead: head, Timestamp: prior.Timestamp}, nil
 		}
 		actorID := intent.ActorFingerprint(request.Signed.ActorKey)
-		commit, err := store.SignedCommit(ctx, writtenTree, head, message, options.SigningKey, gitstore.CommitIdentity{
+		commit, timestamp, err := store.SignedCommitWithTimestamp(ctx, writtenTree, head, message, options.SigningKey, gitstore.CommitIdentity{
 			AuthorName: "actor " + actorID[:16], AuthorEmail: actorID[:16] + "@actor.gitseq.invalid",
 			CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
 		})
@@ -383,7 +385,7 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 			return Result{}, err
 		}
 		if cache != nil {
-			event := Event{Commit: commit, Intent: decoded, Signed: cloneSigned(request.Signed), PayloadTree: decoded.PayloadTree}
+			event := Event{Commit: commit, Timestamp: timestamp, Intent: decoded, Signed: cloneSigned(request.Signed), PayloadTree: decoded.PayloadTree}
 			cache.log.Dedup[key] = event
 			cache.log.Verification.Head = commit
 			cache.log.Verification.Depth++
@@ -392,7 +394,7 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 		}
 		fail(options, "after_ref_cas")
 		fail(options, "before_reply")
-		return Result{Commit: commit, Head: commit, CASRetries: attempt, BaseHead: head}, nil
+		return Result{Commit: commit, Head: commit, CASRetries: attempt, BaseHead: head, Timestamp: timestamp}, nil
 	}
 	return Result{}, errors.New("CAS retry limit exceeded")
 }
@@ -680,7 +682,7 @@ func scanAfter(ctx context.Context, store gitstore.Store, base scannedLog, head 
 // deliberately share every envelope, actor signature, target, trailer, tree,
 // and payload check.
 func loadEvent(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, genesis, commit string, loadPayload bool) (Event, error) {
-	message, err := store.CommitMessage(ctx, commit)
+	message, timestamp, err := store.CommitMessageWithTimestamp(ctx, commit)
 	if err != nil {
 		return Event{}, err
 	}
@@ -713,7 +715,7 @@ func loadEvent(ctx context.Context, store gitstore.Store, desc GenesisDescriptor
 	if err := store.ValidatePayloadTree(ctx, actualTree, remaining); err != nil {
 		return Event{}, fmt.Errorf("commit %s payload shape: %w", commit, err)
 	}
-	event := Event{Commit: commit, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
+	event := Event{Commit: commit, Timestamp: timestamp, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
 	if !loadPayload {
 		return event, nil
 	}

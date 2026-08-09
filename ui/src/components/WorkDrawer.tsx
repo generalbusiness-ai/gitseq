@@ -5,6 +5,7 @@ import { ATTENTION_COMMITMENT_STATUSES, OPEN_COMMITMENT_STATUSES, danglingPromis
 import { cn, statusLabel, statusTint } from "../lib/util";
 import { groupOpenWork, worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
 import { Railway } from "./Railway";
+import { EventTime } from "./EventTime";
 import { Ticket, WhyStale } from "./Stream";
 
 // Work state and the Git history live behind the header chip, separate from
@@ -126,6 +127,10 @@ function WorkSections({
   const done = projection.commitments.filter((c) => c.status === "satisfied");
   const currentGroups = groupArtifacts(projection.artifacts.filter((a) => !a.stale));
   const requestText = (event: string) => projection.statements.find((s) => s.event === event)?.text ?? event;
+  const timestampByEvent = new Map([
+    ...projection.statements.map((event) => [event.event, event.timestamp] as const),
+    ...projection.acts.map((event) => [event.event, event.timestamp] as const),
+  ]);
   const needsAttention = staleArtifacts.length + attention.length + dangling.length > 0;
 
   return (
@@ -148,7 +153,8 @@ function WorkSections({
               <span className="truncate" title={`${artifact.path}@${artifact.commit}`}>
                 {artifactLabel(artifact.path)}
               </span>
-              <span className="ml-auto shrink-0">
+              <span className="ml-auto flex shrink-0 items-center gap-2">
+                <EventTime timestamp={timestampByEvent.get(artifact.event)} />
                 <Ticket ticket={tickets.get(artifact.event)} event={artifact.event} onSelect={() => onJumpEvent(artifact.event)} />
               </span>
             </Row>
@@ -163,7 +169,8 @@ function WorkSections({
               <Row onClick={() => onJumpEvent(commitment.request)} bare>
                 <span className={cn("w-16 shrink-0 text-xs font-semibold", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>
                 <span className="truncate text-muted">{requestText(commitment.request)}</span>
-                <span className="ml-auto shrink-0">
+                <span className="ml-auto flex shrink-0 items-center gap-2">
+                  <EventTime timestamp={timestampByEvent.get(commitment.request)} />
                   <Ticket ticket={tickets.get(commitment.request)} event={commitment.request} onSelect={() => onJumpEvent(commitment.request)} />
                 </span>
               </Row>
@@ -180,7 +187,8 @@ function WorkSections({
             <span className="truncate text-muted" title="unlinked work item">
               {promise.text}
             </span>
-            <span className="ml-auto shrink-0">
+            <span className="ml-auto flex shrink-0 items-center gap-2">
+              <EventTime timestamp={promise.timestamp} />
               <Ticket ticket={tickets.get(promise.event)} event={promise.event} onSelect={() => onJumpEvent(promise.event)} />
             </span>
           </Row>
@@ -203,6 +211,7 @@ function WorkSections({
                   <span className="truncate text-muted">{requestText(commitment.request)}</span>
                   <span className="ml-auto flex shrink-0 items-center gap-2">
                     {commitment.waiting_on && <span className="text-xs text-faint">⏳ {nameOf(commitment.waiting_on)}</span>}
+                    <EventTime timestamp={timestampByEvent.get(commitment.request)} />
                     <Ticket ticket={tickets.get(commitment.request)} event={commitment.request} onSelect={() => onJumpEvent(commitment.request)} />
                   </span>
                 </Row>
@@ -218,7 +227,8 @@ function WorkSections({
         {standing.map((decision) => (
           <Row key={decision.event} onClick={() => onJumpEvent(decision.event)}>
             <span className="truncate font-serif text-[13px]">{decision.text}</span>
-            <span className="ml-auto shrink-0">
+            <span className="ml-auto flex shrink-0 items-center gap-2">
+              <EventTime timestamp={decision.timestamp} />
               <Ticket ticket={tickets.get(decision.event)} event={decision.event} onSelect={() => onJumpEvent(decision.event)} />
             </span>
           </Row>
@@ -231,7 +241,8 @@ function WorkSections({
           <Row key={commitment.request} onClick={() => onJumpEvent(commitment.report ?? commitment.request)}>
             <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-ok" />
             <span className="truncate text-muted">{requestText(commitment.request)}</span>
-            <span className="ml-auto shrink-0">
+            <span className="ml-auto flex shrink-0 items-center gap-2">
+              <EventTime timestamp={timestampByEvent.get(commitment.request)} />
               <Ticket ticket={tickets.get(commitment.request)} event={commitment.request} onSelect={() => onJumpEvent(commitment.request)} />
             </span>
           </Row>
@@ -247,7 +258,8 @@ function WorkSections({
                 <span className="truncate" title={`${artifact.path}@${artifact.commit}`}>
                   {artifactLabel(artifact.path)}
                 </span>
-                <span className="ml-auto shrink-0">
+                <span className="ml-auto flex shrink-0 items-center gap-2">
+                  <EventTime timestamp={timestampByEvent.get(artifact.event)} />
                   <Ticket ticket={tickets.get(artifact.event)} event={artifact.event} onSelect={() => onJumpEvent(artifact.event)} />
                 </span>
               </Row>

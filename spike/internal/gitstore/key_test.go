@@ -81,6 +81,39 @@ func TestVerifySSHCommitValidatesPublicKeyBeforeFormatting(t *testing.T) {
 	}
 }
 
+func TestSignedCommitTimestampRoundTripsWithMessage(t *testing.T) {
+	ctx := context.Background()
+	store, err := InitBare(ctx, filepath.Join(t.TempDir(), "repo.git"), "sha1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPath := filepath.Join(t.TempDir(), "sequencer")
+	if _, err := GenerateSSHKey(ctx, keyPath); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := store.EmptyTree(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, written, err := store.SignedCommitWithTimestamp(ctx, tree, "", "event envelope\n", keyPath, CommitIdentity{
+		AuthorName: "test", AuthorEmail: "test@example.invalid",
+		CommitterName: "test", CommitterEmail: "test@example.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, loaded, err := store.CommitMessageWithTimestamp(ctx, commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded != written || loaded <= 0 {
+		t.Fatalf("timestamp loaded = %d, written = %d", loaded, written)
+	}
+	if message != "event envelope\n" {
+		t.Fatalf("message = %q", message)
+	}
+}
+
 func TestGenerateSSHKeyValidatesKeygenOutput(t *testing.T) {
 	body := strings.TrimPrefix(testSSHPublicKey("ssh-rsa", make([]byte, 32)), "ssh-rsa ")
 	binDir := t.TempDir()
