@@ -544,7 +544,10 @@ func TestWhoamiRejectsUntrustedOrUnboundedResidentAnswers(t *testing.T) {
 	if err := json.Unmarshal(base, &oversizedValue); err != nil {
 		t.Fatal(err)
 	}
-	oversizedValue["you"].(map[string]any)["roles"] = []any{"participant", strings.Repeat("x", orientationResponseLimit)}
+	if orientationResponseLimit != 64<<10 {
+		t.Fatalf("orientation response limit = %d, want 64 KiB", orientationResponseLimit)
+	}
+	oversizedValue["you"].(map[string]any)["roles"] = []any{"participant", strings.Repeat("x", 64<<10)}
 	oversized, _ := json.Marshal(oversizedValue)
 	for name, response := range map[string][]byte{
 		"malformed":     []byte("{"),
@@ -561,11 +564,18 @@ func TestWhoamiRejectsUntrustedOrUnboundedResidentAnswers(t *testing.T) {
 		})
 	}
 	for name, mutate := range map[string]func(map[string]any){
+		"projection version mismatch": func(value map[string]any) {
+			value["projection_version"] = "statusview-orientation@0"
+		},
 		"foreign genesis": func(value map[string]any) {
 			value["frontier"].(map[string]any)["genesis"] = strings.Repeat("0", len(snapshot.Genesis))
 		},
 		"stale head":     func(value map[string]any) { value["frontier"].(map[string]any)["head"] = snapshot.Genesis },
+		"negative depth": func(value map[string]any) { value["frontier"].(map[string]any)["depth"] = -1 },
 		"actor mismatch": func(value map[string]any) { value["you"].(map[string]any)["fingerprint"] = "foreign" },
+		"missing name":   func(value map[string]any) { value["you"].(map[string]any)["name"] = "" },
+		"missing kind":   func(value map[string]any) { value["you"].(map[string]any)["kind"] = "" },
+		"missing member": func(value map[string]any) { value["you"].(map[string]any)["membership_event"] = "" },
 		"role mismatch":  func(value map[string]any) { value["you"].(map[string]any)["roles"] = []any{"ratifier"} },
 		"role overflow": func(value map[string]any) {
 			roles := []any{"participant"}
@@ -626,12 +636,15 @@ func TestWhoamiRetriesOneConcurrentFrontierMove(t *testing.T) {
 }
 
 func TestWhoamiBoundsStallsAndRejectsRedirects(t *testing.T) {
+	if orientationTimeout != 2*time.Second {
+		t.Fatalf("orientation timeout = %s, want 2s", orientationTimeout)
+	}
 	workspace, _ := signedWorkspace(t, 1)
 	stalled := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) { <-request.Context().Done() }))
 	started := time.Now()
 	result := callWhoami(t, workspace, stalled.URL, stalled.Client())
 	stalled.Close()
-	if elapsed := time.Since(started); elapsed > orientationTimeout+time.Second || result["degraded"] != true {
+	if elapsed := time.Since(started); elapsed > 3*time.Second || result["degraded"] != true {
 		t.Fatalf("stalled resident was not bounded: elapsed=%s result=%#v", elapsed, result)
 	}
 	var followed atomic.Int32

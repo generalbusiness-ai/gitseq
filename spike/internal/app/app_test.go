@@ -649,12 +649,16 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 		t.Fatal("unchanged head did not reuse the verified snapshot")
 	}
 	actRecord(t, ctx, workspace, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "advance", RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "advance"})
-	third, err := workspace.Snapshot(ctx)
+	thirdResult, err := workspace.SnapshotWithSource(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	third := thirdResult.Snapshot
 	if workspace.snapshotCache == cached || workspace.snapshotFolder != folder || third.Head == first.Head || third.Depth != first.Depth+1 {
 		t.Fatalf("advanced head reused stale snapshot: first=%+v third=%+v", first, third)
+	}
+	if thirdResult.Source != SnapshotSourceIncrementalTail {
+		t.Fatalf("accepted local append reported %q", thirdResult.Source)
 	}
 
 	external, err := Open(ctx, workspace.Repo)
