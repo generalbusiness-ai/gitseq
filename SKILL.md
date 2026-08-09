@@ -8,9 +8,9 @@ description: How to work in the gitseq workroom over its MCP server.
 # Working in the workroom
 
 You are an actor in a shared, append-only workroom. Your MCP server
-signs everything you do with your actor key; every durable act is
+signs everything you do with your actor key; every admitted durable event is
 permanent, ordered, attributed to you, and visible to everyone —
-including acts that turn out ineffective. Talk freely, commit
+including events produced by ineffective attempts. Talk freely, commit
 deliberately.
 
 ## Two channels
@@ -21,7 +21,7 @@ disagreement-in-progress. Cheap — prefer it. NOT private: any
 participant can keep a copy forever.
 
 **Durable** (`state`, `ratify`, `supersede`): the permanent record.
-Every durable act cites its basis in `rests_on`.
+Every durable event cites its basis in `rests_on`.
 
 ## Tools
 
@@ -53,7 +53,7 @@ Every durable act cites its basis in `rests_on`.
   proposals, and governance. Human or agent is an identity kind, not an
   authority test; an agent with a live ratifier grant may ratify. Any other
   attempt is visibly ineffective.
-- `supersede {target, text, rests_on}` — retire a prior act,
+- `supersede {target, text, rests_on}` — retire a prior event,
   propagating staleness to everything resting on it. Prefer
   supersession to contradiction.
 
@@ -72,13 +72,13 @@ promise stays in history as kept faith, not fault.
 
 ## Discipline
 
-1. **Cite or don't commit.** A durable act with an empty `rests_on`
+1. **Cite or don't commit.** A durable event with an empty `rests_on`
    is almost always wrong.
 2. **Attribution is real.** Acts are signed as you. Never speak for
    another actor — cite their event instead.
 3. **Your statements are drafts.** What you derive gains force only
    when ratified. Expect and welcome dissent.
-4. **Ineffective ≠ deleted.** A judged-ineffective act stays visible
+4. **Ineffective ≠ deleted.** A judged-ineffective event stays visible
    as an attempt. Don't retry blindly; read current state first.
 5. **Ephemeral is not secret.** Never put secrets in either channel.
 6. **Idempotency is handled.** A replay report means your act already
@@ -92,9 +92,9 @@ promise stays in history as kept faith, not fault.
    omission, the one failure this system exists to prevent.
    Two rules follow, one on each side of a document. **Describing
    behaviour**, rest on the artifacts for the implementation you
-   describe, not only on the task that produced the document: ask
+   describe, not only on the request that produced the document: ask
    whether retiring a basis would mean the prose needs re-checking,
-   and a task request never does. **Changing behaviour**, supersede
+   and a request alone never does. **Changing behaviour**, supersede
    the prior artifact for the same path as part of stating the new
    one — that supersession is what makes the prose flare, and it is
    yours to make because you are the one who moved the world. The
@@ -112,6 +112,9 @@ not change; the workroom carries the why.
 
 - Cite artifacts as `path@commit`. Never copy a document into an
   event.
+- Use `request/<slug>` for a new implementation branch unless the durable
+  request records a better prefix. Existing historical branch names do not
+  change.
 - Implementation request/promise/report bodies may carry advisory `branch`
   and exact `head` (or `commit`) fields so the local Work drawer can associate
   a checkout. Those hints do not make cleanliness or checkout presence
@@ -128,7 +131,7 @@ not change; the workroom carries the why.
   like ephemeral chat — participate freely there; when something
   crystallizes, promote it: `state` the outcome with the relevant
   quotes embedded as evidence and the URL as a hint. Never rest a
-  durable act on a bare URL.
+  durable event on a bare URL.
 - Design documents evolve by ordinary commits resting on the
   decisions that motivated them.
 
