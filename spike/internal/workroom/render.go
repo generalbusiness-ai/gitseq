@@ -36,14 +36,52 @@ func RenderStatus(projection Projection) []byte {
 	if len(projection.Artifacts) == 0 {
 		output.WriteString("No artifacts.\n")
 	} else {
-		output.WriteString("| state | artifact | event |\n")
-		output.WriteString("|---|---|---|\n")
+		unableToFlare, successionUnrecorded := 0, 0
+		// One unrecorded succession at a long-lived path repeats on every later
+		// link of that chain, so the count of artifacts overstates how many
+		// situations a reader has to act on. Rows and paths are both reported,
+		// alongside the count of supersessions actually owed.
+		successionPaths := make(map[string]struct{})
+		output.WriteString("| state | artifact | event | notes |\n")
+		output.WriteString("|---|---|---|---|\n")
 		for _, artifact := range projection.Artifacts {
 			status := "current"
-			if artifact.Stale {
+			switch {
+			case artifact.DescribesSupersededWorld:
+				status = "STALE — describes a superseded world"
+			case artifact.Stale:
 				status = "STALE"
 			}
-			fmt.Fprintf(&output, "| %s | %s@%s | %s |\n", status, escape(artifact.Path), short(artifact.Commit), short(artifact.Event))
+			var notes []string
+			if artifact.UnableToFlare {
+				unableToFlare++
+				notes = append(notes, "unable to flare")
+			}
+			if artifact.SuccessionUnrecorded {
+				successionUnrecorded++
+				successionPaths[artifact.Path] = struct{}{}
+				note := "succession not recorded"
+				if artifact.LivePredecessors > 1 {
+					note = fmt.Sprintf("succession not recorded (%d live predecessors)", artifact.LivePredecessors)
+				}
+				notes = append(notes, note)
+			}
+			fmt.Fprintf(&output, "| %s | %s@%s | %s | %s |\n", status, escape(artifact.Path), short(artifact.Commit), short(artifact.Event), escape(strings.Join(notes, ", ")))
+		}
+		if unableToFlare > 0 || successionUnrecorded > 0 {
+			output.WriteString("\n")
+		}
+		if unableToFlare > 0 {
+			fmt.Fprintf(&output, "%d cite no basis and can never go stale; their silence is not currency.\n", unableToFlare)
+		}
+		if successionUnrecorded > 0 {
+			// Rows record what happened; the owed count is what to do about it,
+			// and the two differ. With A, B and C at one path the repair is two
+			// supersessions, and superseding A clears B's warning without
+			// touching C's. Where every later artifact was itself withdrawn the
+			// row still stands as history while nothing is owed, so the two
+			// figures are stated separately rather than as one number.
+			fmt.Fprintf(&output, "%d artifacts across %d paths follow a live artifact at the same path without superseding it; supersessions still owed: %d, counting once each predecessor a live successor stands in for.\n", successionUnrecorded, len(successionPaths), projection.OmittedSupersessions)
 		}
 	}
 	output.WriteString("\n## Attempts\n\n")
