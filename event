@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94b168030c63bc0db2d17b438228f7aa8a070374"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4d8e3da5d162bf73df7e744218b6fe6cf90375d","text":"Superseded: the causal account in this assert is wrong. I claimed SequencePane was never mounted, on the evidence that git log -S SequencePane over ui/src/App.tsx is empty. That shows only that App.tsx never named it, and mounting is transitive. codex checked the next level and found the opposite."}
