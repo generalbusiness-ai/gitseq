@@ -38,6 +38,11 @@ type Statement struct {
 	Ratified bool              `json:"ratified,omitempty"`
 	Retired  bool              `json:"retired,omitempty"`
 	Stale    bool              `json:"stale,omitempty"`
+	// DescribesSupersededWorld narrows Stale: the retired ancestor that made
+	// this statement stale is itself an artifact, so what moved is the world
+	// the statement describes rather than the argument it stands on. Both are
+	// staleness; only this one means go and re-read the code.
+	DescribesSupersededWorld bool `json:"describes_superseded_world,omitempty"`
 }
 
 type Commitment struct {
@@ -55,6 +60,26 @@ type Artifact struct {
 	Path   string `json:"path"`
 	Commit string `json:"commit"`
 	Stale  bool   `json:"stale"`
+	// DescribesSupersededWorld carries the same narrowing as on Statement.
+	DescribesSupersededWorld bool `json:"describes_superseded_world,omitempty"`
+	// UnableToFlare records that this artifact has no basis that any act could
+	// ever retire, so no supersession anywhere can make it stale. Its silence
+	// is not currency and the projection must not let it read as currency.
+	// Citing nothing is one way to get here; citing only events that are not
+	// in the log is the other, because supersede needs a target it can resolve.
+	UnableToFlare bool `json:"unable_to_flare,omitempty"`
+	// LivePredecessors counts earlier artifacts at the identical path that are
+	// still live, so a reader can tell two forgotten retirements from one. It
+	// is a per-row figure and must not be summed across rows: with A, B and C
+	// at one path, B counts A and C counts both, so the total double-counts A.
+	// The situation count is Projection.OmittedSupersessions.
+	LivePredecessors int `json:"live_predecessors,omitempty"`
+	// SuccessionUnrecorded records that an earlier artifact for the identical
+	// path is still live: a probable forgotten supersession. It is a warning
+	// about practice, not a verdict — the act itself stays effective. Paths
+	// are compared as exact strings, because path is a free body field and
+	// inferring which spellings mean the same tree would be guesswork.
+	SuccessionUnrecorded bool `json:"succession_unrecorded,omitempty"`
 }
 
 // Act is a ratify or supersede event in client-friendly form: what it
@@ -89,6 +114,13 @@ type Projection struct {
 	Actors      map[string]ActorState `json:"actors"`
 	Provenance  map[string][]string   `json:"provenance"`
 	OpaqueKinds map[string][]string   `json:"opaque_kinds,omitempty"`
+	// OmittedSupersessions counts live artifacts that a later live artifact at
+	// the same path should have retired and did not, each counted once. It is
+	// the number of supersessions still owed — not the number of artifacts
+	// noticing one, and not the number of paths, both of which understate the
+	// repair. A predecessor whose every successor was withdrawn owes nothing:
+	// it is the current artifact for its path again.
+	OmittedSupersessions int `json:"omitted_supersessions,omitempty"`
 }
 
 type parsedRecord struct {
@@ -514,8 +546,15 @@ func (f *foldState) retired() map[string]bool {
 	return retired
 }
 
-func (f *foldState) stale(retired map[string]bool) map[string]bool {
+// staleness returns transitive staleness and, narrowing it, the records whose
+// staleness traces back to a retired artifact. A record is world-stale when a
+// retired artifact is the basis that made it stale, or when it rests on
+// something already world-stale, so the distinction survives any number of
+// hops. Records are visited in sequence order and a basis is always cited
+// before its dependent, so one pass settles both maps.
+func (f *foldState) staleness(retired map[string]bool) (map[string]bool, map[string]bool) {
 	stale := make(map[string]bool)
+	world := make(map[string]bool)
 	for _, record := range f.records {
 		if record.decision.Verdict != Effective {
 			continue
@@ -524,13 +563,43 @@ func (f *foldState) stale(retired map[string]bool) map[string]bool {
 			if target, ok := f.effectiveSup[record.record.ID]; ok && target == basis {
 				continue
 			}
-			if retired[basis] || stale[basis] {
-				stale[record.record.ID] = true
+			if !retired[basis] && !stale[basis] {
+				continue
+			}
+			stale[record.record.ID] = true
+			if world[basis] || (retired[basis] && f.isArtifact(basis)) {
+				world[record.record.ID] = true
 				break
 			}
 		}
 	}
-	return stale
+	return stale, world
+}
+
+// isArtifact reports whether an event is an effective artifact statement. It
+// is the whole basis of the world-staleness distinction: what the fold can
+// tell about a dead ancestor is the kind its author gave it.
+func (f *foldState) isArtifact(event string) bool {
+	record, ok := f.byID[event]
+	if !ok || record.decision.Verdict != Effective {
+		return false
+	}
+	state, ok := record.body.(*State)
+	return ok && state.Kind == KindArtifact
+}
+
+// unableToFlare reports whether nothing in the log could ever make a statement
+// with these bases stale. Citing nothing qualifies; so does citing only events
+// the log does not contain, since supersede requires a resolvable target and
+// no act can retire what is not there. One resolvable basis is enough to
+// escape — it is a handle a future supersession can take hold of.
+func (f *foldState) unableToFlare(restsOn []string) bool {
+	for _, basis := range restsOn {
+		if _, exists := f.byID[basis]; exists {
+			return false
+		}
+	}
+	return true
 }
 
 func (f *foldState) ratified(target string, retired map[string]bool) bool {
@@ -544,7 +613,12 @@ func (f *foldState) ratified(target string, retired map[string]bool) bool {
 
 func (f *foldState) project() Projection {
 	retired := f.retired()
-	stale := f.stale(retired)
+	stale, world := f.staleness(retired)
+	// Every artifact seen at a path, in order, not only the most recent.
+	// Tracking just the immediate predecessor let a retirement hide a live
+	// ancestor: with A, B and C at one path, retiring B cleared C's warning
+	// while A stayed live.
+	seenByPath := make(map[string][]string)
 	projection := Projection{
 		Decisions: []Decision{}, Acts: []Act{}, Statements: []Statement{}, Commitments: []Commitment{}, Artifacts: []Artifact{},
 		Actors: make(map[string]ActorState), Provenance: make(map[string][]string),
@@ -569,12 +643,47 @@ func (f *foldState) project() Projection {
 			Event: record.record.ID, Actor: record.record.Actor, Kind: state.Kind,
 			Text: state.Text, Body: cloneStringMap(state.Body), Ratified: f.ratified(record.record.ID, retired),
 			Retired: retired[record.record.ID], Stale: stale[record.record.ID],
+			DescribesSupersededWorld: world[record.record.ID],
 		})
 		if !knownKinds[state.Kind] {
 			projection.OpaqueKinds[string(state.Kind)] = append(projection.OpaqueKinds[string(state.Kind)], record.record.ID)
 		}
 		if state.Kind == KindArtifact {
-			projection.Artifacts = append(projection.Artifacts, Artifact{Event: record.record.ID, Path: state.Body["path"], Commit: state.Body["commit"], Stale: retired[record.record.ID] || stale[record.record.ID]})
+			path := state.Body["path"]
+			live := 0
+			for _, predecessor := range seenByPath[path] {
+				if !retired[predecessor] {
+					live++
+				}
+			}
+			projection.Artifacts = append(projection.Artifacts, Artifact{
+				Event: record.record.ID, Path: path, Commit: state.Body["commit"],
+				Stale:                    retired[record.record.ID] || stale[record.record.ID],
+				DescribesSupersededWorld: world[record.record.ID],
+				UnableToFlare:            f.unableToFlare(record.record.RestsOn),
+				SuccessionUnrecorded:     live > 0,
+				LivePredecessors:         live,
+			})
+			seenByPath[path] = append(seenByPath[path], record.record.ID)
+		}
+	}
+	// A live artifact owes its retirement only while a live artifact later at
+	// the same path stands in its place. A successor that was itself withdrawn
+	// asks for nothing: acting on that warning would retire the current
+	// artifact because of a replacement that no longer exists. Walking each
+	// path backwards, a live artifact is owed a supersession when a live one
+	// has already been passed. Counted here rather than summed from
+	// LivePredecessors, which counts a shared ancestor once per successor.
+	for _, events := range seenByPath {
+		successor := false
+		for i := len(events) - 1; i >= 0; i-- {
+			if retired[events[i]] {
+				continue
+			}
+			if successor {
+				projection.OmittedSupersessions++
+			}
+			successor = true
 		}
 	}
 	for _, grant := range f.roleGrants {
