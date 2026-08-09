@@ -47,7 +47,8 @@ every event; choosing a winner remains application policy, not kernel behavior.
 The forge profile is also not certified by the normal test lane; only the
 smart-HTTP repository boundary is.
 
-Checkpoint/witness formats, key rotation, production multi-domain watch and
-frontier retrieval, capability token semantics, and throughput/latency
-targets remain outside this spike. The pre-append hook is present, but ships
-with no capability policy.
+Checkpoint/witness formats, production multi-domain watch and frontier
+retrieval, capability token semantics, and throughput/latency targets remain
+outside this spike. Sequencer key rotation is implemented in the kernel; the
+reference states its recovery limits. The pre-append hook is present, but
+ships with no capability policy.

@@ -172,6 +172,20 @@ type, one ASCII space, and the base64 wire key, with no options, principals,
 comments, or additional lines. Creation and auditor decoding apply the same
 validation before the value can become an OpenSSH allowed-signers entry.
 
+The kernel can rotate that key in-band. A rotation is a reserved, empty-tree
+commit signed by the current sequencer key that names one canonical successor
+key. The successor becomes current only after that commit: later commits under
+the retired key are refused, and full and incremental audits both carry the
+current key forward as they walk the sequence. Rotation commits increase the
+sequence depth but are not application events.
+
+Rotation limits damage; it does not recover authority that is already gone. A
+lost current private key cannot sign its successor, so recovery requires an
+out-of-band continuation. Whoever holds a compromised current key can rotate
+to another key before the legitimate operator does. The append-only history
+shows that rotation, but the kernel cannot decide which competing custodian was
+legitimate or undo events the compromised key already signed.
+
 ### Speaking
 
 | Command | Purpose |

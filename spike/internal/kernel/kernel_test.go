@@ -213,6 +213,29 @@ func appendExternalCommit(t *testing.T, f fixtureState, request Request, parent,
 	return commit
 }
 
+func appendExternalRotation(t *testing.T, f fixtureState, parent, successorPublicKey, signingKey string) string {
+	t.Helper()
+	message, err := rotationMessage(successorPublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := f.store.EmptyTree(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := f.store.SignedCommit(f.ctx, tree, parent, message, signingKey, gitstore.CommitIdentity{
+		AuthorName: "external rotation", AuthorEmail: "rotation@example.invalid",
+		CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, parent); err != nil {
+		t.Fatal(err)
+	}
+	return commit
+}
+
 func TestCreateRejectsSigningKeyThatDoesNotMatchDescriptor(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -285,6 +308,124 @@ func TestSubmitRefusesWrongSequencerKeyBeforeCAS(t *testing.T) {
 	}
 	if after != before {
 		t.Fatalf("rejected submission advanced ref: before=%s after=%s", before, after)
+	}
+}
+
+func TestSequencerKeyRotationAcrossFullAndIncrementalVerification(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	reader := NewReader(f.store)
+	first, err := Submit(f.ctx, f.store, f.request(t, private, "before-rotation", []byte("before"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+
+	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
+	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotation, err := Rotate(f.ctx, f.store, f.genesis, nextPublic, Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Submit(f.ctx, f.store, f.request(t, private, "after-rotation", []byte("after"), nil), Options{SigningKey: nextKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Full || loaded.BaseHead != first.Head || len(loaded.Events) != 1 || loaded.Events[0].Commit != second.Commit {
+		t.Fatalf("incremental load across rotation = %+v", loaded)
+	}
+	if loaded.Verification.Depth != 3 || loaded.Verification.Events != 2 || loaded.Verification.Head != second.Head {
+		t.Fatalf("verification after mid-log rotation = %+v", loaded.Verification)
+	}
+
+	thirdKey := filepath.Join(t.TempDir(), "third-sequencer")
+	thirdPublic, err := gitstore.GenerateSSHKey(f.ctx, thirdKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headRotation, err := Rotate(f.ctx, f.store, f.genesis, thirdPublic, Options{SigningKey: nextKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := Verify(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.Depth != 4 || verified.Events != 2 || verified.Head != headRotation.Head {
+		t.Fatalf("verification with rotation at head = %+v", verified)
+	}
+	if rotation.Commit == first.Commit || headRotation.Commit == second.Commit {
+		t.Fatal("rotation did not append its own kernel commit")
+	}
+}
+
+func TestRetiredSequencerKeyIsRefusedAfterRotation(t *testing.T) {
+	f := newFixture(t, "sha1")
+	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
+	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotation, err := Rotate(f.ctx, f.store, f.genesis, nextPublic, Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := f.request(t, actor(t), "retired-key", []byte("retired"), nil)
+	if _, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey}); err == nil || !strings.Contains(err.Error(), "sequencer signature") {
+		t.Fatalf("submission under retired key error = %v", err)
+	}
+	head, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if head != rotation.Head {
+		t.Fatalf("retired-key refusal moved ref: got=%s want=%s", head, rotation.Head)
+	}
+
+	forged := appendExternalCommit(t, f, request, rotation.Head, f.signingKey)
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), forged+" sequencer signature") {
+		t.Fatalf("audit of retired-key event error = %v", err)
+	}
+}
+
+func TestRotationMustBeSignedByCurrentSequencerKey(t *testing.T) {
+	f := newFixture(t, "sha1")
+	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
+	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attackerKey := filepath.Join(t.TempDir(), "attacker-sequencer")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, attackerKey); err != nil {
+		t.Fatal(err)
+	}
+	before, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Rotate(f.ctx, f.store, f.genesis, nextPublic, Options{SigningKey: attackerKey}); err == nil || !strings.Contains(err.Error(), "sequencer signature") {
+		t.Fatalf("rotation under non-current key error = %v", err)
+	}
+	after, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("refused rotation moved ref: before=%s after=%s", before, after)
+	}
+
+	forged := appendExternalRotation(t, f, before, nextPublic, attackerKey)
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), forged+" sequencer signature") {
+		t.Fatalf("audit of forged rotation error = %v", err)
 	}
 }
 
