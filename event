@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Leased activity status and bounded focus with review pins closed at exact test-only repair head 00b7070d872ad404ebc47679504881ebab6d16eb.","body":{"commit":"00b7070d872ad404ebc47679504881ebab6d16eb","path":"."}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0be172538ea08858bf5950d699eb3c8d916924c0","text":"Replaced by the exact test-only repair head 00b7070d872ad404ebc47679504881ebab6d16eb after ratified changes-requested review."}
