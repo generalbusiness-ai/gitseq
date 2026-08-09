@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Why gitseq exists at docs-set head a4f4a57a734d; the page describes the behaviour governed by the acts it rests on.","body":{"commit":"a4f4a57a734dcaa241da60f84c5b63088ced44dc","path":"docs/why.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5512094d2bfa9cd693c81dbb317ab3110b8553bc","text":"Retire the artifact with the incorrectly expanded commit suffix; corrected exact pointer is 30028cdb."}
