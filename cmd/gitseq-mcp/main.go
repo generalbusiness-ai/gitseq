@@ -114,6 +114,11 @@ type room struct {
 	mu        sync.Mutex
 	baseURL   string
 	announced bool
+	// checked records that the sole-identity check has already been made for
+	// this workroom. It survives a lost service, because losing an address
+	// says nothing about who holds the name, and re-checking after our own
+	// presence is live would refuse this session its own identity.
+	checked bool
 }
 
 // endpoint names the service to use, re-reading the repository's published
@@ -161,6 +166,18 @@ func (r *room) present() bool {
 	return r.announced
 }
 
+func (r *room) identityChecked() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.checked
+}
+
+func (r *room) identityIsOurs() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.checked = true
+}
+
 type mcpServer struct {
 	era     protocolEra
 	actor   string
@@ -173,13 +190,21 @@ type mcpServer struct {
 	byCommonDir map[string]*room
 }
 
+// actorEnvironment is how a concurrent instance is told which provisioned
+// identity it is, when the process is not started with an explicit --actor.
+const actorEnvironment = "GITSEQ_ACTOR"
+
 func main() {
 	repo := flag.String("repo", "", "default repository for calls that do not name one (default: working directory)")
-	actor := flag.String("actor", "", "configured actor")
+	actor := flag.String("actor", "", "configured actor; defaults to "+actorEnvironment)
 	serverURL := flag.String("server", "", "retired: the resident service is read from the repository")
 	flag.Parse()
-	if *actor == "" {
-		fatal(errors.New("--actor is required"))
+	name := *actor
+	if name == "" {
+		name = strings.TrimSpace(os.Getenv(actorEnvironment))
+	}
+	if name == "" {
+		fatal(errors.New("no actor identity: pass --actor, or set " + actorEnvironment + " to the identity this instance signs as"))
 	}
 	// The service belongs to a repository, so naming one here could only ever
 	// be right for a single workroom. Registrations written before that was
@@ -188,12 +213,21 @@ func main() {
 	if *serverURL != "" {
 		fmt.Fprintln(os.Stderr, "gitseq-mcp: --server is ignored; the resident service is read from the repository it serves")
 	}
-	server := newServer(*actor, *repo)
+	server := newServer(name, *repo)
 	// Attaching the default repository here is a courtesy, not a
 	// precondition: presence appears before the first tool call when there is
 	// a workroom to join, and one installation still serves whatever
 	// repository a later call names.
+	//
+	// A shared identity is the exception. It is not a missing workroom to be
+	// picked up later; it is this instance signing as a name another live
+	// session already holds, and it must be refused at the door where the
+	// operator can still fix it in one command.
 	if _, err := server.attend(context.Background(), ""); err != nil {
+		var shared *sharedIdentityError
+		if errors.As(err, &shared) {
+			fatal(err)
+		}
 		fmt.Fprintln(os.Stderr, "gitseq-mcp:", err)
 	}
 	presenceContext, stopPresence := context.WithCancel(context.Background())
@@ -490,6 +524,12 @@ func (s *mcpServer) attend(ctx context.Context, repo string) (*room, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !current.identityChecked() {
+		if err := s.requireSoleIdentity(ctx, current); err != nil {
+			return nil, err
+		}
+		current.identityIsOurs()
+	}
 	if !current.present() {
 		if err := s.announce(ctx, current); err == nil {
 			current.joined()
@@ -728,8 +768,66 @@ func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.
 	return result
 }
 
+// sharedIdentityError marks the one attachment failure that must stop the
+// process rather than be reported and retried: another live session already
+// signs as this instance's name.
+type sharedIdentityError struct{ message string }
+
+func (e *sharedIdentityError) Error() string { return e.message }
+
+// requireSoleIdentity refuses to attach a second live session to one durable
+// identity. Concurrent instances signing as one name make the log say that a
+// name did something when one of several instances did, and they satisfy the
+// different-agent review rule by spelling rather than by fingerprint. Sharing
+// the name is the path of least resistance, so it is made an error at the door
+// where the operator can still fix it in one command.
+//
+// The check reads live presence, so it is exactly as good as the resident
+// service. When presence cannot be read the instance still starts: a stopped
+// service must not stop the work. That degradation is printed, not assumed
+// away, and it is the stated limit of this guard along with the race between
+// two instances starting at the same moment, which neither will see.
+//
+// It is made once per workroom, before this session announces itself there.
+// Afterwards our own presence is in the snapshot, so asking again would refuse
+// this session the identity it already holds.
+func (s *mcpServer) requireSoleIdentity(ctx context.Context, current *room) error {
+	actor := current.workspace.Config.Actors[s.actor]
+	value, err := s.get(ctx, current, "/v0/presence")
+	if isTransportError(err) {
+		fmt.Fprintln(os.Stderr, "gitseq-mcp: shared-identity check skipped; the resident service is unavailable:", err)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var snapshot nexus.Snapshot
+	if err := remarshal(value, &snapshot); err != nil {
+		return err
+	}
+	label := actor.Name + " (" + actor.Fingerprint[:12] + ")"
+	held := 0
+	for _, present := range snapshot.Presence {
+		if present == label {
+			held++
+		}
+	}
+	if held == 0 {
+		return nil
+	}
+	return &sharedIdentityError{message: fmt.Sprintf("identity %q is already live in %d other session(s); concurrent instances must not share one key. Provision an instance identity — gs actor-add --as <operator> --name %s.2 — and start this instance with %s=%s.2",
+		actor.Name, held, actor.Name, actorEnvironment, actor.Name)}
+}
+
 func (s *mcpServer) announce(ctx context.Context, current *room) error {
 	_, err := s.post(ctx, current, "/v0/presence", map[string]any{"actor": s.actor, "session": s.session, "ttl_ms": 30000})
+	if err == nil {
+		// Presence carries a name, not a session, so once ours is live the
+		// snapshot can no longer tell this instance from a stranger. The door
+		// check is closed for this workroom rather than left to refuse us our
+		// own identity later.
+		current.identityIsOurs()
+	}
 	return err
 }
 
