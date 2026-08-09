@@ -1,0 +1,165 @@
+{
+  "decisions": [
+    {
+      "event": "e0",
+      "verdict": "effective",
+      "reason": "operator roster seed"
+    },
+    {
+      "event": "e1",
+      "verdict": "effective",
+      "reason": "statement recorded"
+    },
+    {
+      "event": "e2",
+      "verdict": "effective",
+      "reason": "authorized supersession"
+    },
+    {
+      "event": "e3",
+      "verdict": "ineffective",
+      "reason": "retired statement cannot be ratified"
+    },
+    {
+      "event": "e4",
+      "verdict": "ineffective",
+      "reason": "request state requires body.conditions"
+    },
+    {
+      "event": "e5",
+      "verdict": "ineffective",
+      "reason": "artifact state requires body.commit"
+    },
+    {
+      "event": "e6",
+      "verdict": "effective",
+      "reason": "authorized supersession"
+    },
+    {
+      "event": "e7",
+      "verdict": "effective",
+      "reason": "authorized ratification"
+    }
+  ],
+  "acts": [
+    {
+      "event": "e2",
+      "actor": "actor:operator",
+      "type": "supersede",
+      "target": "e1",
+      "text": "Withdrawn before adoption",
+      "verdict": "effective",
+      "reason": "authorized supersession"
+    },
+    {
+      "event": "e3",
+      "actor": "actor:operator",
+      "type": "ratify",
+      "target": "e1",
+      "verdict": "ineffective",
+      "reason": "retired statement cannot be ratified"
+    },
+    {
+      "event": "e6",
+      "actor": "actor:operator",
+      "type": "supersede",
+      "target": "e2",
+      "text": "Restore the proposal",
+      "verdict": "effective",
+      "reason": "authorized supersession"
+    },
+    {
+      "event": "e7",
+      "actor": "actor:operator",
+      "type": "ratify",
+      "target": "e1",
+      "verdict": "effective",
+      "reason": "authorized ratification"
+    }
+  ],
+  "statements": [
+    {
+      "event": "e0",
+      "actor": "actor:operator",
+      "kind": "roster",
+      "text": "Operator begins the workroom",
+      "body": {
+        "actor": "actor:operator",
+        "name": "Human",
+        "role": "operator"
+      }
+    },
+    {
+      "event": "e1",
+      "actor": "actor:operator",
+      "kind": "propose",
+      "text": "Adopt the projection contract",
+      "ratified": true
+    },
+    {
+      "event": "e4",
+      "actor": "actor:operator",
+      "kind": "request",
+      "text": "Ship the projector",
+      "body": {
+        "to": "actor:operator"
+      }
+    },
+    {
+      "event": "e5",
+      "actor": "actor:operator",
+      "kind": "artifact",
+      "text": "Half a citation",
+      "body": {
+        "path": "internal/workroom"
+      }
+    }
+  ],
+  "commitments": [],
+  "reviews": [],
+  "artifacts": [],
+  "actors": {
+    "actor:operator": {
+      "name": "Human",
+      "kind": "human",
+      "roles": [
+        "operator",
+        "participant",
+        "ratifier"
+      ],
+      "membership_event": "e0",
+      "role_sources": {
+        "operator": [
+          "e0"
+        ],
+        "participant": [
+          "e0"
+        ]
+      }
+    }
+  },
+  "provenance": {
+    "e0": null,
+    "e1": [
+      "e0"
+    ],
+    "e2": [
+      "e1"
+    ],
+    "e3": [
+      "e1"
+    ],
+    "e4": [
+      "e0"
+    ],
+    "e5": [
+      "e0"
+    ],
+    "e6": [
+      "e2"
+    ],
+    "e7": [
+      "e1"
+    ]
+  }
+}

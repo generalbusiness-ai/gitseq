@@ -1,12 +1,14 @@
+import type { Verdict } from "./api";
+
 interface SupersedeAct {
   event: string;
   type: "ratify" | "supersede";
   target: string;
-  verdict: "effective" | "ineffective" | "disputed";
+  verdict: Verdict;
 }
 
 interface SupersedeLinkProjection {
-  decisions: { event: string; verdict: "effective" | "ineffective" | "disputed" }[];
+  decisions: { event: string; verdict: Verdict }[];
   statements: { event: string; retired?: boolean; stale?: boolean }[];
   provenance: Record<string, string[]>;
 }

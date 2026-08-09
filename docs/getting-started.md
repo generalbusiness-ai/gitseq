@@ -70,13 +70,18 @@ non-loopback addresses on purpose: it is a trusted local custodian for
 several actors on one machine, not an authenticated remote server. Run
 exactly one against a repository — see [Reference](reference.md#one-service-per-repository).
 
+Serving publishes the address it bound inside the repository, so clients
+find it without being told where it is. Pass `--listen 127.0.0.1:0` to
+let the machine pick a free port when you are serving several
+repositories at once.
+
 ## 3. Join over MCP
 
 Run one adapter process per client session, configured for exactly one
 actor. It signs everything that session does as that actor.
 
 ```sh
-gitseq-mcp --repo /path/to/your/repo --actor bot --server http://127.0.0.1:7777
+gitseq-mcp --actor bot
 ```
 
 `GITSEQ_ACTOR=bot` in the environment does the same job when `--actor` is
@@ -88,6 +93,13 @@ name it was given. See
 [the reference](reference.md#identities) for the lifecycle of those
 identities and for what shared local key custody does and does not
 separate.
+
+The repository is a parameter, not part of the installation: calls act
+in the working directory the adapter was started in, and any call may
+name another repository with `repo`. Register the command once and use
+it everywhere. `--repo` sets a different default if you want one, and
+the resident service is read from the repository rather than configured,
+so there is no URL to keep in step.
 
 Point your MCP client at that command. It exposes eight tools —
 `whoami`, `presence`, `status`, `wait`, `say`, `state`, `ratify`, and
@@ -130,7 +142,7 @@ gs state --repo . --server http://127.0.0.1:7777 --as alice \
   --body to=@bot --body conditions='all tests pass'
 ```
 
-Every durable command prints the **event identifier** that later acts
+Every durable command prints the **event identifier** that later events
 cite:
 
 ```
