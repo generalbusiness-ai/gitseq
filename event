@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will carry the review-gate staleness separation onto current main and name an exact head for independent review."}
+{"kind":"artifact","text":"First-ontology specification note carried onto current main at exact clean head 59953129a32d6ed094f293884c910f6cea9d3d88 on task/first-ontology. The note is unchanged; the branch now contains the promoted root layout, declared kinds, one vocabulary and admission-profile governance.","body":{"commit":"59953129a32d6ed094f293884c910f6cea9d3d88","path":"notes/2026-08-08-first-ontology.md"}}
