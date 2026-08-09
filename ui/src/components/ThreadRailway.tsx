@@ -1,8 +1,8 @@
 import { useMemo } from "react";
-import { BadgeCheck, CircleSlash, GitBranch, Link2, Undo2 } from "lucide-react";
+import { BadgeCheck, CircleSlash, GitBranch, Layers, Link2, Undo2 } from "lucide-react";
 import type { Act, Projection, Statement, Vocabulary } from "../lib/api";
 import type { ThreadContent } from "../lib/threads";
-import { layoutThreadRailway } from "../lib/threadRailway";
+import { FOLDED_LANE, layoutThreadRailway, type ThreadRailNode } from "../lib/threadRailway";
 import { cn, kindLabel, kindTint } from "../lib/util";
 import { EventTime } from "./EventTime";
 
@@ -10,6 +10,13 @@ const ROW = 68;
 const LANE = 22;
 const LEFT = 14;
 const laneColors = ["#34d399", "#fbbf24", "#38bdf8", "#a78bfa", "#2dd4bf", "#f87171"];
+// Folded rows wear one grey that is in none of the lane colors, so the shared
+// lane never passes for a branch of its own.
+const foldedColor = "#94a3b8";
+
+function colorOf(node: ThreadRailNode): string {
+  return node.folded ? foldedColor : laneColors[node.lane % laneColors.length];
+}
 
 type DurableEvent = Statement | Act;
 
@@ -64,13 +71,25 @@ export function ThreadRailway({
   const height = layout.nodes.length * ROW;
   const x = (lane: number) => LEFT + lane * LANE;
   const y = (row: number) => row * ROW + ROW / 2;
+  // Every event in the projection has a ticket, so a ticket is no evidence
+  // that a basis belongs to this thread. Only the laid-out nodes are.
   const ticketLabel = (event: string) => {
     const ticket = tickets.get(event);
-    return ticket ? `#${ticket}` : "outside thread";
+    if (byNode.has(event)) return ticket ? `#${ticket}` : "an event in this thread";
+    return ticket ? `#${ticket} (outside this thread)` : "outside this thread";
   };
 
   return (
-    <div className="relative min-h-full overflow-auto" data-thread-railway>
+    <div className="relative min-h-full overflow-auto" data-thread-railway data-thread-rail-folded={layout.folded}>
+      {layout.folded > 0 && (
+        <p className="mb-2 flex items-start gap-1.5 px-1 text-[10px] leading-4 text-faint">
+          <Layers className="mt-px h-2.5 w-2.5 shrink-0" />
+          <span>
+            The rail stops at {layout.lanes} lanes. {layout.folded} of {layout.nodes.length} events did not fit and share
+            the grey lane on the right; each of them still names its own parent below its text.
+          </span>
+        </p>
+      )}
       <div className="relative min-w-[18rem]" style={{ height }}>
         {layout.nodes.map((node) => {
           const event = byID.get(node.event);
@@ -111,6 +130,11 @@ export function ThreadRailway({
                 <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-faint">
                   <span className="truncate">{nameOf(actorOf(event))}</span>
                   <EventTime timestamp={event.timestamp} />
+                  {node.folded && (
+                    <span data-thread-rail-folded-row className="flex shrink-0 items-center gap-0.5">
+                      <Layers className="h-2.5 w-2.5" /> folded
+                    </span>
+                  )}
                   <span className="ml-auto shrink-0 font-mono" title={node.event}>#{tickets.get(node.event) ?? "?"}</span>
                 </span>
                 {bases.length > 0 && (
@@ -129,19 +153,32 @@ export function ThreadRailway({
           );
         })}
         <svg width={graphWidth} height={height} className="pointer-events-none absolute left-0 top-0" aria-hidden="true">
+          {layout.folded > 0 && (
+            <path
+              d={`M ${x(FOLDED_LANE)} 0 L ${x(FOLDED_LANE)} ${height}`}
+              stroke={foldedColor}
+              strokeOpacity={0.25}
+              strokeWidth={9}
+              strokeLinecap="butt"
+              fill="none"
+            />
+          )}
           {layout.nodes.map((node) => {
             if (!node.primary) return null;
             const parent = byNode.get(node.primary);
             const x2 = x(node.lane);
             const y2 = y(node.row);
+            // A folded row's line is dashed: it is a reply, not a lane.
+            const dash = node.folded ? "4 3" : undefined;
             if (!parent) {
               return (
                 <path
                   key={`${node.event}:parent`}
                   d={`M ${x2} 0 L ${x2} ${y2}`}
-                  stroke={laneColors[node.lane % laneColors.length]}
+                  stroke={colorOf(node)}
                   strokeOpacity={0.35}
                   strokeWidth={1.5}
+                  strokeDasharray={dash}
                   fill="none"
                 />
               );
@@ -153,9 +190,10 @@ export function ThreadRailway({
               <path
                 key={`${node.event}:parent`}
                 d={`M ${x1} ${y1} C ${x1} ${y1 + bend}, ${x2} ${y2 - bend}, ${x2} ${y2}`}
-                stroke={laneColors[node.lane % laneColors.length]}
-                strokeOpacity={0.65}
+                stroke={colorOf(node)}
+                strokeOpacity={node.folded ? 0.45 : 0.65}
                 strokeWidth={1.5}
+                strokeDasharray={dash}
                 fill="none"
               />
             );
@@ -181,11 +219,24 @@ export function ThreadRailway({
               );
             }),
           )}
-          {layout.nodes.map((node) => (
-            <g key={node.event}>
-              <circle cx={x(node.lane)} cy={y(node.row)} r={4.5} fill="#18181b" stroke={laneColors[node.lane % laneColors.length]} strokeWidth={2} />
-            </g>
-          ))}
+          {/* A placed event is a circle on its own lane; a folded one is a
+              square in the shared lane, so the two never read alike. */}
+          {layout.nodes.map((node) =>
+            node.folded ? (
+              <rect
+                key={node.event}
+                x={x(node.lane) - 4}
+                y={y(node.row) - 4}
+                width={8}
+                height={8}
+                fill="#18181b"
+                stroke={foldedColor}
+                strokeWidth={1.5}
+              />
+            ) : (
+              <circle key={node.event} cx={x(node.lane)} cy={y(node.row)} r={4.5} fill="#18181b" stroke={colorOf(node)} strokeWidth={2} />
+            ),
+          )}
         </svg>
       </div>
     </div>

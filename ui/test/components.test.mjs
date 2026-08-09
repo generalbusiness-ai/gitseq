@@ -232,6 +232,28 @@ test("durable threads expose a railway whose rendered edges distinguish citation
     assert.match(railway, /stroke-dasharray="3 3"/);
     assert.match(railway, /cites #2/);
 
+    // The rail reads from the root toward the present, and the rows are in
+    // that order in the document, not merely positioned in it.
+    assert.deepEqual(
+      [...railway.matchAll(/data-thread-rail-event="([^"]+)"/g)].map((match) => match[1]),
+      ["root", "first", "branch", "join", "agree"],
+    );
+
+    // The root's own basis lies outside this thread. Every event carries a
+    // ticket, so only the laid-out rows can say what is on the thread.
+    const rootOutside = renderToStaticMarkup(
+      React.createElement(ThreadRailway, {
+        root: statements[0],
+        thread,
+        projection: { ...projection, provenance: { ...projection.provenance, root: ["elsewhere"] } },
+        tickets: new Map([...tickets, ["elsewhere", 99]]),
+        nameOf: (actor) => actor,
+        onJumpTo() {},
+      }),
+    );
+    assert.match(rootOutside, /reply to #99 \(outside this thread\)/);
+    assert.match(rootOutside, /reply to #1</); // an on-thread reply says only its ticket
+
     const panel = renderToStaticMarkup(
       React.createElement(ThreadPane, {
         workroom: workroom({}, projection),
@@ -253,6 +275,111 @@ test("durable threads expose a railway whose rendered edges distinguish citation
     assert.match(panel, /aria-label="Durable thread view"/);
     assert.match(panel, />Thread<\/button>/);
     assert.match(panel, / Railway<\/button>/);
+    // The pane opens on the conversation; the rail waits behind its own tab.
+    assert.doesNotMatch(panel, /data-thread-railway/);
+  } finally {
+    await vite.close();
+  }
+});
+
+test("the railway carries the same status marks as the conversation it draws", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const { ThreadRailway } = await vite.ssrLoadModule("/src/components/ThreadRailway.tsx");
+    const statements = [
+      { event: "root", actor: "codex", kind: "request", text: "Draw the rail", timestamp: 1 },
+      { event: "agreed", actor: "claude", kind: "promise", text: "Agreed work", ratified: true, timestamp: 2 },
+      { event: "moved", actor: "claude", kind: "report", text: "Work the world moved under", stale: true, timestamp: 3 },
+      { event: "gone", actor: "claude", kind: "assert", text: "Taken back", retired: true, timestamp: 4 },
+    ];
+    const acts = [
+      { event: "refused", actor: "hugh", type: "ratify", target: "agreed", verdict: "unauthorized", reason: "not yours to agree", timestamp: 5 },
+      { event: "undone", actor: "hugh", type: "supersede", target: "gone", verdict: "effective", reason: "authorized", timestamp: 6 },
+    ];
+    const projection = {
+      decisions: [...statements, ...acts].map((item) => ({ event: item.event, verdict: "effective", reason: "recorded" })),
+      acts,
+      statements,
+      commitments: [],
+      artifacts: [],
+      actors: {},
+      provenance: { root: [], agreed: ["root"], moved: ["agreed"], gone: ["root"], refused: ["agreed"], undone: ["gone"] },
+    };
+    const markup = renderToStaticMarkup(
+      React.createElement(ThreadRailway, {
+        root: statements[0],
+        thread: { statements: statements.slice(1), acts, events: ["agreed", "moved", "gone", "refused", "undone"] },
+        projection,
+        tickets: new Map(projection.decisions.map((decision, index) => [decision.event, index + 1])),
+        nameOf: (actor) => actor,
+        onJumpTo() {},
+      }),
+    );
+    assert.match(markup, /aria-label="ratified"/);
+    assert.match(markup, />stale</);
+    assert.match(markup, /line-through/);
+    assert.match(markup, /aria-label="unauthorized"/);
+    assert.match(markup, /aria-label="withdrawn"/);
+  } finally {
+    await vite.close();
+  }
+});
+
+test("a rail too wide for the pane stops at ten lanes and says what it folded", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const { ThreadRailway } = await vite.ssrLoadModule("/src/components/ThreadRailway.tsx");
+    // Fifteen branches of the root that all stay open to the end.
+    const children = Array.from({ length: 15 }, (_, index) => `child-${index + 1}`);
+    const events = [...children, ...children.map((child) => `${child}-leaf`)];
+    const statements = [
+      { event: "root", actor: "codex", kind: "request", text: "Wide thread", timestamp: 1 },
+      ...events.map((event, index) => ({ event, actor: "claude", kind: "assert", text: event, timestamp: index + 2 })),
+    ];
+    const provenance = { root: [] };
+    for (const child of children) {
+      provenance[child] = ["root"];
+      provenance[`${child}-leaf`] = [child];
+    }
+    const projection = {
+      decisions: statements.map((statement) => ({ event: statement.event, verdict: "effective", reason: "recorded" })),
+      acts: [],
+      statements,
+      commitments: [],
+      artifacts: [],
+      actors: {},
+      provenance,
+    };
+    const markup = renderToStaticMarkup(
+      React.createElement(ThreadRailway, {
+        root: statements[0],
+        thread: { statements: statements.slice(1), acts: [], events },
+        projection,
+        tickets: new Map(projection.decisions.map((decision, index) => [decision.event, index + 1])),
+        nameOf: (actor) => actor,
+        onJumpTo() {},
+      }),
+    );
+    // Ten lanes at 22px, 14px of left margin and 10px of right: 244px, well
+    // inside the 24rem pane. An unbounded rail would be several times that.
+    assert.match(markup, /<svg width="244"/);
+    assert.match(markup, /data-thread-rail-folded="12"/);
+    assert.match(markup, /12 of 31 events did not fit/);
+    assert.match(markup, /The rail stops at 10 lanes/);
+    // Folded rows are marked on the rail and in their own text, so a reader
+    // can tell a shared lane from a lane of its own.
+    assert.equal((markup.match(/data-thread-rail-folded-row/g) ?? []).length, 12);
+    assert.equal((markup.match(/<rect /g) ?? []).length, 12);
   } finally {
     await vite.close();
   }
