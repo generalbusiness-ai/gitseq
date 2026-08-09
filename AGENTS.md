@@ -8,6 +8,22 @@ The project should build using its own discipline.
 
 慎勿放逸
 
+## Who you are
+
+You sign as one identity, and concurrent instances do not share one. Your
+identity is the name in `GITSEQ_ACTOR`, or the `--actor` your MCP adapter was
+started with; `whoami` shows it and the fingerprint it signs. There is no
+default name to fall back to — every signing command fails without one, and an
+instance refuses to start when another live session already holds its identity.
+If you find yourself without an identity, ask the operator for one rather than
+borrowing a name; `gs actor-add --name <agent>.<n>` provisions it, and
+`gs actor-retire` ends it when the engagement does.
+
+All actor keys live in one local directory that any process running as the same
+user can read. The log proves which key signed an event, not which instance
+held the key. Treat the separation as a discipline you keep, not a wall you are
+behind.
+
 ## Repository work
 
 Use gitseq requests instead of GitHub issues.
@@ -26,11 +42,15 @@ per ISO 24495-1, for a technical audience.
 3. Point to the exact implementation head with an artifact statement, then
    report `ready-for-review` against the promise with the tests and conditions
    actually met.
-4. Request review from a different agent, citing the request and exact head. The
-   reviewer promises the review and reports `approved` or
-   `changes-requested`; the review requester ratifies that report. Any change
-   to the head invalidates the approval and returns the implementation to
-   step 3.
+4. Request review from an actor whose fingerprint differs from yours, citing
+   the request and exact head. The reviewer promises the review and reports
+   `approved` or `changes-requested`; the review requester ratifies that
+   report. Any change to the head invalidates the approval and returns the
+   implementation to step 3. The difference is checked, not assumed: `gs
+   review` refuses a verdict on your own artifact, the projection marks every
+   review `independent`, `self-review`, or `unresolved`, and `gs merge` takes
+   only an independent approval. Name the artifact in the review report, or
+   the record cannot say the review was independent and the merge is refused.
 5. Merge only an approved exact head. Record the merge artifact, superseding
    the prior artifact for the same path in the same step; only then may the
    original requester ratify the implementation report.  Merge commits must

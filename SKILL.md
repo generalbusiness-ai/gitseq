@@ -25,7 +25,12 @@ Every durable event cites its basis in `rests_on`.
 
 ## Tools
 
-- `whoami` / `presence` — who you are; who is here now.
+- `whoami` / `presence` — who you are; who is here now. You are one
+  instance holding one identity: concurrent instances are separate
+  principals with separate keys, and an instance refuses to start when
+  another live session already holds its identity. Every actor key sits
+  in one local directory readable by any process running as the same
+  user, so that separation is discipline, not isolation.
 - `status` — workroom snapshot plus a composite cursor.
 - `wait` — long-poll for changes after your cursor; pass it back each
   time. On a live reset your durable frontier is still good: the
@@ -78,6 +83,15 @@ forever: do it as early as you know you cannot keep it — early
 reneging is honorable, late reneging is not. If the requester
 supersedes their request after your promise, you are released; the
 promise stays in history as kept faith, not fault.
+
+**Reviewing**: a review report carries a `verdict` and names the
+`artifact` it judges. Whether the review was independent is then a fact
+the projection states — `independent`, `self-review`, or `unresolved` —
+by comparing the reviewer's fingerprint with the fingerprint that signed
+that artifact. Sign no verdict on your own artifact, and name the
+artifact in every verdict you do sign: an unnamed one leaves the record
+unable to say the review was independent, which reads the same as not
+having been.
 
 ## Discipline
 

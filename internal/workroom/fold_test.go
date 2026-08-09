@@ -479,8 +479,15 @@ func TestMembershipRevocationRevokesDependentAuthority(t *testing.T) {
 			t.Errorf("%s = %s (%s), want %s", event, decision.Verdict, decision.Reason, want)
 		}
 	}
-	if _, exists := projection.Actors[agent]; exists {
-		t.Fatalf("revoked member retained a projected actor: %+v", projection.Actors[agent])
+	// The principal stays visible because its signatures are permanent, but it
+	// keeps no roles and is marked retired: e9 above proves the authority is
+	// gone, and this proves a reader can tell the retired from the live.
+	state, exists := projection.Actors[agent]
+	if !exists {
+		t.Fatal("retired member vanished from the roster it once acted in")
+	}
+	if !state.Retired || len(state.Roles) != 0 || state.Name != "Agent" || state.MembershipEvent != "e1" {
+		t.Fatalf("retired member projection = %+v", state)
 	}
 }
 
@@ -1457,5 +1464,253 @@ func TestArtifactCitingOnlyUnresolvableBasesCannotFlare(t *testing.T) {
 	}
 	if checked != 2 {
 		t.Fatalf("checked %d artifacts, want 2", checked)
+	}
+}
+
+// reviewRecords builds the shape the loop produces: an operator seeds the
+// roster and admits two agents, one files an artifact for a head, and each
+// holds a live promise it can report a verdict against.
+func reviewRecords(t *testing.T, tail ...Record) []Record {
+	t.Helper()
+	records := []Record{
+		event(t, "r0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "r1", operator, SchemaState, State{Kind: KindRoster, Text: "implementer joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Implementer", "role": "participant"}}, "r0"),
+		event(t, "r2", operator, SchemaRatify, Ratify{Target: "r1"}, "r1"),
+		event(t, "r3", operator, SchemaState, State{Kind: KindRoster, Text: "reviewer joins", Body: map[string]string{"actor": other, "kind": "agent", "name": "Reviewer", "role": "participant"}}, "r0"),
+		event(t, "r4", operator, SchemaRatify, Ratify{Target: "r3"}, "r3"),
+		event(t, "r5", agent, SchemaState, State{Kind: KindArtifact, Text: "implementation", Body: map[string]string{"path": "spike", "commit": "head1"}}, "r0"),
+		event(t, "r6", operator, SchemaState, State{Kind: KindRequest, Text: "review it", Body: map[string]string{"to": other, "conditions": "exact head"}}, "r5"),
+		event(t, "reviewer-promise", other, SchemaState, State{Kind: KindPromise, Text: "will review"}, "r6"),
+		event(t, "r7", operator, SchemaState, State{Kind: KindRequest, Text: "review your own", Body: map[string]string{"to": agent, "conditions": "exact head"}}, "r5"),
+		event(t, "implementer-promise", agent, SchemaState, State{Kind: KindPromise, Text: "will review"}, "r7"),
+	}
+	return append(records, tail...)
+}
+
+func reviewFor(t *testing.T, projection Projection, report string) Review {
+	t.Helper()
+	review, found := projection.Review(report)
+	if !found {
+		t.Fatalf("report %s is not projected as a review", report)
+	}
+	return review
+}
+
+// The named artifact is the ordinary path: gs review writes body.artifact.
+func TestReviewNamingArtifactReportsIndependenceByFingerprint(t *testing.T) {
+	projection := Fold(reviewRecords(t,
+		event(t, "v1", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "v2", agent, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "implementer-promise", "r5"),
+	))
+	independent := reviewFor(t, projection, "v1")
+	if independent.Independence != IndependenceIndependent || independent.Implementer != agent || independent.ResolvedBy != "named" {
+		t.Fatalf("independent review = %+v", independent)
+	}
+	self := reviewFor(t, projection, "v2")
+	if self.Independence != IndependenceSelfReview || self.Reviewer != agent {
+		t.Fatalf("self-signed review = %+v", self)
+	}
+	status := RenderStatus(projection)
+	if !bytes.Contains(status, []byte("SELF-SIGNED")) {
+		t.Fatal("status does not surface a self-signed verdict")
+	}
+	if !bytes.Contains(status, []byte("1 independent, 1 self-signed, 0 unresolved")) {
+		t.Fatalf("status review counts missing:\n%s", status)
+	}
+}
+
+// Naming an artifact is a claim, not a link. The projection is what a reader
+// and `gs merge` both trust to say whose work a verdict judged, so it takes a
+// name only when the record can vouch for it: the report has to rest on that
+// artifact, and that artifact has to stand at the head the verdict claims.
+// Trusting the name alone let a reviewer claim one head, name someone else's
+// artifact for another head, and have the projection call it an independent
+// review of work the reviewer had written.
+func TestNamedArtifactIsTakenOnlyWhenCitedAndAtTheClaimedHead(t *testing.T) {
+	projection := Fold(reviewRecords(t,
+		// The reviewer implements a second head of their own.
+		event(t, "v0", other, SchemaState, State{Kind: KindArtifact, Text: "the reviewer's own head", Body: map[string]string{"path": "ui", "commit": "head9"}}, "r0"),
+		// Judges their own head, but names the other agent's artifact for a
+		// different head and never rests on it.
+		event(t, "borrowed", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head9", "artifact": "r5"}}, "reviewer-promise"),
+		// Rests on the artifact it names, but claims a head that artifact is
+		// not at, so the record contradicts itself.
+		event(t, "mismatched", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head9", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		// Cited and at the claimed head: the ordinary case, still resolved.
+		event(t, "sound", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+	))
+	// The borrowed name buys nothing. What is left is the head the verdict
+	// claims, and at that head the reviewer is the implementer.
+	borrowed := reviewFor(t, projection, "borrowed")
+	if borrowed.Independence != IndependenceSelfReview || borrowed.Artifact != "v0" || borrowed.ResolvedBy != "head" {
+		t.Fatalf("a verdict naming an artifact it never cited = %+v", borrowed)
+	}
+	mismatched := reviewFor(t, projection, "mismatched")
+	if mismatched.Independence != IndependenceUnresolved || mismatched.Artifact != "" || mismatched.ResolvedBy != "" {
+		t.Fatalf("a verdict naming an artifact for another head = %+v", mismatched)
+	}
+	sound := reviewFor(t, projection, "sound")
+	if sound.Independence != IndependenceIndependent || sound.Artifact != "r5" || sound.ResolvedBy != "named" {
+		t.Fatalf("a cited artifact at the claimed head = %+v", sound)
+	}
+}
+
+// A hand-written verdict that rests on exactly one artifact still answers the
+// question; a verdict that rests on several does not, and says so.
+func TestReviewResolvesImplementerFromSingleArtifactBasis(t *testing.T) {
+	projection := Fold(reviewRecords(t,
+		event(t, "v0", agent, SchemaState, State{Kind: KindArtifact, Text: "docs", Body: map[string]string{"path": "docs", "commit": "head2"}}, "r0"),
+		event(t, "v1", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved"}}, "reviewer-promise", "r5"),
+		event(t, "v2", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved"}}, "reviewer-promise", "r5", "v0"),
+	))
+	single := reviewFor(t, projection, "v1")
+	if single.Independence != IndependenceIndependent || single.ResolvedBy != "basis" || single.Artifact != "r5" {
+		t.Fatalf("single-basis review = %+v", single)
+	}
+	ambiguous := reviewFor(t, projection, "v2")
+	if ambiguous.Independence != IndependenceUnresolved || ambiguous.Artifact != "" {
+		t.Fatalf("ambiguous review = %+v", ambiguous)
+	}
+}
+
+// One implementer filing several path artifacts at one head is the common
+// shape, so agreeing authors at the reviewed commit resolve it; disagreeing
+// authors leave the question open rather than picking one.
+func TestReviewResolvesImplementerFromReviewedHead(t *testing.T) {
+	projection := Fold(reviewRecords(t,
+		event(t, "v0", agent, SchemaState, State{Kind: KindArtifact, Text: "docs at the same head", Body: map[string]string{"path": "docs", "commit": "head1"}}, "r0"),
+		event(t, "v1", other, SchemaState, State{Kind: KindArtifact, Text: "another author", Body: map[string]string{"path": "ui", "commit": "head3"}}, "r0"),
+		event(t, "v2", agent, SchemaState, State{Kind: KindArtifact, Text: "shared head", Body: map[string]string{"path": "spike", "commit": "head3"}}, "r0"),
+		event(t, "v3", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1"}}, "reviewer-promise"),
+		event(t, "v4", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head3"}}, "reviewer-promise"),
+	))
+	agreed := reviewFor(t, projection, "v3")
+	if agreed.Independence != IndependenceIndependent || agreed.ResolvedBy != "head" || agreed.Implementer != agent {
+		t.Fatalf("head-resolved review = %+v", agreed)
+	}
+	contested := reviewFor(t, projection, "v4")
+	if contested.Independence != IndependenceUnresolved || contested.ResolvedBy != "" {
+		t.Fatalf("contested head review = %+v", contested)
+	}
+}
+
+// A verdict naming nothing at all is the failure this projection exists to
+// show: the chain is well formed and the record still cannot answer.
+func TestReviewWithoutAnyArtifactReferenceIsUnresolved(t *testing.T) {
+	projection := Fold(reviewRecords(t,
+		event(t, "v1", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved"}}, "reviewer-promise"),
+	))
+	review := reviewFor(t, projection, "v1")
+	if review.Independence != IndependenceUnresolved || review.Implementer != "" {
+		t.Fatalf("unreferenced review = %+v", review)
+	}
+	if !bytes.Contains(RenderStatus(projection), []byte("unresolved")) {
+		t.Fatal("status does not surface an unresolved review")
+	}
+}
+
+// A report with no verdict is ordinary completion, not a review.
+func TestReportWithoutVerdictIsNotAReview(t *testing.T) {
+	projection := Fold(reviewRecords(t,
+		event(t, "v1", other, SchemaState, State{Kind: KindReport, Text: "ready for review"}, "reviewer-promise"),
+	))
+	if len(projection.Reviews) != 0 {
+		t.Fatalf("reviews = %+v, want none", projection.Reviews)
+	}
+}
+
+// A withdrawn verdict keeps its projected independence but must not be listed
+// as something to act on.
+func TestRetiredSelfReviewStaysProjectedAndLeavesTheStatusList(t *testing.T) {
+	projection := Fold(reviewRecords(t,
+		event(t, "v1", agent, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "implementer-promise", "r5"),
+		event(t, "v2", agent, SchemaSupersede, Supersede{Target: "v1", Text: "withdrawn"}, "v1"),
+	))
+	review := reviewFor(t, projection, "v1")
+	if review.Independence != IndependenceSelfReview || !review.Retired {
+		t.Fatalf("retired self-review = %+v", review)
+	}
+	if bytes.Contains(RenderStatus(projection), []byte("SELF-SIGNED")) {
+		t.Fatal("status lists a withdrawn self-review as outstanding")
+	}
+}
+
+// A principal readmitted after retirement is live again, and the roster must
+// not keep showing the retirement that its new membership replaced.
+func TestReadmittedPrincipalIsLiveRatherThanRetired(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "instance joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "claude.2", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaSupersede, Supersede{Target: "e1", Text: "retire claude.2"}, "e1"),
+		event(t, "e4", operator, SchemaState, State{Kind: KindRoster, Text: "instance rejoins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "claude.2", "role": "participant"}}, "e0"),
+		event(t, "e5", operator, SchemaRatify, Ratify{Target: "e4"}, "e4"),
+	})
+	state := projection.Actors[agent]
+	if state.Retired || state.MembershipEvent != "e4" || len(state.Roles) == 0 {
+		t.Fatalf("readmitted principal = %+v", state)
+	}
+}
+
+// A retired principal stays visible and holds nothing: a request addressed to
+// it is ineffective, exactly as one addressed to a stranger.
+func TestRequestToRetiredPrincipalIsIneffective(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "instance joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "claude.2", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRequest, Text: "while live", Body: map[string]string{"to": agent, "conditions": "done"}}, "e0"),
+		event(t, "e4", operator, SchemaSupersede, Supersede{Target: "e1", Text: "retire claude.2"}, "e1"),
+		event(t, "e5", operator, SchemaState, State{Kind: KindRequest, Text: "after retirement", Body: map[string]string{"to": agent, "conditions": "done"}}, "e0"),
+	})
+	for event, want := range map[string]Verdict{"e3": Effective, "e5": Ineffective} {
+		decision, _ := projection.Decision(event)
+		if decision.Verdict != want {
+			t.Fatalf("%s = %s (%s), want %s", event, decision.Verdict, decision.Reason, want)
+		}
+	}
+	if state := projection.Actors[agent]; !state.Retired {
+		t.Fatalf("retired principal = %+v", state)
+	}
+}
+
+// The roster the reference page describes is the one projected here, so the
+// page and the fold have to agree about what retirement does. They did not:
+// two "measured" passages said a retired membership leaves the roster, and a
+// later section on the same page said the principal stays with `retired: true`
+// and no roles. A reader who believed the first half would go looking for the
+// absence of a name that is plainly there.
+func TestReferencePageAgreesThatRetiredPrincipalsStayOnTheRoster(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Alice", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "Bob joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Bob", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaSupersede, Supersede{Target: "e1", Text: "retire Bob"}, "e1"),
+	})
+	state, listed := projection.Actors[agent]
+	if !listed || !state.Retired || len(state.Roles) != 0 || state.Name != "Bob" {
+		t.Fatalf("retired principal projection = %+v (listed %v)", state, listed)
+	}
+
+	page, err := os.ReadFile("../../docs/reference.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The page is hard-wrapped, so a claim can straddle a line break.
+	unwrapped := strings.Join(strings.Fields(string(page)), " ")
+	for _, contradiction := range []string{
+		"disappears from the roster",
+		"absent from the roster",
+		"no longer on the roster",
+	} {
+		if strings.Contains(unwrapped, contradiction) {
+			t.Errorf("docs/reference.md says a retired principal is %q, but the fold keeps it listed", contradiction)
+		}
+	}
+	if !strings.Contains(unwrapped, "is left on the roster with `retired: true` and no roles") {
+		t.Error("docs/reference.md no longer states what retiring a seeded membership actually leaves behind")
+	}
+	if !strings.Contains(unwrapped, "from `[participant]` to retired with no roles") {
+		t.Error("docs/reference.md no longer states what superseding a membership actually leaves behind")
 	}
 }

@@ -118,6 +118,48 @@ type ActorState struct {
 	Roles           []string            `json:"roles"`
 	MembershipEvent string              `json:"membership_event,omitempty"`
 	RoleSources     map[string][]string `json:"role_sources"`
+	// Retired records a principal whose every membership grant has been
+	// superseded. It holds no roles and may no longer be addressed or ratify,
+	// but it stays in the roster because it signed events that are permanent:
+	// dropping it would leave those signatures attributed to nothing. A reader
+	// must never confuse it with a live actor, so the flag is the distinction
+	// and the empty role list is its consequence.
+	Retired bool `json:"retired,omitempty"`
+}
+
+// Independence values for Review. A review whose implementer cannot be
+// identified is unresolved rather than independent: the record does not know,
+// and saying so is the whole point of the field.
+const (
+	IndependenceIndependent = "independent"
+	IndependenceSelfReview  = "self-review"
+	IndependenceUnresolved  = "unresolved"
+)
+
+// Review projects a report carrying a verdict against an implementation head,
+// and answers the one question the chain shape alone cannot: whether the actor
+// who signed the verdict is the actor who made the thing reviewed. Reviewer and
+// implementer are fingerprints, so the answer does not depend on remembering
+// who did the work or on two agents happening to be configured under different
+// names.
+type Review struct {
+	Report    string `json:"report"`
+	Timestamp int64  `json:"timestamp,omitempty"`
+	Reviewer  string `json:"reviewer"`
+	Verdict   string `json:"verdict"`
+	Head      string `json:"head,omitempty"`
+	Artifact  string `json:"artifact,omitempty"`
+	// Implementer is the actor who signed the artifact statement for the
+	// reviewed head, empty when no artifact could be identified.
+	Implementer string `json:"implementer,omitempty"`
+	// ResolvedBy names how the artifact was found — named, basis, or head —
+	// so a reader can see which inference the verdict on independence rests on
+	// rather than taking it on trust.
+	ResolvedBy   string `json:"resolved_by,omitempty"`
+	Independence string `json:"independence"`
+	Ratified     bool   `json:"ratified,omitempty"`
+	Retired      bool   `json:"retired,omitempty"`
+	Stale        bool   `json:"stale,omitempty"`
 }
 
 type Projection struct {
@@ -125,6 +167,7 @@ type Projection struct {
 	Acts        []Act                 `json:"acts"`
 	Statements  []Statement           `json:"statements"`
 	Commitments []Commitment          `json:"commitments"`
+	Reviews     []Review              `json:"reviews"`
 	Artifacts   []Artifact            `json:"artifacts"`
 	Actors      map[string]ActorState `json:"actors"`
 	Provenance  map[string][]string   `json:"provenance"`
@@ -846,8 +889,17 @@ func (f *foldState) project() Projection {
 	// ancestor: with A, B and C at one path, retiring B cleared C's warning
 	// while A stayed live.
 	seenByPath := make(map[string][]string)
+	// Review independence needs the author of the artifact for the head judged,
+	// and the commit each artifact stands at, so a verdict cannot be paired
+	// with an artifact for some other head. All three indexes are filled by the
+	// same pass that projects the artifacts.
+	implementers := make(map[string]string)
+	artifactCommits := make(map[string]string)
+	artifactsByCommit := make(map[string][]string)
+	var reviewBases []reviewBasis
 	projection := Projection{
-		Decisions: []Decision{}, Acts: []Act{}, Statements: []Statement{}, Commitments: []Commitment{}, Artifacts: []Artifact{},
+		Decisions: []Decision{}, Acts: []Act{}, Statements: []Statement{}, Commitments: []Commitment{},
+		Reviews: []Review{}, Artifacts: []Artifact{},
 		Actors: make(map[string]ActorState), Provenance: make(map[string][]string),
 		OpaqueKinds: make(map[string][]string),
 	}
@@ -896,8 +948,32 @@ func (f *foldState) project() Projection {
 				LivePredecessors:         live,
 			})
 			seenByPath[path] = append(seenByPath[path], record.record.ID)
+			if record.decision.Verdict == Effective {
+				implementers[record.record.ID] = record.record.Actor
+				if commit := state.Body["commit"]; commit != "" {
+					artifactCommits[record.record.ID] = commit
+					artifactsByCommit[commit] = append(artifactsByCommit[commit], record.record.ID)
+				}
+			}
+		}
+		// A report carrying a verdict is a review. Which artifact it judges is
+		// settled after the loop, because a resolution by reviewed commit may
+		// depend on an artifact that has not been read yet.
+		if state.Kind == KindReport && state.Body["verdict"] != "" && record.decision.Verdict == Effective {
+			head := state.Body["head"]
+			if head == "" {
+				head = state.Body["commit"]
+			}
+			projection.Reviews = append(projection.Reviews, Review{
+				Report: record.record.ID, Timestamp: record.record.Timestamp, Reviewer: record.record.Actor,
+				Verdict: state.Body["verdict"], Head: head, Independence: IndependenceUnresolved,
+				Ratified: f.ratified(record.record.ID),
+				Retired:  f.retired(record.record.ID), Stale: stale[record.record.ID],
+			})
+			reviewBases = append(reviewBases, reviewBasis{named: state.Body["artifact"], restsOn: record.record.RestsOn})
 		}
 	}
+	resolveReviews(projection.Reviews, reviewBases, implementers, artifactCommits, artifactsByCommit)
 	// A live artifact owes its retirement only while a live artifact later at
 	// the same path stands in its place. A successor that was itself withdrawn
 	// asks for nothing: acting on that warning would retire the current
@@ -940,6 +1016,25 @@ func (f *foldState) project() Projection {
 			addActorRole(&actor, "ratifier", "")
 		}
 		projection.Actors[grant.actor] = actor
+	}
+	// A principal whose membership has been retired keeps a roster entry with
+	// no roles. Live grants are applied first, so an actor readmitted after a
+	// retirement is already present and is left alone; only principals with
+	// nothing live left fall through, and the latest retired membership
+	// supplies the name they signed under.
+	live := make(map[string]bool, len(projection.Actors))
+	for fingerprint := range projection.Actors {
+		live[fingerprint] = true
+	}
+	for _, grant := range f.roleGrants {
+		if !grant.membership || live[grant.actor] || f.roleGrantActive(grant) {
+			continue
+		}
+		projection.Actors[grant.actor] = ActorState{
+			Name: grant.name, Kind: grant.kind, Roles: []string{},
+			MembershipEvent: grant.statement, RoleSources: map[string][]string{},
+			Retired: true,
+		}
 	}
 	for fingerprint, actor := range projection.Actors {
 		sort.Strings(actor.Roles)
@@ -1048,6 +1143,94 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 		}
 	}
 	return commitments
+}
+
+// reviewBasis carries what a report said about the artifact it judges, kept
+// beside the projected review until every artifact has been read.
+type reviewBasis struct {
+	named   string
+	restsOn []string
+}
+
+// resolveReviews pairs each review with the artifact statement for the head it
+// judges, and so with the fingerprint that implemented it. A review names its
+// artifact when it was written through the exact-head guard; older and
+// hand-written verdicts often do not, so two further resolutions follow, each
+// recorded in ResolvedBy rather than presented as the same kind of fact:
+// exactly one artifact among the report's direct bases, or — failing that —
+// artifacts at the reviewed commit that all share one author, which is the
+// ordinary shape of one implementer filing several path artifacts at one head.
+// Anything less certain stays unresolved. Nothing here judges the report; an
+// unratified or self-signed review is still an effective statement, and this
+// projection only lets a reader see which it is.
+func resolveReviews(reviews []Review, bases []reviewBasis, implementers, artifactCommits map[string]string, artifactsByCommit map[string][]string) {
+	for index := range reviews {
+		artifact, resolvedBy := resolveReviewed(bases[index], reviews[index].Head, implementers, artifactCommits, artifactsByCommit)
+		if artifact == "" {
+			continue
+		}
+		reviews[index].Artifact = artifact
+		reviews[index].ResolvedBy = resolvedBy
+		reviews[index].Implementer = implementers[artifact]
+		reviews[index].Independence = IndependenceIndependent
+		if implementers[artifact] == reviews[index].Reviewer {
+			reviews[index].Independence = IndependenceSelfReview
+		}
+	}
+}
+
+// resolveReviewed answers which artifact a verdict judges. Two conditions hold
+// for every answer it gives. The report must rest on the artifact, because a
+// name in the body is a label the reviewer typed and only the citation makes it
+// a link the log can follow. And the artifact must stand at the head the
+// verdict claims, because a review is of a head, not of a name. Trusting the
+// label on its own let an effective verdict claim one head, name an artifact
+// for a different one, and still project as an independent review — the record
+// asserting a fact about work nobody reviewed.
+func resolveReviewed(basis reviewBasis, head string, implementers, artifactCommits map[string]string, artifactsByCommit map[string][]string) (string, string) {
+	// A verdict with no head states none, so there is nothing to match against
+	// and the citation carries the whole weight.
+	judgesTheClaimedHead := func(artifact string) bool {
+		if _, known := implementers[artifact]; !known {
+			return false
+		}
+		return head == "" || artifactCommits[artifact] == head
+	}
+	if judgesTheClaimedHead(basis.named) && contains(basis.restsOn, basis.named) {
+		return basis.named, "named"
+	}
+	var cited []string
+	for _, reference := range basis.restsOn {
+		if _, known := implementers[reference]; known {
+			cited = appendUnique(cited, reference)
+		}
+	}
+	if len(cited) == 1 && judgesTheClaimedHead(cited[0]) {
+		return cited[0], "basis"
+	}
+	if len(cited) != 0 || head == "" {
+		return "", ""
+	}
+	candidates := artifactsByCommit[head]
+	if len(candidates) == 0 {
+		return "", ""
+	}
+	for _, candidate := range candidates {
+		if implementers[candidate] != implementers[candidates[0]] {
+			return "", ""
+		}
+	}
+	return candidates[0], "head"
+}
+
+// Review returns the projected review for a report event.
+func (p Projection) Review(report string) (Review, bool) {
+	for _, review := range p.Reviews {
+		if review.Report == report {
+			return review, true
+		}
+	}
+	return Review{}, false
 }
 
 func (f *foldState) directDependents(target string, lifecycle Lifecycle) []*parsedRecord {
