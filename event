@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0ad30949cab9d93c1aafee40314e92f0fd32144e"}
+{"kind":"artifact","text":"Connectors design note at exact clean head 208fc7faa9fce92b6fa4bdc89e3ef56c68031d29, with the citation pin described by what the commit is rather than by its position relative to the head.","body":{"branch":"task/connector-design-note","commit":"208fc7faa9fce92b6fa4bdc89e3ef56c68031d29","path":"notes/2026-08-09-connectors.md"}}
