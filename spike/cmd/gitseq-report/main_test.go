@@ -22,6 +22,10 @@ func TestModuleRootFromRepositoryAndSpike(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, directory := range []string{root, filepath.Join(root, "spike")} {
 		if err := os.Chdir(directory); err != nil {
 			t.Fatal(err)
@@ -30,8 +34,12 @@ func TestModuleRootFromRepositoryAndSpike(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got != root {
-			t.Fatalf("moduleRoot() from %s = %s, want %s", directory, got, root)
+		canonicalGot, err := filepath.EvalSymlinks(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if canonicalGot != canonicalRoot {
+			t.Fatalf("moduleRoot() from %s = %s, want %s", directory, canonicalGot, canonicalRoot)
 		}
 	}
 }
