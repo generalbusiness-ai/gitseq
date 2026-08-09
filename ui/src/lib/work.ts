@@ -30,8 +30,20 @@ export interface WorkTopic {
   latestActor: string;
   latestTimestamp?: number;
   latestOrder: number;
+  activity: WorkActivity[];
   searchText: string;
   rootSearchText: string;
+}
+
+export interface WorkActivity {
+  event: string;
+  actor: string;
+  timestamp?: number;
+  order: number;
+}
+
+export interface WorkTopicChange extends WorkActivity {
+  status: string;
 }
 
 export interface WorkProjection {
@@ -61,6 +73,8 @@ export interface WorkFilters {
   author?: string;
   query?: string;
 }
+
+export type PersonalWorkView = "all" | "needs" | "unread" | "following";
 
 const includes = (values: readonly string[], value: string) => values.includes(value);
 
@@ -135,10 +149,12 @@ export function buildWorkProjection(projection: Projection): WorkProjection {
 
   const searchableByTopic = new Map<string, string[]>();
   const activityByTopic = new Map<string, { actor: string; timestamp?: number; order: number }>();
+  const activitiesByTopic = new Map<string, WorkActivity[]>();
   const considerActivity = (event: string, actor: string, timestamp?: number) => {
     const topic = topicOf(event);
     if (!topic || !itemsByTopic.has(topic)) return;
     const order = orderByEvent.get(event) ?? -1;
+    activitiesByTopic.set(topic, [...(activitiesByTopic.get(topic) ?? []), { event, actor, timestamp, order }]);
     if (order >= (activityByTopic.get(topic)?.order ?? -1)) activityByTopic.set(topic, { actor, timestamp, order });
   };
   for (const statement of projection.statements) {
@@ -184,6 +200,7 @@ export function buildWorkProjection(projection: Projection): WorkProjection {
       latestActor: activity.actor,
       latestTimestamp: activity.timestamp,
       latestOrder: activity.order,
+      activity: [...(activitiesByTopic.get(event) ?? [])].sort((a, b) => a.order - b.order),
       searchText: searchableByTopic.get(event)?.join("\n").toLocaleLowerCase() ?? root.text.toLocaleLowerCase(),
       rootSearchText: [root.text, ...Object.values(root.body ?? {})].join("\n").toLocaleLowerCase(),
     });
@@ -194,6 +211,55 @@ export function buildWorkProjection(projection: Projection): WorkProjection {
     authors: [...new Set(topics.map((topic) => topic.author))],
     attention: otherWorkAttention(projection),
   };
+}
+
+const terminal = new Set<string>(CLOSED_WORK_STATUSES);
+
+// Personal action is not an unread signal and cannot be dismissed. It is
+// recomputed from the unresolved request/promise/report relationship every
+// time the durable projection changes.
+export function workItemNeedsAction(item: WorkItem, me: string | undefined): boolean {
+  if (!me || terminal.has(item.commitment.status)) return false;
+  const commitment = item.commitment;
+  if (commitment.report) return commitment.requester === me;
+  if (commitment.promise) return commitment.performer === me;
+  return (commitment.addressed_to ?? item.request.body?.to) === me;
+}
+
+export function topicChangeSince(
+  topic: WorkTopic,
+  me: string | undefined,
+  followed: ReadonlySet<string>,
+  watermark: number,
+): WorkTopicChange | undefined {
+  if (!me || (topic.author !== me && !followed.has(topic.event))) return undefined;
+  const activity = [...topic.activity].reverse().find((item) => item.actor !== me && item.order > watermark);
+  if (!activity) return undefined;
+  return { ...activity, status: topic.items[0]?.commitment.status ?? "open" };
+}
+
+export function filterPersonalWorkProjection(
+  work: WorkProjection,
+  view: PersonalWorkView,
+  me: string | undefined,
+  followed: ReadonlySet<string>,
+  viewed: Readonly<Record<string, number>>,
+): WorkProjection {
+  if (view === "all") return work;
+  const topics = work.topics.flatMap((topic) => {
+    if (view === "following") return followed.has(topic.event) ? [topic] : [];
+    if (view === "unread") return topicChangeSince(topic, me, followed, viewed[topic.event] ?? -1) ? [topic] : [];
+    const items = topic.items.filter((item) => workItemNeedsAction(item, me));
+    if (items.length === 0) return [];
+    return [{
+      ...topic,
+      items,
+      openCount: items.filter((item) => item.open).length,
+      attentionCount: items.filter((item) => item.attention).length,
+      closedCount: items.filter((item) => item.closed).length,
+    }];
+  });
+  return { topics, authors: work.authors, attention: [] };
 }
 
 export function filterWorkProjection(work: WorkProjection, filters: WorkFilters): WorkProjection {

@@ -3,6 +3,11 @@
 Conversation that can become a verifiable shared record — without
 turning every conversation into paperwork.
 
+> **Technical preview.** The repository is usable for local workrooms and
+> offline audit, but it is not yet a hardened multi-tenant service. The six
+> adversarial cases under `spike/` establish the specific properties they
+> name; they are not a blanket production-security claim.
+
 ## Why
 
 Every document in your organization is a cache, and nothing
@@ -29,19 +34,19 @@ On that clock, gitseq separates conversation from commitment. People
 and agents talk freely in a workroom; the chatter is ephemeral and
 honestly forgotten when the room empties — forgetting is enforced,
 not accidental. When something matters, a participant deliberately
-**sets it down**: a signed act at one final position, carrying the
-evidence and the prior acts it rests on. What the acts are called —
+**sets it down**: a signed event at one final position, carrying the
+evidence and the prior events it rests on. How the fold reads those events —
 a request, a decision, a claim — belongs to the room's practice, not
 to the substrate: gitseq has no ontology.
 
 The mechanism is three small rungs, and the power is only in their
 composition:
 
-1. **Every act gets a ticket number.** Signed at the door, final,
+1. **Every event gets a ticket number.** Signed at the door, final,
    the same number for every reader. "As of #4312" means one exact
    thing, forever — something no amount of merging can give you,
    because merge-order is written by participants, later, revisably.
-2. **Acts point backward.** "Rests on #4290." "Replaces #4101." The
+2. **Events point backward.** "Rests on #4290." "Replaces #4101." The
    organization's knowledge becomes a dependency graph pinned to the
    clock — not a wiki's link-soup, but edges with before/after facts
    attached.
@@ -130,6 +135,8 @@ a piece of work, verify it, and audit it from a fresh clone.
 [`docs/reference.md`](docs/reference.md) covers the commands, the MCP
 tools, and the constraints worth knowing before deploying anything.
 
-The implementation currently grows out of the adversarial module under
-`spike/`: the proven kernel remains intact while the workroom profile,
-resident service, CLI, MCP adapter, and demo live alongside it.
+The shipping Go module lives at the repository root. `cmd/gs` and
+`cmd/gitseq-mcp` build the two user-facing binaries, while `internal/` holds
+the kernel, workroom profile, and services. `spike/` is deliberately narrower:
+it keeps the adversarial CLI, report generator, forge fixture, and six-case
+evidence that preceded the technical preview.

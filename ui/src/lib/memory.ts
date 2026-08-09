@@ -66,6 +66,70 @@ export function saveForYouWatermark(genesis: string, fingerprint: string, ticket
   }
 }
 
+// Personal Work state follows the same privacy boundary as the For-you
+// watermark: it is best-effort state for one exact actor in one room, stored
+// only in this browser profile. It is never sent to the workroom, never
+// signed, and deliberately does not synchronize across devices.
+export interface PersonalWorkMemory {
+  followed: string[];
+  viewed: Record<string, number>;
+}
+
+export const emptyPersonalWorkMemory = (): PersonalWorkMemory => ({ followed: [], viewed: {} });
+
+function personalWorkKey(genesis: string, fingerprint: string): string {
+  return `workroom.personal-work.${genesis}.${fingerprint}`;
+}
+
+export function loadPersonalWorkMemory(genesis: string, fingerprint: string): PersonalWorkMemory {
+  if (!genesis || !fingerprint) return emptyPersonalWorkMemory();
+  try {
+    const raw = localStorage.getItem(personalWorkKey(genesis, fingerprint));
+    if (!raw) return emptyPersonalWorkMemory();
+    const parsed = JSON.parse(raw) as { followed?: unknown; viewed?: unknown };
+    const followed = Array.isArray(parsed.followed)
+      ? [...new Set(parsed.followed.filter((event): event is string => typeof event === "string" && event.length > 0))]
+      : [];
+    const viewed: Record<string, number> = {};
+    if (parsed.viewed && typeof parsed.viewed === "object") {
+      for (const [event, order] of Object.entries(parsed.viewed)) {
+        if (event && typeof order === "number" && Number.isFinite(order) && order >= 0) viewed[event] = order;
+      }
+    }
+    return { followed, viewed };
+  } catch {
+    return emptyPersonalWorkMemory();
+  }
+}
+
+export function savePersonalWorkMemory(genesis: string, fingerprint: string, memory: PersonalWorkMemory): void {
+  if (!genesis || !fingerprint) return;
+  try {
+    localStorage.setItem(personalWorkKey(genesis, fingerprint), JSON.stringify(memory));
+  } catch {
+    /* best-effort */
+  }
+}
+
+export function viewWorkTopic(memory: PersonalWorkMemory, event: string, order: number): PersonalWorkMemory {
+  if (!event || order <= (memory.viewed[event] ?? -1)) return memory;
+  return { ...memory, viewed: { ...memory.viewed, [event]: order } };
+}
+
+export function followWorkTopic(
+  memory: PersonalWorkMemory,
+  event: string,
+  following: boolean,
+  currentOrder: number,
+): PersonalWorkMemory {
+  const followed = new Set(memory.followed);
+  if (following) followed.add(event); else followed.delete(event);
+  const next = { ...memory, followed: [...followed] };
+  // Following starts at "now": historical activity does not become unread
+  // merely because the reader chose to follow the topic.
+  return following ? viewWorkTopic(next, event, currentOrder) : next;
+}
+
 // Composer draft: survives a refresh, cleared on send.
 const DRAFT_KEY = "workroom.draft";
 

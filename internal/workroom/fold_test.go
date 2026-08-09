@@ -1,0 +1,1416 @@
+package workroom
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+)
+
+const (
+	operator = "actor:operator"
+	agent    = "actor:agent"
+	other    = "actor:other"
+)
+
+func event(t testing.TB, id, actor, schema string, payload any, rests ...string) Record {
+	t.Helper()
+	encoded, err := Encode(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Record{ID: id, Actor: actor, Schema: schema, Payload: encoded, RestsOn: rests}
+}
+
+func BenchmarkFoldRosterHeavy(b *testing.B) {
+	for _, actors := range []int{100, 1000, 5000} {
+		records := rosterHeavyHistory(b, actors)
+		b.Run(fmt.Sprintf("actors-%d", actors), func(b *testing.B) {
+			for b.Loop() {
+				Fold(records)
+			}
+		})
+	}
+}
+
+func BenchmarkFoldRequestHeavy(b *testing.B) {
+	for _, requests := range []int{1000, 5000, 20000} {
+		records := requestHeavyHistory(b, requests)
+		b.Run(fmt.Sprintf("requests-%d", requests), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				Fold(records)
+			}
+		})
+	}
+}
+
+// BenchmarkFoldDeclaredKindChurn holds the two factors whose intersection the
+// definition refresh is superlinear in: a growing catalog of declared kinds,
+// and the retirement residue every retire/restore cycle leaves behind. A
+// refresh that materialises the whole retirement set costs one pass over that
+// residue per definition event, so cost grows with their product.
+func BenchmarkFoldDeclaredKindChurn(b *testing.B) {
+	for _, kinds := range []int{100, 400, 1600} {
+		records := declaredKindChurnHistory(b, kinds)
+		b.Run(fmt.Sprintf("kinds-%d", kinds), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				Fold(records)
+			}
+		})
+	}
+}
+
+func BenchmarkFolderAppendToProjectionRequestHeavy(b *testing.B) {
+	records := requestHeavyHistory(b, 20000)
+	b.ReportAllocs()
+	for index := 0; index < b.N; index++ {
+		b.StopTimer()
+		folder := NewFolder(records)
+		record := event(b, fmt.Sprintf("append:%d", index), operator, SchemaState, State{
+			Kind: KindRequest, Text: "request", Body: map[string]string{"to": agent, "conditions": "done"},
+		}, "e0")
+		b.StartTimer()
+		folder.Append(record)
+		projection := folder.Projection()
+		if len(projection.Commitments) != 20001 {
+			b.Fatalf("commitments = %d", len(projection.Commitments))
+		}
+	}
+}
+
+func TestFolderDoesNotRetainTransportPayloads(t *testing.T) {
+	payload, err := Encode(State{Kind: KindAssert, Text: "decoded"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder := NewFolder([]Record{{
+		ID: "event", Actor: "actor", Schema: SchemaState, Payload: payload,
+		Attachments: map[string][]byte{"evidence": []byte("large transport bytes")},
+	}})
+	if len(folder.state.records) != 1 {
+		t.Fatalf("records = %d", len(folder.state.records))
+	}
+	retained := folder.state.records[0].record
+	if retained.Payload != nil || retained.Attachments != nil {
+		t.Fatalf("folder retained transport bytes: payload=%d attachments=%d", len(retained.Payload), len(retained.Attachments))
+	}
+}
+
+func requestHeavyHistory(t testing.TB, requests int) []Record {
+	t.Helper()
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+		event(t, "agent", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "agent-ratified", operator, SchemaRatify, Ratify{Target: "agent"}, "agent"),
+	}
+	for index := range requests {
+		id := fmt.Sprintf("request:%d", index)
+		records = append(records, event(t, id, operator, SchemaState, State{
+			Kind: KindRequest, Text: "request", Body: map[string]string{"to": agent, "conditions": "done"},
+		}, "e0"))
+	}
+	return records
+}
+
+func declaredKindChurnHistory(t testing.TB, kinds int) []Record {
+	t.Helper()
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+	}
+	for index := range kinds {
+		name := fmt.Sprintf("kind-%d", index)
+		definition := KindDefinition{
+			Name: Kind(name), Fields: present("topic"), Basis: []BasisConstraint{},
+			Satisfier: "role:ratifier", Render: RenderNote, Staleness: StalenessPropagates,
+			Lifecycle: LifecycleNone, Guidance: "Churned definition.",
+		}
+		declare := fmt.Sprintf("declare:%d", index)
+		ratify := fmt.Sprintf("declare-ratification:%d", index)
+		retire := fmt.Sprintf("retire:%d", index)
+		restore := fmt.Sprintf("restore:%d", index)
+		note := fmt.Sprintf("note:%d", index)
+		records = append(records,
+			event(t, declare, operator, SchemaState, kindDefinitionState(t, definition), "e0"),
+			event(t, ratify, operator, SchemaRatify, Ratify{Target: declare}, declare),
+			event(t, retire, operator, SchemaSupersede, Supersede{Target: declare, Text: "retire"}, declare),
+			event(t, restore, operator, SchemaSupersede, Supersede{Target: retire, Text: "restore"}, retire),
+			event(t, note, operator, SchemaState, State{Kind: Kind(name), Text: "note", Body: map[string]string{"topic": name}}, "e0"),
+		)
+	}
+	return records
+}
+
+func rosterHeavyHistory(t testing.TB, actors int) []Record {
+	t.Helper()
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+	}
+	for index := range actors {
+		actor := fmt.Sprintf("actor:%d", index)
+		membership := fmt.Sprintf("membership:%d", index)
+		membershipRatification := fmt.Sprintf("membership-ratification:%d", index)
+		grant := fmt.Sprintf("grant:%d", index)
+		grantRatification := fmt.Sprintf("grant-ratification:%d", index)
+		proposal := fmt.Sprintf("proposal:%d", index)
+		ratification := fmt.Sprintf("proposal-ratification:%d", index)
+		records = append(records,
+			event(t, membership, operator, SchemaState, State{Kind: KindRoster, Text: "join", Body: map[string]string{"actor": actor, "kind": "agent", "name": actor, "role": "participant"}}, "e0"),
+			event(t, membershipRatification, operator, SchemaRatify, Ratify{Target: membership}, membership),
+			event(t, grant, operator, SchemaState, State{Kind: KindRoster, Text: "grant", Body: map[string]string{"actor": actor, "kind": "agent", "name": actor, "role": "ratifier"}}, membership),
+			event(t, grantRatification, operator, SchemaRatify, Ratify{Target: grant}, grant),
+			event(t, proposal, operator, SchemaState, State{Kind: KindPropose, Text: "proposal"}, "e0"),
+			event(t, ratification, actor, SchemaRatify, Ratify{Target: proposal}, proposal),
+		)
+	}
+	return records
+}
+
+func golden(t *testing.T) Projection {
+	t.Helper()
+	return Fold(goldenRecords(t))
+}
+
+func goldenRecords(t testing.TB) []Record {
+	t.Helper()
+	return []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "Operator begins the workroom", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "Agent joins", Body: map[string]string{"actor": agent, "name": "Agent", "role": "agent"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRequest, Text: "Build the projector", Body: map[string]string{"to": agent, "conditions": "golden projection is byte-stable"}}, "e0"),
+		event(t, "e4", agent, SchemaState, State{Kind: KindPromise, Text: "I will build it"}, "e3"),
+		event(t, "e5", agent, SchemaState, State{Kind: KindReport, Text: "Projection passes", Body: map[string]string{"result": "go test ./..."}}, "e4"),
+		event(t, "e6", agent, SchemaRatify, Ratify{Target: "e5"}, "e5"),
+		event(t, "e7", operator, SchemaRatify, Ratify{Target: "e5"}, "e5"),
+		event(t, "e8", agent, SchemaState, State{Kind: KindArtifact, Text: "Projector implementation", Body: map[string]string{"path": "internal/workroom", "commit": "abc123"}}, "e3", "e7"),
+		event(t, "e9", operator, SchemaSupersede, Supersede{Target: "e3", Text: "Requirements changed"}, "e3"),
+	}
+}
+
+// preconditions is the second pinned transcript. It exercises the two places
+// where declared kinds changed what a legacy-shaped record projects: a
+// retirement now blocks ratification until it is itself contested, and a body
+// that omits a required field now decodes and is judged by the fold rather than
+// refused by the encoder.
+func preconditions(t *testing.T) Projection {
+	t.Helper()
+	return Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "Operator begins the workroom", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindPropose, Text: "Adopt the projection contract"}, "e0"),
+		event(t, "e2", operator, SchemaSupersede, Supersede{Target: "e1", Text: "Withdrawn before adoption"}, "e1"),
+		event(t, "e3", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e4", operator, SchemaState, State{Kind: KindRequest, Text: "Ship the projector", Body: map[string]string{"to": operator}}, "e0"),
+		event(t, "e5", operator, SchemaState, State{Kind: KindArtifact, Text: "Half a citation", Body: map[string]string{"path": "internal/workroom"}}, "e0"),
+		event(t, "e6", operator, SchemaSupersede, Supersede{Target: "e2", Text: "Restore the proposal"}, "e2"),
+		event(t, "e7", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+	})
+}
+
+func kindDefinitionState(t testing.TB, definition KindDefinition) State {
+	t.Helper()
+	fields, err := json.Marshal(definition.Fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	basis, err := json.Marshal(definition.Basis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return State{Kind: KindKindDef, Text: "Define " + string(definition.Name), Body: map[string]string{
+		"name": string(definition.Name), "fields": string(fields), "basis": string(basis),
+		"satisfier": definition.Satisfier, "render": string(definition.Render),
+		"staleness": string(definition.Staleness), "lifecycle": string(definition.Lifecycle),
+		"guidance": definition.Guidance,
+	}}
+}
+
+func TestGoldenCommitmentAndArtifactProjection(t *testing.T) {
+	projection := golden(t)
+	if got := projection.Commitments[0].Status; got != "cancelled" {
+		t.Fatalf("commitment status = %q", got)
+	}
+	if !projection.Artifacts[0].Stale {
+		t.Fatal("artifact did not become stale when its governing request died")
+	}
+	decision, _ := projection.Decision("e6")
+	if decision.Verdict != Ineffective {
+		t.Fatalf("agent self-ratification = %s", decision.Verdict)
+	}
+	decision, _ = projection.Decision("e7")
+	if decision.Verdict != Effective {
+		t.Fatalf("requester satisfaction = %s: %s", decision.Verdict, decision.Reason)
+	}
+}
+
+func TestResidentFolderMatchesWholeFoldAtEveryPrefix(t *testing.T) {
+	records := goldenRecords(t)
+	folder := NewFolder(nil)
+	for index, record := range records {
+		folder.Append(record)
+		got, err := json.Marshal(folder.Projection())
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := json.Marshal(Fold(records[:index+1]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("prefix %d incremental projection differs\ngot  %s\nwant %s", index+1, got, want)
+		}
+	}
+}
+
+func TestResidentFolderProjectionMutationDoesNotCorruptState(t *testing.T) {
+	folder := NewFolder(goldenRecords(t))
+	projection := folder.Projection()
+	projection.Statements[0].Body["actor"] = "attacker"
+	projection.Statements[0].Body["role"] = "none"
+
+	fresh := folder.Projection()
+	if fresh.Statements[0].Body["actor"] != operator || fresh.Statements[0].Body["role"] != "operator" {
+		t.Fatalf("projection mutation corrupted resident state: %+v", fresh.Statements[0].Body)
+	}
+}
+
+func TestReportAwaitsRequester(t *testing.T) {
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent", Body: map[string]string{"actor": agent, "name": "Agent", "role": "agent"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRequest, Text: "do it", Body: map[string]string{"to": agent, "conditions": "done"}}, "e0"),
+		event(t, "e4", agent, SchemaState, State{Kind: KindPromise, Text: "yes"}, "e3"),
+		event(t, "e5", agent, SchemaState, State{Kind: KindReport, Text: "done"}, "e4"),
+	}
+	projection := Fold(records)
+	if got := projection.Commitments[0].Status; got != "reported" {
+		t.Fatalf("status = %q", got)
+	}
+	if got := projection.Commitments[0].WaitingOn; got != operator {
+		t.Fatalf("waiting on = %q", got)
+	}
+}
+
+func TestUnclaimedRequestIsOpenWithoutWaitingOnItsAddressee(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+	)
+	open := Fold(records).Commitments[0]
+	if open.Status != "open" || open.AddressedTo != agent || open.Performer != "" || open.Promise != "" || open.WaitingOn != "" {
+		t.Fatalf("unclaimed request projects as %+v", open)
+	}
+	encoded, err := json.Marshal(open)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range [][]byte{[]byte(`"performer"`), []byte(`"promise"`), []byte(`"waiting_on"`)} {
+		if bytes.Contains(encoded, forbidden) {
+			t.Fatalf("unclaimed request JSON asserts %s: %s", forbidden, encoded)
+		}
+	}
+	for _, want := range [][]byte{[]byte(`"addressed_to":"actor:agent"`), []byte(`"status":"open"`)} {
+		if !bytes.Contains(encoded, want) {
+			t.Fatalf("unclaimed request JSON omits %s: %s", want, encoded)
+		}
+	}
+	page := RenderStatus(Fold(records))
+	if !bytes.Contains(page, []byte("| open | actor:operator | addressed to actor:agent — unclaimed | w3 |  |")) {
+		t.Fatalf("status page does not render the request as addressed and unclaimed:\n%s", page)
+	}
+
+	records = append(records, event(t, "w4", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "w3"))
+	promised := Fold(records).Commitments[0]
+	if promised.Status != "promised" || promised.Performer != agent || promised.WaitingOn != agent {
+		t.Fatalf("live promise does not wait on its performer: %+v", promised)
+	}
+
+	records = append(records, event(t, "w5", agent, SchemaState, State{Kind: KindReport, Text: "Done"}, "w4"))
+	reported := Fold(records).Commitments[0]
+	if reported.Status != "reported" || reported.WaitingOn != operator {
+		t.Fatalf("live report does not wait on its requester: %+v", reported)
+	}
+}
+
+func TestStaleCommitmentDoesNotProjectAWaitingParty(t *testing.T) {
+	t.Run("promise", func(t *testing.T) {
+		records := worldRecords(t,
+			event(t, "w3", operator, SchemaState, State{Kind: KindAssert, Text: "basis"}, "w0"),
+			event(t, "w4", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w3"),
+			event(t, "w5", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "w4"),
+			event(t, "w6", operator, SchemaSupersede, Supersede{Target: "w3", Text: "basis changed"}, "w3"),
+		)
+		commitment := Fold(records).Commitments[0]
+		if commitment.Status != "stale" || commitment.WaitingOn != "" {
+			t.Fatalf("stale promise projects as %+v", commitment)
+		}
+	})
+
+	t.Run("report", func(t *testing.T) {
+		records := worldRecords(t,
+			event(t, "w3", operator, SchemaState, State{Kind: KindAssert, Text: "basis"}, "w0"),
+			event(t, "w4", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+			event(t, "w5", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "w4"),
+			event(t, "w6", agent, SchemaState, State{Kind: KindReport, Text: "Done"}, "w5", "w3"),
+			event(t, "w7", operator, SchemaSupersede, Supersede{Target: "w3", Text: "basis changed"}, "w3"),
+		)
+		commitment := Fold(records).Commitments[0]
+		if commitment.Status != "stale" || commitment.WaitingOn != "" {
+			t.Fatalf("stale report projects as %+v", commitment)
+		}
+	})
+}
+
+func TestDanglingWrongActorAndAmbiguousActsAreTotal(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent", Body: map[string]string{"actor": agent, "name": "Agent", "role": "agent"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", agent, SchemaState, State{Kind: KindPromise, Text: "unasked promise"}, "e0"),
+		event(t, "e4", operator, SchemaState, State{Kind: KindRequest, Text: "one", Body: map[string]string{"to": agent, "conditions": "one"}}, "e0"),
+		event(t, "e5", operator, SchemaState, State{Kind: KindRequest, Text: "two", Body: map[string]string{"to": agent, "conditions": "two"}}, "e0"),
+		event(t, "e6", agent, SchemaState, State{Kind: KindPromise, Text: "ambiguous"}, "e4", "e5"),
+		event(t, "e7", other, SchemaState, State{Kind: KindPromise, Text: "wrong actor"}, "e4"),
+	})
+	if len(projection.Decisions) != 8 {
+		t.Fatalf("got %d decisions for 8 events", len(projection.Decisions))
+	}
+	want := map[string]Verdict{"e3": Ineffective, "e6": Disputed, "e7": Ineffective}
+	for event, verdict := range want {
+		decision, _ := projection.Decision(event)
+		if decision.Verdict != verdict {
+			t.Errorf("%s = %s, want %s", event, decision.Verdict, verdict)
+		}
+	}
+}
+
+func TestRosterSupersessionRevokesAndResurrectionRestoresAuthority(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "Carol joins", Body: map[string]string{"actor": other, "name": "Carol", "role": "ratifier"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindPropose, Text: "before demotion"}, "e0"),
+		event(t, "e4", other, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+		event(t, "e5", operator, SchemaSupersede, Supersede{Target: "e1", Text: "demote Carol"}, "e1"),
+		event(t, "e6", operator, SchemaState, State{Kind: KindPropose, Text: "while demoted"}, "e0"),
+		event(t, "e7", other, SchemaRatify, Ratify{Target: "e6"}, "e6"),
+		event(t, "e8", operator, SchemaSupersede, Supersede{Target: "e5", Text: "restore Carol"}, "e5"),
+		event(t, "e9", operator, SchemaState, State{Kind: KindAssert, Text: "after restoration"}, "e0"),
+		event(t, "e10", other, SchemaRatify, Ratify{Target: "e9"}, "e9"),
+	})
+	for event, want := range map[string]Verdict{"e4": Effective, "e7": Ineffective, "e10": Effective} {
+		decision, _ := projection.Decision(event)
+		if decision.Verdict != want {
+			t.Errorf("%s = %s (%s), want %s", event, decision.Verdict, decision.Reason, want)
+		}
+	}
+	actor := projection.Actors[other]
+	if got := actor.Kind; got != "unspecified" {
+		t.Fatalf("legacy actor kind = %q, want unspecified", got)
+	}
+	if got := actor.Roles; len(got) != 2 || got[0] != "participant" || got[1] != "ratifier" {
+		t.Fatalf("restored roles = %#v", got)
+	}
+}
+
+func TestMembershipRevocationRevokesDependentAuthority(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRoster, Text: "grant ratifier", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "ratifier"}}, "e1"),
+		event(t, "e4", operator, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+		event(t, "e5", operator, SchemaState, State{Kind: KindPropose, Text: "before departure"}, "e0"),
+		event(t, "e6", agent, SchemaRatify, Ratify{Target: "e5"}, "e5"),
+		event(t, "e7", operator, SchemaSupersede, Supersede{Target: "e1", Text: "remove agent"}, "e1"),
+		event(t, "e8", operator, SchemaState, State{Kind: KindPropose, Text: "after departure"}, "e0"),
+		event(t, "e9", agent, SchemaRatify, Ratify{Target: "e8"}, "e8"),
+	})
+	for event, want := range map[string]Verdict{"e6": Effective, "e9": Ineffective} {
+		decision, _ := projection.Decision(event)
+		if decision.Verdict != want {
+			t.Errorf("%s = %s (%s), want %s", event, decision.Verdict, decision.Reason, want)
+		}
+	}
+	if _, exists := projection.Actors[agent]; exists {
+		t.Fatalf("revoked member retained a projected actor: %+v", projection.Actors[agent])
+	}
+}
+
+func TestModernOperatorGrantPreservesAgentKindAndMembershipBasis(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRoster, Text: "grant operator", Body: map[string]string{"actor": agent, "kind": "human", "name": "Wrong name", "role": "operator"}}, "e1"),
+		event(t, "e4", operator, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+	})
+	actor := projection.Actors[agent]
+	if actor.Name != "Agent" || actor.Kind != "agent" || actor.MembershipEvent != "e1" {
+		t.Fatalf("operator grant changed identity or membership basis: %+v", actor)
+	}
+	want := []string{"operator", "participant", "ratifier"}
+	if len(actor.Roles) != len(want) {
+		t.Fatalf("roles = %#v, want %#v", actor.Roles, want)
+	}
+	for index := range want {
+		if actor.Roles[index] != want[index] {
+			t.Fatalf("roles = %#v, want %#v", actor.Roles, want)
+		}
+	}
+}
+
+func TestAuthorityGrantCannotSubstituteForMembership(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "grant without membership", Body: map[string]string{"actor": other, "kind": "agent", "name": "Other", "role": "ratifier"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRequest, Text: "not a participant", Body: map[string]string{"to": other, "conditions": "never"}}, "e0"),
+		event(t, "e4", operator, SchemaState, State{Kind: KindPropose, Text: "not a ratifier"}, "e0"),
+		event(t, "e5", other, SchemaRatify, Ratify{Target: "e4"}, "e4"),
+	})
+	for event, reason := range map[string]string{
+		"e3": "requested performer is not in the live roster",
+		"e5": "actor lacks ratifier role",
+	} {
+		decision, _ := projection.Decision(event)
+		if decision.Verdict != Ineffective || decision.Reason != reason {
+			t.Errorf("%s = %+v, want ineffective %q", event, decision, reason)
+		}
+	}
+	if _, exists := projection.Actors[other]; exists {
+		t.Fatalf("authority-only record projected a participant: %+v", projection.Actors[other])
+	}
+}
+
+func TestRequestRejectsPerformerOutsideLiveRoster(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRequest, Text: "unknown", Body: map[string]string{"to": agent, "conditions": "done"}}, "e0"),
+	})
+	decision, _ := projection.Decision("e1")
+	if decision.Verdict != Ineffective || decision.Reason != "requested performer is not in the live roster" {
+		t.Fatalf("request decision = %#v", decision)
+	}
+}
+
+func TestDuplicateIDCannotPoisonOriginal(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e0", other, SchemaState, State{Kind: KindAssert, Text: "duplicate"}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindAssert, Text: "claim"}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+	})
+	if projection.Decisions[0].Verdict != Effective || projection.Decisions[1].Verdict != Disputed || projection.Decisions[3].Verdict != Effective {
+		t.Fatalf("duplicate poisoned decisions: %#v", projection.Decisions)
+	}
+	if len(projection.Statements) != 2 || !projection.Statements[1].Ratified {
+		t.Fatalf("duplicate poisoned statements: %#v", projection.Statements)
+	}
+}
+
+func TestSupersedingSupersessionResurrectsTarget(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindPropose, Text: "proposal"}, "e0"),
+		event(t, "e2", operator, SchemaSupersede, Supersede{Target: "e1", Text: "withdraw"}, "e1"),
+		event(t, "e3", operator, SchemaSupersede, Supersede{Target: "e2", Text: "undo withdrawal"}, "e2"),
+	})
+	if projection.Statements[1].Retired {
+		t.Fatal("proposal did not resurrect")
+	}
+}
+
+func TestIncrementalRetirementHandlesMultipleCausesAndNestedResurrection(t *testing.T) {
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindPropose, Text: "proposal"}, "e0"),
+		event(t, "e2", operator, SchemaSupersede, Supersede{Target: "e1", Text: "first retirement"}, "e1"),
+		event(t, "e3", operator, SchemaSupersede, Supersede{Target: "e1", Text: "second retirement"}, "e1"),
+		event(t, "e4", operator, SchemaSupersede, Supersede{Target: "e2", Text: "remove first cause"}, "e2"),
+		event(t, "e5", operator, SchemaSupersede, Supersede{Target: "e3", Text: "remove second cause"}, "e3"),
+		event(t, "e6", operator, SchemaSupersede, Supersede{Target: "e4", Text: "restore first cause"}, "e4"),
+	}
+	wantRetired := []bool{false, true, true, true, false, true}
+	for offset, want := range wantRetired {
+		projection := Fold(records[:offset+2])
+		var got bool
+		for _, statement := range projection.Statements {
+			if statement.Event == "e1" {
+				got = statement.Retired
+				break
+			}
+		}
+		if got != want {
+			t.Errorf("prefix through e%d: retired = %v, want %v", offset+1, got, want)
+		}
+	}
+}
+
+func TestProjectionIsByteStable(t *testing.T) {
+	projection := golden(t)
+	one, err := RenderJSON(projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := RenderJSON(golden(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(one, two) {
+		t.Fatal("JSON projection is not byte-stable")
+	}
+	want, err := os.ReadFile("testdata/legacy_projection.golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(one, want) {
+		t.Fatalf("legacy projection bytes changed; update only through an explicit migration review\n%s", one)
+	}
+	if !bytes.Equal(RenderStatus(projection), RenderStatus(golden(t))) {
+		t.Fatal("status projection is not byte-stable")
+	}
+}
+
+func TestPreconditionProjectionIsPinned(t *testing.T) {
+	projection := preconditions(t)
+	for eventID, want := range map[string]Decision{
+		"e3": {Event: "e3", Verdict: Ineffective, Reason: "retired statement cannot be ratified"},
+		"e4": {Event: "e4", Verdict: Ineffective, Reason: "request state requires body.conditions"},
+		"e5": {Event: "e5", Verdict: Ineffective, Reason: "artifact state requires body.commit"},
+		"e7": {Event: "e7", Verdict: Effective, Reason: "authorized ratification"},
+	} {
+		decision, _ := projection.Decision(eventID)
+		if decision != want {
+			t.Errorf("%s = %+v, want %+v", eventID, decision, want)
+		}
+	}
+	if len(projection.Artifacts) != 0 || len(projection.Commitments) != 0 {
+		t.Fatalf("a refused request or artifact reached the work projection: %+v %+v", projection.Commitments, projection.Artifacts)
+	}
+	encoded, err := RenderJSON(projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := RenderJSON(preconditions(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(encoded, again) {
+		t.Fatal("precondition projection is not byte-stable")
+	}
+	want, err := os.ReadFile("testdata/precondition_projection.golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(encoded, want) {
+		t.Fatalf("precondition projection bytes changed; update only through an explicit migration review\n%s", encoded)
+	}
+}
+
+func TestDeclaredKindIsPositionAwareAndReturnsToUndefinedWhenRetired(t *testing.T) {
+	definition := KindDefinition{
+		Name: "review-note",
+		Fields: []FieldConstraint{
+			{Operator: FieldPresent, Name: "topic"},
+			{Operator: FieldPresent, Name: "priority"},
+			{Operator: FieldOneOf, Name: "priority", Values: []string{"high", "low"}},
+		},
+		Basis: []BasisConstraint{}, Satisfier: "role:ratifier", Render: RenderNote,
+		Staleness: StalenessTerminal, Lifecycle: LifecycleNone,
+		Guidance: "Keep one review finding with an explicit priority.",
+	}
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: "review-note", Text: "too early", Body: map[string]string{"topic": "fold", "priority": "high"}}),
+		event(t, "e2", operator, SchemaState, kindDefinitionState(t, definition), "e0"),
+		event(t, "e3", operator, SchemaRatify, Ratify{Target: "e2"}, "e2"),
+		event(t, "e4", operator, SchemaState, State{Kind: "review-note", Text: "declared", Body: map[string]string{"topic": "fold", "priority": "high"}}),
+		event(t, "e5", operator, SchemaState, State{Kind: "review-note", Text: "bad value", Body: map[string]string{"topic": "fold", "priority": "urgent"}}),
+		event(t, "e6", operator, SchemaRatify, Ratify{Target: "e4"}, "e4"),
+		event(t, "e7", operator, SchemaSupersede, Supersede{Target: "e2", Text: "retire the definition"}, "e2"),
+		event(t, "e8", operator, SchemaState, State{Kind: "review-note", Text: "undefined again", Body: map[string]string{"topic": "fold", "priority": "low"}}),
+		event(t, "e9", operator, SchemaSupersede, Supersede{Target: "e7", Text: "restore the definition"}, "e7"),
+		event(t, "e10", operator, SchemaState, State{Kind: "review-note", Text: "defined again", Body: map[string]string{"topic": "fold", "priority": "low"}}),
+	}
+	prefix := Evaluate(records[:7])
+	for eventID, want := range map[string]Verdict{"e1": UndefinedKind, "e4": Effective, "e5": Ineffective, "e6": Effective} {
+		decision, _ := prefix.Projection.Decision(eventID)
+		if decision.Verdict != want {
+			t.Errorf("%s verdict = %s (%s), want %s", eventID, decision.Verdict, decision.Reason, want)
+		}
+	}
+	var active *KindDefinition
+	for index := range prefix.Vocabulary.Definitions {
+		if prefix.Vocabulary.Definitions[index].Name == definition.Name {
+			active = &prefix.Vocabulary.Definitions[index]
+		}
+	}
+	if active == nil || active.Source != "e2" || active.RatifiedBy != "e3" || active.Guidance != definition.Guidance {
+		t.Fatalf("active definition = %+v", active)
+	}
+	retired := Evaluate(records[:9])
+	decision, _ := retired.Projection.Decision("e8")
+	if decision.Verdict != UndefinedKind {
+		t.Fatalf("post-retirement verdict = %+v", decision)
+	}
+	for _, current := range retired.Vocabulary.Definitions {
+		if current.Name == definition.Name {
+			t.Fatalf("retired definition remained active: %+v", current)
+		}
+	}
+	full := Evaluate(records)
+	decision, _ = full.Projection.Decision("e10")
+	if decision.Verdict != Effective {
+		t.Fatalf("restored definition verdict = %+v", decision)
+	}
+	if got := full.Projection.OpaqueKinds["review-note"]; len(got) != 2 || got[0] != "e1" || got[1] != "e8" {
+		t.Fatalf("undefined kind projection = %#v", got)
+	}
+}
+
+func TestRefusedArtifactDoesNotProjectAsLive(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindArtifact, Text: "half a citation", Body: map[string]string{"path": "internal/workroom"}}, "e0"),
+		event(t, "e2", operator, SchemaState, State{Kind: KindArtifact, Text: "whole citation", Body: map[string]string{"path": "internal/workroom", "commit": "abc123"}}, "e0"),
+	})
+	decision, _ := projection.Decision("e1")
+	if decision.Verdict != Ineffective || decision.Reason != "artifact state requires body.commit" {
+		t.Fatalf("partly filled artifact decision = %+v", decision)
+	}
+	if len(projection.Artifacts) != 1 || projection.Artifacts[0].Event != "e2" {
+		t.Fatalf("artifacts = %#v", projection.Artifacts)
+	}
+	if count := bytes.Count(RenderStatus(projection), []byte("| current |")); count != 1 {
+		t.Fatalf("status showed %d current artifacts, want 1:\n%s", count, RenderStatus(projection))
+	}
+}
+
+// A supersession of a supersession contests a retirement. It must not thereby
+// install a definition whose ratification an actor already replaced, and it
+// must not disturb any decision already emitted.
+func TestRestoredDefinitionDoesNotDisplaceALaterRatifiedOne(t *testing.T) {
+	first := KindDefinition{
+		Name: "finding", Fields: present("topic"), Basis: []BasisConstraint{},
+		Satisfier: SatisfierNone, Render: RenderNote, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleNone, Guidance: "First guidance.",
+	}
+	second := first
+	second.Fields = present("severity")
+	second.Guidance = "Second guidance."
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "d1", operator, SchemaState, kindDefinitionState(t, first), "e0"),
+		event(t, "d2", operator, SchemaState, kindDefinitionState(t, second), "e0"),
+		event(t, "d2r", operator, SchemaRatify, Ratify{Target: "d2"}, "d2"),
+		event(t, "n1", operator, SchemaState, State{Kind: "finding", Text: "under the second", Body: map[string]string{"severity": "high"}}, "e0"),
+		event(t, "d2s", operator, SchemaSupersede, Supersede{Target: "d2", Text: "retire the second"}, "d2"),
+		event(t, "d1r", operator, SchemaRatify, Ratify{Target: "d1"}, "d1"),
+		event(t, "d2ss", operator, SchemaSupersede, Supersede{Target: "d2s", Text: "contest the retirement"}, "d2s"),
+		event(t, "n2", operator, SchemaState, State{Kind: "finding", Text: "under the first", Body: map[string]string{"topic": "fold"}}, "e0"),
+		event(t, "n3", operator, SchemaState, State{Kind: "finding", Text: "second fields only", Body: map[string]string{"severity": "high"}}, "e0"),
+	}
+	result := Evaluate(records)
+	for eventID, want := range map[string]Verdict{"d2r": Effective, "n1": Effective, "d1r": Effective, "n2": Effective, "n3": Ineffective} {
+		decision, _ := result.Projection.Decision(eventID)
+		if decision.Verdict != want {
+			t.Errorf("%s = %s (%s), want %s", eventID, decision.Verdict, decision.Reason, want)
+		}
+	}
+	var governing *KindDefinition
+	for index := range result.Vocabulary.Definitions {
+		if result.Vocabulary.Definitions[index].Name == "finding" {
+			governing = &result.Vocabulary.Definitions[index]
+		}
+	}
+	if governing == nil || governing.Source != "d1" || governing.RatifiedBy != "d1r" || governing.Guidance != first.Guidance {
+		t.Fatalf("governing definition = %+v, want the version ratified last", governing)
+	}
+	for length := 1; length <= len(records); length++ {
+		prefix := Fold(records[:length])
+		for _, decision := range prefix.Decisions {
+			settled, _ := result.Projection.Decision(decision.Event)
+			if settled != decision {
+				t.Fatalf("prefix of %d changed the decision for %s: %+v, want %+v", length, decision.Event, decision, settled)
+			}
+		}
+	}
+}
+
+// A statement may be ratified more than once: retire the ratification or the
+// statement, restore it, and ratify it again. Force arrives at the newest of
+// those ratifications, so the selector must compare that position and not the
+// oldest one still standing. Here the first version is ratified, retired,
+// beaten by a second version, then restored and ratified again — the second
+// version's own ratification is older than the re-ratification, so the first
+// version governs.
+func TestRepeatedRatificationCarriesItsLatestPosition(t *testing.T) {
+	first := KindDefinition{
+		Name: "finding", Fields: present("topic"), Basis: []BasisConstraint{},
+		Satisfier: SatisfierNone, Render: RenderNote, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleNone, Guidance: "First guidance.",
+	}
+	second := first
+	second.Fields = present("severity")
+	second.Guidance = "Second guidance."
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "d1", operator, SchemaState, kindDefinitionState(t, first), "e0"),
+		event(t, "d2", operator, SchemaState, kindDefinitionState(t, second), "e0"),
+		event(t, "d1r1", operator, SchemaRatify, Ratify{Target: "d1"}, "d1"),
+		event(t, "d1s", operator, SchemaSupersede, Supersede{Target: "d1", Text: "retire the first"}, "d1"),
+		event(t, "d2r", operator, SchemaRatify, Ratify{Target: "d2"}, "d2"),
+		event(t, "d2s", operator, SchemaSupersede, Supersede{Target: "d2", Text: "retire the second"}, "d2"),
+		event(t, "d1ss", operator, SchemaSupersede, Supersede{Target: "d1s", Text: "restore the first"}, "d1s"),
+		event(t, "d1r2", operator, SchemaRatify, Ratify{Target: "d1"}, "d1"),
+		event(t, "d2ss", operator, SchemaSupersede, Supersede{Target: "d2s", Text: "restore the second"}, "d2s"),
+		event(t, "n1", operator, SchemaState, State{Kind: "finding", Text: "under the first", Body: map[string]string{"topic": "fold"}}, "e0"),
+	}
+	result := Evaluate(records)
+	for eventID, want := range map[string]Verdict{"d1r1": Effective, "d2r": Effective, "d1r2": Effective, "n1": Effective} {
+		decision, _ := result.Projection.Decision(eventID)
+		if decision.Verdict != want {
+			t.Errorf("%s = %s (%s), want %s", eventID, decision.Verdict, decision.Reason, want)
+		}
+	}
+	var governing *KindDefinition
+	for index := range result.Vocabulary.Definitions {
+		if result.Vocabulary.Definitions[index].Name == "finding" {
+			governing = &result.Vocabulary.Definitions[index]
+		}
+	}
+	if governing == nil || governing.Source != "d1" || governing.RatifiedBy != "d1r2" || governing.Guidance != first.Guidance {
+		t.Fatalf("governing definition = %+v, want d1 ratified by d1r2", governing)
+	}
+	for length := 1; length <= len(records); length++ {
+		prefix := Fold(records[:length])
+		for _, decision := range prefix.Decisions {
+			settled, _ := result.Projection.Decision(decision.Event)
+			if settled != decision {
+				t.Fatalf("prefix of %d changed the decision for %s: %+v, want %+v", length, decision.Event, decision, settled)
+			}
+		}
+	}
+}
+
+func TestPrefixBindingBindsARecordThatEndsAtItsTransition(t *testing.T) {
+	activation := State{Kind: KindFoldActivation, Text: "activate the next fold", Body: map[string]string{
+		"fold": "spike/internal/workroom@abc123", "entry": "gitseq/spike/internal/workroom",
+		"interface": "workroom-fold@1", "toolchain": "go1.25.0", "prefix": "genesis",
+	}}
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, activation),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+	}
+	unratified := Evaluate(records[:2]).Vocabulary.Binding
+	if unratified.Status != "unbound" || len(unratified.Transitions) != 0 {
+		t.Fatalf("unratified activation binding = %+v", unratified)
+	}
+	bound := Evaluate(records).Vocabulary.Binding
+	if bound.Status != "bound" || bound.Reason != "" || len(bound.Transitions) != 1 {
+		t.Fatalf("binding at the transition = %+v", bound)
+	}
+	if bound.Transitions[0].Activation != "e1" || bound.Transitions[0].Ratification != "e2" || !bound.Transitions[0].Prefix {
+		t.Fatalf("transition = %+v", bound.Transitions[0])
+	}
+}
+
+func TestIdentifierGrammarRefusesNamesNoActorCouldSatisfy(t *testing.T) {
+	for _, test := range []struct {
+		name, reason string
+		mutate       func(*KindDefinition)
+	}{
+		{name: "blank kind name", reason: `kind name " " is not an identifier`, mutate: func(d *KindDefinition) { d.Name = " " }},
+		{name: "spaced role", reason: `role name " ratifier" is not an identifier`, mutate: func(d *KindDefinition) { d.Satisfier = "role: ratifier" }},
+		{name: "spaced field", reason: `field constraint name " topic" is not an identifier`, mutate: func(d *KindDefinition) { d.Fields = present(" topic") }},
+		{name: "shouting basis kind", reason: `basis kind "Assert" is not an identifier`, mutate: func(d *KindDefinition) { d.Basis = countKinds(0, 1, "Assert") }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			definition := KindDefinition{
+				Name: "finding", Fields: present("topic"), Basis: []BasisConstraint{},
+				Satisfier: "role:ratifier", Render: RenderNote, Staleness: StalenessPropagates,
+				Lifecycle: LifecycleNone, Guidance: "Keep one finding.",
+			}
+			test.mutate(&definition)
+			projection := Fold([]Record{
+				event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+				event(t, "d0", operator, SchemaState, kindDefinitionState(t, definition), "e0"),
+				event(t, "d0r", operator, SchemaRatify, Ratify{Target: "d0"}, "d0"),
+			})
+			decision, _ := projection.Decision("d0")
+			if decision.Verdict != Uninterpretable || !strings.Contains(decision.Reason, test.reason) {
+				t.Fatalf("definition decision = %+v, want uninterpretable %q", decision, test.reason)
+			}
+			ratification, _ := projection.Decision("d0r")
+			if ratification.Verdict != Ineffective || ratification.Reason != "ratify target is not effective" {
+				t.Fatalf("ratification of an unusable definition = %+v", ratification)
+			}
+		})
+	}
+}
+
+// Roster is the one ordinary-looking kind the fold reads directly: membership
+// and authority are extracted from its body, not from its definition. Letting
+// it be redefined would let a participant confer authority on themselves.
+func TestRosterCannotBeRedefinedToEscalateAuthority(t *testing.T) {
+	roster := KindDefinition{
+		Name: KindRoster, Fields: present("actor", "name", "role"), Basis: []BasisConstraint{},
+		Satisfier: "role:participant", Render: RenderGovernance, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleNone, Guidance: "Let any participant confer authority.",
+	}
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "d0", operator, SchemaState, kindDefinitionState(t, roster), "e0"),
+		event(t, "d0r", operator, SchemaRatify, Ratify{Target: "d0"}, "d0"),
+		event(t, "g0", agent, SchemaState, State{Kind: KindRoster, Text: "self-promotion", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "operator"}}, "e1"),
+		event(t, "g0r", agent, SchemaRatify, Ratify{Target: "g0"}, "g0"),
+	})
+	decision, _ := projection.Decision("d0")
+	if decision.Verdict != Uninterpretable || !strings.Contains(decision.Reason, `kind "roster" is interpreted by the fold and cannot be redefined`) {
+		t.Fatalf("roster redefinition = %+v", decision)
+	}
+	ratification, _ := projection.Decision("d0r")
+	if ratification.Verdict != Ineffective || ratification.Reason != "ratify target is not effective" {
+		t.Fatalf("roster redefinition ratification = %+v", ratification)
+	}
+	escalation, _ := projection.Decision("g0r")
+	if escalation.Verdict != Ineffective || escalation.Reason != "actor lacks ratifier role" {
+		t.Fatalf("self-ratified grant = %+v", escalation)
+	}
+	if roles := projection.Actors[agent].Roles; contains(roles, "operator") || contains(roles, "ratifier") {
+		t.Fatalf("participant escalated to %#v", roles)
+	}
+}
+
+func TestInvalidConstraintAlgebraIsTypedUninterpretable(t *testing.T) {
+	for _, test := range []struct {
+		name, fields, basis, reason string
+	}{
+		{name: "invalid regex", fields: `[{"op":"matches","name":"topic","pattern":"["}]`, basis: `[]`, reason: "error parsing regexp"},
+		{name: "null fields", fields: `null`, basis: `[]`, reason: "fields must be a JSON array"},
+		{name: "null basis", fields: `[]`, basis: `null`, reason: "basis must be a JSON array"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			invalid := State{Kind: KindKindDef, Text: test.name, Body: map[string]string{
+				"name": "bad", "fields": test.fields, "basis": test.basis,
+				"satisfier": "none", "render": "note", "staleness": "propagates", "lifecycle": "none", "guidance": "never active",
+			}}
+			projection := Fold([]Record{
+				event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+				event(t, "e1", operator, SchemaState, invalid),
+				event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+			})
+			definition, _ := projection.Decision("e1")
+			if definition.Verdict != Uninterpretable || !strings.Contains(definition.Reason, test.reason) {
+				t.Fatalf("invalid definition = %+v", definition)
+			}
+			ratification, _ := projection.Decision("e2")
+			if ratification.Verdict != Ineffective || ratification.Reason != "ratify target is not effective" {
+				t.Fatalf("invalid definition ratification = %+v", ratification)
+			}
+		})
+	}
+}
+
+func TestDefinitionReplacementRequiresRetiringTheLivePredecessor(t *testing.T) {
+	first := KindDefinition{
+		Name: "finding", Fields: []FieldConstraint{}, Basis: []BasisConstraint{},
+		Satisfier: SatisfierNone, Render: RenderNote, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleNone, Guidance: "First guidance.",
+	}
+	second := first
+	second.Guidance = "Second guidance."
+	result := Evaluate([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "d1", operator, SchemaState, kindDefinitionState(t, first)),
+		event(t, "d1r", operator, SchemaRatify, Ratify{Target: "d1"}, "d1"),
+		event(t, "d2", operator, SchemaState, kindDefinitionState(t, second), "d1"),
+		event(t, "d2r0", operator, SchemaRatify, Ratify{Target: "d2"}, "d2"),
+		event(t, "d1s", operator, SchemaSupersede, Supersede{Target: "d1", Text: "replace the definition"}, "d1"),
+		event(t, "d2r1", operator, SchemaRatify, Ratify{Target: "d2"}, "d2"),
+	})
+	refused, _ := result.Projection.Decision("d2r0")
+	if refused.Verdict != Disputed || !strings.Contains(refused.Reason, "live predecessor") {
+		t.Fatalf("replacement without retirement = %+v", refused)
+	}
+	accepted, _ := result.Projection.Decision("d2r1")
+	if accepted.Verdict != Effective {
+		t.Fatalf("replacement after retirement = %+v", accepted)
+	}
+	for _, definition := range result.Vocabulary.Definitions {
+		if definition.Name == second.Name && (definition.Source != "d2" || definition.Guidance != second.Guidance) {
+			t.Fatalf("replacement definition = %+v", definition)
+		}
+	}
+}
+
+func TestDeclaredLifecycleKindsDriveTheCommitmentLoop(t *testing.T) {
+	workOrder := KindDefinition{
+		Name: "work-order", Fields: present("to", "conditions"), Basis: []BasisConstraint{},
+		Satisfier: SatisfierNone, Render: RenderCommitment, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleRequest, Guidance: "Request a concrete unit of work.",
+	}
+	undertaking := KindDefinition{
+		Name: "undertaking", Fields: []FieldConstraint{}, Basis: countKinds(1, 1, "work-order"),
+		Satisfier: SatisfierNone, Render: RenderCommitment, Staleness: StalenessPropagates,
+		Lifecycle: LifecyclePromise, Guidance: "Accept one work order.",
+	}
+	delivery := KindDefinition{
+		Name: "delivery", Fields: []FieldConstraint{}, Basis: countKinds(1, 1, "undertaking"),
+		Satisfier: SatisfierOriginatingRequester, Render: RenderResult, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleReport, Guidance: "Report an undertaking to its requester.",
+	}
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "d0", operator, SchemaState, kindDefinitionState(t, workOrder), "e0"),
+		event(t, "d0r", operator, SchemaRatify, Ratify{Target: "d0"}, "d0"),
+		event(t, "d1", operator, SchemaState, kindDefinitionState(t, undertaking), "d0r"),
+		event(t, "d1r", operator, SchemaRatify, Ratify{Target: "d1"}, "d1"),
+		event(t, "d2", operator, SchemaState, kindDefinitionState(t, delivery), "d1r"),
+		event(t, "d2r", operator, SchemaRatify, Ratify{Target: "d2"}, "d2"),
+		event(t, "r0", operator, SchemaState, State{Kind: "work-order", Text: "build", Body: map[string]string{"to": agent, "conditions": "tests pass"}}),
+		event(t, "p0", agent, SchemaState, State{Kind: "undertaking", Text: "I will"}, "r0"),
+		event(t, "x0", agent, SchemaState, State{Kind: "delivery", Text: "done"}, "p0"),
+		event(t, "x0r", operator, SchemaRatify, Ratify{Target: "x0"}, "x0"),
+	})
+	if len(projection.Commitments) != 1 || projection.Commitments[0].Status != "satisfied" {
+		t.Fatalf("declared lifecycle commitment = %+v", projection.Commitments)
+	}
+	if projection.Commitments[0].Request != "r0" || projection.Commitments[0].Promise != "p0" || projection.Commitments[0].Report != "x0" {
+		t.Fatalf("declared lifecycle lineage = %+v", projection.Commitments[0])
+	}
+}
+
+func TestDeclaredLifecycleKindsRemainTotalWithoutExpectedBasis(t *testing.T) {
+	undertaking := KindDefinition{
+		Name: "undertaking", Fields: []FieldConstraint{}, Basis: []BasisConstraint{},
+		Satisfier: SatisfierNone, Render: RenderCommitment, Staleness: StalenessPropagates,
+		Lifecycle: LifecyclePromise, Guidance: "An intentionally incomplete promise definition.",
+	}
+	delivery := KindDefinition{
+		Name: "delivery", Fields: []FieldConstraint{}, Basis: []BasisConstraint{},
+		Satisfier: SatisfierOriginatingRequester, Render: RenderResult, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleReport, Guidance: "An intentionally incomplete report definition.",
+	}
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "d0", operator, SchemaState, kindDefinitionState(t, undertaking)),
+		event(t, "d0r", operator, SchemaRatify, Ratify{Target: "d0"}, "d0"),
+		event(t, "d1", operator, SchemaState, kindDefinitionState(t, delivery)),
+		event(t, "d1r", operator, SchemaRatify, Ratify{Target: "d1"}, "d1"),
+		event(t, "p0", agent, SchemaState, State{Kind: "undertaking", Text: "no request"}),
+		event(t, "x0", agent, SchemaState, State{Kind: "delivery", Text: "no promise"}),
+	})
+	for eventID, reason := range map[string]string{
+		"p0": "promise lifecycle basis count is 0, want exactly one request",
+		"x0": "report lifecycle basis count is 0, want exactly one promise",
+	} {
+		decision, _ := projection.Decision(eventID)
+		if decision.Verdict != Ineffective || decision.Reason != reason {
+			t.Errorf("%s decision = %+v", eventID, decision)
+		}
+	}
+}
+
+func TestFoldActivationRecordsPrefixBoundaryThenNamesExecutionGap(t *testing.T) {
+	activation := State{Kind: KindFoldActivation, Text: "activate the next fold", Body: map[string]string{
+		"fold": "spike/internal/workroom@abc123", "entry": "gitseq/spike/internal/workroom",
+		"interface": "workroom-fold@1", "toolchain": "go1.25.0", "prefix": "genesis",
+	}}
+	result := Evaluate([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, activation),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindAssert, Text: "after the seam"}),
+	})
+	if result.Vocabulary.Binding.Status != "uninterpretable" || len(result.Vocabulary.Binding.Transitions) != 1 {
+		t.Fatalf("binding = %+v", result.Vocabulary.Binding)
+	}
+	transition := result.Vocabulary.Binding.Transitions[0]
+	if transition.Activation != "e1" || transition.Ratification != "e2" || !transition.Prefix {
+		t.Fatalf("transition = %+v", transition)
+	}
+	decision, _ := result.Projection.Decision("e3")
+	if decision.Verdict != Uninterpretable || decision.Reason != "uninterpretable: activated interpreter execution is not held" {
+		t.Fatalf("post-seam decision = %+v", decision)
+	}
+}
+
+func TestProvenanceRendersBranchesAtTheirActualDepth(t *testing.T) {
+	projection := Projection{Provenance: map[string][]string{"artifact": {"decision", "commit"}, "decision": {"seed"}}}
+	want := "artifact\n  decision\n    seed\n  commit\n"
+	if got := string(RenderProvenance(projection, "artifact")); got != want {
+		t.Fatalf("provenance:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestEmptyCollectionsRenderAsArrays(t *testing.T) {
+	projection := Fold(nil)
+	encoded, err := RenderJSON(projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range [][]byte{[]byte(`"decisions": []`), []byte(`"acts": []`), []byte(`"statements": []`), []byte(`"commitments": []`), []byte(`"artifacts": []`)} {
+		if !bytes.Contains(encoded, field) {
+			t.Fatalf("projection omitted stable empty array %s: %s", field, encoded)
+		}
+	}
+}
+
+func TestProjectionIncludesEverySemanticReplyAct(t *testing.T) {
+	records := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindPropose, Text: "proposal"}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaSupersede, Supersede{Target: "e1", Text: "reason"}, "e1"),
+	}
+	for index := range records {
+		records[index].Timestamp = int64(100 + index)
+	}
+	projection := Fold(records)
+	if len(projection.Acts) != 2 {
+		t.Fatalf("acts = %#v", projection.Acts)
+	}
+	if projection.Acts[0].Type != "ratify" || projection.Acts[0].Target != "e1" || projection.Acts[0].Verdict != Effective {
+		t.Fatalf("ratify projection = %#v", projection.Acts[0])
+	}
+	if projection.Acts[1].Type != "supersede" || projection.Acts[1].Text != "reason" {
+		t.Fatalf("supersede projection = %#v", projection.Acts[1])
+	}
+	if projection.Statements[1].Timestamp != 101 || projection.Acts[0].Timestamp != 102 || projection.Acts[1].Timestamp != 103 {
+		t.Fatalf("projection lost event timestamps: statements=%#v acts=%#v", projection.Statements, projection.Acts)
+	}
+}
+
+func TestCanonicalPayloadRejectsAlternateEncoding(t *testing.T) {
+	if _, err := Decode(SchemaState, []byte(`{"text":"x","kind":"assert"}`)); err == nil {
+		t.Fatal("accepted non-canonical field order")
+	}
+}
+
+func TestParticipantRosterKindIsJudgedByTheFold(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "joins", Body: map[string]string{"actor": agent, "name": "Agent", "role": "participant"}}),
+	})
+	decision, _ := projection.Decision("e1")
+	if decision.Verdict != Ineffective || decision.Reason != "participant roster state requires body.kind" {
+		t.Fatalf("participant roster decision = %+v", decision)
+	}
+}
+
+// worldRecords seeds a roster and appends the case under test.
+func worldRecords(t testing.TB, extra ...Record) []Record {
+	t.Helper()
+	base := []Record{
+		event(t, "w0", operator, SchemaState, State{Kind: KindRoster, Text: "Operator begins the workroom", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
+		event(t, "w1", operator, SchemaState, State{Kind: KindRoster, Text: "Agent joins", Body: map[string]string{"actor": agent, "name": "Agent", "role": "agent"}}, "w0"),
+		event(t, "w2", operator, SchemaRatify, Ratify{Target: "w1"}, "w1"),
+	}
+	return append(base, extra...)
+}
+
+func artifactByEvent(t *testing.T, projection Projection, id string) Artifact {
+	t.Helper()
+	for _, artifact := range projection.Artifacts {
+		if artifact.Event == id {
+			return artifact
+		}
+	}
+	t.Fatalf("no artifact projected for %s", id)
+	return Artifact{}
+}
+
+func statementByEvent(t *testing.T, projection Projection, id string) Statement {
+	t.Helper()
+	for _, statement := range projection.Statements {
+		if statement.Event == id {
+			return statement
+		}
+	}
+	t.Fatalf("no statement projected for %s", id)
+	return Statement{}
+}
+
+// A retired artifact under a document means the world moved, and the mark must
+// survive intermediate hops. The distinction is the whole point: only this
+// kind of staleness means go and re-read the code.
+func TestRetiredArtifactMarksDependentsAsDescribingASupersededWorld(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI reference page", Body: map[string]string{"path": "docs/reference/gs.md", "commit": "bbb222"}}, "w3"),
+		event(t, "w5", agent, SchemaState, State{Kind: KindAssert, Text: "The reference documents every subcommand"}, "w4"),
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation, replacing aaa111", Body: map[string]string{"path": "spike/cmd/gs", "commit": "ccc333"}}, "w0"),
+		event(t, "w7", agent, SchemaSupersede, Supersede{Target: "w3", Text: "Behaviour replaced at ccc333"}, "w3", "w6"),
+	)
+	projection := Fold(records)
+
+	page := artifactByEvent(t, projection, "w4")
+	if !page.Stale || !page.DescribesSupersededWorld {
+		t.Fatalf("page resting on a retired artifact: stale=%v world=%v", page.Stale, page.DescribesSupersededWorld)
+	}
+	claim := statementByEvent(t, projection, "w5")
+	if !claim.Stale || !claim.DescribesSupersededWorld {
+		t.Fatalf("second hop lost the distinction: stale=%v world=%v", claim.Stale, claim.DescribesSupersededWorld)
+	}
+}
+
+// Being withdrawn and standing over a withdrawal are two facts, and an artifact
+// has to carry them apart. Fused into one boolean they read the same to every
+// caller, and a gate that must refuse the first while admitting the second has
+// nothing to read.
+func TestArtifactCarriesRetirementAndStalenessApart(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "feature built on it", Body: map[string]string{"path": "spike/cmd/feature", "commit": "bbb222"}}, "w3"),
+		event(t, "w5", agent, SchemaSupersede, Supersede{Target: "w3", Text: "Behaviour replaced"}, "w3"),
+	)
+	projection := Fold(records)
+
+	replaced := artifactByEvent(t, projection, "w3")
+	if !replaced.Retired || replaced.Stale {
+		t.Fatalf("the superseded artifact: retired=%v stale=%v, want retired and not stale", replaced.Retired, replaced.Stale)
+	}
+	standing := artifactByEvent(t, projection, "w4")
+	if standing.Retired || !standing.Stale {
+		t.Fatalf("the artifact above it: retired=%v stale=%v, want stale and not retired", standing.Retired, standing.Stale)
+	}
+	// bbb222 is still bbb222. Staleness is a reason to re-read the reasoning,
+	// never evidence that the pointer stopped pointing.
+	if standing.Commit != "bbb222" {
+		t.Fatalf("stale artifact commit = %q", standing.Commit)
+	}
+}
+
+// Ordinary staleness must not claim the world moved. The golden fixture's
+// artifact goes stale because its governing request died, which is the
+// argument dying, not the code changing.
+func TestRetiredArgumentIsStaleWithoutDescribingASupersededWorld(t *testing.T) {
+	artifact := golden(t).Artifacts[0]
+	if !artifact.Stale {
+		t.Fatal("golden artifact is no longer stale; the fixture no longer tests this")
+	}
+	if artifact.DescribesSupersededWorld {
+		t.Fatal("a retired request was reported as the world moving")
+	}
+}
+
+// The succession warning is a to-do, so doing the work must clear it.
+func TestSuccessionWarningAppearsUntilThePredecessorIsSuperseded(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation, replacing aaa111", Body: map[string]string{"path": "spike/cmd/gs", "commit": "ccc333"}}, "w0"),
+		event(t, "w5", agent, SchemaSupersede, Supersede{Target: "w3", Text: "Behaviour replaced at ccc333"}, "w3", "w4"),
+	)
+
+	before := Fold(records[:len(records)-1])
+	if !artifactByEvent(t, before, "w4").SuccessionUnrecorded {
+		t.Fatal("a live predecessor at the same path raised no warning")
+	}
+	after := Fold(records)
+	if artifactByEvent(t, after, "w4").SuccessionUnrecorded {
+		t.Fatal("warning survived the supersession that answers it")
+	}
+	if artifactByEvent(t, after, "w3").SuccessionUnrecorded {
+		t.Fatal("the first artifact at a path warned about a predecessor it does not have")
+	}
+}
+
+// A different path is a different thing; the fold must not infer that two
+// spellings mean the same tree.
+func TestSuccessionWarningComparesPathsExactly(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI and its docs", Body: map[string]string{"path": "spike/cmd/gs,docs", "commit": "ccc333"}}, "w0"),
+	)
+	if artifactByEvent(t, Fold(records), "w4").SuccessionUnrecorded {
+		t.Fatal("a comma-joined path was treated as succeeding one of its members")
+	}
+}
+
+// An artifact with no basis can never go stale, so its silence must not read
+// as currency.
+func TestUnbridgedArtifactIsMarkedUnableToFlare(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "Unbridged work", Body: map[string]string{"path": "spike", "commit": "aaa111"}}),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "Bridged work", Body: map[string]string{"path": "ui", "commit": "bbb222"}}, "w0"),
+	)
+	projection := Fold(records)
+	if !artifactByEvent(t, projection, "w3").UnableToFlare {
+		t.Fatal("an artifact citing nothing was not marked unable to flare")
+	}
+	if artifactByEvent(t, projection, "w4").UnableToFlare {
+		t.Fatal("an artifact citing a basis was marked unable to flare")
+	}
+}
+
+// The marks are for humans, so they must reach the human page and not only
+// the JSON.
+func TestStatusPageCarriesTheArtifactMarks(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI reference page", Body: map[string]string{"path": "docs/reference/gs.md", "commit": "bbb222"}}, "w3"),
+		event(t, "w5", agent, SchemaState, State{Kind: KindArtifact, Text: "Unbridged work", Body: map[string]string{"path": "ui", "commit": "ccc333"}}),
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation again", Body: map[string]string{"path": "spike/cmd/gs", "commit": "ddd444"}}, "w0"),
+		event(t, "w7", agent, SchemaSupersede, Supersede{Target: "w3", Text: "Behaviour replaced at ddd444"}, "w3", "w6"),
+	)
+	page := string(RenderStatus(Fold(records)))
+	for _, want := range []string{
+		"STALE — describes a superseded world",
+		"unable to flare",
+		"cite no basis and can never go stale",
+	} {
+		if !bytes.Contains([]byte(page), []byte(want)) {
+			t.Fatalf("status page omits %q\n%s", want, page)
+		}
+	}
+}
+
+// One unrecorded succession at a long-lived path repeats on every later link
+// of that chain, so the page must report situations as well as rows. A mark
+// that trains readers to scroll past it is worse than no mark.
+func TestStatusPageCountsSuccessionPathsAsWellAsArtifacts(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "one", Body: map[string]string{"path": "spike", "commit": "a1"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "two", Body: map[string]string{"path": "spike", "commit": "a2"}}, "w0"),
+		event(t, "w5", agent, SchemaState, State{Kind: KindArtifact, Text: "three", Body: map[string]string{"path": "spike", "commit": "a3"}}, "w0"),
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "four", Body: map[string]string{"path": "ui", "commit": "b1"}}, "w0"),
+		event(t, "w7", agent, SchemaState, State{Kind: KindArtifact, Text: "five", Body: map[string]string{"path": "ui", "commit": "b2"}}, "w0"),
+	)
+	projection := Fold(records)
+	// Three supersessions are owed: a1 and a2 on the spike path, b1 on ui.
+	// Not two, which is the path count.
+	if projection.OmittedSupersessions != 3 {
+		t.Fatalf("owed supersessions = %d, want 3", projection.OmittedSupersessions)
+	}
+	page := RenderStatus(projection)
+	want := "3 artifacts across 2 paths follow a live artifact at the same path without superseding it; supersessions still owed: 3"
+	if !bytes.Contains(page, []byte(want)) {
+		t.Fatalf("page does not separate owed acts from rows and paths, want %q\n%s", want, page)
+	}
+}
+
+// A predecessor owes its retirement only while something live stands in its
+// place. Withdraw the successor and the predecessor is the current artifact
+// for its path again, so following an owed-supersession warning there would
+// retire the current artifact for a replacement that no longer exists.
+func TestWithdrawnSuccessorLeavesNothingOwed(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "one", Body: map[string]string{"path": "spike", "commit": "a1"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "two", Body: map[string]string{"path": "spike", "commit": "a2"}}, "w0"),
+		event(t, "w5", agent, SchemaSupersede, Supersede{Target: "w4", Text: "withdrawn; a1 stands again"}, "w4"),
+		// Positive control: a live successor on another path still owes one.
+		// Without it this passes for an implementation that counts nothing.
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "three", Body: map[string]string{"path": "ui", "commit": "b1"}}, "w0"),
+		event(t, "w7", agent, SchemaState, State{Kind: KindArtifact, Text: "four", Body: map[string]string{"path": "ui", "commit": "b2"}}, "w0"),
+	)
+	projection := Fold(records)
+	withdrawn := artifactByEvent(t, projection, "w4")
+	if !withdrawn.Retired {
+		t.Fatal("a2 is not retired; the supersession was ineffective and the case is untested")
+	}
+	if projection.OmittedSupersessions != 1 {
+		t.Fatalf("owed supersessions = %d, want 1 (b1 only; a1's only successor was withdrawn)", projection.OmittedSupersessions)
+	}
+	// The row stays as history — a2 really did follow a live a1 — while the
+	// owed count says there is nothing left to do about it.
+	if !withdrawn.SuccessionUnrecorded {
+		t.Fatal("a2 stopped recording that it followed a live a1")
+	}
+}
+
+// Rows and owed acts agree in the fixture above, so it cannot show the
+// aggregate is the right quantity. A fourth artifact on one path makes them
+// differ: four rows notice a live ancestor while four supersessions are owed
+// and a naive sum of per-row figures would give seven.
+func TestOwedSupersessionsDivergeFromRowCount(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "one", Body: map[string]string{"path": "spike", "commit": "a1"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "two", Body: map[string]string{"path": "spike", "commit": "a2"}}, "w0"),
+		event(t, "w5", agent, SchemaState, State{Kind: KindArtifact, Text: "three", Body: map[string]string{"path": "spike", "commit": "a3"}}, "w0"),
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "four", Body: map[string]string{"path": "spike", "commit": "a4"}}, "w0"),
+		event(t, "w7", agent, SchemaState, State{Kind: KindArtifact, Text: "five", Body: map[string]string{"path": "ui", "commit": "b1"}}, "w0"),
+		event(t, "w8", agent, SchemaState, State{Kind: KindArtifact, Text: "six", Body: map[string]string{"path": "ui", "commit": "b2"}}, "w0"),
+	)
+	projection := Fold(records)
+	if projection.OmittedSupersessions != 4 {
+		t.Fatalf("owed supersessions = %d, want 4 (a1, a2, a3, b1)", projection.OmittedSupersessions)
+	}
+	sum := 0
+	for _, artifact := range projection.Artifacts {
+		sum += artifact.LivePredecessors
+		if artifact.Commit == "a4" && artifact.LivePredecessors != 3 {
+			t.Fatalf("a4 live predecessors = %d, want 3", artifact.LivePredecessors)
+		}
+	}
+	if sum == projection.OmittedSupersessions {
+		t.Fatalf("per-row sum %d equals the owed count; the fixture cannot tell them apart", sum)
+	}
+}
+
+// Retiring the immediate predecessor must not clear the warning while an
+// earlier artifact at the same path is still live.
+func TestRetiringOnePredecessorDoesNotHideAnEarlierLiveOne(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "one", Body: map[string]string{"path": "spike", "commit": "a1"}}, "w0"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "two", Body: map[string]string{"path": "spike", "commit": "a2"}}, "w0"),
+		event(t, "w5", operator, SchemaSupersede, Supersede{Target: "w4", Text: "retire the middle one"}, "w4"),
+		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "three", Body: map[string]string{"path": "spike", "commit": "a3"}}, "w0"),
+	)
+	projection := Fold(records)
+	seen := false
+	for _, artifact := range projection.Artifacts {
+		if artifact.Commit != "a3" {
+			continue
+		}
+		seen = true
+		if !artifact.SuccessionUnrecorded {
+			t.Fatal("a3 reports a recorded succession while a1 is still live")
+		}
+		if artifact.LivePredecessors != 1 {
+			t.Fatalf("a3 live predecessors = %d, want 1 (a1 only; a2 retired)", artifact.LivePredecessors)
+		}
+	}
+	if !seen {
+		t.Fatal("a3 missing from the projection")
+	}
+}
+
+// A statement citing only events the log does not contain is as unable to
+// flare as one citing nothing: supersede needs a resolvable target.
+func TestArtifactCitingOnlyUnresolvableBasesCannotFlare(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "dangling", Body: map[string]string{"path": "spike", "commit": "a1"}}, "does-not-exist"),
+		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "anchored", Body: map[string]string{"path": "ui", "commit": "b1"}}, "w0"),
+	)
+	projection := Fold(records)
+	checked := 0
+	for _, artifact := range projection.Artifacts {
+		switch artifact.Commit {
+		case "a1":
+			checked++
+			if !artifact.UnableToFlare {
+				t.Fatal("artifact citing only an unresolvable basis reads as able to flare")
+			}
+		case "b1":
+			// Positive control: one resolvable basis is a handle a future
+			// supersession can take. Without this the assertion above passes
+			// for an implementation marking every artifact unable to flare.
+			checked++
+			if artifact.UnableToFlare {
+				t.Fatal("artifact with a resolvable basis marked unable to flare")
+			}
+		}
+	}
+	if checked != 2 {
+		t.Fatalf("checked %d artifacts, want 2", checked)
+	}
+}
