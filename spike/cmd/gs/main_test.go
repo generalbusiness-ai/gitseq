@@ -422,6 +422,128 @@ func TestBatchRefusesUndefinedLabelWithoutLanding(t *testing.T) {
 	}
 }
 
+// TestBatchRefusesTrailingInputWithoutLanding guards the parser boundary. A
+// valid array followed by anything but whitespace must be refused before the
+// first append. The stray-delimiter cases are the ones a decoder.More check
+// lets through: More asks whether the value being parsed has another element,
+// so a closing delimiter reads to it as a clean end of input and the acts
+// before it land.
+func TestBatchRefusesTrailingInputWithoutLanding(t *testing.T) {
+	for _, testCase := range []struct{ name, trailing string }{
+		{"stray array delimiter", "]"},
+		{"stray object delimiter", "}"},
+		{"delimiter on its own line", "\n]\n"},
+		{"second value", `{"verb": "state", "kind": "assert", "text": "second"}`},
+		{"unterminated value", "["},
+		{"malformed bytes", "not json"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			fixture := newBatchFixture(t)
+			before := fixture.snapshot()
+			printed, err := fixture.runFile("operator", fmt.Sprintf(`[
+			  {"verb": "state", "kind": "assert", "text": "first", "rests_on": [%q], "idempotency_key": "trailing-first"}
+			]`, fixture.genesis)+testCase.trailing)
+			var failure *batchError
+			if !errors.As(err, &failure) || failure.Code != "input" {
+				t.Fatalf("trailing %q error = %v, want a typed input failure", testCase.trailing, err)
+			}
+			if len(printed) != 0 {
+				t.Fatalf("trailing %q printed a report before failing: %s", testCase.trailing, printed)
+			}
+			after := fixture.snapshot()
+			if after.Head != before.Head || after.Depth != before.Depth {
+				t.Fatalf("trailing %q moved the log to %s depth %d, want %s depth %d",
+					testCase.trailing, after.Head, after.Depth, before.Head, before.Depth)
+			}
+		})
+	}
+	t.Run("trailing whitespace is not content", func(t *testing.T) {
+		fixture := newBatchFixture(t)
+		before := fixture.snapshot().Depth
+		report, err := fixture.run("operator", fmt.Sprintf(`[
+		  {"verb": "state", "kind": "assert", "text": "first", "rests_on": [%q], "idempotency_key": "whitespace-first"}
+		]`, fixture.genesis)+"\n\t \n")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Landed != 1 || report.Error != nil {
+			t.Fatalf("whitespace-terminated report = %#v", report)
+		}
+		if depth := fixture.snapshot().Depth; depth != before+1 {
+			t.Fatalf("depth = %d, want %d", depth, before+1)
+		}
+	})
+}
+
+// TestBatchRetryAfterPartialLandingReplaysPrefixAndLandsSuffix is the recovery
+// case: the first run stops mid-chain, so only a prefix is durable. The second
+// run of the same file replays that prefix under its idempotency key, resolves
+// the label to the event already minted, and lands only the suffix.
+func TestBatchRetryAfterPartialLandingReplaysPrefixAndLandsSuffix(t *testing.T) {
+	fixture := newBatchFixture(t)
+	// The second act is addressed to an actor the roster does not carry yet,
+	// so it cannot be signed and the chain stops after the first act.
+	acts := fmt.Sprintf(`[
+	  {"label": "note", "verb": "state", "kind": "assert", "text": "the prefix is durable",
+	   "rests_on": [%q], "idempotency_key": "partial-assert"},
+	  {"verb": "state", "kind": "request", "text": "finish the chain",
+	   "body": {"to": "@latecomer", "conditions": "the suffix lands once"},
+	   "rests_on": ["$note"], "idempotency_key": "partial-request"}
+	]`, fixture.genesis)
+
+	before := fixture.snapshot()
+	first, err := fixture.run("operator", acts)
+	if err == nil {
+		t.Fatal("batch naming an unknown performer succeeded, so no prefix was left partly landed")
+	}
+	if first.Landed != 1 || first.Replayed != 0 || first.Error == nil {
+		t.Fatalf("partial run report = %#v", first)
+	}
+	if first.Acts[0].Outcome != "landed" || first.Acts[1].Outcome != "failed" {
+		t.Fatalf("partial run acts = %#v", first.Acts)
+	}
+	partial := fixture.snapshot()
+	if partial.Depth != before.Depth+1 {
+		t.Fatalf("partial run depth = %d, want %d", partial.Depth, before.Depth+1)
+	}
+
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "operator", "latecomer", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	admitted := fixture.snapshot()
+
+	second, err := fixture.run("operator", acts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Landed != 1 || second.Replayed != 1 || second.Error != nil {
+		t.Fatalf("retry report = %#v", second)
+	}
+	if second.Acts[0].Outcome != "replayed" || second.Acts[0].Event != first.Acts[0].Event {
+		t.Fatalf("retry act 0 = %#v, want the first run's event %s replayed", second.Acts[0], first.Acts[0].Event)
+	}
+	if second.Acts[1].Outcome != "landed" || second.Acts[1].Event == "" {
+		t.Fatalf("retry act 1 = %#v, want the suffix landed", second.Acts[1])
+	}
+	after := fixture.snapshot()
+	if after.Depth != admitted.Depth+1 {
+		t.Fatalf("retry depth = %d, want %d: only the suffix should have landed", after.Depth, admitted.Depth+1)
+	}
+	if !contains(after.Projection.Provenance[second.Acts[1].Event], first.Acts[0].Event) {
+		t.Fatalf("suffix provenance = %#v, want the replayed prefix event %s",
+			after.Projection.Provenance[second.Acts[1].Event], first.Acts[0].Event)
+	}
+	assertions := 0
+	for _, statement := range after.Projection.Statements {
+		if statement.Text == "the prefix is durable" {
+			assertions++
+		}
+	}
+	if assertions != 1 {
+		t.Fatalf("the prefix act appears %d times in the projection, want once", assertions)
+	}
+}
+
 func TestBatchMixesStateAndRatify(t *testing.T) {
 	fixture := newBatchFixture(t)
 	before := fixture.snapshot().Depth
@@ -481,9 +603,10 @@ func (f batchFixture) snapshot() app.Snapshot {
 	return snapshot
 }
 
-// run writes the acts to a file, runs the batch command against it, and decodes
-// the report the command prints.
-func (f batchFixture) run(actor, acts string) (batchReport, error) {
+// runFile writes the acts to a file, runs the batch command against it, and
+// returns whatever the command printed together with its error. Input rejected
+// before the first append prints nothing at all, so the raw bytes matter.
+func (f batchFixture) runFile(actor, acts string) ([]byte, error) {
 	f.t.Helper()
 	path := filepath.Join(f.t.TempDir(), "batch.json")
 	if err := os.WriteFile(path, []byte(acts), 0o600); err != nil {
@@ -503,6 +626,13 @@ func (f batchFixture) run(actor, acts string) (batchReport, error) {
 	if err != nil {
 		f.t.Fatal(err)
 	}
+	return printed, batchErr
+}
+
+// run is runFile for the cases that reach the report the command prints.
+func (f batchFixture) run(actor, acts string) (batchReport, error) {
+	f.t.Helper()
+	printed, batchErr := f.runFile(actor, acts)
 	var report batchReport
 	if err := json.Unmarshal(printed, &report); err != nil {
 		f.t.Fatalf("decode batch report %q: %v", printed, err)

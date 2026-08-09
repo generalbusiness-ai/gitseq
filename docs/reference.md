@@ -213,7 +213,9 @@ of `state`, `ratify`, or `supersede`, and that verb's usual fields: `kind`,
 A later act may cite an earlier act of the same batch as `$label` in `rests_on`
 or `target`, and the label resolves to the event identifier minted for that act.
 The whole file is parsed and every reference checked before the first append, so
-a malformed entry or an unknown or forward label lands nothing.
+a malformed entry or an unknown or forward label lands nothing. The array must
+be the whole input: anything after it other than whitespace, including a stray
+`]` or a second value, is refused before the first append.
 
 The batch is not atomic. Events are commits on `refs/seq/<genesis>`, and the
 kernel owns the whole write for each one: envelope and actor signature checks,

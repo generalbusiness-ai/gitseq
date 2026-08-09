@@ -617,11 +617,12 @@ type batchReport struct {
 //	]
 //
 // An array rather than one act per line, because the whole file is then parsed
-// before anything lands: a malformed entry anywhere costs nothing. A later act
-// may cite an earlier act of the same batch as "$label" in rests_on or target,
-// and the label resolves to the event id minted for that act. Every reference
-// is checked before the first append, so an unknown or forward label also lands
-// nothing.
+// before anything lands: a malformed entry anywhere costs nothing. The array
+// must be the whole input — only whitespace may follow it — so trailing bytes
+// are refused rather than silently ignored. A later act may cite an earlier act
+// of the same batch as "$label" in rests_on or target, and the label resolves to
+// the event id minted for that act. Every reference is checked before the first
+// append, so an unknown or forward label also lands nothing.
 //
 // Acts land one at a time; the batch is not atomic. Events are commits on
 // refs/seq/<genesis>, and the kernel owns the whole write: envelope and actor
@@ -670,8 +671,8 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	return err
 }
 
-// readBatch reads the whole input before anything lands. An empty path or "-"
-// reads standard input.
+// readBatch reads the whole input before anything lands, and proves the act
+// array consumed all of it. An empty path or "-" reads standard input.
 func readBatch(path string) ([]batchAct, error) {
 	var content []byte
 	var err error
@@ -689,7 +690,14 @@ func readBatch(path string) ([]batchAct, error) {
 	if err := decoder.Decode(&acts); err != nil {
 		return nil, batchFail("input", "read batch acts: %v", err)
 	}
-	if decoder.More() {
+	// The array must be the whole input. decoder.More only reports whether the
+	// value being parsed has another element, so a stray closing delimiter
+	// reads to it as a clean end and the acts before it would land anyway.
+	// A second Decode that returns io.EOF is the proof: anything else left in
+	// the stream, well formed or not, decodes into a value or fails, and both
+	// reject the input before the first append.
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return nil, batchFail("input", "batch input has content after the act array")
 	}
 	if len(acts) == 0 {
