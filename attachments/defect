@@ -1,1 +1,0 @@
-cmd/gitseq-mcp main.go passes call.Arguments directly to /v0/wait; the strict endpoint rejects the adapter-only repo field with json: unknown field repo. say clones the same field into /v0/say.
