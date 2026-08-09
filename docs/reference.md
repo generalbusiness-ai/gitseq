@@ -549,6 +549,15 @@ results carry neither the modern envelope nor its cache directives.
 `ratify`, `supersede`. `status` returns a composite cursor which you pass
 back to `wait` explicitly.
 
+`whoami` returns the effective actor identity and capped roles at an exact
+durable frontier. A current loopback resident is labeled
+`resident_statusview_current`; the client refuses redirects and guards the
+answer with a two-second, 64 KiB, strict-JSON boundary plus matching local
+genesis and head checks. A local fallback sets `degraded: true` and names the
+actual verified path: `verified_signed_checkpoint_tail`,
+`verified_incremental_tail`, or `verified_cold_full_audit`. The response never
+includes the local actor key path, and omitted non-semantic roles are counted.
+
 **Degraded operation.** If the resident service is down, the durable
 tools keep working directly against the local log and report a
 `degraded` live cursor. `say` and `presence` fail rather than pretend —
