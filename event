@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"gs init at docs-set head a4f4a57a734d; the page describes the behaviour governed by the acts it rests on.","body":{"commit":"a4f4a57a734dcaa241da60f84c5b63088ced44dc","path":"docs/reference/gs/init.md"}}
+{"kind":"artifact","text":"gs merge at docs-set head a4f4a57a734d; the page describes the behaviour governed by the acts it rests on.","body":{"commit":"a4f4a57a734dcaa241da60f84c5b63088ced44dc","path":"docs/reference/gs/merge.md"}}
