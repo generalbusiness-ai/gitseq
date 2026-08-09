@@ -42,6 +42,9 @@ export interface Artifact {
   event: string;
   path: string;
   commit: string;
+  // Retired and stale are separate facts: the pointer was withdrawn, or a
+  // basis under it moved while the commit it names stayed exactly what it was.
+  retired?: boolean;
   stale: boolean;
 }
 

@@ -181,7 +181,7 @@ func actorTotals(projection workroom.Projection, depth int) ActorTotals {
 	}
 	stale, ineffective, disputed := 0, 0, 0
 	for _, artifact := range projection.Artifacts {
-		if artifact.Stale {
+		if artifact.Retired || artifact.Stale {
 			stale++
 		}
 	}
