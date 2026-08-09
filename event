@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d437d9ccbd71bcdcb89c51e542428c81daadfcdb"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f33c5d47a5ccdd4783fbb8fd4e8108930bcfcafe","text":"Current main advanced to 118e3996 with the Work Topics/Board implementation, and the stale-commitment head now has integration conflicts in the same UI projection. This review request was unclaimed; it is retired before integrating main. A replacement exact-head request will follow after resolution and gates."}
