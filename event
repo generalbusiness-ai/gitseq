@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Corrected replacement-link UI implementation at exact head dbee8465af786925404e50f6cb9422c5dcfac0e5.","body":{"branch":"task/ui-replacement-links","commit":"dbee8465af786925404e50f6cb9422c5dcfac0e5","path":"."}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:46247ee5612d1fa5f35e3e33733a9bd12183e83b","text":"Replaced by corrected exact-head artifact 0acf043e after changes-requested review 4205ad86."}
