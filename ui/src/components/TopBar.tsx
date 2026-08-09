@@ -90,7 +90,8 @@ export function TopBar({
                 <span key={person.label} className="relative">
                   <Avatar
                     fingerprint={fingerprint}
-                    name={person.sessions > 1 ? `${person.name} — ${person.sessions} sessions` : person.name}
+                    name={person.name}
+                    title={person.sessions > 1 ? `${person.name} — ${person.sessions} sessions` : person.name}
                     size={24}
                     onClick={() => onOpenProfile(fingerprint)}
                     className="ring-2 ring-background"

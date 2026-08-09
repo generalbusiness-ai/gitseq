@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { hueOf, initialsOf } from "../src/lib/avatar.ts";
 import { RetryKeys, parsePresenceLabel, presentActors, threadTargetKey } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
@@ -63,6 +64,15 @@ test("presence counts people, not the sessions each of them leases", () => {
     { label: "codex (5f12e916d136)", name: "codex", fingerprint: "5f12e916d136", sessions: 1 },
     { label: "hugh (7fbc80f1ba06)", name: "hugh", fingerprint: "7fbc80f1ba06", sessions: 1 },
   ]);
+});
+
+test("avatar initials read the actor's name, not a decorated label", () => {
+  assert.equal(initialsOf("claude"), "CL");
+  assert.equal(initialsOf("Ada Lovelace"), "AL");
+  // The label a multi-session avatar hovers with must never be passed as the
+  // name: these initials are what that mistake looks like.
+  assert.equal(initialsOf("claude — 3 sessions"), "C3");
+  assert.equal(hueOf("a5d35aa7e479"), hueOf("a5d35aa7e479"));
 });
 
 test("presence keeps distinct actors apart even when they share a name", () => {
