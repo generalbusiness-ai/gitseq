@@ -594,12 +594,22 @@ test("every kind wears its own name, bar the two whose names read as jargon", ()
 test("an unreadable act carries its own reason and consequence", () => {
   const undefinedKind = interpretationNotice("undefined-kind", 'undefined kind "commit"');
   assert.equal(undefinedKind.reason, 'undefined kind "commit"');
-  // The consequence is the part a reader would otherwise have to infer: the
-  // act is kept, but the promise it was written to be never formed.
-  assert.match(undefinedKind.consequence, /never formed/);
+  assert.match(undefinedKind.consequence, /recorded without force/);
+  // Citations are NOT among the things that fail to form. The fold projects
+  // rests_on provenance for every record before it judges any of them, so an
+  // unreadable act still cites what it cited; claiming otherwise was false
+  // against the two live undefined-kind acts, which each have a citation edge.
+  assert.doesNotMatch(undefinedKind.consequence, /citation/i);
 
-  const uninterpretable = interpretationNotice("uninterpretable", "activated interpreter execution is not held");
-  assert.match(uninterpretable.consequence, /until the interpreter is bound/);
+  // An unbound interpreter is remediable and says so.
+  const unbound = interpretationNotice("uninterpretable", "uninterpretable: activated interpreter execution is not held");
+  assert.match(unbound.consequence, /unless one is bound/);
+
+  // A permanently invalid definition is the same verdict and must NOT promise
+  // that binding an interpreter would rescue it — nothing can.
+  const permanent = interpretationNotice("uninterpretable", 'uninterpretable kind definition: basis kind "finding" is undefined');
+  assert.doesNotMatch(permanent.consequence, /unless one is bound/);
+  assert.match(permanent.consequence, /not something a later interpreter would resolve/);
 
   // Ordinary verdicts get no notice: this surface is only for acts the room
   // could not read, not for every act that lacks force.

@@ -90,20 +90,31 @@ export function isInterpretationGap(verdict?: string): boolean {
   return Boolean(verdict && interpretationVerdicts.has(verdict));
 }
 
-// What to say beside the act. The reason is the fold's own words — the kind it
-// could not read, or the interpreter it could not run — and the consequence
-// spells out what a reader would otherwise have to infer: the act landed and
-// is permanent, but nothing rests on it, so any promise or report it was
-// written to carry never formed.
+// What to say beside the act. The reason is the fold's own words; the
+// consequence says only what the verdict actually settles.
+//
+// Two things this must not overclaim, both learned by getting them wrong.
+// Citations are not among the things that fail to form: the fold projects
+// rests_on provenance for every record before it judges any of them, so an
+// act the room cannot read still cites what it cited. And an uninterpretable
+// verdict does not always mean "wait for a binding" — the same verdict covers
+// kind definitions that are permanently invalid, which no later interpreter
+// can rescue. Only the unbound-interpreter reason is remediable, and it says
+// so in its own words, so key on that rather than on the verdict alone.
+const unboundInterpreter = "interpreter execution is not held";
+
 export function interpretationNotice(verdict?: string, reason?: string): { verdict: string; reason: string; consequence: string } | undefined {
   if (!isInterpretationGap(verdict)) return undefined;
+  const awaitingBinding = Boolean(reason?.includes(unboundInterpreter));
   return {
     verdict: verdict!,
     reason: reason ?? "",
     consequence:
       verdict === "undefined-kind"
-        ? "This act is recorded but no rule reads it, so anything it was written to establish — a promise, a report, a citation — never formed."
-        : "The room cannot run the interpreter this act needs, so it is recorded without force until the interpreter is bound.",
+        ? "No rule in this room reads a kind by this name, so the act is recorded without force: whatever its text undertakes, nothing here acts on it."
+        : awaitingBinding
+          ? "The room holds no interpreter that can read this act, so it is recorded without force unless one is bound."
+          : "The room cannot interpret this act, so it is recorded without force; the reason above is not something a later interpreter would resolve.",
   };
 }
 

@@ -230,7 +230,8 @@ test("an unreadable act explains itself where it is rendered", async () => {
     const visible = html.replace(/title="[^"]*"/g, "");
     assert.match(visible, /undefined kind/, "the reason appears only in a hover title");
     // And what it cost: the promise this act was written to be never formed.
-    assert.match(visible, /never formed/, "the consequence of the refusal is not stated");
+    assert.match(visible, /recorded without force/, "the consequence of the refusal is not stated");
+    assert.doesNotMatch(visible, /citation/i, "claims a citation never formed, but provenance is projected for every record");
 
     // A standing interpretive limit is not work waiting on anyone.
     assert.equal(workSummary(projection).stale, 0, "an unreadable act is counted as attention owed");
