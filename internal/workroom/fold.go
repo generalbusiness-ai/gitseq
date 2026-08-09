@@ -57,6 +57,7 @@ type Commitment struct {
 	Promise     string `json:"promise,omitempty"`
 	Report      string `json:"report,omitempty"`
 	Status      string `json:"status"`
+	Stale       bool   `json:"stale,omitempty"`
 	WaitingOn   string `json:"waiting_on,omitempty"`
 }
 
@@ -1002,12 +1003,14 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 		promises := f.directDependents(requestRecord.record.ID, LifecyclePromise)
 		if len(promises) == 0 {
 			status := "open"
+			isStale := stale[requestRecord.record.ID]
 			if f.retired(requestRecord.record.ID) {
 				status = "withdrawn"
 			} else if stale[requestRecord.record.ID] {
 				status = "stale"
+				isStale = true
 			}
-			commitments = append(commitments, Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, AddressedTo: request.Body["to"], Status: status})
+			commitments = append(commitments, Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, AddressedTo: request.Body["to"], Status: status, Stale: isStale})
 			continue
 		}
 		for _, promiseRecord := range promises {
@@ -1019,9 +1022,6 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 			case f.retired(promiseRecord.record.ID):
 				entry.Status = "reneged"
 				entry.WaitingOn = ""
-			case stale[requestRecord.record.ID] || stale[promiseRecord.record.ID]:
-				entry.Status = "stale"
-				entry.WaitingOn = ""
 			default:
 				reports := f.directDependents(promiseRecord.record.ID, LifecycleReport)
 				for index := len(reports) - 1; index >= 0; index-- {
@@ -1032,14 +1032,16 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 					entry.Report = report.record.ID
 					entry.Status = "reported"
 					entry.WaitingOn = requestRecord.record.Actor
-					if stale[report.record.ID] {
-						entry.Status = "stale"
-						entry.WaitingOn = ""
-					} else if f.ratified(report.record.ID) {
+					entry.Stale = stale[requestRecord.record.ID] || stale[promiseRecord.record.ID] || stale[report.record.ID]
+					if f.ratified(report.record.ID) {
 						entry.Status = "satisfied"
 						entry.WaitingOn = ""
 					}
 					break
+				}
+				if entry.Report == "" && (stale[requestRecord.record.ID] || stale[promiseRecord.record.ID]) {
+					entry.Status = "stale"
+					entry.Stale = true
 				}
 			}
 			commitments = append(commitments, entry)

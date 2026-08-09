@@ -46,8 +46,10 @@ type Orientation struct {
 }
 
 type CommitmentView struct {
-	Request   string `json:"request"`
-	Status    string `json:"status"`
+	Request string `json:"request"`
+	Status  string `json:"status"`
+	// Stale qualifies Status; it never replaces it. See statusview.Commitment.
+	Stale     bool   `json:"stale,omitempty"`
 	Requester string `json:"requester"`
 	Performer string `json:"performer,omitempty"`
 	Text      string `json:"text,omitempty"`
@@ -66,8 +68,10 @@ type EventView struct {
 }
 
 type ActorTotals struct {
-	Depth            int            `json:"depth"`
-	Commitments      map[string]int `json:"commitments,omitempty"`
+	Depth       int            `json:"depth"`
+	Commitments map[string]int `json:"commitments,omitempty"`
+	// StaleCommitments counts, per status, how many carry the stale qualifier.
+	StaleCommitments map[string]int `json:"stale_commitments,omitempty"`
 	Artifacts        int            `json:"artifacts"`
 	StaleArtifacts   int            `json:"stale_artifacts"`
 	IneffectiveActs  int            `json:"ineffective_acts"`
@@ -164,7 +168,7 @@ func actIndex(projection workroom.Projection) map[string]workroom.Act {
 
 func viewCommitment(projection workroom.Projection, statements map[string]workroom.Statement, commitment workroom.Commitment) CommitmentView {
 	view := CommitmentView{
-		Request: commitment.Request, Status: commitment.Status,
+		Request: commitment.Request, Status: commitment.Status, Stale: commitment.Stale,
 		Requester: Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
 		Promise: commitment.Promise, Report: commitment.Report,
 	}
@@ -175,9 +179,12 @@ func viewCommitment(projection workroom.Projection, statements map[string]workro
 }
 
 func actorTotals(projection workroom.Projection, depth int) ActorTotals {
-	counts := make(map[string]int)
+	counts, staleCounts := make(map[string]int), make(map[string]int)
 	for _, commitment := range projection.Commitments {
 		counts[commitment.Status]++
+		if commitment.Stale {
+			staleCounts[commitment.Status]++
+		}
 	}
 	stale, ineffective, disputed := 0, 0, 0
 	for _, artifact := range projection.Artifacts {
@@ -193,7 +200,7 @@ func actorTotals(projection workroom.Projection, depth int) ActorTotals {
 			disputed++
 		}
 	}
-	return ActorTotals{Depth: depth, Commitments: counts, Artifacts: len(projection.Artifacts), StaleArtifacts: stale,
+	return ActorTotals{Depth: depth, Commitments: counts, StaleCommitments: staleCounts, Artifacts: len(projection.Artifacts), StaleArtifacts: stale,
 		IneffectiveActs: ineffective, DisputedActs: disputed, Statements: len(projection.Statements),
 		FullProjectionAt: "GET /v0/status, gs status --all, or gs status --json"}
 }
@@ -233,7 +240,7 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 		}
 	}
 	for _, commitment := range projection.Commitments {
-		if !involves(commitment, fingerprint) || commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
+		if !involves(commitment, fingerprint) || (terminal[commitment.Status] && !commitment.Stale) {
 			continue
 		}
 		view := viewCommitment(projection, statements, commitment)
@@ -321,7 +328,7 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 		delta.Durable = append(delta.Durable, view)
 	}
 	for _, commitment := range projection.Commitments {
-		if !involves(commitment, fingerprint) || commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
+		if !involves(commitment, fingerprint) || (terminal[commitment.Status] && !commitment.Stale) {
 			continue
 		}
 		view := viewCommitment(projection, statements, commitment)

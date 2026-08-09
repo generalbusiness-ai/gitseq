@@ -49,10 +49,10 @@ func sampleStatus(events int) service.Status {
 	projection.Statements = append(projection.Statements,
 		workroom.Statement{Event: "act:theirs-failed", Actor: theirs, Kind: workroom.KindPropose, Text: "not my business"})
 	projection.Commitments = []workroom.Commitment{
-		{Request: "request:for-me", Requester: theirs, Performer: mine, Status: "requested", WaitingOn: mine},
+		{Request: "request:for-me", Requester: theirs, Performer: mine, Status: "promised", WaitingOn: mine},
 		{Request: "request:for-them", Requester: mine, Performer: theirs, Status: "promised", WaitingOn: theirs},
 		{Request: "request:done", Requester: theirs, Performer: mine, Status: "satisfied"},
-		{Request: "request:other", Requester: theirs, Performer: theirs, Status: "requested", WaitingOn: theirs},
+		{Request: "request:other", Requester: theirs, Performer: theirs, Status: "promised", WaitingOn: theirs},
 	}
 	projection.Artifacts = []workroom.Artifact{
 		{Event: "artifact:a", Path: ".", Commit: "abc", Stale: false},

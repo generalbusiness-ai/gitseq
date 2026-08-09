@@ -402,6 +402,12 @@ test("attention qualifies rather than replaces a lifecycle lane", () => {
     closed: true,
     lane: "closed",
   });
+  assert.deepEqual(workItemState({ request: "r", requester: "hugh", performer: "codex", report: "done", status: "satisfied", stale: true }), {
+    open: false,
+    attention: true,
+    closed: true,
+    lane: "closed",
+  });
 });
 
 test("Needs my action follows unresolved semantic responsibility, never a read watermark", () => {
