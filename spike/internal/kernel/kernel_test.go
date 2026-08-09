@@ -315,6 +315,29 @@ func appendExternalCommit(t *testing.T, f fixtureState, request Request, parent,
 	return commit
 }
 
+func appendExternalRotation(t *testing.T, f fixtureState, parent, successorPublicKey, signingKey string) string {
+	t.Helper()
+	message, err := rotationMessage(successorPublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := f.store.EmptyTree(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := f.store.SignedCommit(f.ctx, tree, parent, message, signingKey, gitstore.CommitIdentity{
+		AuthorName: "external rotation", AuthorEmail: "rotation@example.invalid",
+		CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, parent); err != nil {
+		t.Fatal(err)
+	}
+	return commit
+}
+
 func TestCreateRejectsSigningKeyThatDoesNotMatchDescriptor(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -387,6 +410,124 @@ func TestSubmitRefusesWrongSequencerKeyBeforeCAS(t *testing.T) {
 	}
 	if after != before {
 		t.Fatalf("rejected submission advanced ref: before=%s after=%s", before, after)
+	}
+}
+
+func TestSequencerKeyRotationAcrossFullAndIncrementalVerification(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	reader := NewReader(f.store)
+	first, err := Submit(f.ctx, f.store, f.request(t, private, "before-rotation", []byte("before"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+
+	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
+	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotation, err := Rotate(f.ctx, f.store, f.genesis, nextPublic, Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Submit(f.ctx, f.store, f.request(t, private, "after-rotation", []byte("after"), nil), Options{SigningKey: nextKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Full || loaded.BaseHead != first.Head || len(loaded.Events) != 1 || loaded.Events[0].Commit != second.Commit {
+		t.Fatalf("incremental load across rotation = %+v", loaded)
+	}
+	if loaded.Verification.Depth != 3 || loaded.Verification.Events != 2 || loaded.Verification.Head != second.Head {
+		t.Fatalf("verification after mid-log rotation = %+v", loaded.Verification)
+	}
+
+	thirdKey := filepath.Join(t.TempDir(), "third-sequencer")
+	thirdPublic, err := gitstore.GenerateSSHKey(f.ctx, thirdKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headRotation, err := Rotate(f.ctx, f.store, f.genesis, thirdPublic, Options{SigningKey: nextKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := Verify(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.Depth != 4 || verified.Events != 2 || verified.Head != headRotation.Head {
+		t.Fatalf("verification with rotation at head = %+v", verified)
+	}
+	if rotation.Commit == first.Commit || headRotation.Commit == second.Commit {
+		t.Fatal("rotation did not append its own kernel commit")
+	}
+}
+
+func TestRetiredSequencerKeyIsRefusedAfterRotation(t *testing.T) {
+	f := newFixture(t, "sha1")
+	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
+	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotation, err := Rotate(f.ctx, f.store, f.genesis, nextPublic, Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := f.request(t, actor(t), "retired-key", []byte("retired"), nil)
+	if _, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey}); err == nil || !strings.Contains(err.Error(), "sequencer signature") {
+		t.Fatalf("submission under retired key error = %v", err)
+	}
+	head, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if head != rotation.Head {
+		t.Fatalf("retired-key refusal moved ref: got=%s want=%s", head, rotation.Head)
+	}
+
+	forged := appendExternalCommit(t, f, request, rotation.Head, f.signingKey)
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), forged+" sequencer signature") {
+		t.Fatalf("audit of retired-key event error = %v", err)
+	}
+}
+
+func TestRotationMustBeSignedByCurrentSequencerKey(t *testing.T) {
+	f := newFixture(t, "sha1")
+	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
+	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attackerKey := filepath.Join(t.TempDir(), "attacker-sequencer")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, attackerKey); err != nil {
+		t.Fatal(err)
+	}
+	before, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Rotate(f.ctx, f.store, f.genesis, nextPublic, Options{SigningKey: attackerKey}); err == nil || !strings.Contains(err.Error(), "sequencer signature") {
+		t.Fatalf("rotation under non-current key error = %v", err)
+	}
+	after, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("refused rotation moved ref: before=%s after=%s", before, after)
+	}
+
+	forged := appendExternalRotation(t, f, before, nextPublic, attackerKey)
+	if _, err := Verify(f.ctx, f.store, f.genesis); err == nil || !strings.Contains(err.Error(), forged+" sequencer signature") {
+		t.Fatalf("audit of forged rotation error = %v", err)
 	}
 }
 
@@ -1056,6 +1197,204 @@ func TestReaderRestartsFromSignedCheckpointAndAuditsDescendantDelta(t *testing.T
 	}
 	if !advanced.Checkpoint || advanced.Verification.Head != result.Head || len(advanced.Events) != 4 || string(advanced.Events[3].Payload) != "after-checkpoint" {
 		t.Fatalf("checkpoint delta load = %+v", advanced)
+	}
+}
+
+func TestReaderCheckpointContinuationCarriesRotatedSequencerKey(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "before-rotation", []byte("before-rotation"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := CheckpointOptions{Profile: "rotation-fold@1", SigningKey: f.signingKey}
+	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+
+	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
+	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Rotate(f.ctx, f.store, f.genesis, nextPublic, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	afterRotation, err := Submit(f.ctx, f.store, f.request(t, private, "after-rotation", []byte("after-rotation"), nil), Options{SigningKey: nextKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile})
+	loaded, err := restarted.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Checkpoint || loaded.Verification.Head != afterRotation.Head || loaded.Verification.Depth != 3 || loaded.Verification.Events != 2 || len(loaded.Events) != 2 {
+		t.Fatalf("checkpoint continuation across rotation = %+v", loaded)
+	}
+
+	final, err := Submit(f.ctx, f.store, f.request(t, private, "resident-after-rotation", []byte("resident-after-rotation"), nil), Options{SigningKey: nextKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delta, err := restarted.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delta.Full || delta.BaseHead != afterRotation.Head || delta.Verification.Head != final.Head || len(delta.Events) != 1 || string(delta.Events[0].Payload) != "resident-after-rotation" {
+		t.Fatalf("resident continuation under rotated key = %+v", delta)
+	}
+}
+
+func TestReaderRestartsFromCheckpointWrittenAfterRotation(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "before-rotation-checkpoint", []byte("before"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
+	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Rotate(f.ctx, f.store, f.genesis, nextPublic, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	afterRotation, err := Submit(f.ctx, f.store, f.request(t, private, "after-rotation-checkpoint", []byte("after"), nil), Options{SigningKey: nextKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checkpoint := CheckpointOptions{Profile: "rotation-prefix-fold@1", SigningKey: nextKey}
+	writer := NewReader(f.store, checkpoint)
+	written, err := writer.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written.Checkpoint || writer.fullScans != 1 || writer.checkpointWrites != 1 || written.Verification.Depth != 3 || written.Verification.Events != 2 {
+		t.Fatalf("post-rotation checkpoint write = %+v scans=%d writes=%d", written, writer.fullScans, writer.checkpointWrites)
+	}
+	checkpointCommit := mustHead(t, f.store, CheckpointRef(f.genesis))
+	if err := f.store.VerifySSHCommit(f.ctx, checkpointCommit, "sequencer", nextPublic); err != nil {
+		t.Fatalf("checkpoint not signed by current key: %v", err)
+	}
+	if err := f.store.VerifySSHCommit(f.ctx, checkpointCommit, "sequencer", f.publicKey); err == nil {
+		t.Fatal("post-rotation checkpoint verified under retired key")
+	}
+	checkpointData, err := f.store.ReadFileLimit(f.ctx, checkpointCommit, checkpointFile, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile})
+	cached, err := restarted.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cached.Checkpoint || restarted.fullScans != 0 || restarted.checkpointLoads != 1 || cached.Verification.Head != afterRotation.Head || cached.Verification.Depth != 3 || cached.Verification.Events != 2 || len(cached.Events) != 2 {
+		t.Fatalf("post-rotation checkpoint restart = %+v scans=%d loads=%d", cached, restarted.fullScans, restarted.checkpointLoads)
+	}
+
+	final, err := Submit(f.ctx, f.store, f.request(t, private, "resident-after-post-rotation-checkpoint", []byte("resident"), nil), Options{SigningKey: nextKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delta, err := restarted.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delta.Full || delta.BaseHead != afterRotation.Head || delta.Verification.Head != final.Head || len(delta.Events) != 1 || string(delta.Events[0].Payload) != "resident" {
+		t.Fatalf("resident delta after post-rotation checkpoint = %+v", delta)
+	}
+
+	// A checkpoint for the rotated prefix is authenticated only by the key
+	// current at that frontier. Re-signing the same trusted bytes with the
+	// retired key must be a cache miss, followed by an ordinary full audit.
+	publishCheckpointBytes(t, f, checkpointData, f.signingKey, "", checkpointMarker)
+	fallback := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile})
+	loaded, err := fallback.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Checkpoint || fallback.fullScans != 1 || fallback.checkpointFallbacks != 1 || loaded.Verification.Head != final.Head || loaded.Verification.Events != 3 {
+		t.Fatalf("retired-key checkpoint fallback = %+v scans=%d fallbacks=%d", loaded, fallback.fullScans, fallback.checkpointFallbacks)
+	}
+}
+
+func TestCheckpointCannotTrustSuccessorFromUnverifiedRotation(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	first, err := Submit(f.ctx, f.store, f.request(t, private, "before-forged-rotation-checkpoint", []byte("before"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := CheckpointOptions{Profile: "forged-rotation-fold@1", SigningKey: f.signingKey}
+	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	checkpointCommit := mustHead(t, f.store, CheckpointRef(f.genesis))
+	data, err := f.store.ReadFileLimit(f.ctx, checkpointCommit, checkpointFile, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := decodeCheckpoint(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	successorKey := filepath.Join(t.TempDir(), "successor")
+	successorPublic, err := gitstore.GenerateSSHKey(f.ctx, successorKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attackerKey := filepath.Join(t.TempDir(), "attacker")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, attackerKey); err != nil {
+		t.Fatal(err)
+	}
+	forgedRotation := appendExternalRotation(t, f, first.Head, successorPublic, attackerKey)
+	stored.Head = forgedRotation
+	stored.Depth = 2
+	data, err = marshalCheckpoint(stored, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publishCheckpointBytes(t, f, data, successorKey, "", checkpointMarker)
+
+	if _, _, err := loadCheckpoint(f.ctx, f.store, f.genesis, forgedRotation, CheckpointOptions{Profile: checkpoint.Profile}); err == nil || !errors.Is(err, ErrNoUsableCheckpoint) || !strings.Contains(err.Error(), forgedRotation+" sequencer signature") {
+		t.Fatalf("checkpoint trusted successor from unverified rotation: %v", err)
+	}
+}
+
+func TestCheckpointWriterRejectsRetiredSigningKeyAfterRotation(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "before-retired-checkpoint-writer", []byte("before"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
+	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Rotate(f.ctx, f.store, f.genesis, nextPublic, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "after-retired-checkpoint-writer", []byte("after"), nil), Options{SigningKey: nextKey}); err != nil {
+		t.Fatal(err)
+	}
+	head := mustHead(t, f.store, Ref(f.genesis))
+	log, err := scanHead(f.ctx, f.store, f.genesis, head, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCheckpoint(f.ctx, f.store, log, CheckpointOptions{Profile: "retired-writer-fold@1", SigningKey: f.signingKey}); err == nil || !strings.Contains(err.Error(), "checkpoint signature does not match current sequencer key") {
+		t.Fatalf("retired checkpoint signer error = %v", err)
+	}
+	if _, err := f.store.Head(f.ctx, CheckpointRef(f.genesis)); err == nil {
+		t.Fatal("retired signer published an unusable checkpoint")
+	}
+	if err := writeCheckpoint(f.ctx, f.store, log, CheckpointOptions{Profile: "retired-writer-fold@1", SigningKey: nextKey}); err != nil {
+		t.Fatal(err)
 	}
 }
 
