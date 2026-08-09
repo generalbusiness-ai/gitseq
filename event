@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b8c980092373a2becb1900d5c10ece9acf407c8f"}
+{"kind":"artifact","text":"Connectors design note at exact clean head 5395fdbc6d3e30eeb1eefa2f875de038310cc0f5, answering all five round-one review findings.","body":{"branch":"task/connector-design-note","commit":"5395fdbc6d3e30eeb1eefa2f875de038310cc0f5","path":"notes/2026-08-09-connectors.md"}}
