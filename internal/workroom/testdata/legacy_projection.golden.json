@@ -1,0 +1,235 @@
+{
+  "decisions": [
+    {
+      "event": "e0",
+      "verdict": "effective",
+      "reason": "operator roster seed"
+    },
+    {
+      "event": "e1",
+      "verdict": "effective",
+      "reason": "statement recorded"
+    },
+    {
+      "event": "e2",
+      "verdict": "effective",
+      "reason": "authorized ratification"
+    },
+    {
+      "event": "e3",
+      "verdict": "effective",
+      "reason": "statement recorded"
+    },
+    {
+      "event": "e4",
+      "verdict": "effective",
+      "reason": "statement recorded"
+    },
+    {
+      "event": "e5",
+      "verdict": "effective",
+      "reason": "statement recorded"
+    },
+    {
+      "event": "e6",
+      "verdict": "ineffective",
+      "reason": "only the requester may declare satisfaction"
+    },
+    {
+      "event": "e7",
+      "verdict": "effective",
+      "reason": "requester declared satisfaction"
+    },
+    {
+      "event": "e8",
+      "verdict": "effective",
+      "reason": "statement recorded"
+    },
+    {
+      "event": "e9",
+      "verdict": "effective",
+      "reason": "authorized supersession"
+    }
+  ],
+  "acts": [
+    {
+      "event": "e2",
+      "actor": "actor:operator",
+      "type": "ratify",
+      "target": "e1",
+      "verdict": "effective",
+      "reason": "authorized ratification"
+    },
+    {
+      "event": "e6",
+      "actor": "actor:agent",
+      "type": "ratify",
+      "target": "e5",
+      "verdict": "ineffective",
+      "reason": "only the requester may declare satisfaction"
+    },
+    {
+      "event": "e7",
+      "actor": "actor:operator",
+      "type": "ratify",
+      "target": "e5",
+      "verdict": "effective",
+      "reason": "requester declared satisfaction"
+    },
+    {
+      "event": "e9",
+      "actor": "actor:operator",
+      "type": "supersede",
+      "target": "e3",
+      "text": "Requirements changed",
+      "verdict": "effective",
+      "reason": "authorized supersession"
+    }
+  ],
+  "statements": [
+    {
+      "event": "e0",
+      "actor": "actor:operator",
+      "kind": "roster",
+      "text": "Operator begins the workroom",
+      "body": {
+        "actor": "actor:operator",
+        "name": "Human",
+        "role": "operator"
+      }
+    },
+    {
+      "event": "e1",
+      "actor": "actor:operator",
+      "kind": "roster",
+      "text": "Agent joins",
+      "body": {
+        "actor": "actor:agent",
+        "name": "Agent",
+        "role": "agent"
+      },
+      "ratified": true
+    },
+    {
+      "event": "e3",
+      "actor": "actor:operator",
+      "kind": "request",
+      "text": "Build the projector",
+      "body": {
+        "conditions": "golden projection is byte-stable",
+        "to": "actor:agent"
+      },
+      "retired": true
+    },
+    {
+      "event": "e4",
+      "actor": "actor:agent",
+      "kind": "promise",
+      "text": "I will build it",
+      "stale": true
+    },
+    {
+      "event": "e5",
+      "actor": "actor:agent",
+      "kind": "report",
+      "text": "Projection passes",
+      "body": {
+        "result": "go test ./..."
+      },
+      "ratified": true,
+      "stale": true
+    },
+    {
+      "event": "e8",
+      "actor": "actor:agent",
+      "kind": "artifact",
+      "text": "Projector implementation",
+      "body": {
+        "commit": "abc123",
+        "path": "internal/workroom"
+      },
+      "stale": true
+    }
+  ],
+  "commitments": [
+    {
+      "request": "e3",
+      "requester": "actor:operator",
+      "performer": "actor:agent",
+      "promise": "e4",
+      "status": "cancelled"
+    }
+  ],
+  "artifacts": [
+    {
+      "event": "e8",
+      "path": "internal/workroom",
+      "commit": "abc123",
+      "stale": true
+    }
+  ],
+  "actors": {
+    "actor:agent": {
+      "name": "Agent",
+      "kind": "agent",
+      "roles": [
+        "participant"
+      ],
+      "membership_event": "e1",
+      "role_sources": {
+        "participant": [
+          "e1"
+        ]
+      }
+    },
+    "actor:operator": {
+      "name": "Human",
+      "kind": "human",
+      "roles": [
+        "operator",
+        "participant",
+        "ratifier"
+      ],
+      "membership_event": "e0",
+      "role_sources": {
+        "operator": [
+          "e0"
+        ],
+        "participant": [
+          "e0"
+        ]
+      }
+    }
+  },
+  "provenance": {
+    "e0": null,
+    "e1": [
+      "e0"
+    ],
+    "e2": [
+      "e1"
+    ],
+    "e3": [
+      "e0"
+    ],
+    "e4": [
+      "e3"
+    ],
+    "e5": [
+      "e4"
+    ],
+    "e6": [
+      "e5"
+    ],
+    "e7": [
+      "e5"
+    ],
+    "e8": [
+      "e3",
+      "e7"
+    ],
+    "e9": [
+      "e3"
+    ]
+  }
+}

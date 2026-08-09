@@ -153,7 +153,15 @@ export function ThreadPane({
         className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
       >
         {target.kind === "event" && view === "railway" && root && thread && projection && (
-          <ThreadRailway root={root} thread={thread} projection={projection} tickets={tickets} nameOf={nameOf} onJumpTo={onJumpTo} />
+          <ThreadRailway
+            root={root}
+            thread={thread}
+            projection={projection}
+            tickets={tickets}
+            vocabulary={workroom.status?.durable.vocabulary}
+            nameOf={nameOf}
+            onJumpTo={onJumpTo}
+          />
         )}
         {target.kind === "event" &&
           view === "thread" &&

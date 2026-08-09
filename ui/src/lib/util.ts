@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { Commitment } from "./api";
+import type { Commitment, Projection, Vocabulary } from "./api";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -10,7 +10,7 @@ export function cn(...inputs: ClassValue[]) {
 // neutral: green is reserved for satisfied/ratified/current, red for
 // stale/reneged/disputed/dissent, amber for selection/focus only.
 export const neutralKind = "text-muted border-border";
-export const kindTint: Record<string, string> = {
+const legacyKindTint: Record<string, string> = {
   request: neutralKind,
   promise: neutralKind,
   report: neutralKind,
@@ -23,8 +23,20 @@ export const kindTint: Record<string, string> = {
   seal: neutralKind,
 };
 
-// Statement kinds wear their plain names in the UI; "assert" reads as jargon.
-export const kindLabel: Record<string, string> = { assert: "note", propose: "proposal" };
+export function kindTint(kind: string, vocabulary?: Vocabulary): string {
+  const render = definitionOf(kind, vocabulary)?.render;
+  return render === "dissent" ? "text-danger border-danger/40" : legacyKindTint[kind] ?? neutralKind;
+}
+
+// A badge says which kind an act is, so it wears that kind's own name. Only
+// the two founding kinds whose names read as jargon are translated; a room
+// that declares "finding" and "review-note" gets "finding" and "review-note",
+// not one indistinguishable "note" for every note-class kind.
+const familiarKind: Record<string, string> = { assert: "note", propose: "proposal" };
+
+export function kindLabel(kind: string): string {
+  return familiarKind[kind] ?? kind;
+}
 
 export const statusTint: Record<string, string> = {
   satisfied: "text-ok",
@@ -60,10 +72,37 @@ export function commitmentRelationship(commitment: Commitment, nameOf: (fingerpr
   return undefined;
 }
 
-const workOnlyKinds = new Set(["roster", "infra-key", "seal", "artifact"]);
+const legacyWorkOnlyKinds = new Set(["roster", "infra-key", "seal", "artifact"]);
 
-export function belongsInRoom(kind: string): boolean {
-  return !workOnlyKinds.has(kind);
+export function belongsInRoom(kind: string, vocabulary?: Vocabulary): boolean {
+  const render = definitionOf(kind, vocabulary)?.render;
+  if (render) return render !== "governance" && render !== "artifact";
+  return !legacyWorkOnlyKinds.has(kind);
+}
+
+export interface InterpretationGap {
+  verdict: string;
+  reason: string;
+  events: string[];
+}
+
+// One row per distinct refusal, not one per refused event. An interpreter the
+// room cannot run refuses every act past the seam in the same words: that is
+// one gap to close, and a list that grows with the log buries the others.
+export function interpretationGaps(projection?: Projection): InterpretationGap[] {
+  const gaps = new Map<string, InterpretationGap>();
+  for (const decision of projection?.decisions ?? []) {
+    if (decision.verdict !== "undefined-kind" && decision.verdict !== "uninterpretable") continue;
+    const key = `${decision.verdict} ${decision.reason}`;
+    const gap = gaps.get(key);
+    if (gap) gap.events.push(decision.event);
+    else gaps.set(key, { verdict: decision.verdict, reason: decision.reason, events: [decision.event] });
+  }
+  return [...gaps.values()];
+}
+
+export function definitionOf(kind: string, vocabulary?: Vocabulary) {
+  return vocabulary?.definitions.find((definition) => definition.name === kind);
 }
 
 // Stable per-actor hues for chat authorship — none of the semantic ok/danger

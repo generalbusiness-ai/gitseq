@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { BadgeCheck, CircleSlash, GitBranch, Link2, Undo2 } from "lucide-react";
-import type { Act, Projection, Statement } from "../lib/api";
+import type { Act, Projection, Statement, Vocabulary } from "../lib/api";
 import type { ThreadContent } from "../lib/threads";
 import { layoutThreadRailway } from "../lib/threadRailway";
 import { cn, kindLabel, kindTint } from "../lib/util";
@@ -18,7 +18,7 @@ function isStatement(event: DurableEvent): event is Statement {
 }
 
 function labelOf(event: DurableEvent): string {
-  if (isStatement(event)) return kindLabel[event.kind] ?? event.kind;
+  if (isStatement(event)) return kindLabel(event.kind);
   return event.type === "ratify" ? "agree" : "withdraw";
 }
 
@@ -38,6 +38,7 @@ export function ThreadRailway({
   thread,
   projection,
   tickets,
+  vocabulary,
   nameOf,
   onJumpTo,
 }: {
@@ -45,6 +46,7 @@ export function ThreadRailway({
   thread: ThreadContent;
   projection: Projection;
   tickets: Map<string, number>;
+  vocabulary?: Vocabulary;
   nameOf: (fingerprint: string) => string;
   onJumpTo: (event: string) => void;
 }) {
@@ -92,7 +94,7 @@ export function ThreadRailway({
                     className={cn(
                       "shrink-0 border px-1 text-[10px] uppercase leading-4 tracking-wide",
                       statement
-                        ? kindTint[statement.kind] ?? "border-border text-muted"
+                        ? kindTint(statement.kind, vocabulary)
                         : act?.verdict === "effective"
                           ? "border-border text-muted"
                           : "border-danger/40 text-danger",

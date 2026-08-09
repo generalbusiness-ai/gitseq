@@ -5,11 +5,12 @@ import { readFileSync } from "node:fs";
 import { hueOf, initialsOf } from "../src/lib/avatar.ts";
 import { RetryKeys, fingerprintOfPresentActor, fingerprintsIdentifySameActor, parsePresenceLabel, presentActors, threadTargetKey } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
+import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic } from "../src/lib/memory.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
-import { CLOSED_WORK_STATUSES, buildWorkProjection, filterWorkProjection, workAttentionCount, workItemState } from "../src/lib/work.ts";
-import { belongsInRoom, commitmentRelationship, statusLabel } from "../src/lib/util.ts";
+import { CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
+import { belongsInRoom, commitmentRelationship, interpretationGaps, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
@@ -357,6 +358,104 @@ test("attention qualifies rather than replaces a lifecycle lane", () => {
   });
 });
 
+test("Needs my action follows unresolved semantic responsibility, never a read watermark", () => {
+  const item = (commitment) => ({ commitment, request: { event: commitment.request }, key: commitment.request, topicEvent: "topic", order: 1 });
+  assert.equal(workItemNeedsAction(item({ request: "offered", requester: "human", addressed_to: "codex", status: "open" }), "codex"), true);
+  assert.equal(workItemNeedsAction({ ...item({ request: "stale-offer", requester: "human", status: "stale" }), request: { event: "stale-offer", body: { to: "codex" } } }, "codex"), true);
+  assert.equal(workItemNeedsAction(item({ request: "unclaimed", requester: "human", addressed_to: "claude", status: "open" }), "codex"), false);
+  assert.equal(workItemNeedsAction(item({ request: "building", requester: "human", performer: "codex", promise: "promise", status: "promised" }), "codex"), true);
+  assert.equal(workItemNeedsAction(item({ request: "review", requester: "codex", performer: "claude", promise: "promise", report: "report", status: "reported" }), "codex"), true);
+  assert.equal(workItemNeedsAction(item({ request: "done", requester: "codex", performer: "claude", promise: "promise", report: "report", status: "satisfied" }), "codex"), false);
+  assert.equal(workItemNeedsAction(item({ request: "repair", requester: "codex", performer: "claude", promise: "promise", report: "report", status: "reported", stale: true }), "codex"), true);
+});
+
+test("authored and followed topics expose only other people's changes after their watermark", () => {
+  const topic = {
+    event: "topic",
+    author: "codex",
+    items: [{ commitment: { status: "reported" } }],
+    activity: [
+      { event: "root", actor: "codex", order: 0, timestamp: 10 },
+      { event: "reply", actor: "claude", order: 1, timestamp: 20 },
+      { event: "self", actor: "codex", order: 2, timestamp: 30 },
+      { event: "latest-other", actor: "hugh", order: 3, timestamp: 40 },
+    ],
+  };
+  assert.deepEqual(topicChangeSince(topic, "codex", new Set(), 1), {
+    event: "latest-other", actor: "hugh", order: 3, timestamp: 40, status: "reported",
+  });
+  assert.equal(topicChangeSince(topic, "codex", new Set(), 3), undefined);
+  assert.equal(topicChangeSince({ ...topic, author: "claude" }, "codex", new Set(), -1), undefined);
+  assert.equal(topicChangeSince({ ...topic, author: "claude" }, "codex", new Set(["topic"]), 3), undefined);
+  assert.equal(topicChangeSince({ ...topic, activity: [{ event: "self", actor: "codex", order: 4 }] }, "codex", new Set(), -1), undefined);
+});
+
+test("personal Work filters select responsibility, unread topics, and explicit follows without rewriting lifecycle truth", () => {
+  const actionable = { key: "a", request: { event: "a" }, commitment: { request: "a", requester: "human", addressed_to: "codex", status: "open" }, open: true, attention: false, closed: false, lane: "available", order: 1 };
+  const theirs = { key: "b", request: { event: "b" }, commitment: { request: "b", requester: "human", addressed_to: "claude", status: "open" }, open: true, attention: false, closed: false, lane: "available", order: 2 };
+  const topic = (event, author, items, activity) => ({ event, author, items, activity, latestOrder: 2, openCount: items.length, attentionCount: 0, closedCount: 0 });
+  const work = {
+    authors: ["codex", "claude"], attention: [],
+    topics: [
+      topic("mine", "codex", [actionable, theirs], [{ event: "change", actor: "claude", order: 2 }]),
+      topic("followed", "claude", [theirs], [{ event: "change-2", actor: "hugh", order: 2 }]),
+    ],
+  };
+  const followed = new Set(["followed"]);
+  const needs = filterPersonalWorkProjection(work, "needs", "codex", followed, {});
+  assert.deepEqual(needs.topics.map((topic) => topic.event), ["mine"]);
+  assert.deepEqual(needs.topics[0].items.map((item) => item.key), ["a"]);
+  assert.deepEqual(filterPersonalWorkProjection(work, "needs", "codex", followed, { mine: 999 }).topics.map((topic) => topic.event), ["mine"]);
+  assert.deepEqual(filterPersonalWorkProjection(work, "unread", "codex", followed, {}).topics.map((topic) => topic.event), ["mine", "followed"]);
+  assert.deepEqual(filterPersonalWorkProjection(work, "following", "codex", followed, {}).topics.map((topic) => topic.event), ["followed"]);
+  assert.equal(work.topics[0].items.length, 2);
+});
+
+test("personal topic memory is isolated by room and exact actor and following starts at now", () => {
+  const previous = globalThis.localStorage;
+  const values = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  };
+  try {
+    let memory = emptyPersonalWorkMemory();
+    memory = followWorkTopic(memory, "topic", true, 12);
+    assert.deepEqual(memory, { followed: ["topic"], viewed: { topic: 12 } });
+    memory = { ...memory, viewed: { ...memory.viewed, untouched: 7 } };
+    memory = viewWorkTopic(memory, "topic", 18);
+    assert.deepEqual(memory.viewed, { topic: 18, untouched: 7 });
+    savePersonalWorkMemory("room-one", "actor-one", memory);
+    assert.deepEqual(loadPersonalWorkMemory("room-one", "actor-one"), { followed: ["topic"], viewed: { topic: 18, untouched: 7 } });
+    assert.deepEqual(loadPersonalWorkMemory("room-one", "actor-two"), emptyPersonalWorkMemory());
+    assert.deepEqual(loadPersonalWorkMemory("room-two", "actor-one"), emptyPersonalWorkMemory());
+    assert.deepEqual(followWorkTopic(memory, "topic", false, 18), { followed: [], viewed: { topic: 18, untouched: 7 } });
+  } finally {
+    if (previous === undefined) delete globalThis.localStorage; else globalThis.localStorage = previous;
+  }
+});
+
+test("personal topic memory rejects malformed local storage fields", () => {
+  const previous = globalThis.localStorage;
+  const values = new Map([
+    ["workroom.personal-work.room.actor", JSON.stringify({
+      followed: ["kept", "", 7, null, "kept"],
+      viewed: { kept: 4, negative: -1, text: "5", empty: null, "": 8 },
+    })],
+  ]);
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  };
+  try {
+    assert.deepEqual(loadPersonalWorkMemory("room", "actor"), { followed: ["kept"], viewed: { kept: 4 } });
+  } finally {
+    if (previous === undefined) delete globalThis.localStorage; else globalThis.localStorage = previous;
+  }
+});
+
 test("the Work summary counts every terminal lifecycle as closed", () => {
   assert.deepEqual([...CLOSED_WORK_STATUSES], ["satisfied", "withdrawn", "cancelled", "reneged"]);
 });
@@ -498,6 +597,39 @@ test("multiple declared heads still mark a branch at neither head as moved", () 
   ]);
   assert.deepEqual(association.expectedHeads, ["old-head", "review-head"]);
   assert.equal(association.headMatches, false);
+});
+
+test("declared render classes, not kind names, place new vocabulary in the UI", () => {
+  const definition = (name, render) => ({ name, render });
+  const vocabulary = {
+    definitions: [definition("finding", "note"), definition("policy", "governance"), definition("release", "artifact")],
+    binding: { status: "unbound", transitions: [] },
+  };
+  assert.equal(belongsInRoom("finding", vocabulary), true);
+  assert.equal(belongsInRoom("policy", vocabulary), false);
+  assert.equal(belongsInRoom("release", vocabulary), false);
+});
+
+test("every kind wears its own name, bar the two whose names read as jargon", () => {
+  assert.equal(kindLabel("assert"), "note");
+  assert.equal(kindLabel("propose"), "proposal");
+  for (const kind of ["finding", "review-note", "request", "promise"]) assert.equal(kindLabel(kind), kind);
+});
+
+test("one interpretation gap per distinct refusal, however many events it refused", () => {
+  const refusal = (event, reason) => ({ event, verdict: "uninterpretable", reason });
+  const gaps = interpretationGaps({
+    decisions: [
+      { event: "e0", verdict: "effective", reason: "statement recorded" },
+      refusal("e1", "activated interpreter execution is not held"),
+      refusal("e2", "activated interpreter execution is not held"),
+      refusal("e3", "activated interpreter execution is not held"),
+      { event: "e4", verdict: "undefined-kind", reason: 'undefined kind "finding"' },
+    ],
+  });
+  assert.equal(gaps.length, 2);
+  assert.deepEqual(gaps[0].events, ["e1", "e2", "e3"]);
+  assert.deepEqual(gaps[1].events, ["e4"]);
 });
 
 test("the everyday surface does not expose record taxonomy or authority roles", () => {

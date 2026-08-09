@@ -5,7 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
-    outDir: "../spike/internal/service/uidist",
+    outDir: "../internal/service/uidist",
     emptyOutDir: true,
   },
   server: {
