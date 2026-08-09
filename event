@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:093066fc4fd14fe01bd8d1aaa1ff8dca2f7d1051"}
+{"kind":"promise","text":"I will independently review the kernel sequencer-key rotation at exact clean head b062ec9952281039eacbb78ce90563a5efba92ae against every stated condition and report only through the canonical exact-head review guard.","body":{"branch":"request/kernel-key-rotation","head":"b062ec9952281039eacbb78ce90563a5efba92ae"}}
