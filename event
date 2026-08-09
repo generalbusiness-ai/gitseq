@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5be588b663f19e29672e4b45d3a9898e2e33d2ae","text":"Retire the pre-snapshot ready report; its exact head predates the public repository and the new current-main implementation report replaces it."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e08945efe9522e37c86daccd23cad43cfd9b003c","text":"Retire the pre-snapshot Claude review request; the post-snapshot exact head requires a fresh independent review."}
