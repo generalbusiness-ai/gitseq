@@ -1,1 +1,0 @@
-Stopped Codex session demonstrated that WorkDrawer's !bound branch rendered starter-only and no-declared-extension claims for binding.status=uninterpretable while declared definitions remained visible. The finding was report 792a3925 but is embedded here because its candidate artifact was lawfully superseded by the merge.
