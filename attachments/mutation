@@ -1,1 +1,0 @@
-Removing contains(basis.restsOn, basis.named) makes the new focused test fail twice; the source was restored and the worktree is clean.
