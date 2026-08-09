@@ -1,0 +1,114 @@
+---
+title: gs review
+summary: Check the exact artifact checkout, then sign a review verdict against it.
+rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e37ac7f4c061410d50e88f2af22bc03da84e7f82
+---
+
+# `gs review`
+
+Signs a review report that names one immutable commit, after checking
+that the reviewer really was looking at it.
+
+This is the enforced verdict boundary. A review of "the branch" is a
+review of nothing in particular, because the branch can move afterwards.
+
+## Flags
+
+| flag | default | meaning |
+|---|---|---|
+| `--repo` | `.` | The repository holding the workroom. |
+| `--as` | *(required)* | The reviewing actor. |
+| `--checkout` | *(required)* | The working tree the reviewer examined. |
+| `--artifact` | *(required)* | The artifact event naming the reviewed head. |
+| `--promise` | *(required)* | The reviewer's own promise to review. |
+| `--verdict` | *(required)* | `approved` or `changes-requested`. |
+| `--text` | *(required)* | The review itself. |
+| `--server` | | Submit through a resident sequencer instead of writing locally. |
+| `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
+
+It takes no positional arguments.
+
+## Example
+
+```sh
+REPO="$(mktemp -d)/project"
+git init -q "$REPO"
+git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
+gs init --repo "$REPO" --operator alice >/dev/null
+gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
+gs actor-add --repo "$REPO" --as alice --name carol --kind agent >/dev/null
+
+REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
+  --text 'Add a changelog' --body to=@bot --body conditions='it exists')
+PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
+  --text 'I will add it' --rests-on "$REQUEST")
+
+git -C "$REPO" switch -q -c task/changelog
+printf '# Changelog\n' > "$REPO/CHANGELOG.md"
+git -C "$REPO" add CHANGELOG.md
+git -C "$REPO" commit -q -m "Add a changelog
+
+Rests-On: $REQUEST"
+HEAD_COMMIT=$(git -C "$REPO" rev-parse HEAD)
+
+ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
+  --text 'Changelog implementation' \
+  --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" --rests-on "$REQUEST")
+REVIEW_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
+  --text 'Review at the exact head' --body to=@carol \
+  --body conditions='confirm the named head' --rests-on "$ARTIFACT")
+REVIEW_PROMISE=$(gs state --repo "$REPO" --as carol --kind promise \
+  --text 'I will review it' --rests-on "$REVIEW_REQUEST")
+
+gs review --repo "$REPO" --as carol --checkout "$REPO" \
+  --artifact "$ARTIFACT" --promise "$REVIEW_PROMISE" \
+  --verdict approved --text 'APPROVED; the changelog exists at this head'
+```
+
+## What it checks before signing
+
+Durable checks:
+
+- the named **artifact** is effective and live, not stale or retired;
+- the named **promise** is effective, live, and owned by the reviewer;
+- the promise rests on exactly one live `request`, which is copied from
+  the graph rather than retyped.
+
+Local checks on `--checkout`:
+
+- it belongs to the same repository as the workroom;
+- it is clean, including no untracked files;
+- its `HEAD` is the artifact's full commit ID.
+
+Every one of those is re-read immediately before signing, and the command
+aborts if anything moved in between. The verdict names the immutable
+commit, so a later checkout movement cannot retarget it.
+
+A linked worktree is a fine checkout: gitseq state belongs to the common
+directory, and the selected worktree stays an ordinary git context.
+
+## What it produces
+
+A `report` resting on the promise, the request, and the artifact, with
+`body.verdict` and `body.head`. The review requester ratifies it; then,
+for an approval, [`gs merge`](merge.md) can use it.
+
+## What it does not replace
+
+Running the tests, building the binary, reading the diff, poking at git
+plumbing — all of that is the reviewer's evidence and none of it is
+automated here. `gs review` guards the **state at which the verdict is
+signed**, not the judgement.
+
+## After a change to the head
+
+Any change to the head invalidates an approval. The implementer records a
+**new** artifact at the new head and asks for review again; the old
+approval describes a commit nobody is proposing any more.
+
+## See also
+
+- [`gs merge`](merge.md), [`gs ratify`](ratify.md)
+- [Run a work loop](../../how-to/run-a-work-loop.md)

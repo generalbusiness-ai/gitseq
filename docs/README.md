@@ -1,22 +1,94 @@
-# Documentation
+---
+title: gitseq documentation
+summary: Map of the documentation set, and how to choose a starting point.
+rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a33b0645b9bd51851cdd9d1787c63a94b993d6a
+---
 
-User documentation for gitseq. Start here; the root
-[`README.md`](../README.md) explains what gitseq is and why it exists.
+# gitseq documentation
 
-- **[Getting started](getting-started.md)** — one path, end to end:
-  install, initialize a workroom, join over MCP, do a piece of work,
-  verify it, and audit it from a fresh clone.
-- **[Reference](reference.md)** — commands, MCP tools, event
-  identifiers, and the constraints worth knowing before you deploy
-  anything.
+gitseq is an overlay on an ordinary git repository. It gives every
+deliberate act a final position in one sequence, signed by whoever made
+it, so that a document can find out when the thing it describes has
+moved.
 
-Two documents nearby are not user documentation but are worth knowing
-about:
+Read in this order if you are new:
+
+1. **[Why gitseq exists](why.md)** — the problem, and the shape of the
+   answer. Ten minutes, no commands.
+2. **[Do a piece of work, end to end](how-to/end-to-end.md)** — one path
+   from an empty directory to an audited record in a fresh clone. Every
+   command runs.
+3. **Concepts**, in any order, when you want to know why something
+   behaves as it does.
+4. **Reference**, when you know what you want and need the exact
+   spelling.
+
+## Concepts
+
+| Page | What it settles |
+|---|---|
+| [The record](concepts/record.md) | What an event is, what the fold does, why a recorded act may carry no force. |
+| [Actors and authority](concepts/actors.md) | Who may do what, and why kind is not authority. |
+| [The work loop](concepts/work-loop.md) | Request, promise, report, ratification — and who is allowed to close what. |
+| [Staleness](concepts/staleness.md) | What a flare means, what it does not cover, and one known gap. |
+| [Components](concepts/components.md) | The CLI, the resident service, the MCP adapter, the browser view, and the repository underneath. |
+
+## Recipes
+
+| Page | Task |
+|---|---|
+| [End to end](how-to/end-to-end.md) | One complete path, from nothing to an audited record. |
+| [Run a work loop](how-to/run-a-work-loop.md) | Request through review, merge, and ratification. |
+| [Publish and audit](how-to/publish-and-audit.md) | Share the sequence; verify it from a clone you did not create. |
+| [Deploy a resident](how-to/deploy-a-resident.md) | Run the local service, and what it trusts. |
+| [Configure an agent](how-to/configure-an-agent.md) | Attach an MCP client and check that it can act. |
+
+## Reference
+
+- [`gs` subcommands](reference/gs/) — one page each:
+  [init](reference/gs/init.md),
+  [actor-add](reference/gs/actor-add.md),
+  [role-grant](reference/gs/role-grant.md),
+  [role-revoke](reference/gs/role-revoke.md),
+  [actors](reference/gs/actors.md),
+  [state](reference/gs/state.md),
+  [review](reference/gs/review.md),
+  [merge](reference/gs/merge.md),
+  [ratify](reference/gs/ratify.md),
+  [supersede](reference/gs/supersede.md),
+  [status](reference/gs/status.md),
+  [provenance](reference/gs/provenance.md),
+  [verify](reference/gs/verify.md),
+  [serve](reference/gs/serve.md),
+  [attach](reference/gs/attach.md).
+- [MCP tools](reference/mcp/) — one page each:
+  [whoami](reference/mcp/whoami.md),
+  [presence](reference/mcp/presence.md),
+  [status](reference/mcp/status.md),
+  [wait](reference/mcp/wait.md),
+  [say](reference/mcp/say.md),
+  [state](reference/mcp/state.md),
+  [ratify](reference/mcp/ratify.md),
+  [supersede](reference/mcp/supersede.md).
+- [Event identifiers](reference/event-identifiers.md) — the one name
+  everything else cites.
+- [Limits](reference/limits.md) — sizes and counts a call is refused for
+  exceeding.
+- [Glossary](reference/glossary.md) — the vocabulary, in one place.
+
+## How these pages stay honest
+
+Every page here names the durable acts that govern the behaviour it
+describes, and ships with its own artifact statement resting on them. So
+when the behaviour moves, the page — that page, not the set — flares. The
+convention, and the four tests that enforce it, are described in
+[Anchoring](anchoring.md).
+
+## Not user documentation
 
 - [`SKILL.md`](../SKILL.md) is the normative contract for an agent
-  working in a workroom. If you are configuring an agent, it — not this
-  directory — is what the agent should read.
-- [`notes/`](../notes/) holds dated design and implementation notes,
-  including the [design document](../notes/2026-08-05-gitseq-design.md)
-  and the [bootstrap plan](../notes/2026-08-06-bootstrap.md). They record
-  thinking at a point in time and are not maintained as instructions.
+  working in a workroom. If you are configuring an agent, that is what
+  the agent reads.
+- [`notes/`](../notes/) holds dated design notes. They record thinking at
+  a point in time and are not maintained.

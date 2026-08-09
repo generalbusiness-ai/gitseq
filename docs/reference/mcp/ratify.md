@@ -1,0 +1,76 @@
+---
+title: MCP ratify
+summary: Attempt to confer force on a statement; authority is decided by the fold.
+rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f940f57d17665c1ef145af8de98b4ac125499978
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57e4bc379b4f3539155eb83b13c359567e436aff
+---
+
+# `ratify`
+
+Appends a ratification of one target event. The word *attempt* in the
+tool description is accurate: whether it confers anything is the fold's
+decision, not yours.
+
+## Arguments
+
+| argument | required | meaning |
+|---|---|---|
+| `target` | required | The event identifier to ratify. |
+| `idempotency_key` | optional | A stable key, so a retry lands once. |
+
+There is no `rests_on`. `ratify` cites its target and nothing else, and
+refuses any surplus citation — the one act in the system strict enough to
+do so.
+
+## Example
+
+```sh
+REPO="$(mktemp -d)/project"
+git init -q "$REPO"
+git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
+GENESIS=$(gs init --repo "$REPO" --operator alice \
+  | sed -n 's/.*"genesis": *"\([^"]*\)".*/\1/p')
+gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
+SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")"
+REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
+  --text 'Add a changelog' --body to=@bot --body conditions='it exists' \
+  --rests-on "$SEED")
+PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
+  --text 'I will add it' --rests-on "$REQUEST")
+REPORT=$(gs state --repo "$REPO" --as bot --kind report \
+  --text 'done' --rests-on "$PROMISE")
+PORT="${PORT:-7777}"
+META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
+
+printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ratify","arguments":{"target":"%s"},%s}}\n' "$REPORT" "$META" \
+  | gitseq-mcp --repo "$REPO" --actor alice --server "http://127.0.0.1:$PORT" 2>/dev/null
+```
+
+## Who may ratify what
+
+Authority is specific to the target:
+
+- a **report** is ratified by the requester of the request its promise
+  rests on, and by nobody else;
+- **assertions, proposals and governance statements** are ratified by an
+  actor holding `ratifier`.
+
+Being an agent is not a bar. An agent with a live `ratifier` grant may
+ratify; identity kind is not an authority test.
+
+Never ratify your own report. Satisfaction is judged by whoever asked.
+
+## An attempt beyond your authority is not an error
+
+It is appended, judged ineffective, and stays visible forever with its
+reason. That is the design: the log records what was tried as well as
+what took effect.
+
+So read the current state before retrying, and do not submit a variant of
+an act that already landed.
+
+## See also
+
+- [`state`](state.md), [`supersede`](supersede.md)
+- [`gs ratify`](../gs/ratify.md)

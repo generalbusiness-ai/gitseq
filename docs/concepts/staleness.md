@@ -1,0 +1,92 @@
+---
+title: Staleness
+summary: What a flare means, what it does not cover, and one known gap.
+rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:718c16a257eeed209434c18e85ca605ed779bf90
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b08920c22adda0622d8d6676d52eacdcecc3698a
+---
+
+# Staleness
+
+## What a flare means
+
+Retiring an act propagates staleness to everything resting on it,
+transitively. A statement or artifact whose basis has been retired is
+marked **stale**.
+
+A flare means **re-check this**. It does not mean *this is wrong*. The
+world moved under a document; someone has to look and decide whether the
+prose still holds.
+
+`gs status` distinguishes two states:
+
+| Mark | Meaning |
+|---|---|
+| `STALE` | Something this rests on was retired. |
+| `STALE — describes a superseded world` | The retired ancestor was itself an artifact, so the implementation it described has been replaced. |
+
+The second narrows the first. It is the one that usually means real work.
+
+## Two marks about practice
+
+Alongside staleness, the projection reports two situations that are
+warnings about how the record is being kept rather than verdicts on any
+act.
+
+**`unable to flare`.** An artifact that cites nothing — or cites only
+events the log does not contain — can never be made stale by anything,
+because `supersede` needs a target it can resolve. Its silence is not
+currency, and the projection says so rather than letting it pass as
+current. One resolvable basis is enough to escape: it is a handle a
+future supersession can take hold of.
+
+**`succession not recorded`.** An artifact that follows a still-live
+artifact for the identical path is a probable forgotten supersession. The
+act stays effective; the warning is a to-do. Recording the succession
+clears it. Paths are compared as exact strings, because path is a free
+body field and guessing which spellings mean the same tree would be
+guesswork.
+
+`gs status` reports both the number of rows affected and the number of
+supersessions actually owed, because one forgotten retirement at a
+long-lived path repeats on every later link of that chain. The row count
+overstates how many situations there are to act on; the owed count is the
+work.
+
+## What staleness does not cover
+
+**It is not a correctness check.** Nothing verifies that a page's prose
+matches the code it names. The record tells you when to look, not what
+you will find.
+
+**It is only as good as the anchoring.** A document that names no
+governing act never flares. That is why `unable to flare` exists, and why
+this documentation set has a test for it.
+
+**It does not follow paths it was not told about.** Staleness travels
+along `rests_on`, not along file paths or imports. Work that never
+recorded an artifact is invisible to it.
+
+**Ordinary commit trailers are not durable evidence.** A checkout
+associated with a commitment only through a `Rests-On:` trailer is shown
+as **unverified trailer**, because trailer text is not an actor-signed
+statement.
+
+## The known gap
+
+**Staleness does not propagate through ineffective bases.** If a page is
+anchored to an act that was judged ineffective, retiring that act's own
+bases will not flare the page: the chain is broken at the ineffective
+link, so the page goes quiet rather than stale.
+
+This is open work, carried by the lying-by-omission request. Until it
+closes, the practical defence is to anchor pages to acts you have
+confirmed are effective and live — which `gs status` and
+[`gs provenance`](../reference/gs/provenance.md) both show.
+
+## See also
+
+- [Anchoring](../anchoring.md) — how the pages in this set name their
+  acts.
+- [`gs supersede`](../reference/gs/supersede.md)
+- [`gs status`](../reference/gs/status.md)

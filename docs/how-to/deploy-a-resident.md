@@ -1,0 +1,145 @@
+---
+title: Deploy a resident
+summary: Run the local service, wait for it to be ready, and understand what the loopback boundary trusts.
+rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:75eab177526d3a45b70df77ac650932e1203a79f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa5182bb85a8347c55bcf229d53b104dde600a7
+---
+
+# Deploy a resident
+
+The resident service sequences concurrent appends, holds presence and
+ephemeral conversation, notifies readers when something moves, and serves
+the browser view. Everything durable works without it; nothing ephemeral
+does.
+
+## Start one
+
+```sh
+REPO="$(mktemp -d)/project"
+git init -q "$REPO"
+git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
+gs init --repo "$REPO" --operator alice >/dev/null
+
+PORT="${PORT:-7777}"
+gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" &
+SERVER=$!
+trap 'kill "$SERVER" 2>/dev/null || true' EXIT
+```
+
+Then open `http://127.0.0.1:$PORT` for the live view.
+
+## Wait for it properly
+
+`serve` prints its ready banner **before** it binds, so a failed start
+still announces an address. Do not treat the banner as readiness. Poll
+for a real answer:
+
+```sh
+for _ in $(seq 40); do
+  if gs status --repo "$REPO" --server "http://127.0.0.1:$PORT" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.25
+done
+gs status --repo "$REPO" --server "http://127.0.0.1:$PORT" >/dev/null
+```
+
+## Submit through it
+
+Durable subcommands that take `--server` submit through the resident
+instead of writing to the local log directly. Both land in the same
+sequence; going through the resident is what makes concurrent appends
+safe.
+
+```sh
+GENESIS=$(gs status --repo "$REPO" --json \
+  | sed -n 's/.*"genesis": *"\([^"]*\)".*/\1/p' | head -1)
+SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")"
+
+gs state --repo "$REPO" --server "http://127.0.0.1:$PORT" --as alice \
+  --kind assert --text 'submitted through the resident' --rests-on "$SEED"
+```
+
+## Loopback only, and why
+
+```sh
+! gs serve --repo "$REPO" --listen 0.0.0.0:9999
+```
+
+The refusal is deliberate. The service is a **trusted local custodian**
+for several actors at once: it holds their signing keys and signs on
+behalf of whichever session asks.
+
+That makes a **session identifier a credential**. Present one and the
+service signs with that session's actor key — ephemeral frames through
+`/v0/say` and durable events through `/v0/act` — and will end that
+session's lease on request. So session identifiers are never published.
+Presence and the change stream name each session by an opaque minted
+`session:` handle instead, drawn from system randomness with no
+derivation in either direction. A live session cannot be rebound to a
+different actor.
+
+What remains trusted is the loopback boundary itself, and it is worth
+being exact about how much that carries. Anything that can reach the
+listening port can announce a session for any actor the repository holds
+custody for and then act as that actor — not only ephemeral speech.
+
+Two layers are worth separating, because conflating them overstates the
+damage. Possession of a session makes the custodian produce a **genuinely
+actor-signed** event: no later reader can tell it from one the actor
+intended, because cryptography answers who holds the key and not who
+meant it. What the event then *means* is judged separately — the fold
+reads already-decoded records, checks no signatures, and can rule a
+perfectly signed act ineffective on its merits. The boundary buys an
+attacker authentic authorship, not automatic force.
+
+There is no authentication below that line, by design. On a machine with
+untrusted local users or processes, that boundary is the whole of the
+protection, and it protects the durable record as well as the
+conversation.
+
+## One service per repository
+
+Run exactly one. Nothing enforces it: there is no lock, and only port
+contention stops a second.
+
+Two services on different ports against the same repository is the case
+to avoid. The durable log stays correct — appends are compare-and-swap on
+the git ref and retry on contention — but presence and ephemeral
+conversation are per-process, so the two form separate rooms whose
+participants cannot see each other and are never told.
+
+## Restart
+
+The resident keeps a signed checkpoint under
+`refs/gitseq/checkpoints/<genesis>`: the original actor-signed events at
+one fully audited sequence head, signed by that log's sequencer key. On
+restart it checks the checkpoint's object format, genesis, exact head,
+fold-profile version and signature, proves the commit sequence from
+genesis to that head from local metadata, and re-reads sequencer
+signatures and payload objects only for events after the frontier.
+
+A missing, malformed, mismatched, oversized or non-descendant checkpoint
+is only a cache miss: gitseq performs the ordinary full audit and, if it
+holds sequencer custody, replaces the checkpoint.
+
+A writing resident refreshes the ref every 256 accepted events after its
+last successful write, so a successful checkpoint usually leaves at most
+255 commits for full delta verification. Persistent storage or signing
+failures make that tail larger.
+
+Checkpoint refs are local. `attach` does not fetch them, the documented
+sequence push does not publish them, and `gs verify` never consults them.
+
+## Stop it
+
+```sh
+kill "$SERVER"
+trap - EXIT
+```
+
+## See also
+
+- [`gs serve`](../reference/gs/serve.md)
+- [Components](../concepts/components.md)

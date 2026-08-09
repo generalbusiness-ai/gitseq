@@ -1,0 +1,90 @@
+---
+title: Actors and authority
+summary: Who may do what in a workroom, why kind is not authority, and how a grant stops conferring.
+rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6918582b884b2f82fa7ab64242f40d12de845c39
+---
+
+# Actors and authority
+
+## Principals
+
+An **actor** is a principal with a signing key. Everything that actor
+does is signed with it, so authorship is not a claim anyone has to
+believe.
+
+Each actor has a **kind** — `human`, `agent`, or `service`. Kind
+describes what a principal is. It confers nothing. An agent holding a
+`ratifier` grant may ratify; a human without one may not. Reading kind as
+an authority test is the common mistake, and it is wrong in the direction
+that matters: it invites you to trust an act because a person made it.
+
+## Roles
+
+Authority comes from **roles**, granted durably and revocably:
+
+- `participant` — membership itself, the thing every other role rests on.
+- `operator` — the founding authority; it carries `ratifier` with it.
+- `ratifier` — may confer force on statements and proposals.
+- other named roles, as a room's practice requires.
+
+`gs actors` prints the roles a principal holds **right now**. That is a
+different question from whether some past act was effective, and the two
+are answered by different parts of the projection.
+
+## How a grant confers, and stops
+
+A grant is a `roster` statement. Whether it currently confers depends on
+what kind of grant it is.
+
+A **membership grant** is live when the grant statement is live and at
+least one effective ratification of it is live. It does not rest on a
+membership, because it *is* the membership.
+
+A **non-membership grant** — `ratifier`, or any named role — needs those
+two things *and* the membership it named as its **first** basis to still
+be live. The fold looks at the first basis and nowhere else. A grant that
+lists a dangling basis first and the membership second is judged
+effective and confers nothing.
+
+The **genesis seed** is the one exception to the ratification
+requirement, because there is no earlier ratifier to give one.
+
+Two consequences worth holding on to:
+
+- The ratification condition is a **disjunction**. One grant may be
+  ratified several times, and any surviving ratification keeps the role.
+  Retiring one of two changes nothing.
+- Revoking a grant retires the role it named **and everything derived
+  from it**. Revoking `operator` takes a principal from
+  `[operator, participant, ratifier]` to `[participant]`, because
+  `ratifier` was riding on `operator` and had no grant of its own.
+
+Retiring the membership removes membership and, with it, every
+non-membership role that named it. One supersede, and the principal is
+off the roster.
+
+## Effectiveness and authority are different questions
+
+For every act other than a grant, effectiveness is settled once, when the
+act is appended, and stays settled. A grant can satisfy every rule, be
+judged effective, be ratified — and confer nothing right now, because a
+basis it depends on has since been retired.
+
+So for grants, do not read the verdict as the answer. `gs actors` answers
+the current question, and answers it only for the moment you ask.
+
+## Custody
+
+An actor's private key lives under `.git/gitseq/actors/`. The resident
+service holds custody for every actor whose key is in the repository it
+serves, and will sign on behalf of whichever session asks. That is why it
+binds loopback addresses only, and why a session identifier is a
+credential — see [Deploy a resident](../how-to/deploy-a-resident.md).
+
+## See also
+
+- [`gs actors`](../reference/gs/actors.md),
+  [`gs role-grant`](../reference/gs/role-grant.md),
+  [`gs role-revoke`](../reference/gs/role-revoke.md)
+- [The work loop](work-loop.md)
