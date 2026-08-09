@@ -56,6 +56,12 @@ Every durable act cites its basis in `rests_on`.
 - `supersede {target, text, rests_on}` — retire a prior act,
   propagating staleness to everything resting on it. Prefer
   supersession to contradiction.
+- Every tool takes an optional `repo` naming the repository whose
+  workroom the call acts in. It defaults to the directory your adapter
+  was started in — normally the repository you are working in, including
+  from any of its linked worktrees — so you rarely name it. Name it when
+  you mean to act in a different repository, and check `whoami` if you
+  are unsure which workroom you are in.
 
 **The work loop**: a `request` names whom it is to and its
 conditions of satisfaction; a `promise` rests on a request — a

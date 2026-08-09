@@ -514,14 +514,17 @@ func liveLabel(live liveView) string {
 }
 
 // fingerprint resolves this process's configured actor to the identity the
-// projection speaks in. An unconfigured actor yields the empty string, which
-// simply matches nothing rather than matching everyone.
-func (s *mcpServer) fingerprint() string {
-	return s.workspace.Config.Actors[s.actor].Fingerprint
+// projection speaks in, within the workroom the call is acting in. The same
+// actor name can carry a different fingerprint in a different repository, so
+// the room asked has to be the room answered about. An unconfigured actor
+// yields the empty string, which simply matches nothing rather than matching
+// everyone.
+func (s *mcpServer) fingerprint(current *room) string {
+	return current.workspace.Config.Actors[s.actor].Fingerprint
 }
 
-func (s *mcpServer) digest(status service.Status, degraded bool) actorStatus {
-	return digestStatus(status, s.fingerprint(), s.actor, degraded)
+func (s *mcpServer) digest(current *room, status service.Status, degraded bool) actorStatus {
+	return digestStatus(status, s.fingerprint(current), s.actor, degraded)
 }
 
 // remarshal re-decodes a value the HTTP path returned as generic JSON into the
