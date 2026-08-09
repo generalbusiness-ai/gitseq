@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Run a work loop at docs-set head a4f4a57a734d; the page describes the behaviour governed by the acts it rests on.","body":{"commit":"a4f4a57a734dcaa241da60f84c5b63088ced44dc","path":"docs/how-to/run-a-work-loop.md"}}
+{"kind":"artifact","text":"Event identifiers at docs-set head a4f4a57a734d; the page describes the behaviour governed by the acts it rests on.","body":{"commit":"a4f4a57a734dcaa241da60f84c5b63088ced44dc","path":"docs/reference/event-identifiers.md"}}
