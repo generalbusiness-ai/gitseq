@@ -1,0 +1,45 @@
+real log: head d0652dfe8d41de8ea3dab8ae276a5a1bc07e8aa2, 1157 records, 207 artifacts
+anchor A: live merge artifact at ".", 4258799f@0a66e8595a4c
+anchor B: live artifact at "ui", 40807e1c@019f08ba0290
+work anchored on A: 15 acts; on B: 2 acts
+
+both synthetic merge artifacts rest on 820884b8
+
+OLD RULE, merge recorded at "."
+  newly stale, anchored on the "." merge artifact: 9 of 15
+  newly stale, anchored on the changed path artifact: 0 of 2
+  newly stale anywhere in the log:                  10
+    e65892a4 artifact Truthful bounded first-tool orientation is implemented at exact 
+    a0db96c7 promise I will implement truthful bounded resident-first whoami on exact
+    d3c5f356 artifact Corrected exact pointer: verified snapshot load provenance is im
+    62ca1f82 report Ready for independent review at exact clean head 8b944700483d3f7
+    b0d11358 request Claude: independently review truthful bounded whoami orientation
+    49fd284e request Expose verified snapshot load provenance to callers without chan
+    4258799f artifact Corrected live merge artifact: fast, bounded, and honest status 
+    fb32d9c2 promise I will expose exact verified snapshot load provenance without ch
+    2498d511 request Complete truthful, bounded first-tool orientation for gs whoami 
+    f6b628be report Corrected child report: snapshot provenance support is complete 
+
+NEW RULE, merge recorded at "ui"
+  newly stale, anchored on the "." merge artifact: 0 of 15
+  newly stale, anchored on the changed path artifact: 2 of 2
+  newly stale anywhere in the log:                  3
+    4952b9fc report Ready for independent review at exact clean head 019f08ba02905c7
+    daa25e27 request Claude: independently review the temporary durable-event discuss
+    40807e1c artifact UI implementation at exact clean head 019f08ba02905c71acd2fde28c
+
+anchor C: live artifact at "spike/internal/workroom", d863afa1@124856111067, 8 acts anchored
+NEW RULE, merge recorded at "spike/internal/workroom"
+  newly stale, anchored on the "." merge artifact: 0 of 15
+  newly stale, anchored on the changed path artifact: 8 of 8
+  newly stale anywhere in the log:                  9
+    407bfce0 request Codex: independently review admission-profile governance at exac
+    500ff6c6 report CHANGES-REQUESTED at exact clean head cf97e488a36aa437183a9269b4
+    df58c758 report APPROVED at exact clean head 124856111067173425eeb5c0e6d97caa347
+    92e73230 artifact Deployment design note, round-18 repair, at exact clean head cf9
+    4eb2633e promise I will independently review the eighteenth-round deployment note
+    475bffee request Codex: independently review the eighteenth-round deployment note
+    04097b65 report READY-FOR-REVIEW at exact clean head 124856111067173425eeb5c0e6d
+    23fa269a promise I will independently review admission-profile governance at exac
+    d863afa1 artifact Admission-profile governance implementation at exact clean head 
+
