@@ -62,12 +62,21 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	if len(local.Worktrees) != 1 || !local.Worktrees[0].Current || local.Worktrees[0].Checkout != "repo" {
 		t.Fatalf("unexpected local worktree projection: %+v", local)
 	}
-	encoded, err := json.Marshal(local)
+	// The served checkout names itself — a reader has to know which repository
+	// this is — while the per-checkout views stay basenames.
+	resolvedRepo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.Repo != resolvedRepo {
+		t.Fatalf("served repository path = %q want %q", local.Repo, resolvedRepo)
+	}
+	encoded, err := json.Marshal(local.Worktrees)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(encoded, []byte(repo)) {
-		t.Fatalf("local projection exposed absolute repository path: %s", encoded)
+		t.Fatalf("checkout views exposed an absolute path: %s", encoded)
 	}
 }
 

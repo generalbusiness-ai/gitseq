@@ -67,15 +67,16 @@ func (s *Server) handleGraph(writer http.ResponseWriter, request *http.Request) 
 }
 
 type worktreesResponse struct {
+	Repo      string             `json:"repo"`
 	Worktrees []app.WorktreeView `json:"worktrees"`
 }
 
 func (s *Server) handleWorktrees(writer http.ResponseWriter, request *http.Request) {
-	worktrees, err := s.workspace.LocalWorktrees(request.Context())
-	if worktrees == nil {
-		worktrees = []app.WorktreeView{}
+	local, err := s.workspace.LocalWorktrees(request.Context())
+	if local.Worktrees == nil {
+		local.Worktrees = []app.WorktreeView{}
 	}
-	write(writer, worktreesResponse{Worktrees: worktrees}, err)
+	write(writer, worktreesResponse{Repo: local.Path, Worktrees: local.Worktrees}, err)
 }
 
 // actRequest is a session-bound durable act: the same custody model as

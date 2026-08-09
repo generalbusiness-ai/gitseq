@@ -67,6 +67,7 @@ type Workspace struct {
 
 	worktreesMu       sync.Mutex
 	worktreesCached   []WorktreeView
+	repoPathCached    string
 	worktreesCachedAt time.Time
 }
 
@@ -79,9 +80,19 @@ type Snapshot struct {
 	Projection workroom.Projection `json:"projection"`
 }
 
-// WorktreeView is local repository state, never part of the durable workroom
-// projection. Checkout is a display label rather than an absolute path so the
-// service does not disclose host layout to browser clients.
+// LocalRepo is local repository state, never part of the durable workroom
+// projection. Path is the served checkout's own absolute path, so a reader can
+// tell which repository a workroom is showing; `gs serve` refuses any listen
+// address that is not loopback, so that reader is already on this host. The
+// other checkouts stay basenames in WorktreeView: naming them is enough to
+// associate work, and the wider host layout has no reader who needs it.
+type LocalRepo struct {
+	Path      string         `json:"path"`
+	Worktrees []WorktreeView `json:"worktrees"`
+}
+
+// WorktreeView is one checkout of the repository. Checkout is a display label
+// rather than an absolute path.
 type WorktreeView struct {
 	Checkout string `json:"checkout"`
 	Branch   string `json:"branch,omitempty"`
@@ -137,19 +148,19 @@ func ResolveGitDirs(ctx context.Context, repo string) (gitDir, commonDir string,
 	return strings.TrimSpace(paths[0]), strings.TrimSpace(paths[1]), nil
 }
 
-// LocalWorktrees projects every linked checkout of this repository without
-// writing anything to git or the workroom. Git's porcelain -z format keeps
-// spaces and other path characters unambiguous; only basenames leave this
-// boundary.
-func (w *Workspace) LocalWorktrees(ctx context.Context) ([]WorktreeView, error) {
+// LocalWorktrees projects the served checkout and every linked checkout of its
+// repository without writing anything to git or the workroom. Git's porcelain
+// -z format keeps spaces and other path characters unambiguous; of the paths it
+// reports, only the served checkout's own leaves this boundary.
+func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 	w.worktreesMu.Lock()
 	defer w.worktreesMu.Unlock()
 	if age := time.Since(w.worktreesCachedAt); !w.worktreesCachedAt.IsZero() && age >= 0 && age < 8*time.Second {
-		return append([]WorktreeView(nil), w.worktreesCached...), nil
+		return LocalRepo{Path: w.repoPathCached, Worktrees: append([]WorktreeView(nil), w.worktreesCached...)}, nil
 	}
 	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", w.Repo, "worktree", "list", "--porcelain", "-z").Output()
 	if err != nil {
-		return nil, fmt.Errorf("list worktrees: %w", err)
+		return LocalRepo{}, fmt.Errorf("list worktrees: %w", err)
 	}
 	type entry struct {
 		path     string
@@ -193,7 +204,7 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) ([]WorktreeView, error) 
 	}
 	flush()
 	if len(entries) > 128 {
-		return nil, fmt.Errorf("repository has %d worktrees; local projection limit is 128", len(entries))
+		return LocalRepo{}, fmt.Errorf("repository has %d worktrees; local projection limit is 128", len(entries))
 	}
 
 	canonicalPath := func(path string) string {
@@ -253,8 +264,9 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) ([]WorktreeView, error) 
 		return views[i].Checkout < views[j].Checkout
 	})
 	w.worktreesCached = append(w.worktreesCached[:0], views...)
+	w.repoPathCached = selected
 	w.worktreesCachedAt = time.Now()
-	return append([]WorktreeView(nil), views...), nil
+	return LocalRepo{Path: selected, Worktrees: append([]WorktreeView(nil), views...)}, nil
 }
 
 func Open(ctx context.Context, repo string) (*Workspace, error) {

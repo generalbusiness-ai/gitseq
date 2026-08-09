@@ -36,3 +36,27 @@ export function parsePresenceLabel(value: string): { name: string; fingerprint: 
   const match = /^(.*) \(([^()]*)\)$/.exec(value);
   return match ? { name: match[1], fingerprint: match[2] } : { name: value, fingerprint: "" };
 }
+
+// Presence is leased per session, and one person runs several: a browser tab,
+// an MCP server per agent session. "Who is here" is a count of people, so the
+// leases fold onto the identity label they all carry, keeping the session
+// count rather than discarding it.
+export interface PresentActor {
+  label: string;
+  name: string;
+  fingerprint: string; // the short fingerprint the label carries
+  sessions: number;
+}
+
+export function presentActors(presence: Record<string, string> | undefined): PresentActor[] {
+  const people = new Map<string, PresentActor>();
+  for (const label of Object.values(presence ?? {})) {
+    const known = people.get(label);
+    if (known) {
+      known.sessions += 1;
+      continue;
+    }
+    people.set(label, { label, ...parsePresenceLabel(label), sessions: 1 });
+  }
+  return [...people.values()].sort((a, b) => a.label.localeCompare(b.label));
+}

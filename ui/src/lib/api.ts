@@ -111,6 +111,13 @@ export interface GraphCommit {
 
 // Ephemeral repository state from /v0/worktrees. It is deliberately separate
 // from Status: none of these fields belong to the durable workroom projection.
+// `repo` is the absolute path of the checkout the service is serving — the one
+// path it discloses, and only because it refuses to listen off loopback.
+export interface LocalRepo {
+  repo: string;
+  worktrees: WorktreeView[];
+}
+
 export interface WorktreeView {
   checkout: string;
   branch?: string;
@@ -174,8 +181,8 @@ export const api = {
       })),
   worktrees: () =>
     fetch("/v0/worktrees", { cache: "no-store" })
-      .then((r) => json<{ worktrees: WorktreeView[] }>(r))
-      .then((local) => local.worktrees ?? []),
+      .then((r) => json<LocalRepo>(r))
+      .then((local) => ({ repo: local.repo ?? "", worktrees: local.worktrees ?? [] })),
   actors: () => fetch("/v0/actors").then((r) => json<Actor[]>(r)),
   wait: (cursor: Cursor, timeoutMS = 25000) =>
     fetch("/v0/wait", {
