@@ -1,1 +1,0 @@
-Claude authored and self-addressed 0c4bd624 during a closure sweep; it has no promise. Codex-to-Codex child 447a3145 and promise c57e0a06 demonstrate the current reassignment workaround and its requester/performer collapse.
