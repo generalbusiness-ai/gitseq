@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f7147463b0a87c38cee7e39e3cacb451055f2b9b"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5d422056227304d1c358084d0a2057da75064447","text":"Replace the pre-merge readiness report with a final completion report that names the reviewed public merge, current security/workflow artifacts, exact public ref, scanner audit, and successful hosted CI."}
