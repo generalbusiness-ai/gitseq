@@ -977,11 +977,41 @@ func submitAct(ctx context.Context, workspace *app.Workspace, serverURL, actorNa
 // submitSigned appends one act with custody the caller already holds. A chain
 // of acts therefore reads the actor key once, and a local submission reuses the
 // workspace's resident verified frontier instead of scanning the log again.
+// Every command that writes for an author comes through here, so this is where
+// an author is told that the kind they wrote means nothing here.
 func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, act app.Act) (app.Submission, error) {
 	request, err := workspace.BuildActRequest(ctx, private, actorName, act)
 	if err != nil {
 		return app.Submission{}, err
 	}
+	submission, err := submitRequest(ctx, workspace, serverURL, request)
+	if err != nil {
+		return app.Submission{}, err
+	}
+	if act.Verb == app.VerbState {
+		warnUndefinedKind(ctx, workspace, act.Kind)
+	}
+	return submission, nil
+}
+
+// warnUndefinedKind tells an author, on the stream they are already reading,
+// that the act which just landed carries a kind no rule in this workroom
+// reads. The act stays: warning is the whole of the change, and refusing it
+// would hide the attempt. Reading the vocabulary costs one projection of the
+// log, which a deliberate durable write can afford, and a chain of writes in
+// one process pays for once.
+func warnUndefinedKind(ctx context.Context, workspace *app.Workspace, kind workroom.Kind) {
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gs: warning: cannot tell whether kind %q is defined here: %v\n", kind, err)
+		return
+	}
+	if warning := snapshot.Vocabulary.UndefinedKindWarning(kind); warning != "" {
+		fmt.Fprintln(os.Stderr, "gs: warning:", warning)
+	}
+}
+
+func submitRequest(ctx context.Context, workspace *app.Workspace, serverURL string, request kernel.Request) (app.Submission, error) {
 	if serverURL == "" {
 		return workspace.AcceptSubmission(ctx, request)
 	}

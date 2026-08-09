@@ -692,13 +692,40 @@ func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any
 	}
 	value, err := s.post(ctx, current, "/v0/submit", request)
 	if !isTransportError(err) {
-		return value, err
+		if err != nil {
+			return value, err
+		}
+		return s.withKindWarning(ctx, current, act, value), nil
 	}
 	submission, err := current.workspace.AcceptSubmission(ctx, request)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"result": submission.Result, "record": submission.Record, "degraded": true}, nil
+	return s.withKindWarning(ctx, current, act, map[string]any{"result": submission.Result, "record": submission.Record, "degraded": true}), nil
+}
+
+// withKindWarning puts the undefined-kind warning inside the tool result the
+// caller reads. An agent writing over MCP is exactly who filed a promise under
+// a kind this room does not define and was told nothing, so a line in a log it
+// never reads would be no warning at all. The act itself is untouched: it
+// landed, and it still projects as undefined-kind.
+func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.Act, value any) any {
+	if act.Verb != app.VerbState {
+		return value
+	}
+	result, ok := value.(map[string]any)
+	if !ok {
+		return value
+	}
+	snapshot, err := current.workspace.Snapshot(ctx)
+	if err != nil {
+		result["warning"] = fmt.Sprintf("cannot tell whether kind %q is defined here: %v", act.Kind, err)
+		return result
+	}
+	if warning := snapshot.Vocabulary.UndefinedKindWarning(act.Kind); warning != "" {
+		result["warning"] = warning
+	}
+	return result
 }
 
 func (s *mcpServer) announce(ctx context.Context, current *room) error {
