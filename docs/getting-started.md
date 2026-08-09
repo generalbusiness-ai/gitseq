@@ -209,8 +209,52 @@ gs merge --repo . --checkout . --candidate '<full-commit-sha>' \
 Independent tests and Git-plumbing probes remain part of the reviewer's
 evidence. These commands enforce the handoff boundaries: the checkout matched
 the artifact when the verdict was signed, and the merge candidate matches the
-still-live ratified approval. After the merge, publish its artifact and ratify
-the original implementation report as described by the repository discipline.
+still-live ratified approval.
+
+After the merge, retire every live artifact that covers what the merge
+changed, and publish a successor at the path each area keeps using. Retiring
+and publishing are separate decisions: all the live artifacts over the change
+go, but only one successor is published per area. Ask git which paths the
+merge changed:
+
+```sh
+git diff --name-only <merge-commit>^1 <merge-commit>
+```
+
+Then ask `gs status --repo .` which exact paths the live artifacts in those
+areas already use, and reuse those strings. Paths are compared as exact
+strings, so an artifact at `internal/workroom` leaves a live one at
+`internal/workroom/fold.go` alone, and everything resting on that older
+artifact stays silent for good. Four cases cover the choice:
+
+- One live path covers the change: publish the successor at that exact
+  string.
+- A directory and something inside it are both live over the same changed
+  file: the wider path wins. Publish at the directory and retire the narrower
+  artifact with a bare `gs supersede` whose reason names the surviving path.
+  Nothing is published at the narrower string again, so the area settles on
+  one granularity.
+- No live artifact covers the change: this is a first artifact, and there is
+  nothing to retire. Pick the granularity a reader would cite — a package
+  directory, a document — and keep it stable afterwards, because later merges
+  have to match it.
+- The merge renamed or deleted a tracked file with a live artifact at its old
+  path: retire that artifact with a bare `gs supersede` naming the merge
+  commit, and never publish at the old string again. A rename publishes a
+  first artifact at the new path; a deletion publishes nothing, and the flare
+  asks whoever rested on the old artifact to re-anchor.
+
+A bare `gs supersede` rests on its target by itself, and is admitted only from
+the artifact's own author or from an actor holding `ratifier`, so ask that
+actor when the artifact you must retire is not yours.
+
+One path per artifact: never join several into one string such as
+`AGENTS.md,SKILL.md`, which no predecessor can equal. Never publish a merge
+artifact at `.`: that path claims the whole repository, so the next merge to
+record one would retire it and every act anchored to it, whatever that merge
+touched. Which commit `main` carries is a question for `git rev-parse main`;
+per area it is the live artifact at that path. Then ratify the original
+implementation report as described by the repository discipline.
 
 ## 5. Verify
 

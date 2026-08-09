@@ -368,8 +368,39 @@ head; a dirty target checkout; and a checkout from another repository. The
 latitude belongs where a reviewer is present to exercise it. A refused merge
 leaves a signed approval standing and asks only that the record be brought up
 to date. It passes the approved full object ID to `git merge --no-ff`, never a
-branch name, so advancing the reviewed branch cannot retarget the merge. Record
-the resulting merge artifact separately as required by the workroom discipline.
+branch name, so advancing the reviewed branch cannot retarget the merge.
+
+Recording the result is separate, and the workroom discipline separates
+retiring from publishing: every live artifact covering what the merge changed
+is retired, and a successor is published at the one path the area keeps using.
+A path can carry several live artifacts, which the projection counts and
+reports as *succession not recorded* until each is retired; a path with no
+live artifact yet needs no supersession.
+`git diff --name-only <merge>^1 <merge>` lists the files a merge brought in.
+Paths are compared as exact strings — the projection keys artifacts by the
+path field with no normalising, prefix matching, or globbing — so a new
+artifact reaches a predecessor only when the two strings are identical. Reuse
+the exact path an area already uses instead of renaming it, and never
+comma-join paths: `AGENTS.md,SKILL.md` is one string that no real artifact can
+equal in either direction.
+
+Two cases would otherwise be ambiguous. When a directory and something inside
+it are both live over one changed file, the wider path wins: the successor
+goes to the directory, and the narrower artifact is retired by a bare
+`gs supersede` naming the surviving path, which is never published at again.
+When a merge renames or deletes a tracked file with a live artifact at its old
+path, that artifact is retired the same way; a rename publishes a first
+artifact at the new path, and a deletion publishes nothing. `gs supersede`
+rests on its target by itself, and `decideSupersede` admits it only from the
+target's own author or from an actor holding `ratifier` — an operator holds
+that role by implication — so retiring another actor's artifact needs a
+ratifier.
+
+A merge artifact at `.` is the failure this rule
+exists to prevent: a path every merge rewrites retires every act anchored to
+it on every merge, whatever changed. The whole-repository pointer has no
+successor and needs none — `git rev-parse main` answers which commit main
+carries, and the live artifact at a path answers it for that area.
 
 ### Serving and attaching
 
