@@ -55,7 +55,6 @@ func TestPublicRepositorySurface(t *testing.T) {
 		},
 		".github/workflows/ci.yml": {
 			"permissions:\n  contents: read",
-			"persist-credentials: false",
 			"git diff --exit-code",
 			".github/scripts/verify-preview-clone.sh",
 		},
@@ -71,6 +70,21 @@ func TestPublicRepositorySurface(t *testing.T) {
 			if !strings.Contains(compact, strings.Join(strings.Fields(fragment), " ")) {
 				t.Errorf("%s does not contain required public surface %q", path, fragment)
 			}
+		}
+	}
+
+	workflow := read(".github/workflows/ci.yml")
+	checkoutStart := strings.Index(workflow, "uses: actions/checkout@")
+	if checkoutStart < 0 {
+		t.Fatal("CI workflow does not contain an actions/checkout step")
+	}
+	checkoutStep := workflow[checkoutStart:]
+	if nextStep := strings.Index(checkoutStep, "\n      - name:"); nextStep >= 0 {
+		checkoutStep = checkoutStep[:nextStep]
+	}
+	for _, setting := range []string{"persist-credentials: false", "fetch-depth: 0"} {
+		if !strings.Contains(checkoutStep, setting) {
+			t.Errorf("actions/checkout step does not contain %q", setting)
 		}
 	}
 
