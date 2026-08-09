@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type WorktreeView } from "./api";
-import { ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, OPEN_WORK_STATUSES } from "./work";
+import { ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, OPEN_WORK_STATUSES, workAttentionCount } from "./work";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
@@ -178,12 +178,7 @@ export function staleCauses(event: string, projection: Projection): StaleCause[]
 
 // A free-standing promise the fold judged dangling: it landed, but nobody is
 // structurally positioned to declare it satisfied.
-export function danglingPromises(projection: Projection): Statement[] {
-  const reasons = new Map(projection.decisions.map((d) => [d.event, d]));
-  return projection.statements.filter(
-    (s) => s.kind === "promise" && reasons.get(s.event)?.reason.includes("dangling"),
-  );
-}
+export { danglingPromises } from "./work";
 
 // Folded promise/report events render inside their request's card; jumping
 // to one lands on the request row instead.
@@ -225,12 +220,8 @@ export const ATTENTION_COMMITMENT_STATUSES: string[] = [...ATTENTION_WORK_STATUS
 // The header chip's summary of the Work drawer, computed from the projection.
 export function workSummary(projection?: Projection): { stale: number; open: number; done: number } {
   if (!projection) return { stale: 0, open: 0, done: 0 };
-  const staleCount =
-    projection.artifacts.filter((a) => a.stale).length +
-    projection.commitments.filter((c) => ATTENTION_COMMITMENT_STATUSES.includes(c.status)).length +
-    danglingPromises(projection).length;
   return {
-    stale: staleCount,
+    stale: workAttentionCount(projection),
     open: projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status)).length,
     done: projection.commitments.filter((c) => CLOSED_WORK_STATUSES.includes(c.status as (typeof CLOSED_WORK_STATUSES)[number])).length,
   };

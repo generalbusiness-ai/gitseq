@@ -37,6 +37,17 @@ export interface WorkTopic {
 export interface WorkProjection {
   topics: WorkTopic[];
   authors: string[];
+  attention: WorkAttentionItem[];
+}
+
+export interface WorkAttentionItem {
+  event: string;
+  kind: "artifact" | "unlinked-promise";
+  title: string;
+  actor?: string;
+  timestamp?: number;
+  commit?: string;
+  searchText: string;
 }
 
 export interface WorkFilters {
@@ -174,7 +185,11 @@ export function buildWorkProjection(projection: Projection): WorkProjection {
     });
   }
   topics.sort((a, b) => b.latestOrder - a.latestOrder);
-  return { topics, authors: [...new Set(topics.map((topic) => topic.author))] };
+  return {
+    topics,
+    authors: [...new Set(topics.map((topic) => topic.author))],
+    attention: otherWorkAttention(projection),
+  };
 }
 
 export function filterWorkProjection(work: WorkProjection, filters: WorkFilters): WorkProjection {
@@ -197,7 +212,47 @@ export function filterWorkProjection(work: WorkProjection, filters: WorkFilters)
     }] : [];
   });
   if (query) topics.sort((a, b) => Number(b.rootSearchText.includes(query)) - Number(a.rootSearchText.includes(query)) || b.latestOrder - a.latestOrder);
-  return { topics, authors: work.authors };
+  const attention = !filters.attention || filters.author
+    ? []
+    : work.attention.filter((item) => !query || item.searchText.includes(query));
+  return { topics, authors: work.authors, attention };
+}
+
+export function danglingPromises(projection: Projection): Statement[] {
+  const decisions = new Map(projection.decisions.map((decision) => [decision.event, decision]));
+  return projection.statements.filter(
+    (statement) => statement.kind === "promise" && decisions.get(statement.event)?.reason.includes("dangling"),
+  );
+}
+
+export function otherWorkAttention(projection: Projection): WorkAttentionItem[] {
+  const statements = new Map(projection.statements.map((statement) => [statement.event, statement]));
+  const artifacts = projection.artifacts.filter((artifact) => artifact.stale).map((artifact): WorkAttentionItem => {
+    const statement = statements.get(artifact.event);
+    const title = `stale artifact: ${artifact.path === "." ? "this repository" : artifact.path} @ ${artifact.commit.slice(0, 8)}`;
+    return {
+      event: artifact.event,
+      kind: "artifact",
+      title,
+      actor: statement?.actor,
+      timestamp: statement?.timestamp,
+      commit: artifact.commit,
+      searchText: [title, statement?.text ?? "", artifact.path, artifact.commit].join("\n").toLocaleLowerCase(),
+    };
+  });
+  const unlinked = danglingPromises(projection).map((statement): WorkAttentionItem => ({
+    event: statement.event,
+    kind: "unlinked-promise",
+    title: `unlinked promise: ${statement.text}`,
+    actor: statement.actor,
+    timestamp: statement.timestamp,
+    searchText: [statement.text, ...Object.values(statement.body ?? {})].join("\n").toLocaleLowerCase(),
+  }));
+  return [...artifacts, ...unlinked];
+}
+
+export function workAttentionCount(projection: Projection): number {
+  return projection.commitments.filter((commitment) => workItemState(commitment).attention).length + otherWorkAttention(projection).length;
 }
 
 export function topicTitle(text: string): string {

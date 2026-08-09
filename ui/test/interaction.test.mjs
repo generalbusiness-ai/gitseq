@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { RetryKeys, parsePresenceLabel, threadTargetKey } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
-import { CLOSED_WORK_STATUSES, buildWorkProjection, filterWorkProjection, workItemState } from "../src/lib/work.ts";
+import { CLOSED_WORK_STATUSES, buildWorkProjection, filterWorkProjection, workAttentionCount, workItemState } from "../src/lib/work.ts";
 import { belongsInRoom, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
@@ -172,6 +172,31 @@ test("the Work summary counts every terminal lifecycle as closed", () => {
   assert.deepEqual([...CLOSED_WORK_STATUSES], ["satisfied", "withdrawn", "cancelled", "reneged"]);
 });
 
+test("Work accounts for qualifier attention, stale artifacts, and unlinked promises", () => {
+  const projection = {
+    decisions: [
+      { event: "request", verdict: "effective", reason: "ok" },
+      { event: "promise", verdict: "ineffective", reason: "dangling promise has no request" },
+      { event: "artifact", verdict: "effective", reason: "ok" },
+    ],
+    acts: [], actors: {},
+    statements: [
+      { event: "request", actor: "hugh", kind: "request", text: "review me" },
+      { event: "promise", actor: "codex", kind: "promise", text: "unlinked work" },
+      { event: "artifact", actor: "codex", kind: "artifact", text: "old build" },
+    ],
+    commitments: [{ request: "request", requester: "hugh", performer: "codex", status: "reported", stale: true }],
+    artifacts: [{ event: "artifact", path: "ui", commit: "abcdef012345", stale: true }],
+    provenance: { request: [], promise: [], artifact: ["request"] },
+  };
+  const work = buildWorkProjection(projection);
+  assert.equal(workAttentionCount(projection), 3);
+  assert.deepEqual(work.attention.map((item) => item.kind), ["artifact", "unlinked-promise"]);
+  assert.equal(filterWorkProjection(work, { open: true, attention: true, closed: false }).attention.length, 2);
+  assert.equal(filterWorkProjection(work, { open: true, attention: false, closed: false }).attention.length, 0);
+  assert.equal(filterWorkProjection(work, { open: true, attention: true, closed: false, author: "hugh" }).attention.length, 0);
+});
+
 test("local worktrees join current promise, docs report, and exact commit-trailer shapes", () => {
   const commitment = { request: "request", requester: "human", performer: "agent", promise: "promise", report: "report", status: "reported" };
   const projection = {
@@ -311,5 +336,8 @@ test("Work is the default center and List and Board share one projection", () =>
   assert.match(work, /open: true, attention: true, closed: false/);
   assert.match(work, /presentation === "list"/);
   assert.match(work, /<WorkBoard/);
+  assert.match(work, /Other attention/);
+  assert.match(work, /asked by \{nameOf\(item\.request\.actor\)\}/);
+  assert.doesNotMatch(work, /written by \{nameOf\(topic\.author\)\}/);
   assert.doesNotMatch(work, /draggable|onDrag|drop/i);
 });
