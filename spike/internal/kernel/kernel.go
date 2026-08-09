@@ -17,7 +17,10 @@ import (
 	"gitseq/spike/internal/intent"
 )
 
-const genesisMarker = "gitseq-genesis-v0"
+const (
+	genesisMarker  = "gitseq-genesis-v0"
+	rotationMarker = "gitseq-rotation-v0"
+)
 
 var (
 	ErrIdempotencyConflict = errors.New("idempotency key reused with different intent")
@@ -32,6 +35,12 @@ type GenesisDescriptor struct {
 	SequencerPublicKey string
 	PredecessorGenesis string
 	SealedHead         string
+}
+
+type rotationDescriptor struct {
+	_                  struct{} `cbor:",toarray"`
+	Version            uint64
+	SequencerPublicKey string
 }
 
 type Request struct {
@@ -187,6 +196,48 @@ func parseGenesisMessage(message string) (GenesisDescriptor, error) {
 	return decodeGenesis(encoded)
 }
 
+func rotationMessage(publicKey string) (string, error) {
+	if err := gitstore.ValidateSSHPublicKey(publicKey); err != nil {
+		return "", fmt.Errorf("invalid successor sequencer key: %w", err)
+	}
+	enc, _ := deterministicModes()
+	encoded, err := enc.Marshal(rotationDescriptor{Version: 0, SequencerPublicKey: publicKey})
+	if err != nil {
+		return "", err
+	}
+	return rotationMarker + "\nDescriptor: " + base64.RawURLEncoding.EncodeToString(encoded) + "\n", nil
+}
+
+func parseRotationMessage(message string) (string, bool, error) {
+	lines := strings.Split(strings.TrimSpace(message), "\n")
+	if len(lines) == 0 || lines[0] != rotationMarker {
+		return "", false, nil
+	}
+	if len(lines) != 2 || !strings.HasPrefix(lines[1], "Descriptor: ") {
+		return "", true, errors.New("malformed rotation envelope")
+	}
+	encoded, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(lines[1], "Descriptor: "))
+	if err != nil {
+		return "", true, fmt.Errorf("decode rotation descriptor: %w", err)
+	}
+	enc, dec := deterministicModes()
+	var desc rotationDescriptor
+	if err := dec.Unmarshal(encoded, &desc); err != nil {
+		return "", true, fmt.Errorf("decode rotation descriptor: %w", err)
+	}
+	reencoded, err := enc.Marshal(desc)
+	if err != nil || !bytes.Equal(reencoded, encoded) {
+		return "", true, errors.New("non-deterministic rotation descriptor")
+	}
+	if desc.Version != 0 {
+		return "", true, errors.New("unsupported rotation version")
+	}
+	if err := gitstore.ValidateSSHPublicKey(desc.SequencerPublicKey); err != nil {
+		return "", true, fmt.Errorf("invalid successor sequencer key: %w", err)
+	}
+	return desc.SequencerPublicKey, true, nil
+}
+
 func Ref(genesis string) string { return "refs/seq/" + genesis }
 
 func Descriptor(ctx context.Context, store gitstore.Store, genesis string) (GenesisDescriptor, error) {
@@ -245,6 +296,64 @@ func fail(options Options, name string) {
 
 func Submit(ctx context.Context, store gitstore.Store, request Request, options Options) (Result, error) {
 	return submit(ctx, store, request, options, nil)
+}
+
+// Rotate appends the kernel's reserved key-rotation event. The rotation commit
+// is signed by the current sequencer key and names the only key accepted for
+// later commits. The private key named by options remains the current key;
+// callers switch custody to the successor only after this append succeeds.
+func Rotate(ctx context.Context, store gitstore.Store, genesis, successorPublicKey string, options Options) (Result, error) {
+	message, err := rotationMessage(successorPublicKey)
+	if err != nil {
+		return Result{}, err
+	}
+	desc, err := Descriptor(ctx, store, genesis)
+	if err != nil {
+		return Result{}, err
+	}
+	if uint64(len(message)) > desc.PayloadCeiling {
+		return Result{}, errors.New("rotation envelope exceeds genesis ceiling")
+	}
+	tree, err := store.EmptyTree(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	maxRetries := options.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = 32
+	}
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		head, err := store.Head(ctx, Ref(genesis))
+		if err != nil {
+			return Result{}, err
+		}
+		log, err := scanHead(ctx, store, genesis, head, false)
+		if err != nil {
+			return Result{}, err
+		}
+		if log.sequencerPublicKey == successorPublicKey {
+			return Result{}, errors.New("successor is already the current sequencer key")
+		}
+		commit, timestamp, err := store.SignedCommitWithTimestamp(ctx, tree, head, message, options.SigningKey, gitstore.CommitIdentity{
+			AuthorName: "gitseq rotation", AuthorEmail: "rotation@gitseq.invalid",
+			CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+		})
+		if err != nil {
+			return Result{}, err
+		}
+		if err := store.VerifySSHCommit(ctx, commit, "sequencer", log.sequencerPublicKey); err != nil {
+			return Result{}, fmt.Errorf("rotation %s sequencer signature: %w", commit, err)
+		}
+		if err := store.UpdateRef(ctx, Ref(genesis), commit, head); err != nil {
+			current, headErr := store.Head(ctx, Ref(genesis))
+			if headErr == nil && current != head {
+				continue
+			}
+			return Result{}, err
+		}
+		return Result{Commit: commit, Head: commit, CASRetries: attempt, BaseHead: head, Timestamp: timestamp}, nil
+	}
+	return Result{}, errors.New("CAS retry limit exceeded")
 }
 
 func submit(ctx context.Context, store gitstore.Store, request Request, options Options, cache *submitCache) (Result, error) {
@@ -424,7 +533,7 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 		// chain's ordinary auditor. In particular, local custody may have been
 		// rotated without changing the genesis descriptor; never advance the ref
 		// with a commit signed by that unrelated key.
-		if err := store.VerifySSHCommit(ctx, commit, "sequencer", desc.SequencerPublicKey); err != nil {
+		if err := store.VerifySSHCommit(ctx, commit, "sequencer", log.sequencerPublicKey); err != nil {
 			return Result{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)
 		}
 		fail(options, "before_ref_cas")
@@ -482,9 +591,10 @@ type Verification struct {
 }
 
 type scannedLog struct {
-	Verification Verification
-	Events       []Event
-	Dedup        map[string]Event
+	Verification       Verification
+	Events             []Event
+	Dedup              map[string]Event
+	sequencerPublicKey string
 }
 
 // LoadResult is a verified resident read. Full means Events contains the
@@ -683,12 +793,13 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 		return scannedLog{}, err
 	}
 	log := scannedLog{
-		Verification: Verification{Genesis: genesis, Head: head, Depth: len(commits) - 1, Events: len(commits) - 1},
-		Events:       make([]Event, 0, len(commits)-1),
-		Dedup:        make(map[string]Event, len(commits)-1),
+		Verification:       Verification{Genesis: genesis, Head: head, Depth: len(commits) - 1},
+		Events:             make([]Event, 0, len(commits)-1),
+		Dedup:              make(map[string]Event, len(commits)-1),
+		sequencerPublicKey: desc.SequencerPublicKey,
 	}
 	for index, commit := range commits {
-		if err := store.VerifySSHCommit(ctx, commit, "sequencer", desc.SequencerPublicKey); err != nil {
+		if err := store.VerifySSHCommit(ctx, commit, "sequencer", log.sequencerPublicKey); err != nil {
 			return scannedLog{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)
 		}
 		parents, err := store.CommitParents(ctx, commit)
@@ -704,9 +815,16 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 		if len(parents) != 1 || parents[0] != commits[index-1] {
 			return scannedLog{}, fmt.Errorf("commit %s is not single-parent chained", commit)
 		}
-		event, err := loadEvent(ctx, store, desc, genesis, commit, loadPayload)
+		event, successor, rotation, err := loadCommit(ctx, store, desc, genesis, commit, loadPayload)
 		if err != nil {
 			return scannedLog{}, err
+		}
+		if rotation {
+			if successor == log.sequencerPublicKey {
+				return scannedLog{}, fmt.Errorf("commit %s rotates to the current sequencer key", commit)
+			}
+			log.sequencerPublicKey = successor
+			continue
 		}
 		key, err := event.Signed.DedupKey()
 		if err != nil {
@@ -720,6 +838,7 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 		}
 		log.Dedup[key] = eventWithoutPayload(event)
 		log.Events = append(log.Events, event)
+		log.Verification.Events++
 	}
 	return log, nil
 }
@@ -770,12 +889,20 @@ func scanListedAfter(ctx context.Context, store gitstore.Store, base scannedLog,
 		if len(parents) != 1 || parents[0] != expectedParent {
 			return scannedLog{}, fmt.Errorf("%w: commit %s does not follow %s", ErrNotDescendant, commit, expectedParent)
 		}
-		if err := store.VerifySSHCommit(ctx, commit, "sequencer", desc.SequencerPublicKey); err != nil {
+		if err := store.VerifySSHCommit(ctx, commit, "sequencer", base.sequencerPublicKey); err != nil {
 			return scannedLog{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)
 		}
-		event, err := loadEvent(ctx, store, desc, genesis, commit, loadPayload)
+		event, successor, rotation, err := loadCommit(ctx, store, desc, genesis, commit, loadPayload)
 		if err != nil {
 			return scannedLog{}, err
+		}
+		if rotation {
+			if successor == base.sequencerPublicKey {
+				return scannedLog{}, fmt.Errorf("commit %s rotates to the current sequencer key", commit)
+			}
+			base.sequencerPublicKey = successor
+			expectedParent = commit
+			continue
 		}
 		key, err := event.Signed.DedupKey()
 		if err != nil {
@@ -808,7 +935,7 @@ func scanListedAfter(ctx context.Context, store gitstore.Store, base scannedLog,
 	}
 	base.Verification.Head = head
 	base.Verification.Depth += len(commits)
-	base.Verification.Events += len(commits)
+	base.Verification.Events += len(events)
 	base.Events = events
 	return base, nil
 }
@@ -817,51 +944,72 @@ func scanListedAfter(ctx context.Context, store gitstore.Store, base scannedLog,
 // and sequencer signature have been established. Full and descendant scans
 // deliberately share every envelope, actor signature, target, trailer, tree,
 // and payload check.
-func loadEvent(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, genesis, commit string, loadPayload bool) (Event, error) {
+func loadCommit(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, genesis, commit string, loadPayload bool) (Event, string, bool, error) {
 	message, timestamp, err := store.CommitMessageWithTimestamp(ctx, commit)
 	if err != nil {
-		return Event{}, err
+		return Event{}, "", false, err
+	}
+	if uint64(len(message)) > desc.PayloadCeiling {
+		return Event{}, "", false, fmt.Errorf("commit %s envelope exceeds genesis ceiling", commit)
+	}
+	successor, rotation, err := parseRotationMessage(message)
+	if err != nil {
+		return Event{}, "", false, fmt.Errorf("commit %s: %w", commit, err)
+	}
+	if rotation {
+		tree, err := store.CommitTree(ctx, commit)
+		if err != nil {
+			return Event{}, "", false, err
+		}
+		emptyTree, err := store.EmptyTree(ctx)
+		if err != nil {
+			return Event{}, "", false, err
+		}
+		if tree != emptyTree {
+			return Event{}, "", false, fmt.Errorf("commit %s rotation tree is not empty", commit)
+		}
+		return Event{}, successor, true, nil
 	}
 	signed, trailers, err := intent.ParseEnvelope(message, desc.PayloadCeiling)
 	if err != nil {
-		return Event{}, err
+		return Event{}, "", false, err
 	}
 	decoded, err := intent.Verify(signed)
 	if err != nil {
-		return Event{}, err
+		return Event{}, "", false, err
 	}
 	if decoded.Target != "git:"+desc.ObjectFormat+":"+genesis {
-		return Event{}, errors.New("intent target does not name chain genesis")
+		return Event{}, "", false, errors.New("intent target does not name chain genesis")
 	}
 	if !intent.EqualRefs(decoded.RestsOn, trailers) {
-		return Event{}, errors.New("causal trailers differ from signed intent")
+		return Event{}, "", false, errors.New("causal trailers differ from signed intent")
 	}
 	_, treeOID, err := gitstore.ParseTypedOID(decoded.PayloadTree)
 	if err != nil {
-		return Event{}, err
+		return Event{}, "", false, err
 	}
 	actualTree, err := store.CommitTree(ctx, commit)
 	if err != nil {
-		return Event{}, err
+		return Event{}, "", false, err
 	}
 	if actualTree != treeOID {
-		return Event{}, errors.New("commit tree differs from signed intent")
+		return Event{}, "", false, errors.New("commit tree differs from signed intent")
 	}
 	remaining := desc.PayloadCeiling - uint64(len(message))
 	if err := store.ValidatePayloadTree(ctx, actualTree, remaining); err != nil {
-		return Event{}, fmt.Errorf("commit %s payload shape: %w", commit, err)
+		return Event{}, "", false, fmt.Errorf("commit %s payload shape: %w", commit, err)
 	}
 	event := Event{Commit: commit, Timestamp: timestamp, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
 	if !loadPayload {
-		return event, nil
+		return event, "", false, nil
 	}
 	event.Payload, err = store.ReadFile(ctx, commit, "event")
 	if err != nil {
-		return Event{}, err
+		return Event{}, "", false, err
 	}
 	paths, err := store.ListFiles(ctx, commit, "attachments")
 	if err != nil {
-		return Event{}, err
+		return Event{}, "", false, err
 	}
 	if len(paths) > 0 {
 		event.Attachments = make(map[string][]byte, len(paths))
@@ -869,11 +1017,11 @@ func loadEvent(ctx context.Context, store gitstore.Store, desc GenesisDescriptor
 	for _, path := range paths {
 		content, err := store.ReadFile(ctx, commit, path)
 		if err != nil {
-			return Event{}, err
+			return Event{}, "", false, err
 		}
 		event.Attachments[strings.TrimPrefix(path, "attachments/")] = content
 	}
-	return event, nil
+	return event, "", false, nil
 }
 
 func eventWithoutPayload(event Event) Event {
