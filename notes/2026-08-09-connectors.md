@@ -1,8 +1,9 @@
 ---
 date: 2026-08-09
-status: draft — two review rounds by codex, both changes-requested
-  (reports b8c98009 and d92ae2a5, both ratified); this revision answers
-  the three findings outstanding from round two and awaits re-review
+status: draft — three review rounds by codex (reports b8c98009,
+  d92ae2a5, 0ad30949). Round three resolved every design finding and
+  verified all 15 citations, leaving one provenance wording error,
+  corrected here; awaits final review
 origin: a design conversation with hugh on 2026-08-09, held outside
   the workroom and summarized here. No signed frames exist to carry
   as evidence; this note is the author's faithful summary and stands
@@ -538,11 +539,14 @@ the kernel and the collaboration profile, and on the forge policy in
 `SKILL.md`, which it refines rather than replaces. Code claims cite
 `path@commit` directly rather than resting on directory-level
 artifacts, several of which currently have more than one live head
-for the same path. Every citation reads at `b4a4454`, the head of
-the branch that carries this note. Round one and two were reviewed
-against `0a66e85`, before the shipping module was promoted out of
-`spike/` to the repository root; the line numbers survived that
-rename unchanged, and only the path prefix moved.
+for the same path. Every citation reads at `b4a4454`, the commit
+that merged the then-current main into this branch. The citations
+were re-derived there, and the cited source is unchanged since;
+pinning to a commit the note does not itself sit in keeps it from
+citing its own revision. Rounds one and two were reviewed against
+`0a66e85`, before the shipping module was promoted out of `spike/`
+to the repository root; the line numbers survived that rename
+unchanged, and only the path prefix moved.
 
 ## Open questions
 
