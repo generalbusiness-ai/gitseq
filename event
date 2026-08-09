@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cf0d8c94ede38ce77053ac6bea38e16cffefcad5"}
+{"kind":"promise","text":"I will independently review exact clean head 353314480887a1e31927551a568b15daec8842c1 on task/release-readiness against every stated condition, pinning each measurement to the object rather than a path, and sign an approved or changes-requested verdict through gs review without editing, merging or publishing anything.","body":{"head":"353314480887a1e31927551a568b15daec8842c1"}}
