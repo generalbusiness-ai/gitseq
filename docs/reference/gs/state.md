@@ -2,7 +2,7 @@
 title: gs state
 summary: Append a durable, attributed utterance.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57e4bc379b4f3539155eb83b13c359567e436aff
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dd237f3445f2123f9c1db55af0aaec93f0b457ce
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1539075831e59cbc39fefdd6a4e800ba2c150208
 ---
 
@@ -20,7 +20,7 @@ the only two acts it cannot make.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required)* | The signing actor. |
-| `--kind` | *(required)* | The speech act: `assert`, `propose`, `request`, `promise`, `report`, `dissent`, `artifact`, or a governance kind. |
+| `--kind` | *(required)* | The speech act, from the room's declared vocabulary: `assert`, `propose`, `request`, `promise`, `report`, `dissent`, `artifact`, or a governance kind. |
 | `--text` | *(required)* | The statement itself, in plain language. |
 | `--body` | | `key=value`, repeatable. Structured fields. |
 | `--rests-on` | | An event identifier, repeatable. What this act bears on. |
@@ -50,7 +50,9 @@ gs state --repo "$REPO" --as bot --kind promise \
 ## Body fields the fold reads
 
 Most of `body` is free-form and means whatever the room's practice says.
-A few fields are structural:
+A few fields are structural, because the room's declared vocabulary
+requires them — read `status.durable.vocabulary.definitions` for the
+catalog in force rather than trusting this list to be complete:
 
 | Kind | Required body | Meaning |
 |---|---|---|

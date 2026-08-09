@@ -2,8 +2,8 @@
 title: Configure an agent
 summary: Attach an MCP client to a workroom, and check that it can really act.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f940f57d17665c1ef145af8de98b4ac125499978
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd731b2cc1986b3ca6fe9b0a0af3394790a3ee6b
 ---
 
 # Configure an agent
@@ -16,19 +16,32 @@ signs everything that session does as that actor.
 Point your MCP client at:
 
 ```text
-gitseq-mcp --repo /path/to/your/repo --actor bot --server http://127.0.0.1:7777
+gitseq-mcp --actor bot
 ```
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--repo` | `.` | The ordinary git repository holding the workroom. |
-| `--actor` | *(required)* | A configured actor whose key this repository holds. |
-| `--server` | `http://127.0.0.1:7777` | The resident service. |
+| `--actor` | *(required)* | A configured actor whose key the repository holds. |
+| `--repo` | *(working directory)* | The default repository for calls that do not name one. |
 
-The actor must already exist and its key must be in this repository —
-`gs actor-add` puts it there. The adapter refuses to start otherwise,
-which is the check you want: an agent that cannot sign should not appear
-to have joined.
+Register it **once**. The repository is a parameter of the call, not of
+the installation: a call with no `repo` acts in the working directory the
+adapter was started in, or in `--repo` when that was given, and any call
+may name another repository instead. Linked worktrees of one repository
+are one workroom, not several.
+
+There is no service URL to configure. The adapter reads the address the
+resident published in the repository it is acting in, and uses it only
+when the genesis recorded with it matches that workroom. An address that
+stops answering is forgotten and looked up again on the next call, so a
+service started later is picked up without reconnecting the client.
+`--server` is retired: passing it prints a notice and changes nothing.
+
+The actor must exist and its key must be in the repository being acted
+in — `gs actor-add` puts it there. A repository with no workroom, or one
+where the actor is not configured, **fails that call and says so**. It
+does not stop the adapter, because one installation serves many
+repositories and one bad target should not strand the session.
 
 Before an agent acts, it should read [`SKILL.md`](../../SKILL.md). That
 is the normative contract for working in a workroom; this documentation
@@ -53,7 +66,8 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{%s}}\n' "$META" 
 ```
 
 Eight tools come back: `whoami`, `presence`, `status`, `wait`, `say`,
-`state`, `ratify`, `supersede`.
+`state`, `ratify`, `supersede`. Every one of them accepts an optional
+`repo`.
 
 Confirm the adapter is signing as the actor you meant:
 
@@ -99,8 +113,9 @@ log and report a `degraded` live cursor. `say` and `presence` fail rather
 than pretend: ephemeral state does not survive, and the adapter will not
 imply it did.
 
-That is why the examples above work with no `--server` reachable. Start a
-resident when you want presence, conversation and the live view.
+That is why the examples above work with no resident running at all.
+Start one when you want presence, conversation and the live view; the
+adapter will find it in the repository without being reconfigured.
 
 ## See also
 

@@ -2,6 +2,7 @@
 title: MCP say
 summary: Publish a signed ephemeral frame, opening a conversation when needed.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9d3606442131e4bc700d1310451657bd4eac438
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa5182bb85a8347c55bcf229d53b104dde600a7
 ---
@@ -22,6 +23,7 @@ the permanent record.
 | `about` | required | The event this conversation is anchored at. |
 | `text` | required | What you are saying. |
 | `conversation` | optional | An existing conversation to speak in. Omit it and one is opened at `about` if none is. |
+| `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 
 ## Example
 
@@ -43,7 +45,7 @@ done
 
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
 printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"say","arguments":{"about":"%s","text":"is this pricing still current?"},%s}}\n' "$SEED" "$META" \
-  | gitseq-mcp --repo "$REPO" --actor alice --server "http://127.0.0.1:$PORT" 2>/dev/null
+  | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 kill "$SERVER"
 trap - EXIT
 ```

@@ -2,7 +2,7 @@
 title: MCP ratify
 summary: Attempt to confer force on a statement; authority is decided by the fold.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f940f57d17665c1ef145af8de98b4ac125499978
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57e4bc379b4f3539155eb83b13c359567e436aff
 ---
 
@@ -18,6 +18,7 @@ decision, not yours.
 |---|---|---|
 | `target` | required | The event identifier to ratify. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
+| `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 
 There is no `rests_on`. `ratify` cites its target and nothing else, and
 refuses any surplus citation — the one act in the system strict enough to
@@ -44,7 +45,7 @@ PORT="${PORT:-7777}"
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
 
 printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ratify","arguments":{"target":"%s"},%s}}\n' "$REPORT" "$META" \
-  | gitseq-mcp --repo "$REPO" --actor alice --server "http://127.0.0.1:$PORT" 2>/dev/null
+  | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 ```
 
 ## Who may ratify what

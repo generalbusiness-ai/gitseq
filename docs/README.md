@@ -53,6 +53,7 @@ Read in this order if you are new:
   [role-revoke](reference/gs/role-revoke.md),
   [actors](reference/gs/actors.md),
   [state](reference/gs/state.md),
+  [batch](reference/gs/batch.md),
   [review](reference/gs/review.md),
   [merge](reference/gs/merge.md),
   [ratify](reference/gs/ratify.md),
@@ -82,7 +83,7 @@ Read in this order if you are new:
 Every page here names the durable acts that govern the behaviour it
 describes, and ships with its own artifact statement resting on them. So
 when the behaviour moves, the page — that page, not the set — flares. The
-convention, and the four tests that enforce it, are described in
+convention, and the four gates that enforce it, are described in
 [Anchoring](anchoring.md).
 
 ## Not user documentation

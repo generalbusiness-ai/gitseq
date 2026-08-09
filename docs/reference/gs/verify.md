@@ -2,6 +2,7 @@
 title: gs verify
 summary: Check every signature and the integrity of the sequence.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:328aa6777241e67d4b1a122ee45d4e4019eebd11
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c916a0e1ff6e09982c413adf0e1b0439135721b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e2dddf3fdd8ffb6a13fa020f16df29bfd9c99cf
 ---
@@ -41,18 +42,26 @@ gs verify --repo "$REPO"
 }
 ```
 
-`Depth` and `Events` matching is itself a check: every commit on the
-first-parent chain from genesis to head decoded as an event.
+On a log whose sequencer key has never been rotated, `Depth` and `Events`
+match, and that is itself a check: every commit on the first-parent chain
+from genesis to head decoded as an event. A rotation is a commit and not
+an event, so each one raises `Depth` above `Events` by one.
 
 ## What it establishes
 
 - Each event's **actor signature** covers the intent that was signed, and
   the key is the one the roster attributes to that actor.
 - Each sequence commit's **sequencer signature** validates against the
-  single canonical `ssh-ed25519` key pinned in genesis. Genesis accepts
-  exactly one such key, with no options, principals, comments or extra
+  key current at that position. Genesis pins exactly one canonical
+  `ssh-ed25519` key, with no options, principals, comments or extra
   lines, so a genesis carrying an injected second key cannot validate an
   attacker-signed event.
+- Where the sequencer key has been **rotated**, the audit carries the
+  current key forward as it walks. A rotation must itself be signed by
+  the key it replaces, and a commit signed under a retired key is refused
+  from the rotation point onward. Rotation commits count in the depth but
+  are not events, which is why `Depth` can exceed `Events` on a rotated
+  log.
 - Each event occupies the commit it claims, with matching envelope,
   causal trailers and payload tree.
 - Payload sizes are within the workroom's ceiling.

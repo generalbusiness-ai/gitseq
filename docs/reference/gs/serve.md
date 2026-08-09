@@ -2,7 +2,9 @@
 title: gs serve
 summary: Run the resident service: sequencing, presence, change notification, and the browser view.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:75eab177526d3a45b70df77ac650932e1203a79f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ec925bb7a282b9199d4aca896578e95485ce5d56
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a13f26c1c7a88f9d98e2d97e4423840530b949a2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:328aa6777241e67d4b1a122ee45d4e4019eebd11
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa5182bb85a8347c55bcf229d53b104dde600a7
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9d3606442131e4bc700d1310451657bd4eac438
 ---
@@ -20,7 +22,7 @@ It runs in the foreground until stopped.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--listen` | `127.0.0.1:7777` | A loopback address to bind. |
+| `--listen` | `127.0.0.1:7777` | A loopback address to bind. Port `0` takes any free port. |
 
 ## Example
 
@@ -43,12 +45,29 @@ kill "$SERVER"
 trap - EXIT
 ```
 
-## The banner is not readiness
+## Publishing the address
 
-`serve` prints `gitseq workroom http://…` to standard error **before** it
-binds, so a failed start still announces an address. Check for the bind
-error, and poll for a real answer as above rather than trusting the
-banner.
+`serve` binds first, then publishes the address it actually bound inside
+the repository, then prints `gitseq workroom http://…` to standard error.
+So the banner names a port that is really open, a failed start announces
+nothing, and `--listen 127.0.0.1:0` is usable: the kernel picks the port
+and clients read it from the repository rather than being told it. That
+is what you want when several repositories are served at once.
+
+The advertisement carries the genesis of the workroom being served, and a
+client refuses one whose genesis does not match, so an act can never be
+posted to a service holding a different log.
+
+Publication is **not a lock**. The last service to start wins the
+advertisement, which at least pulls new clients into one room. Stopping
+withdraws it, unless a later service has taken it over — that service is
+still serving, and removing its record would send clients into degraded
+mode for nothing.
+
+Interrupt and terminate both count as being told to stop, so Ctrl-C and
+an ordinary supervisor shutdown both withdraw the advertisement and both
+exit reporting success. Only a hard kill leaves a record behind, and that
+costs a client one refused connection before it acts locally instead.
 
 ## Loopback only
 
@@ -76,8 +95,8 @@ boundary is the whole of the protection.
 
 ## One per repository
 
-Run exactly one. Nothing enforces it — there is no lock, and only port
-contention stops a second one. Two services on different ports against
+Run exactly one. Nothing enforces it — there is no lock, and publishing
+the address is not one. Two services on different ports against
 the same repository is the case to avoid: the durable log stays correct,
 because appends are compare-and-swap on the git ref and retry, but
 presence and conversation are per-process, so the two form separate rooms
@@ -89,16 +108,19 @@ whose participants never see each other and are never told.
 |---|---|
 | A non-loopback `--listen` | `--listen must name a loopback address; the resident service is a trusted local multi-actor custodian` |
 | A read-only attachment | `cannot serve a read-only attachment` |
-| The port is taken | The bind error, after the banner has already printed. |
+| The port is taken | The bind error, before anything is published or announced. |
 
 ## Restart
 
 The resident keeps a signed checkpoint under
 `refs/gitseq/checkpoints/<genesis>` and refreshes it every 256 accepted
 events after its last successful write, so restart re-audits only the
-tail. A missing or mismatched checkpoint is only a cache miss: it does
-the full audit instead. Checkpoint refs are local, never fetched by
-`attach`, never published, and never consulted by
+tail. The checkpoint is signed by the sequencer key current at its head,
+and any key rotation inside the cached prefix is re-read from its own
+sequence commit and checked under the preceding key, so a rotated log
+still restarts from cache. A missing or mismatched checkpoint is only a
+cache miss: it does the full audit instead. Checkpoint refs are local,
+never fetched by `attach`, never published, and never consulted by
 [`gs verify`](verify.md).
 
 Expired presence leases are swept, so a session that goes away without

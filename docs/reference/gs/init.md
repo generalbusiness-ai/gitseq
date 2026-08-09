@@ -3,6 +3,7 @@ title: gs init
 summary: Create a workroom in an ordinary git repository.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e2dddf3fdd8ffb6a13fa020f16df29bfd9c99cf
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:328aa6777241e67d4b1a122ee45d4e4019eebd11
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1539075831e59cbc39fefdd6a4e800ba2c150208
 ---
 
@@ -65,11 +66,15 @@ Your branches, tags and working tree are untouched.
   recorded in genesis, so raising it afterwards would invalidate the
   workroom. Choose deliberately if you expect large attachments.
 - **The object format.** Taken from the repository.
-- **The sequencer key.** Genesis pins exactly one canonical
-  `ssh-ed25519` public key: key type, one space, base64 wire key, with no
-  options, principals, comments or extra lines. Creation and auditor
-  decoding share that validator, so a genesis carrying an injected second
-  key cannot validate an attacker-signed event.
+
+Genesis also pins the **first** sequencer key: exactly one canonical
+`ssh-ed25519` public key, key type, one space, base64 wire key, with no
+options, principals, comments or extra lines. Creation and auditor
+decoding share that validator, so a genesis carrying an injected second
+key cannot validate an attacker-signed event. That key is not permanent
+— it can be rotated in band, and readers carry the current key forward as
+they audit. What rotation does and does not recover is in
+[Limits](../limits.md).
 
 ## The operator
 

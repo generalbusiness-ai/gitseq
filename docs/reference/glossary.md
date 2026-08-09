@@ -2,14 +2,36 @@
 title: Glossary
 summary: The vocabulary of a workroom, in one place.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57e4bc379b4f3539155eb83b13c359567e436aff
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d25d4a29644323e6939c86eefd25a24f59425a73
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dd237f3445f2123f9c1db55af0aaec93f0b457ce
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6918582b884b2f82fa7ab64242f40d12de845c39
 ---
 
 # Glossary
 
-**Act.** Anything an actor does that lands in the sequence: a statement,
-a ratification, a supersession.
+## The four words that carry the rest
+
+An **actor** performs an **act**; admitted, it becomes an **event**; the
+fold reads it back as a **statement**.
+
+| Term | Meaning |
+|---|---|
+| **event** | One admitted, signed record at a final position in the durable log. |
+| **act** | Something an actor does: requesting, promising, reporting, ratifying, superseding. |
+| **statement** | The fold's projected reading of an event. |
+| **kind** | The speech or governance classification a statement carries, such as `request` or `assert`. |
+
+Getting these apart matters when reading the projection: an ineffective
+act is still an event, and a statement is what a reader makes of it.
+
+The projection's JSON keeps an `acts` key for ratify and supersede
+events, for wire compatibility. Renaming it is follow-up work, not part
+of the vocabulary itself.
+
+## The rest, alphabetically
+
+**Act.** See above. Anything an actor does that lands in the sequence: a
+statement, a ratification, a supersession.
 
 **Actor.** A principal with a signing key. Everything it does is signed
 with that key.
@@ -21,6 +43,9 @@ The durable pointer from the record to the code.
 pulling the sequence down, so the clone can read and verify the workroom.
 
 **Basis.** An event named in another act's `rests_on`.
+
+**Commitment.** The tracked request–promise–report aggregate and its
+current lifecycle state.
 
 **Custody.** Holding an actor's private key. The resident service holds
 custody for every actor whose key is in the repository it serves.
@@ -61,11 +86,15 @@ authoritative.
 pins the object format, the payload ceiling and the sequencer key.
 
 **Kind.** Two unrelated senses. On a **statement**, the speech act:
-`request`, `promise`, `report`, `artifact`, and so on. On a **principal**,
-`human`, `agent` or `service` — which confers no authority.
+`request`, `promise`, `report`, `artifact`, and so on, as declared by the
+room's vocabulary. On a **principal**, `human`, `agent` or `service` —
+which confers no authority.
 
 **Nexus.** The amnesiac side of the resident service: presence, ephemeral
 conversation, and change notification.
+
+**Note.** The everyday label the browser view uses for an `assert`
+statement.
 
 **Payload ceiling.** The genesis-fixed bound on a signed envelope plus its
 inline payload and attachments. See [Limits](limits.md).
@@ -109,11 +138,19 @@ an artifact.
 still-live artifact for the identical path — a probable forgotten
 supersession.
 
-**Supersede.** To retire an act, propagating staleness to everything
+**Supersede.** To retire an event, propagating staleness to everything
 resting on it. Preferred to contradiction.
+
+**Ticket.** The short, one-based position used to refer to an event
+within one workroom.
 
 **Unable to flare.** A warning that an act cites nothing resolvable, so
 nothing could ever make it stale. Its silence is not currency.
+
+**Vocabulary.** The room's declared catalog of kinds, projected at
+`status.durable.vocabulary`. It is the source of truth for what each kind
+requires and who may ratify it. A kind the vocabulary does not declare
+stays visible and carries no semantic force.
 
 **Workroom.** One sequence, its actors, and the practice they share. It
 lives in an ordinary git repository as `refs/seq/<genesis>`.

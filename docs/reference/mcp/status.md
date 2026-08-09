@@ -2,6 +2,8 @@
 title: MCP status
 summary: Project durable workroom state plus a composite cursor.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a40ed6053a0bb5c1eeed9febb540498d4258799f
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd731b2cc1986b3ca6fe9b0a0af3394790a3ee6b
 ---
 
@@ -17,7 +19,14 @@ the caller.
 
 ## Arguments
 
-No arguments.
+| argument | required | meaning |
+|---|---|---|
+| `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+
+Every tool takes `repo`. Naming a different repository acts in that
+repository's workroom instead; the adapter is installed once and serves
+whatever repository a call names. Linked worktrees of one repository are
+one workroom, not several.
 
 ## Example
 
@@ -29,7 +38,7 @@ gs init --repo "$REPO" --operator alice >/dev/null
 PORT="${PORT:-7777}"
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
 printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status","arguments":{},%s}}\n' "$META" \
-  | gitseq-mcp --repo "$REPO" --actor alice --server "http://127.0.0.1:$PORT" 2>/dev/null
+  | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 ```
 
 ## What comes back
@@ -37,6 +46,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 | Field | Meaning |
 |---|---|
 | `you` | Your name, fingerprint and current roles. |
+| `frontier` | The genesis, head and depth this answer was folded at. |
 | `waiting_on_you` | Commitments where the next move is yours. |
 | `you_are_waiting_on` | Commitments where it is not. |
 | `not_actionable` | Commitments involving you that nobody can currently advance. |
@@ -61,12 +71,17 @@ matters because some categories never discharge: stale, reneged and
 cancelled commitments, and your own ineffective acts, accumulate forever.
 
 When you need the whole projection rather than an orientation, read it
-another way — `gs status --json` has no cap.
+another way — [`gs status --json`](../gs/status.md) has no cap.
 
 ## Without a resident
 
-If the service is unreachable, `status` still answers from the local log
-and marks the live cursor `degraded`. Losing the resident changes what is
+The adapter finds the resident from the repository it is acting in: a
+service publishes the address it bound, with the genesis it holds, and
+the adapter uses it only when that genesis matches. There is no URL to
+configure and nothing to keep in step.
+
+If no service answers, `status` still answers from the local log and
+marks the live cursor `degraded`. Losing the resident changes what is
 knowable, not the shape of the answer: the same digest is applied on both
 paths.
 

@@ -22,10 +22,12 @@ prose still holds.
 
 | Mark | Meaning |
 |---|---|
-| `STALE` | Something this rests on was retired. |
-| `STALE — describes a superseded world` | The retired ancestor was itself an artifact, so the implementation it described has been replaced. |
+| `stale` | Something this rests on was retired. |
+| `stale`, noted `describes a superseded world` | The retired ancestor was itself an artifact, so the implementation it described has been replaced. |
 
 The second narrows the first. It is the one that usually means real work.
+The full tables under `gs status --all` write them as `STALE` and
+`STALE — describes a superseded world`.
 
 ## Two marks about practice
 
@@ -47,8 +49,8 @@ clears it. Paths are compared as exact strings, because path is a free
 body field and guessing which spellings mean the same tree would be
 guesswork.
 
-`gs status` reports both the number of rows affected and the number of
-supersessions actually owed, because one forgotten retirement at a
+`gs status --all` reports both the number of rows affected and the number
+of supersessions actually owed, because one forgotten retirement at a
 long-lived path repeats on every later link of that chain. The row count
 overstates how many situations there are to act on; the owed count is the
 work.

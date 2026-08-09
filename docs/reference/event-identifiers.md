@@ -1,14 +1,14 @@
 ---
 title: Event identifiers
-summary: The one canonical name every durable act is cited by.
+summary: The one canonical name every durable event is cited by.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57e4bc379b4f3539155eb83b13c359567e436aff
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d25d4a29644323e6939c86eefd25a24f59425a73
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b08920c22adda0622d8d6676d52eacdcecc3698a
 ---
 
 # Event identifiers
 
-Every durable act has exactly one canonical identifier:
+Every durable event has exactly one canonical identifier:
 
 ```text
 git:<object-format>:<genesis>#git:<object-format>:<event-commit>
@@ -46,7 +46,7 @@ silent: the fold marks an artifact whose bases all fail to resolve as
 `unable to flare`, because `supersede` needs a target it can resolve and
 so nothing could ever make that act stale.
 
-The acts with a required edge are stricter, and `ratify` is strictest of
+Events with a required edge are stricter, and `ratify` is strictest of
 all — it refuses any citation other than its target. See
 [The record](../concepts/record.md#recorded-is-not-effective).
 

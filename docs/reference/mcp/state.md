@@ -2,7 +2,8 @@
 title: MCP state
 summary: Append a durable attributed utterance.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f940f57d17665c1ef145af8de98b4ac125499978
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dd237f3445f2123f9c1db55af0aaec93f0b457ce
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1539075831e59cbc39fefdd6a4e800ba2c150208
 ---
 
@@ -16,12 +17,13 @@ appends is permanent.
 
 | argument | required | meaning |
 |---|---|---|
-| `kind` | required | The speech act: `assert`, `propose`, `request`, `promise`, `report`, `dissent`, `artifact`, or a governance kind. |
+| `kind` | required | The speech act, from the room's declared vocabulary: `assert`, `propose`, `request`, `promise`, `report`, `dissent`, `artifact`, or a governance kind. |
 | `text` | required | The statement, in plain language. |
 | `rests_on` | required | Array of event identifiers. What this act bears on. |
 | `body` | optional | String map of structured fields. |
 | `evidence` | optional | String map of `name` to content, embedded as attachments. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
+| `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 
 `rests_on` is required by the schema — an act citing nothing is almost
 always a mistake, and requiring the field makes that a decision rather
@@ -42,10 +44,14 @@ PORT="${PORT:-7777}"
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
 
 printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"state","arguments":{"kind":"request","text":"Add a changelog","body":{"to":"@bot","conditions":"CHANGELOG.md exists"},"rests_on":["%s"]},%s}}\n' "$SEED" "$META" \
-  | gitseq-mcp --repo "$REPO" --actor alice --server "http://127.0.0.1:$PORT" 2>/dev/null
+  | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 ```
 
 ## Body fields the fold reads
+
+Read `status.durable.vocabulary.definitions` before choosing a kind: that
+catalog is the source of truth for required fields, basis constraints and
+ratification authority. The structural fields you will meet most are:
 
 | Kind | Required body | Meaning |
 |---|---|---|

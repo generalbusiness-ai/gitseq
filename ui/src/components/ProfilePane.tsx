@@ -5,7 +5,7 @@ import type { Session } from "../lib/session";
 import { cn } from "../lib/util";
 import { Avatar } from "./Avatar";
 import { EventTime } from "./EventTime";
-import { parsePresenceLabel } from "../lib/interaction";
+import { fingerprintsIdentifySameActor, presentActors } from "../lib/interaction";
 import { Ticket } from "./Stream";
 
 // The profile pane: who an actor is and where they stand — computed entirely
@@ -37,8 +37,11 @@ export function ProfilePane({
     })();
   const name = actor?.name ?? fingerprint.slice(0, 8);
 
-  // Online when any live session announces this actor's name.
-  const online = Object.values(workroom.status?.live.presence ?? {}).some((value) => parsePresenceLabel(value).name === name);
+  // Presence carries a short fingerprint. Display names are not identities:
+  // two custodians may intentionally share one.
+  const online = presentActors(workroom.status?.live.presence).some((person) =>
+    fingerprintsIdentifySameActor(person.fingerprint, fingerprint),
+  );
   const isMe = session.actor === name;
 
   // Their recent durable acts, newest first — each row jumps the stream.

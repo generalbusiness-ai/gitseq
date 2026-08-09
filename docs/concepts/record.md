@@ -2,7 +2,9 @@
 title: The record
 summary: What a durable event is, what the fold makes of it, and why a recorded act may carry no force.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57e4bc379b4f3539155eb83b13c359567e436aff
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dd237f3445f2123f9c1db55af0aaec93f0b457ce
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49c5af7efee024166d0db379263f3231369b03ed
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d25d4a29644323e6939c86eefd25a24f59425a73
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1539075831e59cbc39fefdd6a4e800ba2c150208
 ---
 
@@ -49,10 +51,27 @@ words, not types the substrate understands. Their meaning belongs to the
 practice of the room; [`SKILL.md`](../../SKILL.md) is where this project
 writes its own down.
 
-A few kinds do carry structure the fold reads. An `artifact` must have
-`body.path` and `body.commit`. A `request` must have `body.conditions`
-and names its performer in `body.to`. Those are the hooks that make
-commitments and staleness projectable.
+A room **declares** its kinds, and the projection carries that
+declaration at `status.durable.vocabulary`. Each declared kind states its
+required fields, its basis constraints, who may ratify it, how it
+renders, how staleness travels through it, and whether it takes part in
+the commitment lifecycle. That catalog, not this page, is the source of
+truth for what a kind demands. A statement whose kind the vocabulary does
+not declare stays visible and carries no semantic force: an
+`undefined-kind` reading is a gap to surface, not a meaning to improvise.
+
+The declarations are what make commitments and staleness projectable. An
+`artifact` must have `body.path` and `body.commit`. A `request` must have
+`body.conditions` and names its performer in `body.to`.
+
+Which rules admit events is itself governed. A workroom runs the
+**admission profile** named by the newest live, ratified governance
+statement for its genesis — naming a bundle and a contract — and falls
+back to a bootstrap profile derived from genesis when there is none.
+Likewise, if the record has no fold binding, or the binding names an
+interpreter this reader does not hold, the projection reports `unbound`
+or `uninterpretable`. Those are audit gaps, not warnings to click
+through.
 
 ## The fold
 
@@ -77,9 +96,9 @@ not take force.
 This is deliberate. Deleting failed attempts would make the log lie by
 omission about what was tried. `gs status` lists them under **Attempts**.
 
-How much of `rests_on` the fold checks depends on the act:
+How much of `rests_on` the fold checks depends on the event:
 
-| Act | What must resolve | Surplus bases |
+| Event | What must resolve | Surplus bases |
 |---|---|---|
 | `assert`, `artifact`, `propose`, other statements | nothing | carried unchecked |
 | `promise` | one basis must be an effective `request` | carried unchecked |
@@ -92,7 +111,7 @@ citing a request that does not exist is ineffective, and a report on that
 promise is ineffective in turn, so an unearned approval cannot carry
 force.
 
-For the acts with a required edge, that edge is necessary and not
+For events with a required edge, that edge is necessary and not
 sufficient — the fold also checks who signed. A promise citing a
 perfectly good request is ineffective when its author is not the
 performer the request named.

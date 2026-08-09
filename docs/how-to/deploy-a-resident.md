@@ -2,7 +2,8 @@
 title: Deploy a resident
 summary: Run the local service, wait for it to be ready, and understand what the loopback boundary trusts.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:75eab177526d3a45b70df77ac650932e1203a79f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a13f26c1c7a88f9d98e2d97e4423840530b949a2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:328aa6777241e67d4b1a122ee45d4e4019eebd11
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa5182bb85a8347c55bcf229d53b104dde600a7
 ---
 
@@ -29,10 +30,15 @@ trap 'kill "$SERVER" 2>/dev/null || true' EXIT
 
 Then open `http://127.0.0.1:$PORT` for the live view.
 
+Serving publishes the address it bound inside the repository, together
+with the genesis it holds, so clients find the service by naming the
+repository rather than by being told a URL. Use `--listen 127.0.0.1:0`
+when you are serving several repositories at once and do not want to
+allocate ports by hand.
+
 ## Wait for it properly
 
-`serve` prints its ready banner **before** it binds, so a failed start
-still announces an address. Do not treat the banner as readiness. Poll
+Starting the process is not the same as being able to talk to it. Poll
 for a real answer:
 
 ```sh
@@ -101,8 +107,10 @@ conversation.
 
 ## One service per repository
 
-Run exactly one. Nothing enforces it: there is no lock, and only port
-contention stops a second.
+Run exactly one. Nothing enforces it: there is no lock. Publishing the
+address is not one either — the last service to start wins the
+advertisement, which at least pulls new clients into one room. Stopping
+withdraws it, unless a later service has taken it over.
 
 Two services on different ports against the same repository is the case
 to avoid. The durable log stays correct — appends are compare-and-swap on
@@ -114,11 +122,18 @@ participants cannot see each other and are never told.
 
 The resident keeps a signed checkpoint under
 `refs/gitseq/checkpoints/<genesis>`: the original actor-signed events at
-one fully audited sequence head, signed by that log's sequencer key. On
-restart it checks the checkpoint's object format, genesis, exact head,
-fold-profile version and signature, proves the commit sequence from
-genesis to that head from local metadata, and re-reads sequencer
+one fully audited sequence head, signed by the sequencer key **current at
+that head**. On restart it checks the checkpoint's object format,
+genesis, exact head and fold-profile version, proves the commit sequence
+from genesis to that head from local metadata, and re-reads sequencer
 signatures and payload objects only for events after the frontier.
+
+Because the sequencer key can be rotated in band, deriving the right key
+is part of the check rather than an assumption. Every rotation inside the
+cached prefix is read from its own sequence commit and verified under the
+preceding key, and the key that walk arrives at must be the one that
+signed the checkpoint. Cached application events skip the sequencer
+signature read; cached rotations do not.
 
 A missing, malformed, mismatched, oversized or non-descendant checkpoint
 is only a cache miss: gitseq performs the ordinary full audit and, if it
@@ -138,6 +153,12 @@ sequence push does not publish them, and `gs verify` never consults them.
 kill "$SERVER"
 trap - EXIT
 ```
+
+Interrupt and terminate both count as being told to stop: the service
+withdraws its advertisement and exits reporting success, so an ordinary
+shutdown does not read as a fault in a supervisor's logs. Only a hard
+kill leaves the record behind, and that costs a client one refused
+connection before it falls back to acting locally.
 
 ## See also
 

@@ -2,7 +2,7 @@
 title: MCP whoami
 summary: Show the configured durable actor and the ephemeral session.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f940f57d17665c1ef145af8de98b4ac125499978
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6918582b884b2f82fa7ab64242f40d12de845c39
 ---
 
@@ -17,7 +17,14 @@ actor, permanently.
 
 ## Arguments
 
-No arguments.
+| argument | required | meaning |
+|---|---|---|
+| `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+
+Every tool takes `repo`. Naming a different repository acts in that
+repository's workroom instead; the adapter is installed once and serves
+whatever repository a call names. Linked worktrees of one repository are
+one workroom, not several.
 
 ## Example
 
@@ -30,8 +37,7 @@ PORT="${PORT:-7777}"
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
 call() { printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"%s","arguments":%s,%s}}\n' "$1" "$2" "$META"; }
 
-call whoami '{}' | gitseq-mcp --repo "$REPO" --actor alice \
-  --server "http://127.0.0.1:$PORT" 2>/dev/null
+call whoami '{}' | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 ```
 
 ## What comes back
@@ -39,9 +45,15 @@ call whoami '{}' | gitseq-mcp --repo "$REPO" --actor alice \
 | Field | Meaning |
 |---|---|
 | `actor` | Local configuration: name, fingerprint, key file. |
+| `repo` | The repository this call acted in, as its git common directory. |
+| `genesis` | The genesis hash of that repository's workroom. |
 | `durable` | What the roster says now: kind, roles, membership event, and which grants each role came from. |
 | `session` | This connection's ephemeral handle. |
 | `protocol` | The protocol version the adapter serves. |
+
+`repo` and `genesis` are worth reading before you act. One adapter serves
+whatever repository a call names, so they are the answer to "which
+workroom am I about to speak in".
 
 `actor` is local and `durable` is the record. They can disagree: a
 repository can hold a key for a principal whose membership has been

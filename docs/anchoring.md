@@ -1,7 +1,8 @@
 ---
 title: Anchoring
-summary: How each page names the acts that govern it, and the four tests that keep the set honest.
+summary: How each page names the acts that govern it, and the four gates that keep the set honest.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e697474da72663dac9038a032e57ba7ef718a1a3
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:718c16a257eeed209434c18e85ca605ed779bf90
 ---
 
@@ -45,19 +46,23 @@ flares.
 
 ## The four gates
 
-The set is checked by four tests in `spike/internal/docset`, run by
-`make test`.
+The set is checked by four gates in `internal/docset`, run by `make test`
+and on their own by `make docs`.
 
 | Gate | Test | What it catches |
 |---|---|---|
 | Surface completeness | `TestGateSurfaceCoversEveryCLISubcommand`, `TestGateSurfaceCoversEveryMCPTool` | A subcommand, flag, tool or argument added or removed without the reference page following. |
 | Examples run | `TestGateDocumentedCommandsRun`, `TestGateEveryReferenceAndRecipePageRunsSomething` | A documented command that no longer works, or a page whose examples were never executable. |
-| No empty basis | `TestGateEveryPageNamesAGoverningAct`, `TestGateNoPageIsUnableToFlare`, `TestGateUnbridgedMarkStillFires` | A page with no anchor, a malformed identifier, or the loss of the mark the convention depends on. |
+| No empty basis | `TestGateEveryPageNamesAGoverningAct`, `TestGateNoPageIsUnableToFlare`, `TestGateUnbridgedMarkStillFires`, `TestGateEveryNamedActResolvesToALiveRecord` | A page with no anchor, a malformed identifier, an identifier that resolves to nothing, a basis that is not an artifact, or the loss of the mark the convention depends on. |
 | Flare | `TestGateRetiringOneActFlaresExactlyItsPages`, `TestGateVerifyPageCanFlareAlone` | Retiring one act flaring the wrong pages, in either direction. |
 
 The surface gate reads the flags and tool schemas out of the
 implementation source rather than from a list kept beside it, because a
-hand-kept list is forgotten by the same person who forgets the page.
+hand-kept list is forgotten by the same person who forgets the page. It
+reads `cmd/gs/main.go` and `cmd/gitseq-mcp/main.go` — the shipping
+commands — and fails loudly when it can no longer follow the source,
+rather than reporting an empty surface that every page would trivially
+match.
 
 The examples gate runs every block tagged `sh`. A block tagged `text` is
 a form, a file, or sample output, and is not run. So that the distinction
@@ -65,13 +70,24 @@ does not become an escape hatch, the gate also requires that every `gs`
 subcommand page actually invokes its subcommand and that every recipe
 runs something.
 
-The basis and flare gates cannot consult the workroom this repository
-lives in: a page's artifact is filed after the commit containing the
-page, so a test demanding to find it would be red at exactly the commits
-it guards. They replay the declared graph into a scratch workroom
-instead, giving each named act a stand-in and each page an artifact
-resting on the right stand-ins, and then read the same marks the real
-projection shows.
+The flare gate cannot consult the workroom this repository lives in: a
+page's own artifact is filed after the commit containing the page, so a
+test demanding to find it would be red at exactly the commits it guards.
+It replays the declared graph into a scratch workroom instead, giving
+each named act a stand-in and each page an artifact resting on the right
+stand-ins, and then reads the same marks the real projection shows.
+
+A page's **bases** are a different matter. A governing event exists
+before the work that names it — that is what the `Rests-On:` trailer
+means — so one gate does resolve them against the real record, and fails
+if a named act is not there or is not an artifact. Without it, front
+matter naming a well-formed identifier that stands for nothing would
+model perfectly and anchor nothing. That gate skips when the checkout
+holds no workroom to resolve against.
+
+What no gate here can settle is whether the artifact a page resolves to
+is the *right* one. That is a judgement about what the prose claims
+against what the code does, and it stays with the reviewer.
 
 ## Recording a page's artifact
 

@@ -2,7 +2,7 @@
 title: MCP supersede
 summary: Attempt to retire an act and propagate staleness.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f940f57d17665c1ef145af8de98b4ac125499978
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:718c16a257eeed209434c18e85ca605ed779bf90
 ---
 
@@ -22,6 +22,7 @@ standing, with a pointer to what replaced it.
 | `text` | required | Why. This is what a later reader gets. |
 | `rests_on` | optional | Additional event identifiers. The target is placed first automatically. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
+| `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 
 `text` is required for a reason: a retirement with no stated cause tells
 the next reader that something changed and nothing about what.
@@ -41,7 +42,7 @@ PORT="${PORT:-7777}"
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
 
 printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"supersede","arguments":{"target":"%s","text":"the review happened and the pricing changed"},%s}}\n' "$CLAIM" "$META" \
-  | gitseq-mcp --repo "$REPO" --actor alice --server "http://127.0.0.1:$PORT" 2>/dev/null
+  | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 gs status --repo "$REPO"
 ```
 

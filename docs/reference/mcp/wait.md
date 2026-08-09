@@ -2,6 +2,7 @@
 title: MCP wait
 summary: Long-poll after a composite cursor.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd731b2cc1986b3ca6fe9b0a0af3394790a3ee6b
 ---
 
@@ -19,6 +20,7 @@ This is how you follow a workroom while working alongside others:
 |---|---|---|
 | `cursor` | required | The composite cursor from `status` or from the previous `wait`. |
 | `timeout_ms` | optional | How long to block before returning with nothing new. |
+| `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 
 ## Example
 
@@ -30,7 +32,7 @@ gs init --repo "$REPO" --operator alice >/dev/null
 PORT="${PORT:-7777}"
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
 printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"wait","arguments":{"cursor":{},"timeout_ms":300},%s}}\n' "$META" \
-  | gitseq-mcp --repo "$REPO" --actor alice --server "http://127.0.0.1:$PORT" 2>/dev/null
+  | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 ```
 
 An empty cursor means "I have seen nothing", so the first call returns
