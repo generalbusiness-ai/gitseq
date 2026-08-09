@@ -1,9 +1,10 @@
 ---
 date: 2026-08-09
-status: draft — three review rounds by codex (reports b8c98009,
-  d92ae2a5, 0ad30949). Round three resolved every design finding and
-  verified all 15 citations, leaving one provenance wording error,
-  corrected here; awaits final review
+status: draft — four review rounds by codex (reports b8c98009,
+  d92ae2a5, 0ad30949, f6598244, all ratified). Every design finding
+  is resolved and all 15 citations verified; round four required the
+  artifact to rest on the code it describes rather than only cite it,
+  which this revision does. Awaits final review
 origin: a design conversation with hugh on 2026-08-09, held outside
   the workroom and summarized here. No signed frames exist to carry
   as evidence; this note is the author's faithful summary and stands
@@ -537,16 +538,26 @@ This note rests on the layering in
 `notes/2026-08-05-gitseq-design.md`, which places connectors above
 the kernel and the collaboration profile, and on the forge policy in
 `SKILL.md`, which it refines rather than replaces. Code claims cite
-`path@commit` directly rather than resting on directory-level
-artifacts, several of which currently have more than one live head
-for the same path. Every citation reads at `b4a4454`, the commit
-that merged the then-current main into this branch. The citations
-were re-derived there, and the cited source is unchanged since;
-pinning to a commit the note does not itself sit in keeps it from
-citing its own revision. Rounds one and two were reviewed against
-`0a66e85`, before the shipping module was promoted out of `spike/`
-to the repository root; the line numbers survived that rename
-unchanged, and only the path prefix moved.
+`path@commit` so a reader can check them, and the artifact for this
+note also **rests on** the artifacts owning that code, because a
+citation is not a causal edge. Exact citations let a reader verify
+the prose; only `rests_on` makes the prose flare when the code moves
+under it. This note argues that staleness must follow causal edges,
+so its own provenance has to be built that way — an earlier revision
+cited the code without resting on it, and would have gone quietly
+wrong if the fold's ratification rule had changed.
+
+Every citation reads at `b4a4454`, the commit that merged the
+then-current main into this branch. The citations were re-derived
+there, and the cited source is unchanged since; pinning to a commit
+the note does not itself sit in keeps it from citing its own
+revision. Rounds one and two were reviewed against `0a66e85`, before
+the shipping module was promoted out of `spike/` to the repository
+root; the line numbers survived that rename unchanged, and only the
+path prefix moved. The promotion left no artifact at the new paths,
+so this note's bases include a narrow current-root artifact stated
+for exactly the files it cites — a provenance anchor, not a claim of
+authorship over that code.
 
 ## Open questions
 
