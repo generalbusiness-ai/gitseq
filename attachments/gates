@@ -1,1 +1,1 @@
-make vet: pass; make test: pass
+go test ./internal/workroom, make vet, and make test pass.

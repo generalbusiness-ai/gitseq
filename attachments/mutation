@@ -1,1 +1,1 @@
-Removing only the named-artifact citation predicate caused TestNamedArtifactAtTheClaimedHeadStillNeedsItsCitation to fail at fold_test.go:1578 and :1589.
+Without contains(basis.restsOn, basis.named), the focused test fails at both assertions.
