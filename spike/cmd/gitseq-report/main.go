@@ -54,38 +54,43 @@ type evidence struct {
 
 var definitions = []caseDefinition{
 	{1, "Concurrent retry and failover", []string{
-		"gitseq/spike/cmd/gitseq-spike.TestActualProcessExitRecoversFromGitAlone",
-		"gitseq/spike/internal/kernel.TestCreateSubmitReplayVerifyObjectFormats",
-		"gitseq/spike/internal/kernel.TestConcurrentCASProducesOneLinearChain",
-		"gitseq/spike/internal/kernel.TestCrashBoundariesRecoverFromLog",
+		"github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike.TestActualProcessExitRecoversFromGitAlone",
+		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestCreateSubmitReplayVerifyObjectFormats",
+		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestConcurrentCASProducesOneLinearChain",
+		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestCrashBoundariesRecoverFromLog",
 	}, "Cold processes rebuild head and idempotency from Git; a CAS loser retries into one signed chain."},
 	{2, "Rebinding attacks", []string{
-		"gitseq/spike/internal/intent.TestSignedBindingFieldsCannotBeSwapped",
-		"gitseq/spike/internal/kernel.TestVerifierRejectsRebindingAndTrailerMutation",
-		"gitseq/spike/internal/kernel.TestIdempotencyConflict",
-		"gitseq/spike/internal/kernel.TestSizeCeilingAndEnvelopeOnlyAdmissionHook",
+		"github.com/generalbusiness-ai/gitseq/internal/intent.TestSignedBindingFieldsCannotBeSwapped",
+		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestVerifierRejectsRebindingAndTrailerMutation",
+		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestIdempotencyConflict",
+		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestSizeCeilingAndEnvelopeOnlyAdmissionHook",
 	}, "Actor intent binds target, payload tree, causal trailers and idempotency identity."},
 	{3, "Nexus crash with live ephemera", []string{
-		"gitseq/spike/internal/nexus.TestCrashChangesGenerationAndOldCursorResets",
-		"gitseq/spike/internal/nexus.TestRetainedFramesVerifyWithoutHub",
-		"gitseq/spike/internal/nexus.TestSelfAssertedNexusKeyIsNotTrust",
-		"gitseq/spike/internal/nexus.TestNexusDoesNotTouchGit",
+		"github.com/generalbusiness-ai/gitseq/internal/nexus.TestCrashChangesGenerationAndOldCursorResets",
+		"github.com/generalbusiness-ai/gitseq/internal/nexus.TestRetainedFramesVerifyWithoutHub",
+		"github.com/generalbusiness-ai/gitseq/internal/nexus.TestSelfAssertedNexusKeyIsNotTrust",
+		"github.com/generalbusiness-ai/gitseq/internal/nexus.TestNexusDoesNotTouchGit",
 	}, "A new nexus generation resets live state; retained participant copies remain independently attestable."},
 	{4, "Unauthorized fetch across a domain", []string{
-		"gitseq/spike/internal/domain.TestRepositoryIsTheHTTPReadBoundaryEvenForKnownOID",
+		"github.com/generalbusiness-ai/gitseq/internal/domain.TestRepositoryIsTheHTTPReadBoundaryEvenForKnownOID",
 	}, "Repository-scoped smart-HTTP authorization denies fetch-by-known-hash across domains."},
 	{5, "Snapshot/watch race", []string{
-		"gitseq/spike/internal/nexus.TestSnapshotWatchBarrierCannotMissTransition",
+		"github.com/generalbusiness-ai/gitseq/internal/nexus.TestSnapshotWatchBarrierCannotMissTransition",
 	}, "The snapshot cursor and state share one barrier; the next transition appears strictly after that cursor."},
 	{6, "Conflicting multi-log custody transition", []string{
-		"gitseq/spike/internal/custody.TestThreeStepSagaAcrossSecurityDomains",
-		"gitseq/spike/internal/custody.TestMultipleCompletedSettlementsBecomeDisputed",
+		"github.com/generalbusiness-ai/gitseq/internal/custody.TestThreeStepSagaAcrossSecurityDomains",
+		"github.com/generalbusiness-ai/gitseq/internal/custody.TestMultipleCompletedSettlementsBecomeDisputed",
 	}, "The saga branch leaves competing settlements unorderable but total: every event projects as disputed. An asset-owned log excludes that dispute by construction — evidence for the entity-log default."},
 }
 
 func main() {
+	root, err := moduleRoot()
+	if err != nil {
+		fatal(err)
+	}
 	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
 	command := exec.Command(goTool, "test", "-count=1", "-json", "./...")
+	command.Dir = root
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	output, runErr := command.Output()
@@ -124,7 +129,9 @@ func main() {
 		report.Status = "fail"
 	}
 
-	directory := ".spike"
+	// Keep run-specific and stable evidence beside the adversarial fixture even
+	// though the test process now runs from the shipping module root.
+	directory := filepath.Join(root, "spike", ".spike")
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		fatal(err)
 	}
@@ -139,10 +146,11 @@ func main() {
 	if err := os.WriteFile(filepath.Join(directory, "SPIKE-RESULTS.md"), markdown(report, stderr.String()), 0o644); err != nil {
 		fatal(err)
 	}
-	if err := os.WriteFile("SPIKE-RESULTS.md", stableMarkdown(report), 0o644); err != nil {
+	stablePath := filepath.Join(root, "spike", "SPIKE-RESULTS.md")
+	if err := os.WriteFile(stablePath, stableMarkdown(report), 0o644); err != nil {
 		fatal(err)
 	}
-	fmt.Printf("%s: wrote %s, %s, and SPIKE-RESULTS.md\n", report.Status, filepath.Join(directory, "evidence.json"), filepath.Join(directory, "SPIKE-RESULTS.md"))
+	fmt.Printf("%s: wrote %s, %s, and %s\n", report.Status, filepath.Join(directory, "evidence.json"), filepath.Join(directory, "SPIKE-RESULTS.md"), stablePath)
 	if report.Status != "pass" {
 		os.Exit(1)
 	}
@@ -167,7 +175,7 @@ func stableMarkdown(report evidence) []byte {
 	for _, result := range report.Cases {
 		fmt.Fprintf(&text, "%d. %s\n", result.Number, result.Finding)
 	}
-	text.WriteString("\nRegenerate with `go run ./cmd/gitseq-report` from this directory.\n")
+	text.WriteString("\nRegenerate with `make spike` from the repository root.\n")
 	return []byte(text.String())
 }
 
@@ -201,6 +209,27 @@ func mustOutput(name string, args ...string) []byte {
 		return []byte("unknown")
 	}
 	return output
+}
+
+// moduleRoot makes the evidence command work from either the repository root
+// or a directory below it, while keeping one authoritative root go.mod.
+func moduleRoot() (string, error) {
+	start, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("get working directory: %w", err)
+	}
+	current := start
+	for {
+		info, statErr := os.Stat(filepath.Join(current, "go.mod"))
+		if statErr == nil && !info.IsDir() {
+			return current, nil
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", fmt.Errorf("find module root from %s: go.mod not found", start)
+		}
+		current = parent
+	}
 }
 
 func fatal(err error) {
