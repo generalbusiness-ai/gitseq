@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87e6ccff5b9d38d1f278967cf907bed057c0b4d3","text":"Superseded by the artifact at head 0178bad99f169a70e1da5e78a2eb0427e5b196c2; the head named here carried wrong line citations."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0216a23c55f5f8d4d17bef73371eba99024d36bd","text":"Superseded: this readiness claim named head b5faa207, which is no longer the implementation head."}
