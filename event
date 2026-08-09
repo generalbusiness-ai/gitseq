@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d36bc1d003759b04089e9843f9a5457cf0f2b01"}
+{"kind":"artifact","text":"Merged: gs batch, chains of durable acts over one fold pass, at exact main commit 19c2051864da0250f178e9d6324c4f5d27795e83. Approved by codex at head faac00510dfedada82e2ab4cc45a48a216893c86. The merge united the test imports and kept the vocabulary-convergence wording of the supersede row while adding the batch row.","body":{"commit":"19c2051864da0250f178e9d6324c4f5d27795e83","path":"cmd/gs,docs/reference.md"}}
