@@ -1,8 +1,8 @@
 ---
 date: 2026-08-07
-status: proposal, review-repaired — awaiting ratification; on adoption
-  the design note gains its wave entry by an ordinary commit resting
-  on the decision.
+status: adopted 2026-08-07 — proposal a80d687d ratified by hugh
+  (event 978a9674) after three rounds of independent review; the
+  design note carries the twelfth-wave ledger entry.
 origin: the 2026-08-07 design-goal review (assert 95e79d71) and a
   conversation about keep's tag-definition model; crystallizing quotes
   ride as evidence on the proposal act that cites this note.
