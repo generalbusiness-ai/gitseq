@@ -5,8 +5,9 @@ import { readFileSync } from "node:fs";
 import { RetryKeys, parsePresenceLabel, threadTargetKey } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
+import { CLOSED_WORK_STATUSES, buildWorkProjection, filterWorkProjection, workAttentionCount, workItemState } from "../src/lib/work.ts";
 import { belongsInRoom, statusLabel } from "../src/lib/util.ts";
-import { commitmentNeedsAttention, groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
+import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
   let next = 0;
@@ -106,10 +107,100 @@ test("work groups distinguish available, in-progress, and review commitments", (
   assert.deepEqual(groups.review.map((item) => item.request), ["review"]);
 });
 
-test("staleness is attention without replacing a commitment lifecycle", () => {
-  const commitment = { request: "request", requester: "human", performer: "agent", report: "report", status: "satisfied", stale: true };
-  assert.equal(commitmentNeedsAttention(commitment), true);
-  assert.equal(commitment.status, "satisfied");
+test("Work groups by conversational ancestry without treating later citations as parents", () => {
+  const statement = (event, actor, kind, text, body) => ({ event, actor, kind, text, body, timestamp: Number(event.slice(1)) || 1 });
+  const projection = {
+    decisions: ["r1", "p1", "r2", "p2", "x2", "r3", "r4", "r5"].map((event) => ({ event, verdict: "effective", reason: "ok" })),
+    acts: [],
+    statements: [
+      statement("r1", "hugh", "request", "Ship the deployment design"),
+      statement("p1", "codex", "promise", "I will work", { branch: "task/deployment-story" }),
+      statement("r2", "claude", "request", "Check deploy readiness"),
+      statement("p2", "codex", "promise", "I will check"),
+      statement("x2", "codex", "assert", "The remembered alias is deploy-readiness"),
+      statement("r3", "claude", "request", "Independent root"),
+      statement("r4", "claude", "request", "Replies to independent root but cites deployment"),
+      statement("r5", "hugh", "request", "Old closed work"),
+    ],
+    commitments: [
+      { request: "r1", requester: "hugh", status: "requested" },
+      { request: "r2", requester: "claude", performer: "codex", promise: "p2", status: "promised", stale: true },
+      { request: "r3", requester: "claude", status: "requested" },
+      { request: "r4", requester: "claude", status: "requested" },
+      { request: "r5", requester: "hugh", performer: "codex", promise: "old-promise", report: "old-report", status: "satisfied" },
+    ],
+    artifacts: [{ event: "artifact", path: "notes/deploy.md", commit: "abc", stale: false }],
+    actors: {},
+    provenance: {
+      r1: [], p1: ["r1"], r2: ["p1"], p2: ["r2"], x2: ["p2"],
+      r3: [], r4: ["r3", "r1"], r5: [], artifact: ["x2"],
+    },
+  };
+  const work = buildWorkProjection(projection);
+  const deployment = work.topics.find((topic) => topic.event === "r1");
+  assert.deepEqual(deployment.items.map((item) => item.request.event), ["r2", "r1"]);
+  assert.equal(deployment.author, "hugh");
+  assert.equal(deployment.attentionCount, 1);
+  assert.equal(work.topics.find((topic) => topic.event === "r3").items.length, 2);
+  assert.equal(work.topics.some((topic) => topic.event === "r4"), false);
+
+  const defaults = filterWorkProjection(work, { open: true, attention: true, closed: false });
+  assert.equal(defaults.topics.some((topic) => topic.event === "r5"), false);
+  assert.deepEqual(filterWorkProjection(work, { open: true, attention: true, closed: false, author: "hugh" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { open: true, attention: true, closed: false, query: "deploy-readiness" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.equal(filterWorkProjection(work, { open: true, attention: true, closed: true, query: "deployment" }).topics[0].event, "r1");
+  assert.deepEqual(filterWorkProjection(work, { open: true, attention: true, closed: false, query: "notes/deploy.md" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { open: false, attention: false, closed: true }).topics.map((topic) => topic.event), ["r5"]);
+});
+
+test("attention qualifies rather than replaces a lifecycle lane", () => {
+  assert.deepEqual(workItemState({ request: "r", requester: "hugh", performer: "codex", status: "reported", stale: true }), {
+    open: true,
+    attention: true,
+    closed: false,
+    lane: "review",
+  });
+  assert.deepEqual(workItemState({ request: "r", requester: "hugh", status: "withdrawn" }), {
+    open: false,
+    attention: false,
+    closed: true,
+    lane: "closed",
+  });
+  assert.deepEqual(workItemState({ request: "r", requester: "hugh", performer: "codex", report: "done", status: "satisfied", stale: true }), {
+    open: false,
+    attention: true,
+    closed: true,
+    lane: "closed",
+  });
+});
+
+test("the Work summary counts every terminal lifecycle as closed", () => {
+  assert.deepEqual([...CLOSED_WORK_STATUSES], ["satisfied", "withdrawn", "cancelled", "reneged"]);
+});
+
+test("Work accounts for qualifier attention, stale artifacts, and unlinked promises", () => {
+  const projection = {
+    decisions: [
+      { event: "request", verdict: "effective", reason: "ok" },
+      { event: "promise", verdict: "ineffective", reason: "dangling promise has no request" },
+      { event: "artifact", verdict: "effective", reason: "ok" },
+    ],
+    acts: [], actors: {},
+    statements: [
+      { event: "request", actor: "hugh", kind: "request", text: "review me" },
+      { event: "promise", actor: "codex", kind: "promise", text: "unlinked work" },
+      { event: "artifact", actor: "codex", kind: "artifact", text: "old build" },
+    ],
+    commitments: [{ request: "request", requester: "hugh", performer: "codex", status: "reported", stale: true }],
+    artifacts: [{ event: "artifact", path: "ui", commit: "abcdef012345", stale: true }],
+    provenance: { request: [], promise: [], artifact: ["request"] },
+  };
+  const work = buildWorkProjection(projection);
+  assert.equal(workAttentionCount(projection), 3);
+  assert.deepEqual(work.attention.map((item) => item.kind), ["artifact", "unlinked-promise"]);
+  assert.equal(filterWorkProjection(work, { open: true, attention: true, closed: false }).attention.length, 2);
+  assert.equal(filterWorkProjection(work, { open: true, attention: false, closed: false }).attention.length, 0);
+  assert.equal(filterWorkProjection(work, { open: true, attention: true, closed: false, author: "hugh" }).attention.length, 0);
 });
 
 test("local worktrees join current promise, docs report, and exact commit-trailer shapes", () => {
@@ -239,4 +330,20 @@ test("the everyday surface does not expose record taxonomy or authority roles", 
   assert.doesNotMatch(app, /pane\?\.kind !== "thread"/);
   assert.match(composer, /Temporary/);
   assert.match(composer, /Kept/);
+});
+
+test("Work is the default center and List and Board share one projection", () => {
+  const read = (name) => readFileSync(new URL(`../src/${name}`, import.meta.url), "utf8");
+  const app = read("App.tsx");
+  const work = read("components/WorkDrawer.tsx");
+  assert.match(app, /useState<MainView>\("work"\)/);
+  assert.match(app, /mainView === "work"/);
+  assert.match(work, /buildWorkProjection/);
+  assert.match(work, /open: true, attention: true, closed: false/);
+  assert.match(work, /presentation === "list"/);
+  assert.match(work, /<WorkBoard/);
+  assert.match(work, /Other attention/);
+  assert.match(work, /asked by \{nameOf\(item\.request\.actor\)\}/);
+  assert.doesNotMatch(work, /written by \{nameOf\(topic\.author\)\}/);
+  assert.doesNotMatch(work, /draggable|onDrag|drop/i);
 });

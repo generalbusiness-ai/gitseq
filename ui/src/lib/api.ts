@@ -25,8 +25,12 @@ export interface Commitment {
   promise?: string;
   report?: string;
   status: string;
-  stale?: boolean;
   waiting_on?: string;
+  // Staleness/dispute can qualify a lifecycle state. These optional fields
+  // let clients preserve the underlying requested/promised/reported/terminal
+  // state when the projection supplies the richer shape.
+  stale?: boolean;
+  disputed?: boolean;
 }
 
 export interface Artifact {

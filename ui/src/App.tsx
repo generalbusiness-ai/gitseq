@@ -6,21 +6,21 @@ import { api, type ActInput } from "./lib/api";
 import { TopBar } from "./components/TopBar";
 import { Stream, type PendingSay } from "./components/Stream";
 import { Composer, emptyComposer, type ComposerContext } from "./components/Composer";
-import { WorkDrawer } from "./components/WorkDrawer";
+import { WorkView } from "./components/WorkDrawer";
 import { ThreadPane, type ThreadRoute, type ThreadTarget } from "./components/ThreadPane";
 import { ProfilePane } from "./components/ProfilePane";
 import { Avatar } from "./components/Avatar";
 import { RetryKeys, threadTargetKey } from "./lib/interaction";
 
-// One right-hand slot, Slack-style: the thread pane, a profile, or the Work
-// drawer — whichever opened last wins; Escape closes it.
+// One right-hand slot, Slack-style: a thread or profile, whichever opened last
+// wins; Work and Activity remain stable presentations in the center.
 type Pane =
-  | { kind: "work" }
   | { kind: "thread"; target: ThreadTarget; route?: ThreadRoute }
   | { kind: "profile"; fingerprint: string }
   | undefined;
 
-// The Room is the only permanent center; everything else lives in the pane.
+type MainView = "work" | "activity";
+
 export default function App() {
   const workroom = useWorkroom();
   const session = useSession();
@@ -28,6 +28,7 @@ export default function App() {
   const [selection, setSelection] = useState<Selection>();
   const [composer, setComposer] = useState<ComposerContext>(emptyComposer);
   const [pane, setPane] = useState<Pane>();
+  const [mainView, setMainView] = useState<MainView>("work");
   // Optimistic say echoes: appended on send, reconciled when the frame lands.
   const [pending, setPending] = useState<PendingSay[]>([]);
 
@@ -49,6 +50,7 @@ export default function App() {
   // their request's card.
   const jumpToEvent = useCallback(
     (event: string) => {
+      setMainView("activity");
       setSelection({ kind: "event", id: event });
       const anchor = foldAnchor(event, projection);
       requestAnimationFrame(() => document.getElementById("evt-" + anchor)?.scrollIntoView({ block: "center" }));
@@ -114,39 +116,54 @@ export default function App() {
       <TopBar
         workroom={workroom}
         session={session}
-        onOpenWork={() => setPane({ kind: "work" })}
+        mainView={mainView}
+        onShowWork={() => setMainView("work")}
+        onShowActivity={() => setMainView("activity")}
         onJumpEvent={jumpToEvent}
         onOpenProfile={openProfile}
       />
       <div className="flex min-h-0 flex-1">
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <Stream
-            workroom={workroom}
-            session={session}
-            frames={frames}
-            deliveries={deliveries}
-            highlight={highlight}
-            selection={selection}
-            onSelect={select}
-            onJump={jump}
-            composer={composer}
-            onComposer={setComposer}
-            pending={pending}
-            onReconcile={dropPending}
-            onOpenThread={openThread}
-            onRoute={route}
-            onOpenProfile={openProfile}
-            doAct={doAct}
-            actError={actError}
-          />
-          <Composer
-            workroom={workroom}
-            session={session}
-            context={composer}
-            onContext={setComposer}
-            onSay={echoSay}
-            onSayFailed={dropPending}
-          />
+          {mainView === "work" ? (
+            <WorkView
+              workroom={workroom}
+              session={session}
+              highlight={highlight}
+              selection={selection}
+              onSelect={select}
+              onOpenThread={(event) => openThread({ kind: "event", event })}
+            />
+          ) : (
+            <>
+              <Stream
+                workroom={workroom}
+                session={session}
+                frames={frames}
+                deliveries={deliveries}
+                highlight={highlight}
+                selection={selection}
+                onSelect={select}
+                onJump={jump}
+                composer={composer}
+                onComposer={setComposer}
+                pending={pending}
+                onReconcile={dropPending}
+                onOpenThread={openThread}
+                onRoute={route}
+                onOpenProfile={openProfile}
+                doAct={doAct}
+                actError={actError}
+              />
+              <Composer
+                workroom={workroom}
+                session={session}
+                context={composer}
+                onContext={setComposer}
+                onSay={echoSay}
+                onSayFailed={dropPending}
+              />
+            </>
+          )}
         </main>
         {pane?.kind === "thread" && (
           <ThreadPane
@@ -178,16 +195,6 @@ export default function App() {
           />
         )}
       </div>
-      {pane?.kind === "work" && (
-        <WorkDrawer
-          workroom={workroom}
-          highlight={highlight}
-          selection={selection}
-          onSelect={select}
-          onJump={jump}
-          onClose={closePane}
-        />
-      )}
       {!session.actor && <JoinGate workroom={workroom} onJoin={session.setActor} />}
     </div>
   );

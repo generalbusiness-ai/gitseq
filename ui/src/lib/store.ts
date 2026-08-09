@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type WorktreeView } from "./api";
-import { commitmentNeedsAttention } from "./worktrees";
+import { ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, OPEN_WORK_STATUSES, workAttentionCount, workItemState } from "./work";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
@@ -178,12 +178,7 @@ export function staleCauses(event: string, projection: Projection): StaleCause[]
 
 // A free-standing promise the fold judged dangling: it landed, but nobody is
 // structurally positioned to declare it satisfied.
-export function danglingPromises(projection: Projection): Statement[] {
-  const reasons = new Map(projection.decisions.map((d) => [d.event, d]));
-  return projection.statements.filter(
-    (s) => s.kind === "promise" && reasons.get(s.event)?.reason.includes("dangling"),
-  );
-}
+export { danglingPromises } from "./work";
 
 // Folded promise/report events render inside their request's card; jumping
 // to one lands on the request row instead.
@@ -219,20 +214,16 @@ export function forYouItems(projection: Projection | undefined, me: string | und
   return items.sort((a, b) => a.ticket - b.ticket);
 }
 
-export const OPEN_COMMITMENT_STATUSES = ["requested", "promised", "reported"];
-export const ATTENTION_COMMITMENT_STATUSES = ["stale", "disputed"];
+export const OPEN_COMMITMENT_STATUSES: string[] = [...OPEN_WORK_STATUSES];
+export const ATTENTION_COMMITMENT_STATUSES: string[] = [...ATTENTION_WORK_STATUSES];
 
 // The header chip's summary of the Work drawer, computed from the projection.
 export function workSummary(projection?: Projection): { stale: number; open: number; done: number } {
   if (!projection) return { stale: 0, open: 0, done: 0 };
-  const staleCount =
-    projection.artifacts.filter((a) => a.stale).length +
-    projection.commitments.filter(commitmentNeedsAttention).length +
-    danglingPromises(projection).length;
   return {
-    stale: staleCount,
+    stale: workAttentionCount(projection),
     open: projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status)).length,
-    done: projection.commitments.filter((c) => c.status === "satisfied").length,
+    done: projection.commitments.filter((c) => CLOSED_WORK_STATUSES.includes(c.status as (typeof CLOSED_WORK_STATUSES)[number])).length,
   };
 }
 
@@ -246,11 +237,11 @@ export function statementWeight(
 ): "card" | "compact" {
   if (statement.retired || statement.stale) {
     // Stale commitments still need someone's attention: keep the card.
-    if (commitment && commitmentNeedsAttention(commitment)) return "card";
+    if (commitment && workItemState(commitment).attention) return "card";
     return "compact";
   }
   if (statement.kind === "request") {
-    return commitment && (OPEN_COMMITMENT_STATUSES.includes(commitment.status) || commitmentNeedsAttention(commitment))
+    return commitment && (OPEN_COMMITMENT_STATUSES.includes(commitment.status) || workItemState(commitment).attention)
       ? "card"
       : "compact";
   }

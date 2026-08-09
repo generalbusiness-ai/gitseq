@@ -1,391 +1,375 @@
-import { useEffect, useMemo, useRef } from "react";
-import { BadgeCheck, FileWarning, GitBranch, X } from "lucide-react";
-import type { Artifact, Projection, WorktreeView } from "../lib/api";
-import { OPEN_COMMITMENT_STATUSES, danglingPromises, ticketsOf, type Selection, type Workroom } from "../lib/store";
+import { useMemo, useState } from "react";
+import { Columns3, GitBranch, List, Search } from "lucide-react";
+import type { Projection, WorktreeView } from "../lib/api";
+import type { Session } from "../lib/session";
+import { ticketsOf, type Selection, type Workroom } from "../lib/store";
+import {
+  buildWorkProjection,
+  filterWorkProjection,
+  type WorkFilters,
+  type WorkAttentionItem,
+  type WorkItem,
+  type WorkLane,
+  type WorkTopic,
+} from "../lib/work";
+import { worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
 import { cn, statusLabel, statusTint } from "../lib/util";
-import { commitmentNeedsAttention, groupOpenWork, worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
-import { Railway } from "./Railway";
 import { EventTime } from "./EventTime";
-import { Ticket, WhyStale } from "./Stream";
+import { Railway } from "./Railway";
 
-// Work state and the Git history live behind the header chip, separate from
-// the conversational room.
-export function WorkDrawer({
+type Presentation = "list" | "board";
+
+// Work is a retrieval view over the durable ledger. It never mutates status:
+// lifecycle transitions still happen through signed semantic acts.
+export function WorkView({
   workroom,
+  session,
   highlight,
   selection,
   onSelect,
-  onJump,
-  onClose,
+  onOpenThread,
 }: {
   workroom: Workroom;
+  session: Session;
   highlight: { events: Set<string>; commits: Set<string> };
   selection?: Selection;
   onSelect: (selection: Selection) => void;
-  onJump: (selection: Selection) => void;
-  onClose: () => void;
+  onOpenThread: (event: string) => void;
 }) {
-  const panel = useRef<HTMLDivElement>(null);
   const projection = workroom.status?.durable.projection;
+  const [presentation, setPresentation] = useState<Presentation>("list");
+  const [filters, setFilters] = useState<WorkFilters>({ open: true, attention: true, closed: false });
+  const work = useMemo(() => (projection ? buildWorkProjection(projection) : undefined), [projection]);
+  const visible = useMemo(() => (work ? filterWorkProjection(work, filters) : undefined), [work, filters]);
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
   const nameOf = useMemo(() => {
-    const byFingerprint = new Map(workroom.actors.map((a) => [a.fingerprint, a.name]));
-    return (fp: string) =>
-      byFingerprint.get(fp) ??
-      projection?.statements.find((s) => s.kind === "roster" && s.body?.actor === fp)?.body?.name ??
-      fp.slice(0, 8);
-  }, [workroom.actors, projection]);
+    const byFingerprint = new Map(workroom.actors.map((actor) => [actor.fingerprint, actor.name]));
+    return (fingerprint: string) =>
+      byFingerprint.get(fingerprint) ??
+      projection?.statements.find((statement) => statement.kind === "roster" && statement.body?.actor === fingerprint)?.body?.name ??
+      fingerprint.slice(0, 8);
+  }, [projection, workroom.actors]);
+  const me = workroom.actors.find((actor) => actor.name === session.actor)?.fingerprint;
+  const itemCount = visible?.topics.reduce((sum, topic) => sum + topic.items.length, 0) ?? 0;
 
-  // Focus discipline: the drawer takes focus on open and hands it back on
-  // close; Escape closes from anywhere inside.
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    panel.current?.focus();
-    return () => opener?.focus();
-  }, []);
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
-  };
-
-  const jumpEvent = (event: string) => onJump({ kind: "event", id: event });
+  const updateFlag = (key: "open" | "attention" | "closed", value: boolean) =>
+    setFilters((current) => ({ ...current, [key]: value }));
+  const setAuthor = (author?: string) => setFilters((current) => ({ ...current, author }));
 
   return (
-    <div className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label="Work" onKeyDown={onKeyDown}>
-      <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px]" onClick={onClose} aria-hidden />
-      <div
-        ref={panel}
-        tabIndex={-1}
-        className="absolute inset-y-0 right-0 flex w-[min(26rem,92vw)] flex-col border-l border-border bg-background shadow-2xl outline-none"
-      >
-        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-          <h2 className="text-sm font-semibold text-foreground/90">Work</h2>
-          <button onClick={onClose} aria-label="close" className="rounded p-1 text-faint hover:text-foreground focus-visible:outline focus-visible:outline-accent">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {!projection ? (
-            <p className="p-4 text-sm text-faint">Loading…</p>
-          ) : (
-            <WorkSections
-              projection={projection}
-              commits={workroom.commits}
-              worktrees={workroom.worktrees}
-              localOffline={workroom.localOffline}
-              tickets={tickets}
-              nameOf={nameOf}
-              onSelect={onSelect}
-              onJumpEvent={jumpEvent}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="border-b border-border bg-surface/40 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2.5">
+          <div className="relative min-w-[13rem] flex-1 sm:max-w-md">
+            <Search aria-hidden className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
+            <input
+              type="search"
+              value={filters.query ?? ""}
+              onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+              placeholder="Search topics and their activity…"
+              aria-label="Search work"
+              className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-xs outline-none placeholder:text-faint focus:border-accent/60"
             />
-          )}
-          <section className="border-t border-border px-4 py-3">
-            <h3 className="mb-2 text-xs font-medium text-faint">History</h3>
-            {workroom.graphTruncated && <p className="mb-2 text-[11px] text-warn">Showing the newest 80 commits; older local trailer associations may be absent.</p>}
-            <div className="h-[26rem] overflow-hidden rounded-lg border border-border">
-              <Railway
-                commits={workroom.commits}
-                statements={projection?.statements ?? []}
-                highlight={highlight}
-                selection={selection}
-                onSelect={onSelect}
-              />
-            </div>
-          </section>
+          </div>
+          <fieldset className="flex items-center gap-1.5" aria-label="Lifecycle filters">
+            <legend className="sr-only">Lifecycle filters</legend>
+            <FilterCheck label="Open" checked={filters.open} count={work?.topics.reduce((sum, topic) => sum + topic.openCount, 0)} onChange={(value) => updateFlag("open", value)} />
+            <FilterCheck label="Attention" checked={filters.attention} count={(work?.topics.reduce((sum, topic) => sum + topic.attentionCount, 0) ?? 0) + (work?.attention.length ?? 0)} tone="danger" onChange={(value) => updateFlag("attention", value)} />
+            <FilterCheck label="Closed" checked={filters.closed} count={work?.topics.reduce((sum, topic) => sum + topic.closedCount, 0)} onChange={(value) => updateFlag("closed", value)} />
+          </fieldset>
+          <div className="flex items-center gap-1.5">
+            {me && (
+              <button
+                type="button"
+                aria-pressed={filters.author === me}
+                onClick={() => setAuthor(filters.author === me ? undefined : me)}
+                className={controlClass(filters.author === me)}
+              >
+                Mine
+              </button>
+            )}
+            <select
+              value={filters.author ?? ""}
+              onChange={(event) => setAuthor(event.target.value || undefined)}
+              aria-label="Topic author"
+              className="h-8 max-w-40 rounded-md border border-border bg-background px-2 text-xs text-muted outline-none focus:border-accent/60"
+            >
+              <option value="">All authors</option>
+              {work?.authors.map((author) => (
+                <option key={author} value={author}>{nameOf(author)}</option>
+              ))}
+            </select>
+          </div>
+          <div className="ml-auto flex rounded-md border border-border p-0.5" aria-label="Work presentation">
+            <PresentationButton label="Topics" active={presentation === "list"} onClick={() => setPresentation("list")} icon={<List className="h-3.5 w-3.5" />} />
+            <PresentationButton label="Board" active={presentation === "board"} onClick={() => setPresentation("board")} icon={<Columns3 className="h-3.5 w-3.5" />} />
+          </div>
         </div>
+        <p className="mx-auto mt-2 max-w-7xl text-[11px] text-faint" aria-live="polite">
+          {visible?.topics.length ?? 0} {(visible?.topics.length ?? 0) === 1 ? "topic" : "topics"} · {itemCount} visible work {itemCount === 1 ? "item" : "items"}
+          {filters.author ? ` · written by ${nameOf(filters.author)}` : ""}
+        </p>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+        {!projection || !visible ? (
+          <p className="py-12 text-center text-sm text-faint">Loading work…</p>
+        ) : visible.topics.length === 0 && visible.attention.length === 0 ? (
+          <div className="mx-auto max-w-xl py-16 text-center">
+            <p className="font-serif text-lg text-foreground/90">No work matches this view.</p>
+            <p className="mt-1 text-xs text-faint">Try another author, clear the search, or include another lifecycle.</p>
+          </div>
+        ) : (
+          <>
+            <OtherAttention items={visible.attention} tickets={tickets} nameOf={nameOf} onSelect={onSelect} onOpenThread={onOpenThread} />
+            {visible.topics.length > 0 && (presentation === "list" ? (
+              <TopicList topics={visible.topics} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} onOpenThread={onOpenThread} />
+            ) : (
+              <WorkBoard topics={visible.topics} filters={filters} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} onOpenThread={onOpenThread} />
+            ))}
+          </>
+        )}
+
+        <details className="mx-auto mt-6 max-w-7xl rounded-lg border border-border bg-surface/30">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted focus-visible:outline focus-visible:outline-accent">
+            Repository context
+          </summary>
+          <div className="border-t border-border p-3">
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {workroom.localOffline && <span className="text-xs text-warn">Local checkout state unavailable.</span>}
+              {!workroom.localOffline && !workroom.worktrees && <span className="text-xs text-faint">Reading local checkouts…</span>}
+              {workroom.worktrees?.map((worktree, index) => <WorktreePill key={`${worktree.checkout}:${index}`} worktree={worktree} />)}
+            </div>
+            {workroom.graphTruncated && <p className="mb-2 text-[11px] text-warn">Showing the newest 80 commits.</p>}
+            <div className="h-[26rem] overflow-hidden rounded-lg border border-border">
+              <Railway commits={workroom.commits} statements={projection?.statements ?? []} highlight={highlight} selection={selection} onSelect={onSelect} />
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   );
 }
 
-// The Work sections proper: needs attention first, then what's open, what
-// stands, and what's completed. Human labels; hashes ride in hover titles.
-function WorkSections({
-  projection,
-  commits,
-  worktrees,
-  localOffline,
-  tickets,
-  nameOf,
-  onSelect,
-  onJumpEvent,
-}: {
-  projection: Projection;
-  commits: Workroom["commits"];
-  worktrees?: WorktreeView[];
-  localOffline: boolean;
+function OtherAttention({ items, tickets, nameOf, onSelect, onOpenThread }: {
+  items: WorkAttentionItem[];
   tickets: Map<string, number>;
-  nameOf: (fp: string) => string;
+  nameOf: (fingerprint: string) => string;
   onSelect: (selection: Selection) => void;
-  onJumpEvent: (event: string) => void;
+  onOpenThread: (event: string) => void;
 }) {
-  const staleArtifacts = projection.artifacts.filter((a) => a.stale);
-  const attention = projection.commitments.filter(commitmentNeedsAttention);
-  const dangling = danglingPromises(projection);
-  const open = projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status));
-  const workGroups = groupOpenWork(open);
-  const standing = projection.statements.filter((s) => s.kind === "propose" && s.ratified && !s.retired && !s.stale);
-  const done = projection.commitments.filter((c) => c.status === "satisfied");
-  const currentGroups = groupArtifacts(projection.artifacts.filter((a) => !a.stale));
-  const requestText = (event: string) => projection.statements.find((s) => s.event === event)?.text ?? event;
-  const timestampByEvent = new Map([
-    ...projection.statements.map((event) => [event.event, event.timestamp] as const),
-    ...projection.acts.map((event) => [event.event, event.timestamp] as const),
-  ]);
-  const needsAttention = staleArtifacts.length + attention.length + dangling.length > 0;
-
+  if (items.length === 0) return null;
   return (
-    <div className="space-y-5 px-4 py-4">
-      <section>
-        <SectionTitle icon={<GitBranch className="h-3.5 w-3.5 text-info" />} title="Local checkouts" />
-        <p className="mb-2 text-[11px] leading-4 text-faint">Read-only state from this machine; it is not part of the durable workroom.</p>
-        {localOffline && <Empty>Local checkout state unavailable. Durable work is unchanged.</Empty>}
-        {!localOffline && !worktrees && <Empty>Reading local checkout state…</Empty>}
-        {worktrees?.length === 0 && <Empty>No checkouts found.</Empty>}
-        {worktrees?.map((worktree, index) => <WorktreePill key={`${worktree.checkout}:${worktree.head}:${index}`} worktree={worktree} />)}
-      </section>
-      <section>
-        <SectionTitle icon={<FileWarning className="h-3.5 w-3.5 text-danger" />} title="Needs attention" />
-        {!needsAttention && <Empty>All clear.</Empty>}
-        {staleArtifacts.map((artifact) => (
-          <div key={artifact.event} className="rounded-md px-2 py-1.5 hover:bg-elevated/60">
-            <Row onClick={() => onSelect({ kind: "commit", id: artifact.commit })} bare>
-              <span className="w-14 shrink-0 text-xs font-semibold uppercase text-danger">stale</span>
-              <span className="truncate" title={`${artifact.path}@${artifact.commit}`}>
-                {artifactLabel(artifact.path)}
-              </span>
-              <span className="ml-auto flex shrink-0 items-center gap-2">
-                <EventTime timestamp={timestampByEvent.get(artifact.event)} />
-                <Ticket ticket={tickets.get(artifact.event)} event={artifact.event} onSelect={() => onJumpEvent(artifact.event)} />
-              </span>
-            </Row>
-            <WhyStale event={artifact.event} projection={projection} tickets={tickets} nameOf={nameOf} onJumpTo={onJumpEvent} />
-          </div>
+    <details className="mx-auto mb-4 max-w-5xl rounded-lg border border-danger/35 bg-danger/5">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-danger focus-visible:outline focus-visible:outline-accent">
+        Other attention ({items.length})
+        <span className="ml-2 font-normal text-faint">stale artifacts and unlinked promises</span>
+      </summary>
+      <div className="space-y-0.5 border-t border-danger/20 p-2">
+        {items.map((item) => (
+          <button
+            key={`${item.kind}:${item.event}`}
+            type="button"
+            onClick={() => item.kind === "artifact" && item.commit ? onSelect({ kind: "commit", id: item.commit }) : onOpenThread(item.event)}
+            className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent"
+          >
+            <span className="w-14 shrink-0 font-semibold text-danger">{item.kind === "artifact" ? "stale" : "unlinked"}</span>
+            <span className="min-w-0 flex-1 text-foreground/85">{item.title}</span>
+            {item.actor && <span className="shrink-0 text-faint">{nameOf(item.actor)}</span>}
+            <EventTime timestamp={item.timestamp} />
+            <span className="shrink-0 font-mono text-[11px] text-faint" title={item.event}>#{tickets.get(item.event) ?? "?"}</span>
+          </button>
         ))}
-        {attention.map((commitment) => {
-          const anchor = commitment.report ?? commitment.promise ?? commitment.request;
-          const associations = worktreesForCommitment(commitment, projection, commits, worktrees ?? []);
-          return (
-            <div key={commitment.request + (commitment.promise ?? "")} className="rounded-md px-2 py-1.5 hover:bg-elevated/60">
-              <Row onClick={() => onJumpEvent(commitment.request)} bare>
-                <span className={cn("w-16 shrink-0 text-xs font-semibold", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>
-                {commitment.stale && commitment.status !== "stale" && <span className="shrink-0 text-xs text-danger">stale</span>}
-                <span className="truncate text-muted">{requestText(commitment.request)}</span>
-                <span className="ml-auto flex shrink-0 items-center gap-2">
-                  <EventTime timestamp={timestampByEvent.get(commitment.request)} />
-                  <Ticket ticket={tickets.get(commitment.request)} event={commitment.request} onSelect={() => onJumpEvent(commitment.request)} />
-                </span>
-              </Row>
-              <WorktreeAssociations associations={associations} />
-              {commitmentNeedsAttention(commitment) && (
-                <WhyStale event={anchor} projection={projection} tickets={tickets} nameOf={nameOf} onJumpTo={onJumpEvent} />
-              )}
+      </div>
+    </details>
+  );
+}
+
+function TopicList(props: WorkRenderProps & { topics: WorkTopic[] }) {
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const toggle = (event: string) => setExpanded((current) => {
+    const next = new Set(current);
+    if (next.has(event)) next.delete(event); else next.add(event);
+    return next;
+  });
+  return (
+    <div className="mx-auto max-w-5xl space-y-2">
+      {props.topics.map((topic) => {
+        const isExpanded = expanded.has(topic.event);
+        const rootItems = topic.items.filter((item) => item.request.event === topic.event);
+        const descendants = topic.items.filter((item) => item.request.event !== topic.event);
+        const shown = isExpanded ? topic.items : [...rootItems, ...descendants].slice(0, 3);
+        return <article key={topic.event} className="rounded-lg border border-border bg-card/55 px-3 py-2.5">
+          <button type="button" onClick={() => props.onOpenThread(topic.event)} className="block w-full rounded text-left focus-visible:outline focus-visible:outline-accent">
+            <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+              <h2 className="min-w-0 flex-1 font-serif text-[15px] font-semibold leading-5 text-foreground/95">{topic.title}</h2>
+              <TopicCounts topic={topic} />
             </div>
-          );
-        })}
-        {dangling.map((promise) => (
-          <Row key={promise.event} onClick={() => onJumpEvent(promise.event)}>
-            <span className="w-16 shrink-0 text-xs font-semibold text-danger">unlinked</span>
-            <span className="truncate text-muted" title="unlinked work item">
-              {promise.text}
-            </span>
-            <span className="ml-auto flex shrink-0 items-center gap-2">
-              <EventTime timestamp={promise.timestamp} />
-              <Ticket ticket={tickets.get(promise.event)} event={promise.event} onSelect={() => onJumpEvent(promise.event)} />
-            </span>
-          </Row>
-        ))}
-      </section>
-      {[
-        { title: "Available", items: workGroups.available, empty: "Nothing available." },
-        { title: "In progress", items: workGroups.inProgress, empty: "Nothing in progress." },
-        { title: "Review", items: workGroups.review, empty: "Nothing ready for review." },
-      ].map((group) => (
-        <section key={group.title}>
-          <SectionTitle title={`${group.title} (${group.items.length})`} />
-          {group.items.length === 0 && <Empty>{group.empty}</Empty>}
-          {group.items.map((commitment) => {
-            const associations = worktreesForCommitment(commitment, projection, commits, worktrees ?? []);
-            return (
-              <div key={commitment.request + (commitment.promise ?? "")} className="rounded-md px-2 py-1 hover:bg-elevated/60">
-                <Row onClick={() => onJumpEvent(commitment.request)} bare>
-                  <span className={cn("w-16 shrink-0 text-xs font-semibold", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>
-                  <span className="truncate text-muted">{requestText(commitment.request)}</span>
-                  <span className="ml-auto flex shrink-0 items-center gap-2">
-                    {commitment.waiting_on && <span className="text-xs text-faint">⏳ {nameOf(commitment.waiting_on)}</span>}
-                    <EventTime timestamp={timestampByEvent.get(commitment.request)} />
-                    <Ticket ticket={tickets.get(commitment.request)} event={commitment.request} onSelect={() => onJumpEvent(commitment.request)} />
-                  </span>
-                </Row>
-                <WorktreeAssociations associations={associations} />
-              </div>
-            );
-          })}
-        </section>
-      ))}
-      <section>
-        <SectionTitle icon={<BadgeCheck className="h-3.5 w-3.5 text-ok" />} title="Decisions" />
-        {standing.length === 0 && <Empty>Nothing standing.</Empty>}
-        {standing.map((decision) => (
-          <Row key={decision.event} onClick={() => onJumpEvent(decision.event)}>
-            <span className="truncate font-serif text-[13px]">{decision.text}</span>
-            <span className="ml-auto flex shrink-0 items-center gap-2">
-              <EventTime timestamp={decision.timestamp} />
-              <Ticket ticket={tickets.get(decision.event)} event={decision.event} onSelect={() => onJumpEvent(decision.event)} />
-            </span>
-          </Row>
-        ))}
-      </section>
-      <section>
-        <SectionTitle title="Completed" />
-        {done.length === 0 && currentGroups.length === 0 && <Empty>Nothing yet.</Empty>}
-        {done.map((commitment) => (
-          <Row key={commitment.request} onClick={() => onJumpEvent(commitment.report ?? commitment.request)}>
-            <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-ok" />
-            <span className="truncate text-muted">{requestText(commitment.request)}</span>
-            <span className="ml-auto flex shrink-0 items-center gap-2">
-              <EventTime timestamp={timestampByEvent.get(commitment.request)} />
-              <Ticket ticket={tickets.get(commitment.request)} event={commitment.request} onSelect={() => onJumpEvent(commitment.request)} />
-            </span>
-          </Row>
-        ))}
-        {currentGroups.map((group) => (
-          <div key={group.path}>
-            {group.artifacts.length > 1 && (
-              <p className="px-2 pt-1 text-xs font-semibold text-danger">unresolved: {group.artifacts.length} current</p>
+            <p className="mt-1 text-[11px] text-faint">
+              written by {props.nameOf(topic.author)} · latest activity by {props.nameOf(topic.latestActor)} <EventTime timestamp={topic.latestTimestamp} />
+            </p>
+          </button>
+          <div className="mt-2 space-y-1 border-t border-border/70 pt-2">
+            {shown.map((item) => <WorkItemRow key={item.key} item={item} topic={topic} {...props} />)}
+            {(topic.items.length > shown.length || isExpanded) && (
+              <button type="button" aria-expanded={isExpanded} onClick={() => toggle(topic.event)} className="ml-2 rounded px-1 py-0.5 text-[11px] font-medium text-info hover:underline focus-visible:outline focus-visible:outline-accent">
+                {isExpanded ? "Show summary" : `Show all ${topic.items.length} items`}
+              </button>
             )}
-            {group.artifacts.map((artifact) => (
-              <Row key={artifact.event} onClick={() => onSelect({ kind: "commit", id: artifact.commit })}>
-                <span className="w-14 shrink-0 text-xs font-semibold uppercase text-ok">current</span>
-                <span className="truncate" title={`${artifact.path}@${artifact.commit}`}>
-                  {artifactLabel(artifact.path)}
-                </span>
-                <span className="ml-auto flex shrink-0 items-center gap-2">
-                  <EventTime timestamp={timestampByEvent.get(artifact.event)} />
-                  <Ticket ticket={tickets.get(artifact.event)} event={artifact.event} onSelect={() => onJumpEvent(artifact.event)} />
-                </span>
-              </Row>
-            ))}
           </div>
-        ))}
-      </section>
+        </article>;
+      })}
     </div>
   );
 }
+
+function WorkBoard({ topics, filters, ...props }: WorkRenderProps & { topics: WorkTopic[]; filters: WorkFilters }) {
+  const cards = topics.flatMap((topic) => topic.items.map((item) => ({ item, topic })));
+  const laneEnabled = (lane?: WorkLane) => lane === "closed" ? filters.closed : Boolean(lane && filters.open);
+  const attentionOnly = cards.filter(({ item }) => item.attention && !laneEnabled(item.lane));
+  const lanes: { id: WorkLane; title: string }[] = [
+    ...(filters.open ? [
+      { id: "available" as const, title: "Available" },
+      { id: "inProgress" as const, title: "In progress" },
+      { id: "review" as const, title: "Review" },
+    ] : []),
+    ...(filters.closed ? [{ id: "closed" as const, title: "Closed" }] : []),
+  ];
+  return (
+    <div className="mx-auto max-w-7xl space-y-4">
+      {attentionOnly.length > 0 && (
+        <section aria-labelledby="attention-heading">
+          <h2 id="attention-heading" className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-danger">Needs attention</h2>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {attentionOnly.map(({ item, topic }) => <BoardCard key={item.key} item={item} topic={topic} {...props} />)}
+          </div>
+        </section>
+      )}
+      {lanes.length > 0 && (
+        <div className="overflow-x-auto pb-2">
+          <div className="grid min-w-max gap-3" style={{ gridTemplateColumns: `repeat(${lanes.length}, minmax(16rem, 1fr))` }}>
+            {lanes.map((lane) => {
+              const items = cards.filter(({ item }) => item.lane === lane.id);
+              return (
+                <section key={lane.id} aria-labelledby={`lane-${lane.id}`} className="w-[min(21rem,82vw)] rounded-lg bg-surface/55 p-2.5 xl:w-auto">
+                  <h2 id={`lane-${lane.id}`} className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.12em] text-faint">
+                    {lane.title}<span className="font-mono text-[11px]">{items.length}</span>
+                  </h2>
+                  <div className="space-y-2">
+                    {items.length === 0 && <p className="rounded-md border border-dashed border-border px-2 py-4 text-center text-xs italic text-faint">Nothing here.</p>}
+                    {items.map(({ item, topic }) => <BoardCard key={item.key} item={item} topic={topic} {...props} />)}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface WorkRenderProps {
+  projection: Projection;
+  tickets: Map<string, number>;
+  commits: Workroom["commits"];
+  worktrees: WorktreeView[];
+  nameOf: (fingerprint: string) => string;
+  onOpenThread: (event: string) => void;
+}
+
+function WorkItemRow({ item, projection, tickets, commits, worktrees, nameOf, onOpenThread }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
+  const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
+  return (
+    <button type="button" onClick={() => onOpenThread(item.request.event)} className="w-full rounded-md px-2 py-1.5 text-left hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent">
+      <div className="flex items-start gap-2 text-xs">
+        <StatusBadge item={item} />
+        <span className="min-w-0 flex-1 text-foreground/85">{item.request.text}</span>
+        {item.commitment.waiting_on && <span className="shrink-0 text-faint">waiting on {nameOf(item.commitment.waiting_on)}</span>}
+        <span className="shrink-0 font-mono text-[11px] text-faint" title={item.request.event}>#{tickets.get(item.request.event) ?? "?"}</span>
+      </div>
+      <WorktreeAssociations associations={associations} />
+    </button>
+  );
+}
+
+function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameOf, onOpenThread }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
+  const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
+  return (
+    <button type="button" onClick={() => onOpenThread(item.request.event)} className="block w-full rounded-md border border-border bg-card px-3 py-2.5 text-left shadow-sm hover:border-accent/40 hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent">
+      <div className="flex items-center justify-between gap-2">
+        <StatusBadge item={item} />
+        <span className="font-mono text-[11px] text-faint" title={item.request.event}>#{tickets.get(item.request.event) ?? "?"}</span>
+      </div>
+      <p className="mt-1.5 text-sm leading-5 text-foreground/90">{item.request.text}</p>
+      {item.request.event !== topic.event && <p className="mt-1 line-clamp-2 text-[11px] text-faint">in {topic.title}</p>}
+      <p className="mt-1.5 text-[11px] text-faint">asked by {nameOf(item.request.actor)}</p>
+      <WorktreeAssociations associations={associations} />
+    </button>
+  );
+}
+
+function StatusBadge({ item }: { item: WorkItem }) {
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <span className={cn("text-[11px] font-semibold", statusTint[item.commitment.status])}>{statusLabel(item.commitment.status)}</span>
+      {item.attention && item.commitment.status !== "stale" && item.commitment.status !== "disputed" && (
+        <span className="rounded border border-danger/40 px-1 text-[10px] font-semibold uppercase text-danger">attention</span>
+      )}
+    </span>
+  );
+}
+
+function TopicCounts({ topic }: { topic: WorkTopic }) {
+  return (
+    <span className="flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wide">
+      {topic.attentionCount > 0 && <span className="rounded border border-danger/40 px-1.5 py-0.5 text-danger">{topic.attentionCount} attention</span>}
+      {topic.openCount > 0 && <span className="rounded border border-info/35 px-1.5 py-0.5 text-info">{topic.openCount} open</span>}
+      {topic.closedCount > 0 && <span className="rounded border border-border px-1.5 py-0.5 text-faint">{topic.closedCount} closed</span>}
+    </span>
+  );
+}
+
+function FilterCheck({ label, checked, count, tone, onChange }: { label: string; checked: boolean; count?: number; tone?: "danger"; onChange: (checked: boolean) => void }) {
+  return (
+    <label className={cn("flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs", checked ? "border-accent/50 bg-accent/10 text-foreground" : "border-border text-faint hover:text-muted", tone === "danger" && checked && "border-danger/50 bg-danger/10")}>
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-3.5 w-3.5 accent-[var(--color-accent)]" />
+      {label}<span className={cn("font-mono text-[10px]", tone === "danger" && (count ?? 0) > 0 && "text-danger")}>{count ?? 0}</span>
+    </label>
+  );
+}
+
+function PresentationButton({ label, active, icon, onClick }: { label: string; active: boolean; icon: React.ReactNode; onClick: () => void }) {
+  return (
+    <button type="button" aria-pressed={active} onClick={onClick} className={cn("flex h-7 items-center gap-1.5 rounded px-2 text-xs focus-visible:outline focus-visible:outline-accent", active ? "bg-elevated text-foreground" : "text-faint hover:text-muted")}>
+      {icon}{label}
+    </button>
+  );
+}
+
+const controlClass = (active: boolean) => cn("h-8 rounded-md border px-2 text-xs focus-visible:outline focus-visible:outline-accent", active ? "border-accent/50 bg-accent/10 text-foreground" : "border-border text-muted hover:bg-elevated");
 
 function WorktreeAssociations({ associations }: { associations: WorktreeAssociation[] }) {
   if (associations.length === 0) return null;
   return (
-    <div className="ml-16 mt-1 space-y-1 border-l border-border pl-2">
-      {associations.map((association, index) => (
-        <WorktreePill
-          key={`${association.worktree.checkout}:${association.worktree.head}:${index}`}
-          worktree={association.worktree}
-          expectedHead={association.expectedHead}
-          expectedHeads={association.expectedHeads}
-          headMatches={association.headMatches}
-          evidence={association.evidence}
-          compact
-        />
+    <span className="mt-1.5 flex flex-wrap gap-1 text-[10px] text-faint">
+      {associations.map(({ worktree, headMatches, evidence }) => (
+        <span key={worktree.checkout} className="rounded border border-border px-1.5 py-0.5" title={worktree.checkout}>
+          {worktree.branch ?? worktree.head?.slice(0, 8) ?? "checkout"}
+          {headMatches === false ? " · moved" : ""}{worktree.state === "dirty" ? " · dirty" : ""}{evidence === "local-trailer" ? " · local" : ""}
+        </span>
       ))}
-    </div>
+    </span>
   );
 }
 
-function WorktreePill({
-  worktree,
-  expectedHead,
-  expectedHeads,
-  headMatches,
-  evidence,
-  compact,
-}: {
-  worktree: WorktreeView;
-  expectedHead?: string;
-  expectedHeads?: string[];
-  headMatches?: boolean;
-  evidence?: WorktreeAssociation["evidence"];
-  compact?: boolean;
-}) {
-  const branch = worktree.detached ? "detached" : worktree.state === "bare" ? "bare" : worktree.branch || "unborn";
-  const head = worktree.head?.slice(0, 8) || "no HEAD";
-  const moved = headMatches === false;
-  const title = [
-    `local checkout ${worktree.checkout}`,
-    `branch ${branch}`,
-    `HEAD ${worktree.head || "unborn"}`,
-    worktree.state,
-    expectedHead ? `review head ${expectedHead}` : "",
-    expectedHeads && expectedHeads.length > 1 ? `review heads ${expectedHeads.join(", ")}` : "",
-    "local only — not durable workroom state",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+function WorktreePill({ worktree }: { worktree: WorktreeView }) {
   return (
-    <div
-      title={title}
-      className={cn(
-        "flex min-w-0 items-center gap-1.5 rounded border border-border bg-surface/70 text-[11px] text-muted",
-        compact ? "px-1.5 py-0.5" : "mb-1 px-2 py-1",
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", worktree.state === "clean" ? "bg-ok" : worktree.state === "dirty" ? "bg-warn" : "bg-faint")} />
-      <span className="truncate font-medium text-foreground/80">{worktree.checkout}</span>
-      <span className="truncate">{branch}</span>
-      <code className="shrink-0 text-faint">@{head}</code>
-      <span className="shrink-0 text-faint">local</span>
-      {evidence === "local-trailer" && <span className="shrink-0 text-warn">unverified trailer</span>}
-      {worktree.current && <span className="shrink-0 text-info">serving</span>}
-      {worktree.state === "dirty" && <span className="shrink-0 text-warn">dirty</span>}
-      {!["clean", "dirty"].includes(worktree.state) && <span className="shrink-0 text-warn">{worktree.state}</span>}
-      {moved && <span className="shrink-0 text-danger">moved</span>}
-    </div>
+    <span className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted" title={worktree.checkout}>
+      <GitBranch className="h-3 w-3 text-info" />
+      {worktree.branch ?? worktree.head?.slice(0, 8) ?? "checkout"}
+      {worktree.current && <span className="text-info">serving</span>}
+      {worktree.state !== "clean" && <span className="text-warn">{worktree.state}</span>}
+    </span>
   );
-}
-
-// Human label for an artifact path; "." means the repository itself.
-function artifactLabel(path: string): string {
-  return path === "." ? "this repository" : path;
-}
-
-function groupArtifacts(artifacts: Artifact[]): { path: string; artifacts: Artifact[] }[] {
-  const byPath = new Map<string, Artifact[]>();
-  for (const artifact of artifacts) byPath.set(artifact.path, [...(byPath.get(artifact.path) ?? []), artifact]);
-  return [...byPath.entries()].map(([path, list]) => ({ path, artifacts: list }));
-}
-
-function SectionTitle({ icon, title }: { icon?: React.ReactNode; title: string }) {
-  return (
-    <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.14em] text-faint">
-      {icon}
-      {title}
-    </h3>
-  );
-}
-
-// Rows contain inner buttons (tickets), so the row itself is a keyboard-
-// activatable div rather than a nested <button>.
-function Row({ children, onClick, bare }: { children: React.ReactNode; onClick: () => void; bare?: boolean }) {
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      className={cn(
-        "flex w-full cursor-pointer items-center gap-2 rounded-md text-left text-xs focus-visible:outline focus-visible:outline-accent",
-        bare ? "px-0 py-0" : "px-2 py-1.5 hover:bg-elevated/60",
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="px-2 py-1 text-xs italic text-faint">{children}</p>;
 }
