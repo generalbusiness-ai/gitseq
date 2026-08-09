@@ -185,3 +185,56 @@ test("identity and personal Work state stay honest at rendered component boundar
     await vite.close();
   }
 });
+
+// The reason an act carries no force belongs beside that act. This is the
+// regression that matters: the previous surface counted unreadable acts in a
+// panel and a header badge while the explanation lived only in a hover title,
+// so the room looked broken and no reader could learn why.
+test("an unreadable act explains itself where it is rendered", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { Stream } = await vite.ssrLoadModule("/src/components/Stream.tsx");
+    const { workSummary } = await vite.ssrLoadModule("/src/lib/store.ts");
+
+    const event = "git:sha1:genesis#git:sha1:unreadable";
+    const projection = {
+      decisions: [{ event, verdict: "undefined-kind", reason: 'undefined kind "commit"' }],
+      acts: [],
+      statements: [{
+        event, timestamp: 1786200000, actor: "a5d35aa7e4799472", kind: "commit",
+        text: "I will re-review task/docs at exact head 212820ca and report concrete approval or findings.",
+      }],
+      commitments: [], artifacts: [], actors: {}, provenance: {},
+    };
+    const room = {
+      actors: [{ name: "codex", fingerprint: "a5d35aa7e4799472", roles: [], custody: true }],
+      commits: [], graphTruncated: false, offline: false, localOffline: false,
+      status: {
+        durable: { genesis: "genesis", head: "head", depth: 1, projection },
+        live: { cursor: { generation: "g", position: 1 }, presence: {}, conversations: [] },
+        cursor: { frontier: [], live: { generation: "g", position: 1 } },
+      },
+    };
+    const html = renderToStaticMarkup(
+      React.createElement(Stream, {
+        workroom: room, session, frames: [], deliveries: 0,
+        highlight: { events: new Set(), commits: new Set() },
+        composer: { type: "say", restsOn: [], frames: [] }, pending: [],
+        onSelect() {}, onJump() {}, onComposer() {}, onReconcile() {},
+        onOpenThread() {}, onRoute() {}, onOpenProfile() {}, doAct() {},
+      }),
+    );
+
+    // The fold's own reason, rendered as text rather than hidden in a title.
+    assert.match(html, /undefined kind/, "the reason the room could not read the act is not rendered");
+    const visible = html.replace(/title="[^"]*"/g, "");
+    assert.match(visible, /undefined kind/, "the reason appears only in a hover title");
+    // And what it cost: the promise this act was written to be never formed.
+    assert.match(visible, /never formed/, "the consequence of the refusal is not stated");
+
+    // A standing interpretive limit is not work waiting on anyone.
+    assert.equal(workSummary(projection).stale, 0, "an unreadable act is counted as attention owed");
+  } finally {
+    await vite.close();
+  }
+});

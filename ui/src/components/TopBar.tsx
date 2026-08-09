@@ -26,7 +26,7 @@ export function TopBar({
 }) {
   const durable = workroom.status?.durable;
   const people = presentActors(workroom.status?.live.presence);
-  const summary = workSummary(durable?.projection, durable?.vocabulary);
+  const summary = workSummary(durable?.projection);
   const fingerprintOf = (name: string) => workroom.actors.find((a) => a.name === name)?.fingerprint ?? "";
 
   // "For you": durable acts addressed to me since the stored watermark.

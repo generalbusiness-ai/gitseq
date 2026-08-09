@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { Commitment, Projection, Vocabulary } from "./api";
+import type { Commitment, Vocabulary } from "./api";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -80,25 +80,31 @@ export function belongsInRoom(kind: string, vocabulary?: Vocabulary): boolean {
   return !legacyWorkOnlyKinds.has(kind);
 }
 
-export interface InterpretationGap {
-  verdict: string;
-  reason: string;
-  events: string[];
+// An act the room cannot read is explained on that act, not counted in a
+// panel somewhere else. The count was the wrong unit: it told a reader how
+// many acts were unreadable without telling them what any one of them meant
+// or whether anything was owed, and read as a fault when the acts were inert.
+const interpretationVerdicts = new Set(["undefined-kind", "uninterpretable"]);
+
+export function isInterpretationGap(verdict?: string): boolean {
+  return Boolean(verdict && interpretationVerdicts.has(verdict));
 }
 
-// One row per distinct refusal, not one per refused event. An interpreter the
-// room cannot run refuses every act past the seam in the same words: that is
-// one gap to close, and a list that grows with the log buries the others.
-export function interpretationGaps(projection?: Projection): InterpretationGap[] {
-  const gaps = new Map<string, InterpretationGap>();
-  for (const decision of projection?.decisions ?? []) {
-    if (decision.verdict !== "undefined-kind" && decision.verdict !== "uninterpretable") continue;
-    const key = `${decision.verdict} ${decision.reason}`;
-    const gap = gaps.get(key);
-    if (gap) gap.events.push(decision.event);
-    else gaps.set(key, { verdict: decision.verdict, reason: decision.reason, events: [decision.event] });
-  }
-  return [...gaps.values()];
+// What to say beside the act. The reason is the fold's own words — the kind it
+// could not read, or the interpreter it could not run — and the consequence
+// spells out what a reader would otherwise have to infer: the act landed and
+// is permanent, but nothing rests on it, so any promise or report it was
+// written to carry never formed.
+export function interpretationNotice(verdict?: string, reason?: string): { verdict: string; reason: string; consequence: string } | undefined {
+  if (!isInterpretationGap(verdict)) return undefined;
+  return {
+    verdict: verdict!,
+    reason: reason ?? "",
+    consequence:
+      verdict === "undefined-kind"
+        ? "This act is recorded but no rule reads it, so anything it was written to establish — a promise, a report, a citation — never formed."
+        : "The room cannot run the interpreter this act needs, so it is recorded without force until the interpreter is bound.",
+  };
 }
 
 export function definitionOf(kind: string, vocabulary?: Vocabulary) {

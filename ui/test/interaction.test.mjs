@@ -9,7 +9,7 @@ import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, saveP
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
-import { belongsInRoom, commitmentRelationship, interpretationGaps, kindLabel, statusLabel } from "../src/lib/util.ts";
+import { belongsInRoom, commitmentRelationship, interpretationNotice, isInterpretationGap, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
@@ -591,20 +591,23 @@ test("every kind wears its own name, bar the two whose names read as jargon", ()
   for (const kind of ["finding", "review-note", "request", "promise"]) assert.equal(kindLabel(kind), kind);
 });
 
-test("one interpretation gap per distinct refusal, however many events it refused", () => {
-  const refusal = (event, reason) => ({ event, verdict: "uninterpretable", reason });
-  const gaps = interpretationGaps({
-    decisions: [
-      { event: "e0", verdict: "effective", reason: "statement recorded" },
-      refusal("e1", "activated interpreter execution is not held"),
-      refusal("e2", "activated interpreter execution is not held"),
-      refusal("e3", "activated interpreter execution is not held"),
-      { event: "e4", verdict: "undefined-kind", reason: 'undefined kind "finding"' },
-    ],
-  });
-  assert.equal(gaps.length, 2);
-  assert.deepEqual(gaps[0].events, ["e1", "e2", "e3"]);
-  assert.deepEqual(gaps[1].events, ["e4"]);
+test("an unreadable act carries its own reason and consequence", () => {
+  const undefinedKind = interpretationNotice("undefined-kind", 'undefined kind "commit"');
+  assert.equal(undefinedKind.reason, 'undefined kind "commit"');
+  // The consequence is the part a reader would otherwise have to infer: the
+  // act is kept, but the promise it was written to be never formed.
+  assert.match(undefinedKind.consequence, /never formed/);
+
+  const uninterpretable = interpretationNotice("uninterpretable", "activated interpreter execution is not held");
+  assert.match(uninterpretable.consequence, /until the interpreter is bound/);
+
+  // Ordinary verdicts get no notice: this surface is only for acts the room
+  // could not read, not for every act that lacks force.
+  assert.equal(interpretationNotice("effective", "statement recorded"), undefined);
+  assert.equal(interpretationNotice("ineffective", "promise actor is not the requested performer"), undefined);
+  assert.equal(interpretationNotice(undefined, undefined), undefined);
+  assert.equal(isInterpretationGap("undefined-kind"), true);
+  assert.equal(isInterpretationGap("disputed"), false);
 });
 
 test("the everyday surface does not expose record taxonomy or authority roles", () => {
