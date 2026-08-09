@@ -12,7 +12,7 @@ The example uses two participants — `alice`, a human operator, and
 Requires **Go 1.26** and **Git with SSH signing support**.
 
 ```sh
-git clone <this-repo> gitseq
+git clone https://github.com/generalbusiness-ai/gitseq.git
 cd gitseq
 make test
 make vet
