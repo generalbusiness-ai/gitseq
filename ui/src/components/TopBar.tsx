@@ -5,7 +5,7 @@ import type { Session } from "../lib/session";
 import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
 import { cn } from "../lib/util";
 import { Avatar } from "./Avatar";
-import { parsePresenceLabel } from "../lib/interaction";
+import { fingerprintOfPresentActor, presentActors } from "../lib/interaction";
 
 export function TopBar({
   workroom,
@@ -25,7 +25,7 @@ export function TopBar({
   onOpenProfile: (fingerprint: string) => void;
 }) {
   const durable = workroom.status?.durable;
-  const people = Object.values(workroom.status?.live.presence ?? {});
+  const people = presentActors(workroom.status?.live.presence);
   const summary = workSummary(durable?.projection);
   const fingerprintOf = (name: string) => workroom.actors.find((a) => a.name === name)?.fingerprint ?? "";
 
@@ -50,7 +50,12 @@ export function TopBar({
   return (
     <header className="flex items-center justify-between gap-3 border-b border-border px-3 py-2.5 sm:gap-6 sm:px-6">
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
-        <h1 className="truncate font-serif text-lg font-semibold tracking-tight sm:text-xl">The Workroom</h1>
+        <h1 className="shrink-0 font-serif text-lg font-semibold tracking-tight sm:text-xl">The Workroom</h1>
+        {workroom.repo && (
+          <span className="truncate font-mono text-xs text-faint" title={workroom.repo}>
+            {workroom.repo}
+          </span>
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
         <nav className="flex rounded-md border border-border p-0.5" aria-label="Main view">
@@ -80,17 +85,26 @@ export function TopBar({
             <span className="text-xs text-faint">nobody here</span>
           ) : (
             people.map((person) => {
-              const name = parsePresenceLabel(person).name;
-              const fingerprint = fingerprintOf(name);
+              const fingerprint = fingerprintOfPresentActor(person, workroom.actors);
               return (
-                <Avatar
-                  key={person}
-                  fingerprint={fingerprint}
-                  name={name}
-                  size={24}
-                  onClick={() => onOpenProfile(fingerprint)}
-                  className="ring-2 ring-background"
-                />
+                <span key={person.label} className="relative">
+                  <Avatar
+                    fingerprint={fingerprint}
+                    name={person.name}
+                    title={person.sessions > 1 ? `${person.name} — ${person.sessions} sessions` : person.name}
+                    size={24}
+                    onClick={() => onOpenProfile(fingerprint)}
+                    className="ring-2 ring-background"
+                  />
+                  {person.sessions > 1 && (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute -bottom-0.5 -right-0.5 rounded-full bg-elevated px-1 font-mono text-[9px] leading-[1.3] text-muted ring-1 ring-background"
+                    >
+                      {person.sessions}
+                    </span>
+                  )}
+                </span>
               );
             })
           )}

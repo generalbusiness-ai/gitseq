@@ -236,10 +236,13 @@ Resident snapshots are immutable borrowed views. In-process consumers may
 receive maps and slices owned by the workspace cache and must not mutate them;
 JSON and MCP adapters only serialize those values.
 
-The browser's Work drawer also reads local worktree state. That endpoint emits
-only checkout basenames, branch/HEAD, and explicit clean, dirty, detached,
-bare, locked, prunable, or unavailable state; it never enters the durable
-projection. A checkout associated only through an ordinary commit's
+The browser's Work drawer also reads local worktree state. That endpoint names
+the served checkout's own absolute path, so a reader can tell which repository
+the page is showing, and otherwise emits only checkout basenames, branch/HEAD,
+and explicit clean, dirty, detached, bare, locked, prunable, or unavailable
+state; it never enters the durable projection. Disclosing the served path is
+safe because `gs serve` refuses any listen address that is not loopback: the
+browser reading it is already on the host it names. A checkout associated only through an ordinary commit's
 `Rests-On:` trailer is visibly marked **unverified trailer**, because trailer
 text is not an actor-signed workroom statement. The railway is a newest-80
 window and says when it is truncated, so older trailer associations may be
