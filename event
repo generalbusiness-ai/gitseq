@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Getting started registers the adapter without naming a repository or a service URL.","body":{"branch":"task/mcp-repo-parameter","commit":"d428ca97f31b758ec07b94796aa323528b3aac79","path":"docs/getting-started.md"}}
+{"kind":"artifact","text":"The agent contract states that every tool takes an optional repo defaulting to the adapter's working directory, and that linked worktrees of one repository are one workroom.","body":{"branch":"task/mcp-repo-parameter","commit":"d428ca97f31b758ec07b94796aa323528b3aac79","path":"SKILL.md"}}
