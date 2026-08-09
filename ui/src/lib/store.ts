@@ -8,6 +8,7 @@ export interface Workroom {
   status?: Status;
   commits: GraphCommit[];
   graphTruncated: boolean;
+  repo?: string; // absolute path of the checkout this service is serving
   worktrees?: WorktreeView[];
   actors: Actor[];
   offline: boolean;
@@ -20,6 +21,7 @@ export function useWorkroom(): Workroom {
   const [status, setStatus] = useState<Status>();
   const [commits, setCommits] = useState<GraphCommit[]>([]);
   const [graphTruncated, setGraphTruncated] = useState(false);
+  const [repo, setRepo] = useState<string>();
   const [worktrees, setWorktrees] = useState<WorktreeView[]>();
   const [actors, setActors] = useState<Actor[]>([]);
   const [offline, setOffline] = useState(false);
@@ -53,7 +55,10 @@ export function useWorkroom(): Workroom {
       try {
         const next = await api.worktrees();
         if (!stopped) {
-          setWorktrees(next);
+          // The served path identifies the server rather than describing
+          // mutable checkout state, so a failed read leaves it standing.
+          setRepo(next.repo || undefined);
+          setWorktrees(next.worktrees);
           setLocalOffline(false);
         }
       } catch {
@@ -99,7 +104,7 @@ export function useWorkroom(): Workroom {
     };
   }, []);
 
-  return { status, commits, graphTruncated, worktrees, actors, offline, localOffline };
+  return { status, commits, graphTruncated, repo, worktrees, actors, offline, localOffline };
 }
 
 export interface Selection {

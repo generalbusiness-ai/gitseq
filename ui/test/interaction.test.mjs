@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { RetryKeys, parsePresenceLabel, threadTargetKey } from "../src/lib/interaction.ts";
+import { hueOf, initialsOf } from "../src/lib/avatar.ts";
+import { RetryKeys, fingerprintOfPresentActor, fingerprintsIdentifySameActor, parsePresenceLabel, presentActors, threadTargetKey } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
@@ -48,6 +49,56 @@ test("presence labels preserve actor names containing spaces", () => {
     fingerprint: "abc123",
   });
   assert.deepEqual(parsePresenceLabel("service"), { name: "service", fingerprint: "" });
+});
+
+test("presence counts people, not the sessions each of them leases", () => {
+  const people = presentActors({
+    "handle:1": "claude (a5d35aa7e479)",
+    "handle:2": "codex (5f12e916d136)",
+    "handle:3": "claude (a5d35aa7e479)",
+    "handle:4": "hugh (7fbc80f1ba06)",
+    "handle:5": "claude (a5d35aa7e479)",
+  });
+  assert.deepEqual(people, [
+    { label: "claude (a5d35aa7e479)", name: "claude", fingerprint: "a5d35aa7e479", sessions: 3 },
+    { label: "codex (5f12e916d136)", name: "codex", fingerprint: "5f12e916d136", sessions: 1 },
+    { label: "hugh (7fbc80f1ba06)", name: "hugh", fingerprint: "7fbc80f1ba06", sessions: 1 },
+  ]);
+});
+
+test("avatar initials read the actor's name, not a decorated label", () => {
+  assert.equal(initialsOf("claude"), "CL");
+  assert.equal(initialsOf("Ada Lovelace"), "AL");
+  // The label a multi-session avatar hovers with must never be passed as the
+  // name: these initials are what that mistake looks like.
+  assert.equal(initialsOf("claude — 3 sessions"), "C3");
+  assert.equal(hueOf("a5d35aa7e479"), hueOf("a5d35aa7e479"));
+});
+
+test("presence keeps distinct actors apart even when they share a name", () => {
+  const people = presentActors({
+    "handle:1": "claude (a5d35aa7e479)",
+    "handle:2": "claude (0011223344ff)",
+  });
+  assert.deepEqual(people.map((person) => person.fingerprint), ["0011223344ff", "a5d35aa7e479"]);
+  assert.deepEqual(presentActors(undefined), []);
+});
+
+test("presence fingerprints expand without falling back to a shared name", () => {
+  const actors = [
+    { name: "claude", fingerprint: "a5d35aa7e4799472" },
+    { name: "claude", fingerprint: "0011223344ff5566" },
+  ];
+  const people = presentActors({
+    "handle:1": "claude (a5d35aa7e479)",
+    "handle:2": "claude (0011223344ff)",
+  });
+  assert.deepEqual(people.map((person) => fingerprintOfPresentActor(person, actors)), [
+    "0011223344ff5566",
+    "a5d35aa7e4799472",
+  ]);
+  assert.equal(fingerprintsIdentifySameActor("a5d35aa7e479", "a5d35aa7e4799472"), true);
+  assert.equal(fingerprintsIdentifySameActor("0011223344ff", "a5d35aa7e4799472"), false);
 });
 
 test("quoted mentions address actor names containing spaces", () => {

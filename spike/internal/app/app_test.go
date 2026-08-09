@@ -274,7 +274,7 @@ func TestLinkedWorktreeSharesRepositoryWorkroom(t *testing.T) {
 	}
 }
 
-func TestLocalWorktreesProjectsLinkedCheckoutStateWithoutPaths(t *testing.T) {
+func TestLocalWorktreesNamesTheServedCheckoutAndHidesTheOthers(t *testing.T) {
 	ctx := context.Background()
 	repo := testRepo(t)
 	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed").CombinedOutput(); err != nil {
@@ -297,12 +297,16 @@ func TestLocalWorktreesProjectsLinkedCheckoutStateWithoutPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	views, err := workspace.LocalWorktrees(ctx)
+	local, err := workspace.LocalWorktrees(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	views := local.Worktrees
 	if len(views) != 2 {
 		t.Fatalf("worktrees = %#v", views)
+	}
+	if resolved, err := filepath.EvalSymlinks(repo); err != nil || local.Path != resolved {
+		t.Fatalf("served checkout path = %q want %q (err %v)", local.Path, resolved, err)
 	}
 	byBranch := make(map[string]WorktreeView, len(views))
 	for _, view := range views {
@@ -329,12 +333,16 @@ func TestLocalWorktreesProjectsLinkedCheckoutStateWithoutPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	linkedViews, err := fromLinked.LocalWorktrees(ctx)
+	fromLinkedLocal, err := fromLinked.LocalWorktrees(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	linkedViews := fromLinkedLocal.Worktrees
 	if len(linkedViews) != 2 || linkedViews[0].Branch != "task/local-view" || !linkedViews[0].Current {
 		t.Fatalf("selected linked checkout not projected first: %#v", linkedViews)
+	}
+	if resolved, err := filepath.EvalSymlinks(linked); err != nil || fromLinkedLocal.Path != resolved {
+		t.Fatalf("linked checkout served path = %q want %q (err %v)", fromLinkedLocal.Path, resolved, err)
 	}
 
 	subdir := filepath.Join(repo, "nested", "directory")
@@ -345,12 +353,16 @@ func TestLocalWorktreesProjectsLinkedCheckoutStateWithoutPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subdirViews, err := fromSubdir.LocalWorktrees(ctx)
+	fromSubdirLocal, err := fromSubdir.LocalWorktrees(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	subdirViews := fromSubdirLocal.Worktrees
 	if len(subdirViews) != 2 || !subdirViews[0].Current || subdirViews[0].Branch != mainBranch {
 		t.Fatalf("repository subdirectory did not resolve current checkout: %#v", subdirViews)
+	}
+	if resolved, err := filepath.EvalSymlinks(repo); err != nil || fromSubdirLocal.Path != resolved {
+		t.Fatalf("subdirectory served path = %q want the checkout root %q (err %v)", fromSubdirLocal.Path, resolved, err)
 	}
 
 	index := filepath.Join(repo, ".git", "index")
@@ -402,10 +414,11 @@ func TestLocalWorktreesDistinguishesDetachedLockedPrunableAndBare(t *testing.T) 
 	if err := os.RemoveAll(prunable); err != nil {
 		t.Fatal(err)
 	}
-	views, err := workspace.LocalWorktrees(ctx)
+	local, err := workspace.LocalWorktrees(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	views := local.Worktrees
 	byCheckout := make(map[string]WorktreeView, len(views))
 	for _, view := range views {
 		byCheckout[view.Checkout] = view
@@ -424,12 +437,18 @@ func TestLocalWorktreesDistinguishesDetachedLockedPrunableAndBare(t *testing.T) 
 	if output, err := exec.Command("git", "clone", "-q", "--bare", repo, bare).CombinedOutput(); err != nil {
 		t.Fatalf("clone bare: %v: %s", err, output)
 	}
-	bareViews, err := (&Workspace{Repo: bare}).LocalWorktrees(ctx)
+	bareLocal, err := (&Workspace{Repo: bare}).LocalWorktrees(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	bareViews := bareLocal.Worktrees
 	if len(bareViews) != 1 || bareViews[0].State != "bare" || bareViews[0].Branch != "" {
 		t.Fatalf("bare worktree = %#v", bareViews)
+	}
+	// A bare repository has no working tree; the served path falls back to the
+	// directory asked for rather than inventing one.
+	if resolved, err := filepath.EvalSymlinks(bare); err != nil || bareLocal.Path != resolved {
+		t.Fatalf("bare served path = %q want %q (err %v)", bareLocal.Path, resolved, err)
 	}
 }
 
