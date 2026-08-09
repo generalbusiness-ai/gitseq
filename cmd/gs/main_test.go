@@ -822,6 +822,61 @@ func TestBatchMixesStateAndRatify(t *testing.T) {
 	}
 }
 
+// A kind this workroom does not define is admitted and stays visible, and the
+// fold still calls it undefined-kind. Nothing about that changes: the record
+// was right about the two review promises filed as kind "commit", and hiding
+// the attempt would be worse than keeping it.
+func TestStateWithAnUndefinedKindStillLandsAndProjectsUndefinedKind(t *testing.T) {
+	fixture := newBatchFixture(t)
+	before := fixture.snapshot().Depth
+	printed, _, err := fixture.state("operator", "commit", "I will re-review task/x at exact head y", "undefined-kind-lands")
+	if err != nil {
+		t.Fatalf("state with an undefined kind failed: %v", err)
+	}
+	event := strings.TrimSpace(printed)
+	if !strings.Contains(event, "#git:") {
+		t.Fatalf("state printed no event id: %q", printed)
+	}
+	snapshot := fixture.snapshot()
+	if snapshot.Depth != before+1 {
+		t.Fatalf("depth = %d, want %d", snapshot.Depth, before+1)
+	}
+	decision := decisionByEvent(t, snapshot.Projection, event)
+	if decision.Verdict != workroom.UndefinedKind {
+		t.Fatalf("verdict = %q (%s), want %q", decision.Verdict, decision.Reason, workroom.UndefinedKind)
+	}
+}
+
+// What changes is that the author finds out at once. The act carried what
+// reads in English as a promise; it formed no promise, and only the writing
+// path is in a position to say so before the author acts on the belief.
+func TestStateWithAnUndefinedKindWarnsTheAuthorOnStandardError(t *testing.T) {
+	fixture := newBatchFixture(t)
+	_, warned, err := fixture.state("operator", "commit", "I will re-review task/x at exact head y", "undefined-kind-warns")
+	if err != nil {
+		t.Fatalf("state with an undefined kind failed: %v", err)
+	}
+	for _, want := range []string{`"commit"`, "no rule reads it", "undefined-kind", "does not form", "kinds defined here:"} {
+		if !strings.Contains(warned, want) {
+			t.Fatalf("warning %q does not say %q", warned, want)
+		}
+	}
+	for _, definition := range fixture.snapshot().Vocabulary.Definitions {
+		if !strings.Contains(warned, string(definition.Name)) {
+			t.Fatalf("warning %q does not list the defined kind %q", warned, definition.Name)
+		}
+	}
+	// A defined kind is ordinary work and says nothing, so the warning cannot
+	// pass by being printed every time.
+	_, quiet, err := fixture.state("operator", "assert", "an ordinary claim", "defined-kind-is-quiet")
+	if err != nil {
+		t.Fatalf("state with a defined kind failed: %v", err)
+	}
+	if strings.TrimSpace(quiet) != "" {
+		t.Fatalf("a defined kind warned anyway: %q", quiet)
+	}
+}
+
 type batchFixture struct {
 	t         *testing.T
 	ctx       context.Context
@@ -889,6 +944,51 @@ func (f batchFixture) run(actor, acts string) (batchReport, error) {
 		f.t.Fatalf("decode batch report %q: %v", printed, err)
 	}
 	return report, batchErr
+}
+
+// state runs the state command the way a person does and returns what each
+// stream received, because which stream carried the warning is the point.
+func (f batchFixture) state(actor, kind, text, key string) (string, string, error) {
+	f.t.Helper()
+	outReader, outWriter, err := os.Pipe()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	errReader, errWriter, err := os.Pipe()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	stdout, stderr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = outWriter, errWriter
+	stateErr := stateCommand(f.ctx, []string{
+		"--repo", f.repo, "--as", actor, "--kind", kind, "--text", text,
+		"--rests-on", f.genesis, "--idempotency-key", key,
+	})
+	os.Stdout, os.Stderr = stdout, stderr
+	outWriter.Close()
+	errWriter.Close()
+	printed, err := io.ReadAll(outReader)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	warned, err := io.ReadAll(errReader)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	outReader.Close()
+	errReader.Close()
+	return string(printed), string(warned), stateErr
+}
+
+func decisionByEvent(t *testing.T, projection workroom.Projection, event string) workroom.Decision {
+	t.Helper()
+	for _, decision := range projection.Decisions {
+		if decision.Event == event {
+			return decision
+		}
+	}
+	t.Fatalf("decision for %s not found", event)
+	return workroom.Decision{}
 }
 
 func actByEvent(t *testing.T, projection workroom.Projection, event string) workroom.Act {

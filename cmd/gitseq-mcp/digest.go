@@ -40,9 +40,21 @@ func digestWait(response service.WaitResponse, requested service.Cursor, fingerp
 	return statusview.BuildWait(response.Status.Durable, response.Status.Cursor, response.LiveChanges, response.Reset, requested, fingerprint, actorName, degraded)
 }
 
-func summarize(tool string, value any) string { return statusview.Summarize(tool, value) }
-func shown(listed, skipped int) string        { return statusview.Shown(listed, skipped) }
-func liveLabel(live liveView) string          { return statusview.LiveLabel(live) }
+// summarize writes the one text block a client is guaranteed to read. A result
+// carrying a warning says so there as well as in the structured payload, so an
+// agent that reads only the summary still learns that the kind it wrote means
+// nothing here.
+func summarize(tool string, value any) string {
+	if result, ok := value.(map[string]any); ok {
+		if warning, held := result["warning"].(string); held && warning != "" {
+			return statusview.Summarize(tool, value) + "; warning: " + warning
+		}
+	}
+	return statusview.Summarize(tool, value)
+}
+
+func shown(listed, skipped int) string { return statusview.Shown(listed, skipped) }
+func liveLabel(live liveView) string   { return statusview.LiveLabel(live) }
 
 // fingerprint resolves this process's configured actor to the identity the
 // projection speaks in, within the workroom the call is acting in. The same

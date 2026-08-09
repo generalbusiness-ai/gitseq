@@ -119,6 +119,34 @@ type Vocabulary struct {
 	Binding     FoldBinding      `json:"binding"`
 }
 
+// UndefinedKindWarning is what an author has to be told when the kind they
+// wrote is one this record does not define. The act is still admitted and
+// still visible as an attempt — that is deliberate, and the fold still
+// projects it as undefined-kind — but no rule reads it, so a promise or a
+// report written under such a kind never becomes one. Saying nothing is how an
+// author comes to believe a commitment was made that nobody can see.
+//
+// The empty string means the kind is defined and there is nothing to say. The
+// list of kinds comes from the live definitions rather than any compiled-in
+// set, so a workroom that has declared its own kinds, or bound its own fold,
+// names the kinds it actually has.
+func (v Vocabulary) UndefinedKindWarning(kind Kind) string {
+	names := make([]string, 0, len(v.Definitions))
+	for _, definition := range v.Definitions {
+		if definition.Name == kind {
+			return ""
+		}
+		names = append(names, string(definition.Name))
+	}
+	defined := "no kinds are defined here"
+	if len(names) != 0 {
+		defined = "kinds defined here: " + strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("kind %q is not defined in this workroom. The act was recorded and stays visible, "+
+		"but no rule reads it: it projects as undefined-kind, and any promise, report, or other lifecycle "+
+		"edge it was meant to carry does not form. %s", kind, defined)
+}
+
 func starterCatalog() map[Kind]KindDefinition {
 	definitions := []KindDefinition{
 		starter(KindAssert, nil, nil, "role:ratifier", RenderNote, LifecycleNone,
