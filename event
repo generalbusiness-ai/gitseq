@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3ae17baf6472dd66e3041437115a2784aed8345c","text":"The merged main artifact edb53cef supersedes the fixed UI repair branch artifact; same-name actor identity is now part of main."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ca5924ca80fe9f0f28238141aa936bcf5d14f0d1","text":"The merged fixed UI artifact supersedes the earlier reintegrated candidate whose name-based lookup did not preserve same-name actor identity."}
