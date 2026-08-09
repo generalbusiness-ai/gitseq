@@ -13,7 +13,7 @@ import {
   type WorkTopic,
 } from "../lib/work";
 import { worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
-import { cn, statusLabel, statusTint } from "../lib/util";
+import { cn, commitmentRelationship, statusLabel, statusTint } from "../lib/util";
 import { EventTime } from "./EventTime";
 import { Railway } from "./Railway";
 
@@ -280,12 +280,13 @@ interface WorkRenderProps {
 
 function WorkItemRow({ item, projection, tickets, commits, worktrees, nameOf, onOpenThread }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
   const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
+  const relationship = commitmentRelationship(item.commitment, nameOf);
   return (
     <button type="button" onClick={() => onOpenThread(item.request.event)} className="w-full rounded-md px-2 py-1.5 text-left hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent">
       <div className="flex items-start gap-2 text-xs">
         <StatusBadge item={item} />
         <span className="min-w-0 flex-1 text-foreground/85">{item.request.text}</span>
-        {item.commitment.waiting_on && <span className="shrink-0 text-faint">waiting on {nameOf(item.commitment.waiting_on)}</span>}
+        {relationship && <span className="shrink-0 text-faint">{relationship}</span>}
         <span className="shrink-0 font-mono text-[11px] text-faint" title={item.request.event}>#{tickets.get(item.request.event) ?? "?"}</span>
       </div>
       <WorktreeAssociations associations={associations} />
@@ -295,6 +296,7 @@ function WorkItemRow({ item, projection, tickets, commits, worktrees, nameOf, on
 
 function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameOf, onOpenThread }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
   const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
+  const relationship = commitmentRelationship(item.commitment, nameOf);
   return (
     <button type="button" onClick={() => onOpenThread(item.request.event)} className="block w-full rounded-md border border-border bg-card px-3 py-2.5 text-left shadow-sm hover:border-accent/40 hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent">
       <div className="flex items-center justify-between gap-2">
@@ -303,7 +305,9 @@ function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameO
       </div>
       <p className="mt-1.5 text-sm leading-5 text-foreground/90">{item.request.text}</p>
       {item.request.event !== topic.event && <p className="mt-1 line-clamp-2 text-[11px] text-faint">in {topic.title}</p>}
-      <p className="mt-1.5 text-[11px] text-faint">asked by {nameOf(item.request.actor)}</p>
+      <p className="mt-1.5 text-[11px] text-faint">
+        asked by {nameOf(item.request.actor)}{relationship && <> · {relationship}</>}
+      </p>
       <WorktreeAssociations associations={associations} />
     </button>
   );

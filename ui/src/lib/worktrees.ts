@@ -16,7 +16,7 @@ export interface WorkGroups {
 
 export function groupOpenWork(commitments: Commitment[]): WorkGroups {
   return {
-    available: commitments.filter((item) => item.status === "requested"),
+    available: commitments.filter((item) => item.status === "open"),
     inProgress: commitments.filter((item) => item.status === "promised"),
     review: commitments.filter((item) => item.status === "reported"),
   };

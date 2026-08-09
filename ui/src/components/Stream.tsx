@@ -688,8 +688,14 @@ function RecordedMessage({
             <span className="flex items-center gap-1 text-xs text-faint" title="kept">
               <Bookmark className="h-3 w-3 fill-current" /> kept
             </span>
-            {statement.body?.to && <span className="text-xs text-faint">for {nameOf(statement.body.to)}</span>}
-            {commitment && <span className={cn("text-xs", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>}
+            {commitment?.status === "open" && commitment.addressed_to ? (
+              <span className="text-xs text-faint">open — addressed to {nameOf(commitment.addressed_to)}, unclaimed</span>
+            ) : (
+              <>
+                {statement.body?.to && <span className="text-xs text-faint">for {nameOf(statement.body.to)}</span>}
+                {commitment && <span className={cn("text-xs", statusTint[commitment.status])}>{statusLabel(commitment.status)}</span>}
+              </>
+            )}
             {ratified && !dead && <BadgeCheck aria-label="agreed" className="h-3.5 w-3.5 text-ok" />}
             {statement.stale && !dead && <span className="text-xs text-danger">stale</span>}
             {ineffective && !dead && <span className="text-xs text-faint" title={decision!.reason}>not active</span>}
