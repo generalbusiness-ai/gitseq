@@ -48,6 +48,33 @@ export interface PresentActor {
   sessions: number;
 }
 
+interface KnownActor {
+  name: string;
+  fingerprint: string;
+}
+
+// Presence publishes a short fingerprint while durable actor records carry
+// the full one. Resolve by that identity prefix, never by display name when a
+// fingerprint is present: names are deliberately not unique.
+export function fingerprintOfPresentActor(person: PresentActor, actors: KnownActor[]): string {
+  if (person.fingerprint) {
+    const matches = actors.filter(
+      (actor) =>
+        actor.fingerprint === person.fingerprint ||
+        actor.fingerprint.startsWith(person.fingerprint) ||
+        person.fingerprint.startsWith(actor.fingerprint),
+    );
+    return matches.length === 1 ? matches[0].fingerprint : person.fingerprint;
+  }
+  const matches = actors.filter((actor) => actor.name === person.name);
+  return matches.length === 1 ? matches[0].fingerprint : "";
+}
+
+export function fingerprintsIdentifySameActor(left: string, right: string): boolean {
+  return Boolean(left && right) &&
+    (left === right || left.startsWith(right) || right.startsWith(left));
+}
+
 export function presentActors(presence: Record<string, string> | undefined): PresentActor[] {
   const people = new Map<string, PresentActor>();
   for (const label of Object.values(presence ?? {})) {

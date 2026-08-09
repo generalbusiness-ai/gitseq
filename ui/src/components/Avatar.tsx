@@ -43,13 +43,14 @@ export function Avatar({
   );
   if (!onClick) {
     return (
-      <span role="img" aria-label={label} title={label} className={cn("inline-block shrink-0 rounded-full", className)}>
+      <span data-fingerprint={fingerprint} role="img" aria-label={label} title={label} className={cn("inline-block shrink-0 rounded-full", className)}>
         {disc}
       </span>
     );
   }
   return (
     <button
+      data-fingerprint={fingerprint}
       onClick={(e) => {
         e.stopPropagation();
         onClick();

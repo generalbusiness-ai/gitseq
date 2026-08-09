@@ -5,7 +5,7 @@ import type { Session } from "../lib/session";
 import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
 import { cn } from "../lib/util";
 import { Avatar } from "./Avatar";
-import { presentActors } from "../lib/interaction";
+import { fingerprintOfPresentActor, presentActors } from "../lib/interaction";
 
 export function TopBar({
   workroom,
@@ -85,7 +85,7 @@ export function TopBar({
             <span className="text-xs text-faint">nobody here</span>
           ) : (
             people.map((person) => {
-              const fingerprint = fingerprintOf(person.name);
+              const fingerprint = fingerprintOfPresentActor(person, workroom.actors);
               return (
                 <span key={person.label} className="relative">
                   <Avatar
