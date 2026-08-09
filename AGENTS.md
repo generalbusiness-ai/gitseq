@@ -36,3 +36,6 @@ per ISO 24495-1, for a technical audience.
 Talk and routine progress stay ephemeral. Promote a breakdown only when it
 changes scope, a condition of satisfaction, or creates follow-up work. Never
 sign as another actor.
+
+Temporary files during development should go within the worktree `/.tmp/`,
+since the user's `/tmp` is often protected by environmental policy.
