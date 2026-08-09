@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3dd1e51f5c01a001b260018e4493305f247dc5bc","text":"Main advanced from the merged UI identity world to the approved fast-status world at exact head 0a66e859."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2b2cafd2580ade35d92701f2e1b0139b228410d8","text":"The exact merged main artifact supersedes the fast-status branch artifact; the reviewed behavior is now on main."}
