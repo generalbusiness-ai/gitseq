@@ -315,6 +315,16 @@ timeout, oversized response, stale head, or moving head is named on stderr
 and falls back to the verified local path. `--all` and `--json` use the full
 `/v0/status` response and retain the complete modes.
 
+Staleness qualifies a commitment in the bounded view rather than replacing
+its status. A reported commitment whose basis was retired still reads
+`reported`, still sits with the work awaiting review, and gains a `(stale)`
+mark; the totals line counts it in both `reported N` and the `(M stale)`
+beside it. Settled commitments are left out of the lists, except when they
+carry the qualifier: a satisfied or withdrawn commitment whose basis moved
+appears under "Needs attention", because the outcome is worth re-checking. A
+commitment that was never reported has no outcome to preserve, so its status
+is `stale` outright and the mark is not repeated.
+
 Local status consumes a sequencer-signed checkpoint and verifies its
 descendant tail. If no checkpoint is usable, it performs the ordinary full
 audit and prints a progress line after one second rather than appearing to

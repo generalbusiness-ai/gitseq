@@ -26,7 +26,7 @@ func growthProjection(size int) workroom.Projection {
 			Text: strings.Repeat("bounded request text ", 40) + fmt.Sprint(index),
 		})
 		projection.Commitments = append(projection.Commitments,
-			workroom.Commitment{Request: request, Requester: "requester", Performer: "performer", WaitingOn: "performer", Status: "requested"},
+			workroom.Commitment{Request: request, Requester: "requester", Performer: "performer", WaitingOn: "performer", Status: "promised"},
 			workroom.Commitment{Request: request + ":stale", Requester: "requester", Performer: "performer", Status: "stale"},
 			workroom.Commitment{Request: request + ":done", Requester: "requester", Performer: "performer", Status: "satisfied"},
 		)
@@ -63,7 +63,7 @@ func TestBuildBoundsEveryGrowthDimensionAndCountsExactly(t *testing.T) {
 		summary.AttemptsOmitted != 2*size-ListCap {
 		t.Fatalf("omitted counts are not exact: %+v", summary)
 	}
-	if summary.Totals.Commitments["requested"] != size || summary.Totals.Commitments["stale"] != size || summary.Totals.Commitments["satisfied"] != size {
+	if summary.Totals.Commitments["promised"] != size || summary.Totals.Commitments["stale"] != size || summary.Totals.Commitments["satisfied"] != size {
 		t.Fatalf("commitment totals = %#v", summary.Totals.Commitments)
 	}
 	if summary.Actionable[0].Requester != "Ada" || summary.Actionable[0].Performer != "Grace" {
@@ -99,8 +99,8 @@ func TestBuildBoundsEveryGrowthDimensionAndCountsExactly(t *testing.T) {
 		t.Fatal("full JSON omitted an entry outside the bounded window")
 	}
 	fullText := workroom.RenderStatus(projection)
-	if rows := bytes.Count(fullText, []byte("| requested |")); rows != size {
-		t.Fatalf("full text rendered %d requested rows, want %d", rows, size)
+	if rows := bytes.Count(fullText, []byte("| promised |")); rows != size {
+		t.Fatalf("full text rendered %d promised rows, want %d", rows, size)
 	}
 }
 
@@ -139,6 +139,138 @@ func TestOpenUnclaimedRequestRemainsActionableWithoutInventedAssignment(t *testi
 	}
 	if len(summary.Attention) != 0 {
 		t.Fatalf("open request was classified as terminal attention: %+v", summary.Attention)
+	}
+}
+
+// qualifierProjection pairs each interesting status with a stale twin, so a
+// view that reads only the status word cannot tell the pairs apart.
+func qualifierProjection() workroom.Projection {
+	return workroom.Projection{
+		Actors: map[string]workroom.ActorState{"requester": {Name: "Ada"}, "performer": {Name: "Grace"}},
+		Statements: []workroom.Statement{
+			{Event: "request:reported-stale", Actor: "requester", Kind: workroom.KindRequest, Text: "moved under the report"},
+			{Event: "request:reported-clean", Actor: "requester", Kind: workroom.KindRequest, Text: "still standing"},
+		},
+		Commitments: []workroom.Commitment{
+			{Request: "request:reported-stale", Requester: "requester", Performer: "performer", Status: "reported", Stale: true, WaitingOn: "requester"},
+			{Request: "request:reported-clean", Requester: "requester", Performer: "performer", Status: "reported", WaitingOn: "requester"},
+			{Request: "request:satisfied-stale", Requester: "requester", Performer: "performer", Status: "satisfied", Stale: true},
+			{Request: "request:satisfied-clean", Requester: "requester", Performer: "performer", Status: "satisfied"},
+			{Request: "request:promised", Requester: "requester", Performer: "performer", Status: "promised", WaitingOn: "performer"},
+			{Request: "request:never-reported", Requester: "requester", Performer: "performer", Status: "stale", Stale: true},
+		},
+	}
+}
+
+func findCommitment(items []Commitment, request string) *Commitment {
+	for index := range items {
+		if items[index].Request == request {
+			return &items[index]
+		}
+	}
+	return nil
+}
+
+// Staleness qualifies the lifecycle word; it does not replace it. A reported
+// commitment whose basis was retired is still reported, still waiting on the
+// requester, and still in the review lane — it has only gained a warning.
+func TestStaleReportedKeepsItsStatusLaneAndQualifier(t *testing.T) {
+	summary := Build("genesis", "head", 1, qualifierProjection())
+	stale := findCommitment(summary.Actionable, "request:reported-stale")
+	if stale == nil {
+		t.Fatalf("a stale report left the actionable lane: %#v", summary)
+	}
+	if stale.Status != "reported" || !stale.Stale || stale.WaitingOn != "Ada" {
+		t.Fatalf("stale report lost its status, qualifier, or the party who owes the next move: %#v", *stale)
+	}
+	if findCommitment(summary.Attention, "request:reported-stale") != nil {
+		t.Fatalf("a stale report was moved out of its lifecycle lane: %#v", summary.Attention)
+	}
+	clean := findCommitment(summary.Actionable, "request:reported-clean")
+	if clean == nil || clean.Stale {
+		t.Fatalf("an unqualified report was marked stale: %#v", clean)
+	}
+	encoded, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, []byte(`"stale":true`)) {
+		t.Fatalf("the bounded JSON does not carry the qualifier at all:\n%s", encoded)
+	}
+}
+
+// A satisfied commitment is finished, so the bounded lists leave it out. If a
+// basis under it was retired the outcome is worth re-checking, and dropping
+// the row is the projection lying by omission.
+func TestStaleTerminalCommitmentStaysVisibleAndSettledOneDoesNot(t *testing.T) {
+	summary := Build("genesis", "head", 1, qualifierProjection())
+	stale := findCommitment(summary.Attention, "request:satisfied-stale")
+	if stale == nil {
+		t.Fatalf("a stale satisfied commitment was skipped entirely: %#v", summary)
+	}
+	if stale.Status != "satisfied" || !stale.Stale {
+		t.Fatalf("stale satisfied commitment lost its outcome or its qualifier: %#v", *stale)
+	}
+	if findCommitment(summary.Actionable, "request:satisfied-stale") != nil {
+		t.Fatalf("a finished commitment was presented as actionable: %#v", summary.Actionable)
+	}
+	if findCommitment(summary.Attention, "request:satisfied-clean") != nil || findCommitment(summary.Actionable, "request:satisfied-clean") != nil {
+		t.Fatalf("a settled commitment with nothing wrong was listed as work: %#v", summary)
+	}
+}
+
+func TestBoundedTotalsCountStaleBesideStatus(t *testing.T) {
+	summary := Build("genesis", "head", 1, qualifierProjection())
+	if summary.Totals.Commitments["reported"] != 2 || summary.Totals.Commitments["satisfied"] != 2 {
+		t.Fatalf("status totals changed: %#v", summary.Totals.Commitments)
+	}
+	if summary.Totals.StaleCommitments["reported"] != 1 || summary.Totals.StaleCommitments["satisfied"] != 1 {
+		t.Fatalf("totals cannot identify stale commitments by status: %#v", summary.Totals.StaleCommitments)
+	}
+	if _, listed := summary.Totals.StaleCommitments["promised"]; listed {
+		t.Fatalf("a status with nothing stale was given a stale count: %#v", summary.Totals.StaleCommitments)
+	}
+}
+
+func TestRenderedSummaryShowsTheStaleQualifier(t *testing.T) {
+	rendered := Render(Build("genesis", "head", 1, qualifierProjection()), "test")
+	for _, want := range []string{"reported 2 (1 stale)", "satisfied 2 (1 stale)", "reported (stale)", "satisfied (stale)"} {
+		if !bytes.Contains(rendered, []byte(want)) {
+			t.Fatalf("rendered status is missing %q:\n%s", want, rendered)
+		}
+	}
+	if bytes.Contains(rendered, []byte("promised 1 (")) {
+		t.Fatalf("rendered status qualified a commitment that is not stale:\n%s", rendered)
+	}
+	// A commitment that was never reported has no outcome to preserve, so
+	// "stale" is already its whole status. Saying it twice is noise.
+	if bytes.Contains(rendered, []byte("stale (stale)")) || bytes.Contains(rendered, []byte("stale 1 (1 stale)")) {
+		t.Fatalf("rendered status repeats the word stale:\n%s", rendered)
+	}
+	if !bytes.Contains(rendered, []byte("- stale — Ada")) {
+		t.Fatalf("a never-reported stale commitment lost its row:\n%s", rendered)
+	}
+}
+
+// The lane tables must name only words the fold can produce. "requested" sat
+// in the actionable table for a long time while projectCommitments emitted
+// "open", so the table read as if it covered a state that cannot occur.
+func TestLaneTablesNameOnlyStatusesTheFoldEmits(t *testing.T) {
+	emitted := map[string]bool{
+		"open": true, "promised": true, "reported": true, "satisfied": true,
+		"stale": true, "cancelled": true, "reneged": true, "withdrawn": true,
+	}
+	for _, table := range []map[string]bool{actionable, terminal} {
+		for status := range table {
+			if !emitted[status] {
+				t.Fatalf("lane table names %q, which foldState.projectCommitments never emits", status)
+			}
+		}
+	}
+	for status := range emitted {
+		if actionable[status] && terminal[status] {
+			t.Fatalf("%q is both actionable and terminal", status)
+		}
 	}
 }
 
