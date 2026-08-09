@@ -22,14 +22,18 @@ func RenderStatus(projection Projection) []byte {
 	if summary := projection.Summary(); summary != "" {
 		fmt.Fprintf(&output, "%s\n\n", summary)
 	}
-	output.WriteString("## Commitments\n\n")
+	output.WriteString("## Requests and commitments\n\n")
 	if len(projection.Commitments) == 0 {
 		output.WriteString("No commitments.\n")
 	} else {
-		output.WriteString("| status | requester | performer | request | waiting on |\n")
+		output.WriteString("| status | requester | assignment | request | waiting on |\n")
 		output.WriteString("|---|---|---|---|---|\n")
 		for _, commitment := range projection.Commitments {
-			fmt.Fprintf(&output, "| %s | %s | %s | %s | %s |\n", escape(commitment.Status), short(commitment.Requester), short(commitment.Performer), short(commitment.Request), short(commitment.WaitingOn))
+			assignment := short(commitment.Performer)
+			if commitment.Promise == "" && commitment.AddressedTo != "" {
+				assignment = "addressed to " + short(commitment.AddressedTo) + " — unclaimed"
+			}
+			fmt.Fprintf(&output, "| %s | %s | %s | %s | %s |\n", escape(commitment.Status), short(commitment.Requester), escape(assignment), short(commitment.Request), short(commitment.WaitingOn))
 		}
 	}
 	output.WriteString("\n## Artifacts\n\n")

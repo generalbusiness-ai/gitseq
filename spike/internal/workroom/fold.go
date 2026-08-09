@@ -48,13 +48,14 @@ type Statement struct {
 }
 
 type Commitment struct {
-	Request   string `json:"request"`
-	Requester string `json:"requester"`
-	Performer string `json:"performer,omitempty"`
-	Promise   string `json:"promise,omitempty"`
-	Report    string `json:"report,omitempty"`
-	Status    string `json:"status"`
-	WaitingOn string `json:"waiting_on,omitempty"`
+	Request     string `json:"request"`
+	Requester   string `json:"requester"`
+	AddressedTo string `json:"addressed_to,omitempty"`
+	Performer   string `json:"performer,omitempty"`
+	Promise     string `json:"promise,omitempty"`
+	Report      string `json:"report,omitempty"`
+	Status      string `json:"status"`
+	WaitingOn   string `json:"waiting_on,omitempty"`
 }
 
 type Artifact struct {
@@ -757,13 +758,13 @@ func (f *foldState) projectCommitments(retired, stale map[string]bool) []Commitm
 		}
 		promises := f.directDependents(requestRecord.record.ID, KindPromise)
 		if len(promises) == 0 {
-			status := "requested"
+			status := "open"
 			if retired[requestRecord.record.ID] {
 				status = "withdrawn"
 			} else if stale[requestRecord.record.ID] {
 				status = "stale"
 			}
-			commitments = append(commitments, Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, Performer: request.Body["to"], Status: status, WaitingOn: request.Body["to"]})
+			commitments = append(commitments, Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, AddressedTo: request.Body["to"], Status: status})
 			continue
 		}
 		for _, promiseRecord := range promises {
@@ -777,6 +778,7 @@ func (f *foldState) projectCommitments(retired, stale map[string]bool) []Commitm
 				entry.WaitingOn = ""
 			case stale[requestRecord.record.ID] || stale[promiseRecord.record.ID]:
 				entry.Status = "stale"
+				entry.WaitingOn = ""
 			default:
 				reports := f.directDependents(promiseRecord.record.ID, KindReport)
 				for index := len(reports) - 1; index >= 0; index-- {
@@ -789,6 +791,7 @@ func (f *foldState) projectCommitments(retired, stale map[string]bool) []Commitm
 					entry.WaitingOn = requestRecord.record.Actor
 					if stale[report.record.ID] {
 						entry.Status = "stale"
+						entry.WaitingOn = ""
 					} else if f.ratified(report.record.ID, retired) {
 						entry.Status = "satisfied"
 						entry.WaitingOn = ""

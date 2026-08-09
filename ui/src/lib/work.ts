@@ -1,6 +1,6 @@
 import type { Commitment, Projection, Statement } from "./api.ts";
 
-export const OPEN_WORK_STATUSES = ["requested", "promised", "reported"] as const;
+export const OPEN_WORK_STATUSES = ["open", "promised", "reported"] as const;
 export const CLOSED_WORK_STATUSES = ["satisfied", "withdrawn", "cancelled", "reneged"] as const;
 export const ATTENTION_WORK_STATUSES = ["stale", "disputed"] as const;
 
@@ -71,7 +71,7 @@ export function workItemState(commitment: Commitment): Pick<WorkItem, "open" | "
     commitment.stale === true ||
     commitment.disputed === true;
   const lane: WorkLane | undefined =
-    commitment.status === "requested"
+    commitment.status === "open"
       ? "available"
       : commitment.status === "promised"
         ? "inProgress"

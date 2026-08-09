@@ -210,6 +210,75 @@ func TestReportAwaitsRequester(t *testing.T) {
 	}
 }
 
+func TestUnclaimedRequestIsOpenWithoutWaitingOnItsAddressee(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "w3", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+	)
+	open := Fold(records).Commitments[0]
+	if open.Status != "open" || open.AddressedTo != agent || open.Performer != "" || open.Promise != "" || open.WaitingOn != "" {
+		t.Fatalf("unclaimed request projects as %+v", open)
+	}
+	encoded, err := json.Marshal(open)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range [][]byte{[]byte(`"performer"`), []byte(`"promise"`), []byte(`"waiting_on"`)} {
+		if bytes.Contains(encoded, forbidden) {
+			t.Fatalf("unclaimed request JSON asserts %s: %s", forbidden, encoded)
+		}
+	}
+	for _, want := range [][]byte{[]byte(`"addressed_to":"actor:agent"`), []byte(`"status":"open"`)} {
+		if !bytes.Contains(encoded, want) {
+			t.Fatalf("unclaimed request JSON omits %s: %s", want, encoded)
+		}
+	}
+	page := RenderStatus(Fold(records))
+	if !bytes.Contains(page, []byte("| open | actor:operator | addressed to actor:agent — unclaimed | w3 |  |")) {
+		t.Fatalf("status page does not render the request as addressed and unclaimed:\n%s", page)
+	}
+
+	records = append(records, event(t, "w4", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "w3"))
+	promised := Fold(records).Commitments[0]
+	if promised.Status != "promised" || promised.Performer != agent || promised.WaitingOn != agent {
+		t.Fatalf("live promise does not wait on its performer: %+v", promised)
+	}
+
+	records = append(records, event(t, "w5", agent, SchemaState, State{Kind: KindReport, Text: "Done"}, "w4"))
+	reported := Fold(records).Commitments[0]
+	if reported.Status != "reported" || reported.WaitingOn != operator {
+		t.Fatalf("live report does not wait on its requester: %+v", reported)
+	}
+}
+
+func TestStaleCommitmentDoesNotProjectAWaitingParty(t *testing.T) {
+	t.Run("promise", func(t *testing.T) {
+		records := worldRecords(t,
+			event(t, "w3", operator, SchemaState, State{Kind: KindAssert, Text: "basis"}, "w0"),
+			event(t, "w4", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w3"),
+			event(t, "w5", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "w4"),
+			event(t, "w6", operator, SchemaSupersede, Supersede{Target: "w3", Text: "basis changed"}, "w3"),
+		)
+		commitment := Fold(records).Commitments[0]
+		if commitment.Status != "stale" || commitment.WaitingOn != "" {
+			t.Fatalf("stale promise projects as %+v", commitment)
+		}
+	})
+
+	t.Run("report", func(t *testing.T) {
+		records := worldRecords(t,
+			event(t, "w3", operator, SchemaState, State{Kind: KindAssert, Text: "basis"}, "w0"),
+			event(t, "w4", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+			event(t, "w5", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "w4"),
+			event(t, "w6", agent, SchemaState, State{Kind: KindReport, Text: "Done"}, "w5", "w3"),
+			event(t, "w7", operator, SchemaSupersede, Supersede{Target: "w3", Text: "basis changed"}, "w3"),
+		)
+		commitment := Fold(records).Commitments[0]
+		if commitment.Status != "stale" || commitment.WaitingOn != "" {
+			t.Fatalf("stale report projects as %+v", commitment)
+		}
+	})
+}
+
 func TestDanglingWrongActorAndAmbiguousActsAreTotal(t *testing.T) {
 	projection := Fold([]Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),
