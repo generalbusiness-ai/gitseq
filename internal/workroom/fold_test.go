@@ -1555,6 +1555,41 @@ func TestNamedArtifactIsTakenOnlyWhenCitedAndAtTheClaimedHead(t *testing.T) {
 	}
 }
 
+// Every case above that exercises the citation half of the named-artifact rule
+// also fails its head half, so the citation is never the condition that decides
+// them. This case makes it the only one: the verdict names an artifact that
+// does stand at the head it claims, and never rests on it. Taking the name
+// there would let a label the reviewer typed stand in for a link the log can
+// follow. Uncited, the answer has to come from somewhere the record can vouch
+// for — the head, when the head can answer — and where the head cannot answer,
+// the verdict resolves to nothing rather than to the name.
+func TestNamedArtifactAtTheClaimedHeadStillNeedsItsCitation(t *testing.T) {
+	// One implementer at head1, so the head fallback can answer. The artifact
+	// is the same either way; how it was found is not, and that is the whole
+	// difference between a followed citation and a trusted label.
+	uncited := Fold(reviewRecords(t,
+		event(t, "v1", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise"),
+	))
+	fallback := reviewFor(t, uncited, "v1")
+	if fallback.Artifact != "r5" || fallback.ResolvedBy != "head" {
+		// Not fatal: the contested case below is a separate projection and
+		// pins the same rule where the fallback has no answer, so a run that
+		// loses the citation should report both losses, not just the first.
+		t.Errorf("an uncited name at the claimed head = %+v", fallback)
+	}
+	// A second author at the same head, so the head cannot answer. Taking the
+	// name here would turn a question the record cannot settle into an
+	// independent review of whichever artifact the reviewer happened to type.
+	contested := Fold(reviewRecords(t,
+		event(t, "v0", other, SchemaState, State{Kind: KindArtifact, Text: "the reviewer's own path at the same head", Body: map[string]string{"path": "ui", "commit": "head1"}}, "r0"),
+		event(t, "v1", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise"),
+	))
+	unsettled := reviewFor(t, contested, "v1")
+	if unsettled.Independence != IndependenceUnresolved || unsettled.Artifact != "" || unsettled.ResolvedBy != "" {
+		t.Fatalf("an uncited name at a contested head = %+v", unsettled)
+	}
+}
+
 // A hand-written verdict that rests on exactly one artifact still answers the
 // question; a verdict that rests on several does not, and says so.
 func TestReviewResolvesImplementerFromSingleArtifactBasis(t *testing.T) {
