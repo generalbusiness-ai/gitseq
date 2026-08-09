@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { BadgeCheck, CircleSlash, FileWarning, MessageSquareX, Scale, Undo2 } from "lucide-react";
 import type { Act, Actor, Projection, Statement } from "../lib/api";
 import { shortEvent } from "../lib/api";
+import { replacementForSupersede } from "../lib/replacements";
 import { ticketsOf, type Selection } from "../lib/store";
 import { cn, kindLabel, kindTint, statusTint } from "../lib/util";
 import { EventTime } from "./EventTime";
@@ -97,6 +98,8 @@ export function SequencePane({
                 nameOf={nameOf}
                 bright={highlight.events.has(statement.event)}
                 selected={selection?.kind === "event" && selection.id === statement.event}
+                projection={projection}
+                tickets={tickets}
                 onSelect={onSelect}
               />
             ))}
@@ -126,6 +129,8 @@ function StatementCard({
   nameOf,
   bright,
   selected,
+  projection,
+  tickets,
   onSelect,
 }: {
   statement: Statement;
@@ -134,6 +139,8 @@ function StatementCard({
   nameOf: (fingerprint: string) => string;
   bright: boolean;
   selected: boolean;
+  projection?: Projection;
+  tickets: Map<string, number>;
   onSelect: (selection: Selection) => void;
 }) {
   const dead = statement.retired;
@@ -177,19 +184,31 @@ function StatementCard({
             <span className="hidden truncate group-hover:inline">✓ when: {statement.body.conditions}</span>
           )}
         </div>
-        {annotations.length > 0 && (
-          <div className="mt-1 space-y-0.5 border-l border-border/60 pl-2.5">
-            {annotations.map((note) => (
-              <AnnotationLine key={note.key} note={note} nameOf={nameOf} />
-            ))}
-          </div>
-        )}
       </button>
+      {annotations.length > 0 && (
+        <div className="mx-2.5 mb-1 space-y-0.5 border-l border-border/60 pl-2.5">
+          {annotations.map((note) => (
+            <AnnotationLine key={note.key} note={note} nameOf={nameOf} projection={projection} tickets={tickets} onSelect={onSelect} />
+          ))}
+        </div>
+      )}
     </li>
   );
 }
 
-function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string) => string }) {
+function AnnotationLine({
+  note,
+  nameOf,
+  projection,
+  tickets,
+  onSelect,
+}: {
+  note: Annotation;
+  nameOf: (f: string) => string;
+  projection?: Projection;
+  tickets: Map<string, number>;
+  onSelect: (selection: Selection) => void;
+}) {
   if (note.dissent) {
     return (
       <div className="flex items-start gap-1.5 text-xs text-danger">
@@ -202,6 +221,7 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
     );
   }
   const act = note.act!;
+  const replacement = projection ? replacementForSupersede(act, projection) : undefined;
   if (act.verdict === "effective" && act.type === "ratify") {
     return (
       <div className="flex items-center gap-1.5 text-xs text-ok">
@@ -218,6 +238,18 @@ function AnnotationLine({ note, nameOf }: { note: Annotation; nameOf: (f: string
         <span>
           superseded by {nameOf(act.actor)}
           {act.text && <span className="text-muted"> — {act.text}</span>}
+          {replacement && (
+            <span className="text-muted">
+              {" · replacement "}
+              <button
+                onClick={() => onSelect({ kind: "event", id: replacement })}
+                title={replacement}
+                className="text-foreground/80 hover:underline focus-visible:outline focus-visible:outline-accent"
+              >
+                #{tickets.get(replacement) ?? shortEvent(replacement)}
+              </button>
+            </span>
+          )}
         </span>
         <EventTime timestamp={act.timestamp} className="ml-auto" />
       </div>

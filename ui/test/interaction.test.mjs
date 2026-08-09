@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { RetryKeys, parsePresenceLabel, threadTargetKey } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
+import { replacementForSupersede } from "../src/lib/replacements.ts";
 import { belongsInRoom, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
@@ -81,6 +82,51 @@ test("thread indexing keeps citations out of reply summaries and thread content"
   assert.deepEqual(index.content("e1").acts.map((item) => item.event), ["a1"]);
   assert.deepEqual(index.content("e1").events, ["e2", "e3", "a1"]);
   assert.deepEqual(index.content("e0").statements.map((item) => item.event), ["e4"]);
+});
+
+const originalSupersede = "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eab3b0e6064e5b31a04c2e2c3bababc618997946";
+const originalTarget = "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ea42714b164813209725a5ab191d3bbd8f1c6089";
+const originalReplacement = "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:154d1df1e664556bb73172b59d7ca518f23a0d6c";
+
+function replacementProjection(candidates, statements = candidates.map((event) => ({ event, actor: "codex", kind: "request", text: event }))) {
+  const act = { event: originalSupersede, actor: "codex", type: "supersede", target: originalTarget, verdict: "effective", reason: "authorized" };
+  return {
+    act,
+    projection: {
+      decisions: [
+        { event: originalSupersede, verdict: "effective", reason: "authorized" },
+        ...statements.map((statement) => ({ event: statement.event, verdict: "effective", reason: "recorded" })),
+      ],
+      acts: [act],
+      statements,
+      commitments: [],
+      artifacts: [],
+      actors: {},
+      provenance: { [originalSupersede]: [originalTarget, ...candidates] },
+    },
+  };
+}
+
+test("the original supersession links its one live replacement", () => {
+  const { act, projection } = replacementProjection([originalReplacement]);
+  assert.equal(replacementForSupersede(act, projection), originalReplacement);
+});
+
+test("a supersession with no replacement candidate does not guess", () => {
+  const { act, projection } = replacementProjection([]);
+  assert.equal(replacementForSupersede(act, projection), undefined);
+});
+
+test("a supersession with multiple live replacement candidates does not guess", () => {
+  const { act, projection } = replacementProjection(["replacement-one", "replacement-two"]);
+  assert.equal(replacementForSupersede(act, projection), undefined);
+});
+
+test("retired provenance does not make one live replacement ambiguous", () => {
+  const retired = { event: "retired-evidence", actor: "codex", kind: "assert", text: "old", retired: true };
+  const live = { event: "live-replacement", actor: "codex", kind: "request", text: "new" };
+  const { act, projection } = replacementProjection([retired.event, live.event], [retired, live]);
+  assert.equal(replacementForSupersede(act, projection), live.event);
 });
 
 test("the room hides work records and translates workflow status", () => {
