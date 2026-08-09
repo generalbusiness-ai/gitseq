@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { Commitment, Projection, Vocabulary } from "./api";
+import type { Commitment, Vocabulary } from "./api";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -80,25 +80,52 @@ export function belongsInRoom(kind: string, vocabulary?: Vocabulary): boolean {
   return !legacyWorkOnlyKinds.has(kind);
 }
 
-export interface InterpretationGap {
-  verdict: string;
-  reason: string;
-  events: string[];
+// An act the room cannot read is explained on that act, not counted in a
+// panel somewhere else. The count was the wrong unit: it told a reader how
+// many acts were unreadable without telling them what any one of them meant
+// or whether anything was owed, and read as a fault when the acts were inert.
+const interpretationVerdicts = new Set(["undefined-kind", "uninterpretable"]);
+
+export function isInterpretationGap(verdict?: string): boolean {
+  return Boolean(verdict && interpretationVerdicts.has(verdict));
 }
 
-// One row per distinct refusal, not one per refused event. An interpreter the
-// room cannot run refuses every act past the seam in the same words: that is
-// one gap to close, and a list that grows with the log buries the others.
-export function interpretationGaps(projection?: Projection): InterpretationGap[] {
-  const gaps = new Map<string, InterpretationGap>();
-  for (const decision of projection?.decisions ?? []) {
-    if (decision.verdict !== "undefined-kind" && decision.verdict !== "uninterpretable") continue;
-    const key = `${decision.verdict} ${decision.reason}`;
-    const gap = gaps.get(key);
-    if (gap) gap.events.push(decision.event);
-    else gaps.set(key, { verdict: decision.verdict, reason: decision.reason, events: [decision.event] });
-  }
-  return [...gaps.values()];
+// What to say beside the act. The reason is the fold's own words; the
+// consequence says only what the verdict actually settles.
+//
+// Two things this must not overclaim, both learned by getting them wrong.
+// Citations are not among the things that fail to form: the fold projects
+// rests_on provenance for every record before it judges any of them, so an
+// act the room cannot read still cites what it cited. And an uninterpretable
+// verdict does not always mean "wait for a binding" — the same verdict covers
+// kind definitions that are permanently invalid, which no later interpreter
+// can rescue. Exactly one reason in that channel is remediable, so key on that
+// reason rather than on the verdict alone.
+//
+// Key on the whole reason, never on a phrase inside it. The fold quotes a
+// rejected operand back verbatim, so a permanently invalid definition can put
+// any words at all into this channel, the words below included: a field typed
+// `interpreter execution is not held` is refused as `uninterpretable kind
+// definition: unsupported type "interpreter execution is not held"`, and no
+// binding makes that type supported. A search inside the reason would offer
+// that definition a rescue that does not exist. The string below is the fold's
+// own, pinned by TestFoldActivationRecordsPrefixBoundaryThenNamesExecutionGap;
+// the collision is pinned by TestInvalidConstraintAlgebraIsTypedUninterpretable.
+const unboundInterpreterReason = "uninterpretable: activated interpreter execution is not held";
+
+export function interpretationNotice(verdict?: string, reason?: string): { verdict: string; reason: string; consequence: string } | undefined {
+  if (!isInterpretationGap(verdict)) return undefined;
+  const awaitingBinding = reason === unboundInterpreterReason;
+  return {
+    verdict: verdict!,
+    reason: reason ?? "",
+    consequence:
+      verdict === "undefined-kind"
+        ? "No rule in this room reads a kind by this name, so the act is recorded without force: whatever its text undertakes, nothing here acts on it."
+        : awaitingBinding
+          ? "The room holds no interpreter that can read this act, so it is recorded without force unless one is bound."
+          : "The room cannot interpret this act, so it is recorded without force; the reason above is not something a later interpreter would resolve.",
+  };
 }
 
 export function definitionOf(kind: string, vocabulary?: Vocabulary) {

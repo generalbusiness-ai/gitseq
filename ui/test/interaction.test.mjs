@@ -10,7 +10,7 @@ import { buildThreadIndex } from "../src/lib/threads.ts";
 import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
-import { belongsInRoom, commitmentRelationship, interpretationGaps, kindLabel, statusLabel } from "../src/lib/util.ts";
+import { belongsInRoom, commitmentRelationship, interpretationNotice, isInterpretationGap, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
@@ -668,20 +668,47 @@ test("every kind wears its own name, bar the two whose names read as jargon", ()
   for (const kind of ["finding", "review-note", "request", "promise"]) assert.equal(kindLabel(kind), kind);
 });
 
-test("one interpretation gap per distinct refusal, however many events it refused", () => {
-  const refusal = (event, reason) => ({ event, verdict: "uninterpretable", reason });
-  const gaps = interpretationGaps({
-    decisions: [
-      { event: "e0", verdict: "effective", reason: "statement recorded" },
-      refusal("e1", "activated interpreter execution is not held"),
-      refusal("e2", "activated interpreter execution is not held"),
-      refusal("e3", "activated interpreter execution is not held"),
-      { event: "e4", verdict: "undefined-kind", reason: 'undefined kind "finding"' },
-    ],
-  });
-  assert.equal(gaps.length, 2);
-  assert.deepEqual(gaps[0].events, ["e1", "e2", "e3"]);
-  assert.deepEqual(gaps[1].events, ["e4"]);
+test("an unreadable act carries its own reason and consequence", () => {
+  const undefinedKind = interpretationNotice("undefined-kind", 'undefined kind "commit"');
+  assert.equal(undefinedKind.reason, 'undefined kind "commit"');
+  assert.match(undefinedKind.consequence, /recorded without force/);
+  // Citations are NOT among the things that fail to form. The fold projects
+  // rests_on provenance for every record before it judges any of them, so an
+  // unreadable act still cites what it cited; claiming otherwise was false
+  // against the two live undefined-kind acts, which each have a citation edge.
+  assert.doesNotMatch(undefinedKind.consequence, /citation/i);
+
+  // An unbound interpreter is remediable and says so.
+  const unbound = interpretationNotice("uninterpretable", "uninterpretable: activated interpreter execution is not held");
+  assert.match(unbound.consequence, /unless one is bound/);
+
+  // A permanently invalid definition is the same verdict and must NOT promise
+  // that binding an interpreter would rescue it — nothing can.
+  const permanent = interpretationNotice("uninterpretable", 'uninterpretable kind definition: basis kind "finding" is undefined');
+  assert.doesNotMatch(permanent.consequence, /unless one is bound/);
+  assert.match(permanent.consequence, /not something a later interpreter would resolve/);
+
+  // The collision the two cases share a channel for. A rejected operand is
+  // quoted back verbatim, so a permanently invalid definition can carry the
+  // fold's own unbound-interpreter words inside its reason — here as a field
+  // type. Binding an interpreter cannot make that type supported, so the copy
+  // must not offer it. Only the whole reason tells the two apart; searching
+  // inside one reads this as remediable. The fold is pinned to emit exactly
+  // this string by TestInvalidConstraintAlgebraIsTypedUninterpretable.
+  const collision = interpretationNotice(
+    "uninterpretable",
+    'uninterpretable kind definition: unsupported type "interpreter execution is not held"',
+  );
+  assert.doesNotMatch(collision.consequence, /unless one is bound/);
+  assert.match(collision.consequence, /not something a later interpreter would resolve/);
+
+  // Ordinary verdicts get no notice: this surface is only for acts the room
+  // could not read, not for every act that lacks force.
+  assert.equal(interpretationNotice("effective", "statement recorded"), undefined);
+  assert.equal(interpretationNotice("ineffective", "promise actor is not the requested performer"), undefined);
+  assert.equal(interpretationNotice(undefined, undefined), undefined);
+  assert.equal(isInterpretationGap("undefined-kind"), true);
+  assert.equal(isInterpretationGap("disputed"), false);
 });
 
 test("the everyday surface does not expose record taxonomy or authority roles", () => {

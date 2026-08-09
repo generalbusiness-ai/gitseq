@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type Vocabulary, type WorktreeView } from "./api";
 import { ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, OPEN_WORK_STATUSES, workAttentionCount, workItemState } from "./work";
-import { definitionOf, interpretationGaps } from "./util";
+import { definitionOf } from "./util";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
@@ -224,14 +224,14 @@ export const OPEN_COMMITMENT_STATUSES: string[] = [...OPEN_WORK_STATUSES];
 export const ATTENTION_COMMITMENT_STATUSES: string[] = [...ATTENTION_WORK_STATUSES];
 
 // The header chip's summary of the Work drawer, computed from the projection.
-export function workSummary(projection?: Projection, vocabulary?: Vocabulary): { stale: number; open: number; done: number } {
+export function workSummary(projection?: Projection): { stale: number; open: number; done: number } {
   if (!projection) return { stale: 0, open: 0, done: 0 };
-  // A vocabulary the room cannot interpret is work too: each distinct refusal
-  // counts once, and an unbound interpreter counts once however many acts it
-  // refuses.
-  const bindingGap = vocabulary && vocabulary.binding.status !== "bound" ? 1 : 0;
+  // What the room cannot read is not work waiting on anyone. An unreadable act
+  // explains itself where it sits, and the reach of the vocabulary is stated
+  // with the vocabulary; neither is a count a reader could act on, and adding
+  // them here made a standing limit and two inert acts read as attention owed.
   return {
-    stale: workAttentionCount(projection) + interpretationGaps(projection).length + bindingGap,
+    stale: workAttentionCount(projection),
     open: projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status)).length,
     done: projection.commitments.filter((c) => CLOSED_WORK_STATUSES.includes(c.status as (typeof CLOSED_WORK_STATUSES)[number])).length,
   };
