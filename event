@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4809fd5bbf90f9ceae3f3728ced3594356aa0f67","text":"Superseded by the artifact at head 430d73207796e5aded78c5f1eb9b51cd558550d0, which rests on the promotion artifact and a current-root code anchor instead of citing that code without a causal edge."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5a170df00151698fc86f9c0bfcffdfeb1904be83","text":"Superseded: this readiness claim named head 208fc7fa, whose artifact round four found under-based."}
