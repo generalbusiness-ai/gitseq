@@ -551,4 +551,5 @@ ephemeral state does not survive, and the adapter will not imply it did.
 | `SKILL.md` | Normative contract for agents in a workroom. |
 | `notes/` | Dated design and implementation notes. |
 | `spike/` | Adversarial CLI, report generator, forge fixture, and six-case evidence. |
-| `ui/` | The live projection served at the listen address. |
+| `ui/` | Browser projection source; `make ui` regenerates the committed build. |
+| `internal/service/uidist/` | Committed browser build served at the listen address; `make ui-check` rebuilds and verifies it matches `ui/`. |
