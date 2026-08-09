@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { RetryKeys, parsePresenceLabel, threadTargetKey } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
-import { replacementForSupersede } from "../src/lib/replacements.ts";
+import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { belongsInRoom, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
@@ -86,9 +86,9 @@ test("thread indexing keeps citations out of reply summaries and thread content"
 
 const originalSupersede = "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eab3b0e6064e5b31a04c2e2c3bababc618997946";
 const originalTarget = "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ea42714b164813209725a5ab191d3bbd8f1c6089";
-const originalReplacement = "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:154d1df1e664556bb73172b59d7ca518f23a0d6c";
+const originalLinkedItem = "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:154d1df1e664556bb73172b59d7ca518f23a0d6c";
 
-function replacementProjection(candidates, statements = candidates.map((event) => ({ event, actor: "codex", kind: "request", text: event }))) {
+function supersedeProjection(candidates, statements = candidates.map((event) => ({ event, actor: "codex", kind: "request", text: event }))) {
   const act = { event: originalSupersede, actor: "codex", type: "supersede", target: originalTarget, verdict: "effective", reason: "authorized" };
   return {
     act,
@@ -107,39 +107,80 @@ function replacementProjection(candidates, statements = candidates.map((event) =
   };
 }
 
-test("the original supersession links its one live replacement", () => {
-  const { act, projection } = replacementProjection([originalReplacement]);
-  assert.equal(replacementForSupersede(act, projection), originalReplacement);
+test("the original supersession exposes its sole current linked item", () => {
+  const { act, projection } = supersedeProjection([originalLinkedItem]);
+  assert.equal(soleCurrentSupersedeBasis(act, projection), originalLinkedItem);
 });
 
-test("a supersession with no replacement candidate does not guess", () => {
-  const { act, projection } = replacementProjection([]);
-  assert.equal(replacementForSupersede(act, projection), undefined);
+test("a supersession with no additional current basis does not guess", () => {
+  const { act, projection } = supersedeProjection([]);
+  assert.equal(soleCurrentSupersedeBasis(act, projection), undefined);
 });
 
-test("a supersession with multiple live replacement candidates does not guess", () => {
-  const { act, projection } = replacementProjection(["replacement-one", "replacement-two"]);
-  assert.equal(replacementForSupersede(act, projection), undefined);
+test("a supersession with multiple current bases does not guess", () => {
+  const { act, projection } = supersedeProjection(["linked-one", "linked-two"]);
+  assert.equal(soleCurrentSupersedeBasis(act, projection), undefined);
 });
 
-test("retired provenance does not make one live replacement ambiguous", () => {
+test("retired provenance does not make one current linked item ambiguous", () => {
   const retired = { event: "retired-evidence", actor: "codex", kind: "assert", text: "old", retired: true };
-  const live = { event: "live-replacement", actor: "codex", kind: "request", text: "new" };
-  const { act, projection } = replacementProjection([retired.event, live.event], [retired, live]);
-  assert.equal(replacementForSupersede(act, projection), live.event);
+  const live = { event: "current-link", actor: "codex", kind: "request", text: "new" };
+  const { act, projection } = supersedeProjection([retired.event, live.event], [retired, live]);
+  assert.equal(soleCurrentSupersedeBasis(act, projection), live.event);
 });
 
-test("a stale-only replacement candidate does not produce a false link", () => {
+test("a stale-only basis does not produce a false link", () => {
   const stale = { event: "stale-evidence", actor: "codex", kind: "report", text: "old finding", stale: true };
-  const { act, projection } = replacementProjection([stale.event], [stale]);
-  assert.equal(replacementForSupersede(act, projection), undefined);
+  const { act, projection } = supersedeProjection([stale.event], [stale]);
+  assert.equal(soleCurrentSupersedeBasis(act, projection), undefined);
 });
 
-test("stale provenance does not make one current replacement ambiguous", () => {
+test("stale provenance does not make one current linked item ambiguous", () => {
   const stale = { event: "stale-evidence", actor: "codex", kind: "report", text: "old finding", stale: true };
-  const live = { event: "current-replacement", actor: "codex", kind: "request", text: "new" };
-  const { act, projection } = replacementProjection([stale.event, live.event], [stale, live]);
-  assert.equal(replacementForSupersede(act, projection), live.event);
+  const live = { event: "current-link", actor: "codex", kind: "request", text: "new" };
+  const { act, projection } = supersedeProjection([stale.event, live.event], [stale, live]);
+  assert.equal(soleCurrentSupersedeBasis(act, projection), live.event);
+});
+
+test("the fc209 evidence-only artifact remains a neutral linked item", () => {
+  const act = {
+    event: "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc209b57d88d0fcde4ca220595fa6af2fd08eef3",
+    actor: "codex", type: "supersede",
+    target: "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b4cc9f7c5751cdb1cccde6d8145e4400581fe04",
+    text: "An integrated exact-head replacement will follow.", verdict: "effective", reason: "authorized",
+  };
+  const artifact = { event: "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:259617504d7a2a099d107c81bda80ed85183b1bf", actor: "codex", kind: "artifact", text: "current main" };
+  const projection = {
+    decisions: [{ event: act.event, verdict: "effective", reason: "authorized" }, { event: artifact.event, verdict: "effective", reason: "recorded" }],
+    acts: [act], statements: [{ event: act.target, actor: "codex", kind: "request", text: "old review", retired: true }, artifact],
+    commitments: [], artifacts: [], actors: {}, provenance: { [act.event]: [act.target, act.target, artifact.event] },
+  };
+  assert.equal(soleCurrentSupersedeBasis(act, projection), artifact.event);
+});
+
+test("the e8e same-kind evidence artifact is not promoted to a typed replacement", () => {
+  const act = {
+    event: "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e8e5764d86bfcf3b68eb355356129188406880cd",
+    actor: "codex", type: "supersede",
+    target: "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:47c3f2f68d71aea4ed781d7622a65a213d87f97b",
+    text: "A replacement artifact will name the integrated head.", verdict: "effective", reason: "authorized",
+  };
+  const artifact = { event: "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:259617504d7a2a099d107c81bda80ed85183b1bf", actor: "codex", kind: "artifact", text: "current main" };
+  const projection = {
+    decisions: [{ event: act.event, verdict: "effective", reason: "authorized" }, { event: artifact.event, verdict: "effective", reason: "recorded" }],
+    acts: [act], statements: [{ event: act.target, actor: "codex", kind: "artifact", text: "old head", retired: true }, artifact],
+    commitments: [], artifacts: [], actors: {}, provenance: { [act.event]: [act.target, artifact.event] },
+  };
+  assert.equal(soleCurrentSupersedeBasis(act, projection), artifact.event);
+});
+
+test("supersede provenance links are labeled neutrally on every surface", () => {
+  const read = (name) => readFileSync(new URL(`../src/components/${name}`, import.meta.url), "utf8");
+  for (const name of ["SequencePane.tsx", "ThreadPane.tsx", "Stream.tsx"]) {
+    const source = read(name);
+    assert.match(source, /linked item/);
+    assert.doesNotMatch(source, /replacement/);
+  }
 });
 
 test("the room hides work records and translates workflow status", () => {

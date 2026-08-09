@@ -5,18 +5,17 @@ interface SupersedeAct {
   verdict: "effective" | "ineffective" | "disputed";
 }
 
-interface ReplacementProjection {
+interface SupersedeLinkProjection {
   decisions: { event: string; verdict: "effective" | "ineffective" | "disputed" }[];
   statements: { event: string; retired?: boolean; stale?: boolean }[];
   provenance: Record<string, string[]>;
 }
 
-// A supersession may cite the event that stands in for its target after the
-// target itself. Treat that as a replacement only when the signed provenance
-// names exactly one effective statement that is neither retired nor stale.
-// Additional evidence and ambiguous candidates must not become a guessed UI
-// link.
-export function replacementForSupersede(act: SupersedeAct, projection: ReplacementProjection): string | undefined {
+// Additional supersede provenance may name a replacement, evidence, or a
+// governing basis; the projection does not type that role. It can establish
+// only that exactly one additional current statement is linked. The signed
+// act text remains responsible for describing what the link means.
+export function soleCurrentSupersedeBasis(act: SupersedeAct, projection: SupersedeLinkProjection): string | undefined {
   if (act.type !== "supersede" || act.verdict !== "effective") return undefined;
   const effective = new Set(projection.decisions.filter((decision) => decision.verdict === "effective").map((decision) => decision.event));
   const statements = new Map(projection.statements.map((statement) => [statement.event, statement]));

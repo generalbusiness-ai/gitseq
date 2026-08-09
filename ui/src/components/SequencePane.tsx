@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { BadgeCheck, CircleSlash, FileWarning, MessageSquareX, Scale, Undo2 } from "lucide-react";
 import type { Act, Actor, Projection, Statement } from "../lib/api";
 import { shortEvent } from "../lib/api";
-import { replacementForSupersede } from "../lib/replacements";
+import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { ticketsOf, type Selection } from "../lib/store";
 import { cn, kindLabel, kindTint, statusTint } from "../lib/util";
 import { EventTime } from "./EventTime";
@@ -221,7 +221,7 @@ function AnnotationLine({
     );
   }
   const act = note.act!;
-  const replacement = projection ? replacementForSupersede(act, projection) : undefined;
+  const linkedItem = projection ? soleCurrentSupersedeBasis(act, projection) : undefined;
   if (act.verdict === "effective" && act.type === "ratify") {
     return (
       <div className="flex items-center gap-1.5 text-xs text-ok">
@@ -238,15 +238,15 @@ function AnnotationLine({
         <span>
           superseded by {nameOf(act.actor)}
           {act.text && <span className="text-muted"> — {act.text}</span>}
-          {replacement && (
+          {linkedItem && (
             <span className="text-muted">
-              {" · replacement "}
+              {" · linked item "}
               <button
-                onClick={() => onSelect({ kind: "event", id: replacement })}
-                title={replacement}
+                onClick={() => onSelect({ kind: "event", id: linkedItem })}
+                title={linkedItem}
                 className="text-foreground/80 hover:underline focus-visible:outline focus-visible:outline-accent"
               >
-                #{tickets.get(replacement) ?? shortEvent(replacement)}
+                #{tickets.get(linkedItem) ?? shortEvent(linkedItem)}
               </button>
             </span>
           )}

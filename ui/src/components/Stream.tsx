@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BadgeCheck, Bookmark, BookmarkPlus, CircleSlash, FileWarning, Link2, MessageSquareText, MessageSquareX, ThumbsUp } from "lucide-react";
 import { frameKey, type ActInput, type Commitment, type Decision, type FrameView, type Projection, type Statement } from "../lib/api";
-import { replacementForSupersede } from "../lib/replacements";
+import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { buildThreadIndex, staleCauses, ticketsOf, type ThreadSummary, type Workroom, type Selection } from "../lib/store";
 import type { Session } from "../lib/session";
 import { mentionedFingerprints, mentionsActor, mentionTokens } from "../lib/mentions";
@@ -538,22 +538,22 @@ export function WhyStale({ event, projection, tickets, nameOf, onJumpTo }: { eve
       </button>
       {open &&
         causes.map((cause) => {
-          const replacement = replacementForSupersede(cause.act, projection);
+          const linkedItem = soleCurrentSupersedeBasis(cause.act, projection);
           return (
             <p key={cause.act.event} className="mt-0.5 text-xs text-muted">
               stale because{" "}
               <button onClick={() => onJumpTo(cause.act.event)} title={cause.act.event} className="text-foreground/80 hover:underline">
                 #{tickets.get(cause.act.event) ?? "?"}
               </button>{" "}
-              replaced{" "}
+              superseded{" "}
               <button onClick={() => onJumpTo(cause.target)} title={cause.target} className="text-foreground/80 hover:underline">
                 #{tickets.get(cause.target) ?? "?"}
               </button>{" "}
-              {replacement && (
+              {linkedItem && (
                 <>
-                  with{" "}
-                  <button onClick={() => onJumpTo(replacement)} title={replacement} className="text-foreground/80 hover:underline">
-                    #{tickets.get(replacement) ?? "?"}
+                  · linked item{" "}
+                  <button onClick={() => onJumpTo(linkedItem)} title={linkedItem} className="text-foreground/80 hover:underline">
+                    #{tickets.get(linkedItem) ?? "?"}
                   </button>{" "}
                 </>
               )}
