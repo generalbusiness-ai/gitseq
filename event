@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5ec2ac040b359d210f7899e72e0e62f0632c4d4b","text":"First merge workflow artifact inherited the predecessor it retired and became stale; replaced by the stable repair artifact."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ced7b10813cdf6b1d3fc0f34d72efab9de1b13ef","text":"First merge test artifact inherited the workflow predecessor transitively and became stale; replaced by the stable repair artifact."}
