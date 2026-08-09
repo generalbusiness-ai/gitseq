@@ -1,0 +1,177 @@
+package gitseq_test
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"testing"
+	"unicode"
+)
+
+const publicRepository = "https://github.com/generalbusiness-ai/gitseq"
+
+// TestPublicRepositorySurface pins the links and least-privilege settings
+// that make this checkout safe to present as a technical preview.
+func TestPublicRepositorySurface(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate public surface test")
+	}
+	root := filepath.Dir(filename)
+
+	read := func(path string) string {
+		t.Helper()
+		content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		return string(content)
+	}
+
+	for path, required := range map[string][]string{
+		"README.md": {
+			publicRepository + ".git",
+			"[MIT License](LICENSE)",
+			"[security policy](SECURITY.md)",
+			"vulnerability reports go through GitHub's private advisory channel, not a public issue or workroom",
+		},
+		"docs/getting-started.md": {
+			"git clone " + publicRepository + ".git",
+		},
+		"SECURITY.md": {
+			publicRepository + "/issues",
+			publicRepository + "/security/advisories/new",
+			"technical preview",
+			"There are no supported release branches",
+			"GitHub Issues are public",
+			"suitable for ordinary use and support questions",
+			"Do not put a vulnerability, exploit, credential, private repository content, or personal data in an issue or in a gitseq workroom",
+			"not open a public issue for a security report",
+			"GitHub settings outside this source tree",
+			"Source CI cannot guarantee those settings",
+			"Recheck them before every public update",
+		},
+		".github/workflows/ci.yml": {
+			"permissions:\n  contents: read",
+			"persist-credentials: false",
+			"git diff --exit-code",
+			".github/scripts/verify-preview-clone.sh",
+		},
+		".github/scripts/verify-preview-clone.sh": {
+			"$head:refs/heads/main",
+			"test \"$refs\" = \"refs/heads/main\"",
+			"make -C \"$checkout\" test vet build",
+		},
+	} {
+		content := read(path)
+		compact := strings.Join(strings.Fields(content), " ")
+		for _, fragment := range required {
+			if !strings.Contains(compact, strings.Join(strings.Fields(fragment), " ")) {
+				t.Errorf("%s does not contain required public surface %q", path, fragment)
+			}
+		}
+	}
+
+	ignore := read(".gitignore")
+	for _, pattern := range []string{"/.claude/", "/.tmp/"} {
+		if !strings.Contains(ignore, pattern) {
+			t.Errorf(".gitignore does not contain root-local pattern %q", pattern)
+		}
+	}
+}
+
+var inlineMarkdownLink = regexp.MustCompile(`\[[^]]*\]\(([^)[:space:]]+)\)`)
+
+// TestLocalMarkdownLinks keeps file links and their heading anchors checkable
+// without granting CI a network credential or depending on a third-party bot.
+func TestLocalMarkdownLinks(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate link test")
+	}
+	root := filepath.Dir(filename)
+
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", ".tmp", "node_modules":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".md" {
+			return nil
+		}
+
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		for _, match := range inlineMarkdownLink.FindAllStringSubmatch(string(content), -1) {
+			target := match[1]
+			if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") ||
+				strings.HasPrefix(target, "mailto:") || strings.HasPrefix(target, "#") {
+				continue
+			}
+
+			filePart, fragment, _ := strings.Cut(target, "#")
+			linkedPath := filepath.Clean(filepath.Join(filepath.Dir(path), filepath.FromSlash(filePart)))
+			info, statErr := os.Stat(linkedPath)
+			if statErr != nil {
+				t.Errorf("%s links to missing %s: %v", filepath.ToSlash(path), target, statErr)
+				continue
+			}
+			if fragment == "" {
+				continue
+			}
+			if info.IsDir() {
+				t.Errorf("%s links to heading in directory %s", filepath.ToSlash(path), target)
+				continue
+			}
+			linked, linkedErr := os.ReadFile(linkedPath)
+			if linkedErr != nil {
+				return linkedErr
+			}
+			if !markdownHasHeading(linked, fragment) {
+				t.Errorf("%s links to missing heading %s", filepath.ToSlash(path), target)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func markdownHasHeading(content []byte, wanted string) bool {
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "#") {
+			continue
+		}
+		heading := strings.TrimSpace(strings.TrimLeft(line, "#"))
+		var slug strings.Builder
+		lastHyphen := false
+		for _, char := range strings.ToLower(heading) {
+			switch {
+			case unicode.IsLetter(char) || unicode.IsDigit(char):
+				slug.WriteRune(char)
+				lastHyphen = false
+			case char == '-' || unicode.IsSpace(char):
+				if slug.Len() > 0 && !lastHyphen {
+					slug.WriteByte('-')
+					lastHyphen = true
+				}
+			}
+		}
+		if strings.TrimSuffix(slug.String(), "-") == wanted {
+			return true
+		}
+	}
+	return false
+}

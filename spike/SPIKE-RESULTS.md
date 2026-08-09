@@ -7,7 +7,7 @@ Overall: **pass**
 | Case | Result | Evidence |
 |---|---|---|
 | 1. Concurrent retry and failover | pass | `TestActualProcessExitRecoversFromGitAlone` (pass)<br>`TestConcurrentCASProducesOneLinearChain` (pass)<br>`TestCrashBoundariesRecoverFromLog` (pass)<br>`TestCreateSubmitReplayVerifyObjectFormats` (pass) |
-| 2. Rebinding attacks | pass | `TestIdempotencyConflict` (pass)<br>`TestSignedBindingFieldsCannotBeSwapped` (pass)<br>`TestSizeCeilingAndEnvelopeOnlyAdmissionHook` (pass)<br>`TestVerifierRejectsRebindingAndTrailerMutation` (pass) |
+| 2. Rebinding attacks | pass | `TestIdempotencyConflict` (pass)<br>`TestSignedBindingFieldsCannotBeSwapped` (pass)<br>`TestSizeCeilingAndEnvelopeOnlyAdmissionHook` (pass)<br>`TestVerifierRejectsAlteredCausalTrailersWithFreshIdentity` (pass)<br>`TestVerifierRejectsIntentReboundToAnotherLog` (pass) |
 | 3. Nexus crash with live ephemera | pass | `TestCrashChangesGenerationAndOldCursorResets` (pass)<br>`TestNexusDoesNotTouchGit` (pass)<br>`TestRetainedFramesVerifyWithoutHub` (pass)<br>`TestSelfAssertedNexusKeyIsNotTrust` (pass) |
 | 4. Unauthorized fetch across a domain | pass | `TestRepositoryIsTheHTTPReadBoundaryEvenForKnownOID` (pass) |
 | 5. Snapshot/watch race | pass | `TestSnapshotWatchBarrierCannotMissTransition` (pass) |

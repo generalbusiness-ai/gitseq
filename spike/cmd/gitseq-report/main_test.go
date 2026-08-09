@@ -57,3 +57,25 @@ func TestEvidenceDefinitionsUsePromotedModulePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestRebindingEvidencePinsBothSplitVerifierGuards(t *testing.T) {
+	want := map[string]bool{
+		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestVerifierRejectsIntentReboundToAnotherLog":              false,
+		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestVerifierRejectsAlteredCausalTrailersWithFreshIdentity": false,
+	}
+	for _, definition := range definitions {
+		if definition.Number != 2 {
+			continue
+		}
+		for _, testName := range definition.Tests {
+			if _, ok := want[testName]; ok {
+				want[testName] = true
+			}
+		}
+	}
+	for testName, found := range want {
+		if !found {
+			t.Errorf("rebinding evidence does not require %s", testName)
+		}
+	}
+}
