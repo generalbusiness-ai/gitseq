@@ -240,6 +240,58 @@ test("an unreadable act explains itself where it is rendered", async () => {
   }
 });
 
+test("Vocabulary copy distinguishes an unbound room from an uninterpretable fold transition", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { WorkView } = await vite.ssrLoadModule("/src/components/WorkDrawer.tsx");
+    const definition = (name, source) => ({
+      name, fields: [], basis: [], satisfier: "none", render: "note", staleness: "exempt",
+      lifecycle: "none", guidance: `${name} guidance`, source,
+    });
+    const renderVocabulary = (definitions, binding) => {
+      const room = workroom({});
+      room.status.durable.vocabulary = { definitions, binding };
+      return renderToStaticMarkup(
+        React.createElement(WorkView, {
+          workroom: room,
+          session,
+          highlight: { events: new Set(), commits: new Set() },
+          onSelect() {},
+          onOpenThread() {},
+        }),
+      );
+    };
+
+    const unbound = renderVocabulary(
+      [definition("request", "starter")],
+      { status: "unbound", reason: "no ratified seed or prefix binding", transitions: [] },
+    );
+    assert.match(unbound, /starter kinds only/);
+    assert.match(unbound, /no declared vocabulary extends it yet/);
+    assert.match(unbound, /no ratified seed or prefix binding/);
+
+    const uninterpretable = renderVocabulary(
+      [definition("request", "starter"), definition("finding", "declared")],
+      {
+        status: "uninterpretable",
+        reason: "activated interpreter execution is not held",
+        transitions: [{
+          activation: "activation", ratification: "ratification", fold: "example/fold@abc123",
+          entry: "example/fold", interface: "workroom-fold@1", toolchain: "go1.25.0", prefix: true,
+        }],
+      },
+    );
+    assert.match(uninterpretable, /interpretation stopped after 1 fold transition/);
+    assert.match(uninterpretable, /reached 1 activated fold transition but cannot\s+interpret records beyond it/);
+    assert.match(uninterpretable, /activated interpreter execution is not held/);
+    assert.match(uninterpretable, /definitions this reader established before that transition; declared kinds remain declared/);
+    assert.match(uninterpretable, /finding[\s\S]*note · declared/);
+    assert.doesNotMatch(uninterpretable, /starter kinds only|no declared vocabulary extends it yet/);
+  } finally {
+    await vite.close();
+  }
+});
+
 test("durable threads expose a railway whose rendered edges distinguish citations", async () => {
   const vite = await createServer({
     root: uiRoot,

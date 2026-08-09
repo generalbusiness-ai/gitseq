@@ -231,25 +231,37 @@ export function WorkView({
 // the log.
 function VocabularyPanel({ vocabulary }: { vocabulary?: Vocabulary }) {
   if (!vocabulary) return null;
-  const bound = vocabulary.binding.status === "bound";
+  const unbound = vocabulary.binding.status === "unbound";
+  const uninterpretable = vocabulary.binding.status === "uninterpretable";
+  const transitionCount = vocabulary.binding.transitions.length;
+  const transitionLabel = `${transitionCount} fold ${transitionCount === 1 ? "transition" : "transitions"}`;
   return (
     <details className="mx-auto mt-3 max-w-7xl rounded-lg border border-border bg-surface/30">
       <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted focus-visible:outline focus-visible:outline-accent">
         <BookOpen aria-hidden className="mr-1.5 inline h-3.5 w-3.5" />
         Vocabulary ({vocabulary.definitions.length})
-        {!bound && <span className="ml-2 font-normal text-faint">starter kinds only</span>}
+        {unbound && <span className="ml-2 font-normal text-faint">starter kinds only</span>}
+        {uninterpretable && <span className="ml-2 font-normal text-faint">interpretation stopped after {transitionLabel}</span>}
       </summary>
       <div className="space-y-1 border-t border-border p-3">
         {/* The reach of this room's vocabulary is a standing property, stated
             in the same register as any other limit — not an incident. Until a
             seed is ratified and a prefix bound, these definitions are all the
             room reads, and an act naming anything else says so on itself. */}
-        {!bound && (
+        {unbound && (
           <p className="rounded-md border border-border/70 bg-surface/40 px-2 py-1.5 leading-relaxed text-muted">
             This room reads only the kinds listed here. Its fold is{" "}
             <span className="font-medium text-foreground/90">{vocabulary.binding.status}</span>
             {vocabulary.binding.reason ? <> — {vocabulary.binding.reason}</> : null}, so no declared vocabulary extends
             it yet. An act naming a kind outside this list is kept and marked on the act itself.
+          </p>
+        )}
+        {uninterpretable && (
+          <p className="rounded-md border border-border/70 bg-surface/40 px-2 py-1.5 leading-relaxed text-muted">
+            This reader reached {transitionCount === 1 ? "1 activated fold transition" : `${transitionCount} activated fold transitions`} but cannot
+            interpret records beyond it.
+            {vocabulary.binding.reason ? <> Reason: <span className="font-medium text-foreground/90">{vocabulary.binding.reason}</span>.</> : null}
+            {" "}The kinds listed here are the definitions this reader established before that transition; declared kinds remain declared.
           </p>
         )}
         {vocabulary.definitions.map((definition) => (
