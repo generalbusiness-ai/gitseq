@@ -1,1 +1,1 @@
-{"kind":"request","text":"Add durable timestamps to every event shown in the UI.","body":{"branch":"task/ui-event-timestamps","conditions":"The status projection exposes the sequencer timestamp for statements and acts, and every UI rendering of a durable event shows that timestamp without confusing it with ephemeral seen time.","to":"5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"}}
+{"kind":"promise","text":"I will implement and verify durable event timestamps across the UI.","body":{"branch":"task/ui-event-timestamps"}}
