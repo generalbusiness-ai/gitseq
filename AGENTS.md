@@ -152,25 +152,20 @@ the work is actually over.
    jq '.projection as $p
      | ([$p.artifacts[] | select(.retired | not) | .event]
         | map({key: ., value: true}) | from_entries) as $live
-     | ([$p.statements[]
-        | select((.retired | not) and .kind == "report"
-                 and ((.body.verdict // "" | ascii_downcase) as $v
-                      | $v == "approved" or $v == "changes-requested"))
-        | (.body.artifact // "-")] | map({key: ., value: true}) | from_entries) as $judged
+     | ([$p.reviews[]? | .report] | map({key: ., value: true}) | from_entries) as $effective
+     | ([$p.commitments[]
+          | select((.report // null) != null and ($effective[.report] // false))
+          | .request] | map({key: ., value: true}) | from_entries) as $settled
      | ([$p.statements[]
           | select((.retired | not) and .kind == "request")
-          | (.body.artifact // "") | select(. != "")]) as $named
-     | {awaiting: [$named[] | select(($judged[.] // false) | not)] | length,
-        unresolved: [$named[] | select((($live[.] // false) | not))] | length}' .tmp/gs-status.json
+          | select((.body.artifact // "") != "")]) as $named
+     | {awaiting: [$named[] | select(($settled[.event] // false) | not)] | length,
+        unresolved: [$named[] | select((($live[.body.artifact] // false) | not))] | length,
+        named: ($named | length)}' .tmp/gs-status.json
 
-   jq -r '.projection as $p
-     | ([$p.artifacts[] | select(.retired | not)
-         | {key: .event, value: (.commit // "")}] | from_entries) as $head
-     | $p.statements[]
-     | select((.retired | not) and .kind == "report"
-              and (.body.verdict // "" | ascii_downcase) == "approved"
-              and (.ratified // false))
-     | $head[.body.artifact // "-"] // empty' .tmp/gs-status.json | sort -u |
+   jq -r '[.projection.reviews[]?
+           | select(.verdict == "approved" and (.ratified // false))
+           | .head] | unique | .[]' .tmp/gs-status.json |
      while read -r commit; do
        git merge-base --is-ancestor "$commit" main 2>/dev/null ||
          echo "still out of main: $commit"
@@ -179,9 +174,22 @@ the work is actually over.
 
    Either canonical verdict settles a review. Waiting cannot turn a
    `changes-requested` into an approval, so counting only approvals leaves
-   every closed-with-changes review in the total for ever; a request is
-   awaiting a verdict only when the artifact it names has neither. Both
-   spellings of each verdict are in the log, so the comparison folds case.
+   every closed-with-changes review in the total for ever.
+
+   Only an effective verdict on this request's own chain settles it. Two
+   things follow, and an earlier version got both wrong. The count reads
+   `projection.reviews`, which the fold populates from reports it judged
+   effective, rather than filtering `projection.statements` on `kind ==
+   "report"`; statements includes what the fold refused, so a malformed or
+   unauthorized report carrying `body.verdict: approved` was being counted
+   as a verdict. The live log holds three such reports — one of them
+   `08c337e9`, ruled `report has no promise` — and the old form admitted all
+   three. And settlement is keyed by the request event through
+   `projection.commitments`, not by the artifact name, because several
+   requests can name one artifact and a verdict on one of them was settling
+   the others. Measured against the live log, the two faults together hid
+   five review requests that no effective verdict binds. A report the fold
+   refused must not be able to release an irreversible migration.
 
    The count fails closed on a reference it cannot resolve. What makes a
    request a review request is that it names an artifact at all, not that the
@@ -200,9 +208,12 @@ the work is actually over.
    A live artifact is not a merge test. The historical merges predate this
    retirement discipline and left their approved artifacts live, so the live
    set and the unmerged set are exactly the population this migration is about.
-   Git is the authority: read the commit from the artifact's `commit` field and
-   ask whether it is already an ancestor of `main`. A commit this clone does
-   not have counts as out of `main` — fetch it before trusting the silence.
+   Git is the authority: ask whether the approved head is already an ancestor
+   of `main`. A commit this clone does not have counts as out of `main` —
+   fetch it before trusting the silence. The head comes from the review record
+   itself, which carries the exact commit the verdict was signed over; going
+   through the artifact's `commit` field asked a second question whose answer
+   only happened to agree.
    Never scrape forty hex characters out of event text. Every event id in this
    log contains the genesis commit, event ids are themselves commits, and
    `git cat-file -e` will confirm all of them.
