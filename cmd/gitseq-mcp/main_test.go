@@ -1525,3 +1525,30 @@ func TestProjectionNotesSayHowTheFoldReadTheAct(t *testing.T) {
 		t.Errorf("notes were invented for an unidentified act: %+v", notes)
 	}
 }
+
+// supersede and ratify carry their subject as a target rather than in rests_on,
+// and an earlier version of these notes returned before looking at either,
+// because it reported only on `state`. The gap was not theoretical: an act with
+// a fabricated target was filed against this workroom while this change sat in
+// review, and the fold ruled it "supersede target is unknown" while the tool
+// result said only that the act had landed.
+func TestNotesReportATargetNamingNothing(t *testing.T) {
+	const event = "git:sha1:g#git:sha1:act"
+	known := workroom.Projection{Statements: []workroom.Statement{{Event: "git:sha1:g#git:sha1:real"}}}
+
+	invented := app.Act{Verb: app.VerbSupersede, Target: "git:sha1:g#git:sha1:invented"}
+	if got := projectionNotes(known, invented, event)["unresolved_target"]; got != "git:sha1:g#git:sha1:invented" {
+		t.Errorf("unresolved_target = %v, want the target that names nothing", got)
+	}
+
+	real := app.Act{Verb: app.VerbRatify, Target: "git:sha1:g#git:sha1:real"}
+	if _, reported := projectionNotes(known, real, event)["unresolved_target"]; reported {
+		t.Error("a target that does resolve was reported as unresolved")
+	}
+
+	// A state act carries no target, and inventing a note for one would be
+	// noise on every ordinary append.
+	if _, reported := projectionNotes(known, app.Act{Verb: app.VerbState}, event)["unresolved_target"]; reported {
+		t.Error("an act with no target was annotated with one")
+	}
+}

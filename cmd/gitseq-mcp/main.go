@@ -830,20 +830,21 @@ func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any
 // are the difference between what was written and what was read, and only the
 // projection knows it.
 func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.Act, value any) any {
-	if act.Verb != app.VerbState {
-		return value
-	}
 	result, ok := value.(map[string]any)
 	if !ok {
 		return value
 	}
 	snapshot, err := current.workspace.Snapshot(ctx)
 	if err != nil {
-		result["warning"] = fmt.Sprintf("cannot tell whether kind %q is defined here: %v", act.Kind, err)
+		if act.Verb == app.VerbState {
+			result["warning"] = fmt.Sprintf("cannot tell whether kind %q is defined here: %v", act.Kind, err)
+		}
 		return result
 	}
-	if warning := snapshot.Vocabulary.UndefinedKindWarning(act.Kind); warning != "" {
-		result["warning"] = warning
+	if act.Verb == app.VerbState {
+		if warning := snapshot.Vocabulary.UndefinedKindWarning(act.Kind); warning != "" {
+			result["warning"] = warning
+		}
 	}
 	if notes := projectionNotes(snapshot.Projection, act, submittedEvent(value)); len(notes) > 0 {
 		result["projected"] = notes
@@ -885,6 +886,16 @@ func projectionNotes(projection workroom.Projection, act app.Act, event string) 
 	}
 	notes := map[string]any{}
 
+	// A target naming no event in this workroom. `supersede` and `ratify` carry
+	// their subject here rather than in rests_on, and a fabricated one is the
+	// cheapest mistake to make and the quietest to survive: the act appends, the
+	// record comes back, and the fold rules it ineffective for a target it has
+	// never seen. This is not hypothetical — an act of exactly this shape was
+	// filed against this workroom while this change sat in review.
+	if act.Target != "" && !resolves(projection, act.Target) {
+		notes["unresolved_target"] = act.Target
+	}
+
 	// The fold's own ruling, when it is anything other than plain effect. An
 	// ineffective act still returns a record and still looks like success.
 	for _, decision := range projection.Decisions {
@@ -900,13 +911,9 @@ func projectionNotes(projection workroom.Projection, act app.Act, event string) 
 	// identifier is skipped in silence by validateBasis unless the kind's own
 	// basis constraints happen to need it, so the act connects to nothing and
 	// says so nowhere.
-	known := make(map[string]bool, len(projection.Statements))
-	for _, statement := range projection.Statements {
-		known[statement.Event] = true
-	}
 	var unresolved []string
 	for _, reference := range act.RestsOn {
-		if !known[reference] {
+		if !resolves(projection, reference) {
 			unresolved = append(unresolved, reference)
 		}
 	}
@@ -929,6 +936,17 @@ func projectionNotes(projection workroom.Projection, act app.Act, event string) 
 		}
 	}
 	return notes
+}
+
+// resolves reports whether an identifier names an event this workroom holds.
+// A wrong one is indistinguishable from a right one until something asks.
+func resolves(projection workroom.Projection, event string) bool {
+	for _, statement := range projection.Statements {
+		if statement.Event == event {
+			return true
+		}
+	}
+	return false
 }
 
 func reviewOf(projection workroom.Projection, event string) (workroom.Review, bool) {

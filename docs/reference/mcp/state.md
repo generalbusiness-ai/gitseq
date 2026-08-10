@@ -86,12 +86,15 @@ citation naming no event in this workroom is skipped in silence. All
 three return a record, are ruled effective, and move the commitment.
 
 So the result carries a `projected` object saying how the fold read the
-act:
+act. [`ratify`](ratify.md) and [`supersede`](supersede.md) carry it too,
+since a target naming nothing is the cheapest of these mistakes to make
+and the quietest to survive:
 
 | Field | Says |
 |---|---|
 | `verdict`, `reason` | The fold's ruling, when it is anything other than plain effect. |
 | `unresolved_rests_on` | Citations naming no event in this workroom. |
+| `unresolved_target` | For [`ratify`](ratify.md) and [`supersede`](supersede.md): a target naming no event here. |
 | `review` | For a report: whether it became a review, and which artifact it judges. |
 
 **These notes describe; they do not refuse.** Unknown body keys are still
