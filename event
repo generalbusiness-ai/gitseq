@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Live corrected governance authority implementation at exact head cc32f82c170eb7048134ba2f0573b64774c51e8d. It closes the reviewed operator-minting path without inheriting the retired candidate's staleness.","body":{"commit":"cc32f82c170eb7048134ba2f0573b64774c51e8d","path":"."}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f284641cc2a97b4b661092d1200b6cdb49359694","text":"Replace the stale corrected implementation pointer with live artifact de8f9a5e on the same exact code head and request basis."}
