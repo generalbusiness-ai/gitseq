@@ -9,7 +9,7 @@ import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, saveP
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
-import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
+import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, TOPIC_ALIAS_FIELD, TOPIC_TITLE_FIELD, attentionItemCounts, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, otherWorkAttentionCounts, otherWorkAttentionLabel, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState, workCommitmentCounts } from "../src/lib/work.ts";
 import { belongsInRoom, commitmentRelationship, interpretationNotice, isInterpretationGap, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
@@ -540,17 +540,23 @@ test("unclaimed requests are addressed without waiting on their addressee", () =
 });
 
 test("Work groups by conversational ancestry without treating later citations as parents", () => {
-  const statement = (event, actor, kind, text, body) => ({ event, actor, kind, text, body, timestamp: Number(event.slice(1)) || 1 });
+  const statement = (event, actor, kind, text, body, extra = {}) => ({ event, actor, kind, text, body, timestamp: Number(event.slice(1)) || 1, ...extra });
   const projection = {
-    decisions: ["r1", "p1", "r2", "p2", "x2", "r3", "r4", "r5"].map((event) => ({ event, verdict: "effective", reason: "ok" })),
+    decisions: ["r1", "p1", "r2", "p2", "x2", "t1", "t2", "old2", "stale2", "r3", "x3", "x4", "r4", "r5"].map((event) => ({ event, verdict: "effective", reason: "ok" })),
     acts: [],
     statements: [
       statement("r1", "hugh", "request", "Ship the deployment design"),
       statement("p1", "codex", "promise", "I will work", { branch: "task/deployment-story" }),
       statement("r2", "claude", "request", "Check deploy readiness"),
       statement("p2", "codex", "promise", "I will check"),
-      statement("x2", "codex", "assert", "The remembered alias is deploy-readiness"),
+      statement("x2", "codex", "assert", "Add a shared lookup name", { [TOPIC_ALIAS_FIELD]: "deploy-readiness" }),
+      statement("t1", "hugh", "assert", "Give the topic its first display label", { [TOPIC_TITLE_FIELD]: "Deployment delivery" }),
+      statement("t2", "claude", "assert", "Give the topic a concise display label", { [TOPIC_TITLE_FIELD]: "Deployment readiness" }),
+      statement("old2", "codex", "assert", "Retire an obsolete lookup name", { [TOPIC_ALIAS_FIELD]: "former-deploy" }, { retired: true }),
+      statement("stale2", "codex", "assert", "This lookup name lost its basis", { [TOPIC_ALIAS_FIELD]: "stale-deploy" }, { stale: true }),
       statement("r3", "claude", "request", "Independent root"),
+      statement("x3", "hugh", "assert", "This name is intentionally non-unique", { [TOPIC_ALIAS_FIELD]: "shared-name" }),
+      statement("x4", "codex", "assert", "This name is intentionally non-unique", { [TOPIC_ALIAS_FIELD]: "shared-name" }),
       statement("r4", "claude", "request", "Replies to independent root but cites deployment"),
       statement("r5", "hugh", "request", "Old closed work"),
     ],
@@ -564,14 +570,17 @@ test("Work groups by conversational ancestry without treating later citations as
     artifacts: [{ event: "artifact", path: "notes/deploy.md", commit: "abc", stale: false }],
     actors: {},
     provenance: {
-      r1: [], p1: ["r1"], r2: ["p1"], p2: ["r2"], x2: ["p2"],
-      r3: [], r4: ["r3", "r1"], r5: [], artifact: ["x2"],
+      r1: [], p1: ["r1"], r2: ["p1"], p2: ["r2"], x2: ["p2"], t1: ["x2"], t2: ["t1"], old2: ["t2"], stale2: ["old2"],
+      r3: [], x3: ["r3"], x4: ["stale2"], r4: ["x3", "r1"], r5: [], artifact: ["x2"],
     },
   };
   const work = buildWorkProjection(projection);
   const deployment = work.topics.find((topic) => topic.event === "r1");
   assert.deepEqual(deployment.items.map((item) => item.request.event), ["r2", "r1"]);
   assert.equal(deployment.author, "hugh");
+  assert.equal(deployment.title, "Deployment readiness");
+  assert.equal(deployment.titleLabel.actor, "claude");
+  assert.deepEqual(deployment.aliases.map((alias) => [alias.value, alias.actor]), [["deploy-readiness", "codex"], ["shared-name", "codex"]]);
   assert.equal(deployment.attentionCount, 1);
   assert.equal(work.topics.find((topic) => topic.event === "r3").items.length, 2);
   assert.equal(work.topics.some((topic) => topic.event === "r4"), false);
@@ -580,9 +589,56 @@ test("Work groups by conversational ancestry without treating later citations as
   assert.equal(defaults.topics.some((topic) => topic.event === "r5"), false);
   assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, author: "hugh" }).topics.map((topic) => topic.event), ["r1"]);
   assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "deploy-readiness" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "deployment delivery" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "former-deploy" }).topics, []);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "stale-deploy" }).topics, []);
+  assert.deepEqual(new Set(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "shared-name" }).topics.map((topic) => topic.event)), new Set(["r1", "r3"]));
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "task/deployment-story" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "ship the deployment design" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "check deploy readiness" }).topics.map((topic) => topic.event), ["r1"]);
   assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: true, query: "deployment" }).topics[0].event, "r1");
   assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "notes/deploy.md" }).topics.map((topic) => topic.event), ["r1"]);
   assert.deepEqual(filterWorkProjection(work, { active: false, attention: false, closed: true }).topics.map((topic) => topic.event), ["r5"]);
+});
+
+test("topic alias identity, order, and search are locale independent", () => {
+  const statement = (event, actor, kind, text, body) => ({ event, actor, kind, text, body, timestamp: Number(event.slice(1)) || 1 });
+  const events = ["r1", "a1", "a2", "a3", "a4", "a5"];
+  const projection = {
+    decisions: events.map((event) => ({ event, verdict: "effective", reason: "ok" })),
+    acts: [],
+    statements: [
+      statement("r1", "hugh", "request", "Locale-stable topic aliases"),
+      statement("a1", "hugh", "assert", "First spelling", { [TOPIC_ALIAS_FIELD]: "API" }),
+      statement("a2", "codex", "assert", "Latest equivalent spelling", { [TOPIC_ALIAS_FIELD]: "api" }),
+      statement("a3", "hugh", "assert", "Swedish initial", { [TOPIC_ALIAS_FIELD]: "Ångström" }),
+      statement("a4", "hugh", "assert", "Uppercase Latin initial", { [TOPIC_ALIAS_FIELD]: "Zebra" }),
+      statement("a5", "hugh", "assert", "Lowercase Latin initial", { [TOPIC_ALIAS_FIELD]: "apple" }),
+    ],
+    commitments: [{ request: "r1", requester: "hugh", status: "open" }],
+    artifacts: [],
+    actors: {},
+    provenance: { r1: [], a1: ["r1"], a2: ["a1"], a3: ["a2"], a4: ["a3"], a5: ["a4"] },
+  };
+
+  const localeLower = String.prototype.toLocaleLowerCase;
+  const localeCompare = String.prototype.localeCompare;
+  String.prototype.toLocaleLowerCase = () => { throw new Error("topic projection used locale-sensitive case folding"); };
+  String.prototype.localeCompare = () => { throw new Error("topic projection used locale-sensitive ordering"); };
+  try {
+    const work = buildWorkProjection(projection);
+    const topic = work.topics.find((candidate) => candidate.event === "r1");
+    assert.deepEqual(topic.aliases.map((alias) => [alias.value, alias.actor]), [
+      ["Zebra", "hugh"],
+      ["api", "codex"],
+      ["apple", "hugh"],
+      ["Ångström", "hugh"],
+    ]);
+    assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "API" }).topics.map((candidate) => candidate.event), ["r1"]);
+  } finally {
+    String.prototype.toLocaleLowerCase = localeLower;
+    String.prototype.localeCompare = localeCompare;
+  }
 });
 
 test("attention qualifies rather than replaces a lifecycle lane", () => {
@@ -736,11 +792,29 @@ test("Work accounts for qualifier attention, stale artifacts, and unlinked promi
     provenance: { request: [], promise: [], artifact: ["request"] },
   };
   const work = buildWorkProjection(projection);
-  assert.equal(workAttentionCount(projection), 3);
+  // Counted apart, not summed. This used to assert 3 — one stale commitment
+  // plus one stale artifact plus one unlinked promise — which is the mixing
+  // that made the drawer's total exceed the number of commitments and match no
+  // line of `gs status`. The signals are all still here; they are two
+  // populations and are reported as two.
+  assert.equal(workAttentionCount(projection), 1);
+  assert.equal(work.attention.length, 2);
   assert.deepEqual(work.attention.map((item) => item.kind), ["artifact", "unlinked-promise"]);
   assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: false }).attention.length, 2);
   assert.equal(filterWorkProjection(work, { active: true, attention: false, closed: false }).attention.length, 0);
   assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: false, author: "hugh" }).attention.length, 0);
+
+  // The list is two populations, so nothing may describe it with one noun. It
+  // was called "2 artifacts" here, which is the same defect this test exists to
+  // prevent — a number that reads as one thing while counting two — arriving
+  // one layer up from where it was caught. The composition is asserted, and so
+  // is the sentence, because the sentence is what a reader actually sees.
+  assert.deepEqual(otherWorkAttentionCounts(projection), { artifacts: 1, unlinkedPromises: 1, total: 2 });
+  assert.deepEqual(attentionItemCounts(work.attention), { artifacts: 1, unlinkedPromises: 1, total: 2 });
+  assert.equal(otherWorkAttentionLabel(otherWorkAttentionCounts(projection)), "1 artifact and 1 unlinked promise");
+  assert.equal(otherWorkAttentionLabel({ artifacts: 3, unlinkedPromises: 0 }), "3 artifacts");
+  assert.equal(otherWorkAttentionLabel({ artifacts: 0, unlinkedPromises: 2 }), "2 unlinked promises");
+  assert.equal(otherWorkAttentionLabel({ artifacts: 0, unlinkedPromises: 0 }), "nothing else");
 });
 
 test("local worktrees join current promise, docs report, and exact commit-trailer shapes", () => {
@@ -944,6 +1018,40 @@ test("Work is the default center and List and Board share one projection", () =>
   assert.match(work, /<WorkBoard/);
   assert.match(work, /Other attention/);
   assert.match(work, /asked by \{nameOf\(item\.request\.actor\)\}/);
+  assert.match(work, /aria-label="topic aliases"/);
+  assert.match(work, /title by \{props\.nameOf\(topic\.titleLabel\.actor\)\}/);
   assert.doesNotMatch(work, /written by \{nameOf\(topic\.author\)\}/);
   assert.doesNotMatch(work, /draggable|onDrag|drop/i);
+});
+
+// The drawer's headline numbers described two populations at once: Active came
+// from the projection, Closed from the topics, and Attention added retired or
+// stale *artifacts* to a commitment count. The three then summed past the number
+// of commitments, and a reader comparing them with `gs status` — which never
+// adds artifacts to commitments — could only conclude one surface was
+// miscounting. Neither was; they were answering different questions.
+test("work counts partition commitments and keep attention as a qualifier", () => {
+  const commitments = [
+    { request: "r1", status: "open" },
+    { request: "r2", status: "promised" },
+    { request: "r3", status: "reported", stale: true },
+    { request: "r4", status: "satisfied" },
+    { request: "r5", status: "satisfied", stale: true },
+    { request: "r6", status: "stale" },
+    { request: "r7", status: "cancelled" },
+  ];
+  const counts = workCommitmentCounts({ commitments, statements: [], acts: [], artifacts: [], decisions: [], provenance: {} });
+
+  assert.equal(counts.total, 7);
+  // Status partitions the population: nothing is counted twice, nothing lost.
+  assert.equal(counts.active + counts.closed + counts.lifecycleStale, counts.total);
+  assert.equal(counts.active, 3);
+  assert.equal(counts.closed, 3);
+  assert.equal(counts.lifecycleStale, 1);
+
+  // Attention overlaps the other two rather than extending them: r3 is active
+  // and needs attention, r5 is closed and needs attention, r6 is both by status.
+  assert.equal(counts.attention, 3);
+  assert.ok(counts.attention <= counts.total,
+    "attention must not exceed the population it qualifies");
 });

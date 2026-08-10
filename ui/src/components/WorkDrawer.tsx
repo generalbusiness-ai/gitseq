@@ -5,11 +5,13 @@ import type { Session } from "../lib/session";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic, type PersonalWorkMemory } from "../lib/memory";
 import { ticketsOf, type Selection, type Workroom } from "../lib/store";
 import {
+  attentionItemCounts,
   buildWorkProjection,
   filterPersonalWorkProjection,
   filterWorkProjection,
+  otherWorkAttentionLabel,
   topicChangeSince,
-  workActiveCount,
+  workCommitmentCounts,
   workItemNeedsAction,
   type WorkFilters,
   type WorkAttentionItem,
@@ -59,6 +61,7 @@ export function WorkView({
   const [filters, setFilters] = useState<WorkFilters>({ active: true, attention: true, closed: false });
   const [personalView, setPersonalView] = useState<PersonalWorkView>(initialPersonalView);
   const work = useMemo(() => (projection ? buildWorkProjection(projection) : undefined), [projection]);
+  const counts = useMemo(() => workCommitmentCounts(projection), [projection]);
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
   const durableEvents = useMemo(
     () => new Set((projection?.statements ?? []).map((statement) => statement.event)),
@@ -158,11 +161,24 @@ export function WorkView({
               label="Active"
               description="All actors: available (open), in progress (promised), and review (reported)."
               checked={filters.active}
-              count={workActiveCount(projection)}
+              count={counts.active}
               onChange={(value) => updateFlag("active", value)}
             />
-            <FilterCheck label="Attention" checked={filters.attention} count={(work?.topics.reduce((sum, topic) => sum + topic.attentionCount, 0) ?? 0) + (work?.attention.length ?? 0)} tone="danger" onChange={(value) => updateFlag("attention", value)} />
-            <FilterCheck label="Closed" checked={filters.closed} count={work?.topics.reduce((sum, topic) => sum + topic.closedCount, 0)} onChange={(value) => updateFlag("closed", value)} />
+            <FilterCheck
+              label="Attention"
+              description={`Stale or disputed, which is a qualifier rather than a status: ${counts.attention} of ${counts.total} commitments, most of them also counted as active or closed. Separately, ${otherWorkAttentionLabel(attentionItemCounts(work?.attention ?? []))} need attention.`}
+              checked={filters.attention}
+              count={counts.attention}
+              tone="danger"
+              onChange={(value) => updateFlag("attention", value)}
+            />
+            <FilterCheck
+              label="Closed"
+              description="All actors: satisfied, withdrawn, cancelled or reneged."
+              checked={filters.closed}
+              count={counts.closed}
+              onChange={(value) => updateFlag("closed", value)}
+            />
           </fieldset>
           {me && <fieldset className="flex items-center gap-1.5" aria-label="Personal work filters">
             <legend className="sr-only">Personal work filters</legend>
@@ -363,8 +379,13 @@ function TopicList(props: WorkRenderProps & { topics: WorkTopic[] }) {
               <TopicCounts topic={topic} />
             </div>
             <p className="mt-1 text-[11px] text-faint">
-              written by {props.nameOf(topic.author)} · latest activity by {props.nameOf(topic.latestActor)} <EventTime timestamp={topic.latestTimestamp} />
+              written by {props.nameOf(topic.author)}
+              {topic.titleLabel && <> · title by {props.nameOf(topic.titleLabel.actor)}</>}
+              {" · "}latest activity by {props.nameOf(topic.latestActor)} <EventTime timestamp={topic.latestTimestamp} />
             </p>
+            {topic.aliases.length > 0 && <p className="mt-1 flex flex-wrap gap-1" aria-label="topic aliases">
+              {topic.aliases.map((alias) => <span key={alias.event} data-topic-alias={alias.value} title={`named by ${props.nameOf(alias.actor)}`} className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted">{alias.value}</span>)}
+            </p>}
             <TopicChange change={props.changes.get(topic.event)} nameOf={props.nameOf} />
           </button>
           {props.canPersonalize && <TopicFollowButton following={props.followed.has(topic.event)} onClick={() => props.onToggleFollowing(topic)} />}
