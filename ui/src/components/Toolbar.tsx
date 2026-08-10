@@ -68,8 +68,8 @@ export interface SemanticAction {
   run: () => void;
 }
 
-// The row's semantic shortcuts — Agree/Accept/Report done/Disagree/Needs
-// work/Withdraw — computed from the fold's state and the viewer's position.
+// The row's semantic shortcuts — Agree/Accept/Ratify yes/Report done/Disagree/
+// Deny/Needs work/Withdraw — computed from the fold's state and the viewer's position.
 // Authorization gating and the one-flight idempotency key are unchanged;
 // only the rendering (inside the hover toolbar) is new.
 export function semanticActions({
@@ -91,15 +91,30 @@ export function semanticActions({
 }): SemanticAction[] {
   const actions: SemanticAction[] = [];
   if (statement.retired || (decision && decision.verdict !== "effective")) return actions;
-  const key = (verb: string) => `${verb}:${statement.event}`;
-  // Already effectively ratified by me → agreeing again is meaningless; hide.
-  const myRatify = projection.acts.some(
-    (a) => a.type === "ratify" && a.target === statement.event && a.actor === me && a.verdict === "effective",
+  const key = (verb: string, target = statement.event) => `${verb}:${target}`;
+  const ratifiedByMe = (target: string) => projection.acts.some(
+    (a) => a.type === "ratify" && a.target === target && a.actor === me && a.verdict === "effective",
   );
-  if (statement.kind === "request" && commitment && !commitment.promise && me && statement.body?.to === me)
-    actions.push({ label: "accept", symbol: "👍", tone: "ok", run: () => onRoute("promise", statement.event, "I will do this.") });
+  if (statement.kind === "request" && commitment && !commitment.promise && me && statement.body?.to === me) {
+    const directProposal = (projection.provenance[statement.event] ?? [])
+      .map((basis) => ({
+        decision: projection.decisions.find((item) => item.event === basis),
+        statement: projection.statements.find((item) => item.event === basis),
+      }))
+      .filter(({ decision: basisDecision, statement: basisStatement }) =>
+        basisStatement?.kind === "propose" && !basisStatement.retired && basisDecision?.verdict === "effective",
+      );
+    if (directProposal.length === 1) {
+      const target = directProposal[0].statement!.event;
+      if (!ratifiedByMe(target))
+        actions.push({ label: "ratify yes", symbol: "👍", tone: "ok", run: () => doAct(key("ratify", target), { act: "ratify", target }) });
+      actions.push({ label: "deny", symbol: "👎", tone: "danger", run: () => onRoute("dissent", target, "") });
+    } else {
+      actions.push({ label: "accept", symbol: "👍", tone: "ok", run: () => onRoute("promise", statement.event, "I will do this.") });
+    }
+  }
   if (statement.kind === "propose") {
-    if (!myRatify) actions.push({ label: "agree", symbol: "👍", tone: "ok", run: () => doAct(key("ratify"), { act: "ratify", target: statement.event }) });
+    if (!ratifiedByMe(statement.event)) actions.push({ label: "agree", symbol: "👍", tone: "ok", run: () => doAct(key("ratify"), { act: "ratify", target: statement.event }) });
     actions.push({ label: "disagree", symbol: "👎", tone: "danger", run: () => onRoute("dissent", statement.event, "") });
   }
   if (commitment?.promise && me === commitment.performer && commitment.status === "promised")
