@@ -133,11 +133,13 @@ func flags(name string, arguments []string) (*flag.FlagSet, *string) {
 
 func initCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("init", arguments)
-	// No default name. The operator seeded here signs the genesis and every
-	// grant that follows, so who it is has to be a choice someone made:
-	// falling back to "operator" put an identity nobody picked at the root of
-	// the log, and made "there is no default identity" false at the one
-	// command where it matters most.
+	// No default name. The sequencer key signs the genesis commit; the
+	// operator seeded here signs their own acts, beginning with the bootstrap
+	// roster statement that admits them and grants the operator role, which
+	// carries ratifier with it. An identity holding ratifier from the first
+	// event is not one to leave to a default: falling back to "operator" put
+	// an identity nobody picked at the root of the log, and made "there is no
+	// default identity" false at the one command where it matters most.
 	operator := set.String("operator", "", "operator actor name; defaults to "+actorEnvironment)
 	ceiling := set.Uint64("payload-ceiling", 1<<20, "inline payload ceiling")
 	if err := set.Parse(arguments); err != nil {
