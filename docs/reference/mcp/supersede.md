@@ -4,6 +4,7 @@ summary: Attempt to retire an act and propagate staleness.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:718c16a257eeed209434c18e85ca605ed779bf90
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21b0b3833ff945f19cc9addcb642b7c36827d25a
 ---
 
 # `supersede`
@@ -59,6 +60,12 @@ their promise stays in history as kept faith.
 **Reneging.** Superseding your own promise is visible forever. Do it as
 early as you know you cannot keep it.
 
+**Changing governance.** The founding operator seed cannot be retired.
+Other roster changes require current authority for their target. An
+operator grant, or membership carrying a live or dormant operator grant,
+requires a current `operator`; ordinary authorship of an older event is
+not enough.
+
 ## The first-basis rule
 
 A supersession must cite its target as the **first** basis. The adapter
@@ -68,7 +75,8 @@ puts it there; anything in `rests_on` follows.
 
 Superseding a supersession restores the earlier act, and everything that
 went stale because of it becomes current again. Liveness moves;
-decisions do not.
+decisions do not. Governance restoration checks target-class authority
+again at restoration time.
 
 ## See also
 

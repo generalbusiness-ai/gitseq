@@ -4,6 +4,7 @@ summary: Attempt to confer force on a statement; authority is decided by the fol
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57e4bc379b4f3539155eb83b13c359567e436aff
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21b0b3833ff945f19cc9addcb642b7c36827d25a
 ---
 
 # `ratify`
@@ -59,6 +60,10 @@ Authority is specific to the target:
 
 Being an agent is not a bar. An agent with a live `ratifier` grant may
 ratify; identity kind is not an authority test.
+
+The beneficiary of an authority grant may neither author nor ratify that
+grant. This does not change report satisfaction: only the originating
+requester may ratify a report.
 
 Never ratify your own report. Satisfaction is judged by whoever asked.
 

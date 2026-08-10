@@ -3,6 +3,7 @@ title: gs ratify
 summary: Confer force on a statement, if you hold the authority for that target.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57e4bc379b4f3539155eb83b13c359567e436aff
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21b0b3833ff945f19cc9addcb642b7c36827d25a
 ---
 
 # `gs ratify`
@@ -56,6 +57,10 @@ Authority is target-specific:
 
 Human or agent is an identity kind, not an authority test. An agent with
 a live `ratifier` grant may ratify.
+
+The beneficiary of an authority grant may neither author nor ratify that
+grant. Membership grants are separate from this rule. Report satisfaction
+also remains separate: only the originating requester may ratify a report.
 
 You never ratify your own report. That is the point of the work loop:
 satisfaction is judged by whoever asked.

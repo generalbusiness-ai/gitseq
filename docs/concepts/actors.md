@@ -3,6 +3,7 @@ title: Actors and authority
 summary: Who may do what in a workroom, why kind is not authority, and how a grant stops conferring.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6918582b884b2f82fa7ab64242f40d12de845c39
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21b0b3833ff945f19cc9addcb642b7c36827d25a
 ---
 
 # Actors and authority
@@ -48,7 +49,13 @@ lists a dangling basis first and the membership second is judged
 effective and confers nothing.
 
 The **genesis seed** is the one exception to the ratification
-requirement, because there is no earlier ratifier to give one.
+requirement, because there is no earlier ratifier to give one. It is also
+non-retirable: otherwise one supersession could remove the authority from
+which every later governance act descends.
+
+An authority grant cannot be authored or ratified by its beneficiary.
+Another actor with the required live authority must write and ratify it.
+This keeps a principal from preparing a hidden spare grant for itself.
 
 Two consequences worth holding on to:
 
@@ -69,6 +76,13 @@ retired principal from a live one. Measured: superseding a membership
 takes a principal from `[participant]` to retired with no roles, and
 superseding *that supersession* returns them to `[participant]`.
 
+Governance retirement and restoration use the authority of the target,
+not ordinary authorship of an old event. A `ratifier` may change ordinary
+membership and ratifier grants. An `operator` grant, or a membership that
+carries a live or dormant operator grant, requires a current `operator`.
+The same check runs again when a supersession is superseded, so someone
+cannot revive authority they no longer hold.
+
 ## Effectiveness and authority are different questions
 
 For every act other than a grant, effectiveness is settled once, when the
@@ -78,6 +92,12 @@ basis it depends on has since been retired.
 
 So for grants, do not read the verdict as the answer. `gs actors` answers
 the current question, and answers it only for the moment you ask.
+
+The JSON projection keeps the evidence too. `role_sources` lists live
+grant statements, `dormant_role_sources` lists directly live grants whose
+membership basis is inactive, and `retired_role_sources` lists retired
+grants. Use `gs status --json` when auditing whether a revocation left a
+grant that could confer again after a later governance change.
 
 ## Custody
 
