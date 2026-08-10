@@ -563,6 +563,25 @@ func TestAuthorityGrantCannotBeSelfAuthored(t *testing.T) {
 	}
 }
 
+func TestRatifierCannotMintOperatorForAnotherActor(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "ratifier joins", Body: map[string]string{"actor": other, "name": "Other", "role": "ratifier"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e4", operator, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+		event(t, "e5", other, SchemaState, State{Kind: KindRoster, Text: "mint a second operator", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "operator"}}, "e3"),
+		event(t, "e6", other, SchemaRatify, Ratify{Target: "e5"}, "e5"),
+	})
+	decision, _ := projection.Decision("e6")
+	if decision.Verdict != Ineffective || decision.Reason != "operator standing is required to ratify an operator grant" {
+		t.Fatalf("ratifier-minted operator = %+v", decision)
+	}
+	if roles := projection.Actors[agent].Roles; contains(roles, "operator") {
+		t.Fatalf("ratifier minted operator for another actor: %#v", roles)
+	}
+}
+
 func TestDormantOperatorGrantCannotBeRevivedWithoutPresentAuthority(t *testing.T) {
 	projection := Fold([]Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),

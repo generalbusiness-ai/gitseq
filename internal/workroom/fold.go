@@ -637,6 +637,9 @@ func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
 		if beneficiary == target.record.Actor || beneficiary == record.record.Actor {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "authority grant cannot be authored or ratified by its beneficiary"}
 		}
+		if rosterAuthorityRole(*state) == "operator" && !f.hasRole(record.record.Actor, "operator") {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "operator standing is required to ratify an operator grant"}
+		}
 	}
 	satisfier := target.definition.Satisfier
 	if satisfier == SatisfierOriginatingRequester {
