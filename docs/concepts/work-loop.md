@@ -138,11 +138,27 @@ no artifact — what stops that work reaching `main` is the merge guard,
 not the fold.
 
 So a green projection is narrower evidence than it looks, but not empty.
-It shows that nobody claimed authority they did not hold, that every
-citation resolves, and — where work was merged through `gs merge` — that
-an independent reviewer approved that exact commit. It does not show that
-the branch was named well, that the commit carried its trailer, or that
-anyone tidied up afterwards.
+It shows that nobody claimed authority they did not hold, that each act
+carries the bases its own kind requires — a promise resting on exactly
+one request, a report on a promise — and, where work was merged through
+`gs merge`, that an independent reviewer approved that exact commit. It
+does not show that the branch was named well, that the commit carried
+its trailer, or that anyone tidied up afterwards.
+
+It also does not show that every citation resolves, and the difference
+matters more than it sounds. The fold checks `rests_on` only against the
+basis constraints of the citing kind: a reference that names no event in
+this workroom is skipped in silence, and a kind with no basis constraints
+never has its citations inspected at all. An effective artifact or assert
+can therefore carry a citation pointing at nothing while the projection
+stays green around it.
+
+That is not a hole to route around; it is what "gitseq has no ontology"
+costs. The fold cannot know which of your references were load-bearing.
+But it means a mistyped or invented identifier fails quietly — it appends,
+it reports success, and the act it was supposed to connect to simply never
+hears about it. Resolve identifiers before citing them rather than
+trusting a green projection to catch a bad one.
 
 ## Honest states
 
