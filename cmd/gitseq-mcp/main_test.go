@@ -1466,7 +1466,13 @@ func BenchmarkWhoamiColdFullAuditAtActualSignedDepth(b *testing.B) {
 func TestProjectionNotesSayHowTheFoldReadTheAct(t *testing.T) {
 	const event = "git:sha1:g#git:sha1:report"
 	report := app.Act{Kind: workroom.KindReport, RestsOn: []string{"git:sha1:g#git:sha1:promise"}}
-	known := workroom.Projection{Statements: []workroom.Statement{{Event: "git:sha1:g#git:sha1:promise"}}}
+	// Existence is read from decisions now, because there is one per durable
+	// record and statements hold only utterances. The fixture carries both so
+	// it describes a real projection rather than half of one.
+	known := workroom.Projection{
+		Statements: []workroom.Statement{{Event: "git:sha1:g#git:sha1:promise"}},
+		Decisions:  []workroom.Decision{{Event: "git:sha1:g#git:sha1:promise", Verdict: workroom.Effective}},
+	}
 
 	// A report that reads as a review to any human and sets no body.verdict is
 	// no review at all to the fold. This is the failure the request was filed
@@ -1534,7 +1540,10 @@ func TestProjectionNotesSayHowTheFoldReadTheAct(t *testing.T) {
 // result said only that the act had landed.
 func TestNotesReportATargetNamingNothing(t *testing.T) {
 	const event = "git:sha1:g#git:sha1:act"
-	known := workroom.Projection{Statements: []workroom.Statement{{Event: "git:sha1:g#git:sha1:real"}}}
+	known := workroom.Projection{
+		Statements: []workroom.Statement{{Event: "git:sha1:g#git:sha1:real"}},
+		Decisions:  []workroom.Decision{{Event: "git:sha1:g#git:sha1:real", Verdict: workroom.Effective}},
+	}
 
 	invented := app.Act{Verb: app.VerbSupersede, Target: "git:sha1:g#git:sha1:invented"}
 	if got := projectionNotes(known, invented, event)["unresolved_target"]; got != "git:sha1:g#git:sha1:invented" {
@@ -1550,5 +1559,114 @@ func TestNotesReportATargetNamingNothing(t *testing.T) {
 	// noise on every ordinary append.
 	if _, reported := projectionNotes(known, app.Act{Verb: app.VerbState}, event)["unresolved_target"]; reported {
 		t.Error("an act with no target was annotated with one")
+	}
+}
+
+// Ratify and supersede are durable records with no statement, and the fold
+// explicitly allows superseding a supersession. Resolving citations through
+// statements therefore called real identifiers fabricated — a check written to
+// catch invented names, reporting valid ones as invented. That is worse than no
+// check, because a warning that cries wolf is a warning people learn to skip.
+func TestCitationsResolveThroughEveryDurableRecordNotOnlyStatements(t *testing.T) {
+	const supersession = "git:sha1:g#git:sha1:supersede"
+	const statement = "git:sha1:g#git:sha1:promise"
+	const event = "git:sha1:g#git:sha1:new"
+
+	// A supersession exists as a decision and nothing else, which is exactly
+	// the shape statements cannot see.
+	projection := workroom.Projection{
+		Statements: []workroom.Statement{{Event: statement}},
+		Decisions: []workroom.Decision{
+			{Event: statement, Verdict: workroom.Effective},
+			{Event: supersession, Verdict: workroom.Effective},
+			{Event: event, Verdict: workroom.Effective},
+		},
+	}
+
+	// As a target: superseding a supersession is legitimate and must not be
+	// reported as naming nothing.
+	retire := app.Act{Verb: app.VerbSupersede, Target: supersession}
+	if got, reported := projectionNotes(projection, retire, event)["unresolved_target"]; reported {
+		t.Errorf("a valid supersession target was reported unresolved as %v", got)
+	}
+
+	// As a citation: the same identifier in rests_on.
+	citing := app.Act{Kind: workroom.KindAssert, RestsOn: []string{supersession, statement}}
+	if got, reported := projectionNotes(projection, citing, event)["unresolved_rests_on"]; reported {
+		t.Errorf("valid citations were reported unresolved as %v", got)
+	}
+
+	// And an identifier that truly names nothing is still caught, so the fix
+	// is not simply switching the check off.
+	invented := app.Act{Kind: workroom.KindAssert, RestsOn: []string{"git:sha1:g#git:sha1:nothing"}}
+	if _, reported := projectionNotes(projection, invented, event)["unresolved_rests_on"]; !reported {
+		t.Error("a fabricated citation was no longer reported")
+	}
+}
+
+// A report that sets body.verdict and is then ruled ineffective projects no
+// review. Saying it did not set the field would send its author to fix
+// something that is not wrong, while the real reason sits in the verdict note
+// beside it. The live log holds exactly this shape.
+func TestARefusedReportIsNotDescribedAsMissingItsVerdict(t *testing.T) {
+	const event = "git:sha1:g#git:sha1:report"
+	projection := workroom.Projection{
+		Decisions: []workroom.Decision{{Event: event, Verdict: workroom.Ineffective, Reason: "report has no promise"}},
+	}
+
+	stated := app.Act{Kind: workroom.KindReport, Body: map[string]string{"verdict": "changes-requested"}}
+	notes := projectionNotes(projection, stated, event)
+	got, _ := notes["review"].(string)
+	if strings.Contains(got, "does not set") {
+		t.Errorf("a report that set body.verdict was told it had not: %q", got)
+	}
+	if !strings.Contains(got, "changes-requested") {
+		t.Errorf("the review note does not repeat the verdict actually submitted: %q", got)
+	}
+	// The reason it was refused must still be reachable from the same result.
+	if notes["reason"] != "report has no promise" {
+		t.Errorf("the fold's reason was not carried alongside: %v", notes["reason"])
+	}
+
+	// A report that genuinely sets nothing still gets the original message.
+	silent := app.Act{Kind: workroom.KindReport}
+	if got, _ := projectionNotes(projection, silent, event)["review"].(string); !strings.Contains(got, "does not set") {
+		t.Errorf("a report with no verdict was described as %q", got)
+	}
+}
+
+// Every verb is promised these notes, so every verb must be told when they
+// could not be produced. Before this, a failed snapshot gave `state` a warning
+// and gave ratify and supersede nothing at all — a result identical to one
+// where the fold looked and found nothing worth saying. That is the exact
+// failure this disclosure exists to prevent, arriving through the disclosure.
+func TestEveryVerbIsToldWhenTheProjectionCouldNotBeRead(t *testing.T) {
+	workspace := initRepository(t, "unreadable")
+	server, attached := attachedServer(t, workspace, "claude", "", nil)
+
+	// Break the repository underneath so Snapshot genuinely fails, rather than
+	// faking the failure at a seam the production path does not use.
+	if err := os.RemoveAll(workspace.Repo); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, act := range []app.Act{
+		{Verb: app.VerbState, Kind: workroom.KindAssert},
+		{Verb: app.VerbRatify, Target: "git:sha1:g#git:sha1:target"},
+		{Verb: app.VerbSupersede, Target: "git:sha1:g#git:sha1:target"},
+	} {
+		value := map[string]any{"event": "git:sha1:g#git:sha1:landed"}
+		result, ok := server.withKindWarning(context.Background(), attached, act, value).(map[string]any)
+		if !ok {
+			t.Fatalf("%s did not return a result map", act.Verb)
+		}
+		projected, present := result["projected"].(map[string]any)
+		if !present {
+			t.Errorf("%s returned no projected notes when the projection could not be read: %v", act.Verb, result)
+			continue
+		}
+		if _, said := projected["unavailable"]; !said {
+			t.Errorf("%s reported projected notes without saying they were unavailable: %v", act.Verb, projected)
+		}
 	}
 }

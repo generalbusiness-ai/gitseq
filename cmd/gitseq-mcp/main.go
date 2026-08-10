@@ -839,6 +839,14 @@ func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.
 		if act.Verb == app.VerbState {
 			result["warning"] = fmt.Sprintf("cannot tell whether kind %q is defined here: %v", act.Kind, err)
 		}
+		// Every verb is promised these notes, so every verb is told when they
+		// could not be produced. Returning silently would be the failure this
+		// whole disclosure exists to prevent, arriving through the disclosure
+		// itself: a result that looks exactly like one where the fold found
+		// nothing to report.
+		result["projected"] = map[string]any{
+			"unavailable": fmt.Sprintf("the projection could not be read after this act landed, so nothing here says how the fold read it: %v", err),
+		}
 		return result
 	}
 	if act.Verb == app.VerbState {
@@ -924,15 +932,24 @@ func projectionNotes(projection workroom.Projection, act app.Act, event string) 
 	// Whether a report became a review, and if so what a merge would make of
 	// it. A report reads as a review to any human the moment its text says
 	// "approved"; the fold only sees body.verdict.
+	// Whether a report became a review is answered from what was submitted and
+	// what the fold decided, never from the absence of a Review row alone. A
+	// report that sets body.verdict and is then ruled ineffective — no promise,
+	// or another precondition unmet — projects no review, and saying it did not
+	// set the field would be telling its author to fix something that is not
+	// wrong while the real reason sits in the verdict note above.
 	if act.Kind == workroom.KindReport {
 		review, found := reviewOf(projection, event)
+		verdict := strings.TrimSpace(act.Body["verdict"])
 		switch {
-		case !found:
-			notes["review"] = "no: the fold reads a review from body.verdict, which this report does not set"
-		case review.Artifact == "":
+		case found && review.Artifact == "":
 			notes["review"] = "yes, but no artifact resolved; `gs merge` refuses an approval whose rests_on omits the artifact for the reviewed head"
-		default:
+		case found:
 			notes["review"] = "yes, judging artifact " + review.Artifact
+		case verdict == "":
+			notes["review"] = "no: the fold reads a review from body.verdict, which this report does not set"
+		default:
+			notes["review"] = fmt.Sprintf("no: body.verdict is %q, but the fold projected no review for this report — see the verdict and reason above for what it refused", verdict)
 		}
 	}
 	return notes
@@ -940,9 +957,17 @@ func projectionNotes(projection workroom.Projection, act app.Act, event string) 
 
 // resolves reports whether an identifier names an event this workroom holds.
 // A wrong one is indistinguishable from a right one until something asks.
+//
+// Decisions, not statements. There is exactly one decision per durable record,
+// while statements hold only utterances — so ratify and supersede are events
+// with no statement, and the fold explicitly allows superseding a supersession.
+// Searching statements would have called those citations unresolved: a check
+// written to catch fabricated identifiers, reporting real ones as fabricated,
+// which is worse than not checking at all because it teaches readers to ignore
+// it.
 func resolves(projection workroom.Projection, event string) bool {
-	for _, statement := range projection.Statements {
-		if statement.Event == event {
+	for _, decision := range projection.Decisions {
+		if decision.Event == event {
 			return true
 		}
 	}
