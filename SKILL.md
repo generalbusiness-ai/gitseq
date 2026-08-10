@@ -28,10 +28,9 @@ Every durable event cites its basis in `rests_on`.
 - `whoami` / `presence` — who you are; who is here now. `presence` may
   update only this adapter session's leased `status` (`available`, `busy`,
   `waiting`, or `blocked`), bounded `focus` set of up to eight workroom
-  EventIDs, and short `note`. Focus is advisory attention, never a promise,
-  claim, report, authorization, or completion signal. Multiple sessions for
-  one actor aggregate by blocked > waiting > busy > available, then by a
-  sorted focus union capped at eight and the first sorted non-empty note.
+  EventIDs, and short `note`. The response reports that activity separately
+  for each opaque session handle. Focus is advisory attention, never a
+  promise, claim, report, authorization, or completion signal.
 - `status` — workroom snapshot plus a composite cursor. Its actor-oriented
   `available_to_you` lane is the bounded list of `open`, unclaimed requests
   addressed to you; `waiting_on_you` begins only after a promise or report
