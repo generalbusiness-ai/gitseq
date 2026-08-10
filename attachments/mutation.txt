@@ -1,1 +1,0 @@
-At detached exact head 03d60eff, changed only `const unbound = vocabulary.binding.status === "unbound"` to `const unbound = vocabulary.binding.status !== "bound"`. The named component test failed because the uninterpretable rendering again contained `starter kinds only` and `no declared vocabulary extends it yet`. The detached mutation worktree was removed after the check.
