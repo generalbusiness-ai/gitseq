@@ -1,0 +1,1 @@
+docs/concepts/connectors.md and observe.go promise outbound only overwrites, while Open POSTs a discrete PR
