@@ -59,10 +59,13 @@ Present sessions, the open conversations, and a live cursor. Each session
 is named by an **opaque minted handle** — `session:` followed by random
 hex — not by its session identifier.
 
-The response also includes leased activity. Multiple sessions for one actor
-aggregate deterministically: the strongest status is shown, focus is a sorted
-union capped at eight events, and the first sorted non-empty note is used.
-Activity follows the presence lease and disappears when that lease expires.
+The response also includes leased activity keyed by the same opaque session
+handles. It reports each session separately; it does not combine an actor's
+multiple sessions. The browser view performs that actor-level aggregation: it
+shows the strongest status, a sorted and deduplicated focus union capped at
+eight events, and the first non-empty note under the browser's locale-aware
+string ordering. Activity follows the presence lease and disappears when that
+lease expires.
 
 Focus is attention, not durable workflow state. It never claims a request,
 makes a promise, reports completion, or grants authority. The adapter supplies
