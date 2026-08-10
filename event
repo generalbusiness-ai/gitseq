@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fe53a11b17a1ce0b8fb8a37ec6b76bb49c5ecf74"}
+{"kind":"artifact","text":"Bounded resident-side MCP actor-work queries and exact durable-item inspection are implemented at exact clean head 8507cbd882639752af97f9349a39fb130a8f8ea4.","body":{"commit":"8507cbd882639752af97f9349a39fb130a8f8ea4","path":"."}}
