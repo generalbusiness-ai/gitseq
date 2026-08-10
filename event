@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ca4a2eaef3e064c06b378468ab96bc5dc1107f73","text":"Superseded by the merge artifact for docs/concepts/work-loop.md at f6244ac561ac3aa869e7d0ac661e4fdc2c835da8. This path carried four live artifacts that could never supersede each other; it now carries one."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17cb0f7d1f13004e98edf2c110578f31f4f7f7cb","text":"Superseded by the merge artifact for internal/connector at 0ad555995991e8f725b120cde717c072c5984b41."}
