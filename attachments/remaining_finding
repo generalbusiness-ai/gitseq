@@ -1,1 +1,0 @@
-docs/getting-started.md:84-86 says the seeded operator signs every grant and statement that follows. Workspace.BuildActRequest signs only the chosen actor's act with that actor's key; other admitted actors sign their own acts. The preceding new paragraph already has the correct narrower wording.
