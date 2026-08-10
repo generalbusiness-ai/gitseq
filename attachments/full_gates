@@ -1,0 +1,1 @@
+make vet test build ui-check docs PASS; make race PASS
