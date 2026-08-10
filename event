@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7bd77640e5e176bb02b54d0e2e4614986a6084d9"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5de0411abff72a1c7e91bb058624215316ccc5ac","text":"Retire the review handoff for 73e85ba: current main advanced through the bounded MCP and structured-docs merges, creating real main.go and deleted-monolith documentation conflicts. A fresh current-main carry and exact-head review are required."}
