@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:09e88f372375778afde2bbc19a70dfd0227f7cc2","text":"Retire this stale readiness report; a fresh report will cite only the live implementation promise and candidate artifact."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e5659e2670705729ebb8a991e0e5d46fb6919c56","text":"Retire this stale re-review request; its replacement will cite only fresh live readiness and artifact bases."}
