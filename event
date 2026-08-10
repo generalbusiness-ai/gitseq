@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a69cef7e16218c4a1c7882157e7ce60c1f4fbad6"}
+{"kind":"artifact","text":"Bounded resident-side MCP work queries and exact durable-item inspection are merged into main at exact head 5821a41c0299a3ddd944e129d47d9b1b254c0c76.","body":{"commit":"5821a41c0299a3ddd944e129d47d9b1b254c0c76","path":"."}}
