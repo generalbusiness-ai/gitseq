@@ -37,6 +37,78 @@ function workroom(presence, suppliedProjection) {
 
 const session = { id: "browser", live: true, setActor() {} };
 
+test("an addressed proposal-ratification request offers the requested decision directly", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const { semanticActions } = await vite.ssrLoadModule("/src/components/Toolbar.tsx");
+    const viewer = "hugh-fingerprint";
+    const proposal = {
+      event: "proposal",
+      actor: "codex-fingerprint",
+      kind: "propose",
+      text: "Use the bounded status contract.",
+      timestamp: 1,
+    };
+    const request = {
+      event: "request",
+      actor: "codex-fingerprint",
+      kind: "request",
+      text: "Hugh: ratify the proposal or deny it.",
+      body: { to: viewer },
+      timestamp: 2,
+    };
+    const projection = {
+      decisions: [proposal, request].map(({ event }) => ({ event, verdict: "effective", reason: "recorded" })),
+      acts: [],
+      statements: [proposal, request],
+      commitments: [{ request: request.event, requester: request.actor, addressed_to: viewer, status: "open" }],
+      artifacts: [],
+      actors: {},
+      provenance: { proposal: [], request: [proposal.event] },
+    };
+    const routed = [];
+    const acted = [];
+    const actions = semanticActions({
+      statement: request,
+      commitment: projection.commitments[0],
+      decision: projection.decisions[1],
+      projection,
+      me: viewer,
+      onRoute: (...args) => routed.push(args),
+      doAct: (...args) => acted.push(args),
+    });
+
+    assert.deepEqual(actions.map(({ label }) => label), ["ratify yes", "deny"]);
+    assert.doesNotMatch(actions.map(({ label }) => label).join(" "), /accept/);
+    actions[0].run();
+    actions[1].run();
+    assert.deepEqual(acted, [["ratify:proposal", { act: "ratify", target: proposal.event }]]);
+    assert.deepEqual(routed, [["dissent", proposal.event, ""]]);
+
+    const ordinary = semanticActions({
+      statement: { ...request, event: "ordinary-request", text: "Implement the feature." },
+      commitment: { ...projection.commitments[0], request: "ordinary-request" },
+      decision: { event: "ordinary-request", verdict: "effective", reason: "recorded" },
+      projection: {
+        ...projection,
+        statements: [{ ...request, event: "ordinary-request", text: "Implement the feature." }],
+        provenance: { "ordinary-request": [] },
+      },
+      me: viewer,
+      onRoute() {},
+      doAct() {},
+    });
+    assert.deepEqual(ordinary.map(({ label }) => label), ["accept"]);
+  } finally {
+    await vite.close();
+  }
+});
+
 test("every durable Stream presentation renders advisory focus behaviorally", async () => {
   const vite = await createServer({
     root: uiRoot,
