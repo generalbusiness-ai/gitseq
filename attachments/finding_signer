@@ -1,1 +1,0 @@
-docs/getting-started.md:69-72 says the operator signs genesis. internal/kernel/kernel.go:259-277 creates and signs genesis with the sequencer key; internal/app/app.go:646-704 uses the operator key to sign intents, beginning with the bootstrap roster event.

@@ -1,1 +1,0 @@
-docs/getting-started.md:52 and 74-78 present .git/gitseq and rm -rf .git/gitseq as universal for an existing repository. app.Init resolves and writes the Git common directory; in a linked worktree .git is a file, and in a bare repository it is absent.
