@@ -1354,6 +1354,86 @@ func TestWhoamiBoundsStallsAndRejectsRedirects(t *testing.T) {
 	}
 }
 
+func TestResidentRequestDeadlinesPreserveCallerCancellation(t *testing.T) {
+	if residentCallTimeout != 10*time.Second || residentWaitTimeout != 35*time.Second || residentHTTPTimeout != 40*time.Second {
+		t.Fatalf("resident deadline policy changed: call=%s wait=%s client=%s", residentCallTimeout, residentWaitTimeout, residentHTTPTimeout)
+	}
+	if client := newResidentClient(); client.Timeout != residentHTTPTimeout {
+		t.Fatalf("resident HTTP backstop = %s, want %s", client.Timeout, residentHTTPTimeout)
+	}
+	policy := newServer("human", "").deadlines
+	if policy.call != residentCallTimeout || policy.wait != residentWaitTimeout || policy.shutdown != residentShutdownTimeout {
+		t.Fatalf("server deadline policy = %#v", policy)
+	}
+
+	workspace, _ := signedWorkspace(t, 1)
+	t.Run("adapter timeout includes response body", func(t *testing.T) {
+		stalled := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			_, _ = writer.Write([]byte("{"))
+			if flusher, ok := writer.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			<-request.Context().Done()
+		}))
+		defer stalled.Close()
+		server, current := attachedServer(t, workspace, "human", stalled.URL, stalled.Client())
+		server.deadlines.call = 50 * time.Millisecond
+
+		started := time.Now()
+		_, err := server.get(context.Background(), current, "/v0/status")
+		elapsed := time.Since(started)
+		var timeout residentTimeoutError
+		if !errors.As(err, &timeout) || !errors.Is(err, context.DeadlineExceeded) || !isTransportError(err) {
+			t.Fatalf("stalled response error = %T %v, want resident timeout transport error", err, err)
+		}
+		if elapsed > time.Second {
+			t.Fatalf("stalled response took %s, want a bounded call", elapsed)
+		}
+	})
+
+	t.Run("caller cancellation is not relabelled", func(t *testing.T) {
+		stalled := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+		defer stalled.Close()
+		server, current := attachedServer(t, workspace, "human", stalled.URL, stalled.Client())
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := server.get(ctx, current, "/v0/status")
+		var timeout residentTimeoutError
+		if !errors.Is(err, context.Canceled) || errors.As(err, &timeout) || !isTransportError(err) {
+			t.Fatalf("cancelled request error = %T %v, want distinct caller cancellation", err, err)
+		}
+	})
+}
+
+func TestResidentShutdownHasIndependentDeadline(t *testing.T) {
+	if residentShutdownTimeout != 2*time.Second {
+		t.Fatalf("resident shutdown timeout = %s, want 2s", residentShutdownTimeout)
+	}
+	called := make(chan struct{}, 1)
+	stalled := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodDelete {
+			called <- struct{}{}
+			<-request.Context().Done()
+		}
+	}))
+	defer stalled.Close()
+	workspace, _ := signedWorkspace(t, 1)
+	server, current := attachedServer(t, workspace, "human", stalled.URL, stalled.Client())
+	current.announced = true
+	server.deadlines.shutdown = 50 * time.Millisecond
+
+	started := time.Now()
+	server.shutdown()
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("stalled shutdown took %s, want a bounded departure", elapsed)
+	}
+	select {
+	case <-called:
+	default:
+		t.Fatal("shutdown did not attempt resident departure")
+	}
+}
+
 func TestWhoamiWarmResidentAtSignedDepthIsSubsecond(t *testing.T) {
 	ctx := context.Background()
 	workspace, _ := signedWorkspace(t, 64)
