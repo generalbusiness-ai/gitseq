@@ -1,0 +1,1 @@
+internal/statusview/view.go renders short(item.Request) and short(item.Event)

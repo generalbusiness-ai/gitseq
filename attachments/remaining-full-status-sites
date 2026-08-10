@@ -1,0 +1,1 @@
+internal/workroom/render.go renders short(artifact.Event) and short(decision.Event)
