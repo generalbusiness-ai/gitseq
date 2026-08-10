@@ -2,13 +2,15 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -18,6 +20,7 @@ type testEvent struct {
 	Action  string  `json:"Action"`
 	Package string  `json:"Package"`
 	Test    string  `json:"Test"`
+	Output  string  `json:"Output"`
 	Elapsed float64 `json:"Elapsed"`
 }
 
@@ -33,6 +36,11 @@ type caseDefinition struct {
 	Name    string
 	Tests   []string
 	Finding string
+}
+
+type testSelection struct {
+	Package string
+	Tests   []string
 }
 
 type caseResult struct {
@@ -90,17 +98,24 @@ func main() {
 		fatal(err)
 	}
 	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
-	command := exec.Command(goTool, "test", "-count=1", "-json", "./...")
-	command.Dir = root
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
-	output, runErr := command.Output()
+	output, stderr, commandDescription, runErr := runNamedTests(root, goTool)
 
 	results := make(map[string]testResult)
-	scanner := bufio.NewScanner(bytes.NewReader(output))
-	for scanner.Scan() {
+	var runnerOutput strings.Builder
+	decoder := json.NewDecoder(bytes.NewReader(output))
+	var decodeErr error
+	for {
 		var event testEvent
-		if json.Unmarshal(scanner.Bytes(), &event) != nil || event.Test == "" {
+		if err := decoder.Decode(&event); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			decodeErr = err
+			break
+		}
+		if event.Output != "" {
+			runnerOutput.WriteString(event.Output)
+		}
+		if event.Test == "" {
 			continue
 		}
 		if event.Action == "pass" || event.Action == "fail" || event.Action == "skip" {
@@ -110,7 +125,7 @@ func main() {
 	}
 
 	gitVersion := strings.TrimSpace(string(mustOutput("git", "--version")))
-	report := evidence{Schema: "gitseq.spike-evidence.v0", GoVersion: runtime.Version(), GitVersion: gitVersion, Command: "go test -count=1 -json ./...", Status: "pass"}
+	report := evidence{Schema: "gitseq.spike-evidence.v0", GoVersion: runtime.Version(), GitVersion: gitVersion, Command: commandDescription, Status: "pass"}
 	for _, definition := range definitions {
 		result := caseResult{Number: definition.Number, Name: definition.Name, Status: "pass", Finding: definition.Finding}
 		for _, key := range definition.Tests {
@@ -126,8 +141,12 @@ func main() {
 		}
 		report.Cases = append(report.Cases, result)
 	}
-	if runErr != nil || scanner.Err() != nil {
+	if runErr != nil || decodeErr != nil {
 		report.Status = "fail"
+	}
+	details := stderr
+	if report.Status != "pass" {
+		details = failureDetails(report, runnerOutput.String(), stderr, runErr, decodeErr)
 	}
 
 	// Keep run-specific and stable evidence beside the adversarial fixture even
@@ -144,7 +163,7 @@ func main() {
 	if err := os.WriteFile(filepath.Join(directory, "evidence.json"), encoded, 0o644); err != nil {
 		fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, "SPIKE-RESULTS.md"), markdown(report, stderr.String()), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "SPIKE-RESULTS.md"), markdown(report, details), 0o644); err != nil {
 		fatal(err)
 	}
 	stablePath := filepath.Join(root, "spike", "SPIKE-RESULTS.md")
@@ -153,8 +172,114 @@ func main() {
 	}
 	fmt.Printf("%s: wrote %s, %s, and %s\n", report.Status, filepath.Join(directory, "evidence.json"), filepath.Join(directory, "SPIKE-RESULTS.md"), stablePath)
 	if report.Status != "pass" {
+		fmt.Fprint(os.Stderr, details)
 		os.Exit(1)
 	}
+}
+
+func runNamedTests(root, goTool string) ([]byte, string, string, error) {
+	selections, err := namedTestSelections(definitions)
+	if err != nil {
+		return nil, "", "", err
+	}
+	var output, stderr strings.Builder
+	commands := make([]string, 0, len(selections))
+	var failures []error
+	for _, selection := range selections {
+		expression := "^(" + strings.Join(quotedTests(selection.Tests), "|") + ")$"
+		args := []string{"test", "-count=1", "-json", "-run", expression, selection.Package}
+		commands = append(commands, fmt.Sprintf("go test -count=1 -json -run %q %s", expression, selection.Package))
+		command := exec.Command(goTool, args...)
+		command.Dir = root
+		var commandOutput, commandError bytes.Buffer
+		command.Stdout = &commandOutput
+		command.Stderr = &commandError
+		if err := command.Run(); err != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", selection.Package, err))
+		}
+		output.Write(commandOutput.Bytes())
+		if commandError.Len() > 0 {
+			fmt.Fprintf(&stderr, "%s:\n%s", selection.Package, commandError.String())
+			if !strings.HasSuffix(commandError.String(), "\n") {
+				stderr.WriteByte('\n')
+			}
+		}
+	}
+	return []byte(output.String()), stderr.String(), strings.Join(commands, " && "), errors.Join(failures...)
+}
+
+func namedTestSelections(cases []caseDefinition) ([]testSelection, error) {
+	byPackage := make(map[string]map[string]bool)
+	for _, definition := range cases {
+		for _, qualified := range definition.Tests {
+			separator := strings.LastIndex(qualified, ".Test")
+			if separator < 0 {
+				return nil, fmt.Errorf("case %d has invalid test name %q", definition.Number, qualified)
+			}
+			packageName, testName := qualified[:separator], qualified[separator+1:]
+			if packageName == "" || testName == "" {
+				return nil, fmt.Errorf("case %d has invalid test name %q", definition.Number, qualified)
+			}
+			if byPackage[packageName] == nil {
+				byPackage[packageName] = make(map[string]bool)
+			}
+			byPackage[packageName][testName] = true
+		}
+	}
+	packages := make([]string, 0, len(byPackage))
+	for packageName := range byPackage {
+		packages = append(packages, packageName)
+	}
+	sort.Strings(packages)
+	selections := make([]testSelection, 0, len(packages))
+	for _, packageName := range packages {
+		tests := make([]string, 0, len(byPackage[packageName]))
+		for testName := range byPackage[packageName] {
+			tests = append(tests, testName)
+		}
+		sort.Strings(tests)
+		selections = append(selections, testSelection{Package: packageName, Tests: tests})
+	}
+	return selections, nil
+}
+
+func quotedTests(tests []string) []string {
+	quoted := make([]string, len(tests))
+	for index, testName := range tests {
+		quoted[index] = regexp.QuoteMeta(testName)
+	}
+	return quoted
+}
+
+func failureDetails(report evidence, runnerOutput, stderr string, runErr, decodeErr error) string {
+	var text strings.Builder
+	text.WriteString("adversarial evidence failed\n")
+	for _, result := range report.Cases {
+		for _, test := range result.Tests {
+			if test.Status != "pass" {
+				fmt.Fprintf(&text, "- case %d, %s.%s: %s\n", result.Number, test.Package, test.Test, test.Status)
+			}
+		}
+	}
+	if runErr != nil {
+		fmt.Fprintf(&text, "test command: %v\n", runErr)
+	}
+	if decodeErr != nil {
+		fmt.Fprintf(&text, "decode test events: %v\n", decodeErr)
+	}
+	if strings.TrimSpace(runnerOutput) != "" {
+		fmt.Fprintf(&text, "\nTest output:\n%s", runnerOutput)
+		if !strings.HasSuffix(runnerOutput, "\n") {
+			text.WriteByte('\n')
+		}
+	}
+	if strings.TrimSpace(stderr) != "" {
+		fmt.Fprintf(&text, "\nTest runner stderr:\n%s", stderr)
+		if !strings.HasSuffix(stderr, "\n") {
+			text.WriteByte('\n')
+		}
+	}
+	return text.String()
 }
 
 func stableMarkdown(report evidence) []byte {
@@ -180,7 +305,7 @@ func stableMarkdown(report evidence) []byte {
 	return []byte(text.String())
 }
 
-func markdown(report evidence, stderr string) []byte {
+func markdown(report evidence, runnerDetails string) []byte {
 	var text strings.Builder
 	fmt.Fprintf(&text, "# gitseq spike results\n\nOverall: **%s**\n\n", report.Status)
 	fmt.Fprintf(&text, "Environment: `%s`; `%s`\n\n", report.GoVersion, report.GitVersion)
@@ -198,8 +323,8 @@ func markdown(report evidence, stderr string) []byte {
 	for _, result := range report.Cases {
 		fmt.Fprintf(&text, "%d. %s\n", result.Number, result.Finding)
 	}
-	if strings.TrimSpace(stderr) != "" {
-		fmt.Fprintf(&text, "\n## Test runner stderr\n\n```text\n%s\n```\n", strings.TrimSpace(stderr))
+	if strings.TrimSpace(runnerDetails) != "" {
+		fmt.Fprintf(&text, "\n## Test runner details\n\n```text\n%s\n```\n", strings.TrimSpace(runnerDetails))
 	}
 	return []byte(text.String())
 }
