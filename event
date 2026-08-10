@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:da146c738ed0ce93c2656dc9f1442b71f6256f22","text":"Exact-head review invalidated this candidate; corrected candidate bac27ac58feb3179d941dc65fb8f36f50d1b6de6 replaces it at the same branch path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e43641f9dea72b597e336a8ffad2d3b1e00a961","text":"The prior readiness report names the changes-requested head 851bd1ad; corrected head bac27ac58feb3179d941dc65fb8f36f50d1b6de6 requires a fresh report and review."}
