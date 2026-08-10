@@ -363,8 +363,13 @@ function TopicList(props: WorkRenderProps & { topics: WorkTopic[] }) {
               <TopicCounts topic={topic} />
             </div>
             <p className="mt-1 text-[11px] text-faint">
-              written by {props.nameOf(topic.author)} · latest activity by {props.nameOf(topic.latestActor)} <EventTime timestamp={topic.latestTimestamp} />
+              written by {props.nameOf(topic.author)}
+              {topic.titleLabel && <> · title by {props.nameOf(topic.titleLabel.actor)}</>}
+              {" · "}latest activity by {props.nameOf(topic.latestActor)} <EventTime timestamp={topic.latestTimestamp} />
             </p>
+            {topic.aliases.length > 0 && <p className="mt-1 flex flex-wrap gap-1" aria-label="topic aliases">
+              {topic.aliases.map((alias) => <span key={alias.event} data-topic-alias={alias.value} title={`named by ${props.nameOf(alias.actor)}`} className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted">{alias.value}</span>)}
+            </p>}
             <TopicChange change={props.changes.get(topic.event)} nameOf={props.nameOf} />
           </button>
           {props.canPersonalize && <TopicFollowButton following={props.followed.has(topic.event)} onClick={() => props.onToggleFollowing(topic)} />}
