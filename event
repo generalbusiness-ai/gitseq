@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e04566e92c8e7f3120de16e8491c8c9ff8255d89","text":"Guarded merge artifact 42788a6f at exact main commit 579d7fce9008339138daf32d779f9e395d382d33 supersedes this reviewed branch candidate."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:31359627ee2783c724de077f455f7043a8ad549f","text":"The guarded merge superseded this candidate-backed readiness report; final completion is now reported against live merge artifact 42788a6f."}
