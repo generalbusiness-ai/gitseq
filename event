@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a55134ddf6a7ba121975d576bc04a5175d2a868e"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5d8319e2856a55e6a41662db0bea1b06d98e3d77","text":"Retire the malformed topic-label artifact pointer. Its expanded commit value did not match the actual 1cb91890 head; f42375fd records the exact full commit without changing behavior."}
