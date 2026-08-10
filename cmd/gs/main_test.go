@@ -557,14 +557,119 @@ func TestMergeGuardMergesOnlyRatifiedApprovedExactHead(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	approval := fixture.review(t)
 	fixture.ratify(t, approval)
+	targetPreHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
 	if err := mergeCommand(fixture.ctx, []string{
-		"--repo", fixture.repo, "--checkout", fixture.repo,
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
 		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Merge the approved feature and make it available on main.",
 	}); err != nil {
 		t.Fatal(err)
 	}
+	mergeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
 	if output, err := exec.Command("git", "-C", fixture.repo, "merge-base", "--is-ancestor", fixture.candidate, "HEAD").CombinedOutput(); err != nil {
 		t.Fatalf("approved candidate was not merged: %v: %s", err, output)
+	}
+	receipt, err := readMergeReceipt(fixture.ctx, fixture.repo, mergeHead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Approval != approval || receipt.Candidate != fixture.candidate || receipt.TargetPreHead != targetPreHead || receipt.MergeHead != mergeHead {
+		t.Fatalf("merge receipt = %+v", receipt)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", mergeReceiptRef(approval)); got != mergeHead {
+		t.Fatalf("receipt ref = %s, want %s", got, mergeHead)
+	}
+	var durable workroom.Statement
+	for _, statement := range fixture.snapshot(t).Projection.Statements {
+		if statement.Body["merge_approval"] == approval {
+			durable = statement
+		}
+	}
+	if durable.Event == "" || durable.Body["merge_candidate"] != fixture.candidate ||
+		durable.Body["merge_target_pre_head"] != targetPreHead || durable.Body["merge_head"] != mergeHead {
+		t.Fatalf("durable merge receipt = %+v", durable)
+	}
+}
+
+func TestMergeGuardConsumesApprovalOnceAcrossTargets(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	targetPreHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Merge the approved feature and make it available on main.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	firstMerge := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	secondTarget := filepath.Join(filepath.Dir(fixture.repo), "second-target")
+	testGit(t, fixture.repo, "worktree", "add", "-b", "second-target", secondTarget, targetPreHead)
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", secondTarget,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Attempt to merge the feature into a second target.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "already used") {
+		t.Fatalf("approval replay on another target error = %v", err)
+	}
+	if got := testGit(t, secondTarget, "rev-parse", "HEAD"); got != targetPreHead {
+		t.Fatalf("refused replay moved second target to %s, want %s", got, targetPreHead)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", mergeReceiptRef(approval)); got != firstMerge {
+		t.Fatalf("replay changed receipt ref to %s, want %s", got, firstMerge)
+	}
+	// The signed workroom receipt keeps the approval consumed even if a local
+	// receipt ref and the branch carrying the merge commit are both lost before
+	// another checkout tries to use it.
+	testGit(t, fixture.repo, "update-ref", "-d", mergeReceiptRef(approval), firstMerge)
+	testGit(t, fixture.repo, "update-ref", "refs/heads/main", targetPreHead, firstMerge)
+	err = mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", secondTarget,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Attempt to merge the feature after losing local receipts.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "durable merge receipt") {
+		t.Fatalf("approval replay after receipt-ref loss error = %v", err)
+	}
+}
+
+func TestMergeGuardRequiresPlainLanguageMergeText(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	targetPreHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+	})
+	if err == nil || !strings.Contains(err.Error(), "merge requires --text") {
+		t.Fatalf("missing merge text error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != targetPreHead {
+		t.Fatalf("missing merge text moved target to %s, want %s", got, targetPreHead)
+	}
+}
+
+func TestMergeGuardSerializesConcurrentApprovalUse(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	targetPreHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	// Model another merge process holding the repository-wide reservation.
+	testGit(t, fixture.repo, "update-ref", mergeReceiptRef(approval), targetPreHead, "")
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Attempt a concurrent merge of the approved feature.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "reserved or used") {
+		t.Fatalf("concurrent approval use error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != targetPreHead {
+		t.Fatalf("reservation refusal moved target to %s, want %s", got, targetPreHead)
 	}
 }
 
