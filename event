@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ce7673699b958221f91dd54621063b496f4fe986","text":"Retire this whole-tree candidate pointer: the behavior artifact must stay live because the documentation rests on it; the review candidate belongs at its branch path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f8132a78efbcf4d0a59a9548516f7c9fde00233","text":"Restore the implementation artifact because the documented behavior remains present and the new documentation cites it."}
