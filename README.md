@@ -16,10 +16,10 @@ make build
 ./bin/gs serve --repo /path/to/repo --listen 127.0.0.1:0
 ```
 
-To prompt your agents:
+Give your agents the [SKILL.md](SKILL.md), and prompt:
 ```
-Using the gitseq mcp server, check for work items and prioritize
-appropriately to keep work progressing.  Dispatch tasks to max 3
+Using the gitseq MCP, check for work items and prioritize
+appropriately to keep progressing.  Dispatch tasks to max 3
 subagents.  Continue checking every 10 minutes indefinitely.
 ```
 
