@@ -5,11 +5,13 @@ import type { Session } from "../lib/session";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic, type PersonalWorkMemory } from "../lib/memory";
 import { ticketsOf, type Selection, type Workroom } from "../lib/store";
 import {
+  attentionItemCounts,
   buildWorkProjection,
   filterPersonalWorkProjection,
   filterWorkProjection,
+  otherWorkAttentionLabel,
   topicChangeSince,
-  workActiveCount,
+  workCommitmentCounts,
   workItemNeedsAction,
   type WorkFilters,
   type WorkAttentionItem,
@@ -59,6 +61,7 @@ export function WorkView({
   const [filters, setFilters] = useState<WorkFilters>({ active: true, attention: true, closed: false });
   const [personalView, setPersonalView] = useState<PersonalWorkView>(initialPersonalView);
   const work = useMemo(() => (projection ? buildWorkProjection(projection) : undefined), [projection]);
+  const counts = useMemo(() => workCommitmentCounts(projection), [projection]);
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
   const durableEvents = useMemo(
     () => new Set((projection?.statements ?? []).map((statement) => statement.event)),
@@ -158,11 +161,24 @@ export function WorkView({
               label="Active"
               description="All actors: available (open), in progress (promised), and review (reported)."
               checked={filters.active}
-              count={workActiveCount(projection)}
+              count={counts.active}
               onChange={(value) => updateFlag("active", value)}
             />
-            <FilterCheck label="Attention" checked={filters.attention} count={(work?.topics.reduce((sum, topic) => sum + topic.attentionCount, 0) ?? 0) + (work?.attention.length ?? 0)} tone="danger" onChange={(value) => updateFlag("attention", value)} />
-            <FilterCheck label="Closed" checked={filters.closed} count={work?.topics.reduce((sum, topic) => sum + topic.closedCount, 0)} onChange={(value) => updateFlag("closed", value)} />
+            <FilterCheck
+              label="Attention"
+              description={`Stale or disputed, which is a qualifier rather than a status: ${counts.attention} of ${counts.total} commitments, most of them also counted as active or closed. Separately, ${otherWorkAttentionLabel(attentionItemCounts(work?.attention ?? []))} need attention.`}
+              checked={filters.attention}
+              count={counts.attention}
+              tone="danger"
+              onChange={(value) => updateFlag("attention", value)}
+            />
+            <FilterCheck
+              label="Closed"
+              description="All actors: satisfied, withdrawn, cancelled or reneged."
+              checked={filters.closed}
+              count={counts.closed}
+              onChange={(value) => updateFlag("closed", value)}
+            />
           </fieldset>
           {me && <fieldset className="flex items-center gap-1.5" aria-label="Personal work filters">
             <legend className="sr-only">Personal work filters</legend>
