@@ -6,10 +6,11 @@ strengthen review cycles, or build traceability into existing processes.
 
 Blog: [Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
 
-Follow [docs/getting-started.md](docs/getting-started.md) for
-first-time initialization.
+Follow [Getting started](docs/getting-started.md) for first-time
+initialization.  Heads-up: in this preview the one-time [`gs init`](docs/reference/gs/init.md)
+(to initialize gitseq in a git repo) is a bit of a chore.
 
-To run the server:
+To run a local server (including its web UI):
 ```
 make build
 ./bin/gs serve --repo /path/to/repo --listen 127.0.0.1:0
