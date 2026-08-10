@@ -1737,7 +1737,7 @@ func TestReferencePageAgreesThatRetiredPrincipalsStayOnTheRoster(t *testing.T) {
 		t.Fatalf("retired principal projection = %+v (listed %v)", state, listed)
 	}
 
-	page, err := os.ReadFile("../../docs/reference.md")
+	page, err := os.ReadFile("../../docs/concepts/actors.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1749,13 +1749,13 @@ func TestReferencePageAgreesThatRetiredPrincipalsStayOnTheRoster(t *testing.T) {
 		"no longer on the roster",
 	} {
 		if strings.Contains(unwrapped, contradiction) {
-			t.Errorf("docs/reference.md says a retired principal is %q, but the fold keeps it listed", contradiction)
+			t.Errorf("docs/concepts/actors.md says a retired principal is %q, but the fold keeps it listed", contradiction)
 		}
 	}
 	if !strings.Contains(unwrapped, "is left on the roster with `retired: true` and no roles") {
-		t.Error("docs/reference.md no longer states what retiring a seeded membership actually leaves behind")
+		t.Error("docs/concepts/actors.md no longer states what retiring a seeded membership actually leaves behind")
 	}
 	if !strings.Contains(unwrapped, "from `[participant]` to retired with no roles") {
-		t.Error("docs/reference.md no longer states what superseding a membership actually leaves behind")
+		t.Error("docs/concepts/actors.md no longer states what superseding a membership actually leaves behind")
 	}
 }

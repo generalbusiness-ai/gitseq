@@ -1,0 +1,114 @@
+---
+title: Publish and audit
+summary: Share the sequence, and verify it from a clone you did not create.
+rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9ed176d95eeb6777c0a3538cc8e400684184b68
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d53a83b7b606df6a80335f6257d59a4093681dfc
+---
+
+# Publish and audit
+
+The strongest check on a workroom is that a stranger with nothing but a
+clone can confirm it: no service, no chat logs, no trust in you.
+
+Both halves have to be arranged. Git ignores `refs/seq/*` on push and on
+fetch, so an unpublished sequence looks exactly like a missing ref.
+
+## Set up a workroom with something in it
+
+```sh
+REPO="$(mktemp -d)/project"
+git init -q "$REPO"
+git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
+BASE=$(git -C "$REPO" branch --show-current)
+GENESIS=$(gs init --repo "$REPO" --operator alice \
+  | sed -n 's/.*"genesis": *"\([^"]*\)".*/\1/p')
+SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")"
+
+gs state --repo "$REPO" --as alice --kind assert \
+  --text 'The pricing decision holds until the next review' \
+  --rests-on "$SEED"
+```
+
+## Publish
+
+```sh
+ORIGIN="$(mktemp -d)/origin.git"
+git init -q --bare "$ORIGIN"
+git -C "$REPO" remote add origin "$ORIGIN"
+git -C "$REPO" push -q origin "$BASE"
+git -C "$REPO" push origin 'refs/seq/*:refs/seq/*'
+```
+
+The refspec has no leading `+`, deliberately. A sequence only ever
+advances, so publishing is always a fast-forward. A push git refuses is
+telling you the remote holds something your copy does not; forcing it
+would rewind published history, and in a record whose whole purpose is
+that positions are final, that is the one thing you must not be able to
+do out of habit.
+
+Publish whenever you want others to see new events. It is the step that
+makes the record shared rather than local.
+
+## Audit
+
+```sh
+AUDIT="$(mktemp -d)/audit"
+git clone -q "$ORIGIN" "$AUDIT"
+gs attach --repo "$AUDIT" --remote origin --genesis "$GENESIS"
+```
+
+`attach` adds a non-forcing `refs/seq/*` fetch rule, fetches atomically,
+and then verifies. If an older build left a forced rule behind, `attach`
+replaces it first.
+
+Now read the record as an outsider:
+
+```sh
+gs verify --repo "$AUDIT"
+gs status --repo "$AUDIT"
+```
+
+`verify` checks every actor signature, every sequencer signature, and the
+integrity of the sequence, and reports the genesis, head, depth and event
+count. It is an explicit full audit and never consults a resident's
+cache.
+
+Walk any event back through what it rests on:
+
+```sh
+EVENT=$(gs status --repo "$AUDIT" --json \
+  | sed -n 's/.*"event": *"\([^"]*\)".*/\1/p' | tail -1)
+gs provenance --repo "$AUDIT" "$EVENT"
+```
+
+## Fetching again later
+
+The rule `attach` installs is non-forcing, so ordinary `git fetch` and
+later `attach` runs accept an initial fetch or a fast-forward and nothing
+else. A remote that has rewound is rejected, and the auditor's existing
+`refs/seq/*` frontier does not move:
+
+```sh
+gs attach --repo "$AUDIT" --remote origin --genesis "$GENESIS"
+```
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| `attach` reports a missing `refs/seq/...` ref | The sequence was never published. Push it, then rerun `attach` in the clone you already have. |
+| `git fetch` fails on a sequence ref | The remote rewound. Your frontier is intact; find out what happened upstream. |
+| The clone warns that it is empty | Only `refs/seq/*` was pushed and no branch. Harmless for auditing. |
+
+## Leaving
+
+An attached clone is read-only unless local actor custody and a sequencer
+endpoint are configured. Delete `.git/gitseq` and the extra `refs/seq/*`
+fetch rule and you have an ordinary git repository.
+
+## See also
+
+- [`gs attach`](../reference/gs/attach.md),
+  [`gs verify`](../reference/gs/verify.md),
+  [`gs provenance`](../reference/gs/provenance.md)

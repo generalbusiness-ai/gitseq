@@ -1,0 +1,167 @@
+---
+title: gs status
+summary: Project the current state of the workroom, bounded by default.
+rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1e07c1f654274392a11ac43943211dd9609f0205
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a40ed6053a0bb5c1eeed9febb540498d4258799f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cccadaa785ee972d3154690bb4ad262d1dcd9633
+---
+
+# `gs status`
+
+Runs the fold over the sequence and prints what is current and
+actionable: commitments and who they wait on, artifacts and their
+staleness, and the acts that took no force.
+
+The default view is **bounded**. Everything is still there — `--all` and
+`--json` render it — but a workroom accumulates satisfied commitments and
+retired artifacts forever, so the default answers "what now" rather than
+"what ever".
+
+## Flags
+
+| flag | default | meaning |
+|---|---|---|
+| `--repo` | `.` | The repository holding the workroom. |
+| `--all` | `false` | Render the complete commitment, artifact and attempt tables instead of the bounded view. |
+| `--json` | `false` | Emit the complete snapshot as JSON, with no human view. |
+| `--server` | | Read from a resident service instead of folding locally, falling back to the local read if that fails. |
+
+`--all` and `--json` are mutually exclusive; asking for both is refused.
+
+## Example
+
+```sh
+REPO="$(mktemp -d)/project"
+git init -q "$REPO"
+GENESIS=$(gs init --repo "$REPO" --operator alice \
+  | sed -n 's/.*"genesis": *"\([^"]*\)".*/\1/p')
+gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
+SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")"
+gs state --repo "$REPO" --as alice --kind request \
+  --text 'Add a changelog' --body to=@bot --body conditions='it exists' \
+  --rests-on "$SEED" >/dev/null
+
+gs status --repo "$REPO"
+gs status --repo "$REPO" --all | head -5
+gs status --repo "$REPO" --json | head -5
+```
+
+## The bounded view
+
+The header names the frontier, its depth, and where the answer came
+from — `verified local`, `resident summary`, or `verified local
+fallback`. Then a line of totals, and five sections:
+
+| Section | What is in it |
+|---|---|
+| Actionable commitments | Commitments someone can advance now: `open`, `requested`, `promised`, `reported`. |
+| Needs attention | Live commitments in any other state — stale, reneged, cancelled, dangling. |
+| Current artifacts | Artifacts that are neither retired nor stale. |
+| Stale artifacts | Artifacts that were retired, and artifacts a retirement reached. |
+| Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
+
+Staleness qualifies a commitment rather than replacing its status. A
+reported commitment whose basis was retired still reads `reported`,
+still sits with the work awaiting review, and gains a `(stale)` mark;
+the totals count it in both `reported N` and the `(M stale)` beside it.
+A satisfied or withdrawn commitment whose basis moved appears under
+"Needs attention", because the outcome is worth re-checking. A
+commitment that was never reported has no outcome to preserve, so its
+status is `stale` outright and the mark is not repeated.
+
+Satisfied and withdrawn commitments are finished, and are counted in the
+totals rather than listed.
+
+Each list keeps the **newest 20** entries and says exactly how many older
+ones it omitted — "Showing 20 of 500; 480 older omitted" — so a shortened
+list never reads as a complete one. Request text is normalized to one
+line and capped at 240 bytes. The exact numbers are in
+[Limits](../limits.md).
+
+An unclaimed request shows as `unclaimed` rather than inventing a debt
+against someone who has not promised anything.
+
+Artifact rows carry a state and any notes:
+
+| State | Meaning |
+|---|---|
+| `current` | It stands, and nothing under it has been retired. |
+| `retired` | This artifact was itself superseded. |
+| `stale` | A basis was retired. Re-check the thing it describes. |
+
+Both non-current states are listed under stale artifacts, because to a
+reader looking for what is current they mean the same thing: not this
+one. They are named apart because a withdrawn pointer and a moved world
+call for different work.
+
+| Note | Meaning |
+|---|---|
+| `describes a superseded world` | The retired ancestor was itself an artifact, so the implementation has been replaced. |
+| `unable to flare` | It cites nothing resolvable, so nothing could ever make it stale. Its silence is not currency. |
+| `succession not recorded` | An earlier artifact for the identical path is still live — a probable forgotten supersession. |
+
+## `--all`
+
+The complete human-readable tables: every commitment, every artifact,
+every non-effective attempt, with no cap. The artifact summary under that
+table reports both the number of rows and the number of supersessions
+**actually owed**. Those differ: one forgotten retirement at a long-lived
+path repeats on every later link of the chain, so the row count
+overstates how many situations there are to fix.
+
+## `--json`
+
+The complete snapshot: the `genesis`, `head` and `depth`, the whole
+`projection` — `decisions`, `acts`, `statements`, `commitments`,
+`artifacts`, `actors`, `provenance` and the counts — and the
+`vocabulary` in force. Use it when you need whole event identifiers,
+which both human views abbreviate for reading.
+
+## `--server`
+
+`--server http://127.0.0.1:7777` asks a resident service for the answer
+instead of folding the log here. The URL must be an HTTP **loopback**
+address with no credentials, path, query or fragment; anything else is
+refused outright.
+
+The default view is read from the resident's bounded summary endpoint.
+That read is deliberately narrow: no redirects are followed, the response
+is limited to 64 KiB and the request to two seconds, and the returned
+genesis, head, depth and cursor must still match the workroom selected
+here. `--all` and `--json` use the resident's full response instead, with
+a larger limit and a longer deadline.
+
+A refusal, a timeout, an oversized response, a stale head, or a head that
+moves while the answer is being read is **named on standard error** and
+the command then does the verified local read instead. The header says
+`verified local fallback`, so a fallback answer is never presented as a
+resident one.
+
+## Cost
+
+The local read consumes a sequencer-signed checkpoint and verifies the
+tail that descends from it. If no checkpoint is usable it performs the
+ordinary full audit, and prints a progress line after one second rather
+than appearing to hang. [`gs verify`](verify.md) never takes the
+checkpoint shortcut: it always audits the whole sequence.
+
+## Local worktrees
+
+The browser view served by a resident also reports local checkout state.
+It names the served checkout's own absolute path, so a reader can tell
+which repository the page is showing, and otherwise emits only checkout
+basenames, branch and HEAD, and explicit clean, dirty, detached, bare,
+locked, prunable or unavailable state. Disclosing the served path is safe
+because [`gs serve`](serve.md) refuses any listen address that is not
+loopback: whoever is reading the page is already on the host it names.
+
+None of that is part of the durable projection. A checkout associated
+with a commitment only through a commit's `Rests-On:` trailer is marked
+**unverified trailer**, because trailer text is not an actor-signed
+statement.
+
+## See also
+
+- [`gs provenance`](provenance.md), [`gs verify`](verify.md)
+- [Staleness](../../concepts/staleness.md)

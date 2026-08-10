@@ -1,9 +1,13 @@
-.PHONY: test race vet build ui ui-check spike
+.PHONY: test race vet build ui ui-check docs spike
 
 GO ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
 
 test:
 	$(GO) test ./...
+
+# The four documentation gates on their own. `make test` runs them too.
+docs:
+	$(GO) test ./internal/docset/...
 
 race:
 	$(GO) test -race ./...
