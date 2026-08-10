@@ -3,6 +3,7 @@ title: gs supersede
 summary: Retire an act, and propagate staleness to everything resting on it.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:718c16a257eeed209434c18e85ca605ed779bf90
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:de8f9a5e18097414d9a96c259340d7ca876e11da
 ---
 
 # `gs supersede`
@@ -66,6 +67,10 @@ forever. Do it as early as you know you cannot keep it.
 
 **Revoking authority.** [`gs role-revoke`](role-revoke.md) is a
 supersession of a roster grant, with the derived-role handling built in.
+The founding operator seed cannot be retired. Other governance changes
+require current authority for their target: changing an operator grant,
+or membership carrying a live or dormant operator grant, requires an
+`operator` rather than an ordinary `ratifier`.
 
 ## The first-basis rule
 
@@ -78,7 +83,9 @@ it is ineffective.
 
 Superseding a supersession restores the earlier act, and everything that
 went stale because of it becomes current again. Liveness is current and
-moves; decisions are history and do not.
+moves; decisions are history and do not. Governance restoration is the
+exception to ordinary author-owned supersession: its target-class
+authority is checked again at the time of restoration.
 
 ## See also
 

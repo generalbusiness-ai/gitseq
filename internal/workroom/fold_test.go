@@ -491,6 +491,156 @@ func TestMembershipRevocationRevokesDependentAuthority(t *testing.T) {
 	}
 }
 
+func TestFoundingOperatorSeedCannotBeRetired(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaSupersede, Supersede{Target: "e0", Text: "retire the founder"}, "e0"),
+	})
+	decision, _ := projection.Decision("e1")
+	if decision.Verdict != Ineffective || decision.Reason != "founding operator seed cannot be retired" {
+		t.Fatalf("founder retirement = %+v", decision)
+	}
+	if actor := projection.Actors[operator]; actor.Retired || !contains(actor.Roles, "operator") {
+		t.Fatalf("founder after attempted retirement = %+v", actor)
+	}
+}
+
+func TestRatifierCannotRetireOperatorMembershipBasis(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRoster, Text: "agent becomes operator", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "operator"}}, "e1"),
+		event(t, "e4", operator, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+		event(t, "e5", operator, SchemaState, State{Kind: KindRoster, Text: "other joins", Body: map[string]string{"actor": other, "kind": "agent", "name": "Other", "role": "participant"}}, "e0"),
+		event(t, "e6", operator, SchemaRatify, Ratify{Target: "e5"}, "e5"),
+		event(t, "e7", operator, SchemaState, State{Kind: KindRoster, Text: "other becomes ratifier", Body: map[string]string{"actor": other, "kind": "agent", "name": "Other", "role": "ratifier"}}, "e5"),
+		event(t, "e8", operator, SchemaRatify, Ratify{Target: "e7"}, "e7"),
+		event(t, "e9", other, SchemaSupersede, Supersede{Target: "e1", Text: "remove the operator"}, "e1"),
+	})
+	decision, _ := projection.Decision("e9")
+	if decision.Verdict != Ineffective || decision.Reason != "operator standing is required to change an operator's membership" {
+		t.Fatalf("lower-standing retirement = %+v", decision)
+	}
+	if actor := projection.Actors[agent]; actor.Retired || !contains(actor.Roles, "operator") {
+		t.Fatalf("operator after lower-standing retirement = %+v", actor)
+	}
+}
+
+func TestAuthorityGrantCannotBeSelfRatified(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "ratifier joins", Body: map[string]string{"actor": other, "name": "Other", "role": "ratifier"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", other, SchemaState, State{Kind: KindRoster, Text: "self-conferral", Body: map[string]string{"actor": other, "kind": "agent", "name": "Other", "role": "operator"}}, "e1"),
+		event(t, "e4", other, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+	})
+	decision, _ := projection.Decision("e4")
+	if decision.Verdict != Ineffective || decision.Reason != "authority grant cannot be authored or ratified by its beneficiary" {
+		t.Fatalf("self-ratified authority = %+v", decision)
+	}
+	if roles := projection.Actors[other].Roles; contains(roles, "operator") {
+		t.Fatalf("self-ratification conferred operator: %#v", roles)
+	}
+}
+
+func TestAuthorityGrantCannotBeSelfAuthored(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRoster, Text: "other joins", Body: map[string]string{"actor": other, "name": "Other", "role": "ratifier"}}, "e0"),
+		event(t, "e4", operator, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+		event(t, "e5", agent, SchemaState, State{Kind: KindRoster, Text: "write a spare grant", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "operator"}}, "e1"),
+		event(t, "e6", other, SchemaRatify, Ratify{Target: "e5"}, "e5"),
+	})
+	decision, _ := projection.Decision("e6")
+	if decision.Verdict != Ineffective || decision.Reason != "authority grant cannot be authored or ratified by its beneficiary" {
+		t.Fatalf("self-authored authority = %+v", decision)
+	}
+	if roles := projection.Actors[agent].Roles; contains(roles, "operator") {
+		t.Fatalf("self-authored grant conferred operator: %#v", roles)
+	}
+}
+
+func TestRatifierCannotMintOperatorForAnotherActor(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "ratifier joins", Body: map[string]string{"actor": other, "name": "Other", "role": "ratifier"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e4", operator, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+		event(t, "e5", other, SchemaState, State{Kind: KindRoster, Text: "mint a second operator", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "operator"}}, "e3"),
+		event(t, "e6", other, SchemaRatify, Ratify{Target: "e5"}, "e5"),
+	})
+	decision, _ := projection.Decision("e6")
+	if decision.Verdict != Ineffective || decision.Reason != "operator standing is required to ratify an operator grant" {
+		t.Fatalf("ratifier-minted operator = %+v", decision)
+	}
+	if roles := projection.Actors[agent].Roles; contains(roles, "operator") {
+		t.Fatalf("ratifier minted operator for another actor: %#v", roles)
+	}
+}
+
+func TestDormantOperatorGrantCannotBeRevivedWithoutPresentAuthority(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "other becomes operator", Body: map[string]string{"actor": other, "name": "Other", "role": "operator"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", other, SchemaSupersede, Supersede{Target: "e1", Text: "step down"}, "e1"),
+		event(t, "e4", other, SchemaSupersede, Supersede{Target: "e3", Text: "restore hidden operator grant"}, "e3"),
+	})
+	decision, _ := projection.Decision("e4")
+	if decision.Verdict != Ineffective || decision.Reason != "operator standing is required to restore an operator grant" {
+		t.Fatalf("dormant operator revival = %+v", decision)
+	}
+	if actor := projection.Actors[other]; !actor.Retired || contains(actor.Roles, "operator") {
+		t.Fatalf("actor after dormant revival attempt = %+v", actor)
+	}
+}
+
+func TestDormantOperatorGrantCannotBeRevivedThroughMembershipRestoration(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRoster, Text: "agent becomes operator", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "operator"}}, "e1"),
+		event(t, "e4", operator, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+		event(t, "e5", operator, SchemaState, State{Kind: KindRoster, Text: "other joins", Body: map[string]string{"actor": other, "name": "Other", "role": "ratifier"}}, "e0"),
+		event(t, "e6", operator, SchemaRatify, Ratify{Target: "e5"}, "e5"),
+		event(t, "e7", operator, SchemaSupersede, Supersede{Target: "e1", Text: "remove operator membership"}, "e1"),
+		event(t, "e8", other, SchemaSupersede, Supersede{Target: "e7", Text: "revive dormant operator"}, "e7"),
+	})
+	decision, _ := projection.Decision("e8")
+	if decision.Verdict != Ineffective || decision.Reason != "operator standing is required to restore operator-bearing membership" {
+		t.Fatalf("membership restoration = %+v", decision)
+	}
+	if actor := projection.Actors[agent]; !actor.Retired || contains(actor.Roles, "operator") {
+		t.Fatalf("operator revived through membership = %+v", actor)
+	}
+}
+
+func TestRosterProjectsRetiredAndDormantAuthoritySources(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRoster, Text: "grant ratifier", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "ratifier"}}, "e1"),
+		event(t, "e4", operator, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+		event(t, "e5", operator, SchemaSupersede, Supersede{Target: "e3", Text: "retire ratifier grant"}, "e3"),
+		event(t, "e6", operator, SchemaState, State{Kind: KindRoster, Text: "grant operator", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "operator"}}, "e1"),
+		event(t, "e7", operator, SchemaRatify, Ratify{Target: "e6"}, "e6"),
+		event(t, "e8", operator, SchemaSupersede, Supersede{Target: "e1", Text: "retire membership"}, "e1"),
+	})
+	actor := projection.Actors[agent]
+	if got := actor.RetiredRoleSources["ratifier"]; len(got) != 1 || got[0] != "e3" {
+		t.Fatalf("retired role sources = %#v", actor.RetiredRoleSources)
+	}
+	if got := actor.DormantRoleSources["operator"]; len(got) != 1 || got[0] != "e6" {
+		t.Fatalf("dormant role sources = %#v", actor.DormantRoleSources)
+	}
+}
+
 func TestModernOperatorGrantPreservesAgentKindAndMembershipBasis(t *testing.T) {
 	projection := Fold([]Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
@@ -932,7 +1082,7 @@ func TestRosterCannotBeRedefinedToEscalateAuthority(t *testing.T) {
 		t.Fatalf("roster redefinition ratification = %+v", ratification)
 	}
 	escalation, _ := projection.Decision("g0r")
-	if escalation.Verdict != Ineffective || escalation.Reason != "actor lacks ratifier role" {
+	if escalation.Verdict != Ineffective || escalation.Reason != "authority grant cannot be authored or ratified by its beneficiary" {
 		t.Fatalf("self-ratified grant = %+v", escalation)
 	}
 	if roles := projection.Actors[agent].Roles; contains(roles, "operator") || contains(roles, "ratifier") {

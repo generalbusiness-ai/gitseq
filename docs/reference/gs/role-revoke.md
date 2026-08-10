@@ -3,6 +3,7 @@ title: gs role-revoke
 summary: Retire an explicit role grant, and everything derived from it.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6918582b884b2f82fa7ab64242f40d12de845c39
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:de8f9a5e18097414d9a96c259340d7ca876e11da
 ---
 
 # `gs role-revoke`
@@ -52,11 +53,16 @@ is retired.
 ## Reversible
 
 Retirement can itself be retired. Superseding the supersession brings the
-authority back, without anyone appending a new grant. "This grant confers
-nothing" is a statement about right now, never a permanent fact.
+authority back, without anyone appending a new grant, only when the actor
+still holds the authority required for that target. Restoring an operator
+grant, or membership carrying a dormant operator grant, requires a current
+`operator`. The check is made at restoration time.
 
 To remove someone entirely, retire the **membership** instead: one
 supersede, and every non-membership role that named it goes with it.
+The JSON status projection lists inactive evidence under
+`dormant_role_sources` and `retired_role_sources`, so an operator can audit
+whether any grant remains able to confer after a later restoration.
 
 ## See also
 

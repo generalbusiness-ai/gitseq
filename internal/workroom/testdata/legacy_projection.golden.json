@@ -181,7 +181,9 @@
         "participant": [
           "e1"
         ]
-      }
+      },
+      "dormant_role_sources": {},
+      "retired_role_sources": {}
     },
     "actor:operator": {
       "name": "Human",
@@ -199,7 +201,9 @@
         "participant": [
           "e0"
         ]
-      }
+      },
+      "dormant_role_sources": {},
+      "retired_role_sources": {}
     }
   },
   "provenance": {
