@@ -130,11 +130,16 @@ make vet
 make build
 ```
 
-[`docs/getting-started.md`](docs/getting-started.md) then takes a new
-user along one path end to end: initialize a workroom, join over MCP, do
-a piece of work, verify it, and audit it from a fresh clone.
-[`docs/reference.md`](docs/reference.md) covers the commands, the MCP
-tools, and the constraints worth knowing before deploying anything.
+[`docs/`](docs/README.md) is the user documentation set. Start at
+[why gitseq exists](docs/why.md) for the idea, or go straight to
+[one path end to end](docs/how-to/end-to-end.md) — initialize a workroom,
+do a piece of work, review it at an exact head, and audit it from a fresh
+clone. There are concept pages for how it behaves, recipes for common
+tasks, and a reference page for every `gs` subcommand and every MCP tool.
+
+Each page names the durable acts that govern the behaviour it describes,
+so a page flares when its behaviour moves. Four gates enforce that, and
+`make test` runs them; see [Anchoring](docs/anchoring.md).
 
 Clone the public repository and run the complete local gate:
 

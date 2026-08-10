@@ -385,6 +385,28 @@ func Summarize(tool string, value any) string {
 			shaped.Totals.Depth, len(shaped.Durable), skipped, reset,
 			Shown(len(shaped.CurrentAvailableToYou), shaped.CurrentAvailableToSkipped),
 			Shown(len(shaped.CurrentWaitingOnYou), shaped.CurrentWaitingSkipped), Shown(len(shaped.CurrentNotActionable), shaped.CurrentNotActionableSkipped))
+	case WorkPage:
+		suffix := ""
+		if shaped.Remaining > 0 {
+			suffix = fmt.Sprintf(", %d remain", shaped.Remaining)
+		}
+		return fmt.Sprintf("depth %d, %d of %d matching work items returned%s", shaped.Frontier.Depth, shaped.Returned, shaped.MatchingTotal, suffix)
+	case ItemInspection:
+		kind := "event"
+		if shaped.Statement != nil {
+			kind = string(shaped.Statement.Kind)
+		} else if shaped.Act != nil {
+			kind = shaped.Act.Type
+		}
+		verdict := "without a decision"
+		if shaped.Decision != nil {
+			verdict = "decision " + string(shaped.Decision.Verdict)
+		}
+		return fmt.Sprintf("inspected %s at depth %d: %s, %s provenance bases, %s related artifacts, %s related reviews",
+			kind, shaped.Frontier.Depth, verdict,
+			Shown(len(shaped.ProvenanceBases), shaped.ProvenanceBasesOmitted),
+			Shown(len(shaped.RelatedArtifacts), shaped.RelatedArtifactsOmitted),
+			Shown(len(shaped.RelatedReviews), shaped.RelatedReviewsOmitted))
 	default:
 		return tool + " ok"
 	}

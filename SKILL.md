@@ -39,6 +39,18 @@ Every durable event cites its basis in `rests_on`.
   gone, durable state is not. If the resident service is unavailable,
   durable status and waiting continue with a `degraded` live cursor;
   presence and `say` do not pretend to survive.
+- `work {lanes?, statuses?, stale?, limit?, cursor?}` — a bounded,
+  resident-side query for your durable work. With no filters it includes
+  current open, promised, and reported commitments, including open requests
+  addressed to you, plus stale commitments in every lifecycle state. Settled
+  non-stale history is available through an explicit status filter. Lanes,
+  statuses, and staleness are finite choices, not an expression language. A
+  continuation is tied to the exact durable head and filters; when the head
+  moves, begin again without the old cursor.
+- `inspect {event}` — one exact canonical durable event with its decision,
+  commitment chain, direct provenance, and related artifacts and reviews.
+  Use it after `work` instead of transferring the full projection merely to
+  understand one item.
 - `say {about, text}` — ephemeral frame in the conversation anchored
   at `about` (minted if none is open).
 - `state {kind, text, body?, rests_on, evidence?}` — durable utterance.
@@ -98,8 +110,10 @@ promise stays in history as kept faith, not fault.
 5. **Ephemeral is not secret.** Never put secrets in either channel.
 6. **Idempotency is handled.** A replay report means your act already
    landed; don't submit a variant.
-7. **Follow, then act.** `status`, then `wait` in a loop while
-   working alongside others.
+7. **Follow, then act.** Use `status` once to orient, pass its cursor to
+   `wait`, and use `work` plus `inspect` for selective follow-up while working
+   alongside others. Fetch the full status again only when you need a new
+   orientation rather than one work item.
 8. **Bridge real work.** An implementing source commit carries
    `Rests-On: <decision-event>`; then `state {kind: artifact}` cites
    both the commit and its governing decisions. Unbridged work is

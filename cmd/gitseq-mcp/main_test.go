@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -69,14 +70,26 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 	if result["resultType"] != "complete" {
 		t.Fatalf("tool list has no complete result type: %#v", result)
 	}
-	if got := len(result["tools"].([]any)); got != 8 {
+	if got := len(result["tools"].([]any)); got != 10 {
 		t.Fatalf("got %d tools", got)
 	}
+	listed := make(map[string]map[string]any)
 	for _, tool := range result["tools"].([]any) {
-		schema := tool.(map[string]any)["inputSchema"].(map[string]any)
+		definition := tool.(map[string]any)
+		listed[definition["name"].(string)] = definition
+		schema := definition["inputSchema"].(map[string]any)
 		if properties, exists := schema["properties"]; exists && properties == nil {
 			t.Fatalf("tool schema contains properties:null: %#v", tool)
 		}
+	}
+	for _, name := range []string{"work", "inspect"} {
+		if listed[name] == nil {
+			t.Fatalf("selective tool %q is missing: %#v", name, listed)
+		}
+	}
+	workProperties := listed["work"]["inputSchema"].(map[string]any)["properties"].(map[string]any)
+	if workProperties["lanes"] == nil || workProperties["statuses"] == nil || workProperties["cursor"] == nil {
+		t.Fatalf("work schema does not expose finite filters and continuation: %#v", workProperties)
 	}
 	var callResponse map[string]any
 	if err := json.Unmarshal([]byte(lines[2]), &callResponse); err != nil {
@@ -375,6 +388,21 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 		t.Fatalf("unexpected degraded wait response: %+v", delta)
 	}
 
+	worked, err := server.call(context.Background(), toolCall{Name: "work", Arguments: map[string]any{"limit": 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page := worked.(statusview.WorkPage); !page.Degraded || page.Frontier.Depth != 2 || page.Actor.Fingerprint != workspace.Config.Actors["human"].Fingerprint {
+		t.Fatalf("unexpected degraded work page: %+v", page)
+	}
+	inspected, err := server.call(context.Background(), toolCall{Name: "inspect", Arguments: map[string]any{"event": genesis.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item := inspected.(statusview.ItemInspection); !item.Degraded || item.Event != genesis.ID || item.Decision == nil {
+		t.Fatalf("unexpected degraded inspection: %+v", item)
+	}
+
 	projection, err := workspace.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -387,6 +415,64 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("offline durable state did not project: %+v", projection.Projection.Decisions)
+	}
+}
+
+func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
+	workspace := initRepository(t, "repo")
+	resident, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var paths []string
+	httpServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		mu.Lock()
+		paths = append(paths, request.URL.Path)
+		mu.Unlock()
+		if request.URL.Path == "/v0/status" {
+			http.Error(response, "selective tools must not fetch the full projection", http.StatusInternalServerError)
+			return
+		}
+		resident.Handler().ServeHTTP(response, request)
+	}))
+	defer httpServer.Close()
+
+	server, attached := attachedServer(t, workspace, "human", httpServer.URL, httpServer.Client())
+	// This test concerns query routing, not presence or the sole-identity gate.
+	// Mark the already-attached test session as joined so those independent
+	// calls cannot obscure which endpoints work and inspect choose.
+	attached.checked = true
+	attached.announced = true
+
+	value, err := server.call(context.Background(), toolCall{Name: "work", Arguments: map[string]any{"limit": 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, ok := value.(statusview.WorkPage)
+	if !ok || page.Frontier.Head == "" || page.Actor.Fingerprint != workspace.Config.Actors["human"].Fingerprint {
+		t.Fatalf("unexpected selective work response: %#v", value)
+	}
+
+	snapshot, err := workspace.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := snapshot.Projection.Actors[workspace.Config.Actors["human"].Fingerprint].MembershipEvent
+	value, err = server.call(context.Background(), toolCall{Name: "inspect", Arguments: map[string]any{"event": event}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inspection, ok := value.(statusview.ItemInspection)
+	if !ok || inspection.Event != event || inspection.Statement == nil || inspection.Decision == nil {
+		t.Fatalf("unexpected exact inspection response: %#v", value)
+	}
+
+	mu.Lock()
+	gotPaths := append([]string(nil), paths...)
+	mu.Unlock()
+	if strings.Join(gotPaths, ",") != "/v0/work-query,/v0/inspect" {
+		t.Fatalf("selective tools used the wrong resident routes: %v", gotPaths)
 	}
 }
 
@@ -730,6 +816,69 @@ func TestPresenceRenewalRunsBesideCalls(t *testing.T) {
 	}()
 	working.Wait()
 	server.depart(context.Background())
+}
+
+// One identity, one live session. A second instance under the same name would
+// make the log say a name did work that one of several instances did, and
+// would satisfy the different-agent review rule by spelling alone.
+func TestSecondInstanceRefusesToShareALiveIdentity(t *testing.T) {
+	workspace := initRepository(t, "repo")
+	if _, _, err := workspace.AddActor(context.Background(), "human", "claude.2", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	workroomServer, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(workroomServer.Handler())
+	defer httpServer.Close()
+	if _, err := workspace.PublishResident(httpServer.URL); err != nil {
+		t.Fatal(err)
+	}
+
+	first := newServer("human", workspace.Repo)
+	if _, err := first.attend(context.Background(), ""); err != nil {
+		t.Fatalf("first instance refused a free identity: %v", err)
+	}
+	second := newServer("human", workspace.Repo)
+	_, err = second.attend(context.Background(), "")
+	var shared *sharedIdentityError
+	if !errors.As(err, &shared) || !strings.Contains(err.Error(), "already live") {
+		t.Fatalf("second instance under one identity = %v", err)
+	}
+	if !strings.Contains(err.Error(), actorEnvironment) {
+		t.Fatalf("refusal does not say how to fix it: %v", err)
+	}
+	// The refusal has to hold on every call, not only the first: a session
+	// that was turned away at the door must not act through a cached
+	// attachment.
+	if _, err := second.call(context.Background(), toolCall{Name: "presence"}); !errors.As(err, &shared) {
+		t.Fatalf("a refused instance still acted: %v", err)
+	}
+	distinct := newServer("claude.2", workspace.Repo)
+	if _, err := distinct.attend(context.Background(), ""); err != nil {
+		t.Fatalf("a distinct instance identity was refused: %v", err)
+	}
+
+	first.depart(context.Background())
+	if _, err := second.attend(context.Background(), ""); err != nil {
+		t.Fatalf("identity stayed held after its session departed: %v", err)
+	}
+}
+
+// The check is only as good as the resident service, and a stopped service
+// must not stop the work. Starting anyway is the stated limit, not an oversight.
+func TestIdentityCheckIsSkippedWhenPresenceCannotBeRead(t *testing.T) {
+	workspace := initRepository(t, "repo")
+	dead := httptest.NewServer(nil)
+	baseURL := dead.URL
+	client := dead.Client()
+	dead.Close()
+	server, attached := attachedServer(t, workspace, "human", baseURL, client)
+	server.session = "mcp:offline"
+	if err := server.requireSoleIdentity(context.Background(), attached); err != nil {
+		t.Fatalf("unreadable presence blocked startup: %v", err)
+	}
 }
 
 func signedWorkspace(tb testing.TB, depth int) (*app.Workspace, workroom.Record) {
