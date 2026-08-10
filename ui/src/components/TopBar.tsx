@@ -104,7 +104,7 @@ export function TopBar({
             <ClipboardList className="h-3.5 w-3.5" />
             Work
             <span className="hidden font-mono text-[10px] sm:inline" title={`${summary.active} active work items across all actors`}>{summary.active}</span>
-            {summary.stale > 0 && <span className="hidden font-mono text-[10px] text-danger sm:inline" title={`${summary.stale} need attention`}>+{summary.stale}</span>}
+            {summary.stale > 0 && <span className="hidden font-mono text-[10px] text-danger sm:inline" title={`${summary.stale} commitments need attention; ${summary.artifacts} artifacts separately`}>+{summary.stale}</span>}
           </button>
           <button
             type="button"

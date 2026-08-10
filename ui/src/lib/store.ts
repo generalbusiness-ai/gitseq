@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type Vocabulary, type WorktreeView } from "./api";
-import { ACTIVE_WORK_STATUSES, ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, workActiveCount, workAttentionCount, workItemState } from "./work";
+import { ACTIVE_WORK_STATUSES, ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, otherWorkAttention, workActiveCount, workAttentionCount, workItemState } from "./work";
 import { definitionOf } from "./util";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
@@ -224,14 +224,18 @@ export const ACTIVE_COMMITMENT_STATUSES: string[] = [...ACTIVE_WORK_STATUSES];
 export const ATTENTION_COMMITMENT_STATUSES: string[] = [...ATTENTION_WORK_STATUSES];
 
 // The header chip's summary of the Work drawer, computed from the projection.
-export function workSummary(projection?: Projection): { stale: number; active: number; done: number } {
-  if (!projection) return { stale: 0, active: 0, done: 0 };
+export function workSummary(projection?: Projection): { stale: number; active: number; done: number; artifacts: number } {
+  if (!projection) return { stale: 0, active: 0, done: 0, artifacts: 0 };
   // What the room cannot read is not work waiting on anyone. An unreadable act
   // explains itself where it sits, and the reach of the vocabulary is stated
   // with the vocabulary; neither is a count a reader could act on, and adding
   // them here made a standing limit and two inert acts read as attention owed.
   return {
+    // Commitments and artifacts are counted apart. Summing them produced a
+    // figure that corresponded to no line of `gs status`, and the natural
+    // reading — that one of the two surfaces is miscounting — was false.
     stale: workAttentionCount(projection),
+    artifacts: otherWorkAttention(projection).length,
     active: workActiveCount(projection),
     done: projection.commitments.filter((c) => CLOSED_WORK_STATUSES.includes(c.status as (typeof CLOSED_WORK_STATUSES)[number])).length,
   };

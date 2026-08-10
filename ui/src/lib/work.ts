@@ -123,7 +123,44 @@ export function workItemState(commitment: Commitment): Pick<WorkItem, "active" |
 // exactly statusview actionable, including commitments whose request text is
 // unavailable to the topic renderer. It is intentionally not actor-scoped.
 export function workActiveCount(projection?: Projection): number {
-  return projection?.commitments.filter((commitment) => includes(ACTIVE_WORK_STATUSES, commitment.status)).length ?? 0;
+  return workCommitmentCounts(projection).active;
+}
+
+// The headline numbers describe one population — commitments — and they are
+// counted here rather than summed over topics, because a commitment whose root
+// is not a topic belongs to the total just the same. Counting two of them from
+// topics while the third came from the projection made them disagree with each
+// other before anything else did.
+//
+// Active, closed and lifecycleStale partition that population by status and sum
+// to the total. Attention does not belong in that sum: staleness and dispute
+// are qualifiers that sit on top of a lifecycle status, so most of what needs
+// attention is already counted as active or closed. Adding it made the three
+// figures exceed the number of commitments, which is what made a reader
+// conclude one of the surfaces was miscounting.
+//
+// Artifacts needing attention are not folded in either. They are a real signal
+// and the drawer exists partly to surface them, but the CLI reports them on
+// their own line because they are a different population, and a count that
+// mixes the two matches nothing on either surface.
+export interface WorkCommitmentCounts {
+  active: number;
+  closed: number;
+  lifecycleStale: number;
+  attention: number;
+  total: number;
+}
+
+export function workCommitmentCounts(projection?: Projection): WorkCommitmentCounts {
+  const commitments = projection?.commitments ?? [];
+  const state = commitments.map((commitment) => workItemState(commitment));
+  return {
+    active: state.filter((item) => item.active).length,
+    closed: state.filter((item) => item.closed).length,
+    lifecycleStale: commitments.filter((commitment) => includes(ATTENTION_WORK_STATUSES, commitment.status)).length,
+    attention: state.filter((item) => item.attention).length,
+    total: commitments.length,
+  };
 }
 
 export function buildWorkProjection(projection: Projection): WorkProjection {
@@ -385,8 +422,12 @@ export function otherWorkAttention(projection: Projection): WorkAttentionItem[] 
   return [...artifacts, ...unlinked];
 }
 
+// Commitments needing attention. Artifacts needing attention are counted by
+// otherWorkAttention and reported beside this rather than added to it: they are
+// a different population, the CLI keeps them on their own line, and a total
+// that mixed them matched nothing on either surface.
 export function workAttentionCount(projection: Projection): number {
-  return projection.commitments.filter((commitment) => workItemState(commitment).attention).length + otherWorkAttention(projection).length;
+  return workCommitmentCounts(projection).attention;
 }
 
 export function topicTitle(text: string): string {

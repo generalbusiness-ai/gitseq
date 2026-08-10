@@ -9,7 +9,7 @@ import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, saveP
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
-import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, TOPIC_ALIAS_FIELD, TOPIC_TITLE_FIELD, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
+import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, TOPIC_ALIAS_FIELD, TOPIC_TITLE_FIELD, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState, workCommitmentCounts } from "../src/lib/work.ts";
 import { belongsInRoom, commitmentRelationship, interpretationNotice, isInterpretationGap, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
@@ -792,7 +792,13 @@ test("Work accounts for qualifier attention, stale artifacts, and unlinked promi
     provenance: { request: [], promise: [], artifact: ["request"] },
   };
   const work = buildWorkProjection(projection);
-  assert.equal(workAttentionCount(projection), 3);
+  // Counted apart, not summed. This used to assert 3 — one stale commitment
+  // plus one stale artifact plus one unlinked promise — which is the mixing
+  // that made the drawer's total exceed the number of commitments and match no
+  // line of `gs status`. The signals are all still here; they are two
+  // populations and are reported as two.
+  assert.equal(workAttentionCount(projection), 1);
+  assert.equal(work.attention.length, 2);
   assert.deepEqual(work.attention.map((item) => item.kind), ["artifact", "unlinked-promise"]);
   assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: false }).attention.length, 2);
   assert.equal(filterWorkProjection(work, { active: true, attention: false, closed: false }).attention.length, 0);
@@ -1004,4 +1010,36 @@ test("Work is the default center and List and Board share one projection", () =>
   assert.match(work, /title by \{props\.nameOf\(topic\.titleLabel\.actor\)\}/);
   assert.doesNotMatch(work, /written by \{nameOf\(topic\.author\)\}/);
   assert.doesNotMatch(work, /draggable|onDrag|drop/i);
+});
+
+// The drawer's headline numbers described two populations at once: Active came
+// from the projection, Closed from the topics, and Attention added retired or
+// stale *artifacts* to a commitment count. The three then summed past the number
+// of commitments, and a reader comparing them with `gs status` — which never
+// adds artifacts to commitments — could only conclude one surface was
+// miscounting. Neither was; they were answering different questions.
+test("work counts partition commitments and keep attention as a qualifier", () => {
+  const commitments = [
+    { request: "r1", status: "open" },
+    { request: "r2", status: "promised" },
+    { request: "r3", status: "reported", stale: true },
+    { request: "r4", status: "satisfied" },
+    { request: "r5", status: "satisfied", stale: true },
+    { request: "r6", status: "stale" },
+    { request: "r7", status: "cancelled" },
+  ];
+  const counts = workCommitmentCounts({ commitments, statements: [], acts: [], artifacts: [], decisions: [], provenance: {} });
+
+  assert.equal(counts.total, 7);
+  // Status partitions the population: nothing is counted twice, nothing lost.
+  assert.equal(counts.active + counts.closed + counts.lifecycleStale, counts.total);
+  assert.equal(counts.active, 3);
+  assert.equal(counts.closed, 3);
+  assert.equal(counts.lifecycleStale, 1);
+
+  // Attention overlaps the other two rather than extending them: r3 is active
+  // and needs attention, r5 is closed and needs attention, r6 is both by status.
+  assert.equal(counts.attention, 3);
+  assert.ok(counts.attention <= counts.total,
+    "attention must not exceed the population it qualifies");
 });
