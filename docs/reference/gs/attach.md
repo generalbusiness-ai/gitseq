@@ -5,6 +5,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d53a83b7b606df6a80335f6257d59a4093681dfc
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9ed176d95eeb6777c0a3538cc8e400684184b68
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b34fc905db82c93fe54c49c7868a245cc4440eb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abc86d18c4f7b00f47fc2341e3ecf2217a97beb4
 ---
 
 # `gs attach`
@@ -69,6 +70,12 @@ recorded depth. This catches a shorter or sibling sequence even if the local
 It also keeps a truncated sequence from making a previously spent idempotency
 key look unused.
 
+Later verified reads and explicit audits advance the marker before returning
+data from a newer head. Reads at the unchanged head reuse it without rewriting
+the config. The clone may be read-only for workroom acts, but `.git/gitseq`
+must remain writable when the frontier advances. If it is not writable, the
+read or audit fails closed and leaves the previous marker in place.
+
 The marker is local memory, not a public witness. On the first attach there is
 no earlier frontier to compare. An old but internally valid signed sequence
 can therefore pass and become the first marker. Detecting that case requires a
@@ -101,6 +108,7 @@ fast-forward.
 | A missing `refs/seq/...` ref | The sequence was never published. Push it, then rerun `attach` in the clone you already have — the clone is fine, only the refs were missing. |
 | The fetch is rejected | The remote rewound its sequence. Your frontier is untouched. |
 | A verified frontier rollback is refused | The fetched sequence is shorter than or does not continue the last sequence this clone verified. Keep the local config and investigate the remote. |
+| The local rollback witness cannot advance | The sequence advanced but `.git/gitseq` could not be updated. Restore write access to that local metadata; the previous marker remains trusted. |
 | Verification fails | The sequence you fetched does not audit. Do not work around this. |
 
 ## Read-only

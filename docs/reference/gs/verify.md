@@ -6,6 +6,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c916a0e1ff6e09982c413adf0e1b0439135721b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e2dddf3fdd8ffb6a13fa020f16df29bfd9c99cf
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b34fc905db82c93fe54c49c7868a245cc4440eb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abc86d18c4f7b00f47fc2341e3ecf2217a97beb4
 ---
 
 # `gs verify`
@@ -67,8 +68,12 @@ an event, so each one raises `Depth` above `Events` by one.
   causal trailers and payload tree.
 - Payload sizes are within the workroom's ceiling.
 - The verified head and depth do not move behind or away from the last
-  frontier recorded in this repository's Gitseq config. A successful audit
-  advances that local marker atomically.
+  frontier recorded in this repository's Gitseq config. Any verified read,
+  including an explicit full audit, advances that local marker before it
+  returns data from a newer head. A read at the unchanged head reuses the
+  marker without rewriting the config. If the sequence advances but
+  `.git/gitseq` cannot be written, the read fails closed and leaves the old
+  marker in place.
 
 It is an **explicit full audit**. It never consults a resident's
 checkpoint cache, no matter how recent that cache is, because the point
