@@ -6,6 +6,10 @@ strengthen review cycles, or build traceability into existing processes.
 
 Blog: [Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
 
+[![gitseq demo introduction](gitseq.png)](https://youtu.be/LwVhU3mNXnM)
+
+## Getting Started
+
 Follow [Getting started](docs/getting-started.md) for first-time
 initialization.  Heads-up: in this preview the one-time [`gs init`](docs/reference/gs/init.md)
 (to initialize gitseq in a git repo) is a bit of a chore.
