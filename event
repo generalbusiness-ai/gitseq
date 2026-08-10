@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Updated run-a-work-loop guidance on pushed main at 97ea67a1c7c09d0dc5c8de7831069b33ac5bb9a3. The page explains durable topic titles and aliases, attribution, lookup, retirement, and ambiguity, and rests on the merged behavior it describes.","body":{"branch":"main","commit":"97ea67a1c7c09d0dc5c8de7831069b33ac5bb9a3","path":"docs/how-to/run-a-work-loop.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:20ec9543710970f4c85671376952532d31ef6236"}
