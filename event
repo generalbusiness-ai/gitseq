@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d001bb8aa8289567e60ba2aea7a4f23d8cb2096d","text":"The branch candidate artifact for the instance-identity re-integration is consumed: approved exact head d6c709c merged into main at df99a251489fb0d44c147b061d9517f44ad0854a. The merge artifact 8345229e now describes path \".\" for this behaviour."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:80a75e435409837631430ba15fbcaebafd367aca"}
