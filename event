@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Actor-addressed unclaimed-work discovery is merged into main at exact head c67432a92389f044f3096bcd40e208b2aa26dae7.","body":{"branch":"main","commit":"c67432a92389f044f3096bcd40e208b2aa26dae7","path":"."}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:80e991153da8284300ccb5998a19606ec4573c94","text":"The main merge artifact at c67432a9 supersedes the live exact-head branch artifact for the same repository path."}
