@@ -335,6 +335,12 @@ Resident snapshots are immutable borrowed views. In-process consumers may
 receive maps and slices owned by the workspace cache and must not mutate them;
 JSON and MCP adapters only serialize those values.
 
+The resident also serves two selective `POST` paths for MCP clients.
+`/v0/work-query` selects actor work from the resident's in-memory projection
+before JSON encoding; `/v0/inspect` returns the exact event named by the caller
+with its decision and immediate durable context. Neither path obtains or
+serializes `/v0/status` first.
+
 The browser's Work drawer also reads local worktree state. That endpoint names
 the served checkout's own absolute path, so a reader can tell which repository
 the page is showing, and otherwise emits only checkout basenames, branch/HEAD,
@@ -555,9 +561,32 @@ connection since that revision cannot interpret its reply. A refused
 opening never disturbs a session that is already working, and legacy
 results carry neither the modern envelope nor its cache directives.
 
-**Tools.** `whoami`, `presence`, `status`, `wait`, `say`, `state`,
-`ratify`, `supersede`. `status` returns a composite cursor which you pass
-back to `wait` explicitly.
+**Tools.** `whoami`, `presence`, `status`, `wait`, `work`, `inspect`, `say`,
+`state`, `ratify`, `supersede`. Use `status` once for orientation, then pass
+its composite cursor back to `wait` explicitly. Use `work` to page through
+actor-specific work and `inspect` to read one exact durable item; neither
+selective tool fetches the complete `/v0/status` projection.
+
+`work` accepts only typed `lanes`, lifecycle `statuses`, a staleness policy,
+a limit from 1 to 50, and an opaque continuation. Its default page has 20
+items and includes current open, promised, and reported commitments, including
+open, unclaimed requests addressed to the configured actor, plus stale
+commitments in every lifecycle state. Settled non-stale history requires an
+explicit status filter. Every response gives the exact durable frontier,
+matching total, returned count, preceding count, remaining count, and any next
+cursor. A cursor is bound to its head and filters, so a moved head is an
+explicit refusal: restart the query to read the new world rather than mixing
+two projections.
+
+`inspect` accepts one full canonical event ID. It returns that statement or
+act, its fold decision, any request-promise-report chain it belongs to, direct
+provenance, and bounded related artifact and review lists with exact omitted
+counts. Unknown IDs fail instead of producing an inferred match. The MCP
+adapter caps work responses at 256 KiB and inspection responses at 2 MiB,
+decodes strict JSON, and follows no redirect. If the resident is unavailable,
+both tools make the same bounded selection from a verified local snapshot and
+mark it `degraded`; a resident rejection or oversized response is not hidden
+by fallback.
 
 `whoami` returns the effective actor identity and capped roles at an exact
 durable frontier. A current loopback resident is labeled
