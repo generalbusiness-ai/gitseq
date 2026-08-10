@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will deliver the locale-independent topic-alias repair at the tested exact head and return it for independent review."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:60626e2f12c30d4527afad7d96f2480fe0efca42","text":"Replace the first locale-determinism child request because its direct citation of the rejected review chain would make the repair stale when the rejected branch artifact is retired. The replacement keeps the same scope on stable originating governance."}
