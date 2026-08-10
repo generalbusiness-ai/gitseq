@@ -1,0 +1,1 @@
+Main and origin/main are both clean at 6bc274dac4553ffa793f60edbc74291f080a357f; candidate worktree is clean at bf00fff9fcf59570512407b3fc644f7bdda1672c. Earlier checks established exact parents 364f2aed/6bc274da, merge-tree identity 2a5a3b9b, README equality to main, recovered implementation equality outside README, make docs pass, and UI interaction 57/57.
