@@ -206,6 +206,9 @@ func TestPresenceActivityUsesTheLeaseAndCompositeWait(t *testing.T) {
 	if len(waited.LiveChanges) != 1 || waited.LiveChanges[0].Kind != "activity" || activity.Status != nexus.ActivityBlocked || len(activity.Focus) != 1 || activity.Focus[0] != event {
 		t.Fatalf("composite wait lost activity: %+v", waited)
 	}
+	if waited.Status.Durable.Head != before.Durable.Head {
+		t.Fatalf("activity update moved durable head from %s to %s", before.Durable.Head, waited.Status.Durable.Head)
+	}
 
 	// The private session remains bound to its first actor, and the opaque
 	// public handle cannot be used as a substitute credential.

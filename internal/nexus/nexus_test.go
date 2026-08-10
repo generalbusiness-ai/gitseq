@@ -218,6 +218,12 @@ func TestLeasedActivityIsBoundedOwnedAndPropagatesThroughTheCursor(t *testing.T)
 	if got.Status != ActivityBlocked || got.Note != "waiting on review" || !activityEqual(got, Activity{Status: ActivityBlocked, Focus: wantFocus, Note: "waiting on review"}) {
 		t.Fatalf("normalized activity = %+v", got)
 	}
+	got.Focus[0] = "event:mutated-by-snapshot-caller"
+	fresh := hub.Snapshot().Activity[handle]
+	if !activityEqual(fresh, Activity{Status: ActivityBlocked, Focus: wantFocus, Note: "waiting on review"}) {
+		t.Fatalf("snapshot caller mutated hub activity: %+v", fresh)
+	}
+	got = fresh
 	changes, _, err := hub.ChangesSince(baseline)
 	if err != nil || len(changes) != 1 || changes[0].Activity == nil || changes[0].Activity.Status != ActivityBlocked {
 		t.Fatalf("activity was not carried by wait: changes=%+v err=%v", changes, err)
@@ -267,6 +273,12 @@ func TestLeasedActivityIsBoundedOwnedAndPropagatesThroughTheCursor(t *testing.T)
 }
 
 func TestLeasedActivityRejectsUnboundedOrInvalidInput(t *testing.T) {
+	if MaxFocusEvents != 8 {
+		t.Fatalf("MaxFocusEvents = %d, want 8", MaxFocusEvents)
+	}
+	if MaxActivityNoteBytes != 160 {
+		t.Fatalf("MaxActivityNoteBytes = %d, want 160", MaxActivityNoteBytes)
+	}
 	hub := newHub(t, 8)
 	if _, err := hub.AnnounceSession("mine", "actor:me", "me", time.Hour); err != nil {
 		t.Fatal(err)
@@ -285,6 +297,14 @@ func TestLeasedActivityRejectsUnboundedOrInvalidInput(t *testing.T) {
 	note := strings.Repeat("x", MaxActivityNoteBytes+1)
 	if _, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Note: &note}); err == nil {
 		t.Fatal("unbounded note was accepted")
+	}
+	oversizedEvent := []string{strings.Repeat("x", 257)}
+	if _, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Focus: &oversizedEvent}); err == nil {
+		t.Fatal("257-byte focus event was accepted")
+	}
+	invalidUTF8 := []string{string([]byte{0xff})}
+	if _, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Focus: &invalidUTF8}); err == nil {
+		t.Fatal("invalid UTF-8 focus event was accepted")
 	}
 }
 

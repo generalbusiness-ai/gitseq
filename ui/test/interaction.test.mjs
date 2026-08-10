@@ -97,11 +97,9 @@ test("UI focus selection adds, removes, and stays bounded", () => {
 test("task and event surfaces wire shared selection to advisory focus", () => {
   const read = (name) => readFileSync(new URL(`../src/components/${name}`, import.meta.url), "utf8");
   const work = read("WorkDrawer.tsx");
-  const stream = read("Stream.tsx");
   const top = read("TopBar.tsx");
   assert.match(work, /onSelect\(\{ kind: "event", id: event \}\);\s*onOpenThread\(event\)/);
   assert.match(work, /actor\.focus\.includes\(event\)/);
-  assert.match(stream, /actor\.focus\.includes\(statement\.event\)/);
   assert.match(top, /toggleActivityFocus\(session\.activity\.focus, selectedEvent\)/);
   assert.match(top, /setActivity\(\{ focus: \[\] \}\)/);
 });

@@ -37,6 +37,55 @@ function workroom(presence, suppliedProjection) {
 
 const session = { id: "browser", live: true, setActor() {} };
 
+test("every durable Stream presentation renders advisory focus behaviorally", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  const previousDocument = globalThis.document;
+  globalThis.document = { title: "gitseq", hasFocus: () => true };
+  try {
+    const { Stream, CompactRow, Card } = await vite.ssrLoadModule("/src/components/Stream.tsx");
+    const statement = { event: "focused-event", actor: "codex-fingerprint", kind: "assert", text: "Focused work", timestamp: 1_700_000_000 };
+    const projection = {
+      decisions: [{ event: statement.event, verdict: "effective", reason: "recorded" }],
+      acts: [], artifacts: [], actors: {}, statements: [statement], commitments: [], provenance: { [statement.event]: [] },
+    };
+    const focused = [{
+      label: "codex (codex-finger)", name: "codex", fingerprint: "codex-finger", sessions: 1,
+      status: "blocked", focus: [statement.event], note: "waiting on review",
+    }];
+    const room = workroom({ "handle:codex": "codex (codex-finger)" }, projection);
+    room.actors = [{ name: "codex", fingerprint: "codex-fingerprint", roles: [], custody: true }];
+    room.status.live.activity = { "handle:codex": { status: "blocked", focus: [statement.event], note: "waiting on review" } };
+    const noop = () => {};
+    const rowProps = {
+      statement, ticket: 1, decision: projection.decisions[0], projection, tickets: new Map([[statement.event, 1]]),
+      notes: new Map(), nameOf: () => "codex", bright: false, selected: false, cited: false, focused,
+      onSelect: noop, onJumpTo: noop, onCite: noop, onOpenThread: noop, onOpenProfile: noop, onRoute: noop, doAct: noop,
+    };
+    const streamMarkup = renderToStaticMarkup(React.createElement(Stream, {
+      workroom: room,
+      session: { ...session, actor: "codex", activity: { status: "available", focus: [] }, setActivity: noop },
+      frames: [], deliveries: 0, highlight: { events: new Set(), commits: new Set() }, onSelect: noop, onJump: noop,
+      composer: { type: "say", restsOn: [], frames: [] }, onComposer: noop, pending: [], onReconcile: noop,
+      onOpenThread: noop, onRoute: noop, onOpenProfile: noop, doAct: noop,
+    }));
+    const compactMarkup = renderToStaticMarkup(React.createElement(CompactRow, rowProps));
+    const cardMarkup = renderToStaticMarkup(React.createElement(Card, rowProps));
+    for (const [presentation, markup] of [["recorded", streamMarkup], ["compact", compactMarkup], ["card", cardMarkup]]) {
+      assert.match(markup, /aria-label="Focused here: codex \(blocked\)"/, `${presentation} presentation omitted focused actor`);
+      assert.match(markup, /title="codex — blocked — waiting on review"/, `${presentation} presentation omitted focus detail`);
+      assert.match(markup, /codex · blocked/, `${presentation} presentation omitted focus status`);
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    await vite.close();
+  }
+});
+
 test("identity and personal Work state stay honest at rendered component boundaries", async () => {
   const vite = await createServer({
     root: uiRoot,
