@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bcb505958954d9ecedd57f6b58a435b4e5522bf2","text":"Superseded at internal/workroom by the artifact for head 54f1512e. The head moved from e1c7886d when the two unmet conditions were finished, and I published the successor without retiring this one. Raised by review as succession_unrecorded on the candidate itself — the change that surfaces omitted succession, demonstrating it."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5248b465e1e808dcb583945989914e64e9a55ade"}
