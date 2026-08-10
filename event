@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6c704552722dcc52c3cc02e292ce165284158c26"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a7074d53873bbbdf64979bfc7277a8ab7a7f5b8f","text":"Retire this malformed same-actor review chain. Its report said READY-FOR-REVIEW rather than approved or changes-requested and carried a literal artifact placeholder. Codex's independent changes-requested review 73e2e82f covers the same exact head and has been ratified."}
