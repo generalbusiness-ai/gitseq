@@ -1,1 +1,1 @@
-The “Other attention (199)” items are less important than everything else and should be displayed at the bottom, not the top.
+Board view should behave like a Kanban board, with one column per status. The current cards are not Kanban-like.
