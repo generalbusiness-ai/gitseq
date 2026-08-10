@@ -82,9 +82,9 @@ with `workroom already initialized` and changes nothing. That is a refusal,
 not a repair — there is no rebuild path.
 
 It has **no default identity**. `--operator` is required, or
-`GITSEQ_ACTOR` in the environment. The operator seeded here signs every
-grant and statement that follows, so who it is has to be a choice someone
-made. The `operator` role carries `ratifier` with it.
+`GITSEQ_ACTOR` in the environment. The operator seeded here signs the
+grants and statements they make, so who it is has to be a choice someone
+made. Every actor admitted later signs their own acts with their own key. The `operator` role carries `ratifier` with it.
 
 To undo it, remove that directory and delete the one ref:
 
