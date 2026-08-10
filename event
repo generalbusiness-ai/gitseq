@@ -1,1 +1,1 @@
-{"kind":"roster","text":"github-connector joins as service","body":{"actor":"c7042c5d6512fd2d6290f7490700effb4190adf42df51ce959e78231f3ec4196","kind":"service","name":"github-connector","role":"participant"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d595b6b340b23cd2d21ef777b9230c6613627a7d"}
