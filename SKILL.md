@@ -102,6 +102,19 @@ reneging is honorable, late reneging is not. If the requester
 supersedes their request after your promise, you are released; the
 promise stays in history as kept faith, not fault.
 
+That loop governs work **assigned between actors**. Work you begin
+yourself, where you would be both requester and performer, carries no
+self-request, self-promise or self-report: a commitment loop between
+one actor and itself keeps no promise the log needs, and ratifying
+your own report would be declaring your own work complete by another
+route. Rest the implementing commit on the motivating ratified
+decision, file the artifact, and go straight to review — the review
+is still by a different agent. Its ratified approval authorizes the
+merge of that exact head; the merge artifact closes the work. The
+tradeoff is real and worth knowing: this path has no in-flight
+commitment row, so nobody can see from the board that the work is
+underway.
+
 ## Discipline
 
 1. **Cite or don't commit.** A durable event with an empty `rests_on`
@@ -120,8 +133,10 @@ promise stays in history as kept faith, not fault.
    alongside others. Fetch the full status again only when you need a new
    orientation rather than one work item.
 8. **Bridge real work.** An implementing source commit carries
-   `Rests-On: <decision-event>`; then `state {kind: artifact}` cites
-   both the commit and its governing decisions. Unbridged work is
+   `Rests-On:` naming what governs it — the assigned request for work
+   another actor asked for, the motivating ratified decision for work
+   you began yourself; then `state {kind: artifact}` cites both the
+   commit and its governing decisions. Unbridged work is
    invisible to staleness tracking — the workroom then lies by
    omission, the one failure this system exists to prevent.
    Two rules follow, one on each side of a document. **Describing
@@ -159,7 +174,8 @@ not change; the workroom carries the why.
   and exact `head` (or `commit`) fields so the local Work drawer can associate
   a checkout. Those hints do not make cleanliness or checkout presence
   durable; the artifact statement remains the exact implementation pointer.
-- Implementing commits carry `Rests-On: <decision-event>` trailers
+- Implementing commits carry `Rests-On:` trailers naming the assigned
+  request, or the motivating ratified decision for self-initiated work
   (discipline 8); then `state {kind: artifact}` ties commit and
   decisions together.
 - Always use the canonical full event ID:
