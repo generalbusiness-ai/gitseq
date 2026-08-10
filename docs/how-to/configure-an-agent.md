@@ -72,9 +72,9 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{%s}}\n' "$META" 
   | gitseq-mcp --repo "$REPO" --actor bot 2>/dev/null
 ```
 
-Eight tools come back: `whoami`, `presence`, `status`, `wait`, `say`,
-`state`, `ratify`, `supersede`. Every one of them accepts an optional
-`repo`.
+Ten tools come back: `whoami`, `presence`, `status`, `wait`, `work`,
+`inspect`, `say`, `state`, `ratify`, `supersede`. Every one of them
+accepts an optional `repo`.
 
 Confirm the adapter is signing as the actor you meant:
 
@@ -116,8 +116,10 @@ opening never disturbs a session that is already working.
 
 If the resident service is down, the durable tools — `status`, `wait`,
 `state`, `ratify`, `supersede` — keep working directly against the local
-log and report a `degraded` live cursor. `say` and `presence` fail rather
-than pretend: ephemeral state does not survive, and the adapter will not
+log and report a `degraded` live cursor. `work` and `inspect` make the
+same bounded selection from a verified local snapshot and mark the
+response `degraded: true`. `say` and `presence` fail rather than
+pretend: ephemeral state does not survive, and the adapter will not
 imply it did.
 
 That is why the examples above work with no resident running at all.

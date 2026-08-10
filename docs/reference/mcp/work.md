@@ -15,8 +15,8 @@ never fetches the complete `/v0/status` projection.
 
 | argument | required | meaning |
 |---|---|---|
-| `lanes` | optional | Typed relationship lanes: `available`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Default is all four. |
-| `statuses` | optional | Lifecycle statuses to include. An unknown status is an error, not a guess. |
+| `lanes` | optional | Typed relationship lanes: `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Default is all four. |
+| `statuses` | optional | Lifecycle statuses to include: `open`, `promised`, `reported`, `satisfied`, `stale`, `cancelled`, `reneged`, `withdrawn`. An unknown status is an error, not a guess. |
 | `stale` | optional | One staleness policy: `include` (default), `only`, or `exclude`. |
 | `limit` | optional | Page size, 1 to 50. Default 20. |
 | `cursor` | optional | The opaque continuation from a previous page. |

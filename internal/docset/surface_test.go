@@ -103,6 +103,11 @@ func TestGateSurfaceCoversEveryMCPTool(t *testing.T) {
 		if diff := difference(requiredRows(section), tool.Required); diff != "" {
 			t.Errorf("%s: rows marked required do not match the input schema:\n%s", page.Path, diff)
 		}
+		for _, value := range tool.Enums {
+			if !strings.Contains(page.Body, value) {
+				t.Errorf("%s: schema enum value %q is not named on the page; a caller following the page cannot form a legal call", page.Path, value)
+			}
+		}
 	}
 	for name := range documented {
 		t.Errorf("%s/%s.md documents a tool the adapter does not serve", mcpPages, name)

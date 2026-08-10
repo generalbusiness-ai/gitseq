@@ -22,6 +22,7 @@ type Tool struct {
 	Name      string
 	Arguments []string
 	Required  []string
+	Enums     []string
 }
 
 // The command surface is read out of the implementation rather than from a
@@ -111,6 +112,7 @@ func MCPSurface(root string) ([]Tool, error) {
 					return false
 				}
 				tool.Arguments, tool.Required = arguments, required
+				tool.Enums = enumValues(pair.Value)
 			}
 		}
 		if found {
@@ -281,6 +283,31 @@ func collectFlags(file *ast.File, name string, seen map[string]bool) ([]string, 
 // schema. An adapter that wraps its per-tool fields in a new helper would
 // otherwise look to this gate like a set of tools that take no arguments, and
 // every reference page would be required to say so.
+// enumValues collects every string handed to an enum(...) call anywhere in a
+// schema expression. A documentation page for the tool must name each value
+// exactly, so a page cannot teach a spelling the schema refuses.
+func enumValues(expression ast.Expr) []string {
+	var values []string
+	ast.Inspect(expression, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		identifier, ok := call.Fun.(*ast.Ident)
+		if !ok || identifier.Name != "enum" {
+			return true
+		}
+		for _, argument := range call.Args {
+			if value, ok := stringValue(argument); ok {
+				values = append(values, value)
+			}
+		}
+		return true
+	})
+	sort.Strings(values)
+	return values
+}
+
 func schemaFields(scope ast.Node, expression ast.Expr) ([]string, []string, bool) {
 	call, ok := expression.(*ast.CallExpr)
 	if !ok {
