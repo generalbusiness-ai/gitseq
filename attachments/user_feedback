@@ -1,1 +1,1 @@
-Use the git commit format: the first line is the title and the rest is the body. Put conditions of satisfaction in a centered popup opened by an Inspect button in the hover palette, with a divider separating read-only controls from durable actions.
+The divider between the main window and thread panel needs to be draggable for resize.

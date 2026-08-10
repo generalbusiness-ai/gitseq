@@ -1,1 +1,0 @@
-#2524 renders statement.text as one long paragraph and body.conditions as a second long, smaller, faint paragraph prefixed “when”; the generic renderer does not preserve the semantic title/body hierarchy.
