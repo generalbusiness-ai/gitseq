@@ -1,0 +1,1 @@
+#634 is an open request addressed to Hugh whose sole proposal basis #633 is already ratified. workItemNeedsAction treats every open request addressed to the viewer as actionable without checking whether the requested direct decision already took force.
