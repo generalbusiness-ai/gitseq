@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:62c0245ed44275c39f2a85811a5cebfeedad9ed2"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:022cc91282f79f5a71d40d38529a904ecd7ea6fa","text":"Superseded at request/mcp-projection-notes by the artifact for head 287e7112. The head moved from f904524f and I published the successor without retiring this, leaving two live artifacts where a path can hold one. Raised by review as succession_unrecorded on the candidate itself."}
