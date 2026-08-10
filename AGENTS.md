@@ -36,6 +36,7 @@ per ISO 24495-1, for a technical audience.
    original requester ratify the implementation report.  Merge commits must
    include a concise plain-language description of the change and its impact.
 6. After a worktree is merged, delete it.
+7. After a merge to main, ensure that it is pushed to origin.
 
 Documentation that describes behaviour rests on the artifacts for that
 behaviour, not only on the request that produced it. Superseding the predecessor
