@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b6fdaa96c0db1e75bc58ffd6fdf21c9604661fd8"}
+{"kind":"artifact","text":"Exact forward-integrated candidate for actor-addressed unclaimed-work discovery on current main.","body":{"branch":"request/addressed-unclaimed-current-main","commit":"73e85ba197568ae9b6c5ccb98883459eee095ce8","path":"."}}
