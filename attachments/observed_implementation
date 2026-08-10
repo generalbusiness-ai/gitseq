@@ -1,0 +1,1 @@
+toggleLinkEvent changes the shared ComposerContext restsOn list and promotes a temporary draft to assert. The Thread panel exposes this control, but ThreadComposer displays no linked chips and submits only the thread target in rests_on, ignoring composer.restsOn.
