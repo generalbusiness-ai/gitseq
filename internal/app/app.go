@@ -1011,7 +1011,7 @@ func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification k
 	w.Config.VerifiedFrontier = &VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
 	if err := w.save(); err != nil {
 		w.Config.VerifiedFrontier = previous
-		return fmt.Errorf("persist verified frontier: %w", err)
+		return fmt.Errorf("persist verified frontier before returning data: local rollback witness could not advance: %w", err)
 	}
 	return nil
 }
