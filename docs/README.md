@@ -16,12 +16,14 @@ Read in this order if you are new:
 
 1. **[Why gitseq exists](why.md)** — the problem, and the shape of the
    answer. Ten minutes, no commands.
-2. **[Do a piece of work, end to end](how-to/end-to-end.md)** — one path
+2. **[Getting started](getting-started.md)** — build the two binaries and
+   create a workroom, which everything below assumes you have.
+3. **[Do a piece of work, end to end](how-to/end-to-end.md)** — one path
    from an empty directory to an audited record in a fresh clone. Every
    command runs.
-3. **Concepts**, in any order, when you want to know why something
+4. **Concepts**, in any order, when you want to know why something
    behaves as it does.
-4. **Reference**, when you know what you want and need the exact
+5. **Reference**, when you know what you want and need the exact
    spelling.
 
 ## Concepts
