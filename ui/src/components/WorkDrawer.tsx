@@ -5,9 +5,11 @@ import type { Session } from "../lib/session";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic, type PersonalWorkMemory } from "../lib/memory";
 import { ticketsOf, type Selection, type Workroom } from "../lib/store";
 import {
+  attentionItemCounts,
   buildWorkProjection,
   filterPersonalWorkProjection,
   filterWorkProjection,
+  otherWorkAttentionLabel,
   topicChangeSince,
   workCommitmentCounts,
   workItemNeedsAction,
@@ -164,7 +166,7 @@ export function WorkView({
             />
             <FilterCheck
               label="Attention"
-              description={`Stale or disputed, which is a qualifier rather than a status: ${counts.attention} of ${counts.total} commitments, most of them also counted as active or closed. ${work?.attention.length ?? 0} artifacts need attention separately.`}
+              description={`Stale or disputed, which is a qualifier rather than a status: ${counts.attention} of ${counts.total} commitments, most of them also counted as active or closed. Separately, ${otherWorkAttentionLabel(attentionItemCounts(work?.attention ?? []))} need attention.`}
               checked={filters.attention}
               count={counts.attention}
               tone="danger"

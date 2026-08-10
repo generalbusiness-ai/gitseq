@@ -9,7 +9,7 @@ import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, saveP
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
-import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, TOPIC_ALIAS_FIELD, TOPIC_TITLE_FIELD, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState, workCommitmentCounts } from "../src/lib/work.ts";
+import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, TOPIC_ALIAS_FIELD, TOPIC_TITLE_FIELD, attentionItemCounts, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, otherWorkAttentionCounts, otherWorkAttentionLabel, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState, workCommitmentCounts } from "../src/lib/work.ts";
 import { belongsInRoom, commitmentRelationship, interpretationNotice, isInterpretationGap, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
@@ -803,6 +803,18 @@ test("Work accounts for qualifier attention, stale artifacts, and unlinked promi
   assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: false }).attention.length, 2);
   assert.equal(filterWorkProjection(work, { active: true, attention: false, closed: false }).attention.length, 0);
   assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: false, author: "hugh" }).attention.length, 0);
+
+  // The list is two populations, so nothing may describe it with one noun. It
+  // was called "2 artifacts" here, which is the same defect this test exists to
+  // prevent — a number that reads as one thing while counting two — arriving
+  // one layer up from where it was caught. The composition is asserted, and so
+  // is the sentence, because the sentence is what a reader actually sees.
+  assert.deepEqual(otherWorkAttentionCounts(projection), { artifacts: 1, unlinkedPromises: 1, total: 2 });
+  assert.deepEqual(attentionItemCounts(work.attention), { artifacts: 1, unlinkedPromises: 1, total: 2 });
+  assert.equal(otherWorkAttentionLabel(otherWorkAttentionCounts(projection)), "1 artifact and 1 unlinked promise");
+  assert.equal(otherWorkAttentionLabel({ artifacts: 3, unlinkedPromises: 0 }), "3 artifacts");
+  assert.equal(otherWorkAttentionLabel({ artifacts: 0, unlinkedPromises: 2 }), "2 unlinked promises");
+  assert.equal(otherWorkAttentionLabel({ artifacts: 0, unlinkedPromises: 0 }), "nothing else");
 });
 
 test("local worktrees join current promise, docs report, and exact commit-trailer shapes", () => {

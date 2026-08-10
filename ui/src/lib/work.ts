@@ -422,10 +422,41 @@ export function otherWorkAttention(projection: Projection): WorkAttentionItem[] 
   return [...artifacts, ...unlinked];
 }
 
-// Commitments needing attention. Artifacts needing attention are counted by
-// otherWorkAttention and reported beside this rather than added to it: they are
-// a different population, the CLI keeps them on their own line, and a total
-// that mixed them matched nothing on either surface.
+// What otherWorkAttention is actually made of. The list has always held two
+// populations — artifacts that are no longer current, and promises that rest on
+// no request — and calling the total "artifacts" was the same defect this file
+// was changed to fix: a number that reads as one thing while counting two. The
+// composition is returned rather than the total alone so that no call site has
+// to guess, and `total` is here so nobody recomputes it by adding.
+export function attentionItemCounts(items: readonly WorkAttentionItem[]): {
+  artifacts: number;
+  unlinkedPromises: number;
+  total: number;
+} {
+  const artifacts = items.filter((item) => item.kind === "artifact").length;
+  const unlinkedPromises = items.filter((item) => item.kind === "unlinked-promise").length;
+  return { artifacts, unlinkedPromises, total: items.length };
+}
+
+export function otherWorkAttentionCounts(projection: Projection): ReturnType<typeof attentionItemCounts> {
+  return attentionItemCounts(otherWorkAttention(projection));
+}
+
+// How a reader should be told about that list in one phrase. Naming both parts
+// is longer than naming one, and it is the length that makes it true.
+export function otherWorkAttentionLabel(counts: { artifacts: number; unlinkedPromises: number }): string {
+  const parts: string[] = [];
+  if (counts.artifacts > 0) parts.push(`${counts.artifacts} ${counts.artifacts === 1 ? "artifact" : "artifacts"}`);
+  if (counts.unlinkedPromises > 0) {
+    parts.push(`${counts.unlinkedPromises} unlinked ${counts.unlinkedPromises === 1 ? "promise" : "promises"}`);
+  }
+  return parts.length ? parts.join(" and ") : "nothing else";
+}
+
+// Commitments needing attention. Artifacts and unlinked promises are counted by
+// otherWorkAttentionCounts and reported beside this rather than added to it:
+// they are a different population, the CLI keeps them on their own line, and a
+// total that mixed them matched nothing on either surface.
 export function workAttentionCount(projection: Projection): number {
   return workCommitmentCounts(projection).attention;
 }
