@@ -1457,3 +1457,71 @@ func BenchmarkWhoamiColdFullAuditAtActualSignedDepth(b *testing.B) {
 		}
 	}
 }
+
+// Every trap these notes exist for looked like success at the moment it was
+// filed: a record came back, the statement was ruled effective, the commitment
+// moved. Each case here is one that has actually happened in this workroom, so
+// each is asserted on its own rather than through a table that would let one
+// quietly stop firing.
+func TestProjectionNotesSayHowTheFoldReadTheAct(t *testing.T) {
+	const event = "git:sha1:g#git:sha1:report"
+	report := app.Act{Kind: workroom.KindReport, RestsOn: []string{"git:sha1:g#git:sha1:promise"}}
+	known := workroom.Projection{Statements: []workroom.Statement{{Event: "git:sha1:g#git:sha1:promise"}}}
+
+	// A report that reads as a review to any human and sets no body.verdict is
+	// no review at all to the fold. This is the failure the request was filed
+	// for: three such acts landed, all effective, none projecting as reviews.
+	notes := projectionNotes(known, report, event)
+	if got, _ := notes["review"].(string); !strings.HasPrefix(got, "no:") {
+		t.Errorf("a report that is no review was described as %q", got)
+	}
+
+	// A review whose artifact did not resolve is the failure that has blocked a
+	// merge three times: `gs merge` wants the artifact in the approval's own
+	// rests_on and will not walk to find it.
+	reviewed := known
+	reviewed.Reviews = []workroom.Review{{Report: event, Verdict: "approved"}}
+	notes = projectionNotes(reviewed, report, event)
+	if got, _ := notes["review"].(string); !strings.Contains(got, "gs merge") {
+		t.Errorf("a review with no artifact was described as %q, without saying merge would refuse it", got)
+	}
+
+	resolved := known
+	resolved.Reviews = []workroom.Review{{Report: event, Verdict: "approved", Artifact: "git:sha1:g#git:sha1:art"}}
+	notes = projectionNotes(resolved, report, event)
+	if got, _ := notes["review"].(string); !strings.HasPrefix(got, "yes, judging artifact") {
+		t.Errorf("a resolved review was described as %q", got)
+	}
+
+	// A citation naming nothing in this workroom is skipped in silence by
+	// validateBasis unless the kind's own basis constraints happen to need it.
+	// Three acts have been filed here around an invented identifier.
+	invented := app.Act{Kind: workroom.KindAssert, RestsOn: []string{"git:sha1:g#git:sha1:promise", "git:sha1:g#git:sha1:nothing"}}
+	notes = projectionNotes(known, invented, event)
+	unresolved, _ := notes["unresolved_rests_on"].([]string)
+	if len(unresolved) != 1 || unresolved[0] != "git:sha1:g#git:sha1:nothing" {
+		t.Errorf("unresolved citations = %v, want the one naming nothing", unresolved)
+	}
+	if _, reported := projectionNotes(known, report, event)["unresolved_rests_on"]; reported {
+		t.Error("a citation that does resolve was reported as unresolved")
+	}
+
+	// The fold's own ruling, when it is anything but plain effect. An
+	// ineffective act still returns a record and still reads as success.
+	ruled := known
+	ruled.Decisions = []workroom.Decision{{Event: event, Verdict: workroom.Ineffective, Reason: "dangling promise has no request"}}
+	notes = projectionNotes(ruled, report, event)
+	if notes["verdict"] != string(workroom.Ineffective) || notes["reason"] != "dangling promise has no request" {
+		t.Errorf("an ineffective ruling was reported as %+v", notes)
+	}
+	effective := known
+	effective.Decisions = []workroom.Decision{{Event: event, Verdict: workroom.Effective}}
+	if _, noisy := projectionNotes(effective, report, event)["verdict"]; noisy {
+		t.Error("an ordinary effective act was annotated with a verdict it did not need")
+	}
+
+	// With no event to look up there is nothing honest to say.
+	if notes := projectionNotes(known, report, ""); notes != nil {
+		t.Errorf("notes were invented for an unidentified act: %+v", notes)
+	}
+}

@@ -75,6 +75,40 @@ the [payload ceiling](../limits.md).
 Pass `idempotency_key` when you might retry. A replay reports that your
 act already landed; do not then submit a variant.
 
+## What the fold made of it
+
+A successful append tells you the act landed. It does not tell you the
+act became what you meant, and those are different questions. A report
+whose body sets `status` instead of `verdict` reads as a review to every
+human and is no review to the fold. An approval that does not cite the
+artifact cannot authorise the merge it was written to authorise. A
+citation naming no event in this workroom is skipped in silence. All
+three return a record, are ruled effective, and move the commitment.
+
+So the result carries a `projected` object saying how the fold read the
+act:
+
+| Field | Says |
+|---|---|
+| `verdict`, `reason` | The fold's ruling, when it is anything other than plain effect. |
+| `unresolved_rests_on` | Citations naming no event in this workroom. |
+| `review` | For a report: whether it became a review, and which artifact it judges. |
+
+**These notes describe; they do not refuse.** Unknown body keys are still
+accepted. Refusing them would catch `status` today and narrow a
+deliberately open structure for good — the body map is open so a room can
+carry vocabulary this implementation never anticipated, and a validator
+that rejects what it does not recognise takes that away to fix one
+spelling mistake. Describing the reading catches the whole family,
+including the shapes nobody has hit yet, at the cost of not stopping any
+of them.
+
+**The notes are a report, not a guarantee.** They say what the fold made
+of the act at that moment. A later supersession can change any of it, and
+reading a summary is weaker than querying the projection. Treat a clean
+`projected` as the absence of the known traps, not the presence of
+correctness.
+
 ## Without a resident
 
 `state` keeps working against the local log and marks the result

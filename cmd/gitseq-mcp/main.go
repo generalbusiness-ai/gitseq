@@ -819,6 +819,16 @@ func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any
 // a kind this room does not define and was told nothing, so a line in a log it
 // never reads would be no warning at all. The act itself is untouched: it
 // landed, and it still projects as undefined-kind.
+//
+// It also reports how the fold read the act, which is a broader question than
+// whether the kind is defined. Everything about a successful append says
+// success — a record comes back, the statement is ruled effective, the
+// commitment moves — and none of that says the act became what its author
+// meant. Acts have landed here reading as reviews and projecting as no review,
+// and approvals have landed unable to authorize the merge they were written to
+// authorize. Those are not spelling mistakes the tool could have caught; they
+// are the difference between what was written and what was read, and only the
+// projection knows it.
 func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.Act, value any) any {
 	if act.Verb != app.VerbState {
 		return value
@@ -835,7 +845,99 @@ func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.
 	if warning := snapshot.Vocabulary.UndefinedKindWarning(act.Kind); warning != "" {
 		result["warning"] = warning
 	}
+	if notes := projectionNotes(snapshot.Projection, act, submittedEvent(value)); len(notes) > 0 {
+		result["projected"] = notes
+	}
 	return result
+}
+
+// submittedEvent digs the new event's identifier out of the tool result. The
+// result is a decoded JSON map when the resident sequenced the act and a typed
+// submission when this process did, so it is read back through JSON rather than
+// type-asserted two ways.
+func submittedEvent(value any) string {
+	var submitted struct {
+		Record struct {
+			ID string `json:"id"`
+		} `json:"record"`
+	}
+	if remarshal(value, &submitted) != nil {
+		return ""
+	}
+	return submitted.Record.ID
+}
+
+// projectionNotes says how the fold read this act, in the author's own terms.
+//
+// Each note answers a question the author cannot otherwise ask without a
+// separate projection query, and each corresponds to a way an act has already
+// gone wrong here while every visible signal said it had gone right. The notes
+// describe; they do not refuse. An act that lands is the author's to correct,
+// and refusing unfamiliar bodies would narrow a deliberately open structure.
+//
+// This is a report, not a guarantee. It says what the fold made of the act at
+// this moment, and reading it is weaker than querying the projection — a later
+// supersession can change any of it. Treat a clean set of notes as the absence
+// of the known traps rather than the presence of correctness.
+func projectionNotes(projection workroom.Projection, act app.Act, event string) map[string]any {
+	if event == "" {
+		return nil
+	}
+	notes := map[string]any{}
+
+	// The fold's own ruling, when it is anything other than plain effect. An
+	// ineffective act still returns a record and still looks like success.
+	for _, decision := range projection.Decisions {
+		if decision.Event == event && decision.Verdict != workroom.Effective {
+			notes["verdict"] = string(decision.Verdict)
+			if decision.Reason != "" {
+				notes["reason"] = decision.Reason
+			}
+		}
+	}
+
+	// Citations that name nothing in this workroom. A fabricated or mistyped
+	// identifier is skipped in silence by validateBasis unless the kind's own
+	// basis constraints happen to need it, so the act connects to nothing and
+	// says so nowhere.
+	known := make(map[string]bool, len(projection.Statements))
+	for _, statement := range projection.Statements {
+		known[statement.Event] = true
+	}
+	var unresolved []string
+	for _, reference := range act.RestsOn {
+		if !known[reference] {
+			unresolved = append(unresolved, reference)
+		}
+	}
+	if len(unresolved) > 0 {
+		notes["unresolved_rests_on"] = unresolved
+	}
+
+	// Whether a report became a review, and if so what a merge would make of
+	// it. A report reads as a review to any human the moment its text says
+	// "approved"; the fold only sees body.verdict.
+	if act.Kind == workroom.KindReport {
+		review, found := reviewOf(projection, event)
+		switch {
+		case !found:
+			notes["review"] = "no: the fold reads a review from body.verdict, which this report does not set"
+		case review.Artifact == "":
+			notes["review"] = "yes, but no artifact resolved; `gs merge` refuses an approval whose rests_on omits the artifact for the reviewed head"
+		default:
+			notes["review"] = "yes, judging artifact " + review.Artifact
+		}
+	}
+	return notes
+}
+
+func reviewOf(projection workroom.Projection, event string) (workroom.Review, bool) {
+	for _, review := range projection.Reviews {
+		if review.Report == event {
+			return review, true
+		}
+	}
+	return workroom.Review{}, false
 }
 
 // sharedIdentityError marks the one attachment failure that must stop the
