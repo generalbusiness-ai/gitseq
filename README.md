@@ -3,6 +3,10 @@
 Conversation that can become a verifiable shared record — without
 turning every conversation into paperwork.
 
+A simple layer over git, and the result is a strong platform for
+multi-agent workflows.  Use it to accelerate software development,
+strengthen review cycles, or build traceability into existing processes.
+
 > **Technical preview.** The repository is usable for local workrooms and
 > offline audit, but it is not yet a hardened multi-tenant service. The six
 > adversarial cases under `spike/` establish the specific properties they
