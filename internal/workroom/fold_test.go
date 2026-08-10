@@ -353,7 +353,12 @@ func TestUnclaimedRequestIsOpenWithoutWaitingOnItsAddressee(t *testing.T) {
 		}
 	}
 	page := RenderStatus(Fold(records))
-	if !bytes.Contains(page, []byte("| open |  | actor:operator | addressed to actor:agent — unclaimed | w3 |  |")) {
+	// The request column now carries the number rather than the raw event id.
+	// That is the change under test elsewhere in this file, and the expectation
+	// is updated deliberately rather than loosened: what this test is actually
+	// about is that an unclaimed request is rendered as addressed and waiting
+	// on nobody, and both of those still read exactly as before.
+	if !bytes.Contains(page, []byte("| open |  | actor:operator | addressed to actor:agent — unclaimed | #4 |  |")) {
 		t.Fatalf("status page does not render the request as addressed and unclaimed:\n%s", page)
 	}
 
@@ -1968,4 +1973,76 @@ func TestSequenceIsStableAcrossARefold(t *testing.T) {
 			t.Errorf("decision %s has sequence %d", decision.Event, decision.Sequence)
 		}
 	}
+}
+
+// The surfaces, not the fold. The fold's numbers were already pinned above,
+// and that is exactly why this test exists: review found three renderers still
+// abbreviating event identifiers while every fold test stayed green. A number
+// nobody displays is not a name, so the guarantee has to be asserted where a
+// reader actually meets it.
+//
+// It is mutation-sensitive by construction: it fails if any event-bearing row
+// prints a hash fragment instead of #N. Git object identifiers are exempt and
+// must stay exempt — a commit abbreviation resolves back through git, an event
+// abbreviation resolves back through nothing.
+func TestRenderedSurfacesNameEventsByNumber(t *testing.T) {
+	projection := golden(t)
+	if len(projection.Commitments) == 0 || len(projection.Artifacts) == 0 {
+		t.Fatal("the golden log has no commitments or artifacts, so this proves nothing")
+	}
+	rendered := string(RenderStatus(projection))
+
+	commits := map[string]bool{}
+	for _, artifact := range projection.Artifacts {
+		commits[artifact.Commit] = true
+	}
+	for _, review := range projection.Reviews {
+		commits[review.Head] = true
+	}
+
+	// Every abbreviation the renderer emitted, checked against what it is
+	// allowed to abbreviate. An actor fingerprint and a git commit may be
+	// elided; an event may not.
+	sequences := projection.sequences()
+	for _, event := range eventsOn(projection) {
+		if commits[event] {
+			continue
+		}
+		// An event with no number is named by its identifier in full, and that
+		// is correct, so its full form appearing in the output is not a defect
+		// to detect. Skipping it keeps this test measuring the one thing it is
+		// for: an abbreviation standing where a number belongs.
+		if sequences[event] == 0 {
+			continue
+		}
+		if abbreviated := short(event); strings.Contains(rendered, abbreviated) {
+			t.Errorf("the status renderer prints %s as %q instead of its number", event, abbreviated)
+		}
+	}
+
+	// And the number is actually there, so the test cannot pass by rendering
+	// nothing at all.
+	if !strings.Contains(rendered, "#") {
+		t.Error("no event was named by number anywhere in the rendered status")
+	}
+}
+
+// eventsOn collects the identifiers the status renderer names in a row.
+func eventsOn(projection Projection) []string {
+	var events []string
+	for _, commitment := range projection.Commitments {
+		events = append(events, commitment.Request)
+	}
+	for _, artifact := range projection.Artifacts {
+		events = append(events, artifact.Event)
+	}
+	for _, review := range projection.Reviews {
+		events = append(events, review.Report)
+	}
+	for _, decision := range projection.Decisions {
+		if decision.Verdict != Effective {
+			events = append(events, decision.Event)
+		}
+	}
+	return events
 }
