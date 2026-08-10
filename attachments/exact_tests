@@ -1,1 +1,0 @@
-make docs; go test ./internal/nexus ./internal/statusview
