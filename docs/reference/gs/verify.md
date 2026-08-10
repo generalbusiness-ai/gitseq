@@ -6,7 +6,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c916a0e1ff6e09982c413adf0e1b0439135721b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e2dddf3fdd8ffb6a13fa020f16df29bfd9c99cf
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b34fc905db82c93fe54c49c7868a245cc4440eb
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abc86d18c4f7b00f47fc2341e3ecf2217a97beb4
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58225c326c6693b95d330412f50e331fa5890265
 ---
 
 # `gs verify`
