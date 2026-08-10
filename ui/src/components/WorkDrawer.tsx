@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, BellOff, BookOpen, Columns3, GitBranch, List, Search } from "lucide-react";
-import type { Projection, Vocabulary, WorktreeView } from "../lib/api";
+import type { FrameView, Projection, Vocabulary, WorktreeView } from "../lib/api";
 import type { Session } from "../lib/session";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic, type PersonalWorkMemory } from "../lib/memory";
 import { ticketsOf, type Selection, type Workroom } from "../lib/store";
@@ -20,6 +20,7 @@ import {
   type WorkTopicChange,
 } from "../lib/work";
 import { worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
+import { temporaryDiscussionCounts, temporaryDiscussionLabel, type TemporaryDiscussionCount } from "../lib/interaction";
 import { cn, commitmentRelationship, statusLabel, statusTint } from "../lib/util";
 import { EventTime } from "./EventTime";
 import { Railway } from "./Railway";
@@ -32,6 +33,7 @@ type Presentation = "list" | "board";
 export function WorkView({
   workroom,
   session,
+  frames = [],
   highlight,
   selection,
   onSelect,
@@ -42,6 +44,7 @@ export function WorkView({
 }: {
   workroom: Workroom;
   session: Session;
+  frames?: FrameView[];
   highlight: { events: Set<string>; commits: Set<string> };
   selection?: Selection;
   onSelect: (selection: Selection) => void;
@@ -57,6 +60,14 @@ export function WorkView({
   const [personalView, setPersonalView] = useState<PersonalWorkView>(initialPersonalView);
   const work = useMemo(() => (projection ? buildWorkProjection(projection) : undefined), [projection]);
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
+  const durableEvents = useMemo(
+    () => new Set((projection?.statements ?? []).map((statement) => statement.event)),
+    [projection],
+  );
+  const temporaryCounts = useMemo(
+    () => temporaryDiscussionCounts(frames, durableEvents),
+    [frames, durableEvents],
+  );
   const nameOf = useMemo(() => {
     const byFingerprint = new Map(workroom.actors.map((actor) => [actor.fingerprint, actor.name]));
     return (fingerprint: string) =>
@@ -209,9 +220,9 @@ export function WorkView({
           <>
             <OtherAttention items={visible.attention} tickets={tickets} nameOf={nameOf} onSelect={onSelect} onOpenThread={onOpenThread} />
             {visible.topics.length > 0 && (presentation === "list" ? (
-              <TopicList topics={visible.topics} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} focusedActors={focusedActors} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
+              <TopicList topics={visible.topics} projection={projection} tickets={tickets} temporaryCounts={temporaryCounts} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} focusedActors={focusedActors} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
             ) : (
-              <WorkBoard topics={visible.topics} filters={personalView === "all" ? filters : { active: true, attention: true, closed: true }} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} focusedActors={focusedActors} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
+              <WorkBoard topics={visible.topics} filters={personalView === "all" ? filters : { active: true, attention: true, closed: true }} projection={projection} tickets={tickets} temporaryCounts={temporaryCounts} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} focusedActors={focusedActors} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
             ))}
           </>
         )}
@@ -421,6 +432,7 @@ function WorkBoard({ topics, filters, ...props }: WorkRenderProps & { topics: Wo
 interface WorkRenderProps {
   projection: Projection;
   tickets: Map<string, number>;
+  temporaryCounts: Map<string, TemporaryDiscussionCount>;
   commits: Workroom["commits"];
   worktrees: WorktreeView[];
   nameOf: (fingerprint: string) => string;
@@ -432,7 +444,7 @@ interface WorkRenderProps {
   onOpenWorkItem: (event: string, topic: WorkTopic) => void;
 }
 
-function WorkItemRow({ item, topic, projection, tickets, commits, worktrees, nameOf, focusedActors, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
+function WorkItemRow({ item, topic, projection, tickets, temporaryCounts, commits, worktrees, nameOf, focusedActors, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
   const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
   const relationship = commitmentRelationship(item.commitment, nameOf);
   return (
@@ -442,6 +454,7 @@ function WorkItemRow({ item, topic, projection, tickets, commits, worktrees, nam
         <FocusActors actors={focusedActors} event={item.request.event} />
         <span className="min-w-0 flex-1 text-foreground/85">{item.request.text}</span>
         {relationship && <span className="shrink-0 text-faint">{relationship}</span>}
+        <TemporaryDiscussionSignal summary={temporaryCounts.get(item.request.event)} />
         <span className="shrink-0 font-mono text-[11px] text-faint" title={item.request.event}>#{tickets.get(item.request.event) ?? "?"}</span>
       </div>
       <WorktreeAssociations associations={associations} />
@@ -449,7 +462,7 @@ function WorkItemRow({ item, topic, projection, tickets, commits, worktrees, nam
   );
 }
 
-function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameOf, canPersonalize, followed, changes, focusedActors, onToggleFollowing, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
+function BoardCard({ item, topic, projection, tickets, temporaryCounts, commits, worktrees, nameOf, canPersonalize, followed, changes, focusedActors, onToggleFollowing, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
   const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
   const relationship = commitmentRelationship(item.commitment, nameOf);
   return (
@@ -467,6 +480,7 @@ function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameO
         asked by {nameOf(item.request.actor)}{relationship && <> · {relationship}</>}
       </p>
       <TopicChange change={changes.get(topic.event)} nameOf={nameOf} />
+      <TemporaryDiscussionSignal summary={temporaryCounts.get(item.request.event)} />
       <WorktreeAssociations associations={associations} />
       </button>
     </article>
@@ -509,6 +523,16 @@ function TopicFollowButton({ following, onClick, compact = false }: { following:
       {following ? <BellOff className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
       {!compact && (following ? "Following" : "Follow")}
     </button>
+  );
+}
+
+function TemporaryDiscussionSignal({ summary }: { summary?: TemporaryDiscussionCount }) {
+  const label = temporaryDiscussionLabel(summary);
+  if (!label) return null;
+  return (
+    <span aria-label={`${label} messages in temporary discussion`} className="mt-1 inline-flex rounded border border-info/30 px-1.5 py-0.5 text-[10px] font-medium text-info">
+      {label}
+    </span>
   );
 }
 

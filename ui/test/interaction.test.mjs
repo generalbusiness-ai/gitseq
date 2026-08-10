@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { hueOf, initialsOf } from "../src/lib/avatar.ts";
-import { RetryKeys, fingerprintOfPresentActor, fingerprintsIdentifySameActor, parsePresenceLabel, presentActors, threadTargetKey, toggleActivityFocus } from "../src/lib/interaction.ts";
+import { RetryKeys, eventDiscussionEntries, eventDiscussionFrames, fingerprintOfPresentActor, fingerprintsIdentifySameActor, frameBelongsInRoom, parsePresenceLabel, pendingForThread, pendingMatchesFrame, presentActors, reconciledPendingIDs, sendTemporaryReply, temporaryDiscussionCounts, temporaryDiscussionLabel, temporaryReplyDelivery, threadTargetKey, toggleActivityFocus } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic } from "../src/lib/memory.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
@@ -43,6 +43,159 @@ test("thread identity includes its exact target", () => {
     threadTargetKey({ kind: "frame", conversation: "chat", sequence: 1 }),
     threadTargetKey({ kind: "frame", conversation: "chat", sequence: 2 }),
   );
+});
+
+test("temporary event discussion is isolated by exact event anchor", () => {
+  const frames = [
+    { about: "event-one", text: "one" },
+    { about: "event-two", text: "two" },
+    { about: "event-one", re: "conversation:0", text: "nested" },
+  ];
+  assert.deepEqual(eventDiscussionFrames("event-one", frames).map((frame) => frame.text), ["one"]);
+  assert.equal(frameBelongsInRoom(frames[0], new Set(["event-one", "event-two"])), false);
+  assert.equal(frameBelongsInRoom({ about: "the workroom" }, new Set(["event-one", "event-two"])), true);
+  assert.equal(
+    frameBelongsInRoom(
+      { about: "git:sha1:1111111111111111111111111111111111111111#git:sha1:2222222222222222222222222222222222222222" },
+      new Set(),
+    ),
+    false,
+  );
+
+  const pending = [
+    { id: "one", about: "event-one" },
+    { id: "two", about: "event-two" },
+    { id: "frame", re: "conversation:7" },
+  ];
+  assert.deepEqual(pendingForThread({ kind: "event", event: "event-one" }, pending).map((item) => item.id), ["one"]);
+  assert.deepEqual(pendingForThread({ kind: "frame", conversation: "conversation", sequence: 7 }, pending).map((item) => item.id), ["frame"]);
+});
+
+test("temporary event discussion keeps nested replies visible with their exact depth", () => {
+  const frames = [
+    { conversation: "one", sequence: 0, about: "event-one", text: "root" },
+    { conversation: "one", sequence: 1, about: "event-one", re: "one:0", text: "reply" },
+    { conversation: "one", sequence: 2, about: "event-one", re: "one:1", text: "nested" },
+    { conversation: "other", sequence: 0, about: "event-two", text: "elsewhere" },
+    { conversation: "one", sequence: 3, about: "event-one", re: "expired:7", text: "orphan" },
+  ];
+  assert.deepEqual(
+    eventDiscussionEntries("event-one", frames).map(({ frame, depth }) => [frame.text, depth, frame.conversation, frame.re]),
+    [
+      ["root", 0, "one", undefined],
+      ["reply", 1, "one", "one:0"],
+      ["nested", 2, "one", "one:1"],
+      ["orphan", 0, "one", "expired:7"],
+    ],
+  );
+});
+
+test("optimistic temporary replies reconcile only inside their sending scope", () => {
+  assert.equal(pendingMatchesFrame({ about: "event-one" }, { about: "event-one" }), true);
+  assert.equal(pendingMatchesFrame({ about: "event-one" }, { about: "event-two" }), false);
+  assert.equal(pendingMatchesFrame({ re: "conversation:1" }, { about: "event-one", re: "conversation:1" }), true);
+  assert.equal(pendingMatchesFrame({}, { about: "the workroom" }), true);
+  assert.equal(pendingMatchesFrame({}, { about: "event-one" }), false);
+});
+
+test("view-independent reconciliation is exact, arrival-sensitive, and one-to-one", () => {
+  const pending = [
+    { id: "one", text: "same", at: 10, about: "event-one" },
+    { id: "two", text: "same", at: 10, about: "event-two" },
+    { id: "duplicate", text: "same", at: 10, about: "event-one" },
+    { id: "nested", text: "nested", at: 10, re: "conversation:4" },
+    { id: "old", text: "old words", at: 20, about: "event-one" },
+  ];
+  const frames = [
+    { actor: "claude", text: "same", seen: 11, about: "event-one" },
+    { actor: "claude", text: "same", seen: 11, about: "event-two" },
+    { actor: "claude", text: "nested", seen: 11, about: "event-one", re: "conversation:4" },
+    { actor: "claude", text: "old words", seen: 19, about: "event-one" },
+    { actor: "someone-else", text: "same", seen: 11, about: "event-one" },
+  ];
+  assert.deepEqual(reconciledPendingIDs(pending, frames, "claude"), ["one", "two", "nested"]);
+  assert.deepEqual(reconciledPendingIDs(pending, frames, undefined), []);
+});
+
+test("temporary discussion signals include replies and stay bounded", () => {
+  const frames = [
+    ...Array.from({ length: 22 }, (_, sequence) => ({ about: "event-one", re: sequence ? `one:${sequence - 1}` : undefined })),
+    { about: "event-two" },
+    { about: "the workroom" },
+  ];
+  const counts = temporaryDiscussionCounts(frames, new Set(["event-one", "event-two"]));
+  assert.deepEqual(counts.get("event-one"), { count: 20, overflow: true });
+  assert.equal(temporaryDiscussionLabel(counts.get("event-one")), "20+ temporary");
+  assert.equal(temporaryDiscussionLabel(counts.get("event-two")), "1 temporary");
+  assert.equal(counts.has("the workroom"), false);
+});
+
+test("temporary discussion wiring keeps the six reviewed survivor conditions pinned", () => {
+  const read = (name) => readFileSync(new URL(`../src/${name}`, import.meta.url), "utf8");
+  const app = read("App.tsx");
+  const stream = read("components/Stream.tsx");
+  const thread = read("components/ThreadPane.tsx");
+
+  // Reconciliation is owned above the optional Activity view and delegates
+  // exact matching to the mutation-tested helper.
+  assert.match(app, /reconciledPendingIDs\(pending, frames, session\.actor\)/);
+  assert.doesNotMatch(stream, /onReconcile|frame\.actor === session\.actor && frame\.text/);
+
+  // Room isolation stays on the exact durable-event-aware predicate.
+  assert.match(stream, /if \(!frameBelongsInRoom\(frame, durableEvents\)\) continue/);
+
+  // Failure gives the words back and exposes the error; an expired frame
+  // thread refuses the publish before optimistic state is created.
+  const temporaryStart = thread.indexOf("const delivery = temporaryReplyDelivery");
+  const temporaryEnd = thread.indexOf("return;\n    }\n    try {", temporaryStart);
+  assert.notEqual(temporaryStart, -1);
+  assert.notEqual(temporaryEnd, -1);
+  const temporaryBranch = thread.slice(temporaryStart, temporaryEnd);
+  assert.match(temporaryBranch, /if \(!delivery\)[\s\S]*This temporary conversation has expired\.[\s\S]*return/);
+  assert.match(temporaryBranch, /catch \(thrown\)[\s\S]*setText\(line\)[\s\S]*setError\(/);
+  assert.match(thread, /<p role="alert"/);
+
+  // Kept and temporary controls retain state-specific accessible names.
+  assert.match(thread, /aria-label=\{durable \? "make reply temporary" : "keep reply"\}/);
+  assert.match(thread, /aria-label=\{type === "withdraw" \? "withdraw" : durable \? "keep reply" : "send temporary reply"\}/);
+});
+
+test("temporary delivery anchors an event exactly and preserves frame conversation identity", () => {
+  assert.deepEqual(temporaryReplyDelivery({ kind: "event", event: "full-event-id" }), { about: "full-event-id" });
+  assert.deepEqual(
+    temporaryReplyDelivery(
+      { kind: "frame", conversation: "conversation", sequence: 4 },
+      { conversation: "conversation", sequence: 4, about: "full-event-id" },
+    ),
+    { about: "full-event-id", conversation: "conversation", re: "conversation:4" },
+  );
+  assert.equal(temporaryReplyDelivery({ kind: "frame", conversation: "gone", sequence: 1 }), undefined);
+});
+
+test("failed temporary delivery removes its optimistic echo and preserves the transport failure", async () => {
+  const calls = [];
+  const failure = new Error("nexus unavailable");
+  await assert.rejects(
+    sendTemporaryReply("try again", { about: "event-one" }, {
+      optimistic(text, re, about) {
+        calls.push(["optimistic", text, re, about]);
+        return "pending-one";
+      },
+      async publish(delivery, text) {
+        calls.push(["publish", delivery, text]);
+        throw failure;
+      },
+      failed(id) {
+        calls.push(["failed", id]);
+      },
+    }),
+    (error) => error === failure,
+  );
+  assert.deepEqual(calls, [
+    ["optimistic", "try again", undefined, "event-one"],
+    ["publish", { about: "event-one" }, "try again"],
+    ["failed", "pending-one"],
+  ]);
 });
 
 test("presence labels preserve actor names containing spaces", () => {

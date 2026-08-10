@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BadgeCheck, Bookmark, CircleSlash, GitBranch, Link2, SendHorizonal, Undo2, X } from "lucide-react";
+import { BadgeCheck, Bookmark, CircleSlash, GitBranch, Link2, MessageSquareText, SendHorizonal, Undo2, X } from "lucide-react";
 import { api, frameKey, type ActInput, type FrameView, type Statement } from "../lib/api";
 import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { buildThreadIndex, ticketsOf, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { mentionFingerprints } from "../lib/mentions";
-import { RetryKeys, threadTargetKey } from "../lib/interaction";
+import { eventDiscussionEntries, pendingForThread, RetryKeys, sendTemporaryReply, temporaryReplyDelivery, threadTargetKey } from "../lib/interaction";
 import { actorTint, clock, cn, seenAt } from "../lib/util";
 import { Avatar } from "./Avatar";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
@@ -47,6 +47,7 @@ export function ThreadPane({
   doAct,
   onSay,
   onSayFailed,
+  onOpenThread,
 }: {
   workroom: Workroom;
   session: Session;
@@ -61,8 +62,9 @@ export function ThreadPane({
   onOpenProfile: (fingerprint: string) => void;
   onRoute: (mode: SemanticReplyMode, basis: string, prefill: string) => void;
   doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
-  onSay: (text: string, re: string) => string;
+  onSay: (text: string, re?: string, about?: string) => string;
   onSayFailed: (id: string) => void;
+  onOpenThread: (target: ThreadTarget) => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -101,11 +103,15 @@ export function ThreadPane({
   const actByEvent = useMemo(() => new Map((thread?.acts ?? []).map((act) => [act.event, act])), [thread]);
   const reKey = target.kind === "frame" ? `${target.conversation}:${target.sequence}` : undefined;
   const replies = useMemo(() => (reKey ? frames.filter((f) => f.re === reKey) : []), [frames, reKey]);
-  const pendingHere = pending.filter((p) => p.re === reKey);
+  const discussion = useMemo(
+    () => (target.kind === "event" ? eventDiscussionEntries(target.event, frames) : []),
+    [frames, target],
+  );
+  const pendingHere = pendingForThread(target, pending);
 
   // Follow the tail as replies arrive.
   const scroller = useRef<HTMLDivElement>(null);
-  const replyCount = (thread?.statements.length ?? 0) + (thread?.acts.length ?? 0) + replies.length + pendingHere.length;
+  const replyCount = (thread?.statements.length ?? 0) + (thread?.acts.length ?? 0) + discussion.length + replies.length + pendingHere.length;
   useEffect(() => {
     requestAnimationFrame(() => scroller.current?.scrollTo({ top: 1e9 }));
   }, [replyCount]);
@@ -251,6 +257,32 @@ export function ThreadPane({
                   </div>
                 );
               })}
+              <div className="my-2 flex items-center gap-2" aria-label="Temporary discussion">
+                <span className="h-px flex-1 bg-border/60" aria-hidden />
+                <span className="text-xs text-faint">
+                  Temporary discussion · {discussion.length} {discussion.length === 1 ? "message" : "messages"}
+                </span>
+                <span className="h-px flex-1 bg-border/60" aria-hidden />
+              </div>
+              {discussion.map(({ frame, depth }) => (
+                <ThreadMessage
+                  key={frameKey(frame)}
+                  frame={frame}
+                  depth={depth}
+                  known={actorNames}
+                  myName={session.actor}
+                  cited={composer.frames.some((candidate) => frameKey(candidate) === frameKey(frame))}
+                  onCite={() => toggleLinkFrame(composer, onComposer, frame)}
+                  onReply={() => onOpenThread({ kind: "frame", conversation: frame.conversation, sequence: frame.sequence })}
+                  onOpenProfile={onOpenProfile}
+                />
+              ))}
+              {pendingHere.map((say) => (
+                <div key={say.id} className="flex gap-2 rounded-md px-2 py-1 opacity-50" aria-label="sending temporary reply">
+                  <span className="w-6 shrink-0" />
+                  <span className="text-sm italic leading-relaxed text-foreground/90">{say.text}</span>
+                </div>
+              ))}
             </>
           ) : (
             <p className="px-2 py-4 text-xs text-faint">Gone.</p>
@@ -281,6 +313,7 @@ export function ThreadPane({
                   myName={session.actor}
                   cited={composer.frames.some((f) => frameKey(f) === frameKey(frame))}
                   onCite={() => toggleLinkFrame(composer, onComposer, frame)}
+                  onReply={() => onOpenThread({ kind: "frame", conversation: frame.conversation, sequence: frame.sequence })}
                   onOpenProfile={onOpenProfile}
                 />
               ))}
@@ -382,17 +415,27 @@ function ThreadMessage({
   myName,
   cited,
   onCite,
+  onReply,
   onOpenProfile,
+  depth = 0,
 }: {
   frame: FrameView;
   known: Set<string>;
   myName?: string;
   cited: boolean;
   onCite: () => void;
+  onReply?: () => void;
   onOpenProfile: (fingerprint: string) => void;
+  depth?: number;
 }) {
   return (
-    <div tabIndex={-1} className="group relative flex gap-2.5 rounded-md px-2 py-1 outline-none">
+    <div
+      tabIndex={-1}
+      data-conversation={frame.conversation}
+      data-re={frame.re}
+      className="group relative flex gap-2.5 rounded-md px-2 py-1 outline-none"
+      style={{ marginLeft: `${Math.min(depth, 3) * 1.25}rem` }}
+    >
       <Avatar fingerprint={frame.fingerprint} name={frame.actor} size={28} onClick={() => onOpenProfile(frame.fingerprint)} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
@@ -410,6 +453,7 @@ function ThreadMessage({
       </div>
       <RowToolbar>
         <ToolbarButton icon={<Link2 className="h-3.5 w-3.5" />} label={cited ? "remove link" : "link"} active={cited} onClick={onCite} />
+        {onReply && <ToolbarButton icon={<MessageSquareText className="h-3.5 w-3.5" />} label="reply in thread" onClick={onReply} />}
       </RowToolbar>
     </div>
   );
@@ -433,7 +477,7 @@ function ThreadComposer({
   route?: ThreadRoute;
   parentFrame?: FrameView;
   boxRef: React.RefObject<HTMLTextAreaElement | null>;
-  onSay: (text: string, re: string) => string;
+  onSay: (text: string, re?: string, about?: string) => string;
   onSayFailed: (id: string) => void;
 }) {
   const chat = target.kind === "frame";
@@ -452,14 +496,21 @@ function ThreadComposer({
     setBusy(true);
     setError(undefined);
     const line = text.trim();
-    if (!durable && chat && parentFrame) {
-      const re = frameKey(parentFrame);
-      const pendingID = onSay(line, re); // optimistic: it appears before the round trip
+    if (!durable) {
+      const delivery = temporaryReplyDelivery(target, parentFrame);
+      if (!delivery) {
+        setError("This temporary conversation has expired.");
+        setBusy(false);
+        return;
+      }
       setText("");
       try {
-        await api.say(session.id, parentFrame.about || "the workroom", line, parentFrame.conversation, re);
+        await sendTemporaryReply(line, delivery, {
+          optimistic: onSay,
+          publish: (next, message) => api.say(session.id, next.about, message, next.conversation, next.re),
+          failed: onSayFailed,
+        });
       } catch (thrown) {
-        onSayFailed(pendingID);
         setText(line); // give the words back rather than losing them
         setError(thrown instanceof Error ? thrown.message : String(thrown));
       } finally {
@@ -534,10 +585,11 @@ function ThreadComposer({
               <X className="h-3.5 w-3.5" />
             </button>
           </>
-        ) : chat ? (
+        ) : (
           <button
             onClick={() => setType(durable ? "say" : "assert")}
             aria-pressed={durable}
+            aria-label={durable ? "make reply temporary" : "keep reply"}
             className={cn(
               "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium focus-visible:outline focus-visible:outline-accent",
               durable ? "bg-accent/12 text-accent-deep" : "text-faint hover:bg-elevated hover:text-muted",
@@ -545,10 +597,6 @@ function ThreadComposer({
           >
             <Bookmark className={cn("h-3.5 w-3.5", durable && "fill-current")} /> {durable ? "Kept" : "Temporary"}
           </button>
-        ) : (
-          <span className="flex items-center gap-1 text-xs text-faint">
-            <Bookmark className="h-3 w-3 fill-current" /> kept
-          </span>
         )}
       </div>
       <div className="flex items-end gap-2">
@@ -582,7 +630,7 @@ function ThreadComposer({
         <button
           onClick={() => void send()}
           disabled={busy || !text.trim() || !session.live}
-          aria-label={type === "withdraw" ? "withdraw" : "send reply"}
+          aria-label={type === "withdraw" ? "withdraw" : durable ? "keep reply" : "send temporary reply"}
           title={session.live ? undefined : "not present yet"}
           className={cn(
             "flex h-8 w-8 items-center justify-center rounded-lg transition-colors focus-visible:outline focus-visible:outline-accent disabled:opacity-40",

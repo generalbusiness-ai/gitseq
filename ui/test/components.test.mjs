@@ -625,3 +625,178 @@ test("a rail too wide for the pane stops at ten lanes and says what it folded", 
     await vite.close();
   }
 });
+
+test("a durable event thread renders only its temporary discussion and keeps durable reply as the default", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const { ThreadPane } = await vite.ssrLoadModule("/src/components/ThreadPane.tsx");
+    const room = workroom({});
+    room.status.durable.projection.statements = [
+      { event: "event-one", actor: "a5d35aa7e4799472", kind: "assert", text: "durable root" },
+    ];
+    room.status.durable.projection.provenance = { "event-one": [] };
+    const frame = (conversation, sequence, about, text, re) => ({
+      conversation,
+      sequence,
+      about,
+      text,
+      re,
+      actor: "claude",
+      fingerprint: "a5d35aa7e4799472",
+      seen: 1,
+      raw: { Conversation: conversation, Sequence: sequence, Payload: "", ActorKey: "" },
+    });
+    const opened = [];
+    const common = {
+      workroom: room,
+      session: { ...session, actor: "claude" },
+      frames: [
+        frame("one", 0, "event-one", "event-one discussion"),
+        frame("two", 0, "event-two", "event-two discussion"),
+        frame("one", 1, "event-one", "nested frame reply", "one:0"),
+      ],
+      pending: [
+        { id: "pending-one", text: "event-one pending", at: 1, about: "event-one" },
+        { id: "pending-two", text: "event-two pending", at: 1, about: "event-two" },
+      ],
+      composer: { type: "say", restsOn: [], frames: [] },
+      onComposer() {},
+      onClose() {},
+      onJumpTo() {},
+      onOpenProfile() {},
+      onRoute() {},
+      doAct() {},
+      onSay() { return "pending"; },
+      onSayFailed() {},
+      onOpenThread(target) { opened.push(target); },
+    };
+    const markup = renderToStaticMarkup(
+      React.createElement(ThreadPane, {
+        ...common,
+        target: { kind: "event", event: "event-one" },
+      }),
+    );
+
+    assert.match(markup, /Temporary discussion · 2 messages/);
+    assert.match(markup, /event-one discussion/);
+    assert.match(markup, /nested frame reply/);
+    assert.match(markup, /data-conversation="one" data-re="one:0"/);
+    assert.match(markup, /event-one pending/);
+    assert.doesNotMatch(markup, /event-two discussion|event-two pending/);
+    assert.equal((markup.match(/aria-label="reply in thread"/g) ?? []).length, 2);
+    assert.match(markup, /aria-pressed="true" aria-label="make reply temporary"/);
+    assert.match(markup, /aria-label="keep reply"/);
+    assert.match(markup, /aria-label="thread reply"/);
+
+    const frameThread = renderToStaticMarkup(
+      React.createElement(ThreadPane, {
+        ...common,
+        target: { kind: "frame", conversation: "one", sequence: 0 },
+        pending: [],
+      }),
+    );
+    assert.match(frameThread, /aria-pressed="false" aria-label="keep reply"/);
+    assert.match(frameThread, /aria-label="send temporary reply"/);
+  } finally {
+    await vite.close();
+  }
+});
+
+test("Stream is SSR-safe, keeps event talk out of the room, and signals it on Work", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const [{ Stream, ThreadIndicator }, { WorkView }] = await Promise.all([
+      vite.ssrLoadModule("/src/components/Stream.tsx"),
+      vite.ssrLoadModule("/src/components/WorkDrawer.tsx"),
+    ]);
+    const room = workroom({});
+    room.status.durable.projection.statements = [
+      { event: "event-one", actor: "a5d35aa7e4799472", kind: "request", text: "repair the UI", body: { to: "a5d35aa7e4799472" } },
+    ];
+    room.status.durable.projection.decisions = [
+      { event: "event-one", verdict: "effective", reason: "recorded" },
+    ];
+    room.status.durable.projection.commitments = [
+      { request: "event-one", requester: "a5d35aa7e4799472", addressed_to: "a5d35aa7e4799472", status: "open" },
+    ];
+    room.status.durable.projection.provenance = { "event-one": [] };
+    room.status.live.presence = { "handle:claude": "claude (a5d35aa7e479)" };
+    room.status.live.activity = {
+      "handle:claude": { status: "blocked", focus: ["event-one"], note: "waiting on review" },
+    };
+    const frame = (sequence, about, text, re) => ({
+      conversation: about === "the workroom" ? "room" : "event",
+      sequence,
+      about,
+      text,
+      re,
+      actor: "claude",
+      fingerprint: "a5d35aa7e4799472",
+      seen: sequence + 1,
+      raw: { Conversation: "event", Sequence: sequence, Payload: "", ActorKey: "" },
+    });
+    const frames = [
+      ...Array.from({ length: 22 }, (_, index) => frame(index, "event-one", `event talk ${index}`, index ? `event:${index - 1}` : undefined)),
+      frame(100, "the workroom", "room talk"),
+    ];
+    const stream = renderToStaticMarkup(
+      React.createElement(Stream, {
+        workroom: room,
+        session: { ...session, actor: "claude" },
+        frames,
+        deliveries: 1,
+        highlight: { events: new Set(), commits: new Set() },
+        onSelect() {},
+        onJump() {},
+        composer: { type: "say", restsOn: [], frames: [] },
+        onComposer() {},
+        pending: [],
+        onOpenThread() {},
+        onRoute() {},
+        onOpenProfile() {},
+        doAct() {},
+      }),
+    );
+    assert.match(stream, /room talk/);
+    assert.doesNotMatch(stream, /event talk/);
+    assert.match(stream, /open thread: 20\+ temporary/);
+    assert.match(stream, /aria-label="Focused here: claude \(blocked\)"/);
+    assert.match(stream, /claude · blocked/);
+
+    const work = renderToStaticMarkup(
+      React.createElement(WorkView, {
+        workroom: room,
+        session: { ...session, actor: "claude" },
+        frames,
+        highlight: { events: new Set(), commits: new Set() },
+        onSelect() {},
+        onOpenThread() {},
+      }),
+    );
+    assert.match(work, /aria-label="20\+ temporary messages in temporary discussion"/);
+    assert.match(work, /aria-label="Focused here: claude \(blocked\)"/);
+    assert.match(work, /claude · blocked/);
+
+    const combined = renderToStaticMarkup(
+      React.createElement(ThreadIndicator, {
+        people: [],
+        count: 2,
+        temporary: { count: 20, overflow: true },
+        onOpen() {},
+      }),
+    );
+    assert.match(combined, /open thread: 2 replies · 20\+ temporary/);
+  } finally {
+    await vite.close();
+  }
+});

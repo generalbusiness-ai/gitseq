@@ -2,6 +2,51 @@ export type ThreadIdentity =
   | { kind: "event"; event: string }
   | { kind: "frame"; conversation: string; sequence: number };
 
+export interface ThreadFrame {
+  about: string;
+  re?: string;
+}
+
+export interface ConversationFrame extends ThreadFrame {
+  conversation: string;
+  sequence: number;
+}
+
+export interface ThreadPending {
+  about?: string;
+  re?: string;
+}
+
+export interface PendingEcho extends ThreadPending {
+  id: string;
+  text: string;
+  at: number;
+}
+
+export interface DeliveredFrame extends ThreadFrame {
+  actor: string;
+  text: string;
+  seen: number;
+}
+
+export interface DiscussionEntry<T extends ConversationFrame> {
+  frame: T;
+  depth: number;
+}
+
+export interface TemporaryDiscussionCount {
+  count: number;
+  overflow: boolean;
+}
+
+export const temporaryDiscussionLimit = 20;
+
+export interface TemporaryDelivery {
+  about: string;
+  conversation?: string;
+  re?: string;
+}
+
 // Retry identity is scoped to both the UI intention and the exact payload.
 // A transport failure retains the key; editing the payload or completing the
 // attempt creates a new identity.
@@ -30,6 +75,147 @@ export function threadTargetKey(target: ThreadIdentity): string {
   return target.kind === "event"
     ? `event:${target.event}`
     : `frame:${target.conversation}:${target.sequence}`;
+}
+
+// A durable event is the nexus `about` anchor for its temporary discussion.
+// Direct discussion frames belong in that event's pane; replies to one of
+// those frames keep their ordinary frame-thread identity instead.
+export function eventDiscussionFrames<T extends ThreadFrame>(event: string, frames: T[]): T[] {
+  return frames.filter((frame) => frame.about === event && !frame.re);
+}
+
+// Keep the whole event conversation in its event pane. Direct frames are
+// roots; replies follow their exact conversation:sequence parent. Hostile or
+// expired parent references remain visible as roots instead of disappearing.
+export function eventDiscussionEntries<T extends ConversationFrame>(event: string, frames: T[]): DiscussionEntry<T>[] {
+  const relevant = frames.filter((frame) => frame.about === event);
+  const known = new Set(relevant.map((frame) => `${frame.conversation}:${frame.sequence}`));
+  const children = new Map<string, T[]>();
+  const roots: T[] = [];
+  for (const frame of relevant) {
+    if (!frame.re || !known.has(frame.re)) {
+      roots.push(frame);
+      continue;
+    }
+    children.set(frame.re, [...(children.get(frame.re) ?? []), frame]);
+  }
+  const entries: DiscussionEntry<T>[] = [];
+  const visited = new Set<string>();
+  const append = (frame: T, depth: number) => {
+    const key = `${frame.conversation}:${frame.sequence}`;
+    if (visited.has(key)) return;
+    visited.add(key);
+    entries.push({ frame, depth });
+    for (const child of children.get(key) ?? []) append(child, depth + 1);
+  };
+  for (const root of roots) append(root, 0);
+  // A cycle is invalid nexus shape, but rendering it once is safer than
+  // silently hiding signed talk.
+  for (const frame of relevant) append(frame, 0);
+  return entries;
+}
+
+export function frameBelongsInRoom(frame: ThreadFrame, durableEvents: ReadonlySet<string>): boolean {
+  const canonicalEvent = /^git:[a-z0-9]+:[0-9a-f]{40,64}#git:[a-z0-9]+:[0-9a-f]{40,64}$/.test(frame.about);
+  return !frame.re && !canonicalEvent && !durableEvents.has(frame.about);
+}
+
+export function pendingForThread<T extends ThreadPending>(target: ThreadIdentity, pending: T[]): T[] {
+  if (target.kind === "event") {
+    return pending.filter((item) => item.about === target.event && !item.re);
+  }
+  const re = `${target.conversation}:${target.sequence}`;
+  return pending.filter((item) => item.re === re);
+}
+
+// Optimistic echoes reconcile only within the conversation scope that sent
+// them. Equal words in two event threads must not make either echo disappear.
+export function pendingMatchesFrame(pending: ThreadPending, frame: ThreadFrame): boolean {
+  if (pending.re) return pending.re === frame.re;
+  if (pending.about) return !frame.re && pending.about === frame.about;
+  return !frame.re && frame.about === "the workroom";
+}
+
+// Reconcile once per delivered frame, after the pending echo was created.
+// This prevents an old equal-text frame from clearing a retry and prevents one
+// delivered frame from clearing two identical sends.
+export function reconciledPendingIDs(
+  pending: PendingEcho[],
+  frames: DeliveredFrame[],
+  actor: string | undefined,
+): string[] {
+  if (!actor) return [];
+  const available = new Set(frames.map((_, index) => index));
+  const matched: string[] = [];
+  for (const echo of pending) {
+    const index = frames.findIndex(
+      (frame, candidate) =>
+        available.has(candidate) &&
+        frame.actor === actor &&
+        frame.text === echo.text &&
+        frame.seen >= echo.at &&
+        pendingMatchesFrame(echo, frame),
+    );
+    if (index < 0) continue;
+    available.delete(index);
+    matched.push(echo.id);
+  }
+  return matched;
+}
+
+export function temporaryDiscussionCounts(
+  frames: ThreadFrame[],
+  durableEvents: ReadonlySet<string>,
+  limit = temporaryDiscussionLimit,
+): Map<string, TemporaryDiscussionCount> {
+  const totals = new Map<string, number>();
+  for (const frame of frames) {
+    if (!durableEvents.has(frame.about)) continue;
+    totals.set(frame.about, (totals.get(frame.about) ?? 0) + 1);
+  }
+  return new Map(
+    [...totals].map(([event, total]) => [event, { count: Math.min(total, limit), overflow: total > limit }]),
+  );
+}
+
+export function temporaryDiscussionLabel(summary: TemporaryDiscussionCount | undefined): string | undefined {
+  if (!summary || summary.count === 0) return undefined;
+  return `${summary.count}${summary.overflow ? "+" : ""} temporary`;
+}
+
+export function temporaryReplyDelivery(
+  target: ThreadIdentity,
+  parent?: ConversationFrame,
+): TemporaryDelivery | undefined {
+  if (target.kind === "event") return { about: target.event };
+  if (!parent) return undefined;
+  return {
+    about: parent.about || "the workroom",
+    conversation: parent.conversation,
+    re: `${parent.conversation}:${parent.sequence}`,
+  };
+}
+
+// Keep optimistic delivery honest at one boundary: a failed publish removes
+// the echo before the error returns to the composer, which can then restore
+// the author's text and expose the transport error.
+export async function sendTemporaryReply(
+  text: string,
+  delivery: TemporaryDelivery,
+  callbacks: {
+    optimistic: (text: string, re?: string, about?: string) => string;
+    publish: (delivery: TemporaryDelivery, text: string) => Promise<unknown>;
+    failed: (pendingID: string) => void;
+  },
+): Promise<string> {
+  const pendingID = callbacks.optimistic(text, delivery.re, delivery.re ? undefined : delivery.about);
+  try {
+    await callbacks.publish(delivery, text);
+    return pendingID;
+  } catch (error) {
+    callbacks.failed(pendingID);
+    throw error;
+  }
 }
 
 export function parsePresenceLabel(value: string): { name: string; fingerprint: string } {

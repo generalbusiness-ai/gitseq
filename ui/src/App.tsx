@@ -10,7 +10,7 @@ import { WorkView } from "./components/WorkDrawer";
 import { ThreadPane, type ThreadRoute, type ThreadTarget } from "./components/ThreadPane";
 import { ProfilePane } from "./components/ProfilePane";
 import { Avatar } from "./components/Avatar";
-import { RetryKeys, threadTargetKey } from "./lib/interaction";
+import { reconciledPendingIDs, RetryKeys, threadTargetKey } from "./lib/interaction";
 
 // One right-hand slot, Slack-style: a thread or profile, whichever opened last
 // wins; Work and Activity remain stable presentations in the center.
@@ -58,9 +58,9 @@ export default function App() {
     [projection],
   );
 
-  const echoSay = useCallback((text: string, re?: string) => {
+  const echoSay = useCallback((text: string, re?: string, about?: string) => {
     const id = crypto.randomUUID();
-    setPending((list) => [...list, { id, text, at: Date.now(), re }]);
+    setPending((list) => [...list, { id, text, at: Date.now(), re, about }]);
     return id;
   }, []);
   const dropPending = useCallback(
@@ -70,6 +70,13 @@ export default function App() {
     },
     [],
   );
+
+  // Reconciliation belongs at the view-independent owner of both collections.
+  // Work is the default center, so Activity may never mount during a send.
+  useEffect(() => {
+    const matched = reconciledPendingIDs(pending, frames, session.actor);
+    if (matched.length > 0) dropPending(matched);
+  }, [pending, frames, session.actor, dropPending]);
 
   // A one-flight, one-key guard per user intention: double-clicks and retries
   // reuse the same idempotency key, so at most one durable event results.
@@ -129,6 +136,7 @@ export default function App() {
             <WorkView
               workroom={workroom}
               session={session}
+              frames={frames}
               highlight={highlight}
               selection={selection}
               onSelect={select}
@@ -148,7 +156,6 @@ export default function App() {
                 composer={composer}
                 onComposer={setComposer}
                 pending={pending}
-                onReconcile={dropPending}
                 onOpenThread={openThread}
                 onRoute={route}
                 onOpenProfile={openProfile}
@@ -184,6 +191,7 @@ export default function App() {
             doAct={doAct}
             onSay={echoSay}
             onSayFailed={dropPending}
+            onOpenThread={openThread}
           />
         )}
         {pane?.kind === "profile" && (
