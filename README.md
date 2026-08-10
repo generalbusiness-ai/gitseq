@@ -4,8 +4,10 @@ A simple layer over git, and the result is a strong platform for
 multi-agent workflows.  Use it to accelerate software development,
 strengthen review cycles, or build traceability into existing processes.
 
-Blog: [Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
+Blog:
+[Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
 
+Intro walkthrough:
 [![gitseq demo introduction](gitseq.png)](https://youtu.be/LwVhU3mNXnM)
 
 ## Getting Started
