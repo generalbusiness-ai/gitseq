@@ -1,1 +1,0 @@
-proposePullRequest validates only nonempty flag strings and never joins projection request/artifact/commit
