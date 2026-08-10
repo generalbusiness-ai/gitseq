@@ -465,6 +465,7 @@ func TestMergeGuardMergesOnlyRatifiedApprovedExactHead(t *testing.T) {
 	if err := mergeCommand(fixture.ctx, []string{
 		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
 		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Merge the approved feature and make it available on main.",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -502,6 +503,7 @@ func TestMergeGuardConsumesApprovalOnceAcrossTargets(t *testing.T) {
 	if err := mergeCommand(fixture.ctx, []string{
 		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
 		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Merge the approved feature and make it available on main.",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -511,6 +513,7 @@ func TestMergeGuardConsumesApprovalOnceAcrossTargets(t *testing.T) {
 	err := mergeCommand(fixture.ctx, []string{
 		"--repo", fixture.repo, "--as", "operator", "--checkout", secondTarget,
 		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Attempt to merge the feature into a second target.",
 	})
 	if err == nil || !strings.Contains(err.Error(), "already used") {
 		t.Fatalf("approval replay on another target error = %v", err)
@@ -529,9 +532,28 @@ func TestMergeGuardConsumesApprovalOnceAcrossTargets(t *testing.T) {
 	err = mergeCommand(fixture.ctx, []string{
 		"--repo", fixture.repo, "--as", "operator", "--checkout", secondTarget,
 		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Attempt to merge the feature after losing local receipts.",
 	})
 	if err == nil || !strings.Contains(err.Error(), "durable merge receipt") {
 		t.Fatalf("approval replay after receipt-ref loss error = %v", err)
+	}
+}
+
+func TestMergeGuardRequiresPlainLanguageMergeText(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	targetPreHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+	})
+	if err == nil || !strings.Contains(err.Error(), "merge requires --text") {
+		t.Fatalf("missing merge text error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != targetPreHead {
+		t.Fatalf("missing merge text moved target to %s, want %s", got, targetPreHead)
 	}
 }
 
@@ -545,6 +567,7 @@ func TestMergeGuardSerializesConcurrentApprovalUse(t *testing.T) {
 	err := mergeCommand(fixture.ctx, []string{
 		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
 		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Attempt a concurrent merge of the approved feature.",
 	})
 	if err == nil || !strings.Contains(err.Error(), "reserved or used") {
 		t.Fatalf("concurrent approval use error = %v", err)

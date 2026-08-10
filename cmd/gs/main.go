@@ -397,6 +397,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	checkout := set.String("checkout", "", "checkout receiving the merge")
 	candidate := set.String("candidate", "", "full approved commit ID")
 	approval := set.String("approval", "", "ratified approval report event")
+	mergeText := set.String("text", "", "plain-language merge description and impact")
 	serverURL := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
@@ -413,6 +414,9 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	}
 	if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
 		return err
+	}
+	if strings.TrimSpace(*mergeText) == "" {
+		return errors.New("merge requires --text with a plain-language description and impact")
 	}
 	actor, err := signingActor(*as)
 	if err != nil {
@@ -441,7 +445,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 			_, _ = git(context.Background(), *checkout, "update-ref", "-d", receiptRef, targetPreHead)
 		}
 	}()
-	message := mergeReceiptMessage(*approval, *candidate, targetPreHead)
+	message := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead)
 	if _, err := git(ctx, *checkout, "merge", "--no-ff", "-m", message, "--", *candidate); err != nil {
 		return err
 	}
@@ -497,8 +501,8 @@ func mergeReceiptRef(approval string) string {
 	return "refs/gitseq/merge-receipts/" + strings.TrimPrefix(mergeReceiptKey(approval), "merge-receipt-")
 }
 
-func mergeReceiptMessage(approval, candidate, targetPreHead string) string {
-	return fmt.Sprintf("Merge approved candidate %s\n\n%s%s\n%s%s\n%s%s", candidate[:12],
+func mergeReceiptMessage(text, approval, candidate, targetPreHead string) string {
+	return fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
 		mergeApprovalTrailer, approval, mergeCandidateTrailer, candidate, mergeTargetTrailer, targetPreHead)
 }
 
