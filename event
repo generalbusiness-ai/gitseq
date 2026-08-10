@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Governance authority repair implementation at exact clean head 6f615b6e: founding seed protection, present target-class reversal authority, beneficiary-conferral rejection, and dormant/retired roster source projection.","body":{"commit":"6f615b6e","path":"."}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:414f1b43418e5e92c0d13580f5fc3247507d855a","text":"Retire the abbreviated candidate pointer; exact-head review requires the full immutable commit identifier."}
