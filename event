@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will review ownership-descent proposal 4ea5e41c126e00c131e6edd16cd0b31e33df1c5f as a design, not implementation. I will inspect the current membership/authority basis machinery, admission and self-promotion rules, retirement and in-flight act behavior, actor-name resolution, profile/checkpoint compatibility, and report agreement or concrete objections with code citations."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9081f769db95669998db5b7990cb1fbbeee09c75"}
