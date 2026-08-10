@@ -1,1 +1,0 @@
-internal/service/server.go /legacy renders short(c.request) and short(d.event)
