@@ -5,6 +5,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1e07c1f654274392a11ac43943211dd9609f0205
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a40ed6053a0bb5c1eeed9febb540498d4258799f
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cccadaa785ee972d3154690bb4ad262d1dcd9633
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:428df978ec0099cd094b5da1ac93b3837885c0a8
 ---
 
 # `gs status`
@@ -79,8 +80,9 @@ list never reads as a complete one. Request text is normalized to one
 line and capped at 240 bytes. The exact numbers are in
 [Limits](../limits.md).
 
-An unclaimed request shows as `unclaimed` rather than inventing a debt
-against someone who has not promised anything.
+An open unclaimed request names the actor it is addressed to and shows as
+`addressed to NAME — unclaimed`, rather than inventing a debt against
+someone who has not promised anything.
 
 Artifact rows carry a state and any notes:
 

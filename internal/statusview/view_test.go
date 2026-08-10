@@ -171,11 +171,14 @@ func TestOpenUnclaimedRequestRemainsActionableWithoutInventedAssignment(t *testi
 		Commitments: []workroom.Commitment{{Request: "request", Requester: "requester", AddressedTo: "addressee", Status: "open"}},
 	}
 	summary := Build("genesis", "head", 1, projection)
-	if len(summary.Actionable) != 1 || summary.Actionable[0].Status != "open" || summary.Actionable[0].Performer != "" || summary.Actionable[0].WaitingOn != "" {
+	if len(summary.Actionable) != 1 || summary.Actionable[0].Status != "open" || summary.Actionable[0].AddressedTo != "Grace" || summary.Actionable[0].Performer != "" || summary.Actionable[0].WaitingOn != "" {
 		t.Fatalf("open request view invented or hid assignment: %+v", summary)
 	}
 	if len(summary.Attention) != 0 {
 		t.Fatalf("open request was classified as terminal attention: %+v", summary.Attention)
+	}
+	if rendered := string(Render(summary, "")); !strings.Contains(rendered, "Ada → addressed to Grace — unclaimed") {
+		t.Fatalf("rendered status hides who can claim the request:\n%s", rendered)
 	}
 }
 

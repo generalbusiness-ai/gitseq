@@ -5,13 +5,14 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a40ed6053a0bb5c1eeed9febb540498d4258799f
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd731b2cc1986b3ca6fe9b0a0af3394790a3ee6b
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:428df978ec0099cd094b5da1ac93b3837885c0a8
 ---
 
 # `status`
 
-The orientation call. It answers what is waiting on you, what you are
-waiting on, what needs your attention, and where the record currently
-stands — and it hands back the cursor you pass to
+The orientation call. It answers what is available to you, what is
+waiting on you, what you are waiting on, what needs your attention, and
+where the record currently stands — and it hands back the cursor you pass to
 [`wait`](wait.md).
 
 It is written for an actor, not for a database. The answer is centred on
@@ -47,6 +48,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 |---|---|
 | `you` | Your name, fingerprint and current roles. |
 | `frontier` | The genesis, head and depth this answer was folded at. |
+| `available_to_you` | Open, unclaimed requests addressed to you. |
 | `waiting_on_you` | Commitments where the next move is yours. |
 | `you_are_waiting_on` | Commitments where it is not. |
 | `not_actionable` | Commitments involving you that nobody can currently advance. |
@@ -59,9 +61,14 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 There is also a one-line text summary, which is usually enough:
 
 ```text
-depth 1, you hold 3 roles, 0 waiting on you, 0 you are waiting on,
+depth 1, you hold 3 roles, 0 addressed to you, 0 waiting on you, 0 you are waiting on,
 0 not actionable, 0 of your acts did not take force; live alice (1fb980b1de47)
 ```
+
+`available_to_you` is not waiting debt. Each entry is still `open`, with
+no performer, promise, or waiting party; it merely names you as the actor
+who may claim it. `waiting_on_you` begins only after a promise or report
+puts the next move on you.
 
 ## It is bounded
 

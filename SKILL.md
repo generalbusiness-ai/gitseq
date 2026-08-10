@@ -26,9 +26,15 @@ Every durable event cites its basis in `rests_on`.
 ## Tools
 
 - `whoami` / `presence` — who you are; who is here now.
-- `status` — workroom snapshot plus a composite cursor.
+- `status` — workroom snapshot plus a composite cursor. Its actor-oriented
+  `available_to_you` lane is the bounded list of `open`, unclaimed requests
+  addressed to you; `waiting_on_you` begins only after a promise or report
+  puts the next move on you. Do not look for a `requested` status: the fold's
+  lifecycle word for available work is `open`.
 - `wait` — long-poll for changes after your cursor; pass it back each
-  time. On a live reset your durable frontier is still good: the
+  time. `current_available_to_you` repeats the complete bounded current lane,
+  even when no new durable event arrived, so polling cannot lose work that
+  predates the cursor. On a live reset your durable frontier is still good: the
   server replays the durable delta; presence and conversations are
   gone, durable state is not. If the resident service is unavailable,
   durable status and waiting continue with a `degraded` live cursor;

@@ -495,8 +495,8 @@ func tools() []map[string]any {
 	return []map[string]any{
 		{"name": "whoami", "description": "Show the configured durable actor and ephemeral session.", "inputSchema": object(withRepo(nil))},
 		{"name": "presence", "description": "Show who is present in the amnesiac nexus.", "inputSchema": object(withRepo(nil))},
-		{"name": "status", "description": "Project durable workroom state plus a composite cursor.", "inputSchema": object(withRepo(nil))},
-		{"name": "wait", "description": "Long-poll after a composite cursor.", "inputSchema": object(withRepo(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
+		{"name": "status", "description": "Project durable workroom state plus a composite cursor; available_to_you contains open unclaimed requests addressed to this actor.", "inputSchema": object(withRepo(nil))},
+		{"name": "wait", "description": "Long-poll after a composite cursor; current_available_to_you repeats the bounded current unclaimed work addressed to this actor.", "inputSchema": object(withRepo(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
 		{"name": "work", "description": "Query the current actor's durable work through a bounded resident-side projection. Defaults include addressed unclaimed work and stale commitments.", "inputSchema": object(withRepo(map[string]any{
 			"lanes":    arrayOf(enum("available_to_you", "waiting_on_you", "you_are_waiting_on", "not_actionable")),
 			"statuses": arrayOf(enum("open", "promised", "reported", "satisfied", "stale", "cancelled", "reneged", "withdrawn")),

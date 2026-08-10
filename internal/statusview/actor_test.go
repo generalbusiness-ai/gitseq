@@ -3,6 +3,7 @@ package statusview
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
@@ -41,6 +42,44 @@ func findCommitmentView(items []CommitmentView, request string) *CommitmentView 
 		}
 	}
 	return nil
+}
+
+func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *testing.T) {
+	projection := workroom.Projection{
+		Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},
+		Statements: []workroom.Statement{
+			{Event: "request:mine", Actor: them, Kind: workroom.KindRequest, Text: "available to me"},
+			{Event: "request:theirs", Actor: me, Kind: workroom.KindRequest, Text: "available to them"},
+		},
+		Commitments: []workroom.Commitment{
+			{Request: "request:mine", Requester: them, AddressedTo: me, Status: "open"},
+			{Request: "request:theirs", Requester: me, AddressedTo: them, Status: "open"},
+		},
+	}
+	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 2, Projection: projection}
+
+	digest := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, me, "me", true)
+	if len(digest.AvailableToYou) != 1 {
+		t.Fatalf("available_to_you = %#v", digest.AvailableToYou)
+	}
+	available := digest.AvailableToYou[0]
+	if available.Request != "request:mine" || available.Status != "open" || available.AddressedTo != "me" || available.Performer != "" || available.Promise != "" {
+		t.Fatalf("available request invented or lost responsibility: %#v", available)
+	}
+	if len(digest.WaitingOnYou) != 0 {
+		t.Fatalf("an unclaimed request was presented as promised work: %#v", digest.WaitingOnYou)
+	}
+	if summary := Summarize("status", digest); !strings.Contains(summary, "1 addressed to you") {
+		t.Fatalf("status summary hides available work: %q", summary)
+	}
+
+	delta := BuildWait(snapshot, Cursor{}, nil, false, Cursor{}, me, "me", true)
+	if len(delta.CurrentAvailableToYou) != 1 || delta.CurrentAvailableToYou[0] != available {
+		t.Fatalf("wait does not preserve the current available lane: %#v", delta.CurrentAvailableToYou)
+	}
+	if summary := Summarize("wait", delta); !strings.Contains(summary, "1 addressed to you") {
+		t.Fatalf("wait summary hides available work: %q", summary)
+	}
 }
 
 func TestActorStatusCarriesStaleQualifierWithoutChangingLanes(t *testing.T) {

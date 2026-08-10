@@ -4,6 +4,7 @@ summary: Long-poll after a composite cursor.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd731b2cc1986b3ca6fe9b0a0af3394790a3ee6b
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:428df978ec0099cd094b5da1ac93b3837885c0a8
 ---
 
 # `wait`
@@ -46,11 +47,17 @@ everything up to now with `reset` set.
 | `reset` | The live side restarted; treat presence and conversation as new. |
 | `durable` | Durable events after your cursor. |
 | `live` | Presence and conversation changes. |
+| `current_available_to_you` | The complete bounded current lane of open, unclaimed requests addressed to you. |
 | `current_waiting_on_you` | Commitments now needing your move. |
 | `current_not_actionable` | Commitments nobody can advance. |
 | `totals` | The same counts `status` reports. |
 
 Every list is capped at 20 with its own skipped count.
+
+`current_available_to_you` repeats the current lane even when no new
+durable event arrived, so polling cannot lose work that predates the
+cursor. These open requests are available to claim; they do not invent a
+performer or a waiting party.
 
 ## Resets are not losses
 
