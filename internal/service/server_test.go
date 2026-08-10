@@ -134,6 +134,69 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	}
 }
 
+func TestSelectiveWorkAndInspectionEndpoints(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	actor := workspace.Config.Actors["human"]
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	membershipEvent := snapshot.Projection.Actors[actor.Fingerprint].MembershipEvent
+	query, _ := json.Marshal(WorkQuery{Actor: actor.Fingerprint})
+	response, err := http.Post(httpServer.URL+"/v0/work-query", "application/json", bytes.NewReader(query))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var page WorkPage
+	if err := json.NewDecoder(response.Body).Decode(&page); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || page.Actor.Fingerprint != actor.Fingerprint || page.Frontier.Head == "" || page.MatchingTotal != 0 {
+		t.Fatalf("unexpected selective work page: status=%d page=%+v", response.StatusCode, page)
+	}
+
+	inspect, _ := json.Marshal(InspectRequest{Event: membershipEvent})
+	response, err = http.Post(httpServer.URL+"/v0/inspect", "application/json", bytes.NewReader(inspect))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var item ItemInspection
+	if err := json.NewDecoder(response.Body).Decode(&item); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || item.Event != membershipEvent || item.Statement == nil || item.Decision == nil {
+		t.Fatalf("unexpected exact inspection: status=%d item=%+v", response.StatusCode, item)
+	}
+
+	response, err = http.Post(httpServer.URL+"/v0/work-query", "application/json", bytes.NewBufferString(`{"actor":"`+actor.Fingerprint+`","expression":".commitments[]"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("free-form query field was accepted: %d", response.StatusCode)
+	}
+}
+
 func TestGraphEndpointDisclosesItsNewestEightyWindow(t *testing.T) {
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
