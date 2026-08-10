@@ -601,6 +601,46 @@ test("Work groups by conversational ancestry without treating later citations as
   assert.deepEqual(filterWorkProjection(work, { active: false, attention: false, closed: true }).topics.map((topic) => topic.event), ["r5"]);
 });
 
+test("topic alias identity, order, and search are locale independent", () => {
+  const statement = (event, actor, kind, text, body) => ({ event, actor, kind, text, body, timestamp: Number(event.slice(1)) || 1 });
+  const events = ["r1", "a1", "a2", "a3", "a4", "a5"];
+  const projection = {
+    decisions: events.map((event) => ({ event, verdict: "effective", reason: "ok" })),
+    acts: [],
+    statements: [
+      statement("r1", "hugh", "request", "Locale-stable topic aliases"),
+      statement("a1", "hugh", "assert", "First spelling", { [TOPIC_ALIAS_FIELD]: "API" }),
+      statement("a2", "codex", "assert", "Latest equivalent spelling", { [TOPIC_ALIAS_FIELD]: "api" }),
+      statement("a3", "hugh", "assert", "Swedish initial", { [TOPIC_ALIAS_FIELD]: "Ångström" }),
+      statement("a4", "hugh", "assert", "Uppercase Latin initial", { [TOPIC_ALIAS_FIELD]: "Zebra" }),
+      statement("a5", "hugh", "assert", "Lowercase Latin initial", { [TOPIC_ALIAS_FIELD]: "apple" }),
+    ],
+    commitments: [{ request: "r1", requester: "hugh", status: "open" }],
+    artifacts: [],
+    actors: {},
+    provenance: { r1: [], a1: ["r1"], a2: ["a1"], a3: ["a2"], a4: ["a3"], a5: ["a4"] },
+  };
+
+  const localeLower = String.prototype.toLocaleLowerCase;
+  const localeCompare = String.prototype.localeCompare;
+  String.prototype.toLocaleLowerCase = () => { throw new Error("topic projection used locale-sensitive case folding"); };
+  String.prototype.localeCompare = () => { throw new Error("topic projection used locale-sensitive ordering"); };
+  try {
+    const work = buildWorkProjection(projection);
+    const topic = work.topics.find((candidate) => candidate.event === "r1");
+    assert.deepEqual(topic.aliases.map((alias) => [alias.value, alias.actor]), [
+      ["Zebra", "hugh"],
+      ["api", "codex"],
+      ["apple", "hugh"],
+      ["Ångström", "hugh"],
+    ]);
+    assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "API" }).topics.map((candidate) => candidate.event), ["r1"]);
+  } finally {
+    String.prototype.toLocaleLowerCase = localeLower;
+    String.prototype.localeCompare = localeCompare;
+  }
+});
+
 test("attention qualifies rather than replaces a lifecycle lane", () => {
   assert.deepEqual(workItemState({ request: "r", requester: "hugh", performer: "codex", status: "reported", stale: true }), {
     active: true,

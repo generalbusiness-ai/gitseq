@@ -10,8 +10,8 @@ export const ATTENTION_WORK_STATUSES = ["stale", "disputed"] as const;
 export type WorkLane = "available" | "inProgress" | "review" | "closed";
 
 // Topic labels are ordinary durable statements, not mutations of the signed
-// request that opened the topic. One statement carries one field so its
-// authorship and retirement remain independently visible.
+// request that opened the topic. A statement may carry either field or both;
+// authorship and retirement remain visible at statement granularity.
 export const TOPIC_TITLE_FIELD = "topic_title";
 export const TOPIC_ALIAS_FIELD = "topic_alias";
 
@@ -252,8 +252,8 @@ export function buildWorkProjection(projection: Projection): WorkProjection {
       latestTimestamp: activity.timestamp,
       latestOrder: activity.order,
       activity: [...(activitiesByTopic.get(event) ?? [])].sort((a, b) => a.order - b.order),
-      searchText: [...explicitSearch, ...(searchableByTopic.get(event) ?? [root.text])].join("\n").toLocaleLowerCase(),
-      rootSearchText: [...explicitSearch, root.text, ...Object.values(root.body ?? {})].join("\n").toLocaleLowerCase(),
+      searchText: [...explicitSearch, ...(searchableByTopic.get(event) ?? [root.text])].join("\n").toLowerCase(),
+      rootSearchText: [...explicitSearch, root.text, ...Object.values(root.body ?? {})].join("\n").toLowerCase(),
     });
   }
   topics.sort((a, b) => b.latestOrder - a.latestOrder);
@@ -322,7 +322,7 @@ export function filterPersonalWorkProjection(
 }
 
 export function filterWorkProjection(work: WorkProjection, filters: WorkFilters): WorkProjection {
-  const query = filters.query?.trim().toLocaleLowerCase() ?? "";
+  const query = filters.query?.trim().toLowerCase() ?? "";
   const topics = work.topics.flatMap((topic) => {
     if (filters.author && topic.author !== filters.author) return [];
     if (query && !topic.searchText.includes(query)) return [];
@@ -370,7 +370,7 @@ export function otherWorkAttention(projection: Projection): WorkAttentionItem[] 
       actor: statement?.actor,
       timestamp: statement?.timestamp,
       commit: artifact.commit,
-      searchText: [title, statement?.text ?? "", artifact.path, artifact.commit].join("\n").toLocaleLowerCase(),
+      searchText: [title, statement?.text ?? "", artifact.path, artifact.commit].join("\n").toLowerCase(),
     };
   });
   const unlinked = danglingPromises(projection).map((statement): WorkAttentionItem => ({
@@ -380,7 +380,7 @@ export function otherWorkAttention(projection: Projection): WorkAttentionItem[] 
     title: `unlinked promise: ${statement.text}`,
     actor: statement.actor,
     timestamp: statement.timestamp,
-    searchText: [statement.text, ...Object.values(statement.body ?? {})].join("\n").toLocaleLowerCase(),
+    searchText: [statement.text, ...Object.values(statement.body ?? {})].join("\n").toLowerCase(),
   }));
   return [...artifacts, ...unlinked];
 }
@@ -410,9 +410,9 @@ function latestLabel(labels: WorkTopicLabel[]): WorkTopicLabel | undefined {
 function distinctLatestLabels(labels: WorkTopicLabel[]): WorkTopicLabel[] {
   const byValue = new Map<string, WorkTopicLabel>();
   for (const label of labels) {
-    const key = label.value.toLocaleLowerCase();
+    const key = label.value.toLowerCase();
     const previous = byValue.get(key);
     if (!previous || label.order >= previous.order) byValue.set(key, label);
   }
-  return [...byValue.values()].sort((a, b) => a.value.localeCompare(b.value));
+  return [...byValue.values()].sort((a, b) => a.value < b.value ? -1 : a.value > b.value ? 1 : 0);
 }
