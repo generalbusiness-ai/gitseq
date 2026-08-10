@@ -5,7 +5,7 @@ import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { buildThreadIndex, staleCauses, ticketsOf, type ThreadSummary, type Workroom, type Selection } from "../lib/store";
 import type { Session } from "../lib/session";
 import { mentionedFingerprints, mentionsActor, mentionTokens } from "../lib/mentions";
-import { actorTint, belongsInRoom, clock, cn, definitionOf, kindLabel, kindTint, seenAt, statusLabel, statusTint } from "../lib/util";
+import { actorTint, belongsInRoom, clock, cn, definitionOf, interpretationNotice, kindLabel, kindTint, seenAt, statusLabel, statusTint } from "../lib/util";
 import { Avatar } from "./Avatar";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
 import { toggleLinkEvent, toggleLinkFrame, type ComposerContext } from "./Composer";
@@ -95,7 +95,10 @@ export function Stream({
   // don't knock.
   const flashSeen = useRef(new Set<string>());
   const flashTimer = useRef<number | undefined>(undefined);
-  const baseTitle = useRef(document.title);
+  // Read during render, so it must not assume a document. Without this guard
+  // Stream cannot be server-rendered at all, which is why so little of it is
+  // pinned by test; the effects below already only run in a browser.
+  const baseTitle = useRef(typeof document === "undefined" ? "" : document.title);
   useEffect(() => {
     const fresh = frames.filter((f) => !flashSeen.current.has(frameKey(f)));
     for (const f of fresh) flashSeen.current.add(frameKey(f));
@@ -491,6 +494,22 @@ function MessageLine({
 
 // The ticket: the human handle for a durable event. The hex id hides in the
 // hover title; clicking selects the event for cross-pane inspection.
+// An act the room could not read explains itself here, beside the act, rather
+// than as a count in a panel elsewhere. A reader looking at the act is the one
+// who needs to know why it carries no force, and the fold's own reason plus
+// its consequence is the whole of what there is to say.
+function InterpretationNote({ decision }: { decision?: Decision }) {
+  const notice = interpretationNotice(decision?.verdict, decision?.reason);
+  if (!notice) return null;
+  return (
+    <p className="mt-1 rounded-md border border-border/70 bg-surface/40 px-2 py-1.5 text-xs leading-relaxed text-muted">
+      <span className="font-medium text-foreground/85">{notice.reason || notice.verdict}</span>
+      {" — "}
+      {notice.consequence}
+    </p>
+  );
+}
+
 export function Ticket({ ticket, event, onSelect, className }: { ticket?: number; event: string; onSelect: () => void; className?: string }) {
   if (!ticket) return null;
   return (
@@ -702,13 +721,18 @@ function RecordedMessage({
             )}
             {ratified && !dead && <BadgeCheck aria-label="agreed" className="h-3.5 w-3.5 text-ok" />}
             {statement.stale && !dead && <span className="text-xs text-danger">stale</span>}
-            {ineffective && !dead && <span className="text-xs text-faint" title={decision!.reason}>not active</span>}
+            {ineffective && !dead && (
+              <span className="text-xs text-faint" title={decision!.reason}>
+                {interpretationNotice(decision?.verdict, decision?.reason) ? "unreadable" : "not active"}
+              </span>
+            )}
             <span className="ml-auto flex items-center gap-2">
               <EventTime timestamp={statement.timestamp} />
               <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
             </span>
           </div>
           <p className={cn("text-sm leading-relaxed", dead ? "text-faint line-through" : "text-foreground/90")}>{statement.text}</p>
+          <InterpretationNote decision={decision} />
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-faint">
             {statement.body?.conditions && <span>when {statement.body.conditions}</span>}
             <MentionBadges body={statement.body} nameOf={nameOf} me={me} />
@@ -801,12 +825,18 @@ export function CompactRow({
         )}
         {ineffective && !dead && (
           <span className="flex shrink-0 items-center gap-1 self-center text-xs text-faint" title={decision!.reason}>
-            <CircleSlash className="h-3 w-3" /> not in force
+            <CircleSlash className="h-3 w-3" />{" "}
+            {interpretationNotice(decision?.verdict, decision?.reason) ? "unreadable" : "not in force"}
           </span>
         )}
         {statement.body?.path && (
           <span className="shrink-0 text-xs text-muted" title={`${statement.body.path}@${statement.body.commit}`}>
             {statement.body.path === "." ? "this repository" : statement.body.path}
+          </span>
+        )}
+        {interpretationNotice(decision?.verdict, decision?.reason) && (
+          <span className="w-full basis-full text-xs leading-relaxed text-muted">
+            <InterpretationNote decision={decision} />
           </span>
         )}
         <span className="ml-auto flex shrink-0 items-center gap-2 self-center">

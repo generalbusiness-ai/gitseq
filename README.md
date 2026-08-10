@@ -121,7 +121,8 @@ agent contract in [`SKILL.md`](SKILL.md), and the demo cases in
 
 ## Documentation
 
-Go 1.26 and Git with SSH signing support are required.
+Go 1.26 and Git with SSH signing support are required. The complete UI gate
+also uses Node.js 24 and npm.
 
 ```sh
 make test
@@ -139,6 +140,21 @@ tasks, and a reference page for every `gs` subcommand and every MCP tool.
 Each page names the durable acts that govern the behaviour it describes,
 so a page flares when its behaviour moves. Four gates enforce that, and
 `make test` runs them; see [Anchoring](docs/anchoring.md).
+
+Clone the public repository and run the complete local gate:
+
+```sh
+git clone https://github.com/generalbusiness-ai/gitseq.git
+cd gitseq
+npm ci --prefix ui
+make vet test race build ui spike
+git diff --exit-code
+```
+
+This technical preview is distributed under the [MIT License](LICENSE).
+Read the [security policy](SECURITY.md) before using it with sensitive
+material; vulnerability reports go through GitHub's private advisory channel,
+not a public issue or workroom.
 
 The shipping Go module lives at the repository root. `cmd/gs` and
 `cmd/gitseq-mcp` build the two user-facing binaries, while `internal/` holds

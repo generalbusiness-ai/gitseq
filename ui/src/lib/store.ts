@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type Vocabulary, type WorktreeView } from "./api";
-import { ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, OPEN_WORK_STATUSES, workAttentionCount } from "./work";
-import { definitionOf, interpretationGaps } from "./util";
+import { ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, OPEN_WORK_STATUSES, workAttentionCount, workItemState } from "./work";
+import { definitionOf } from "./util";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
@@ -224,14 +224,14 @@ export const OPEN_COMMITMENT_STATUSES: string[] = [...OPEN_WORK_STATUSES];
 export const ATTENTION_COMMITMENT_STATUSES: string[] = [...ATTENTION_WORK_STATUSES];
 
 // The header chip's summary of the Work drawer, computed from the projection.
-export function workSummary(projection?: Projection, vocabulary?: Vocabulary): { stale: number; open: number; done: number } {
+export function workSummary(projection?: Projection): { stale: number; open: number; done: number } {
   if (!projection) return { stale: 0, open: 0, done: 0 };
-  // A vocabulary the room cannot interpret is work too: each distinct refusal
-  // counts once, and an unbound interpreter counts once however many acts it
-  // refuses.
-  const bindingGap = vocabulary && vocabulary.binding.status !== "bound" ? 1 : 0;
+  // What the room cannot read is not work waiting on anyone. An unreadable act
+  // explains itself where it sits, and the reach of the vocabulary is stated
+  // with the vocabulary; neither is a count a reader could act on, and adding
+  // them here made a standing limit and two inert acts read as attention owed.
   return {
-    stale: workAttentionCount(projection) + interpretationGaps(projection).length + bindingGap,
+    stale: workAttentionCount(projection),
     open: projection.commitments.filter((c) => OPEN_COMMITMENT_STATUSES.includes(c.status)).length,
     done: projection.commitments.filter((c) => CLOSED_WORK_STATUSES.includes(c.status as (typeof CLOSED_WORK_STATUSES)[number])).length,
   };
@@ -248,12 +248,15 @@ export function statementWeight(
 ): "card" | "compact" {
   if (statement.retired || statement.stale) {
     // Stale commitments still need someone's attention: keep the card.
-    if (commitment && ATTENTION_COMMITMENT_STATUSES.includes(commitment.status)) return "card";
+    if (commitment && workItemState(commitment).attention) return "card";
     return "compact";
   }
   const definition = definitionOf(statement.kind, vocabulary);
   if (definition?.lifecycle === "request" || (!vocabulary && statement.kind === "request")) {
-    return commitment && [...OPEN_COMMITMENT_STATUSES, ...ATTENTION_COMMITMENT_STATUSES].includes(commitment.status)
+    // Staleness is a qualifier here, not a status, so the attention predicate
+    // has to be asked rather than matching a status list: a stale commitment
+    // still reads "reported" or "satisfied" and would otherwise drop out.
+    return commitment && (OPEN_COMMITMENT_STATUSES.includes(commitment.status) || workItemState(commitment).attention)
       ? "card"
       : "compact";
   }

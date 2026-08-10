@@ -7,9 +7,10 @@ import { RetryKeys, fingerprintOfPresentActor, fingerprintsIdentifySameActor, pa
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic } from "../src/lib/memory.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
+import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
-import { belongsInRoom, commitmentRelationship, interpretationGaps, kindLabel, statusLabel } from "../src/lib/util.ts";
+import { belongsInRoom, commitmentRelationship, interpretationNotice, isInterpretationGap, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
@@ -135,6 +136,76 @@ test("thread indexing keeps citations out of reply summaries and thread content"
   assert.deepEqual(index.content("e1").acts.map((item) => item.event), ["a1"]);
   assert.deepEqual(index.content("e1").events, ["e2", "e3", "a1"]);
   assert.deepEqual(index.content("e0").statements.map((item) => item.event), ["e4"]);
+});
+
+test("thread railway keeps conversation lanes stable and citations secondary", () => {
+  const events = ["root", "first", "first-leaf", "sibling", "merge-note", "act"];
+  const provenance = {
+    root: ["outside-parent"],
+    first: ["root"],
+    "first-leaf": ["first"],
+    sibling: ["root", "outside-citation"],
+    "merge-note": ["sibling", "first-leaf"],
+    act: ["merge-note"],
+  };
+  const layout = layoutThreadRailway(events, provenance);
+  assert.deepEqual(layout.nodes.map(({ event, lane }) => [event, lane]), [
+    ["root", 0],
+    ["first", 0],
+    ["first-leaf", 0],
+    ["sibling", 1],
+    ["merge-note", 1],
+    ["act", 1],
+  ]);
+  assert.equal(layout.lanes, 2);
+  assert.deepEqual(layout.nodes.find((node) => node.event === "sibling").citations, ["outside-citation"]);
+  assert.deepEqual(layout.nodes.find((node) => node.event === "merge-note").citations, ["first-leaf"]);
+});
+
+test("a thread rail lane is released when its branch ends and taken by the next branch", () => {
+  // "a" is a leaf, so the lane it held falls free before "e" branches. A rail
+  // that never released a lane would spend a third lane on "e" instead.
+  const events = ["root", "a", "b", "c", "d", "e"];
+  const provenance = { root: [], a: ["root"], b: ["root"], c: ["b"], d: ["c"], e: ["c"] };
+  const layout = layoutThreadRailway(events, provenance);
+  assert.deepEqual(layout.nodes.map(({ event, lane }) => [event, lane]), [
+    ["root", 0],
+    ["a", 0],
+    ["b", 1],
+    ["c", 1],
+    ["d", 1],
+    ["e", 0],
+  ]);
+  assert.equal(layout.lanes, 2);
+  assert.equal(layout.folded, 0);
+  assert.ok(layout.nodes.every((node) => node.folded === false));
+});
+
+test("a thread rail stops at ten lanes and folds the branches that do not fit", () => {
+  // Fifteen branches that all stay open: each child of the root has a reply
+  // of its own that only arrives at the end, so no lane ever falls free.
+  const children = Array.from({ length: 15 }, (_, index) => `child-${index + 1}`);
+  const leaves = children.map((child) => `${child}-leaf`);
+  const events = ["root", ...children, ...leaves];
+  const provenance = { root: [] };
+  for (const child of children) provenance[child] = ["root"];
+  for (const child of children) provenance[`${child}-leaf`] = [child];
+
+  const layout = layoutThreadRailway(events, provenance);
+  assert.equal(RAIL_LANES, 10);
+  assert.equal(layout.lanes, RAIL_LANES);
+  assert.ok(layout.nodes.every((node) => node.lane < RAIL_LANES));
+
+  // Nine branches fit beside the folded lane; the other six fold, and their
+  // replies fold with them rather than reappearing on a lane of their own.
+  const folded = layout.nodes.filter((node) => node.folded).map((node) => node.event);
+  assert.deepEqual(folded, [
+    "child-10", "child-11", "child-12", "child-13", "child-14", "child-15",
+    "child-10-leaf", "child-11-leaf", "child-12-leaf", "child-13-leaf", "child-14-leaf", "child-15-leaf",
+  ]);
+  assert.equal(layout.folded, folded.length);
+  assert.ok(folded.every((event) => layout.nodes.find((node) => node.event === event).lane === RAIL_LANES - 1));
+  assert.ok(layout.nodes.filter((node) => !node.folded).every((node) => node.lane < RAIL_LANES - 1));
 });
 
 const originalSupersede = "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eab3b0e6064e5b31a04c2e2c3bababc618997946";
@@ -328,6 +399,12 @@ test("attention qualifies rather than replaces a lifecycle lane", () => {
   assert.deepEqual(workItemState({ request: "r", requester: "hugh", status: "withdrawn" }), {
     open: false,
     attention: false,
+    closed: true,
+    lane: "closed",
+  });
+  assert.deepEqual(workItemState({ request: "r", requester: "hugh", performer: "codex", report: "done", status: "satisfied", stale: true }), {
+    open: false,
+    attention: true,
     closed: true,
     lane: "closed",
   });
@@ -591,20 +668,47 @@ test("every kind wears its own name, bar the two whose names read as jargon", ()
   for (const kind of ["finding", "review-note", "request", "promise"]) assert.equal(kindLabel(kind), kind);
 });
 
-test("one interpretation gap per distinct refusal, however many events it refused", () => {
-  const refusal = (event, reason) => ({ event, verdict: "uninterpretable", reason });
-  const gaps = interpretationGaps({
-    decisions: [
-      { event: "e0", verdict: "effective", reason: "statement recorded" },
-      refusal("e1", "activated interpreter execution is not held"),
-      refusal("e2", "activated interpreter execution is not held"),
-      refusal("e3", "activated interpreter execution is not held"),
-      { event: "e4", verdict: "undefined-kind", reason: 'undefined kind "finding"' },
-    ],
-  });
-  assert.equal(gaps.length, 2);
-  assert.deepEqual(gaps[0].events, ["e1", "e2", "e3"]);
-  assert.deepEqual(gaps[1].events, ["e4"]);
+test("an unreadable act carries its own reason and consequence", () => {
+  const undefinedKind = interpretationNotice("undefined-kind", 'undefined kind "commit"');
+  assert.equal(undefinedKind.reason, 'undefined kind "commit"');
+  assert.match(undefinedKind.consequence, /recorded without force/);
+  // Citations are NOT among the things that fail to form. The fold projects
+  // rests_on provenance for every record before it judges any of them, so an
+  // unreadable act still cites what it cited; claiming otherwise was false
+  // against the two live undefined-kind acts, which each have a citation edge.
+  assert.doesNotMatch(undefinedKind.consequence, /citation/i);
+
+  // An unbound interpreter is remediable and says so.
+  const unbound = interpretationNotice("uninterpretable", "uninterpretable: activated interpreter execution is not held");
+  assert.match(unbound.consequence, /unless one is bound/);
+
+  // A permanently invalid definition is the same verdict and must NOT promise
+  // that binding an interpreter would rescue it — nothing can.
+  const permanent = interpretationNotice("uninterpretable", 'uninterpretable kind definition: basis kind "finding" is undefined');
+  assert.doesNotMatch(permanent.consequence, /unless one is bound/);
+  assert.match(permanent.consequence, /not something a later interpreter would resolve/);
+
+  // The collision the two cases share a channel for. A rejected operand is
+  // quoted back verbatim, so a permanently invalid definition can carry the
+  // fold's own unbound-interpreter words inside its reason — here as a field
+  // type. Binding an interpreter cannot make that type supported, so the copy
+  // must not offer it. Only the whole reason tells the two apart; searching
+  // inside one reads this as remediable. The fold is pinned to emit exactly
+  // this string by TestInvalidConstraintAlgebraIsTypedUninterpretable.
+  const collision = interpretationNotice(
+    "uninterpretable",
+    'uninterpretable kind definition: unsupported type "interpreter execution is not held"',
+  );
+  assert.doesNotMatch(collision.consequence, /unless one is bound/);
+  assert.match(collision.consequence, /not something a later interpreter would resolve/);
+
+  // Ordinary verdicts get no notice: this surface is only for acts the room
+  // could not read, not for every act that lacks force.
+  assert.equal(interpretationNotice("effective", "statement recorded"), undefined);
+  assert.equal(interpretationNotice("ineffective", "promise actor is not the requested performer"), undefined);
+  assert.equal(interpretationNotice(undefined, undefined), undefined);
+  assert.equal(isInterpretationGap("undefined-kind"), true);
+  assert.equal(isInterpretationGap("disputed"), false);
 });
 
 test("the everyday surface does not expose record taxonomy or authority roles", () => {

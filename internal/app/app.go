@@ -37,6 +37,11 @@ type ActorView struct {
 	Kind        string   `json:"kind,omitempty"`
 	Roles       []string `json:"roles"`
 	Custody     bool     `json:"custody"`
+	// Retired mirrors the durable roster: the principal signed events that
+	// remain, and may no longer act. Custody is reported separately because
+	// the two can disagree — a retired principal whose key file survives is a
+	// custody problem this view is meant to make visible.
+	Retired bool `json:"retired,omitempty"`
 }
 
 type Config struct {
@@ -60,6 +65,7 @@ type Workspace struct {
 
 	snapshotMu     sync.Mutex
 	snapshotCache  *Snapshot
+	snapshotSource SnapshotSource
 	snapshotFolder *workroom.Folder
 	reader         *kernel.Reader
 	submitterOnce  sync.Once
@@ -79,6 +85,25 @@ type Snapshot struct {
 	Depth      int                 `json:"depth"`
 	Projection workroom.Projection `json:"projection"`
 	Vocabulary workroom.Vocabulary `json:"vocabulary"`
+}
+
+// SnapshotSource says how the verified application projection reached its
+// current frontier. It is deliberately separate from Snapshot so existing
+// status and audit representations do not acquire local cache details.
+type SnapshotSource string
+
+const (
+	SnapshotSourceSignedCheckpointTail SnapshotSource = "verified_signed_checkpoint_tail"
+	SnapshotSourceColdFullAudit        SnapshotSource = "verified_cold_full_audit"
+	SnapshotSourceIncrementalTail      SnapshotSource = "verified_incremental_tail"
+)
+
+// SourcedSnapshot is the local verification result plus its actual load path.
+// Callers that disclose fallback behavior use this instead of guessing from
+// elapsed time or resident availability.
+type SourcedSnapshot struct {
+	Snapshot Snapshot
+	Source   SnapshotSource
 }
 
 // LocalRepo is local repository state, never part of the durable workroom
@@ -467,7 +492,7 @@ func (w *Workspace) GrantRole(ctx context.Context, grantorName, actorAddress, ro
 		return nil, err
 	}
 	actorState, exists := snapshot.Projection.Actors[actor.Fingerprint]
-	if !exists || actorState.MembershipEvent == "" {
+	if !exists || actorState.Retired || actorState.MembershipEvent == "" {
 		return nil, fmt.Errorf("actor %q has no live roster membership", actor.Name)
 	}
 	if containsRole(actorState.Roles, role) {
@@ -489,6 +514,69 @@ func (w *Workspace) GrantRole(ctx context.Context, grantorName, actorAddress, ro
 		return nil, err
 	}
 	return []workroom.Record{state, ratificationSubmission.Record}, nil
+}
+
+// RetireActor ends a principal's membership and its local custody together.
+// Retirement is a supersession of the membership statement, so the fold keeps
+// the principal visible with no roles rather than forgetting that it acted;
+// what stops it acting again is the removal of its key from local custody,
+// because the durable log admits any allowlisted signer. Leaving the key file
+// behind after retiring the name would enlarge the shared key directory with
+// principals nobody is watching, so it is deleted here.
+func (w *Workspace) RetireActor(ctx context.Context, retirerName, actorAddress string) ([]workroom.Record, error) {
+	actor, err := w.ResolveActorAddress(actorAddress)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := w.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	actorState, exists := snapshot.Projection.Actors[actor.Fingerprint]
+	if !exists || actorState.MembershipEvent == "" {
+		return nil, fmt.Errorf("actor %q has no roster membership", actor.Name)
+	}
+	if actorState.Retired {
+		return nil, fmt.Errorf("actor %q is already retired", actor.Name)
+	}
+	if actor.Name == retirerName {
+		return nil, errors.New("retire another principal; retiring the identity you are signing with would leave the workroom without its custodian")
+	}
+	submission, err := w.Act(ctx, retirerName, Act{
+		Verb: VerbSupersede, Target: actorState.MembershipEvent, Text: "retire " + actor.Name,
+		IdempotencyKey: "actor-retire-" + actor.Name + "-" + snapshot.Head,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Appending is not prevailing. Whether a supersession retires anything is
+	// the fold's judgement, and a participant superseding another's membership
+	// is judged ineffective. The attempt stays in the log either way, so the
+	// only question left here is whether custody may follow it. Deleting the
+	// key on an ineffective act left a live roster member no one could sign
+	// for, and reported that as a success.
+	after, err := w.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	decision, judged := after.Projection.Decision(submission.Record.ID)
+	if !judged || decision.Verdict != workroom.Effective {
+		reason := "the fold recorded no decision for it"
+		if judged {
+			reason = decision.Reason
+		}
+		return nil, fmt.Errorf("retiring %s was ineffective (%s); its membership and its key are unchanged", actor.Name, reason)
+	}
+	delete(w.Config.Actors, actor.Name)
+	if err := w.save(); err != nil {
+		return nil, err
+	}
+	if actor.KeyFile != "" {
+		if err := os.Remove(actor.KeyFile); err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("retired %s durably, but its key file remains: %w", actor.Name, err)
+		}
+	}
+	return []workroom.Record{submission.Record}, nil
 }
 
 // RevokeRole supersedes every live explicit authority grant. Derived
@@ -719,6 +807,7 @@ func (w *Workspace) acceptSnapshot(result kernel.Result, record workroom.Record)
 		Projection: w.snapshotFolder.Projection(), Vocabulary: w.snapshotFolder.Vocabulary(),
 	}
 	w.snapshotCache = &snapshot
+	w.snapshotSource = SnapshotSourceIncrementalTail
 }
 
 func cloneAttachments(input map[string][]byte) map[string][]byte {
@@ -755,14 +844,22 @@ func (w *Workspace) EventID(commit string) string {
 }
 
 func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
+	result, err := w.SnapshotWithSource(ctx)
+	return result.Snapshot, err
+}
+
+// SnapshotWithSource verifies and folds the workroom exactly as Snapshot does,
+// while retaining whether the local projection came from a signed checkpoint,
+// a verified incremental continuation, or a cold full audit.
+func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, error) {
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
 	head, err := w.Store.Head(ctx, kernel.Ref(w.Config.Genesis))
 	if err != nil {
-		return Snapshot{}, err
+		return SourcedSnapshot{}, err
 	}
 	if w.snapshotCache != nil && w.snapshotCache.Head == head {
-		return *w.snapshotCache, nil
+		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
 	}
 	if w.reader == nil {
 		w.reader = kernel.NewReader(w.Store, kernel.CheckpointOptions{
@@ -771,10 +868,10 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 	loaded, err := w.reader.Load(ctx, w.Config.Genesis)
 	if err != nil {
-		return Snapshot{}, err
+		return SourcedSnapshot{}, err
 	}
 	if !loaded.Full && w.snapshotCache != nil && w.snapshotCache.Head == loaded.Verification.Head {
-		return *w.snapshotCache, nil
+		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
 	}
 	start := 0
 	if !loaded.Full && w.snapshotCache != nil && w.snapshotFolder != nil && w.snapshotCache.Head != loaded.BaseHead {
@@ -795,7 +892,14 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 		})
 		loaded, err = w.reader.Load(ctx, w.Config.Genesis)
 		if err != nil {
-			return Snapshot{}, err
+			return SourcedSnapshot{}, err
+		}
+	}
+	source := SnapshotSourceIncrementalTail
+	if loaded.Full {
+		source = SnapshotSourceColdFullAudit
+		if loaded.Checkpoint {
+			source = SnapshotSourceSignedCheckpointTail
 		}
 	}
 	if loaded.Full {
@@ -814,7 +918,8 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 		Projection: w.snapshotFolder.Projection(), Vocabulary: w.snapshotFolder.Vocabulary(),
 	}
 	w.snapshotCache = &snapshot
-	return snapshot, nil
+	w.snapshotSource = source
+	return SourcedSnapshot{Snapshot: snapshot, Source: source}, nil
 }
 
 func (w *Workspace) record(event kernel.Event) workroom.Record {
@@ -847,7 +952,7 @@ func (w *Workspace) ActorViews(ctx context.Context) ([]ActorView, error) {
 		}
 		views = append(views, ActorView{
 			Name: name, Fingerprint: fingerprint, Kind: state.Kind,
-			Roles: append([]string(nil), state.Roles...), Custody: held,
+			Roles: append([]string(nil), state.Roles...), Custody: held, Retired: state.Retired,
 		})
 	}
 	sort.Slice(views, func(i, j int) bool {

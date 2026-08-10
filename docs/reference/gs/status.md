@@ -61,6 +61,15 @@ fallback`. Then a line of totals, and five sections:
 | Stale artifacts | Artifacts that were retired, and artifacts a retirement reached. |
 | Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
 
+Staleness qualifies a commitment rather than replacing its status. A
+reported commitment whose basis was retired still reads `reported`,
+still sits with the work awaiting review, and gains a `(stale)` mark;
+the totals count it in both `reported N` and the `(M stale)` beside it.
+A satisfied or withdrawn commitment whose basis moved appears under
+"Needs attention", because the outcome is worth re-checking. A
+commitment that was never reported has no outcome to preserve, so its
+status is `stale` outright and the mark is not repeated.
+
 Satisfied and withdrawn commitments are finished, and are counted in the
 totals rather than listed.
 

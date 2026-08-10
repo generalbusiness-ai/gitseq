@@ -8,8 +8,8 @@ import { createServer } from "vite";
 
 const uiRoot = fileURLToPath(new URL("..", import.meta.url));
 
-function workroom(presence) {
-  const projection = {
+function workroom(presence, suppliedProjection) {
+  const projection = suppliedProjection ?? {
     decisions: [],
     acts: [],
     statements: [],
@@ -36,6 +36,78 @@ function workroom(presence) {
 }
 
 const session = { id: "browser", live: true, setActor() {} };
+
+test("an addressed proposal-ratification request offers the requested decision directly", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const { semanticActions } = await vite.ssrLoadModule("/src/components/Toolbar.tsx");
+    const viewer = "hugh-fingerprint";
+    const proposal = {
+      event: "proposal",
+      actor: "codex-fingerprint",
+      kind: "propose",
+      text: "Use the bounded status contract.",
+      timestamp: 1,
+    };
+    const request = {
+      event: "request",
+      actor: "codex-fingerprint",
+      kind: "request",
+      text: "Hugh: ratify the proposal or deny it.",
+      body: { to: viewer },
+      timestamp: 2,
+    };
+    const projection = {
+      decisions: [proposal, request].map(({ event }) => ({ event, verdict: "effective", reason: "recorded" })),
+      acts: [],
+      statements: [proposal, request],
+      commitments: [{ request: request.event, requester: request.actor, addressed_to: viewer, status: "open" }],
+      artifacts: [],
+      actors: {},
+      provenance: { proposal: [], request: [proposal.event] },
+    };
+    const routed = [];
+    const acted = [];
+    const actions = semanticActions({
+      statement: request,
+      commitment: projection.commitments[0],
+      decision: projection.decisions[1],
+      projection,
+      me: viewer,
+      onRoute: (...args) => routed.push(args),
+      doAct: (...args) => acted.push(args),
+    });
+
+    assert.deepEqual(actions.map(({ label }) => label), ["ratify yes", "deny"]);
+    assert.doesNotMatch(actions.map(({ label }) => label).join(" "), /accept/);
+    actions[0].run();
+    actions[1].run();
+    assert.deepEqual(acted, [["ratify:proposal", { act: "ratify", target: proposal.event }]]);
+    assert.deepEqual(routed, [["dissent", proposal.event, ""]]);
+
+    const ordinary = semanticActions({
+      statement: { ...request, event: "ordinary-request", text: "Implement the feature." },
+      commitment: { ...projection.commitments[0], request: "ordinary-request" },
+      decision: { event: "ordinary-request", verdict: "effective", reason: "recorded" },
+      projection: {
+        ...projection,
+        statements: [{ ...request, event: "ordinary-request", text: "Implement the feature." }],
+        provenance: { "ordinary-request": [] },
+      },
+      me: viewer,
+      onRoute() {},
+      doAct() {},
+    });
+    assert.deepEqual(ordinary.map(({ label }) => label), ["accept"]);
+  } finally {
+    await vite.close();
+  }
+});
 
 test("identity and personal Work state stay honest at rendered component boundaries", async () => {
   const vite = await createServer({
@@ -181,6 +253,259 @@ test("identity and personal Work state stay honest at rendered component boundar
     assert.match(board, />Open B</);
     assert.match(board, /Changed since viewed by claude, status open/);
     assert.match(board, /aria-pressed="true" aria-label="unfollow topic"/);
+  } finally {
+    await vite.close();
+  }
+});
+
+// The reason an act carries no force belongs beside that act. This is the
+// regression that matters: the previous surface counted unreadable acts in a
+// panel and a header badge while the explanation lived only in a hover title,
+// so the room looked broken and no reader could learn why.
+test("an unreadable act explains itself where it is rendered", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { Stream } = await vite.ssrLoadModule("/src/components/Stream.tsx");
+    const { workSummary } = await vite.ssrLoadModule("/src/lib/store.ts");
+
+    const event = "git:sha1:genesis#git:sha1:unreadable";
+    const projection = {
+      decisions: [{ event, verdict: "undefined-kind", reason: 'undefined kind "commit"' }],
+      acts: [],
+      statements: [{
+        event, timestamp: 1786200000, actor: "a5d35aa7e4799472", kind: "commit",
+        text: "I will re-review task/docs at exact head 212820ca and report concrete approval or findings.",
+      }],
+      commitments: [], artifacts: [], actors: {}, provenance: {},
+    };
+    const room = {
+      actors: [{ name: "codex", fingerprint: "a5d35aa7e4799472", roles: [], custody: true }],
+      commits: [], graphTruncated: false, offline: false, localOffline: false,
+      status: {
+        durable: { genesis: "genesis", head: "head", depth: 1, projection },
+        live: { cursor: { generation: "g", position: 1 }, presence: {}, conversations: [] },
+        cursor: { frontier: [], live: { generation: "g", position: 1 } },
+      },
+    };
+    const html = renderToStaticMarkup(
+      React.createElement(Stream, {
+        workroom: room, session, frames: [], deliveries: 0,
+        highlight: { events: new Set(), commits: new Set() },
+        composer: { type: "say", restsOn: [], frames: [] }, pending: [],
+        onSelect() {}, onJump() {}, onComposer() {}, onReconcile() {},
+        onOpenThread() {}, onRoute() {}, onOpenProfile() {}, doAct() {},
+      }),
+    );
+
+    // The fold's own reason, rendered as text rather than hidden in a title.
+    assert.match(html, /undefined kind/, "the reason the room could not read the act is not rendered");
+    const visible = html.replace(/title="[^"]*"/g, "");
+    assert.match(visible, /undefined kind/, "the reason appears only in a hover title");
+    // And what it cost: the promise this act was written to be never formed.
+    assert.match(visible, /recorded without force/, "the consequence of the refusal is not stated");
+    assert.doesNotMatch(visible, /citation/i, "claims a citation never formed, but provenance is projected for every record");
+
+    // A standing interpretive limit is not work waiting on anyone.
+    assert.equal(workSummary(projection).stale, 0, "an unreadable act is counted as attention owed");
+  } finally {
+    await vite.close();
+  }
+});
+
+test("durable threads expose a railway whose rendered edges distinguish citations", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const [{ ThreadPane }, { ThreadRailway }] = await Promise.all([
+      vite.ssrLoadModule("/src/components/ThreadPane.tsx"),
+      vite.ssrLoadModule("/src/components/ThreadRailway.tsx"),
+    ]);
+    const statement = (event, actor, kind, text) => ({ event, actor, kind, text, timestamp: 1_700_000_000 });
+    const statements = [
+      statement("root", "codex", "request", "Build the railway"),
+      statement("first", "claude", "promise", "I will review it"),
+      statement("branch", "hugh", "assert", "Keep the thread local"),
+      statement("join", "codex", "report", "Railway ready"),
+    ];
+    const act = { event: "agree", actor: "hugh", type: "ratify", target: "join", verdict: "effective", reason: "authorized", timestamp: 1_700_000_001 };
+    const projection = {
+      decisions: [...statements.map((item) => ({ event: item.event, verdict: "effective", reason: "recorded" })), { event: act.event, verdict: "effective", reason: "authorized" }],
+      acts: [act],
+      statements,
+      commitments: [],
+      artifacts: [],
+      actors: {},
+      provenance: { root: [], first: ["root"], branch: ["root"], join: ["branch", "first"], agree: ["join"] },
+    };
+    const thread = { statements: statements.slice(1), acts: [act], events: ["first", "branch", "join", "agree"] };
+    const tickets = new Map(projection.decisions.map((decision, index) => [decision.event, index + 1]));
+    const railway = renderToStaticMarkup(
+      React.createElement(ThreadRailway, {
+        root: statements[0],
+        thread,
+        projection,
+        tickets,
+        nameOf: (actor) => actor,
+        onJumpTo() {},
+      }),
+    );
+    assert.match(railway, /data-thread-railway="true"/);
+    assert.equal((railway.match(/data-thread-rail-event=/g) ?? []).length, 5);
+    assert.match(railway, /stroke-dasharray="3 3"/);
+    assert.match(railway, /cites #2/);
+
+    // The rail reads from the root toward the present, and the rows are in
+    // that order in the document, not merely positioned in it.
+    assert.deepEqual(
+      [...railway.matchAll(/data-thread-rail-event="([^"]+)"/g)].map((match) => match[1]),
+      ["root", "first", "branch", "join", "agree"],
+    );
+
+    // The root's own basis lies outside this thread. Every event carries a
+    // ticket, so only the laid-out rows can say what is on the thread.
+    const rootOutside = renderToStaticMarkup(
+      React.createElement(ThreadRailway, {
+        root: statements[0],
+        thread,
+        projection: { ...projection, provenance: { ...projection.provenance, root: ["elsewhere"] } },
+        tickets: new Map([...tickets, ["elsewhere", 99]]),
+        nameOf: (actor) => actor,
+        onJumpTo() {},
+      }),
+    );
+    assert.match(rootOutside, /reply to #99 \(outside this thread\)/);
+    assert.match(rootOutside, /reply to #1</); // an on-thread reply says only its ticket
+
+    const panel = renderToStaticMarkup(
+      React.createElement(ThreadPane, {
+        workroom: workroom({}, projection),
+        session: { ...session, actor: "codex" },
+        frames: [],
+        target: { kind: "event", event: "root" },
+        pending: [],
+        composer: { restsOn: [], frames: [], type: "assert" },
+        onComposer() {},
+        onClose() {},
+        onJumpTo() {},
+        onOpenProfile() {},
+        onRoute() {},
+        doAct() {},
+        onSay() { return "pending"; },
+        onSayFailed() {},
+      }),
+    );
+    assert.match(panel, /aria-label="Durable thread view"/);
+    assert.match(panel, />Thread<\/button>/);
+    assert.match(panel, / Railway<\/button>/);
+    // The pane opens on the conversation; the rail waits behind its own tab.
+    assert.doesNotMatch(panel, /data-thread-railway/);
+  } finally {
+    await vite.close();
+  }
+});
+
+test("the railway carries the same status marks as the conversation it draws", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const { ThreadRailway } = await vite.ssrLoadModule("/src/components/ThreadRailway.tsx");
+    const statements = [
+      { event: "root", actor: "codex", kind: "request", text: "Draw the rail", timestamp: 1 },
+      { event: "agreed", actor: "claude", kind: "promise", text: "Agreed work", ratified: true, timestamp: 2 },
+      { event: "moved", actor: "claude", kind: "report", text: "Work the world moved under", stale: true, timestamp: 3 },
+      { event: "gone", actor: "claude", kind: "assert", text: "Taken back", retired: true, timestamp: 4 },
+    ];
+    const acts = [
+      { event: "refused", actor: "hugh", type: "ratify", target: "agreed", verdict: "unauthorized", reason: "not yours to agree", timestamp: 5 },
+      { event: "undone", actor: "hugh", type: "supersede", target: "gone", verdict: "effective", reason: "authorized", timestamp: 6 },
+    ];
+    const projection = {
+      decisions: [...statements, ...acts].map((item) => ({ event: item.event, verdict: "effective", reason: "recorded" })),
+      acts,
+      statements,
+      commitments: [],
+      artifacts: [],
+      actors: {},
+      provenance: { root: [], agreed: ["root"], moved: ["agreed"], gone: ["root"], refused: ["agreed"], undone: ["gone"] },
+    };
+    const markup = renderToStaticMarkup(
+      React.createElement(ThreadRailway, {
+        root: statements[0],
+        thread: { statements: statements.slice(1), acts, events: ["agreed", "moved", "gone", "refused", "undone"] },
+        projection,
+        tickets: new Map(projection.decisions.map((decision, index) => [decision.event, index + 1])),
+        nameOf: (actor) => actor,
+        onJumpTo() {},
+      }),
+    );
+    assert.match(markup, /aria-label="ratified"/);
+    assert.match(markup, />stale</);
+    assert.match(markup, /line-through/);
+    assert.match(markup, /aria-label="unauthorized"/);
+    assert.match(markup, /aria-label="withdrawn"/);
+  } finally {
+    await vite.close();
+  }
+});
+
+test("a rail too wide for the pane stops at ten lanes and says what it folded", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const { ThreadRailway } = await vite.ssrLoadModule("/src/components/ThreadRailway.tsx");
+    // Fifteen branches of the root that all stay open to the end.
+    const children = Array.from({ length: 15 }, (_, index) => `child-${index + 1}`);
+    const events = [...children, ...children.map((child) => `${child}-leaf`)];
+    const statements = [
+      { event: "root", actor: "codex", kind: "request", text: "Wide thread", timestamp: 1 },
+      ...events.map((event, index) => ({ event, actor: "claude", kind: "assert", text: event, timestamp: index + 2 })),
+    ];
+    const provenance = { root: [] };
+    for (const child of children) {
+      provenance[child] = ["root"];
+      provenance[`${child}-leaf`] = [child];
+    }
+    const projection = {
+      decisions: statements.map((statement) => ({ event: statement.event, verdict: "effective", reason: "recorded" })),
+      acts: [],
+      statements,
+      commitments: [],
+      artifacts: [],
+      actors: {},
+      provenance,
+    };
+    const markup = renderToStaticMarkup(
+      React.createElement(ThreadRailway, {
+        root: statements[0],
+        thread: { statements: statements.slice(1), acts: [], events },
+        projection,
+        tickets: new Map(projection.decisions.map((decision, index) => [decision.event, index + 1])),
+        nameOf: (actor) => actor,
+        onJumpTo() {},
+      }),
+    );
+    // Ten lanes at 22px, 14px of left margin and 10px of right: 244px, well
+    // inside the 24rem pane. An unbounded rail would be several times that.
+    assert.match(markup, /<svg width="244"/);
+    assert.match(markup, /data-thread-rail-folded="12"/);
+    assert.match(markup, /12 of 31 events did not fit/);
+    assert.match(markup, /The rail stops at 10 lanes/);
+    // Folded rows are marked on the rail and in their own text, so a reader
+    // can tell a shared lane from a lane of its own.
+    assert.equal((markup.match(/data-thread-rail-folded-row/g) ?? []).length, 12);
+    assert.equal((markup.match(/<rect /g) ?? []).length, 12);
   } finally {
     await vite.close();
   }

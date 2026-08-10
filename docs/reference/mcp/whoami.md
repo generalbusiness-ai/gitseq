@@ -62,6 +62,15 @@ retired. Trust `durable` for authority questions.
 `durable.role_sources` names the grant behind each role, which is what
 you would supersede to remove it.
 
+The answer is anchored to an exact durable frontier. A current loopback
+resident is labeled `resident_statusview_current`; the client refuses
+redirects and guards the answer with a two-second, 64 KiB, strict-JSON
+boundary plus matching local genesis and head checks. When the resident
+cannot be used, a local fallback sets `degraded: true` and names the
+verified path it actually took: `verified_signed_checkpoint_tail`,
+`verified_incremental_tail`, or `verified_cold_full_audit`. The response
+never includes the local actor key path.
+
 ## See also
 
 - [`gs actors`](../gs/actors.md)

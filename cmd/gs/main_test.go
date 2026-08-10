@@ -822,6 +822,61 @@ func TestBatchMixesStateAndRatify(t *testing.T) {
 	}
 }
 
+// A kind this workroom does not define is admitted and stays visible, and the
+// fold still calls it undefined-kind. Nothing about that changes: the record
+// was right about the two review promises filed as kind "commit", and hiding
+// the attempt would be worse than keeping it.
+func TestStateWithAnUndefinedKindStillLandsAndProjectsUndefinedKind(t *testing.T) {
+	fixture := newBatchFixture(t)
+	before := fixture.snapshot().Depth
+	printed, _, err := fixture.state("operator", "commit", "I will re-review task/x at exact head y", "undefined-kind-lands")
+	if err != nil {
+		t.Fatalf("state with an undefined kind failed: %v", err)
+	}
+	event := strings.TrimSpace(printed)
+	if !strings.Contains(event, "#git:") {
+		t.Fatalf("state printed no event id: %q", printed)
+	}
+	snapshot := fixture.snapshot()
+	if snapshot.Depth != before+1 {
+		t.Fatalf("depth = %d, want %d", snapshot.Depth, before+1)
+	}
+	decision := decisionByEvent(t, snapshot.Projection, event)
+	if decision.Verdict != workroom.UndefinedKind {
+		t.Fatalf("verdict = %q (%s), want %q", decision.Verdict, decision.Reason, workroom.UndefinedKind)
+	}
+}
+
+// What changes is that the author finds out at once. The act carried what
+// reads in English as a promise; it formed no promise, and only the writing
+// path is in a position to say so before the author acts on the belief.
+func TestStateWithAnUndefinedKindWarnsTheAuthorOnStandardError(t *testing.T) {
+	fixture := newBatchFixture(t)
+	_, warned, err := fixture.state("operator", "commit", "I will re-review task/x at exact head y", "undefined-kind-warns")
+	if err != nil {
+		t.Fatalf("state with an undefined kind failed: %v", err)
+	}
+	for _, want := range []string{`"commit"`, "no rule reads it", "undefined-kind", "does not form", "kinds defined here:"} {
+		if !strings.Contains(warned, want) {
+			t.Fatalf("warning %q does not say %q", warned, want)
+		}
+	}
+	for _, definition := range fixture.snapshot().Vocabulary.Definitions {
+		if !strings.Contains(warned, string(definition.Name)) {
+			t.Fatalf("warning %q does not list the defined kind %q", warned, definition.Name)
+		}
+	}
+	// A defined kind is ordinary work and says nothing, so the warning cannot
+	// pass by being printed every time.
+	_, quiet, err := fixture.state("operator", "assert", "an ordinary claim", "defined-kind-is-quiet")
+	if err != nil {
+		t.Fatalf("state with a defined kind failed: %v", err)
+	}
+	if strings.TrimSpace(quiet) != "" {
+		t.Fatalf("a defined kind warned anyway: %q", quiet)
+	}
+}
+
 type batchFixture struct {
 	t         *testing.T
 	ctx       context.Context
@@ -889,6 +944,51 @@ func (f batchFixture) run(actor, acts string) (batchReport, error) {
 		f.t.Fatalf("decode batch report %q: %v", printed, err)
 	}
 	return report, batchErr
+}
+
+// state runs the state command the way a person does and returns what each
+// stream received, because which stream carried the warning is the point.
+func (f batchFixture) state(actor, kind, text, key string) (string, string, error) {
+	f.t.Helper()
+	outReader, outWriter, err := os.Pipe()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	errReader, errWriter, err := os.Pipe()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	stdout, stderr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = outWriter, errWriter
+	stateErr := stateCommand(f.ctx, []string{
+		"--repo", f.repo, "--as", actor, "--kind", kind, "--text", text,
+		"--rests-on", f.genesis, "--idempotency-key", key,
+	})
+	os.Stdout, os.Stderr = stdout, stderr
+	outWriter.Close()
+	errWriter.Close()
+	printed, err := io.ReadAll(outReader)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	warned, err := io.ReadAll(errReader)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	outReader.Close()
+	errReader.Close()
+	return string(printed), string(warned), stateErr
+}
+
+func decisionByEvent(t *testing.T, projection workroom.Projection, event string) workroom.Decision {
+	t.Helper()
+	for _, decision := range projection.Decisions {
+		if decision.Event == event {
+			return decision
+		}
+	}
+	t.Fatalf("decision for %s not found", event)
+	return workroom.Decision{}
 }
 
 func actByEvent(t *testing.T, projection workroom.Projection, event string) workroom.Act {
@@ -1259,5 +1359,142 @@ func interrupt(t *testing.T, serving *exec.Cmd) {
 	t.Helper()
 	if err := serving.Process.Signal(os.Interrupt); err != nil {
 		t.Fatalf("interrupting gs serve: %v", err)
+	}
+}
+
+// The different-agent rule is a fingerprint test, applied where the verdict is
+// signed rather than left to whoever remembers who did the work.
+func TestReviewGuardRefusesVerdictOnTheReviewersOwnArtifact(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	own, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "the reviewer's own implementation",
+		Body:    map[string]string{"path": fixture.feature, "commit": fixture.candidate},
+		RestsOn: []string{fixture.request}, IdempotencyKey: "self-artifact",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := fixture.snapshot(t).Depth
+	err = reviewCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "reviewer", "--checkout", fixture.feature,
+		"--artifact", own.Record.ID, "--promise", fixture.promise,
+		"--verdict", "approved", "--text", "must not be signed",
+	})
+	if err == nil || !strings.Contains(err.Error(), "an independent reviewer must sign the verdict") {
+		t.Fatalf("self-review error = %v", err)
+	}
+	if after := fixture.snapshot(t).Depth; after != before {
+		t.Fatalf("self-review signed a verdict: depth %d -> %d", before, after)
+	}
+}
+
+// A verdict written around the guard still cannot be merged: the projection
+// answers the independence question and merge reads the answer.
+func TestMergeGuardRefusesApprovalSignedByTheImplementer(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	own, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "the reviewer's own implementation",
+		Body:    map[string]string{"path": fixture.feature, "commit": fixture.candidate},
+		RestsOn: []string{fixture.request}, IdempotencyKey: "self-artifact",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindReport, Text: "approving my own head",
+		Body:    map[string]string{"verdict": "approved", "head": fixture.candidate, "artifact": own.Record.ID},
+		RestsOn: []string{fixture.promise, fixture.request, own.Record.ID}, IdempotencyKey: "self-approval",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.ratify(t, approval.Record.ID)
+	review, found := fixture.snapshot(t).Projection.Review(approval.Record.ID)
+	if !found || review.Independence != workroom.IndependenceSelfReview {
+		t.Fatalf("projected review = %+v (found %v)", review, found)
+	}
+	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	err = mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval.Record.ID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "an independent review is required") {
+		t.Fatalf("self-approved merge error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != base {
+		t.Fatalf("refused merge moved HEAD to %s, want %s", got, base)
+	}
+}
+
+// No command signs under a default name. The identity comes from the flag or
+// from the environment that started the instance, and its absence is an error.
+func TestSigningActorComesFromFlagThenEnvironmentAndOtherwiseFails(t *testing.T) {
+	t.Setenv(actorEnvironment, "")
+	if _, err := signingActor(""); err == nil || !strings.Contains(err.Error(), actorEnvironment) {
+		t.Fatalf("missing identity error = %v", err)
+	}
+	if name, err := signingActor("explicit"); err != nil || name != "explicit" {
+		t.Fatalf("flag identity = %q, %v", name, err)
+	}
+	t.Setenv(actorEnvironment, " claude.2 ")
+	if name, err := signingActor(""); err != nil || name != "claude.2" {
+		t.Fatalf("environment identity = %q, %v", name, err)
+	}
+	if name, err := signingActor("explicit"); err != nil || name != "explicit" {
+		t.Fatalf("flag did not win over the environment: %q, %v", name, err)
+	}
+}
+
+// The environment identity reaches a real durable act, not only the resolver.
+func TestStateCommandSignsAsTheEnvironmentIdentity(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	t.Setenv(actorEnvironment, "reviewer")
+	if err := stateCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--kind", "assert", "--text", "signed without --as",
+		"--rests-on", fixture.artifact,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	projection := fixture.snapshot(t).Projection
+	last := projection.Statements[len(projection.Statements)-1]
+	if last.Actor != fixture.workspace.Config.Actors["reviewer"].Fingerprint {
+		t.Fatalf("environment identity signed as %s", last.Actor)
+	}
+}
+
+// gs init is where "there is no default identity" is easiest to break, because
+// it is the one command with nobody to sign as yet. Seeding an operator named
+// by nothing but a flag default puts an identity nobody chose at the root of
+// the log.
+func TestInitRefusesToSeedAnOperatorNobodyChose(t *testing.T) {
+	t.Setenv(actorEnvironment, "")
+	repo := filepath.Join(t.TempDir(), "repo")
+	testGit(t, "", "init", "-b", "main", repo)
+	err := initCommand(context.Background(), []string{"--repo", repo})
+	if err == nil || !strings.Contains(err.Error(), actorEnvironment) {
+		t.Fatalf("init without an identity = %v", err)
+	}
+	if !strings.Contains(err.Error(), "--operator") {
+		t.Fatalf("the refusal does not name the flag that carries the identity: %v", err)
+	}
+	if _, err := app.Open(context.Background(), repo); err == nil {
+		t.Fatal("a refused init still made a workroom")
+	}
+
+	// The environment identity is a choice, so it seeds; and it seeds under
+	// that name, not under a default.
+	t.Setenv(actorEnvironment, "alice")
+	if err := initCommand(context.Background(), []string{"--repo", repo}); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := app.Open(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := workspace.Config.Actors["alice"]; !exists {
+		t.Fatalf("the operator was not seeded as alice: %v", workspace.Config.Actors)
+	}
+	if _, exists := workspace.Config.Actors["operator"]; exists {
+		t.Fatal("init seeded a default operator beside the chosen one")
 	}
 }

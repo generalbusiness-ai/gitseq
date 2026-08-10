@@ -652,12 +652,16 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 		t.Fatal("unchanged head did not reuse the verified snapshot")
 	}
 	actRecord(t, ctx, workspace, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "advance", RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "advance"})
-	third, err := workspace.Snapshot(ctx)
+	thirdResult, err := workspace.SnapshotWithSource(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	third := thirdResult.Snapshot
 	if workspace.snapshotCache == cached || workspace.snapshotFolder != folder || third.Head == first.Head || third.Depth != first.Depth+1 {
 		t.Fatalf("advanced head reused stale snapshot: first=%+v third=%+v", first, third)
+	}
+	if thirdResult.Source != SnapshotSourceIncrementalTail {
+		t.Fatalf("accepted local append reported %q", thirdResult.Source)
 	}
 
 	external, err := Open(ctx, workspace.Repo)
@@ -665,12 +669,16 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	actRecord(t, ctx, external, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "external advance", RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "external-advance"})
-	fourth, err := workspace.Snapshot(ctx)
+	fourthResult, err := workspace.SnapshotWithSource(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	fourth := fourthResult.Snapshot
 	if workspace.snapshotFolder != folder || fourth.Depth != third.Depth+1 || fourth.Head == third.Head {
 		t.Fatalf("external descendant did not extend resident folder: third=%+v fourth=%+v", third, fourth)
+	}
+	if fourthResult.Source != SnapshotSourceIncrementalTail {
+		t.Fatalf("verified descendant tail reported %q", fourthResult.Source)
 	}
 	coldWorkspace, err := Open(ctx, workspace.Repo)
 	if err != nil {
@@ -839,12 +847,16 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := restarted.Snapshot(ctx)
+	restartedResult, err := restarted.SnapshotWithSource(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := restartedResult.Snapshot
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("checkpoint projection differs from verified source:\nwant=%+v\ngot=%+v", want, got)
+	}
+	if restartedResult.Source != SnapshotSourceSignedCheckpointTail {
+		t.Fatalf("signed checkpoint load reported %q", restartedResult.Source)
 	}
 	if unchanged, err := workspace.Store.Head(ctx, checkpointRef); err != nil || unchanged != checkpointHead {
 		t.Fatalf("exact restart rewrote checkpoint: before=%s after=%s err=%v", checkpointHead, unchanged, err)
@@ -857,14 +869,164 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repaired, err := repairing.Snapshot(ctx)
+	repairedResult, err := repairing.SnapshotWithSource(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	repaired := repairedResult.Snapshot
 	if !reflect.DeepEqual(repaired, want) {
 		t.Fatalf("corrupt checkpoint fallback changed projection:\nwant=%+v\ngot=%+v", want, repaired)
+	}
+	if repairedResult.Source != SnapshotSourceColdFullAudit {
+		t.Fatalf("corrupt checkpoint fallback reported %q", repairedResult.Source)
 	}
 	if repairedHead, err := workspace.Store.Head(ctx, checkpointRef); err != nil || repairedHead == workspace.Config.Genesis {
 		t.Fatalf("full audit did not repair checkpoint ref: head=%s err=%v", repairedHead, err)
 	}
+}
+
+// Retirement ends both halves of an identity: the durable membership and the
+// local key. What it must not end is the record that the principal acted.
+func TestRetireActorEndsMembershipAndCustodyWhileKeepingThePrincipalVisible(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, _, err := workspace.AddActor(ctx, "human", "claude.2", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spoken := actRecord(t, ctx, workspace, "claude.2", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "the instance acted",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "instance-assert",
+	})
+	if _, err := workspace.RetireActor(ctx, "human", "claude.2"); err != nil {
+		t.Fatal(err)
+	}
+	state := workspace.mustSnapshot(t, ctx).Projection.Actors[instance.Fingerprint]
+	if !state.Retired || state.Name != "claude.2" || len(state.Roles) != 0 {
+		t.Fatalf("retired instance projection = %+v", state)
+	}
+	if statement := statementActor(t, workspace, ctx, spoken.ID); statement != instance.Fingerprint {
+		t.Fatalf("the retired principal's event lost its author: %s", statement)
+	}
+	if _, exists := workspace.Config.Actors["claude.2"]; exists {
+		t.Fatal("retired instance kept local custody")
+	}
+	if _, err := os.Stat(instance.KeyFile); !os.IsNotExist(err) {
+		t.Fatalf("retired instance key file survives: %v", err)
+	}
+	if _, err := workspace.RetireActor(ctx, "human", "claude.2"); err == nil {
+		t.Fatal("retiring an already retired instance succeeded")
+	}
+}
+
+// A participant may not retire another principal, and the fold says so. The
+// durable attempt stays visible either way; what must not happen is custody
+// following an act that changed nothing, leaving a live roster member with no
+// key anyone can sign for and a command that called it a success.
+func TestIneffectiveRetirementLeavesMembershipAndCustodyAlone(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "claude.2", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	target, _, err := workspace.AddActor(ctx, "human", "claude.3", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := workspace.mustSnapshot(t, ctx).Depth
+
+	if _, err := workspace.RetireActor(ctx, "claude.2", "claude.3"); err == nil || !strings.Contains(err.Error(), "ineffective") {
+		t.Fatalf("a participant retiring another = %v", err)
+	}
+
+	snapshot := workspace.mustSnapshot(t, ctx)
+	if snapshot.Depth != before+1 {
+		t.Fatalf("depth = %d, want %d: the attempt is durable and stays visible", snapshot.Depth, before+1)
+	}
+	state := snapshot.Projection.Actors[target.Fingerprint]
+	if state.Retired || len(state.Roles) == 0 {
+		t.Fatalf("an ineffective supersession retired the target: %+v", state)
+	}
+	if _, exists := workspace.Config.Actors["claude.3"]; !exists {
+		t.Fatal("an ineffective retirement deleted the target's custody")
+	}
+	if _, err := os.Stat(target.KeyFile); err != nil {
+		t.Fatalf("an ineffective retirement deleted the target's key file: %v", err)
+	}
+	// Custody surviving is what lets the operator finish the job properly.
+	if _, err := workspace.RetireActor(ctx, "human", "claude.3"); err != nil {
+		t.Fatalf("the operator could not retire the target afterwards: %v", err)
+	}
+}
+
+// A retired principal holds no authority and can be given none: the roster
+// must not fill with names a projection cannot distinguish from live ones.
+func TestRetiredActorCannotBeAddressedOrGrantedAuthority(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, _, err := workspace.AddActor(ctx, "human", "claude.2", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.RetireActor(ctx, "human", "claude.2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.GrantRole(ctx, "human", instance.Fingerprint, "ratifier"); err == nil {
+		t.Fatal("granted authority to a retired principal")
+	}
+	// Custody is gone, so the address no longer resolves at this edge; the fold
+	// refuses a request to a retired member independently, which is what makes
+	// the guarantee durable rather than local.
+	if _, err := workspace.Act(ctx, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "addressed to a retired instance",
+		Body:    map[string]string{"to": instance.Fingerprint, "conditions": "none"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "retired-request",
+	}); err == nil || !strings.Contains(err.Error(), "unknown actor address") {
+		t.Fatalf("request to a retired principal = %v", err)
+	}
+	views, err := workspace.ActorViews(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retired := 0
+	for _, view := range views {
+		if view.Name == "claude.2" {
+			retired++
+			if !view.Retired || view.Custody {
+				t.Fatalf("retired actor view = %+v", view)
+			}
+		}
+	}
+	if retired != 1 {
+		t.Fatalf("retired actor appears %d times in gs actors", retired)
+	}
+}
+
+func (w *Workspace) mustSnapshot(t *testing.T, ctx context.Context) Snapshot {
+	t.Helper()
+	snapshot, err := w.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
+}
+
+func statementActor(t *testing.T, workspace *Workspace, ctx context.Context, event string) string {
+	t.Helper()
+	for _, statement := range workspace.mustSnapshot(t, ctx).Projection.Statements {
+		if statement.Event == event {
+			return statement.Actor
+		}
+	}
+	t.Fatalf("statement %s not found", event)
+	return ""
 }

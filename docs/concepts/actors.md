@@ -62,7 +62,12 @@ Two consequences worth holding on to:
 
 Retiring the membership removes membership and, with it, every
 non-membership role that named it. One supersede, and the principal is
-off the roster.
+no longer a participant — but it stays listed. A retired principal
+is left on the roster with `retired: true` and no roles, because the
+events it signed are permanent and a reader has to be able to tell a
+retired principal from a live one. Measured: superseding a membership
+takes a principal from `[participant]` to retired with no roles, and
+superseding *that supersession* returns them to `[participant]`.
 
 ## Effectiveness and authority are different questions
 

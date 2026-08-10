@@ -24,15 +24,32 @@ type Cursor struct {
 }
 
 type ActorView struct {
-	Name         string   `json:"name"`
-	Fingerprint  string   `json:"fingerprint"`
-	Roles        []string `json:"roles,omitempty"`
-	RolesSkipped int      `json:"roles_skipped,omitempty"`
+	Name            string   `json:"name"`
+	Fingerprint     string   `json:"fingerprint"`
+	Kind            string   `json:"kind,omitempty"`
+	MembershipEvent string   `json:"membership_event,omitempty"`
+	Roles           []string `json:"roles,omitempty"`
+	RolesSkipped    int      `json:"roles_skipped,omitempty"`
+}
+
+// OrientationProjectionVersion binds a resident orientation answer to the
+// exact actor projection semantics understood by its client.
+const OrientationProjectionVersion = "statusview-orientation@1"
+
+// Orientation is the bounded effective identity answer needed by a fresh
+// client. You reuses the capped actor view exposed by status; membership is
+// exact, while any omitted non-semantic roles are counted explicitly.
+type Orientation struct {
+	You               ActorView `json:"you"`
+	Frontier          Frontier  `json:"frontier"`
+	ProjectionVersion string    `json:"projection_version"`
 }
 
 type CommitmentView struct {
-	Request   string `json:"request"`
-	Status    string `json:"status"`
+	Request string `json:"request"`
+	Status  string `json:"status"`
+	// Stale qualifies Status; it never replaces it. See statusview.Commitment.
+	Stale     bool   `json:"stale,omitempty"`
 	Requester string `json:"requester"`
 	Performer string `json:"performer,omitempty"`
 	Text      string `json:"text,omitempty"`
@@ -51,8 +68,10 @@ type EventView struct {
 }
 
 type ActorTotals struct {
-	Depth            int            `json:"depth"`
-	Commitments      map[string]int `json:"commitments,omitempty"`
+	Depth       int            `json:"depth"`
+	Commitments map[string]int `json:"commitments,omitempty"`
+	// StaleCommitments counts, per status, how many carry the stale qualifier.
+	StaleCommitments map[string]int `json:"stale_commitments,omitempty"`
 	Artifacts        int            `json:"artifacts"`
 	StaleArtifacts   int            `json:"stale_artifacts"`
 	IneffectiveActs  int            `json:"ineffective_acts"`
@@ -149,7 +168,7 @@ func actIndex(projection workroom.Projection) map[string]workroom.Act {
 
 func viewCommitment(projection workroom.Projection, statements map[string]workroom.Statement, commitment workroom.Commitment) CommitmentView {
 	view := CommitmentView{
-		Request: commitment.Request, Status: commitment.Status,
+		Request: commitment.Request, Status: commitment.Status, Stale: commitment.Stale,
 		Requester: Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
 		Promise: commitment.Promise, Report: commitment.Report,
 	}
@@ -160,9 +179,12 @@ func viewCommitment(projection workroom.Projection, statements map[string]workro
 }
 
 func actorTotals(projection workroom.Projection, depth int) ActorTotals {
-	counts := make(map[string]int)
+	counts, staleCounts := make(map[string]int), make(map[string]int)
 	for _, commitment := range projection.Commitments {
 		counts[commitment.Status]++
+		if commitment.Stale {
+			staleCounts[commitment.Status]++
+		}
 	}
 	stale, ineffective, disputed := 0, 0, 0
 	for _, artifact := range projection.Artifacts {
@@ -178,7 +200,7 @@ func actorTotals(projection workroom.Projection, depth int) ActorTotals {
 			disputed++
 		}
 	}
-	return ActorTotals{Depth: depth, Commitments: counts, Artifacts: len(projection.Artifacts), StaleArtifacts: stale,
+	return ActorTotals{Depth: depth, Commitments: counts, StaleCommitments: staleCounts, Artifacts: len(projection.Artifacts), StaleArtifacts: stale,
 		IneffectiveActs: ineffective, DisputedActs: disputed, Statements: len(projection.Statements),
 		FullProjectionAt: "GET /v0/status, gs status --all, or gs status --json"}
 }
@@ -211,13 +233,14 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 		Totals: actorTotals(projection, durable.Depth), Live: actorLive(live, degraded),
 		FollowWithWait: "pass cursor back to wait to receive only what changes after it"}
 	if actor, ok := projection.Actors[fingerprint]; ok {
+		digest.You.Kind, digest.You.MembershipEvent = actor.Kind, actor.MembershipEvent
 		digest.You.Roles, digest.You.RolesSkipped = CapRoles(actor.Roles, ListCap)
 		if actor.Name != "" {
 			digest.You.Name = Text(actor.Name)
 		}
 	}
 	for _, commitment := range projection.Commitments {
-		if !involves(commitment, fingerprint) || commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
+		if !involves(commitment, fingerprint) || (terminal[commitment.Status] && !commitment.Stale) {
 			continue
 		}
 		view := viewCommitment(projection, statements, commitment)
@@ -255,6 +278,27 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 	return digest
 }
 
+// BuildOrientation selects one effective durable actor from the same
+// projection used by status. Unknown actors are refused rather than being
+// represented by local configuration alone.
+func BuildOrientation(durable app.Snapshot, fingerprint, actorName string) (Orientation, bool) {
+	actor, ok := durable.Projection.Actors[fingerprint]
+	if !ok {
+		return Orientation{}, false
+	}
+	name := actorName
+	if actor.Name != "" {
+		name = actor.Name
+	}
+	roles, skipped := CapRoles(actor.Roles, ListCap)
+	return Orientation{
+		You: ActorView{Name: Text(name), Fingerprint: fingerprint, Kind: actor.Kind, MembershipEvent: actor.MembershipEvent,
+			Roles: roles, RolesSkipped: skipped},
+		Frontier:          Frontier{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth},
+		ProjectionVersion: OrientationProjectionVersion,
+	}, true
+}
+
 func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset bool, requested Cursor, fingerprint, actorName string, degraded bool) WaitDelta {
 	projection := durable.Projection
 	statements := statementIndex(projection)
@@ -284,7 +328,7 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 		delta.Durable = append(delta.Durable, view)
 	}
 	for _, commitment := range projection.Commitments {
-		if !involves(commitment, fingerprint) || commitment.Status == "satisfied" || commitment.Status == "withdrawn" {
+		if !involves(commitment, fingerprint) || (terminal[commitment.Status] && !commitment.Stale) {
 			continue
 		}
 		view := viewCommitment(projection, statements, commitment)

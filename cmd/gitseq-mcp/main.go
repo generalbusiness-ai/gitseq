@@ -11,7 +11,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,8 +21,10 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
+	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -41,6 +45,12 @@ var legacyVersions = map[string]bool{
 }
 
 const instructions = "Use status and wait to follow the workroom; say ephemerally and promote deliberate acts with state."
+
+const (
+	orientationTimeout        = 2 * time.Second
+	orientationResponseLimit  = 64 << 10
+	residentOrientationSource = "resident_statusview_current"
+)
 
 // The era is a property of the connection rather than of a single request:
 // a legacy client announces itself once with `initialize` and thereafter
@@ -104,6 +114,11 @@ type room struct {
 	mu        sync.Mutex
 	baseURL   string
 	announced bool
+	// checked records that the sole-identity check has already been made for
+	// this workroom. It survives a lost service, because losing an address
+	// says nothing about who holds the name, and re-checking after our own
+	// presence is live would refuse this session its own identity.
+	checked bool
 }
 
 // endpoint names the service to use, re-reading the repository's published
@@ -113,13 +128,20 @@ func (r *room) endpoint() (string, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.baseURL == "" {
-		url, ok := r.workspace.ResidentURL()
+		published, ok := r.workspace.ResidentURL()
 		if !ok {
 			return "", false
 		}
-		r.baseURL = url
+		r.baseURL = published
 	}
-	return r.baseURL, true
+	validated, err := validateResidentURL(r.baseURL)
+	if err != nil {
+		r.baseURL = ""
+		r.announced = false
+		return "", false
+	}
+	r.baseURL = validated
+	return validated, true
 }
 
 // lost forgets an address that did not answer, and the presence announced
@@ -144,6 +166,18 @@ func (r *room) present() bool {
 	return r.announced
 }
 
+func (r *room) identityChecked() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.checked
+}
+
+func (r *room) identityIsOurs() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.checked = true
+}
+
 type mcpServer struct {
 	era     protocolEra
 	actor   string
@@ -156,13 +190,21 @@ type mcpServer struct {
 	byCommonDir map[string]*room
 }
 
+// actorEnvironment is how a concurrent instance is told which provisioned
+// identity it is, when the process is not started with an explicit --actor.
+const actorEnvironment = "GITSEQ_ACTOR"
+
 func main() {
 	repo := flag.String("repo", "", "default repository for calls that do not name one (default: working directory)")
-	actor := flag.String("actor", "", "configured actor")
+	actor := flag.String("actor", "", "configured actor; defaults to "+actorEnvironment)
 	serverURL := flag.String("server", "", "retired: the resident service is read from the repository")
 	flag.Parse()
-	if *actor == "" {
-		fatal(errors.New("--actor is required"))
+	name := *actor
+	if name == "" {
+		name = strings.TrimSpace(os.Getenv(actorEnvironment))
+	}
+	if name == "" {
+		fatal(errors.New("no actor identity: pass --actor, or set " + actorEnvironment + " to the identity this instance signs as"))
 	}
 	// The service belongs to a repository, so naming one here could only ever
 	// be right for a single workroom. Registrations written before that was
@@ -171,12 +213,21 @@ func main() {
 	if *serverURL != "" {
 		fmt.Fprintln(os.Stderr, "gitseq-mcp: --server is ignored; the resident service is read from the repository it serves")
 	}
-	server := newServer(*actor, *repo)
+	server := newServer(name, *repo)
 	// Attaching the default repository here is a courtesy, not a
 	// precondition: presence appears before the first tool call when there is
 	// a workroom to join, and one installation still serves whatever
 	// repository a later call names.
+	//
+	// A shared identity is the exception. It is not a missing workroom to be
+	// picked up later; it is this instance signing as a name another live
+	// session already holds, and it must be refused at the door where the
+	// operator can still fix it in one command.
 	if _, err := server.attend(context.Background(), ""); err != nil {
+		var shared *sharedIdentityError
+		if errors.As(err, &shared) {
+			fatal(err)
+		}
 		fmt.Fprintln(os.Stderr, "gitseq-mcp:", err)
 	}
 	presenceContext, stopPresence := context.WithCancel(context.Background())
@@ -195,7 +246,7 @@ func newServer(actor, repo string) *mcpServer {
 		actor:       actor,
 		repo:        absolute(repo),
 		session:     "mcp:" + randomID(),
-		client:      &http.Client{},
+		client:      newResidentClient(),
 		byPath:      map[string]*room{},
 		byCommonDir: map[string]*room{},
 	}
@@ -473,6 +524,12 @@ func (s *mcpServer) attend(ctx context.Context, repo string) (*room, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !current.identityChecked() {
+		if err := s.requireSoleIdentity(ctx, current); err != nil {
+			return nil, err
+		}
+		current.identityIsOurs()
+	}
 	if !current.present() {
 		if err := s.announce(ctx, current); err == nil {
 			current.joined()
@@ -511,18 +568,22 @@ func (s *mcpServer) attach(ctx context.Context, repo string) (*room, error) {
 }
 
 func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
-	current, err := s.attend(ctx, stringValue(call.Arguments["repo"]))
+	var current *room
+	var err error
+	// Whoami's resident read has an explicit two-second bound. Attaching the
+	// selected repository is local; announcing presence is an independent live
+	// side effect and must not move outside that bound by stalling first.
+	if call.Name == "whoami" {
+		current, err = s.attach(ctx, stringValue(call.Arguments["repo"]))
+	} else {
+		current, err = s.attend(ctx, stringValue(call.Arguments["repo"]))
+	}
 	if err != nil {
 		return nil, err
 	}
 	switch call.Name {
 	case "whoami":
-		actor := current.workspace.Config.Actors[s.actor]
-		snapshot, err := current.workspace.Snapshot(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"actor": actor, "repo": current.workspace.CommonDir, "genesis": current.workspace.Config.Genesis, "durable": snapshot.Projection.Actors[actor.Fingerprint], "session": s.session, "protocol": protocolVersion}, nil
+		return s.whoami(ctx, current)
 	case "presence":
 		return s.get(ctx, current, "/v0/presence")
 	case "status":
@@ -587,6 +648,79 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 	}
 }
 
+func (s *mcpServer) whoami(ctx context.Context, current *room) (any, error) {
+	actor := current.workspace.Config.Actors[s.actor]
+	residentContext, cancel := context.WithTimeout(ctx, orientationTimeout)
+	defer cancel()
+	for attempt := 0; attempt < 2; attempt++ {
+		orientation, err := s.currentResidentOrientation(residentContext, current, actor.Fingerprint)
+		if err == nil {
+			return map[string]any{
+				"actor": publicActor(actor), "durable": orientation.You, "session": s.session, "protocol": protocolVersion,
+				"repo": current.workspace.CommonDir, "genesis": current.workspace.Config.Genesis,
+				"frontier": orientation.Frontier, "source": residentOrientationSource, "degraded": false,
+			}, nil
+		}
+		if residentContext.Err() != nil {
+			break
+		}
+	}
+
+	local, err := current.workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		return nil, err
+	}
+	orientation, ok := statusview.BuildOrientation(local.Snapshot, actor.Fingerprint, actor.Name)
+	if !ok {
+		return nil, errors.New("configured actor is not in the effective durable roster")
+	}
+	return map[string]any{
+		"actor": publicActor(actor), "durable": orientation.You, "session": s.session, "protocol": protocolVersion,
+		"repo": current.workspace.CommonDir, "genesis": current.workspace.Config.Genesis,
+		"frontier": orientation.Frontier, "source": string(local.Source), "degraded": true,
+	}, nil
+}
+
+func (s *mcpServer) currentResidentOrientation(ctx context.Context, current *room, fingerprint string) (service.Orientation, error) {
+	before, err := current.workspace.Store.Head(ctx, kernel.Ref(current.workspace.Config.Genesis))
+	if err != nil {
+		return service.Orientation{}, err
+	}
+	var orientation service.Orientation
+	if err := s.getBoundedJSON(ctx, current, "/v0/orientation/"+fingerprint, orientationResponseLimit, &orientation); err != nil {
+		return service.Orientation{}, err
+	}
+	after, err := current.workspace.Store.Head(ctx, kernel.Ref(current.workspace.Config.Genesis))
+	if err != nil {
+		return service.Orientation{}, err
+	}
+	if before != after {
+		return service.Orientation{}, errors.New("workroom head moved while resident orientation was read")
+	}
+	if orientation.ProjectionVersion != service.OrientationProjectionVersion ||
+		orientation.Frontier.Genesis != current.workspace.Config.Genesis || orientation.Frontier.Head != after ||
+		orientation.Frontier.Depth < 0 || orientation.You.Fingerprint != fingerprint ||
+		orientation.You.Name == "" || orientation.You.Kind == "" || orientation.You.MembershipEvent == "" ||
+		len(orientation.You.Roles) > statusview.ListCap || orientation.You.RolesSkipped < 0 ||
+		!containsString(orientation.You.Roles, "participant") {
+		return service.Orientation{}, errors.New("resident orientation does not match local durable evidence")
+	}
+	return orientation, nil
+}
+
+func publicActor(actor app.Actor) map[string]string {
+	return map[string]string{"name": actor.Name, "fingerprint": actor.Fingerprint}
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any, error) {
 	_, private, err := current.workspace.Actor(s.actor)
 	if err != nil {
@@ -598,17 +732,102 @@ func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any
 	}
 	value, err := s.post(ctx, current, "/v0/submit", request)
 	if !isTransportError(err) {
-		return value, err
+		if err != nil {
+			return value, err
+		}
+		return s.withKindWarning(ctx, current, act, value), nil
 	}
 	submission, err := current.workspace.AcceptSubmission(ctx, request)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"result": submission.Result, "record": submission.Record, "degraded": true}, nil
+	return s.withKindWarning(ctx, current, act, map[string]any{"result": submission.Result, "record": submission.Record, "degraded": true}), nil
+}
+
+// withKindWarning puts the undefined-kind warning inside the tool result the
+// caller reads. An agent writing over MCP is exactly who filed a promise under
+// a kind this room does not define and was told nothing, so a line in a log it
+// never reads would be no warning at all. The act itself is untouched: it
+// landed, and it still projects as undefined-kind.
+func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.Act, value any) any {
+	if act.Verb != app.VerbState {
+		return value
+	}
+	result, ok := value.(map[string]any)
+	if !ok {
+		return value
+	}
+	snapshot, err := current.workspace.Snapshot(ctx)
+	if err != nil {
+		result["warning"] = fmt.Sprintf("cannot tell whether kind %q is defined here: %v", act.Kind, err)
+		return result
+	}
+	if warning := snapshot.Vocabulary.UndefinedKindWarning(act.Kind); warning != "" {
+		result["warning"] = warning
+	}
+	return result
+}
+
+// sharedIdentityError marks the one attachment failure that must stop the
+// process rather than be reported and retried: another live session already
+// signs as this instance's name.
+type sharedIdentityError struct{ message string }
+
+func (e *sharedIdentityError) Error() string { return e.message }
+
+// requireSoleIdentity refuses to attach a second live session to one durable
+// identity. Concurrent instances signing as one name make the log say that a
+// name did something when one of several instances did, and they satisfy the
+// different-agent review rule by spelling rather than by fingerprint. Sharing
+// the name is the path of least resistance, so it is made an error at the door
+// where the operator can still fix it in one command.
+//
+// The check reads live presence, so it is exactly as good as the resident
+// service. When presence cannot be read the instance still starts: a stopped
+// service must not stop the work. That degradation is printed, not assumed
+// away, and it is the stated limit of this guard along with the race between
+// two instances starting at the same moment, which neither will see.
+//
+// It is made once per workroom, before this session announces itself there.
+// Afterwards our own presence is in the snapshot, so asking again would refuse
+// this session the identity it already holds.
+func (s *mcpServer) requireSoleIdentity(ctx context.Context, current *room) error {
+	actor := current.workspace.Config.Actors[s.actor]
+	value, err := s.get(ctx, current, "/v0/presence")
+	if isTransportError(err) {
+		fmt.Fprintln(os.Stderr, "gitseq-mcp: shared-identity check skipped; the resident service is unavailable:", err)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var snapshot nexus.Snapshot
+	if err := remarshal(value, &snapshot); err != nil {
+		return err
+	}
+	label := actor.Name + " (" + actor.Fingerprint[:12] + ")"
+	held := 0
+	for _, present := range snapshot.Presence {
+		if present == label {
+			held++
+		}
+	}
+	if held == 0 {
+		return nil
+	}
+	return &sharedIdentityError{message: fmt.Sprintf("identity %q is already live in %d other session(s); concurrent instances must not share one key. Provision an instance identity — gs actor-add --as <operator> --name %s.2 — and start this instance with %s=%s.2",
+		actor.Name, held, actor.Name, actorEnvironment, actor.Name)}
 }
 
 func (s *mcpServer) announce(ctx context.Context, current *room) error {
 	_, err := s.post(ctx, current, "/v0/presence", map[string]any{"actor": s.actor, "session": s.session, "ttl_ms": 30000})
+	if err == nil {
+		// Presence carries a name, not a session, so once ours is live the
+		// snapshot can no longer tell this instance from a stranger. The door
+		// check is closed for this workroom rather than left to refuse us our
+		// own identity later.
+		current.identityIsOurs()
+	}
 	return err
 }
 
@@ -689,6 +908,42 @@ func (s *mcpServer) post(ctx context.Context, current *room, path string, value 
 	return s.do(current, request)
 }
 
+func (s *mcpServer) getBoundedJSON(ctx context.Context, current *room, path string, limit int64, target any) error {
+	base, ok := current.endpoint()
+	if !ok {
+		return transportError{errNoResident}
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+	if err != nil {
+		return err
+	}
+	response, err := s.client.Do(request)
+	if err != nil {
+		current.lost()
+		return transportError{err}
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("resident returned %s", response.Status)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(data)) > limit {
+		return fmt.Errorf("resident response exceeds %d bytes", limit)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return errors.New("resident returned trailing JSON")
+	}
+	return nil
+}
+
 func (s *mcpServer) do(current *room, request *http.Request) (any, error) {
 	response, err := s.client.Do(request)
 	if err != nil {
@@ -722,6 +977,28 @@ type httpStatusError struct {
 }
 
 func (e httpStatusError) Error() string { return e.message }
+
+func validateResidentURL(raw string) (string, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "http" || parsed.Host == "" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return "", errors.New("resident service must be an http loopback URL without credentials")
+	}
+	host := parsed.Hostname()
+	if !strings.EqualFold(host, "localhost") {
+		ip := net.ParseIP(host)
+		if ip == nil || !ip.IsLoopback() {
+			return "", errors.New("resident service must name a loopback address")
+		}
+	}
+	return strings.TrimRight(raw, "/"), nil
+}
+
+func newResidentClient() *http.Client {
+	return &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return errors.New("resident redirects are not allowed")
+	}}
+}
 
 func (s *mcpServer) localStatus(ctx context.Context, current *room) (service.Status, error) {
 	durable, err := current.workspace.Snapshot(ctx)
