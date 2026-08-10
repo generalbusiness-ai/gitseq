@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, BellOff, BookOpen, Columns3, GitBranch, List, Search } from "lucide-react";
-import type { Projection, Vocabulary, WorktreeView } from "../lib/api";
+import type { FrameView, Projection, Vocabulary, WorktreeView } from "../lib/api";
 import type { Session } from "../lib/session";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic, type PersonalWorkMemory } from "../lib/memory";
 import { ticketsOf, type Selection, type Workroom } from "../lib/store";
@@ -9,6 +9,7 @@ import {
   filterPersonalWorkProjection,
   filterWorkProjection,
   topicChangeSince,
+  workActiveCount,
   workItemNeedsAction,
   type WorkFilters,
   type WorkAttentionItem,
@@ -19,9 +20,11 @@ import {
   type WorkTopicChange,
 } from "../lib/work";
 import { worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
+import { temporaryDiscussionCounts, temporaryDiscussionLabel, type TemporaryDiscussionCount } from "../lib/interaction";
 import { cn, commitmentRelationship, statusLabel, statusTint } from "../lib/util";
 import { EventTime } from "./EventTime";
 import { Railway } from "./Railway";
+import { presentActors, type PresentActor } from "../lib/interaction";
 
 type Presentation = "list" | "board";
 
@@ -30,6 +33,7 @@ type Presentation = "list" | "board";
 export function WorkView({
   workroom,
   session,
+  frames = [],
   highlight,
   selection,
   onSelect,
@@ -40,6 +44,7 @@ export function WorkView({
 }: {
   workroom: Workroom;
   session: Session;
+  frames?: FrameView[];
   highlight: { events: Set<string>; commits: Set<string> };
   selection?: Selection;
   onSelect: (selection: Selection) => void;
@@ -51,10 +56,18 @@ export function WorkView({
   const projection = workroom.status?.durable.projection;
   const vocabulary = workroom.status?.durable.vocabulary;
   const [presentation, setPresentation] = useState<Presentation>(initialPresentation);
-  const [filters, setFilters] = useState<WorkFilters>({ open: true, attention: true, closed: false });
+  const [filters, setFilters] = useState<WorkFilters>({ active: true, attention: true, closed: false });
   const [personalView, setPersonalView] = useState<PersonalWorkView>(initialPersonalView);
   const work = useMemo(() => (projection ? buildWorkProjection(projection) : undefined), [projection]);
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
+  const durableEvents = useMemo(
+    () => new Set((projection?.statements ?? []).map((statement) => statement.event)),
+    [projection],
+  );
+  const temporaryCounts = useMemo(
+    () => temporaryDiscussionCounts(frames, durableEvents),
+    [frames, durableEvents],
+  );
   const nameOf = useMemo(() => {
     const byFingerprint = new Map(workroom.actors.map((actor) => [actor.fingerprint, actor.name]));
     return (fingerprint: string) =>
@@ -107,15 +120,20 @@ export function WorkView({
   const unreadCount = changes.size;
   const followingCount = work?.topics.filter((topic) => followed.has(topic.event)).length ?? 0;
   const itemCount = visible?.topics.reduce((sum, topic) => sum + topic.items.length, 0) ?? 0;
+  const focusedActors = useMemo(
+    () => presentActors(workroom.status?.live.presence, workroom.status?.live.activity),
+    [workroom.status?.live.presence, workroom.status?.live.activity],
+  );
 
   const openWorkItem = (event: string, topic: WorkTopic) => {
     remember((current) => viewWorkTopic(current, topic.event, topic.latestOrder));
+    onSelect({ kind: "event", id: event });
     onOpenThread(event);
   };
   const toggleFollowing = (topic: WorkTopic) =>
     remember((current) => followWorkTopic(current, topic.event, !current.followed.includes(topic.event), topic.latestOrder));
 
-  const updateFlag = (key: "open" | "attention" | "closed", value: boolean) =>
+  const updateFlag = (key: "active" | "attention" | "closed", value: boolean) =>
     setFilters((current) => ({ ...current, [key]: value }));
   const setAuthor = (author?: string) => setFilters((current) => ({ ...current, author }));
 
@@ -136,7 +154,13 @@ export function WorkView({
           </div>
           <fieldset className="flex items-center gap-1.5" aria-label="Lifecycle filters">
             <legend className="sr-only">Lifecycle filters</legend>
-            <FilterCheck label="Open" checked={filters.open} count={work?.topics.reduce((sum, topic) => sum + topic.openCount, 0)} onChange={(value) => updateFlag("open", value)} />
+            <FilterCheck
+              label="Active"
+              description="All actors: available (open), in progress (promised), and review (reported)."
+              checked={filters.active}
+              count={workActiveCount(projection)}
+              onChange={(value) => updateFlag("active", value)}
+            />
             <FilterCheck label="Attention" checked={filters.attention} count={(work?.topics.reduce((sum, topic) => sum + topic.attentionCount, 0) ?? 0) + (work?.attention.length ?? 0)} tone="danger" onChange={(value) => updateFlag("attention", value)} />
             <FilterCheck label="Closed" checked={filters.closed} count={work?.topics.reduce((sum, topic) => sum + topic.closedCount, 0)} onChange={(value) => updateFlag("closed", value)} />
           </fieldset>
@@ -180,7 +204,7 @@ export function WorkView({
           {personalView !== "all" ? ` · ${personalView === "needs" ? "needs my action" : personalView}` : ""}
         </p>
         <p className="mx-auto mt-1 max-w-7xl text-[10px] text-faint">
-          Read positions and follows are private to this browser and actor; they do not sync across devices. Needs my action comes only from unresolved durable responsibility.
+          Active covers every actor's available (open), in-progress (promised), and review (reported) work. Read positions and follows are private to this browser and actor; they do not sync across devices. Needs my action comes only from active durable responsibility: lifecycle-stale rows are excluded, while stale-qualified reports still wait on their requester.
         </p>
       </div>
 
@@ -196,9 +220,9 @@ export function WorkView({
           <>
             <OtherAttention items={visible.attention} tickets={tickets} nameOf={nameOf} onSelect={onSelect} onOpenThread={onOpenThread} />
             {visible.topics.length > 0 && (presentation === "list" ? (
-              <TopicList topics={visible.topics} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
+              <TopicList topics={visible.topics} projection={projection} tickets={tickets} temporaryCounts={temporaryCounts} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} focusedActors={focusedActors} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
             ) : (
-              <WorkBoard topics={visible.topics} filters={personalView === "all" ? filters : { open: true, attention: true, closed: true }} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
+              <WorkBoard topics={visible.topics} filters={personalView === "all" ? filters : { active: true, attention: true, closed: true }} projection={projection} tickets={tickets} temporaryCounts={temporaryCounts} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} focusedActors={focusedActors} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
             ))}
           </>
         )}
@@ -231,25 +255,37 @@ export function WorkView({
 // the log.
 function VocabularyPanel({ vocabulary }: { vocabulary?: Vocabulary }) {
   if (!vocabulary) return null;
-  const bound = vocabulary.binding.status === "bound";
+  const unbound = vocabulary.binding.status === "unbound";
+  const uninterpretable = vocabulary.binding.status === "uninterpretable";
+  const transitionCount = vocabulary.binding.transitions.length;
+  const transitionLabel = `${transitionCount} fold ${transitionCount === 1 ? "transition" : "transitions"}`;
   return (
     <details className="mx-auto mt-3 max-w-7xl rounded-lg border border-border bg-surface/30">
       <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted focus-visible:outline focus-visible:outline-accent">
         <BookOpen aria-hidden className="mr-1.5 inline h-3.5 w-3.5" />
         Vocabulary ({vocabulary.definitions.length})
-        {!bound && <span className="ml-2 font-normal text-faint">starter kinds only</span>}
+        {unbound && <span className="ml-2 font-normal text-faint">starter kinds only</span>}
+        {uninterpretable && <span className="ml-2 font-normal text-faint">interpretation stopped after {transitionLabel}</span>}
       </summary>
       <div className="space-y-1 border-t border-border p-3">
         {/* The reach of this room's vocabulary is a standing property, stated
             in the same register as any other limit — not an incident. Until a
             seed is ratified and a prefix bound, these definitions are all the
             room reads, and an act naming anything else says so on itself. */}
-        {!bound && (
+        {unbound && (
           <p className="rounded-md border border-border/70 bg-surface/40 px-2 py-1.5 leading-relaxed text-muted">
             This room reads only the kinds listed here. Its fold is{" "}
             <span className="font-medium text-foreground/90">{vocabulary.binding.status}</span>
             {vocabulary.binding.reason ? <> — {vocabulary.binding.reason}</> : null}, so no declared vocabulary extends
             it yet. An act naming a kind outside this list is kept and marked on the act itself.
+          </p>
+        )}
+        {uninterpretable && (
+          <p className="rounded-md border border-border/70 bg-surface/40 px-2 py-1.5 leading-relaxed text-muted">
+            This reader reached {transitionCount === 1 ? "1 activated fold transition" : `${transitionCount} activated fold transitions`} but cannot
+            interpret records beyond it.
+            {vocabulary.binding.reason ? <> Reason: <span className="font-medium text-foreground/90">{vocabulary.binding.reason}</span>.</> : null}
+            {" "}The kinds listed here are the definitions this reader established before that transition; declared kinds remain declared.
           </p>
         )}
         {vocabulary.definitions.map((definition) => (
@@ -349,10 +385,10 @@ function TopicList(props: WorkRenderProps & { topics: WorkTopic[] }) {
 
 function WorkBoard({ topics, filters, ...props }: WorkRenderProps & { topics: WorkTopic[]; filters: WorkFilters }) {
   const cards = topics.flatMap((topic) => topic.items.map((item) => ({ item, topic })));
-  const laneEnabled = (lane?: WorkLane) => lane === "closed" ? filters.closed : Boolean(lane && filters.open);
+  const laneEnabled = (lane?: WorkLane) => lane === "closed" ? filters.closed : Boolean(lane && filters.active);
   const attentionOnly = cards.filter(({ item }) => item.attention && !laneEnabled(item.lane));
   const lanes: { id: WorkLane; title: string }[] = [
-    ...(filters.open ? [
+    ...(filters.active ? [
       { id: "available" as const, title: "Available" },
       { id: "inProgress" as const, title: "In progress" },
       { id: "review" as const, title: "Review" },
@@ -396,25 +432,29 @@ function WorkBoard({ topics, filters, ...props }: WorkRenderProps & { topics: Wo
 interface WorkRenderProps {
   projection: Projection;
   tickets: Map<string, number>;
+  temporaryCounts: Map<string, TemporaryDiscussionCount>;
   commits: Workroom["commits"];
   worktrees: WorktreeView[];
   nameOf: (fingerprint: string) => string;
   canPersonalize: boolean;
   followed: ReadonlySet<string>;
   changes: ReadonlyMap<string, WorkTopicChange>;
+  focusedActors: PresentActor[];
   onToggleFollowing: (topic: WorkTopic) => void;
   onOpenWorkItem: (event: string, topic: WorkTopic) => void;
 }
 
-function WorkItemRow({ item, topic, projection, tickets, commits, worktrees, nameOf, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
+function WorkItemRow({ item, topic, projection, tickets, temporaryCounts, commits, worktrees, nameOf, focusedActors, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
   const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
   const relationship = commitmentRelationship(item.commitment, nameOf);
   return (
     <button type="button" onClick={() => onOpenWorkItem(item.request.event, topic)} className="w-full rounded-md px-2 py-1.5 text-left hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent">
       <div className="flex items-start gap-2 text-xs">
         <StatusBadge item={item} />
+        <FocusActors actors={focusedActors} event={item.request.event} />
         <span className="min-w-0 flex-1 text-foreground/85">{item.request.text}</span>
         {relationship && <span className="shrink-0 text-faint">{relationship}</span>}
+        <TemporaryDiscussionSignal summary={temporaryCounts.get(item.request.event)} />
         <span className="shrink-0 font-mono text-[11px] text-faint" title={item.request.event}>#{tickets.get(item.request.event) ?? "?"}</span>
       </div>
       <WorktreeAssociations associations={associations} />
@@ -422,13 +462,14 @@ function WorkItemRow({ item, topic, projection, tickets, commits, worktrees, nam
   );
 }
 
-function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameOf, canPersonalize, followed, changes, onToggleFollowing, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
+function BoardCard({ item, topic, projection, tickets, temporaryCounts, commits, worktrees, nameOf, canPersonalize, followed, changes, focusedActors, onToggleFollowing, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
   const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
   const relationship = commitmentRelationship(item.commitment, nameOf);
   return (
     <article className="rounded-md border border-border bg-card px-3 py-2.5 shadow-sm hover:border-accent/40 hover:bg-elevated/70">
       <div className="flex items-center justify-between gap-2">
         <StatusBadge item={item} />
+        <FocusActors actors={focusedActors} event={item.request.event} />
         {canPersonalize && <TopicFollowButton following={followed.has(topic.event)} onClick={() => onToggleFollowing(topic)} compact />}
         <span className="font-mono text-[11px] text-faint" title={item.request.event}>#{tickets.get(item.request.event) ?? "?"}</span>
       </div>
@@ -439,9 +480,24 @@ function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameO
         asked by {nameOf(item.request.actor)}{relationship && <> · {relationship}</>}
       </p>
       <TopicChange change={changes.get(topic.event)} nameOf={nameOf} />
+      <TemporaryDiscussionSignal summary={temporaryCounts.get(item.request.event)} />
       <WorktreeAssociations associations={associations} />
       </button>
     </article>
+  );
+}
+
+function FocusActors({ actors, event }: { actors: PresentActor[]; event: string }) {
+  const focused = actors.filter((actor) => actor.focus.includes(event));
+  if (focused.length === 0) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1" aria-label={`Focused here: ${focused.map((actor) => `${actor.name} (${actor.status})`).join(", ")}`}>
+      {focused.map((actor) => (
+        <span key={actor.label} title={`${actor.name} — ${actor.status}${actor.note ? ` — ${actor.note}` : ""}`} className={cn("rounded border px-1 text-[10px] font-medium", actor.status === "blocked" ? "border-danger/50 text-danger" : actor.status === "waiting" ? "border-warn/50 text-warn" : "border-info/40 text-info")}>
+          {actor.name} · {actor.status}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -470,6 +526,16 @@ function TopicFollowButton({ following, onClick, compact = false }: { following:
   );
 }
 
+function TemporaryDiscussionSignal({ summary }: { summary?: TemporaryDiscussionCount }) {
+  const label = temporaryDiscussionLabel(summary);
+  if (!label) return null;
+  return (
+    <span aria-label={`${label} messages in temporary discussion`} className="mt-1 inline-flex rounded border border-info/30 px-1.5 py-0.5 text-[10px] font-medium text-info">
+      {label}
+    </span>
+  );
+}
+
 function StatusBadge({ item }: { item: WorkItem }) {
   return (
     <span className="flex shrink-0 items-center gap-1">
@@ -485,16 +551,16 @@ function TopicCounts({ topic }: { topic: WorkTopic }) {
   return (
     <span className="flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wide">
       {topic.attentionCount > 0 && <span className="rounded border border-danger/40 px-1.5 py-0.5 text-danger">{topic.attentionCount} attention</span>}
-      {topic.openCount > 0 && <span className="rounded border border-info/35 px-1.5 py-0.5 text-info">{topic.openCount} open</span>}
+      {topic.activeCount > 0 && <span className="rounded border border-info/35 px-1.5 py-0.5 text-info">{topic.activeCount} active</span>}
       {topic.closedCount > 0 && <span className="rounded border border-border px-1.5 py-0.5 text-faint">{topic.closedCount} closed</span>}
     </span>
   );
 }
 
-function FilterCheck({ label, checked, count, tone, onChange }: { label: string; checked: boolean; count?: number; tone?: "danger"; onChange: (checked: boolean) => void }) {
+function FilterCheck({ label, description, checked, count, tone, onChange }: { label: string; description?: string; checked: boolean; count?: number; tone?: "danger"; onChange: (checked: boolean) => void }) {
   return (
-    <label className={cn("flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs", checked ? "border-accent/50 bg-accent/10 text-foreground" : "border-border text-faint hover:text-muted", tone === "danger" && checked && "border-danger/50 bg-danger/10")}>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-3.5 w-3.5 accent-[var(--color-accent)]" />
+    <label title={description} className={cn("flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs", checked ? "border-accent/50 bg-accent/10 text-foreground" : "border-border text-faint hover:text-muted", tone === "danger" && checked && "border-danger/50 bg-danger/10")}>
+      <input type="checkbox" aria-label={description ? `${label}. ${description}` : label} checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-3.5 w-3.5 accent-[var(--color-accent)]" />
       {label}<span className={cn("font-mono text-[10px]", tone === "danger" && (count ?? 0) > 0 && "text-danger")}>{count ?? 0}</span>
     </label>
   );

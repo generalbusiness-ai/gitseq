@@ -25,7 +25,13 @@ Every durable event cites its basis in `rests_on`.
 
 ## Tools
 
-- `whoami` / `presence` — who you are; who is here now.
+- `whoami` / `presence` — who you are; who is here now. `presence` may
+  update only this adapter session's leased `status` (`available`, `busy`,
+  `waiting`, or `blocked`), bounded `focus` set of up to eight workroom
+  EventIDs, and short `note`. Focus is advisory attention, never a promise,
+  claim, report, authorization, or completion signal. Multiple sessions for
+  one actor aggregate by blocked > waiting > busy > available, then by a
+  sorted focus union capped at eight and the first sorted non-empty note.
 - `status` — workroom snapshot plus a composite cursor. Its actor-oriented
   `available_to_you` lane is the bounded list of `open`, unclaimed requests
   addressed to you; `waiting_on_you` begins only after a promise or report
@@ -131,6 +137,12 @@ promise stays in history as kept faith, not fault.
    *unable to flare*, and one whose predecessor at the same path is
    still live reads *succession not recorded*. A flare means
    re-check this, not this is wrong.
+9. **Publish live activity honestly.** Start work with `busy` and its relevant
+   focus EventIDs. Publish `waiting` or `blocked` immediately; return to
+   `available` and clear focus when leaving. Keep routine failed tests and
+   exploratory dead ends ephemeral. Promote a material or session-surviving
+   blockage as an `assert` resting on the promise, create a child request when
+   repair work is needed, and supersede the promise only when withdrawing it.
 
 ## The repo underneath
 

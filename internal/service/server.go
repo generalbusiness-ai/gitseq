@@ -250,9 +250,12 @@ func (s *Server) handlePresence(writer http.ResponseWriter, _ *http.Request) {
 }
 
 type presenceRequest struct {
-	Actor   string `json:"actor"`
-	Session string `json:"session"`
-	TTLMS   int    `json:"ttl_ms,omitempty"`
+	Actor   string                `json:"actor"`
+	Session string                `json:"session"`
+	TTLMS   int                   `json:"ttl_ms,omitempty"`
+	Status  *nexus.ActivityStatus `json:"status,omitempty"`
+	Focus   *[]string             `json:"focus,omitempty"`
+	Note    *string               `json:"note,omitempty"`
 }
 
 func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Request) {
@@ -269,11 +272,34 @@ func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Reques
 		write(writer, nil, err)
 		return
 	}
+	if input.Focus != nil {
+		if len(*input.Focus) > nexus.MaxFocusEvents {
+			write(writer, nil, errors.New("focus exceeds the eight-event limit"))
+			return
+		}
+		snapshot, snapshotErr := s.workspace.Snapshot(request.Context())
+		if snapshotErr != nil {
+			write(writer, nil, snapshotErr)
+			return
+		}
+		known := make(map[string]bool, len(snapshot.Projection.Decisions))
+		for _, decision := range snapshot.Projection.Decisions {
+			known[decision.Event] = true
+		}
+		for _, event := range *input.Focus {
+			if !known[event] {
+				write(writer, nil, errors.New("focus must contain only EventIDs from this workroom"))
+				return
+			}
+		}
+	}
 	ttl := time.Duration(input.TTLMS) * time.Millisecond
 	if ttl <= 0 || ttl > 2*time.Minute {
 		ttl = 30 * time.Second
 	}
-	change, err := s.hub.AnnounceSession(input.Session, input.Actor, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl)
+	change, err := s.hub.AnnounceSessionActivity(input.Session, input.Actor, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, nexus.ActivityUpdate{
+		Status: input.Status, Focus: input.Focus, Note: input.Note,
+	})
 	write(writer, change, err)
 }
 

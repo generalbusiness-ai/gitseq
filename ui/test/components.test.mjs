@@ -29,7 +29,7 @@ function workroom(presence, suppliedProjection) {
     localOffline: false,
     status: {
       durable: { genesis: "genesis", head: "head", depth: 1, projection },
-      live: { cursor: { generation: "generation", position: 1 }, presence, conversations: [] },
+      live: { cursor: { generation: "generation", position: 1 }, presence, activity: {}, conversations: [] },
       cursor: { frontier: [], live: { generation: "generation", position: 1 } },
     },
   };
@@ -109,6 +109,55 @@ test("an addressed proposal-ratification request offers the requested decision d
   }
 });
 
+test("every durable Stream presentation renders advisory focus behaviorally", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  const previousDocument = globalThis.document;
+  globalThis.document = { title: "gitseq", hasFocus: () => true };
+  try {
+    const { Stream, CompactRow, Card } = await vite.ssrLoadModule("/src/components/Stream.tsx");
+    const statement = { event: "focused-event", actor: "codex-fingerprint", kind: "assert", text: "Focused work", timestamp: 1_700_000_000 };
+    const projection = {
+      decisions: [{ event: statement.event, verdict: "effective", reason: "recorded" }],
+      acts: [], artifacts: [], actors: {}, statements: [statement], commitments: [], provenance: { [statement.event]: [] },
+    };
+    const focused = [{
+      label: "codex (codex-finger)", name: "codex", fingerprint: "codex-finger", sessions: 1,
+      status: "blocked", focus: [statement.event], note: "waiting on review",
+    }];
+    const room = workroom({ "handle:codex": "codex (codex-finger)" }, projection);
+    room.actors = [{ name: "codex", fingerprint: "codex-fingerprint", roles: [], custody: true }];
+    room.status.live.activity = { "handle:codex": { status: "blocked", focus: [statement.event], note: "waiting on review" } };
+    const noop = () => {};
+    const rowProps = {
+      statement, ticket: 1, decision: projection.decisions[0], projection, tickets: new Map([[statement.event, 1]]),
+      notes: new Map(), nameOf: () => "codex", bright: false, selected: false, cited: false, focused,
+      onSelect: noop, onJumpTo: noop, onCite: noop, onOpenThread: noop, onOpenProfile: noop, onRoute: noop, doAct: noop,
+    };
+    const streamMarkup = renderToStaticMarkup(React.createElement(Stream, {
+      workroom: room,
+      session: { ...session, actor: "codex", activity: { status: "available", focus: [] }, setActivity: noop },
+      frames: [], deliveries: 0, highlight: { events: new Set(), commits: new Set() }, onSelect: noop, onJump: noop,
+      composer: { type: "say", restsOn: [], frames: [] }, onComposer: noop, pending: [], onReconcile: noop,
+      onOpenThread: noop, onRoute: noop, onOpenProfile: noop, doAct: noop,
+    }));
+    const compactMarkup = renderToStaticMarkup(React.createElement(CompactRow, rowProps));
+    const cardMarkup = renderToStaticMarkup(React.createElement(Card, rowProps));
+    for (const [presentation, markup] of [["recorded", streamMarkup], ["compact", compactMarkup], ["card", cardMarkup]]) {
+      assert.match(markup, /aria-label="Focused here: codex \(blocked\)"/, `${presentation} presentation omitted focused actor`);
+      assert.match(markup, /title="codex — blocked — waiting on review"/, `${presentation} presentation omitted focus detail`);
+      assert.match(markup, /codex · blocked/, `${presentation} presentation omitted focus status`);
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    await vite.close();
+  }
+});
+
 test("identity and personal Work state stay honest at rendered component boundaries", async () => {
   const vite = await createServer({
     root: uiRoot,
@@ -182,10 +231,26 @@ test("identity and personal Work state stay honest at rendered component boundar
       commitments: [{ request: "request", requester: "codex-fingerprint", addressed_to: "codex-fingerprint", status: "open" }],
       provenance: { request: [], change: ["request"] },
     };
+    personalRoom.status.live.presence = { "handle:codex": "codex (codex-finger)" };
+    personalRoom.status.live.activity = { "handle:codex": { status: "blocked", focus: ["request"], note: "waiting on review" } };
+    const activeSession = { ...session, actor: "codex", activity: { status: "blocked", focus: ["request"] }, setActivity() {} };
+    const activeTopBar = renderToStaticMarkup(
+      React.createElement(TopBar, {
+        workroom: personalRoom,
+        session: activeSession,
+        selection: { kind: "event", id: "request" },
+        mainView: "work",
+        onShowWork() {}, onShowActivity() {}, onJumpEvent() {}, onOpenProfile() {},
+      }),
+    );
+    assert.match(activeTopBar, /aria-label="Activity status"/);
+    assert.match(activeTopBar, /aria-pressed="true"[^>]*>unfocus</);
+    assert.match(activeTopBar, />clear<\/button>/);
+    assert.match(activeTopBar, /codex — blocked — waiting on review/);
     const markup = renderToStaticMarkup(
       React.createElement(WorkView, {
         workroom: personalRoom,
-        session: { ...session, actor: "codex" },
+        session: activeSession,
         highlight: { events: new Set(), commits: new Set() },
         onSelect() {},
         onOpenThread() {},
@@ -196,9 +261,11 @@ test("identity and personal Work state stay honest at rendered component boundar
     assert.match(markup, /Unread<span[^>]*>1<\/span>/);
     assert.match(markup, /Following<span[^>]*>0<\/span>/);
     assert.match(markup, /private to this browser and actor; they do not sync across devices/);
-    assert.match(markup, /Needs my action comes only from unresolved durable responsibility/);
+    assert.match(markup, /Needs my action comes only from active durable responsibility: lifecycle-stale rows are excluded, while stale-qualified reports still wait on their requester/);
     assert.match(markup, /aria-label="follow topic"/);
     assert.match(markup, /Changed since viewed by claude, status open/);
+    assert.match(markup, /Focused here: codex \(blocked\)/);
+    assert.match(markup, /codex · blocked/);
 
     const multiRoom = workroom({});
     multiRoom.actors = personalRoom.actors;
@@ -307,6 +374,126 @@ test("an unreadable act explains itself where it is rendered", async () => {
 
     // A standing interpretive limit is not work waiting on anyone.
     assert.equal(workSummary(projection).stale, 0, "an unreadable act is counted as attention owed");
+  } finally {
+    await vite.close();
+  }
+});
+
+test("Vocabulary copy distinguishes an unbound room from an uninterpretable fold transition", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { WorkView } = await vite.ssrLoadModule("/src/components/WorkDrawer.tsx");
+    const definition = (name, source) => ({
+      name, fields: [], basis: [], satisfier: "none", render: "note", staleness: "exempt",
+      lifecycle: "none", guidance: `${name} guidance`, source,
+    });
+    const renderVocabulary = (definitions, binding) => {
+      const room = workroom({});
+      room.status.durable.vocabulary = { definitions, binding };
+      return renderToStaticMarkup(
+        React.createElement(WorkView, {
+          workroom: room,
+          session,
+          highlight: { events: new Set(), commits: new Set() },
+          onSelect() {},
+          onOpenThread() {},
+        }),
+      );
+    };
+
+    const unbound = renderVocabulary(
+      [definition("request", "starter")],
+      { status: "unbound", reason: "no ratified seed or prefix binding", transitions: [] },
+    );
+    assert.match(unbound, /starter kinds only/);
+    assert.match(unbound, /no declared vocabulary extends it yet/);
+    assert.match(unbound, /no ratified seed or prefix binding/);
+
+    const uninterpretable = renderVocabulary(
+      [definition("request", "starter"), definition("finding", "declared")],
+      {
+        status: "uninterpretable",
+        reason: "activated interpreter execution is not held",
+        transitions: [{
+          activation: "activation", ratification: "ratification", fold: "example/fold@abc123",
+          entry: "example/fold", interface: "workroom-fold@1", toolchain: "go1.25.0", prefix: true,
+        }],
+      },
+    );
+    assert.match(uninterpretable, /interpretation stopped after 1 fold transition/);
+    assert.match(uninterpretable, /reached 1 activated fold transition but cannot\s+interpret records beyond it/);
+    assert.match(uninterpretable, /activated interpreter execution is not held/);
+    assert.match(uninterpretable, /definitions this reader established before that transition; declared kinds remain declared/);
+    assert.match(uninterpretable, /finding[\s\S]*note · declared/);
+    assert.doesNotMatch(uninterpretable, /starter kinds only|no declared vocabulary extends it yet/);
+  } finally {
+    await vite.close();
+  }
+});
+
+test("Work renders global Active scope apart from personal actionable responsibility", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const { WorkView } = await vite.ssrLoadModule("/src/components/WorkDrawer.tsx");
+    const commitments = [
+      { request: "open-mine", requester: "hugh-fingerprint", addressed_to: "codex-fingerprint", status: "open" },
+      { request: "open-theirs", requester: "hugh-fingerprint", addressed_to: "claude-fingerprint", status: "open" },
+      { request: "promised-mine", requester: "hugh-fingerprint", performer: "codex-fingerprint", promise: "promise-mine", status: "promised" },
+      { request: "reported-stale-mine", requester: "codex-fingerprint", performer: "claude-fingerprint", promise: "promise-review", report: "report-review", status: "reported", stale: true },
+      { request: "lifecycle-stale", requester: "hugh-fingerprint", addressed_to: "codex-fingerprint", status: "stale", stale: true },
+      { request: "satisfied", requester: "codex-fingerprint", performer: "claude-fingerprint", promise: "promise-done", report: "report-done", status: "satisfied" },
+    ];
+    const text = {
+      "open-mine": "Open mine",
+      "open-theirs": "Open theirs",
+      "promised-mine": "Promised mine",
+      "reported-stale-mine": "Reported stale mine",
+      "lifecycle-stale": "Lifecycle stale",
+      satisfied: "Satisfied clean",
+    };
+    const projection = {
+      decisions: commitments.map(({ request }) => ({ event: request, verdict: "effective", reason: "ok" })),
+      acts: [], artifacts: [], actors: {},
+      statements: commitments.map(({ request }, index) => ({
+        event: request,
+        actor: "hugh-fingerprint",
+        kind: "request",
+        text: text[request],
+        body: { to: commitments[index].addressed_to ?? "codex-fingerprint" },
+        timestamp: 100 + index,
+      })),
+      commitments,
+      provenance: Object.fromEntries(commitments.map(({ request }) => [request, []])),
+    };
+    const room = workroom({}, projection);
+    room.actors = [
+      { name: "codex", fingerprint: "codex-fingerprint", roles: [], custody: true },
+      { name: "claude", fingerprint: "claude-fingerprint", roles: [], custody: true },
+      { name: "hugh", fingerprint: "hugh-fingerprint", roles: [], custody: true },
+    ];
+    const render = (initialPersonalView = "all") => renderToStaticMarkup(React.createElement(WorkView, {
+      workroom: room,
+      session: { ...session, actor: "codex" },
+      highlight: { events: new Set(), commits: new Set() },
+      initialPersonalView,
+      onSelect() {},
+      onOpenThread() {},
+    }));
+
+    const all = render();
+    assert.match(all, /Active<span[^>]*>4<\/span>/);
+    assert.match(all, /aria-label="Active\. All actors: available \(open\), in progress \(promised\), and review \(reported\)\."/);
+    assert.match(all, /Active covers every actor&#x27;s available \(open\), in-progress \(promised\), and review \(reported\) work/);
+    assert.match(all, /Needs my action<span[^>]*>3<\/span>/);
+
+    const needs = render("needs");
+    for (const visible of ["Open mine", "Promised mine", "Reported stale mine"]) assert.match(needs, new RegExp(`>${visible}<`));
+    for (const hidden of ["Open theirs", "Lifecycle stale", "Satisfied clean"]) assert.doesNotMatch(needs, new RegExp(`>${hidden}<`));
   } finally {
     await vite.close();
   }
@@ -506,6 +693,181 @@ test("a rail too wide for the pane stops at ten lanes and says what it folded", 
     // can tell a shared lane from a lane of its own.
     assert.equal((markup.match(/data-thread-rail-folded-row/g) ?? []).length, 12);
     assert.equal((markup.match(/<rect /g) ?? []).length, 12);
+  } finally {
+    await vite.close();
+  }
+});
+
+test("a durable event thread renders only its temporary discussion and keeps durable reply as the default", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const { ThreadPane } = await vite.ssrLoadModule("/src/components/ThreadPane.tsx");
+    const room = workroom({});
+    room.status.durable.projection.statements = [
+      { event: "event-one", actor: "a5d35aa7e4799472", kind: "assert", text: "durable root" },
+    ];
+    room.status.durable.projection.provenance = { "event-one": [] };
+    const frame = (conversation, sequence, about, text, re) => ({
+      conversation,
+      sequence,
+      about,
+      text,
+      re,
+      actor: "claude",
+      fingerprint: "a5d35aa7e4799472",
+      seen: 1,
+      raw: { Conversation: conversation, Sequence: sequence, Payload: "", ActorKey: "" },
+    });
+    const opened = [];
+    const common = {
+      workroom: room,
+      session: { ...session, actor: "claude" },
+      frames: [
+        frame("one", 0, "event-one", "event-one discussion"),
+        frame("two", 0, "event-two", "event-two discussion"),
+        frame("one", 1, "event-one", "nested frame reply", "one:0"),
+      ],
+      pending: [
+        { id: "pending-one", text: "event-one pending", at: 1, about: "event-one" },
+        { id: "pending-two", text: "event-two pending", at: 1, about: "event-two" },
+      ],
+      composer: { type: "say", restsOn: [], frames: [] },
+      onComposer() {},
+      onClose() {},
+      onJumpTo() {},
+      onOpenProfile() {},
+      onRoute() {},
+      doAct() {},
+      onSay() { return "pending"; },
+      onSayFailed() {},
+      onOpenThread(target) { opened.push(target); },
+    };
+    const markup = renderToStaticMarkup(
+      React.createElement(ThreadPane, {
+        ...common,
+        target: { kind: "event", event: "event-one" },
+      }),
+    );
+
+    assert.match(markup, /Temporary discussion · 2 messages/);
+    assert.match(markup, /event-one discussion/);
+    assert.match(markup, /nested frame reply/);
+    assert.match(markup, /data-conversation="one" data-re="one:0"/);
+    assert.match(markup, /event-one pending/);
+    assert.doesNotMatch(markup, /event-two discussion|event-two pending/);
+    assert.equal((markup.match(/aria-label="reply in thread"/g) ?? []).length, 2);
+    assert.match(markup, /aria-pressed="true" aria-label="make reply temporary"/);
+    assert.match(markup, /aria-label="keep reply"/);
+    assert.match(markup, /aria-label="thread reply"/);
+
+    const frameThread = renderToStaticMarkup(
+      React.createElement(ThreadPane, {
+        ...common,
+        target: { kind: "frame", conversation: "one", sequence: 0 },
+        pending: [],
+      }),
+    );
+    assert.match(frameThread, /aria-pressed="false" aria-label="keep reply"/);
+    assert.match(frameThread, /aria-label="send temporary reply"/);
+  } finally {
+    await vite.close();
+  }
+});
+
+test("Stream is SSR-safe, keeps event talk out of the room, and signals it on Work", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const [{ Stream, ThreadIndicator }, { WorkView }] = await Promise.all([
+      vite.ssrLoadModule("/src/components/Stream.tsx"),
+      vite.ssrLoadModule("/src/components/WorkDrawer.tsx"),
+    ]);
+    const room = workroom({});
+    room.status.durable.projection.statements = [
+      { event: "event-one", actor: "a5d35aa7e4799472", kind: "request", text: "repair the UI", body: { to: "a5d35aa7e4799472" } },
+    ];
+    room.status.durable.projection.decisions = [
+      { event: "event-one", verdict: "effective", reason: "recorded" },
+    ];
+    room.status.durable.projection.commitments = [
+      { request: "event-one", requester: "a5d35aa7e4799472", addressed_to: "a5d35aa7e4799472", status: "open" },
+    ];
+    room.status.durable.projection.provenance = { "event-one": [] };
+    room.status.live.presence = { "handle:claude": "claude (a5d35aa7e479)" };
+    room.status.live.activity = {
+      "handle:claude": { status: "blocked", focus: ["event-one"], note: "waiting on review" },
+    };
+    const frame = (sequence, about, text, re) => ({
+      conversation: about === "the workroom" ? "room" : "event",
+      sequence,
+      about,
+      text,
+      re,
+      actor: "claude",
+      fingerprint: "a5d35aa7e4799472",
+      seen: sequence + 1,
+      raw: { Conversation: "event", Sequence: sequence, Payload: "", ActorKey: "" },
+    });
+    const frames = [
+      ...Array.from({ length: 22 }, (_, index) => frame(index, "event-one", `event talk ${index}`, index ? `event:${index - 1}` : undefined)),
+      frame(100, "the workroom", "room talk"),
+    ];
+    const stream = renderToStaticMarkup(
+      React.createElement(Stream, {
+        workroom: room,
+        session: { ...session, actor: "claude" },
+        frames,
+        deliveries: 1,
+        highlight: { events: new Set(), commits: new Set() },
+        onSelect() {},
+        onJump() {},
+        composer: { type: "say", restsOn: [], frames: [] },
+        onComposer() {},
+        pending: [],
+        onOpenThread() {},
+        onRoute() {},
+        onOpenProfile() {},
+        doAct() {},
+      }),
+    );
+    assert.match(stream, /room talk/);
+    assert.doesNotMatch(stream, /event talk/);
+    assert.match(stream, /open thread: 20\+ temporary/);
+    assert.match(stream, /aria-label="Focused here: claude \(blocked\)"/);
+    assert.match(stream, /claude · blocked/);
+
+    const work = renderToStaticMarkup(
+      React.createElement(WorkView, {
+        workroom: room,
+        session: { ...session, actor: "claude" },
+        frames,
+        highlight: { events: new Set(), commits: new Set() },
+        onSelect() {},
+        onOpenThread() {},
+      }),
+    );
+    assert.match(work, /aria-label="20\+ temporary messages in temporary discussion"/);
+    assert.match(work, /aria-label="Focused here: claude \(blocked\)"/);
+    assert.match(work, /claude · blocked/);
+
+    const combined = renderToStaticMarkup(
+      React.createElement(ThreadIndicator, {
+        people: [],
+        count: 2,
+        temporary: { count: 20, overflow: true },
+        onOpen() {},
+      }),
+    );
+    assert.match(combined, /open thread: 2 replies · 20\+ temporary/);
   } finally {
     await vite.close();
   }

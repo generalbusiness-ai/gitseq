@@ -136,9 +136,24 @@ export interface LiveCursor {
   position: number;
 }
 
+export type ActivityStatus = "available" | "busy" | "waiting" | "blocked";
+
+export interface Activity {
+  status: ActivityStatus;
+  focus: string[];
+  note?: string;
+}
+
+export interface ActivityUpdate {
+  status?: ActivityStatus;
+  focus?: string[];
+  note?: string;
+}
+
 export interface LiveSnapshot {
   cursor: LiveCursor;
   presence: Record<string, string>;
+  activity: Record<string, Activity>;
   conversations: string[];
 }
 
@@ -253,11 +268,11 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session, about, text, conversation, re }),
     }).then((r) => json<unknown>(r)),
-  announce: (actor: string, session: string) =>
+  announce: (actor: string, session: string, activity?: ActivityUpdate) =>
     fetch("/v0/presence", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actor, session, ttl_ms: 30000 }),
+      body: JSON.stringify({ actor, session, ttl_ms: 30000, ...activity }),
     }).then((r) => json<unknown>(r)),
   depart: (session: string) => fetch(`/v0/presence/${encodeURIComponent(session)}`, { method: "DELETE" }),
   act: (input: ActInput) =>

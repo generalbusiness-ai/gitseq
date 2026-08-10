@@ -39,7 +39,7 @@ export function ProfilePane({
 
   // Presence carries a short fingerprint. Display names are not identities:
   // two custodians may intentionally share one.
-  const online = presentActors(workroom.status?.live.presence).some((person) =>
+  const online = presentActors(workroom.status?.live.presence, workroom.status?.live.activity).some((person) =>
     fingerprintsIdentifySameActor(person.fingerprint, fingerprint),
   );
   const isMe = session.actor === name;

@@ -11,12 +11,14 @@ import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } fr
 import { toggleLinkEvent, toggleLinkFrame, type ComposerContext } from "./Composer";
 import { EventTime } from "./EventTime";
 import type { ThreadTarget } from "./ThreadPane";
+import { frameBelongsInRoom, presentActors, temporaryDiscussionCounts, temporaryDiscussionLabel, type PresentActor, type TemporaryDiscussionCount } from "../lib/interaction";
 
 export interface PendingSay {
   id: string;
   text: string;
   at: number;
   re?: string; // thread replies echo in the thread pane, not the stream
+  about?: string; // durable-event discussion echoes stay in that event's pane
 }
 
 // One room, one message shape. Temporary chat and kept items differ by a
@@ -33,7 +35,6 @@ export function Stream({
   composer,
   onComposer,
   pending,
-  onReconcile,
   onOpenThread,
   onRoute,
   onOpenProfile,
@@ -51,7 +52,6 @@ export function Stream({
   composer: ComposerContext;
   onComposer: (context: ComposerContext) => void;
   pending: PendingSay[];
-  onReconcile: (ids: string[]) => void;
   onOpenThread: (target: ThreadTarget) => void;
   onRoute: (mode: SemanticReplyMode, basis: string, prefill: string) => void;
   onOpenProfile: (fingerprint: string) => void;
@@ -74,20 +74,14 @@ export function Stream({
   const actorNames = useMemo(() => new Set(workroom.actors.map((a) => a.name.toLowerCase())), [workroom.actors]);
   const myFingerprint = workroom.actors.find((a) => a.name === session.actor)?.fingerprint;
   const byFingerprint = useMemo(() => new Map(workroom.actors.map((a) => [a.fingerprint, a.name])), [workroom.actors]);
+  const focusedActors = useMemo(
+    () => presentActors(workroom.status?.live.presence, workroom.status?.live.activity),
+    [workroom.status?.live.presence, workroom.status?.live.activity],
+  );
   const nameOf = (fp: string) =>
     byFingerprint.get(fp) ??
     projection?.statements.find((s) => s.kind === "roster" && s.body?.actor === fp)?.body?.name ??
     fp.slice(0, 8);
-
-  // Optimistic-echo reconciliation: a pending line is replaced by its real
-  // frame when one with the same author and text arrives.
-  useEffect(() => {
-    if (pending.length === 0) return;
-    const matched = pending
-      .filter((p) => frames.some((f) => f.actor === session.actor && f.text === p.text))
-      .map((p) => p.id);
-    if (matched.length > 0) onReconcile(matched);
-  }, [frames, pending, session.actor, onReconcile]);
 
   // Being addressed is worth a knock: when someone else's chat line mentions
   // my actor while this tab is unfocused, flash the title until focus returns.
@@ -148,6 +142,14 @@ export function Stream({
     return map;
   }, [projection]);
   const threadIndex = useMemo(() => (projection ? buildThreadIndex(projection) : undefined), [projection]);
+  const durableEvents = useMemo(
+    () => new Set((projection?.statements ?? []).map((statement) => statement.event)),
+    [projection],
+  );
+  const temporaryCounts = useMemo(
+    () => temporaryDiscussionCounts(frames, durableEvents),
+    [frames, durableEvents],
+  );
   // Chat replies keyed by the frame they rest under.
   const frameReplies = useMemo(() => {
     const map = new Map<string, FrameView[]>();
@@ -185,12 +187,14 @@ export function Stream({
     }
     for (const frame of frames) {
       // Slack behavior: a threaded reply renders only in its thread pane.
-      if (frame.re) continue;
+      // A frame anchored to a durable event likewise renders only in that
+      // event's pane; the room stream is not a second copy of the discussion.
+      if (!frameBelongsInRoom(frame, durableEvents)) continue;
       const key = "f:" + frameKey(frame);
       list.push({ key, order: place(key), frame });
     }
     return list.sort((a, b) => a.order - b.order);
-  }, [projection, frames, commitmentByEvent, decisions, vocabulary]);
+  }, [projection, frames, commitmentByEvent, decisions, vocabulary, durableEvents]);
 
   // The room opens on the present: jump to the bottom once when content
   // first arrives, then only follow if the reader is already near the end.
@@ -286,7 +290,8 @@ export function Stream({
       bright: highlight.events.has(statement.event),
       selected: selection?.kind === "event" && selection.id === statement.event,
       cited: composer.restsOn.includes(statement.event),
-      thread: threadIndex?.summary(statement.event),
+      thread: { ...(threadIndex?.summary(statement.event) ?? { count: 0, people: [] }), temporary: temporaryCounts.get(statement.event) },
+      focused: focusedActors.filter((actor) => actor.focus.includes(statement.event)),
       onSelect: () => onSelect({ kind: "event", id: statement.event }),
       onJumpTo: jumpTo,
       onCite: () => linkEvent(statement.event),
@@ -298,7 +303,7 @@ export function Stream({
     rendered.push(<RecordedMessage key={item.key} {...common} notes={annotations} />);
   }
   for (const say of pending) {
-    if (say.re) continue; // thread replies echo in the pane
+    if (say.re || say.about) continue; // thread replies echo in the pane
     rendered.push(
       <div key={"p:" + say.id} className="flex gap-2.5 rounded-md px-2 py-1 opacity-50">
         <span className="w-9 shrink-0" />
@@ -380,19 +385,24 @@ function MentionBadges({ body, nameOf, me }: { body?: Record<string, string>; na
 export function ThreadIndicator({
   people,
   count,
+  temporary,
   onOpen,
   compact,
 }: {
   people: { fingerprint: string; name: string }[];
   count: number;
+  temporary?: TemporaryDiscussionCount;
   onOpen: () => void;
   compact?: boolean;
 }) {
-  if (count === 0) return null;
-  const label = `${count} ${count === 1 ? "reply" : "replies"}`;
+  const temporaryLabel = temporaryDiscussionLabel(temporary);
+  if (count === 0 && !temporaryLabel) return null;
+  const replyLabel = count > 0 ? `${count} ${count === 1 ? "reply" : "replies"}` : undefined;
+  const label = [replyLabel, temporaryLabel].filter(Boolean).join(" · ");
   if (compact) {
     return (
       <button
+        aria-label={`open thread: ${label}`}
         onClick={(e) => {
           e.stopPropagation();
           onOpen();
@@ -405,6 +415,7 @@ export function ThreadIndicator({
   }
   return (
     <button
+      aria-label={`open thread: ${label}`}
       onClick={(e) => {
         e.stopPropagation();
         onOpen();
@@ -645,7 +656,8 @@ interface RowProps {
   bright: boolean;
   selected: boolean;
   cited: boolean;
-  thread?: ThreadSummary;
+  thread?: ThreadSummary & { temporary?: TemporaryDiscussionCount };
+  focused: PresentActor[];
   onSelect: () => void;
   onJumpTo: (event: string) => void;
   onCite: () => void;
@@ -672,6 +684,7 @@ function RecordedMessage({
   selected,
   cited,
   thread,
+  focused,
   onSelect,
   onJumpTo,
   onCite,
@@ -726,6 +739,7 @@ function RecordedMessage({
                 {interpretationNotice(decision?.verdict, decision?.reason) ? "unreadable" : "not active"}
               </span>
             )}
+            <FocusActors actors={focused} />
             <span className="ml-auto flex items-center gap-2">
               <EventTime timestamp={statement.timestamp} />
               <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
@@ -745,7 +759,7 @@ function RecordedMessage({
               {tallies.down > 0 && <span className="text-danger">👎 {tallies.down}</span>}
             </div>
           )}
-          <ThreadIndicator people={repliers} count={thread?.count ?? 0} onOpen={onOpenThread} />
+          <ThreadIndicator people={repliers} count={thread?.count ?? 0} temporary={thread?.temporary} onOpen={onOpenThread} />
         </div>
       </div>
       <ActToolbar
@@ -781,6 +795,7 @@ export function CompactRow({
   selected,
   cited,
   thread,
+  focused,
   onSelect,
   onJumpTo,
   onCite,
@@ -829,6 +844,7 @@ export function CompactRow({
             {interpretationNotice(decision?.verdict, decision?.reason) ? "unreadable" : "not in force"}
           </span>
         )}
+        <FocusActors actors={focused} />
         {statement.body?.path && (
           <span className="shrink-0 text-xs text-muted" title={`${statement.body.path}@${statement.body.commit}`}>
             {statement.body.path === "." ? "this repository" : statement.body.path}
@@ -841,7 +857,7 @@ export function CompactRow({
         )}
         <span className="ml-auto flex shrink-0 items-center gap-2 self-center">
           <EventTime timestamp={statement.timestamp} />
-          <ThreadIndicator people={[]} count={replies} onOpen={onOpenThread} compact />
+          <ThreadIndicator people={[]} count={replies} temporary={thread?.temporary} onOpen={onOpenThread} compact />
           <RestsOn event={statement.event} projection={projection} tickets={tickets} onJumpTo={onJumpTo} className="hidden sm:inline" />
           <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
         </span>
@@ -882,6 +898,7 @@ export function Card({
   selected,
   cited,
   thread,
+  focused,
   onSelect,
   onJumpTo,
   onCite,
@@ -923,6 +940,7 @@ export function Card({
         <MentionBadges body={statement.body} nameOf={nameOf} me={me} />
         {statement.ratified && <BadgeCheck aria-label="ratified" className="h-3.5 w-3.5 text-ok" />}
         {commitment && <span className={cn("text-xs font-semibold", statusTint[commitment.status])}>{commitment.status}</span>}
+        <FocusActors actors={focused} />
         {statement.stale && !dead && (
           <span className="flex items-center gap-1 text-xs font-medium uppercase text-danger">
             <FileWarning className="h-3 w-3" /> stale
@@ -963,7 +981,7 @@ export function Card({
           )}
         </div>
       )}
-      <ThreadIndicator people={repliers} count={thread?.count ?? 0} onOpen={onOpenThread} />
+      <ThreadIndicator people={repliers} count={thread?.count ?? 0} temporary={thread?.temporary} onOpen={onOpenThread} />
       <ActToolbar
         statement={statement}
         commitment={commitment}
@@ -977,6 +995,19 @@ export function Card({
         doAct={doAct}
       />
     </div>
+  );
+}
+
+function FocusActors({ actors }: { actors: PresentActor[] }) {
+  if (actors.length === 0) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1" aria-label={`Focused here: ${actors.map((actor) => `${actor.name} (${actor.status})`).join(", ")}`}>
+      {actors.map((actor) => (
+        <span key={actor.label} title={`${actor.name} — ${actor.status}${actor.note ? ` — ${actor.note}` : ""}`} className={cn("rounded border px-1 text-[10px] font-medium", actor.status === "blocked" ? "border-danger/50 text-danger" : actor.status === "waiting" ? "border-warn/50 text-warn" : "border-info/40 text-info")}>
+          {actor.name} · {actor.status}
+        </span>
+      ))}
+    </span>
   );
 }
 
