@@ -4,6 +4,7 @@ summary: Claim work, report it, get it reviewed at an exact head, and close the 
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:963dcd7e18727d410e7331b1159906a28fac8865
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f42375fddcc49ce4b15e9b18e565ba9b0cb2b0a3
 ---
 
 # Run a work loop
@@ -68,6 +69,36 @@ Report the tests and conditions **actually** met. `body.branch` and
 `body.head` are hints that help a local tool find the checkout; they
 claim nothing about it being clean or current. The `artifact` is the
 durable pointer.
+
+## Give a topic a stable name
+
+The request text stays exactly as its signer wrote it. To give the
+grouped Work topic a shorter display title or a remembered search name,
+attach an ordinary durable statement to the topic:
+
+```sh
+gs state --repo "$REPO" --as alice --kind assert \
+  --text 'Name this topic for shared lookup' \
+  --body topic_title='Changelog release' --rests-on "$REQUEST"
+
+gs state --repo "$REPO" --as alice --kind assert \
+  --text 'Add a shared lookup name' \
+  --body topic_alias=release-readiness --rests-on "$REQUEST"
+```
+
+Use one label field per statement. The signature says who supplied the
+label, and Work shows that attribution without changing the root
+request. The latest live `topic_title` is the display title. Every live
+title and `topic_alias` resolves in search alongside root and descendant
+text, branch hints, and artifact paths.
+
+These labels are durable and shared, not personal bookmarks. Retiring a
+label statement, or making its basis stale, removes that label from
+lookup while preserving its signed history. Names are deliberately not
+unique: if two topics both use `release-readiness`, search returns both
+grouped topics instead of guessing which one the reader meant. Repeating
+the same name on one topic shows it once, attributed to the latest live
+statement.
 
 ## Review, and what happens when changes are requested
 
