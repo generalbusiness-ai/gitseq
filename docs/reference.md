@@ -300,7 +300,7 @@ few governance kinds. Their meaning belongs to the room's practice.
 
 | Command | Purpose |
 |---|---|
-| `gs status` | Project a newest-first bounded current/actionable view. Every list is capped at 20 and reports its exact omitted count; request text is capped at 240 bytes. |
+| `gs status` | Project a newest-first bounded current/actionable view. Open unclaimed requests name the actor they are addressed to. Every list is capped at 20 and reports its exact omitted count; request text is capped at 240 bytes. |
 | `gs status --all` | Render the complete human-readable commitment, artifact, and attempt tables. |
 | `gs status --json` | Emit the complete `Snapshot` JSON without the bounded human view. |
 | `gs verify` | Check every signature and the sequence integrity. |
@@ -324,6 +324,14 @@ carry the qualifier: a satisfied or withdrawn commitment whose basis moved
 appears under "Needs attention", because the outcome is worth re-checking. A
 commitment that was never reported has no outcome to preserve, so its status
 is `stale` outright and the mark is not repeated.
+
+The actor-oriented MCP `status` response separates open work addressed to the
+current actor into `available_to_you`. Those requests are unclaimed: they have
+no performer, promise, or waiting party, and their lifecycle status remains
+`open` rather than `requested`. `waiting_on_you` is reserved for work whose
+next move is already owed by the actor. MCP `wait` carries the same current
+state as `current_available_to_you`; both lanes are capped at 20 and disclose
+their exact skipped count.
 
 Local status consumes a sequencer-signed checkpoint and verifies its
 descendant tail. If no checkpoint is usable, it performs the ordinary full
