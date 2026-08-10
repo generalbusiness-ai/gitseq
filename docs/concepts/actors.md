@@ -3,7 +3,7 @@ title: Actors and authority
 summary: Who may do what in a workroom, why kind is not authority, and how a grant stops conferring.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6918582b884b2f82fa7ab64242f40d12de845c39
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21b0b3833ff945f19cc9addcb642b7c36827d25a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f284641cc2a97b4b661092d1200b6cdb49359694
 ---
 
 # Actors and authority
@@ -56,6 +56,8 @@ which every later governance act descends.
 An authority grant cannot be authored or ratified by its beneficiary.
 Another actor with the required live authority must write and ratify it.
 This keeps a principal from preparing a hidden spare grant for itself.
+Ratifying an `operator` grant specifically requires a current `operator`;
+a plain `ratifier` cannot mint an operator for someone else.
 
 Two consequences worth holding on to:
 

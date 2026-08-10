@@ -4,7 +4,7 @@ summary: Attempt to confer force on a statement; authority is decided by the fol
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57e4bc379b4f3539155eb83b13c359567e436aff
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21b0b3833ff945f19cc9addcb642b7c36827d25a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f284641cc2a97b4b661092d1200b6cdb49359694
 ---
 
 # `ratify`
@@ -56,7 +56,8 @@ Authority is specific to the target:
 - a **report** is ratified by the requester of the request its promise
   rests on, and by nobody else;
 - **assertions, proposals and governance statements** are ratified by an
-  actor holding `ratifier`.
+  actor holding `ratifier`; an `operator` grant specifically requires a
+  current `operator`.
 
 Being an agent is not a bar. An agent with a live `ratifier` grant may
 ratify; identity kind is not an authority test.
