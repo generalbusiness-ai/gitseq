@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0ce6be847446e7dc8c9b1fe6c54e4babd0e47506"}
+{"kind":"promise","text":"I will reconcile the causal-citation regression carry against current pushed main rather than duplicate it: prove the exact a0d293c test diff is already present without a pending patch, state an exact current-main artifact, run the focused and requested gates, report the obsolete old-review residue explicitly, and request independent confirmation of the unchanged head.","body":{"branch":"main","mode":"reconciliation"}}
