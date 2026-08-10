@@ -70,7 +70,7 @@ promised ───────────┤
 | `reported` | Completion claimed, awaiting judgement. | the promisor |
 | `satisfied` | The requester accepted the report. | the requester |
 | `cancelled` | The request was retired after a promise existed. | the requester, or a ratifier |
-| `reneged` | The promisor retired their own promise. | the promisor |
+| `reneged` | The promise was retired. | the promisor, or a ratifier |
 | `stale` | Something it rests on died, and no live report stands. | nobody — a consequence |
 
 Four details the diagram cannot carry.
@@ -93,9 +93,9 @@ report and the approval both legitimately cite.
 
 ## Where this is defined
 
-Half of what looks like one workflow is enforced by code and half is
-convention. Nothing in the projection distinguishes them, so it is worth
-saying plainly.
+What looks like one workflow is enforced in three tiers: the fold, the
+guarded commands, and convention. Nothing in the projection distinguishes
+them, so it is worth saying plainly.
 
 The fold enforces, in `internal/workroom/kinds.go`:
 
@@ -111,21 +111,38 @@ And in `internal/workroom/fold.go`:
 - that only the promisor may report — anyone else is refused with *only
   the promisor may report completion*;
 - that an act may be retired by the actor who made it, or by a ratifier,
-  and that the retirement must rest first on its target.
+  and that the retirement must rest first on its target;
+- that an artifact names both a path and a commit;
+- which artifact a review judges, resolved only when the cited artifact
+  and the claimed head agree, and whether that review was independent,
+  from the reviewer's and implementer's fingerprints;
+- that a live artifact with a later live artifact at the same path owes
+  its retirement, projected as an omitted supersession.
 
-`AGENTS.md` steps 2 through 7 are convention the fold never checks:
-branch and worktree naming, the artifact statement, requesting review
-from a different agent, merging only an approved exact head, superseding
-the prior artifact for the same path, deleting the worktree, pushing to
-origin. An agent could go straight from promise to report without any of
-it and the fold would accept the result.
+The **guarded commands** enforce a second tier that the fold projects but
+does not itself refuse. [`gs review`](../reference/gs/review.md) requires
+a clean checkout sitting on the artifact's exact commit.
+[`gs merge`](../reference/gs/merge.md) refuses an approval that is not
+ratified, a verdict that is not `approved`, a candidate that differs from
+the approved head, an approval that does not causally rest on its named
+artifact, an artifact whose commit differs from the candidate, an act
+that is not projected as a review at all, and an approval signed by the
+actor who implemented the head — or one whose independence the record
+cannot determine.
 
-That is deliberate. The fold governs authority and citation, which are
-the things a stranger must be able to check years later. The rest is how
-this repository chooses to work, and a different workroom could choose
-differently without touching the kernel. But it means a green projection
-is not evidence the discipline was followed — only that nobody claimed
-authority they did not hold.
+What is left is **convention nothing checks**: branch and worktree
+naming, the `Rests-On:` trailer on the source commit, deleting the
+worktree after merge, and pushing to origin. The lifecycle alone would
+also accept a promise followed straight by a report, with no branch and
+no artifact — what stops that work reaching `main` is the merge guard,
+not the fold.
+
+So a green projection is narrower evidence than it looks, but not empty.
+It shows that nobody claimed authority they did not hold, that every
+citation resolves, and — where work was merged through `gs merge` — that
+an independent reviewer approved that exact commit. It does not show that
+the branch was named well, that the commit carried its trailer, or that
+anyone tidied up afterwards.
 
 ## Honest states
 
