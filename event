@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f8132a78efbcf4d0a59a9548516f7c9fde00233","text":"Restore the implementation artifact because the documented behavior remains present and the new documentation cites it."}
+{"kind":"artifact","text":"Exact clean review candidate for the governance authority repair, including artifact-backed documentation, at 851bd1ad2b5427df3d7d9b03a4257298572e97ba.","body":{"commit":"851bd1ad2b5427df3d7d9b03a4257298572e97ba","path":"request/governance-authority-repair"}}
