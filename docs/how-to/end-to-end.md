@@ -153,6 +153,35 @@ gs merge --repo "$REPO" --checkout "$REPO" \
 `gs merge` hands git the approved object ID, never the branch name, so
 advancing `task/greeting` after approval cannot retarget the merge.
 
+### Move the artifacts the merge moved
+
+The merge changed files, and the artifacts pointing at those files now
+name a commit that is no longer current. Ask git what changed, then ask
+the workroom which paths its live artifacts already use:
+
+```sh
+MERGE=$(git -C "$REPO" rev-parse HEAD)
+git -C "$REPO" diff --name-only "$MERGE^1" "$MERGE"
+gs status --repo "$REPO"
+```
+
+Retire what the change covers and publish one successor per area. Here
+one path covers it, so it is one of each:
+
+```sh
+gs state --repo "$REPO" --as alice --kind artifact \
+  --text 'Greeting, merged' \
+  --body path=greeting.txt --body commit="$MERGE" --rests-on "$REQUEST"
+gs supersede --repo "$REPO" --as bot \
+  --text 'Superseded by the merge artifact at the same path.' "$ARTIFACT"
+```
+
+Reuse the exact string the live artifact already uses. Paths match as
+whole strings, so an artifact at `internal/workroom` never reaches one at
+`internal/workroom/fold.go` — a near miss is silent, not an error.
+[`gs merge`](../reference/gs/merge.md) has the four cases and their
+reasons, including why nothing is ever published at `.`.
+
 Now — and only now — the original requester closes the loop:
 
 ```sh

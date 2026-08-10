@@ -97,13 +97,56 @@ commit that lands.
 
 Two things are still yours to do, in this order:
 
-1. Record the **merge artifact**, and supersede the previous artifact for
-   the same path as part of the same step. That supersession is what
-   makes documents describing the old implementation flare.
-2. Only then may the original requester ratify the implementation report.
+1. Retire every live artifact covering what the merge changed, and
+   publish a successor at the path each area keeps using. That
+   supersession is what makes documents describing the old
+   implementation flare.
+2. Only then may the original requester ratify the implementation
+   report. Self-initiated work has no report to ratify: the ratified
+   approval authorized the merge, and the merge artifact closes it.
 
 Write the merge commit message in plain language: what changed and what
 it affects.
+
+### Choosing the path
+
+Retiring and publishing are two decisions, not one. Retire everything
+live that covers the change; publish one successor per area. Keeping
+them apart is what makes the choice determinate.
+
+Paths match as exact strings. The projection keys artifacts by the path
+field alone — no normalising, no prefixes, no globs — so an artifact at
+`internal/workroom` never reaches a predecessor at
+`internal/workroom/fold.go`, and that predecessor, with everything
+resting on it, stays silent for good. Reuse the string the area already
+uses rather than a better one.
+
+| Situation | What to do |
+|---|---|
+| One live path covers the change | Publish the successor at that exact string. |
+| A directory and something inside it are both live over the same changed file | The wider path wins: publish at the directory, retire the narrower artifact with a bare `gs supersede` naming the surviving path, and never publish at the narrower string again. |
+| No live artifact covers the change | A first artifact, with nothing to retire. Pick the granularity a reader would cite and keep it stable, because later merges must match it. |
+| The merge renamed or deleted a file with a live artifact at its old path | Retire it with a bare `gs supersede` naming the merge commit. A rename opens a first artifact at the new path; a deletion opens nothing, and the flare asks whoever rested on it to re-anchor. |
+
+A bare [`gs supersede`](supersede.md) rests on its target by itself, and
+is admitted only from the artifact's own author or an actor holding
+`ratifier`. Ask that actor when the artifact you must retire is not
+yours; never sign as them.
+
+One path per artifact. A comma-joined string such as
+`AGENTS.md,SKILL.md` is one path that no real predecessor or successor
+can equal, so it flares nothing and nothing flares it. Record two
+artifacts.
+
+### Never publish at `.`
+
+A path every merge rewrites is a global mutex. Everything anchored to it
+flares whenever anyone merges anything, however unrelated, and a flare
+carrying no information teaches people to ignore the flares that do.
+
+Nothing needs to replace it. Which commit `main` carries is a question
+for `git rev-parse main`; per area it is the live artifact at that path,
+which already names the merge commit that last changed it.
 
 ## See also
 
