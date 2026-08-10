@@ -178,8 +178,21 @@ not change; the workroom carries the why.
   request, or the motivating ratified decision for self-initiated work
   (discipline 8); then `state {kind: artifact}` ties commit and
   decisions together.
-- Always use the canonical full event ID:
-  `git:<object-format>:<genesis>#git:<object-format>:<event-commit>`.
+- **Cite with the canonical full event ID**, always:
+  `git:<object-format>:<genesis>#git:<object-format>:<event-commit>`. It is
+  the only name the fold resolves. Copy it whole from the tool result that
+  returned it; never assemble one around a fragment you read somewhere.
+  A citation that resolves to nothing is admitted in silence — the act
+  appends, reports success, and connects to nothing.
+- **Say `#N` when you mean it out loud.** Every projected event carries a
+  `sequence`: its position in this workroom's log, the founding seed being
+  #1. Use it in prose, reports and conversation, because a number can be
+  read back and checked by eye while a 40-hex string cannot. It is a name
+  for reading, not a name the fold accepts — so `#N` belongs in your text
+  and the canonical ID belongs in `rests_on`, `target` and `Rests-On:`.
+- **`#N` means nothing outside its workroom.** Two workrooms both have a
+  #17. Anything crossing that boundary, or written where the workroom is
+  not obvious, needs the canonical form.
 - A PR that matters durably is cited by its **head commit hash**
   (truth) with the URL as a hint.
 - GitHub issues, PR reviews, and comment threads are conversations

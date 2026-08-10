@@ -779,10 +779,10 @@ func TestProjectionIsByteStable(t *testing.T) {
 func TestPreconditionProjectionIsPinned(t *testing.T) {
 	projection := preconditions(t)
 	for eventID, want := range map[string]Decision{
-		"e3": {Event: "e3", Verdict: Ineffective, Reason: "retired statement cannot be ratified"},
-		"e4": {Event: "e4", Verdict: Ineffective, Reason: "request state requires body.conditions"},
-		"e5": {Event: "e5", Verdict: Ineffective, Reason: "artifact state requires body.commit"},
-		"e7": {Event: "e7", Verdict: Effective, Reason: "authorized ratification"},
+		"e3": {Event: "e3", Sequence: 4, Verdict: Ineffective, Reason: "retired statement cannot be ratified"},
+		"e4": {Event: "e4", Sequence: 5, Verdict: Ineffective, Reason: "request state requires body.conditions"},
+		"e5": {Event: "e5", Sequence: 6, Verdict: Ineffective, Reason: "artifact state requires body.commit"},
+		"e7": {Event: "e7", Sequence: 8, Verdict: Effective, Reason: "authorized ratification"},
 	} {
 		decision, _ := projection.Decision(eventID)
 		if decision != want {
@@ -1907,5 +1907,65 @@ func TestReferencePageAgreesThatRetiredPrincipalsStayOnTheRoster(t *testing.T) {
 	}
 	if !strings.Contains(unwrapped, "from `[participant]` to retired with no roles") {
 		t.Error("docs/concepts/actors.md no longer states what superseding a membership actually leaves behind")
+	}
+}
+
+
+func TestRegenerateGoldens(t *testing.T) {
+	if os.Getenv("REGEN_GOLDENS") == "" {
+		t.Skip("set REGEN_GOLDENS=1 to rewrite the pinned projections")
+	}
+	one, err := RenderJSON(golden(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("testdata/legacy_projection.golden.json", one, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	two, err := RenderJSON(preconditions(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("testdata/precondition_projection.golden.json", two, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The number is only worth naming an event by if every reader gets the same
+// one. It is derived from the fold's own per-record index, so a re-fold of the
+// same log must produce identical numbers — and the founding seed must be #1,
+// because an off-by-one in something people type at each other never stops
+// costing.
+func TestSequenceIsStableAcrossARefold(t *testing.T) {
+	first := golden(t)
+	second := golden(t)
+	if len(first.Statements) == 0 {
+		t.Fatal("the golden log projects no statements, so this proves nothing")
+	}
+	if len(first.Statements) != len(second.Statements) {
+		t.Fatalf("re-folding produced %d statements then %d", len(first.Statements), len(second.Statements))
+	}
+	for index, statement := range first.Statements {
+		if other := second.Statements[index]; statement.Sequence != other.Sequence || statement.Event != other.Event {
+			t.Fatalf("re-fold moved %s from #%d to %s #%d",
+				statement.Event, statement.Sequence, other.Event, other.Sequence)
+		}
+		if statement.Sequence < 1 {
+			t.Errorf("%s has sequence %d; the founding seed is #1 and nothing is #0", statement.Event, statement.Sequence)
+		}
+	}
+	// Positions are the log's, not the statement list's: statements skip
+	// ratify and supersede records, so their numbers are not 1..n.
+	seen := map[int]string{}
+	for _, statement := range first.Statements {
+		if previous, clash := seen[statement.Sequence]; clash {
+			t.Errorf("#%d names both %s and %s", statement.Sequence, previous, statement.Event)
+		}
+		seen[statement.Sequence] = statement.Event
+	}
+	for _, decision := range first.Decisions {
+		if decision.Sequence < 1 {
+			t.Errorf("decision %s has sequence %d", decision.Event, decision.Sequence)
+		}
 	}
 }

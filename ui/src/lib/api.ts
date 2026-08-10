@@ -5,6 +5,7 @@
 export type Verdict = "effective" | "ineffective" | "disputed" | "undefined-kind" | "uninterpretable";
 
 export interface Decision {
+  sequence: number;
   event: string;
   verdict: Verdict;
   reason: string;
@@ -12,6 +13,9 @@ export interface Decision {
 
 export interface Statement {
   event: string;
+  // The event's position in this workroom's log, counting the founding seed as
+  // 1. Meaningful only within one genesis: two workrooms both have a #17.
+  sequence: number;
   timestamp?: number;
   actor: string;
   kind: string;

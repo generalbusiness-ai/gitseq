@@ -2,51 +2,61 @@
   "decisions": [
     {
       "event": "e0",
+      "sequence": 1,
       "verdict": "effective",
       "reason": "operator roster seed"
     },
     {
       "event": "e1",
+      "sequence": 2,
       "verdict": "effective",
       "reason": "statement recorded"
     },
     {
       "event": "e2",
+      "sequence": 3,
       "verdict": "effective",
       "reason": "authorized ratification"
     },
     {
       "event": "e3",
+      "sequence": 4,
       "verdict": "effective",
       "reason": "statement recorded"
     },
     {
       "event": "e4",
+      "sequence": 5,
       "verdict": "effective",
       "reason": "statement recorded"
     },
     {
       "event": "e5",
+      "sequence": 6,
       "verdict": "effective",
       "reason": "statement recorded"
     },
     {
       "event": "e6",
+      "sequence": 7,
       "verdict": "ineffective",
       "reason": "only the requester may declare satisfaction"
     },
     {
       "event": "e7",
+      "sequence": 8,
       "verdict": "effective",
       "reason": "requester declared satisfaction"
     },
     {
       "event": "e8",
+      "sequence": 9,
       "verdict": "effective",
       "reason": "statement recorded"
     },
     {
       "event": "e9",
+      "sequence": 10,
       "verdict": "effective",
       "reason": "authorized supersession"
     }
@@ -89,6 +99,7 @@
   "statements": [
     {
       "event": "e0",
+      "sequence": 1,
       "actor": "actor:operator",
       "kind": "roster",
       "text": "Operator begins the workroom",
@@ -100,6 +111,7 @@
     },
     {
       "event": "e1",
+      "sequence": 2,
       "actor": "actor:operator",
       "kind": "roster",
       "text": "Agent joins",
@@ -112,6 +124,7 @@
     },
     {
       "event": "e3",
+      "sequence": 4,
       "actor": "actor:operator",
       "kind": "request",
       "text": "Build the projector",
@@ -123,6 +136,7 @@
     },
     {
       "event": "e4",
+      "sequence": 5,
       "actor": "actor:agent",
       "kind": "promise",
       "text": "I will build it",
@@ -130,6 +144,7 @@
     },
     {
       "event": "e5",
+      "sequence": 6,
       "actor": "actor:agent",
       "kind": "report",
       "text": "Projection passes",
@@ -141,6 +156,7 @@
     },
     {
       "event": "e8",
+      "sequence": 9,
       "actor": "actor:agent",
       "kind": "artifact",
       "text": "Projector implementation",
