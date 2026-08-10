@@ -51,8 +51,25 @@ const (
 	orientationResponseLimit  = 64 << 10
 	workResponseLimit         = 256 << 10
 	inspectionResponseLimit   = 2 << 20
+	residentResponseLimit     = 64 << 20
+	residentCallTimeout       = 10 * time.Second
+	residentWaitTimeout       = 35 * time.Second
+	residentShutdownTimeout   = 2 * time.Second
+	residentHTTPTimeout       = 40 * time.Second
 	residentOrientationSource = "resident_statusview_current"
 )
+
+type residentDeadlinePolicy struct {
+	call     time.Duration
+	wait     time.Duration
+	shutdown time.Duration
+}
+
+var defaultResidentDeadlines = residentDeadlinePolicy{
+	call:     residentCallTimeout,
+	wait:     residentWaitTimeout,
+	shutdown: residentShutdownTimeout,
+}
 
 // The era is a property of the connection rather than of a single request:
 // a legacy client announces itself once with `initialize` and thereafter
@@ -181,11 +198,12 @@ func (r *room) identityIsOurs() {
 }
 
 type mcpServer struct {
-	era     protocolEra
-	actor   string
-	repo    string
-	session string
-	client  *http.Client
+	era       protocolEra
+	actor     string
+	repo      string
+	session   string
+	client    *http.Client
+	deadlines residentDeadlinePolicy
 
 	roomsMu     sync.Mutex
 	byPath      map[string]*room
@@ -236,7 +254,7 @@ func main() {
 	go server.heartbeat(presenceContext, os.Stderr)
 	defer func() {
 		stopPresence()
-		server.depart(context.Background())
+		server.shutdown()
 	}()
 	if err := server.run(context.Background(), os.Stdin, os.Stdout); err != nil {
 		fatal(err)
@@ -249,6 +267,7 @@ func newServer(actor, repo string) *mcpServer {
 		repo:        absolute(repo),
 		session:     "mcp:" + randomID(),
 		client:      newResidentClient(),
+		deadlines:   defaultResidentDeadlines,
 		byPath:      map[string]*room{},
 		byCommonDir: map[string]*room{},
 	}
@@ -933,20 +952,33 @@ func (s *mcpServer) heartbeat(ctx context.Context, errorsTo io.Writer) {
 	}
 }
 
+// shutdown gives departure its own whole-operation bound. It intentionally
+// does not inherit the serving context: that context is cancelled when the
+// client disconnects, while the resident still needs one bounded chance to
+// remove this session from every room it attended.
+func (s *mcpServer) shutdown() {
+	ctx, cancel := context.WithTimeout(context.Background(), s.deadlineForShutdown())
+	defer cancel()
+	s.depart(ctx)
+}
+
 func (s *mcpServer) depart(ctx context.Context) {
 	for _, current := range s.attended() {
 		base, ok := current.endpoint()
 		if !ok {
 			continue
 		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodDelete, base+"/v0/presence/"+s.session, nil)
+		requestContext, cancel := context.WithTimeout(ctx, s.deadlineForShutdown())
+		request, err := http.NewRequestWithContext(requestContext, http.MethodDelete, base+"/v0/presence/"+s.session, nil)
 		if err != nil {
+			cancel()
 			continue
 		}
 		response, err := s.client.Do(request)
 		if err == nil {
 			response.Body.Close()
 		}
+		cancel()
 	}
 }
 
@@ -960,7 +992,9 @@ func (s *mcpServer) get(ctx context.Context, current *room, path string) (any, e
 	if !ok {
 		return nil, transportError{errNoResident}
 	}
-	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+	requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor(path))
+	defer cancel()
+	request, _ := http.NewRequestWithContext(requestContext, http.MethodGet, base+path, nil)
 	return s.do(current, request)
 }
 
@@ -973,7 +1007,9 @@ func (s *mcpServer) post(ctx context.Context, current *room, path string, value 
 	if err != nil {
 		return nil, err
 	}
-	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+path, bytes.NewReader(encoded))
+	requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor(path))
+	defer cancel()
+	request, _ := http.NewRequestWithContext(requestContext, http.MethodPost, base+path, bytes.NewReader(encoded))
 	request.Header.Set("Content-Type", "application/json")
 	return s.do(current, request)
 }
@@ -987,7 +1023,9 @@ func (s *mcpServer) postBoundedJSON(ctx context.Context, current *room, path str
 	if err != nil {
 		return err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, bytes.NewReader(encoded))
+	requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor(path))
+	defer cancel()
+	request, err := http.NewRequestWithContext(requestContext, http.MethodPost, base+path, bytes.NewReader(encoded))
 	if err != nil {
 		return err
 	}
@@ -995,12 +1033,12 @@ func (s *mcpServer) postBoundedJSON(ctx context.Context, current *room, path str
 	response, err := s.client.Do(request)
 	if err != nil {
 		current.lost()
-		return transportError{err}
+		return residentTransportError(err)
 	}
 	defer response.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
-		return err
+		return residentReadError(current, err)
 	}
 	if int64(len(data)) > limit {
 		return fmt.Errorf("resident response exceeds %d bytes", limit)
@@ -1028,14 +1066,16 @@ func (s *mcpServer) getBoundedJSON(ctx context.Context, current *room, path stri
 	if !ok {
 		return transportError{errNoResident}
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+	requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor(path))
+	defer cancel()
+	request, err := http.NewRequestWithContext(requestContext, http.MethodGet, base+path, nil)
 	if err != nil {
 		return err
 	}
 	response, err := s.client.Do(request)
 	if err != nil {
 		current.lost()
-		return transportError{err}
+		return residentTransportError(err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
@@ -1043,7 +1083,7 @@ func (s *mcpServer) getBoundedJSON(ctx context.Context, current *room, path stri
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
-		return err
+		return residentReadError(current, err)
 	}
 	if int64(len(data)) > limit {
 		return fmt.Errorf("resident response exceeds %d bytes", limit)
@@ -1063,12 +1103,23 @@ func (s *mcpServer) do(current *room, request *http.Request) (any, error) {
 	response, err := s.client.Do(request)
 	if err != nil {
 		current.lost()
-		return nil, transportError{err}
+		return nil, residentTransportError(err)
 	}
 	defer response.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(response.Body, residentResponseLimit+1))
+	if err != nil {
+		return nil, residentReadError(current, err)
+	}
+	if int64(len(data)) > residentResponseLimit {
+		return nil, fmt.Errorf("resident response exceeds %d bytes", residentResponseLimit)
+	}
 	var value any
-	if err := json.NewDecoder(response.Body).Decode(&value); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(&value); err != nil {
 		return nil, err
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, errors.New("resident returned trailing JSON")
 	}
 	if response.StatusCode >= 400 {
 		if object, ok := value.(map[string]any); ok {
@@ -1081,9 +1132,53 @@ func (s *mcpServer) do(current *room, request *http.Request) (any, error) {
 
 type transportError struct{ error }
 
+func (e transportError) Unwrap() error { return e.error }
+
+type residentTimeoutError struct{ error }
+
+func (e residentTimeoutError) Error() string {
+	return "resident request timed out: " + e.error.Error()
+}
+
+func (e residentTimeoutError) Unwrap() error { return e.error }
+
+func residentTransportError(err error) error {
+	var timeout net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &timeout) && timeout.Timeout()) {
+		return transportError{residentTimeoutError{err}}
+	}
+	return transportError{err}
+}
+
+func residentReadError(current *room, err error) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		current.lost()
+		return residentTransportError(err)
+	}
+	return err
+}
+
 func isTransportError(err error) bool {
 	var target transportError
 	return errors.As(err, &target)
+}
+
+func (s *mcpServer) deadlineFor(path string) time.Duration {
+	deadlines := s.deadlines
+	if deadlines.call <= 0 || deadlines.wait <= 0 || deadlines.shutdown <= 0 {
+		deadlines = defaultResidentDeadlines
+	}
+	if path == "/v0/wait" {
+		return deadlines.wait
+	}
+	return deadlines.call
+}
+
+func (s *mcpServer) deadlineForShutdown() time.Duration {
+	if s.deadlines.shutdown > 0 {
+		return s.deadlines.shutdown
+	}
+	return defaultResidentDeadlines.shutdown
 }
 
 type httpStatusError struct {
@@ -1110,7 +1205,7 @@ func validateResidentURL(raw string) (string, error) {
 }
 
 func newResidentClient() *http.Client {
-	return &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+	return &http.Client{Timeout: residentHTTPTimeout, CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 		return errors.New("resident redirects are not allowed")
 	}}
 }
