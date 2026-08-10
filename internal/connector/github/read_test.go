@@ -107,3 +107,51 @@ func TestNoClausesMeansNoAdmission(t *testing.T) {
 		t.Errorf("got %d clauses from nothing", len(clauses))
 	}
 }
+
+// The sharpest edge in the connector: a body marked for this connector that
+// names nothing must produce no clause. It used to parse into an empty criteria
+// clause, whose query is state=all and whose Admits accepts everything, so a
+// half-written body or a typo in an issue number listed the whole tracker and
+// admitted all of it — the unbounded read arriving through the doorstep itself.
+//
+// Each shape is asserted separately rather than in a table, because they fail
+// for different reasons and a table would let one quietly stop firing.
+func TestAnUnboundedBodyProducesNoClause(t *testing.T) {
+	operators := map[string]Author{"op": {Fingerprint: "op", Roles: []string{"operator"}}}
+	clausesFor := func(body map[string]string) []Clause {
+		return ClausesFrom([]ClauseSource{{Event: "e", Actor: "op", Body: body}}, operators)
+	}
+
+	for name, body := range map[string]map[string]string{
+		"nothing but the connector marker": {"connector": "github"},
+		"an empty issues field":            {"connector": "github", "issues": ""},
+		"issues that are not numbers":      {"connector": "github", "issues": "abc,#12,"},
+		"issues that are not positive":     {"connector": "github", "issues": "0,-3"},
+		"empty state and empty labels":     {"connector": "github", "state": "", "labels": ""},
+		"a state github would not know":    {"connector": "github", "state": "everything"},
+	} {
+		if got := clausesFor(body); len(got) != 0 {
+			t.Errorf("%s produced clause %+v with query %q, want no clause",
+				name, got[0], got[0].Query().Encode())
+		}
+	}
+
+	// The bounded shapes must still be admitted, or the fix would close the
+	// doorstep entirely rather than bounding it.
+	for name, body := range map[string]map[string]string{
+		"a named issue":              {"connector": "github", "issues": "1"},
+		"a label":                    {"connector": "github", "labels": "bug"},
+		"a state":                    {"connector": "github", "state": "open"},
+		"one good and one bad issue": {"connector": "github", "issues": "abc,7"},
+	} {
+		if got := clausesFor(body); len(got) != 1 {
+			t.Errorf("%s produced %d clauses, want 1", name, len(got))
+		}
+	}
+
+	// A malformed issues field is a broken selection, not a fall-through to
+	// criteria: the state beside it must not rescue it into admitting the world.
+	if got := clausesFor(map[string]string{"connector": "github", "issues": "abc", "state": "open"}); len(got) != 0 {
+		t.Errorf("a broken selection fell through to criteria: %+v", got[0])
+	}
+}

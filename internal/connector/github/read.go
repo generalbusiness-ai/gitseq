@@ -52,7 +52,11 @@ func ClausesFrom(sources []ClauseSource, authors map[string]Author) []Clause {
 		if !authorized(authors[source.Actor]) {
 			continue
 		}
-		clauses = append(clauses, parseClause(source))
+		clause, bounded := parseClause(source)
+		if !bounded {
+			continue
+		}
+		clauses = append(clauses, clause)
 	}
 	return clauses
 }
@@ -69,18 +73,47 @@ func authorized(author Author) bool {
 	return false
 }
 
-func parseClause(source ClauseSource) Clause {
+// parseClause reads one clause body, reporting whether it bounds anything.
+//
+// An unbounded body must produce no clause at all, and this is the sharpest
+// edge in the connector. A body marked for this connector but naming no valid
+// issue and no criterion used to parse into an empty criteria clause, whose
+// query renders `state=all` and whose Admits accepts everything — so a typo in
+// an issue number, or a body somebody left half-written, would quietly list the
+// entire tracker and admit all of it. That is precisely the unbounded read the
+// doorstep exists to prevent, arriving through the doorstep itself.
+//
+// So the rule is that a clause must ask for something nameable: at least one
+// valid issue number, or at least one label, or a state it actually states. A
+// body that fails to say any of those is not a conservative clause, it is a
+// clause that means everything, and it is refused.
+func parseClause(source ClauseSource) (Clause, bool) {
 	clause := Clause{
 		Event:  source.Event,
 		State:  strings.TrimSpace(source.Body["state"]),
 		Labels: splitList(source.Body["labels"]),
 	}
-	for _, field := range splitList(source.Body["issues"]) {
-		if number, err := strconv.Atoi(field); err == nil && number > 0 {
-			clause.Numbers = append(clause.Numbers, number)
+
+	// An issues field that was meant to name issues and named none is a broken
+	// selection, not an invitation to fall through to criteria. Widening on the
+	// way past a malformed field is how a typo becomes the whole tracker.
+	if listed := splitList(source.Body["issues"]); len(listed) > 0 {
+		for _, field := range listed {
+			if number, err := strconv.Atoi(field); err == nil && number > 0 {
+				clause.Numbers = append(clause.Numbers, number)
+			}
 		}
+		return clause, len(clause.Numbers) > 0
 	}
-	return clause
+
+	// A state the connector does not understand is refused rather than passed
+	// to GitHub, which would decide for itself what an unknown value means.
+	switch clause.State {
+	case "", "open", "closed", "all":
+	default:
+		return Clause{}, false
+	}
+	return clause, clause.State != "" || len(clause.Labels) > 0
 }
 
 func splitList(value string) []string {
