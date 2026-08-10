@@ -4,6 +4,7 @@ summary: Claim work, report it, get it reviewed at an exact head, and close the 
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:963dcd7e18727d410e7331b1159906a28fac8865
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f97dca2d5321a4abbf2ea61450ce40d43867579
 ---
 
 # Run a work loop
@@ -121,8 +122,9 @@ gs ratify --repo "$REPO" --as bot "$APPROVAL"
 
 ```sh
 git -C "$REPO" switch -q "$BASE"
-gs merge --repo "$REPO" --checkout "$REPO" \
-  --candidate "$HEAD_COMMIT" --approval "$APPROVAL"
+gs merge --repo "$REPO" --as bot --checkout "$REPO" \
+  --candidate "$HEAD_COMMIT" --approval "$APPROVAL" \
+  --text 'Merge the approved changelog and make it available on main.'
 MERGE_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 
 MERGE_ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
