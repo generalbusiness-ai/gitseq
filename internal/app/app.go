@@ -44,15 +44,25 @@ type ActorView struct {
 	Retired bool `json:"retired,omitempty"`
 }
 
+// VerifiedFrontier is the newest signed sequence position this local
+// workspace has accepted. The marker is local memory, not a witness: its head
+// becomes authoritative only when a later audit verifies a sequence that
+// contains that exact commit at that exact depth.
+type VerifiedFrontier struct {
+	Head  string `json:"head"`
+	Depth int    `json:"depth"`
+}
+
 type Config struct {
-	Version              int              `json:"version"`
-	Genesis              string           `json:"genesis"`
-	ObjectFormat         string           `json:"object_format"`
-	PayloadCeiling       uint64           `json:"payload_ceiling"`
-	IdempotencyNamespace string           `json:"idempotency_namespace,omitempty"`
-	SequencerKey         string           `json:"sequencer_key,omitempty"`
-	ReadOnly             bool             `json:"read_only,omitempty"`
-	Actors               map[string]Actor `json:"actors,omitempty"`
+	Version              int               `json:"version"`
+	Genesis              string            `json:"genesis"`
+	ObjectFormat         string            `json:"object_format"`
+	PayloadCeiling       uint64            `json:"payload_ceiling"`
+	IdempotencyNamespace string            `json:"idempotency_namespace,omitempty"`
+	SequencerKey         string            `json:"sequencer_key,omitempty"`
+	ReadOnly             bool              `json:"read_only,omitempty"`
+	Actors               map[string]Actor  `json:"actors,omitempty"`
+	VerifiedFrontier     *VerifiedFrontier `json:"verified_frontier,omitempty"`
 }
 
 type Workspace struct {
@@ -309,7 +319,8 @@ func Open(ctx context.Context, repo string) (*Workspace, error) {
 	if err := json.Unmarshal(content, &config); err != nil {
 		return nil, err
 	}
-	if config.Version != 0 || config.Genesis == "" || config.ObjectFormat == "" || (!config.ReadOnly && config.SequencerKey == "") {
+	if config.Version != 0 || config.Genesis == "" || config.ObjectFormat == "" || (!config.ReadOnly && config.SequencerKey == "") ||
+		(config.VerifiedFrontier != nil && (config.VerifiedFrontier.Head == "" || config.VerifiedFrontier.Depth < 0)) {
 		return nil, errors.New("invalid gitseq config")
 	}
 	return &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir}, Config: config}, nil
@@ -424,6 +435,25 @@ func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Wor
 		return nil, err
 	}
 	metaDir := filepath.Join(commonDir, "gitseq")
+	configPath := filepath.Join(metaDir, "config.json")
+	if _, err := os.Stat(configPath); err == nil {
+		workspace, err := Open(ctx, repo)
+		if err != nil {
+			return nil, err
+		}
+		if !workspace.Config.ReadOnly {
+			return nil, errors.New("cannot attach over a writable workroom")
+		}
+		if workspace.Config.Genesis != genesis {
+			return nil, errors.New("attached workroom genesis does not match --genesis")
+		}
+		if workspace.Config.ObjectFormat != objectFormat {
+			return nil, errors.New("attached workroom object format changed")
+		}
+		return workspace, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
 	if err := os.MkdirAll(metaDir, 0o700); err != nil {
 		return nil, err
 	}
@@ -859,6 +889,11 @@ func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, er
 		return SourcedSnapshot{}, err
 	}
 	if w.snapshotCache != nil && w.snapshotCache.Head == head {
+		if err := w.rememberVerifiedFrontier(ctx, kernel.Verification{
+			Genesis: w.snapshotCache.Genesis, Head: w.snapshotCache.Head, Depth: w.snapshotCache.Depth,
+		}); err != nil {
+			return SourcedSnapshot{}, err
+		}
 		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
 	}
 	if w.reader == nil {
@@ -868,6 +903,9 @@ func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, er
 	}
 	loaded, err := w.reader.Load(ctx, w.Config.Genesis)
 	if err != nil {
+		return SourcedSnapshot{}, err
+	}
+	if err := w.rememberVerifiedFrontier(ctx, loaded.Verification); err != nil {
 		return SourcedSnapshot{}, err
 	}
 	if !loaded.Full && w.snapshotCache != nil && w.snapshotCache.Head == loaded.Verification.Head {
@@ -931,7 +969,51 @@ func (w *Workspace) record(event kernel.Event) workroom.Record {
 }
 
 func (w *Workspace) Verify(ctx context.Context) (kernel.Verification, error) {
-	return kernel.Verify(ctx, w.Store, w.Config.Genesis)
+	w.snapshotMu.Lock()
+	defer w.snapshotMu.Unlock()
+	verification, err := kernel.Verify(ctx, w.Store, w.Config.Genesis)
+	if err != nil {
+		return kernel.Verification{}, err
+	}
+	if err := w.rememberVerifiedFrontier(ctx, verification); err != nil {
+		return kernel.Verification{}, err
+	}
+	return verification, nil
+}
+
+func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification kernel.Verification) error {
+	previous := w.Config.VerifiedFrontier
+	if previous != nil {
+		if verification.Depth < previous.Depth {
+			return fmt.Errorf("refuse verified frontier rollback: depth %d is shorter than previously verified depth %d", verification.Depth, previous.Depth)
+		}
+		if verification.Head == previous.Head {
+			if verification.Depth != previous.Depth {
+				return errors.New("refuse inconsistent verified frontier depth")
+			}
+			return nil
+		}
+		commits, err := w.Store.RevListAfter(ctx, previous.Head, verification.Head)
+		if err != nil {
+			return fmt.Errorf("compare verified frontier: %w", err)
+		}
+		if len(commits) == 0 {
+			return fmt.Errorf("refuse non-descendant verified frontier: %s does not contain previously verified head %s", verification.Head, previous.Head)
+		}
+		parents, err := w.Store.CommitParents(ctx, commits[0])
+		if err != nil {
+			return fmt.Errorf("compare verified frontier: %w", err)
+		}
+		if len(parents) != 1 || parents[0] != previous.Head || verification.Depth != previous.Depth+len(commits) {
+			return fmt.Errorf("refuse non-descendant verified frontier: %s does not continue previously verified head %s", verification.Head, previous.Head)
+		}
+	}
+	w.Config.VerifiedFrontier = &VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
+	if err := w.save(); err != nil {
+		w.Config.VerifiedFrontier = previous
+		return fmt.Errorf("persist verified frontier: %w", err)
+	}
+	return nil
 }
 
 func (w *Workspace) ActorViews(ctx context.Context) ([]ActorView, error) {

@@ -615,7 +615,7 @@ func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
 		t.Fatal(err)
 	}
 	attached := &Workspace{
-		Repo: workspace.Repo, GitDir: workspace.GitDir, CommonDir: workspace.CommonDir, Store: workspace.Store,
+		Repo: workspace.Repo, GitDir: workspace.GitDir, CommonDir: workspace.CommonDir, MetaDir: t.TempDir(), Store: workspace.Store,
 		Config: Config{Version: 0, Genesis: workspace.Config.Genesis, ObjectFormat: workspace.Config.ObjectFormat, ReadOnly: true},
 	}
 	views, err := attached.ActorViews(ctx)
@@ -706,7 +706,7 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 }
 
 func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
-	t.Run("rewind then sibling advance", func(t *testing.T) {
+	t.Run("rewind then sibling advance is refused", func(t *testing.T) {
 		ctx := context.Background()
 		workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 		if err != nil {
@@ -723,10 +723,24 @@ func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
 			Verb: VerbState, Kind: workroom.KindAssert, Text: "rewound branch",
 			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-branch-second",
 		})
+		trusted, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
 		firstCommit := eventCommit(t, workspace.Config.ObjectFormat, first.ID)
 		secondCommit := eventCommit(t, workspace.Config.ObjectFormat, second.ID)
+		if trusted.Head != secondCommit || workspace.Config.VerifiedFrontier == nil || workspace.Config.VerifiedFrontier.Head != secondCommit {
+			t.Fatalf("trusted frontier = snapshot %+v config %+v, want %s", trusted, workspace.Config.VerifiedFrontier, secondCommit)
+		}
 		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), firstCommit, secondCommit); err != nil {
 			t.Fatal(err)
+		}
+		shorter, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := shorter.Verify(ctx); err == nil || !strings.Contains(err.Error(), "shorter than previously verified") {
+			t.Fatalf("restarted workspace accepted a shorter sequence: %v", err)
 		}
 		external, err := Open(ctx, workspace.Repo)
 		if err != nil {
@@ -736,20 +750,18 @@ func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
 			Verb: VerbState, Kind: workroom.KindAssert, Text: "sibling branch",
 			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-branch-sibling",
 		})
-		got, err := workspace.Snapshot(ctx)
+		if _, err := workspace.Snapshot(ctx); err == nil || !strings.Contains(err.Error(), "non-descendant verified frontier") {
+			t.Fatalf("resident accepted sibling after verified rewind: %v", err)
+		}
+		restarted, err := Open(ctx, workspace.Repo)
 		if err != nil {
 			t.Fatal(err)
 		}
-		coldWorkspace, err := Open(ctx, workspace.Repo)
-		if err != nil {
-			t.Fatal(err)
+		if _, err := restarted.Snapshot(ctx); err == nil || !strings.Contains(err.Error(), "non-descendant verified frontier") {
+			t.Fatalf("restarted workspace accepted sibling after verified rewind: %v", err)
 		}
-		want, err := coldWorkspace.Snapshot(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("rewind/sibling recovery differs from cold fold:\nresident=%+v\ncold=%+v", got, want)
+		if restarted.Config.VerifiedFrontier == nil || restarted.Config.VerifiedFrontier.Head != secondCommit {
+			t.Fatalf("rejected sibling replaced trusted frontier: %+v", restarted.Config.VerifiedFrontier)
 		}
 	})
 
