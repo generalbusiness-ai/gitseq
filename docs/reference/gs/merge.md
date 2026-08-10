@@ -2,8 +2,7 @@
 title: gs merge
 summary: Merge only the exact head named by a live, ratified approval.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7bf4086034820826093f3e5b88f6076df77f2856
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b7c2ffe5efdd779aff87fe8736adc64f92223b78
 ---
 
 # `gs merge`
@@ -123,15 +122,24 @@ uses rather than a better one.
 
 | Situation | What to do |
 |---|---|
-| One live path covers the change | Publish the successor at that exact string. |
-| A directory and something inside it are both live over the same changed file | The wider path wins: publish at the directory, retire the narrower artifact with a bare `gs supersede` naming the surviving path, and never publish at the narrower string again. |
+| One live path covers the change | Publish the successor at that exact string, then retire the predecessor citing the successor. |
+| A directory and something inside it are both live over the same changed file | The wider path wins: publish at the directory, retire the narrower artifact citing the wider one as its successor, and never publish at the narrower string again. |
 | No live artifact covers the change | A first artifact, with nothing to retire. Pick the granularity a reader would cite and keep it stable, because later merges must match it. |
-| The merge renamed or deleted a file with a live artifact at its old path | Retire it with a bare `gs supersede` naming the merge commit. A rename opens a first artifact at the new path; a deletion opens nothing, and the flare asks whoever rested on it to re-anchor. |
+| The merge renamed a file whose old path has a live artifact, and the new path has none | Publish at the new path first, then retire the old-path artifact citing it. |
+| The merge renamed a file into a path that already has a live artifact | Not a first artifact. Publish the successor at the destination path, superseding the artifact already there, and retire the old-path artifact citing that same successor. Two predecessors, one survivor. |
+| The merge deleted a file with a live artifact | The only bare supersession. Nothing replaced it, so name the merge commit and let the flare ask whoever rested on it to re-anchor. |
 
-A bare [`gs supersede`](supersede.md) rests on its target by itself, and
-is admitted only from the artifact's own author or an actor holding
-`ratifier`. Ask that actor when the artifact you must retire is not
-yours; never sign as them.
+Name the successor whenever there is one. A supersession that cites its
+replacement says *moved here*; a bare one says *gone*. Getting that wrong
+does not fail — it leaves a reader following the chain at a dead end,
+holding prose about a successor they cannot resolve. Capture the EventID
+when you publish (`ARTIFACT=$(gs state …)`) and pass it as `--rests-on`
+before the positional target; `gs supersede` puts the target first in the
+basis itself, so the flag carries the successor alone.
+
+[`gs supersede`](supersede.md) is admitted only from the artifact's own
+author or an actor holding `ratifier`. Ask that actor when the artifact
+you must retire is not yours; never sign as them.
 
 One path per artifact. A comma-joined string such as
 `AGENTS.md,SKILL.md` is one path that no real predecessor or successor

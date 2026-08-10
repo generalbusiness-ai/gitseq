@@ -2,9 +2,7 @@
 title: Do a piece of work, end to end
 summary: One complete path, from an empty directory to an audited record in a fresh clone.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:963dcd7e18727d410e7331b1159906a28fac8865
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9ed176d95eeb6777c0a3538cc8e400684184b68
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d53a83b7b606df6a80335f6257d59a4093681dfc
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e161548810c421826ea12bdc322da250ba031651
 ---
 
 # Do a piece of work, end to end
@@ -169,12 +167,19 @@ Retire what the change covers and publish one successor per area. Here
 one path covers it, so it is one of each:
 
 ```sh
-gs state --repo "$REPO" --as alice --kind artifact \
+MERGED_ARTIFACT=$(gs state --repo "$REPO" --as alice --kind artifact \
   --text 'Greeting, merged' \
-  --body path=greeting.txt --body commit="$MERGE" --rests-on "$REQUEST"
-gs supersede --repo "$REPO" --as bot \
+  --body path=greeting.txt --body commit="$MERGE" --rests-on "$REQUEST")
+gs supersede --repo "$REPO" --as bot --rests-on "$MERGED_ARTIFACT" \
   --text 'Superseded by the merge artifact at the same path.' "$ARTIFACT"
 ```
+
+Keep the successor's EventID. A supersession that names its replacement
+says *moved here*; one that does not says *gone*, and a reader following
+the chain stops at a dead end with only prose to go on. Prose is not a
+pointer. Note the order: `--rests-on` carries the successor alone, and
+`gs supersede` puts the target first in the basis itself — and every flag
+must precede the positional target, because flag parsing stops there.
 
 Reuse the exact string the live artifact already uses. Paths match as
 whole strings, so an artifact at `internal/workroom` never reaches one at
@@ -195,9 +200,13 @@ ineffective, and stay visible.
 
 ```sh
 gs status --repo "$REPO"
-gs provenance --repo "$REPO" "$ARTIFACT"
+gs provenance --repo "$REPO" "$MERGED_ARTIFACT"
 gs verify --repo "$REPO"
 ```
+
+The audit follows the live artifact, not the retired one. Asking a
+retired artifact for its provenance answers a question about history;
+asking the current one answers the question you have.
 
 `status` projects commitments and who they wait on, artifacts and whether
 they have gone stale, and the attempts that took no force. `provenance`
