@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:80e991153da8284300ccb5998a19606ec4573c94","text":"The main merge artifact at c67432a9 supersedes the live exact-head branch artifact for the same repository path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:428df978ec0099cd094b5da1ac93b3837885c0a8","text":"The main merge artifact at c67432a9 also supersedes the earlier 73e85ba branch artifact whose actor-addressed behavior this current-main carry consumed."}
