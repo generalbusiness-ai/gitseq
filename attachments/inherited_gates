@@ -1,0 +1,1 @@
+27a3c4ef passed full uncached make test, make vet, and make build. Its parent d466c8dc also passed ui-check and a full race rerun; 1a7beef6 changes only README.md and AGENTS.md.
