@@ -58,15 +58,19 @@ requester of a reported one is offered accept or needs work, only a
 statement's own author is offered withdraw, and a retired or
 ineffective statement offers nothing at all. Those offers are
 transition shortcuts that mirror the fold's conditions — but they are
-narrower mirrors, not the conditions themselves, and one of them
-already drifts. The agree offer goes to every viewer of an effective
-proposal who has not already ratified it: `Toolbar.tsx` checks
-neither the viewer's roles nor the kind's satisfier, while
-`kinds.go` declares the `propose` satisfier `role:ratifier` and the
-fold refuses a ratification from an actor without that role. A
-participant without the ratifier role is therefore offered agree and
-refused after append — exactly the authorization drift the projection
-this note proposes exists to prevent.
+narrower mirrors, not the conditions themselves, and both of the
+component's ratification paths already drift. The proposal-row agree
+offer goes to every viewer of an effective proposal who has not
+already ratified it, and the direct ratify-yes offer goes to the
+addressee of a proposal-ratification request that rests on exactly
+one effective proposal. On both paths `Toolbar.tsx` checks neither
+the viewer's roles nor the kind's satisfier, while `kinds.go`
+declares the `propose` satisfier `role:ratifier` and the fold refuses
+a ratification from an actor without that role — the existing UI test
+proves the direct offer with a projection carrying no actor roles at
+all. A participant without the ratifier role can be offered either
+path and refused after append — exactly the authorization drift the
+projection this note proposes exists to prevent.
 
 What it is not is the projection this note proposes. The conditions are
 written in TypeScript and keyed off compiled-in kind names, not derived
@@ -385,13 +389,14 @@ whatever part of it is already standing:
   carries definitions and binding state and no actor-relative judgement
   at all. What is built is the hand-coded stand-in named in the
   anchoring section, `semanticActions` in
-  `ui/src/components/Toolbar.tsx` — the fold's conditions for seven row
+  `ui/src/components/Toolbar.tsx` — the fold's conditions for the row
   offers, written against compiled-in kind names, in one surface,
-  offering no reason to the actor it withholds an action from. Six of
-  its offers and the fold's conditions agree today because someone
-  wrote them twice; the seventh, agree, already disagrees — it checks
-  no roles where the fold requires `role:ratifier` — which is the
-  drift this contract exists to prevent, present tense. The CLI
+  offering no reason to the actor it withholds an action from. Its
+  non-ratification offers and the fold's conditions agree today
+  because someone wrote them twice; both ratification offers —
+  proposal-row agree and direct ratify yes — already disagree,
+  checking no roles where the fold requires `role:ratifier`, which is
+  the drift this contract exists to prevent, present tense. The CLI
   and the MCP server withhold nothing: they learn a promise actor is
   wrong when the fold refuses the appended act. Deriving the conditions
   from definitions, publishing them per actor, and giving every surface
