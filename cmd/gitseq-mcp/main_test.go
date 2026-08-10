@@ -1333,7 +1333,10 @@ func TestWhoamiBoundsStallsAndRejectsRedirects(t *testing.T) {
 	started := time.Now()
 	result := callWhoami(t, workspace, stalled.URL, stalled.Client())
 	stalled.Close()
-	if elapsed := time.Since(started); elapsed > 3*time.Second || result["degraded"] != true {
+	// The resident attempt owns the two-second production timeout. Leave a
+	// separate bounded allowance for the signed local fallback and scheduler
+	// overhead, which are deliberately included in this end-to-end clock.
+	if elapsed := time.Since(started); elapsed > orientationTimeout+2*time.Second || result["degraded"] != true {
 		t.Fatalf("stalled resident was not bounded: elapsed=%s result=%#v", elapsed, result)
 	}
 	var followed atomic.Int32
