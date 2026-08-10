@@ -226,6 +226,13 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 	if got := testGit(t, auditor, "rev-parse", ref); got != first {
 		t.Fatalf("initial sequence head = %s, want %s", got, first)
 	}
+	attached, err := app.Open(ctx, auditor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attached.Config.VerifiedFrontier == nil || attached.Config.VerifiedFrontier.Head != first {
+		t.Fatalf("initial verified frontier = %+v, want head %s", attached.Config.VerifiedFrontier, first)
+	}
 	fetchRules := strings.Fields(testGit(t, auditor, "config", "--get-all", "remote.origin.fetch"))
 	if contains(fetchRules, forcedSequenceFetchRefspec) || !contains(fetchRules, sequenceFetchRefspec) {
 		t.Fatalf("sequence fetch rules = %#v, want only non-forcing sequence rule", fetchRules)
@@ -245,6 +252,13 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 	if got := testGit(t, auditor, "rev-parse", ref); got != second {
 		t.Fatalf("forward sequence head = %s, want %s", got, second)
 	}
+	attached, err = app.Open(ctx, auditor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attached.Config.VerifiedFrontier == nil || attached.Config.VerifiedFrontier.Head != second {
+		t.Fatalf("forward verified frontier = %+v, want head %s", attached.Config.VerifiedFrontier, second)
+	}
 
 	testGit(t, "", "--git-dir", remote, "update-ref", ref, first, second)
 	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.Config.Genesis}); err == nil {
@@ -258,6 +272,88 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 	}
 	if got := testGit(t, auditor, "rev-parse", ref); got != second {
 		t.Fatalf("ordinary fetch rewound local sequence head to %s, want %s", got, second)
+	}
+}
+
+func TestAttachRejectsSpentIdempotencyReplayAfterLocalFrontierLoss(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	remote := filepath.Join(root, "remote.git")
+	auditor := filepath.Join(root, "auditor")
+	freshAuditor := filepath.Join(root, "fresh-auditor")
+
+	testGit(t, "", "init", source)
+	workspace, seed, err := app.Init(ctx, source, "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := "refs/seq/" + workspace.Config.Genesis
+	base := testGit(t, source, "rev-parse", ref)
+	_, private, err := workspace.Actor("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := workspace.BuildActRequest(ctx, private, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "different event after truncation",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "spent-before-truncation",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Act(ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "accepted event",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "spent-before-truncation",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	trusted := testGit(t, source, "rev-parse", ref)
+
+	testGit(t, "", "init", "--bare", remote)
+	testGit(t, source, "remote", "add", "origin", remote)
+	testGit(t, source, "push", "origin", "refs/seq/*:refs/seq/*")
+	testGit(t, "", "clone", remote, auditor)
+	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.Config.Genesis}); err != nil {
+		t.Fatalf("initial attach: %v", err)
+	}
+
+	if err := workspace.Store.UpdateRef(ctx, ref, base, trusted); err != nil {
+		t.Fatal(err)
+	}
+	attack, err := kernel.Submit(ctx, workspace.Store, replayed, kernel.Options{SigningKey: workspace.Config.SequencerKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, source, "push", "origin", "+"+ref+":"+ref)
+	// A first-time auditor has no earlier frontier to compare. The truncated
+	// branch is internally signed and must remain attachable; detecting that it
+	// omitted prior history needs a witness or trusted checkpoint.
+	testGit(t, "", "clone", remote, freshAuditor)
+	if err := attachCommand(ctx, []string{"--repo", freshAuditor, "--remote", "origin", "--genesis", workspace.Config.Genesis}); err != nil {
+		t.Fatalf("fresh auditor rejected internally valid truncated branch: %v", err)
+	}
+	fresh, err := app.Open(ctx, freshAuditor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Config.VerifiedFrontier == nil || fresh.Config.VerifiedFrontier.Head != attack.Head {
+		t.Fatalf("fresh auditor frontier = %+v, want attack head %s", fresh.Config.VerifiedFrontier, attack.Head)
+	}
+	// Losing the tracking ref defeats Git's non-force comparison, but it must
+	// not erase the separately persisted verified frontier.
+	testGit(t, auditor, "update-ref", "-d", ref)
+	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.Config.Genesis}); err == nil || !strings.Contains(err.Error(), "non-descendant verified frontier") {
+		t.Fatalf("attach accepted replay branch %s after losing its ref: %v", attack.Head, err)
+	}
+	attached, err := app.Open(ctx, auditor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attached.Config.VerifiedFrontier == nil || attached.Config.VerifiedFrontier.Head != trusted {
+		t.Fatalf("rejected replay replaced trusted frontier: %+v, want %s", attached.Config.VerifiedFrontier, trusted)
+	}
+	if verification, err := kernel.Verify(ctx, attached.Store, workspace.Config.Genesis); err != nil || verification.Head != attack.Head {
+		t.Fatalf("attack branch was not independently valid, verification=%+v err=%v", verification, err)
 	}
 }
 

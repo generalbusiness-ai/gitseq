@@ -9,6 +9,19 @@ export const ATTENTION_WORK_STATUSES = ["stale", "disputed"] as const;
 
 export type WorkLane = "available" | "inProgress" | "review" | "closed";
 
+// Topic labels are ordinary durable statements, not mutations of the signed
+// request that opened the topic. A statement may carry either field or both;
+// authorship and retirement remain visible at statement granularity.
+export const TOPIC_TITLE_FIELD = "topic_title";
+export const TOPIC_ALIAS_FIELD = "topic_alias";
+
+export interface WorkTopicLabel {
+  value: string;
+  event: string;
+  actor: string;
+  order: number;
+}
+
 export interface WorkItem {
   key: string;
   commitment: Commitment;
@@ -26,6 +39,8 @@ export interface WorkTopic {
   root: Statement;
   author: string;
   title: string;
+  titleLabel?: WorkTopicLabel;
+  aliases: WorkTopicLabel[];
   items: WorkItem[];
   activeCount: number;
   attentionCount: number;
@@ -158,6 +173,8 @@ export function buildWorkProjection(projection: Projection): WorkProjection {
   }
 
   const searchableByTopic = new Map<string, string[]>();
+  const titlesByTopic = new Map<string, WorkTopicLabel[]>();
+  const aliasesByTopic = new Map<string, WorkTopicLabel[]>();
   const activityByTopic = new Map<string, { actor: string; timestamp?: number; order: number }>();
   const activitiesByTopic = new Map<string, WorkActivity[]>();
   const considerActivity = (event: string, actor: string, timestamp?: number) => {
@@ -169,12 +186,30 @@ export function buildWorkProjection(projection: Projection): WorkProjection {
   };
   for (const statement of projection.statements) {
     const topic = topicOf(statement.event);
+    const title = topicLabel(statement.body?.[TOPIC_TITLE_FIELD]);
+    const alias = topicLabel(statement.body?.[TOPIC_ALIAS_FIELD]);
+    const isLabelStatement = Boolean(title || alias);
+    const labelIsLive = isLabelStatement && !statement.retired && !statement.stale;
     if (topic && itemsByTopic.has(topic)) {
-      searchableByTopic.set(topic, [
-        ...(searchableByTopic.get(topic) ?? []),
-        statement.text,
-        ...Object.values(statement.body ?? {}),
-      ]);
+      // A retired or stale label no longer resolves. Skip the whole label
+      // statement here so repeating its value in explanatory prose cannot keep
+      // a retired alias accidentally searchable. Ordinary descendant history
+      // remains searchable, including stale work records.
+      if (!isLabelStatement || labelIsLive) {
+        searchableByTopic.set(topic, [
+          ...(searchableByTopic.get(topic) ?? []),
+          statement.text,
+          ...Object.entries(statement.body ?? {})
+            .filter(([field]) => field !== TOPIC_TITLE_FIELD && field !== TOPIC_ALIAS_FIELD)
+            .map(([, value]) => value),
+        ]);
+      }
+      const label = (value: string): WorkTopicLabel => ({
+        value, event: statement.event, actor: statement.actor,
+        order: orderByEvent.get(statement.event) ?? -1,
+      });
+      if (labelIsLive && title) titlesByTopic.set(topic, [...(titlesByTopic.get(topic) ?? []), label(title)]);
+      if (labelIsLive && alias) aliasesByTopic.set(topic, [...(aliasesByTopic.get(topic) ?? []), label(alias)]);
     }
     considerActivity(statement.event, statement.actor, statement.timestamp);
   }
@@ -198,11 +233,17 @@ export function buildWorkProjection(projection: Projection): WorkProjection {
     if (!root) continue;
     const items = [...unsortedItems].sort((a, b) => b.order - a.order);
     const activity = activityByTopic.get(event) ?? { actor: root.actor, timestamp: root.timestamp, order: orderByEvent.get(event) ?? -1 };
+    const titles = distinctLatestLabels(titlesByTopic.get(event) ?? []);
+    const titleLabel = latestLabel(titles);
+    const aliases = distinctLatestLabels(aliasesByTopic.get(event) ?? []);
+    const explicitSearch = [...titles, ...aliases].map((label) => label.value);
     topics.push({
       event,
       root,
       author: root.actor,
-      title: topicTitle(root.text),
+      title: titleLabel?.value ?? topicTitle(root.text),
+      titleLabel,
+      aliases,
       items,
       activeCount: items.filter((item) => item.active).length,
       attentionCount: items.filter((item) => item.attention).length,
@@ -211,8 +252,8 @@ export function buildWorkProjection(projection: Projection): WorkProjection {
       latestTimestamp: activity.timestamp,
       latestOrder: activity.order,
       activity: [...(activitiesByTopic.get(event) ?? [])].sort((a, b) => a.order - b.order),
-      searchText: searchableByTopic.get(event)?.join("\n").toLocaleLowerCase() ?? root.text.toLocaleLowerCase(),
-      rootSearchText: [root.text, ...Object.values(root.body ?? {})].join("\n").toLocaleLowerCase(),
+      searchText: [...explicitSearch, ...(searchableByTopic.get(event) ?? [root.text])].join("\n").toLowerCase(),
+      rootSearchText: [...explicitSearch, root.text, ...Object.values(root.body ?? {})].join("\n").toLowerCase(),
     });
   }
   topics.sort((a, b) => b.latestOrder - a.latestOrder);
@@ -281,7 +322,7 @@ export function filterPersonalWorkProjection(
 }
 
 export function filterWorkProjection(work: WorkProjection, filters: WorkFilters): WorkProjection {
-  const query = filters.query?.trim().toLocaleLowerCase() ?? "";
+  const query = filters.query?.trim().toLowerCase() ?? "";
   const topics = work.topics.flatMap((topic) => {
     if (filters.author && topic.author !== filters.author) return [];
     if (query && !topic.searchText.includes(query)) return [];
@@ -329,7 +370,7 @@ export function otherWorkAttention(projection: Projection): WorkAttentionItem[] 
       actor: statement?.actor,
       timestamp: statement?.timestamp,
       commit: artifact.commit,
-      searchText: [title, statement?.text ?? "", artifact.path, artifact.commit].join("\n").toLocaleLowerCase(),
+      searchText: [title, statement?.text ?? "", artifact.path, artifact.commit].join("\n").toLowerCase(),
     };
   });
   const unlinked = danglingPromises(projection).map((statement): WorkAttentionItem => ({
@@ -339,7 +380,7 @@ export function otherWorkAttention(projection: Projection): WorkAttentionItem[] 
     title: `unlinked promise: ${statement.text}`,
     actor: statement.actor,
     timestamp: statement.timestamp,
-    searchText: [statement.text, ...Object.values(statement.body ?? {})].join("\n").toLocaleLowerCase(),
+    searchText: [statement.text, ...Object.values(statement.body ?? {})].join("\n").toLowerCase(),
   }));
   return [...artifacts, ...unlinked];
 }
@@ -351,4 +392,27 @@ export function workAttentionCount(projection: Projection): number {
 export function topicTitle(text: string): string {
   const first = text.split(/\r?\n/, 1)[0].trim();
   return first.length > 150 ? `${first.slice(0, 147).trimEnd()}…` : first || "Untitled work";
+}
+
+function topicLabel(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? topicTitle(trimmed) : undefined;
+}
+
+function latestLabel(labels: WorkTopicLabel[]): WorkTopicLabel | undefined {
+  return labels.reduce<WorkTopicLabel | undefined>((latest, label) => !latest || label.order >= latest.order ? label : latest, undefined);
+}
+
+// Labels are compared case-insensitively for discovery. Repeating one label on
+// a topic does not create duplicate chips; the latest live signed statement is
+// the visible attribution. The same label on different topics is deliberately
+// not resolved here: search returns each matching topic group.
+function distinctLatestLabels(labels: WorkTopicLabel[]): WorkTopicLabel[] {
+  const byValue = new Map<string, WorkTopicLabel>();
+  for (const label of labels) {
+    const key = label.value.toLowerCase();
+    const previous = byValue.get(key);
+    if (!previous || label.order >= previous.order) byValue.set(key, label);
+  }
+  return [...byValue.values()].sort((a, b) => a.value < b.value ? -1 : a.value > b.value ? 1 : 0);
 }

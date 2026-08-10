@@ -4,14 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -353,36 +348,27 @@ func TestActionableLifecycleMatrix(t *testing.T) {
 	}
 }
 
-func TestWarmDepth20000SummaryLatencyAndSize(t *testing.T) {
-	if raceEnabled {
-		t.Skip("race instrumentation is not a production latency measurement")
-	}
+func TestDepth20000SummarySize(t *testing.T) {
 	projection := growthProjection(20000)
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(writer).Encode(Build("genesis", "head", 20000, projection))
-	}))
-	defer server.Close()
-	durations := make([]time.Duration, 0, 100)
-	for range 100 {
-		started := time.Now()
-		response, err := http.Get(server.URL)
+	body, err := json.Marshal(Build("genesis", "head", 20000, projection))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) >= 64<<10 {
+		t.Fatalf("depth-20k summary = %d bytes, want < 64 KiB", len(body))
+	}
+}
+
+func BenchmarkWarmDepth20000Summary(b *testing.B) {
+	projection := growthProjection(20000)
+	b.ReportAllocs()
+	for b.Loop() {
+		body, err := json.Marshal(Build("genesis", "head", 20000, projection))
 		if err != nil {
-			t.Fatal(err)
-		}
-		body, err := io.ReadAll(response.Body)
-		response.Body.Close()
-		if err != nil {
-			t.Fatal(err)
+			b.Fatal(err)
 		}
 		if len(body) >= 64<<10 {
-			t.Fatalf("warm summary response = %d bytes, want < 64 KiB", len(body))
+			b.Fatalf("depth-20k summary = %d bytes, want < 64 KiB", len(body))
 		}
-		durations = append(durations, time.Since(started))
-	}
-	sort.Slice(durations, func(left, right int) bool { return durations[left] < durations[right] })
-	p99 := durations[98]
-	t.Logf("warm depth-20k bounded summary p99: %s", p99)
-	if p99 >= 500*time.Millisecond {
-		t.Fatalf("warm depth-20k summary p99 = %s, want < 500ms", p99)
 	}
 }

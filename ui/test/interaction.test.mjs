@@ -9,7 +9,7 @@ import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, saveP
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
-import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
+import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, TOPIC_ALIAS_FIELD, TOPIC_TITLE_FIELD, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
 import { belongsInRoom, commitmentRelationship, interpretationNotice, isInterpretationGap, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
@@ -540,17 +540,23 @@ test("unclaimed requests are addressed without waiting on their addressee", () =
 });
 
 test("Work groups by conversational ancestry without treating later citations as parents", () => {
-  const statement = (event, actor, kind, text, body) => ({ event, actor, kind, text, body, timestamp: Number(event.slice(1)) || 1 });
+  const statement = (event, actor, kind, text, body, extra = {}) => ({ event, actor, kind, text, body, timestamp: Number(event.slice(1)) || 1, ...extra });
   const projection = {
-    decisions: ["r1", "p1", "r2", "p2", "x2", "r3", "r4", "r5"].map((event) => ({ event, verdict: "effective", reason: "ok" })),
+    decisions: ["r1", "p1", "r2", "p2", "x2", "t1", "t2", "old2", "stale2", "r3", "x3", "x4", "r4", "r5"].map((event) => ({ event, verdict: "effective", reason: "ok" })),
     acts: [],
     statements: [
       statement("r1", "hugh", "request", "Ship the deployment design"),
       statement("p1", "codex", "promise", "I will work", { branch: "task/deployment-story" }),
       statement("r2", "claude", "request", "Check deploy readiness"),
       statement("p2", "codex", "promise", "I will check"),
-      statement("x2", "codex", "assert", "The remembered alias is deploy-readiness"),
+      statement("x2", "codex", "assert", "Add a shared lookup name", { [TOPIC_ALIAS_FIELD]: "deploy-readiness" }),
+      statement("t1", "hugh", "assert", "Give the topic its first display label", { [TOPIC_TITLE_FIELD]: "Deployment delivery" }),
+      statement("t2", "claude", "assert", "Give the topic a concise display label", { [TOPIC_TITLE_FIELD]: "Deployment readiness" }),
+      statement("old2", "codex", "assert", "Retire an obsolete lookup name", { [TOPIC_ALIAS_FIELD]: "former-deploy" }, { retired: true }),
+      statement("stale2", "codex", "assert", "This lookup name lost its basis", { [TOPIC_ALIAS_FIELD]: "stale-deploy" }, { stale: true }),
       statement("r3", "claude", "request", "Independent root"),
+      statement("x3", "hugh", "assert", "This name is intentionally non-unique", { [TOPIC_ALIAS_FIELD]: "shared-name" }),
+      statement("x4", "codex", "assert", "This name is intentionally non-unique", { [TOPIC_ALIAS_FIELD]: "shared-name" }),
       statement("r4", "claude", "request", "Replies to independent root but cites deployment"),
       statement("r5", "hugh", "request", "Old closed work"),
     ],
@@ -564,14 +570,17 @@ test("Work groups by conversational ancestry without treating later citations as
     artifacts: [{ event: "artifact", path: "notes/deploy.md", commit: "abc", stale: false }],
     actors: {},
     provenance: {
-      r1: [], p1: ["r1"], r2: ["p1"], p2: ["r2"], x2: ["p2"],
-      r3: [], r4: ["r3", "r1"], r5: [], artifact: ["x2"],
+      r1: [], p1: ["r1"], r2: ["p1"], p2: ["r2"], x2: ["p2"], t1: ["x2"], t2: ["t1"], old2: ["t2"], stale2: ["old2"],
+      r3: [], x3: ["r3"], x4: ["stale2"], r4: ["x3", "r1"], r5: [], artifact: ["x2"],
     },
   };
   const work = buildWorkProjection(projection);
   const deployment = work.topics.find((topic) => topic.event === "r1");
   assert.deepEqual(deployment.items.map((item) => item.request.event), ["r2", "r1"]);
   assert.equal(deployment.author, "hugh");
+  assert.equal(deployment.title, "Deployment readiness");
+  assert.equal(deployment.titleLabel.actor, "claude");
+  assert.deepEqual(deployment.aliases.map((alias) => [alias.value, alias.actor]), [["deploy-readiness", "codex"], ["shared-name", "codex"]]);
   assert.equal(deployment.attentionCount, 1);
   assert.equal(work.topics.find((topic) => topic.event === "r3").items.length, 2);
   assert.equal(work.topics.some((topic) => topic.event === "r4"), false);
@@ -580,9 +589,56 @@ test("Work groups by conversational ancestry without treating later citations as
   assert.equal(defaults.topics.some((topic) => topic.event === "r5"), false);
   assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, author: "hugh" }).topics.map((topic) => topic.event), ["r1"]);
   assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "deploy-readiness" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "deployment delivery" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "former-deploy" }).topics, []);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "stale-deploy" }).topics, []);
+  assert.deepEqual(new Set(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "shared-name" }).topics.map((topic) => topic.event)), new Set(["r1", "r3"]));
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "task/deployment-story" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "ship the deployment design" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "check deploy readiness" }).topics.map((topic) => topic.event), ["r1"]);
   assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: true, query: "deployment" }).topics[0].event, "r1");
   assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "notes/deploy.md" }).topics.map((topic) => topic.event), ["r1"]);
   assert.deepEqual(filterWorkProjection(work, { active: false, attention: false, closed: true }).topics.map((topic) => topic.event), ["r5"]);
+});
+
+test("topic alias identity, order, and search are locale independent", () => {
+  const statement = (event, actor, kind, text, body) => ({ event, actor, kind, text, body, timestamp: Number(event.slice(1)) || 1 });
+  const events = ["r1", "a1", "a2", "a3", "a4", "a5"];
+  const projection = {
+    decisions: events.map((event) => ({ event, verdict: "effective", reason: "ok" })),
+    acts: [],
+    statements: [
+      statement("r1", "hugh", "request", "Locale-stable topic aliases"),
+      statement("a1", "hugh", "assert", "First spelling", { [TOPIC_ALIAS_FIELD]: "API" }),
+      statement("a2", "codex", "assert", "Latest equivalent spelling", { [TOPIC_ALIAS_FIELD]: "api" }),
+      statement("a3", "hugh", "assert", "Swedish initial", { [TOPIC_ALIAS_FIELD]: "Ångström" }),
+      statement("a4", "hugh", "assert", "Uppercase Latin initial", { [TOPIC_ALIAS_FIELD]: "Zebra" }),
+      statement("a5", "hugh", "assert", "Lowercase Latin initial", { [TOPIC_ALIAS_FIELD]: "apple" }),
+    ],
+    commitments: [{ request: "r1", requester: "hugh", status: "open" }],
+    artifacts: [],
+    actors: {},
+    provenance: { r1: [], a1: ["r1"], a2: ["a1"], a3: ["a2"], a4: ["a3"], a5: ["a4"] },
+  };
+
+  const localeLower = String.prototype.toLocaleLowerCase;
+  const localeCompare = String.prototype.localeCompare;
+  String.prototype.toLocaleLowerCase = () => { throw new Error("topic projection used locale-sensitive case folding"); };
+  String.prototype.localeCompare = () => { throw new Error("topic projection used locale-sensitive ordering"); };
+  try {
+    const work = buildWorkProjection(projection);
+    const topic = work.topics.find((candidate) => candidate.event === "r1");
+    assert.deepEqual(topic.aliases.map((alias) => [alias.value, alias.actor]), [
+      ["Zebra", "hugh"],
+      ["api", "codex"],
+      ["apple", "hugh"],
+      ["Ångström", "hugh"],
+    ]);
+    assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "API" }).topics.map((candidate) => candidate.event), ["r1"]);
+  } finally {
+    String.prototype.toLocaleLowerCase = localeLower;
+    String.prototype.localeCompare = localeCompare;
+  }
 });
 
 test("attention qualifies rather than replaces a lifecycle lane", () => {
@@ -944,6 +1000,8 @@ test("Work is the default center and List and Board share one projection", () =>
   assert.match(work, /<WorkBoard/);
   assert.match(work, /Other attention/);
   assert.match(work, /asked by \{nameOf\(item\.request\.actor\)\}/);
+  assert.match(work, /aria-label="topic aliases"/);
+  assert.match(work, /title by \{props\.nameOf\(topic\.titleLabel\.actor\)\}/);
   assert.doesNotMatch(work, /written by \{nameOf\(topic\.author\)\}/);
   assert.doesNotMatch(work, /draggable|onDrag|drop/i);
 });

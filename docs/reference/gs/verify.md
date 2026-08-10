@@ -5,6 +5,8 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:328aa6777241e67d4b1a122ee45d4e4019eebd11
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c916a0e1ff6e09982c413adf0e1b0439135721b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e2dddf3fdd8ffb6a13fa020f16df29bfd9c99cf
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b34fc905db82c93fe54c49c7868a245cc4440eb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58225c326c6693b95d330412f50e331fa5890265
 ---
 
 # `gs verify`
@@ -65,6 +67,13 @@ an event, so each one raises `Depth` above `Events` by one.
 - Each event occupies the commit it claims, with matching envelope,
   causal trailers and payload tree.
 - Payload sizes are within the workroom's ceiling.
+- The verified head and depth do not move behind or away from the last
+  frontier recorded in this repository's Gitseq config. Any verified read,
+  including an explicit full audit, advances that local marker before it
+  returns data from a newer head. A read at the unchanged head reuses the
+  marker without rewriting the config. If the sequence advances but
+  `.git/gitseq` cannot be written, the read fails closed and leaves the old
+  marker in place.
 
 It is an **explicit full audit**. It never consults a resident's
 checkpoint cache, no matter how recent that cache is, because the point
@@ -73,16 +82,17 @@ you.
 
 ## What it does not establish
 
-`verify` answers *is this record internally sound and correctly signed?*
-It does not answer *is this the same record everyone else has?*
+`verify` answers *is this record internally sound and correctly signed, and
+does it continue the frontier this repository already verified?* It does not
+answer *is this the same record everyone else has?*
 
-Nothing here detects a fork: two copies of a workroom that share a
-genesis and diverge afterwards would each verify on their own. What
-constrains that in practice is publication — a sequence only advances, so
-a push that git refuses means the remote holds something you do not, and
-[`gs attach`](attach.md) rejects a rewound remote without moving your
-frontier. Detecting equivocation directly is open work, and this page
-will flare when it lands.
+A repository that has already verified one branch refuses a shorter or
+non-descendant branch. A first-time auditor has no such local memory: two fresh
+copies that share a genesis but receive different internally valid branches
+can each verify their first branch. Publication constrains this in practice —
+a sequence only advances, so a push that Git refuses means the remote holds
+something you do not — but detecting first-contact equivocation requires a
+witness or trusted checkpoint.
 
 It also says nothing about whether an act was **effective**, whether an
 authority is live, or whether a document is stale. Signatures are one

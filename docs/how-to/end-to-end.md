@@ -6,6 +6,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9ed176d95eeb6777c0a3538cc8e400684184b68
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d53a83b7b606df6a80335f6257d59a4093681dfc
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f97dca2d5321a4abbf2ea61450ce40d43867579
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b34fc905db82c93fe54c49c7868a245cc4440eb
 ---
 
 # Do a piece of work, end to end
@@ -210,8 +211,14 @@ gs status --repo "$AUDIT"
 
 `attach` adds a non-forcing fetch rule and pulls the sequence down.
 Later attaches and ordinary fetches accept only initial or fast-forward
-sequence refs; a rewound remote is rejected without moving the auditor's
-frontier.
+sequence refs. Successful verification also remembers the signed head and
+depth in the clone's Gitseq config, so later verification refuses a shorter
+or sibling sequence even if the tracking ref was lost.
+
+A fresh clone has no earlier head to compare. Its first audit proves the
+sequence it received is internally signed, not that no later authentic head
+exists elsewhere. Use a trusted checkpoint or another witness when first-use
+freshness matters.
 
 If `attach` complains about a missing `refs/seq/...` ref, the sequence
 was never published. Run the push above and rerun `attach` in the clone
