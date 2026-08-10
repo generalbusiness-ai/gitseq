@@ -1,5 +1,0 @@
-Observed 2026-08-09 against the resident workroom at approximately depth 1895:
-/v0/status: 3,613,729 bytes
-/v0/status-summary: 31,685 bytes
-ratio: approximately 114x
-Current cmd/gitseq-mcp status implementation requests /v0/status and digests it after transfer.
