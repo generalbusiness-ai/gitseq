@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will correct the signing comment at cmd/gs/main.go initCommand, on a new branch off current main, keeping the flag behaviour and the rationale for why --operator has no default."}
+{"kind":"artifact","text":"Init comment signing-boundary correction at exact clean head d7e2ea3fee1c3a813db6b2c076adf911c60a261d on request/init-comment-signing. One commit, one file, comment only — no behaviour change. Based on current main 8d08315a.","body":{"commit":"d7e2ea3fee1c3a813db6b2c076adf911c60a261d","path":"cmd/gs/main.go"}}
