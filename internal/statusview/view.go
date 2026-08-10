@@ -34,8 +34,9 @@ type Totals struct {
 }
 
 type Commitment struct {
-	Request string `json:"request"`
-	Status  string `json:"status"`
+	Request     string `json:"request"`
+	Status      string `json:"status"`
+	AddressedTo string `json:"addressed_to,omitempty"`
 	// Stale qualifies Status rather than replacing it. The lifecycle word says
 	// what was last done and who owes the next move; the qualifier says a basis
 	// underneath it was retired, so the outcome is worth re-checking.
@@ -145,7 +146,8 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		}
 		view := Commitment{
 			Request: commitment.Request, Status: commitment.Status, Stale: commitment.Stale,
-			Requester: Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
+			AddressedTo: Text(ActorName(projection, commitment.AddressedTo)),
+			Requester:   Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
 			WaitingOn: Text(ActorName(projection, commitment.WaitingOn)),
 		}
 		if statement, ok := statements[commitment.Request]; ok {
@@ -268,7 +270,9 @@ func renderCommitments(output *bytes.Buffer, title string, items []Commitment, o
 	}
 	for _, item := range items {
 		assignment := item.Performer
-		if assignment == "" {
+		if assignment == "" && item.AddressedTo != "" {
+			assignment = "addressed to " + item.AddressedTo + " — unclaimed"
+		} else if assignment == "" {
 			assignment = "unclaimed"
 		}
 		status := item.Status

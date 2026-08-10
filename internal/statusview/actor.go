@@ -46,8 +46,9 @@ type Orientation struct {
 }
 
 type CommitmentView struct {
-	Request string `json:"request"`
-	Status  string `json:"status"`
+	Request     string `json:"request"`
+	Status      string `json:"status"`
+	AddressedTo string `json:"addressed_to,omitempty"`
 	// Stale qualifies Status; it never replaces it. See statusview.Commitment.
 	Stale     bool   `json:"stale,omitempty"`
 	Requester string `json:"requester"`
@@ -88,20 +89,22 @@ type LiveView struct {
 }
 
 type ActorStatus struct {
-	You                  ActorView        `json:"you"`
-	Frontier             []Frontier       `json:"frontier"`
-	Cursor               Cursor           `json:"cursor"`
-	WaitingOnYou         []CommitmentView `json:"waiting_on_you"`
-	WaitingOnYouSkipped  int              `json:"waiting_on_you_skipped,omitempty"`
-	YouAreWaiting        []CommitmentView `json:"you_are_waiting_on"`
-	YouAreWaitingSkipped int              `json:"you_are_waiting_on_skipped,omitempty"`
-	NotActionable        []CommitmentView `json:"not_actionable,omitempty"`
-	NotActionableSkipped int              `json:"not_actionable_skipped,omitempty"`
-	YourAttention        []EventView      `json:"needs_your_attention,omitempty"`
-	YourAttentionSkipped int              `json:"needs_your_attention_skipped,omitempty"`
-	Totals               ActorTotals      `json:"totals"`
-	Live                 LiveView         `json:"live"`
-	FollowWithWait       string           `json:"follow_with_wait"`
+	You                   ActorView        `json:"you"`
+	Frontier              []Frontier       `json:"frontier"`
+	Cursor                Cursor           `json:"cursor"`
+	AvailableToYou        []CommitmentView `json:"available_to_you"`
+	AvailableToYouSkipped int              `json:"available_to_you_skipped,omitempty"`
+	WaitingOnYou          []CommitmentView `json:"waiting_on_you"`
+	WaitingOnYouSkipped   int              `json:"waiting_on_you_skipped,omitempty"`
+	YouAreWaiting         []CommitmentView `json:"you_are_waiting_on"`
+	YouAreWaitingSkipped  int              `json:"you_are_waiting_on_skipped,omitempty"`
+	NotActionable         []CommitmentView `json:"not_actionable,omitempty"`
+	NotActionableSkipped  int              `json:"not_actionable_skipped,omitempty"`
+	YourAttention         []EventView      `json:"needs_your_attention,omitempty"`
+	YourAttentionSkipped  int              `json:"needs_your_attention_skipped,omitempty"`
+	Totals                ActorTotals      `json:"totals"`
+	Live                  LiveView         `json:"live"`
+	FollowWithWait        string           `json:"follow_with_wait"`
 }
 
 type WaitDelta struct {
@@ -109,6 +112,8 @@ type WaitDelta struct {
 	Reset                       bool             `json:"reset,omitempty"`
 	Durable                     []EventView      `json:"durable,omitempty"`
 	Skipped                     int              `json:"durable_skipped,omitempty"`
+	CurrentAvailableToYou       []CommitmentView `json:"current_available_to_you,omitempty"`
+	CurrentAvailableToSkipped   int              `json:"current_available_to_you_skipped,omitempty"`
 	CurrentWaitingOnYou         []CommitmentView `json:"current_waiting_on_you,omitempty"`
 	CurrentWaitingSkipped       int              `json:"current_waiting_on_you_skipped,omitempty"`
 	CurrentNotActionable        []CommitmentView `json:"current_not_actionable,omitempty"`
@@ -169,7 +174,8 @@ func actIndex(projection workroom.Projection) map[string]workroom.Act {
 func viewCommitment(projection workroom.Projection, statements map[string]workroom.Statement, commitment workroom.Commitment) CommitmentView {
 	view := CommitmentView{
 		Request: commitment.Request, Status: commitment.Status, Stale: commitment.Stale,
-		Requester: Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
+		AddressedTo: Text(ActorName(projection, commitment.AddressedTo)),
+		Requester:   Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
 		Promise: commitment.Promise, Report: commitment.Report,
 	}
 	if statement, ok := statements[commitment.Request]; ok {
@@ -223,7 +229,14 @@ func actorLive(live nexus.Snapshot, degraded bool) LiveView {
 }
 
 func involves(commitment workroom.Commitment, fingerprint string) bool {
-	return commitment.Requester == fingerprint || commitment.Performer == fingerprint || commitment.WaitingOn == fingerprint
+	return commitment.Requester == fingerprint || commitment.AddressedTo == fingerprint || commitment.Performer == fingerprint || commitment.WaitingOn == fingerprint
+}
+
+// addressedTo identifies the request-shaped work an actor may claim. The fold
+// deliberately leaves Performer and WaitingOn empty until a promise takes
+// force; putting these requests in WaitingOnYou would invent a commitment.
+func addressedTo(commitment workroom.Commitment, fingerprint string) bool {
+	return commitment.Status == "open" && commitment.AddressedTo == fingerprint && commitment.Promise == "" && commitment.Performer == "" && commitment.WaitingOn == ""
 }
 
 func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, fingerprint, actorName string, degraded bool) ActorStatus {
@@ -246,6 +259,8 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 		view := viewCommitment(projection, statements, commitment)
 		if !actionable[commitment.Status] {
 			digest.NotActionable = append(digest.NotActionable, view)
+		} else if addressedTo(commitment, fingerprint) {
+			digest.AvailableToYou = append(digest.AvailableToYou, view)
 		} else if commitment.WaitingOn == fingerprint {
 			digest.WaitingOnYou = append(digest.WaitingOnYou, view)
 		} else if commitment.WaitingOn != "" {
@@ -271,6 +286,7 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 		view.Actor = Text(actorName)
 		digest.YourAttention = append(digest.YourAttention, view)
 	}
+	digest.AvailableToYou, digest.AvailableToYouSkipped = Cap(digest.AvailableToYou, ListCap)
 	digest.WaitingOnYou, digest.WaitingOnYouSkipped = Cap(digest.WaitingOnYou, ListCap)
 	digest.YouAreWaiting, digest.YouAreWaitingSkipped = Cap(digest.YouAreWaiting, ListCap)
 	digest.NotActionable, digest.NotActionableSkipped = Cap(digest.NotActionable, ListCap)
@@ -334,10 +350,13 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 		view := viewCommitment(projection, statements, commitment)
 		if !actionable[commitment.Status] {
 			delta.CurrentNotActionable = append(delta.CurrentNotActionable, view)
+		} else if addressedTo(commitment, fingerprint) {
+			delta.CurrentAvailableToYou = append(delta.CurrentAvailableToYou, view)
 		} else if commitment.WaitingOn == fingerprint {
 			delta.CurrentWaitingOnYou = append(delta.CurrentWaitingOnYou, view)
 		}
 	}
+	delta.CurrentAvailableToYou, delta.CurrentAvailableToSkipped = Cap(delta.CurrentAvailableToYou, ListCap)
 	delta.CurrentWaitingOnYou, delta.CurrentWaitingSkipped = Cap(delta.CurrentWaitingOnYou, ListCap)
 	delta.CurrentNotActionable, delta.CurrentNotActionableSkipped = Cap(delta.CurrentNotActionable, ListCap)
 	if degraded {
@@ -349,8 +368,9 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 func Summarize(tool string, value any) string {
 	switch shaped := value.(type) {
 	case ActorStatus:
-		return fmt.Sprintf("depth %d, you hold %s roles, %s waiting on you, %s you are waiting on, %s not actionable, %s of your acts did not take force; live %s",
+		return fmt.Sprintf("depth %d, you hold %s roles, %s addressed to you, %s waiting on you, %s you are waiting on, %s not actionable, %s of your acts did not take force; live %s",
 			shaped.Totals.Depth, Shown(len(shaped.You.Roles), shaped.You.RolesSkipped),
+			Shown(len(shaped.AvailableToYou), shaped.AvailableToYouSkipped),
 			Shown(len(shaped.WaitingOnYou), shaped.WaitingOnYouSkipped), Shown(len(shaped.YouAreWaiting), shaped.YouAreWaitingSkipped),
 			Shown(len(shaped.NotActionable), shaped.NotActionableSkipped), Shown(len(shaped.YourAttention), shaped.YourAttentionSkipped), LiveLabel(shaped.Live))
 	case WaitDelta:
@@ -361,8 +381,9 @@ func Summarize(tool string, value any) string {
 		if shaped.Skipped > 0 {
 			skipped = fmt.Sprintf(", %d older events omitted", shaped.Skipped)
 		}
-		return fmt.Sprintf("depth %d, %d new durable events%s%s; currently %s waiting on you, %s not actionable",
+		return fmt.Sprintf("depth %d, %d new durable events%s%s; currently %s addressed to you, %s waiting on you, %s not actionable",
 			shaped.Totals.Depth, len(shaped.Durable), skipped, reset,
+			Shown(len(shaped.CurrentAvailableToYou), shaped.CurrentAvailableToSkipped),
 			Shown(len(shaped.CurrentWaitingOnYou), shaped.CurrentWaitingSkipped), Shown(len(shaped.CurrentNotActionable), shaped.CurrentNotActionableSkipped))
 	default:
 		return tool + " ok"
