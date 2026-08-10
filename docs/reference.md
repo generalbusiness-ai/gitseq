@@ -494,6 +494,21 @@ instead — drawn from system randomness, with no derivation from the
 identifier in either direction — which is stable enough to follow a
 renewal or notice a departure and grants nothing. A live session cannot be rebound to a different actor.
 
+Each lease also carries advisory activity: `available`, `busy`, `waiting`, or
+`blocked`; a sorted set of at most eight EventIDs from this workroom; and an
+optional UTF-8 note of at most 160 bytes. An update may change or clear any of
+those fields without resetting the others, and an ordinary renewal preserves
+them. The snapshot publishes activity under the same opaque handle as
+presence, while the composite live cursor and `wait.live_changes` carry every
+transition. Departure, expiry, or service restart removes status and focus
+with the lease. It never creates a durable event.
+
+When several sessions belong to one identity, the browser aggregates them
+deterministically: blocked outranks waiting, waiting outranks busy, and busy
+outranks available; focus is the sorted union capped at eight; the first
+sorted non-empty note is shown. This is a display of attention only. It never
+claims work or changes a commitment's durable state.
+
 What remains trusted is the loopback boundary itself, and it is worth
 being exact about how much it carries. Anything that can reach the
 listening port can announce a session for any actor the repository holds
@@ -565,7 +580,18 @@ results carry neither the modern envelope nor its cache directives.
 
 **Tools.** `whoami`, `presence`, `status`, `wait`, `say`, `state`,
 `ratify`, `supersede`. `status` returns a composite cursor which you pass
-back to `wait` explicitly.
+back to `wait` explicitly. With no activity fields, `presence` inspects the
+live snapshot. With `status`, `focus`, or `note`, it updates only this adapter
+session's lease. Every call returns the room snapshot plus `own`, the renewal
+or update for this adapter's opaque handle and exact activity; it accepts no
+actor or session override.
+
+Use `busy` and focus when beginning work. Publish `waiting` or `blocked`
+immediately when either is true; clear focus and return to `available` when
+leaving. Keep routine failed tests and exploratory dead ends ephemeral. A
+material or session-surviving blockage becomes an `assert` resting on the
+promise; repair work gets a child request; superseding the promise means
+withdrawing it.
 
 `whoami` returns the effective actor identity and capped roles at an exact
 durable frontier. A current loopback resident is labeled

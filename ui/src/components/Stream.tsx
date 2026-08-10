@@ -11,6 +11,7 @@ import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } fr
 import { toggleLinkEvent, toggleLinkFrame, type ComposerContext } from "./Composer";
 import { EventTime } from "./EventTime";
 import type { ThreadTarget } from "./ThreadPane";
+import { presentActors, type PresentActor } from "../lib/interaction";
 
 export interface PendingSay {
   id: string;
@@ -74,6 +75,10 @@ export function Stream({
   const actorNames = useMemo(() => new Set(workroom.actors.map((a) => a.name.toLowerCase())), [workroom.actors]);
   const myFingerprint = workroom.actors.find((a) => a.name === session.actor)?.fingerprint;
   const byFingerprint = useMemo(() => new Map(workroom.actors.map((a) => [a.fingerprint, a.name])), [workroom.actors]);
+  const focusedActors = useMemo(
+    () => presentActors(workroom.status?.live.presence, workroom.status?.live.activity),
+    [workroom.status?.live.presence, workroom.status?.live.activity],
+  );
   const nameOf = (fp: string) =>
     byFingerprint.get(fp) ??
     projection?.statements.find((s) => s.kind === "roster" && s.body?.actor === fp)?.body?.name ??
@@ -287,6 +292,7 @@ export function Stream({
       selected: selection?.kind === "event" && selection.id === statement.event,
       cited: composer.restsOn.includes(statement.event),
       thread: threadIndex?.summary(statement.event),
+      focused: focusedActors.filter((actor) => actor.focus.includes(statement.event)),
       onSelect: () => onSelect({ kind: "event", id: statement.event }),
       onJumpTo: jumpTo,
       onCite: () => linkEvent(statement.event),
@@ -646,6 +652,7 @@ interface RowProps {
   selected: boolean;
   cited: boolean;
   thread?: ThreadSummary;
+  focused: PresentActor[];
   onSelect: () => void;
   onJumpTo: (event: string) => void;
   onCite: () => void;
@@ -672,6 +679,7 @@ function RecordedMessage({
   selected,
   cited,
   thread,
+  focused,
   onSelect,
   onJumpTo,
   onCite,
@@ -726,6 +734,7 @@ function RecordedMessage({
                 {interpretationNotice(decision?.verdict, decision?.reason) ? "unreadable" : "not active"}
               </span>
             )}
+            <FocusActors actors={focused} />
             <span className="ml-auto flex items-center gap-2">
               <EventTime timestamp={statement.timestamp} />
               <Ticket ticket={ticket} event={statement.event} onSelect={onSelect} />
@@ -781,6 +790,7 @@ export function CompactRow({
   selected,
   cited,
   thread,
+  focused,
   onSelect,
   onJumpTo,
   onCite,
@@ -829,6 +839,7 @@ export function CompactRow({
             {interpretationNotice(decision?.verdict, decision?.reason) ? "unreadable" : "not in force"}
           </span>
         )}
+        <FocusActors actors={focused} />
         {statement.body?.path && (
           <span className="shrink-0 text-xs text-muted" title={`${statement.body.path}@${statement.body.commit}`}>
             {statement.body.path === "." ? "this repository" : statement.body.path}
@@ -882,6 +893,7 @@ export function Card({
   selected,
   cited,
   thread,
+  focused,
   onSelect,
   onJumpTo,
   onCite,
@@ -923,6 +935,7 @@ export function Card({
         <MentionBadges body={statement.body} nameOf={nameOf} me={me} />
         {statement.ratified && <BadgeCheck aria-label="ratified" className="h-3.5 w-3.5 text-ok" />}
         {commitment && <span className={cn("text-xs font-semibold", statusTint[commitment.status])}>{commitment.status}</span>}
+        <FocusActors actors={focused} />
         {statement.stale && !dead && (
           <span className="flex items-center gap-1 text-xs font-medium uppercase text-danger">
             <FileWarning className="h-3 w-3" /> stale
@@ -977,6 +990,19 @@ export function Card({
         doAct={doAct}
       />
     </div>
+  );
+}
+
+function FocusActors({ actors }: { actors: PresentActor[] }) {
+  if (actors.length === 0) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1" aria-label={`Focused here: ${actors.map((actor) => `${actor.name} (${actor.status})`).join(", ")}`}>
+      {actors.map((actor) => (
+        <span key={actor.label} title={`${actor.name} — ${actor.status}${actor.note ? ` — ${actor.note}` : ""}`} className={cn("rounded border px-1 text-[10px] font-medium", actor.status === "blocked" ? "border-danger/50 text-danger" : actor.status === "waiting" ? "border-warn/50 text-warn" : "border-info/40 text-info")}>
+          {actor.name} · {actor.status}
+        </span>
+      ))}
+    </span>
   );
 }
 

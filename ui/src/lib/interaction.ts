@@ -46,6 +46,9 @@ export interface PresentActor {
   name: string;
   fingerprint: string; // the short fingerprint the label carries
   sessions: number;
+  status: import("./api").ActivityStatus;
+  focus: string[];
+  note?: string;
 }
 
 interface KnownActor {
@@ -75,15 +78,45 @@ export function fingerprintsIdentifySameActor(left: string, right: string): bool
     (left === right || left.startsWith(right) || right.startsWith(left));
 }
 
-export function presentActors(presence: Record<string, string> | undefined): PresentActor[] {
+export function toggleActivityFocus(focus: string[], event: string): string[] {
+  const next = new Set(focus);
+  if (next.has(event)) next.delete(event); else next.add(event);
+  return [...next].sort().slice(0, 8);
+}
+
+const activityRank: Record<import("./api").ActivityStatus, number> = {
+  available: 0,
+  busy: 1,
+  waiting: 2,
+  blocked: 3,
+};
+
+// Multiple leases for one identity aggregate deterministically: the most
+// urgent status wins, focus is a sorted union capped to the same eight-event
+// bound as one session, and the lexicographically first note is displayed.
+export function presentActors(
+  presence: Record<string, string> | undefined,
+  activity: Record<string, import("./api").Activity> | undefined = undefined,
+): PresentActor[] {
   const people = new Map<string, PresentActor>();
-  for (const label of Object.values(presence ?? {})) {
+  for (const [handle, label] of Object.entries(presence ?? {})) {
+    const session = activity?.[handle] ?? { status: "available" as const, focus: [] };
     const known = people.get(label);
     if (known) {
       known.sessions += 1;
+      if (activityRank[session.status] > activityRank[known.status]) known.status = session.status;
+      known.focus = [...new Set([...known.focus, ...(session.focus ?? [])])].sort().slice(0, 8);
+      if (session.note && (!known.note || session.note.localeCompare(known.note) < 0)) known.note = session.note;
       continue;
     }
-    people.set(label, { label, ...parsePresenceLabel(label), sessions: 1 });
+    people.set(label, {
+      label,
+      ...parsePresenceLabel(label),
+      sessions: 1,
+      status: session.status,
+      focus: [...new Set(session.focus ?? [])].sort().slice(0, 8),
+      note: session.note || undefined,
+    });
   }
   return [...people.values()].sort((a, b) => a.label.localeCompare(b.label));
 }

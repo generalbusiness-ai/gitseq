@@ -22,6 +22,7 @@ import { worktreesForCommitment, type WorktreeAssociation } from "../lib/worktre
 import { cn, commitmentRelationship, statusLabel, statusTint } from "../lib/util";
 import { EventTime } from "./EventTime";
 import { Railway } from "./Railway";
+import { presentActors, type PresentActor } from "../lib/interaction";
 
 type Presentation = "list" | "board";
 
@@ -107,9 +108,14 @@ export function WorkView({
   const unreadCount = changes.size;
   const followingCount = work?.topics.filter((topic) => followed.has(topic.event)).length ?? 0;
   const itemCount = visible?.topics.reduce((sum, topic) => sum + topic.items.length, 0) ?? 0;
+  const focusedActors = useMemo(
+    () => presentActors(workroom.status?.live.presence, workroom.status?.live.activity),
+    [workroom.status?.live.presence, workroom.status?.live.activity],
+  );
 
   const openWorkItem = (event: string, topic: WorkTopic) => {
     remember((current) => viewWorkTopic(current, topic.event, topic.latestOrder));
+    onSelect({ kind: "event", id: event });
     onOpenThread(event);
   };
   const toggleFollowing = (topic: WorkTopic) =>
@@ -196,9 +202,9 @@ export function WorkView({
           <>
             <OtherAttention items={visible.attention} tickets={tickets} nameOf={nameOf} onSelect={onSelect} onOpenThread={onOpenThread} />
             {visible.topics.length > 0 && (presentation === "list" ? (
-              <TopicList topics={visible.topics} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
+              <TopicList topics={visible.topics} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} focusedActors={focusedActors} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
             ) : (
-              <WorkBoard topics={visible.topics} filters={personalView === "all" ? filters : { open: true, attention: true, closed: true }} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
+              <WorkBoard topics={visible.topics} filters={personalView === "all" ? filters : { open: true, attention: true, closed: true }} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} focusedActors={focusedActors} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
             ))}
           </>
         )}
@@ -414,17 +420,19 @@ interface WorkRenderProps {
   canPersonalize: boolean;
   followed: ReadonlySet<string>;
   changes: ReadonlyMap<string, WorkTopicChange>;
+  focusedActors: PresentActor[];
   onToggleFollowing: (topic: WorkTopic) => void;
   onOpenWorkItem: (event: string, topic: WorkTopic) => void;
 }
 
-function WorkItemRow({ item, topic, projection, tickets, commits, worktrees, nameOf, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
+function WorkItemRow({ item, topic, projection, tickets, commits, worktrees, nameOf, focusedActors, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
   const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
   const relationship = commitmentRelationship(item.commitment, nameOf);
   return (
     <button type="button" onClick={() => onOpenWorkItem(item.request.event, topic)} className="w-full rounded-md px-2 py-1.5 text-left hover:bg-elevated/70 focus-visible:outline focus-visible:outline-accent">
       <div className="flex items-start gap-2 text-xs">
         <StatusBadge item={item} />
+        <FocusActors actors={focusedActors} event={item.request.event} />
         <span className="min-w-0 flex-1 text-foreground/85">{item.request.text}</span>
         {relationship && <span className="shrink-0 text-faint">{relationship}</span>}
         <span className="shrink-0 font-mono text-[11px] text-faint" title={item.request.event}>#{tickets.get(item.request.event) ?? "?"}</span>
@@ -434,13 +442,14 @@ function WorkItemRow({ item, topic, projection, tickets, commits, worktrees, nam
   );
 }
 
-function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameOf, canPersonalize, followed, changes, onToggleFollowing, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
+function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameOf, canPersonalize, followed, changes, focusedActors, onToggleFollowing, onOpenWorkItem }: WorkRenderProps & { item: WorkItem; topic: WorkTopic }) {
   const associations = worktreesForCommitment(item.commitment, projection, commits, worktrees);
   const relationship = commitmentRelationship(item.commitment, nameOf);
   return (
     <article className="rounded-md border border-border bg-card px-3 py-2.5 shadow-sm hover:border-accent/40 hover:bg-elevated/70">
       <div className="flex items-center justify-between gap-2">
         <StatusBadge item={item} />
+        <FocusActors actors={focusedActors} event={item.request.event} />
         {canPersonalize && <TopicFollowButton following={followed.has(topic.event)} onClick={() => onToggleFollowing(topic)} compact />}
         <span className="font-mono text-[11px] text-faint" title={item.request.event}>#{tickets.get(item.request.event) ?? "?"}</span>
       </div>
@@ -454,6 +463,20 @@ function BoardCard({ item, topic, projection, tickets, commits, worktrees, nameO
       <WorktreeAssociations associations={associations} />
       </button>
     </article>
+  );
+}
+
+function FocusActors({ actors, event }: { actors: PresentActor[]; event: string }) {
+  const focused = actors.filter((actor) => actor.focus.includes(event));
+  if (focused.length === 0) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1" aria-label={`Focused here: ${focused.map((actor) => `${actor.name} (${actor.status})`).join(", ")}`}>
+      {focused.map((actor) => (
+        <span key={actor.label} title={`${actor.name} — ${actor.status}${actor.note ? ` — ${actor.note}` : ""}`} className={cn("rounded border px-1 text-[10px] font-medium", actor.status === "blocked" ? "border-danger/50 text-danger" : actor.status === "waiting" ? "border-warn/50 text-warn" : "border-info/40 text-info")}>
+          {actor.name} · {actor.status}
+        </span>
+      ))}
+    </span>
   );
 }
 

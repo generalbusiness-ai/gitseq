@@ -97,6 +97,14 @@ Point your MCP client at that command. It exposes eight tools —
 normative contract for agents working in a workroom. Read it before
 acting as one.
 
+`presence` also carries leased, advisory activity. Set `status` to `busy` and
+add the EventIDs you are handling to `focus`; use `waiting` or `blocked` as
+soon as either is true, then clear focus and return to `available` when you
+leave. This helps people see attention in real time, but it never claims or
+completes durable work. Routine test failures stay ephemeral. Preserve a
+material blocker with an `assert` resting on your promise, and create a child
+request before undertaking repair work.
+
 > **Client compatibility.** The adapter speaks both MCP eras, so you do
 > not need to know which one your client uses. How it opens decides:
 >

@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -189,6 +190,101 @@ func TestPresenceLeaseExpiresAndForgetsConversations(t *testing.T) {
 	}
 	if _, err := hub.Frames(conversation); err == nil {
 		t.Fatal("expired conversation frames remained available")
+	}
+}
+
+func TestLeasedActivityIsBoundedOwnedAndPropagatesThroughTheCursor(t *testing.T) {
+	hub := newHub(t, 32)
+	announced, err := hub.AnnounceSession("mine", "actor:me", "me", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline := announced.Cursor
+	status := ActivityBlocked
+	focus := []string{"event:z", "event:a", "event:a"}
+	note := "  waiting on review  "
+	changed, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{
+		Status: &status, Focus: &focus, Note: &note,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.Kind != "activity" || changed.Cursor.Position != baseline.Position+1 || changed.Activity == nil {
+		t.Fatalf("activity transition = %+v", changed)
+	}
+	handle := hub.HandleFor("mine")
+	wantFocus := []string{"event:a", "event:z"}
+	got := hub.Snapshot().Activity[handle]
+	if got.Status != ActivityBlocked || got.Note != "waiting on review" || !activityEqual(got, Activity{Status: ActivityBlocked, Focus: wantFocus, Note: "waiting on review"}) {
+		t.Fatalf("normalized activity = %+v", got)
+	}
+	changes, _, err := hub.ChangesSince(baseline)
+	if err != nil || len(changes) != 1 || changes[0].Activity == nil || changes[0].Activity.Status != ActivityBlocked {
+		t.Fatalf("activity was not carried by wait: changes=%+v err=%v", changes, err)
+	}
+
+	// A heartbeat with no activity fields preserves the state and does not
+	// advance the live cursor.
+	renewed, err := hub.AnnounceSession("mine", "actor:me", "me", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renewed.Kind != "renewal" || renewed.Cursor != changed.Cursor || renewed.Activity == nil || !activityEqual(*renewed.Activity, got) || !activityEqual(hub.Snapshot().Activity[handle], got) {
+		t.Fatalf("renewal reset or republished activity: %+v", renewed)
+	}
+
+	// The public handle is not a session credential, and a live private
+	// session cannot be rebound to update another actor's activity.
+	busy := ActivityBusy
+	separate, err := hub.AnnounceSessionActivity(handle, "actor:me", "me", time.Hour, ActivityUpdate{Status: &busy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if separate.ID == handle || hub.HandleFor("mine") != handle || hub.Snapshot().Activity[handle].Status != ActivityBlocked {
+		t.Fatal("a separately announced lease mutated the original private session")
+	}
+	if _, err := hub.AnnounceSessionActivity("mine", "actor:them", "them", time.Hour, ActivityUpdate{Status: &busy}); err == nil {
+		t.Fatal("another actor rebound a live session to update activity")
+	}
+
+	beforeExpiry := hub.Snapshot().Cursor
+	hub.Expire(time.Now().Add(2 * time.Hour))
+	snapshot := hub.Snapshot()
+	if len(snapshot.Presence) != 0 || len(snapshot.Activity) != 0 {
+		t.Fatalf("expired lease retained presence or focus: %+v", snapshot)
+	}
+	expired, _, err := hub.ChangesSince(beforeExpiry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, change := range expired {
+		found = found || change.Kind == "expiration" && change.ID == handle
+	}
+	if !found {
+		t.Fatalf("expiry did not propagate through the live cursor: %+v", expired)
+	}
+}
+
+func TestLeasedActivityRejectsUnboundedOrInvalidInput(t *testing.T) {
+	hub := newHub(t, 8)
+	if _, err := hub.AnnounceSession("mine", "actor:me", "me", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	tooMany := make([]string, MaxFocusEvents+1)
+	for index := range tooMany {
+		tooMany[index] = fmt.Sprintf("event:%d", index)
+	}
+	if _, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Focus: &tooMany}); err == nil {
+		t.Fatal("unbounded focus was accepted")
+	}
+	invalid := ActivityStatus("finished")
+	if _, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Status: &invalid}); err == nil {
+		t.Fatal("unknown status was accepted")
+	}
+	note := strings.Repeat("x", MaxActivityNoteBytes+1)
+	if _, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Note: &note}); err == nil {
+		t.Fatal("unbounded note was accepted")
 	}
 }
 

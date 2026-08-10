@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { AtSign, ClipboardList, MessagesSquare } from "lucide-react";
-import { forYouItems, workSummary, type Workroom } from "../lib/store";
+import { forYouItems, ticketsOf, workSummary, type Selection, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
 import { cn } from "../lib/util";
 import { Avatar } from "./Avatar";
-import { fingerprintOfPresentActor, presentActors } from "../lib/interaction";
+import { fingerprintOfPresentActor, presentActors, toggleActivityFocus } from "../lib/interaction";
 
 export function TopBar({
   workroom,
@@ -15,6 +15,7 @@ export function TopBar({
   onShowActivity,
   onJumpEvent,
   onOpenProfile,
+  selection,
 }: {
   workroom: Workroom;
   session: Session;
@@ -23,9 +24,13 @@ export function TopBar({
   onShowActivity: () => void;
   onJumpEvent: (event: string) => void;
   onOpenProfile: (fingerprint: string) => void;
+  selection?: Selection;
 }) {
   const durable = workroom.status?.durable;
-  const people = presentActors(workroom.status?.live.presence);
+  const people = presentActors(workroom.status?.live.presence, workroom.status?.live.activity);
+  const tickets = ticketsOf(durable?.projection);
+  const selectedEvent = selection?.kind === "event" ? selection.id : undefined;
+  const selectedFocused = Boolean(selectedEvent && session.activity?.focus.includes(selectedEvent));
   const summary = workSummary(durable?.projection);
   const fingerprintOf = (name: string) => workroom.actors.find((a) => a.name === name)?.fingerprint ?? "";
 
@@ -58,6 +63,37 @@ export function TopBar({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+        {session.actor && (
+          <div className="hidden items-center gap-1 md:flex" aria-label="Advisory activity">
+            <select
+              aria-label="Activity status"
+              value={session.activity?.status ?? "available"}
+              onChange={(event) => session.setActivity({ status: event.target.value as import("../lib/api").ActivityStatus })}
+              className="h-7 rounded border border-border bg-background px-1.5 text-[11px] text-muted outline-none focus:border-accent/60"
+            >
+              <option value="available">available</option>
+              <option value="busy">busy</option>
+              <option value="waiting">waiting</option>
+              <option value="blocked">blocked</option>
+            </select>
+            {selectedEvent && (
+              <button
+                type="button"
+                aria-pressed={selectedFocused}
+                title="Advisory focus only; this does not claim or complete work"
+                onClick={() => session.setActivity({ focus: toggleActivityFocus(session.activity.focus, selectedEvent) })}
+                className={cn("h-7 rounded border px-1.5 text-[11px] focus-visible:outline focus-visible:outline-accent", selectedFocused ? "border-accent/60 bg-accent/10 text-accent" : "border-border text-muted")}
+              >
+                {selectedFocused ? "unfocus" : `focus #${tickets.get(selectedEvent) ?? "?"}`}
+              </button>
+            )}
+            {(session.activity?.focus.length ?? 0) > 0 && (
+              <button type="button" onClick={() => session.setActivity({ focus: [] })} className="h-7 rounded px-1 text-[11px] text-faint hover:text-muted focus-visible:outline focus-visible:outline-accent">
+                clear
+              </button>
+            )}
+          </div>
+        )}
         <nav className="flex rounded-md border border-border p-0.5" aria-label="Main view">
           <button
             type="button"
@@ -91,7 +127,7 @@ export function TopBar({
                   <Avatar
                     fingerprint={fingerprint}
                     name={person.name}
-                    title={person.sessions > 1 ? `${person.name} — ${person.sessions} sessions` : person.name}
+                    title={`${person.name} — ${person.status}${person.note ? ` — ${person.note}` : ""}${person.sessions > 1 ? ` — ${person.sessions} sessions` : ""}`}
                     size={24}
                     onClick={() => onOpenProfile(fingerprint)}
                     className="ring-2 ring-background"

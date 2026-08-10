@@ -456,7 +456,11 @@ func tools() []map[string]any {
 	}
 	return []map[string]any{
 		{"name": "whoami", "description": "Show the configured durable actor and ephemeral session.", "inputSchema": object(withRepo(nil))},
-		{"name": "presence", "description": "Show who is present in the amnesiac nexus.", "inputSchema": object(withRepo(nil))},
+		{"name": "presence", "description": "Inspect leased presence, or update this session's advisory activity. Focus does not claim or complete work.", "inputSchema": object(withRepo(map[string]any{
+			"status": map[string]any{"type": "string", "enum": []string{"available", "busy", "waiting", "blocked"}},
+			"focus":  map[string]any{"type": "array", "items": stringField, "maxItems": nexus.MaxFocusEvents},
+			"note":   map[string]any{"type": "string", "maxLength": nexus.MaxActivityNoteBytes},
+		}))},
 		{"name": "status", "description": "Project durable workroom state plus a composite cursor; available_to_you contains open unclaimed requests addressed to this actor.", "inputSchema": object(withRepo(nil))},
 		{"name": "wait", "description": "Long-poll after a composite cursor; current_available_to_you repeats the bounded current unclaimed work addressed to this actor.", "inputSchema": object(withRepo(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
 		{"name": "say", "description": "Publish a signed ephemeral frame, opening a conversation at about when needed.", "inputSchema": object(withRepo(map[string]any{"about": stringField, "text": stringField, "conversation": stringField}), "about", "text")},
@@ -545,7 +549,26 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 	case "whoami":
 		return s.whoami(ctx, current)
 	case "presence":
-		return s.get(ctx, current, "/v0/presence")
+		update := map[string]any{"actor": s.actor, "session": s.session, "ttl_ms": 30000}
+		for _, field := range []string{"status", "focus", "note"} {
+			if value, present := call.Arguments[field]; present {
+				update[field] = value
+			}
+		}
+		own, err := s.post(ctx, current, "/v0/presence", update)
+		if err != nil {
+			return nil, err
+		}
+		value, err := s.get(ctx, current, "/v0/presence")
+		if err != nil {
+			return nil, err
+		}
+		live, ok := value.(map[string]any)
+		if !ok {
+			return nil, errors.New("resident presence response is not an object")
+		}
+		live["own"] = own
+		return live, nil
 	case "status":
 		// The digest is applied on both paths so that losing the resident
 		// service changes what is knowable, not the shape of the answer.

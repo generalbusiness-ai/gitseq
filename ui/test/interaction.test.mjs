@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { hueOf, initialsOf } from "../src/lib/avatar.ts";
-import { RetryKeys, fingerprintOfPresentActor, fingerprintsIdentifySameActor, parsePresenceLabel, presentActors, threadTargetKey } from "../src/lib/interaction.ts";
+import { RetryKeys, fingerprintOfPresentActor, fingerprintsIdentifySameActor, parsePresenceLabel, presentActors, threadTargetKey, toggleActivityFocus } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic } from "../src/lib/memory.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
@@ -62,10 +62,55 @@ test("presence counts people, not the sessions each of them leases", () => {
     "handle:5": "claude (a5d35aa7e479)",
   });
   assert.deepEqual(people, [
-    { label: "claude (a5d35aa7e479)", name: "claude", fingerprint: "a5d35aa7e479", sessions: 3 },
-    { label: "codex (5f12e916d136)", name: "codex", fingerprint: "5f12e916d136", sessions: 1 },
-    { label: "hugh (7fbc80f1ba06)", name: "hugh", fingerprint: "7fbc80f1ba06", sessions: 1 },
+    { label: "claude (a5d35aa7e479)", name: "claude", fingerprint: "a5d35aa7e479", sessions: 3, status: "available", focus: [], note: undefined },
+    { label: "codex (5f12e916d136)", name: "codex", fingerprint: "5f12e916d136", sessions: 1, status: "available", focus: [], note: undefined },
+    { label: "hugh (7fbc80f1ba06)", name: "hugh", fingerprint: "7fbc80f1ba06", sessions: 1, status: "available", focus: [], note: undefined },
   ]);
+});
+
+test("multiple activity leases aggregate deterministically and stay bounded", () => {
+  const presence = {
+    "handle:2": "codex (5f12e916d136)",
+    "handle:1": "codex (5f12e916d136)",
+  };
+  const activity = {
+    "handle:1": { status: "busy", focus: ["event:z", "event:a"], note: "later" },
+    "handle:2": { status: "blocked", focus: ["event:b", "event:a"], note: "earlier" },
+  };
+  assert.deepEqual(presentActors(presence, activity), [{
+    label: "codex (5f12e916d136)", name: "codex", fingerprint: "5f12e916d136", sessions: 2,
+    status: "blocked", focus: ["event:a", "event:b", "event:z"], note: "earlier",
+  }]);
+
+  const many = Object.fromEntries(Array.from({ length: 10 }, (_, index) => [`h${index}`, { status: "available", focus: [`event:${9 - index}`] }]));
+  const labels = Object.fromEntries(Object.keys(many).map((handle) => [handle, "codex (5f12e916d136)"]));
+  assert.deepEqual(presentActors(labels, many)[0].focus, ["event:0", "event:1", "event:2", "event:3", "event:4", "event:5", "event:6", "event:7"]);
+});
+
+test("UI focus selection adds, removes, and stays bounded", () => {
+  assert.deepEqual(toggleActivityFocus(["event:b"], "event:a"), ["event:a", "event:b"]);
+  assert.deepEqual(toggleActivityFocus(["event:a", "event:b"], "event:a"), ["event:b"]);
+  const full = Array.from({ length: 8 }, (_, index) => `event:${index}`);
+  assert.equal(toggleActivityFocus(full, "event:z").length, 8);
+});
+
+test("task and event surfaces wire shared selection to advisory focus", () => {
+  const read = (name) => readFileSync(new URL(`../src/components/${name}`, import.meta.url), "utf8");
+  const work = read("WorkDrawer.tsx");
+  const stream = read("Stream.tsx");
+  const top = read("TopBar.tsx");
+  assert.match(work, /onSelect\(\{ kind: "event", id: event \}\);\s*onOpenThread\(event\)/);
+  assert.match(work, /actor\.focus\.includes\(event\)/);
+  assert.match(stream, /actor\.focus\.includes\(statement\.event\)/);
+  assert.match(top, /toggleActivityFocus\(session\.activity\.focus, selectedEvent\)/);
+  assert.match(top, /setActivity\(\{ focus: \[\] \}\)/);
+});
+
+test("browser heartbeats renew the lease without revalidating activity focus", () => {
+  const session = readFileSync(new URL("../src/lib/session.ts", import.meta.url), "utf8");
+  assert.match(session, /const renew = \(\) =>\s*api\s*\.announce\(effective, id\)/);
+  assert.match(session, /setActivity:[\s\S]*api\.announce\(effective, id, next\)/);
+  assert.doesNotMatch(session, /const renew = \(\) =>[\s\S]*?announce\(effective, id, activityRef\.current\)/);
 });
 
 test("avatar initials read the actor's name, not a decorated label", () => {

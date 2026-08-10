@@ -121,6 +121,7 @@ export default function App() {
         onShowActivity={() => setMainView("activity")}
         onJumpEvent={jumpToEvent}
         onOpenProfile={openProfile}
+        selection={selection}
       />
       <div className="flex min-h-0 flex-1">
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">

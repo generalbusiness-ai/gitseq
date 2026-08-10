@@ -134,6 +134,104 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	}
 }
 
+func TestPresenceActivityUsesTheLeaseAndCompositeWait(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "other", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	post := func(input presenceRequest) *http.Response {
+		t.Helper()
+		body, err := json.Marshal(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return response
+	}
+	response := post(presenceRequest{Actor: "human", Session: "private"})
+	var announced nexus.Change
+	if err := json.NewDecoder(response.Body).Decode(&announced); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+
+	response, err = http.Get(httpServer.URL + "/v0/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var before Status
+	if err := json.NewDecoder(response.Body).Decode(&before); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	event := before.Durable.Projection.Decisions[0].Event
+	blocked := nexus.ActivityBlocked
+	focus := []string{event, event}
+	note := "reviewing"
+	response = post(presenceRequest{Actor: "human", Session: "private", Status: &blocked, Focus: &focus, Note: &note})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("activity update returned %d", response.StatusCode)
+	}
+	response.Body.Close()
+
+	waitBody, _ := json.Marshal(WaitRequest{Cursor: before.Cursor, TimeoutMS: 100})
+	response, err = http.Post(httpServer.URL+"/v0/wait", "application/json", bytes.NewReader(waitBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var waited WaitResponse
+	if err := json.NewDecoder(response.Body).Decode(&waited); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	activity := waited.Status.Live.Activity[announced.ID]
+	if len(waited.LiveChanges) != 1 || waited.LiveChanges[0].Kind != "activity" || activity.Status != nexus.ActivityBlocked || len(activity.Focus) != 1 || activity.Focus[0] != event {
+		t.Fatalf("composite wait lost activity: %+v", waited)
+	}
+
+	// The private session remains bound to its first actor, and the opaque
+	// public handle cannot be used as a substitute credential.
+	response = post(presenceRequest{Actor: "other", Session: "private", Status: &blocked})
+	if response.StatusCode < 400 {
+		t.Fatal("another actor updated the live session")
+	}
+	response.Body.Close()
+	response = post(presenceRequest{Actor: "human", Session: announced.ID, Status: &blocked})
+	var separate nexus.Change
+	if err := json.NewDecoder(response.Body).Decode(&separate); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if separate.ID == announced.ID || server.hub.HandleFor("private") != announced.ID {
+		t.Fatal("a separately announced lease mutated the original private session")
+	}
+
+	unknown := []string{"git:sha1:elsewhere#git:sha1:deadbeef"}
+	response = post(presenceRequest{Actor: "human", Session: "private", Focus: &unknown})
+	if response.StatusCode < 400 {
+		t.Fatal("cross-room focus was accepted")
+	}
+	response.Body.Close()
+}
+
 func TestGraphEndpointDisclosesItsNewestEightyWindow(t *testing.T) {
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")

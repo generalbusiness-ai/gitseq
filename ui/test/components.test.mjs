@@ -29,7 +29,7 @@ function workroom(presence, suppliedProjection) {
     localOffline: false,
     status: {
       durable: { genesis: "genesis", head: "head", depth: 1, projection },
-      live: { cursor: { generation: "generation", position: 1 }, presence, conversations: [] },
+      live: { cursor: { generation: "generation", position: 1 }, presence, activity: {}, conversations: [] },
       cursor: { frontier: [], live: { generation: "generation", position: 1 } },
     },
   };
@@ -110,10 +110,26 @@ test("identity and personal Work state stay honest at rendered component boundar
       commitments: [{ request: "request", requester: "codex-fingerprint", addressed_to: "codex-fingerprint", status: "open" }],
       provenance: { request: [], change: ["request"] },
     };
+    personalRoom.status.live.presence = { "handle:codex": "codex (codex-finger)" };
+    personalRoom.status.live.activity = { "handle:codex": { status: "blocked", focus: ["request"], note: "waiting on review" } };
+    const activeSession = { ...session, actor: "codex", activity: { status: "blocked", focus: ["request"] }, setActivity() {} };
+    const activeTopBar = renderToStaticMarkup(
+      React.createElement(TopBar, {
+        workroom: personalRoom,
+        session: activeSession,
+        selection: { kind: "event", id: "request" },
+        mainView: "work",
+        onShowWork() {}, onShowActivity() {}, onJumpEvent() {}, onOpenProfile() {},
+      }),
+    );
+    assert.match(activeTopBar, /aria-label="Activity status"/);
+    assert.match(activeTopBar, /aria-pressed="true"[^>]*>unfocus</);
+    assert.match(activeTopBar, />clear<\/button>/);
+    assert.match(activeTopBar, /codex — blocked — waiting on review/);
     const markup = renderToStaticMarkup(
       React.createElement(WorkView, {
         workroom: personalRoom,
-        session: { ...session, actor: "codex" },
+        session: activeSession,
         highlight: { events: new Set(), commits: new Set() },
         onSelect() {},
         onOpenThread() {},
@@ -127,6 +143,8 @@ test("identity and personal Work state stay honest at rendered component boundar
     assert.match(markup, /Needs my action comes only from unresolved durable responsibility/);
     assert.match(markup, /aria-label="follow topic"/);
     assert.match(markup, /Changed since viewed by claude, status open/);
+    assert.match(markup, /Focused here: codex \(blocked\)/);
+    assert.match(markup, /codex · blocked/);
 
     const multiRoom = workroom({});
     multiRoom.actors = personalRoom.actors;

@@ -18,6 +18,7 @@ import (
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -676,6 +677,76 @@ func TestWhoamiDoesNotAttendBeforeOrdinaryTool(t *testing.T) {
 	}
 	if got := len(server.attended()); got != 1 {
 		t.Fatalf("ordinary tool attended %d rooms, want 1", got)
+	}
+}
+
+func TestPresenceToolUpdatesOnlyItsOwnBoundedLease(t *testing.T) {
+	workspace := initRepository(t, "repo")
+	if _, _, err := workspace.AddActor(context.Background(), "human", "other", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	workroomServer, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(workroomServer.Handler())
+	defer httpServer.Close()
+	if _, err := workspace.PublishResident(httpServer.URL); err != nil {
+		t.Fatal(err)
+	}
+	server := newServer("human", workspace.Repo)
+	snapshot, err := workspace.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := snapshot.Projection.Decisions[0].Event
+	value, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: map[string]any{
+		"status": "blocked", "focus": []any{event}, "note": "waiting on review",
+		// These are not tool fields and must not override adapter custody.
+		"actor": "other", "session": "forged",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	returned := value.(map[string]any)
+	var own nexus.Change
+	if err := remarshal(returned["own"], &own); err != nil {
+		t.Fatal(err)
+	}
+	if own.Activity == nil || own.Activity.Status != nexus.ActivityBlocked {
+		t.Fatalf("presence did not identify its own updated lease: %+v", own)
+	}
+	var live nexus.Snapshot
+	if err := remarshal(value, &live); err != nil {
+		t.Fatal(err)
+	}
+	if len(live.Presence) != 1 || len(live.Activity) != 1 {
+		t.Fatalf("presence update announced another identity: %+v", live)
+	}
+	for handle, label := range live.Presence {
+		activity := live.Activity[handle]
+		if !strings.HasPrefix(label, "human (") || activity.Status != nexus.ActivityBlocked || len(activity.Focus) != 1 || activity.Focus[0] != event {
+			t.Fatalf("presence tool did not update its own lease: label=%q activity=%+v", label, activity)
+		}
+	}
+	inspected, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var renewed nexus.Change
+	if err := remarshal(inspected.(map[string]any)["own"], &renewed); err != nil {
+		t.Fatal(err)
+	}
+	if renewed.Kind != "renewal" || renewed.ID != own.ID || renewed.Cursor != own.Cursor || renewed.Activity == nil || renewed.Activity.Status != nexus.ActivityBlocked {
+		t.Fatalf("presence could not inspect its own preserved lease: %+v", renewed)
+	}
+
+	tooMany := make([]any, nexus.MaxFocusEvents+1)
+	for index := range tooMany {
+		tooMany[index] = event
+	}
+	if _, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: map[string]any{"focus": tooMany}}); err == nil {
+		t.Fatal("presence tool accepted unbounded focus")
 	}
 }
 
