@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d7de6e7b3d5f16ef746584e9bccd8aea02a3901f"}
+{"kind":"artifact","text":"Repaired Link-to-draft implementation at exact head 4ae005f557e51e8c2f85f0e37889f7f9bfa29e0a. The rendered test now exercises ThreadPane's actual Temporary-to-Kept effect, proves durable submission, forces failure and proves exact linked bases survive, and verifies route cancellation clears linked state. Embedded UI rebuilt.","body":{"commit":"4ae005f557e51e8c2f85f0e37889f7f9bfa29e0a","path":"request/ui-link-to-draft"}}
