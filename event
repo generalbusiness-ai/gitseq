@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c15aa7b411fcc0772ea609d04ef0e3322e3943f9"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c15aa7b411fcc0772ea609d04ef0e3322e3943f9","text":"Retire the premature recovery-umbrella completion report. The queue refresh showed that the complete recovered candidate still has a sound, unaddressed changes-requested finding: it must be carried onto current main, its generated UI reconciled, gated, and independently re-reviewed before the umbrella is complete."}
