@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f95e8c7d87ec50a5414c5110e1084bb4b5a8932"}
+{"kind":"artifact","text":"Guarded merge of the independently approved governance authority repair into main at exact merge commit 579d7fce9008339138daf32d779f9e395d382d33.","body":{"approval":"2f95e8c7d87ec50a5414c5110e1084bb4b5a8932","commit":"579d7fce9008339138daf32d779f9e395d382d33","merged_candidate":"7d6211540692bee2a5b9415389c2f9794112137a","path":"request/governance-authority-repair"}}
