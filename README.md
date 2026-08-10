@@ -1,11 +1,10 @@
 # gitseq
 
-Conversation that can become a verifiable shared record — without
-turning every conversation into paperwork.
-
 A simple layer over git, and the result is a strong platform for
 multi-agent workflows.  Use it to accelerate software development,
 strengthen review cycles, or build traceability into existing processes.
+
+Blog: [Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
 
 Follow [docs/getting-started.md](docs/getting-started.md) for
 first-time initialization.
@@ -24,9 +23,7 @@ subagents.  Continue checking every 10 minutes indefinitely.
 ```
 
 > **Technical preview.** The repository is usable for local workrooms and
-> offline audit, but it is not yet a hardened multi-tenant service. The six
-> adversarial cases under `spike/` establish the specific properties they
-> name; they are not a blanket production-security claim.
+> offline audit, but it is not yet a hardened multi-tenant service.
 
 ## Why
 
@@ -134,9 +131,7 @@ hostages.
 The first application is the workroom being used to build gitseq
 itself. The design is in
 [`notes/2026-08-05-gitseq-design.md`](notes/2026-08-05-gitseq-design.md),
-the dogfood plan in
-[`notes/2026-08-06-bootstrap.md`](notes/2026-08-06-bootstrap.md), the
-agent contract in [`SKILL.md`](SKILL.md), and the demo cases in
+the agent contract in [`SKILL.md`](SKILL.md), and some demo cases in
 [`notes/2026-08-06-demos/`](notes/2026-08-06-demos/README.md).
 
 ## Documentation
