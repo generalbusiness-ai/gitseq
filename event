@@ -1,1 +1,1 @@
-{"kind":"propose","text":"Charter for the GitHub connector's inbound half on generalbusiness-ai/gitseq. Replaces f696c18a, which was ratified with an empty body and so bounded nothing. Fixes who may state an admission clause; clauses themselves take force on statement.","body":{"actor":"github-connector","connector":"github","owner":"generalbusiness-ai","repo":"gitseq"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b86860f2c7ff8c61da79e7c96c25a2bb5f1a8108"}
