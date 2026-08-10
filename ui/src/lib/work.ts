@@ -1,6 +1,9 @@
 import type { Commitment, Projection, Statement } from "./api.ts";
 
-export const OPEN_WORK_STATUSES = ["open", "promised", "reported"] as const;
+// This is the same lifecycle matrix as statusview's global actionable lane.
+// "Open" is only one leaf status; the umbrella also contains promised work
+// in progress and reported work awaiting review.
+export const ACTIVE_WORK_STATUSES = ["open", "promised", "reported"] as const;
 export const CLOSED_WORK_STATUSES = ["satisfied", "withdrawn", "cancelled", "reneged"] as const;
 export const ATTENTION_WORK_STATUSES = ["stale", "disputed"] as const;
 
@@ -11,7 +14,7 @@ export interface WorkItem {
   commitment: Commitment;
   request: Statement;
   topicEvent: string;
-  open: boolean;
+  active: boolean;
   attention: boolean;
   closed: boolean;
   lane?: WorkLane;
@@ -24,7 +27,7 @@ export interface WorkTopic {
   author: string;
   title: string;
   items: WorkItem[];
-  openCount: number;
+  activeCount: number;
   attentionCount: number;
   closedCount: number;
   latestActor: string;
@@ -67,7 +70,7 @@ export interface WorkAttentionItem {
 }
 
 export interface WorkFilters {
-  open: boolean;
+  active: boolean;
   attention: boolean;
   closed: boolean;
   author?: string;
@@ -78,8 +81,8 @@ export type PersonalWorkView = "all" | "needs" | "unread" | "following";
 
 const includes = (values: readonly string[], value: string) => values.includes(value);
 
-export function workItemState(commitment: Commitment): Pick<WorkItem, "open" | "attention" | "closed" | "lane"> {
-  const open = includes(OPEN_WORK_STATUSES, commitment.status);
+export function workItemState(commitment: Commitment): Pick<WorkItem, "active" | "attention" | "closed" | "lane"> {
+  const active = includes(ACTIVE_WORK_STATUSES, commitment.status);
   const closed = includes(CLOSED_WORK_STATUSES, commitment.status);
   // Staleness is a qualifier in the intended projection. Accept the current
   // status-only shape as well, so the Work view remains honest while the fold
@@ -98,7 +101,14 @@ export function workItemState(commitment: Commitment): Pick<WorkItem, "open" | "
           : closed
             ? "closed"
             : undefined;
-  return { open, attention, closed, lane };
+  return { active, attention, closed, lane };
+}
+
+// Count directly from the durable projection so the global UI total remains
+// exactly statusview actionable, including commitments whose request text is
+// unavailable to the topic renderer. It is intentionally not actor-scoped.
+export function workActiveCount(projection?: Projection): number {
+  return projection?.commitments.filter((commitment) => includes(ACTIVE_WORK_STATUSES, commitment.status)).length ?? 0;
 }
 
 export function buildWorkProjection(projection: Projection): WorkProjection {
@@ -194,7 +204,7 @@ export function buildWorkProjection(projection: Projection): WorkProjection {
       author: root.actor,
       title: topicTitle(root.text),
       items,
-      openCount: items.filter((item) => item.open).length,
+      activeCount: items.filter((item) => item.active).length,
       attentionCount: items.filter((item) => item.attention).length,
       closedCount: items.filter((item) => item.closed).length,
       latestActor: activity.actor,
@@ -213,17 +223,25 @@ export function buildWorkProjection(projection: Projection): WorkProjection {
   };
 }
 
-const terminal = new Set<string>(CLOSED_WORK_STATUSES);
-
 // Personal action is not an unread signal and cannot be dismissed. It is
 // recomputed from the unresolved request/promise/report relationship every
 // time the durable projection changes.
 export function workItemNeedsAction(item: WorkItem, me: string | undefined): boolean {
-  if (!me || terminal.has(item.commitment.status)) return false;
+  if (!me) return false;
   const commitment = item.commitment;
-  if (commitment.report) return commitment.requester === me;
-  if (commitment.promise) return commitment.performer === me;
-  return (commitment.addressed_to ?? item.request.body?.to) === me;
+  switch (commitment.status) {
+    case "reported":
+      return commitment.requester === me;
+    case "promised":
+      return commitment.performer === me;
+    case "open":
+      return (commitment.addressed_to ?? item.request.body?.to) === me;
+    default:
+      // Lifecycle stale and every terminal state are attention/history, not
+      // an actionable responsibility. A reported commitment with stale=true
+      // still enters the reported case above because staleness is a qualifier.
+      return false;
+  }
 }
 
 export function topicChangeSince(
@@ -254,7 +272,7 @@ export function filterPersonalWorkProjection(
     return [{
       ...topic,
       items,
-      openCount: items.filter((item) => item.open).length,
+      activeCount: items.filter((item) => item.active).length,
       attentionCount: items.filter((item) => item.attention).length,
       closedCount: items.filter((item) => item.closed).length,
     }];
@@ -269,14 +287,14 @@ export function filterWorkProjection(work: WorkProjection, filters: WorkFilters)
     if (query && !topic.searchText.includes(query)) return [];
     const items = topic.items.filter(
       (item) =>
-        (filters.open && item.open) ||
+        (filters.active && item.active) ||
         (filters.attention && item.attention) ||
         (filters.closed && item.closed),
     );
     return items.length > 0 ? [{
       ...topic,
       items,
-      openCount: items.filter((item) => item.open).length,
+      activeCount: items.filter((item) => item.active).length,
       attentionCount: items.filter((item) => item.attention).length,
       closedCount: items.filter((item) => item.closed).length,
     }] : [];

@@ -189,7 +189,7 @@ test("identity and personal Work state stay honest at rendered component boundar
     assert.match(markup, /Unread<span[^>]*>1<\/span>/);
     assert.match(markup, /Following<span[^>]*>0<\/span>/);
     assert.match(markup, /private to this browser and actor; they do not sync across devices/);
-    assert.match(markup, /Needs my action comes only from unresolved durable responsibility/);
+    assert.match(markup, /Needs my action comes only from active durable responsibility: lifecycle-stale rows are excluded, while stale-qualified reports still wait on their requester/);
     assert.match(markup, /aria-label="follow topic"/);
     assert.match(markup, /Changed since viewed by claude, status open/);
     assert.match(markup, /Focused here: codex \(blocked\)/);
@@ -354,6 +354,74 @@ test("Vocabulary copy distinguishes an unbound room from an uninterpretable fold
     assert.match(uninterpretable, /definitions this reader established before that transition; declared kinds remain declared/);
     assert.match(uninterpretable, /finding[\s\S]*note · declared/);
     assert.doesNotMatch(uninterpretable, /starter kinds only|no declared vocabulary extends it yet/);
+  } finally {
+    await vite.close();
+  }
+});
+
+test("Work renders global Active scope apart from personal actionable responsibility", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const { WorkView } = await vite.ssrLoadModule("/src/components/WorkDrawer.tsx");
+    const commitments = [
+      { request: "open-mine", requester: "hugh-fingerprint", addressed_to: "codex-fingerprint", status: "open" },
+      { request: "open-theirs", requester: "hugh-fingerprint", addressed_to: "claude-fingerprint", status: "open" },
+      { request: "promised-mine", requester: "hugh-fingerprint", performer: "codex-fingerprint", promise: "promise-mine", status: "promised" },
+      { request: "reported-stale-mine", requester: "codex-fingerprint", performer: "claude-fingerprint", promise: "promise-review", report: "report-review", status: "reported", stale: true },
+      { request: "lifecycle-stale", requester: "hugh-fingerprint", addressed_to: "codex-fingerprint", status: "stale", stale: true },
+      { request: "satisfied", requester: "codex-fingerprint", performer: "claude-fingerprint", promise: "promise-done", report: "report-done", status: "satisfied" },
+    ];
+    const text = {
+      "open-mine": "Open mine",
+      "open-theirs": "Open theirs",
+      "promised-mine": "Promised mine",
+      "reported-stale-mine": "Reported stale mine",
+      "lifecycle-stale": "Lifecycle stale",
+      satisfied: "Satisfied clean",
+    };
+    const projection = {
+      decisions: commitments.map(({ request }) => ({ event: request, verdict: "effective", reason: "ok" })),
+      acts: [], artifacts: [], actors: {},
+      statements: commitments.map(({ request }, index) => ({
+        event: request,
+        actor: "hugh-fingerprint",
+        kind: "request",
+        text: text[request],
+        body: { to: commitments[index].addressed_to ?? "codex-fingerprint" },
+        timestamp: 100 + index,
+      })),
+      commitments,
+      provenance: Object.fromEntries(commitments.map(({ request }) => [request, []])),
+    };
+    const room = workroom({}, projection);
+    room.actors = [
+      { name: "codex", fingerprint: "codex-fingerprint", roles: [], custody: true },
+      { name: "claude", fingerprint: "claude-fingerprint", roles: [], custody: true },
+      { name: "hugh", fingerprint: "hugh-fingerprint", roles: [], custody: true },
+    ];
+    const render = (initialPersonalView = "all") => renderToStaticMarkup(React.createElement(WorkView, {
+      workroom: room,
+      session: { ...session, actor: "codex" },
+      highlight: { events: new Set(), commits: new Set() },
+      initialPersonalView,
+      onSelect() {},
+      onOpenThread() {},
+    }));
+
+    const all = render();
+    assert.match(all, /Active<span[^>]*>4<\/span>/);
+    assert.match(all, /aria-label="Active\. All actors: available \(open\), in progress \(promised\), and review \(reported\)\."/);
+    assert.match(all, /Active covers every actor&#x27;s available \(open\), in-progress \(promised\), and review \(reported\) work/);
+    assert.match(all, /Needs my action<span[^>]*>3<\/span>/);
+
+    const needs = render("needs");
+    for (const visible of ["Open mine", "Promised mine", "Reported stale mine"]) assert.match(needs, new RegExp(`>${visible}<`));
+    for (const hidden of ["Open theirs", "Lifecycle stale", "Satisfied clean"]) assert.doesNotMatch(needs, new RegExp(`>${hidden}<`));
   } finally {
     await vite.close();
   }

@@ -9,6 +9,7 @@ import {
   filterPersonalWorkProjection,
   filterWorkProjection,
   topicChangeSince,
+  workActiveCount,
   workItemNeedsAction,
   type WorkFilters,
   type WorkAttentionItem,
@@ -52,7 +53,7 @@ export function WorkView({
   const projection = workroom.status?.durable.projection;
   const vocabulary = workroom.status?.durable.vocabulary;
   const [presentation, setPresentation] = useState<Presentation>(initialPresentation);
-  const [filters, setFilters] = useState<WorkFilters>({ open: true, attention: true, closed: false });
+  const [filters, setFilters] = useState<WorkFilters>({ active: true, attention: true, closed: false });
   const [personalView, setPersonalView] = useState<PersonalWorkView>(initialPersonalView);
   const work = useMemo(() => (projection ? buildWorkProjection(projection) : undefined), [projection]);
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
@@ -121,7 +122,7 @@ export function WorkView({
   const toggleFollowing = (topic: WorkTopic) =>
     remember((current) => followWorkTopic(current, topic.event, !current.followed.includes(topic.event), topic.latestOrder));
 
-  const updateFlag = (key: "open" | "attention" | "closed", value: boolean) =>
+  const updateFlag = (key: "active" | "attention" | "closed", value: boolean) =>
     setFilters((current) => ({ ...current, [key]: value }));
   const setAuthor = (author?: string) => setFilters((current) => ({ ...current, author }));
 
@@ -142,7 +143,13 @@ export function WorkView({
           </div>
           <fieldset className="flex items-center gap-1.5" aria-label="Lifecycle filters">
             <legend className="sr-only">Lifecycle filters</legend>
-            <FilterCheck label="Open" checked={filters.open} count={work?.topics.reduce((sum, topic) => sum + topic.openCount, 0)} onChange={(value) => updateFlag("open", value)} />
+            <FilterCheck
+              label="Active"
+              description="All actors: available (open), in progress (promised), and review (reported)."
+              checked={filters.active}
+              count={workActiveCount(projection)}
+              onChange={(value) => updateFlag("active", value)}
+            />
             <FilterCheck label="Attention" checked={filters.attention} count={(work?.topics.reduce((sum, topic) => sum + topic.attentionCount, 0) ?? 0) + (work?.attention.length ?? 0)} tone="danger" onChange={(value) => updateFlag("attention", value)} />
             <FilterCheck label="Closed" checked={filters.closed} count={work?.topics.reduce((sum, topic) => sum + topic.closedCount, 0)} onChange={(value) => updateFlag("closed", value)} />
           </fieldset>
@@ -186,7 +193,7 @@ export function WorkView({
           {personalView !== "all" ? ` · ${personalView === "needs" ? "needs my action" : personalView}` : ""}
         </p>
         <p className="mx-auto mt-1 max-w-7xl text-[10px] text-faint">
-          Read positions and follows are private to this browser and actor; they do not sync across devices. Needs my action comes only from unresolved durable responsibility.
+          Active covers every actor's available (open), in-progress (promised), and review (reported) work. Read positions and follows are private to this browser and actor; they do not sync across devices. Needs my action comes only from active durable responsibility: lifecycle-stale rows are excluded, while stale-qualified reports still wait on their requester.
         </p>
       </div>
 
@@ -204,7 +211,7 @@ export function WorkView({
             {visible.topics.length > 0 && (presentation === "list" ? (
               <TopicList topics={visible.topics} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} focusedActors={focusedActors} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
             ) : (
-              <WorkBoard topics={visible.topics} filters={personalView === "all" ? filters : { open: true, attention: true, closed: true }} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} focusedActors={focusedActors} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
+              <WorkBoard topics={visible.topics} filters={personalView === "all" ? filters : { active: true, attention: true, closed: true }} projection={projection} tickets={tickets} commits={workroom.commits} worktrees={workroom.worktrees ?? []} nameOf={nameOf} canPersonalize={Boolean(me)} followed={followed} changes={changes} focusedActors={focusedActors} onToggleFollowing={toggleFollowing} onOpenWorkItem={openWorkItem} />
             ))}
           </>
         )}
@@ -367,10 +374,10 @@ function TopicList(props: WorkRenderProps & { topics: WorkTopic[] }) {
 
 function WorkBoard({ topics, filters, ...props }: WorkRenderProps & { topics: WorkTopic[]; filters: WorkFilters }) {
   const cards = topics.flatMap((topic) => topic.items.map((item) => ({ item, topic })));
-  const laneEnabled = (lane?: WorkLane) => lane === "closed" ? filters.closed : Boolean(lane && filters.open);
+  const laneEnabled = (lane?: WorkLane) => lane === "closed" ? filters.closed : Boolean(lane && filters.active);
   const attentionOnly = cards.filter(({ item }) => item.attention && !laneEnabled(item.lane));
   const lanes: { id: WorkLane; title: string }[] = [
-    ...(filters.open ? [
+    ...(filters.active ? [
       { id: "available" as const, title: "Available" },
       { id: "inProgress" as const, title: "In progress" },
       { id: "review" as const, title: "Review" },
@@ -520,16 +527,16 @@ function TopicCounts({ topic }: { topic: WorkTopic }) {
   return (
     <span className="flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wide">
       {topic.attentionCount > 0 && <span className="rounded border border-danger/40 px-1.5 py-0.5 text-danger">{topic.attentionCount} attention</span>}
-      {topic.openCount > 0 && <span className="rounded border border-info/35 px-1.5 py-0.5 text-info">{topic.openCount} open</span>}
+      {topic.activeCount > 0 && <span className="rounded border border-info/35 px-1.5 py-0.5 text-info">{topic.activeCount} active</span>}
       {topic.closedCount > 0 && <span className="rounded border border-border px-1.5 py-0.5 text-faint">{topic.closedCount} closed</span>}
     </span>
   );
 }
 
-function FilterCheck({ label, checked, count, tone, onChange }: { label: string; checked: boolean; count?: number; tone?: "danger"; onChange: (checked: boolean) => void }) {
+function FilterCheck({ label, description, checked, count, tone, onChange }: { label: string; description?: string; checked: boolean; count?: number; tone?: "danger"; onChange: (checked: boolean) => void }) {
   return (
-    <label className={cn("flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs", checked ? "border-accent/50 bg-accent/10 text-foreground" : "border-border text-faint hover:text-muted", tone === "danger" && checked && "border-danger/50 bg-danger/10")}>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-3.5 w-3.5 accent-[var(--color-accent)]" />
+    <label title={description} className={cn("flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs", checked ? "border-accent/50 bg-accent/10 text-foreground" : "border-border text-faint hover:text-muted", tone === "danger" && checked && "border-danger/50 bg-danger/10")}>
+      <input type="checkbox" aria-label={description ? `${label}. ${description}` : label} checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-3.5 w-3.5 accent-[var(--color-accent)]" />
       {label}<span className={cn("font-mono text-[10px]", tone === "danger" && (count ?? 0) > 0 && "text-danger")}>{count ?? 0}</span>
     </label>
   );

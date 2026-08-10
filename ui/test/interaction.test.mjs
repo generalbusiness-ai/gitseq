@@ -9,7 +9,7 @@ import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, saveP
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
-import { CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
+import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
 import { belongsInRoom, commitmentRelationship, interpretationNotice, isInterpretationGap, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
@@ -423,30 +423,30 @@ test("Work groups by conversational ancestry without treating later citations as
   assert.equal(work.topics.find((topic) => topic.event === "r3").items.length, 2);
   assert.equal(work.topics.some((topic) => topic.event === "r4"), false);
 
-  const defaults = filterWorkProjection(work, { open: true, attention: true, closed: false });
+  const defaults = filterWorkProjection(work, { active: true, attention: true, closed: false });
   assert.equal(defaults.topics.some((topic) => topic.event === "r5"), false);
-  assert.deepEqual(filterWorkProjection(work, { open: true, attention: true, closed: false, author: "hugh" }).topics.map((topic) => topic.event), ["r1"]);
-  assert.deepEqual(filterWorkProjection(work, { open: true, attention: true, closed: false, query: "deploy-readiness" }).topics.map((topic) => topic.event), ["r1"]);
-  assert.equal(filterWorkProjection(work, { open: true, attention: true, closed: true, query: "deployment" }).topics[0].event, "r1");
-  assert.deepEqual(filterWorkProjection(work, { open: true, attention: true, closed: false, query: "notes/deploy.md" }).topics.map((topic) => topic.event), ["r1"]);
-  assert.deepEqual(filterWorkProjection(work, { open: false, attention: false, closed: true }).topics.map((topic) => topic.event), ["r5"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, author: "hugh" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "deploy-readiness" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: true, query: "deployment" }).topics[0].event, "r1");
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "notes/deploy.md" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: false, attention: false, closed: true }).topics.map((topic) => topic.event), ["r5"]);
 });
 
 test("attention qualifies rather than replaces a lifecycle lane", () => {
   assert.deepEqual(workItemState({ request: "r", requester: "hugh", performer: "codex", status: "reported", stale: true }), {
-    open: true,
+    active: true,
     attention: true,
     closed: false,
     lane: "review",
   });
   assert.deepEqual(workItemState({ request: "r", requester: "hugh", status: "withdrawn" }), {
-    open: false,
+    active: false,
     attention: false,
     closed: true,
     lane: "closed",
   });
   assert.deepEqual(workItemState({ request: "r", requester: "hugh", performer: "codex", report: "done", status: "satisfied", stale: true }), {
-    open: false,
+    active: false,
     attention: true,
     closed: true,
     lane: "closed",
@@ -456,12 +456,22 @@ test("attention qualifies rather than replaces a lifecycle lane", () => {
 test("Needs my action follows unresolved semantic responsibility, never a read watermark", () => {
   const item = (commitment) => ({ commitment, request: { event: commitment.request }, key: commitment.request, topicEvent: "topic", order: 1 });
   assert.equal(workItemNeedsAction(item({ request: "offered", requester: "human", addressed_to: "codex", status: "open" }), "codex"), true);
-  assert.equal(workItemNeedsAction({ ...item({ request: "stale-offer", requester: "human", status: "stale" }), request: { event: "stale-offer", body: { to: "codex" } } }, "codex"), true);
+  assert.equal(workItemNeedsAction({ ...item({ request: "stale-offer", requester: "human", status: "stale" }), request: { event: "stale-offer", body: { to: "codex" } } }, "codex"), false);
   assert.equal(workItemNeedsAction(item({ request: "unclaimed", requester: "human", addressed_to: "claude", status: "open" }), "codex"), false);
   assert.equal(workItemNeedsAction(item({ request: "building", requester: "human", performer: "codex", promise: "promise", status: "promised" }), "codex"), true);
   assert.equal(workItemNeedsAction(item({ request: "review", requester: "codex", performer: "claude", promise: "promise", report: "report", status: "reported" }), "codex"), true);
   assert.equal(workItemNeedsAction(item({ request: "done", requester: "codex", performer: "claude", promise: "promise", report: "report", status: "satisfied" }), "codex"), false);
   assert.equal(workItemNeedsAction(item({ request: "repair", requester: "codex", performer: "claude", promise: "promise", report: "report", status: "reported", stale: true }), "codex"), true);
+});
+
+test("Active and Needs my action share the consolidated lifecycle matrix without sharing actor scope", () => {
+  const statuses = ["open", "promised", "reported", "stale", "satisfied", "withdrawn", "cancelled", "reneged"];
+  assert.deepEqual([...ACTIVE_WORK_STATUSES], ["open", "promised", "reported"]);
+  const projection = {
+    commitments: statuses.map((status) => ({ request: status, requester: "codex", status })),
+  };
+  assert.equal(workActiveCount(projection), 3);
+  assert.deepEqual(statuses.map((status) => workItemState({ request: status, requester: "codex", status }).active), [true, true, true, false, false, false, false, false]);
 });
 
 test("authored and followed topics expose only other people's changes after their watermark", () => {
@@ -486,9 +496,9 @@ test("authored and followed topics expose only other people's changes after thei
 });
 
 test("personal Work filters select responsibility, unread topics, and explicit follows without rewriting lifecycle truth", () => {
-  const actionable = { key: "a", request: { event: "a" }, commitment: { request: "a", requester: "human", addressed_to: "codex", status: "open" }, open: true, attention: false, closed: false, lane: "available", order: 1 };
-  const theirs = { key: "b", request: { event: "b" }, commitment: { request: "b", requester: "human", addressed_to: "claude", status: "open" }, open: true, attention: false, closed: false, lane: "available", order: 2 };
-  const topic = (event, author, items, activity) => ({ event, author, items, activity, latestOrder: 2, openCount: items.length, attentionCount: 0, closedCount: 0 });
+  const actionable = { key: "a", request: { event: "a" }, commitment: { request: "a", requester: "human", addressed_to: "codex", status: "open" }, active: true, attention: false, closed: false, lane: "available", order: 1 };
+  const theirs = { key: "b", request: { event: "b" }, commitment: { request: "b", requester: "human", addressed_to: "claude", status: "open" }, active: true, attention: false, closed: false, lane: "available", order: 2 };
+  const topic = (event, author, items, activity) => ({ event, author, items, activity, latestOrder: 2, activeCount: items.length, attentionCount: 0, closedCount: 0 });
   const work = {
     authors: ["codex", "claude"], attention: [],
     topics: [
@@ -575,9 +585,9 @@ test("Work accounts for qualifier attention, stale artifacts, and unlinked promi
   const work = buildWorkProjection(projection);
   assert.equal(workAttentionCount(projection), 3);
   assert.deepEqual(work.attention.map((item) => item.kind), ["artifact", "unlinked-promise"]);
-  assert.equal(filterWorkProjection(work, { open: true, attention: true, closed: false }).attention.length, 2);
-  assert.equal(filterWorkProjection(work, { open: true, attention: false, closed: false }).attention.length, 0);
-  assert.equal(filterWorkProjection(work, { open: true, attention: true, closed: false, author: "hugh" }).attention.length, 0);
+  assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: false }).attention.length, 2);
+  assert.equal(filterWorkProjection(work, { active: true, attention: false, closed: false }).attention.length, 0);
+  assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: false, author: "hugh" }).attention.length, 0);
 });
 
 test("local worktrees join current promise, docs report, and exact commit-trailer shapes", () => {
@@ -776,7 +786,7 @@ test("Work is the default center and List and Board share one projection", () =>
   assert.match(app, /useState<MainView>\("work"\)/);
   assert.match(app, /mainView === "work"/);
   assert.match(work, /buildWorkProjection/);
-  assert.match(work, /open: true, attention: true, closed: false/);
+  assert.match(work, /active: true, attention: true, closed: false/);
   assert.match(work, /presentation === "list"/);
   assert.match(work, /<WorkBoard/);
   assert.match(work, /Other attention/);
