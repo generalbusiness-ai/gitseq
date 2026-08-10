@@ -1,6 +1,7 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -187,4 +188,65 @@ func (c *Client) httpClient() *http.Client {
 		return http.DefaultClient
 	}
 	return c.HTTP
+}
+
+// Open asks GitHub to open a pull request and reports what it created.
+//
+// This is the one place the connector writes something discrete rather than
+// rendering a surface it owns, which is why it is a command in the work loop
+// rather than a projection: a pull request cannot be idempotently overwritten,
+// and a second call makes a second one. The caller is expected to have promised
+// this and to report the delivery as evidence, so a failure to deliver shows up
+// as an unkept promise rather than a line in a log nobody reads.
+func (c *Client) Open(ctx context.Context, request PullRequest) (Delivery, error) {
+	endpoint := fmt.Sprintf("%s/repos/%s/%s/pulls", strings.TrimRight(c.baseURL(), "/"),
+		url.PathEscape(request.Owner), url.PathEscape(request.Repo))
+	encoded, err := json.Marshal(map[string]string{
+		"title": request.Title, "head": request.Head, "base": request.Base, "body": request.Body,
+	})
+	if err != nil {
+		return Delivery{}, err
+	}
+	body, status, err := c.post(ctx, endpoint, encoded)
+	if err != nil {
+		return Delivery{}, err
+	}
+	if status != http.StatusCreated {
+		return Delivery{}, fmt.Errorf("github: opening a pull request on %s/%s returned %d: %s",
+			request.Owner, request.Repo, status, strings.TrimSpace(string(body)))
+	}
+	var created struct {
+		Number  int    `json:"number"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := json.Unmarshal(body, &created); err != nil {
+		return Delivery{}, fmt.Errorf("github: decoding the created pull request: %w", err)
+	}
+	if created.Number == 0 {
+		return Delivery{}, fmt.Errorf("github: accepted the pull request and returned no number, so there is nothing to report as evidence")
+	}
+	return Delivery{Number: created.Number, URL: created.HTMLURL}, nil
+}
+
+func (c *Client) post(ctx context.Context, endpoint string, payload []byte) ([]byte, int, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return nil, 0, err
+	}
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	request.Header.Set("Content-Type", "application/json")
+	if c.Token != "" {
+		request.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	response, err := c.httpClient().Do(request)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, 0, err
+	}
+	return body, response.StatusCode, nil
 }

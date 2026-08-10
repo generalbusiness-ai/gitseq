@@ -45,6 +45,13 @@ func run(ctx context.Context, arguments []string) error {
 	name := set.String("repo-name", "", "GitHub repository name")
 	server := set.String("server", "", "submit through a resident sequencer instead of writing locally")
 	dry := set.Bool("dry-run", false, "report what would be observed without appending")
+	propose := set.Int("propose", 0, "open a pull request fixing this observed issue number")
+	branch := set.String("branch", "", "the branch carrying the work, for --propose")
+	base := set.String("base", "main", "the branch the pull request should merge into")
+	commit := set.String("commit", "", "the exact head under review, for --propose")
+	governing := set.String("request", "", "the gitseq request governing the work, for --propose")
+	artifact := set.String("artifact", "", "the artifact naming the exact head, for --propose")
+	title := set.String("title", "", "the pull request title, for --propose")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -71,6 +78,13 @@ func run(ctx context.Context, arguments []string) error {
 
 	if err := charterIsLive(snapshot.Projection, *charter, *owner, *name, *actor); err != nil {
 		return err
+	}
+
+	if *propose != 0 {
+		return proposePullRequest(ctx, github.NewClient(token), *owner, *name, *dry, proposalFlags{
+			issue: *propose, branch: *branch, base: *base, commit: *commit,
+			request: *governing, artifact: *artifact, title: *title,
+		})
 	}
 
 	clauses := github.ClausesFrom(clauseSources(snapshot.Projection), authors(snapshot.Projection))
@@ -111,6 +125,54 @@ func run(ctx context.Context, arguments []string) error {
 		}
 		fmt.Printf("observed %s as %s\n", observation.ExternalID, event)
 	}
+	return nil
+}
+
+type proposalFlags struct {
+	issue                                          int
+	branch, base, commit, request, artifact, title string
+}
+
+// proposePullRequest opens one pull request for work that fixes an observed
+// issue. It runs after the charter check, so the same doorstep that bounds what
+// the connector reads also bounds what it writes.
+//
+// Every field is required and none is inferred. A pull request that named the
+// wrong head, or no durable request at all, would be a rendering that points
+// somewhere other than the record it claims to render — and the reader on
+// GitHub has no way to tell. Refusing here costs one error message; guessing
+// costs the reader's trust in every rendering.
+func proposePullRequest(ctx context.Context, client *github.Client, owner, name string, dry bool, flags proposalFlags) error {
+	for label, value := range map[string]string{
+		"--branch": flags.branch, "--base": flags.base, "--commit": flags.commit,
+		"--request": flags.request, "--artifact": flags.artifact, "--title": flags.title,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s is required with --propose: a rendering that cannot name its own record is worse than none", label)
+		}
+	}
+
+	rendered := github.Render(github.Proposal{
+		Issue:    github.Issue{Owner: owner, Repo: name, Number: flags.issue},
+		Request:  flags.request,
+		Artifact: flags.artifact,
+		Commit:   flags.commit,
+		Branch:   flags.branch,
+		Base:     flags.base,
+		Title:    flags.title,
+	})
+	if dry {
+		fmt.Printf("would open a pull request on %s/%s from %s into %s:\n\n%s\n",
+			owner, name, rendered.Head, rendered.Base, rendered.Body)
+		return nil
+	}
+	delivery, err := client.Open(ctx, rendered)
+	if err != nil {
+		return err
+	}
+	// Printed so the caller can carry it as evidence on the report that closes
+	// the promise to deliver. Delivery is not the work; reporting it is.
+	fmt.Printf("opened %s/%s#%d %s\n", owner, name, delivery.Number, delivery.URL)
 	return nil
 }
 
