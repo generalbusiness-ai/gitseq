@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d595b6b340b23cd2d21ef777b9230c6613627a7d"}
+{"kind":"assert","text":"Observe gitseq issue #1","body":{"connector":"github","issues":"1"}}
