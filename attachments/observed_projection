@@ -1,1 +1,0 @@
-#2679, #786, #2670, and #2659 are satisfied commitments with stale=true. The UI maps satisfied to “done” and independently maps stale qualification to “ATTENTION,” while workItemNeedsAction returns false for terminal states.
