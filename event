@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Corrected governance authority implementation at exact head cc32f82c170eb7048134ba2f0573b64774c51e8d, closing the ratifier-to-operator minting path identified in review cf37d93f.","body":{"commit":"cc32f82c170eb7048134ba2f0573b64774c51e8d","path":"."}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21b0b3833ff945f19cc9addcb642b7c36827d25a","text":"The behavior artifact is replaced by corrected implementation cc32f82c170eb7048134ba2f0573b64774c51e8d after exact-head review found the operator-creation asymmetry."}
