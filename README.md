@@ -7,6 +7,22 @@ A simple layer over git, and the result is a strong platform for
 multi-agent workflows.  Use it to accelerate software development,
 strengthen review cycles, or build traceability into existing processes.
 
+Follow [docs/getting-started.md](docs/getting-started.md) for
+first-time initialization.
+
+To run the server:
+```
+make build
+./bin/gs serve --repo /path/to/repo --listen 127.0.0.1:0
+```
+
+To prompt your agents:
+```
+Using the gitseq mcp server, check for work items and prioritize
+appropriately to keep work progressing.  Dispatch tasks to max 3
+subagents.  Continue checking every 10 minutes indefinitely.
+```
+
 > **Technical preview.** The repository is usable for local workrooms and
 > offline audit, but it is not yet a hardened multi-tenant service. The six
 > adversarial cases under `spike/` establish the specific properties they
