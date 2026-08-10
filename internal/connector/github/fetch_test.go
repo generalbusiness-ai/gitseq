@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -26,7 +27,7 @@ func TestPullRequestsAreNotObservedAsIssues(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{BaseURL: server.URL, HTTP: server.Client()}
-	issues, err := client.Issues(context.Background(), "generalbusiness-ai", "gitseq")
+	issues, err := client.List(context.Background(), "generalbusiness-ai", "gitseq", (Clause{}).Query())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ func TestIssuesFollowPagination(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{BaseURL: server.URL, HTTP: server.Client()}
-	issues, err := client.Issues(context.Background(), "o", "r")
+	issues, err := client.List(context.Background(), "o", "r", (Clause{}).Query())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +65,9 @@ func TestIssuesFollowPagination(t *testing.T) {
 }
 
 // Closed issues are still observations. Whether somebody tidied the tracker
-// afterwards is not the record's business.
+// afterwards is not the record's business. The state now comes from the clause
+// rather than being fixed in the client, so this pins that a clause stating no
+// state still reaches GitHub asking for all of them.
 func TestClosedIssuesAreRequested(t *testing.T) {
 	var state string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +77,7 @@ func TestClosedIssuesAreRequested(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{BaseURL: server.URL, HTTP: server.Client()}
-	if _, err := client.Issues(context.Background(), "o", "r"); err != nil {
+	if _, err := client.List(context.Background(), "o", "r", (Clause{}).Query()); err != nil {
 		t.Fatal(err)
 	}
 	if state != "all" {
@@ -91,7 +94,7 @@ func TestATransportFailureIsNotAnEmptyRepository(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{BaseURL: server.URL, HTTP: server.Client()}
-	if _, err := client.Issues(context.Background(), "o", "r"); err == nil {
+	if _, err := client.List(context.Background(), "o", "r", (Clause{}).Query()); err == nil {
 		t.Fatal("an unauthorized response produced no error")
 	}
 }
@@ -106,7 +109,7 @@ func TestTokenIsSentWhenPresent(t *testing.T) {
 	defer server.Close()
 
 	withToken := &Client{BaseURL: server.URL, HTTP: server.Client(), Token: "secret"}
-	if _, err := withToken.Issues(context.Background(), "o", "r"); err != nil {
+	if _, err := withToken.List(context.Background(), "o", "r", (Clause{}).Query()); err != nil {
 		t.Fatal(err)
 	}
 	if auth != "Bearer secret" {
@@ -114,10 +117,87 @@ func TestTokenIsSentWhenPresent(t *testing.T) {
 	}
 
 	anonymous := &Client{BaseURL: server.URL, HTTP: server.Client()}
-	if _, err := anonymous.Issues(context.Background(), "o", "r"); err != nil {
+	if _, err := anonymous.List(context.Background(), "o", "r", (Clause{}).Query()); err != nil {
 		t.Fatal(err)
 	}
 	if auth != "" {
 		t.Errorf("Authorization was %q with no token, want none", auth)
+	}
+}
+
+// A selection clause names a number, and GitHub will happily return a pull
+// request for one. Excluding pull requests only on the list path would leave
+// the inbound half able to ingest the outbound half's own writing by number.
+func TestAPullRequestNamedByNumberIsNotAnIssue(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"number":2,"title":"a pull request","user":{"login":"gitseq-bot"},"pull_request":{"url":"p"}}`)
+	}))
+	defer server.Close()
+
+	client := &Client{BaseURL: server.URL, HTTP: server.Client()}
+	_, found, err := client.Number(context.Background(), "o", "r", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("a pull request was returned as an issue")
+	}
+}
+
+// A clause may name an issue that was deleted or never existed. That is a
+// missing issue, not a transport failure, and the caller reports it rather than
+// the run stopping.
+func TestAMissingIssueIsNotAnError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := &Client{BaseURL: server.URL, HTTP: server.Client()}
+	_, found, err := client.Number(context.Background(), "o", "r", 404)
+	if err != nil {
+		t.Fatalf("a missing issue was reported as an error: %v", err)
+	}
+	if found {
+		t.Error("a 404 was reported as a found issue")
+	}
+}
+
+// Labels have to survive the wire, because a criteria clause cannot decide
+// whether an issue matches without them.
+func TestLabelsArriveOnTheIssue(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"number":7,"title":"t","user":{"login":"a"},"state":"open","labels":[{"name":"bug"},{"name":"ui"}]}`)
+	}))
+	defer server.Close()
+
+	client := &Client{BaseURL: server.URL, HTTP: server.Client()}
+	issue, found, err := client.Number(context.Background(), "o", "r", 7)
+	if err != nil || !found {
+		t.Fatalf("found=%v err=%v", found, err)
+	}
+	if len(issue.Labels) != 2 || issue.Labels[0] != "bug" || issue.Labels[1] != "ui" {
+		t.Errorf("labels = %v, want [bug ui]", issue.Labels)
+	}
+}
+
+// A clause's query must reach GitHub. If it did not, a criteria clause would be
+// filtering locally over the whole tracker, which is the cost the doorstep
+// exists to avoid.
+func TestTheClauseQueryReachesGitHub(t *testing.T) {
+	var got string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.RawQuery
+		fmt.Fprint(w, `[]`)
+	}))
+	defer server.Close()
+
+	client := &Client{BaseURL: server.URL, HTTP: server.Client()}
+	query := Clause{State: "open", Labels: []string{"bug"}}.Query()
+	if _, err := client.List(context.Background(), "o", "r", query); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "labels=bug") || !strings.Contains(got, "state=open") {
+		t.Errorf("request query was %q, want the clause's state and labels", got)
 	}
 }

@@ -12,26 +12,18 @@
 // to reconcile, and there is no conflict for an engine to resolve dishonestly.
 package github
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
-// Namespace is the connector's idempotency namespace. The dedup key the kernel
-// computes is target, actor fingerprint, namespace and key together
-// (internal/intent.Signed.DedupKey), so a namespace of our own keeps the
-// connector's keys from colliding with any other actor's.
-const Namespace = "connector/github@0"
-
-// Marker opens every comment body the connector writes. It is how the
-// connector recognizes its own writing on a surface it shares with people.
+// Namespace prefixes every idempotency key this connector issues.
 //
-// This is ownership by structure, not suppression by tagging: the connector
-// edits one comment in place and ingests only what it does not own. A tag that
-// merely asks readers to ignore something is fragile, because anyone can write
-// the tag; a surface the connector alone writes to cannot be spoofed into a
-// loop by an ordinary participant.
-const Marker = "<!-- gitseq-connector -->"
+// It is a prefix rather than a kernel idempotency namespace, because the
+// namespace in the dedup key (internal/intent.Signed.DedupKey) is set per
+// workroom and the connector submits through the same public surface as every
+// other actor rather than choosing its own. Prefixing the key gets the property
+// that matters — the connector's observation of owner/repo#1 cannot collide
+// with some later connector operation that happens to name the same object —
+// without widening the core API to let a caller pick its own namespace.
+const Namespace = "connector/github@0"
 
 // Issue is the part of a GitHub issue an observation depends on. It is
 // deliberately small: the connector attests to what it saw, and anything it did
@@ -45,17 +37,12 @@ type Issue struct {
 	Author string // the GitHub login, carried as data, never as an identity
 	URL    string
 	State  string // "open" or "closed", as GitHub reports it
-}
 
-// Comment is an issue comment, with the author and body needed to decide
-// whether the connector wrote it.
-type Comment struct {
-	Owner  string
-	Repo   string
-	Issue  int
-	ID     int64
-	Body   string
-	Author string
+	// Labels are carried on the issue rather than passed alongside it. A
+	// criteria clause cannot decide whether an issue matches without them, and
+	// a separate parameter is something a caller can forget to supply — which
+	// is exactly how a label criterion silently stopped admitting anything.
+	Labels []string
 }
 
 // ExternalID names a foreign object in one stable string. It is the join
@@ -64,14 +51,6 @@ type Comment struct {
 // carrying this field, not a private database that could disagree with the log.
 func ExternalID(owner, repo string, number int) string {
 	return fmt.Sprintf("%s/%s#%d", owner, repo, number)
-}
-
-// CommentExternalID names one comment. GitHub comment identifiers are unique
-// within a repository, so the issue number is not needed for uniqueness — it is
-// included because a reader of the log should be able to see what the comment
-// was attached to without resolving anything.
-func CommentExternalID(owner, repo string, issue int, id int64) string {
-	return fmt.Sprintf("%s/%s#%d/comment/%d", owner, repo, issue, id)
 }
 
 // Observation is what the connector proposes to append for one foreign object.
@@ -100,7 +79,7 @@ func ObserveIssue(issue Issue) Observation {
 	external := ExternalID(issue.Owner, issue.Repo, issue.Number)
 	return Observation{
 		ExternalID:     external,
-		IdempotencyKey: external,
+		IdempotencyKey: Namespace + ":" + external,
 		Text: fmt.Sprintf("Observed on GitHub: %s filed %s — %s",
 			issue.Author, external, issue.Title),
 		Body: map[string]string{
@@ -113,28 +92,12 @@ func ObserveIssue(issue Issue) Observation {
 	}
 }
 
-// ObserveComment builds the observation for one issue comment.
-func ObserveComment(comment Comment) Observation {
-	external := CommentExternalID(comment.Owner, comment.Repo, comment.Issue, comment.ID)
-	return Observation{
-		ExternalID:     external,
-		IdempotencyKey: external,
-		Text: fmt.Sprintf("Observed on GitHub: %s commented on %s",
-			comment.Author, ExternalID(comment.Owner, comment.Repo, comment.Issue)),
-		Body: map[string]string{
-			"source":       "github",
-			"external_id":  external,
-			"on_behalf_of": comment.Author,
-		},
-	}
-}
-
-// Owned reports whether the connector wrote this comment. The connector must
-// never ingest its own writing: a connector that reads back what it renders
-// will observe its own observation and loop forever.
-func Owned(comment Comment) bool {
-	return strings.HasPrefix(strings.TrimSpace(comment.Body), Marker)
-}
+// Comments are deliberately absent. The connector fetches no comments and
+// observes none, so the read-back defence that belongs with them — recognizing
+// the connector's own writing and refusing to ingest it — would be a claim with
+// no executable path behind it. It belongs to the outbound half, which is
+// chartered separately, and it should arrive there with the fetch that makes it
+// reachable rather than sit here looking like protection nothing exercises.
 
 // Correspondence is the connector's memory, folded from durable acts rather
 // than kept beside them. It maps each observed external identifier to the event

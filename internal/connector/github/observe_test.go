@@ -19,8 +19,12 @@ func TestObservingTheSameIssueTwiceUsesOneKey(t *testing.T) {
 	if first.IdempotencyKey != second.IdempotencyKey {
 		t.Fatalf("same issue produced different keys: %q and %q", first.IdempotencyKey, second.IdempotencyKey)
 	}
-	if first.IdempotencyKey != "generalbusiness-ai/gitseq#7" {
-		t.Errorf("key is %q, want the external identifier", first.IdempotencyKey)
+	// The namespace is a prefix on the key rather than the kernel's idempotency
+	// namespace, which is set per workroom. Without it the connector's
+	// observation of an object could collide with a later connector operation
+	// naming the same one.
+	if first.IdempotencyKey != Namespace+":generalbusiness-ai/gitseq#7" {
+		t.Errorf("key is %q, want the namespaced external identifier", first.IdempotencyKey)
 	}
 }
 
@@ -50,30 +54,6 @@ func TestObservationCarriesThePrincipalAsData(t *testing.T) {
 	}
 	if got := observation.Body["external_id"]; got != "generalbusiness-ai/gitseq#7" {
 		t.Errorf("external_id is %q", got)
-	}
-}
-
-// A connector that ingests its own writing loops. Ownership is decided by the
-// marker the connector alone writes, not by the author name, which a token
-// change would silently alter.
-func TestTheConnectorDoesNotIngestItsOwnWriting(t *testing.T) {
-	own := Comment{Body: Marker + "\nas of #4312 — STALE: superseded", Author: "gitseq-bot"}
-	if !Owned(own) {
-		t.Error("the connector did not recognize its own comment")
-	}
-	theirs := Comment{Body: "I hit this too", Author: "someone"}
-	if Owned(theirs) {
-		t.Error("an ordinary comment was treated as the connector's own")
-	}
-	// Leading whitespace is not a way to smuggle a comment past the check, and
-	// mentioning the marker mid-body is not a way to be mistaken for one.
-	spaced := Comment{Body: "\n  " + Marker + "\nrendered", Author: "gitseq-bot"}
-	if !Owned(spaced) {
-		t.Error("leading whitespace defeated ownership")
-	}
-	quoted := Comment{Body: "why does it emit " + Marker + "?", Author: "someone"}
-	if Owned(quoted) {
-		t.Error("quoting the marker made an ordinary comment look owned")
 	}
 }
 

@@ -1,6 +1,7 @@
 package github
 
 import (
+	"context"
 	"net/url"
 	"sort"
 	"strings"
@@ -64,7 +65,7 @@ func (c Clause) Query() url.Values {
 // admits what matches every criterion it states — conjunctive, because a
 // clause that widened as you added detail to it would be a poor instrument for
 // bounding an attack surface.
-func (c Clause) Admits(issue Issue, labels []string) bool {
+func (c Clause) Admits(issue Issue) bool {
 	if c.Selection() {
 		for _, number := range c.Numbers {
 			if number == issue.Number {
@@ -77,7 +78,7 @@ func (c Clause) Admits(issue Issue, labels []string) bool {
 		return false
 	}
 	for _, wanted := range c.Labels {
-		if !contains(labels, wanted) {
+		if !contains(issue.Labels, wanted) {
 			return false
 		}
 	}
@@ -93,26 +94,68 @@ func contains(values []string, wanted string) bool {
 	return false
 }
 
-// Admit turns issues into observations, recording which clause let each one in.
+// Reader is the part of the GitHub client Fetch needs. Naming it here keeps the
+// admission logic testable without a transport, and keeps this package honest
+// that the clause decides the read rather than the client.
+type Reader interface {
+	List(ctx context.Context, owner, repo string, query url.Values) ([]Issue, error)
+	Number(ctx context.Context, owner, repo string, number int) (Issue, bool, error)
+}
+
+// Fetch reads only what the clauses ask for and returns the observations they
+// admit, along with any issue numbers a selection clause named that GitHub did
+// not return.
 //
-// An issue admitted by more than one clause is observed once. The idempotency
-// key is the external identifier, so a second act would be a replay anyway;
-// recording the first admitting clause keeps the record honest about what
-// actually caused the observation rather than listing every clause that could
-// have.
-func Admit(clauses []Clause, issues []Issue, labels map[int][]string) []Observation {
-	observations := make([]Observation, 0, len(issues))
-	for _, issue := range issues {
-		for _, clause := range clauses {
-			if !clause.Admits(issue, labels[issue.Number]) {
+// The bound is the point. A selection clause costs one request per issue it
+// names; a criteria clause costs one bounded walk of what matches. Neither
+// enumerates the tracker, so a repository's cost is set by what somebody with
+// authority asked for rather than by how many issues strangers have filed.
+//
+// Admits still re-checks every issue locally. The server deciding what matches
+// is convenience; the clause is the authority, and a filter applied only at the
+// far end is a filter somebody else controls.
+//
+// An issue admitted by more than one clause is observed once, attributed to the
+// first clause that admitted it. The idempotency key is derived from the
+// external identifier, so a second act would be a replay anyway; naming one
+// clause keeps the record honest about what actually caused the observation
+// rather than listing every clause that could have.
+func Fetch(ctx context.Context, reader Reader, owner, repo string, clauses []Clause) ([]Observation, []int, error) {
+	var observations []Observation
+	var missing []int
+	seen := make(map[int]bool)
+
+	for _, clause := range clauses {
+		var candidates []Issue
+		if clause.Selection() {
+			for _, number := range clause.Numbers {
+				issue, found, err := reader.Number(ctx, owner, repo, number)
+				if err != nil {
+					return nil, nil, err
+				}
+				if !found {
+					missing = append(missing, number)
+					continue
+				}
+				candidates = append(candidates, issue)
+			}
+		} else {
+			listed, err := reader.List(ctx, owner, repo, clause.Query())
+			if err != nil {
+				return nil, nil, err
+			}
+			candidates = listed
+		}
+		for _, issue := range candidates {
+			if seen[issue.Number] || !clause.Admits(issue) {
 				continue
 			}
+			seen[issue.Number] = true
 			observation := ObserveIssue(issue)
 			observation.AdmittedBy = clause.Event
 			observation.Body["admitted_by"] = clause.Event
 			observations = append(observations, observation)
-			break
 		}
 	}
-	return observations
+	return observations, missing, nil
 }

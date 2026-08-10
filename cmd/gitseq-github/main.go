@@ -69,7 +69,7 @@ func run(ctx context.Context, arguments []string) error {
 		return err
 	}
 
-	if err := charterIsLive(snapshot.Projection, *charter); err != nil {
+	if err := charterIsLive(snapshot.Projection, *charter, *owner, *name, *actor); err != nil {
 		return err
 	}
 
@@ -81,16 +81,22 @@ func run(ctx context.Context, arguments []string) error {
 		return nil
 	}
 
+	// The clauses decide the read. Nothing here enumerates the tracker, so a
+	// repository costs what its clauses ask for rather than what strangers have
+	// filed in it.
 	client := github.NewClient(token)
-	issues, err := client.Issues(ctx, *owner, *name)
+	admitted, missing, err := github.Fetch(ctx, client, *owner, *name, clauses)
 	if err != nil {
 		return err
 	}
+	for _, number := range missing {
+		fmt.Printf("clause names %s/%s#%d, which GitHub did not return\n", *owner, *name, number)
+	}
 
 	seen := github.Fold(observedStatements(snapshot.Projection))
-	fresh := github.Unobserved(github.Admit(clauses, issues, nil), seen)
+	fresh := github.Unobserved(admitted, seen)
 	if len(fresh) == 0 {
-		fmt.Printf("%d issues read, %d admitted, nothing new\n", len(issues), 0)
+		fmt.Printf("%d admitted by %d clauses, nothing new\n", len(admitted), len(clauses))
 		return nil
 	}
 
@@ -109,10 +115,18 @@ func run(ctx context.Context, arguments []string) error {
 }
 
 // charterIsLive refuses to act under a charter that is absent, retired, stale,
-// or unratified. The fold does not know what a charter is, so this is the
-// connector holding itself to its own contract — detection at the door rather
-// than attribution afterwards.
-func charterIsLive(projection workroom.Projection, charter string) error {
+// unratified, or that does not authorize this exact repository and connector
+// actor. The fold does not know what a charter is, so this is the connector
+// holding itself to its own contract — detection at the door rather than
+// attribution afterwards.
+//
+// The binding matters as much as the liveness. A charter that names no
+// repository authorizes nothing in particular, and accepting one would let this
+// command observe any repository at all under some unrelated ratified
+// statement while claiming a doorstep it does not have. So a charter must say
+// what it charters, and a charter that does not is refused rather than read
+// generously.
+func charterIsLive(projection workroom.Projection, charter, owner, name, actor string) error {
 	for _, statement := range projection.Statements {
 		if statement.Event != charter {
 			continue
@@ -126,9 +140,32 @@ func charterIsLive(projection workroom.Projection, charter string) error {
 		if !statement.Ratified {
 			return errors.New("charter is not ratified")
 		}
-		return nil
+		return charterBinds(statement.Body, charter, owner, name, actor)
 	}
 	return fmt.Errorf("charter %s is not in this workroom", charter)
+}
+
+// charterBinds checks the charter body against what this process was told to
+// do. Each mismatch is reported separately because they mean different things:
+// the wrong repository is a scope error, the wrong actor is an identity error,
+// and a body that says nothing is a charter that never bounded anything.
+func charterBinds(body map[string]string, charter, owner, name, actor string) error {
+	if len(body) == 0 {
+		return fmt.Errorf("charter %s names no connector, repository or actor, so it authorizes nothing in particular", charter)
+	}
+	if got := body["connector"]; got != github.ClauseConnector {
+		return fmt.Errorf("charter is for connector %q, not %q", got, github.ClauseConnector)
+	}
+	if got := body["owner"]; got != owner {
+		return fmt.Errorf("charter authorizes owner %q, not %q", got, owner)
+	}
+	if got := body["repo"]; got != name {
+		return fmt.Errorf("charter authorizes repository %q, not %q", got, name)
+	}
+	if got := body["actor"]; got != actor {
+		return fmt.Errorf("charter authorizes actor %q, not %q", got, actor)
+	}
+	return nil
 }
 
 func clauseSources(projection workroom.Projection) []github.ClauseSource {

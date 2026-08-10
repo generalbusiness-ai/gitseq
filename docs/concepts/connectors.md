@@ -56,6 +56,14 @@ that authority in its signature; asking an operator to ratify their own
 clause would add a signature and no information. What the charter fixes
 once, by ratification, is who may state a clause at all.
 
+A charter must say what it charters. Its body names the connector, the
+repository owner and name, and the connector's workroom actor, and the
+connector refuses to run unless all four match what its process was told
+to do. A ratified statement that names none of them authorizes nothing
+in particular, and accepting one would let a connector observe any
+repository at all while pointing at an unrelated ratification as its
+doorstep. So an empty body is refused rather than read generously.
+
 Every observation records the clause that admitted it and rests on it.
 So retiring a clause flares everything it let in, transitively — a
 criteria clause that turns out too broad is one supersession away from

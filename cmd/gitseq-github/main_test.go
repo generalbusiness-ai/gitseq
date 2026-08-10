@@ -15,7 +15,17 @@ func charter(event string, ratified, retired, stale bool) workroom.Statement {
 	return workroom.Statement{
 		Event: event, Kind: workroom.KindPropose, Actor: "hugh",
 		Ratified: ratified, Retired: retired, Stale: stale,
+		Body: map[string]string{
+			"connector": "github", "owner": "generalbusiness-ai",
+			"repo": "gitseq", "actor": "github-connector",
+		},
 	}
+}
+
+// live is charterIsLive with the arguments this process would actually have
+// been given, so each test varies one thing.
+func live(projection workroom.Projection, event string) error {
+	return charterIsLive(projection, event, "generalbusiness-ai", "gitseq", "github-connector")
 }
 
 // The fold does not know what a charter is and will not enforce one, so this
@@ -25,28 +35,28 @@ func charter(event string, ratified, retired, stale bool) workroom.Statement {
 func TestTheConnectorRefusesToActWithoutALiveCharter(t *testing.T) {
 	const event = "git:sha1:g#git:sha1:charter"
 
-	if err := charterIsLive(projection(), event); err == nil {
+	if err := live(projection(), event); err == nil {
 		t.Error("a charter absent from the workroom was accepted")
 	} else if !strings.Contains(err.Error(), "not in this workroom") {
 		t.Errorf("absent charter reported as %q", err)
 	}
 
-	if err := charterIsLive(projection(charter(event, false, false, false)), event); err == nil {
+	if err := live(projection(charter(event, false, false, false)), event); err == nil {
 		t.Error("an unratified charter was accepted — ratification is what makes it policy")
 	}
 
-	if err := charterIsLive(projection(charter(event, true, true, false)), event); err == nil {
+	if err := live(projection(charter(event, true, true, false)), event); err == nil {
 		t.Error("a retired charter was accepted")
 	}
 
 	// Stale matters as much as retired here. A charter whose basis died is no
 	// longer standing on what it claimed to stand on, and acting under it would
 	// be the connector deciding that the flare did not apply to itself.
-	if err := charterIsLive(projection(charter(event, true, false, true)), event); err == nil {
+	if err := live(projection(charter(event, true, false, true)), event); err == nil {
 		t.Error("a stale charter was accepted")
 	}
 
-	if err := charterIsLive(projection(charter(event, true, false, false)), event); err != nil {
+	if err := live(projection(charter(event, true, false, false)), event); err != nil {
 		t.Errorf("a live ratified charter was refused: %v", err)
 	}
 }
@@ -85,5 +95,40 @@ func TestAuthorsCarryRoles(t *testing.T) {
 	}
 	if len(people["fp-claude"].Roles) != 1 {
 		t.Errorf("participant roles lost: %+v", people["fp-claude"])
+	}
+}
+
+// Liveness is not enough. A ratified statement that does not say what it
+// charters bounds nothing, and accepting one would let this command observe any
+// repository at all while claiming a doorstep it does not have.
+func TestTheCharterMustAuthorizeThisRepositoryAndActor(t *testing.T) {
+	const event = "git:sha1:g#git:sha1:charter"
+
+	// A charter with no body is the case that matters most, because it is what
+	// an ordinary ratified proposal looks like. It authorizes nothing in
+	// particular, so it is refused rather than read generously.
+	empty := charter(event, true, false, false)
+	empty.Body = nil
+	if err := live(projection(empty), event); err == nil {
+		t.Error("a charter naming no repository or actor was accepted")
+	} else if !strings.Contains(err.Error(), "authorizes nothing in particular") {
+		t.Errorf("empty charter reported as %q", err)
+	}
+
+	// Each mismatch is separate because they mean different things: the wrong
+	// repository is a scope error, the wrong actor an identity one.
+	for field, value := range map[string]string{
+		"connector": "slack", "owner": "someone-else",
+		"repo": "another-repo", "actor": "some-other-connector",
+	} {
+		wrong := charter(event, true, false, false)
+		wrong.Body[field] = value
+		if err := live(projection(wrong), event); err == nil {
+			t.Errorf("a charter whose %s is %q was accepted for a different one", field, value)
+		}
+	}
+
+	if err := live(projection(charter(event, true, false, false)), event); err != nil {
+		t.Errorf("a charter authorizing exactly this repository and actor was refused: %v", err)
 	}
 }
