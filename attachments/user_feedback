@@ -1,1 +1,1 @@
-As Hugh, “Needs my action” shows #634 as open, but its final thread entries say the direct-ratification UI was merged and do not make any remaining action clear.
+At the bottom of a durable thread, “Temporary discussion · 0 messages” is confusing. This is not a temporary discussion; omit that header for now and defer the fuller treatment of temporary messages.
