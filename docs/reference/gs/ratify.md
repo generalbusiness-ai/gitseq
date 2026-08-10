@@ -15,7 +15,7 @@ is decided by the fold, from who signed it and what the target is.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | *(required)* | The ratifying actor. |
+| `--as` | *(required, or `GITSEQ_ACTOR`)* | The ratifying actor. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 

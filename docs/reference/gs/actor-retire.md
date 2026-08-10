@@ -27,7 +27,7 @@ Retire an instance identity when its engagement ends.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | *(required)* | The retiring actor. |
+| `--as` | *(required, or `GITSEQ_ACTOR`)* | The retiring actor. |
 | `--actor` | *(required)* | Principal to retire, as a name, `@name`, or fingerprint. |
 
 ## Example

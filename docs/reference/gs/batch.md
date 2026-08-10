@@ -19,7 +19,7 @@ the log, and then appends every act against that one frontier.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | *(required)* | The actor signing every act in the chain. |
+| `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor signing every act in the chain. |
 | `--server` | | Forward each act to a resident sequencer instead of writing locally. |
 
 The one positional argument is the file to read. `-`, or no argument at

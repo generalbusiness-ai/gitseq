@@ -18,7 +18,7 @@ Prefer supersession to contradiction.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | *(required)* | The superseding actor. |
+| `--as` | *(required, or `GITSEQ_ACTOR`)* | The superseding actor. |
 | `--text` | *(required)* | Why. This is what a later reader gets. |
 | `--rests-on` | | An additional event identifier, repeatable. The target is added first automatically. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. |

@@ -44,11 +44,13 @@ var legacyVersions = map[string]bool{
 	"2024-11-05": true,
 }
 
-const instructions = "Use status and wait to follow the workroom; say ephemerally and promote deliberate acts with state."
+const instructions = "Use status once and wait to follow the workroom; use work and inspect for selective durable follow-up; say ephemerally and promote deliberate acts with state."
 
 const (
 	orientationTimeout        = 2 * time.Second
 	orientationResponseLimit  = 64 << 10
+	workResponseLimit         = 256 << 10
+	inspectionResponseLimit   = 2 << 20
 	residentOrientationSource = "resident_statusview_current"
 )
 
@@ -477,6 +479,8 @@ func tools() []map[string]any {
 		return schema
 	}
 	stringField := map[string]string{"type": "string"}
+	enum := func(values ...string) map[string]any { return map[string]any{"type": "string", "enum": values} }
+	arrayOf := func(item map[string]any) map[string]any { return map[string]any{"type": "array", "items": item} }
 	// Every tool names the workroom it acts in the same way, because the
 	// adapter serves whatever repository it is pointed at rather than one
 	// repository chosen when it was installed.
@@ -493,6 +497,14 @@ func tools() []map[string]any {
 		{"name": "presence", "description": "Show who is present in the amnesiac nexus.", "inputSchema": object(withRepo(nil))},
 		{"name": "status", "description": "Project durable workroom state plus a composite cursor.", "inputSchema": object(withRepo(nil))},
 		{"name": "wait", "description": "Long-poll after a composite cursor.", "inputSchema": object(withRepo(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
+		{"name": "work", "description": "Query the current actor's durable work through a bounded resident-side projection. Defaults include addressed unclaimed work and stale commitments.", "inputSchema": object(withRepo(map[string]any{
+			"lanes":    arrayOf(enum("available_to_you", "waiting_on_you", "you_are_waiting_on", "not_actionable")),
+			"statuses": arrayOf(enum("open", "promised", "reported", "satisfied", "stale", "cancelled", "reneged", "withdrawn")),
+			"stale":    enum("include", "only", "exclude"),
+			"limit":    map[string]any{"type": "integer", "minimum": 1, "maximum": statusview.WorkPageMax},
+			"cursor":   stringField,
+		}))},
+		{"name": "inspect", "description": "Inspect one exact canonical durable event with its decision, commitment chain, direct provenance, and related review artifacts.", "inputSchema": object(withRepo(map[string]any{"event": stringField}), "event")},
 		{"name": "say", "description": "Publish a signed ephemeral frame, opening a conversation at about when needed.", "inputSchema": object(withRepo(map[string]any{"about": stringField, "text": stringField, "conversation": stringField}), "about", "text")},
 		{"name": "state", "description": "Append a durable attributed utterance. Evidence values are embedded attachments. A request body addresses its performer as name, @name, or fingerprint; the signed event stores the fingerprint.", "inputSchema": object(withRepo(map[string]any{"kind": stringField, "text": stringField, "body": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "rests_on": map[string]any{"type": "array", "items": stringField}, "evidence": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "idempotency_key": stringField}), "kind", "text", "rests_on")},
 		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(withRepo(map[string]any{"target": stringField, "idempotency_key": stringField}), "target")},
@@ -623,6 +635,40 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 			return nil, err
 		}
 		return digestWait(response, requested, s.fingerprint(current), s.actor, false), nil
+	case "work":
+		var input statusview.WorkQuery
+		arguments := clone(call.Arguments)
+		delete(arguments, "repo")
+		if err := remarshal(arguments, &input); err != nil {
+			return nil, err
+		}
+		input.Actor = s.fingerprint(current)
+		var page statusview.WorkPage
+		if err := s.postBoundedJSON(ctx, current, "/v0/work-query", input, workResponseLimit, &page); err != nil {
+			if !isTransportError(err) {
+				return nil, err
+			}
+			durable, localErr := current.workspace.Snapshot(ctx)
+			if localErr != nil {
+				return nil, localErr
+			}
+			return statusview.BuildWorkPage(durable, input, true)
+		}
+		return page, nil
+	case "inspect":
+		input := statusview.InspectRequest{Event: stringValue(call.Arguments["event"])}
+		var inspection statusview.ItemInspection
+		if err := s.postBoundedJSON(ctx, current, "/v0/inspect", input, inspectionResponseLimit, &inspection); err != nil {
+			if !isTransportError(err) {
+				return nil, err
+			}
+			durable, localErr := current.workspace.Snapshot(ctx)
+			if localErr != nil {
+				return nil, localErr
+			}
+			return statusview.BuildItemInspection(durable, input.Event, true)
+		}
+		return inspection, nil
 	case "say":
 		arguments := clone(call.Arguments)
 		arguments["session"] = s.session
@@ -906,6 +952,51 @@ func (s *mcpServer) post(ctx context.Context, current *room, path string, value 
 	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+path, bytes.NewReader(encoded))
 	request.Header.Set("Content-Type", "application/json")
 	return s.do(current, request)
+}
+
+func (s *mcpServer) postBoundedJSON(ctx context.Context, current *room, path string, value any, limit int64, target any) error {
+	base, ok := current.endpoint()
+	if !ok {
+		return transportError{errNoResident}
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, bytes.NewReader(encoded))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := s.client.Do(request)
+	if err != nil {
+		current.lost()
+		return transportError{err}
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(data)) > limit {
+		return fmt.Errorf("resident response exceeds %d bytes", limit)
+	}
+	if response.StatusCode >= 400 {
+		var failure map[string]string
+		if json.Unmarshal(data, &failure) == nil && failure["error"] != "" {
+			return httpStatusError{status: response.StatusCode, message: failure["error"]}
+		}
+		return httpStatusError{status: response.StatusCode, message: "HTTP " + response.Status}
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return errors.New("resident returned trailing JSON")
+	}
+	return nil
 }
 
 func (s *mcpServer) getBoundedJSON(ctx context.Context, current *room, path string, limit int64, target any) error {

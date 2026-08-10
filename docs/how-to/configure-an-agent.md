@@ -21,8 +21,15 @@ gitseq-mcp --actor bot
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--actor` | *(required)* | A configured actor whose key the repository holds. |
+| `--actor` | *(required, or `GITSEQ_ACTOR`)* | A configured actor whose key the repository holds. |
 | `--repo` | *(working directory)* | The default repository for calls that do not name one. |
+
+There is no default actor name. When `--actor` is absent the adapter
+reads the `GITSEQ_ACTOR` environment variable, and refuses to start if
+neither names an identity — a copied setup can never silently attribute
+one instance's work to a name that several instances share. Provision
+each concurrent instance its own identity and set `GITSEQ_ACTOR` in
+that instance's environment.
 
 Register it **once**. The repository is a parameter of the call, not of
 the installation: a call with no `repo` acts in the working directory the

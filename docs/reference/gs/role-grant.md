@@ -15,7 +15,7 @@ grant rests on the target's membership as its first basis.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | `operator` | The granting actor. Needs authority to grant. |
+| `--as` | *(required, or `GITSEQ_ACTOR`)* | The granting actor. Needs authority to grant. |
 | `--actor` | *(required)* | Recipient, as a name, `@name`, or fingerprint. |
 | `--role` | *(required)* | The role to confer, for example `ratifier`. |
 

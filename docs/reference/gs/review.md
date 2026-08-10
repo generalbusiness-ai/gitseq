@@ -20,7 +20,7 @@ review of nothing in particular, because the branch can move afterwards.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | *(required)* | The reviewing actor. |
+| `--as` | *(required, or `GITSEQ_ACTOR`)* | The reviewing actor. |
 | `--checkout` | *(required)* | The working tree the reviewer examined. |
 | `--artifact` | *(required)* | The artifact event naming the reviewed head. |
 | `--promise` | *(required)* | The reviewer's own promise to review. |

@@ -19,7 +19,7 @@ the only two acts it cannot make.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | *(required)* | The signing actor. |
+| `--as` | *(required, or `GITSEQ_ACTOR`)* | The signing actor. |
 | `--kind` | *(required)* | The speech act, from the room's declared vocabulary: `assert`, `propose`, `request`, `promise`, `report`, `dissent`, `artifact`, or a governance kind. |
 | `--text` | *(required)* | The statement itself, in plain language. |
 | `--body` | | `key=value`, repeatable. Structured fields. |

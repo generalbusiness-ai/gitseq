@@ -21,7 +21,7 @@ genesis, and genesis is immutable.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The ordinary git repository to overlay. |
-| `--operator` | `operator` | Name of the founding actor. |
+| `--operator` | *(required, or `GITSEQ_ACTOR`)* | Name of the founding actor. There is no default name. |
 | `--payload-ceiling` | `1048576` | Maximum bytes for a signed envelope plus its inline payload and attachments. |
 
 ## Example

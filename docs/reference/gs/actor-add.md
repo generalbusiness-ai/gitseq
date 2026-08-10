@@ -15,7 +15,7 @@ appends a ratified `roster` statement admitting it as a participant.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | `operator` | The actor performing the admission. Needs authority to grant membership. |
+| `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor performing the admission. Needs authority to grant membership. |
 | `--name` | *(required)* | Name of the new principal. |
 | `--kind` | `agent` | `human`, `agent`, or `service`. |
 

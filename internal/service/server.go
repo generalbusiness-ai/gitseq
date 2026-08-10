@@ -18,6 +18,10 @@ import (
 type Frontier = statusview.Frontier
 type Cursor = statusview.Cursor
 type Orientation = statusview.Orientation
+type WorkQuery = statusview.WorkQuery
+type WorkPage = statusview.WorkPage
+type InspectRequest = statusview.InspectRequest
+type ItemInspection = statusview.ItemInspection
 
 const OrientationProjectionVersion = statusview.OrientationProjectionVersion
 
@@ -74,6 +78,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v0/act", s.handleAct)
 	s.mux.HandleFunc("GET /v0/status", s.handleStatus)
 	s.mux.HandleFunc("GET /v0/status-summary", s.handleStatusSummary)
+	s.mux.HandleFunc("POST /v0/work-query", s.handleWorkQuery)
+	s.mux.HandleFunc("POST /v0/inspect", s.handleInspect)
 	s.mux.HandleFunc("POST /v0/wait", s.handleWait)
 	s.mux.HandleFunc("POST /v0/submit", s.handleSubmit)
 	s.mux.HandleFunc("GET /v0/presence", s.handlePresence)
@@ -132,6 +138,36 @@ func (s *Server) handleStatusSummary(writer http.ResponseWriter, request *http.R
 		Live:    status.Live, Cursor: status.Cursor,
 	}
 	write(writer, summary, nil)
+}
+
+func (s *Server) handleWorkQuery(writer http.ResponseWriter, request *http.Request) {
+	var input WorkQuery
+	if err := decode(request, &input); err != nil {
+		write(writer, nil, err)
+		return
+	}
+	durable, err := s.workspace.Snapshot(request.Context())
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	page, err := statusview.BuildWorkPage(durable, input, false)
+	write(writer, page, err)
+}
+
+func (s *Server) handleInspect(writer http.ResponseWriter, request *http.Request) {
+	var input InspectRequest
+	if err := decode(request, &input); err != nil {
+		write(writer, nil, err)
+		return
+	}
+	durable, err := s.workspace.Snapshot(request.Context())
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	inspection, err := statusview.BuildItemInspection(durable, input.Event, false)
+	write(writer, inspection, err)
 }
 
 func (s *Server) handleWait(writer http.ResponseWriter, request *http.Request) {

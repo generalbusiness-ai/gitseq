@@ -70,14 +70,26 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 	if result["resultType"] != "complete" {
 		t.Fatalf("tool list has no complete result type: %#v", result)
 	}
-	if got := len(result["tools"].([]any)); got != 8 {
+	if got := len(result["tools"].([]any)); got != 10 {
 		t.Fatalf("got %d tools", got)
 	}
+	listed := make(map[string]map[string]any)
 	for _, tool := range result["tools"].([]any) {
-		schema := tool.(map[string]any)["inputSchema"].(map[string]any)
+		definition := tool.(map[string]any)
+		listed[definition["name"].(string)] = definition
+		schema := definition["inputSchema"].(map[string]any)
 		if properties, exists := schema["properties"]; exists && properties == nil {
 			t.Fatalf("tool schema contains properties:null: %#v", tool)
 		}
+	}
+	for _, name := range []string{"work", "inspect"} {
+		if listed[name] == nil {
+			t.Fatalf("selective tool %q is missing: %#v", name, listed)
+		}
+	}
+	workProperties := listed["work"]["inputSchema"].(map[string]any)["properties"].(map[string]any)
+	if workProperties["lanes"] == nil || workProperties["statuses"] == nil || workProperties["cursor"] == nil {
+		t.Fatalf("work schema does not expose finite filters and continuation: %#v", workProperties)
 	}
 	var callResponse map[string]any
 	if err := json.Unmarshal([]byte(lines[2]), &callResponse); err != nil {
@@ -376,6 +388,21 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 		t.Fatalf("unexpected degraded wait response: %+v", delta)
 	}
 
+	worked, err := server.call(context.Background(), toolCall{Name: "work", Arguments: map[string]any{"limit": 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page := worked.(statusview.WorkPage); !page.Degraded || page.Frontier.Depth != 2 || page.Actor.Fingerprint != workspace.Config.Actors["human"].Fingerprint {
+		t.Fatalf("unexpected degraded work page: %+v", page)
+	}
+	inspected, err := server.call(context.Background(), toolCall{Name: "inspect", Arguments: map[string]any{"event": genesis.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item := inspected.(statusview.ItemInspection); !item.Degraded || item.Event != genesis.ID || item.Decision == nil {
+		t.Fatalf("unexpected degraded inspection: %+v", item)
+	}
+
 	projection, err := workspace.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -388,6 +415,64 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("offline durable state did not project: %+v", projection.Projection.Decisions)
+	}
+}
+
+func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
+	workspace := initRepository(t, "repo")
+	resident, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var paths []string
+	httpServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		mu.Lock()
+		paths = append(paths, request.URL.Path)
+		mu.Unlock()
+		if request.URL.Path == "/v0/status" {
+			http.Error(response, "selective tools must not fetch the full projection", http.StatusInternalServerError)
+			return
+		}
+		resident.Handler().ServeHTTP(response, request)
+	}))
+	defer httpServer.Close()
+
+	server, attached := attachedServer(t, workspace, "human", httpServer.URL, httpServer.Client())
+	// This test concerns query routing, not presence or the sole-identity gate.
+	// Mark the already-attached test session as joined so those independent
+	// calls cannot obscure which endpoints work and inspect choose.
+	attached.checked = true
+	attached.announced = true
+
+	value, err := server.call(context.Background(), toolCall{Name: "work", Arguments: map[string]any{"limit": 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, ok := value.(statusview.WorkPage)
+	if !ok || page.Frontier.Head == "" || page.Actor.Fingerprint != workspace.Config.Actors["human"].Fingerprint {
+		t.Fatalf("unexpected selective work response: %#v", value)
+	}
+
+	snapshot, err := workspace.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := snapshot.Projection.Actors[workspace.Config.Actors["human"].Fingerprint].MembershipEvent
+	value, err = server.call(context.Background(), toolCall{Name: "inspect", Arguments: map[string]any{"event": event}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inspection, ok := value.(statusview.ItemInspection)
+	if !ok || inspection.Event != event || inspection.Statement == nil || inspection.Decision == nil {
+		t.Fatalf("unexpected exact inspection response: %#v", value)
+	}
+
+	mu.Lock()
+	gotPaths := append([]string(nil), paths...)
+	mu.Unlock()
+	if strings.Join(gotPaths, ",") != "/v0/work-query,/v0/inspect" {
+		t.Fatalf("selective tools used the wrong resident routes: %v", gotPaths)
 	}
 }
 

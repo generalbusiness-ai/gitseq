@@ -44,10 +44,13 @@ call whoami '{}' | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 
 | Field | Meaning |
 |---|---|
-| `actor` | Local configuration: name, fingerprint, key file. |
+| `actor` | The configured identity: name and fingerprint only. The key path is never returned. |
 | `repo` | The repository this call acted in, as its git common directory. |
 | `genesis` | The genesis hash of that repository's workroom. |
-| `durable` | What the roster says now: kind, roles, membership event, and which grants each role came from. |
+| `durable` | What the roster says now: name, fingerprint, kind, membership event, and capped roles. |
+| `frontier` | The exact durable frontier the answer is anchored to: genesis, head, depth. |
+| `source` | The verified path that produced the answer. |
+| `degraded` | `true` when the resident could not be used and a verified local fallback answered. |
 | `session` | This connection's ephemeral handle. |
 | `protocol` | The protocol version the adapter serves. |
 
@@ -58,9 +61,6 @@ workroom am I about to speak in".
 `actor` is local and `durable` is the record. They can disagree: a
 repository can hold a key for a principal whose membership has been
 retired. Trust `durable` for authority questions.
-
-`durable.role_sources` names the grant behind each role, which is what
-you would supersede to remove it.
 
 The answer is anchored to an exact durable frontier. A current loopback
 resident is labeled `resident_statusview_current`; the client refuses

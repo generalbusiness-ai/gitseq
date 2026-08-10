@@ -15,7 +15,7 @@ so does every role that was riding on it.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | `operator` | The revoking actor. |
+| `--as` | *(required, or `GITSEQ_ACTOR`)* | The revoking actor. |
 | `--actor` | *(required)* | Holder, as a name, `@name`, or fingerprint. |
 | `--role` | *(required)* | The granted role to retire. |
 
