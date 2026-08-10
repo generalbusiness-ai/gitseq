@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { GitBranch, Link2, X } from "lucide-react";
 import type { GraphCommit, Statement } from "../lib/api";
-import { shortEvent, shortHash } from "../lib/api";
+import { eventName, shortHash } from "../lib/api";
 import type { Selection } from "../lib/store";
 import { cn, timeAgo } from "../lib/util";
 import { EventTime } from "./EventTime";
@@ -266,7 +266,7 @@ function BridgeChip({
           <EventTime timestamp={statement.timestamp} className="ml-auto" />
         </>
       ) : (
-        <code className="text-faint">{shortEvent(id)}</code>
+        <code className="text-faint break-all">{eventName(id)}</code>
       )}
     </button>
   );

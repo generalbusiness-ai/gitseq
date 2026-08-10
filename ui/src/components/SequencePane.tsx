@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { BadgeCheck, CircleSlash, FileWarning, MessageSquareX, Scale, Undo2 } from "lucide-react";
 import type { Act, Actor, Projection, Statement, Vocabulary } from "../lib/api";
-import { shortEvent } from "../lib/api";
+import { eventName } from "../lib/api";
 import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { ticketsOf, type Selection } from "../lib/store";
 import { cn, commitmentRelationship, kindLabel, kindTint, statusTint } from "../lib/util";
@@ -77,7 +77,7 @@ export function SequencePane({
                   </span>
                   {commitment.stale && commitment.status !== "stale" && <span className="shrink-0 text-xs text-danger">stale</span>}
                   <span className="truncate text-muted">
-                    {byEvent.get(commitment.request)?.text ?? shortEvent(commitment.request)}
+                    {byEvent.get(commitment.request)?.text ?? eventName(commitment.request, tickets)}
                   </span>
                   <EventTime timestamp={byEvent.get(commitment.request)?.timestamp} className="ml-auto" />
                   {relationship && <span className="shrink-0 text-xs text-faint">{relationship}</span>}
@@ -176,7 +176,7 @@ function StatementCard({
           )}
           <EventTime timestamp={statement.timestamp} className="ml-auto" />
           <span className="shrink-0 font-mono text-xs text-faint" title={statement.event}>
-            {ticket ? `#${ticket}` : shortEvent(statement.event)}
+            {ticket ? `#${ticket}` : eventName(statement.event)}
           </span>
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-faint">
@@ -253,7 +253,7 @@ function AnnotationLine({
                 title={linkedItem}
                 className="text-foreground/80 hover:underline focus-visible:outline focus-visible:outline-accent"
               >
-                #{tickets.get(linkedItem) ?? shortEvent(linkedItem)}
+                {eventName(linkedItem, tickets)}
               </button>
             </span>
           )}

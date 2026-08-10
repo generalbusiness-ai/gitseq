@@ -56,7 +56,8 @@ type Artifact struct {
 }
 
 type Attempt struct {
-	Event   string `json:"event"`
+	Event    string `json:"event"`
+	Sequence int    `json:"sequence,omitempty"`
 	Verdict string `json:"verdict"`
 	Reason  string `json:"reason,omitempty"`
 }
@@ -199,7 +200,7 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		default:
 			continue
 		}
-		summary.Attempts = append(summary.Attempts, Attempt{Event: decision.Event, Verdict: string(decision.Verdict), Reason: Text(decision.Reason)})
+		summary.Attempts = append(summary.Attempts, Attempt{Event: decision.Event, Sequence: decision.Sequence, Verdict: string(decision.Verdict), Reason: Text(decision.Reason)})
 	}
 	summary.Actionable, summary.ActionableOmitted = Cap(summary.Actionable, ListCap)
 	summary.Attention, summary.AttentionOmitted = Cap(summary.Attention, ListCap)
@@ -255,7 +256,7 @@ func Render(summary Summary, source string) []byte {
 		output.WriteString("None.\n")
 	} else {
 		for _, attempt := range summary.Attempts {
-			fmt.Fprintf(&output, "- `%s` — %s: %s\n", short(attempt.Event), attempt.Verdict, attempt.Reason)
+			fmt.Fprintf(&output, "- %s — %s: %s\n", name(attempt.Event, attempt.Sequence), attempt.Verdict, attempt.Reason)
 		}
 		writeOmitted(&output, len(summary.Attempts), summary.AttemptsOmitted)
 	}
@@ -308,6 +309,17 @@ func writeOmitted(output *bytes.Buffer, listed, omitted int) {
 	if omitted > 0 {
 		fmt.Fprintf(output, "\nShowing %d of %d; %d older omitted.\n", listed, listed+omitted, omitted)
 	}
+}
+
+// name renders an event as a reader says it. Falling back to the identifier in
+// full rather than an abbreviation is deliberate: `short` elides the middle, so
+// its output is visibly incomplete and cannot be mistaken for a name, but an
+// event that has a number should be called by it.
+func name(event string, sequence int) string {
+	if sequence > 0 {
+		return fmt.Sprintf("#%d", sequence)
+	}
+	return event
 }
 
 func short(value string) string {

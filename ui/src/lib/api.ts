@@ -328,12 +328,18 @@ export function decodeFrame(frame: Frame): Omit<FrameView, "fingerprint" | "seen
   };
 }
 
-export function shortEvent(id: string): string {
-  const hash = id.split("#").pop() ?? id;
-  const bare = hash.replace(/^git:sha(1|256):/, "");
-  return bare.slice(0, 8);
+// An event is named by its number, or by its identifier in full. There is no
+// third option, and the third option is what used to be here: eight characters
+// of the hash, which looks like a name, cannot be resolved back to one, and
+// taught everyone who read it to speak in a form that does not round-trip.
+export function eventName(id: string, tickets?: Map<string, number>): string {
+  const ticket = tickets?.get(id);
+  return ticket ? `#${ticket}` : id;
 }
 
+// For git objects only — a commit abbreviates safely because git itself will
+// resolve the prefix back. An event identifier will not, which is why there is
+// no shortEvent beside this.
 export function shortHash(hash: string): string {
   return hash.slice(0, 8);
 }
