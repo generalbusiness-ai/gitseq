@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d918e97ad2f03805062e3d821f1bac9d3ca58ee2"}
+{"kind":"artifact","text":"Merged anti-rollback posture: verified-frontier persistence, descendant enforcement, fail-closed witness advancement, recovery coverage, and truthful auditor-boundary documentation.","body":{"commit":"8fb98cfb0f831d596c8106a0f5985aefbe3a3c6c","path":"request/anti-rollback-posture"}}
