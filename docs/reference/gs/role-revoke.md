@@ -3,7 +3,7 @@ title: gs role-revoke
 summary: Retire an explicit role grant, and everything derived from it.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6918582b884b2f82fa7ab64242f40d12de845c39
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f284641cc2a97b4b661092d1200b6cdb49359694
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:de8f9a5e18097414d9a96c259340d7ca876e11da
 ---
 
 # `gs role-revoke`

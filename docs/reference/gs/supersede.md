@@ -3,7 +3,7 @@ title: gs supersede
 summary: Retire an act, and propagate staleness to everything resting on it.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:718c16a257eeed209434c18e85ca605ed779bf90
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f284641cc2a97b4b661092d1200b6cdb49359694
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:de8f9a5e18097414d9a96c259340d7ca876e11da
 ---
 
 # `gs supersede`
