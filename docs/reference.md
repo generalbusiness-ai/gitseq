@@ -92,9 +92,9 @@ Reading the membership condition as universal is the easy error, and it
 is wrong in the direction that matters: it invites you to look for a
 basis under an ordinary membership grant, find none, and conclude the
 grant is defective. Measured: retire the genesis seed after Bob has
-joined, and Alice — seeded — disappears from the roster while Bob
-remains `[participant]`, because his own membership grant never
-depended on hers.
+joined, and Alice — seeded — is left on the roster with `retired: true`
+and no roles, while Bob remains `[participant]`, because his own
+membership grant never depended on hers.
 
 The ratification condition is a disjunction, not a single named act.
 One roster statement may be ratified more than once, and any surviving
@@ -141,8 +141,8 @@ still live. Two distinct retirements, with different blast radii:
 
 **Liveness is reversible, and a verdict is not.** Retirement can itself
 be retired, and authority comes back. Measured: superseding a
-membership takes a principal from `[participant]` to absent from the
-roster entirely, and superseding *that supersession* returns them to
+membership takes a principal from `[participant]` to retired with no
+roles, and superseding *that supersession* returns them to
 `[participant]`. So "this grant confers nothing" is never a permanent
 fact about the grant — it is a statement about right now, and the same
 grant may confer tomorrow without anyone appending a new one. Decisions
