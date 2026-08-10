@@ -75,6 +75,8 @@ export interface ActorState {
   roles: string[];
   membership_event?: string;
   role_sources: Record<string, string[]>;
+  dormant_role_sources: Record<string, string[]>;
+  retired_role_sources: Record<string, string[]>;
 }
 
 export interface DurableSnapshot {

@@ -113,11 +113,13 @@ type Act struct {
 // configuration may hold custody for the same fingerprint, but names, kinds,
 // membership and authority come from effective roster statements here.
 type ActorState struct {
-	Name            string              `json:"name"`
-	Kind            string              `json:"kind,omitempty"`
-	Roles           []string            `json:"roles"`
-	MembershipEvent string              `json:"membership_event,omitempty"`
-	RoleSources     map[string][]string `json:"role_sources"`
+	Name               string              `json:"name"`
+	Kind               string              `json:"kind,omitempty"`
+	Roles              []string            `json:"roles"`
+	MembershipEvent    string              `json:"membership_event,omitempty"`
+	RoleSources        map[string][]string `json:"role_sources"`
+	DormantRoleSources map[string][]string `json:"dormant_role_sources"`
+	RetiredRoleSources map[string][]string `json:"retired_role_sources"`
 	// Retired records a principal whose every membership grant has been
 	// superseded. It holds no roles and may no longer be addressed or ratify,
 	// but it stays in the roster because it signed events that are permanent:
@@ -630,6 +632,12 @@ func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
 			return Decision{Event: record.record.ID, Verdict: Disputed, Reason: "kind definition has a live predecessor; supersede it before ratifying a replacement"}
 		}
 	}
+	if state := target.body.(*State); state.Kind == KindRoster && rosterAuthorityRole(*state) != "" {
+		beneficiary := state.Body["actor"]
+		if beneficiary == target.record.Actor || beneficiary == record.record.Actor {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "authority grant cannot be authored or ratified by its beneficiary"}
+		}
+	}
 	satisfier := target.definition.Satisfier
 	if satisfier == SatisfierOriginatingRequester {
 		request := f.originatingRequest(target)
@@ -659,10 +667,96 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 	if len(record.record.RestsOn) == 0 || record.record.RestsOn[0] != supersede.Target {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "supersede must rest first on its target"}
 	}
+	if governance, restoring, ok := f.governanceTarget(supersede.Target); ok {
+		if governance.index == 0 {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "founding operator seed cannot be retired"}
+		}
+		state := governance.body.(*State)
+		role := rosterAuthorityRole(*state)
+		operatorMembership := rosterMembership(*state) && f.membershipCarriesOperator(state.Body["actor"], governance.record.ID)
+		if role == "operator" || operatorMembership {
+			reason := "operator standing is required to change an operator's membership"
+			if role == "operator" && restoring {
+				reason = "operator standing is required to restore an operator grant"
+			} else if role == "operator" {
+				reason = "operator standing is required to change an operator grant"
+			} else if restoring {
+				reason = "operator standing is required to restore operator-bearing membership"
+			}
+			if !f.hasRole(record.record.Actor, "operator") {
+				return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: reason}
+			}
+		} else if !f.hasRole(record.record.Actor, "ratifier") {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "ratifier standing is required to change roster governance"}
+		}
+		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized governance supersession"}
+	}
 	if target.record.Actor == record.record.Actor || f.hasRole(record.record.Actor, "ratifier") {
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized supersession"}
 	}
 	return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor may not supersede target"}
+}
+
+// governanceTarget follows an act back to the roster statement whose live
+// force it changes. Superseding a supersession reverses that change, so the
+// returned flag alternates along the chain and identifies restoration of a
+// dormant grant.
+func (f *foldState) governanceTarget(event string) (*parsedRecord, bool, bool) {
+	restoring := false
+	for event != "" {
+		record := f.byID[event]
+		if record == nil {
+			return nil, false, false
+		}
+		switch value := record.body.(type) {
+		case *State:
+			if value.Kind != KindRoster {
+				return nil, false, false
+			}
+			return record, restoring, true
+		case *Ratify:
+			event = value.Target
+		case *Supersede:
+			restoring = !restoring
+			event = value.Target
+		default:
+			return nil, false, false
+		}
+	}
+	return nil, false, false
+}
+
+func rosterMembership(state State) bool {
+	role := state.Body["role"]
+	return state.Body["kind"] == "" || role == "participant"
+}
+
+func rosterAuthorityRole(state State) string {
+	role := state.Body["role"]
+	if state.Body["kind"] == "" {
+		switch role {
+		case "agent", "human", "service":
+			return ""
+		}
+	}
+	if role == "participant" {
+		return ""
+	}
+	return role
+}
+
+// membershipCarriesOperator includes dormant grants: restoring their retired
+// membership basis would make them live again in the same act.
+func (f *foldState) membershipCarriesOperator(actor, statement string) bool {
+	if f.hasRole(actor, "operator") {
+		return true
+	}
+	for _, grant := range f.roleGrantsByRole[actorRole{actor: actor, role: "operator"}] {
+		if grant.membershipBasis == statement && f.roleGrantDirectActive(grant) {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *foldState) addRoleGrant(actor, name, kind, role, statement, ratification string, restsOn []string) {
@@ -1001,6 +1095,12 @@ func (f *foldState) project() Projection {
 		if actor.RoleSources == nil {
 			actor.RoleSources = make(map[string][]string)
 		}
+		if actor.DormantRoleSources == nil {
+			actor.DormantRoleSources = make(map[string][]string)
+		}
+		if actor.RetiredRoleSources == nil {
+			actor.RetiredRoleSources = make(map[string][]string)
+		}
 		addActorRole(&actor, grant.role, grant.statement)
 		if grant.membership {
 			if grant.name != "" {
@@ -1033,13 +1133,38 @@ func (f *foldState) project() Projection {
 		projection.Actors[grant.actor] = ActorState{
 			Name: grant.name, Kind: grant.kind, Roles: []string{},
 			MembershipEvent: grant.statement, RoleSources: map[string][]string{},
+			DormantRoleSources: map[string][]string{}, RetiredRoleSources: map[string][]string{},
 			Retired: true,
 		}
+	}
+	for _, grant := range f.roleGrants {
+		actor, exists := projection.Actors[grant.actor]
+		if !exists || f.roleGrantActive(grant) {
+			continue
+		}
+		if actor.DormantRoleSources == nil {
+			actor.DormantRoleSources = make(map[string][]string)
+		}
+		if actor.RetiredRoleSources == nil {
+			actor.RetiredRoleSources = make(map[string][]string)
+		}
+		if f.roleGrantDirectActive(grant) {
+			actor.DormantRoleSources[grant.role] = appendUnique(actor.DormantRoleSources[grant.role], grant.statement)
+		} else {
+			actor.RetiredRoleSources[grant.role] = appendUnique(actor.RetiredRoleSources[grant.role], grant.statement)
+		}
+		projection.Actors[grant.actor] = actor
 	}
 	for fingerprint, actor := range projection.Actors {
 		sort.Strings(actor.Roles)
 		for role := range actor.RoleSources {
 			sort.Strings(actor.RoleSources[role])
+		}
+		for role := range actor.DormantRoleSources {
+			sort.Strings(actor.DormantRoleSources[role])
+		}
+		for role := range actor.RetiredRoleSources {
+			sort.Strings(actor.RetiredRoleSources[role])
 		}
 		projection.Actors[fingerprint] = actor
 	}

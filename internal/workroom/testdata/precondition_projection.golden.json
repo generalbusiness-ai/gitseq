@@ -135,7 +135,9 @@
         "participant": [
           "e0"
         ]
-      }
+      },
+      "dormant_role_sources": {},
+      "retired_role_sources": {}
     }
   },
   "provenance": {
