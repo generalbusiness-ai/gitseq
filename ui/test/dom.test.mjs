@@ -65,6 +65,14 @@ function click(element) {
   });
 }
 
+function enterText(element, value) {
+  return act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, "value").set;
+    setter.call(element, value);
+    element.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  });
+}
+
 const tabNamed = (name) => [...document.querySelectorAll("[role=tab]")].find((tab) => tab.textContent.trim() === name);
 
 test("the railway tab shows the rail, its rows navigate, and retargeting returns to the conversation", async () => {
@@ -116,6 +124,138 @@ test("the railway tab shows the rail, its rows navigate, and retargeting returns
     assert.equal(tabNamed("Thread").getAttribute("aria-selected"), "true");
   } finally {
     await act(async () => { root.unmount(); });
+    await vite.close();
+  }
+});
+
+test("Link to draft visibly owns the thread draft and submits every exact selected basis", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  const mounted = createRoot(document.getElementById("root"));
+  const previousFetch = globalThis.fetch;
+  const posted = [];
+  globalThis.fetch = async (url, init = {}) => {
+    assert.equal(url, "/v0/act");
+    posted.push(JSON.parse(init.body));
+    return { ok: true, statusText: "OK", json: async () => ({ id: `stored-${posted.length}` }) };
+  };
+
+  const genesis = "git:sha1:1111111111111111111111111111111111111111";
+  const event = (hash) => `${genesis}#git:sha1:${hash.repeat(40).slice(0, 40)}`;
+  const rootEvent = event("a");
+  const firstEvent = event("b");
+  const branchEvent = event("c");
+  const linkedStatements = [
+    statement(rootEvent, "codex", "request", "Build the draft link"),
+    statement(firstEvent, "claude", "promise", "I will review the link"),
+    statement(branchEvent, "hugh", "assert", "Keep the selected basis exact"),
+  ];
+  const linkedProjection = {
+    decisions: linkedStatements.map((item) => ({ event: item.event, verdict: "effective", reason: "recorded" })),
+    acts: [],
+    statements: linkedStatements,
+    commitments: [],
+    artifacts: [],
+    actors: {},
+    provenance: { [rootEvent]: [], [firstEvent]: [rootEvent], [branchEvent]: [rootEvent] },
+  };
+  const linkedRoom = {
+    ...workroom,
+    status: {
+      ...workroom.status,
+      durable: { ...workroom.status.durable, projection: linkedProjection },
+    },
+  };
+
+  try {
+    const [{ ThreadPane }, { durableEventBases, toggleLinkEvent }] = await Promise.all([
+      vite.ssrLoadModule("/src/components/ThreadPane.tsx"),
+      vite.ssrLoadModule("/src/components/Composer.tsx"),
+    ]);
+
+    // The same transition used by the room composer promotes a Temporary
+    // draft before adding an exact durable basis. Merely selecting it does
+    // not call the service.
+    let promoted;
+    toggleLinkEvent(
+      { type: "say", restsOn: [], frames: [] },
+      (next) => { promoted = next; },
+      firstEvent,
+    );
+    assert.equal(promoted.type, "assert");
+    assert.deepEqual(promoted.restsOn, [firstEvent]);
+    assert.deepEqual(
+      durableEventBases([rootEvent], [rootEvent, firstEvent, firstEvent, branchEvent]),
+      [rootEvent, firstEvent, branchEvent],
+      "automatic and selected bases are de-duplicated without shortening them",
+    );
+    assert.equal(posted.length, 0);
+
+    await act(async () => {
+      mounted.render(React.createElement(ThreadPane, {
+        workroom: linkedRoom,
+        session: { id: "browser", live: true, actor: "codex", setActor() {} },
+        frames: [{
+          conversation: "temporary",
+          sequence: 0,
+          about: rootEvent,
+          text: "temporary discussion",
+          actor: "claude",
+          fingerprint: "claude",
+          seen: 1,
+          raw: { Conversation: "temporary", Sequence: 0, Payload: "", ActorKey: "" },
+        }],
+        target: { kind: "event", event: rootEvent },
+        pending: [],
+        onClose() {},
+        onJumpTo() {},
+        onOpenProfile() {},
+        onRoute() {},
+        doAct() {},
+        onSay() { return "pending"; },
+        onSayFailed() {},
+        onOpenThread() {},
+      }));
+    });
+
+    const linkButtons = [...document.querySelectorAll('[aria-label="link to draft"]')];
+    assert.equal(linkButtons.length, 2, "only durable child events offer Link; the automatic root and temporary message do not");
+    assert.equal(document.querySelector('[data-conversation="temporary"] [aria-label*="link"]'), null);
+
+    await click(linkButtons[0]);
+    assert.equal(posted.length, 0, "linking only edits the visible draft");
+    assert.equal(linkButtons[0].getAttribute("aria-pressed"), "true");
+    assert.equal(linkButtons[0].getAttribute("aria-label"), "remove link from draft");
+    let chips = document.querySelector('[aria-label="Linked draft items"]');
+    assert.match(chips.textContent, /I will review the link/);
+    assert.equal(chips.querySelectorAll('button[aria-label^="remove link to"]').length, 1);
+
+    await click(linkButtons[1]);
+    chips = document.querySelector('[aria-label="Linked draft items"]');
+    assert.equal(chips.querySelectorAll('button[aria-label^="remove link to"]').length, 2, "multiple selected events stay visible");
+
+    await enterText(document.querySelector('[aria-label="thread reply"]'), "First kept reply");
+    await click(document.querySelector('[aria-label="keep reply"]'));
+    await act(async () => { await Promise.resolve(); });
+    assert.deepEqual(posted[0].rests_on, [rootEvent, firstEvent, branchEvent]);
+    assert.equal(document.querySelector('[aria-label="Linked draft items"]'), null, "successful submission clears the linked draft items");
+
+    await click(linkButtons[0]);
+    await click(linkButtons[1]);
+    await click(document.querySelector(`button[aria-label="remove link to #2 · I will review the link"]`));
+    assert.equal(linkButtons[0].getAttribute("aria-pressed"), "false");
+    assert.equal(linkButtons[0].getAttribute("aria-label"), "link to draft");
+    await enterText(document.querySelector('[aria-label="thread reply"]'), "Reply after unlinking");
+    await click(document.querySelector('[aria-label="keep reply"]'));
+    await act(async () => { await Promise.resolve(); });
+    assert.deepEqual(posted[1].rests_on, [rootEvent, branchEvent], "unlinking removes only that exact basis before submission");
+  } finally {
+    globalThis.fetch = previousFetch;
+    await act(async () => { mounted.unmount(); });
     await vite.close();
   }
 });

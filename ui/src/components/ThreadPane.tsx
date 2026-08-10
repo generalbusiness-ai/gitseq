@@ -9,7 +9,7 @@ import { eventDiscussionEntries, pendingForThread, RetryKeys, sendTemporaryReply
 import { actorTint, clock, cn, seenAt } from "../lib/util";
 import { Avatar } from "./Avatar";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
-import { toggleLinkEvent, toggleLinkFrame, type ComposerContext } from "./Composer";
+import { durableEventBases, eventLinksAfterToggle, LinkChip } from "./Composer";
 import { EventTime } from "./EventTime";
 import { MentionText, Ticket } from "./Stream";
 import { ThreadRailway } from "./ThreadRailway";
@@ -38,8 +38,6 @@ export function ThreadPane({
   target,
   route,
   pending,
-  composer,
-  onComposer,
   onClose,
   onJumpTo,
   onOpenProfile,
@@ -55,8 +53,6 @@ export function ThreadPane({
   target: ThreadTarget;
   route?: ThreadRoute;
   pending: PendingSay[];
-  composer: ComposerContext;
-  onComposer: (context: ComposerContext) => void;
   onClose: () => void;
   onJumpTo: (event: string) => void;
   onOpenProfile: (fingerprint: string) => void;
@@ -78,6 +74,8 @@ export function ThreadPane({
     fp.slice(0, 8);
   const myFingerprint = workroom.actors.find((a) => a.name === session.actor)?.fingerprint;
   const [view, setView] = useState<"thread" | "railway">("thread");
+  const [linkedEvents, setLinkedEvents] = useState<string[]>([]);
+  const toggleDraftLink = (event: string) => setLinkedEvents((current) => eventLinksAfterToggle(current, event));
 
   // Focus discipline: the pane takes focus on open (into its composer) and
   // hands it back on close; Escape closes from anywhere inside.
@@ -178,8 +176,6 @@ export function ThreadPane({
                 ticket={tickets.get(root.event)}
                 nameOf={nameOf}
                 root
-                cited={composer.restsOn.includes(root.event)}
-                onCite={() => toggleLinkEvent(composer, onComposer, root.event)}
                 onJumpTo={onJumpTo}
                 onOpenProfile={onOpenProfile}
                 actions={
@@ -213,8 +209,8 @@ export function ThreadPane({
                       statement={statement}
                       ticket={tickets.get(event)}
                       nameOf={nameOf}
-                      cited={composer.restsOn.includes(event)}
-                      onCite={() => toggleLinkEvent(composer, onComposer, event)}
+                      cited={linkedEvents.includes(event)}
+                      onCite={() => toggleDraftLink(event)}
                       onJumpTo={onJumpTo}
                       onOpenProfile={onOpenProfile}
                       actions={semanticActions({
@@ -271,8 +267,6 @@ export function ThreadPane({
                   depth={depth}
                   known={actorNames}
                   myName={session.actor}
-                  cited={composer.frames.some((candidate) => frameKey(candidate) === frameKey(frame))}
-                  onCite={() => toggleLinkFrame(composer, onComposer, frame)}
                   onReply={() => onOpenThread({ kind: "frame", conversation: frame.conversation, sequence: frame.sequence })}
                   onOpenProfile={onOpenProfile}
                 />
@@ -294,8 +288,6 @@ export function ThreadPane({
                 frame={parentFrame}
                 known={actorNames}
                 myName={session.actor}
-                cited={composer.frames.some((f) => frameKey(f) === frameKey(parentFrame))}
-                onCite={() => toggleLinkFrame(composer, onComposer, parentFrame)}
                 onOpenProfile={onOpenProfile}
               />
               <div className="my-2 flex items-center gap-2" aria-hidden>
@@ -311,8 +303,6 @@ export function ThreadPane({
                   frame={frame}
                   known={actorNames}
                   myName={session.actor}
-                  cited={composer.frames.some((f) => frameKey(f) === frameKey(frame))}
-                  onCite={() => toggleLinkFrame(composer, onComposer, frame)}
                   onReply={() => onOpenThread({ kind: "frame", conversation: frame.conversation, sequence: frame.sequence })}
                   onOpenProfile={onOpenProfile}
                 />
@@ -334,6 +324,13 @@ export function ThreadPane({
         target={target}
         route={route}
         parentFrame={parentFrame}
+        linkedEvents={linkedEvents}
+        onLinkedEvents={setLinkedEvents}
+        textOfEvent={(event) => {
+          const statement = projection?.statements.find((candidate) => candidate.event === event);
+          const ticket = tickets.get(event);
+          return `${ticket ? `#${ticket} · ` : ""}${statement?.text ?? event}`;
+        }}
         boxRef={box}
         onSay={onSay}
         onSayFailed={onSayFailed}
@@ -359,8 +356,8 @@ function ThreadStatement({
   ticket?: number;
   nameOf: (fp: string) => string;
   root?: boolean;
-  cited: boolean;
-  onCite: () => void;
+  cited?: boolean;
+  onCite?: () => void;
   onJumpTo: (event: string) => void;
   onOpenProfile: (fingerprint: string) => void;
   actions: { label: string; symbol: string; tone?: "ok" | "danger"; run: () => void }[];
@@ -398,8 +395,8 @@ function ThreadStatement({
         </div>
       </div>
       <RowToolbar>
-        <ToolbarButton icon={<Link2 className="h-3.5 w-3.5" />} label={cited ? "remove link" : "link"} active={cited} onClick={onCite} />
-        {actions.length > 0 && <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />}
+        {onCite && <ToolbarButton icon={<Link2 className="h-3.5 w-3.5" />} label={cited ? "remove link from draft" : "link to draft"} active={cited} onClick={onCite} />}
+        {onCite && actions.length > 0 && <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />}
         {actions.map((action) => (
           <ToolbarButton key={action.label} label={action.label} icon={<span aria-hidden>{action.symbol}</span>} tone={action.tone} onClick={action.run} />
         ))}
@@ -413,8 +410,6 @@ function ThreadMessage({
   frame,
   known,
   myName,
-  cited,
-  onCite,
   onReply,
   onOpenProfile,
   depth = 0,
@@ -422,8 +417,6 @@ function ThreadMessage({
   frame: FrameView;
   known: Set<string>;
   myName?: string;
-  cited: boolean;
-  onCite: () => void;
   onReply?: () => void;
   onOpenProfile: (fingerprint: string) => void;
   depth?: number;
@@ -452,7 +445,6 @@ function ThreadMessage({
         <MentionText text={frame.text} known={known} myName={myName} className="block text-sm leading-relaxed text-foreground/90" />
       </div>
       <RowToolbar>
-        <ToolbarButton icon={<Link2 className="h-3.5 w-3.5" />} label={cited ? "remove link" : "link"} active={cited} onClick={onCite} />
         {onReply && <ToolbarButton icon={<MessageSquareText className="h-3.5 w-3.5" />} label="reply in thread" onClick={onReply} />}
       </RowToolbar>
     </div>
@@ -467,6 +459,9 @@ function ThreadComposer({
   target,
   route,
   parentFrame,
+  linkedEvents,
+  onLinkedEvents,
+  textOfEvent,
   boxRef,
   onSay,
   onSayFailed,
@@ -476,6 +471,9 @@ function ThreadComposer({
   target: ThreadTarget;
   route?: ThreadRoute;
   parentFrame?: FrameView;
+  linkedEvents: string[];
+  onLinkedEvents: (events: string[]) => void;
+  textOfEvent: (event: string) => string;
   boxRef: React.RefObject<HTMLTextAreaElement | null>;
   onSay: (text: string, re?: string, about?: string) => string;
   onSayFailed: (id: string) => void;
@@ -490,6 +488,10 @@ function ThreadComposer({
   const [error, setError] = useState<string>();
   const retryKeys = useRef(new RetryKeys());
   const durable = type !== "say";
+
+  useEffect(() => {
+    if (linkedEvents.length > 0 && type === "say") setType("assert");
+  }, [linkedEvents, type]);
 
   const send = async () => {
     if (!text.trim() || busy || !session.actor) return;
@@ -534,6 +536,7 @@ function ThreadComposer({
               act: "supersede",
               target: target.kind === "event" ? target.event : undefined,
               text: line,
+              rests_on: durableEventBases([], linkedEvents),
             }
           : {
               session: session.id,
@@ -541,7 +544,7 @@ function ThreadComposer({
               kind: type,
               text: line,
               body: Object.keys(body).length ? body : undefined,
-              rests_on: target.kind === "event" ? [target.event] : [],
+              rests_on: durableEventBases(target.kind === "event" ? [target.event] : [], linkedEvents),
               evidence,
             };
       const scope = `${threadTargetKey(target)}:${type}`;
@@ -550,6 +553,7 @@ function ThreadComposer({
       await api.act({ ...input, idempotency_key: intentKey });
       retryKeys.current.succeeded(scope, intentKey);
       setText("");
+      onLinkedEvents([]);
       setActiveRoute(undefined);
       setType(defaultType);
     } catch (thrown) {
@@ -587,7 +591,14 @@ function ThreadComposer({
           </>
         ) : (
           <button
-            onClick={() => setType(durable ? "say" : "assert")}
+            onClick={() => {
+              if (durable) {
+                setType("say");
+                onLinkedEvents([]);
+              } else {
+                setType("assert");
+              }
+            }}
             aria-pressed={durable}
             aria-label={durable ? "make reply temporary" : "keep reply"}
             className={cn(
@@ -599,6 +610,18 @@ function ThreadComposer({
           </button>
         )}
       </div>
+      {linkedEvents.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2" aria-label="Linked draft items">
+          {linkedEvents.map((event) => (
+            <LinkChip
+              key={event}
+              icon={<Link2 className="h-3 w-3 shrink-0" />}
+              label={textOfEvent(event)}
+              onRemove={() => onLinkedEvents(linkedEvents.filter((candidate) => candidate !== event))}
+            />
+          ))}
+        </div>
+      )}
       <div className="flex items-end gap-2">
         <textarea
           ref={boxRef}

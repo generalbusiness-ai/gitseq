@@ -27,12 +27,22 @@ function typeAfterLink(context: ComposerContext): ComposerType {
   return context.type === "say" ? "assert" : context.type;
 }
 
+export function eventLinksAfterToggle(events: readonly string[], event: string): string[] {
+  return events.includes(event)
+    ? events.filter((candidate) => candidate !== event)
+    : [...new Set([...events, event])];
+}
+
+export function durableEventBases(automatic: readonly string[], selected: readonly string[]): string[] {
+  return [...new Set([...automatic, ...selected])];
+}
+
 export function toggleLinkEvent(context: ComposerContext, onContext: (c: ComposerContext) => void, event: string): void {
   const exists = context.restsOn.includes(event);
   onContext({
     ...context,
     type: exists ? context.type : typeAfterLink(context),
-    restsOn: exists ? context.restsOn.filter((e) => e !== event) : [...context.restsOn, event],
+    restsOn: eventLinksAfterToggle(context.restsOn, event),
   });
 }
 
@@ -139,7 +149,7 @@ export function Composer({
         kind: "assert",
         text: text.trim(),
         body: Object.keys(body).length ? body : undefined,
-        rests_on: restsOn, // never fabricated; free-standing is honest
+        rests_on: durableEventBases([], restsOn), // never fabricated; free-standing is honest
         evidence: Object.keys(evidence).length ? evidence : undefined,
       } as const;
       const payload = JSON.stringify(input);
@@ -163,7 +173,13 @@ export function Composer({
       <div className="mx-auto max-w-3xl">
         <div className="mb-2 flex items-center gap-2">
           <button
-            onClick={() => onContext({ ...context, type: durable ? "say" : "assert" })}
+            onClick={() =>
+              onContext(
+                durable
+                  ? { ...context, type: "say", restsOn: [], frames: [] }
+                  : { ...context, type: "assert" },
+              )
+            }
             aria-pressed={durable}
             className={cn(
               "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium focus-visible:outline focus-visible:outline-accent",
@@ -294,12 +310,12 @@ export function Composer({
   );
 }
 
-function LinkChip({ icon, label, onRemove }: { icon: React.ReactNode; label: string; onRemove: () => void }) {
+export function LinkChip({ icon, label, onRemove }: { icon: React.ReactNode; label: string; onRemove: () => void }) {
   return (
     <span className="flex max-w-full items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-0.5 text-xs text-muted">
       {icon}
       <span className="truncate">linked: {label}</span>
-      <button onClick={onRemove} aria-label="remove link" className="shrink-0 text-faint hover:text-foreground focus-visible:outline focus-visible:outline-accent">
+      <button onClick={onRemove} aria-label={`remove link to ${label}`} className="shrink-0 text-faint hover:text-foreground focus-visible:outline focus-visible:outline-accent">
         <X className="h-3 w-3" />
       </button>
     </span>
