@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f51b55e14b67ea437a1d82e8289867d86801664"}
+{"kind":"artifact","text":"Actor-addressed unclaimed-work discovery is carried onto current main at exact clean head ebaddb566eb0360e186d53621a3b393a0d901568 on request/addressed-unclaimed-current-main.","body":{"branch":"request/addressed-unclaimed-current-main","commit":"ebaddb566eb0360e186d53621a3b393a0d901568","path":"."}}
