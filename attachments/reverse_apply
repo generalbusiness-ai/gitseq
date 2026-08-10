@@ -1,0 +1,1 @@
+git show a0d293c277c893ed2df1903a6dc934f83fc0f34f --format= | git apply --reverse --check succeeded

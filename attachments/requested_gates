@@ -1,0 +1,1 @@
+make vet test PASS
