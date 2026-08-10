@@ -1,1 +1,1 @@
-{"target":"e4836d194cf826c4b70469c07b20cd0bd8a6e7dd"}
+{"kind":"artifact","text":"Merged adversarial evidence lane: CI now runs only the declared cases, exposes failure diagnostics, and keeps wall-clock measurements out of the default correctness lane.","body":{"commit":"c9dc187def1063ff96989aa305903fbdf92b7e11","path":"spike/adversarial-evidence-lane"}}
