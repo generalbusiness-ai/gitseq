@@ -1,0 +1,1 @@
+The source implementation is unchanged from the previously reviewed c3b2f5e1 chain, whose full ordinary, build, vet, UI, and eventual full race gates passed; d1fc1620 adds the one documentation repair and current main README-only commit.
