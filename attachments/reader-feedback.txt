@@ -1,5 +1,0 @@
-Reader 1 (Dylan): “the ‘document that knows when it is wrong’ piece sounds interesting, i can’t tell exactly from the post or the github what the ergonomics of that actually are in practice. Or… are there ergonomics? This feels like a tool the agents are supposed to use. is ‘the knowledge projection that an agent could reconstruct at any given moment’ the ‘document’ here?”
-
-Hugh: “Yes ‘this is stale because X’ is the main end-result - applies to documents, features, etc etc. - but that’s not really obvious in the readme/demo/etc. You can see some of the mechanic of it in e.g. the docs/ pages each have a ‘rests-on’ that points at their dependency tree (which is how you can tell if they’re stale). That shows up in the UI… but the UI doesn’t actually include a ‘browser for committed objects in the repo’ which is where it would be useful.”
-
-Reader 2: “I can't quite make out exactly what this does. Examples or diagrams would go a long way”.
