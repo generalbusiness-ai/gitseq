@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ff5c78f1f071b502a49680f8396b7db1e6bcdd5c","text":"Replace the stale corrected candidate with live exact candidate e04566e9 at head 7d6211540692bee2a5b9415389c2f9794112137a."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:09e88f372375778afde2bbc19a70dfd0227f7cc2","text":"Retire this stale readiness report; a fresh report will cite only the live implementation promise and candidate artifact."}
