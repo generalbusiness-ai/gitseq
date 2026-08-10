@@ -372,3 +372,54 @@ func BenchmarkWarmDepth20000Summary(b *testing.B) {
 		}
 	}
 }
+
+// The bounded status is a second renderer of the same events, and review found
+// that the surface test guarding #N covered only the first. The fold tests were
+// green, the full renderer was covered, and changing this one back to an
+// abbreviation still passed — which is the same shape as a test that names a
+// path it does not walk.
+//
+// So this pins the bounded surface directly, and is mutation-sensitive: swap
+// name() back to short() in either renderCommitments or renderArtifacts and it
+// fails. Git commits stay abbreviated and are asserted to, because that
+// asymmetry is the point rather than an oversight — git resolves an abbreviated
+// commit, and nothing resolves an abbreviated event.
+func TestBoundedStatusNamesEventsByNumber(t *testing.T) {
+	const request = "git:sha1:genesis#git:sha1:requestevent000000000000000000000000000"
+	const artifact = "git:sha1:genesis#git:sha1:artifactevent00000000000000000000000000"
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+
+	projection := workroom.Projection{
+		Actors: map[string]workroom.ActorState{"requester": {Name: "Ada"}, "performer": {Name: "Grace"}},
+		Statements: []workroom.Statement{
+			{Event: request, Actor: "requester", Kind: workroom.KindRequest, Text: "do the thing"},
+		},
+		Commitments: []workroom.Commitment{
+			{Request: request, Requester: "requester", Performer: "performer", WaitingOn: "performer", Status: "promised"},
+		},
+		Artifacts: []workroom.Artifact{{Event: artifact, Path: "internal/thing", Commit: commit}},
+		// Sequences live on decisions because that is the only index covering
+		// every durable record. Without these the rows have no number to use.
+		Decisions: []workroom.Decision{
+			{Event: request, Sequence: 41, Verdict: workroom.Effective},
+			{Event: artifact, Sequence: 42, Verdict: workroom.Effective},
+		},
+	}
+
+	rendered := string(Render(Build("genesis", "head", 2, projection), "test"))
+
+	for _, want := range []string{"#41", "#42"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("bounded status omits %s:\n%s", want, rendered)
+		}
+	}
+	for _, forbidden := range []string{short(request), short(artifact)} {
+		if strings.Contains(rendered, forbidden) {
+			t.Errorf("bounded status abbreviates an event as %q instead of naming it:\n%s", forbidden, rendered)
+		}
+	}
+	// The commit is a git object and must still be abbreviated.
+	if !strings.Contains(rendered, short(commit)) {
+		t.Errorf("bounded status stopped abbreviating a git commit:\n%s", rendered)
+	}
+}
