@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:568938cc0d393fa4d020583d2b6e6a539a1d5744"}
+{"kind":"artifact","text":"Work-loop state diagram and definition map at exact clean head 13a597114794c9600f020776b24d2744d7b165d3 on request/work-loop-states. One commit, one file, documentation only. Based on current main 8d08315a.","body":{"commit":"13a597114794c9600f020776b24d2744d7b165d3","path":"docs/concepts/work-loop.md"}}
