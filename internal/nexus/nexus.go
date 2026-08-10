@@ -12,8 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/fxamacker/cbor/v2"
 )
@@ -24,6 +26,37 @@ const (
 )
 
 var ErrReset = errors.New("nexus cursor is no longer available; take a new snapshot")
+
+type ActivityStatus string
+
+const (
+	ActivityAvailable ActivityStatus = "available"
+	ActivityBusy      ActivityStatus = "busy"
+	ActivityWaiting   ActivityStatus = "waiting"
+	ActivityBlocked   ActivityStatus = "blocked"
+
+	MaxFocusEvents       = 8
+	MaxFocusEventBytes   = 256
+	MaxActivityNoteBytes = 160
+)
+
+// Activity is advisory, leased attention. It has no durable workflow force.
+// Focus is a sorted set so snapshots and multi-session clients converge on one
+// representation regardless of update order.
+type Activity struct {
+	Status ActivityStatus `json:"status"`
+	Focus  []string       `json:"focus"`
+	Note   string         `json:"note,omitempty"`
+}
+
+// ActivityUpdate distinguishes an omitted field from an explicit clear.
+// Announce renewals omit all three fields and therefore preserve the session's
+// prior activity until that same session changes it or its lease expires.
+type ActivityUpdate struct {
+	Status *ActivityStatus
+	Focus  *[]string
+	Note   *string
+}
 
 // mintHandle produces a public name for a session that is unrelated to the
 // session itself.
@@ -56,16 +89,18 @@ type Cursor struct {
 }
 
 type Change struct {
-	Cursor Cursor `json:"cursor"`
-	Kind   string `json:"kind"`
-	ID     string `json:"id"`
-	Value  string `json:"value,omitempty"`
+	Cursor   Cursor    `json:"cursor"`
+	Kind     string    `json:"kind"`
+	ID       string    `json:"id"`
+	Value    string    `json:"value,omitempty"`
+	Activity *Activity `json:"activity,omitempty"`
 }
 
 type Snapshot struct {
-	Cursor        Cursor            `json:"cursor"`
-	Presence      map[string]string `json:"presence"`
-	Conversations []string          `json:"conversations"`
+	Cursor        Cursor              `json:"cursor"`
+	Presence      map[string]string   `json:"presence"`
+	Activity      map[string]Activity `json:"activity"`
+	Conversations []string            `json:"conversations"`
 }
 
 type Frame struct {
@@ -111,6 +146,7 @@ type presenceEntry struct {
 	value     string
 	actor     string
 	handle    string
+	activity  Activity
 	expiresAt time.Time
 }
 
@@ -189,6 +225,13 @@ func (h *Hub) append(kind, id, value string) Change {
 // AnnounceSession leases a session to exactly one custodial actor. Presence,
 // binding and expiry are updated under the same lock as conversation retention.
 func (h *Hub) AnnounceSession(id, actor, value string, ttl time.Duration) (Change, error) {
+	return h.AnnounceSessionActivity(id, actor, value, ttl, ActivityUpdate{})
+}
+
+// AnnounceSessionActivity renews one session and optionally changes only that
+// session's advisory activity. The private session identifier remains the
+// authority boundary; callers cannot address another lease by public handle.
+func (h *Hub) AnnounceSessionActivity(id, actor, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if id == "" || actor == "" {
@@ -198,14 +241,18 @@ func (h *Hub) AnnounceSession(id, actor, value string, ttl time.Duration) (Chang
 	if existing, exists := h.presence[id]; exists && existing.actor != actor {
 		return Change{}, errors.New("session is already bound to another actor")
 	}
-	return h.announceFor(id, actor, value, ttl)
+	return h.announceFor(id, actor, value, ttl, update)
 }
 
-func (h *Hub) announceFor(id, actor, value string, ttl time.Duration) (Change, error) {
+func (h *Hub) announceFor(id, actor, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
 	if ttl <= 0 {
 		ttl = 30 * time.Second
 	}
 	existing, exists := h.presence[id]
+	activity, err := normalizeActivity(existing.activity, update, exists)
+	if err != nil {
+		return Change{}, err
+	}
 	handle := existing.handle
 	if handle == "" {
 		minted, err := mintHandle()
@@ -214,11 +261,84 @@ func (h *Hub) announceFor(id, actor, value string, ttl time.Duration) (Change, e
 		}
 		handle = minted
 	}
-	h.presence[id] = presenceEntry{value: value, actor: actor, handle: handle, expiresAt: time.Now().Add(ttl)}
-	if exists && existing.value == value && existing.actor == actor {
-		return Change{Cursor: Cursor{Generation: h.generation, Position: h.position}, Kind: "renewal", ID: handle, Value: value}, nil
+	h.presence[id] = presenceEntry{value: value, actor: actor, handle: handle, activity: activity, expiresAt: time.Now().Add(ttl)}
+	if exists && existing.value == value && existing.actor == actor && activityEqual(existing.activity, activity) {
+		copy := cloneActivity(activity)
+		return Change{Cursor: Cursor{Generation: h.generation, Position: h.position}, Kind: "renewal", ID: handle, Value: value, Activity: &copy}, nil
 	}
-	return h.append("presence", handle, value), nil
+	kind := "presence"
+	if exists && existing.value == value && existing.actor == actor {
+		kind = "activity"
+	}
+	change := h.append(kind, handle, value)
+	copy := cloneActivity(activity)
+	change.Activity = &copy
+	// append records the change before the typed payload is known. Replace the
+	// just-appended history value so wait observes the same transition returned
+	// to the updater.
+	h.history[len(h.history)-1] = change
+	return change, nil
+}
+
+func normalizeActivity(current Activity, update ActivityUpdate, exists bool) (Activity, error) {
+	if !exists || current.Status == "" {
+		current = Activity{Status: ActivityAvailable, Focus: []string{}}
+	} else {
+		current = cloneActivity(current)
+	}
+	if update.Status != nil {
+		switch *update.Status {
+		case ActivityAvailable, ActivityBusy, ActivityWaiting, ActivityBlocked:
+			current.Status = *update.Status
+		default:
+			return Activity{}, fmt.Errorf("unknown activity status %q", *update.Status)
+		}
+	}
+	if update.Focus != nil {
+		if len(*update.Focus) > MaxFocusEvents {
+			return Activity{}, fmt.Errorf("focus has %d events; maximum is %d", len(*update.Focus), MaxFocusEvents)
+		}
+		seen := make(map[string]bool, len(*update.Focus))
+		current.Focus = current.Focus[:0]
+		for _, event := range *update.Focus {
+			if event == "" || len(event) > MaxFocusEventBytes || !utf8.ValidString(event) {
+				return Activity{}, errors.New("focus events must be non-empty UTF-8 identifiers of at most 256 bytes")
+			}
+			if !seen[event] {
+				seen[event] = true
+				current.Focus = append(current.Focus, event)
+			}
+		}
+		sort.Strings(current.Focus)
+	}
+	if update.Note != nil {
+		note := strings.TrimSpace(*update.Note)
+		if len(note) > MaxActivityNoteBytes || !utf8.ValidString(note) {
+			return Activity{}, fmt.Errorf("activity note must be UTF-8 and at most %d bytes", MaxActivityNoteBytes)
+		}
+		current.Note = note
+	}
+	return current, nil
+}
+
+func cloneActivity(activity Activity) Activity {
+	activity.Focus = append([]string(nil), activity.Focus...)
+	if activity.Focus == nil {
+		activity.Focus = []string{}
+	}
+	return activity
+}
+
+func activityEqual(left, right Activity) bool {
+	if left.Status != right.Status || left.Note != right.Note || len(left.Focus) != len(right.Focus) {
+		return false
+	}
+	for index := range left.Focus {
+		if left.Focus[index] != right.Focus[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *Hub) Depart(id string) Change {
@@ -325,8 +445,10 @@ func (h *Hub) Snapshot() Snapshot {
 	// Keyed by handle: an observer learns who is here and can follow each
 	// session across renewals without receiving the credential itself.
 	presence := make(map[string]string, len(h.presence))
+	activity := make(map[string]Activity, len(h.presence))
 	for _, entry := range h.presence {
 		presence[entry.handle] = entry.value
+		activity[entry.handle] = cloneActivity(entry.activity)
 	}
 	conversations := make([]string, 0, len(h.convs))
 	for id := range h.convs {
@@ -334,8 +456,8 @@ func (h *Hub) Snapshot() Snapshot {
 	}
 	sort.Strings(conversations)
 	return Snapshot{
-		Cursor:   Cursor{Generation: h.generation, Position: h.position},
-		Presence: presence, Conversations: conversations,
+		Cursor: Cursor{Generation: h.generation, Position: h.position}, Presence: presence,
+		Activity: activity, Conversations: conversations,
 	}
 }
 

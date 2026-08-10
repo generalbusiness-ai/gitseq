@@ -45,3 +45,16 @@ at step 5 is what makes those pages flare when the world moves under them.
 Talk and routine progress stay ephemeral. Promote a breakdown only when it
 changes scope, a condition of satisfaction, or creates follow-up work. Never
 sign as another actor.
+
+## Leased activity
+
+Presence status and focus are advisory, session-bound attention. They are not
+a promise, claim, report, authorization, or completion signal. Set `busy` with
+the durable events you are actively handling; publish `waiting` or `blocked`
+immediately when either becomes true; clear focus and return to `available`
+when leaving the work. Lease expiry clears both automatically.
+
+Keep routine failed tests and exploratory dead ends ephemeral. If a blockage
+is material or must survive the session, record an `assert` resting on the
+promise. If repair work is needed, create a child request before implementing
+it. Supersede your promise only when you are withdrawing it.

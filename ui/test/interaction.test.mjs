@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { hueOf, initialsOf } from "../src/lib/avatar.ts";
-import { RetryKeys, fingerprintOfPresentActor, fingerprintsIdentifySameActor, parsePresenceLabel, presentActors, threadTargetKey } from "../src/lib/interaction.ts";
+import { RetryKeys, eventDiscussionEntries, eventDiscussionFrames, fingerprintOfPresentActor, fingerprintsIdentifySameActor, frameBelongsInRoom, parsePresenceLabel, pendingForThread, pendingMatchesFrame, presentActors, reconciledPendingIDs, sendTemporaryReply, temporaryDiscussionCounts, temporaryDiscussionLabel, temporaryReplyDelivery, threadTargetKey, toggleActivityFocus } from "../src/lib/interaction.ts";
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic } from "../src/lib/memory.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
-import { CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
+import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState } from "../src/lib/work.ts";
 import { belongsInRoom, commitmentRelationship, interpretationNotice, isInterpretationGap, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
@@ -45,6 +45,159 @@ test("thread identity includes its exact target", () => {
   );
 });
 
+test("temporary event discussion is isolated by exact event anchor", () => {
+  const frames = [
+    { about: "event-one", text: "one" },
+    { about: "event-two", text: "two" },
+    { about: "event-one", re: "conversation:0", text: "nested" },
+  ];
+  assert.deepEqual(eventDiscussionFrames("event-one", frames).map((frame) => frame.text), ["one"]);
+  assert.equal(frameBelongsInRoom(frames[0], new Set(["event-one", "event-two"])), false);
+  assert.equal(frameBelongsInRoom({ about: "the workroom" }, new Set(["event-one", "event-two"])), true);
+  assert.equal(
+    frameBelongsInRoom(
+      { about: "git:sha1:1111111111111111111111111111111111111111#git:sha1:2222222222222222222222222222222222222222" },
+      new Set(),
+    ),
+    false,
+  );
+
+  const pending = [
+    { id: "one", about: "event-one" },
+    { id: "two", about: "event-two" },
+    { id: "frame", re: "conversation:7" },
+  ];
+  assert.deepEqual(pendingForThread({ kind: "event", event: "event-one" }, pending).map((item) => item.id), ["one"]);
+  assert.deepEqual(pendingForThread({ kind: "frame", conversation: "conversation", sequence: 7 }, pending).map((item) => item.id), ["frame"]);
+});
+
+test("temporary event discussion keeps nested replies visible with their exact depth", () => {
+  const frames = [
+    { conversation: "one", sequence: 0, about: "event-one", text: "root" },
+    { conversation: "one", sequence: 1, about: "event-one", re: "one:0", text: "reply" },
+    { conversation: "one", sequence: 2, about: "event-one", re: "one:1", text: "nested" },
+    { conversation: "other", sequence: 0, about: "event-two", text: "elsewhere" },
+    { conversation: "one", sequence: 3, about: "event-one", re: "expired:7", text: "orphan" },
+  ];
+  assert.deepEqual(
+    eventDiscussionEntries("event-one", frames).map(({ frame, depth }) => [frame.text, depth, frame.conversation, frame.re]),
+    [
+      ["root", 0, "one", undefined],
+      ["reply", 1, "one", "one:0"],
+      ["nested", 2, "one", "one:1"],
+      ["orphan", 0, "one", "expired:7"],
+    ],
+  );
+});
+
+test("optimistic temporary replies reconcile only inside their sending scope", () => {
+  assert.equal(pendingMatchesFrame({ about: "event-one" }, { about: "event-one" }), true);
+  assert.equal(pendingMatchesFrame({ about: "event-one" }, { about: "event-two" }), false);
+  assert.equal(pendingMatchesFrame({ re: "conversation:1" }, { about: "event-one", re: "conversation:1" }), true);
+  assert.equal(pendingMatchesFrame({}, { about: "the workroom" }), true);
+  assert.equal(pendingMatchesFrame({}, { about: "event-one" }), false);
+});
+
+test("view-independent reconciliation is exact, arrival-sensitive, and one-to-one", () => {
+  const pending = [
+    { id: "one", text: "same", at: 10, about: "event-one" },
+    { id: "two", text: "same", at: 10, about: "event-two" },
+    { id: "duplicate", text: "same", at: 10, about: "event-one" },
+    { id: "nested", text: "nested", at: 10, re: "conversation:4" },
+    { id: "old", text: "old words", at: 20, about: "event-one" },
+  ];
+  const frames = [
+    { actor: "claude", text: "same", seen: 11, about: "event-one" },
+    { actor: "claude", text: "same", seen: 11, about: "event-two" },
+    { actor: "claude", text: "nested", seen: 11, about: "event-one", re: "conversation:4" },
+    { actor: "claude", text: "old words", seen: 19, about: "event-one" },
+    { actor: "someone-else", text: "same", seen: 11, about: "event-one" },
+  ];
+  assert.deepEqual(reconciledPendingIDs(pending, frames, "claude"), ["one", "two", "nested"]);
+  assert.deepEqual(reconciledPendingIDs(pending, frames, undefined), []);
+});
+
+test("temporary discussion signals include replies and stay bounded", () => {
+  const frames = [
+    ...Array.from({ length: 22 }, (_, sequence) => ({ about: "event-one", re: sequence ? `one:${sequence - 1}` : undefined })),
+    { about: "event-two" },
+    { about: "the workroom" },
+  ];
+  const counts = temporaryDiscussionCounts(frames, new Set(["event-one", "event-two"]));
+  assert.deepEqual(counts.get("event-one"), { count: 20, overflow: true });
+  assert.equal(temporaryDiscussionLabel(counts.get("event-one")), "20+ temporary");
+  assert.equal(temporaryDiscussionLabel(counts.get("event-two")), "1 temporary");
+  assert.equal(counts.has("the workroom"), false);
+});
+
+test("temporary discussion wiring keeps the six reviewed survivor conditions pinned", () => {
+  const read = (name) => readFileSync(new URL(`../src/${name}`, import.meta.url), "utf8");
+  const app = read("App.tsx");
+  const stream = read("components/Stream.tsx");
+  const thread = read("components/ThreadPane.tsx");
+
+  // Reconciliation is owned above the optional Activity view and delegates
+  // exact matching to the mutation-tested helper.
+  assert.match(app, /reconciledPendingIDs\(pending, frames, session\.actor\)/);
+  assert.doesNotMatch(stream, /onReconcile|frame\.actor === session\.actor && frame\.text/);
+
+  // Room isolation stays on the exact durable-event-aware predicate.
+  assert.match(stream, /if \(!frameBelongsInRoom\(frame, durableEvents\)\) continue/);
+
+  // Failure gives the words back and exposes the error; an expired frame
+  // thread refuses the publish before optimistic state is created.
+  const temporaryStart = thread.indexOf("const delivery = temporaryReplyDelivery");
+  const temporaryEnd = thread.indexOf("return;\n    }\n    try {", temporaryStart);
+  assert.notEqual(temporaryStart, -1);
+  assert.notEqual(temporaryEnd, -1);
+  const temporaryBranch = thread.slice(temporaryStart, temporaryEnd);
+  assert.match(temporaryBranch, /if \(!delivery\)[\s\S]*This temporary conversation has expired\.[\s\S]*return/);
+  assert.match(temporaryBranch, /catch \(thrown\)[\s\S]*setText\(line\)[\s\S]*setError\(/);
+  assert.match(thread, /<p role="alert"/);
+
+  // Kept and temporary controls retain state-specific accessible names.
+  assert.match(thread, /aria-label=\{durable \? "make reply temporary" : "keep reply"\}/);
+  assert.match(thread, /aria-label=\{type === "withdraw" \? "withdraw" : durable \? "keep reply" : "send temporary reply"\}/);
+});
+
+test("temporary delivery anchors an event exactly and preserves frame conversation identity", () => {
+  assert.deepEqual(temporaryReplyDelivery({ kind: "event", event: "full-event-id" }), { about: "full-event-id" });
+  assert.deepEqual(
+    temporaryReplyDelivery(
+      { kind: "frame", conversation: "conversation", sequence: 4 },
+      { conversation: "conversation", sequence: 4, about: "full-event-id" },
+    ),
+    { about: "full-event-id", conversation: "conversation", re: "conversation:4" },
+  );
+  assert.equal(temporaryReplyDelivery({ kind: "frame", conversation: "gone", sequence: 1 }), undefined);
+});
+
+test("failed temporary delivery removes its optimistic echo and preserves the transport failure", async () => {
+  const calls = [];
+  const failure = new Error("nexus unavailable");
+  await assert.rejects(
+    sendTemporaryReply("try again", { about: "event-one" }, {
+      optimistic(text, re, about) {
+        calls.push(["optimistic", text, re, about]);
+        return "pending-one";
+      },
+      async publish(delivery, text) {
+        calls.push(["publish", delivery, text]);
+        throw failure;
+      },
+      failed(id) {
+        calls.push(["failed", id]);
+      },
+    }),
+    (error) => error === failure,
+  );
+  assert.deepEqual(calls, [
+    ["optimistic", "try again", undefined, "event-one"],
+    ["publish", { about: "event-one" }, "try again"],
+    ["failed", "pending-one"],
+  ]);
+});
+
 test("presence labels preserve actor names containing spaces", () => {
   assert.deepEqual(parsePresenceLabel("Ada Lovelace (abc123)"), {
     name: "Ada Lovelace",
@@ -62,10 +215,53 @@ test("presence counts people, not the sessions each of them leases", () => {
     "handle:5": "claude (a5d35aa7e479)",
   });
   assert.deepEqual(people, [
-    { label: "claude (a5d35aa7e479)", name: "claude", fingerprint: "a5d35aa7e479", sessions: 3 },
-    { label: "codex (5f12e916d136)", name: "codex", fingerprint: "5f12e916d136", sessions: 1 },
-    { label: "hugh (7fbc80f1ba06)", name: "hugh", fingerprint: "7fbc80f1ba06", sessions: 1 },
+    { label: "claude (a5d35aa7e479)", name: "claude", fingerprint: "a5d35aa7e479", sessions: 3, status: "available", focus: [], note: undefined },
+    { label: "codex (5f12e916d136)", name: "codex", fingerprint: "5f12e916d136", sessions: 1, status: "available", focus: [], note: undefined },
+    { label: "hugh (7fbc80f1ba06)", name: "hugh", fingerprint: "7fbc80f1ba06", sessions: 1, status: "available", focus: [], note: undefined },
   ]);
+});
+
+test("multiple activity leases aggregate deterministically and stay bounded", () => {
+  const presence = {
+    "handle:2": "codex (5f12e916d136)",
+    "handle:1": "codex (5f12e916d136)",
+  };
+  const activity = {
+    "handle:1": { status: "busy", focus: ["event:z", "event:a"], note: "later" },
+    "handle:2": { status: "blocked", focus: ["event:b", "event:a"], note: "earlier" },
+  };
+  assert.deepEqual(presentActors(presence, activity), [{
+    label: "codex (5f12e916d136)", name: "codex", fingerprint: "5f12e916d136", sessions: 2,
+    status: "blocked", focus: ["event:a", "event:b", "event:z"], note: "earlier",
+  }]);
+
+  const many = Object.fromEntries(Array.from({ length: 10 }, (_, index) => [`h${index}`, { status: "available", focus: [`event:${9 - index}`] }]));
+  const labels = Object.fromEntries(Object.keys(many).map((handle) => [handle, "codex (5f12e916d136)"]));
+  assert.deepEqual(presentActors(labels, many)[0].focus, ["event:0", "event:1", "event:2", "event:3", "event:4", "event:5", "event:6", "event:7"]);
+});
+
+test("UI focus selection adds, removes, and stays bounded", () => {
+  assert.deepEqual(toggleActivityFocus(["event:b"], "event:a"), ["event:a", "event:b"]);
+  assert.deepEqual(toggleActivityFocus(["event:a", "event:b"], "event:a"), ["event:b"]);
+  const full = Array.from({ length: 8 }, (_, index) => `event:${index}`);
+  assert.equal(toggleActivityFocus(full, "event:z").length, 8);
+});
+
+test("task and event surfaces wire shared selection to advisory focus", () => {
+  const read = (name) => readFileSync(new URL(`../src/components/${name}`, import.meta.url), "utf8");
+  const work = read("WorkDrawer.tsx");
+  const top = read("TopBar.tsx");
+  assert.match(work, /onSelect\(\{ kind: "event", id: event \}\);\s*onOpenThread\(event\)/);
+  assert.match(work, /actor\.focus\.includes\(event\)/);
+  assert.match(top, /toggleActivityFocus\(session\.activity\.focus, selectedEvent\)/);
+  assert.match(top, /setActivity\(\{ focus: \[\] \}\)/);
+});
+
+test("browser heartbeats renew the lease without revalidating activity focus", () => {
+  const session = readFileSync(new URL("../src/lib/session.ts", import.meta.url), "utf8");
+  assert.match(session, /const renew = \(\) =>\s*api\s*\.announce\(effective, id\)/);
+  assert.match(session, /setActivity:[\s\S]*api\.announce\(effective, id, next\)/);
+  assert.doesNotMatch(session, /const renew = \(\) =>[\s\S]*?announce\(effective, id, activityRef\.current\)/);
 });
 
 test("avatar initials read the actor's name, not a decorated label", () => {
@@ -380,30 +576,30 @@ test("Work groups by conversational ancestry without treating later citations as
   assert.equal(work.topics.find((topic) => topic.event === "r3").items.length, 2);
   assert.equal(work.topics.some((topic) => topic.event === "r4"), false);
 
-  const defaults = filterWorkProjection(work, { open: true, attention: true, closed: false });
+  const defaults = filterWorkProjection(work, { active: true, attention: true, closed: false });
   assert.equal(defaults.topics.some((topic) => topic.event === "r5"), false);
-  assert.deepEqual(filterWorkProjection(work, { open: true, attention: true, closed: false, author: "hugh" }).topics.map((topic) => topic.event), ["r1"]);
-  assert.deepEqual(filterWorkProjection(work, { open: true, attention: true, closed: false, query: "deploy-readiness" }).topics.map((topic) => topic.event), ["r1"]);
-  assert.equal(filterWorkProjection(work, { open: true, attention: true, closed: true, query: "deployment" }).topics[0].event, "r1");
-  assert.deepEqual(filterWorkProjection(work, { open: true, attention: true, closed: false, query: "notes/deploy.md" }).topics.map((topic) => topic.event), ["r1"]);
-  assert.deepEqual(filterWorkProjection(work, { open: false, attention: false, closed: true }).topics.map((topic) => topic.event), ["r5"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, author: "hugh" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "deploy-readiness" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: true, query: "deployment" }).topics[0].event, "r1");
+  assert.deepEqual(filterWorkProjection(work, { active: true, attention: true, closed: false, query: "notes/deploy.md" }).topics.map((topic) => topic.event), ["r1"]);
+  assert.deepEqual(filterWorkProjection(work, { active: false, attention: false, closed: true }).topics.map((topic) => topic.event), ["r5"]);
 });
 
 test("attention qualifies rather than replaces a lifecycle lane", () => {
   assert.deepEqual(workItemState({ request: "r", requester: "hugh", performer: "codex", status: "reported", stale: true }), {
-    open: true,
+    active: true,
     attention: true,
     closed: false,
     lane: "review",
   });
   assert.deepEqual(workItemState({ request: "r", requester: "hugh", status: "withdrawn" }), {
-    open: false,
+    active: false,
     attention: false,
     closed: true,
     lane: "closed",
   });
   assert.deepEqual(workItemState({ request: "r", requester: "hugh", performer: "codex", report: "done", status: "satisfied", stale: true }), {
-    open: false,
+    active: false,
     attention: true,
     closed: true,
     lane: "closed",
@@ -413,12 +609,22 @@ test("attention qualifies rather than replaces a lifecycle lane", () => {
 test("Needs my action follows unresolved semantic responsibility, never a read watermark", () => {
   const item = (commitment) => ({ commitment, request: { event: commitment.request }, key: commitment.request, topicEvent: "topic", order: 1 });
   assert.equal(workItemNeedsAction(item({ request: "offered", requester: "human", addressed_to: "codex", status: "open" }), "codex"), true);
-  assert.equal(workItemNeedsAction({ ...item({ request: "stale-offer", requester: "human", status: "stale" }), request: { event: "stale-offer", body: { to: "codex" } } }, "codex"), true);
+  assert.equal(workItemNeedsAction({ ...item({ request: "stale-offer", requester: "human", status: "stale" }), request: { event: "stale-offer", body: { to: "codex" } } }, "codex"), false);
   assert.equal(workItemNeedsAction(item({ request: "unclaimed", requester: "human", addressed_to: "claude", status: "open" }), "codex"), false);
   assert.equal(workItemNeedsAction(item({ request: "building", requester: "human", performer: "codex", promise: "promise", status: "promised" }), "codex"), true);
   assert.equal(workItemNeedsAction(item({ request: "review", requester: "codex", performer: "claude", promise: "promise", report: "report", status: "reported" }), "codex"), true);
   assert.equal(workItemNeedsAction(item({ request: "done", requester: "codex", performer: "claude", promise: "promise", report: "report", status: "satisfied" }), "codex"), false);
   assert.equal(workItemNeedsAction(item({ request: "repair", requester: "codex", performer: "claude", promise: "promise", report: "report", status: "reported", stale: true }), "codex"), true);
+});
+
+test("Active and Needs my action share the consolidated lifecycle matrix without sharing actor scope", () => {
+  const statuses = ["open", "promised", "reported", "stale", "satisfied", "withdrawn", "cancelled", "reneged"];
+  assert.deepEqual([...ACTIVE_WORK_STATUSES], ["open", "promised", "reported"]);
+  const projection = {
+    commitments: statuses.map((status) => ({ request: status, requester: "codex", status })),
+  };
+  assert.equal(workActiveCount(projection), 3);
+  assert.deepEqual(statuses.map((status) => workItemState({ request: status, requester: "codex", status }).active), [true, true, true, false, false, false, false, false]);
 });
 
 test("authored and followed topics expose only other people's changes after their watermark", () => {
@@ -443,9 +649,9 @@ test("authored and followed topics expose only other people's changes after thei
 });
 
 test("personal Work filters select responsibility, unread topics, and explicit follows without rewriting lifecycle truth", () => {
-  const actionable = { key: "a", request: { event: "a" }, commitment: { request: "a", requester: "human", addressed_to: "codex", status: "open" }, open: true, attention: false, closed: false, lane: "available", order: 1 };
-  const theirs = { key: "b", request: { event: "b" }, commitment: { request: "b", requester: "human", addressed_to: "claude", status: "open" }, open: true, attention: false, closed: false, lane: "available", order: 2 };
-  const topic = (event, author, items, activity) => ({ event, author, items, activity, latestOrder: 2, openCount: items.length, attentionCount: 0, closedCount: 0 });
+  const actionable = { key: "a", request: { event: "a" }, commitment: { request: "a", requester: "human", addressed_to: "codex", status: "open" }, active: true, attention: false, closed: false, lane: "available", order: 1 };
+  const theirs = { key: "b", request: { event: "b" }, commitment: { request: "b", requester: "human", addressed_to: "claude", status: "open" }, active: true, attention: false, closed: false, lane: "available", order: 2 };
+  const topic = (event, author, items, activity) => ({ event, author, items, activity, latestOrder: 2, activeCount: items.length, attentionCount: 0, closedCount: 0 });
   const work = {
     authors: ["codex", "claude"], attention: [],
     topics: [
@@ -532,9 +738,9 @@ test("Work accounts for qualifier attention, stale artifacts, and unlinked promi
   const work = buildWorkProjection(projection);
   assert.equal(workAttentionCount(projection), 3);
   assert.deepEqual(work.attention.map((item) => item.kind), ["artifact", "unlinked-promise"]);
-  assert.equal(filterWorkProjection(work, { open: true, attention: true, closed: false }).attention.length, 2);
-  assert.equal(filterWorkProjection(work, { open: true, attention: false, closed: false }).attention.length, 0);
-  assert.equal(filterWorkProjection(work, { open: true, attention: true, closed: false, author: "hugh" }).attention.length, 0);
+  assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: false }).attention.length, 2);
+  assert.equal(filterWorkProjection(work, { active: true, attention: false, closed: false }).attention.length, 0);
+  assert.equal(filterWorkProjection(work, { active: true, attention: true, closed: false, author: "hugh" }).attention.length, 0);
 });
 
 test("local worktrees join current promise, docs report, and exact commit-trailer shapes", () => {
@@ -733,7 +939,7 @@ test("Work is the default center and List and Board share one projection", () =>
   assert.match(app, /useState<MainView>\("work"\)/);
   assert.match(app, /mainView === "work"/);
   assert.match(work, /buildWorkProjection/);
-  assert.match(work, /open: true, attention: true, closed: false/);
+  assert.match(work, /active: true, attention: true, closed: false/);
   assert.match(work, /presentation === "list"/);
   assert.match(work, /<WorkBoard/);
   assert.match(work, /Other attention/);

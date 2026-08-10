@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { api } from "./api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api, type Activity, type ActivityStatus, type ActivityUpdate } from "./api";
 
 // The browser is a leased participant like any other client: it announces a
 // session bound to one actor, heartbeats the lease, and departs on unload.
@@ -8,7 +8,9 @@ export interface Session {
   id: string;
   actor?: string;
   live: boolean;
+  activity: Activity;
   setActor: (name: string) => void;
+  setActivity: (update: ActivityUpdate) => void;
 }
 
 function mintSessionID(): string {
@@ -22,6 +24,8 @@ export function useSession(): Session {
     () => localStorage.getItem("workroom.actor") ?? undefined,
   );
   const [live, setLive] = useState(false);
+  const [activity, setActivityState] = useState<Activity>({ status: "available", focus: [] });
+  const activityRef = useRef(activity);
   const effective = actor;
   const id = useMemo(mintSessionID, [effective]);
 
@@ -50,9 +54,23 @@ export function useSession(): Session {
     id,
     actor: effective,
     live,
+    activity,
     setActor: (name: string) => {
       localStorage.setItem("workroom.actor", name);
       setActorState(name);
+    },
+    setActivity: (update: ActivityUpdate) => {
+      const status: ActivityStatus = update.status ?? activityRef.current.status;
+      const next: Activity = {
+        status,
+        focus: update.focus === undefined ? activityRef.current.focus : [...new Set(update.focus)].sort().slice(0, 8),
+        note: update.note === undefined ? activityRef.current.note : update.note,
+      };
+      activityRef.current = next;
+      setActivityState(next);
+      if (effective) {
+        api.announce(effective, id, next).then(() => setLive(true)).catch(() => setLive(false));
+      }
     },
   };
 }

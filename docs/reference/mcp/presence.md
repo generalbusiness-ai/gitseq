@@ -1,15 +1,17 @@
 ---
 title: MCP presence
-summary: Show who is present in the amnesiac nexus.
+summary: Show who is present and update this session's leased activity.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9d3606442131e4bc700d1310451657bd4eac438
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa5182bb85a8347c55bcf229d53b104dde600a7
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0be172538ea08858bf5950d699eb3c8d916924c0
 ---
 
 # `presence`
 
-Lists who is in the room right now, and the open conversations.
+Lists who is in the room right now and the open conversations. It may also
+update the calling adapter session's leased, advisory activity.
 
 Presence is ephemeral. It is held by the resident service, per process,
 and does not survive a restart.
@@ -19,6 +21,9 @@ and does not survive a restart.
 | argument | required | meaning |
 |---|---|---|
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `status` | optional | This session's activity: `available`, `busy`, `waiting`, or `blocked`. |
+| `focus` | optional | Up to eight durable EventIDs from this workroom that currently have this session's attention. An empty list clears focus. |
+| `note` | optional | A short activity note, at most 160 bytes. An empty string clears it. |
 
 Every tool takes `repo`. Naming a different repository acts in that
 repository's workroom instead; the adapter is installed once and serves
@@ -53,6 +58,19 @@ trap - EXIT
 Present sessions, the open conversations, and a live cursor. Each session
 is named by an **opaque minted handle** — `session:` followed by random
 hex — not by its session identifier.
+
+The response also includes leased activity keyed by the same opaque session
+handles. It reports each session separately; it does not combine an actor's
+multiple sessions. The browser view performs that actor-level aggregation: it
+shows the strongest status, a sorted and deduplicated focus union capped at
+eight events, and the first non-empty note under the browser's locale-aware
+string ordering. Activity follows the presence lease and disappears when that
+lease expires.
+
+Focus is attention, not durable workflow state. It never claims a request,
+makes a promise, reports completion, or grants authority. The adapter supplies
+the actor and private session identifier; callers cannot update somebody
+else's lease by passing either value as an argument.
 
 That distinction is load-bearing. A session identifier is a credential:
 present one to the service and it signs as that actor and will end that

@@ -314,6 +314,45 @@ func TestLaneTablesNameOnlyStatusesTheFoldEmits(t *testing.T) {
 	}
 }
 
+// The browser's Active umbrella uses this same matrix. Keep the consolidated
+// status view authoritative and explicit: open, promised, and reported are
+// globally actionable for every actor; lifecycle stale and terminal states
+// are not. Staleness on a reported row remains only a qualifier.
+func TestActionableLifecycleMatrix(t *testing.T) {
+	tests := []struct {
+		request string
+		status  string
+		stale   bool
+		want    bool
+	}{
+		{request: "open", status: "open", want: true},
+		{request: "promised", status: "promised", want: true},
+		{request: "reported", status: "reported", want: true},
+		{request: "reported-stale", status: "reported", stale: true, want: true},
+		{request: "stale", status: "stale", stale: true},
+		{request: "satisfied", status: "satisfied"},
+		{request: "withdrawn", status: "withdrawn"},
+		{request: "cancelled", status: "cancelled"},
+		{request: "reneged", status: "reneged"},
+	}
+	projection := workroom.Projection{}
+	for _, test := range tests {
+		projection.Commitments = append(projection.Commitments, workroom.Commitment{
+			Request: test.request, Requester: "requester", Status: test.status, Stale: test.stale,
+		})
+	}
+	summary := Build("genesis", "head", 1, projection)
+	for _, test := range tests {
+		got := findCommitment(summary.Actionable, test.request) != nil
+		if got != test.want {
+			t.Errorf("status %q stale=%t actionable=%t, want %t", test.status, test.stale, got, test.want)
+		}
+	}
+	if len(summary.Actionable) != 4 {
+		t.Fatalf("global actionable total = %d, want 4: %#v", len(summary.Actionable), summary.Actionable)
+	}
+}
+
 func TestWarmDepth20000SummaryLatencyAndSize(t *testing.T) {
 	if raceEnabled {
 		t.Skip("race instrumentation is not a production latency measurement")
