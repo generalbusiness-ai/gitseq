@@ -78,6 +78,14 @@ what makes the choice deterministic. Retire every live artifact that covers
 what the merge changed, at its exact string, found in `gs status`. Publish a
 successor only at the path the area will keep using:
 
+Live means not retired. Stale is a different fact and does not do this job: it
+says a basis underneath the artifact moved, not that the pointer was withdrawn,
+so a stale artifact still occupies its path and still counts as a predecessor
+the successor must retire. The two read alike on a status page — both mean "not
+the current one" to someone looking for what is current — which is exactly why
+they are easy to conflate, and conflating them leaves predecessors standing
+while the report says the path is clear.
+
 - One live path covers the change: publish the successor at that exact
   string.
 - Two live paths cover the same changed file, a directory and something
@@ -165,6 +173,8 @@ the work is actually over.
 
    jq -r '[.projection.reviews[]?
            | select(.verdict == "approved" and (.ratified // false))
+           | select((.stale // false) | not)
+           | select((.retired // false) | not)
            | .head] | unique | .[]' .tmp/gs-status.json |
      while read -r commit; do
        git merge-base --is-ancestor "$commit" main 2>/dev/null ||
@@ -204,6 +214,15 @@ the work is actually over.
    did not resolve, so the failure is visible as a number rather than as an
    absence — a non-zero value there is something to look at before trusting
    `awaiting`.
+
+   Only an approval that could still be acted on counts. `gs merge` refuses a
+   stale or retired approval, so a head held up by one is not waiting for a
+   merger — it is waiting for a fresh review, and no amount of waiting moves
+   it. Counting those makes the precondition unreachable, which is the one
+   failure a gate on an irreversible step cannot have: it would either block
+   for ever or teach the operator to run the migration anyway. Measured
+   against the live log, dropping them removes the stale approval of head
+   bc469129 and keeps the genuinely outstanding 00b7070d.
 
    A live artifact is not a merge test. The historical merges predate this
    retirement discipline and left their approved artifacts live, so the live
