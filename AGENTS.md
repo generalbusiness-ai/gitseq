@@ -131,8 +131,8 @@ the work is actually over.
    is not already retired:
 
    ```sh
-   gs status --repo . --json | jq -r '.projection.statements[]
-     | select(.kind == "artifact" and .body.path == "." and (.retired | not))
+   gs status --repo . --json | jq -r '.projection.artifacts[]
+     | select(.path == "." and (.retired | not))
      | .event'
    ```
 
@@ -146,29 +146,31 @@ the work is actually over.
    verdict and no approved head is still out of `main`:
 
    ```sh
-   gs status --repo . --json > /tmp/gs-status.json
+   mkdir -p .tmp
+   gs status --repo . --json > .tmp/gs-status.json
 
    jq '.projection as $p
-     | ([$p.statements[] | select(.kind == "artifact" and (.retired | not)) | .event]
+     | ([$p.artifacts[] | select(.retired | not) | .event]
         | map({key: ., value: true}) | from_entries) as $live
      | ([$p.statements[]
         | select((.retired | not) and .kind == "report"
                  and ((.body.verdict // "" | ascii_downcase) as $v
                       | $v == "approved" or $v == "changes-requested"))
         | (.body.artifact // "-")] | map({key: ., value: true}) | from_entries) as $judged
-     | {awaiting: [$p.statements[]
-          | select((.retired | not) and .kind == "request"
-                   and ($live[.body.artifact // "-"] // false)
-                   and (($judged[.body.artifact // "-"] // false) | not))] | length}' /tmp/gs-status.json
+     | ([$p.statements[]
+          | select((.retired | not) and .kind == "request")
+          | (.body.artifact // "") | select(. != "")]) as $named
+     | {awaiting: [$named[] | select(($judged[.] // false) | not)] | length,
+        unresolved: [$named[] | select((($live[.] // false) | not))] | length}' .tmp/gs-status.json
 
    jq -r '.projection as $p
-     | ([$p.statements[] | select(.kind == "artifact" and (.retired | not))
-         | {key: .event, value: (.body.commit // "")}] | from_entries) as $head
+     | ([$p.artifacts[] | select(.retired | not)
+         | {key: .event, value: (.commit // "")}] | from_entries) as $head
      | $p.statements[]
      | select((.retired | not) and .kind == "report"
               and (.body.verdict // "" | ascii_downcase) == "approved"
               and (.ratified // false))
-     | $head[.body.artifact // "-"] // empty' /tmp/gs-status.json | sort -u |
+     | $head[.body.artifact // "-"] // empty' .tmp/gs-status.json | sort -u |
      while read -r commit; do
        git merge-base --is-ancestor "$commit" main 2>/dev/null ||
          echo "still out of main: $commit"
@@ -180,6 +182,20 @@ the work is actually over.
    every closed-with-changes review in the total for ever; a request is
    awaiting a verdict only when the artifact it names has neither. Both
    spellings of each verdict are in the log, so the comparison folds case.
+
+   The count fails closed on a reference it cannot resolve. What makes a
+   request a review request is that it names an artifact at all, not that the
+   name resolves — so a request carrying an unexpanded `<artifact-event>`
+   placeholder, or naming a head that was never merged, is counted as awaiting
+   rather than dropped. An earlier version required the name to resolve
+   through the live-artifact map, which meant a malformed review request left
+   the total silently: it once reported six awaiting when at least seven were.
+   A gate that can declare quiet while work is outstanding is worse than no
+   gate, because the migration it releases is the one thing that cannot be
+   undone by waiting longer. `unresolved` reports how many named references
+   did not resolve, so the failure is visible as a number rather than as an
+   absence — a non-zero value there is something to look at before trusting
+   `awaiting`.
 
    A live artifact is not a merge test. The historical merges predate this
    retirement discipline and left their approved artifacts live, so the live
@@ -207,12 +223,12 @@ the work is actually over.
    every merge that records at `.`:
 
    ```sh
-   gs status --repo . --json | jq '[.projection.statements[]
-     | select(.kind == "artifact" and .body.path == "." and (.retired | not))
+   gs status --repo . --json | jq '[.projection.artifacts[]
+     | select(.path == "." and (.retired | not))
      | {verb: "supersede", target: .event,
         text: "Retire the whole-repository artifact; succession moves to the per-path artifacts.",
-        idempotency_key: ("retire-dot-" + .event)}]' > retire-dot.json
-   gs batch --repo . --as hugh retire-dot.json
+        idempotency_key: ("retire-dot-" + .event)}]' > .tmp/retire-dot.json
+   gs batch --repo . --as hugh .tmp/retire-dot.json
    ```
 
    `gs batch` reads the whole file before anything lands and appends the acts
@@ -239,17 +255,17 @@ the work is actually over.
    ```sh
    gs status --repo . --json | jq -e '
      .projection as $p
-     | reduce ($p.statements[] | select(.kind == "artifact")) as $a ({};
+     | reduce ($p.artifacts[]) as $a ({};
          . as $seen
-         | if $a.body.path == "." then . + {($a.event): true}
+         | if $a.path == "." then . + {($a.event): true}
            elif ((($p.provenance[$a.event]) // []) | any($seen[.] // false))
            then . + {($a.event): true}
            else . end)
      | . as $anchored
-     | {live: [$p.statements[]
-         | select(.kind == "artifact" and .body.path == "." and (.retired | not))] | length,
-        anchored: [$p.statements[]
-         | select(.kind == "artifact" and (.retired | not) and .body.path != "."
+     | {live: [$p.artifacts[]
+         | select(.path == "." and (.retired | not))] | length,
+        anchored: [$p.artifacts[]
+         | select((.retired | not) and .path != "."
                   and $anchored[.event])] | length}
      | ., (.live == 0 and .anchored == 0)'
    ```
@@ -289,13 +305,13 @@ the work is actually over.
          | (.value // [])[] | select(. != $retires[$e]) | {basis: ., dep: $e}]
         | group_by(.basis)
         | map({key: .[0].basis, value: (map(.dep) | unique)}) | from_entries) as $carries
-     | [$p.statements[] | select(.kind == "artifact" and .body.path == ".") | .event] as $dot
+     | [$p.artifacts[] | select(.path == ".") | .event] as $dot
      | closure($carries; $dot) as $reached
      | {records: ($p.decisions | length), reached: ($reached | length),
-        live_artifacts: ([$p.statements[]
-          | select(.kind == "artifact" and (.retired | not) and .body.path != ".")] | length),
-        reaching: ([$p.statements[]
-          | select(.kind == "artifact" and (.retired | not) and .body.path != "."
+        live_artifacts: ([$p.artifacts[]
+          | select((.retired | not) and .path != ".")] | length),
+        reaching: ([$p.artifacts[]
+          | select((.retired | not) and .path != "."
                    and $reached[.event])] | length)}'
    ```
 
