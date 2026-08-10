@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will re-establish the live review handoff for unchanged exact head ebaddb566eb0360e186d53621a3b393a0d901568, verify its clean immutable state, and cite only the live bases named by request a54c6218."}
+{"kind":"artifact","text":"Live review artifact for the unchanged actor-addressed current-main carry at exact clean head ebaddb566eb0360e186d53621a3b393a0d901568.","body":{"branch":"request/addressed-unclaimed-current-main","commit":"ebaddb566eb0360e186d53621a3b393a0d901568","path":"."}}
