@@ -40,6 +40,7 @@ type apiIssue struct {
 	Title   string `json:"title"`
 	Body    string `json:"body"`
 	HTMLURL string `json:"html_url"`
+	State   string `json:"state"`
 	User    struct {
 		Login string `json:"login"`
 	} `json:"user"`
@@ -75,7 +76,7 @@ func (c *Client) Issues(ctx context.Context, owner, repo string) ([]Issue, error
 			issues = append(issues, Issue{
 				Owner: owner, Repo: repo, Number: item.Number,
 				Title: item.Title, Body: item.Body,
-				Author: item.User.Login, URL: item.HTMLURL,
+				Author: item.User.Login, URL: item.HTMLURL, State: item.State,
 			})
 		}
 	}

@@ -44,6 +44,7 @@ type Issue struct {
 	Body   string
 	Author string // the GitHub login, carried as data, never as an identity
 	URL    string
+	State  string // "open" or "closed", as GitHub reports it
 }
 
 // Comment is an issue comment, with the author and body needed to decide
@@ -81,6 +82,10 @@ type Observation struct {
 	IdempotencyKey string
 	Text           string
 	Body           map[string]string
+
+	// AdmittedBy is the clause event that let this observation in. The act
+	// rests on it, so retiring the clause flares what it admitted.
+	AdmittedBy string
 }
 
 // ObserveIssue builds the observation for one issue.
