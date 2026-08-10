@@ -1,0 +1,5 @@
+5a5220e tree: 9b3711833a4681537658be46b912a76cee2d5bed
+9ecdb07 merge tree: 29aefc38e52755bd9734e1969566c9c9a56faf4c
+a106e0e revert tree: 9b3711833a4681537658be46b912a76cee2d5bed (exactly restores 5a5220e)
+a0d293c tree: 2a6969e362dafefe84e6239522cbc16dc5d1efd7
+`git diff --stat 5a5220e 9ecdb07` added 1,334 and removed 46 lines across 17 files, proving the old merge imported divergent ancestry beyond the citation test.
