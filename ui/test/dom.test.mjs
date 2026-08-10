@@ -138,9 +138,14 @@ test("Link to draft visibly owns the thread draft and submits every exact select
   const mounted = createRoot(document.getElementById("root"));
   const previousFetch = globalThis.fetch;
   const posted = [];
+  let rejectNext = false;
   globalThis.fetch = async (url, init = {}) => {
     assert.equal(url, "/v0/act");
     posted.push(JSON.parse(init.body));
+    if (rejectNext) {
+      rejectNext = false;
+      throw new Error("deliberate linked-draft failure");
+    }
     return { ok: true, statusText: "OK", json: async () => ({ id: `stored-${posted.length}` }) };
   };
 
@@ -172,22 +177,11 @@ test("Link to draft visibly owns the thread draft and submits every exact select
   };
 
   try {
-    const [{ ThreadPane }, { durableEventBases, toggleLinkEvent }] = await Promise.all([
+    const [{ ThreadPane }, { durableEventBases }] = await Promise.all([
       vite.ssrLoadModule("/src/components/ThreadPane.tsx"),
       vite.ssrLoadModule("/src/components/Composer.tsx"),
     ]);
 
-    // The same transition used by the room composer promotes a Temporary
-    // draft before adding an exact durable basis. Merely selecting it does
-    // not call the service.
-    let promoted;
-    toggleLinkEvent(
-      { type: "say", restsOn: [], frames: [] },
-      (next) => { promoted = next; },
-      firstEvent,
-    );
-    assert.equal(promoted.type, "assert");
-    assert.deepEqual(promoted.restsOn, [firstEvent]);
     assert.deepEqual(
       durableEventBases([rootEvent], [rootEvent, firstEvent, firstEvent, branchEvent]),
       [rootEvent, firstEvent, branchEvent],
@@ -195,53 +189,76 @@ test("Link to draft visibly owns the thread draft and submits every exact select
     );
     assert.equal(posted.length, 0);
 
+    const paneProps = {
+      workroom: linkedRoom,
+      session: { id: "browser", live: true, actor: "codex", setActor() {} },
+      frames: [{
+        conversation: "temporary",
+        sequence: 0,
+        about: rootEvent,
+        text: "temporary discussion",
+        actor: "claude",
+        fingerprint: "claude",
+        seen: 1,
+        raw: { Conversation: "temporary", Sequence: 0, Payload: "", ActorKey: "" },
+      }],
+      target: { kind: "event", event: rootEvent },
+      pending: [],
+      onClose() {},
+      onJumpTo() {},
+      onOpenProfile() {},
+      onRoute() {},
+      doAct() {},
+      onSay() { return "pending"; },
+      onSayFailed() {},
+      onOpenThread() {},
+    };
     await act(async () => {
-      mounted.render(React.createElement(ThreadPane, {
-        workroom: linkedRoom,
-        session: { id: "browser", live: true, actor: "codex", setActor() {} },
-        frames: [{
-          conversation: "temporary",
-          sequence: 0,
-          about: rootEvent,
-          text: "temporary discussion",
-          actor: "claude",
-          fingerprint: "claude",
-          seen: 1,
-          raw: { Conversation: "temporary", Sequence: 0, Payload: "", ActorKey: "" },
-        }],
-        target: { kind: "event", event: rootEvent },
-        pending: [],
-        onClose() {},
-        onJumpTo() {},
-        onOpenProfile() {},
-        onRoute() {},
-        doAct() {},
-        onSay() { return "pending"; },
-        onSayFailed() {},
-        onOpenThread() {},
-      }));
+      mounted.render(React.createElement(ThreadPane, paneProps));
     });
 
     const linkButtons = [...document.querySelectorAll('[aria-label="link to draft"]')];
     assert.equal(linkButtons.length, 2, "only durable child events offer Link; the automatic root and temporary message do not");
     assert.equal(document.querySelector('[data-conversation="temporary"] [aria-label*="link"]'), null);
 
+    const keptToggle = document.querySelector('[aria-label="make reply temporary"]');
+    await click(keptToggle);
+    assert.equal(keptToggle.getAttribute("aria-label"), "keep reply");
+    assert.equal(keptToggle.getAttribute("aria-pressed"), "false");
     await click(linkButtons[0]);
     assert.equal(posted.length, 0, "linking only edits the visible draft");
+    assert.equal(keptToggle.getAttribute("aria-label"), "make reply temporary", "linking the shipped Temporary draft promotes it to Kept");
+    assert.equal(keptToggle.getAttribute("aria-pressed"), "true");
     assert.equal(linkButtons[0].getAttribute("aria-pressed"), "true");
     assert.equal(linkButtons[0].getAttribute("aria-label"), "remove link from draft");
     let chips = document.querySelector('[aria-label="Linked draft items"]');
     assert.match(chips.textContent, /I will review the link/);
     assert.equal(chips.querySelectorAll('button[aria-label^="remove link to"]').length, 1);
 
+    await enterText(document.querySelector('[aria-label="thread reply"]'), "Promoted kept reply");
+    await click(document.querySelector('[aria-label="keep reply"]'));
+    await act(async () => { await Promise.resolve(); });
+    assert.equal(posted[0].act, "state");
+    assert.equal(posted[0].kind, "assert", "the promoted draft is submitted durably");
+    assert.deepEqual(posted[0].rests_on, [rootEvent, firstEvent]);
+    assert.equal(document.querySelector('[aria-label="Linked draft items"]'), null, "successful submission clears the linked draft items");
+
+    await click(linkButtons[0]);
     await click(linkButtons[1]);
     chips = document.querySelector('[aria-label="Linked draft items"]');
     assert.equal(chips.querySelectorAll('button[aria-label^="remove link to"]').length, 2, "multiple selected events stay visible");
 
-    await enterText(document.querySelector('[aria-label="thread reply"]'), "First kept reply");
+    await enterText(document.querySelector('[aria-label="thread reply"]'), "Retain links after failure");
+    rejectNext = true;
     await click(document.querySelector('[aria-label="keep reply"]'));
     await act(async () => { await Promise.resolve(); });
-    assert.deepEqual(posted[0].rests_on, [rootEvent, firstEvent, branchEvent]);
+    assert.deepEqual(posted[1].rests_on, [rootEvent, firstEvent, branchEvent]);
+    assert.match(document.querySelector('[role="alert"]').textContent, /deliberate linked-draft failure/);
+    assert.equal(document.querySelectorAll('[aria-label="Linked draft items"] button[aria-label^="remove link to"]').length, 2, "failed submission retains every linked draft item");
+
+    await click(document.querySelector('[aria-label="keep reply"]'));
+    await act(async () => { await Promise.resolve(); });
+    assert.deepEqual(posted[2].rests_on, [rootEvent, firstEvent, branchEvent]);
     assert.equal(document.querySelector('[aria-label="Linked draft items"]'), null, "successful submission clears the linked draft items");
 
     await click(linkButtons[0]);
@@ -252,7 +269,20 @@ test("Link to draft visibly owns the thread draft and submits every exact select
     await enterText(document.querySelector('[aria-label="thread reply"]'), "Reply after unlinking");
     await click(document.querySelector('[aria-label="keep reply"]'));
     await act(async () => { await Promise.resolve(); });
-    assert.deepEqual(posted[1].rests_on, [rootEvent, branchEvent], "unlinking removes only that exact basis before submission");
+    assert.deepEqual(posted[3].rests_on, [rootEvent, branchEvent], "unlinking removes only that exact basis before submission");
+
+    await act(async () => {
+      mounted.render(React.createElement(ThreadPane, {
+        ...paneProps,
+        key: "routed-reply",
+        route: { id: "promise-route", mode: "promise", prefill: "Promise reply" },
+      }));
+    });
+    await click(document.querySelector('[aria-label="link to draft"]'));
+    assert.notEqual(document.querySelector('[aria-label="Linked draft items"]'), null);
+    await click(document.querySelector('[aria-label="cancel reply action"]'));
+    assert.equal(document.querySelector('[aria-label="Linked draft items"]'), null, "cancelling a routed reply restores the default draft without stale links");
+    assert.notEqual(document.querySelector('[aria-label="make reply temporary"]'), null);
   } finally {
     globalThis.fetch = previousFetch;
     await act(async () => { mounted.unmount(); });

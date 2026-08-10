@@ -582,6 +582,7 @@ function ThreadComposer({
                 setActiveRoute(undefined);
                 setType(defaultType);
                 setText("");
+                onLinkedEvents([]);
               }}
               aria-label="cancel reply action"
               className="rounded p-1 text-faint hover:text-foreground focus-visible:outline focus-visible:outline-accent"
