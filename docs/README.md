@@ -49,6 +49,8 @@ Read in this order if you are new:
 
 ## Reference
 
+- [Architecture layers](reference/architecture.md) — the boundary between
+  the semantic-free kernel and replaceable application profiles.
 - [`gs` subcommands](reference/gs/) — one page each:
   [init](reference/gs/init.md),
   [actor-add](reference/gs/actor-add.md),
