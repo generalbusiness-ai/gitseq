@@ -128,3 +128,18 @@ departing does not linger in presence forever.
 
 - [Deploy a resident](../../how-to/deploy-a-resident.md)
 - [Components](../../concepts/components.md)
+
+## Local worktrees
+
+The browser view served by a resident also reports local checkout state.
+It names the served checkout's own absolute path, so a reader can tell
+which repository the page is showing, and otherwise emits only checkout
+basenames, branch and HEAD, and explicit clean, dirty, detached, bare,
+locked, prunable or unavailable state. Disclosing the served path is safe
+because [`gs serve`](serve.md) refuses any listen address that is not
+loopback: whoever is reading the page is already on the host it names.
+
+None of that is part of the durable projection. A checkout associated
+with a commitment only through a commit's `Rests-On:` trailer is marked
+**unverified trailer**, because trailer text is not an actor-signed
+statement.

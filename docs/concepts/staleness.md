@@ -84,10 +84,11 @@ this documentation set has a test for it.
 along `rests_on`, not along file paths or imports. Work that never
 recorded an artifact is invisible to it.
 
-**Ordinary commit trailers are not durable evidence.** A checkout
-associated with a commitment only through a `Rests-On:` trailer is shown
-as **unverified trailer**, because trailer text is not an actor-signed
-statement.
+**Ordinary commit trailers are not durable evidence.** A commitment
+associated with a checkout only through a `Rests-On:` trailer rests on
+nothing the fold can verify, because trailer text is not an actor-signed
+statement. How a reader is warned about that is a presentation question;
+see [`gs serve`](../reference/gs/serve.md).
 
 ## The known gap
 

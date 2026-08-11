@@ -5,6 +5,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5644516fe30fcb0920b688e19e2ef185d18240f1
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cefec14de9954bc48837a9b0b9ddd8dc98d861ea
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d97eed896404f401dae2439928e31c6a0290ed47
 ---
 
 # `gs status`
@@ -147,20 +148,6 @@ ordinary full audit, and prints a progress line after one second rather
 than appearing to hang. [`gs verify`](verify.md) never takes the
 checkpoint shortcut: it always audits the whole sequence.
 
-## Local worktrees
-
-The browser view served by a resident also reports local checkout state.
-It names the served checkout's own absolute path, so a reader can tell
-which repository the page is showing, and otherwise emits only checkout
-basenames, branch and HEAD, and explicit clean, dirty, detached, bare,
-locked, prunable or unavailable state. Disclosing the served path is safe
-because [`gs serve`](serve.md) refuses any listen address that is not
-loopback: whoever is reading the page is already on the host it names.
-
-None of that is part of the durable projection. A checkout associated
-with a commitment only through a commit's `Rests-On:` trailer is marked
-**unverified trailer**, because trailer text is not an actor-signed
-statement.
 
 ## See also
 
