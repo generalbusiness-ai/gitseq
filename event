@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged documentation index link to the architecture contract.","body":{"commit":"97ab60c36addb40179f010f4d936f8766b9e6901","path":"docs/README.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7acc4e33f76ed29dc3757601557c58a9e11b6777","text":"The merged architecture change at 97ab60c3 replaces this earlier exact-head artifact at the same path."}
