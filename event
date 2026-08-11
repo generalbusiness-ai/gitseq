@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"MCP status, wait, say, and acknowledgement surfaces for versioned addressed inbox delivery at the exact implementation head.","body":{"commit":"fa7c9b7371458e941a8eb8d069191f5a20ae37b0","path":"cmd/gitseq-mcp"}}
+{"kind":"artifact","text":"Browser-compatible signed payload decoding and shared mention-token grammar at the exact implementation head.","body":{"commit":"fa7c9b7371458e941a8eb8d069191f5a20ae37b0","path":"ui"}}
