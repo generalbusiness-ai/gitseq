@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Makefile@e82d9fff2d858662f7e3ddc2492c6d5b559d46fa: The spike target can reuse an existing Go test JSON stream while retaining its focused local fallback.","body":{"commit":"e82d9fff2d858662f7e3ddc2492c6d5b559d46fa","path":"Makefile"}}
+{"kind":"artifact","text":"layout_test.go@e82d9fff2d858662f7e3ddc2492c6d5b559d46fa: Shipping layout checks retain only the public module pin and tracked spike-result presence.","body":{"commit":"e82d9fff2d858662f7e3ddc2492c6d5b559d46fa","path":"layout_test.go"}}
