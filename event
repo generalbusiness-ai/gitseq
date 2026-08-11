@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact documentation repair adding the ack reference and aligning say with addressed delivery.","body":{"commit":"d69191e7ce18e756a6836eea7ad47111f4e81b59","path":"docs"}}
+{"kind":"artifact","text":"Exact citation-baseline repair after the ack and say pages shed two legacy citations.","body":{"commit":"d69191e7ce18e756a6836eea7ad47111f4e81b59","path":"internal/docset"}}
