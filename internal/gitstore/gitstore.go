@@ -401,9 +401,12 @@ func (s Store) CommitMessage(ctx context.Context, oid string) (string, error) {
 	return string(output) + "\n", err
 }
 
-// CommitMessageWithTimestamp reads the envelope and signed committer time in
-// one Git process. Event scans already need the message, so exposing the time
-// here does not add a process per historical event.
+// CommitMessageWithTimestamp reads the envelope and signed committer time for
+// one commit. Scans no longer call it: they take both from streamed metadata
+// instead. It remains the reference for the message normalization that
+// enumeration has to reproduce, because reading through Store.run trims the
+// command's outer whitespace and that trimming is part of the established
+// admission semantics. Tests measure the streamed path against this one.
 func (s Store) CommitMessageWithTimestamp(ctx context.Context, oid string) (string, int64, error) {
 	output, err := s.run(ctx, nil, nil, "show", "-s", "--format=%ct%x00%B", oid)
 	if err != nil {
@@ -418,11 +421,6 @@ func (s Store) CommitMessageWithTimestamp(ctx context.Context, oid string) (stri
 		return "", 0, fmt.Errorf("parse commit timestamp: %w", err)
 	}
 	return string(parts[1]) + "\n", timestamp, nil
-}
-
-func (s Store) CommitTree(ctx context.Context, oid string) (string, error) {
-	output, err := s.run(ctx, nil, nil, "show", "-s", "--format=%T", oid)
-	return string(output), err
 }
 
 func (s Store) ReadFile(ctx context.Context, commit, path string) ([]byte, error) {
