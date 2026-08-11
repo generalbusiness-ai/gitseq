@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Corrected CI suite-deduplication workflow at exact head 073d68c78729dce3db971bbba9bd2bf1464152d8.","body":{"commit":"073d68c78729dce3db971bbba9bd2bf1464152d8","path":".github/workflows/ci.yml"}}
+{"kind":"artifact","text":"Corrected preview-clone CI verification at exact head 073d68c78729dce3db971bbba9bd2bf1464152d8.","body":{"commit":"073d68c78729dce3db971bbba9bd2bf1464152d8","path":".github/scripts/verify-preview-clone.sh"}}
