@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9d01439068a558fafb57cab789e74c6ef37692b"}
+{"kind":"artifact","text":".github/workflows/ci.yml@e82d9fff2d858662f7e3ddc2492c6d5b559d46fa: CI now runs one uncached race-enabled JSON suite and reuses it for adversarial evidence.","body":{"commit":"e82d9fff2d858662f7e3ddc2492c6d5b559d46fa","path":".github/workflows/ci.yml"}}
