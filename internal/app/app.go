@@ -54,6 +54,12 @@ type VerifiedFrontier struct {
 	Depth int    `json:"depth"`
 }
 
+// ResidentQueueDepth bounds the submissions inside the sequencer at once,
+// counting the one holding the lock. Gitseq's resident always sets it: the
+// kernel treats zero as unbounded, which is the embedding opt-out and not a
+// posture this application takes.
+const ResidentQueueDepth = 32
+
 type Config struct {
 	Version              int               `json:"version"`
 	Genesis              string            `json:"genesis"`
@@ -811,6 +817,7 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 	w.submitterOnce.Do(func() {
 		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{
 			SigningKey: w.Config.SequencerKey, CheckpointProfile: workroom.ProfileVersion, PreAppend: w.allowlist,
+			MaxQueueDepth: ResidentQueueDepth,
 		})
 	})
 	result, err := w.submitter.Submit(ctx, request)
