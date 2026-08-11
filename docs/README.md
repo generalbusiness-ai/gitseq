@@ -3,9 +3,8 @@ title: gitseq documentation
 summary: Map of the documentation set, and how to choose a starting point.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d97eed896404f401dae2439928e31c6a0290ed47
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:caf5eb5379b8bc52a80e7fab99bbb2813f345c72
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4408399caf4d8751c71b020f3fdaecceb5171b32
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e517fd6e34c43f66733b2d78a7200f2b123412db
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:63b428d3c3e219ca7a1d9dade8e3f791466fcfe6
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
 ---
 
@@ -72,7 +71,7 @@ Read in this order if you are new:
   [verify](reference/gs/verify.md),
   [serve](reference/gs/serve.md),
   [attach](reference/gs/attach.md).
-- [MCP tools](reference/mcp/) — one page each:
+- MCP reference pages currently in this documentation set:
   [whoami](reference/mcp/whoami.md),
   [presence](reference/mcp/presence.md),
   [status](reference/mcp/status.md),
