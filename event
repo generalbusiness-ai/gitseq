@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"The documentation index links the corrected canonical architecture reference.","body":{"commit":"10a5a13431179420a275453892cbb163a97814e6","path":"docs/README.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5ba6140445cfccefb5b92190f157c991f03e341f","text":"The corrected architecture page replaces the candidate that put repository policy in SKILL.md."}
