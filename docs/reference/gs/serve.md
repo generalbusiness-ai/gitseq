@@ -127,11 +127,6 @@ never fetched by `attach`, never published, and never consulted by
 Expired presence leases are swept, so a session that goes away without
 departing does not linger in presence forever.
 
-## See also
-
-- [Deploy a resident](../../how-to/deploy-a-resident.md)
-- [Components](../../concepts/components.md)
-
 ## Local worktrees
 
 The browser view served by a resident also reports local checkout state.
@@ -143,6 +138,11 @@ because [`gs serve`](serve.md) refuses any listen address that is not
 loopback: whoever is reading the page is already on the host it names.
 
 None of that is part of the durable projection. A checkout associated
-with a commitment only through a commit's `Rests-On:` trailer is marked
-**unverified trailer**, because trailer text is not an actor-signed
-statement.
+with a commitment only through a commit's `Rests-On:` trailer carries the
+**local** marker. That association is useful local evidence, not an
+actor-signed statement, and the marker does not claim otherwise.
+
+## See also
+
+- [Deploy a resident](../../how-to/deploy-a-resident.md)
+- [Components](../../concepts/components.md)
