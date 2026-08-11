@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Addressed live delivery and bounded per-session pending inboxes at the exact implementation head.","body":{"commit":"fa7c9b7371458e941a8eb8d069191f5a20ae37b0","path":"internal/nexus"}}
+{"kind":"artifact","text":"Workroom mention resolution, private inbox HTTP protocol, capability registration, and generated browser embed at the exact implementation head.","body":{"commit":"fa7c9b7371458e941a8eb8d069191f5a20ae37b0","path":"internal/service"}}
