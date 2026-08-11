@@ -492,7 +492,7 @@ function MessageLine({
       <RowToolbar>
         <ToolbarButton
           icon={<Link2 className="h-3.5 w-3.5" />}
-          label={selected ? "remove link" : "link"}
+          label={selected ? "remove link from draft" : "link to draft"}
           active={selected}
           onClick={onToggle}
         />
@@ -629,7 +629,7 @@ function ActToolbar({
     <RowToolbar>
       <ToolbarButton
         icon={<Link2 className="h-3.5 w-3.5" />}
-        label={cited ? "remove link" : "link"}
+        label={cited ? "remove link from draft" : "link to draft"}
         active={cited}
         onClick={onCite}
       />

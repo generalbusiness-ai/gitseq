@@ -615,7 +615,7 @@ func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
 		t.Fatal(err)
 	}
 	attached := &Workspace{
-		Repo: workspace.Repo, GitDir: workspace.GitDir, CommonDir: workspace.CommonDir, Store: workspace.Store,
+		Repo: workspace.Repo, GitDir: workspace.GitDir, CommonDir: workspace.CommonDir, MetaDir: t.TempDir(), Store: workspace.Store,
 		Config: Config{Version: 0, Genesis: workspace.Config.Genesis, ObjectFormat: workspace.Config.ObjectFormat, ReadOnly: true},
 	}
 	views, err := attached.ActorViews(ctx)
@@ -705,8 +705,73 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 	}
 }
 
+func TestVerifiedFrontierPersistenceIsPassiveWhenUnchangedAndFailClosedWhenAdvancing(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trusted, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	external, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make witness storage deterministically unusable without depending on
+	// chmod semantics or the user running the test. A path occupied by a file
+	// cannot contain config.json.tmp.
+	blockedMeta := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blockedMeta, []byte("occupied"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workspace.MetaDir = blockedMeta
+	workspace.Config.ReadOnly = true
+
+	unchanged, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatalf("unchanged snapshot rewrote its local witness: %v", err)
+	}
+	if unchanged.Head != trusted.Head || unchanged.Depth != trusted.Depth {
+		t.Fatalf("unchanged snapshot = %+v, want %+v", unchanged, trusted)
+	}
+	if verified, err := workspace.Verify(ctx); err != nil {
+		t.Fatalf("unchanged full audit rewrote its local witness: %v", err)
+	} else if verified.Head != trusted.Head || verified.Depth != trusted.Depth {
+		t.Fatalf("unchanged audit = %+v, want head %s depth %d", verified, trusted.Head, trusted.Depth)
+	}
+
+	actRecord(t, ctx, external, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "advance while witness storage is unavailable",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "advance-with-blocked-witness",
+	})
+	if _, err := workspace.Snapshot(ctx); err == nil || !strings.Contains(err.Error(), "local rollback witness could not advance") {
+		t.Fatalf("advanced snapshot without durable witness error = %v", err)
+	}
+	if _, err := workspace.Verify(ctx); err == nil || !strings.Contains(err.Error(), "local rollback witness could not advance") {
+		t.Fatalf("advanced full audit without durable witness error = %v", err)
+	}
+	if workspace.Config.VerifiedFrontier == nil || workspace.Config.VerifiedFrontier.Head != trusted.Head || workspace.Config.VerifiedFrontier.Depth != trusted.Depth {
+		t.Fatalf("failed persistence moved trusted frontier to %+v, want %+v", workspace.Config.VerifiedFrontier, trusted)
+	}
+
+	// A failed read must not leave the reusable reader ahead of the projection.
+	// Once storage is available again, recovery re-verifies and returns the
+	// event that was refused above.
+	workspace.MetaDir = external.MetaDir
+	recovered, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Head == trusted.Head || recovered.Depth != trusted.Depth+1 {
+		t.Fatalf("recovered snapshot = %+v, want one event after %+v", recovered, trusted)
+	}
+}
+
 func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
-	t.Run("rewind then sibling advance", func(t *testing.T) {
+	t.Run("rewind then sibling advance is refused", func(t *testing.T) {
 		ctx := context.Background()
 		workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 		if err != nil {
@@ -723,10 +788,24 @@ func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
 			Verb: VerbState, Kind: workroom.KindAssert, Text: "rewound branch",
 			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-branch-second",
 		})
+		trusted, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
 		firstCommit := eventCommit(t, workspace.Config.ObjectFormat, first.ID)
 		secondCommit := eventCommit(t, workspace.Config.ObjectFormat, second.ID)
+		if trusted.Head != secondCommit || workspace.Config.VerifiedFrontier == nil || workspace.Config.VerifiedFrontier.Head != secondCommit {
+			t.Fatalf("trusted frontier = snapshot %+v config %+v, want %s", trusted, workspace.Config.VerifiedFrontier, secondCommit)
+		}
 		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), firstCommit, secondCommit); err != nil {
 			t.Fatal(err)
+		}
+		shorter, err := Open(ctx, workspace.Repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := shorter.Verify(ctx); err == nil || !strings.Contains(err.Error(), "shorter than previously verified") {
+			t.Fatalf("restarted workspace accepted a shorter sequence: %v", err)
 		}
 		external, err := Open(ctx, workspace.Repo)
 		if err != nil {
@@ -736,20 +815,18 @@ func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
 			Verb: VerbState, Kind: workroom.KindAssert, Text: "sibling branch",
 			RestsOn: []string{seed.ID}, IdempotencyKey: "guard-branch-sibling",
 		})
-		got, err := workspace.Snapshot(ctx)
+		if _, err := workspace.Snapshot(ctx); err == nil || !strings.Contains(err.Error(), "non-descendant verified frontier") {
+			t.Fatalf("resident accepted sibling after verified rewind: %v", err)
+		}
+		restarted, err := Open(ctx, workspace.Repo)
 		if err != nil {
 			t.Fatal(err)
 		}
-		coldWorkspace, err := Open(ctx, workspace.Repo)
-		if err != nil {
-			t.Fatal(err)
+		if _, err := restarted.Snapshot(ctx); err == nil || !strings.Contains(err.Error(), "non-descendant verified frontier") {
+			t.Fatalf("restarted workspace accepted sibling after verified rewind: %v", err)
 		}
-		want, err := coldWorkspace.Snapshot(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("rewind/sibling recovery differs from cold fold:\nresident=%+v\ncold=%+v", got, want)
+		if restarted.Config.VerifiedFrontier == nil || restarted.Config.VerifiedFrontier.Head != secondCommit {
+			t.Fatalf("rejected sibling replaced trusted frontier: %+v", restarted.Config.VerifiedFrontier)
 		}
 	})
 

@@ -2,41 +2,49 @@
   "decisions": [
     {
       "event": "e0",
+      "sequence": 1,
       "verdict": "effective",
       "reason": "operator roster seed"
     },
     {
       "event": "e1",
+      "sequence": 2,
       "verdict": "effective",
       "reason": "statement recorded"
     },
     {
       "event": "e2",
+      "sequence": 3,
       "verdict": "effective",
       "reason": "authorized supersession"
     },
     {
       "event": "e3",
+      "sequence": 4,
       "verdict": "ineffective",
       "reason": "retired statement cannot be ratified"
     },
     {
       "event": "e4",
+      "sequence": 5,
       "verdict": "ineffective",
       "reason": "request state requires body.conditions"
     },
     {
       "event": "e5",
+      "sequence": 6,
       "verdict": "ineffective",
       "reason": "artifact state requires body.commit"
     },
     {
       "event": "e6",
+      "sequence": 7,
       "verdict": "effective",
       "reason": "authorized supersession"
     },
     {
       "event": "e7",
+      "sequence": 8,
       "verdict": "effective",
       "reason": "authorized ratification"
     }
@@ -80,6 +88,7 @@
   "statements": [
     {
       "event": "e0",
+      "sequence": 1,
       "actor": "actor:operator",
       "kind": "roster",
       "text": "Operator begins the workroom",
@@ -91,6 +100,7 @@
     },
     {
       "event": "e1",
+      "sequence": 2,
       "actor": "actor:operator",
       "kind": "propose",
       "text": "Adopt the projection contract",
@@ -98,6 +108,7 @@
     },
     {
       "event": "e4",
+      "sequence": 5,
       "actor": "actor:operator",
       "kind": "request",
       "text": "Ship the projector",
@@ -107,6 +118,7 @@
     },
     {
       "event": "e5",
+      "sequence": 6,
       "actor": "actor:operator",
       "kind": "artifact",
       "text": "Half a citation",

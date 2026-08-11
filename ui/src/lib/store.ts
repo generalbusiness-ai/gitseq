@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type Vocabulary, type WorktreeView } from "./api";
-import { ACTIVE_WORK_STATUSES, ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, workActiveCount, workAttentionCount, workItemState } from "./work";
+import { ACTIVE_WORK_STATUSES, ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, otherWorkAttentionCounts, workActiveCount, workAttentionCount, workItemState } from "./work";
 import { definitionOf } from "./util";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
@@ -150,9 +150,15 @@ export function provenanceClosure(
 
 // Ticket numbers: every durable event's 1-based position in log order.
 // #N is the human handle; the hex event id stays one hover behind.
+// Ticket numbers come from the fold now, not from where a decision happened to
+// land in this array. The two agree — the fold counts the same records in the
+// same order — but only one of them is a fact about the log. A number derived
+// from array position is a fact about this response, and it would quietly
+// disagree with everyone else the moment a projection arrived filtered or
+// paged.
 export function ticketsOf(projection?: Projection): Map<string, number> {
   const map = new Map<string, number>();
-  projection?.decisions.forEach((decision, index) => map.set(decision.event, index + 1));
+  projection?.decisions.forEach((decision, index) => map.set(decision.event, decision.sequence || index + 1));
   return map;
 }
 
@@ -224,14 +230,25 @@ export const ACTIVE_COMMITMENT_STATUSES: string[] = [...ACTIVE_WORK_STATUSES];
 export const ATTENTION_COMMITMENT_STATUSES: string[] = [...ATTENTION_WORK_STATUSES];
 
 // The header chip's summary of the Work drawer, computed from the projection.
-export function workSummary(projection?: Projection): { stale: number; active: number; done: number } {
-  if (!projection) return { stale: 0, active: 0, done: 0 };
+export function workSummary(projection?: Projection): {
+  stale: number;
+  active: number;
+  done: number;
+  other: { artifacts: number; unlinkedPromises: number; total: number };
+} {
+  if (!projection) return { stale: 0, active: 0, done: 0, other: { artifacts: 0, unlinkedPromises: 0, total: 0 } };
   // What the room cannot read is not work waiting on anyone. An unreadable act
   // explains itself where it sits, and the reach of the vocabulary is stated
   // with the vocabulary; neither is a count a reader could act on, and adding
   // them here made a standing limit and two inert acts read as attention owed.
   return {
+    // Commitments and the other attention population are counted apart.
+    // Summing them produced a figure that corresponded to no line of
+    // `gs status`, and the natural reading — that one of the two surfaces is
+    // miscounting — was false. The second population is itself two things, so
+    // it arrives as its composition rather than as a total wearing one name.
     stale: workAttentionCount(projection),
+    other: otherWorkAttentionCounts(projection),
     active: workActiveCount(projection),
     done: projection.commitments.filter((c) => CLOSED_WORK_STATUSES.includes(c.status as (typeof CLOSED_WORK_STATUSES)[number])).length,
   };

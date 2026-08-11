@@ -45,20 +45,26 @@ type Commitment struct {
 	Performer string `json:"performer,omitempty"`
 	WaitingOn string `json:"waiting_on,omitempty"`
 	Text      string `json:"text,omitempty"`
+	// Sequence is the request event's number, carried so the row can be named
+	// the way a reader says it rather than by an abbreviation nobody can
+	// resolve back.
+	Sequence int `json:"sequence,omitempty"`
 }
 
 type Artifact struct {
-	Event  string `json:"event"`
-	Path   string `json:"path"`
-	Commit string `json:"commit"`
-	State  string `json:"state"`
-	Notes  string `json:"notes,omitempty"`
+	Event    string `json:"event"`
+	Sequence int    `json:"sequence,omitempty"`
+	Path     string `json:"path"`
+	Commit   string `json:"commit"`
+	State    string `json:"state"`
+	Notes    string `json:"notes,omitempty"`
 }
 
 type Attempt struct {
-	Event   string `json:"event"`
-	Verdict string `json:"verdict"`
-	Reason  string `json:"reason,omitempty"`
+	Event    string `json:"event"`
+	Sequence int    `json:"sequence,omitempty"`
+	Verdict  string `json:"verdict"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 type Summary struct {
@@ -132,6 +138,15 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 	for _, statement := range projection.Statements {
 		statements[statement.Event] = statement
 	}
+	// Every durable record has a decision, so this is the one lookup that can
+	// name any event a view row cites — a commitment's request and an
+	// artifact's event alike. Statements would not do: ratify and supersede
+	// are records without statements, and a row naming one of those would
+	// silently fall back to the identifier.
+	sequences := make(map[string]int, len(projection.Decisions))
+	for _, decision := range projection.Decisions {
+		sequences[decision.Event] = decision.Sequence
+	}
 	summary := Summary{Genesis: genesis, Head: head, Depth: depth, Totals: Totals{
 		Commitments: make(map[string]int), StaleCommitments: make(map[string]int),
 		Artifacts: len(projection.Artifacts), Statements: len(projection.Statements),
@@ -145,7 +160,8 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 			continue
 		}
 		view := Commitment{
-			Request: commitment.Request, Status: commitment.Status, Stale: commitment.Stale,
+			Request: commitment.Request, Sequence: sequences[commitment.Request],
+			Status: commitment.Status, Stale: commitment.Stale,
 			AddressedTo: Text(ActorName(projection, commitment.AddressedTo)),
 			Requester:   Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
 			WaitingOn: Text(ActorName(projection, commitment.WaitingOn)),
@@ -183,7 +199,7 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		if artifact.SuccessionUnrecorded {
 			notes = append(notes, "succession not recorded")
 		}
-		view := Artifact{Event: artifact.Event, Path: Text(artifact.Path), Commit: artifact.Commit, State: state, Notes: strings.Join(notes, ", ")}
+		view := Artifact{Event: artifact.Event, Sequence: sequences[artifact.Event], Path: Text(artifact.Path), Commit: artifact.Commit, State: state, Notes: strings.Join(notes, ", ")}
 		if state == "current" {
 			summary.CurrentArtifacts = append(summary.CurrentArtifacts, view)
 		} else {
@@ -199,7 +215,7 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		default:
 			continue
 		}
-		summary.Attempts = append(summary.Attempts, Attempt{Event: decision.Event, Verdict: string(decision.Verdict), Reason: Text(decision.Reason)})
+		summary.Attempts = append(summary.Attempts, Attempt{Event: decision.Event, Sequence: decision.Sequence, Verdict: string(decision.Verdict), Reason: Text(decision.Reason)})
 	}
 	summary.Actionable, summary.ActionableOmitted = Cap(summary.Actionable, ListCap)
 	summary.Attention, summary.AttentionOmitted = Cap(summary.Attention, ListCap)
@@ -255,7 +271,7 @@ func Render(summary Summary, source string) []byte {
 		output.WriteString("None.\n")
 	} else {
 		for _, attempt := range summary.Attempts {
-			fmt.Fprintf(&output, "- `%s` — %s: %s\n", short(attempt.Event), attempt.Verdict, attempt.Reason)
+			fmt.Fprintf(&output, "- %s — %s: %s\n", name(attempt.Event, attempt.Sequence), attempt.Verdict, attempt.Reason)
 		}
 		writeOmitted(&output, len(summary.Attempts), summary.AttemptsOmitted)
 	}
@@ -279,7 +295,7 @@ func renderCommitments(output *bytes.Buffer, title string, items []Commitment, o
 		if item.Stale && item.Status != "stale" {
 			status += " (stale)"
 		}
-		fmt.Fprintf(output, "- %s — %s → %s — `%s`", status, item.Requester, assignment, short(item.Request))
+		fmt.Fprintf(output, "- %s — %s → %s — `%s`", status, item.Requester, assignment, name(item.Request, item.Sequence))
 		if item.Text != "" {
 			fmt.Fprintf(output, ": %s", item.Text)
 		}
@@ -295,7 +311,7 @@ func renderArtifacts(output *bytes.Buffer, title string, items []Artifact, omitt
 		return
 	}
 	for _, item := range items {
-		fmt.Fprintf(output, "- %s@%s — `%s`", item.Path, short(item.Commit), short(item.Event))
+		fmt.Fprintf(output, "- %s@%s — `%s`", item.Path, short(item.Commit), name(item.Event, item.Sequence))
 		if item.Notes != "" {
 			fmt.Fprintf(output, " — %s", item.Notes)
 		}
@@ -308,6 +324,17 @@ func writeOmitted(output *bytes.Buffer, listed, omitted int) {
 	if omitted > 0 {
 		fmt.Fprintf(output, "\nShowing %d of %d; %d older omitted.\n", listed, listed+omitted, omitted)
 	}
+}
+
+// name renders an event as a reader says it. Falling back to the identifier in
+// full rather than an abbreviation is deliberate: `short` elides the middle, so
+// its output is visibly incomplete and cannot be mistaken for a name, but an
+// event that has a number should be called by it.
+func name(event string, sequence int) string {
+	if sequence > 0 {
+		return fmt.Sprintf("#%d", sequence)
+	}
+	return event
 }
 
 func short(value string) string {
