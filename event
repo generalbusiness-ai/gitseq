@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged resident rebuild progress UI at 63d8d7658762a069d9930194786cab58b8ae9f04. Verification and preparation states replace ambiguous loading copy until the complete work view is ready.","body":{"branch":"main","commit":"63d8d7658762a069d9930194786cab58b8ae9f04","head":"63d8d7658762a069d9930194786cab58b8ae9f04","path":"ui"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4513d77e9b10413a5278591ce25ea0efc86d8dfc","text":"The merged internal/kernel artifact replaces the reviewed branch artifact."}
