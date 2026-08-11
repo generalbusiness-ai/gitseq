@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:76d7b300dc37c1ff7b694671222ce04c2c943824","text":"Withdraw this review request because its artifact used a branch name rather than a durable behavior path; corrected exact-path artifacts follow."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cdb1e0d58334386ab7c39068ff43709a64dfb944","text":"Retire this branch-name artifact. Resident behavior is recorded at the package and UI paths that future merges can supersede."}
