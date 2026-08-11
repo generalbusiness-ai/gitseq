@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd3c16e68389f2a5df134abd286177e43ba51c7f","text":"Superseded at docs/how-to/end-to-end.md by the artifact for head 9e64e26d, where the walkthrough stops counting the reference table it links to."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b18c0eac34445b9009d4354f5e15cad475446f1f","text":"Superseded at docs/reference/gs/merge.md by the artifact for head 9e64e26d, so both pages of this set name one commit and one clean anchor."}
