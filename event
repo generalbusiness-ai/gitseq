@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged citation baseline after the ack and say documentation repair.","body":{"commit":"a3d097ddaab9b8482cb9d03966af86e1ff0c4ddc","path":"internal/docset"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a2b16a3e086409b5895016fcead140d15322777a","text":"The reviewed docs candidate is superseded by its merge artifact on main."}
