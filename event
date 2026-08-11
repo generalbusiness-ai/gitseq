@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Cancellation-independent Workspace snapshot flight through exact projection publication.","body":{"commit":"986ac393fe7b4f531440c70031009e42069c1b33","path":"internal/app"}}
+{"kind":"artifact","text":"Resident rebuild progress endpoint and end-to-end cancellation/profile-mismatch evidence.","body":{"commit":"986ac393fe7b4f531440c70031009e42069c1b33","path":"internal/service"}}
