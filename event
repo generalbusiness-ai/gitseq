@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:99ff38e3347a039282bb720903dc85adcd5c47a1","text":"Withdraw the readiness report because its expanded head was not the commit Git names."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c70b46e4ea48320ddc74080fd5edaf095291037e","text":"Withdraw this review request because its expanded exact head and artifact pointer were unusable; a corrected request follows."}
