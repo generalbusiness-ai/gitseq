@@ -26,6 +26,10 @@ type ClauseSource struct {
 	Body    map[string]string
 	Stale   bool
 	Retired bool
+
+	// Bases are the events this statement rests on, carried so admission can
+	// check that a clause is anchored to the charter being acted under.
+	Bases []string
 }
 
 // Refusal records one clause-shaped statement the connector declined, and why.
@@ -57,27 +61,40 @@ type Reading struct {
 // A connector that honoured any well-formed body would let any participant
 // widen its own admission.
 //
-// Retired clauses are refused: retiring a clause is how a bad admission is
-// withdrawn, and it has to stop admitting immediately rather than merely
-// flaring what it already let in.
+// Retired and stale clauses are both refused, and this fails closed on purpose.
 //
-// Stale clauses are admitted, and this is the correction. Stale says a basis
-// underneath the clause moved; retired says the clause was withdrawn. Refusing
-// on staleness made the sanctioned way to replace a charter self-defeating,
-// because a replacement must cite what it replaces and what it replaces is then
-// retired — so the successor is stale by construction and the connector stopped
-// admitting anything. Governing correctly turned the connector off, and no
-// operator action could escape it, since a charter that cites nothing bounds
-// nothing. The staleness is carried on the clause instead, so a reader can see
-// that the ground moved and judge it, rather than having the clause disappear.
-func ClausesFrom(sources []ClauseSource, authors map[string]Author) Reading {
+// An earlier version admitted stale clauses, arguing that staleness only means
+// a basis moved while retirement means withdrawal. The premise underneath that
+// — that correct charter replacement makes a successor stale by construction —
+// was false: a successor rests on stable current governance and the separate
+// supersession links it to the predecessor. So nothing forced the widening, and
+// the widening had a cost. The basis that moved beneath a clause may be exactly
+// the scope an operator withdrew, and admitting anyway would let a clause keep
+// letting foreign material in on authority that no longer stands.
+//
+// Retiring a clause is still how a bad admission is withdrawn, and it stops
+// admitting at once rather than merely flaring what it already let in.
+//
+// What is kept from that attempt is the diagnosis, not the permissiveness: each
+// refusal says which statement it refused and why, so an operator can repair a
+// clause instead of being told there is none.
+func ClausesFrom(sources []ClauseSource, authors map[string]Author, charter string, provenance map[string][]string) Reading {
+	anchored := clausesUnder(charter, sources, provenance)
 	reading := Reading{Clauses: make([]Clause, 0, len(sources))}
 	for _, source := range sources {
 		if source.Body[ClauseKey] != ClauseConnector {
 			continue
 		}
+		if !anchored[source.Event] {
+			reading.Refusals = append(reading.Refusals, Refusal{source.Event, "does not rest on the charter this run acts under, so it bounds some other doorstep"})
+			continue
+		}
 		if source.Retired {
 			reading.Refusals = append(reading.Refusals, Refusal{source.Event, "retired, so the admission was withdrawn"})
+			continue
+		}
+		if source.Stale {
+			reading.Refusals = append(reading.Refusals, Refusal{source.Event, "stale: a basis underneath it has moved, so its authority is no longer established; state a fresh clause on current governance"})
 			continue
 		}
 		if !authorized(authors[source.Actor]) {
@@ -89,10 +106,53 @@ func ClausesFrom(sources []ClauseSource, authors map[string]Author) Reading {
 			reading.Refusals = append(reading.Refusals, Refusal{source.Event, "names no issue, label, or state, so it would mean everything"})
 			continue
 		}
-		clause.Stale = source.Stale
 		reading.Clauses = append(reading.Clauses, clause)
 	}
 	return reading
+}
+
+// clausesUnder marks the statements anchored to this run's charter.
+//
+// Operator standing on the author is not enough, and this gap was open until
+// codex found it. A clause is a scope granted under a particular charter; if
+// admission only checks who signed it, a clause written under one charter — or
+// under a charter since withdrawn — is honoured beneath any other charter the
+// run happens to name. The signed basis is what ties a scope to the authority
+// that granted it, so that is what is checked.
+//
+// Reachability rather than a direct citation, because a clause may legitimately
+// rest on an intermediate act that rests on the charter. The walk is bounded by
+// the number of statements, and a cycle cannot repeat a visited event.
+func clausesUnder(charter string, sources []ClauseSource, provenance map[string][]string) map[string]bool {
+	if charter == "" {
+		return map[string]bool{}
+	}
+	anchored := make(map[string]bool)
+	var reaches func(event string, seen map[string]bool) bool
+	reaches = func(event string, seen map[string]bool) bool {
+		if event == charter {
+			return true
+		}
+		if seen[event] {
+			return false
+		}
+		seen[event] = true
+		for _, basis := range provenance[event] {
+			if reaches(basis, seen) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, source := range sources {
+		for _, basis := range source.Bases {
+			if reaches(basis, map[string]bool{}) {
+				anchored[source.Event] = true
+				break
+			}
+		}
+	}
+	return anchored
 }
 
 // authorized reports whether this actor may state a clause. The charter says

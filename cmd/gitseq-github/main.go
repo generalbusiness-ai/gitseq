@@ -98,7 +98,7 @@ func run(ctx context.Context, arguments []string) error {
 		})
 	}
 
-	reading := github.ClausesFrom(clauseSources(snapshot.Projection), authors(snapshot.Projection))
+	reading := github.ClausesFrom(clauseSources(snapshot.Projection), authors(snapshot.Projection), *charter, snapshot.Projection.Provenance)
 	clauses := reading.Clauses
 	if len(clauses) == 0 {
 		// Not an error. A workroom with no clause has asked for nothing, and
@@ -117,11 +117,6 @@ func run(ctx context.Context, arguments []string) error {
 			fmt.Printf("  %s: %s\n", refusal.Event, refusal.Reason)
 		}
 		return nil
-	}
-	for _, clause := range clauses {
-		if clause.Stale {
-			fmt.Printf("clause %s admits, and is stale: a basis underneath it has moved\n", clause.Event)
-		}
 	}
 	for _, refusal := range reading.Refusals {
 		fmt.Printf("clause %s refused: %s\n", refusal.Event, refusal.Reason)
@@ -295,14 +290,24 @@ func effectiveStatement(projection workroom.Projection, event, kind string) (wor
 // holding itself to its own contract — detection at the door rather than
 // attribution afterwards.
 //
-// Staleness is not among the refusals, for the same reason it is not among them
-// in clause admission, and leaving it here would have made that repair useless.
-// A charter that replaces another must cite what it replaces, and what it
-// replaces is then retired, so every correctly replaced charter is stale from
-// the moment it is written. Refusing here would reject the charter before
-// admission was ever reached, and no operator could state one that worked. The
-// staleness is reported instead, so whoever runs the connector is told the
-// ground moved rather than told the charter does not exist.
+// Staleness is among the refusals, and an earlier version of this file removed
+// it on a premise that turned out to be false.
+//
+// The argument for removing it was that a charter replacing another must cite
+// what it replaces, so every correctly replaced charter is stale by
+// construction and refusing here would leave no charter an operator could
+// state. That is not how replacement works. A successor rests on stable
+// current governance; the separate supersession act rests first on the
+// predecessor and names the successor as its additional basis — the same
+// separation this repository already requires for artifact succession. The one
+// stale charter in this workroom is stale because its motivating request was
+// retired, not because it replaced anything.
+//
+// So the refusal stays, and it fails closed. A stale charter is one whose basis
+// has moved, and the thing that moved might be exactly the scope request an
+// operator withdrew. Admitting it would convert a flare into continuing
+// authority for an irreversible public write, and a warning printed after
+// admission re-authorizes nothing and asks nobody to acknowledge anything.
 //
 // The binding matters as much as the liveness. A charter that names no
 // repository authorizes nothing in particular, and accepting one would let this
@@ -318,11 +323,11 @@ func charterIsLive(projection workroom.Projection, charter, owner, name, actor, 
 		if statement.Retired {
 			return errors.New("charter is retired")
 		}
+		if statement.Stale {
+			return errors.New("charter is stale: a basis underneath it has moved, so its authority is no longer established; state a successor on a current basis rather than acting under this one")
+		}
 		if !statement.Ratified {
 			return errors.New("charter is not ratified")
-		}
-		if statement.Stale {
-			fmt.Printf("charter %s is stale: a basis underneath it has moved\n", charter)
 		}
 		return charterBinds(statement.Body, charter, owner, name, actor, operation)
 	}
@@ -393,6 +398,7 @@ func clauseSources(projection workroom.Projection) []github.ClauseSource {
 		sources = append(sources, github.ClauseSource{
 			Event: statement.Event, Actor: statement.Actor, Body: statement.Body,
 			Stale: statement.Stale, Retired: statement.Retired,
+			Bases: projection.Provenance[statement.Event],
 		})
 	}
 	return sources
