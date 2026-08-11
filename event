@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"The MCP adapter now uses the shared guarded resident client while preserving per-route deadlines and transport-only local fallback.","body":{"commit":"dc68547832cbcc47b4f0ea76c0ffb4941b1c3b94","path":"cmd/gitseq-mcp"}}
+{"kind":"artifact","text":"The GitHub connector now resolves its actor consistently and submits through the shared bounded loopback-only resident client.","body":{"commit":"dc68547832cbcc47b4f0ea76c0ffb4941b1c3b94","path":"cmd/gitseq-github"}}
