@@ -2,11 +2,7 @@
 title: Do a piece of work, end to end
 summary: One complete path, from an empty directory to an audited record in a fresh clone.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:963dcd7e18727d410e7331b1159906a28fac8865
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9ed176d95eeb6777c0a3538cc8e400684184b68
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d53a83b7b606df6a80335f6257d59a4093681dfc
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f97dca2d5321a4abbf2ea61450ce40d43867579
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b34fc905db82c93fe54c49c7868a245cc4440eb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:404f16bcf0df9bf1052cba27800143ef29a9a57d
 ---
 
 # Do a piece of work, end to end
@@ -159,6 +155,42 @@ The approval is consumed by this one repository-wide landing. The merge
 commit, a receipt ref, and a signed workroom assertion record its exact
 candidate, target pre-head, and resulting merge head.
 
+### Move the artifacts the merge moved
+
+The merge changed files, and the artifacts pointing at those files now
+name a commit that is no longer current. Ask git what changed, then ask
+the workroom which paths its live artifacts already use:
+
+```sh
+MERGE=$(git -C "$REPO" rev-parse HEAD)
+git -C "$REPO" diff --name-only "$MERGE^1" "$MERGE"
+gs status --repo "$REPO"
+```
+
+Retire what the change covers and publish one successor per area. Here
+one path covers it, so it is one of each:
+
+```sh
+MERGED_ARTIFACT=$(gs state --repo "$REPO" --as alice --kind artifact \
+  --text 'Greeting, merged' \
+  --body path=greeting.txt --body commit="$MERGE" --rests-on "$REQUEST")
+gs supersede --repo "$REPO" --as bot --rests-on "$MERGED_ARTIFACT" \
+  --text 'Superseded by the merge artifact at the same path.' "$ARTIFACT"
+```
+
+Keep the successor's EventID. A supersession that names its replacement
+says *moved here*; one that does not says *gone*, and a reader following
+the chain stops at a dead end with only prose to go on. Prose is not a
+pointer. Note the order: `--rests-on` carries the successor alone, and
+`gs supersede` puts the target first in the basis itself — and every flag
+must precede the positional target, because flag parsing stops there.
+
+Reuse the exact string the live artifact already uses. Paths match as
+whole strings, so an artifact at `internal/workroom` never reaches one at
+`internal/workroom/fold.go` — a near miss is silent, not an error.
+[`gs merge`](../reference/gs/merge.md) enumerates the situations and their
+reasons, including why nothing is ever published at `.`.
+
 Now — and only now — the original requester closes the loop:
 
 ```sh
@@ -172,9 +204,13 @@ ineffective, and stay visible.
 
 ```sh
 gs status --repo "$REPO"
-gs provenance --repo "$REPO" "$ARTIFACT"
+gs provenance --repo "$REPO" "$MERGED_ARTIFACT"
 gs verify --repo "$REPO"
 ```
+
+The audit follows the live artifact, not the retired one. Asking a
+retired artifact for its provenance answers a question about history;
+asking the current one answers the question you have.
 
 `status` projects commitments and who they wait on, artifacts and whether
 they have gone stale, and the attempts that took no force. `provenance`
