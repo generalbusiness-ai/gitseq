@@ -1,1 +1,0 @@
-go vet ./cmd/gitseq-github ./internal/connector/github: pass
