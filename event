@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged addressed-inbox runtime at ui","body":{"commit":"2a0566890c5645f84c8ec77e4df6a64e9e47d008","path":"ui"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a383b4db5b97c20dae3e36463f2e0760904d9204","text":"internal/nexus candidate is superseded by the merged artifact at the same surviving path."}
