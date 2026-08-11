@@ -691,9 +691,26 @@ func TestAddressedSayAppearsInPrivateStatusAndWaitUntilAcknowledged(t *testing.T
 	post("/v0/inbox/register", inboxRegisterRequest{Session: "other-session", Version: InboxProtocolVersion}, nil)
 	var beforePublication Status
 	post("/v0/status", sessionStatusRequest{Session: "other-session"}, &beforePublication)
+	beforeInvalid := server.hub.Snapshot()
+	invalidSay, _ := json.Marshal(sayRequest{
+		Session: "human-session", About: genesis.ID, Text: "@other must fail closed", InboxVersion: "unknown-inbox-version",
+	})
+	invalidRequest := httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(invalidSay))
+	invalidRequest.Header.Set("Content-Type", "application/json")
+	invalidResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(invalidResponse, invalidRequest)
+	if invalidResponse.Code != http.StatusBadRequest {
+		t.Fatalf("unknown addressed inbox version returned %d: %s", invalidResponse.Code, invalidResponse.Body.String())
+	}
+	afterInvalid := server.hub.Snapshot()
+	if !reflect.DeepEqual(afterInvalid.Conversations, beforeInvalid.Conversations) || afterInvalid.Cursor != beforeInvalid.Cursor {
+		t.Fatalf("unknown addressed inbox version mutated live state: before=%+v after=%+v", beforeInvalid, afterInvalid)
+	}
 
 	var published nexus.Frame
-	post("/v0/say", sayRequest{Session: "human-session", About: genesis.ID, Text: `please review @other and @"unknown person"`}, &published)
+	post("/v0/say", sayRequest{
+		Session: "human-session", About: genesis.ID, Text: `please review @other and @"unknown person"`, InboxVersion: InboxProtocolVersion,
+	}, &published)
 	var signed nexus.Message
 	if err := json.Unmarshal(published.Payload, &signed); err != nil {
 		t.Fatal(err)

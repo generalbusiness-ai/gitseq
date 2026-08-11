@@ -728,8 +728,15 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 	case "say":
 		arguments := residentArguments(call.Arguments)
 		arguments["session"] = s.session
-		if sayNeedsInbox(arguments) && !current.inboxAvailable() {
-			return nil, errors.New("addressed chat is unavailable until the resident supports gitseq.addressed-inbox.v1")
+		if sayNeedsInbox(arguments) {
+			if !current.inboxAvailable() {
+				return nil, errors.New("addressed chat is unavailable until the resident supports gitseq.addressed-inbox.v1")
+			}
+			// The version travels with the mutation as well as registration. If
+			// a new resident is replaced by an old binary at the same URL between
+			// calls, that binary's strict decoder refuses the retry instead of
+			// accepting addressed text as opaque chat.
+			arguments["inbox_version"] = service.InboxProtocolVersion
 		}
 		return s.postForSession(ctx, current, "/v0/say", arguments)
 	case "ack":

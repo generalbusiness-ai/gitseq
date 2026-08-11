@@ -420,6 +420,32 @@ func TestAddressedMessagesAreSignedDeliveredRepeatedAndAcknowledgedPerSession(t 
 	}
 }
 
+func TestAddressedConversationSurvivesForLiveRecipientWithoutInboxCapability(t *testing.T) {
+	hub := newHub(t, 16)
+	_, aliceKey, _ := ed25519.GenerateKey(rand.Reader)
+	_, bobKey, _ := ed25519.GenerateKey(rand.Reader)
+	announceIdentity(t, hub, "alice", "Alice", aliceKey)
+	bob := actorFingerprint(bobKey.Public().(ed25519.PublicKey))
+	if _, err := hub.AnnounceSessionIdentity("bob-browser", "Bob", bob, "Bob", time.Hour, ActivityUpdate{}); err != nil {
+		t.Fatal(err)
+	}
+
+	frame, err := hub.PublishMessageForSession("alice", "", Message{
+		About: "event:browser-retention", Text: "please review", Recipients: []string{bob},
+	}, aliceKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub.Depart("alice")
+	if frames, err := hub.Frames(frame.Conversation); err != nil || len(frames) != 1 {
+		t.Fatalf("sender departure discarded a live legacy recipient's conversation: frames=%d err=%v", len(frames), err)
+	}
+	hub.Depart("bob-browser")
+	if _, err := hub.Frames(frame.Conversation); err == nil {
+		t.Fatal("conversation survived its final live recipient")
+	}
+}
+
 func TestSelfAddressDeliversOnlyToSiblingSessionAndOpaqueFramesDoNotAddress(t *testing.T) {
 	hub := newHub(t, 16)
 	_, aliceKey, _ := ed25519.GenerateKey(rand.Reader)

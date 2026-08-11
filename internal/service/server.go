@@ -388,6 +388,7 @@ type sayRequest struct {
 	About        string `json:"about"`
 	Conversation string `json:"conversation,omitempty"`
 	Text         string `json:"text"`
+	InboxVersion string `json:"inbox_version,omitempty"`
 	// Re threads a frame under an exact earlier one. The nexus validates it and
 	// signs the parent's author into the final recipient list.
 	Re string `json:"re,omitempty"`
@@ -463,6 +464,10 @@ func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
 	var input sayRequest
 	if err := decode(request, &input); err != nil {
 		write(writer, nil, err)
+		return
+	}
+	if input.InboxVersion != "" && input.InboxVersion != InboxProtocolVersion {
+		write(writer, nil, errors.New("unsupported inbox protocol version"))
 		return
 	}
 	if input.Session == "" || input.About == "" || input.Text == "" {

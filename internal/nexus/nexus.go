@@ -897,9 +897,14 @@ func (h *Hub) PublishMessageForSession(session, conversationID string, message M
 	for _, recipient := range message.Recipients {
 		recipientSet[recipient] = true
 	}
+	recipientParticipants := make([]string, 0)
 	recipientSessions := make([]string, 0)
 	for recipientSession, recipientEntry := range h.presence {
-		if recipientSession != session && recipientEntry.inbox && recipientSet[recipientEntry.fingerprint] {
+		if recipientSession == session || !recipientSet[recipientEntry.fingerprint] {
+			continue
+		}
+		recipientParticipants = append(recipientParticipants, recipientSession)
+		if recipientEntry.inbox {
 			recipientSessions = append(recipientSessions, recipientSession)
 		}
 	}
@@ -927,8 +932,10 @@ func (h *Hub) PublishMessageForSession(session, conversationID string, message M
 	}
 	h.participants[conversationID][session] = true
 	ref := frameRef{conversation: conversationID, sequence: frame.Sequence}
-	for _, recipientSession := range recipientSessions {
+	for _, recipientSession := range recipientParticipants {
 		h.participants[conversationID][recipientSession] = true
+	}
+	for _, recipientSession := range recipientSessions {
 		h.addInbox(recipientSession, ref)
 	}
 	return frame, nil

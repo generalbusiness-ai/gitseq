@@ -731,6 +731,65 @@ func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing
 	}
 }
 
+func TestAddressedSayFailsClosedWhenResidentDowngradesDuringSessionRepair(t *testing.T) {
+	workspace := initRepository(t, "downgraded-resident")
+	var sayCalls atomic.Int64
+	var opaquePublishes atomic.Int64
+	legacy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/v0/say":
+			call := sayCalls.Add(1)
+			var body map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				http.Error(writer, `{"error":"malformed request"}`, http.StatusBadRequest)
+				return
+			}
+			if call == 1 {
+				writer.WriteHeader(http.StatusBadRequest)
+				_, _ = writer.Write([]byte(`{"error":"session is not present"}`))
+				return
+			}
+			if _, versioned := body["inbox_version"]; versioned {
+				writer.WriteHeader(http.StatusBadRequest)
+				_, _ = writer.Write([]byte(`{"error":"json: unknown field \\"inbox_version\\""}`))
+				return
+			}
+			opaquePublishes.Add(1)
+			_ = json.NewEncoder(writer).Encode(map[string]any{"opaque": true})
+		case request.Method == http.MethodPost && request.URL.Path == "/v0/presence":
+			_ = json.NewEncoder(writer).Encode(map[string]any{})
+		case request.Method == http.MethodPost && request.URL.Path == "/v0/inbox/register":
+			http.NotFound(writer, request)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer legacy.Close()
+
+	server, attached := attachedServer(t, workspace, "human", legacy.URL, legacy.Client())
+	attached.checked = true
+	attached.announced = true
+	attached.setInboxAvailable(true)
+
+	_, err := server.call(context.Background(), toolCall{Name: "say", Arguments: map[string]any{
+		"about": genesisOf(t, workspace),
+		"text":  "@human addressed",
+	}})
+	if err == nil {
+		t.Fatal("addressed say survived a downgrade to a resident without inbox support")
+	}
+	if sayCalls.Load() != 2 {
+		t.Fatalf("addressed say made %d calls, want initial refusal and one safe retry", sayCalls.Load())
+	}
+	if opaquePublishes.Load() != 0 {
+		t.Fatalf("legacy resident accepted %d addressed says as opaque chat", opaquePublishes.Load())
+	}
+	if attached.inboxAvailable() {
+		t.Fatal("adapter retained inbox capability after the downgraded resident refused registration")
+	}
+}
+
 func TestFallbackWaitPreservesDefaultAndNamedRepositorySelection(t *testing.T) {
 	here := initRepository(t, "here")
 	elsewhere := initRepository(t, "elsewhere")
