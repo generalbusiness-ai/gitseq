@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:24b10235ba0b17619ee94a7982888bb4406f053a","text":"Replace the child review-policy request for the same boundary correction: architecture, security, and simplification review are this repository's AGENTS.md policy, not generic Workroom SKILL.md behavior."}
+{"kind":"promise","text":"I will restore SKILL.md, put this repository's three-part pre-merge review policy in AGENTS.md, correct the architecture page's policy mapping, and re-run and re-review the exact corrected head."}
