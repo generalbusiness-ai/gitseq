@@ -781,6 +781,74 @@ func TestProjectionIsByteStable(t *testing.T) {
 	}
 }
 
+func TestNormalizeRosterStateOwnsLegacyKindVocabulary(t *testing.T) {
+	tests := []struct {
+		name, kind, role, wantKind, wantAuthority string
+		wantMembership                            bool
+	}{
+		{name: "modern membership", kind: "agent", role: "participant", wantMembership: true, wantKind: "agent"},
+		{name: "modern authority", kind: "agent", role: "ratifier", wantKind: "agent", wantAuthority: "ratifier"},
+		{name: "modern seed", kind: "human", role: "operator", wantKind: "human", wantAuthority: "operator"},
+		{name: "legacy agent", role: "agent", wantMembership: true, wantKind: "agent"},
+		{name: "legacy human", role: "human", wantMembership: true, wantKind: "human"},
+		{name: "legacy service", role: "service", wantMembership: true, wantKind: "service"},
+		{name: "legacy operator", role: "operator", wantMembership: true, wantKind: "human", wantAuthority: "operator"},
+		{name: "legacy authority", role: "ratifier", wantMembership: true, wantKind: "unspecified", wantAuthority: "ratifier"},
+		{name: "legacy participant", role: "participant", wantMembership: true, wantKind: "unspecified"},
+		{name: "empty legacy role", wantMembership: true, wantKind: "unspecified"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := normalizeRosterState(test.kind, test.role)
+			if got.membership != test.wantMembership || got.kind != test.wantKind || got.authorityRole != test.wantAuthority {
+				t.Fatalf("normalizeRosterState() = %+v, want membership=%v kind=%q authority=%q", got, test.wantMembership, test.wantKind, test.wantAuthority)
+			}
+		})
+	}
+	for _, word := range []string{"agent", "human", "service"} {
+		if !IsActorKind(word) {
+			t.Errorf("IsActorKind(%q) = false", word)
+		}
+	}
+	// "unspecified" is the kind the normalizer derives for words it does not
+	// recognise, so it must not read back as a kind the vocabulary defines.
+	// This is the case the authority clause in IsActorKind exists to exclude.
+	for _, word := range []string{"", "participant", "operator", "ratifier", "unspecified"} {
+		if IsActorKind(word) {
+			t.Errorf("IsActorKind(%q) = true", word)
+		}
+	}
+}
+
+func TestLegacyHumanAndServiceRosterRecordsUseNormalizedMembership(t *testing.T) {
+	service := "actor:service"
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Operator", "role": "operator"}}),
+		event(t, "human", operator, SchemaState, State{Kind: KindRoster, Text: "human joins", Body: map[string]string{"actor": other, "name": "Human", "role": "human"}}, "e0"),
+		event(t, "human-ratified", operator, SchemaRatify, Ratify{Target: "human"}, "human"),
+		event(t, "service", operator, SchemaState, State{Kind: KindRoster, Text: "service joins", Body: map[string]string{"actor": service, "name": "Service", "role": "service"}}, "e0"),
+		event(t, "service-ratified", operator, SchemaRatify, Ratify{Target: "service"}, "service"),
+	})
+
+	for _, test := range []struct {
+		actor, name, kind, membership string
+	}{
+		{actor: other, name: "Human", kind: "human", membership: "human"},
+		{actor: service, name: "Service", kind: "service", membership: "service"},
+	} {
+		got := projection.Actors[test.actor]
+		if got.Name != test.name || got.Kind != test.kind || got.MembershipEvent != test.membership {
+			t.Errorf("actor %q identity = %+v", test.actor, got)
+		}
+		if len(got.Roles) != 1 || got.Roles[0] != "participant" {
+			t.Errorf("actor %q roles = %#v, want participant only", test.actor, got.Roles)
+		}
+		if sources := got.RoleSources["participant"]; len(sources) != 1 || sources[0] != test.membership {
+			t.Errorf("actor %q participant sources = %#v", test.actor, sources)
+		}
+	}
+}
+
 func TestPreconditionProjectionIsPinned(t *testing.T) {
 	projection := preconditions(t)
 	for eventID, want := range map[string]Decision{

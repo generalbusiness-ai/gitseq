@@ -114,11 +114,7 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	prefix := append([]Event(nil), log.Events...)
 	advanced := stored.Head != head
 	if advanced {
-		suffix := make([]string, 0, len(commits)-stored.Depth-1)
-		for _, commit := range commits[stored.Depth+1:] {
-			suffix = append(suffix, commit.OID)
-		}
-		extended, err := scanListedAfter(ctx, store, log, head, suffix, true)
+		extended, err := scanListedAfter(ctx, store, log, head, commits[stored.Depth+1:], true)
 		if err != nil {
 			return scannedLog{}, false, fmt.Errorf("%w: checkpoint frontier: %v", ErrNoUsableCheckpoint, err)
 		}
@@ -135,11 +131,11 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gi
 	if len(sequence) < stored.Depth+1 || sequence[0].OID != stored.Genesis {
 		return scannedLog{}, errors.New("checkpoint does not begin the named sequence")
 	}
-	if len(sequence[0].Parents) != 0 {
+	if err := validateChainParents(0, sequence[0].Parents, ""); err != nil {
 		return scannedLog{}, errors.New("checkpoint genesis has a parent")
 	}
 	for index := 1; index <= stored.Depth; index++ {
-		if len(sequence[index].Parents) != 1 || sequence[index].Parents[0] != sequence[index-1].OID {
+		if err := validateChainParents(index, sequence[index].Parents, sequence[index-1].OID); err != nil {
 			return scannedLog{}, fmt.Errorf("checkpoint event %d is not single-parent chained", index-1)
 		}
 	}
@@ -190,11 +186,11 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gi
 			return scannedLog{}, fmt.Errorf("event %d cached timestamp differs from sequence commit", index)
 		}
 		seenCommits[cached.Commit] = struct{}{}
-		decoded, err := intent.Verify(cached.Signed)
+		decoded, targetMatches, err := verifySignedTarget(cached.Signed, "git:"+stored.ObjectFormat+":"+stored.Genesis)
 		if err != nil {
 			return scannedLog{}, fmt.Errorf("event %d actor signature: %w", index, err)
 		}
-		if decoded.Target != "git:"+stored.ObjectFormat+":"+stored.Genesis {
+		if !targetMatches {
 			return scannedLog{}, fmt.Errorf("event %d target does not name checkpoint genesis", index)
 		}
 		actualSigned, trailers, err := intent.ParseEnvelope(position.Message, desc.PayloadCeiling)
@@ -230,10 +226,11 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gi
 		if err != nil {
 			return scannedLog{}, err
 		}
-		if prior, exists := log.Dedup[key]; exists {
-			if !prior.Signed.Equal(event.Signed) {
-				return scannedLog{}, fmt.Errorf("event %d: %w", index, ErrIdempotencyConflict)
-			}
+		prior, duplicate, dedupErr := dedupPrior(log.Dedup, key, event.Signed)
+		if dedupErr != nil {
+			return scannedLog{}, fmt.Errorf("event %d: %w", index, dedupErr)
+		}
+		if duplicate {
 			return scannedLog{}, fmt.Errorf("event %d duplicates idempotent event %s", index, prior.Commit)
 		}
 		log.Dedup[key] = eventWithoutPayload(event)
