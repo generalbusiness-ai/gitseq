@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1cc52b9878f941b469f9e41ffed2861520fdbe4a","text":"Replace the stale review request with the identical exact-head review on stable provenance."}
+{"kind":"artifact","text":"Merged shared bounded resident client.","body":{"commit":"e8a582839a4c0099504335dd3cd5819ca375ce2b","path":"internal/residentclient"}}
