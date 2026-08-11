@@ -2,9 +2,13 @@
 title: Components
 summary: The CLI, the resident service, the MCP adapter, the browser view, and the repository underneath.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e697474da72663dac9038a032e57ba7ef718a1a3
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcaecb65ffc4a7dad44d1d44ad7e2ae3246ef48f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9d3606442131e4bc700d1310451657bd4eac438
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d97eed896404f401dae2439928e31c6a0290ed47
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30206869d55828c9a4eb7d3c16d3cb71fe0cac8d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a383b4db5b97c20dae3e36463f2e0760904d9204
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d0fd7f5227adc05a6a42883aadd765dad0a89098
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d87af410275ef5dffdd11cdd5b9a2a3b5a62b45
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:63106fd8b893add378c21856065812b9f130f8a1
 ---
 
 # Components
@@ -62,7 +66,10 @@ See [the `gs` reference](../reference/gs/).
 - **Sequencing under contention.** Concurrent appends are compare-and-swap
   on the git ref and retry, so several actors can write at once.
 - **Presence and ephemeral conversation** — the amnesiac nexus. This
-  state is per-process and does not survive.
+  includes bounded per-session addressed inboxes and acknowledgements. The
+  service resolves Workroom names to fingerprints before the nexus signs and
+  routes them to live sessions that registered the inbox protocol. This state
+  is per-process and does not survive.
 - **Change notification.** Long-poll `wait` returns when something moves,
   rather than making every reader poll.
 
@@ -93,9 +100,9 @@ It is dual-era: it serves the stateless `2026-07-28` shape and the
 the connection, chosen by how the client opens and settled once.
 
 If the resident service is down, the durable tools keep working against
-the local log and report a `degraded` live cursor. `say` and `presence`
-fail rather than pretend, because ephemeral state genuinely does not
-survive.
+the local log and report a `degraded` live cursor. Priority chat is marked
+unavailable; `say`, `ack`, and `presence` fail rather than pretend, because
+ephemeral state genuinely does not survive.
 
 See [the MCP reference](../reference/mcp/) and
 [Configure an agent](../how-to/configure-an-agent.md).

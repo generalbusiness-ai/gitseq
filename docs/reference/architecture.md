@@ -4,6 +4,11 @@ summary: The boundary between Gitseq's semantic-free kernel and replaceable appl
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1802e1d1633a7ed401af47a666866c16674c6da9
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:71141a6023431f7093387abec0073593a7ed5d90
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30206869d55828c9a4eb7d3c16d3cb71fe0cac8d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a383b4db5b97c20dae3e36463f2e0760904d9204
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d0fd7f5227adc05a6a42883aadd765dad0a89098
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d87af410275ef5dffdd11cdd5b9a2a3b5a62b45
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:63106fd8b893add378c21856065812b9f130f8a1
 ---
 
 # Architecture layers
@@ -113,6 +118,16 @@ leased presence, activity, and ephemeral signed conversation. Its cursor and
 frames die with the process. It does not change the durable sequence and must
 not pretend that live state survived a restart.
 
+Addressed chat keeps this boundary. The Workroom-facing service resolves
+mentions against the effective roster; the nexus receives opaque actor
+fingerprints, validates exact reply handles, includes the final sorted
+recipient list in the actor-signed payload, and retains the conversation for
+every current matching lease. It enqueues priority delivery only for leases
+that registered the versioned inbox protocol. Presence alone does not opt a
+browser or older adapter into an inbox it cannot consume. Per-session inboxes
+and acknowledgements are live attention state, not Workroom authority or
+durable records. Acknowledgement changes no nexus cursor.
+
 `internal/nexus` implements this layer. The resident in `internal/service`
 hosts it alongside the durable application, but co-location is operational
 convenience, not a claim that nexus data has kernel durability.
@@ -164,10 +179,12 @@ state. Live status may be joined to it, but the durable and live cursors remain
 distinct.
 
 `internal/statusview` builds Workroom summaries, orientations, bounded work
-pages, and exact-item inspection. `internal/app` opens a repository, joins the
-kernel records to the Workroom interpreter, and exposes the resulting durable
-snapshot. Readers must report an unbound or unavailable interpreter instead
-of presenting a partial projection as authoritative.
+pages, exact-item inspection, and the bounded join of a caller's live priority
+inbox. `internal/app` opens a repository, joins the kernel records to the
+Workroom interpreter, and exposes the resulting durable snapshot. Readers must
+report an unbound or unavailable interpreter instead of presenting a partial
+projection as authoritative. In particular, a degraded client marks priority
+chat unavailable; it does not invent an empty live inbox.
 
 ### 6. CLI, MCP, skills, connectors, and UI
 

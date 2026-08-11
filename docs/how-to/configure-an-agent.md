@@ -2,8 +2,10 @@
 title: Configure an agent
 summary: Attach an MCP client to a workroom, and check that it can really act.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f940f57d17665c1ef145af8de98b4ac125499978
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30206869d55828c9a4eb7d3c16d3cb71fe0cac8d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a383b4db5b97c20dae3e36463f2e0760904d9204
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d0fd7f5227adc05a6a42883aadd765dad0a89098
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d87af410275ef5dffdd11cdd5b9a2a3b5a62b45
 ---
 
 # Configure an agent
@@ -72,8 +74,8 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{%s}}\n' "$META" 
   | gitseq-mcp --repo "$REPO" --actor bot 2>/dev/null
 ```
 
-Ten tools come back: `whoami`, `presence`, `status`, `wait`, `work`,
-`inspect`, `say`, `state`, `ratify`, `supersede`. Every one of them
+Eleven tools come back: `whoami`, `presence`, `status`, `wait`, `work`,
+`inspect`, `say`, `ack`, `state`, `ratify`, `supersede`. Every one of them
 accepts an optional `repo`.
 
 Confirm the adapter is signing as the actor you meant:
@@ -118,7 +120,8 @@ If the resident service is down, the durable tools — `status`, `wait`,
 `state`, `ratify`, `supersede` — keep working directly against the local
 log and report a `degraded` live cursor. `work` and `inspect` make the
 same bounded selection from a verified local snapshot and mark the
-response `degraded: true`. `say` and `presence` fail rather than
+response `degraded: true`, and priority chat is marked unavailable. `say`,
+`ack`, and `presence` fail rather than
 pretend: ephemeral state does not survive, and the adapter will not
 imply it did.
 

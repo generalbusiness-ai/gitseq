@@ -2,7 +2,7 @@
 title: gitseq documentation
 summary: Map of the documentation set, and how to choose a starting point.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a33b0645b9bd51851cdd9d1787c63a94b993d6a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30206869d55828c9a4eb7d3c16d3cb71fe0cac8d
 ---
 
 # gitseq documentation
@@ -74,6 +74,7 @@ Read in this order if you are new:
   [status](reference/mcp/status.md),
   [wait](reference/mcp/wait.md),
   [say](reference/mcp/say.md),
+  [ack](reference/mcp/ack.md),
   [state](reference/mcp/state.md),
   [ratify](reference/mcp/ratify.md),
   [supersede](reference/mcp/supersede.md).

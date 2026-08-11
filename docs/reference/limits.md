@@ -2,9 +2,12 @@
 title: Limits
 summary: The sizes and counts a call is refused for exceeding.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:328aa6777241e67d4b1a122ee45d4e4019eebd11
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a40ed6053a0bb5c1eeed9febb540498d4258799f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1539075831e59cbc39fefdd6a4e800ba2c150208
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d97eed896404f401dae2439928e31c6a0290ed47
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30206869d55828c9a4eb7d3c16d3cb71fe0cac8d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a383b4db5b97c20dae3e36463f2e0760904d9204
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d0fd7f5227adc05a6a42883aadd765dad0a89098
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d87af410275ef5dffdd11cdd5b9a2a3b5a62b45
 ---
 
 # Limits
@@ -65,6 +68,29 @@ so a shortened list reads as "20 of 500" rather than as a bare count.
 User-controlled text in the `gs status` view is normalized to one line
 and capped at 240 bytes. Use `gs status --all` or `gs status --json` when
 you need the whole projection; neither is capped.
+
+Addressed ephemeral chat is also bounded before it is signed and indexed:
+
+| Limit | Value |
+|---|---|
+| Authored chat text | 16 KiB of valid UTF-8 |
+| `about`, reply, or acknowledgement handle | 256 bytes |
+| Signed recipient fingerprints | 32 unique recipients |
+| Signed frame payload | 20 KiB |
+| Current priority inbox page | 20 frames per leased session |
+| Pending addressed frames | 256 per inbox-capable leased session |
+| Acknowledgement batch | 20 exact thread handles |
+| Live sessions | 256 per resident; 16 per actor |
+| Retained conversations | 4,096 frames and 8 MiB of payload per resident |
+
+The priority view returns the oldest 20 pending frames. `skipped` is the count
+of additional pending frames hidden behind that page, not a count of lost
+frames. Acknowledging visible handles reveals the next page. Publication is
+refused before it changes the room when a recipient, reference, frame, or byte
+limit is full. Expiry, departure, acknowledgement, and conversation forgetting
+release the corresponding capacity. Only sessions that registered the current
+versioned inbox protocol consume pending-frame capacity. Conversation and
+inbox state remain process-local and are not durable.
 
 ## Restart and the checkpoint
 
