@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d204ff812ce308fb7c408a3609f4cc505ccbad2f"}
+{"kind":"promise","text":"I will independently re-review the corrected documentation-anchor head e4b80c03893e8635818d14f6c94e7610cf512b96 without editing it. I will verify the ratified-decision basis, exact artifact and behavior anchors, current staleness, the requested page scope, and the mandatory architecture, security, and simplification conclusions.","body":{"branch":"request/doc-anchor-repair","head":"e4b80c03893e8635818d14f6c94e7610cf512b96"}}
