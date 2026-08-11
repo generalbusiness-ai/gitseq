@@ -3,7 +3,7 @@ title: gitseq documentation
 summary: Map of the documentation set, and how to choose a starting point.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d97eed896404f401dae2439928e31c6a0290ed47
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4408399caf4d8751c71b020f3fdaecceb5171b32
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ad1747762bcf97bb7b04150eb2535bee4cbe663e
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e517fd6e34c43f66733b2d78a7200f2b123412db
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
 ---
@@ -80,7 +80,9 @@ Read in this order if you are new:
   [ack](reference/mcp/ack.md),
   [state](reference/mcp/state.md),
   [ratify](reference/mcp/ratify.md),
-  [supersede](reference/mcp/supersede.md).
+  [supersede](reference/mcp/supersede.md),
+  [work](reference/mcp/work.md),
+  [inspect](reference/mcp/inspect.md).
 - [Event identifiers](reference/event-identifiers.md) — the one name
   everything else cites.
 - [Limits](reference/limits.md) — sizes and counts a call is refused for
