@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged GitHub connector migration to the shared resident client.","body":{"commit":"e8a582839a4c0099504335dd3cd5819ca375ce2b","path":"cmd/gitseq-github"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9aa8ba1d1c0fb655ab533f22c5cf3493ea1408d4","text":"Replace the stale merged artifact with the identical merge commit on stable provenance."}
