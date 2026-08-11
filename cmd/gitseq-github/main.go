@@ -89,6 +89,9 @@ func run(ctx context.Context, arguments []string) error {
 	}
 
 	if *propose != 0 {
+		if err := proposalIsCoherent(snapshot.Projection, *governing, *artifact, *commit); err != nil {
+			return err
+		}
 		return proposePullRequest(ctx, github.NewClient(token), *owner, *name, *dry, proposalFlags{
 			issue: *propose, branch: *branch, base: *base, commit: *commit,
 			request: *governing, artifact: *artifact, title: *title,
@@ -182,6 +185,63 @@ func proposePullRequest(ctx context.Context, client *github.Client, owner, name 
 	// the promise to deliver. Delivery is not the work; reporting it is.
 	fmt.Printf("opened %s/%s#%d %s\n", owner, name, delivery.Number, delivery.URL)
 	return nil
+}
+
+// proposalIsCoherent refuses to render durable facts that do not hold together.
+//
+// The command already required every field to be supplied. Supplied is not the
+// same as true: three well-formed strings naming a request, an artifact and a
+// commit that have nothing to do with each other produce a pull request which
+// confidently points at a record that does not say what it claims. The reader
+// on GitHub has no way to tell, and a pull request cannot be superseded.
+//
+// So the relationship is checked against the projection before anything is
+// posted, not the mere presence of the fields. Each mismatch is reported
+// separately because they mean different things: an unknown event is a citation
+// error, a retired one is a staleness error, and an artifact naming another
+// commit is a claim about the wrong code.
+func proposalIsCoherent(projection workroom.Projection, request, artifact, commit string) error {
+	if _, err := liveStatement(projection, request, "request"); err != nil {
+		return err
+	}
+	if _, err := liveStatement(projection, artifact, "artifact"); err != nil {
+		return err
+	}
+	for _, candidate := range projection.Artifacts {
+		if candidate.Event != artifact {
+			continue
+		}
+		if candidate.Commit != commit {
+			return fmt.Errorf("artifact %s names commit %s, not the --commit %s this would render", artifact, candidate.Commit, commit)
+		}
+		// The artifact must belong to the work the request governs, or the
+		// rendering pairs a real request with a real artifact from elsewhere.
+		if !slices.Contains(projection.Provenance[artifact], request) {
+			return fmt.Errorf("artifact %s does not rest on request %s, so they are not the same piece of work", artifact, request)
+		}
+		return nil
+	}
+	return fmt.Errorf("%s is not an artifact in this workroom", artifact)
+}
+
+// liveStatement finds one effective, unretired, unstale statement of a kind.
+func liveStatement(projection workroom.Projection, event, kind string) (workroom.Statement, error) {
+	for _, statement := range projection.Statements {
+		if statement.Event != event {
+			continue
+		}
+		if string(statement.Kind) != kind {
+			return workroom.Statement{}, fmt.Errorf("%s is a %s, not a %s", event, statement.Kind, kind)
+		}
+		if statement.Retired {
+			return workroom.Statement{}, fmt.Errorf("%s %s is retired", kind, event)
+		}
+		if statement.Stale {
+			return workroom.Statement{}, fmt.Errorf("%s %s is stale, so what it rests on has moved", kind, event)
+		}
+		return statement, nil
+	}
+	return workroom.Statement{}, fmt.Errorf("%s is not in this workroom, so a rendering naming it would point at nothing", event)
 }
 
 // charterIsLive refuses to act under a charter that is absent, retired, stale,

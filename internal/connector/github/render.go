@@ -16,8 +16,19 @@ import (
 // two would feed each other for ever.
 //
 // The marker is not a security boundary and should not be read as one. Any
-// GitHub user can type these characters. It bounds a loop between two halves of
-// one connector; it does not decide what a stranger may say.
+// GitHub user can type these characters.
+//
+// It is deliberately not consulted by the inbound half, and the reason is worth
+// keeping: filtering observations on a string anyone can write would let any
+// author hide an issue from the log by pasting the marker into it. That turns a
+// label into a denial vector, which is worse than not filtering at all. What
+// actually stops the connector reading its own writing is that the inbound half
+// skips pull requests, and a pull request is one whatever its body contains.
+//
+// So this exists to let a human reading GitHub see which text a machine wrote,
+// and to be available if the connector ever writes somewhere pull-request
+// exclusion does not reach — a comment on an issue, say. It would need the
+// spoofing question answered again before being trusted there.
 const Marker = "<!-- gitseq-connector -->"
 
 // Owned reports whether the connector wrote this body.

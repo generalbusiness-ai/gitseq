@@ -222,8 +222,15 @@ func (c *Client) Open(ctx context.Context, request PullRequest) (Delivery, error
 	if err := json.Unmarshal(body, &created); err != nil {
 		return Delivery{}, fmt.Errorf("github: decoding the created pull request: %w", err)
 	}
-	if created.Number == 0 {
-		return Delivery{}, fmt.Errorf("github: accepted the pull request and returned no number, so there is nothing to report as evidence")
+	// Both halves of the evidence are required, and a non-positive number is as
+	// useless as none: a report closing the promise to deliver has to name
+	// something a reader can open. Accepting silently here would leave a promise
+	// looking kept with nothing able to close it.
+	if created.Number <= 0 {
+		return Delivery{}, fmt.Errorf("github: accepted the pull request and returned no usable number (%d), so there is nothing to report as evidence", created.Number)
+	}
+	if strings.TrimSpace(created.HTMLURL) == "" {
+		return Delivery{}, fmt.Errorf("github: accepted pull request %d and returned no html_url, so the delivery cannot be cited", created.Number)
 	}
 	return Delivery{Number: created.Number, URL: created.HTMLURL}, nil
 }

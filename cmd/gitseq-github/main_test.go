@@ -195,3 +195,65 @@ func TestAnInboundCharterDoesNotAuthorizeWritingToTheForge(t *testing.T) {
 		t.Error("a charter for another repository authorized proposing here")
 	}
 }
+
+// A pull request cannot be superseded. So the durable facts it names are
+// checked before it is opened, not merely required to be present: three
+// well-formed strings that have nothing to do with each other would render a
+// rendering pointing at a record that does not say what it claims, and the
+// reader on GitHub has no way to tell.
+func TestAProposalMustNameFactsThatHoldTogether(t *testing.T) {
+	const request = "git:sha1:g#git:sha1:request"
+	const artifact = "git:sha1:g#git:sha1:artifact"
+	const commit = "6ca1266b21306cb96726d345eac9021a91488fe7"
+
+	coherent := workroom.Projection{
+		Statements: []workroom.Statement{
+			{Event: request, Kind: workroom.KindRequest},
+			{Event: artifact, Kind: workroom.KindArtifact},
+		},
+		Artifacts:  []workroom.Artifact{{Event: artifact, Commit: commit}},
+		Provenance: map[string][]string{artifact: {request}},
+	}
+	if err := proposalIsCoherent(coherent, request, artifact, commit); err != nil {
+		t.Fatalf("a coherent proposal was refused: %v", err)
+	}
+
+	// Each of these is well-formed and supplied. Only the relationship differs.
+	t.Run("unknown request", func(t *testing.T) {
+		if err := proposalIsCoherent(coherent, "git:sha1:g#git:sha1:nothing", artifact, commit); err == nil {
+			t.Error("a request naming nothing was rendered")
+		}
+	})
+	t.Run("retired artifact", func(t *testing.T) {
+		retired := coherent
+		retired.Statements = []workroom.Statement{
+			{Event: request, Kind: workroom.KindRequest},
+			{Event: artifact, Kind: workroom.KindArtifact, Retired: true},
+		}
+		if err := proposalIsCoherent(retired, request, artifact, commit); err == nil {
+			t.Error("a retired artifact was rendered as current")
+		}
+	})
+	t.Run("stale artifact", func(t *testing.T) {
+		stale := coherent
+		stale.Statements = []workroom.Statement{
+			{Event: request, Kind: workroom.KindRequest},
+			{Event: artifact, Kind: workroom.KindArtifact, Stale: true},
+		}
+		if err := proposalIsCoherent(stale, request, artifact, commit); err == nil {
+			t.Error("a stale artifact was rendered without saying its basis moved")
+		}
+	})
+	t.Run("artifact names another commit", func(t *testing.T) {
+		if err := proposalIsCoherent(coherent, request, artifact, "0000000000000000000000000000000000000000"); err == nil {
+			t.Error("the rendering claimed a commit the artifact does not name")
+		}
+	})
+	t.Run("artifact belongs to other work", func(t *testing.T) {
+		elsewhere := coherent
+		elsewhere.Provenance = map[string][]string{artifact: {"git:sha1:g#git:sha1:other"}}
+		if err := proposalIsCoherent(elsewhere, request, artifact, commit); err == nil {
+			t.Error("a real request was paired with a real artifact from different work")
+		}
+	})
+}

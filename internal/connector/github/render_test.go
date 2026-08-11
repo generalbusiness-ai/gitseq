@@ -76,7 +76,10 @@ func TestRenderThenReObserveProducesNoNewAct(t *testing.T) {
 
 	// GitHub returns the connector's own pull request among the issues, which
 	// is what would happen on a repository the connector has written to. It is
-	// excluded twice over: as a pull request, and as our own writing.
+	// excluded because it is a pull request — the one defence that does not
+	// depend on what the body says. The marker is not consulted here and this
+	// test does not rely on it; see Marker for why filtering on it would let an
+	// author hide an issue by typing it.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") != "1" {
 			_, _ = w.Write([]byte(`[]`))

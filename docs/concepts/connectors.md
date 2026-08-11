@@ -23,11 +23,19 @@ learns what GitHub is.
 **Observe** is inbound and only appends. An observation is a new
 event, never a merge.
 
-**Render** is outbound and only overwrites a surface the connector
-owns and nothing reads back.
+**Render** is outbound and writes to the forge. Today that means
+opening a pull request, which cannot be overwritten and is not
+idempotent — asking twice opens two — so it is a deliberate command
+rather than a state the connector steers toward.
 
-Because inbound only appends and outbound only overwrites, the two
-never have to agree with each other. There is no conflict, so there is
+The asymmetry that does the work is not overwrite-versus-append. It is
+that neither direction reads the other's writing: the inbound half
+skips pull requests entirely, so what this connector opens can never
+return as something it observed. That exclusion is structural — a pull
+request is a pull request whatever its body says — rather than resting
+on any marker a stranger could also type.
+
+Because the two never read each other, they never have to agree. There is no conflict, so there is
 nothing for an engine to resolve — which matters, because an engine
 asked to reconcile two divergent states without a participant deciding
 must either forge signatures or invent a merge this substrate does not
