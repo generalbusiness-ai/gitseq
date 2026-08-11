@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f2e68345881b1087353c28b985f5d070970806e6","text":"Superseded by the merged pointer at internal/app for 4f427f22acc2084dc282393318b47ade920ccc5c."}
+{"kind":"assert","text":"approved candidate merged","body":{"merge_approval":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:44eee02d3994f19ba1a1c990172adb4f0ddac4ef","merge_candidate":"567c516dcd0f15b73c140149e7156061efda7d7a","merge_head":"50243e701b2db70e54e1f583b3075fcaa86327f0","merge_target_pre_head":"4f427f22acc2084dc282393318b47ade920ccc5c"}}
