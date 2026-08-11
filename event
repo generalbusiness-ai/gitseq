@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"ui at exact addressed-inbox runtime head c0c70300381730f3952db3c0a837c2beeb04121c. This replaces the mistakenly abbreviated candidate pointer and carries the same reviewed runtime behavior on a full object ID.","body":{"commit":"c0c70300381730f3952db3c0a837c2beeb04121c","path":"ui"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6a5948fc19fa19eb6b565ee30bbcdd437c86afb2","text":"The full exact-head cmd/gitseq-mcp artifact at c0c70300381730f3952db3c0a837c2beeb04121c replaces this abbreviated candidate pointer."}
