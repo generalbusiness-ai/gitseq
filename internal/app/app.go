@@ -78,19 +78,26 @@ type Workspace struct {
 	snapshotCache  *Snapshot
 	snapshotSource SnapshotSource
 	snapshotFolder *workroom.Folder
-	// reader is written only under snapshotMu but read without it by
-	// RebuildProgress, so the pointer itself is atomic. The lock-free read is
-	// the entire point: snapshotMu is held for the duration of the audit being
-	// reported on, so anything that waited for it could only answer once there
-	// was nothing left to say.
-	reader        atomic.Pointer[kernel.Reader]
-	submitterOnce sync.Once
-	submitter     *kernel.Submitter
+	flightMu       sync.Mutex
+	flight         atomic.Pointer[snapshotFlight]
+	reader         atomic.Pointer[kernel.Reader]
+	submitterOnce  sync.Once
+	submitter      *kernel.Submitter
 
 	worktreesMu       sync.Mutex
 	worktreesCached   []WorktreeView
 	repoPathCached    string
 	worktreesCachedAt time.Time
+}
+
+// snapshotFlight is one shared resident read. Its work outlives any individual
+// HTTP reader; callers may stop waiting without cancelling verification for
+// everybody else. Closing done publishes result and err to all waiters.
+type snapshotFlight struct {
+	done     chan struct{}
+	progress kernel.AuditProgress
+	result   SourcedSnapshot
+	err      error
 }
 
 // Snapshot is an immutable borrowed view. A Workspace may return its resident
@@ -887,22 +894,17 @@ func (w *Workspace) EventID(commit string) string {
 // Running is false when no audit is in flight, which is the ordinary warm case
 // — callers should stay quiet then rather than render a finished progress bar.
 func (w *Workspace) RebuildProgress() (progress kernel.Progress, running bool) {
-	reader := w.reader.Load()
-	if reader == nil {
+	flight := w.flight.Load()
+	if flight == nil {
 		return kernel.Progress{}, false
 	}
-	progress = reader.AuditProgress()
-	return progress, progress.Total > 0
-}
-
-// HoldSnapshotForTest takes the snapshot lock and returns its release, so a
-// test can reproduce the state a cold audit creates — the lock held for a long
-// time — without waiting for a real one. Exported because the property worth
-// testing lives in another package: that a reader can be told what is happening
-// while this is held.
-func (w *Workspace) HoldSnapshotForTest() (release func()) {
-	w.snapshotMu.Lock()
-	return w.snapshotMu.Unlock
+	select {
+	case <-flight.done:
+		return kernel.Progress{}, false
+	default:
+	}
+	progress = flight.progress.Snapshot()
+	return progress, progress.Started
 }
 
 func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
@@ -914,6 +916,51 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 // while retaining whether the local projection came from a signed checkpoint,
 // a verified incremental continuation, or a cold full audit.
 func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, error) {
+	flight := w.snapshotFlight(ctx)
+	select {
+	case <-flight.done:
+		return flight.result, flight.err
+	default:
+	}
+	select {
+	case <-flight.done:
+		return flight.result, flight.err
+	case <-ctx.Done():
+		return SourcedSnapshot{}, ctx.Err()
+	}
+}
+
+// snapshotFlight joins or starts the one resident read in flight. The work
+// deliberately has process lifetime rather than inheriting one caller's
+// cancellation: one disconnected browser must not abort verification for
+// every other reader or make the next request repeat the same cold audit.
+func (w *Workspace) snapshotFlight(_ context.Context) *snapshotFlight {
+	w.flightMu.Lock()
+	defer w.flightMu.Unlock()
+	if flight := w.flight.Load(); flight != nil {
+		return flight
+	}
+	flight := &snapshotFlight{done: make(chan struct{})}
+	w.flight.Store(flight)
+	go func() {
+		flight.result, flight.err = w.snapshotWithSource(context.Background(), &flight.progress)
+		close(flight.done)
+		w.flightMu.Lock()
+		if w.flight.Load() == flight {
+			w.flight.Store(nil)
+		}
+		w.flightMu.Unlock()
+	}()
+	return flight
+}
+
+func (w *Workspace) newReader() *kernel.Reader {
+	return kernel.NewReader(w.Store, kernel.CheckpointOptions{
+		Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
+	})
+}
+
+func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.AuditProgress) (SourcedSnapshot, error) {
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
 	head, err := w.Store.Head(ctx, kernel.Ref(w.Config.Genesis))
@@ -929,11 +976,9 @@ func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, er
 		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
 	}
 	if w.reader.Load() == nil {
-		w.reader.Store(kernel.NewReader(w.Store, kernel.CheckpointOptions{
-			Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
-		}))
+		w.reader.Store(w.newReader())
 	}
-	loaded, err := w.reader.Load().Load(ctx, w.Config.Genesis)
+	loaded, err := w.reader.Load().LoadWithProgress(ctx, w.Config.Genesis, progress)
 	if err != nil {
 		return SourcedSnapshot{}, err
 	}
@@ -957,10 +1002,8 @@ func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, er
 		// The application projection and verified reader must advance as a
 		// pair. If local application state was discarded or mismatched,
 		// deliberately replace the reader and perform a cold full audit.
-		w.reader.Store(kernel.NewReader(w.Store, kernel.CheckpointOptions{
-			Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
-		}))
-		loaded, err = w.reader.Load().Load(ctx, w.Config.Genesis)
+		w.reader.Store(w.newReader())
+		loaded, err = w.reader.Load().LoadWithProgress(ctx, w.Config.Genesis, progress)
 		if err != nil {
 			return SourcedSnapshot{}, err
 		}

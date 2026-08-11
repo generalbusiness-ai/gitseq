@@ -227,14 +227,10 @@ export function WorkView({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         {!projection || !visible ? (
-          // A rebuilding resident is not a slow one, and saying "loading" for
-          // several minutes taught readers the page was broken. RebuildNotice
-          // renders nothing unless a rebuild is actually in flight, so the
-          // ordinary brief wait still reads as a wait.
-          <>
-            <RebuildNotice />
-            <p className="py-12 text-center text-sm text-faint">Loading work…</p>
-          </>
+          // RebuildNotice owns both mutually exclusive waiting states. A cold
+          // rebuild replaces the generic loading message; a warm brief read
+          // keeps it.
+          <RebuildNotice />
         ) : visible.topics.length === 0 && visible.attention.length === 0 ? (
           <div className="mx-auto max-w-xl py-16 text-center">
             <p className="font-serif text-lg text-foreground/90">No work matches this view.</p>

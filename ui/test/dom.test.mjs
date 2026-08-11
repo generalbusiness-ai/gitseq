@@ -315,23 +315,45 @@ test("the rebuild notice explains verification without implying failure or curre
     assert.equal(notice.getAttribute("aria-live"), "polite");
     assert.match(notice.textContent, /Verifying durable history/);
     assert.match(notice.textContent, /verified 300 of 1,200/, "the measured count is not shown");
+    assert.doesNotMatch(document.body.textContent, /Loading work/, "measured rebuild progress was shown alongside generic loading");
 
     const bar = document.querySelector('[role="progressbar"]');
     assert.equal(bar.getAttribute("aria-valuenow"), "300");
     assert.equal(bar.getAttribute("aria-valuemax"), "1200");
     assert.match(bar.getAttribute("aria-valuetext"), /300 of 1200 records verified/);
 
-    for (const forbidden of [/error/i, /failed/i, /broken/i, /up to date/i, /current as of/i]) {
+    for (const forbidden of [/error/i, /failed/i, /broken/i, /nothing is wrong/i, /up to date/i, /current as of/i]) {
       assert.doesNotMatch(notice.textContent, forbidden, `the notice implies ${forbidden}`);
     }
 
-    // Warm: render nothing rather than a finished bar.
-    report = { running: false };
+    // Rev-list enumeration can itself take time. Explain that cold work before
+    // claiming a denominator the kernel does not know yet.
+    report = { running: true };
     await act(async () => {
       mounted.render(React.createElement(RebuildNotice, { poll: 1000001 }));
     });
     await act(async () => { await Promise.resolve(); });
+    assert.match(document.body.textContent, /Preparing to verify durable history/);
+    assert.equal(document.querySelector('[role="progressbar"]'), null);
+
+    // Verification can finish before checkpoint persistence and the Workroom
+    // fold. Keep the measured rebuild state, but say what remains.
+    report = { running: true, verified: 1200, total: 1200 };
+    await act(async () => {
+      mounted.render(React.createElement(RebuildNotice, { poll: 1000002 }));
+    });
+    await act(async () => { await Promise.resolve(); });
+    assert.match(document.body.textContent, /Preparing the verified work view/);
+    assert.doesNotMatch(document.body.textContent, /Loading work/);
+
+    // Warm: show only the ordinary brief loading state, not a finished bar.
+    report = { running: false };
+    await act(async () => {
+      mounted.render(React.createElement(RebuildNotice, { poll: 1000003 }));
+    });
+    await act(async () => { await Promise.resolve(); });
     assert.equal(document.querySelector('[role="progressbar"]'), null, "a warm resident still showed a progress bar");
+    assert.match(document.body.textContent, /Loading work/);
   } finally {
     globalThis.fetch = previousFetch;
     await act(async () => { mounted.unmount(); });

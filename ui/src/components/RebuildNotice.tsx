@@ -30,27 +30,35 @@ export function RebuildNotice({ poll = 1000 }: { poll?: number }) {
     };
   }, [poll]);
 
-  if (!rebuild?.running) return null;
+  if (!rebuild?.running) {
+    return <p className="py-12 text-center text-sm text-faint">Loading work…</p>;
+  }
 
   const total = rebuild.total ?? 0;
   const verified = rebuild.verified ?? 0;
-  // Only claim a proportion when there is one. Early in a rebuild the total is
-  // known and the count is zero, which is a real state, not a missing one.
+  // Only claim a proportion after the kernel has enumerated the cold history.
+  // Before that, running is still meaningful but no denominator is known.
   const measured = total > 0;
   const percent = measured ? Math.min(100, Math.round((verified / total) * 100)) : 0;
+  const complete = measured && verified >= total;
+  const heading = !measured
+    ? "Preparing to verify durable history"
+    : complete
+      ? "Preparing the verified work view"
+      : "Verifying durable history";
 
   return (
     <div
       className="mx-auto max-w-xl py-16 text-center"
       role="status"
       aria-live="polite"
-      aria-label="Verifying durable history"
+      aria-label={heading}
     >
-      <p className="font-serif text-lg text-foreground/90">Verifying durable history</p>
+      <p className="font-serif text-lg text-foreground/90">{heading}</p>
       <p className="mt-1 text-xs text-faint">
-        This workroom's signed log is being checked from the beginning, one record at a time. Work
-        appears when the check finishes — nothing is wrong, and nothing here is out of date, because
-        nothing is shown until it has been verified.
+        This workroom's signed log is being checked from the beginning, one record at a time. On a
+        large history this expected check can take several minutes. Work appears after verification
+        and projection finish; no unverified work is shown.
       </p>
       {measured && (
         <>

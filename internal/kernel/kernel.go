@@ -618,48 +618,49 @@ type LoadResult struct {
 // reader mutex for its whole duration, and callers hold their own on top of
 // that, so by the time anyone can ask, there is nothing left to ask about.
 //
-// Verified counts commits whose sequencer signature has been checked. Total is
-// how many there are to check. Both are zero when no audit is running.
+// Started becomes true only when checkpoint lookup has fallen back to a full
+// scan. Verified counts commits whose complete kernel verification has
+// succeeded. Total is how many there are to check.
 type Progress struct {
+	Started  bool
 	Verified int
 	Total    int
 }
 
-// progress is written by the verification loop and read by anyone, without
-// either mutex. That is the whole point: a value guarded by the lock the slow
-// work holds could never be read while the slow work ran.
+// AuditProgress is written by the verification loop and read by anyone,
+// without either mutex. A fresh tracker belongs to one LoadWithProgress call;
+// its final values remain available while the caller finishes downstream work.
 //
-// It is write-only from the verifier's side. Nothing in this package reads it
-// back, no control flow branches on it, and dropping it entirely would change
-// no decision about what is accepted — it reports on the audit, it is not part
-// of it.
-type progress struct {
+// It is reporting only. Nothing in the kernel reads it back, no verification
+// decision depends on it, and omitting it changes no accepted result.
+type AuditProgress struct {
+	started  atomic.Bool
 	verified atomic.Int64
 	total    atomic.Int64
 }
 
-func (p *progress) begin(total int) {
-	p.total.Store(int64(total))
+func (p *AuditProgress) begin() {
+	p.started.Store(true)
 	p.verified.Store(0)
-}
-
-func (p *progress) advance(verified int) { p.verified.Store(int64(verified)) }
-
-func (p *progress) done() {
 	p.total.Store(0)
-	p.verified.Store(0)
 }
 
-func (p *progress) read() Progress {
-	return Progress{Verified: int(p.verified.Load()), Total: int(p.total.Load())}
+func (p *AuditProgress) setTotal(total int) {
+	p.total.Store(int64(total))
+}
+
+func (p *AuditProgress) advance(verified int) {
+	p.verified.Store(int64(verified))
+}
+
+// Snapshot returns a coherent-enough monotonic observation for progress UI.
+// The fields are bounded counters, not verification inputs.
+func (p *AuditProgress) Snapshot() Progress {
+	return Progress{Started: p.started.Load(), Verified: int(p.verified.Load()), Total: int(p.total.Load())}
 }
 
 type Reader struct {
 	store gitstore.Store
-
-	// audit reports the cold scan's position. Declared outside the mutex
-	// deliberately; see progress.
-	audit progress
 
 	mu                  sync.Mutex
 	target              string
@@ -685,13 +686,17 @@ func NewReader(store gitstore.Store, checkpoint ...CheckpointOptions) *Reader {
 	return reader
 }
 
-// AuditProgress reports how far a cold audit has got, or zero if none is
-// running. It deliberately does not take r.mu: the audit holds that lock for
-// its entire duration, so a progress call that waited for it could only ever
-// answer after there was nothing left to report.
-func (r *Reader) AuditProgress() Progress { return r.audit.read() }
-
 func (r *Reader) Load(ctx context.Context, genesis string) (LoadResult, error) {
+	return r.load(ctx, genesis, nil)
+}
+
+// LoadWithProgress is Load with an optional, semantic-free cold-audit tracker.
+// A checkpoint hit or incremental read leaves the fresh tracker unstarted.
+func (r *Reader) LoadWithProgress(ctx context.Context, genesis string, report *AuditProgress) (LoadResult, error) {
+	return r.load(ctx, genesis, report)
+}
+
+func (r *Reader) load(ctx context.Context, genesis string, report *AuditProgress) (LoadResult, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	head, err := r.store.Head(ctx, Ref(genesis))
@@ -742,7 +747,10 @@ func (r *Reader) Load(ctx context.Context, genesis string) (LoadResult, error) {
 		}
 	}
 	if !fromCheckpoint {
-		log, err = scanHead(ctx, r.store, genesis, head, true, &r.audit)
+		if report != nil {
+			report.begin()
+		}
+		log, err = scanHead(ctx, r.store, genesis, head, true, report)
 		if err != nil {
 			return LoadResult{}, err
 		}
@@ -825,7 +833,7 @@ func Verify(ctx context.Context, store gitstore.Store, genesis string) (Verifica
 // the immutable head and, in the same traversal, builds the event stream and
 // actor-scoped dedup index. loadPayload controls only whether verified payload
 // bytes are retained.
-func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, loadPayload bool, report *progress) (scannedLog, error) {
+func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, loadPayload bool, report *AuditProgress) (scannedLog, error) {
 	commits, err := store.RevList(ctx, head)
 	if err != nil {
 		return scannedLog{}, err
@@ -848,13 +856,9 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 		sequencerPublicKey: desc.SequencerPublicKey,
 	}
 	if report != nil {
-		report.begin(len(commits))
-		defer report.done()
+		report.setTotal(len(commits))
 	}
 	for index, commit := range commits {
-		if report != nil {
-			report.advance(index)
-		}
 		if err := store.VerifySSHCommit(ctx, commit, "sequencer", log.sequencerPublicKey); err != nil {
 			return scannedLog{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)
 		}
@@ -865,6 +869,9 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 		if index == 0 {
 			if err := validateChainParents(index, parents, ""); err != nil {
 				return scannedLog{}, err
+			}
+			if report != nil {
+				report.advance(index + 1)
 			}
 			continue
 		}
@@ -880,6 +887,9 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 				return scannedLog{}, fmt.Errorf("commit %s rotates to the current sequencer key", commit)
 			}
 			log.sequencerPublicKey = successor
+			if report != nil {
+				report.advance(index + 1)
+			}
 			continue
 		}
 		key, err := event.Signed.DedupKey()
@@ -895,6 +905,9 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 		log.Dedup[key] = eventWithoutPayload(event)
 		log.Events = append(log.Events, event)
 		log.Verification.Events++
+		if report != nil {
+			report.advance(index + 1)
+		}
 	}
 	return log, nil
 }

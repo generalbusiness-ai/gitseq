@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,7 +15,9 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 // The legacy demo page is gone, and this is what stops it coming back. It was
@@ -680,17 +683,10 @@ func TestPublishedHandleCannotAuthorizeDurableActs(t *testing.T) {
 	}
 }
 
-// The failure this endpoint exists for: after a fold-profile bump invalidated
-// the checkpoint, the shell and hashed assets loaded instantly while /v0/status
-// and /v0/actors returned nothing for minutes, because both go through Snapshot
-// and Snapshot holds the lock the cold audit runs under. The browser could not
-// tell a verifying resident from a broken bundle.
-//
-// So this asserts the one property that makes the difference: /v0/rebuild
-// answers while Snapshot is blocked. It holds snapshotMu directly rather than
-// simulating a slow audit, because what matters is that the endpoint does not
-// queue behind whatever else holds it.
-func TestRebuildReportAnswersWhileASnapshotIsInFlight(t *testing.T) {
+// A fold-profile bump must run one resident rebuild, not one audit per browser
+// request. The first reader may leave; another reader still joins the same
+// verification and receives the exact projection only after it is ready.
+func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T) {
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -700,46 +696,177 @@ func TestRebuildReportAnswersWhileASnapshotIsInFlight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := New(workspace)
+	const records = 30
+	for index := range records {
+		text := "scaled rebuild record " + strconv.Itoa(index)
+		if _, err := workspace.Act(ctx, "human", app.Act{
+			Verb: app.VerbState, Kind: workroom.KindAssert, Text: text,
+			IdempotencyKey: "rebuild-profile-mismatch-" + strconv.Itoa(index),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Leave the repository with an exact signed checkpoint under the previous
+	// application profile. A fresh current-profile Workspace must reject it and
+	// audit from genesis.
+	oldReader := kernel.NewReader(workspace.Store, kernel.CheckpointOptions{
+		Profile: "deliberately-old-test-profile", SigningKey: workspace.Config.SequencerKey,
+	})
+	oldLoaded, err := oldReader.Load(ctx, workspace.Config.Genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cold, err := app.Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(cold)
 	if err != nil {
 		t.Fatal(err)
 	}
 	httpServer := httptest.NewServer(server.Handler())
 	defer httpServer.Close()
 
-	// Warm and quiet: nothing is rebuilding, so the report says so rather than
-	// showing a finished progress bar.
-	var quiet rebuildReport
-	if err := getJSON(httpServer.URL+"/v0/rebuild", &quiet); err != nil {
+	firstCtx, cancelFirst := context.WithCancel(ctx)
+	firstRequest, err := http.NewRequestWithContext(firstCtx, http.MethodGet, httpServer.URL+"/v0/status", nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if quiet.Running {
-		t.Errorf("a warm resident reported a rebuild in flight: %+v", quiet)
-	}
-
-	// Now hold the snapshot lock, as a cold audit does for its whole duration.
-	release := workspace.HoldSnapshotForTest()
-	answered := make(chan rebuildReport, 1)
+	firstDone := make(chan error, 1)
 	go func() {
-		var report rebuildReport
-		if err := getJSON(httpServer.URL+"/v0/rebuild", &report); err != nil {
-			close(answered)
-			return
+		response, err := http.DefaultClient.Do(firstRequest)
+		if response != nil {
+			response.Body.Close()
 		}
-		answered <- report
+		firstDone <- err
 	}()
 
-	select {
-	case report, ok := <-answered:
-		if !ok {
-			t.Fatal("the rebuild report failed while a snapshot was in flight")
+	deadline := time.Now().Add(20 * time.Second)
+	var observed rebuildReport
+	for time.Now().Before(deadline) {
+		if err := getJSON(httpServer.URL+"/v0/rebuild", &observed); err != nil {
+			t.Fatal(err)
 		}
-		_ = report
-	case <-time.After(10 * time.Second):
-		release()
-		t.Fatal("the rebuild report queued behind the snapshot lock, which is the failure it exists to prevent")
+		if observed.Running && observed.Total > 0 && observed.Verified > 0 && observed.Verified < observed.Total {
+			break
+		}
+		time.Sleep(time.Millisecond)
 	}
-	release()
+	if !observed.Running || observed.Total == 0 || observed.Verified == 0 || observed.Verified >= observed.Total {
+		cancelFirst()
+		t.Fatalf("no moving cold-rebuild report was observed: %+v", observed)
+	}
+	var bounded map[string]any
+	if err := getJSON(httpServer.URL+"/v0/rebuild", &bounded); err != nil {
+		t.Fatal(err)
+	}
+	for key := range bounded {
+		if key != "running" && key != "verified" && key != "total" {
+			t.Fatalf("rebuild endpoint exposed unbounded field %q", key)
+		}
+	}
+
+	type statusResult struct {
+		status Status
+		err    error
+	}
+	secondDone := make(chan statusResult, 1)
+	go func() {
+		var status Status
+		err := getJSON(httpServer.URL+"/v0/status", &status)
+		secondDone <- statusResult{status: status, err: err}
+	}()
+
+	cancelFirst()
+	select {
+	case err := <-firstDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("the cancelled reader returned %v, want context cancellation", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first status reader did not stop waiting after cancellation")
+	}
+
+	// A third reader with a short deadline receives no stale or partial status.
+	shortCtx, cancelShort := context.WithTimeout(ctx, 5*time.Millisecond)
+	defer cancelShort()
+	shortRequest, err := http.NewRequestWithContext(shortCtx, http.MethodGet, httpServer.URL+"/v0/status", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response, err := http.DefaultClient.Do(shortRequest); err == nil {
+		response.Body.Close()
+		t.Fatal("status returned a projection while the cold rebuild was still running")
+	} else if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("short status read returned %v, want deadline exceeded", err)
+	}
+
+	lastVerified, fixedTotal := observed.Verified, observed.Total
+	var final Status
+	for time.Now().Before(deadline) {
+		var progress rebuildReport
+		if err := getJSON(httpServer.URL+"/v0/rebuild", &progress); err != nil {
+			t.Fatal(err)
+		}
+		if !progress.Running {
+			select {
+			case result := <-secondDone:
+				if result.err != nil {
+					t.Fatal(result.err)
+				}
+				final = result.status
+			case <-time.After(2 * time.Second):
+				t.Fatal("rebuild became quiet before the joined status reader received the projection")
+			}
+			break
+		}
+		if progress.Total > 0 && progress.Total != fixedTotal {
+			t.Fatalf("one rebuild changed total from %d to %d", fixedTotal, progress.Total)
+		}
+		if progress.Verified < lastVerified {
+			t.Fatalf("progress restarted from %d at %d after the first reader cancelled", lastVerified, progress.Verified)
+		}
+		lastVerified = progress.Verified
+		time.Sleep(time.Millisecond)
+	}
+	if final.Durable.Head == "" {
+		t.Fatal("the joined status reader never received a final projection")
+	}
+	if final.Durable.Head != oldLoaded.Verification.Head || final.Durable.Depth != oldLoaded.Verification.Depth {
+		t.Fatalf("final frontier is %s@%d, want %s@%d", final.Durable.Head, final.Durable.Depth, oldLoaded.Verification.Head, oldLoaded.Verification.Depth)
+	}
+	wantText := "scaled rebuild record " + strconv.Itoa(records-1)
+	found := false
+	for _, statement := range final.Durable.Projection.Statements {
+		if statement.Text == wantText {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("final verified projection omitted %q", wantText)
+	}
+
+	// Once the rebuild is quiet, the exact projection is already available.
+	immediateCtx, cancelImmediate := context.WithTimeout(ctx, time.Second)
+	defer cancelImmediate()
+	immediateRequest, err := http.NewRequestWithContext(immediateCtx, http.MethodGet, httpServer.URL+"/v0/status", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(immediateRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var immediate Status
+	if err := json.NewDecoder(response.Body).Decode(&immediate); err != nil {
+		t.Fatal(err)
+	}
+	if immediate.Durable.Head != final.Durable.Head || immediate.Durable.Depth != final.Durable.Depth {
+		t.Fatalf("quiet status changed frontier from %s@%d to %s@%d", final.Durable.Head, final.Durable.Depth, immediate.Durable.Head, immediate.Durable.Depth)
+	}
 }
 
 func getJSON(url string, into any) error {
