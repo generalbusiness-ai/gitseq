@@ -18,6 +18,7 @@ func RenderJSON(projection Projection) ([]byte, error) {
 
 func RenderStatus(projection Projection) []byte {
 	var output bytes.Buffer
+	sequences := projection.sequences()
 	output.WriteString("# Workroom status\n\n")
 	if summary := projection.Summary(); summary != "" {
 		fmt.Fprintf(&output, "%s\n\n", summary)
@@ -37,7 +38,7 @@ func RenderStatus(projection Projection) []byte {
 			if commitment.Promise == "" && commitment.AddressedTo != "" {
 				assignment = "addressed to " + short(commitment.AddressedTo) + " — unclaimed"
 			}
-			fmt.Fprintf(&output, "| %s | %s | %s | %s | %s | %s |\n", escape(commitment.Status), qualifiers, short(commitment.Requester), escape(assignment), short(commitment.Request), short(commitment.WaitingOn))
+			fmt.Fprintf(&output, "| %s | %s | %s | %s | %s | %s |\n", escape(commitment.Status), qualifiers, short(commitment.Requester), escape(assignment), name(commitment.Request, sequences), short(commitment.WaitingOn))
 		}
 	}
 	output.WriteString("\n## Reviews\n\n")
@@ -69,7 +70,7 @@ func RenderStatus(projection Projection) []byte {
 					independence = "SELF-SIGNED — reviewer implemented this head"
 				}
 				fmt.Fprintf(&output, "| %s | %s | %s | %s | %s |\n",
-					escape(independence), escape(review.Verdict), short(review.Reviewer), short(review.Head), short(review.Report))
+					escape(independence), escape(review.Verdict), short(review.Reviewer), short(review.Head), name(review.Report, sequences))
 			}
 		}
 	}
@@ -109,7 +110,7 @@ func RenderStatus(projection Projection) []byte {
 				}
 				notes = append(notes, note)
 			}
-			fmt.Fprintf(&output, "| %s | %s@%s | %s | %s |\n", status, escape(artifact.Path), short(artifact.Commit), short(artifact.Event), escape(strings.Join(notes, ", ")))
+			fmt.Fprintf(&output, "| %s | %s@%s | %s | %s |\n", status, escape(artifact.Path), short(artifact.Commit), name(artifact.Event, sequences), escape(strings.Join(notes, ", ")))
 		}
 		if unableToFlare > 0 || successionUnrecorded > 0 {
 			output.WriteString("\n")
@@ -130,7 +131,7 @@ func RenderStatus(projection Projection) []byte {
 	output.WriteString("\n## Attempts\n\n")
 	for _, decision := range projection.Decisions {
 		if decision.Verdict != Effective {
-			fmt.Fprintf(&output, "- `%s` — **%s**: %s\n", short(decision.Event), decision.Verdict, escape(decision.Reason))
+			fmt.Fprintf(&output, "- `%s` — **%s**: %s\n", name(decision.Event, sequences), decision.Verdict, escape(decision.Reason))
 		}
 	}
 	return output.Bytes()
@@ -161,6 +162,28 @@ func RenderProvenance(projection Projection, event string) []byte {
 
 func escape(value string) string {
 	return strings.ReplaceAll(value, "|", "\\|")
+}
+
+// sequences indexes every durable record by its number. Decisions are the right
+// source because there is exactly one per record: statements would miss ratify
+// and supersede, which are events a citation can perfectly well name.
+func (p Projection) sequences() map[string]int {
+	index := make(map[string]int, len(p.Decisions))
+	for _, decision := range p.Decisions {
+		index[decision.Event] = decision.Sequence
+	}
+	return index
+}
+
+// name renders an event the way a reader says it. The fallback is the whole
+// identifier rather than an abbreviation: `short` elides the middle so its
+// output is visibly incomplete, which is right for a git object a reader can
+// still resolve, and wrong for an event name that must round-trip.
+func name(event string, sequences map[string]int) string {
+	if sequence := sequences[event]; sequence > 0 {
+		return fmt.Sprintf("#%d", sequence)
+	}
+	return event
 }
 
 func short(value string) string {

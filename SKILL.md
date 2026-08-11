@@ -144,9 +144,11 @@ underway.
    describe, not only on the request that produced the document: ask
    whether retiring a basis would mean the prose needs re-checking,
    and a request alone never does. **Changing behaviour**, supersede
-   the prior artifact for the same path as part of stating the new
-   one — that supersession is what makes the prose flare, and it is
-   yours to make because you are the one who moved the world. The
+   every live artifact that covers what you changed as part of stating
+   the new one — that supersession is what makes the prose flare, and
+   it is yours to make because you are the one who moved the world.
+   More than one can be live at a path; retire all of them. A first
+   artifact at a path has no predecessor and needs none retired. The
    projection marks what you skip: an artifact citing nothing reads
    *unable to flare*, and one whose predecessor at the same path is
    still live reads *succession not recorded*. A flare means
@@ -157,6 +159,32 @@ underway.
    exploratory dead ends ephemeral. Promote a material or session-surviving
    blockage as an `assert` resting on the promise, create a child request when
    repair work is needed, and supersede the promise only when withdrawing it.
+   still live reads *succession not recorded*, with the count. A
+   flare means re-check this, not this is wrong.
+   A path is the wire staleness travels along, not a label, so name
+   the paths you actually changed and no more. Paths match as exact
+   strings, with no normalising, prefixes or globs: an artifact at
+   `internal/workroom` never reaches one at
+   `internal/workroom/fold.go`, so reuse the exact string the area
+   already uses rather than renaming it, and never join paths into
+   one — `AGENTS.md,SKILL.md` is a string no predecessor can equal.
+   Retiring and publishing are separate decisions. Retire every live
+   artifact covering the change; publish a successor only at the path
+   the area keeps. Where a directory and something inside it are both
+   live over one changed file, the wider path wins: the successor goes
+   there and the narrower artifact is retired by a bare `supersede`
+   naming the surviving path, so the area settles on one granularity.
+   A renamed or deleted file's old path is retired the same way and
+   never published at again; a rename opens a first artifact at the
+   new path, a deletion opens nothing. A bare `supersede` is admitted
+   only from the target's own author or an actor holding `ratifier`,
+   so ask that actor when the artifact to retire is not yours.
+   One artifact at `.` claims the whole repository: the next change
+   anywhere retires it, and everything anchored to it flares however
+   unrelated that change was. Nothing stands in for a
+   whole-repository pointer, and nothing needs to — which commit a
+   branch carries is git's question, and the live artifact at each
+   path already names the commit that last changed that area.
 
 ## The repo underneath
 
@@ -178,8 +206,21 @@ not change; the workroom carries the why.
   request, or the motivating ratified decision for self-initiated work
   (discipline 8); then `state {kind: artifact}` ties commit and
   decisions together.
-- Always use the canonical full event ID:
-  `git:<object-format>:<genesis>#git:<object-format>:<event-commit>`.
+- **Cite with the canonical full event ID**, always:
+  `git:<object-format>:<genesis>#git:<object-format>:<event-commit>`. It is
+  the only name the fold resolves. Copy it whole from the tool result that
+  returned it; never assemble one around a fragment you read somewhere.
+  A citation that resolves to nothing is admitted in silence — the act
+  appends, reports success, and connects to nothing.
+- **Say `#N` when you mean it out loud.** Every projected event carries a
+  `sequence`: its position in this workroom's log, the founding seed being
+  #1. Use it in prose, reports and conversation, because a number can be
+  read back and checked by eye while a 40-hex string cannot. It is a name
+  for reading, not a name the fold accepts — so `#N` belongs in your text
+  and the canonical ID belongs in `rests_on`, `target` and `Rests-On:`.
+- **`#N` means nothing outside its workroom.** Two workrooms both have a
+  #17. Anything crossing that boundary, or written where the workroom is
+  not obvious, needs the canonical form.
 - A PR that matters durably is cited by its **head commit hash**
   (truth) with the URL as a hint.
 - GitHub issues, PR reviews, and comment threads are conversations
