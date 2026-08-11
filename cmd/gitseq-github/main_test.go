@@ -23,9 +23,16 @@ func charter(event string, ratified, retired, stale bool) workroom.Statement {
 }
 
 // live is charterIsLive with the arguments this process would actually have
-// been given, so each test varies one thing.
+// been given, so each test varies one thing. It asks about observation, which
+// is what the connector does unless --propose says otherwise; the write path is
+// exercised separately because it is the one that cannot be undone.
 func live(projection workroom.Projection, event string) error {
-	return charterIsLive(projection, event, "generalbusiness-ai", "gitseq", "github-connector")
+	return charterIsLive(projection, event, "generalbusiness-ai", "gitseq", "github-connector", OperationObserve)
+}
+
+// propose is the same doorstep asked about the operation that publishes.
+func propose(projection workroom.Projection, event string) error {
+	return charterIsLive(projection, event, "generalbusiness-ai", "gitseq", "github-connector", OperationPropose)
 }
 
 // The fold does not know what a charter is and will not enforce one, so this
@@ -130,5 +137,61 @@ func TestTheCharterMustAuthorizeThisRepositoryAndActor(t *testing.T) {
 
 	if err := live(projection(charter(event, true, false, false)), event); err != nil {
 		t.Errorf("a charter authorizing exactly this repository and actor was refused: %v", err)
+	}
+}
+
+// chartered builds a live charter that declares exactly these operations.
+// Passing none produces the shape every charter ratified so far has: four
+// scope fields and no statement about reading versus writing.
+func chartered(event string, operations ...string) workroom.Statement {
+	statement := charter(event, true, false, false)
+	if len(operations) > 0 {
+		statement.Body["operations"] = strings.Join(operations, " ")
+	}
+	return statement
+}
+
+// The finding this closes: the doorstep could not tell reading from writing, so
+// any live inbound charter authorized opening a pull request on a public
+// repository under the project's name. Scope alone is not permission — the four
+// fields say *where* the connector may act, and nothing said *what* it may do.
+func TestAnInboundCharterDoesNotAuthorizeWritingToTheForge(t *testing.T) {
+	const event = "git:sha1:g#git:sha1:charter"
+
+	// The shape of every charter ratified so far. It must keep working for
+	// observation, or fixing this would silently disarm the inbound half.
+	silent := projection(chartered(event))
+	if err := live(silent, event); err != nil {
+		t.Errorf("a charter with no declared operations stopped authorizing observation: %v", err)
+	}
+	// And must not authorize the forge write.
+	err := propose(silent, event)
+	if err == nil {
+		t.Fatal("an inbound charter authorized opening a pull request")
+	}
+	if !strings.Contains(err.Error(), "authorizes observe only") {
+		t.Errorf("the refusal does not say why: %q", err)
+	}
+
+	// Declaring observation explicitly is not a licence to write either.
+	if err := propose(projection(chartered(event, OperationObserve)), event); err == nil {
+		t.Error("a charter declaring observation alone authorized proposing")
+	}
+
+	// A charter that says so authorizes it, or the check would be unusable.
+	if err := propose(projection(chartered(event, OperationObserve, OperationPropose)), event); err != nil {
+		t.Errorf("a charter declaring propose refused it: %v", err)
+	}
+	// Declaring propose alone does not smuggle in observation.
+	if err := live(projection(chartered(event, OperationPropose)), event); err == nil {
+		t.Error("a charter declaring propose alone authorized observation")
+	}
+
+	// Scope is still checked alongside the operation, so a charter authorizing
+	// the write for a different repository does not authorize it here.
+	elsewhere := chartered(event, OperationPropose)
+	elsewhere.Body["repo"] = "somewhere-else"
+	if err := propose(projection(elsewhere), event); err == nil {
+		t.Error("a charter for another repository authorized proposing here")
 	}
 }

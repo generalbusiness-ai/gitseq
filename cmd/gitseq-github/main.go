@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
@@ -76,7 +77,14 @@ func run(ctx context.Context, arguments []string) error {
 		return err
 	}
 
-	if err := charterIsLive(snapshot.Projection, *charter, *owner, *name, *actor); err != nil {
+	// The operation is decided before the doorstep, so the doorstep can judge
+	// it. Asking "may I act here?" without saying which act was the gap: any
+	// live inbound charter answered yes to opening a pull request.
+	operation := OperationObserve
+	if *propose != 0 {
+		operation = OperationPropose
+	}
+	if err := charterIsLive(snapshot.Projection, *charter, *owner, *name, *actor, operation); err != nil {
 		return err
 	}
 
@@ -188,7 +196,7 @@ func proposePullRequest(ctx context.Context, client *github.Client, owner, name 
 // statement while claiming a doorstep it does not have. So a charter must say
 // what it charters, and a charter that does not is refused rather than read
 // generously.
-func charterIsLive(projection workroom.Projection, charter, owner, name, actor string) error {
+func charterIsLive(projection workroom.Projection, charter, owner, name, actor, operation string) error {
 	for _, statement := range projection.Statements {
 		if statement.Event != charter {
 			continue
@@ -202,7 +210,7 @@ func charterIsLive(projection workroom.Projection, charter, owner, name, actor s
 		if !statement.Ratified {
 			return errors.New("charter is not ratified")
 		}
-		return charterBinds(statement.Body, charter, owner, name, actor)
+		return charterBinds(statement.Body, charter, owner, name, actor, operation)
 	}
 	return fmt.Errorf("charter %s is not in this workroom", charter)
 }
@@ -211,7 +219,7 @@ func charterIsLive(projection workroom.Projection, charter, owner, name, actor s
 // do. Each mismatch is reported separately because they mean different things:
 // the wrong repository is a scope error, the wrong actor is an identity error,
 // and a body that says nothing is a charter that never bounded anything.
-func charterBinds(body map[string]string, charter, owner, name, actor string) error {
+func charterBinds(body map[string]string, charter, owner, name, actor, operation string) error {
 	if len(body) == 0 {
 		return fmt.Errorf("charter %s names no connector, repository or actor, so it authorizes nothing in particular", charter)
 	}
@@ -227,7 +235,42 @@ func charterBinds(body map[string]string, charter, owner, name, actor string) er
 	if got := body["actor"]; got != actor {
 		return fmt.Errorf("charter authorizes actor %q, not %q", got, actor)
 	}
-	return nil
+	return charterAuthorizes(body, charter, operation)
+}
+
+// Operations a charter can authorize. Reading and writing are different powers
+// and are named separately, because a charter that admits foreign issues into
+// the log is not thereby a licence to publish on the same forge under the
+// project's name.
+const (
+	OperationObserve = "observe"
+	OperationPropose = "propose"
+)
+
+// charterAuthorizes decides whether this charter permits the operation about to
+// be performed.
+//
+// A charter that says nothing about operations authorizes observation and
+// nothing else. That asymmetry is the point rather than a convenience: reading
+// is recoverable — a wrongly admitted issue can be superseded, and the log
+// carries the correction — while a pull request opened on a public repository
+// under the project's name cannot be taken back by any act in this workroom.
+// So the silent case fails closed on exactly the side where failure is
+// permanent, and the charters already ratified for reading keep working without
+// quietly acquiring the power to write.
+func charterAuthorizes(body map[string]string, charter, operation string) error {
+	declared := strings.Fields(body["operations"])
+	if len(declared) == 0 {
+		if operation == OperationObserve {
+			return nil
+		}
+		return fmt.Errorf("charter %s declares no operations, which authorizes %s only; %s writes to the forge and needs saying so explicitly",
+			charter, OperationObserve, operation)
+	}
+	if slices.Contains(declared, operation) {
+		return nil
+	}
+	return fmt.Errorf("charter %s authorizes %s, not %s", charter, strings.Join(declared, " and "), operation)
 }
 
 func clauseSources(projection workroom.Projection) []github.ClauseSource {
