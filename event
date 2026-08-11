@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged citation-gate implementation and baseline at the approved documentation merge head.","body":{"branch":"main","commit":"0f215b43ace0294213b632a316149e4fca935b04","path":"internal/docset"}}
+{"kind":"artifact","text":"Merged canonical behavior documentation at the approved head, anchored to the shipped kernel, Workroom, live-runtime, surface, and citation-gate implementations it describes.","body":{"branch":"main","commit":"0f215b43ace0294213b632a316149e4fca935b04","path":"docs"}}
