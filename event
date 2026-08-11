@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Corrected suite-deduplication Makefile surface at exact head 073d68c78729dce3db971bbba9bd2bf1464152d8.","body":{"commit":"073d68c78729dce3db971bbba9bd2bf1464152d8","path":"Makefile"}}
+{"kind":"artifact","text":"Corrected shipping-layout invariant at exact head 073d68c78729dce3db971bbba9bd2bf1464152d8.","body":{"commit":"073d68c78729dce3db971bbba9bd2bf1464152d8","path":"layout_test.go"}}
