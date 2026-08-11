@@ -7,6 +7,7 @@ import { RetryKeys, eventDiscussionEntries, eventDiscussionFrames, fingerprintOf
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic } from "../src/lib/memory.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
+import { decodeFrame } from "../src/lib/api.ts";
 import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, TOPIC_ALIAS_FIELD, TOPIC_TITLE_FIELD, attentionItemCounts, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, otherWorkAttentionCounts, otherWorkAttentionLabel, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState, workCommitmentCounts } from "../src/lib/work.ts";
@@ -312,6 +313,26 @@ test("quoted mentions address actor names containing spaces", () => {
     ["Ada Lovelace", "grace"],
   );
   assert.deepEqual(mentionAt('hello @"Ada L', 13), { start: 6, partial: "Ada L", quoted: true });
+});
+
+test("mentions require token boundaries and unique roster names", () => {
+  const actors = [
+    { name: "alice", fingerprint: "actor:alice", roles: ["participant"], custody: true },
+    { name: "same", fingerprint: "actor:one", roles: ["participant"], custody: true },
+    { name: "SAME", fingerprint: "actor:two", roles: ["participant"], custody: true },
+  ];
+  const text = "@alice email@alice foo@alice @alice/path @\"alice\"suffix (@alice), @same";
+  assert.deepEqual(mentionNames(text), ["alice", "alice", "same"]);
+  assert.deepEqual(mentionFingerprints(text, actors), ["actor:alice"]);
+  assert.deepEqual(mentionTokens(text).filter((token) => token.mention).map((token) => token.mention), ["alice", "alice", "same"]);
+});
+
+test("browser frame decoding accepts legacy and addressed signed payloads", () => {
+  const frame = (payload) => ({ Conversation: "conversation", Sequence: 3, ActorKey: "actor-key", Payload: Buffer.from(JSON.stringify(payload)).toString("base64") });
+  const legacy = decodeFrame(frame({ about: "topic", text: "legacy", re: "conversation:2" }));
+  const addressed = decodeFrame(frame({ about: "topic", text: "addressed", recipients: ["fingerprint"] }));
+  assert.deepEqual({ about: legacy.about, text: legacy.text, re: legacy.re }, { about: "topic", text: "legacy", re: "conversation:2" });
+  assert.deepEqual({ about: addressed.about, text: addressed.text, re: addressed.re }, { about: "topic", text: "addressed", re: undefined });
 });
 
 test("thread indexing keeps citations out of reply summaries and thread content", () => {

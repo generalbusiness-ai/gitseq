@@ -587,7 +587,7 @@ func TestActEndpointUsesSessionCustodyAndReplaysSameIdempotencyKey(t *testing.T)
 	}
 }
 
-func TestSayPreservesReplyTarget(t *testing.T) {
+func TestSayValidatesAndPreservesExactReplyTarget(t *testing.T) {
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -605,7 +605,7 @@ func TestSayPreservesReplyTarget(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/v0/presence", bytes.NewReader(announce))
 	request.Header.Set("Content-Type", "application/json")
 	server.Handler().ServeHTTP(httptest.NewRecorder(), request)
-	say, _ := json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Text: "reply", Re: "conversation:7"})
+	say, _ := json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Text: "first"})
 	request = httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(say))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -613,16 +613,160 @@ func TestSayPreservesReplyTarget(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("say returned %d: %s", response.Code, response.Body.String())
 	}
-	var frame nexus.Frame
-	if err := json.NewDecoder(response.Body).Decode(&frame); err != nil {
+	var first nexus.Frame
+	if err := json.NewDecoder(response.Body).Decode(&first); err != nil {
 		t.Fatal(err)
 	}
-	var payload map[string]string
-	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
+	re := first.Conversation + ":" + strconv.FormatUint(first.Sequence, 10)
+	say, _ = json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Conversation: first.Conversation, Text: "reply", Re: re})
+	request = httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(say))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("reply returned %d: %s", response.Code, response.Body.String())
+	}
+	var reply nexus.Frame
+	if err := json.NewDecoder(response.Body).Decode(&reply); err != nil {
 		t.Fatal(err)
 	}
-	if payload["re"] != "conversation:7" {
-		t.Fatalf("reply target = %q", payload["re"])
+	var payload nexus.Message
+	if err := json.Unmarshal(reply.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Re != re {
+		t.Fatalf("reply target = %q", payload.Re)
+	}
+	bad, _ := json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Text: "bad", Re: first.Conversation + ":99"})
+	request = httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(bad))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code == http.StatusOK {
+		t.Fatal("missing reply target was accepted")
+	}
+}
+
+func TestAddressedSayAppearsInPrivateStatusAndWaitUntilAcknowledged(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, genesis, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _, err := workspace.AddActor(ctx, "human", "other", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := func(path string, value any, target any) *httptest.ResponseRecorder {
+		t.Helper()
+		body, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("POST %s returned %d: %s", path, response.Code, response.Body.String())
+		}
+		if target != nil {
+			if err := json.NewDecoder(response.Body).Decode(target); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return response
+	}
+	post("/v0/presence", presenceRequest{Actor: "human", Session: "human-session"}, nil)
+	post("/v0/presence", presenceRequest{Actor: "other", Session: "other-session"}, nil)
+	post("/v0/presence", presenceRequest{Actor: "other", Session: "other-legacy-session"}, nil)
+	post("/v0/inbox/register", inboxRegisterRequest{Session: "other-session", Version: InboxProtocolVersion}, nil)
+	var beforePublication Status
+	post("/v0/status", sessionStatusRequest{Session: "other-session"}, &beforePublication)
+
+	var published nexus.Frame
+	post("/v0/say", sayRequest{Session: "human-session", About: genesis.ID, Text: `please review @other and @"unknown person"`}, &published)
+	var signed nexus.Message
+	if err := json.Unmarshal(published.Payload, &signed); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(signed.Recipients, []string{other.Fingerprint}) {
+		t.Fatalf("signed recipients = %#v, want other only", signed.Recipients)
+	}
+
+	global := httptest.NewRecorder()
+	server.Handler().ServeHTTP(global, httptest.NewRequest(http.MethodGet, "/v0/status", nil))
+	if bytes.Contains(global.Body.Bytes(), []byte(`"inbox"`)) {
+		t.Fatalf("sessionless status leaked a private inbox: %s", global.Body.String())
+	}
+	var addressed Status
+	post("/v0/status", sessionStatusRequest{Session: "other-session"}, &addressed)
+	if addressed.Inbox == nil || len(addressed.Inbox.Frames) != 1 {
+		t.Fatalf("addressed status inbox = %+v", addressed.Inbox)
+	}
+	thread := published.Conversation + ":" + strconv.FormatUint(published.Sequence, 10)
+	if addressed.Inbox.Frames[0].Thread != thread || addressed.Inbox.Frames[0].Actor == "" {
+		t.Fatalf("addressed frame = %+v", addressed.Inbox.Frames[0])
+	}
+	var legacySession Status
+	post("/v0/status", sessionStatusRequest{Session: "other-legacy-session"}, &legacySession)
+	if legacySession.Inbox == nil || len(legacySession.Inbox.Frames) != 0 {
+		t.Fatalf("unregistered legacy session was enqueued: %+v", legacySession.Inbox)
+	}
+	var inline WaitResponse
+	post("/v0/wait", WaitRequest{Cursor: beforePublication.Cursor, TimeoutMS: 20, Session: "other-session"}, &inline)
+	var inlineFrame *nexus.InboxFrame
+	for _, change := range inline.LiveChanges {
+		if change.Frame != nil {
+			inlineFrame = change.Frame
+		}
+	}
+	if inlineFrame == nil || inlineFrame.Thread != thread || inlineFrame.Text != `please review @other and @"unknown person"` {
+		t.Fatalf("pre-publication wait omitted addressed frame: %+v", inline.LiveChanges)
+	}
+
+	var repeated WaitResponse
+	post("/v0/wait", WaitRequest{Cursor: addressed.Cursor, TimeoutMS: 20, Session: "other-session"}, &repeated)
+	if repeated.Status.Inbox == nil || len(repeated.Status.Inbox.Frames) != 1 {
+		t.Fatalf("unacknowledged wait did not repeat inbox: %+v", repeated.Status.Inbox)
+	}
+	var acked map[string]int
+	post("/v0/inbox/ack", inboxAckRequest{Session: "other-session", Threads: []string{thread, thread}}, &acked)
+	if acked["acknowledged"] != 1 {
+		t.Fatalf("acknowledged count = %d, want one actual removal", acked["acknowledged"])
+	}
+	post("/v0/inbox/ack", inboxAckRequest{Session: "other-session", Threads: []string{thread}}, &acked)
+	if acked["acknowledged"] != 0 {
+		t.Fatalf("repeat acknowledgement removed %d frames", acked["acknowledged"])
+	}
+	var acknowledged WaitResponse
+	post("/v0/wait", WaitRequest{Cursor: repeated.Status.Cursor, TimeoutMS: 20, Session: "other-session"}, &acknowledged)
+	if acknowledged.Status.Inbox == nil || len(acknowledged.Status.Inbox.Frames) != 0 {
+		t.Fatalf("acknowledged wait retained inbox: %+v", acknowledged.Status.Inbox)
+	}
+}
+
+func TestMentionResolutionUsesOnlyUniqueEffectiveParticipantNames(t *testing.T) {
+	snapshot := app.Snapshot{Projection: workroom.Projection{Actors: map[string]workroom.ActorState{
+		"fp-alice":       {Name: "Alice", Roles: []string{"participant"}},
+		"fp-quoted":      {Name: "Review Agent", Roles: []string{"participant"}},
+		"fp-duplicate-1": {Name: "same", Roles: []string{"participant"}},
+		"fp-duplicate-2": {Name: "SAME", Roles: []string{"participant"}},
+		"fp-retired":     {Name: "gone", Roles: []string{}, Retired: true},
+		"fp-authority":   {Name: "ratifier-only", Roles: []string{"ratifier"}},
+	}}}
+	got := addressedRecipients(`@alice @ALICE (@"Review Agent"), @same @gone @ratifier-only @unknown email@alice foo@alice @alice/path @"Review Agent"suffix`, snapshot)
+	want := []string{"fp-alice", "fp-quoted"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolved recipients = %#v, want %#v", got, want)
 	}
 }
 

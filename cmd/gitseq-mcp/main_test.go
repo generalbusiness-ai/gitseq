@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -72,7 +73,7 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 	if result["resultType"] != "complete" {
 		t.Fatalf("tool list has no complete result type: %#v", result)
 	}
-	if got := len(result["tools"].([]any)); got != 10 {
+	if got := len(result["tools"].([]any)); got != 11 {
 		t.Fatalf("got %d tools", got)
 	}
 	listed := make(map[string]map[string]any)
@@ -598,6 +599,135 @@ func TestResidentSayKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {
 				t.Fatalf("say did not reach the selected repository: %#v", value)
 			}
 		})
+	}
+}
+
+func TestAdapterInjectsItsPrivateSessionForPriorityChatAndAck(t *testing.T) {
+	workspace := initRepository(t, "priority-chat")
+	if _, _, err := workspace.AddActor(context.Background(), "human", "other", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	resident, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(resident.Handler())
+	defer httpServer.Close()
+	server, attached := attachedServer(t, workspace, "human", httpServer.URL, httpServer.Client())
+	if err := server.announce(context.Background(), attached); err != nil {
+		t.Fatal(err)
+	}
+	beforeValue, err := server.call(context.Background(), toolCall{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := beforeValue.(actorStatus)
+	post := func(path string, input any, output any) {
+		t.Helper()
+		body, err := json.Marshal(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := http.Post(httpServer.URL+path, "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("POST %s returned %s", path, response.Status)
+		}
+		if output != nil {
+			if err := json.NewDecoder(response.Body).Decode(output); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	post("/v0/presence", map[string]any{"actor": "other", "session": "speaker"}, nil)
+	var frame nexus.Frame
+	post("/v0/say", map[string]any{"session": "speaker", "about": genesisOf(t, workspace), "text": "@human please review"}, &frame)
+	waitValue, err := server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{"cursor": before.Cursor, "timeout_ms": 50}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delta := waitValue.(waitDelta)
+	if !delta.PriorityChat.Available || len(delta.PriorityChat.Frames) != 1 || delta.PriorityChat.Frames[0].Text != "@human please review" {
+		t.Fatalf("adapter wait priority chat = %+v", delta.PriorityChat)
+	}
+	var inline *nexus.InboxFrame
+	for _, change := range delta.Live {
+		if change.Frame != nil {
+			inline = change.Frame
+		}
+	}
+	if inline == nil || inline.Text != "@human please review" {
+		t.Fatalf("adapter wait live delta omitted the addressed frame: %+v", delta.Live)
+	}
+
+	value, err := server.call(context.Background(), toolCall{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := value.(actorStatus)
+	if !status.PriorityChat.Available || len(status.PriorityChat.Frames) != 1 || status.PriorityChat.Frames[0].ActorName != "other" {
+		t.Fatalf("adapter status priority chat = %+v", status.PriorityChat)
+	}
+	thread := frame.Conversation + ":" + strconv.FormatUint(frame.Sequence, 10)
+	if _, err := server.call(context.Background(), toolCall{Name: "ack", Arguments: map[string]any{"threads": []any{thread}}}); err != nil {
+		t.Fatal(err)
+	}
+	value, err = server.call(context.Background(), toolCall{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inbox := value.(actorStatus).PriorityChat; !inbox.Available || len(inbox.Frames) != 0 {
+		t.Fatalf("adapter ack left priority chat pending: %+v", inbox)
+	}
+}
+
+func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing.T) {
+	workspace := initRepository(t, "legacy-resident")
+	var sayCalls atomic.Int64
+	legacy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/v0/status":
+			http.Error(writer, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		case request.Method == http.MethodPost && request.URL.Path == "/v0/wait":
+			writer.WriteHeader(http.StatusBadRequest)
+			_, _ = writer.Write([]byte(`{"error":"json: unknown field \"session\""}`))
+		case request.Method == http.MethodPost && request.URL.Path == "/v0/say":
+			sayCalls.Add(1)
+			_ = json.NewEncoder(writer).Encode(map[string]any{"opaque": true})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer legacy.Close()
+	server, attached := attachedServer(t, workspace, "human", legacy.URL, legacy.Client())
+	attached.checked = true
+	attached.announced = true
+
+	value, err := server.call(context.Background(), toolCall{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := value.(actorStatus)
+	if !status.Live.Degraded || status.PriorityChat.Available {
+		t.Fatalf("legacy resident status invented inbox support: %+v", status)
+	}
+	value, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{"cursor": status.Cursor, "timeout_ms": 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delta := value.(waitDelta)
+	if delta.Cursor.Live.Generation != "degraded" || delta.PriorityChat.Available {
+		t.Fatalf("legacy resident wait invented inbox support: %+v", delta)
+	}
+	if _, err := server.call(context.Background(), toolCall{Name: "say", Arguments: map[string]any{"about": genesisOf(t, workspace), "text": "@human addressed"}}); err == nil {
+		t.Fatal("addressed say was sent to a resident without inbox support")
+	}
+	if sayCalls.Load() != 0 {
+		t.Fatalf("legacy resident received %d addressed say calls", sayCalls.Load())
 	}
 }
 

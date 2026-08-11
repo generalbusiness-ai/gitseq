@@ -6,8 +6,12 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
@@ -23,12 +27,16 @@ type WorkPage = statusview.WorkPage
 type InspectRequest = statusview.InspectRequest
 type ItemInspection = statusview.ItemInspection
 
-const OrientationProjectionVersion = statusview.OrientationProjectionVersion
+const (
+	OrientationProjectionVersion = statusview.OrientationProjectionVersion
+	InboxProtocolVersion         = "gitseq.addressed-inbox.v1"
+)
 
 type Status struct {
 	Durable app.Snapshot   `json:"durable"`
 	Live    nexus.Snapshot `json:"live"`
 	Cursor  Cursor         `json:"cursor"`
+	Inbox   *nexus.Inbox   `json:"inbox,omitempty"`
 }
 
 // SummaryStatus is the bounded resident response used by the default CLI.
@@ -42,6 +50,7 @@ type SummaryStatus struct {
 type WaitRequest struct {
 	Cursor    Cursor `json:"cursor"`
 	TimeoutMS int    `json:"timeout_ms,omitempty"`
+	Session   string `json:"session,omitempty"`
 }
 
 type WaitResponse struct {
@@ -76,6 +85,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v0/orientation/{fingerprint}", s.handleOrientation)
 	s.mux.HandleFunc("POST /v0/act", s.handleAct)
 	s.mux.HandleFunc("GET /v0/status", s.handleStatus)
+	s.mux.HandleFunc("POST /v0/status", s.handleSessionStatus)
 	s.mux.HandleFunc("GET /v0/status-summary", s.handleStatusSummary)
 	s.mux.HandleFunc("POST /v0/work-query", s.handleWorkQuery)
 	s.mux.HandleFunc("POST /v0/inspect", s.handleInspect)
@@ -86,6 +96,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v0/presence", s.handleAnnounce)
 	s.mux.HandleFunc("DELETE /v0/presence/{session}", s.handleDepart)
 	s.mux.HandleFunc("POST /v0/say", s.handleSay)
+	s.mux.HandleFunc("POST /v0/inbox/register", s.handleInboxRegister)
+	s.mux.HandleFunc("POST /v0/inbox/ack", s.handleInboxAck)
 	s.mux.HandleFunc("GET /v0/conversations/{conversation}/frames", s.handleFrames)
 }
 
@@ -112,18 +124,53 @@ func (s *Server) handleOrientation(writer http.ResponseWriter, request *http.Req
 }
 
 func (s *Server) status(ctx context.Context) (Status, error) {
+	observation, err := s.hub.Observe("", nil)
+	if err != nil {
+		return Status{}, err
+	}
+	return s.statusFromLive(ctx, observation, false)
+}
+
+func (s *Server) statusFromLive(ctx context.Context, observation nexus.Observation, includeInbox bool) (Status, error) {
 	// Capture live first. A concurrent durable append is then either in the
 	// durable snapshot or strictly beyond its returned frontier.
-	live := s.liveSnapshot()
 	durable, err := s.workspace.Snapshot(ctx)
 	if err != nil {
 		return Status{}, err
 	}
-	return Status{Durable: durable, Live: live, Cursor: Cursor{Frontier: []Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}}, Live: live.Cursor}}, nil
+	status := Status{Durable: durable, Live: observation.Snapshot, Cursor: Cursor{Frontier: []Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}}, Live: observation.Snapshot.Cursor}}
+	if includeInbox {
+		inbox := observation.Inbox
+		status.Inbox = &inbox
+	}
+	return status, nil
 }
 
 func (s *Server) handleStatus(writer http.ResponseWriter, request *http.Request) {
 	status, err := s.status(request.Context())
+	write(writer, status, err)
+}
+
+type sessionStatusRequest struct {
+	Session string `json:"session"`
+}
+
+func (s *Server) handleSessionStatus(writer http.ResponseWriter, request *http.Request) {
+	var input sessionStatusRequest
+	if err := decode(request, &input); err != nil {
+		write(writer, nil, err)
+		return
+	}
+	if input.Session == "" {
+		write(writer, nil, errors.New("session is required"))
+		return
+	}
+	observation, err := s.hub.Observe(input.Session, nil)
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	status, err := s.statusFromLive(request.Context(), observation, true)
 	write(writer, status, err)
 }
 
@@ -178,14 +225,17 @@ func (s *Server) handleWait(writer http.ResponseWriter, request *http.Request) {
 	}
 	var response WaitResponse
 	changed, err := Poll(request.Context(), input.TimeoutMS, func() (bool, error) {
-		status, err := s.status(request.Context())
+		observation, err := s.hub.Observe(input.Session, &input.Cursor.Live)
 		if err != nil {
 			return false, err
 		}
-		changes, _, liveErr := s.hub.ChangesSince(input.Cursor.Live)
-		reset := errors.Is(liveErr, nexus.ErrReset)
-		response = WaitResponse{Status: status, LiveChanges: changes, Reset: reset}
-		return reset || DurableChanged(input.Cursor.Frontier, status.Durable) || len(changes) > 0, nil
+		status, err := s.statusFromLive(request.Context(), observation, input.Session != "")
+		if err != nil {
+			return false, err
+		}
+		response = WaitResponse{Status: status, LiveChanges: observation.Changes, Reset: observation.Reset}
+		pending := status.Inbox != nil && len(status.Inbox.Frames) > 0
+		return observation.Reset || DurableChanged(input.Cursor.Frontier, status.Durable) || len(observation.Changes) > 0 || pending, nil
 	})
 	if err != nil {
 		if request.Context().Err() != nil {
@@ -321,7 +371,7 @@ func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Reques
 	if ttl <= 0 || ttl > 2*time.Minute {
 		ttl = 30 * time.Second
 	}
-	change, err := s.hub.AnnounceSessionActivity(input.Session, input.Actor, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, nexus.ActivityUpdate{
+	change, err := s.hub.AnnounceSessionIdentity(input.Session, input.Actor, actor.Fingerprint, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, nexus.ActivityUpdate{
 		Status: input.Status, Focus: input.Focus, Note: input.Note,
 	})
 	write(writer, change, err)
@@ -338,9 +388,75 @@ type sayRequest struct {
 	About        string `json:"about"`
 	Conversation string `json:"conversation,omitempty"`
 	Text         string `json:"text"`
-	// Re threads a frame under an earlier one, as "<conversation>:<sequence>".
-	// It remains a payload annotation; the nexus sequences replies normally.
+	// Re threads a frame under an exact earlier one. The nexus validates it and
+	// signs the parent's author into the final recipient list.
 	Re string `json:"re,omitempty"`
+}
+
+var mentionPattern = regexp.MustCompile(`@(?:"([^"]+)"|([A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?))`)
+
+func addressedRecipients(text string, snapshot app.Snapshot) []string {
+	byName := make(map[string][]string)
+	for fingerprint, actor := range snapshot.Projection.Actors {
+		if actor.Retired || !containsString(actor.Roles, "participant") {
+			continue
+		}
+		name := strings.ToLower(actor.Name)
+		byName[name] = append(byName[name], fingerprint)
+	}
+	recipients := make(map[string]bool)
+	for _, name := range mentionNames(text) {
+		matches := byName[strings.ToLower(name)]
+		if len(matches) == 1 {
+			recipients[matches[0]] = true
+		}
+	}
+	result := make([]string, 0, len(recipients))
+	for fingerprint := range recipients {
+		result = append(result, fingerprint)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func mentionNames(text string) []string {
+	var names []string
+	for _, match := range mentionPattern.FindAllStringSubmatchIndex(text, -1) {
+		if !mentionBoundaryBefore(text, match[0]) || !mentionBoundaryAfter(text, match[1]) {
+			continue
+		}
+		start, end := match[2], match[3]
+		if start < 0 {
+			start, end = match[4], match[5]
+		}
+		names = append(names, text[start:end])
+	}
+	return names
+}
+
+func mentionBoundaryBefore(text string, index int) bool {
+	if index == 0 {
+		return true
+	}
+	r, _ := utf8.DecodeLastRuneInString(text[:index])
+	return unicode.IsSpace(r) || strings.ContainsRune("([{<,;:!?", r)
+}
+
+func mentionBoundaryAfter(text string, index int) bool {
+	if index == len(text) {
+		return true
+	}
+	r, _ := utf8.DecodeRuneInString(text[index:])
+	return unicode.IsSpace(r) || strings.ContainsRune(")]}>.,;:!?", r)
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
@@ -363,13 +479,58 @@ func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
 		write(writer, nil, err)
 		return
 	}
-	body := map[string]string{"about": input.About, "text": input.Text}
-	if input.Re != "" {
-		body["re"] = input.Re
+	snapshot, err := s.workspace.Snapshot(request.Context())
+	if err != nil {
+		write(writer, nil, err)
+		return
 	}
-	payload, _ := json.Marshal(body)
-	frame, err := s.hub.PublishForSession(input.Session, input.About, input.Conversation, payload, private)
+	frame, err := s.hub.PublishMessageForSession(input.Session, input.Conversation, nexus.Message{
+		About: input.About, Text: input.Text, Re: input.Re,
+		Recipients: addressedRecipients(input.Text, snapshot),
+	}, private)
 	write(writer, frame, err)
+}
+
+type inboxAckRequest struct {
+	Session string   `json:"session"`
+	Threads []string `json:"threads"`
+}
+
+type inboxRegisterRequest struct {
+	Session string `json:"session"`
+	Version string `json:"version"`
+}
+
+func (s *Server) handleInboxRegister(writer http.ResponseWriter, request *http.Request) {
+	var input inboxRegisterRequest
+	if err := decode(request, &input); err != nil {
+		write(writer, nil, err)
+		return
+	}
+	if input.Session == "" {
+		write(writer, nil, errors.New("session is required"))
+		return
+	}
+	if input.Version != InboxProtocolVersion {
+		write(writer, nil, errors.New("unsupported inbox protocol version"))
+		return
+	}
+	err := s.hub.EnableInbox(input.Session)
+	write(writer, map[string]string{"version": InboxProtocolVersion}, err)
+}
+
+func (s *Server) handleInboxAck(writer http.ResponseWriter, request *http.Request) {
+	var input inboxAckRequest
+	if err := decode(request, &input); err != nil {
+		write(writer, nil, err)
+		return
+	}
+	if input.Session == "" {
+		write(writer, nil, errors.New("session is required"))
+		return
+	}
+	acknowledged, err := s.hub.Acknowledge(input.Session, input.Threads)
+	write(writer, map[string]int{"acknowledged": acknowledged}, err)
 }
 
 func (s *Server) handleFrames(writer http.ResponseWriter, request *http.Request) {
