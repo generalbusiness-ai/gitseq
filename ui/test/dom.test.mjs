@@ -289,3 +289,52 @@ test("Link to draft visibly owns the thread draft and submits every exact select
     await vite.close();
   }
 });
+
+// A rebuilding resident is not a broken one, and for several minutes the
+// browser could not tell a reader which it was looking at. This pins what the
+// notice must say and must not: that verification is happening, how far it has
+// got, and no claim that anything failed or that anything shown is current.
+test("the rebuild notice explains verification without implying failure or currentness", async () => {
+  const vite = await createServer({ root: uiRoot, server: { middlewareMode: true }, appType: "custom" });
+  const mounted = createRoot(document.getElementById("root"));
+  const previousFetch = globalThis.fetch;
+
+  let report = { running: true, verified: 300, total: 1200 };
+  globalThis.fetch = async () => ({ ok: true, statusText: "OK", json: async () => report });
+
+  try {
+    const { RebuildNotice } = await vite.ssrLoadModule("/src/components/RebuildNotice.tsx");
+
+    await act(async () => {
+      mounted.render(React.createElement(RebuildNotice, { poll: 1000000 }));
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    const notice = document.querySelector('[role="status"]');
+    assert.notEqual(notice, null, "a rebuild in flight showed no notice at all");
+    assert.equal(notice.getAttribute("aria-live"), "polite");
+    assert.match(notice.textContent, /Verifying durable history/);
+    assert.match(notice.textContent, /verified 300 of 1,200/, "the measured count is not shown");
+
+    const bar = document.querySelector('[role="progressbar"]');
+    assert.equal(bar.getAttribute("aria-valuenow"), "300");
+    assert.equal(bar.getAttribute("aria-valuemax"), "1200");
+    assert.match(bar.getAttribute("aria-valuetext"), /300 of 1200 records verified/);
+
+    for (const forbidden of [/error/i, /failed/i, /broken/i, /up to date/i, /current as of/i]) {
+      assert.doesNotMatch(notice.textContent, forbidden, `the notice implies ${forbidden}`);
+    }
+
+    // Warm: render nothing rather than a finished bar.
+    report = { running: false };
+    await act(async () => {
+      mounted.render(React.createElement(RebuildNotice, { poll: 1000001 }));
+    });
+    await act(async () => { await Promise.resolve(); });
+    assert.equal(document.querySelector('[role="progressbar"]'), null, "a warm resident still showed a progress bar");
+  } finally {
+    globalThis.fetch = previousFetch;
+    await act(async () => { mounted.unmount(); });
+    await vite.close();
+  }
+});
