@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c633899348848708499db2abad91a688a11aba87","text":"Retire this ineffective malformed review request instead of recreating moot work. Its named head 579d7fce and source commit a0d293c2 are both ancestors of current main, the named regression test is present, and Claude has already independently confirmed that no duplicate carry is needed."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5e5a34972063d42a2b83f16da3d852598bc16997"}
