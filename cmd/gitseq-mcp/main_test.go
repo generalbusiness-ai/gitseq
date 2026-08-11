@@ -729,6 +729,14 @@ func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing
 	if sayCalls.Load() != 0 {
 		t.Fatalf("legacy resident received %d addressed say calls", sayCalls.Load())
 	}
+	if _, err := server.call(context.Background(), toolCall{Name: "say", Arguments: map[string]any{
+		"about": genesisOf(t, workspace), "text": "email human@example.test and see docs/@human/file",
+	}}); err != nil {
+		t.Fatalf("ordinary text containing @ did not remain legacy-compatible: %v", err)
+	}
+	if sayCalls.Load() != 1 {
+		t.Fatalf("legacy resident received %d say calls, want one unaddressed call", sayCalls.Load())
+	}
 }
 
 func TestAddressedSayFailsClosedWhenResidentDowngradesDuringSessionRepair(t *testing.T) {

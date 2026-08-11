@@ -435,6 +435,14 @@ func mentionNames(text string) []string {
 	return names
 }
 
+// HasMentionToken reports whether text contains the same bounded mention
+// syntax that addressedRecipients resolves. Callers use it only to select the
+// versioned transport; roster membership and ambiguity are still resolved by
+// the service immediately before publication.
+func HasMentionToken(text string) bool {
+	return len(mentionNames(text)) > 0
+}
+
 func mentionBoundaryBefore(text string, index int) bool {
 	if index == 0 {
 		return true

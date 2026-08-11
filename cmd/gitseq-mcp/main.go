@@ -961,7 +961,7 @@ func (s *mcpServer) announce(ctx context.Context, current *room) error {
 }
 
 func sayNeedsInbox(arguments map[string]any) bool {
-	return stringValue(arguments["re"]) != "" || strings.Contains(stringValue(arguments["text"]), "@")
+	return stringValue(arguments["re"]) != "" || service.HasMentionToken(stringValue(arguments["text"]))
 }
 
 // attended lists the workrooms this session has joined. Presence is a property

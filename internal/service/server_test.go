@@ -772,6 +772,22 @@ func TestAddressedSayAppearsInPrivateStatusAndWaitUntilAcknowledged(t *testing.T
 }
 
 func TestMentionResolutionUsesOnlyUniqueEffectiveParticipantNames(t *testing.T) {
+	for _, testCase := range []struct {
+		text string
+		want bool
+	}{
+		{text: `please ask @alice`, want: true},
+		{text: `please ask @"Review Agent"`, want: true},
+		{text: `email@alice`, want: false},
+		{text: `docs/@alice/file`, want: false},
+		{text: `@alice/path`, want: false},
+		{text: `@"Review Agent"suffix`, want: false},
+	} {
+		if got := HasMentionToken(testCase.text); got != testCase.want {
+			t.Errorf("HasMentionToken(%q) = %t, want %t", testCase.text, got, testCase.want)
+		}
+	}
+
 	snapshot := app.Snapshot{Projection: workroom.Projection{Actors: map[string]workroom.ActorState{
 		"fp-alice":       {Name: "Alice", Roles: []string{"participant"}},
 		"fp-quoted":      {Name: "Review Agent", Roles: []string{"participant"}},
