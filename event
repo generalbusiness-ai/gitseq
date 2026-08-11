@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cdb1e0d58334386ab7c39068ff43709a64dfb944","text":"Retire this branch-name artifact. Resident behavior is recorded at the package and UI paths that future merges can supersede."}
+{"kind":"artifact","text":"Semantic-free per-load cold-audit progress for the resident rebuild correction.","body":{"commit":"986ac393fe7b4f531440c70031009e42069c1b33","path":"internal/kernel"}}
