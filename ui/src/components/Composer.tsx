@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Bookmark, Link2, Quote, SendHorizonal, X } from "lucide-react";
-import { api, shortEvent, type FrameView } from "../lib/api";
+import { api, eventName, type FrameView } from "../lib/api";
 import type { Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { loadDraft, saveDraft } from "../lib/memory";
@@ -84,7 +84,7 @@ export function Composer({
   const { type, restsOn, frames } = context;
   const durable = type !== "say";
   const statements = workroom.status?.durable.projection.statements ?? [];
-  const textOf = (event: string) => statements.find((s) => s.event === event)?.text ?? shortEvent(event);
+  const textOf = (event: string) => statements.find((s) => s.event === event)?.text ?? eventName(event);
 
   // The draft survives a refresh — the one composer state worth keeping.
   useEffect(() => saveDraft(text), [text]);

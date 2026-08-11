@@ -150,9 +150,15 @@ export function provenanceClosure(
 
 // Ticket numbers: every durable event's 1-based position in log order.
 // #N is the human handle; the hex event id stays one hover behind.
+// Ticket numbers come from the fold now, not from where a decision happened to
+// land in this array. The two agree — the fold counts the same records in the
+// same order — but only one of them is a fact about the log. A number derived
+// from array position is a fact about this response, and it would quietly
+// disagree with everyone else the moment a projection arrived filtered or
+// paged.
 export function ticketsOf(projection?: Projection): Map<string, number> {
   const map = new Map<string, number>();
-  projection?.decisions.forEach((decision, index) => map.set(decision.event, index + 1));
+  projection?.decisions.forEach((decision, index) => map.set(decision.event, decision.sequence || index + 1));
   return map;
 }
 

@@ -27,13 +27,25 @@ type Record struct {
 }
 
 type Decision struct {
-	Event   string  `json:"event"`
+	Event    string `json:"event"`
+	Sequence int    `json:"sequence"`
 	Verdict Verdict `json:"verdict"`
 	Reason  string  `json:"reason"`
 }
 
 type Statement struct {
-	Event     string            `json:"event"`
+	Event string `json:"event"`
+	// Sequence is this event's position in the log, counting the founding seed
+	// as 1. It is derived from the fold's own per-record index rather than
+	// assigned, so re-folding the same log yields the same number for every
+	// reader — which is the whole point of naming an event by it.
+	//
+	// It means something only within one genesis. Two workrooms both have a
+	// #17, and they are unrelated. Anything crossing that boundary needs the
+	// canonical identifier, and the fold still resolves citations only by that
+	// identifier: this is a name for reading and saying, not a second name the
+	// log accepts.
+	Sequence  int               `json:"sequence"`
 	Timestamp int64             `json:"timestamp,omitempty"`
 	Actor     string            `json:"actor"`
 	Kind      Kind              `json:"kind"`
@@ -182,6 +194,11 @@ type Projection struct {
 	// it is the current artifact for its path again.
 	OmittedSupersessions int `json:"omitted_supersessions,omitempty"`
 }
+
+// sequence is this record's position as a reader says it: the founding seed is
+// #1, not #0. Counting from one is not cosmetic — an off-by-one in a name
+// people type at each other is a defect that never stops costing.
+func (r *parsedRecord) sequence() int { return r.index + 1 }
 
 type parsedRecord struct {
 	record     Record
@@ -1001,7 +1018,9 @@ func (f *foldState) project() Projection {
 		OpaqueKinds: make(map[string][]string),
 	}
 	for _, record := range f.records {
-		projection.Decisions = append(projection.Decisions, record.decision)
+		decision := record.decision
+		decision.Sequence = record.sequence()
+		projection.Decisions = append(projection.Decisions, decision)
 		if _, exists := projection.Provenance[record.record.ID]; !exists {
 			projection.Provenance[record.record.ID] = append([]string(nil), record.record.RestsOn...)
 		}
@@ -1016,7 +1035,8 @@ func (f *foldState) project() Projection {
 			continue
 		}
 		projection.Statements = append(projection.Statements, Statement{
-			Event: record.record.ID, Timestamp: record.record.Timestamp, Actor: record.record.Actor, Kind: state.Kind,
+			Event: record.record.ID, Sequence: record.sequence(),
+			Timestamp: record.record.Timestamp, Actor: record.record.Actor, Kind: state.Kind,
 			Text: state.Text, Body: cloneStringMap(state.Body), Ratified: f.ratified(record.record.ID),
 			Retired: f.retired(record.record.ID), Stale: stale[record.record.ID],
 			DescribesSupersededWorld: world[record.record.ID],
