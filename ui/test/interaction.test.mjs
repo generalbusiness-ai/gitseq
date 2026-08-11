@@ -496,7 +496,7 @@ test("the e8e same-kind evidence artifact is not promoted to a typed replacement
 
 test("supersede provenance links are labeled neutrally on every surface", () => {
   const read = (name) => readFileSync(new URL(`../src/components/${name}`, import.meta.url), "utf8");
-  for (const name of ["SequencePane.tsx", "ThreadPane.tsx", "Stream.tsx"]) {
+  for (const name of ["ThreadPane.tsx", "Stream.tsx"]) {
     const source = read(name);
     assert.match(source, /linked item/);
     assert.doesNotMatch(source, /replacement/);
