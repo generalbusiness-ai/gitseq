@@ -53,20 +53,21 @@ func TestGateEveryNamedActResolvesToALiveRecord(t *testing.T) {
 	for _, statement := range snapshot.Projection.Statements {
 		kinds[statement.Event] = statement.Kind
 	}
+	artifacts := make(map[string]workroom.Artifact, len(snapshot.Projection.Artifacts))
+	for _, artifact := range snapshot.Projection.Artifacts {
+		artifacts[artifact.Event] = artifact
+	}
 
 	for _, act := range acts {
 		kind, found := kinds[act]
+		artifact := artifacts[act]
 		named := dependents(pages, act)
+		verdict := ClassifyCitation(found, kind == workroom.KindArtifact, artifact.Retired, artifact.Stale, artifact.Path)
 		switch {
-		case !found:
-			t.Errorf("%s names no statement in this workroom; a well-formed identifier that resolves to nothing anchors nothing:\n  %s",
-				act, strings.Join(named, "\n  "))
-		case kind != workroom.KindArtifact:
-			// Retiring the request that asked for a page never makes the page
-			// wrong. Only an artifact stands for the implementation a page
-			// describes, so only an artifact is a basis.
-			t.Errorf("%s is a %s, not an artifact, so retiring it would say nothing about whether these pages still hold:\n  %s",
-				act, kind, strings.Join(named, "\n  "))
+		case verdict.Fatal:
+			t.Errorf("%s %s:\n  %s", act, verdict.Reason, strings.Join(named, "\n  "))
+		case verdict.Report:
+			t.Logf("%s %s:\n  %s", act, verdict.Reason, strings.Join(named, "\n  "))
 		}
 	}
 }

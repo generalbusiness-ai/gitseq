@@ -272,3 +272,67 @@ func TableKeys(section string) []string {
 	}
 	return keys
 }
+
+// UnmaintainablePath reports why normal merge succession can never maintain an
+// artifact at this path, or "" when it can. A page anchored to such an artifact
+// cannot flare: paths match as exact strings, so no merge will ever publish a
+// successor at one of these, nothing will retire the artifact, and its silence
+// reads as currency.
+//
+// The four shapes are the ones the log has actually accumulated. "." is the
+// whole-repository pointer every merge would have to rewrite. A comma-joined
+// string is several paths pretending to be one, which equals no real path. An
+// absolute filesystem path names one machine's copy of the repository and means
+// nothing in another clone. A branch name is not a location in the tree at all,
+// and disappears when the branch does.
+func UnmaintainablePath(path string) string {
+	switch {
+	case path == ".":
+		return "the whole-repository path, which no merge supersedes"
+	case strings.HasPrefix(path, "/"):
+		return "an absolute filesystem path, which names one machine's checkout"
+	case strings.Contains(path, ","):
+		return "a comma-joined pseudo-path, which is several paths and therefore none"
+	case strings.HasPrefix(path, "request/"), strings.HasPrefix(path, "task/"),
+		strings.HasPrefix(path, "security/"):
+		return "a branch name rather than a path in the tree"
+	}
+	return ""
+}
+
+// CitationVerdict is what a documentation citation may do as a basis. Fatal
+// names a citation that can never serve: nothing about it will improve by
+// waiting. Report names one that is serving correctly and has something to say
+// — staleness is the set working, not the set broken.
+type CitationVerdict struct {
+	Fatal  bool
+	Report bool
+	Reason string
+}
+
+// ClassifyCitation judges one front-matter citation from facts the caller has
+// already resolved against the durable log. It takes primitives rather than
+// workroom types so the whole table can be exercised without a workroom, which
+// is the only way to cover the cases a real log does not currently contain.
+func ClassifyCitation(found, isArtifact, retired, stale bool, path string) CitationVerdict {
+	switch {
+	case !found:
+		return CitationVerdict{Fatal: true, Reason: "resolves to no statement in this workroom"}
+	case !isArtifact:
+		// Retiring the request that asked for a page never makes the page
+		// wrong. Only an artifact stands for the implementation described.
+		return CitationVerdict{Fatal: true, Reason: "is not an artifact, so retiring it would say nothing about the pages naming it"}
+	case retired:
+		return CitationVerdict{Fatal: true, Reason: "is retired, so the pages naming it rest on a withdrawn pointer"}
+	}
+	if why := UnmaintainablePath(path); why != "" {
+		return CitationVerdict{Fatal: true, Reason: "sits at " + why + ", so nothing will supersede it and the pages naming it can never flare"}
+	}
+	if stale {
+		// Reported, never fatal. A stale basis means something under this
+		// artifact moved; the pages naming it are flaring, which is what the
+		// set is for. Failing here would redden the whole set for working.
+		return CitationVerdict{Report: true, Reason: "has a basis that moved; the pages naming it are flaring, which is intended"}
+	}
+	return CitationVerdict{}
+}
