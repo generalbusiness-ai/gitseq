@@ -33,11 +33,11 @@ func capRoles(roles []string, limit int) ([]string, int) {
 func truncate(text string) string { return statusview.Text(text) }
 
 func digestStatus(status service.Status, fingerprint, actorName string, degraded bool) actorStatus {
-	return statusview.BuildActorStatus(status.Durable, status.Live, status.Cursor, fingerprint, actorName, degraded)
+	return statusview.BuildActorStatus(status.Durable, status.Live, status.Cursor, status.Inbox, fingerprint, actorName, degraded)
 }
 
 func digestWait(response service.WaitResponse, requested service.Cursor, fingerprint, actorName string, degraded bool) waitDelta {
-	return statusview.BuildWait(response.Status.Durable, response.Status.Cursor, response.LiveChanges, response.Reset, requested, fingerprint, actorName, degraded)
+	return statusview.BuildWait(response.Status.Durable, response.Status.Cursor, response.LiveChanges, response.Reset, requested, response.Status.Inbox, fingerprint, actorName, degraded)
 }
 
 // summarize writes the one text block a client is guaranteed to read. A result

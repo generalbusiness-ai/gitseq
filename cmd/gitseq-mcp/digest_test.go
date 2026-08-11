@@ -149,6 +149,31 @@ func TestStatusDigestReportsDegradedWithoutInventingLiveState(t *testing.T) {
 	if len(digest.WaitingOnYou) != 1 {
 		t.Fatalf("durable answers must survive degradation: %#v", digest.WaitingOnYou)
 	}
+	if digest.PriorityChat.Available {
+		t.Fatalf("degraded status invented an empty live inbox: %#v", digest.PriorityChat)
+	}
+}
+
+func TestStatusAndWaitLeadWithBoundedPriorityEphemeralChat(t *testing.T) {
+	status := sampleStatus(3)
+	status.Inbox = &nexus.Inbox{Skipped: 2, Frames: []nexus.InboxFrame{{
+		Actor: theirs, Text: strings.Repeat("review this ", 40), About: "event:1",
+		Conversation: "eph:sha256:one", Sequence: 4, Recipients: []string{mine}, Thread: "eph:sha256:one:4",
+	}}}
+	digest := digestStatus(status, mine, "me", false)
+	if !digest.PriorityChat.Available || len(digest.PriorityChat.Frames) != 1 || digest.PriorityChat.Frames[0].ActorName != "them" || digest.PriorityChat.Skipped != 2 {
+		t.Fatalf("priority status = %+v", digest.PriorityChat)
+	}
+	if digest.PriorityChat.Frames[0].Text != status.Inbox.Frames[0].Text {
+		t.Fatalf("priority chat lost signed inline text: %d of %d bytes", len(digest.PriorityChat.Frames[0].Text), len(status.Inbox.Frames[0].Text))
+	}
+	if summary := summarize("status", digest); !strings.HasPrefix(summary, "priority ephemeral chat: 1 unacknowledged, 2 additional pending") {
+		t.Fatalf("priority summary is not first: %q", summary)
+	}
+	delta := digestWait(service.WaitResponse{Status: status}, status.Cursor, mine, "me", false)
+	if len(delta.PriorityChat.Frames) != 1 || !strings.HasPrefix(summarize("wait", delta), "priority ephemeral chat: 1 unacknowledged") {
+		t.Fatalf("priority wait = %+v; summary %q", delta.PriorityChat, summarize("wait", delta))
+	}
 }
 
 func TestWaitDeltaCarriesOnlyWhatIsNewAfterTheCursor(t *testing.T) {

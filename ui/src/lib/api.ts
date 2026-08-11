@@ -222,7 +222,7 @@ export interface Actor {
 export interface Frame {
   Conversation: string;
   Sequence: number;
-  Payload: string; // base64 of {"about","text","re"?}
+  Payload: string; // base64 of {"about","text","re"?,"recipients"?}
   ActorKey: string;
 }
 
@@ -322,7 +322,7 @@ export function decodeFrame(frame: Frame): Omit<FrameView, "fingerprint" | "seen
   try {
     // atob yields Latin-1 code units; frames are UTF-8 JSON.
     const bytes = Uint8Array.from(atob(frame.Payload), (c) => c.charCodeAt(0));
-    const payload = JSON.parse(new TextDecoder().decode(bytes)) as { about?: string; text?: string; re?: string };
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as { about?: string; text?: string; re?: string; recipients?: string[] };
     about = payload.about ?? "";
     text = payload.text ?? "";
     re = payload.re || undefined;
