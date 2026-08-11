@@ -28,6 +28,26 @@ type ClauseSource struct {
 	Retired bool
 }
 
+// Refusal records one clause-shaped statement the connector declined, and why.
+//
+// Every refusal here is silent at the point it happens, and the sum of them
+// used to be a single sentence saying no clause was live. That made "the
+// operator has stated nothing" and "the operator stated something I threw
+// away" the same message, which is how a live, ratified, correctly scoped
+// charter came to be reported as absent. Naming what was considered costs one
+// line of output and is the difference between an operator fixing a clause and
+// an operator being told there isn't one.
+type Refusal struct {
+	Event  string
+	Reason string
+}
+
+// Reading is what the connector made of the statements it was shown.
+type Reading struct {
+	Clauses  []Clause
+	Refusals []Refusal
+}
+
 // ClausesFrom reads the live admission clauses out of durable statements.
 //
 // This is the connector's half of the doorstep, and it is deliberately
@@ -37,28 +57,42 @@ type ClauseSource struct {
 // A connector that honoured any well-formed body would let any participant
 // widen its own admission.
 //
-// Retired and stale clauses are skipped. Retiring a clause is how a bad
-// admission is withdrawn, and it has to stop admitting immediately rather than
-// merely flaring what it already let in.
-func ClausesFrom(sources []ClauseSource, authors map[string]Author) []Clause {
-	clauses := make([]Clause, 0, len(sources))
+// Retired clauses are refused: retiring a clause is how a bad admission is
+// withdrawn, and it has to stop admitting immediately rather than merely
+// flaring what it already let in.
+//
+// Stale clauses are admitted, and this is the correction. Stale says a basis
+// underneath the clause moved; retired says the clause was withdrawn. Refusing
+// on staleness made the sanctioned way to replace a charter self-defeating,
+// because a replacement must cite what it replaces and what it replaces is then
+// retired — so the successor is stale by construction and the connector stopped
+// admitting anything. Governing correctly turned the connector off, and no
+// operator action could escape it, since a charter that cites nothing bounds
+// nothing. The staleness is carried on the clause instead, so a reader can see
+// that the ground moved and judge it, rather than having the clause disappear.
+func ClausesFrom(sources []ClauseSource, authors map[string]Author) Reading {
+	reading := Reading{Clauses: make([]Clause, 0, len(sources))}
 	for _, source := range sources {
 		if source.Body[ClauseKey] != ClauseConnector {
 			continue
 		}
-		if source.Retired || source.Stale {
+		if source.Retired {
+			reading.Refusals = append(reading.Refusals, Refusal{source.Event, "retired, so the admission was withdrawn"})
 			continue
 		}
 		if !authorized(authors[source.Actor]) {
+			reading.Refusals = append(reading.Refusals, Refusal{source.Event, "stated by an actor without operator standing"})
 			continue
 		}
 		clause, bounded := parseClause(source)
 		if !bounded {
+			reading.Refusals = append(reading.Refusals, Refusal{source.Event, "names no issue, label, or state, so it would mean everything"})
 			continue
 		}
-		clauses = append(clauses, clause)
+		clause.Stale = source.Stale
+		reading.Clauses = append(reading.Clauses, clause)
 	}
-	return clauses
+	return reading
 }
 
 // authorized reports whether this actor may state a clause. The charter says

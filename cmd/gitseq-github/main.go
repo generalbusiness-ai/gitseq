@@ -98,12 +98,33 @@ func run(ctx context.Context, arguments []string) error {
 		})
 	}
 
-	clauses := github.ClausesFrom(clauseSources(snapshot.Projection), authors(snapshot.Projection))
+	reading := github.ClausesFrom(clauseSources(snapshot.Projection), authors(snapshot.Projection))
+	clauses := reading.Clauses
 	if len(clauses) == 0 {
 		// Not an error. A workroom with no clause has asked for nothing, and
 		// observing anyway would be the connector deciding its own admission.
-		fmt.Println("no live admission clause; nothing to observe")
+		//
+		// But say which of those two happened. "No live admission clause" alone
+		// reads identically whether the operator stated nothing or stated
+		// something the connector threw away, and that ambiguity once had me
+		// report a live ratified charter as missing.
+		if len(reading.Refusals) == 0 {
+			fmt.Println("no admission clause has been stated; nothing to observe")
+			return nil
+		}
+		fmt.Printf("no admission clause was honoured; %d considered and refused:\n", len(reading.Refusals))
+		for _, refusal := range reading.Refusals {
+			fmt.Printf("  %s: %s\n", refusal.Event, refusal.Reason)
+		}
 		return nil
+	}
+	for _, clause := range clauses {
+		if clause.Stale {
+			fmt.Printf("clause %s admits, and is stale: a basis underneath it has moved\n", clause.Event)
+		}
+	}
+	for _, refusal := range reading.Refusals {
+		fmt.Printf("clause %s refused: %s\n", refusal.Event, refusal.Reason)
 	}
 
 	// The clauses decide the read. Nothing here enumerates the tracker, so a

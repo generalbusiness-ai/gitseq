@@ -31,6 +31,11 @@ type Clause struct {
 	// bug". Empty State means any state.
 	State  string
 	Labels []string
+
+	// Stale reports that a basis underneath the clause moved. It does not stop
+	// the clause admitting — only retirement does that — but a reader deciding
+	// whether to trust an admission should be told the ground shifted.
+	Stale bool
 }
 
 // Selection reports whether this clause names issues explicitly rather than
