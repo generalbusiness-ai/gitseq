@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged addressed-inbox runtime at cmd/gitseq-mcp","body":{"commit":"2a0566890c5645f84c8ec77e4df6a64e9e47d008","path":"cmd/gitseq-mcp"}}
+{"kind":"artifact","text":"Merged addressed-inbox runtime at internal/nexus","body":{"commit":"2a0566890c5645f84c8ec77e4df6a64e9e47d008","path":"internal/nexus"}}
