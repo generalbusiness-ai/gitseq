@@ -3,7 +3,9 @@ title: Components
 summary: The CLI, the resident service, the MCP adapter, the browser view, and the repository underneath.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d97eed896404f401dae2439928e31c6a0290ed47
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c45e6fefd3c2b4011b30ba9b4610dcc071617c02
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5644516fe30fcb0920b688e19e2ef185d18240f1
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30206869d55828c9a4eb7d3c16d3cb71fe0cac8d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a383b4db5b97c20dae3e36463f2e0760904d9204
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d0fd7f5227adc05a6a42883aadd765dad0a89098
@@ -43,8 +45,8 @@ branches, exactly as always; the workroom carries the why.
 | `ui/` | The browser projection source. |
 | `internal/service/uidist/` | The committed browser build the resident serves. |
 
-The resident serves the committed build, not `ui/src`, so the two can
-drift. `make ui-check` rebuilds and fails if the committed files differ.
+The resident serves the committed build, not `ui/src`, so changes to the
+browser source and its committed output must travel together.
 
 ## `gs`
 
@@ -68,7 +70,8 @@ See [the `gs` reference](../reference/gs/).
 - **Presence and ephemeral conversation** — the amnesiac nexus. This
   includes bounded per-session addressed inboxes and acknowledgements. The
   service resolves Workroom names to fingerprints before the nexus signs and
-  routes them to live sessions that registered the inbox protocol. This state
+  retains the conversation for every current matching lease. Only leases that
+  registered the inbox protocol receive pending inbox references. This state
   is per-process and does not survive.
 - **Change notification.** Long-poll `wait` returns when something moves,
   rather than making every reader poll.

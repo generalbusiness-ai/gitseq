@@ -100,9 +100,10 @@ report a `degraded` cursor.
 The resident also refuses publication before opening or changing a
 conversation when its bounded conversation or addressed-inbox capacity is
 full. A refusal creates no empty conversation and no partial delivery.
-An upgraded adapter refuses addressed `say` against an older resident rather
-than letting that resident accept the text as opaque chat and silently omit
-recipient delivery. Unaddressed conversation remains compatible.
+An upgraded adapter refuses a syntactically addressed `say` against an older
+resident rather than letting that resident accept the text as opaque chat and
+silently omit recipient delivery. Chat with no mention token or reply remains
+compatible; email addresses and path fragments are not mention tokens.
 
 ## Promoting
 
