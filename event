@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged Workroom agent guidance at the approved documentation head, aligned with the addressed inbox and live service surfaces.","body":{"branch":"main","commit":"0f215b43ace0294213b632a316149e4fca935b04","path":"SKILL.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d6d6b584a30920da1650eb2a38c528971c317c44","text":"The merged canonical docs artifact supersedes the prior shipped docs pointer."}
