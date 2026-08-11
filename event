@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d6d6b584a30920da1650eb2a38c528971c317c44","text":"The merged canonical docs artifact supersedes the prior shipped docs pointer."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f2f332c1672723562379e84564275b0b3cc402e4","text":"The surviving artifact path is docs; retire the narrower docs/why pointer without publishing another narrow successor."}
