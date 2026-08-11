@@ -289,11 +289,20 @@ func effectiveStatement(projection workroom.Projection, event, kind string) (wor
 	return workroom.Statement{}, fmt.Errorf("%s is not in this workroom, so a rendering naming it would point at nothing", event)
 }
 
-// charterIsLive refuses to act under a charter that is absent, retired, stale,
+// charterIsLive refuses to act under a charter that is absent, retired,
 // unratified, or that does not authorize this exact repository and connector
 // actor. The fold does not know what a charter is, so this is the connector
 // holding itself to its own contract — detection at the door rather than
 // attribution afterwards.
+//
+// Staleness is not among the refusals, for the same reason it is not among them
+// in clause admission, and leaving it here would have made that repair useless.
+// A charter that replaces another must cite what it replaces, and what it
+// replaces is then retired, so every correctly replaced charter is stale from
+// the moment it is written. Refusing here would reject the charter before
+// admission was ever reached, and no operator could state one that worked. The
+// staleness is reported instead, so whoever runs the connector is told the
+// ground moved rather than told the charter does not exist.
 //
 // The binding matters as much as the liveness. A charter that names no
 // repository authorizes nothing in particular, and accepting one would let this
@@ -309,11 +318,11 @@ func charterIsLive(projection workroom.Projection, charter, owner, name, actor, 
 		if statement.Retired {
 			return errors.New("charter is retired")
 		}
-		if statement.Stale {
-			return errors.New("charter is stale")
-		}
 		if !statement.Ratified {
 			return errors.New("charter is not ratified")
+		}
+		if statement.Stale {
+			fmt.Printf("charter %s is stale: a basis underneath it has moved\n", charter)
 		}
 		return charterBinds(statement.Body, charter, owner, name, actor, operation)
 	}

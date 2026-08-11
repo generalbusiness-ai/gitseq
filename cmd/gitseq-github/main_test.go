@@ -56,11 +56,15 @@ func TestTheConnectorRefusesToActWithoutALiveCharter(t *testing.T) {
 		t.Error("a retired charter was accepted")
 	}
 
-	// Stale matters as much as retired here. A charter whose basis died is no
-	// longer standing on what it claimed to stand on, and acting under it would
-	// be the connector deciding that the flare did not apply to itself.
-	if err := live(projection(charter(event, true, false, true)), event); err == nil {
-		t.Error("a stale charter was accepted")
+	// Staleness is deliberately not a refusal, and this expectation used to say
+	// the opposite. A charter that replaces another must cite what it replaces,
+	// and what it replaces is then retired, so every correctly replaced charter
+	// is stale from the moment it is written. Refusing here rejected the charter
+	// before admission was ever reached, which meant no operator could state one
+	// that worked: governing properly switched the connector off for good. The
+	// staleness is reported to whoever runs it instead of hiding the charter.
+	if err := live(projection(charter(event, true, false, true)), event); err != nil {
+		t.Errorf("a stale but live ratified charter was refused: %v", err)
 	}
 
 	if err := live(projection(charter(event, true, false, false)), event); err != nil {
