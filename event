@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1adb5dde37e4254e0682e95ac92eb4667973103d","text":"Replace the stale merged artifact with the identical merge commit on stable provenance."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d4bf5d36c31adefe6c8ab84d91fb4a3b0aadd200","text":"Replace the stale merged artifact with the identical merge commit on stable provenance."}
