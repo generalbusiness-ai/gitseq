@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"gs on main now consumes the shared resident client for signed submission and status reads, preserving its verified local fallback.","body":{"commit":"e8a582839a4c0099504335dd3cd5819ca375ce2b","path":"cmd/gs"}}
+{"kind":"artifact","text":"gitseq-mcp on main now consumes the shared resident client while preserving route-specific deadlines and transport-only durable fallback.","body":{"commit":"e8a582839a4c0099504335dd3cd5819ca375ce2b","path":"cmd/gitseq-mcp"}}
