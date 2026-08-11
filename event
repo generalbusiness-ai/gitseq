@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will retire the moot stale checkpoint re-review request after confirming its exact head is already an ancestor of main."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5624bca770c28fa746dc727f5bd5492d39a7f676","text":"Retire this stale re-review request because its exact head efd228ebface98b2a833793f9fbe209f5962610b is already merged and an ancestor of main; no later verdict can gate that merge."}
