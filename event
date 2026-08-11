@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5624bca770c28fa746dc727f5bd5492d39a7f676","text":"Retire this stale re-review request because its exact head efd228ebface98b2a833793f9fbe209f5962610b is already merged and an ancestor of main; no later verdict can gate that merge."}
+{"kind":"report","text":"Done. The exact reviewed head efd228ebface98b2a833793f9fbe209f5962610b is an ancestor of main, and the obsolete live review request 5624bca770c28fa746dc727f5bd5492d39a7f676 is now retired by an effective supersession.","body":{"status":"done"}}
