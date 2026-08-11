@@ -80,7 +80,7 @@ type Workspace struct {
 	snapshotFolder *workroom.Folder
 	flightMu       sync.Mutex
 	flight         atomic.Pointer[snapshotFlight]
-	reader         atomic.Pointer[kernel.Reader]
+	reader         *kernel.Reader
 	submitterOnce  sync.Once
 	submitter      *kernel.Submitter
 
@@ -916,7 +916,7 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 // while retaining whether the local projection came from a signed checkpoint,
 // a verified incremental continuation, or a cold full audit.
 func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, error) {
-	flight := w.snapshotFlight(ctx)
+	flight := w.snapshotFlight()
 	select {
 	case <-flight.done:
 		return flight.result, flight.err
@@ -934,7 +934,7 @@ func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, er
 // deliberately has process lifetime rather than inheriting one caller's
 // cancellation: one disconnected browser must not abort verification for
 // every other reader or make the next request repeat the same cold audit.
-func (w *Workspace) snapshotFlight(_ context.Context) *snapshotFlight {
+func (w *Workspace) snapshotFlight() *snapshotFlight {
 	w.flightMu.Lock()
 	defer w.flightMu.Unlock()
 	if flight := w.flight.Load(); flight != nil {
@@ -975,10 +975,10 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		}
 		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
 	}
-	if w.reader.Load() == nil {
-		w.reader.Store(w.newReader())
+	if w.reader == nil {
+		w.reader = w.newReader()
 	}
-	loaded, err := w.reader.Load().LoadWithProgress(ctx, w.Config.Genesis, progress)
+	loaded, err := w.reader.LoadWithProgress(ctx, w.Config.Genesis, progress)
 	if err != nil {
 		return SourcedSnapshot{}, err
 	}
@@ -1002,8 +1002,8 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		// The application projection and verified reader must advance as a
 		// pair. If local application state was discarded or mismatched,
 		// deliberately replace the reader and perform a cold full audit.
-		w.reader.Store(w.newReader())
-		loaded, err = w.reader.Load().LoadWithProgress(ctx, w.Config.Genesis, progress)
+		w.reader = w.newReader()
+		loaded, err = w.reader.LoadWithProgress(ctx, w.Config.Genesis, progress)
 		if err != nil {
 			return SourcedSnapshot{}, err
 		}

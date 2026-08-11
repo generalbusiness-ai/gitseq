@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -713,8 +714,7 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 	oldReader := kernel.NewReader(workspace.Store, kernel.CheckpointOptions{
 		Profile: "deliberately-old-test-profile", SigningKey: workspace.Config.SequencerKey,
 	})
-	oldLoaded, err := oldReader.Load(ctx, workspace.Config.Genesis)
-	if err != nil {
+	if _, err := oldReader.Load(ctx, workspace.Config.Genesis); err != nil {
 		t.Fatal(err)
 	}
 	cold, err := app.Open(ctx, repo)
@@ -748,12 +748,12 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 		if err := getJSON(httpServer.URL+"/v0/rebuild", &observed); err != nil {
 			t.Fatal(err)
 		}
-		if observed.Running && observed.Total > 0 && observed.Verified > 0 && observed.Verified < observed.Total {
+		if observed.Running && observed.Total > 0 && observed.Verified > 0 && observed.Verified < observed.Total/2 {
 			break
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if !observed.Running || observed.Total == 0 || observed.Verified == 0 || observed.Verified >= observed.Total {
+	if !observed.Running || observed.Total == 0 || observed.Verified == 0 || observed.Verified >= observed.Total/2 {
 		cancelFirst()
 		t.Fatalf("no moving cold-rebuild report was observed: %+v", observed)
 	}
@@ -788,18 +788,41 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 		t.Fatal("the first status reader did not stop waiting after cancellation")
 	}
 
-	// A third reader with a short deadline receives no stale or partial status.
-	shortCtx, cancelShort := context.WithTimeout(ctx, 5*time.Millisecond)
-	defer cancelShort()
-	shortRequest, err := http.NewRequestWithContext(shortCtx, http.MethodGet, httpServer.URL+"/v0/status", nil)
+	// A third reader remains pending while verification is known to be active;
+	// no stale or partial HTTP response escapes merely because it asked early.
+	thirdCtx, cancelThird := context.WithCancel(ctx)
+	thirdRequest, err := http.NewRequestWithContext(thirdCtx, http.MethodGet, httpServer.URL+"/v0/status", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response, err := http.DefaultClient.Do(shortRequest); err == nil {
-		response.Body.Close()
-		t.Fatal("status returned a projection while the cold rebuild was still running")
-	} else if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("short status read returned %v, want deadline exceeded", err)
+	thirdDone := make(chan error, 1)
+	go func() {
+		response, err := http.DefaultClient.Do(thirdRequest)
+		if response != nil {
+			response.Body.Close()
+		}
+		thirdDone <- err
+	}()
+	select {
+	case err := <-thirdDone:
+		t.Fatalf("status returned before the known mid-scan rebuild finished: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	var stillRunning rebuildReport
+	if err := getJSON(httpServer.URL+"/v0/rebuild", &stillRunning); err != nil {
+		t.Fatal(err)
+	}
+	if !stillRunning.Running || stillRunning.Verified >= stillRunning.Total {
+		t.Fatalf("the rebuild did not remain active while the third status request stayed pending: %+v", stillRunning)
+	}
+	cancelThird()
+	select {
+	case err := <-thirdDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("the cancelled third reader returned %v, want context cancellation", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the third status reader did not stop after cancellation")
 	}
 
 	lastVerified, fixedTotal := observed.Verified, observed.Total
@@ -833,19 +856,16 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 	if final.Durable.Head == "" {
 		t.Fatal("the joined status reader never received a final projection")
 	}
-	if final.Durable.Head != oldLoaded.Verification.Head || final.Durable.Depth != oldLoaded.Verification.Depth {
-		t.Fatalf("final frontier is %s@%d, want %s@%d", final.Durable.Head, final.Durable.Depth, oldLoaded.Verification.Head, oldLoaded.Verification.Depth)
+	expectedWorkspace, err := app.Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
 	}
-	wantText := "scaled rebuild record " + strconv.Itoa(records-1)
-	found := false
-	for _, statement := range final.Durable.Projection.Statements {
-		if statement.Text == wantText {
-			found = true
-			break
-		}
+	expected, err := expectedWorkspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !found {
-		t.Fatalf("final verified projection omitted %q", wantText)
+	if !reflect.DeepEqual(final.Durable, expected) {
+		t.Fatalf("published durable snapshot differs from an independent verified fold\npublished: %#v\nexpected:  %#v", final.Durable, expected)
 	}
 
 	// Once the rebuild is quiet, the exact projection is already available.
@@ -864,8 +884,8 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 	if err := json.NewDecoder(response.Body).Decode(&immediate); err != nil {
 		t.Fatal(err)
 	}
-	if immediate.Durable.Head != final.Durable.Head || immediate.Durable.Depth != final.Durable.Depth {
-		t.Fatalf("quiet status changed frontier from %s@%d to %s@%d", final.Durable.Head, final.Durable.Depth, immediate.Durable.Head, immediate.Durable.Depth)
+	if !reflect.DeepEqual(immediate.Durable, final.Durable) {
+		t.Fatal("quiet status did not return the complete projection that was atomically published")
 	}
 }
 
