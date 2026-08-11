@@ -2,7 +2,7 @@
 title: MCP state
 summary: Append a durable attributed utterance.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6236b44766d6cb639b8e384b3c6cfe22cc5ace02
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc0ff7e92f2f8f6d91b331f5b0a9ce98cb636300
 ---
 
 # `state`
