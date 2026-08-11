@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d7f3c45a331cbf7f4ee2ce970f8f929b4a9374d8","text":"Replace the stale architecture exact-head artifact with the identical exact head on stable provenance."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9be761fccd1986e22d6d9c12450fc11b3dbcf272","text":"Replace the stale AGENTS exact-head artifact with the identical exact head on stable provenance."}
