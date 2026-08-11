@@ -359,6 +359,16 @@ func canonicalCommit(commit string) bool {
 	return true
 }
 
+// BaselineEntry is one known-failing citation: why it fails, and exactly which
+// pages depend on it. The page set is part of the record because the event ID
+// alone cannot distinguish "the same defect, still in the same places" from
+// "the same defect, now in one more place" — and the second is a new violation
+// however familiar the artifact is.
+type BaselineEntry struct {
+	Reason string
+	Pages  []string
+}
+
 // BaselineFinding is one disagreement between the known-failing list and what
 // the gate currently sees.
 type BaselineFinding struct {
@@ -368,28 +378,72 @@ type BaselineFinding struct {
 
 // CompareBaseline enforces the three ways a known-failing list may be wrong.
 // New is a citation failing now that nobody has accounted for. Changed is one
-// whose defect is not the defect that was recorded, which would let a page swap
-// one fault for another under cover of being already known. Fixed is an entry
-// that has stopped failing: it is reported as an error too, because a list that
-// keeps entries after their repair is an exceptions file, and the only property
-// that stops this becoming one is that it must shrink.
-func CompareBaseline(failing, baseline map[string]string) (newly, changed, fixed []BaselineFinding) {
-	for citation, reason := range failing {
+// whose defect, or whose set of dependent pages, is not what was recorded —
+// the page set matters because a citation the list already knows about can
+// spread to a page it did not cover, which is a fresh violation wearing a
+// familiar event ID. Fixed is an entry that has stopped failing: reported as an
+// error too, because a list that keeps entries after their repair is an
+// exceptions file, and the only property that stops this becoming one is that
+// it must shrink.
+func CompareBaseline(failing, baseline map[string]BaselineEntry) (newly, changed, fixed []BaselineFinding) {
+	for citation, current := range failing {
 		recorded, known := baseline[citation]
 		switch {
 		case !known:
-			newly = append(newly, BaselineFinding{Citation: citation, Reason: reason})
-		case recorded != reason:
-			changed = append(changed, BaselineFinding{Citation: citation, Reason: "recorded as " + recorded + ", now " + reason})
+			newly = append(newly, BaselineFinding{Citation: citation, Reason: current.Reason})
+		case recorded.Reason != current.Reason:
+			changed = append(changed, BaselineFinding{Citation: citation,
+				Reason: "recorded as " + recorded.Reason + ", now " + current.Reason})
+		case !samePages(recorded.Pages, current.Pages):
+			changed = append(changed, BaselineFinding{Citation: citation,
+				Reason: "recorded for " + strings.Join(recorded.Pages, ", ") + ", now cited by " + strings.Join(current.Pages, ", ")})
 		}
 	}
 	for citation, recorded := range baseline {
 		if _, still := failing[citation]; !still {
-			fixed = append(fixed, BaselineFinding{Citation: citation, Reason: "no longer failing (was " + recorded + "); delete this line in the head that repaired it"})
+			fixed = append(fixed, BaselineFinding{Citation: citation,
+				Reason: "no longer failing (was " + recorded.Reason + "); delete this line in the head that repaired it"})
 		}
 	}
 	sort.Slice(newly, func(i, j int) bool { return newly[i].Citation < newly[j].Citation })
 	sort.Slice(changed, func(i, j int) bool { return changed[i].Citation < changed[j].Citation })
 	sort.Slice(fixed, func(i, j int) bool { return fixed[i].Citation < fixed[j].Citation })
 	return newly, changed, fixed
+}
+
+func samePages(recorded, current []string) bool {
+	if len(recorded) != len(current) {
+		return false
+	}
+	for i := range recorded {
+		if recorded[i] != current[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// ParseBaseline reads the known-failing list. A repeated event ID is an error
+// rather than a last-one-wins overwrite: two rows for one citation means the
+// file disagrees with itself about which pages are covered, and silently
+// keeping either would let the uncovered pages through.
+func ParseBaseline(raw string) (map[string]BaselineEntry, error) {
+	entries := make(map[string]BaselineEntry)
+	for number, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("baseline line %d has %d tab-separated fields, want event, reason and pages", number+1, len(fields))
+		}
+		if _, repeated := entries[fields[0]]; repeated {
+			return nil, fmt.Errorf("baseline line %d repeats %s; one citation has one row", number+1, fields[0])
+		}
+		pages := strings.Split(fields[2], ",")
+		sort.Strings(pages)
+		entries[fields[0]] = BaselineEntry{Reason: fields[1], Pages: pages}
+	}
+	return entries, nil
 }

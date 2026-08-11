@@ -4,7 +4,6 @@ summary: Request, promise, report, ratification — and who is allowed to close 
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b7c2ffe5efdd779aff87fe8736adc64f92223b78
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d8ddcaa5910cf18aea447e8e97d6c7e406c281d
 ---
 
 # The work loop

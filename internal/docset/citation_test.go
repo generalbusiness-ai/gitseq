@@ -106,47 +106,71 @@ func TestStaleNeverFailsOnAMaintainablePath(t *testing.T) {
 	}
 }
 
-// The three ways a known-failing list can be wrong. Each is an error rather
-// than a warning, and the third is the one that matters most: without it the
-// list keeps entries after their repair and quietly becomes an exceptions file,
-// which is the failure mode a baseline is supposed to avoid rather than cause.
+// The four ways a known-failing list can be wrong. The page-set case is the one
+// that matters most and was missing: an event already on the list can spread to
+// a page the list does not cover, and every other field stays identical — same
+// key, same reason, same line count, one more broken page.
 func TestCompareBaselineRefusesNewChangedAndFixedEntries(t *testing.T) {
-	failing := map[string]string{
-		"known":   "is retired",
-		"altered": "sits at the whole-repository path",
-		"fresh":   "names a commit that is not a full canonical object ID",
+	failing := map[string]BaselineEntry{
+		"known":   {Reason: "is retired", Pages: []string{"docs/a.md"}},
+		"altered": {Reason: "sits at the whole-repository path", Pages: []string{"docs/b.md"}},
+		"spread":  {Reason: "is retired", Pages: []string{"docs/c.md", "docs/d.md"}},
+		"fresh":   {Reason: "names a commit that is not a full canonical object ID", Pages: []string{"docs/e.md"}},
 	}
-	baseline := map[string]string{
-		"known":   "is retired",
-		"altered": "is retired",
-		"repaired": "sits at the whole-repository path",
+	baseline := map[string]BaselineEntry{
+		"known":    {Reason: "is retired", Pages: []string{"docs/a.md"}},
+		"altered":  {Reason: "is retired", Pages: []string{"docs/b.md"}},
+		"spread":   {Reason: "is retired", Pages: []string{"docs/c.md"}},
+		"repaired": {Reason: "sits at the whole-repository path", Pages: []string{"docs/f.md"}},
 	}
 	newly, changed, fixed := CompareBaseline(failing, baseline)
 
 	if len(newly) != 1 || newly[0].Citation != "fresh" {
 		t.Errorf("newly = %+v, want exactly the unrecorded citation", newly)
 	}
-	if len(changed) != 1 || changed[0].Citation != "altered" {
-		t.Errorf("changed = %+v, want the citation whose defect changed shape", changed)
-	}
 	if len(fixed) != 1 || fixed[0].Citation != "repaired" {
 		t.Errorf("fixed = %+v, want the entry that has stopped failing", fixed)
 	}
-	// A citation failing for exactly the reason recorded is the only quiet case.
-	for _, finding := range append(append(newly, changed...), fixed...) {
-		if finding.Citation == "known" {
-			t.Error("a citation failing exactly as recorded must not be reported")
-		}
+	reported := map[string]string{}
+	for _, finding := range changed {
+		reported[finding.Citation] = finding.Reason
 	}
-	if finding := changed[0]; !strings.Contains(finding.Reason, "recorded as") || !strings.Contains(finding.Reason, "now") {
-		t.Errorf("a changed entry must say both what was recorded and what is true now: %q", finding.Reason)
+	if _, ok := reported["altered"]; !ok {
+		t.Error("a citation whose defect changed shape must be reported")
+	}
+	if reason, ok := reported["spread"]; !ok {
+		t.Error("a known citation that gained a dependent page must be reported; otherwise the baseline widens without a line changing")
+	} else if !strings.Contains(reason, "docs/d.md") {
+		t.Errorf("the report must name the page that appeared: %q", reason)
+	}
+	if _, quiet := reported["known"]; quiet {
+		t.Error("a citation failing exactly as recorded, on exactly the recorded pages, must not be reported")
+	}
+}
+
+// The parser refuses a repeated event rather than letting one row overwrite the
+// other. Two rows for one citation means the file disagrees with itself about
+// which pages are covered, and silently keeping either lets the rest through.
+func TestParseBaselineRefusesDuplicateAndMalformedRows(t *testing.T) {
+	if _, err := ParseBaseline("evt\tis retired\tdocs/a.md\nevt\tis retired\tdocs/b.md\n"); err == nil {
+		t.Error("a repeated event ID must be an error, not a last-assignment-wins overwrite")
+	}
+	if _, err := ParseBaseline("evt is retired docs/a.md\n"); err == nil {
+		t.Error("a row without tab-separated fields must be an error rather than a silent misparse")
+	}
+	entries, err := ParseBaseline("# comment\n\nevt\tis retired\tdocs/b.md,docs/a.md\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := entries["evt"].Pages; len(got) != 2 || got[0] != "docs/a.md" {
+		t.Errorf("pages = %v, want them sorted so comparison does not depend on file order", got)
 	}
 }
 
 // An empty baseline against an empty failing set is the state this gate is
 // working towards, and must be silent rather than an error.
 func TestCompareBaselineIsSilentWhenNothingFails(t *testing.T) {
-	newly, changed, fixed := CompareBaseline(map[string]string{}, map[string]string{})
+	newly, changed, fixed := CompareBaseline(map[string]BaselineEntry{}, map[string]BaselineEntry{})
 	if len(newly)+len(changed)+len(fixed) != 0 {
 		t.Errorf("a clean set reported %d findings; the destination state must be quiet", len(newly)+len(changed)+len(fixed))
 	}

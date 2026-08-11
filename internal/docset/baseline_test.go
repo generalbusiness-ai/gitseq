@@ -36,7 +36,8 @@ func TestRegenerateCitationBaseline(t *testing.T) {
 	var out strings.Builder
 	out.WriteString(baselineHeader)
 	for _, act := range keys {
-		fmt.Fprintf(&out, "%s %s\n", act, failing[act])
+		entry := failing[act]
+		fmt.Fprintf(&out, "%s\t%s\t%s\n", act, entry.Reason, strings.Join(entry.Pages, ","))
 	}
 	if err := os.WriteFile(filepath.Join("..", "..", "internal", "docset", baselineFile), []byte(out.String()), 0o644); err != nil {
 		t.Fatal(err)
@@ -52,13 +53,17 @@ const baselineHeader = `# Known-failing documentation citations.
 # classification changed, and fails an entry that has stopped failing, so the
 # head that repairs a page must delete its line in the same commit.
 #
-# <event id> <reason>
+# <event id> TAB <reason> TAB <comma-separated pages that cite it>
+#
+# The page list is part of the record. Without it, a new page could start
+# citing an artifact already on this list and nothing would change: same event,
+# same reason, same line count, one more broken page.
 `
 
 // currentCitations classifies every citation the documentation set names,
 // against the real workroom. It returns the fatal ones with their reasons, and
 // the count of citations examined.
-func currentCitations(t *testing.T) (map[string]string, int, error) {
+func currentCitations(t *testing.T) (map[string]BaselineEntry, int, error) {
 	t.Helper()
 	root := mustRoot(t)
 	pages := mustPages(t, root)
@@ -79,36 +84,30 @@ func currentCitations(t *testing.T) (map[string]string, int, error) {
 	for _, artifact := range snapshot.Projection.Artifacts {
 		artifacts[artifact.Event] = artifact
 	}
-	failing := make(map[string]string)
+	failing := make(map[string]BaselineEntry)
 	for _, act := range acts {
 		kind, found := kinds[act]
 		artifact := artifacts[act]
 		verdict := ClassifyCitation(found, kind == workroom.KindArtifact, artifact.Retired, artifact.Stale, artifact.Path, artifact.Commit)
 		if verdict.Fatal {
-			failing[act] = verdict.Reason
+			pages := dependents(pages, act)
+			sort.Strings(pages)
+			failing[act] = BaselineEntry{Reason: verdict.Reason, Pages: pages}
 		}
 	}
 	return failing, len(acts), nil
 }
 
 // LoadBaseline reads the checked-in known-failing list.
-func loadBaseline(t *testing.T) map[string]string {
+func loadBaseline(t *testing.T) map[string]BaselineEntry {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "docset", baselineFile))
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries := make(map[string]string)
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		id, reason, ok := strings.Cut(line, " ")
-		if !ok {
-			t.Fatalf("baseline line has no reason: %q", line)
-		}
-		entries[id] = reason
+	entries, err := ParseBaseline(string(raw))
+	if err != nil {
+		t.Fatal(err)
 	}
 	return entries
 }

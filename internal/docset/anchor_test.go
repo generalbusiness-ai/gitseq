@@ -2,6 +2,7 @@ package docset
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"testing"
 
@@ -58,14 +59,16 @@ func TestGateEveryNamedActResolvesToALiveRecord(t *testing.T) {
 		artifacts[artifact.Event] = artifact
 	}
 
-	failing := make(map[string]string)
+	failing := make(map[string]BaselineEntry)
 	for _, act := range acts {
 		kind, found := kinds[act]
 		artifact := artifacts[act]
 		verdict := ClassifyCitation(found, kind == workroom.KindArtifact, artifact.Retired, artifact.Stale, artifact.Path, artifact.Commit)
 		switch {
 		case verdict.Fatal:
-			failing[act] = verdict.Reason
+			naming := dependents(pages, act)
+			sort.Strings(naming)
+			failing[act] = BaselineEntry{Reason: verdict.Reason, Pages: naming}
 		case verdict.Report:
 			t.Logf("%s %s:\n  %s", act, verdict.Reason, strings.Join(dependents(pages, act), "\n  "))
 		}
