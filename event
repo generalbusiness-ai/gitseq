@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"The Workroom agent contract now requires every exact-head pre-merge implementation review to record architecture impact, security analysis, and concrete opportunities to achieve the same result more simply.","body":{"commit":"f745949d85abc68ca459480d8563fc799bd22967","path":"SKILL.md"}}
+{"kind":"artifact","text":"The documentation index now links the canonical architecture-layer reference from its Reference section.","body":{"commit":"f745949d85abc68ca459480d8563fc799bd22967","path":"docs/README.md"}}
