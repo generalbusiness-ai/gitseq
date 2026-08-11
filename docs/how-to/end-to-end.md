@@ -2,7 +2,7 @@
 title: Do a piece of work, end to end
 summary: One complete path, from an empty directory to an audited record in a fresh clone.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e161548810c421826ea12bdc322da250ba031651
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:404f16bcf0df9bf1052cba27800143ef29a9a57d
 ---
 
 # Do a piece of work, end to end
@@ -144,12 +144,16 @@ gs ratify --repo "$REPO" --as bot "$REVIEW"
 
 ```sh
 git -C "$REPO" switch -q "$BASE"
-gs merge --repo "$REPO" --checkout "$REPO" \
-  --candidate "$HEAD_COMMIT" --approval "$REVIEW"
+gs merge --repo "$REPO" --as bot --checkout "$REPO" \
+  --candidate "$HEAD_COMMIT" --approval "$REVIEW" \
+  --text 'Merge the approved greeting and make it available on main.'
 ```
 
 `gs merge` hands git the approved object ID, never the branch name, so
 advancing `task/greeting` after approval cannot retarget the merge.
+The approval is consumed by this one repository-wide landing. The merge
+commit, a receipt ref, and a signed workroom assertion record its exact
+candidate, target pre-head, and resulting merge head.
 
 ### Move the artifacts the merge moved
 
@@ -243,8 +247,14 @@ gs status --repo "$AUDIT"
 
 `attach` adds a non-forcing fetch rule and pulls the sequence down.
 Later attaches and ordinary fetches accept only initial or fast-forward
-sequence refs; a rewound remote is rejected without moving the auditor's
-frontier.
+sequence refs. Successful verification also remembers the signed head and
+depth in the clone's Gitseq config, so later verification refuses a shorter
+or sibling sequence even if the tracking ref was lost.
+
+A fresh clone has no earlier head to compare. Its first audit proves the
+sequence it received is internally signed, not that no later authentic head
+exists elsewhere. Use a trusted checkpoint or another witness when first-use
+freshness matters.
 
 If `attach` complains about a missing `refs/seq/...` ref, the sequence
 was never published. Run the push above and rerun `attach` in the clone

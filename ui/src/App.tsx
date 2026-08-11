@@ -182,8 +182,6 @@ export default function App() {
             target={pane.target}
             route={pane.route}
             pending={pending}
-            composer={composer}
-            onComposer={setComposer}
             onClose={closePane}
             onJumpTo={jumpToEvent}
             onOpenProfile={openProfile}

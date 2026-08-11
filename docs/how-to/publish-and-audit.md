@@ -4,6 +4,7 @@ summary: Share the sequence, and verify it from a clone you did not create.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9ed176d95eeb6777c0a3538cc8e400684184b68
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d53a83b7b606df6a80335f6257d59a4093681dfc
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b34fc905db82c93fe54c49c7868a245cc4440eb
 ---
 
 # Publish and audit
@@ -74,6 +75,12 @@ integrity of the sequence, and reports the genesis, head, depth and event
 count. It is an explicit full audit and never consults a resident's
 cache.
 
+This first audit proves the bytes and signatures the remote supplied. It
+cannot prove that the remote supplied the latest authentic head: a remote
+truncated to an older signed commit still looks internally valid to a clone
+with no prior memory. Compare the reported head with a trusted checkpoint or
+another witness when first-contact freshness matters.
+
 Walk any event back through what it rests on:
 
 ```sh
@@ -93,12 +100,18 @@ else. A remote that has rewound is rejected, and the auditor's existing
 gs attach --repo "$AUDIT" --remote origin --genesis "$GENESIS"
 ```
 
+Each successful verification also persists the signed head and depth in
+`.git/gitseq/config.json`. Later verification refuses a shorter or sibling
+sequence even if the tracking ref was lost. Keep that config with the clone;
+deleting it discards the clone's rollback memory.
+
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
 | `attach` reports a missing `refs/seq/...` ref | The sequence was never published. Push it, then rerun `attach` in the clone you already have. |
 | `git fetch` fails on a sequence ref | The remote rewound. Your frontier is intact; find out what happened upstream. |
+| `attach` refuses a verified frontier rollback | The remote no longer continues the last head this clone verified. Preserve the clone and compare with another holder. |
 | The clone warns that it is empty | Only `refs/seq/*` was pushed and no branch. Harmless for auditing. |
 
 ## Leaving

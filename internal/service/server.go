@@ -70,7 +70,6 @@ func (s *Server) Handler() http.Handler { return s.mux }
 
 func (s *Server) routes() {
 	s.mux.Handle("GET /", uiHandler())
-	s.mux.HandleFunc("GET /legacy", s.handleDemo)
 	s.mux.HandleFunc("GET /v0/graph", s.handleGraph)
 	s.mux.HandleFunc("GET /v0/worktrees", s.handleWorktrees)
 	s.mux.HandleFunc("GET /v0/actors", s.handleActors)
@@ -358,11 +357,6 @@ func (s *Server) liveSnapshot() nexus.Snapshot {
 	return s.hub.Snapshot()
 }
 
-func (s *Server) handleDemo(writer http.ResponseWriter, _ *http.Request) {
-	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = writer.Write([]byte(demoHTML))
-}
-
 // guardMutation is the browser-facing boundary for state-changing calls:
 // JSON content type only (text/plain is CORS-safelisted and needs no
 // preflight), and when a browser identifies the request's provenance the
@@ -402,14 +396,3 @@ func write(writer http.ResponseWriter, value any, err error) {
 	}
 	_ = json.NewEncoder(writer).Encode(value)
 }
-
-const demoHTML = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>gitseq workroom</title><style>
-:root{color-scheme:dark;--ink:#f3f0e8;--muted:#a49f94;--line:#35332e;--hot:#f1b24a;--cool:#7fc8a9;--bad:#ef746f;background:#11110f}*{box-sizing:border-box}body{margin:0;font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);background:radial-gradient(circle at 80% 0,#292316 0,transparent 32rem),#11110f}main{max-width:1180px;margin:auto;padding:5rem 2rem}header{display:flex;justify-content:space-between;align-items:end;border-bottom:1px solid var(--line);padding-bottom:1.5rem}.eyebrow{color:var(--hot);text-transform:uppercase;letter-spacing:.16em;font-size:.75rem}h1{font:600 clamp(2.5rem,7vw,6rem)/.9 Georgia,serif;margin:.4rem 0}.pulse{color:var(--cool)}.grid{display:grid;grid-template-columns:1.5fr 1fr;gap:1rem;margin-top:2rem}.card{border:1px solid var(--line);background:#181815dd;padding:1.25rem;min-height:12rem}.card h2{font:500 1rem/1 ui-monospace;margin:0 0 1.25rem;color:var(--muted)}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.6rem;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:400}.status{color:var(--hot)}.stale{color:var(--bad)}.presence{display:flex;flex-wrap:wrap;gap:.5rem}.actor{border:1px solid #355848;color:var(--cool);padding:.35rem .6rem}.empty{color:var(--muted)}code{color:var(--hot)}@media(max-width:760px){main{padding:2rem 1rem}.grid{grid-template-columns:1fr}header{display:block}}
-</style></head><body><main><header><div><div class="eyebrow">append-only collaboration substrate</div><h1>gitseq<br>workroom</h1></div><div id="frontier" class="eyebrow">connecting…</div></header><div class="grid"><section class="card"><h2>requests and commitments</h2><div id="commitments"></div></section><section class="card"><h2>here now</h2><div id="presence" class="presence"></div></section><section class="card"><h2>artifact truth</h2><div id="artifacts"></div></section><section class="card"><h2>visible attempts</h2><div id="attempts"></div></section></div></main><script>
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const short=s=>s&&s.length>20?s.slice(0,9)+'…'+s.slice(-8):s||'—';
-const relationship=c=>!c.promise&&c.addressed_to?'addressed to '+short(c.addressed_to)+' · unclaimed':c.performer?short(c.requester)+' → '+short(c.performer):'—';
-const waiting=c=>c.waiting_on?'waiting on '+short(c.waiting_on):'—';
-async function refresh(){try{const r=await fetch('/v0/status',{cache:'no-store'}),s=await r.json(),p=s.durable.projection;frontier.textContent='depth '+s.durable.depth+' · '+short(s.durable.head)+' · live '+s.live.cursor.position;commitments.innerHTML=p.commitments.length?'<table><tr><th>state</th><th>qualifiers</th><th>relationship</th><th>waiting</th></tr>'+p.commitments.map(c=>'<tr><td class="status">'+esc(c.status)+'</td><td class="'+(c.stale?'stale':'')+'">'+(c.stale?'stale':'')+'</td><td>'+esc(relationship(c))+'<br><code>'+esc(short(c.request))+'</code></td><td>'+esc(waiting(c))+'</td></tr>').join('')+'</table>':'<span class="empty">No commitments yet.</span>';const people=Object.values(s.live.presence);presence.innerHTML=people.length?people.map(a=>'<span class="actor"><span class="pulse">●</span> '+esc(a)+'</span>').join(''):'<span class="empty">The nexus is cold. Durable state remains.</span>';artifacts.innerHTML=p.artifacts.length?'<table>'+p.artifacts.map(a=>'<tr><td class="'+(a.stale?'stale':'')+'">'+(a.stale?'STALE':'current')+'</td><td>'+esc(a.path)+'@<code>'+esc(short(a.commit))+'</code></td></tr>').join('')+'</table>':'<span class="empty">No bridged artifacts.</span>';const bad=p.decisions.filter(d=>d.verdict!=='effective');attempts.innerHTML=bad.length?bad.map(d=>'<p><span class="'+(d.verdict==='disputed'?'stale':'status')+'">'+esc(d.verdict)+'</span> <code>'+esc(short(d.event))+'</code><br>'+esc(d.reason)+'</p>').join(''):'<span class="empty">No ineffective or disputed acts.</span>'}catch(e){frontier.textContent='offline · durable data still in git'}}refresh();setInterval(refresh,1000);
-</script></body></html>`

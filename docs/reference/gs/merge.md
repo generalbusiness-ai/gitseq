@@ -2,7 +2,7 @@
 title: gs merge
 summary: Merge only the exact head named by a live, ratified approval.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b7c2ffe5efdd779aff87fe8736adc64f92223b78
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:404f16bcf0df9bf1052cba27800143ef29a9a57d
 ---
 
 # `gs merge`
@@ -15,9 +15,12 @@ approval really covers that commit and still stands.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
+| `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor signing the durable merge receipt. |
 | `--checkout` | *(required)* | The working tree receiving the merge. |
 | `--candidate` | *(required)* | The full, lowercase, approved commit object ID. |
 | `--approval` | *(required)* | The ratified approval report event. |
+| `--text` | *(required)* | A plain-language description of the change and its impact. This begins the merge commit message. |
+| `--server` | | Submit the durable merge receipt through a resident sequencer instead of writing locally. |
 
 It takes no positional arguments.
 
@@ -57,8 +60,9 @@ APPROVAL=$(gs review --repo "$REPO" --as carol --checkout "$REPO" \
 gs ratify --repo "$REPO" --as bot "$APPROVAL" >/dev/null
 
 git -C "$REPO" switch -q "$BASE"
-gs merge --repo "$REPO" --checkout "$REPO" \
-  --candidate "$HEAD_COMMIT" --approval "$APPROVAL"
+gs merge --repo "$REPO" --as bot --checkout "$REPO" \
+  --candidate "$HEAD_COMMIT" --approval "$APPROVAL" \
+  --text 'Merge the approved changelog and make it available on main.'
 ```
 
 It prints the resulting merge commit.
@@ -73,6 +77,9 @@ It prints the resulting merge commit.
 | `--candidate` differs from the approved head | The reviewer looked at a different commit. |
 | The approval does not rest on the artifact it names | The chain from verdict to code is broken. |
 | The artifact's commit differs from `--candidate` | Same, from the other end. |
+| The approval was already used or is reserved by another merge | One approval authorizes exactly one merge. |
+| The candidate is already contained in the target | There is no new approved landing to record. |
+| `--text` is blank | The immutable merge receipt also needs a useful merge description. |
 | The checkout is dirty | The merge result would contain unreviewed work. |
 | The checkout belongs to another repository | The workroom does not govern it. |
 | `--candidate` is not a full lowercase object ID | An abbreviation could become ambiguous later. |
@@ -92,6 +99,31 @@ never a branch name. Advancing the reviewed branch after approval
 therefore cannot retarget the merge — the commit that was approved is the
 commit that lands.
 
+## Approval scope and receipt
+
+A ratified approval is repository-scoped and single-use. It authorizes
+the exact candidate to land once in any one clean checkout belonging to
+the same repository. The first successful use fixes the target's
+pre-merge head. The approval cannot then be replayed into another branch
+or linked worktree.
+
+Concurrent callers first reserve
+`refs/gitseq/merge-receipts/<approval-hash>` with an atomic compare-and-swap.
+Only one caller can proceed. A successful merge leaves three matching
+records:
+
+- merge commit trailers naming `Gitseq-Approval`, `Gitseq-Candidate`, and
+  `Gitseq-Target-Pre-Head`;
+- the repository receipt ref, advanced from the target's pre-merge head
+  to the merge head; and
+- a signed workroom assertion naming the approval, candidate, target
+  pre-head, and merge head.
+
+Git receipts are checked across all refs. The signed workroom assertion
+also prevents replay if local refs and the branch carrying the merge are
+later lost. An interrupted reservation fails closed so it can be
+inspected before any later merge is allowed.
+
 ## Afterwards
 
 Two things are still yours to do, in this order:
@@ -104,8 +136,10 @@ Two things are still yours to do, in this order:
    report. Self-initiated work has no report to ratify: the ratified
    approval authorized the merge, and the merge artifact closes it.
 
-Write the merge commit message in plain language: what changed and what
-it affects.
+The automatic receipt is not the implementation's merge artifact. You
+must still record that artifact and its succession as described above.
+Supply the required plain-language merge commit message with `--text`;
+the receipt trailers are appended to it.
 
 ### Choosing the path
 

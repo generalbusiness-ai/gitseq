@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -16,14 +17,25 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 )
 
-func TestDemoNamesUnclaimedRequestsWithoutInventingAWait(t *testing.T) {
-	for _, want := range []string{"addressed to ", " · unclaimed", "c.waiting_on?'waiting on '"} {
-		if !bytes.Contains([]byte(demoHTML), []byte(want)) {
-			t.Fatalf("demo omits %q", want)
-		}
+// The legacy demo page is gone, and this is what stops it coming back. It was
+// a second renderer of the same projection, reachable by nobody: registered at
+// one route, linked from no page, named in no document, and covered by one test
+// that asserted its wording. Review found it still abbreviating event
+// identifiers after the browser had stopped, which is the cost of a surface
+// that no reader visits and so no reader corrects — it drifts, and the drift is
+// invisible until someone audits it.
+//
+// Deleting it was the alternative review offered to threading numbers through
+// it, and it is the better one: a surface with no readers earns no maintenance.
+func TestTheUnreachableDemoSurfaceIsGone(t *testing.T) {
+	source, err := os.ReadFile("server.go")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if bytes.Contains([]byte(demoHTML), []byte("requester → performer")) {
-		t.Fatal("demo labels an unclaimed addressee as a performer")
+	for _, gone := range []string{"demoHTML", "handleDemo", `"GET /legacy"`} {
+		if bytes.Contains(source, []byte(gone)) {
+			t.Errorf("%s is back; the legacy page was removed rather than kept in step with the fold", gone)
+		}
 	}
 }
 

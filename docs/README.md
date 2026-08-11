@@ -34,6 +34,7 @@ Read in this order if you are new:
 | [Actors and authority](concepts/actors.md) | Who may do what, and why kind is not authority. |
 | [The work loop](concepts/work-loop.md) | Request, promise, report, ratification — and who is allowed to close what. |
 | [Staleness](concepts/staleness.md) | What a flare means, what it does not cover, and one known gap. |
+| [Connectors](concepts/connectors.md) | How work enters from GitHub, what a charter does, and what it deliberately does not. |
 | [Components](concepts/components.md) | The CLI, the resident service, the MCP adapter, the browser view, and the repository underneath. |
 
 ## Recipes

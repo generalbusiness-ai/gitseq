@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -133,11 +134,13 @@ func flags(name string, arguments []string) (*flag.FlagSet, *string) {
 
 func initCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("init", arguments)
-	// No default name. The operator seeded here signs the genesis and every
-	// grant that follows, so who it is has to be a choice someone made:
-	// falling back to "operator" put an identity nobody picked at the root of
-	// the log, and made "there is no default identity" false at the one
-	// command where it matters most.
+	// No default name. The sequencer key signs the genesis commit; the
+	// operator seeded here signs their own acts, beginning with the bootstrap
+	// roster statement that admits them and grants the operator role, which
+	// carries ratifier with it. An identity holding ratifier from the first
+	// event is not one to leave to a default: falling back to "operator" put
+	// an identity nobody picked at the root of the log, and made "there is no
+	// default identity" false at the one command where it matters most.
 	operator := set.String("operator", "", "operator actor name; defaults to "+actorEnvironment)
 	ceiling := set.Uint64("payload-ceiling", 1<<20, "inline payload ceiling")
 	if err := set.Parse(arguments); err != nil {
@@ -392,9 +395,12 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 
 func mergeCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("merge", arguments)
+	as := set.String("as", "", "actor recording the merge receipt")
 	checkout := set.String("checkout", "", "checkout receiving the merge")
 	candidate := set.String("candidate", "", "full approved commit ID")
 	approval := set.String("approval", "", "ratified approval report event")
+	mergeText := set.String("text", "", "plain-language merge description and impact")
+	serverURL := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -411,20 +417,140 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
 		return err
 	}
+	if strings.TrimSpace(*mergeText) == "" {
+		return errors.New("merge requires --text with a plain-language description and impact")
+	}
+	actor, err := signingActor(*as)
+	if err != nil {
+		return err
+	}
+	targetPreHead, err := git(ctx, *checkout, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return err
+	}
+	targetPreHead = strings.TrimSpace(targetPreHead)
+	if _, err := git(ctx, *checkout, "merge-base", "--is-ancestor", *candidate, targetPreHead); err == nil {
+		return errors.New("approved candidate is already contained in the target")
+	}
 	// Repeat the durable and local checks directly before invoking Git. The
 	// merge argument remains the approved object ID, never a movable ref.
 	if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
 		return err
 	}
-	if _, err := git(ctx, *checkout, "merge", "--no-ff", "--no-edit", "--", *candidate); err != nil {
+	receiptRef := mergeReceiptRef(*approval)
+	if _, err := git(ctx, *checkout, "update-ref", receiptRef, targetPreHead, ""); err != nil {
+		return errors.New("approval is already reserved or used by another merge")
+	}
+	landed := false
+	defer func() {
+		if !landed {
+			_, _ = git(context.Background(), *checkout, "update-ref", "-d", receiptRef, targetPreHead)
+		}
+	}()
+	message := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead)
+	if _, err := git(ctx, *checkout, "merge", "--no-ff", "-m", message, "--", *candidate); err != nil {
 		return err
 	}
 	head, err := git(ctx, *checkout, "rev-parse", "HEAD")
 	if err != nil {
 		return err
 	}
-	fmt.Println(strings.TrimSpace(head))
+	head = strings.TrimSpace(head)
+	receipt, err := readMergeReceipt(ctx, *checkout, head)
+	if err != nil {
+		return err
+	}
+	if receipt.Approval != *approval || receipt.Candidate != *candidate || receipt.TargetPreHead != targetPreHead || receipt.MergeHead != head {
+		return errors.New("resulting merge commit does not carry the requested receipt")
+	}
+	if _, err := git(ctx, *checkout, "update-ref", receiptRef, head, targetPreHead); err != nil {
+		return fmt.Errorf("publish merge receipt ref: %w", err)
+	}
+	landed = true
+	if _, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "approved candidate merged",
+		Body: map[string]string{
+			"merge_approval": *approval, "merge_candidate": *candidate,
+			"merge_target_pre_head": targetPreHead, "merge_head": head,
+		},
+		RestsOn: []string{*approval}, IdempotencyKey: mergeReceiptKey(*approval),
+	}); err != nil {
+		return fmt.Errorf("record merge receipt: %w", err)
+	}
+	fmt.Println(head)
 	return nil
+}
+
+type mergeReceipt struct {
+	Approval      string
+	Candidate     string
+	TargetPreHead string
+	MergeHead     string
+}
+
+const (
+	mergeApprovalTrailer  = "Gitseq-Approval: "
+	mergeCandidateTrailer = "Gitseq-Candidate: "
+	mergeTargetTrailer    = "Gitseq-Target-Pre-Head: "
+)
+
+func mergeReceiptKey(approval string) string {
+	sum := sha256.Sum256([]byte(approval))
+	return "merge-receipt-" + hex.EncodeToString(sum[:])
+}
+
+func mergeReceiptRef(approval string) string {
+	return "refs/gitseq/merge-receipts/" + strings.TrimPrefix(mergeReceiptKey(approval), "merge-receipt-")
+}
+
+func mergeReceiptMessage(text, approval, candidate, targetPreHead string) string {
+	return fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
+		mergeApprovalTrailer, approval, mergeCandidateTrailer, candidate, mergeTargetTrailer, targetPreHead)
+}
+
+func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt, error) {
+	message, err := git(ctx, checkout, "show", "-s", "--format=%B", head)
+	if err != nil {
+		return mergeReceipt{}, err
+	}
+	receipt := mergeReceipt{MergeHead: head}
+	for _, line := range strings.Split(message, "\n") {
+		switch {
+		case strings.HasPrefix(line, mergeApprovalTrailer):
+			receipt.Approval = strings.TrimPrefix(line, mergeApprovalTrailer)
+		case strings.HasPrefix(line, mergeCandidateTrailer):
+			receipt.Candidate = strings.TrimPrefix(line, mergeCandidateTrailer)
+		case strings.HasPrefix(line, mergeTargetTrailer):
+			receipt.TargetPreHead = strings.TrimPrefix(line, mergeTargetTrailer)
+		}
+	}
+	parents, err := git(ctx, checkout, "rev-list", "--parents", "-n", "1", head)
+	if err != nil {
+		return mergeReceipt{}, err
+	}
+	fields := strings.Fields(parents)
+	if receipt.Approval == "" || receipt.Candidate == "" || receipt.TargetPreHead == "" || len(fields) != 3 ||
+		fields[0] != head || fields[1] != receipt.TargetPreHead || fields[2] != receipt.Candidate {
+		return mergeReceipt{}, errors.New("malformed merge receipt commit")
+	}
+	return receipt, nil
+}
+
+func existingGitMergeReceipt(ctx context.Context, checkout, approval string) (mergeReceipt, bool, error) {
+	heads, err := git(ctx, checkout, "log", "--all", "--fixed-strings", "--grep="+mergeApprovalTrailer+approval, "--format=%H")
+	if err != nil {
+		return mergeReceipt{}, false, err
+	}
+	for _, head := range strings.Fields(heads) {
+		receipt, err := readMergeReceipt(ctx, checkout, head)
+		if err != nil {
+			return mergeReceipt{}, false, err
+		}
+		if receipt.Approval == approval {
+			return receipt, true, nil
+		}
+	}
+	return mergeReceipt{}, false, nil
 }
 
 // validateReview admits a review of a world that has moved. Retirement and
@@ -579,11 +705,21 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	if err := validateCheckout(ctx, workspace.Repo, checkout, candidate, false); err != nil {
 		return err
 	}
+	if receipt, found, err := existingGitMergeReceipt(ctx, checkout, approvalEvent); err != nil {
+		return err
+	} else if found {
+		return fmt.Errorf("approval was already used by merge %s into target pre-head %s", receipt.MergeHead, receipt.TargetPreHead)
+	}
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
 		return err
 	}
 	projection := snapshot.Projection
+	for _, statement := range projection.Statements {
+		if statement.Body["merge_approval"] == approvalEvent && decisionEffective(projection, statement.Event) {
+			return fmt.Errorf("approval already has durable merge receipt %s", statement.Event)
+		}
+	}
 	approval, err := liveStatement(projection, approvalEvent, workroom.KindReport)
 	if err != nil {
 		return fmt.Errorf("approval: %w", err)
