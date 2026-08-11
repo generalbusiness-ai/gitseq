@@ -2,10 +2,9 @@
 title: Staleness
 summary: What a flare means, what it does not cover, and one known gap.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a4bdeaa332c9c788a855d6b09251f0194dc29ca1
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d8ddcaa5910cf18aea447e8e97d6c7e406c281d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db5fb403b64ef5fb7b088e8301746079d9bb8126
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:718c16a257eeed209434c18e85ca605ed779bf90
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b08920c22adda0622d8d6676d52eacdcecc3698a
 ---
 
 # Staleness

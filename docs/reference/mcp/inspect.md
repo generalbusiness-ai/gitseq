@@ -2,7 +2,8 @@
 title: MCP inspect
 summary: Read one exact canonical durable event with its decision, commitment chain, and bounded context.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:85dcbfb0909d3a8a60446d11cf2700421fa763ea
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f5c1bdd5d0d61dd0f2a968ae5cf0fbeb613b894f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
 ---
 
 # `inspect`
