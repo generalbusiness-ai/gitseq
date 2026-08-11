@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"public_surface_test.go@e82d9fff2d858662f7e3ddc2492c6d5b559d46fa: Public-surface tests pin the single-suite evidence flow and the narrowed preview-clone build gate.","body":{"commit":"e82d9fff2d858662f7e3ddc2492c6d5b559d46fa","path":"public_surface_test.go"}}
+{"kind":"artifact","text":"spike@e82d9fff2d858662f7e3ddc2492c6d5b559d46fa: The spike reporter and documentation reuse full-suite JSON without changing the stable six-case projection.","body":{"commit":"e82d9fff2d858662f7e3ddc2492c6d5b559d46fa","path":"spike"}}
