@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
@@ -77,9 +78,14 @@ type Workspace struct {
 	snapshotCache  *Snapshot
 	snapshotSource SnapshotSource
 	snapshotFolder *workroom.Folder
-	reader         *kernel.Reader
-	submitterOnce  sync.Once
-	submitter      *kernel.Submitter
+	// reader is written only under snapshotMu but read without it by
+	// RebuildProgress, so the pointer itself is atomic. The lock-free read is
+	// the entire point: snapshotMu is held for the duration of the audit being
+	// reported on, so anything that waited for it could only answer once there
+	// was nothing left to say.
+	reader        atomic.Pointer[kernel.Reader]
+	submitterOnce sync.Once
+	submitter     *kernel.Submitter
 
 	worktreesMu       sync.Mutex
 	worktreesCached   []WorktreeView
@@ -873,6 +879,22 @@ func (w *Workspace) EventID(commit string) string {
 	return "git:" + w.Config.ObjectFormat + ":" + w.Config.Genesis + "#git:" + w.Config.ObjectFormat + ":" + commit
 }
 
+// RebuildProgress reports how far a cold verified rebuild has got, and whether
+// one is running at all. It takes no lock. That is not an optimisation: the
+// rebuild holds snapshotMu for its whole duration, so this is the only way a
+// reader can learn that the wait it is in has an end and roughly where.
+//
+// Running is false when no audit is in flight, which is the ordinary warm case
+// — callers should stay quiet then rather than render a finished progress bar.
+func (w *Workspace) RebuildProgress() (progress kernel.Progress, running bool) {
+	reader := w.reader.Load()
+	if reader == nil {
+		return kernel.Progress{}, false
+	}
+	progress = reader.AuditProgress()
+	return progress, progress.Total > 0
+}
+
 func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	result, err := w.SnapshotWithSource(ctx)
 	return result.Snapshot, err
@@ -896,12 +918,12 @@ func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, er
 		}
 		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
 	}
-	if w.reader == nil {
-		w.reader = kernel.NewReader(w.Store, kernel.CheckpointOptions{
+	if w.reader.Load() == nil {
+		w.reader.Store(kernel.NewReader(w.Store, kernel.CheckpointOptions{
 			Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
-		})
+		}))
 	}
-	loaded, err := w.reader.Load(ctx, w.Config.Genesis)
+	loaded, err := w.reader.Load().Load(ctx, w.Config.Genesis)
 	if err != nil {
 		return SourcedSnapshot{}, err
 	}
@@ -925,10 +947,10 @@ func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, er
 		// The application projection and verified reader must advance as a
 		// pair. If local application state was discarded or mismatched,
 		// deliberately replace the reader and perform a cold full audit.
-		w.reader = kernel.NewReader(w.Store, kernel.CheckpointOptions{
+		w.reader.Store(kernel.NewReader(w.Store, kernel.CheckpointOptions{
 			Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
-		})
-		loaded, err = w.reader.Load(ctx, w.Config.Genesis)
+		}))
+		loaded, err = w.reader.Load().Load(ctx, w.Config.Genesis)
 		if err != nil {
 			return SourcedSnapshot{}, err
 		}

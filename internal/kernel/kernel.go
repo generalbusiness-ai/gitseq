@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/fxamacker/cbor/v2"
 
@@ -327,7 +328,7 @@ func Rotate(ctx context.Context, store gitstore.Store, genesis, successorPublicK
 		if err != nil {
 			return Result{}, err
 		}
-		log, err := scanHead(ctx, store, genesis, head, false)
+		log, err := scanHead(ctx, store, genesis, head, false, nil)
 		if err != nil {
 			return Result{}, err
 		}
@@ -471,7 +472,7 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 				}
 				if !loadedCheckpoint {
 					loadPayload := checkpointEnabled
-					log, err = scanHead(ctx, store, targetOID, head, loadPayload)
+					log, err = scanHead(ctx, store, targetOID, head, loadPayload, nil)
 					fullScan = true
 				}
 				if err == nil && checkpointEnabled {
@@ -612,8 +613,53 @@ type LoadResult struct {
 // event stream to the application projection that consumes it. Descendant
 // advances verify only their delta; cold and non-descendant reads remain full
 // audits.
+// Progress is how far a cold audit has got. It exists because the audit is the
+// slowest thing this package does and the least able to say so: Load holds the
+// reader mutex for its whole duration, and callers hold their own on top of
+// that, so by the time anyone can ask, there is nothing left to ask about.
+//
+// Verified counts commits whose sequencer signature has been checked. Total is
+// how many there are to check. Both are zero when no audit is running.
+type Progress struct {
+	Verified int
+	Total    int
+}
+
+// progress is written by the verification loop and read by anyone, without
+// either mutex. That is the whole point: a value guarded by the lock the slow
+// work holds could never be read while the slow work ran.
+//
+// It is write-only from the verifier's side. Nothing in this package reads it
+// back, no control flow branches on it, and dropping it entirely would change
+// no decision about what is accepted — it reports on the audit, it is not part
+// of it.
+type progress struct {
+	verified atomic.Int64
+	total    atomic.Int64
+}
+
+func (p *progress) begin(total int) {
+	p.total.Store(int64(total))
+	p.verified.Store(0)
+}
+
+func (p *progress) advance(verified int) { p.verified.Store(int64(verified)) }
+
+func (p *progress) done() {
+	p.total.Store(0)
+	p.verified.Store(0)
+}
+
+func (p *progress) read() Progress {
+	return Progress{Verified: int(p.verified.Load()), Total: int(p.total.Load())}
+}
+
 type Reader struct {
 	store gitstore.Store
+
+	// audit reports the cold scan's position. Declared outside the mutex
+	// deliberately; see progress.
+	audit progress
 
 	mu                  sync.Mutex
 	target              string
@@ -638,6 +684,12 @@ func NewReader(store gitstore.Store, checkpoint ...CheckpointOptions) *Reader {
 	}
 	return reader
 }
+
+// AuditProgress reports how far a cold audit has got, or zero if none is
+// running. It deliberately does not take r.mu: the audit holds that lock for
+// its entire duration, so a progress call that waited for it could only ever
+// answer after there was nothing left to report.
+func (r *Reader) AuditProgress() Progress { return r.audit.read() }
 
 func (r *Reader) Load(ctx context.Context, genesis string) (LoadResult, error) {
 	r.mu.Lock()
@@ -690,7 +742,7 @@ func (r *Reader) Load(ctx context.Context, genesis string) (LoadResult, error) {
 		}
 	}
 	if !fromCheckpoint {
-		log, err = scanHead(ctx, r.store, genesis, head, true)
+		log, err = scanHead(ctx, r.store, genesis, head, true, &r.audit)
 		if err != nil {
 			return LoadResult{}, err
 		}
@@ -726,7 +778,7 @@ func Load(ctx context.Context, store gitstore.Store, genesis string) ([]Event, V
 	if err != nil {
 		return nil, Verification{}, err
 	}
-	log, err := scanHead(ctx, store, genesis, head, true)
+	log, err := scanHead(ctx, store, genesis, head, true, nil)
 	if err != nil {
 		return nil, Verification{}, err
 	}
@@ -762,7 +814,7 @@ func Verify(ctx context.Context, store gitstore.Store, genesis string) (Verifica
 	if err != nil {
 		return Verification{}, err
 	}
-	log, err := scanHead(ctx, store, genesis, head, false)
+	log, err := scanHead(ctx, store, genesis, head, false, nil)
 	if err != nil {
 		return Verification{}, err
 	}
@@ -773,7 +825,7 @@ func Verify(ctx context.Context, store gitstore.Store, genesis string) (Verifica
 // the immutable head and, in the same traversal, builds the event stream and
 // actor-scoped dedup index. loadPayload controls only whether verified payload
 // bytes are retained.
-func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, loadPayload bool) (scannedLog, error) {
+func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, loadPayload bool, report *progress) (scannedLog, error) {
 	commits, err := store.RevList(ctx, head)
 	if err != nil {
 		return scannedLog{}, err
@@ -795,7 +847,14 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 		Dedup:              make(map[string]Event, len(commits)-1),
 		sequencerPublicKey: desc.SequencerPublicKey,
 	}
+	if report != nil {
+		report.begin(len(commits))
+		defer report.done()
+	}
 	for index, commit := range commits {
+		if report != nil {
+			report.advance(index)
+		}
 		if err := store.VerifySSHCommit(ctx, commit, "sequencer", log.sequencerPublicKey); err != nil {
 			return scannedLog{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)
 		}

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -202,7 +203,7 @@ func checkpointState(t testing.TB, count int) (fixtureState, ed25519.PrivateKey,
 			t.Fatal(err)
 		}
 	}
-	log, err := scanHead(f.ctx, f.store, f.genesis, mustHead(t, f.store, Ref(f.genesis)), true)
+	log, err := scanHead(f.ctx, f.store, f.genesis, mustHead(t, f.store, Ref(f.genesis)), true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -732,7 +733,7 @@ func BenchmarkColdAudit(b *testing.B) {
 		b.Run(strconv.Itoa(count), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				if _, err := scanHead(f.ctx, f.store, f.genesis, heads[count], true); err != nil {
+				if _, err := scanHead(f.ctx, f.store, f.genesis, heads[count], true, nil); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -830,7 +831,7 @@ func BenchmarkCheckpointRestartAtDepth1000(b *testing.B) {
 	b.Run("cold", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, err := scanHead(f.ctx, f.store, f.genesis, head, true); err != nil {
+			if _, err := scanHead(f.ctx, f.store, f.genesis, head, true, nil); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -1636,7 +1637,7 @@ func TestCheckpointWriterRejectsRetiredSigningKeyAfterRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	head := mustHead(t, f.store, Ref(f.genesis))
-	log, err := scanHead(f.ctx, f.store, f.genesis, head, true)
+	log, err := scanHead(f.ctx, f.store, f.genesis, head, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1678,7 +1679,7 @@ func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		log, err := scanHead(f.ctx, f.store, f.genesis, result.Head, true)
+		log, err := scanHead(f.ctx, f.store, f.genesis, result.Head, true, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2516,7 +2517,7 @@ func TestScanHeadPinsTheApprovedFrontier(t *testing.T) {
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "two", []byte("two"), nil), Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	log, err := scanHead(f.ctx, f.store, approved.Genesis, approved.Head, true)
+	log, err := scanHead(f.ctx, f.store, approved.Genesis, approved.Head, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2542,4 +2543,66 @@ func mustSignIntent(t *testing.T, decoded intent.Intent, private ed25519.Private
 		t.Fatal(err)
 	}
 	return signed
+}
+
+// The audit is the slowest thing this package does and, before this, the least
+// able to say so: Load holds r.mu for its whole duration, so anything that
+// waited for that lock could only ever answer once there was nothing left to
+// report. This proves the counter is readable *while* the scan runs, and moves.
+//
+// The poller is deliberately never joined. If AuditProgress took r.mu it would
+// block there for the whole audit, and joining would turn a wrong design into a
+// hung test instead of a failing one — which is exactly what the first draft of
+// this test did, timing out at ten minutes rather than failing in eight seconds.
+func TestColdAuditReportsItsProgressWhileHoldingTheLock(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	for index := range 12 {
+		key := "progress-" + strconv.Itoa(index)
+		if _, err := Submit(f.ctx, f.store, f.request(t, private, key, []byte(key), nil), Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reader := NewReader(f.store)
+	var samples, highest, inconsistent atomic.Int64
+	stop := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if p := reader.AuditProgress(); p.Total > 0 {
+				samples.Add(1)
+				if int64(p.Verified) > highest.Load() {
+					highest.Store(int64(p.Verified))
+				}
+				if p.Verified > p.Total {
+					inconsistent.Add(1)
+				}
+			}
+			runtime.Gosched()
+		}
+	}()
+
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	close(stop)
+
+	if samples.Load() == 0 {
+		t.Fatal("no progress was observable while the cold audit ran; a reader waiting on it could not be told why")
+	}
+	if highest.Load() == 0 {
+		t.Error("progress never advanced past zero")
+	}
+	if n := inconsistent.Load(); n > 0 {
+		t.Errorf("%d samples claimed more verified than there were to verify", n)
+	}
+	// Cleared afterwards, so a warm caller is not shown a finished bar.
+	if p := reader.AuditProgress(); p.Total != 0 || p.Verified != 0 {
+		t.Errorf("progress survived the audit that produced it: %+v", p)
+	}
 }
