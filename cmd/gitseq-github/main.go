@@ -11,20 +11,19 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/connector/github"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -39,7 +38,7 @@ func run(ctx context.Context, arguments []string) error {
 	set := flag.NewFlagSet("gitseq-github", flag.ContinueOnError)
 	set.SetOutput(io.Discard)
 	repo := set.String("repo", ".", "repository holding the workroom")
-	actor := set.String("as", "github-connector", "the connector's workroom actor")
+	actor := set.String("as", "", "the connector's workroom actor; defaults to "+residentclient.ActorEnvironment)
 	charter := set.String("charter", "", "the ratified charter event this connector acts under")
 	owner := set.String("owner", "", "GitHub owner")
 	name := set.String("repo-name", "", "GitHub repository name")
@@ -53,6 +52,10 @@ func run(ctx context.Context, arguments []string) error {
 	}
 	if *owner == "" || *name == "" {
 		return errors.New("--owner and --repo-name are required")
+	}
+	actorName, err := residentclient.ResolveActor("--as", *actor)
+	if err != nil {
+		return err
 	}
 
 	// The token is handed to the process. The connector has no GitHub identity
@@ -69,7 +72,7 @@ func run(ctx context.Context, arguments []string) error {
 		return err
 	}
 
-	if err := charterIsLive(snapshot.Projection, *charter, *owner, *name, *actor); err != nil {
+	if err := charterIsLive(snapshot.Projection, *charter, *owner, *name, actorName); err != nil {
 		return err
 	}
 
@@ -105,7 +108,7 @@ func run(ctx context.Context, arguments []string) error {
 			fmt.Printf("would observe %s (admitted by %s)\n", observation.ExternalID, observation.AdmittedBy)
 			continue
 		}
-		event, err := appendObservation(ctx, workspace, *actor, *server, *charter, observation)
+		event, err := appendObservation(ctx, workspace, actorName, *server, *charter, observation)
 		if err != nil {
 			return fmt.Errorf("observing %s: %w", observation.ExternalID, err)
 		}
@@ -230,31 +233,9 @@ func appendObservation(ctx context.Context, workspace *app.Workspace, actorName,
 // The core never holds the connector's key: the request is fully signed here
 // and the service only sequences it.
 func submit(ctx context.Context, workspace *app.Workspace, server string, request kernel.Request) (string, error) {
-	if server == "" {
-		submission, err := workspace.AcceptSubmission(ctx, request)
-		if err != nil {
-			return "", err
-		}
-		return submission.Record.ID, nil
-	}
-	encoded, err := json.Marshal(request)
+	submission, err := residentclient.New(10*time.Second).Submit(ctx, workspace, server, request)
 	if err != nil {
 		return "", err
 	}
-	response, err := http.Post(strings.TrimRight(server, "/")+"/v0/submit", "application/json", bytes.NewReader(encoded))
-	if err != nil {
-		return "", err
-	}
-	defer response.Body.Close()
-	var result struct {
-		app.Submission
-		Error string `json:"error"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
-		return "", err
-	}
-	if response.StatusCode != http.StatusOK {
-		return "", errors.New(result.Error)
-	}
-	return result.Submission.Record.ID, nil
+	return submission.Record.ID, nil
 }
