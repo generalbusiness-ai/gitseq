@@ -188,7 +188,7 @@ must precede the positional target, because flag parsing stops there.
 Reuse the exact string the live artifact already uses. Paths match as
 whole strings, so an artifact at `internal/workroom` never reaches one at
 `internal/workroom/fold.go` — a near miss is silent, not an error.
-[`gs merge`](../reference/gs/merge.md) has the four cases and their
+[`gs merge`](../reference/gs/merge.md) enumerates the situations and their
 reasons, including why nothing is ever published at `.`.
 
 Now — and only now — the original requester closes the loop:
