@@ -3,7 +3,7 @@ title: MCP supersede
 summary: Attempt to retire an act and propagate staleness.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:63b428d3c3e219ca7a1d9dade8e3f791466fcfe6
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
 ---
 
 # `supersede`
