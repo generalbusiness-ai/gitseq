@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ad1747762bcf97bb7b04150eb2535bee4cbe663e","text":"The merged citation-gate artifact supersedes the prior shipped internal/docset pointer."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9f99e1449008d2f8f7825cc8d69b78bfd39c7c40","text":"The surviving artifact path is docs; retire the narrower docs/README pointer without publishing another narrow successor."}
