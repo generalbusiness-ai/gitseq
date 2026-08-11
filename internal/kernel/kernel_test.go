@@ -2606,3 +2606,84 @@ func TestColdAuditReportsItsProgressWhileHoldingTheLock(t *testing.T) {
 		t.Errorf("progress survived the audit that produced it: %+v", p)
 	}
 }
+
+// The reported failure, reproduced: a fold-profile bump invalidates the signed
+// checkpoint, so the next start pays a full audit over the whole log. This is
+// the shape workroom-fold@2 produced on the live repository, where the browser
+// sat empty for minutes with no way to say why.
+//
+// It asserts the three things that make the difference between a slow start and
+// a broken-looking one: the mismatch really does force the cold path, progress
+// advances while it runs, and the projection that replaces it is the verified
+// one — never something served early to fill the gap.
+func TestAProfileMismatchRebuildsFromColdAndSaysHowFarItHasGot(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	const records = 40
+	for index := range records {
+		key := "scaled-" + strconv.Itoa(index)
+		if _, err := Submit(f.ctx, f.store, f.request(t, private, key, []byte(key), nil), Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	head := mustHead(t, f.store, Ref(f.genesis))
+
+	// A checkpoint written under the old profile, exactly as a resident would
+	// have left behind before the bump.
+	verified, err := scanHead(f.ctx, f.store, f.genesis, head, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCheckpoint(f.ctx, f.store, verified, CheckpointOptions{Profile: "fold@1", SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The new binary implements a different contract and must not reuse it.
+	reader := NewReader(f.store, CheckpointOptions{Profile: "fold@2", SigningKey: f.signingKey})
+	var samples, highest atomic.Int64
+	stop := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if p := reader.AuditProgress(); p.Total > 0 {
+				samples.Add(1)
+				if int64(p.Verified) > highest.Load() {
+					highest.Store(int64(p.Verified))
+				}
+			}
+			runtime.Gosched()
+		}
+	}()
+
+	loaded, err := reader.Load(f.ctx, f.genesis)
+	close(stop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !loaded.Full {
+		t.Fatal("the profile mismatch did not force a full audit, so this proves nothing about a cold rebuild")
+	}
+	if samples.Load() == 0 {
+		t.Error("the rebuild ran with nothing observable; a reader could not have been told why the wait was long")
+	}
+	if highest.Load() == 0 {
+		t.Error("progress never advanced past zero during the rebuild")
+	}
+
+	// What replaces the progress is the verified projection for the exact head,
+	// not something offered early to fill the gap.
+	if loaded.Verification.Head != head {
+		t.Errorf("rebuilt to %s, want the exact head %s", loaded.Verification.Head, head)
+	}
+	if loaded.Verification.Depth != records {
+		t.Errorf("verified depth %d, want %d", loaded.Verification.Depth, records)
+	}
+	if p := reader.AuditProgress(); p.Total != 0 {
+		t.Errorf("progress outlived the rebuild it described: %+v", p)
+	}
+}
