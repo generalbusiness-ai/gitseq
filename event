@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"gitseq-github on main now uses explicit-or-GITSEQ_ACTOR attribution and the shared bounded loopback-only submit path.","body":{"commit":"e8a582839a4c0099504335dd3cd5819ca375ce2b","path":"cmd/gitseq-github"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f351081dffdcdee06f5256c6fb0ae3840d8576b","text":"Withdraw this exact-head review request. The candidate put repository-specific architecture, security, and simplification policy in the reusable Workroom skill; the corrected head moves that policy to AGENTS.md."}
