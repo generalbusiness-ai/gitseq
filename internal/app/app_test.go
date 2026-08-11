@@ -605,6 +605,19 @@ func TestAgentRatifierAuthorityLifecycle(t *testing.T) {
 	}
 }
 
+func TestValidateAuthorityRoleUsesRosterKindClassification(t *testing.T) {
+	for _, role := range []string{"", "participant", "agent", "human", "service"} {
+		if err := validateAuthorityRole(role); err == nil {
+			t.Errorf("validateAuthorityRole(%q) accepted a non-authority", role)
+		}
+	}
+	for _, role := range []string{"operator", "ratifier", "custom"} {
+		if err := validateAuthorityRole(role); err != nil {
+			t.Errorf("validateAuthorityRole(%q) = %v", role, err)
+		}
+	}
+}
+
 func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)

@@ -659,7 +659,7 @@ func (w *Workspace) RevokeRole(ctx context.Context, revokerName, actorAddress, r
 }
 
 func validateAuthorityRole(role string) error {
-	if role == "" || role == "participant" || role == "agent" || role == "human" || role == "service" {
+	if role == "" || role == "participant" || workroom.RosterRoleIsKind(role) {
 		return fmt.Errorf("invalid authority role %q", role)
 	}
 	return nil
