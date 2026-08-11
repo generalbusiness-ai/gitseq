@@ -13,7 +13,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -25,6 +24,7 @@ import (
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -40,7 +40,7 @@ func (v *values) Set(value string) error {
 
 // actorEnvironment is how a concurrent instance is told which provisioned
 // identity it is. Every signing command reads it when --as is absent.
-const actorEnvironment = "GITSEQ_ACTOR"
+const actorEnvironment = residentclient.ActorEnvironment
 
 // signingActor resolves the identity an act is signed with. There is no
 // default name: the default was a name that several concurrent instances
@@ -53,13 +53,7 @@ func signingActor(flagValue string) (string, error) {
 // carries the identity is not the same one everywhere: `gs init` mints the
 // operator with --operator, every later command signs with --as.
 func signingActorFrom(flagName, flagValue string) (string, error) {
-	if flagValue != "" {
-		return flagValue, nil
-	}
-	if name := strings.TrimSpace(os.Getenv(actorEnvironment)); name != "" {
-		return name, nil
-	}
-	return "", errors.New("no actor identity: pass " + flagName + ", or set " + actorEnvironment + " to the identity this instance signs as")
+	return residentclient.ResolveActor(flagName, flagValue)
 }
 
 func main() {
@@ -1258,37 +1252,13 @@ func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, acto
 // log, which a deliberate durable write can afford, and a chain of writes in
 // one process pays for once.
 func warnUndefinedKind(ctx context.Context, workspace *app.Workspace, kind workroom.Kind) {
-	snapshot, err := workspace.Snapshot(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gs: warning: cannot tell whether kind %q is defined here: %v\n", kind, err)
-		return
-	}
-	if warning := snapshot.Vocabulary.UndefinedKindWarning(kind); warning != "" {
+	if warning := residentclient.UndefinedKindWarning(ctx, workspace, kind); warning != "" {
 		fmt.Fprintln(os.Stderr, "gs: warning:", warning)
 	}
 }
 
 func submitRequest(ctx context.Context, workspace *app.Workspace, serverURL string, request kernel.Request) (app.Submission, error) {
-	if serverURL == "" {
-		return workspace.AcceptSubmission(ctx, request)
-	}
-	encoded, _ := json.Marshal(request)
-	response, err := http.Post(strings.TrimRight(serverURL, "/")+"/v0/submit", "application/json", bytes.NewReader(encoded))
-	if err != nil {
-		return app.Submission{}, err
-	}
-	defer response.Body.Close()
-	var result struct {
-		app.Submission
-		Error string `json:"error"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
-		return app.Submission{}, err
-	}
-	if response.StatusCode != http.StatusOK {
-		return app.Submission{}, errors.New(result.Error)
-	}
-	return result.Submission, nil
+	return residentclient.New(10*time.Second).Submit(ctx, workspace, serverURL, request)
 }
 
 func statusCommand(ctx context.Context, arguments []string) error {
@@ -1359,60 +1329,8 @@ const (
 )
 
 func validateLoopbackServer(raw string) error {
-	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "http" || parsed.Host == "" || parsed.User != nil ||
-		parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
-		return errors.New("--server must be an http loopback URL without credentials")
-	}
-	host := parsed.Hostname()
-	if strings.EqualFold(host, "localhost") {
-		return nil
-	}
-	ip := net.ParseIP(host)
-	if ip == nil || !ip.IsLoopback() {
-		return errors.New("--server must name a loopback address")
-	}
-	return nil
-}
-
-func boundedClient(timeout time.Duration) *http.Client {
-	return &http.Client{
-		Timeout: timeout,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return errors.New("redirects are not allowed")
-		},
-	}
-}
-
-func getJSON(ctx context.Context, client *http.Client, rawURL string, limit int64, target any) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return err
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("resident returned %s", response.Status)
-	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	if err != nil {
-		return err
-	}
-	if int64(len(data)) > limit {
-		return fmt.Errorf("resident response exceeds %d bytes", limit)
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if decoder.Decode(&struct{}{}) != io.EOF {
-		return errors.New("resident returned trailing JSON")
-	}
-	return nil
+	_, err := residentclient.ValidateURL(raw)
+	return err
 }
 
 func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (service.SummaryStatus, error) {
@@ -1421,7 +1339,7 @@ func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (se
 		return service.SummaryStatus{}, err
 	}
 	var summary service.SummaryStatus
-	if err := getJSON(ctx, boundedClient(2*time.Second), strings.TrimRight(raw, "/")+"/v0/status-summary", summaryResponseLimit, &summary); err != nil {
+	if err := residentclient.New(2*time.Second).GetJSON(ctx, raw, "/v0/status-summary", summaryResponseLimit, &summary); err != nil {
 		return service.SummaryStatus{}, err
 	}
 	if err := validateRemoteFrontierAt(ctx, workspace, before, summary.Durable.Genesis, summary.Durable.Head); err != nil {
@@ -1435,7 +1353,7 @@ func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (se
 
 func fetchFullStatus(ctx context.Context, raw string) (service.Status, error) {
 	var status service.Status
-	err := getJSON(ctx, boundedClient(10*time.Second), strings.TrimRight(raw, "/")+"/v0/status", fullResponseLimit, &status)
+	err := residentclient.New(10*time.Second).GetJSON(ctx, raw, "/v0/status", fullResponseLimit, &status)
 	return status, err
 }
 

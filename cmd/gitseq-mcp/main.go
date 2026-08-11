@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -12,8 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +20,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
+	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -153,7 +151,7 @@ func (r *room) endpoint() (string, bool) {
 		}
 		r.baseURL = published
 	}
-	validated, err := validateResidentURL(r.baseURL)
+	validated, err := residentclient.ValidateURL(r.baseURL)
 	if err != nil {
 		r.baseURL = ""
 		r.announced = false
@@ -202,7 +200,7 @@ type mcpServer struct {
 	actor     string
 	repo      string
 	session   string
-	client    *http.Client
+	client    *residentclient.Client
 	deadlines residentDeadlinePolicy
 
 	roomsMu     sync.Mutex
@@ -212,19 +210,16 @@ type mcpServer struct {
 
 // actorEnvironment is how a concurrent instance is told which provisioned
 // identity it is, when the process is not started with an explicit --actor.
-const actorEnvironment = "GITSEQ_ACTOR"
+const actorEnvironment = residentclient.ActorEnvironment
 
 func main() {
 	repo := flag.String("repo", "", "default repository for calls that do not name one (default: working directory)")
 	actor := flag.String("actor", "", "configured actor; defaults to "+actorEnvironment)
 	serverURL := flag.String("server", "", "retired: the resident service is read from the repository")
 	flag.Parse()
-	name := *actor
-	if name == "" {
-		name = strings.TrimSpace(os.Getenv(actorEnvironment))
-	}
-	if name == "" {
-		fatal(errors.New("no actor identity: pass --actor, or set " + actorEnvironment + " to the identity this instance signs as"))
+	name, err := residentclient.ResolveActor("--actor", *actor)
+	if err != nil {
+		fatal(err)
 	}
 	// The service belongs to a repository, so naming one here could only ever
 	// be right for a single workroom. Registrations written before that was
@@ -819,12 +814,19 @@ func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.post(ctx, current, "/v0/submit", request)
-	if !isTransportError(err) {
-		if err != nil {
-			return value, err
+	base, available := current.endpoint()
+	if available {
+		requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor("/v0/submit"))
+		submission, err := s.client.Submit(requestContext, current.workspace, base, request)
+		cancel()
+		if err == nil {
+			value := map[string]any{"result": submission.Result, "record": submission.Record}
+			return s.withKindWarning(ctx, current, act, value), nil
 		}
-		return s.withKindWarning(ctx, current, act, value), nil
+		err = residentClientError(current, err)
+		if !isTransportError(err) {
+			return nil, err
+		}
 	}
 	submission, err := current.workspace.AcceptSubmission(ctx, request)
 	if err != nil {
@@ -846,12 +848,7 @@ func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.
 	if !ok {
 		return value
 	}
-	snapshot, err := current.workspace.Snapshot(ctx)
-	if err != nil {
-		result["warning"] = fmt.Sprintf("cannot tell whether kind %q is defined here: %v", act.Kind, err)
-		return result
-	}
-	if warning := snapshot.Vocabulary.UndefinedKindWarning(act.Kind); warning != "" {
+	if warning := residentclient.UndefinedKindWarning(ctx, current.workspace, act.Kind); warning != "" {
 		result["warning"] = warning
 	}
 	return result
@@ -969,15 +966,7 @@ func (s *mcpServer) depart(ctx context.Context) {
 			continue
 		}
 		requestContext, cancel := context.WithTimeout(ctx, s.deadlineForShutdown())
-		request, err := http.NewRequestWithContext(requestContext, http.MethodDelete, base+"/v0/presence/"+s.session, nil)
-		if err != nil {
-			cancel()
-			continue
-		}
-		response, err := s.client.Do(request)
-		if err == nil {
-			response.Body.Close()
-		}
+		_ = s.client.Delete(requestContext, base, "/v0/presence/"+s.session)
 		cancel()
 	}
 }
@@ -994,8 +983,8 @@ func (s *mcpServer) get(ctx context.Context, current *room, path string) (any, e
 	}
 	requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor(path))
 	defer cancel()
-	request, _ := http.NewRequestWithContext(requestContext, http.MethodGet, base+path, nil)
-	return s.do(current, request)
+	value, err := s.client.GetValue(requestContext, base, path, residentResponseLimit)
+	return value, residentClientError(current, err)
 }
 
 func (s *mcpServer) post(ctx context.Context, current *room, path string, value any) (any, error) {
@@ -1003,15 +992,10 @@ func (s *mcpServer) post(ctx context.Context, current *room, path string, value 
 	if !ok {
 		return nil, transportError{errNoResident}
 	}
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
 	requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor(path))
 	defer cancel()
-	request, _ := http.NewRequestWithContext(requestContext, http.MethodPost, base+path, bytes.NewReader(encoded))
-	request.Header.Set("Content-Type", "application/json")
-	return s.do(current, request)
+	result, err := s.client.PostValue(requestContext, base, path, value, residentResponseLimit)
+	return result, residentClientError(current, err)
 }
 
 func (s *mcpServer) postBoundedJSON(ctx context.Context, current *room, path string, value any, limit int64, target any) error {
@@ -1019,46 +1003,10 @@ func (s *mcpServer) postBoundedJSON(ctx context.Context, current *room, path str
 	if !ok {
 		return transportError{errNoResident}
 	}
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
 	requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor(path))
 	defer cancel()
-	request, err := http.NewRequestWithContext(requestContext, http.MethodPost, base+path, bytes.NewReader(encoded))
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Content-Type", "application/json")
-	response, err := s.client.Do(request)
-	if err != nil {
-		current.lost()
-		return residentTransportError(err)
-	}
-	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	if err != nil {
-		return residentReadError(current, err)
-	}
-	if int64(len(data)) > limit {
-		return fmt.Errorf("resident response exceeds %d bytes", limit)
-	}
-	if response.StatusCode >= 400 {
-		var failure map[string]string
-		if json.Unmarshal(data, &failure) == nil && failure["error"] != "" {
-			return httpStatusError{status: response.StatusCode, message: failure["error"]}
-		}
-		return httpStatusError{status: response.StatusCode, message: "HTTP " + response.Status}
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if decoder.Decode(&struct{}{}) != io.EOF {
-		return errors.New("resident returned trailing JSON")
-	}
-	return nil
+	err := s.client.PostJSON(requestContext, base, path, value, limit, target)
+	return residentClientError(current, err)
 }
 
 func (s *mcpServer) getBoundedJSON(ctx context.Context, current *room, path string, limit int64, target any) error {
@@ -1068,66 +1016,8 @@ func (s *mcpServer) getBoundedJSON(ctx context.Context, current *room, path stri
 	}
 	requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor(path))
 	defer cancel()
-	request, err := http.NewRequestWithContext(requestContext, http.MethodGet, base+path, nil)
-	if err != nil {
-		return err
-	}
-	response, err := s.client.Do(request)
-	if err != nil {
-		current.lost()
-		return residentTransportError(err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("resident returned %s", response.Status)
-	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	if err != nil {
-		return residentReadError(current, err)
-	}
-	if int64(len(data)) > limit {
-		return fmt.Errorf("resident response exceeds %d bytes", limit)
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if decoder.Decode(&struct{}{}) != io.EOF {
-		return errors.New("resident returned trailing JSON")
-	}
-	return nil
-}
-
-func (s *mcpServer) do(current *room, request *http.Request) (any, error) {
-	response, err := s.client.Do(request)
-	if err != nil {
-		current.lost()
-		return nil, residentTransportError(err)
-	}
-	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, residentResponseLimit+1))
-	if err != nil {
-		return nil, residentReadError(current, err)
-	}
-	if int64(len(data)) > residentResponseLimit {
-		return nil, fmt.Errorf("resident response exceeds %d bytes", residentResponseLimit)
-	}
-	var value any
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	if err := decoder.Decode(&value); err != nil {
-		return nil, err
-	}
-	if decoder.Decode(&struct{}{}) != io.EOF {
-		return nil, errors.New("resident returned trailing JSON")
-	}
-	if response.StatusCode >= 400 {
-		if object, ok := value.(map[string]any); ok {
-			return nil, httpStatusError{status: response.StatusCode, message: stringValue(object["error"])}
-		}
-		return nil, httpStatusError{status: response.StatusCode, message: "HTTP " + response.Status}
-	}
-	return value, nil
+	err := s.client.GetJSON(requestContext, base, path, limit, target)
+	return residentClientError(current, err)
 }
 
 type transportError struct{ error }
@@ -1150,8 +1040,12 @@ func residentTransportError(err error) error {
 	return transportError{err}
 }
 
-func residentReadError(current *room, err error) error {
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+func residentClientError(current *room, err error) error {
+	if err == nil {
+		return nil
+	}
+	if residentclient.IsTransportError(err) || (residentclient.IsReadError(err) &&
+		(errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))) {
 		current.lost()
 		return residentTransportError(err)
 	}
@@ -1181,33 +1075,12 @@ func (s *mcpServer) deadlineForShutdown() time.Duration {
 	return defaultResidentDeadlines.shutdown
 }
 
-type httpStatusError struct {
-	status  int
-	message string
-}
-
-func (e httpStatusError) Error() string { return e.message }
-
 func validateResidentURL(raw string) (string, error) {
-	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "http" || parsed.Host == "" || parsed.User != nil ||
-		parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
-		return "", errors.New("resident service must be an http loopback URL without credentials")
-	}
-	host := parsed.Hostname()
-	if !strings.EqualFold(host, "localhost") {
-		ip := net.ParseIP(host)
-		if ip == nil || !ip.IsLoopback() {
-			return "", errors.New("resident service must name a loopback address")
-		}
-	}
-	return strings.TrimRight(raw, "/"), nil
+	return residentclient.ValidateURL(raw)
 }
 
-func newResidentClient() *http.Client {
-	return &http.Client{Timeout: residentHTTPTimeout, CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-		return errors.New("resident redirects are not allowed")
-	}}
+func newResidentClient() *residentclient.Client {
+	return residentclient.New(residentHTTPTimeout)
 }
 
 func (s *mcpServer) localStatus(ctx context.Context, current *room) (service.Status, error) {

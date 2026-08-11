@@ -20,6 +20,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
+	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -483,7 +484,7 @@ func attachedServer(t testing.TB, workspace *app.Workspace, actor, baseURL strin
 	t.Helper()
 	server := newServer(actor, workspace.Repo)
 	server.session = "mcp:test"
-	server.client = client
+	server.client = residentclient.NewWithHTTP(client, residentHTTPTimeout)
 	attached := &room{workspace: workspace, baseURL: strings.TrimRight(baseURL, "/")}
 	server.byPath[server.repo] = attached
 	server.byCommonDir[workspace.CommonDir] = attached
@@ -1346,7 +1347,7 @@ func TestWhoamiBoundsStallsAndRejectsRedirects(t *testing.T) {
 		http.Redirect(writer, request, destination.URL+request.URL.Path, http.StatusFound)
 	}))
 	defer source.Close()
-	result = callWhoami(t, workspace, source.URL, newResidentClient())
+	result = callWhoami(t, workspace, source.URL, source.Client())
 	if followed.Load() != 0 || result["source"] == residentOrientationSource || result["degraded"] != true {
 		t.Fatalf("resident redirect was followed: followed=%d result=%#v", followed.Load(), result)
 	}
@@ -1361,8 +1362,8 @@ func TestResidentRequestDeadlinesPreserveCallerCancellation(t *testing.T) {
 	if residentCallTimeout != 10*time.Second || residentWaitTimeout != 35*time.Second || residentHTTPTimeout != 40*time.Second {
 		t.Fatalf("resident deadline policy changed: call=%s wait=%s client=%s", residentCallTimeout, residentWaitTimeout, residentHTTPTimeout)
 	}
-	if client := newResidentClient(); client.Timeout != residentHTTPTimeout {
-		t.Fatalf("resident HTTP backstop = %s, want %s", client.Timeout, residentHTTPTimeout)
+	if client := newResidentClient(); client.Timeout() != residentHTTPTimeout {
+		t.Fatalf("resident HTTP backstop = %s, want %s", client.Timeout(), residentHTTPTimeout)
 	}
 	policy := newServer("human", "").deadlines
 	if policy.call != residentCallTimeout || policy.wait != residentWaitTimeout || policy.shutdown != residentShutdownTimeout {
