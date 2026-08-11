@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Stable exact documentation candidate for the main-red ack and say repair.","body":{"commit":"d69191e7ce18e756a6836eea7ad47111f4e81b59","path":"docs"}}
+{"kind":"artifact","text":"Stable exact docset-baseline candidate for the main-red ack and say repair.","body":{"commit":"d69191e7ce18e756a6836eea7ad47111f4e81b59","path":"internal/docset"}}
