@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:27d3c31598586d2f2c89448a8b0a8fff4f2abb98","text":"The merged shared-client MCP artifact succeeds the earlier explicit-repository implementation artifact at this path."}
+{"kind":"artifact","text":"Corrected canonical architecture reference: the layered kernel and replaceable application account now also distinguishes repository policy in AGENTS.md from reusable Workroom application guidance in SKILL.md.","body":{"commit":"10a5a13431179420a275453892cbb163a97814e6","path":"docs/reference/architecture.md"}}
