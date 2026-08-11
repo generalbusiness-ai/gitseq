@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:269e71fc6b563079045a2154daf3f7d1acc36b11","text":"The corrected exact-head internal/kernel artifact replaces this earlier candidate."}
+{"kind":"promise","text":"I will independently review exact head 567c516dcd0f15b73c140149e7156061efda7d7a against the corrected kernel task, including architecture, security, simplification, and the requested gates."}
