@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Git storage metadata streaming for unified kernel history scans at exact head f35447d703d8c73968749d88509e05b6081679af.","body":{"commit":"f35447d703d8c73968749d88509e05b6081679af","path":"internal/gitstore"}}
+{"kind":"artifact","text":"Unified verified-history cache, checkpoint orchestration, and metadata scan verification at exact head f35447d703d8c73968749d88509e05b6081679af.","body":{"commit":"f35447d703d8c73968749d88509e05b6081679af","path":"internal/kernel"}}
