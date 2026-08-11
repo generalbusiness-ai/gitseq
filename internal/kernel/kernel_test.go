@@ -34,6 +34,10 @@ type fixtureState struct {
 }
 
 func newFixture(t testing.TB, format string) fixtureState {
+	return newFixtureWithCeiling(t, format, 1<<20)
+}
+
+func newFixtureWithCeiling(t testing.TB, format string, payloadCeiling uint64) fixtureState {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -51,7 +55,7 @@ func newFixture(t testing.TB, format string) fixtureState {
 		t.Fatal(err)
 	}
 	genesis, err := Create(ctx, store, GenesisDescriptor{
-		Version: 0, ObjectFormat: format, PayloadCeiling: 1 << 20,
+		Version: 0, ObjectFormat: format, PayloadCeiling: payloadCeiling,
 		SequencerPublicKey: publicKey,
 	}, keyPath)
 	if err != nil {
@@ -1159,6 +1163,65 @@ func TestSequenceBoundsPinNamedGenesisAndHeadIndependently(t *testing.T) {
 	}
 }
 
+func TestMetadataScanPreservesEstablishedCommitMessageNormalization(t *testing.T) {
+	const ceiling = uint64(4096)
+	f := newFixtureWithCeiling(t, "sha1", ceiling)
+	reader := NewReader(f.store)
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+
+	request := f.request(t, actor(t), "metadata-message", []byte("payload"), nil)
+	decoded := mustVerifyIntent(t, request.Signed)
+	tree, err := f.store.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	establishedMessage := intent.Envelope(request.Signed, decoded.RestsOn)
+	message := establishedMessage + strings.Repeat(" ", int(ceiling)-len(establishedMessage)+64) + "\n"
+	commit, err := f.store.SignedCommit(f.ctx, tree, f.genesis, message, f.signingKey, gitstore.CommitIdentity{
+		AuthorName: "external sequencer", AuthorEmail: "external@example.invalid",
+		CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+
+	var metadata []gitstore.CommitMetadata
+	err = f.store.WalkRevListMetadataAfter(f.ctx, f.genesis, commit, func(commit gitstore.CommitMetadata) error {
+		metadata = append(metadata, commit)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metadata) != 1 {
+		t.Fatalf("metadata suffix length = %d, want 1", len(metadata))
+	}
+	wantMessage, wantTimestamp, err := f.store.CommitMessageWithTimestamp(f.ctx, commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := normalizeEventMessage(metadata[0].Message); got != wantMessage {
+		t.Fatalf("normalized metadata message differs from established scan bytes\ngot:  %q\nwant: %q", got, wantMessage)
+	}
+	if uint64(len(metadata[0].Message)) <= ceiling || uint64(len(wantMessage)+len(request.Payload)) > ceiling {
+		t.Fatalf("test does not cross only the raw metadata ceiling: raw=%d normalized+payload=%d ceiling=%d", len(metadata[0].Message), len(wantMessage)+len(request.Payload), ceiling)
+	}
+	if metadata[0].Timestamp != wantTimestamp {
+		t.Fatalf("metadata timestamp = %d, want %d", metadata[0].Timestamp, wantTimestamp)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatalf("delta scan rejected normalized event: %v", err)
+	}
+	if _, err := Verify(f.ctx, f.store, f.genesis); err != nil {
+		t.Fatalf("cold scan rejected normalized event: %v", err)
+	}
+}
+
 func TestChainParentGuardsPinGenesisAndEventsIndependently(t *testing.T) {
 	if err := validateChainParents(0, nil, ""); err != nil {
 		t.Fatalf("parentless genesis rejected: %v", err)
@@ -2235,6 +2298,41 @@ func TestSubmitterRefreshesCheckpointOnBoundedCadence(t *testing.T) {
 	}
 	if !loaded.Checkpoint || loaded.Verification.Head != result.Head || len(loaded.Events) != 2 {
 		t.Fatalf("refreshed checkpoint = %+v", loaded)
+	}
+}
+
+func TestSubmitterDefersDueCheckpointUntilItsCASAppend(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	prior := f.request(t, private, "prior", []byte("prior"), nil)
+	if _, err := Submit(f.ctx, f.store, prior, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := CheckpointOptions{Profile: "test-fold@1", SigningKey: f.signingKey}
+	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointProfile: checkpoint.Profile})
+	if replay, err := submitter.Submit(f.ctx, prior); err != nil || !replay.Replay {
+		t.Fatalf("load checkpoint = %+v, %v", replay, err)
+	}
+	submitter.cache.checkpointAttempt = submitter.cache.log.Verification.Depth - checkpointInterval + 1
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "external", []byte("external"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := submitter.Submit(f.ctx, f.request(t, private, "resident", []byte("resident"), nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if submitter.cache.checkpointWrites != 1 || submitter.cache.checkpointFailures != 0 {
+		t.Fatalf("checkpoint writes=%d failures=%d, want one post-CAS write", submitter.cache.checkpointWrites, submitter.cache.checkpointFailures)
+	}
+	loaded, err := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile}).Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Checkpoint || loaded.Verification.Head != result.Head || len(loaded.Events) != 3 {
+		t.Fatalf("post-CAS checkpoint = %+v, result = %+v", loaded, result)
 	}
 }
 

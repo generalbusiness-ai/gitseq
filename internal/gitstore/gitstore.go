@@ -1,6 +1,7 @@
 package gitstore
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha1"
@@ -11,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,11 +29,10 @@ type Store struct {
 	Repo string
 }
 
-// CommitMetadata is the identity-bearing portion of a commit needed to bind a
-// cached event back to the immutable sequence object that originally carried
-// it. It deliberately omits author and signature headers: checkpoint recovery
-// authenticates the checkpoint once, then verifies the actor envelope, tree,
-// and sequencer-signed committer time for every cached event.
+// CommitMetadata is the identity-bearing portion of a commit needed by kernel
+// history scans and checkpoint recovery. It deliberately omits author and
+// signature headers: callers verify the commit signature separately before
+// trusting the parent, message, tree, or sequencer-signed committer time.
 type CommitMetadata struct {
 	OID       string
 	Tree      string
@@ -293,32 +294,91 @@ func (s Store) RevList(ctx context.Context, ref string) ([]string, error) {
 // Git commit messages cannot contain NUL, so -z plus NUL field separators do
 // not depend on intent-level character restrictions.
 func (s Store) RevListMetadata(ctx context.Context, ref string) ([]CommitMetadata, error) {
-	output, err := s.run(ctx, nil, nil, "log", "-z", "--first-parent", "--reverse", "--format=%H%x00%T%x00%P%x00%ct%x00%B", ref)
+	var metadata []CommitMetadata
+	err := s.WalkRevListMetadata(ctx, ref, func(commit CommitMetadata) error {
+		metadata = append(metadata, commit)
+		return nil
+	})
+	return metadata, err
+}
+
+// WalkRevListMetadata streams first-parent commit metadata oldest first. It
+// retains at most one untrusted commit message at a time, so a long history
+// cannot turn per-envelope bounds into an aggregate message allocation.
+func (s Store) WalkRevListMetadata(ctx context.Context, ref string, visit func(CommitMetadata) error) error {
+	return s.walkRevListMetadata(ctx, ref, visit)
+}
+
+// WalkRevListMetadataAfter streams the exclusive first-parent suffix from base
+// through head, oldest first. The visitor must still validate ancestry.
+func (s Store) WalkRevListMetadataAfter(ctx context.Context, base, head string, visit func(CommitMetadata) error) error {
+	return s.walkRevListMetadata(ctx, base+".."+head, visit)
+}
+
+func (s Store) walkRevListMetadata(ctx context.Context, revision string, visit func(CommitMetadata) error) error {
+	args := []string{"--git-dir", s.Repo, "log", "-z", "--first-parent", "--reverse", "--format=%H%x00%T%x00%P%x00%ct%x00%B", revision}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if len(output) == 0 {
-		return nil, nil
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return err
 	}
-	fields := bytes.Split(output, []byte{0})
-	if len(fields) < 6 || len(fields[len(fields)-1]) != 0 || (len(fields)-1)%5 != 0 {
-		return nil, errors.New("malformed git log metadata framing")
-	}
-	metadata := make([]CommitMetadata, 0, (len(fields)-1)/5)
-	for index := 0; index < len(fields)-1; index += 5 {
-		if len(fields[index]) == 0 || len(fields[index+1]) == 0 {
-			return nil, errors.New("malformed git log metadata identity")
+	reader := bufio.NewReader(stdout)
+	for {
+		commit, done, readErr := readCommitMetadata(reader)
+		if readErr != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return readErr
 		}
-		timestamp, err := strconv.ParseInt(string(fields[index+3]), 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("malformed git log metadata timestamp: %w", err)
+		if done {
+			break
 		}
-		metadata = append(metadata, CommitMetadata{
-			OID: string(fields[index]), Tree: string(fields[index+1]),
-			Parents: strings.Fields(string(fields[index+2])), Timestamp: timestamp, Message: string(fields[index+4]),
-		})
+		if err := visit(commit); err != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			return err
+		}
 	}
-	return metadata, nil
+	if err := cmd.Wait(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("git %s: %w: %s", strings.Join(args[2:], " "), err, bytes.TrimSpace(stderr.Bytes()))
+	}
+	return nil
+}
+
+func readCommitMetadata(reader *bufio.Reader) (CommitMetadata, bool, error) {
+	fields := make([][]byte, 5)
+	for index := range fields {
+		field, err := reader.ReadBytes(0)
+		if err == io.EOF && index == 0 && len(field) == 0 {
+			return CommitMetadata{}, true, nil
+		}
+		if err != nil || len(field) == 0 || field[len(field)-1] != 0 {
+			return CommitMetadata{}, false, errors.New("malformed git log metadata framing")
+		}
+		fields[index] = field[:len(field)-1]
+	}
+	if len(fields[0]) == 0 || len(fields[1]) == 0 {
+		return CommitMetadata{}, false, errors.New("malformed git log metadata identity")
+	}
+	timestamp, err := strconv.ParseInt(string(fields[3]), 10, 64)
+	if err != nil {
+		return CommitMetadata{}, false, fmt.Errorf("malformed git log metadata timestamp: %w", err)
+	}
+	return CommitMetadata{
+		OID: string(fields[0]), Tree: string(fields[1]),
+		Parents: strings.Fields(string(fields[2])), Timestamp: timestamp, Message: string(fields[4]),
+	}, false, nil
 }
 
 // RevListAfter returns the first-parent commits strictly after base and
