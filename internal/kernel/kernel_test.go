@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -202,7 +203,7 @@ func checkpointState(t testing.TB, count int) (fixtureState, ed25519.PrivateKey,
 			t.Fatal(err)
 		}
 	}
-	log, err := scanHead(f.ctx, f.store, f.genesis, mustHead(t, f.store, Ref(f.genesis)), true)
+	log, err := scanHead(f.ctx, f.store, f.genesis, mustHead(t, f.store, Ref(f.genesis)), true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -732,7 +733,7 @@ func BenchmarkColdAudit(b *testing.B) {
 		b.Run(strconv.Itoa(count), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				if _, err := scanHead(f.ctx, f.store, f.genesis, heads[count], true); err != nil {
+				if _, err := scanHead(f.ctx, f.store, f.genesis, heads[count], true, nil); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -830,7 +831,7 @@ func BenchmarkCheckpointRestartAtDepth1000(b *testing.B) {
 	b.Run("cold", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, err := scanHead(f.ctx, f.store, f.genesis, head, true); err != nil {
+			if _, err := scanHead(f.ctx, f.store, f.genesis, head, true, nil); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -1636,7 +1637,7 @@ func TestCheckpointWriterRejectsRetiredSigningKeyAfterRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	head := mustHead(t, f.store, Ref(f.genesis))
-	log, err := scanHead(f.ctx, f.store, f.genesis, head, true)
+	log, err := scanHead(f.ctx, f.store, f.genesis, head, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1678,7 +1679,7 @@ func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		log, err := scanHead(f.ctx, f.store, f.genesis, result.Head, true)
+		log, err := scanHead(f.ctx, f.store, f.genesis, result.Head, true, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2516,7 +2517,7 @@ func TestScanHeadPinsTheApprovedFrontier(t *testing.T) {
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "two", []byte("two"), nil), Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	log, err := scanHead(f.ctx, f.store, approved.Genesis, approved.Head, true)
+	log, err := scanHead(f.ctx, f.store, approved.Genesis, approved.Head, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2542,4 +2543,88 @@ func mustSignIntent(t *testing.T, decoded intent.Intent, private ed25519.Private
 		t.Fatal(err)
 	}
 	return signed
+}
+
+// The audit is the slowest thing this package does and, before this, the least
+// able to say so: Load holds r.mu for its whole duration, so anything that
+// waited for that lock could only ever answer once there was nothing left to
+// report. This proves the counter is readable *while* the scan runs, and moves.
+//
+// The poller is deliberately never joined. If Snapshot needed r.mu it would
+// block there for the whole audit, and joining would turn a wrong design into
+// a hung test instead of a failing one.
+func TestColdAuditReportsItsProgressWhileHoldingTheLock(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	for index := range 12 {
+		key := "progress-" + strconv.Itoa(index)
+		if _, err := Submit(f.ctx, f.store, f.request(t, private, key, []byte(key), nil), Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reader := NewReader(f.store)
+	report := &AuditProgress{}
+	var samples, highest, inconsistent atomic.Int64
+	stop := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if p := report.Snapshot(); p.Started && p.Total > 0 {
+				samples.Add(1)
+				if int64(p.Verified) > highest.Load() {
+					highest.Store(int64(p.Verified))
+				}
+				if p.Verified > p.Total {
+					inconsistent.Add(1)
+				}
+			}
+			runtime.Gosched()
+		}
+	}()
+
+	if _, err := reader.LoadWithProgress(f.ctx, f.genesis, report); err != nil {
+		t.Fatal(err)
+	}
+	close(stop)
+
+	if samples.Load() == 0 {
+		t.Fatal("no progress was observable while the cold audit ran; a reader waiting on it could not be told why")
+	}
+	if highest.Load() == 0 {
+		t.Error("progress never advanced past zero")
+	}
+	if n := inconsistent.Load(); n > 0 {
+		t.Errorf("%d samples claimed more verified than there were to verify", n)
+	}
+	// Retained afterwards so an application can describe checkpoint writing
+	// and projection work without inventing its own verification counter.
+	if p := report.Snapshot(); !p.Started || p.Total == 0 || p.Verified != p.Total {
+		t.Errorf("final progress was not retained at N/N: %+v", p)
+	}
+}
+
+func TestMatchingCheckpointDoesNotStartColdAuditProgress(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "checkpoint-progress", []byte("value"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	options := CheckpointOptions{Profile: "fold@2", SigningKey: f.signingKey}
+	if _, err := NewReader(f.store, options).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+
+	warm := NewReader(f.store, options)
+	warmReport := &AuditProgress{}
+	if _, err := warm.LoadWithProgress(f.ctx, f.genesis, warmReport); err != nil {
+		t.Fatal(err)
+	}
+	if p := warmReport.Snapshot(); p.Started || p.Total != 0 || p.Verified != 0 {
+		t.Errorf("matching checkpoint started cold-audit progress: %+v", p)
+	}
 }
