@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f5c1bdd5d0d61dd0f2a968ae5cf0fbeb613b894f","text":"cmd/gitseq-mcp shipped predecessor is superseded by the merged artifact at the same surviving path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30206869d55828c9a4eb7d3c16d3cb71fe0cac8d","text":"cmd/gitseq-mcp candidate is superseded by the merged artifact at the same surviving path."}
