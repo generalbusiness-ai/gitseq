@@ -82,6 +82,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v0/wait", s.handleWait)
 	s.mux.HandleFunc("POST /v0/submit", s.handleSubmit)
 	s.mux.HandleFunc("GET /v0/presence", s.handlePresence)
+	s.mux.HandleFunc("GET /v0/rebuild", s.handleRebuild)
 	s.mux.HandleFunc("POST /v0/presence", s.handleAnnounce)
 	s.mux.HandleFunc("DELETE /v0/presence/{session}", s.handleDepart)
 	s.mux.HandleFunc("POST /v0/say", s.handleSay)
@@ -246,6 +247,30 @@ func (s *Server) handleSubmit(writer http.ResponseWriter, request *http.Request)
 
 func (s *Server) handlePresence(writer http.ResponseWriter, _ *http.Request) {
 	write(writer, s.liveSnapshot(), nil)
+}
+
+// rebuildReport says whether a cold verified rebuild is running and how far it
+// has got. Running is false in the ordinary warm case, and a caller that reads
+// it should stay quiet then rather than render a completed bar.
+type rebuildReport struct {
+	Running  bool `json:"running"`
+	Verified int  `json:"verified,omitempty"`
+	Total    int  `json:"total,omitempty"`
+}
+
+// handleRebuild answers while the rebuild it reports on is still running, which
+// is the only reason it exists. Every other read here goes through Snapshot and
+// therefore queues behind the audit — that is what made a cold start look like a
+// broken page rather than a slow one. This one takes no lock at any layer.
+//
+// It deliberately serves no projection. On a fold-profile change the previous
+// checkpoint is invalid by construction, so anything this binary could offer
+// from before is unverified under a contract it no longer implements. Progress
+// with no work data is the honest answer; a stale projection labelled current
+// would not be.
+func (s *Server) handleRebuild(writer http.ResponseWriter, _ *http.Request) {
+	progress, running := s.workspace.RebuildProgress()
+	write(writer, rebuildReport{Running: running, Verified: progress.Verified, Total: progress.Total}, nil)
 }
 
 type presenceRequest struct {

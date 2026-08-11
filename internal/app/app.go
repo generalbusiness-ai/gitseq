@@ -895,6 +895,16 @@ func (w *Workspace) RebuildProgress() (progress kernel.Progress, running bool) {
 	return progress, progress.Total > 0
 }
 
+// HoldSnapshotForTest takes the snapshot lock and returns its release, so a
+// test can reproduce the state a cold audit creates — the lock held for a long
+// time — without waiting for a real one. Exported because the property worth
+// testing lives in another package: that a reader can be told what is happening
+// while this is held.
+func (w *Workspace) HoldSnapshotForTest() (release func()) {
+	w.snapshotMu.Lock()
+	return w.snapshotMu.Unlock
+}
+
 func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	result, err := w.SnapshotWithSource(ctx)
 	return result.Snapshot, err

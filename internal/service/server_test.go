@@ -679,3 +679,74 @@ func TestPublishedHandleCannotAuthorizeDurableActs(t *testing.T) {
 		t.Fatalf("the session's owner was refused: %d %s", ownResponse.Code, ownResponse.Body.String())
 	}
 }
+
+// The failure this endpoint exists for: after a fold-profile bump invalidated
+// the checkpoint, the shell and hashed assets loaded instantly while /v0/status
+// and /v0/actors returned nothing for minutes, because both go through Snapshot
+// and Snapshot holds the lock the cold audit runs under. The browser could not
+// tell a verifying resident from a broken bundle.
+//
+// So this asserts the one property that makes the difference: /v0/rebuild
+// answers while Snapshot is blocked. It holds snapshotMu directly rather than
+// simulating a slow audit, because what matters is that the endpoint does not
+// queue behind whatever else holds it.
+func TestRebuildReportAnswersWhileASnapshotIsInFlight(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	// Warm and quiet: nothing is rebuilding, so the report says so rather than
+	// showing a finished progress bar.
+	var quiet rebuildReport
+	if err := getJSON(httpServer.URL+"/v0/rebuild", &quiet); err != nil {
+		t.Fatal(err)
+	}
+	if quiet.Running {
+		t.Errorf("a warm resident reported a rebuild in flight: %+v", quiet)
+	}
+
+	// Now hold the snapshot lock, as a cold audit does for its whole duration.
+	release := workspace.HoldSnapshotForTest()
+	answered := make(chan rebuildReport, 1)
+	go func() {
+		var report rebuildReport
+		if err := getJSON(httpServer.URL+"/v0/rebuild", &report); err != nil {
+			close(answered)
+			return
+		}
+		answered <- report
+	}()
+
+	select {
+	case report, ok := <-answered:
+		if !ok {
+			t.Fatal("the rebuild report failed while a snapshot was in flight")
+		}
+		_ = report
+	case <-time.After(10 * time.Second):
+		release()
+		t.Fatal("the rebuild report queued behind the snapshot lock, which is the failure it exists to prevent")
+	}
+	release()
+}
+
+func getJSON(url string, into any) error {
+	response, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	return json.NewDecoder(response.Body).Decode(into)
+}
