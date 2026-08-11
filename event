@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Corrected shipping-layout invariant at exact head 073d68c78729dce3db971bbba9bd2bf1464152d8.","body":{"commit":"073d68c78729dce3db971bbba9bd2bf1464152d8","path":"layout_test.go"}}
+{"kind":"artifact","text":"Corrected public-surface guard at exact head 073d68c78729dce3db971bbba9bd2bf1464152d8.","body":{"commit":"073d68c78729dce3db971bbba9bd2bf1464152d8","path":"public_surface_test.go"}}
