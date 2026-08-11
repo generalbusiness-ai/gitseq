@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged canonical behavior documentation at the approved head, anchored to the shipped kernel, Workroom, live-runtime, surface, and citation-gate implementations it describes.","body":{"branch":"main","commit":"0f215b43ace0294213b632a316149e4fca935b04","path":"docs"}}
+{"kind":"artifact","text":"Merged Workroom agent guidance at the approved documentation head, aligned with the addressed inbox and live service surfaces.","body":{"branch":"main","commit":"0f215b43ace0294213b632a316149e4fca935b04","path":"SKILL.md"}}
