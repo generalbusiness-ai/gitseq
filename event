@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5a759257dd5d7dd93cef427e621742c54ec44dd5","text":"Retire the candidate SKILL.md policy artifact. This repository's review policy moved to AGENTS.md, while SKILL.md is restored unchanged."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b1774ac67fb81ff91c66c31c5f429e33a8dcc6fd","text":"The corrected-head documentation index artifact replaces the withdrawn candidate."}
