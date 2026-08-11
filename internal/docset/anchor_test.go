@@ -2,6 +2,7 @@ package docset
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"testing"
 
@@ -53,20 +54,43 @@ func TestGateEveryNamedActResolvesToALiveRecord(t *testing.T) {
 	for _, statement := range snapshot.Projection.Statements {
 		kinds[statement.Event] = statement.Kind
 	}
+	artifacts := make(map[string]workroom.Artifact, len(snapshot.Projection.Artifacts))
+	for _, artifact := range snapshot.Projection.Artifacts {
+		artifacts[artifact.Event] = artifact
+	}
 
+	failing := make(map[string]BaselineEntry)
 	for _, act := range acts {
 		kind, found := kinds[act]
-		named := dependents(pages, act)
+		artifact := artifacts[act]
+		verdict := ClassifyCitation(found, kind == workroom.KindArtifact, artifact.Retired, artifact.Stale, artifact.Path, artifact.Commit)
 		switch {
-		case !found:
-			t.Errorf("%s names no statement in this workroom; a well-formed identifier that resolves to nothing anchors nothing:\n  %s",
-				act, strings.Join(named, "\n  "))
-		case kind != workroom.KindArtifact:
-			// Retiring the request that asked for a page never makes the page
-			// wrong. Only an artifact stands for the implementation a page
-			// describes, so only an artifact is a basis.
-			t.Errorf("%s is a %s, not an artifact, so retiring it would say nothing about whether these pages still hold:\n  %s",
-				act, kind, strings.Join(named, "\n  "))
+		case verdict.Fatal:
+			naming := dependents(pages, act)
+			sort.Strings(naming)
+			failing[act] = BaselineEntry{Reason: verdict.Reason, Pages: naming}
+		case verdict.Report:
+			t.Logf("%s %s:\n  %s", act, verdict.Reason, strings.Join(dependents(pages, act), "\n  "))
 		}
+	}
+
+	// The known-failing list is what keeps this gate honest while the set is
+	// repaired. It fails anything new immediately, refuses a defect that has
+	// changed shape, and refuses an entry that has stopped failing — the last
+	// is what makes the list shrink rather than accumulate.
+	newly, changed, fixed := CompareBaseline(failing, loadBaseline(t))
+	for _, finding := range newly {
+		t.Errorf("%s %s\n  not in %s; repair it or record it there with a reason:\n  %s",
+			finding.Citation, finding.Reason, baselineFile, strings.Join(dependents(pages, finding.Citation), "\n  "))
+	}
+	for _, finding := range changed {
+		t.Errorf("%s %s\n  the recorded defect is not the current one, so this needs review rather than a silent pass:\n  %s",
+			finding.Citation, finding.Reason, strings.Join(dependents(pages, finding.Citation), "\n  "))
+	}
+	for _, finding := range fixed {
+		t.Errorf("%s %s", finding.Citation, finding.Reason)
+	}
+	if len(failing) > 0 {
+		t.Logf("%d citations remain known-failing; see %s", len(failing), baselineFile)
 	}
 }
