@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged repository pre-merge architecture, security, and simplification review policy.","body":{"commit":"97ab60c36addb40179f010f4d936f8766b9e6901","path":"AGENTS.md"}}
+{"kind":"artifact","text":"Merged documentation index link to the architecture contract.","body":{"commit":"97ab60c36addb40179f010f4d936f8766b9e6901","path":"docs/README.md"}}
