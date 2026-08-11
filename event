@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c0377308cd313be7bc1e2733ee664ddd3f7e38c7","text":"The merged main artifact replaces the reviewed branch artifact for the shared resident client."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e546a4ceb6b5181eaddd9909b04f5b6c81311183","text":"The merged main cmd/gs artifact replaces the reviewed branch artifact."}
