@@ -605,6 +605,37 @@ func TestAgentRatifierAuthorityLifecycle(t *testing.T) {
 	}
 }
 
+// AddActor must accept exactly the kinds the Workroom vocabulary defines. The
+// expectation is derived from workroom.IsActorKind rather than restated here on
+// purpose: a test that listed human, agent and service again would keep passing
+// while the two lists drifted apart, which is the duplication this seam exists
+// to remove. Adding a kind in one place and not the other fails this.
+func TestAddActorKindsFollowWorkroomVocabulary(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Words the normalizer treats differently: kinds, an authority, the
+	// membership role, the fallback kind it derives for anything unrecognised,
+	// and a word it has never seen.
+	for index, word := range []string{"human", "agent", "service", "operator", "participant", "unspecified", "reviewer"} {
+		_, _, err := workspace.AddActor(ctx, "human", fmt.Sprintf("kind-probe-%d", index), word)
+		if accepted := err == nil; accepted != workroom.IsActorKind(word) {
+			t.Errorf("AddActor kind %q accepted = %v, workroom.IsActorKind = %v", word, accepted, workroom.IsActorKind(word))
+		}
+	}
+	// An omitted kind is defaulted rather than rejected, so it is deliberately
+	// outside the correspondence above; IsActorKind("") is false.
+	actor, _, err := workspace.AddActor(ctx, "human", "kind-probe-default", "")
+	if err != nil {
+		t.Fatalf("AddActor with an omitted kind = %v", err)
+	}
+	if actor.Name != "kind-probe-default" {
+		t.Errorf("defaulted actor = %+v", actor)
+	}
+}
+
 func TestValidateAuthorityRoleUsesRosterKindClassification(t *testing.T) {
 	for _, role := range []string{"", "participant", "agent", "human", "service"} {
 		if err := validateAuthorityRole(role); err == nil {

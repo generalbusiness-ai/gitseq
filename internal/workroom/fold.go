@@ -783,12 +783,21 @@ func normalizeRosterState(kind, role string) normalizedRosterState {
 	return normalized
 }
 
-// RosterRoleIsKind reports whether a legacy role word is descriptive kind,
-// rather than authority. It deliberately delegates the vocabulary to the
-// compatibility normalizer instead of carrying a second list.
-func RosterRoleIsKind(role string) bool {
-	normalized := normalizeRosterState("", role)
-	return normalized.kind == role && normalized.authorityRole == ""
+// IsActorKind reports whether a word is one of the descriptive actor kinds the
+// roster vocabulary defines. It answers the one question both callers ask, so
+// it is named for the vocabulary rather than for either of them: the fold's
+// authority precondition asks it to reject a kind word offered as an authority,
+// and the application asks it to accept a kind on a new actor.
+//
+// It delegates to the compatibility normalizer rather than carrying a list, so
+// the vocabulary lives in exactly one place. Both clauses are load-bearing: the
+// normalizer derives kind "unspecified" for any word it does not recognise, so
+// comparing kind alone would admit "unspecified" as a kind. Requiring an empty
+// authority is what separates a word that names a kind from one the normalizer
+// merely failed to classify.
+func IsActorKind(word string) bool {
+	normalized := normalizeRosterState("", word)
+	return normalized.kind == word && normalized.authorityRole == ""
 }
 
 // membershipCarriesOperator includes dormant grants: restoring their retired

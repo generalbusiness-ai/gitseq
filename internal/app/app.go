@@ -493,7 +493,7 @@ func (w *Workspace) AddActor(ctx context.Context, operatorName, name, kind strin
 	if kind == "" {
 		kind = "agent"
 	}
-	if kind != "human" && kind != "agent" && kind != "service" {
+	if !workroom.IsActorKind(kind) {
 		return Actor{}, nil, fmt.Errorf("actor kind must be human, agent, or service, got %q", kind)
 	}
 	private, fingerprint, path, err := generateActor(filepath.Join(w.MetaDir, "actors"), name)
@@ -659,7 +659,7 @@ func (w *Workspace) RevokeRole(ctx context.Context, revokerName, actorAddress, r
 }
 
 func validateAuthorityRole(role string) error {
-	if role == "" || role == "participant" || workroom.RosterRoleIsKind(role) {
+	if role == "" || role == "participant" || workroom.IsActorKind(role) {
 		return fmt.Errorf("invalid authority role %q", role)
 	}
 	return nil

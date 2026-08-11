@@ -805,14 +805,17 @@ func TestNormalizeRosterStateOwnsLegacyKindVocabulary(t *testing.T) {
 			}
 		})
 	}
-	for _, role := range []string{"agent", "human", "service"} {
-		if !RosterRoleIsKind(role) {
-			t.Errorf("RosterRoleIsKind(%q) = false", role)
+	for _, word := range []string{"agent", "human", "service"} {
+		if !IsActorKind(word) {
+			t.Errorf("IsActorKind(%q) = false", word)
 		}
 	}
-	for _, role := range []string{"", "participant", "operator", "ratifier", "unspecified"} {
-		if RosterRoleIsKind(role) {
-			t.Errorf("RosterRoleIsKind(%q) = true", role)
+	// "unspecified" is the kind the normalizer derives for words it does not
+	// recognise, so it must not read back as a kind the vocabulary defines.
+	// This is the case the authority clause in IsActorKind exists to exclude.
+	for _, word := range []string{"", "participant", "operator", "ratifier", "unspecified"} {
+		if IsActorKind(word) {
+			t.Errorf("IsActorKind(%q) = true", word)
 		}
 	}
 }
