@@ -360,3 +360,123 @@ test("the rebuild notice explains verification without implying failure or curre
     await vite.close();
   }
 });
+
+// Advisory focus and shared selection are wired through click handlers, so a
+// source regex can neither see the wiring break nor survive a harmless
+// refactor. These drive the real components in a DOM and read what the handler
+// was called with. The rendering half of focus is pinned behaviourally in
+// components.test.mjs; only the click half needs a browser.
+
+const focusRoom = () => {
+  const room = structuredClone(workroom);
+  room.status.durable.projection.statements = [
+    { event: "event-one", actor: "codex-fingerprint", kind: "request", text: "repair the UI", body: { to: "codex-fingerprint" }, timestamp: 10 },
+  ];
+  room.status.durable.projection.decisions = [{ event: "event-one", verdict: "effective", reason: "recorded" }];
+  room.status.durable.projection.commitments = [
+    { request: "event-one", requester: "codex-fingerprint", addressed_to: "codex-fingerprint", status: "open" },
+  ];
+  room.status.durable.projection.provenance = { "event-one": [] };
+  return room;
+};
+
+const buttonByText = (match) =>
+  [...document.querySelectorAll("button")].find((button) => match(button.textContent.trim()));
+
+test("the focus button toggles advisory focus for the selected event", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const calls = [];
+  try {
+    const { TopBar } = await vite.ssrLoadModule("/src/components/TopBar.tsx");
+    const mount = (focus) =>
+      act(async () => {
+        root.render(
+          React.createElement(TopBar, {
+            workroom: focusRoom(),
+            session: { actor: "codex", activity: { status: "available", focus }, setActivity: (next) => calls.push(next) },
+            mainView: "work",
+            selection: { kind: "event", id: "event-one" },
+            onShowWork() {}, onShowActivity() {}, onJumpEvent() {}, onOpenProfile() {},
+          }),
+        );
+      });
+
+    await mount([]);
+    const focusButton = buttonByText((text) => text.startsWith("focus"));
+    assert.ok(focusButton, "focus button did not render for a selected event");
+    await click(focusButton);
+    assert.deepEqual(calls.at(-1), { focus: ["event-one"] }, "focusing did not add the selected event");
+
+    // Focused already: the same button must remove it rather than add it twice.
+    await mount(["event-one"]);
+    const unfocusButton = buttonByText((text) => text === "unfocus");
+    assert.ok(unfocusButton, "unfocus button did not render for a focused selection");
+    await click(unfocusButton);
+    assert.deepEqual(calls.at(-1), { focus: [] }, "unfocusing did not remove the selected event");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+test("the clear button empties advisory focus", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const calls = [];
+  try {
+    const { TopBar } = await vite.ssrLoadModule("/src/components/TopBar.tsx");
+    await act(async () => {
+      root.render(
+        React.createElement(TopBar, {
+          workroom: focusRoom(),
+          session: {
+            actor: "codex",
+            activity: { status: "available", focus: ["event-one", "event-two"] },
+            setActivity: (next) => calls.push(next),
+          },
+          mainView: "work",
+          onShowWork() {}, onShowActivity() {}, onJumpEvent() {}, onOpenProfile() {},
+        }),
+      );
+    });
+    const clear = buttonByText((text) => text === "clear");
+    assert.ok(clear, "clear button did not render while focus was held");
+    await click(clear);
+    assert.deepEqual(calls.at(-1), { focus: [] }, "clear did not empty the held focus");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+test("opening a work item selects the event and opens its thread", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const selected = [];
+  const opened = [];
+  try {
+    const { WorkView } = await vite.ssrLoadModule("/src/components/WorkDrawer.tsx");
+    await act(async () => {
+      root.render(
+        React.createElement(WorkView, {
+          workroom: focusRoom(),
+          session: { actor: "codex", activity: { status: "available", focus: [] }, setActivity() {} },
+          highlight: { events: new Set(), commits: new Set() },
+          onSelect: (selection) => selected.push(selection),
+          onOpenThread: (event) => opened.push(event),
+        }),
+      );
+    });
+    const row = [...document.querySelectorAll("button")].find((button) => button.textContent.includes("repair the UI"));
+    assert.ok(row, "no work row rendered for the open commitment");
+    await click(row);
+    // Both halves matter: selection drives the rest of the surface, and the
+    // thread only opens because the same handler asks for it.
+    assert.deepEqual(selected.at(-1), { kind: "event", id: "event-one" }, "opening a work item did not select its event");
+    assert.deepEqual(opened.at(-1), "event-one", "opening a work item did not open its thread");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
