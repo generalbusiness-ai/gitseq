@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5ba6140445cfccefb5b92190f157c991f03e341f","text":"The corrected architecture page replaces the candidate that put repository policy in SKILL.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5a759257dd5d7dd93cef427e621742c54ec44dd5","text":"Retire the candidate SKILL.md policy artifact. This repository's review policy moved to AGENTS.md, while SKILL.md is restored unchanged."}
