@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Stable exact docset-baseline candidate for the main-red ack and say repair.","body":{"commit":"d69191e7ce18e756a6836eea7ad47111f4e81b59","path":"internal/docset"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ca68937bb3395169a9f15936659a4037e5a1543","text":"Replace the same exact docs head with its stable addressed-inbox governance basis."}
