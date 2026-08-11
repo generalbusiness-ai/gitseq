@@ -138,9 +138,10 @@ because [`gs serve`](serve.md) refuses any listen address that is not
 loopback: whoever is reading the page is already on the host it names.
 
 None of that is part of the durable projection. A checkout associated
-with a commitment only through a commit's `Rests-On:` trailer carries the
-**local** marker. That association is useful local evidence, not an
-actor-signed statement, and the marker does not claim otherwise.
+with a commitment only through a commit's `Rests-On:` trailer is marked
+**local** in the view, and that marking is the whole of the claim: a
+trailer is ordinary commit text, not an actor-signed statement, so the
+association is local evidence and nothing the log will vouch for.
 
 ## See also
 

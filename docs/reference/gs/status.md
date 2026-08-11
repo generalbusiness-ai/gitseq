@@ -57,7 +57,7 @@ fallback`. Then a line of totals, and five sections:
 | Section | What is in it |
 |---|---|
 | Actionable commitments | Commitments someone can advance now: `open`, `promised`, `reported`. |
-| Needs attention | Live commitments in any other state — stale, reneged, cancelled, withdrawn. |
+| Needs attention | Live commitments in any other state — `stale`, `reneged`, `cancelled`. |
 | Current artifacts | Artifacts that are neither retired nor stale. |
 | Stale artifacts | Artifacts that were retired, and artifacts a retirement reached. |
 | Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
