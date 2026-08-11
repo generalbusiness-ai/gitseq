@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a963facb859b09e6c9200e65019c6876427000db"}
+{"kind":"artifact","text":"Corrected CI suite-deduplication workflow at exact head 073d68c78729dce3db971bbba9bd2bf1464152d8.","body":{"commit":"073d68c78729dce3db971bbba9bd2bf1464152d8","path":".github/workflows/ci.yml"}}
