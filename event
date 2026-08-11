@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Canonical kernel–application layering contract at the reviewed exact head.","body":{"commit":"10a5a13431179420a275453892cbb163a97814e6","path":"docs/reference/architecture.md"}}
+{"kind":"artifact","text":"Repository pre-merge architecture, security, and simplification review policy at the reviewed exact head.","body":{"commit":"10a5a13431179420a275453892cbb163a97814e6","path":"AGENTS.md"}}
