@@ -1,11 +1,12 @@
 ---
 title: MCP status
-summary: Project durable workroom state plus a composite cursor.
+summary: Project durable work, live presence, and this session's priority ephemeral chat.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a40ed6053a0bb5c1eeed9febb540498d4258799f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd731b2cc1986b3ca6fe9b0a0af3394790a3ee6b
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:428df978ec0099cd094b5da1ac93b3837885c0a8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e517fd6e34c43f66733b2d78a7200f2b123412db
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:63b428d3c3e219ca7a1d9dade8e3f791466fcfe6
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aefe829ae81c11c3e33404d9e55f60e43ae31fb2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:741cc0949858b5afa5d8ed11b47bbcc61d012244
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66b6cb0b770fe88808130a195babf79fe1ea7746
 ---
 
 # `status`
@@ -55,13 +56,14 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 | `needs_your_attention` | Your own acts that did not take force, and events that concern you. |
 | `totals` | Depth, commitment counts by status, artifacts, stale artifacts, ineffective and disputed acts. |
 | `live` | Presence and the live generation, or `degraded`. |
+| `priority_ephemeral_chat` | This exact session's bounded, unacknowledged addressed frames. `available` is false when the resident is unavailable; `skipped` counts additional pending frames behind the current page. |
 | `cursor` | The composite cursor. Pass it back to `wait`. |
 | `follow_with_wait` | A reminder of exactly that. |
 
 There is also a one-line text summary, which is usually enough:
 
 ```text
-depth 1, you hold 3 roles, 0 addressed to you, 0 waiting on you, 0 you are waiting on,
+priority ephemeral chat: 0 unacknowledged; depth 1, you hold 3 roles, 0 addressed to you, 0 waiting on you, 0 you are waiting on,
 0 not actionable, 0 of your acts did not take force; live alice (1fb980b1de47)
 ```
 
@@ -90,8 +92,16 @@ configure and nothing to keep in step.
 If no service answers, `status` still answers from the local log and
 marks the live cursor `degraded`. Losing the resident changes what is
 knowable, not the shape of the answer: the same digest is applied on both
-paths.
+paths. `priority_ephemeral_chat.available` is false; the adapter does not
+invent an empty live inbox.
+
+An upgraded adapter can also meet an older resident that does not implement
+the private inbox routes yet. It keeps durable status working and marks
+priority chat unavailable until that resident is upgraded or restarted. It
+does not report an empty inbox as if the older service had checked one.
+The adapter registers the versioned inbox capability only with a resident that
+implements it; ordinary presence alone never opts a session into delivery.
 
 ## See also
 
-- [`wait`](wait.md), [`gs status`](../gs/status.md)
+- [`wait`](wait.md), [`ack`](ack.md), [`gs status`](../gs/status.md)

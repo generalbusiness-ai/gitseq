@@ -2,10 +2,11 @@
 title: MCP presence
 summary: Show who is present and update this session's leased activity.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9d3606442131e4bc700d1310451657bd4eac438
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa5182bb85a8347c55bcf229d53b104dde600a7
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0be172538ea08858bf5950d699eb3c8d916924c0
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:63b428d3c3e219ca7a1d9dade8e3f791466fcfe6
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aefe829ae81c11c3e33404d9e55f60e43ae31fb2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:741cc0949858b5afa5d8ed11b47bbcc61d012244
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66b6cb0b770fe88808130a195babf79fe1ea7746
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f6c9608584a509b037474ff178f6298aa69ea483
 ---
 
 # `presence`
@@ -67,6 +68,14 @@ eight events, and the first non-empty note under the browser's locale-aware
 string ordering. Activity follows the presence lease and disappears when that
 lease expires.
 
+Addressed chat also follows the exact lease. All currently live sessions of a
+uniquely mentioned actor join the conversation, so the sender leaving does not
+discard it while an addressed recipient remains. Only sessions that register
+`gitseq.addressed-inbox.v1` receive pending inbox references. The current
+adapter registers that capability after announcing presence; browser sessions
+and older adapters do not, so the resident never builds an inbox they cannot
+consume. A session that arrives later receives no earlier chat.
+
 Focus is attention, not durable workflow state. It never claims a request,
 makes a promise, reports completion, or grants authority. The adapter supplies
 the actor and private session identifier; callers cannot update somebody
@@ -90,6 +99,13 @@ The durable tools behave differently — they keep working and report a
 
 Leases expire, and the resident sweeps expired sessions, so a client that
 disappears without departing leaves the room on its own.
+
+Expiry or explicit departure removes that exact session's inbox and
+conversation participation. Reusing an expired identifier begins with an
+empty inbox. Rebinding a still-live identifier to another actor is refused.
+The resident bounds both total live sessions and sessions per actor; see
+[`limits`](../limits.md). A resident restart changes the live generation and
+loses all presence, conversations, and pending inboxes.
 
 ## See also
 

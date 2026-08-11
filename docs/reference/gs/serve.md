@@ -2,11 +2,12 @@
 title: gs serve
 summary: Run the resident service: sequencing, presence, change notification, and the browser view.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:404f16bcf0df9bf1052cba27800143ef29a9a57d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:845e3cc9af4e2a888ceece1a72d5b31d9ba72fe1
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9999be33277b1a209e3366ef9f9d6c6075f069a0
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa5182bb85a8347c55bcf229d53b104dde600a7
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9d3606442131e4bc700d1310451657bd4eac438
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e517fd6e34c43f66733b2d78a7200f2b123412db
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:82a33e465eab84f47ad7bd85f16517ade032ab78
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d97eed896404f401dae2439928e31c6a0290ed47
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aefe829ae81c11c3e33404d9e55f60e43ae31fb2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:741cc0949858b5afa5d8ed11b47bbcc61d012244
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f6c9608584a509b037474ff178f6298aa69ea483
 ---
 
 # `gs serve`
@@ -125,6 +126,22 @@ never fetched by `attach`, never published, and never consulted by
 
 Expired presence leases are swept, so a session that goes away without
 departing does not linger in presence forever.
+
+## Local worktrees
+
+The browser view served by a resident also reports local checkout state.
+It names the served checkout's own absolute path, so a reader can tell
+which repository the page is showing, and otherwise emits only checkout
+basenames, branch and HEAD, and explicit clean, dirty, detached, bare,
+locked, prunable or unavailable state. Disclosing the served path is safe
+because [`gs serve`](serve.md) refuses any listen address that is not
+loopback: whoever is reading the page is already on the host it names.
+
+None of that is part of the durable projection. A checkout associated
+with a commitment only through a commit's `Rests-On:` trailer is marked
+**local** in the view, and that marking is the whole of the claim: a
+trailer is ordinary commit text, not an actor-signed statement, so the
+association is local evidence and nothing the log will vouch for.
 
 ## See also
 
