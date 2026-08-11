@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Documentation index link to the canonical architecture page at the reviewed exact head.","body":{"commit":"10a5a13431179420a275453892cbb163a97814e6","path":"docs/README.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d7f3c45a331cbf7f4ee2ce970f8f929b4a9374d8","text":"Replace the stale architecture exact-head artifact with the identical exact head on stable provenance."}
