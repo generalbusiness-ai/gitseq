@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Mutually exclusive, evidence-bounded cold-rebuild and loading states at the corrected head.","body":{"commit":"83e60c304adb0f158f495932e0753aae436f7292","path":"ui"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f253959e1072b6c1b915eb9d155873acb9ddf42a","text":"The corrected evidence head supersedes the prior internal/kernel candidate."}
