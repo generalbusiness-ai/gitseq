@@ -1,1 +1,1 @@
-{"kind":"assert","text":"approved candidate merged","body":{"merge_approval":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b8f66110b6f20de171eaf3ad437abb61b34e337","merge_candidate":"10a5a13431179420a275453892cbb163a97814e6","merge_head":"97ab60c36addb40179f010f4d936f8766b9e6901","merge_target_pre_head":"e8a582839a4c0099504335dd3cd5819ca375ce2b"}}
+{"kind":"artifact","text":"Merged canonical kernel–application architecture contract.","body":{"commit":"97ab60c36addb40179f010f4d936f8766b9e6901","path":"docs/reference/architecture.md"}}
