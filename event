@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:791273a29ebfb29e0b14ed2e3142989fa6da5471","text":"Withdraw the readiness report because evidence review required a new exact implementation head."}
+{"kind":"artifact","text":"Semantic-free per-load cold-audit progress at the corrected evidence head.","body":{"commit":"83e60c304adb0f158f495932e0753aae436f7292","path":"internal/kernel"}}
