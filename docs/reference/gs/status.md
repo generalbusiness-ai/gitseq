@@ -3,7 +3,7 @@ title: gs status
 summary: Project the current state of the workroom, bounded by default.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5644516fe30fcb0920b688e19e2ef185d18240f1
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cefec14de9954bc48837a9b0b9ddd8dc98d861ea
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d87af410275ef5dffdd11cdd5b9a2a3b5a62b45
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d97eed896404f401dae2439928e31c6a0290ed47
 ---
@@ -56,8 +56,8 @@ fallback`. Then a line of totals, and five sections:
 
 | Section | What is in it |
 |---|---|
-| Actionable commitments | Commitments someone can advance now: `open`, `requested`, `promised`, `reported`. |
-| Needs attention | Live commitments in any other state — stale, reneged, cancelled, dangling. |
+| Actionable commitments | Commitments someone can advance now: `open`, `promised`, `reported`. |
+| Needs attention | Live commitments in any other state — stale, reneged, cancelled, withdrawn. |
 | Current artifacts | Artifacts that are neither retired nor stale. |
 | Stale artifacts | Artifacts that were retired, and artifacts a retirement reached. |
 | Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
