@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:68626b743723f48e85f2595e944e1a9d101ef5fe"}
+{"kind":"artifact","text":"Merged documentation restoring the ack reference and exact say contract on main.","body":{"commit":"a3d097ddaab9b8482cb9d03966af86e1ff0c4ddc","path":"docs"}}
