@@ -19,13 +19,13 @@ func clauseSource(actor string, body map[string]string) ClauseSource {
 	body[ClauseKey] = ClauseConnector
 	return ClauseSource{
 		Event: "git:sha1:g#git:sha1:" + actor, Actor: actor, Body: body,
-		Bases: []string{testCharter},
+		Bases: []string{testCharter}, Effective: true,
 	}
 }
 
 // under runs admission for the charter these fixtures are anchored to.
 func under(sources []ClauseSource, authors map[string]Author) Reading {
-	return ClausesFrom(sources, authors, testCharter, map[string][]string{})
+	return ClausesFrom(sources, authors, testCharter)
 }
 
 // The charter fixes who may state a clause, but the fold does not enforce
@@ -202,7 +202,7 @@ func TestNoClausesMeansNoAdmission(t *testing.T) {
 func TestAnUnboundedBodyProducesNoClause(t *testing.T) {
 	operators := map[string]Author{"op": {Fingerprint: "op", Roles: []string{"operator"}}}
 	clausesFor := func(body map[string]string) []Clause {
-		return under([]ClauseSource{{Event: "e", Actor: "op", Body: body, Bases: []string{testCharter}}}, operators).Clauses
+		return under([]ClauseSource{{Event: "e", Actor: "op", Body: body, Bases: []string{testCharter}, Effective: true}}, operators).Clauses
 	}
 
 	for name, body := range map[string]map[string]string{
@@ -254,7 +254,7 @@ func TestAClauseMustRestOnTheCharterBeingActedUnder(t *testing.T) {
 	elsewhere := ClauseSource{
 		Event: "git:sha1:g#git:sha1:elsewhere", Actor: "hugh",
 		Body:  map[string]string{ClauseKey: ClauseConnector, "issues": "8"},
-		Bases: []string{otherCharter},
+		Bases: []string{otherCharter}, Effective: true,
 	}
 
 	reading := under([]ClauseSource{mine, elsewhere}, operator)
@@ -272,19 +272,43 @@ func TestAClauseMustRestOnTheCharterBeingActedUnder(t *testing.T) {
 	}
 }
 
-// The anchor may be indirect: a clause resting on an act that rests on the
-// charter is still granted under it.
-func TestAnchoringFollowsTheChain(t *testing.T) {
+// An intermediate basis is not a grant, and this expectation used to say the
+// opposite.
+//
+// A rests_on edge records that an act bears on another; nothing in it delegates
+// a charter's admission scope. Following arbitrary ancestry invents a meaning
+// the signer never expressed, and in a workroom almost everything is
+// transitively connected to almost everything else, so the walk would have
+// admitted clauses granted under no charter at all. The charter must be cited
+// outright.
+func TestAnIntermediateBasisIsNotAGrant(t *testing.T) {
 	const intermediate = "git:sha1:g#git:sha1:intermediate"
 	indirect := ClauseSource{
 		Event: "git:sha1:g#git:sha1:indirect", Actor: "hugh",
 		Body:  map[string]string{ClauseKey: ClauseConnector, "issues": "9"},
-		Bases: []string{intermediate},
+		Bases: []string{intermediate}, Effective: true,
 	}
-	reading := ClausesFrom([]ClauseSource{indirect}, operator, testCharter,
-		map[string][]string{intermediate: {testCharter}})
-	if len(reading.Clauses) != 1 {
-		t.Fatalf("a clause anchored through an intermediate act was refused: %+v", reading)
+	reading := ClausesFrom([]ClauseSource{indirect}, operator, testCharter)
+	if len(reading.Clauses) != 0 {
+		t.Fatalf("a clause that never cites this charter was admitted: %+v", reading)
+	}
+	if len(reading.Refusals) != 1 || !strings.Contains(reading.Refusals[0].Reason, "charter") {
+		t.Fatalf("refusals = %+v, want the unanchored clause named", reading.Refusals)
+	}
+}
+
+// The fold keeps refused acts in Statements, so presence is not force. An
+// operator-signed clause the workroom rejected must not open the door.
+func TestAnIneffectiveClauseIsRefused(t *testing.T) {
+	refused := clauseSource("hugh", map[string]string{"issues": "7"})
+	refused.Effective = false
+
+	reading := ClausesFrom([]ClauseSource{refused}, operator, testCharter)
+	if len(reading.Clauses) != 0 {
+		t.Fatalf("a clause the fold gave no force was admitted: %+v", reading)
+	}
+	if len(reading.Refusals) != 1 || !strings.Contains(reading.Refusals[0].Reason, "force") {
+		t.Fatalf("refusals = %+v, want the ineffective clause named", reading.Refusals)
 	}
 }
 
@@ -292,7 +316,7 @@ func TestAnchoringFollowsTheChain(t *testing.T) {
 // here matters because the alternative is that forgetting the flag silently
 // admits every clause in the log.
 func TestNoCharterAdmitsNothing(t *testing.T) {
-	reading := ClausesFrom([]ClauseSource{clauseSource("hugh", map[string]string{"issues": "7"})}, operator, "", nil)
+	reading := ClausesFrom([]ClauseSource{clauseSource("hugh", map[string]string{"issues": "7"})}, operator, "")
 	if len(reading.Clauses) != 0 {
 		t.Fatalf("clauses were admitted with no charter named: %+v", reading)
 	}

@@ -1,6 +1,7 @@
 package github
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -28,8 +29,14 @@ type ClauseSource struct {
 	Retired bool
 
 	// Bases are the events this statement rests on, carried so admission can
-	// check that a clause is anchored to the charter being acted under.
+	// check that a clause cites the charter being acted under.
 	Bases []string
+
+	// Effective is the fold's ruling. Projection.Statements deliberately holds
+	// acts the fold refused, because the log records what was said and not only
+	// what carried, so presence here is not force. Without this an
+	// operator-signed clause the workroom rejected could still open the door.
+	Effective bool
 }
 
 // Refusal records one clause-shaped statement the connector declined, and why.
@@ -78,15 +85,18 @@ type Reading struct {
 // What is kept from that attempt is the diagnosis, not the permissiveness: each
 // refusal says which statement it refused and why, so an operator can repair a
 // clause instead of being told there is none.
-func ClausesFrom(sources []ClauseSource, authors map[string]Author, charter string, provenance map[string][]string) Reading {
-	anchored := clausesUnder(charter, sources, provenance)
+func ClausesFrom(sources []ClauseSource, authors map[string]Author, charter string) Reading {
 	reading := Reading{Clauses: make([]Clause, 0, len(sources))}
 	for _, source := range sources {
 		if source.Body[ClauseKey] != ClauseConnector {
 			continue
 		}
-		if !anchored[source.Event] {
-			reading.Refusals = append(reading.Refusals, Refusal{source.Event, "does not rest on the charter this run acts under, so it bounds some other doorstep"})
+		if !source.Effective {
+			reading.Refusals = append(reading.Refusals, Refusal{source.Event, "the fold gave it no force, so the workroom never granted this scope"})
+			continue
+		}
+		if !underCharter(source, charter) {
+			reading.Refusals = append(reading.Refusals, Refusal{source.Event, "does not cite the charter this run acts under as a basis, so it bounds some other doorstep"})
 			continue
 		}
 		if source.Retired {
@@ -111,48 +121,27 @@ func ClausesFrom(sources []ClauseSource, authors map[string]Author, charter stri
 	return reading
 }
 
-// clausesUnder marks the statements anchored to this run's charter.
+// underCharter reports whether this clause was granted under the charter the
+// run acts under.
 //
 // Operator standing on the author is not enough, and this gap was open until
-// codex found it. A clause is a scope granted under a particular charter; if
+// codex found it: a clause is a scope granted by a particular charter, so if
 // admission only checks who signed it, a clause written under one charter — or
 // under a charter since withdrawn — is honoured beneath any other charter the
-// run happens to name. The signed basis is what ties a scope to the authority
-// that granted it, so that is what is checked.
+// run happens to name.
 //
-// Reachability rather than a direct citation, because a clause may legitimately
-// rest on an intermediate act that rests on the charter. The walk is bounded by
-// the number of statements, and a cycle cannot repeat a visited event.
-func clausesUnder(charter string, sources []ClauseSource, provenance map[string][]string) map[string]bool {
+// The charter must be a direct signed basis. An earlier version followed the
+// whole ancestry, which was wrong for a reason worth keeping: a rests_on edge
+// records that an act bears on another, and nothing in it delegates admission
+// scope. Treating arbitrary ancestry as a grant invents a fallback meaning the
+// signer never expressed, and almost everything in a workroom is transitively
+// connected to almost everything else. Requiring the charter to be cited
+// outright is the narrower contract and the smaller code.
+func underCharter(source ClauseSource, charter string) bool {
 	if charter == "" {
-		return map[string]bool{}
-	}
-	anchored := make(map[string]bool)
-	var reaches func(event string, seen map[string]bool) bool
-	reaches = func(event string, seen map[string]bool) bool {
-		if event == charter {
-			return true
-		}
-		if seen[event] {
-			return false
-		}
-		seen[event] = true
-		for _, basis := range provenance[event] {
-			if reaches(basis, seen) {
-				return true
-			}
-		}
 		return false
 	}
-	for _, source := range sources {
-		for _, basis := range source.Bases {
-			if reaches(basis, map[string]bool{}) {
-				anchored[source.Event] = true
-				break
-			}
-		}
-	}
-	return anchored
+	return slices.Contains(source.Bases, charter)
 }
 
 // authorized reports whether this actor may state a clause. The charter says

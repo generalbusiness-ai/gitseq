@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/generalbusiness-ai/gitseq/internal/connector/github"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -307,4 +308,68 @@ func TestAProposalMustNameFactsThatHoldTogether(t *testing.T) {
 			t.Error("a real request was paired with a real artifact from different work")
 		}
 	})
+}
+
+// The composed path, from a projection through clauseSources into admission.
+//
+// The unit fixtures in internal/connector manufacture ClauseSource values
+// directly, so they cannot prove that this command builds them correctly from a
+// real projection — and every defect codex found at this boundary lived in that
+// gap rather than in the admission logic. This exercises what the command
+// actually assembles: the fold's ruling, the signed bases, and the charter the
+// run was told to act under.
+func TestTheCommandAdmitsOnlyEffectiveClausesCitingTheSelectedCharter(t *testing.T) {
+	const chosen = "git:sha1:g#git:sha1:chosen-charter"
+	const other = "git:sha1:g#git:sha1:other-charter"
+
+	clause := func(event, basis string) workroom.Statement {
+		return workroom.Statement{
+			Event: event, Kind: workroom.KindAssert, Actor: "hugh",
+			Body: map[string]string{"connector": "github", "issues": "7"},
+		}
+	}
+	good := clause("git:sha1:g#git:sha1:good", chosen)
+	refused := clause("git:sha1:g#git:sha1:refused", chosen)
+	foreign := clause("git:sha1:g#git:sha1:foreign", other)
+
+	view := workroom.Projection{
+		Statements: []workroom.Statement{good, refused, foreign},
+		Decisions: []workroom.Decision{
+			{Event: good.Event, Verdict: workroom.Effective},
+			{Event: refused.Event, Verdict: workroom.Ineffective, Reason: "request state requires body.conditions"},
+			{Event: foreign.Event, Verdict: workroom.Effective},
+		},
+		Provenance: map[string][]string{
+			good.Event:    {chosen},
+			refused.Event: {chosen},
+			foreign.Event: {other},
+		},
+		Actors: map[string]workroom.ActorState{
+			"hugh": {Name: "hugh", Roles: []string{"operator"}},
+		},
+	}
+
+	reading := github.ClausesFrom(clauseSources(view), authors(view), chosen)
+	if len(reading.Clauses) != 1 {
+		t.Fatalf("admitted %d clauses, want only the effective one citing this charter: %+v", len(reading.Clauses), reading)
+	}
+	if reading.Clauses[0].Event != good.Event {
+		t.Errorf("admitted %q, want %q", reading.Clauses[0].Event, good.Event)
+	}
+
+	reasons := map[string]string{}
+	for _, refusal := range reading.Refusals {
+		reasons[refusal.Event] = refusal.Reason
+	}
+	if !strings.Contains(reasons[refused.Event], "force") {
+		t.Errorf("an ineffective clause was not refused for want of force: %q", reasons[refused.Event])
+	}
+	if !strings.Contains(reasons[foreign.Event], "charter") {
+		t.Errorf("a clause under another charter was not refused for that: %q", reasons[foreign.Event])
+	}
+
+	// A run naming no charter reaches GitHub for nothing at all.
+	if empty := github.ClausesFrom(clauseSources(view), authors(view), ""); len(empty.Clauses) != 0 {
+		t.Fatalf("clauses were admitted with no charter selected: %+v", empty)
+	}
 }

@@ -98,7 +98,7 @@ func run(ctx context.Context, arguments []string) error {
 		})
 	}
 
-	reading := github.ClausesFrom(clauseSources(snapshot.Projection), authors(snapshot.Projection), *charter, snapshot.Projection.Provenance)
+	reading := github.ClausesFrom(clauseSources(snapshot.Projection), authors(snapshot.Projection), *charter)
 	clauses := reading.Clauses
 	if len(clauses) == 0 {
 		// Not an error. A workroom with no clause has asked for nothing, and
@@ -392,13 +392,25 @@ func charterAuthorizes(body map[string]string, charter, operation string) error 
 	return fmt.Errorf("charter %s authorizes %s, not %s", charter, strings.Join(declared, " and "), operation)
 }
 
+// clauseSources carries the projection's statements to admission, including the
+// fold's ruling on each.
+//
+// Presence in Statements is not force: the fold keeps refused acts there because
+// the log records what was said and not only what carried. Passing them without
+// their decision let an operator-signed clause the workroom had rejected open
+// the door — the same Statements-versus-force mistake this file already fixes on
+// the outbound side, which I made twice before noticing it was one mistake.
 func clauseSources(projection workroom.Projection) []github.ClauseSource {
+	effective := make(map[string]bool, len(projection.Decisions))
+	for _, decision := range projection.Decisions {
+		effective[decision.Event] = decision.Verdict == workroom.Effective
+	}
 	sources := make([]github.ClauseSource, 0, len(projection.Statements))
 	for _, statement := range projection.Statements {
 		sources = append(sources, github.ClauseSource{
 			Event: statement.Event, Actor: statement.Actor, Body: statement.Body,
 			Stale: statement.Stale, Retired: statement.Retired,
-			Bases: projection.Provenance[statement.Event],
+			Bases: projection.Provenance[statement.Event], Effective: effective[statement.Event],
 		})
 	}
 	return sources
