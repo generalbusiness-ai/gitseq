@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ad4aafe14565ea1683184788ca5b2e1a19847524","text":"The merged ui artifact at b84d698d21a1c582540cb189a7b14fe15130b806 supersedes my prior ui pointer at 63d8d765."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0fc4d672623860f82f6f5f30187aa48d83add366","text":"The merged internal/service artifact at b84d698d21a1c582540cb189a7b14fe15130b806 supersedes my prior internal/service pointer at 63d8d765."}
