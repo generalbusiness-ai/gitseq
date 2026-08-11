@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will complete the corrected architecture contract on exact head 10a5a13431179420a275453892cbb163a97814e6 and obtain independent review."}
+{"kind":"artifact","text":"Canonical kernel–application layering contract at the reviewed exact head.","body":{"commit":"10a5a13431179420a275453892cbb163a97814e6","path":"docs/reference/architecture.md"}}
