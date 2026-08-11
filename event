@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"layout_test.go@e82d9fff2d858662f7e3ddc2492c6d5b559d46fa: Shipping layout checks retain only the public module pin and tracked spike-result presence.","body":{"commit":"e82d9fff2d858662f7e3ddc2492c6d5b559d46fa","path":"layout_test.go"}}
+{"kind":"artifact","text":"public_surface_test.go@e82d9fff2d858662f7e3ddc2492c6d5b559d46fa: Public-surface tests pin the single-suite evidence flow and the narrowed preview-clone build gate.","body":{"commit":"e82d9fff2d858662f7e3ddc2492c6d5b559d46fa","path":"public_surface_test.go"}}
