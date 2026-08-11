@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f5b509c3a22e7ab843901d926bdc1bfa7b66bd8b","text":"Retired by the merge at adb6ec9e, which changed five pages under this path. It named 1bc7220f53."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:63bde8f046d9b96e3493700797a939507540eedf","text":"Retired by the merge at adb6ec9e. The wider docs path is the declared winner over this page-level string, so nothing is published here again and the area settles on one granularity. It named a4f4a57a73."}
