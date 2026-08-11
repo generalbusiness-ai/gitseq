@@ -201,10 +201,10 @@ func proposePullRequest(ctx context.Context, client *github.Client, owner, name 
 // error, a retired one is a staleness error, and an artifact naming another
 // commit is a claim about the wrong code.
 func proposalIsCoherent(projection workroom.Projection, request, artifact, commit string) error {
-	if _, err := liveStatement(projection, request, "request"); err != nil {
+	if _, err := effectiveStatement(projection, request, "request"); err != nil {
 		return err
 	}
-	if _, err := liveStatement(projection, artifact, "artifact"); err != nil {
+	if _, err := effectiveStatement(projection, artifact, "artifact"); err != nil {
 		return err
 	}
 	for _, candidate := range projection.Artifacts {
@@ -224,8 +224,20 @@ func proposalIsCoherent(projection workroom.Projection, request, artifact, commi
 	return fmt.Errorf("%s is not an artifact in this workroom", artifact)
 }
 
-// liveStatement finds one effective, unretired, unstale statement of a kind.
-func liveStatement(projection workroom.Projection, event, kind string) (workroom.Statement, error) {
+// effectiveStatement finds one statement of a kind that this workroom actually
+// stands behind, and is the single lookup both sides of a proposal go through.
+//
+// Presence in Projection.Statements is not force. The fold keeps ineffective
+// acts there deliberately, because the log records what was said and not only
+// what carried; it is the semantic projections, Artifacts among them, that
+// filter down to the effective ones. So checking retirement and staleness alone
+// would admit a request the workroom never gave force to and render it on a
+// public pull request as though it governed the work. The artifact side would
+// have been caught later by the Artifacts scan, which only ever contains
+// effective rows — but that is an accident of which projection happens to carry
+// the commit, not a check, and it protected one side while leaving the other
+// open. Both go through here instead.
+func effectiveStatement(projection workroom.Projection, event, kind string) (workroom.Statement, error) {
 	for _, statement := range projection.Statements {
 		if statement.Event != event {
 			continue
@@ -239,7 +251,19 @@ func liveStatement(projection workroom.Projection, event, kind string) (workroom
 		if statement.Stale {
 			return workroom.Statement{}, fmt.Errorf("%s %s is stale, so what it rests on has moved", kind, event)
 		}
-		return statement, nil
+		for _, decision := range projection.Decisions {
+			if decision.Event != event {
+				continue
+			}
+			// Only plain effect will do. Disputed and the unreadable verdicts
+			// each mean the fold declined to give the act force, and none of
+			// them is a basis for an irreversible public write.
+			if decision.Verdict != workroom.Effective {
+				return workroom.Statement{}, fmt.Errorf("the fold ruled %s %s %q (%s), so this workroom never gave it force", kind, event, decision.Verdict, decision.Reason)
+			}
+			return statement, nil
+		}
+		return workroom.Statement{}, fmt.Errorf("no fold decision records %s %s, so there is nothing saying it took effect", kind, event)
 	}
 	return workroom.Statement{}, fmt.Errorf("%s is not in this workroom, so a rendering naming it would point at nothing", event)
 }

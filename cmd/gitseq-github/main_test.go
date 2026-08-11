@@ -206,7 +206,12 @@ func TestAProposalMustNameFactsThatHoldTogether(t *testing.T) {
 	const artifact = "git:sha1:g#git:sha1:artifact"
 	const commit = "6ca1266b21306cb96726d345eac9021a91488fe7"
 
+	effective := []workroom.Decision{
+		{Event: request, Verdict: workroom.Effective, Reason: "statement recorded"},
+		{Event: artifact, Verdict: workroom.Effective, Reason: "statement recorded"},
+	}
 	coherent := workroom.Projection{
+		Decisions: effective,
 		Statements: []workroom.Statement{
 			{Event: request, Kind: workroom.KindRequest},
 			{Event: artifact, Kind: workroom.KindArtifact},
@@ -222,6 +227,46 @@ func TestAProposalMustNameFactsThatHoldTogether(t *testing.T) {
 	t.Run("unknown request", func(t *testing.T) {
 		if err := proposalIsCoherent(coherent, "git:sha1:g#git:sha1:nothing", artifact, commit); err == nil {
 			t.Error("a request naming nothing was rendered")
+		}
+	})
+	// Presence in Statements is not force. The fold keeps ineffective acts
+	// there on purpose, so a well-formed request the workroom never stood
+	// behind is neither retired nor stale and would otherwise pass.
+	t.Run("ineffective request", func(t *testing.T) {
+		never := coherent
+		never.Decisions = []workroom.Decision{
+			{Event: request, Verdict: workroom.Ineffective, Reason: "dangling promise has no request"},
+			{Event: artifact, Verdict: workroom.Effective, Reason: "statement recorded"},
+		}
+		if err := proposalIsCoherent(never, request, artifact, commit); err == nil {
+			t.Error("a pull request cited a governing request the fold gave no force")
+		}
+	})
+	t.Run("ineffective artifact", func(t *testing.T) {
+		never := coherent
+		never.Decisions = []workroom.Decision{
+			{Event: request, Verdict: workroom.Effective, Reason: "statement recorded"},
+			{Event: artifact, Verdict: workroom.Ineffective, Reason: "statement recorded"},
+		}
+		if err := proposalIsCoherent(never, request, artifact, commit); err == nil {
+			t.Error("a pull request cited an artifact the fold gave no force")
+		}
+	})
+	t.Run("disputed request", func(t *testing.T) {
+		disputed := coherent
+		disputed.Decisions = []workroom.Decision{
+			{Event: request, Verdict: workroom.Disputed, Reason: "competing settlements"},
+			{Event: artifact, Verdict: workroom.Effective, Reason: "statement recorded"},
+		}
+		if err := proposalIsCoherent(disputed, request, artifact, commit); err == nil {
+			t.Error("a disputed request was rendered as governing")
+		}
+	})
+	t.Run("no decision at all", func(t *testing.T) {
+		silent := coherent
+		silent.Decisions = []workroom.Decision{{Event: artifact, Verdict: workroom.Effective}}
+		if err := proposalIsCoherent(silent, request, artifact, commit); err == nil {
+			t.Error("a request with nothing saying it took effect was rendered")
 		}
 	})
 	t.Run("retired artifact", func(t *testing.T) {
