@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4241a120be752021ec7842e95e2ac13e3a216c28","text":"Retire the temporary surface_test.go pointer in favor of the exact independently reviewed 3f635c91 gate artifact with the original satisfied gate lineage."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b5d7b362a8fa0c0f4696ffed6097cbca230b402a","text":"Retire the temporary examples_test.go pointer in favor of the exact independently reviewed 3f635c91 gate artifact with the original satisfied gate lineage."}
