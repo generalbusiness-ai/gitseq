@@ -185,20 +185,6 @@ underway.
    whole-repository pointer, and nothing needs to — which commit a
    branch carries is git's question, and the live artifact at each
    path already names the commit that last changed that area.
-10. **Review the exact head before merge.** Every implementation review
-    records three checks:
-    - **Architecture:** name the affected layers from
-      `docs/reference/architecture.md` and state whether the exact head
-      preserves or changes their contract. A contract change must update that
-      page and re-anchor its artifact in the same head; otherwise request
-      changes.
-    - **Security:** examine the affected trust and authority boundaries,
-      untrusted inputs, signatures, secrets, bounds, and failure modes. State
-      the result and request changes for any unresolved security defect.
-    - **Simplification:** identify any opportunity to achieve the same result
-      more simply, without weakening the conditions of satisfaction. State the
-      opportunity, or state that none was found; request changes when avoidable
-      machinery would remain.
 
 ## The repo underneath
 

@@ -228,6 +228,7 @@ the same result.
 | `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. Command grouping must not move Workroom concepts into the kernel packages. |
 | `cmd/gitseq-mcp` | Surface | Adapts MCP calls to Workroom and nexus operations. Protocol compatibility and fold compatibility are separate. |
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
+| `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |
 | `SKILL.md` | Application guidance | Governs agent conduct in Workroom. It is not a kernel protocol specification. |
 | `ui/`, `internal/service/uidist` | Surface and UI | Renders current Workroom projections and live runtime state. The committed build may not define new semantics. |
 
@@ -244,6 +245,7 @@ Every implementation review identifies the affected layers in this page and
 states whether the exact head preserves or changes their contract. If the
 contract changes, that same head must update this page and re-anchor its
 artifact. A reviewer must request changes when a contract-changing head does
-not do both. Workroom's mandatory pre-merge practice in `SKILL.md` adds two
-checks: security across the affected boundaries, and any opportunity to
-achieve the same result more simply.
+not do both. This repository's mandatory pre-merge practice in `AGENTS.md`
+adds two checks: security across the affected boundaries, and any opportunity
+to achieve the same result more simply. `SKILL.md` remains the reusable
+Workroom application guidance; it does not carry these repository policies.

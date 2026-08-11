@@ -44,6 +44,21 @@ per ISO 24495-1, for a technical audience.
    `changes-requested`; the review requester ratifies that report. Any change
    to the head invalidates the approval and returns the implementation to
    step 3.
+
+   Before approval, every implementation review records three conclusions:
+
+   - **Architecture:** name the affected layers from
+     `docs/reference/architecture.md` and state whether the exact head
+     preserves or changes their contract. A contract change must update that
+     page in the same head and publish its candidate artifact at that head;
+     otherwise request changes.
+   - **Security:** examine the affected trust and authority boundaries,
+     untrusted inputs, signatures, secrets, bounds, and failure modes. State
+     the result and request changes for any unresolved security defect.
+   - **Simplification:** identify any opportunity to achieve the same result
+     more simply, without weakening the conditions of satisfaction. State the
+     opportunity, or state that none was found; request changes when avoidable
+     machinery would remain.
 5. Merge only an approved exact head. In the same step, retire every live
    artifact that covers what the merge changed and publish a successor at the
    path each area keeps using, by the rules below. Only then may the original
