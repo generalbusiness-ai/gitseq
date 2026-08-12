@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02fae0274a1e39e724c42a8f9884752225b02e9c"}
+{"kind":"artifact","text":"Final report lifecycle candidate at exact clean pushed head 708170b24d34426d84764d7f5fd073e91915ffed. The behavior is unchanged from the fully reviewed implementation; the added fresh-workspace wrong-promisor test makes bypassing custom-kind preflight fail.","body":{"commit":"708170b24d34426d84764d7f5fd073e91915ffed","path":"internal/app"}}
