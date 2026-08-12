@@ -1846,3 +1846,56 @@ func TestAttentionSummaryStatesTheInterruptionInText(t *testing.T) {
 		t.Fatalf("a nil report produced text: %q", got)
 	}
 }
+
+// A failing tool call is exactly when a caller most needs to know that somebody
+// addressed them, so the adjunct rides on the error path too. This drives the
+// real JSON-RPC loop rather than the helper, because the property is about the
+// envelope the client actually receives.
+func TestToolErrorResultStillCarriesLiveAttention(t *testing.T) {
+	workspace := initRepository(t, "repo")
+	server := newServer("human", workspace.Repo)
+	server.session = "mcp:test"
+	defer server.depart(context.Background())
+
+	meta := `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}`
+	// An unknown tool name is refused by the dispatcher, which is the simplest
+	// way to reach the error branch without breaking anything real.
+	input := strings.NewReader("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{" + meta + ",\"name\":\"no-such-tool\",\"arguments\":{}}}\n")
+	var output bytes.Buffer
+	if err := server.run(context.Background(), input, &output); err != nil {
+		t.Fatal(err)
+	}
+	var response map[string]any
+	if err := json.Unmarshal(output.Bytes(), &response); err != nil {
+		t.Fatalf("decode %s: %v", output.String(), err)
+	}
+	result, ok := response["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("no result in %s", output.String())
+	}
+	if result["isError"] != true {
+		t.Fatalf("expected an error result, got %#v", result)
+	}
+	attention, present := result["live_attention"]
+	if !present {
+		t.Fatalf("an error result dropped the attention adjunct: %#v", result)
+	}
+	report, ok := attention.(map[string]any)
+	if !ok {
+		t.Fatalf("live_attention is not an object: %#v", attention)
+	}
+	// With no resident reachable in this test the honest answer is unavailable,
+	// and the point is that the field is present and truthful rather than absent.
+	if _, held := report["available"]; !held {
+		t.Fatalf("the adjunct does not say whether it is available: %#v", report)
+	}
+	// The error text must still be the first thing a reader sees.
+	content, ok := result["content"].([]any)
+	if !ok || len(content) == 0 {
+		t.Fatalf("error result has no content: %#v", result)
+	}
+	first := content[0].(map[string]any)
+	if first["text"] == "" {
+		t.Fatalf("the error message was displaced: %#v", content)
+	}
+}
