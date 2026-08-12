@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Candidate application report-basis validation at internal/app on exact code head a35edbc37eca6e04be79ff5321bc1dfb0adcad8d.","body":{"commit":"a35edbc37eca6e04be79ff5321bc1dfb0adcad8d","path":"internal/app"}}
+{"kind":"artifact","text":"Candidate report-basis refusal and its reference documentation at docs on exact head dbbdd8ead8a4ca10cc0d9a957bf4c510356f821d.","body":{"commit":"dbbdd8ead8a4ca10cc0d9a957bf4c510356f821d","path":"docs"}}
