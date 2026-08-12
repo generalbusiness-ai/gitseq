@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:75c45a42a54991166a2faeea26f5c2c93a723d3f"}
+{"kind":"report","text":"The rests_on boundary is decided and ratified as git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:75c45a42a54991166a2faeea26f5c2c93a723d3f: the application parses and resolves event identifiers; the kernel remains semantic-free while enforcing all format-independent identifier validity it can."}
