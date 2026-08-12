@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:44e3d4bf6eb4a23ae6a1c49ef61fb6e40323d6ff","text":"Retire the stale first merge artifact. It rested on the candidate retired in the same succession step, so it was stale from birth; the replacement rests only on the motivating ratified decision."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f6c9608584a509b037474ff178f6298aa69ea483","text":"The merged ui artifact at 2327e0ed now carries this shipped path."}
