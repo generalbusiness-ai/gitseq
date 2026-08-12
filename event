@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Documentation for cold-start-safe immediate report lifecycle validation at exact clean pushed head ea61220b838645343c738073188c9a5e21025866.","body":{"commit":"ea61220b838645343c738073188c9a5e21025866","path":"docs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6e1b7caf4d692b0957954a38e25adf5fe0403c37","text":"Retire the previous internal/app candidate after the cold-start lifecycle repair changed the exact head."}
