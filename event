@@ -1,1 +1,1 @@
-{"kind":"assert","text":"approved candidate merged","body":{"merge_approval":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cef35ae8ece636a37b873d30b580f38c5a121321","merge_candidate":"4848533c8e1de3ee4c455096fcde2b08c61198e9","merge_head":"537ab466aec03d1d2a10be78d042a9e47b92c43a","merge_target_pre_head":"cbddb3d8c29369d67d335d92086b073c7ebbb19d"}}
+{"kind":"artifact","text":"Merged instrumentation documentation re-anchor at docs@537ab466aec03d1d2a10be78d042a9e47b92c43a.","body":{"commit":"537ab466aec03d1d2a10be78d042a9e47b92c43a","path":"docs"}}
