@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Candidate application report-basis validation at internal/app on exact code head a35edbc3d9b7a33896ce9df952b4e11893151ac4.","body":{"commit":"a35edbc3d9b7a33896ce9df952b4e11893151ac4","path":"internal/app"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5f13baa75ae96ee51b3a303cffe79ea74db64bcd","text":"Withdraw the candidate artifact because its commit field mistyped the exact code head; replace it with the verified full Git hash."}
