@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Candidate application report-basis validation at internal/app on final exact head dbbdd8ead8a4ca10cc0d9a957bf4c510356f821d; application bytes are unchanged from reviewed code commit a35edbc3.","body":{"commit":"dbbdd8ead8a4ca10cc0d9a957bf4c510356f821d","path":"internal/app"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e8657f21215485ba635219aacf304a8b93daa49","text":"The final exact head adds only documentation; retire the code-only pointer in favor of the internal/app artifact at the final review head."}
