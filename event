@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b17513eb0762f597c2b0ed1040ead682850ffcd5","text":"Retire the candidate at docs for head 57dd564f, which is now merged. The successor at this path is b2b39404, standing at merge commit 2c1443a6."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cad131321d8ec4f805e899797371a57b3f9f4015","text":"Retire my docs artifact for merge e6ac42d5. Merge 2c1443a6 changed docs/reference/gs/status.md, so this predecessor is superseded; the successor at this path is b2b39404."}
