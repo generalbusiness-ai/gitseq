@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Correct documentation pointer for the final report lifecycle candidate at clean pushed head 708170b2b96612bd151eded6215f4d47a78ef16b; documentation bytes are unchanged.","body":{"commit":"708170b2b96612bd151eded6215f4d47a78ef16b","path":"docs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1133bce01a503f181ebc46e7ecf9eaaaf2cbab7e","text":"Retire the artifact whose body contained a mistyped full commit; the corrected exact internal/app pointer replaces it."}
