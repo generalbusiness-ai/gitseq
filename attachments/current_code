@@ -1,0 +1,1 @@
+Current main still contains requireSoleIdentity, sharedIdentityError, the fatal startup branch, and the separate Nexus session-to-actor binding refusal.
