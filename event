@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8bc941f73cb82b0a0e001eec519122216c0d208b"}
+{"kind":"promise","text":"I will independently review exact docset repair head 7d540d2721eaad32301b77eccb1f351683892fac and report approved or changes-requested against the named artifact.","body":{"artifact":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d6eb003b","head":"7d540d2721eaad32301b77eccb1f351683892fac"}}
