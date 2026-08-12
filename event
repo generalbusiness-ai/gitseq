@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2deead7e5d743872bf5a327b758cbe8868778fe1"}
+{"kind":"report","text":"The attachment policy is decided and ratified as git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2deead7e5d743872bf5a327b758cbe8868778fe1: over-ceiling attachments require a locator; Gitseq does not retain the bytes implicitly."}
