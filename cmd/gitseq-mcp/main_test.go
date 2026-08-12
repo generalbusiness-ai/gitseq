@@ -1969,6 +1969,15 @@ func TestAttentionEventsRequireTokenBoundaries(t *testing.T) {
 		real + "c",        // a trailing hex byte extends the identifier
 		"deadbeef" + real, // buried after other hex
 		real + "0",        // one more hex digit
+		// The trailing byte need not be hex to make this a longer token. An
+		// earlier boundary excluded only hex on the right, so every case above
+		// passed while these did not: the identifier is a prefix of the token,
+		// and reporting it would be the inference the docs rule out.
+		real + "z", // a non-hex letter still extends the token
+		real + "Z", // and in either case
+		real + "g", // the first letter past the hex alphabet
+		real + ":", // a colon continues a scheme-shaped token
+		real + "#", // as does a second separator
 	} {
 		if got := attentionEvents(toolCall{Arguments: map[string]any{"x": embedded}}, nil); len(got) != 0 {
 			t.Fatalf("embedded identifier %q was extracted as %v", embedded, got)

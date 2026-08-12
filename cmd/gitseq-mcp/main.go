@@ -1312,7 +1312,17 @@ func fatal(err error) {
 // and the adjunct would then report actors focused on an event the caller
 // never named. The documentation promises exact canonical identifiers and no
 // inference, so the match must fail on any adjacent identifier byte.
-var eventIDPattern = regexp.MustCompile(`(^|[^0-9a-zA-Z:#])(git:sha1:[0-9a-f]{40}#git:sha1:[0-9a-f]{40})($|[^0-9a-fA-F])`)
+//
+// Both boundaries test the same class, and that symmetry is the whole point.
+// An earlier form excluded alphanumerics, colon and hash on the left but only
+// hex on the right, which reads as a boundary and is not one: a trailing "z"
+// left the canonical prefix extractable out of a longer token. What makes a
+// byte a boundary is that it cannot belong to an identifier, and that question
+// has one answer regardless of which end is being asked.
+const eventIDByte = `0-9a-zA-Z:#`
+
+var eventIDPattern = regexp.MustCompile(
+	`(^|[^` + eventIDByte + `])(git:sha1:[0-9a-f]{40}#git:sha1:[0-9a-f]{40})($|[^` + eventIDByte + `])`)
 
 // maxAttentionEvents bounds what one call asks about. A tool that returns a
 // whole projection names thousands of events; asking about all of them would
