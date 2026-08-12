@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged local-first instrumentation at internal/kernel@cbddb3d8c29369d67d335d92086b073c7ebbb19d.","body":{"commit":"cbddb3d8c29369d67d335d92086b073c7ebbb19d","path":"internal/kernel"}}
+{"kind":"artifact","text":"Merged local-first instrumentation at internal/observe@cbddb3d8c29369d67d335d92086b073c7ebbb19d.","body":{"commit":"cbddb3d8c29369d67d335d92086b073c7ebbb19d","path":"internal/observe"}}
