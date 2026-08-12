@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"internal/perfscenario shipped performance evidence lane at merge c19d8a010eae982d8c74c72b386c6064ce46920c","body":{"commit":"c19d8a010eae982d8c74c72b386c6064ce46920c","path":"internal/perfscenario"}}
+{"kind":"artifact","text":"performance shipped performance evidence lane at merge c19d8a010eae982d8c74c72b386c6064ce46920c","body":{"commit":"c19d8a010eae982d8c74c72b386c6064ce46920c","path":"performance"}}
