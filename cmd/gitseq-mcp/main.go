@@ -382,12 +382,15 @@ func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) 
 				response.Error = &rpcError{Code: -32602, Message: err.Error()}
 				break
 			}
-			value, err := s.call(ctx, call)
+			value, acted, err := s.call(ctx, call)
 			// Attention rides beside the result on both paths. A failed tool
 			// call is exactly when a caller most needs to know that somebody
 			// addressed them or is looking at the same event, and the durable
 			// outcome above is already decided either way.
-			attention := s.liveAttention(ctx, s.attachedRoom(), call, value)
+			// The room the call actually acted in, never a room chosen after
+			// the fact. When selection itself failed there is no room, and the
+			// adjunct reports unavailable rather than guessing at one.
+			attention := s.liveAttention(ctx, acted, call, value)
 			text := attentionSummary(attention)
 			if err != nil {
 				content := []map[string]string{{"type": "text", "text": err.Error()}}
@@ -635,7 +638,16 @@ func (s *mcpServer) attach(ctx context.Context, repo string) (*room, error) {
 	return current, nil
 }
 
-func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
+// call selects the room this invocation acts in, then dispatches. It returns
+// that exact room alongside the result, including on error paths, because the
+// attention adjunct must read the room the call used and no other.
+//
+// Choosing a room after the fact is the bug this shape prevents. A caller that
+// passes arguments.repo acts in a workroom that need not be the adapter
+// default, and an adjunct that resolved "the default" or "the only attachment"
+// could hand back another repository's addressed inbox and leased focus. That
+// is a disclosure across a boundary the caller drew deliberately.
+func (s *mcpServer) call(ctx context.Context, call toolCall) (any, *room, error) {
 	var current *room
 	var err error
 	// Whoami's resident read has an explicit two-second bound. Attaching the
@@ -647,8 +659,13 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 		current, err = s.attend(ctx, stringValue(call.Arguments["repo"]))
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	value, err := s.dispatch(ctx, call, current)
+	return value, current, err
+}
+
+func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) (any, error) {
 	switch call.Name {
 	case "whoami":
 		return s.whoami(ctx, current)
@@ -1289,7 +1306,13 @@ func fatal(err error) {
 // keeps the attention adjunct an observation rather than a guess. A looser
 // pattern — a bare hash, a prefix, a word that looks like a reference — would
 // let the adapter assert a relationship nobody stated.
-var eventIDPattern = regexp.MustCompile(`git:sha1:[0-9a-f]{40}#git:sha1:[0-9a-f]{40}`)
+// The surrounding bytes matter as much as the identifier. Without boundaries
+// this pattern happily extracts a canonical-looking identifier out of the
+// middle of a longer token — "xgit:sha1:<40>#git:sha1:<40>y" would yield one —
+// and the adjunct would then report actors focused on an event the caller
+// never named. The documentation promises exact canonical identifiers and no
+// inference, so the match must fail on any adjacent identifier byte.
+var eventIDPattern = regexp.MustCompile(`(^|[^0-9a-zA-Z:#])(git:sha1:[0-9a-f]{40}#git:sha1:[0-9a-f]{40})($|[^0-9a-fA-F])`)
 
 // maxAttentionEvents bounds what one call asks about. A tool that returns a
 // whole projection names thousands of events; asking about all of them would
@@ -1311,8 +1334,17 @@ func attentionEvents(call toolCall, result any) []string {
 	}
 	seen := map[string]bool{}
 	events := make([]string, 0, 8)
-	for _, match := range eventIDPattern.FindAll(scanned, -1) {
-		id := string(match)
+	// FindAllSubmatch with an overlapping-safe scan: the trailing boundary byte
+	// is consumed by each match, so two adjacent identifiers separated by one
+	// delimiter would otherwise hide the second. Scanning from the end of the
+	// captured identifier rather than the whole match keeps both visible.
+	for offset := 0; offset < len(scanned); {
+		match := eventIDPattern.FindSubmatchIndex(scanned[offset:])
+		if match == nil {
+			break
+		}
+		id := string(scanned[offset+match[4] : offset+match[5]])
+		offset += match[5]
 		if seen[id] {
 			continue
 		}
@@ -1410,25 +1442,4 @@ func intValue(value any) int {
 		return typed
 	}
 	return 0
-}
-
-// attachedRoom returns the room for this adapter's own repository if one is
-// already attached. The attention read must never attach, open, or otherwise
-// have a side effect: it runs after the durable work is done, and an advisory
-// adjunct that could create state would be a second actor in the transaction.
-func (s *mcpServer) attachedRoom() *room {
-	s.roomsMu.Lock()
-	defer s.roomsMu.Unlock()
-	if current, ok := s.byPath[s.repo]; ok {
-		return current
-	}
-	// A call may have selected a different repository. With exactly one
-	// attached, that is unambiguously the one just used; with several, the
-	// adapter declines to guess and reports nothing rather than the wrong room.
-	if len(s.byPath) == 1 {
-		for _, current := range s.byPath {
-			return current
-		}
-	}
-	return nil
 }

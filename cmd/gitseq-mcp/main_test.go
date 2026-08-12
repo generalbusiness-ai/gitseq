@@ -354,7 +354,7 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 	dead.Close()
 	server, attached := attachedServer(t, workspace, "human", baseURL, client)
 
-	value, err := server.call(context.Background(), toolCall{Name: "status"})
+	value, _, err := server.call(context.Background(), toolCall{Name: "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 		t.Fatalf("degraded status invented a live generation: %#v", digest.Live)
 	}
 
-	value, err = server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
+	value, _, err = server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
 		"kind": "assert", "text": "durable while the nexus is down", "rests_on": []any{genesis.ID}, "idempotency_key": "offline-state",
 	}})
 	if err != nil {
@@ -383,7 +383,7 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 	if err != nil || status.Durable.Depth != 2 {
 		t.Fatalf("durable append did not land: status=%+v err=%v", status, err)
 	}
-	waited, err := server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{"cursor": status.Cursor, "timeout_ms": 1}})
+	waited, _, err := server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{"cursor": status.Cursor, "timeout_ms": 1}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,14 +391,14 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 		t.Fatalf("unexpected degraded wait response: %+v", delta)
 	}
 
-	worked, err := server.call(context.Background(), toolCall{Name: "work", Arguments: map[string]any{"limit": 1}})
+	worked, _, err := server.call(context.Background(), toolCall{Name: "work", Arguments: map[string]any{"limit": 1}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if page := worked.(statusview.WorkPage); !page.Degraded || page.Frontier.Depth != 2 || page.Actor.Fingerprint != workspace.Config.Actors["human"].Fingerprint {
 		t.Fatalf("unexpected degraded work page: %+v", page)
 	}
-	inspected, err := server.call(context.Background(), toolCall{Name: "inspect", Arguments: map[string]any{"event": genesis.ID}})
+	inspected, _, err := server.call(context.Background(), toolCall{Name: "inspect", Arguments: map[string]any{"event": genesis.ID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +448,7 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	attached.checked = true
 	attached.announced = true
 
-	value, err := server.call(context.Background(), toolCall{Name: "work", Arguments: map[string]any{"limit": 1}})
+	value, _, err := server.call(context.Background(), toolCall{Name: "work", Arguments: map[string]any{"limit": 1}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +462,7 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	event := snapshot.Projection.Actors[workspace.Config.Actors["human"].Fingerprint].MembershipEvent
-	value, err = server.call(context.Background(), toolCall{Name: "inspect", Arguments: map[string]any{"event": event}})
+	value, _, err = server.call(context.Background(), toolCall{Name: "inspect", Arguments: map[string]any{"event": event}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -545,7 +545,7 @@ func TestResidentWaitKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {
 		{name: "named repository", workspace: elsewhere, arguments: map[string]any{"repo": elsewhere.Repo}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			value, err := server.call(context.Background(), toolCall{Name: "status", Arguments: testCase.arguments})
+			value, _, err := server.call(context.Background(), toolCall{Name: "status", Arguments: testCase.arguments})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -553,7 +553,7 @@ func TestResidentWaitKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {
 			arguments := clone(testCase.arguments)
 			arguments["cursor"] = status.Cursor
 			arguments["timeout_ms"] = 1
-			value, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: arguments})
+			value, _, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: arguments})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -587,10 +587,10 @@ func TestResidentSayKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {
 			arguments := clone(testCase.arguments)
 			arguments["about"] = genesisOf(t, testCase.workspace)
 			arguments["text"] = "spoken in " + testCase.name
-			if _, err := server.call(context.Background(), toolCall{Name: "say", Arguments: arguments}); err != nil {
+			if _, _, err := server.call(context.Background(), toolCall{Name: "say", Arguments: arguments}); err != nil {
 				t.Fatal(err)
 			}
-			value, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: testCase.arguments})
+			value, _, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: testCase.arguments})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -617,7 +617,7 @@ func TestAdapterInjectsItsPrivateSessionForPriorityChatAndAck(t *testing.T) {
 	if err := server.announce(context.Background(), attached); err != nil {
 		t.Fatal(err)
 	}
-	beforeValue, err := server.call(context.Background(), toolCall{Name: "status"})
+	beforeValue, _, err := server.call(context.Background(), toolCall{Name: "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -645,7 +645,7 @@ func TestAdapterInjectsItsPrivateSessionForPriorityChatAndAck(t *testing.T) {
 	post("/v0/presence", map[string]any{"actor": "other", "session": "speaker"}, nil)
 	var frame nexus.Frame
 	post("/v0/say", map[string]any{"session": "speaker", "about": genesisOf(t, workspace), "text": "@human please review"}, &frame)
-	waitValue, err := server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{"cursor": before.Cursor, "timeout_ms": 50}})
+	waitValue, _, err := server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{"cursor": before.Cursor, "timeout_ms": 50}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -663,7 +663,7 @@ func TestAdapterInjectsItsPrivateSessionForPriorityChatAndAck(t *testing.T) {
 		t.Fatalf("adapter wait live delta omitted the addressed frame: %+v", delta.Live)
 	}
 
-	value, err := server.call(context.Background(), toolCall{Name: "status"})
+	value, _, err := server.call(context.Background(), toolCall{Name: "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -672,10 +672,10 @@ func TestAdapterInjectsItsPrivateSessionForPriorityChatAndAck(t *testing.T) {
 		t.Fatalf("adapter status priority chat = %+v", status.PriorityChat)
 	}
 	thread := frame.Conversation + ":" + strconv.FormatUint(frame.Sequence, 10)
-	if _, err := server.call(context.Background(), toolCall{Name: "ack", Arguments: map[string]any{"threads": []any{thread}}}); err != nil {
+	if _, _, err := server.call(context.Background(), toolCall{Name: "ack", Arguments: map[string]any{"threads": []any{thread}}}); err != nil {
 		t.Fatal(err)
 	}
-	value, err = server.call(context.Background(), toolCall{Name: "status"})
+	value, _, err = server.call(context.Background(), toolCall{Name: "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -707,7 +707,7 @@ func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing
 	attached.checked = true
 	attached.announced = true
 
-	value, err := server.call(context.Background(), toolCall{Name: "status"})
+	value, _, err := server.call(context.Background(), toolCall{Name: "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -715,7 +715,7 @@ func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing
 	if !status.Live.Degraded || status.PriorityChat.Available {
 		t.Fatalf("legacy resident status invented inbox support: %+v", status)
 	}
-	value, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{"cursor": status.Cursor, "timeout_ms": 1}})
+	value, _, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{"cursor": status.Cursor, "timeout_ms": 1}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -723,13 +723,13 @@ func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing
 	if delta.Cursor.Live.Generation != "degraded" || delta.PriorityChat.Available {
 		t.Fatalf("legacy resident wait invented inbox support: %+v", delta)
 	}
-	if _, err := server.call(context.Background(), toolCall{Name: "say", Arguments: map[string]any{"about": genesisOf(t, workspace), "text": "@human addressed"}}); err == nil {
+	if _, _, err := server.call(context.Background(), toolCall{Name: "say", Arguments: map[string]any{"about": genesisOf(t, workspace), "text": "@human addressed"}}); err == nil {
 		t.Fatal("addressed say was sent to a resident without inbox support")
 	}
 	if sayCalls.Load() != 0 {
 		t.Fatalf("legacy resident received %d addressed say calls", sayCalls.Load())
 	}
-	if _, err := server.call(context.Background(), toolCall{Name: "say", Arguments: map[string]any{
+	if _, _, err := server.call(context.Background(), toolCall{Name: "say", Arguments: map[string]any{
 		"about": genesisOf(t, workspace), "text": "email human@example.test and see docs/@human/file",
 	}}); err != nil {
 		t.Fatalf("ordinary text containing @ did not remain legacy-compatible: %v", err)
@@ -780,7 +780,7 @@ func TestAddressedSayFailsClosedWhenResidentDowngradesDuringSessionRepair(t *tes
 	attached.announced = true
 	attached.setInboxAvailable(true)
 
-	_, err := server.call(context.Background(), toolCall{Name: "say", Arguments: map[string]any{
+	_, _, err := server.call(context.Background(), toolCall{Name: "say", Arguments: map[string]any{
 		"about": genesisOf(t, workspace),
 		"text":  "@human addressed",
 	}})
@@ -812,7 +812,7 @@ func TestFallbackWaitPreservesDefaultAndNamedRepositorySelection(t *testing.T) {
 		{name: "named repository", workspace: elsewhere, arguments: map[string]any{"repo": elsewhere.Repo}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			value, err := server.call(context.Background(), toolCall{Name: "status", Arguments: testCase.arguments})
+			value, _, err := server.call(context.Background(), toolCall{Name: "status", Arguments: testCase.arguments})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -820,7 +820,7 @@ func TestFallbackWaitPreservesDefaultAndNamedRepositorySelection(t *testing.T) {
 			arguments := clone(testCase.arguments)
 			arguments["cursor"] = status.Cursor
 			arguments["timeout_ms"] = 1
-			value, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: arguments})
+			value, _, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: arguments})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -844,7 +844,7 @@ func TestCallsActInTheRepositoryTheyName(t *testing.T) {
 	elsewhere := initRepository(t, "elsewhere")
 	server := newServer("human", here.Repo)
 
-	if _, err := server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
+	if _, _, err := server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
 		"kind": "assert", "text": "spoken in the default repository", "rests_on": []any{genesisOf(t, here)}, "idempotency_key": "default-repo",
 	}}); err != nil {
 		t.Fatal(err)
@@ -853,7 +853,7 @@ func TestCallsActInTheRepositoryTheyName(t *testing.T) {
 		t.Fatalf("default call landed wrong: here=%d elsewhere=%d", got, other)
 	}
 
-	if _, err := server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
+	if _, _, err := server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
 		"repo": elsewhere.Repo, "kind": "assert", "text": "spoken in the named repository", "rests_on": []any{genesisOf(t, elsewhere)}, "idempotency_key": "named-repo",
 	}}); err != nil {
 		t.Fatal(err)
@@ -862,7 +862,7 @@ func TestCallsActInTheRepositoryTheyName(t *testing.T) {
 		t.Fatalf("named call landed wrong: elsewhere=%d here=%d", got, other)
 	}
 
-	value, err := server.call(context.Background(), toolCall{Name: "whoami", Arguments: map[string]any{"repo": elsewhere.Repo}})
+	value, _, err := server.call(context.Background(), toolCall{Name: "whoami", Arguments: map[string]any{"repo": elsewhere.Repo}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -876,12 +876,12 @@ func TestCallsActInTheRepositoryTheyName(t *testing.T) {
 // repositories, most of which are not workrooms.
 func TestCallOutsideAWorkroomIsReportedWithoutFailingTheConnection(t *testing.T) {
 	server := newServer("human", t.TempDir())
-	_, err := server.call(context.Background(), toolCall{Name: "status"})
+	_, _, err := server.call(context.Background(), toolCall{Name: "status"})
 	if err == nil || !strings.Contains(err.Error(), "no gitseq workroom for") {
 		t.Fatalf("unexpected error outside a workroom: %v", err)
 	}
 	elsewhere := initRepository(t, "elsewhere")
-	if _, err := server.call(context.Background(), toolCall{Name: "status", Arguments: map[string]any{"repo": elsewhere.Repo}}); err != nil {
+	if _, _, err := server.call(context.Background(), toolCall{Name: "status", Arguments: map[string]any{"repo": elsewhere.Repo}}); err != nil {
 		t.Fatalf("a named workroom was unreachable after an unattachable default: %v", err)
 	}
 }
@@ -899,7 +899,7 @@ func TestResidentServiceIsFoundInTheRepository(t *testing.T) {
 	defer httpServer.Close()
 
 	server := newServer("human", workspace.Repo)
-	value, err := server.call(context.Background(), toolCall{Name: "status"})
+	value, _, err := server.call(context.Background(), toolCall{Name: "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -910,7 +910,7 @@ func TestResidentServiceIsFoundInTheRepository(t *testing.T) {
 	if _, err := workspace.PublishResident(httpServer.URL); err != nil {
 		t.Fatal(err)
 	}
-	value, err = server.call(context.Background(), toolCall{Name: "status"})
+	value, _, err = server.call(context.Background(), toolCall{Name: "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -921,7 +921,7 @@ func TestResidentServiceIsFoundInTheRepository(t *testing.T) {
 	if live.Live.Degraded {
 		t.Fatalf("the published service answered as degraded: %+v", live.Live)
 	}
-	presence, err := server.call(context.Background(), toolCall{Name: "presence"})
+	presence, _, err := server.call(context.Background(), toolCall{Name: "presence"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -950,13 +950,13 @@ func TestWhoamiDoesNotAttendBeforeOrdinaryTool(t *testing.T) {
 	}
 
 	server := newServer("human", workspace.Repo)
-	if _, err := server.call(context.Background(), toolCall{Name: "whoami"}); err != nil {
+	if _, _, err := server.call(context.Background(), toolCall{Name: "whoami"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := len(server.attended()); got != 0 {
 		t.Fatalf("whoami attended %d rooms before establishing orientation", got)
 	}
-	if _, err := server.call(context.Background(), toolCall{Name: "presence"}); err != nil {
+	if _, _, err := server.call(context.Background(), toolCall{Name: "presence"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := len(server.attended()); got != 1 {
@@ -984,7 +984,7 @@ func TestPresenceToolUpdatesOnlyItsOwnBoundedLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	event := snapshot.Projection.Decisions[0].Event
-	value, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: map[string]any{
+	value, _, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: map[string]any{
 		"status": "blocked", "focus": []any{event}, "note": "waiting on review",
 		// These are not tool fields and must not override adapter custody.
 		"actor": "other", "session": "forged",
@@ -1013,7 +1013,7 @@ func TestPresenceToolUpdatesOnlyItsOwnBoundedLease(t *testing.T) {
 			t.Fatalf("presence tool did not update its own lease: label=%q activity=%+v", label, activity)
 		}
 	}
-	inspected, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: map[string]any{}})
+	inspected, _, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: map[string]any{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1029,7 +1029,7 @@ func TestPresenceToolUpdatesOnlyItsOwnBoundedLease(t *testing.T) {
 	for index := range tooMany {
 		tooMany[index] = event
 	}
-	if _, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: map[string]any{"focus": tooMany}}); err == nil {
+	if _, _, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: map[string]any{"focus": tooMany}}); err == nil {
 		t.Fatal("presence tool accepted unbounded focus")
 	}
 }
@@ -1046,7 +1046,7 @@ func TestAServiceThatStopsAnsweringIsLookedUpAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := newServer("human", workspace.Repo)
-	if _, err := server.call(context.Background(), toolCall{Name: "status"}); err != nil {
+	if _, _, err := server.call(context.Background(), toolCall{Name: "status"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1059,7 +1059,7 @@ func TestAServiceThatStopsAnsweringIsLookedUpAgain(t *testing.T) {
 	if _, err := workspace.PublishResident(moved.URL); err != nil {
 		t.Fatal(err)
 	}
-	value, err := server.call(context.Background(), toolCall{Name: "status"})
+	value, _, err := server.call(context.Background(), toolCall{Name: "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1102,7 +1102,7 @@ func TestStateToolCarriesTheUndefinedKindWarningInItsResult(t *testing.T) {
 			server, _ := attachedServer(t, workspace, "human", baseURL, client)
 			genesis := workspace.EventID(workspace.Config.Genesis)
 
-			value, err := server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
+			value, _, err := server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
 				"kind": "commit", "text": "I will re-review task/x at exact head y",
 				"rests_on": []any{genesis}, "idempotency_key": "undefined-kind",
 			}})
@@ -1142,7 +1142,7 @@ func TestStateToolCarriesTheUndefinedKindWarningInItsResult(t *testing.T) {
 
 			// A defined kind is ordinary work and carries no warning, so the
 			// warning cannot pass by being attached to every result.
-			value, err = server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
+			value, _, err = server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
 				"kind": "assert", "text": "an ordinary claim",
 				"rests_on": []any{genesis}, "idempotency_key": "defined-kind",
 			}})
@@ -1179,7 +1179,7 @@ func TestPresenceRenewalRunsBesideCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := newServer("human", workspace.Repo)
-	if _, err := server.call(context.Background(), toolCall{Name: "presence"}); err != nil {
+	if _, _, err := server.call(context.Background(), toolCall{Name: "presence"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1189,7 +1189,7 @@ func TestPresenceRenewalRunsBesideCalls(t *testing.T) {
 		go func() {
 			defer working.Done()
 			for turn := 0; turn < 10; turn++ {
-				if _, err := server.call(context.Background(), toolCall{Name: "presence"}); err != nil {
+				if _, _, err := server.call(context.Background(), toolCall{Name: "presence"}); err != nil {
 					t.Error(err)
 					return
 				}
@@ -1246,7 +1246,7 @@ func TestSecondInstanceRefusesToShareALiveIdentity(t *testing.T) {
 	// The refusal has to hold on every call, not only the first: a session
 	// that was turned away at the door must not act through a cached
 	// attachment.
-	if _, err := second.call(context.Background(), toolCall{Name: "presence"}); !errors.As(err, &shared) {
+	if _, _, err := second.call(context.Background(), toolCall{Name: "presence"}); !errors.As(err, &shared) {
 		t.Fatalf("a refused instance still acted: %v", err)
 	}
 	distinct := newServer("claude.2", workspace.Repo)
@@ -1301,7 +1301,7 @@ func callWhoami(t testing.TB, workspace *app.Workspace, baseURL string, client *
 	t.Helper()
 	server, _ := attachedServer(t, workspace, "human", baseURL, client)
 	server.session = "mcp:test-whoami"
-	value, err := server.call(context.Background(), toolCall{Name: "whoami"})
+	value, _, err := server.call(context.Background(), toolCall{Name: "whoami"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1749,8 +1749,8 @@ func TestLiveAttentionIsAdvisoryAndFailsSoft(t *testing.T) {
 		dead := httptest.NewServer(nil)
 		baseURL, client := dead.URL, dead.Client()
 		dead.Close()
-		server, _ := attachedServer(t, workspace, "human", baseURL, client)
-		report := server.liveAttention(context.Background(), server.attachedRoom(), toolCall{Name: "status"}, nil)
+		server, attached := attachedServer(t, workspace, "human", baseURL, client)
+		report := server.liveAttention(context.Background(), attached, toolCall{Name: "status"}, nil)
 		if report["available"] != false {
 			t.Fatalf("a dead resident produced %+v, want available=false", report)
 		}
@@ -1759,7 +1759,7 @@ func TestLiveAttentionIsAdvisoryAndFailsSoft(t *testing.T) {
 		}
 	})
 
-	t.Run("no attached room yields unavailable rather than attaching one", func(t *testing.T) {
+	t.Run("no room yields unavailable rather than finding one", func(t *testing.T) {
 		server := newServer("human", workspace.Repo)
 		server.session = "mcp:test"
 		if report := server.liveAttention(context.Background(), nil, toolCall{Name: "status"}, nil); report["available"] != false {
@@ -1897,5 +1897,96 @@ func TestToolErrorResultStillCarriesLiveAttention(t *testing.T) {
 	first := content[0].(map[string]any)
 	if first["text"] == "" {
 		t.Fatalf("the error message was displaced: %#v", content)
+	}
+}
+
+// A call that names a repository must read that repository's attention and no
+// other. The adjunct is assembled after the durable work, and an earlier draft
+// chose the room at that point — preferring the adapter default, falling back
+// to "the only attachment". With two repositories attached, that hands back
+// another workroom's addressed inbox and leased focus: a disclosure across a
+// boundary the caller drew deliberately with arguments.repo.
+func TestAttentionReadsTheRoomTheCallActedIn(t *testing.T) {
+	first := initRepository(t, "first")
+	second := initRepository(t, "second")
+
+	server := newServer("human", first.Repo)
+	server.session = "mcp:test"
+	firstRoom := &room{workspace: first, baseURL: "http://first.invalid"}
+	secondRoom := &room{workspace: second, baseURL: "http://second.invalid"}
+	server.byPath[first.Repo] = firstRoom
+	server.byPath[second.Repo] = secondRoom
+	server.byCommonDir[first.CommonDir] = firstRoom
+	server.byCommonDir[second.CommonDir] = secondRoom
+
+	// The adapter default is the first repository. A call naming the second
+	// must still be answered about the second.
+	_, acted, err := server.call(context.Background(), toolCall{Name: "whoami", Arguments: map[string]any{"repo": second.Repo}})
+	if err != nil {
+		t.Fatalf("call into the second repository failed: %v", err)
+	}
+	if acted == nil {
+		t.Fatal("call returned no room for a successful invocation")
+	}
+	if acted.workspace.Repo != second.Repo {
+		t.Fatalf("call acted in %q but reported room %q; the adjunct would read the wrong workroom",
+			second.Repo, acted.workspace.Repo)
+	}
+
+	// And a call naming the first is answered about the first, so the test
+	// cannot pass by always returning the second.
+	_, acted, err = server.call(context.Background(), toolCall{Name: "whoami", Arguments: map[string]any{"repo": first.Repo}})
+	if err != nil {
+		t.Fatalf("call into the first repository failed: %v", err)
+	}
+	if acted.workspace.Repo != first.Repo {
+		t.Fatalf("call acted in %q but reported room %q", first.Repo, acted.workspace.Repo)
+	}
+
+	// Room selection failing yields no room at all, rather than a guess. The
+	// adjunct then reports unavailable, which is the honest answer.
+	_, acted, err = server.call(context.Background(), toolCall{Name: "whoami", Arguments: map[string]any{"repo": filepath.Join(t.TempDir(), "not-a-repo")}})
+	if err == nil {
+		t.Fatal("expected an error selecting a nonexistent repository")
+	}
+	if acted != nil {
+		t.Fatalf("a failed selection still produced a room: %+v", acted.workspace.Repo)
+	}
+	if report := server.liveAttention(context.Background(), acted, toolCall{Name: "whoami"}, nil); report["available"] != false {
+		t.Fatalf("no room did not yield available=false: %+v", report)
+	}
+}
+
+// The identifier pattern needs boundaries, not just shape. Without them a
+// canonical-looking identifier can be cut out of the middle of a longer token,
+// and the adjunct would report actors focused on an event the caller never
+// named — inference dressed as observation.
+func TestAttentionEventsRequireTokenBoundaries(t *testing.T) {
+	const real = "git:sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#git:sha1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	for _, embedded := range []string{
+		"x" + real,        // a leading byte makes it a different token
+		real + "c",        // a trailing hex byte extends the identifier
+		"deadbeef" + real, // buried after other hex
+		real + "0",        // one more hex digit
+	} {
+		if got := attentionEvents(toolCall{Arguments: map[string]any{"x": embedded}}, nil); len(got) != 0 {
+			t.Fatalf("embedded identifier %q was extracted as %v", embedded, got)
+		}
+	}
+
+	// Ordinary delimiters around a whole identifier still match: the boundary
+	// rule must not make the feature unusable in real text.
+	for _, framed := range []string{real, " " + real + " ", "(" + real + ")", "\"" + real + "\"", real + ".", "see " + real + " now"} {
+		if got := attentionEvents(toolCall{Arguments: map[string]any{"x": framed}}, nil); len(got) != 1 || got[0] != real {
+			t.Fatalf("framed identifier %q produced %v", framed, got)
+		}
+	}
+
+	// Two identifiers separated by a single delimiter must both survive: the
+	// boundary byte is consumed by the first match and must not hide the second.
+	const other = "git:sha1:cccccccccccccccccccccccccccccccccccccccc#git:sha1:dddddddddddddddddddddddddddddddddddddddd"
+	if got := attentionEvents(toolCall{Arguments: map[string]any{"x": real + " " + other}}, nil); len(got) != 2 {
+		t.Fatalf("two adjacent identifiers produced %v", got)
 	}
 }
