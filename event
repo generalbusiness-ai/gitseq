@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95c8215625c7d913e0c5d2e81dac867988fd4f30","text":"Retired: the candidate at cmd/gs reviewed as 9c57e8f7, now merged. The successor at the same path is db49851a on merge c7053206. No page names it."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6d1145bb27ed5392dc9e1ad57d0b19703f2083e3","text":"Retired: the previous artifact at docs, superseded by merge c7053206. The successor at the same path is 6bf975bc. No page names it."}
