@@ -27,6 +27,14 @@ const (
 var (
 	ErrIdempotencyConflict = errors.New("idempotency key reused with different intent")
 	ErrNotDescendant       = errors.New("head is not a descendant of verified frontier")
+	// ErrBackPressure is the sequencer's overload refusal for submissions. It is
+	// returned before any chaining work when the submitter is at capacity, and it
+	// wraps a submission's exhausted retry limit, so a caller can tell overload
+	// apart from a malformed or unauthorized submission with errors.Is. Rotation
+	// keeps its own anonymous exhaustion result: it is a rare operator action, not
+	// a load-bearing path, and proving its contention would need a production seam
+	// that exists only for a test.
+	ErrBackPressure = errors.New("sequencer at capacity")
 )
 
 type GenesisDescriptor struct {
@@ -67,6 +75,10 @@ type Options struct {
 	Failpoint         func(string)
 	MaxRetries        int
 	PreAppend         func(context.Context, Admission) error
+	// MaxQueueDepth bounds how many submissions may be inside Submitter.Submit
+	// at once, counting the one holding the lock. Zero leaves the queue
+	// unbounded, which is the behaviour every existing deployment has.
+	MaxQueueDepth int
 }
 
 // Submitter is the resident sequencing path. It retains only a log state that
@@ -84,6 +96,10 @@ type Submitter struct {
 
 	mu    sync.Mutex
 	cache logCache
+
+	// inFlight counts submissions between entering Submit and leaving it. It is
+	// read before the lock so a refusal costs one atomic add rather than a wait.
+	inFlight atomic.Int64
 }
 
 // logCache is the one verified-history cache shared by resident readers and
@@ -112,11 +128,28 @@ func NewSubmitter(store gitstore.Store, options Options) *Submitter {
 	}
 }
 
+// Submit refuses at capacity before it chains anything. The check is one atomic
+// add taken before the lock, so a refused submission never waits behind the
+// queue it was refused for, and never writes an object it will not use.
 func (s *Submitter) Submit(ctx context.Context, request Request) (Result, error) {
+	if limit := s.options.MaxQueueDepth; limit > 0 {
+		depth := s.inFlight.Add(1)
+		if depth > int64(limit) {
+			s.inFlight.Add(-1)
+			return Result{}, fmt.Errorf("%w: %d submissions in flight, limit %d", ErrBackPressure, depth-1, limit)
+		}
+		defer s.inFlight.Add(-1)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return submit(ctx, s.store, request, s.options, &s.cache)
 }
+
+// QueueDepth reports the bound this submitter was built with. It exists so a
+// deployment can assert its own posture: zero means unbounded, and a resident
+// that means to be bounded should be able to prove it rather than trust that
+// the option was passed.
+func (s *Submitter) QueueDepth() int { return s.options.MaxQueueDepth }
 
 // Admission deliberately has no payload field. A profile hook can inspect the
 // signed envelope and presented capability material, but not application data.
@@ -502,7 +535,7 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 		fail(options, "before_reply")
 		return Result{Commit: commit, Head: commit, CASRetries: attempt, BaseHead: head, Timestamp: timestamp}, nil
 	}
-	return Result{}, errors.New("CAS retry limit exceeded")
+	return Result{}, fmt.Errorf("%w: retry limit of %d exceeded while chaining", ErrBackPressure, maxRetries)
 }
 
 func cloneSigned(signed intent.Signed) intent.Signed {
