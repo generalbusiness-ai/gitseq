@@ -23,6 +23,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/observe"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -79,6 +80,7 @@ type Workspace struct {
 	MetaDir   string
 	Store     gitstore.Store
 	Config    Config
+	observer  observe.Observer
 
 	snapshotMu     sync.Mutex
 	snapshotCache  *Snapshot
@@ -325,6 +327,12 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 }
 
 func Open(ctx context.Context, repo string) (*Workspace, error) {
+	return OpenObserved(ctx, repo, nil)
+}
+
+// OpenObserved opens a workspace with an exporter-neutral observer. Ordinary
+// callers use Open and pay no observation cost.
+func OpenObserved(ctx context.Context, repo string, observer observe.Observer) (*Workspace, error) {
 	gitDir, commonDir, err := ResolveGitDirs(ctx, repo)
 	if err != nil {
 		return nil, err
@@ -342,7 +350,13 @@ func Open(ctx context.Context, repo string) (*Workspace, error) {
 		(config.VerifiedFrontier != nil && (config.VerifiedFrontier.Head == "" || config.VerifiedFrontier.Depth < 0)) {
 		return nil, errors.New("invalid gitseq config")
 	}
-	return &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir}, Config: config}, nil
+	return &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir, Observer: observer}, Config: config, observer: observer}, nil
+}
+
+// SetObserver configures observation before a workspace begins serving.
+func (w *Workspace) SetObserver(observer observe.Observer) {
+	w.observer = observer
+	w.Store.Observer = observer
 }
 
 func Init(ctx context.Context, repo, operatorName string, ceiling uint64) (*Workspace, workroom.Record, error) {
@@ -811,8 +825,16 @@ func (w *Workspace) ResolveActorAddress(address string) (Actor, error) {
 }
 
 func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request) (Submission, error) {
+	done := observe.Begin(ctx, w.observer, observe.OperationSubmit, observe.PathSubmission)
+	var resultErr error
+	defer func() {
+		if done != nil {
+			done(resultErr)
+		}
+	}()
 	if w.Config.ReadOnly {
-		return Submission{}, errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
+		resultErr = errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
+		return Submission{}, resultErr
 	}
 	w.submitterOnce.Do(func() {
 		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{
@@ -822,10 +844,15 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 	})
 	result, err := w.submitter.Submit(ctx, request)
 	if err != nil {
+		resultErr = err
 		return Submission{}, err
+	}
+	if w.observer != nil {
+		w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationSubmit, Path: observe.PathRef, Outcome: observe.OutcomeOK, Items: int64(result.CASRetries)})
 	}
 	decoded, err := intent.Verify(request.Signed)
 	if err != nil {
+		resultErr = err
 		return Submission{}, err
 	}
 	record := workroom.Record{
@@ -950,7 +977,8 @@ func (w *Workspace) snapshotFlight() *snapshotFlight {
 	flight := &snapshotFlight{done: make(chan struct{})}
 	w.flight.Store(flight)
 	go func() {
-		flight.result, flight.err = w.snapshotWithSource(context.Background(), &flight.progress)
+		ctx := observe.WithObserver(context.Background(), w.observer)
+		flight.result, flight.err = w.snapshotWithSource(ctx, &flight.progress)
 		close(flight.done)
 		w.flightMu.Lock()
 		if w.flight.Load() == flight {
@@ -968,6 +996,7 @@ func (w *Workspace) newReader() *kernel.Reader {
 }
 
 func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.AuditProgress) (SourcedSnapshot, error) {
+	started := time.Now()
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
 	head, err := w.Store.Head(ctx, kernel.Ref(w.Config.Genesis))
@@ -980,6 +1009,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		}); err != nil {
 			return SourcedSnapshot{}, err
 		}
+		w.recordSnapshot(ctx, observe.PathCache, started, w.snapshotCache.Depth, nil)
 		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
 	}
 	if w.reader == nil {
@@ -987,6 +1017,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 	}
 	loaded, err := w.reader.LoadWithProgress(ctx, w.Config.Genesis, progress)
 	if err != nil {
+		w.recordSnapshot(ctx, observe.PathOther, started, 0, err)
 		return SourcedSnapshot{}, err
 	}
 	if err := w.rememberVerifiedFrontier(ctx, loaded.Verification); err != nil {
@@ -1016,21 +1047,32 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		}
 	}
 	source := SnapshotSourceIncrementalTail
+	path := observe.PathIncremental
 	if loaded.Full {
 		source = SnapshotSourceColdFullAudit
+		path = observe.PathCold
 		if loaded.Checkpoint {
 			source = SnapshotSourceSignedCheckpointTail
+			path = observe.PathCheckpoint
 		}
 	}
+	foldStarted := time.Now()
 	if loaded.Full {
 		records := make([]workroom.Record, 0, len(loaded.Events))
 		for _, event := range loaded.Events {
 			records = append(records, w.record(event))
 		}
 		w.snapshotFolder = workroom.NewFolder(records)
+		if w.observer != nil {
+			w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationFold, Path: path, Outcome: observe.OutcomeOK, Duration: time.Since(foldStarted), Items: int64(len(records))})
+		}
 	} else {
+		foldStarted := time.Now()
 		for _, event := range loaded.Events[start:] {
 			w.snapshotFolder.Append(w.record(event))
+		}
+		if w.observer != nil {
+			w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationFold, Path: path, Outcome: observe.OutcomeOK, Duration: time.Since(foldStarted), Items: int64(len(loaded.Events[start:]))})
 		}
 	}
 	snapshot := Snapshot{
@@ -1039,7 +1081,18 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 	}
 	w.snapshotCache = &snapshot
 	w.snapshotSource = source
+	w.recordSnapshot(ctx, path, started, snapshot.Depth, nil)
 	return SourcedSnapshot{Snapshot: snapshot, Source: source}, nil
+}
+
+func (w *Workspace) recordSnapshot(ctx context.Context, path observe.Path, started time.Time, depth int, err error) {
+	if w.observer == nil {
+		return
+	}
+	w.observer.Record(ctx, observe.Measurement{
+		Operation: observe.OperationSnapshot, Path: path, Outcome: observe.Classify(ctx, err),
+		Duration: time.Since(started), Items: int64(depth),
+	})
 }
 
 func (w *Workspace) record(event kernel.Event) workroom.Record {

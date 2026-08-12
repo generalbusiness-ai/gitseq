@@ -20,8 +20,10 @@ import (
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
+	"github.com/generalbusiness-ai/gitseq/internal/observe"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
+	"github.com/generalbusiness-ai/gitseq/internal/telemetry"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -38,6 +40,7 @@ type RunOptions struct {
 	Trace2Path      string
 	CPUProfilePath  string
 	HeapProfilePath string
+	Telemetry       bool
 }
 
 // OptionalMetric distinguishes an unavailable platform or scenario counter
@@ -118,7 +121,15 @@ func Run(ctx context.Context, options RunOptions) (Result, error) {
 		return Result{}, err
 	}
 	defer cleanup()
-	operation, err := prepareOperation(ctx, options)
+	var telemetryRuntime *telemetry.Runtime
+	if options.Telemetry {
+		telemetryRuntime, err = telemetry.NewInMemory()
+		if err != nil {
+			return Result{}, err
+		}
+		defer telemetryRuntime.Shutdown(context.Background())
+	}
+	operation, err := prepareOperation(ctx, options, telemetryRuntime)
 	if err != nil {
 		return Result{}, err
 	}
@@ -319,19 +330,26 @@ func enableTrace2(path string) (func() error, error) {
 	}, nil
 }
 
-func prepareOperation(ctx context.Context, options RunOptions) (preparedOperation, error) {
+func prepareOperation(ctx context.Context, options RunOptions, telemetryRuntime *telemetry.Runtime) (preparedOperation, error) {
+	observer := telemetryRuntime.Observer()
+	handler := func(server *service.Server) http.Handler {
+		if telemetryRuntime == nil {
+			return server.Handler()
+		}
+		return telemetryRuntime.Handler(server.Handler())
+	}
 	switch options.Scenario {
 	case "startup":
 		return func() (operationResult, int, error) {
-			workspace, err := app.Open(ctx, options.Scratch)
+			workspace, err := app.OpenObserved(ctx, options.Scratch, observer)
 			if err != nil {
 				return operationResult{}, 0, err
 			}
-			server, err := service.New(workspace)
+			server, err := service.NewObserved(workspace, observer)
 			if err != nil {
 				return operationResult{}, 0, err
 			}
-			body, err := request(server.Handler(), http.MethodGet, "/v0/status-summary", nil)
+			body, err := request(handler(server), http.MethodGet, "/v0/status-summary", nil)
 			if err != nil {
 				return operationResult{}, 0, err
 			}
@@ -339,37 +357,37 @@ func prepareOperation(ctx context.Context, options RunOptions) (preparedOperatio
 		}, nil
 	case "cold_status":
 		return func() (operationResult, int, error) {
-			workspace, err := app.Open(ctx, options.Scratch)
+			workspace, err := app.OpenObserved(ctx, options.Scratch, observer)
 			if err != nil {
 				return operationResult{}, 0, err
 			}
-			server, err := service.New(workspace)
+			server, err := service.NewObserved(workspace, observer)
 			if err != nil {
 				return operationResult{}, 0, err
 			}
-			body, err := request(server.Handler(), http.MethodGet, "/v0/status-summary", nil)
+			body, err := request(handler(server), http.MethodGet, "/v0/status-summary", nil)
 			if err != nil {
 				return operationResult{}, 0, err
 			}
 			return operationResult{response: body, workspace: workspace}, 1, nil
 		}, nil
 	case "warm_status":
-		workspace, server, err := openServer(ctx, options.Scratch)
+		workspace, server, err := openServerObserved(ctx, options.Scratch, observer)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := request(server.Handler(), http.MethodGet, "/v0/status-summary", nil); err != nil {
+		if _, err := request(handler(server), http.MethodGet, "/v0/status-summary", nil); err != nil {
 			return nil, err
 		}
 		return func() (operationResult, int, error) {
-			body, err := request(server.Handler(), http.MethodGet, "/v0/status-summary", nil)
+			body, err := request(handler(server), http.MethodGet, "/v0/status-summary", nil)
 			if err != nil {
 				return operationResult{}, 0, err
 			}
 			return operationResult{response: body, workspace: workspace}, 1, nil
 		}, nil
 	case "submit_ack":
-		workspace, err := app.Open(ctx, options.Scratch)
+		workspace, err := app.OpenObserved(ctx, options.Scratch, observer)
 		if err != nil {
 			return nil, err
 		}
@@ -390,10 +408,10 @@ func prepareOperation(ctx context.Context, options RunOptions) (preparedOperatio
 			return operationResult{response: body, workspace: workspace, cas: &cas}, 1, nil
 		}, nil
 	case "submit_wait":
-		return prepareSubmitWait(ctx, options)
+		return prepareSubmitWait(ctx, options, telemetryRuntime)
 	case "checkpoint_restart":
 		return func() (operationResult, int, error) {
-			workspace, err := app.Open(ctx, options.Scratch)
+			workspace, err := app.OpenObserved(ctx, options.Scratch, observer)
 			if err != nil {
 				return operationResult{}, 0, err
 			}
@@ -409,7 +427,7 @@ func prepareOperation(ctx context.Context, options RunOptions) (preparedOperatio
 		}, nil
 	case "honest_fallback":
 		return func() (operationResult, int, error) {
-			workspace, err := app.Open(ctx, options.Scratch)
+			workspace, err := app.OpenObserved(ctx, options.Scratch, observer)
 			if err != nil {
 				return operationResult{}, 0, err
 			}
@@ -424,11 +442,11 @@ func prepareOperation(ctx context.Context, options RunOptions) (preparedOperatio
 			return operationResult{response: body, snapshot: &loaded.Snapshot, source: loaded.Source}, 1, nil
 		}, nil
 	case "quiet_long_poll":
-		workspace, server, err := openServer(ctx, options.Scratch)
+		workspace, server, err := openServerObserved(ctx, options.Scratch, observer)
 		if err != nil {
 			return nil, err
 		}
-		statusBody, err := request(server.Handler(), http.MethodGet, "/v0/status", nil)
+		statusBody, err := request(handler(server), http.MethodGet, "/v0/status", nil)
 		if err != nil {
 			return nil, err
 		}
@@ -442,7 +460,7 @@ func prepareOperation(ctx context.Context, options RunOptions) (preparedOperatio
 		}
 		return func() (operationResult, int, error) {
 			waitStarted := time.Now()
-			body, err := request(server.Handler(), http.MethodPost, "/v0/wait", waitBody)
+			body, err := request(handler(server), http.MethodPost, "/v0/wait", waitBody)
 			waitNS := time.Since(waitStarted).Nanoseconds()
 			if err != nil {
 				return operationResult{}, 0, err
@@ -450,25 +468,30 @@ func prepareOperation(ctx context.Context, options RunOptions) (preparedOperatio
 			return operationResult{response: body, workspace: workspace, queueNS: &waitNS}, 1, nil
 		}, nil
 	case "concurrent_read_write":
-		return prepareConcurrentReadWrite(ctx, options)
+		return prepareConcurrentReadWrite(ctx, options, telemetryRuntime)
 	case "bounded_soak":
-		return prepareSoak(ctx, options)
+		return prepareSoak(ctx, options, telemetryRuntime)
 	default:
 		return nil, fmt.Errorf("unknown performance scenario %q", options.Scenario)
 	}
 }
 
-func prepareSubmitWait(ctx context.Context, options RunOptions) (preparedOperation, error) {
-	workspace, server, err := openServer(ctx, options.Scratch)
+func prepareSubmitWait(ctx context.Context, options RunOptions, telemetryRuntime *telemetry.Runtime) (preparedOperation, error) {
+	observer := telemetryRuntime.Observer()
+	workspace, server, err := openServerObserved(ctx, options.Scratch, observer)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := request(server.Handler(), http.MethodPost, "/v0/presence", mustJSON(map[string]any{
+	handler := server.Handler()
+	if telemetryRuntime != nil {
+		handler = telemetryRuntime.Handler(handler)
+	}
+	if _, err := request(handler, http.MethodPost, "/v0/presence", mustJSON(map[string]any{
 		"actor": "operator", "session": "performance-session", "ttl_ms": 30000,
 	})); err != nil {
 		return nil, err
 	}
-	statusBody, err := request(server.Handler(), http.MethodGet, "/v0/status", nil)
+	statusBody, err := request(handler, http.MethodGet, "/v0/status", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -493,11 +516,11 @@ func prepareSubmitWait(ctx context.Context, options RunOptions) (preparedOperati
 		}
 		waitDone := make(chan waitResult, 1)
 		go func() {
-			body, waitErr := request(server.Handler(), http.MethodPost, "/v0/wait", waitInput)
+			body, waitErr := request(handler, http.MethodPost, "/v0/wait", waitInput)
 			waitDone <- waitResult{body: body, err: waitErr}
 		}()
 		waitStarted := time.Now()
-		if _, err := request(server.Handler(), http.MethodPost, "/v0/act", act); err != nil {
+		if _, err := request(handler, http.MethodPost, "/v0/act", act); err != nil {
 			return operationResult{}, 0, err
 		}
 		select {
@@ -514,11 +537,12 @@ func prepareSubmitWait(ctx context.Context, options RunOptions) (preparedOperati
 	}, nil
 }
 
-func prepareConcurrentReadWrite(ctx context.Context, options RunOptions) (preparedOperation, error) {
+func prepareConcurrentReadWrite(ctx context.Context, options RunOptions, telemetryRuntime *telemetry.Runtime) (preparedOperation, error) {
 	if options.Concurrency < 1 {
 		return nil, errors.New("concurrent_read_write requires positive concurrency")
 	}
-	workspace, server, err := openServer(ctx, options.Scratch)
+	observer := telemetryRuntime.Observer()
+	workspace, server, err := openServerObserved(ctx, options.Scratch, observer)
 	if err != nil {
 		return nil, err
 	}
@@ -526,7 +550,11 @@ func prepareConcurrentReadWrite(ctx context.Context, options RunOptions) (prepar
 	if err != nil {
 		return nil, err
 	}
-	if _, err := request(server.Handler(), http.MethodPost, "/v0/presence", mustJSON(map[string]any{
+	handler := server.Handler()
+	if telemetryRuntime != nil {
+		handler = telemetryRuntime.Handler(handler)
+	}
+	if _, err := request(handler, http.MethodPost, "/v0/presence", mustJSON(map[string]any{
 		"actor": "operator", "session": "performance-session", "ttl_ms": 30000,
 	})); err != nil {
 		return nil, err
@@ -543,7 +571,7 @@ func prepareConcurrentReadWrite(ctx context.Context, options RunOptions) (prepar
 		operations := make([]func() ([]byte, error), 0, operationCount)
 		for index := 0; index < options.Concurrency; index++ {
 			operations = append(operations, func() ([]byte, error) {
-				return request(server.Handler(), http.MethodGet, "/v0/status-summary", nil)
+				return request(handler, http.MethodGet, "/v0/status-summary", nil)
 			})
 			act := mustJSON(map[string]any{
 				"session": "performance-session", "act": "state", "kind": "assert",
@@ -552,7 +580,7 @@ func prepareConcurrentReadWrite(ctx context.Context, options RunOptions) (prepar
 				"idempotency_key": fmt.Sprintf("performance-concurrent-%d", index),
 			})
 			operations = append(operations, func() ([]byte, error) {
-				return request(server.Handler(), http.MethodPost, "/v0/act", act)
+				return request(handler, http.MethodPost, "/v0/act", act)
 			})
 		}
 		for _, operation := range operations {
@@ -578,8 +606,9 @@ func prepareConcurrentReadWrite(ctx context.Context, options RunOptions) (prepar
 	}, nil
 }
 
-func prepareSoak(ctx context.Context, options RunOptions) (preparedOperation, error) {
-	workspace, server, err := openServer(ctx, options.Scratch)
+func prepareSoak(ctx context.Context, options RunOptions, telemetryRuntime *telemetry.Runtime) (preparedOperation, error) {
+	observer := telemetryRuntime.Observer()
+	workspace, server, err := openServerObserved(ctx, options.Scratch, observer)
 	if err != nil {
 		return nil, err
 	}
@@ -604,7 +633,11 @@ func prepareSoak(ctx context.Context, options RunOptions) (preparedOperation, er
 				break
 			}
 			if index%4 == 0 {
-				last, err = request(server.Handler(), http.MethodGet, "/v0/status-summary", nil)
+				handler := server.Handler()
+				if telemetryRuntime != nil {
+					handler = telemetryRuntime.Handler(handler)
+				}
+				last, err = request(handler, http.MethodGet, "/v0/status-summary", nil)
 			} else {
 				_, err = workspace.Act(ctx, "operator", app.Act{
 					Verb: app.VerbState, Kind: workroom.KindAssert, Text: "bounded soak",
@@ -621,11 +654,15 @@ func prepareSoak(ctx context.Context, options RunOptions) (preparedOperation, er
 }
 
 func openServer(ctx context.Context, repository string) (*app.Workspace, *service.Server, error) {
-	workspace, err := app.Open(ctx, repository)
+	return openServerObserved(ctx, repository, nil)
+}
+
+func openServerObserved(ctx context.Context, repository string, observer observe.Observer) (*app.Workspace, *service.Server, error) {
+	workspace, err := app.OpenObserved(ctx, repository, observer)
 	if err != nil {
 		return nil, nil, err
 	}
-	server, err := service.New(workspace)
+	server, err := service.NewObserved(workspace, observer)
 	return workspace, server, err
 }
 

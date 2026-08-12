@@ -83,7 +83,7 @@ func main() {
 
 func run(ctx context.Context, arguments []string) error {
 	if len(arguments) == 0 {
-		return errors.New("usage: gitseq-perf <validate|prepare|run|compare|worker> [options]")
+		return errors.New("usage: gitseq-perf <validate|prepare|run|compare|overhead|worker> [options]")
 	}
 	root, err := moduleRoot()
 	if err != nil {
@@ -109,9 +109,11 @@ func run(ctx context.Context, arguments []string) error {
 	case "prepare":
 		return prepareCommand(ctx, root, arguments[1:])
 	case "run":
-		return laneCommand(ctx, root, false, arguments[1:])
+		return laneCommand(ctx, root, false, false, arguments[1:])
 	case "compare":
-		return laneCommand(ctx, root, true, arguments[1:])
+		return laneCommand(ctx, root, true, false, arguments[1:])
+	case "overhead":
+		return laneCommand(ctx, root, true, true, arguments[1:])
 	case "worker":
 		return workerCommand(ctx, arguments[1:])
 	default:
@@ -164,6 +166,7 @@ func workerCommand(ctx context.Context, arguments []string) error {
 	trace2 := flags.String("trace2", "", "Git Trace2 event output")
 	cpuProfile := flags.String("cpu-profile", "", "CPU profile output")
 	heapProfile := flags.String("heap-profile", "", "heap profile output")
+	withTelemetry := flags.Bool("telemetry", false, "enable the in-memory OpenTelemetry SDK")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -178,6 +181,7 @@ func workerCommand(ctx context.Context, arguments []string) error {
 		Scenario: *scenario, Fixture: *fixture, Scratch: *scratch, Depth: *depth,
 		Tail: *tail, Concurrency: *concurrency, SoakOperations: *soakOperations, SoakSeconds: *soakSeconds, Trace2Path: *trace2,
 		CPUProfilePath: *cpuProfile, HeapProfilePath: *heapProfile,
+		Telemetry: *withTelemetry,
 	})
 	if err != nil {
 		return err
@@ -190,7 +194,7 @@ func workerCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-func laneCommand(ctx context.Context, root string, compare bool, arguments []string) error {
+func laneCommand(ctx context.Context, root string, compare, overhead bool, arguments []string) error {
 	flags := flag.NewFlagSet("lane", flag.ContinueOnError)
 	contractPath := flags.String("contract", filepath.Join(root, defaultContract), "contract path")
 	tier := flags.String("tier", "smoke", "smoke, standard, or full")
@@ -252,12 +256,19 @@ func laneCommand(ctx context.Context, root string, compare bool, arguments []str
 			return err
 		}
 		evidence.BaseCommit, evidence.CandidateCommit = base, candidate
-		cleanup, built, err := buildComparedWorkers(ctx, root, base, candidate)
-		if err != nil {
-			return err
+		if overhead {
+			if base != candidate {
+				return errors.New("overhead comparison requires --base and --candidate to resolve to the same commit")
+			}
+			binaries[perflane.BaseRevision] = executable
+		} else {
+			cleanup, built, err := buildComparedWorkers(ctx, root, base, candidate)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			binaries = built
 		}
-		defer cleanup()
-		binaries = built
 		evidence.Benchstat = perflane.Unavailable[string]("benchstat has not run")
 	} else {
 		candidate, err := resolveCommit(ctx, root, "HEAD")
@@ -296,7 +307,7 @@ func laneCommand(ctx context.Context, root string, compare bool, arguments []str
 		}
 		for revision, binary := range binaries {
 			for warmup := 0; warmup < warmups; warmup++ {
-				if _, err := runWorker(ctx, binary, fixture, runCase, contract, ""); err != nil {
+				if _, err := runWorker(ctx, binary, fixture, runCase, contract, "", overhead && revision == perflane.CandidateRevision); err != nil {
 					return fmt.Errorf("warmup %s %s: %w", revision, runCase.name(), err)
 				}
 			}
@@ -313,7 +324,7 @@ func laneCommand(ctx context.Context, root string, compare bool, arguments []str
 			}
 		}
 		for _, scheduled := range order {
-			result, err := runWorker(ctx, binaries[scheduled.Revision], fixture, runCase, contract, "")
+			result, err := runWorker(ctx, binaries[scheduled.Revision], fixture, runCase, contract, "", overhead && scheduled.Revision == perflane.CandidateRevision)
 			envelope := sampleEnvelope{Case: runCase.name(), Revision: scheduled.Revision, Round: scheduled.Round, Position: scheduled.Position, Result: result}
 			if err != nil {
 				envelope.Error = err.Error()
@@ -340,7 +351,7 @@ func laneCommand(ctx context.Context, root string, compare bool, arguments []str
 		if err := os.Remove(tracePath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		traceResult, traceErr := runWorkerDiagnostic(ctx, binaries[perflane.CandidateRevision], fixture, runCase, contract, tracePath, profilePrefix)
+		traceResult, traceErr := runWorkerDiagnostic(ctx, binaries[perflane.CandidateRevision], fixture, runCase, contract, tracePath, profilePrefix, overhead)
 		if traceErr != nil {
 			return fmt.Errorf("Trace2 diagnostic %s: %w", runCase.name(), traceErr)
 		}
@@ -392,11 +403,11 @@ func laneCommand(ctx context.Context, root string, compare bool, arguments []str
 	return nil
 }
 
-func runWorker(ctx context.Context, binary, fixture string, selected runCase, contract perflane.Contract, trace2 string) (perfscenario.Result, error) {
-	return runWorkerDiagnostic(ctx, binary, fixture, selected, contract, trace2, "")
+func runWorker(ctx context.Context, binary, fixture string, selected runCase, contract perflane.Contract, trace2 string, telemetry bool) (perfscenario.Result, error) {
+	return runWorkerDiagnostic(ctx, binary, fixture, selected, contract, trace2, "", telemetry)
 }
 
-func runWorkerDiagnostic(ctx context.Context, binary, fixture string, selected runCase, contract perflane.Contract, trace2, profilePrefix string) (perfscenario.Result, error) {
+func runWorkerDiagnostic(ctx context.Context, binary, fixture string, selected runCase, contract perflane.Contract, trace2, profilePrefix string, telemetry bool) (perfscenario.Result, error) {
 	scratch, err := os.MkdirTemp("", "gitseq-performance-sample.")
 	if err != nil {
 		return perfscenario.Result{}, err
@@ -418,6 +429,9 @@ func runWorkerDiagnostic(ctx context.Context, binary, fixture string, selected r
 	}
 	if profilePrefix != "" {
 		arguments = append(arguments, "--cpu-profile", profilePrefix+".cpu.pprof", "--heap-profile", profilePrefix+".heap.pprof")
+	}
+	if telemetry {
+		arguments = append(arguments, "--telemetry")
 	}
 	command := exec.CommandContext(workerCtx, binary, arguments...)
 	output, err := command.CombinedOutput()

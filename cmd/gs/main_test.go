@@ -42,6 +42,17 @@ func TestValidateLoopbackListen(t *testing.T) {
 	}
 }
 
+func TestProfilerIsDisabledByDefaultAndLoopbackOnly(t *testing.T) {
+	stop, err := serveProfiler(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	if _, err := serveProfiler(context.Background(), "0.0.0.0:0"); err == nil {
+		t.Fatal("profiler accepted a non-loopback listener")
+	}
+}
+
 func TestValidateLoopbackServer(t *testing.T) {
 	tests := map[string]bool{
 		"http://127.0.0.1:7777":   true,

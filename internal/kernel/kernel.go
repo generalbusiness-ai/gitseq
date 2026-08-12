@@ -11,12 +11,14 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unicode"
 
 	"github.com/fxamacker/cbor/v2"
 
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
+	"github.com/generalbusiness-ai/gitseq/internal/observe"
 )
 
 const (
@@ -647,16 +649,37 @@ func (r *Reader) LoadWithProgress(ctx context.Context, genesis string, report *A
 }
 
 func (r *Reader) load(ctx context.Context, genesis string, report *AuditProgress) (LoadResult, error) {
+	started := time.Now()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	advance, err := r.logCache.advance(ctx, r.store, genesis, true, true, report)
 	if err != nil {
+		recordVerify(ctx, observe.PathOther, started, 0, err)
 		return LoadResult{}, err
 	}
+	path := observe.PathIncremental
+	switch {
+	case advance.Checkpoint:
+		path = observe.PathCheckpoint
+	case advance.Full:
+		path = observe.PathCold
+	case len(advance.Events) == 0:
+		path = observe.PathCache
+	}
+	recordVerify(ctx, path, started, len(advance.Events), nil)
 	return LoadResult{
 		Events: advance.Events, Verification: advance.Verification, BaseHead: advance.BaseHead,
 		Full: advance.Full, Checkpoint: advance.Checkpoint,
 	}, nil
+}
+
+func recordVerify(ctx context.Context, path observe.Path, started time.Time, items int, err error) {
+	if observer := observe.FromContext(ctx); observer != nil {
+		observer.Record(ctx, observe.Measurement{
+			Operation: observe.OperationVerify, Path: path, Outcome: observe.Classify(ctx, err),
+			Duration: time.Since(started), Items: int64(items),
+		})
+	}
 }
 
 type cacheAdvance struct {

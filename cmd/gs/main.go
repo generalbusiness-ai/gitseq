@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -27,6 +28,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
+	"github.com/generalbusiness-ai/gitseq/internal/telemetry"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -1453,6 +1455,8 @@ func verifyCommand(ctx context.Context, arguments []string) error {
 func serveCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("serve", arguments)
 	listen := set.String("listen", "127.0.0.1:7777", "HTTP listen address")
+	otlpEndpoint := set.String("otel-endpoint", "", "OTLP/HTTP Collector endpoint; disabled when empty")
+	profileListen := set.String("profile-listen", "", "separate loopback pprof address; disabled when empty")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -1466,10 +1470,20 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	if workspace.Config.ReadOnly {
 		return errors.New("cannot serve a read-only attachment")
 	}
-	server, err := service.New(workspace)
+	telemetryRuntime, err := telemetry.NewOTLP(ctx, *otlpEndpoint)
+	if err != nil {
+		return fmt.Errorf("configure telemetry: %w", err)
+	}
+	defer telemetryRuntime.Shutdown(context.Background())
+	server, err := service.NewObserved(workspace, telemetryRuntime.Observer())
 	if err != nil {
 		return err
 	}
+	stopProfile, err := serveProfiler(ctx, *profileListen)
+	if err != nil {
+		return err
+	}
+	defer stopProfile()
 	// Bind before publishing, so the address advertised to clients is the one
 	// actually being served — including the port the kernel chose when the
 	// listen address asked for any.
@@ -1484,7 +1498,7 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	}
 	defer withdraw()
 	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n", listener.Addr())
-	httpServer := &http.Server{Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second}
+	httpServer := &http.Server{Handler: telemetryRuntime.Handler(server.Handler()), ReadHeaderTimeout: 5 * time.Second}
 	// The watcher retires with the command it serves, so a serving call that
 	// ends some other way does not leave a goroutine holding the server.
 	finished := make(chan struct{})
@@ -1503,6 +1517,36 @@ func serveCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	return nil
+}
+
+func serveProfiler(ctx context.Context, address string) (func(), error) {
+	if address == "" {
+		return func() {}, nil
+	}
+	if err := validateLoopbackListen(address); err != nil {
+		return nil, fmt.Errorf("profile listener: %w", err)
+	}
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /debug/pprof/", pprof.Index)
+	mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("POST /debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		<-ctx.Done()
+		_ = server.Close()
+	}()
+	go func() { _ = server.Serve(listener) }()
+	return func() {
+		_ = server.Close()
+		_ = listener.Close()
+	}, nil
 }
 
 func validateLoopbackListen(address string) error {
