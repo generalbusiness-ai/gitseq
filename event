@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will decide the over-ceiling attachment custody policy."}
+{"kind":"propose","text":"Decision: require a locator for every over-ceiling attachment. The application may degrade an attachment to a content-addressed reference only when the submitter supplies a locator identifying where the bytes are kept. Gitseq stores no such bytes implicitly. Without a locator, submission is refused explicitly and names the applicable ceiling. The conversion and validation occur in internal/app before signing.","body":{"decision":"require-locator"}}
