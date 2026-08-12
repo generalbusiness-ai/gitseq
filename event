@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7dd4bc197e7952f65d920bf49becd4fb8617ff58","text":"Retire the candidate at internal/statusview for the superseded head b3b47533. The successor at this path is 8aa25919, standing at merge commit 2c1443a6."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a5ac5414b1ba890cc68239af772417a37734532","text":"Retire the candidate at internal/statusview for head 57dd564f, which is now merged. The successor at this path is 8aa25919, standing at merge commit 2c1443a6."}
