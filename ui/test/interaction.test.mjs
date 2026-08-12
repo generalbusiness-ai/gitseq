@@ -10,7 +10,7 @@ import { buildThreadIndex } from "../src/lib/threads.ts";
 import { decodeFrame } from "../src/lib/api.ts";
 import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
-import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, TOPIC_ALIAS_FIELD, TOPIC_TITLE_FIELD, attentionItemCounts, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, otherWorkAttentionCounts, otherWorkAttentionLabel, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState, workCommitmentCounts } from "../src/lib/work.ts";
+import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, TOPIC_ALIAS_FIELD, TOPIC_TITLE_FIELD, attentionItemCounts, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, otherWorkAttentionCounts, otherWorkAttentionClause, otherWorkAttentionLabel, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState, workCommitmentCounts } from "../src/lib/work.ts";
 import { belongsInRoom, commitmentRelationship, interpretationNotice, isInterpretationGap, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
@@ -830,6 +830,14 @@ test("Work accounts for qualifier attention, stale artifacts, and unlinked promi
   assert.deepEqual(attentionItemCounts(work.attention), { artifacts: 1, unlinkedPromises: 1, total: 2 });
   assert.equal(otherWorkAttentionLabel(otherWorkAttentionCounts(projection)), "1 artifact and 1 unlinked promise");
   assert.equal(otherWorkAttentionLabel({ artifacts: 3, unlinkedPromises: 0 }), "3 artifacts");
+
+  // The clause carries its own verb. The empty case is what a healthy workroom
+  // shows most often, and composing the noun here and the verb at the call site
+  // produced "nothing else need attention".
+  assert.equal(otherWorkAttentionClause({ artifacts: 0, unlinkedPromises: 0 }), "nothing else needs attention");
+  assert.equal(otherWorkAttentionClause({ artifacts: 1, unlinkedPromises: 0 }), "1 artifact needs attention");
+  assert.equal(otherWorkAttentionClause({ artifacts: 3, unlinkedPromises: 0 }), "3 artifacts need attention");
+  assert.equal(otherWorkAttentionClause({ artifacts: 1, unlinkedPromises: 1 }), "1 artifact and 1 unlinked promise need attention");
   assert.equal(otherWorkAttentionLabel({ artifacts: 0, unlinkedPromises: 2 }), "2 unlinked promises");
   assert.equal(otherWorkAttentionLabel({ artifacts: 0, unlinkedPromises: 0 }), "nothing else");
 });
