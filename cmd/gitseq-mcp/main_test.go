@@ -1738,3 +1738,111 @@ func BenchmarkWhoamiColdFullAuditAtActualSignedDepth(b *testing.B) {
 		}
 	}
 }
+
+// Attention is an adjunct, so the properties worth pinning are the ones that
+// make it safe to ignore: it must never fail a call, never invent a
+// relationship, and never be invisible to a client that reads only text.
+func TestLiveAttentionIsAdvisoryAndFailsSoft(t *testing.T) {
+	workspace := initRepository(t, "repo")
+
+	t.Run("an unreachable resident yields unavailable, not an error", func(t *testing.T) {
+		dead := httptest.NewServer(nil)
+		baseURL, client := dead.URL, dead.Client()
+		dead.Close()
+		server, _ := attachedServer(t, workspace, "human", baseURL, client)
+		report := server.liveAttention(context.Background(), server.attachedRoom(), toolCall{Name: "status"}, nil)
+		if report["available"] != false {
+			t.Fatalf("a dead resident produced %+v, want available=false", report)
+		}
+		if summary := attentionSummary(report); summary != "" {
+			t.Fatalf("an unavailable read produced text: %q", summary)
+		}
+	})
+
+	t.Run("no attached room yields unavailable rather than attaching one", func(t *testing.T) {
+		server := newServer("human", workspace.Repo)
+		server.session = "mcp:test"
+		if report := server.liveAttention(context.Background(), nil, toolCall{Name: "status"}, nil); report["available"] != false {
+			t.Fatalf("a nil room produced %+v", report)
+		}
+		if len(server.byPath) != 0 {
+			t.Fatalf("the attention read attached a room as a side effect: %+v", server.byPath)
+		}
+	})
+}
+
+// Event extraction is the point where an adjunct could start guessing. It reads
+// exact canonical identifiers out of what the call said and what it returned,
+// and nothing else: no prefixes, no bare hashes, no words that look like refs.
+func TestAttentionEventsAreExactAndBounded(t *testing.T) {
+	const real = "git:sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#git:sha1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	const other = "git:sha1:cccccccccccccccccccccccccccccccccccccccc#git:sha1:dddddddddddddddddddddddddddddddddddddddd"
+
+	got := attentionEvents(toolCall{Name: "inspect", Arguments: map[string]any{"event": real}}, map[string]any{"related": other})
+	if len(got) != 2 || got[0] != real || got[1] != other {
+		t.Fatalf("events = %v, want the identifier from the input and the one from the result", got)
+	}
+
+	// Near misses must not match. Each of these is something a looser pattern
+	// would have accepted, and each would be the adapter asserting a link.
+	for _, near := range []string{
+		"git:sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		"git:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#git:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		"git:sha1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA#git:sha1:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+	} {
+		if got := attentionEvents(toolCall{Arguments: map[string]any{"x": near}}, nil); len(got) != 0 {
+			t.Fatalf("near miss %q matched as %v", near, got)
+		}
+	}
+
+	// A result naming thousands of events must not put thousands on the wire.
+	many := make([]string, 0, maxAttentionEvents*3)
+	for index := 0; index < maxAttentionEvents*3; index++ {
+		many = append(many, fmt.Sprintf("git:sha1:%040d#git:sha1:%040d", index, index))
+	}
+	if got := attentionEvents(toolCall{}, many); len(got) != maxAttentionEvents {
+		t.Fatalf("collected %d events, want the cap of %d", len(got), maxAttentionEvents)
+	}
+
+	// The same identifier named twice is one event, not two.
+	if got := attentionEvents(toolCall{Arguments: map[string]any{"a": real, "b": real}}, real); len(got) != 1 {
+		t.Fatalf("a repeated identifier produced %v", got)
+	}
+}
+
+// The guaranteed text block is what a client that ignores structured content
+// still sees. If an interruption exists only in structuredContent it is
+// invisible to a reader of the transcript, which defeats the purpose.
+func TestAttentionSummaryStatesTheInterruptionInText(t *testing.T) {
+	summary := attentionSummary(map[string]any{
+		"available": true,
+		"pending":   float64(3),
+		"omitted":   float64(1),
+		"actors": []any{
+			map[string]any{"name": "codex", "status": "busy"},
+			map[string]any{"name": "planner", "status": "available"},
+		},
+		"omitted_actors": float64(2),
+	})
+	for _, want := range []string{"3 unacknowledged addressed messages", "1 not shown", "codex (busy)", "planner", "2 more", "advisory"} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("summary %q omits %q", summary, want)
+		}
+	}
+	if strings.Contains(summary, "planner (available)") {
+		t.Fatalf("an ordinary available status was decorated: %q", summary)
+	}
+
+	// Nothing to say means nothing said. A line that always appears becomes
+	// furniture and stops being read.
+	if got := attentionSummary(map[string]any{"available": true, "pending": float64(0)}); got != "" {
+		t.Fatalf("an empty report produced text: %q", got)
+	}
+	if got := attentionSummary(map[string]any{"available": false}); got != "" {
+		t.Fatalf("an unavailable report produced text: %q", got)
+	}
+	if got := attentionSummary(nil); got != "" {
+		t.Fatalf("a nil report produced text: %q", got)
+	}
+}
