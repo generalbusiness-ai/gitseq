@@ -58,6 +58,11 @@ and no inference about which events relate to which others. A guess about
 relatedness would be the adapter asserting a relationship nobody stated,
 and presenting it as an observation.
 
+An identifier counts as named only when it stands as a whole token. A
+canonical identifier sitting inside a longer run of identifier bytes is
+part of that longer token, not a mention of the event, so nothing matches
+it.
+
 Your own sessions are filtered out before actors are aggregated, so one
 person working from two windows reads as one actor with two matching
 sessions rather than as two people. Identity is keyed on the durable
