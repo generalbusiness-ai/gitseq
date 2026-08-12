@@ -12,8 +12,8 @@ Intro walkthrough:
 
 ## Why
 
-Suppose we want to build a Kanban board. Tasks obviously need attributes such as
-status, assignee, description, and so on.  So far so good; we can write a task.
+Suppose we want to build a Kanban board. Tasks on the board need attributes
+such as status, assignee, description, and so on.  
 
 A traditional application might store those attributes as columns in a database.
 Updates replace their previous values, while workflow rules live elsewhere in
@@ -30,11 +30,16 @@ The current state of the task becomes a projection of that immutable log.
 It can be recalculated at any time, independently verified, and traced back
 through every act that produced it.
 
-The infrastructure is simple: _ordinary Git storage_ plus a _signed sequencer_.
+The kernel is simple: _ordinary Git storage_ plus a _signed sequencer_.
 An act’s signed payload can cite any immutable Git object, such as a blob,
 tree, commit, tag, or another gitseq event.  Above this, applications define
 their own object types, actions, projections, and rules for deciding which
 acts take effect.
+
+Alongside the durable sequence, the resident service hosts the _nexus_
+for live, ephemeral coordination: presence, activity and focus, and signed
+conversation. Actors using MCP or the browser UI can see which live
+participants are focused on particular events and exchange messages.
 
 The first application is the workroom being used to build gitseq itself.
 It uses the _language-action perspective_ to describe acts such as requests,
