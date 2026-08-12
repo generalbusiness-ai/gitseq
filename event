@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact short/full documentation gate split at 515cf306b4829f4d9be84f8212ec9ca9f31d67c0, restated without the stale historical docset pointer.","body":{"commit":"515cf306b4829f4d9be84f8212ec9ca9f31d67c0","path":"internal/docset"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c2d464ccc3bc1cf384c9ec38d46c860d7ae4ba33","text":"Retire the stale duplicate docset candidate in favor of the exact-head pointer on stable fast-lane governance."}
