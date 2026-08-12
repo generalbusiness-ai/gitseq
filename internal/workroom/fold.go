@@ -477,9 +477,18 @@ func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 			}
 			return Decision{Event: record.record.ID, Verdict: verdict, Reason: fmt.Sprintf("promise lifecycle basis count is %d, want exactly one request", len(requests))}
 		}
-		request := requests[0].body.(*State)
-		if request.Body["to"] != record.record.Actor {
-			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "promise actor is not the requested performer"}
+		// The addressee in body.to routes the request; it does not reserve it.
+		// Any live roster actor may undertake the work by promising, and the
+		// promise signer becomes the performer. Completion authority is
+		// unchanged: only this signer may report, and only the requester may
+		// declare the commitment satisfied.
+		//
+		// The roster test is stated here rather than inherited. The equality
+		// check this replaces was doing two jobs at once: it routed the work,
+		// and — because body.to must already name a live roster actor — it also
+		// kept unadmitted signers out. Only the first job was meant to go.
+		if !f.hasActor(record.record.Actor) {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "promise actor is not in the live roster"}
 		}
 	}
 	if definition.Lifecycle == LifecycleReport {

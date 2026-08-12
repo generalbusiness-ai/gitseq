@@ -56,7 +56,7 @@ ratification authority. The structural fields you will meet most are:
 | Kind | Required body | Meaning |
 |---|---|---|
 | `request` | `conditions` | What would count as satisfaction. |
-| `request` | `to` | The performer, as a name, `@name`, or fingerprint. The signed event stores the fingerprint, and the fold requires it to identify a live roster actor. |
+| `request` | `to` | The addressee, as a name, `@name`, or fingerprint. The signed event stores the fingerprint, and the fold requires it to identify a live roster actor. It routes the request; the performer is whoever promises. |
 | `artifact` | `path`, `commit` | Implementation truth as `path@commit`. |
 
 Implementation requests, promises and reports may carry `branch` and

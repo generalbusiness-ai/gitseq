@@ -2114,3 +2114,161 @@ func eventsOn(projection Projection) []string {
 	}
 	return events
 }
+
+// volunteerWorld adds a third live actor, so a request addressed to one agent
+// can be promised by another.
+func volunteerWorld(t testing.TB, extra ...Record) []Record {
+	t.Helper()
+	base := append(worldRecords(t),
+		event(t, "v0", operator, SchemaState, State{Kind: KindRoster, Text: "Other joins", Body: map[string]string{"actor": other, "name": "Other", "role": "agent"}}, "w0"),
+		event(t, "v1", operator, SchemaRatify, Ratify{Target: "v0"}, "v0"),
+	)
+	return append(base, extra...)
+}
+
+// The addressee routes a request; it does not reserve it. An actor the request
+// did not name may undertake the work, and the promise signer is the performer
+// from then on. Before this, a request nobody claimed could only be taken up by
+// collapsing requester and performer into a duplicate self-addressed child,
+// which bought the routing rule by breaking the stronger rule that nobody
+// declares their own work complete.
+func TestAnyLiveActorMayPromiseAnAddressedRequest(t *testing.T) {
+	records := volunteerWorld(t,
+		event(t, "r1", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+		event(t, "p1", other, SchemaState, State{Kind: KindPromise, Text: "I will take it"}, "r1"),
+	)
+	projection := Fold(records)
+	if decision, _ := projection.Decision("p1"); decision.Verdict != Effective {
+		t.Fatalf("volunteer promise = %q (%s), want effective", decision.Verdict, decision.Reason)
+	}
+	commitment := projection.Commitments[0]
+	if commitment.Performer != other || commitment.Status != "promised" || commitment.WaitingOn != other {
+		t.Fatalf("volunteer commitment projects as %+v", commitment)
+	}
+	if commitment.AddressedTo == other {
+		t.Fatalf("the volunteer was recorded as the addressee: %+v", commitment)
+	}
+
+	// The volunteer keeps it, and only the original requester can close it.
+	records = append(records, event(t, "rep1", other, SchemaState, State{Kind: KindReport, Text: "Done"}, "p1"))
+	records = append(records, event(t, "rat1", operator, SchemaRatify, Ratify{Target: "rep1"}, "rep1"))
+	projection = Fold(records)
+	if decision, _ := projection.Decision("rat1"); decision.Verdict != Effective {
+		t.Fatalf("requester ratification = %q (%s), want effective", decision.Verdict, decision.Reason)
+	}
+	if got := projection.Commitments[0]; got.Status != "satisfied" || got.Performer != other {
+		t.Fatalf("kept volunteer commitment projects as %+v", got)
+	}
+}
+
+// Promising is an undertaking, not a transfer of completion authority. The
+// volunteer gains the right to report and nothing else; the addressee gains no
+// right to report work it never promised.
+func TestVolunteerPromiseMovesNoCompletionAuthority(t *testing.T) {
+	base := volunteerWorld(t,
+		event(t, "r1", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+		event(t, "p1", other, SchemaState, State{Kind: KindPromise, Text: "I will take it"}, "r1"),
+	)
+
+	t.Run("the addressee may not report another actor's promise", func(t *testing.T) {
+		records := append(append([]Record{}, base...),
+			event(t, "rep1", agent, SchemaState, State{Kind: KindReport, Text: "Done"}, "p1"))
+		decision, _ := Fold(records).Decision("rep1")
+		if decision.Verdict != Ineffective || decision.Reason != "only the promisor may report completion" {
+			t.Fatalf("addressee report = %q (%s), want ineffective for a non-promisor", decision.Verdict, decision.Reason)
+		}
+	})
+
+	t.Run("the volunteer may not ratify its own report", func(t *testing.T) {
+		records := append(append([]Record{}, base...),
+			event(t, "rep1", other, SchemaState, State{Kind: KindReport, Text: "Done"}, "p1"),
+			event(t, "rat1", other, SchemaRatify, Ratify{Target: "rep1"}, "rep1"))
+		decision, _ := Fold(records).Decision("rat1")
+		if decision.Verdict != Ineffective || decision.Reason != "only the requester may declare satisfaction" {
+			t.Fatalf("self-ratification = %q (%s), want ineffective", decision.Verdict, decision.Reason)
+		}
+	})
+
+	t.Run("the addressee may not ratify a report either", func(t *testing.T) {
+		records := append(append([]Record{}, base...),
+			event(t, "rep1", other, SchemaState, State{Kind: KindReport, Text: "Done"}, "p1"),
+			event(t, "rat1", agent, SchemaRatify, Ratify{Target: "rep1"}, "rep1"))
+		decision, _ := Fold(records).Decision("rat1")
+		if decision.Verdict != Ineffective || decision.Reason != "only the requester may declare satisfaction" {
+			t.Fatalf("addressee ratification = %q (%s), want ineffective", decision.Verdict, decision.Reason)
+		}
+	})
+}
+
+// A volunteer who withdraws reneges, exactly as the addressee would. The
+// request returns to the board rather than being dragged closed by the
+// withdrawal.
+func TestVolunteerWhoWithdrawsReneges(t *testing.T) {
+	records := volunteerWorld(t,
+		event(t, "r1", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+		event(t, "p1", other, SchemaState, State{Kind: KindPromise, Text: "I will take it"}, "r1"),
+		event(t, "s1", other, SchemaSupersede, Supersede{Target: "p1", Text: "cannot finish it"}, "p1"),
+	)
+	commitment := Fold(records).Commitments[0]
+	if commitment.Status != "reneged" || commitment.Performer != other || commitment.WaitingOn != "" {
+		t.Fatalf("withdrawn volunteer promise projects as %+v", commitment)
+	}
+}
+
+// Each promise is its own undertaking. Two actors may both take up one request,
+// and the ledger records both honestly rather than assuming either will keep.
+func TestSeveralPromisesOnOneRequestProjectSeparately(t *testing.T) {
+	records := volunteerWorld(t,
+		event(t, "r1", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+		event(t, "p1", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "r1"),
+		event(t, "p2", other, SchemaState, State{Kind: KindPromise, Text: "So will I"}, "r1"),
+		event(t, "rep2", other, SchemaState, State{Kind: KindReport, Text: "Done"}, "p2"),
+	)
+	projection := Fold(records)
+	if len(projection.Commitments) != 2 {
+		t.Fatalf("two promises on one request project %d commitments: %+v", len(projection.Commitments), projection.Commitments)
+	}
+	byPerformer := map[string]Commitment{}
+	for _, commitment := range projection.Commitments {
+		if commitment.Request != "r1" {
+			t.Fatalf("commitment does not rest on the shared request: %+v", commitment)
+		}
+		byPerformer[commitment.Performer] = commitment
+	}
+	if got := byPerformer[agent]; got.Status != "promised" || got.Promise != "p1" || got.WaitingOn != agent {
+		t.Fatalf("the addressee's own commitment projects as %+v", got)
+	}
+	if got := byPerformer[other]; got.Status != "reported" || got.Promise != "p2" || got.WaitingOn != operator {
+		t.Fatalf("the volunteer's commitment projects as %+v", got)
+	}
+}
+
+// Opening the promise to volunteers must not open it to strangers. The check
+// this replaced carried the roster test implicitly, because body.to was already
+// required to name a live actor and the promisor had to equal it. Stated
+// explicitly, the rule is the one the adopted semantics name: a live roster
+// actor, not merely a valid signature.
+func TestPromiseFromOutsideTheLiveRosterIsIneffective(t *testing.T) {
+	t.Run("never admitted", func(t *testing.T) {
+		records := worldRecords(t,
+			event(t, "r1", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+			event(t, "p1", other, SchemaState, State{Kind: KindPromise, Text: "a stranger volunteers"}, "r1"),
+		)
+		decision, _ := Fold(records).Decision("p1")
+		if decision.Verdict != Ineffective || decision.Reason != "promise actor is not in the live roster" {
+			t.Fatalf("stranger promise = %q (%s), want ineffective for a non-roster signer", decision.Verdict, decision.Reason)
+		}
+	})
+
+	t.Run("membership revoked", func(t *testing.T) {
+		records := volunteerWorld(t,
+			event(t, "r1", operator, SchemaState, State{Kind: KindRequest, Text: "Please do this", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+			event(t, "x1", operator, SchemaSupersede, Supersede{Target: "v0", Text: "membership withdrawn"}, "v0"),
+			event(t, "p1", other, SchemaState, State{Kind: KindPromise, Text: "promising after removal"}, "r1"),
+		)
+		decision, _ := Fold(records).Decision("p1")
+		if decision.Verdict != Ineffective || decision.Reason != "promise actor is not in the live roster" {
+			t.Fatalf("revoked-member promise = %q (%s), want ineffective", decision.Verdict, decision.Reason)
+		}
+	})
+}

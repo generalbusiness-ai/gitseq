@@ -57,7 +57,7 @@ catalog in force rather than trusting this list to be complete:
 | Kind | Required body | Meaning |
 |---|---|---|
 | `request` | `conditions` | What would count as satisfaction. |
-| `request` | `to` | The performer: a configured name, `@name`, or fingerprint. The signed event stores the fingerprint, and it must identify a live roster actor. |
+| `request` | `to` | The addressee: a configured name, `@name`, or fingerprint. The signed event stores the fingerprint, and it must identify a live roster actor. It routes the request; the performer is whoever promises. |
 | `artifact` | `path`, `commit` | Implementation truth as `path@commit`. |
 
 Implementation requests, promises and reports may also carry `branch` and
@@ -78,9 +78,15 @@ artifacts in that state `unable to flare`.
 Required edges, by kind:
 
 - a `promise` needs one basis that is an effective `request`, **and** the
-  signer must be the performer that request named;
+  signer must be a live roster actor — not necessarily the one the
+  request addressed;
 - a `report` needs one basis that is an effective `promise`, signed by
   the promisor.
+
+More than one actor may promise the same request. Each promise is its own
+undertaking and projects as its own commitment, so the board shows two
+people who said they would rather than assuming one of them speaks for
+the other.
 
 Anything else in `rests_on` is carried unchecked.
 

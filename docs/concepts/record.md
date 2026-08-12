@@ -62,7 +62,9 @@ not declare stays visible and carries no semantic force: an
 
 The declarations are what make commitments and staleness projectable. An
 `artifact` must have `body.path` and `body.commit`. A `request` must have
-`body.conditions` and names its performer in `body.to`.
+`body.conditions` and addresses a live roster actor in `body.to`. That
+address routes the work; it does not reserve it. The performer is whoever
+promises.
 
 Which rules admit events is itself governed. A workroom runs the
 **admission profile** named by the newest live, ratified governance
@@ -113,8 +115,13 @@ force.
 
 For events with a required edge, that edge is necessary and not
 sufficient — the fold also checks who signed. A promise citing a
-perfectly good request is ineffective when its author is not the
-performer the request named.
+perfectly good request is ineffective when its author is not a live
+roster actor, and a report is ineffective when its author is not the
+actor who made the promise it rests on. Who the request was addressed to
+is not one of these tests: an actor the request did not name may take the
+work up, and doing so makes them the performer. What it does not make
+them is the judge of their own work — only the requester can declare the
+commitment satisfied.
 
 Everything else in `rests_on` is a claim about meaning, and a substrate
 with no ontology cannot check meaning. A mistyped identifier on an

@@ -41,6 +41,13 @@ Address a request with `body.to`, as a configured name, `@name`, or a
 fingerprint. The signed event stores the fingerprint, and the fold
 requires it to identify a live roster actor.
 
+Addressing is routing, not reservation. Any live roster actor may take
+the request up by promising it, and the promise signer becomes the
+performer — so work nobody has claimed does not have to wait for the one
+actor it was pointed at. Volunteering carries no other authority: only
+the promisor may report that promise, and only the original requester may
+ratify the report.
+
 `body.conditions` is required. A request without conditions of
 satisfaction cannot be satisfied, so the fold refuses it.
 
