@@ -7,6 +7,8 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aefe829ae81c11c3e33404d9e55f60e43ae31fb2
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66b6cb0b770fe88808130a195babf79fe1ea7746
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f6c9608584a509b037474ff178f6298aa69ea483
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ee4f7cd79827b9507f6f125f9730e0cafb28497
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b5e0b340adce067fc9509023eadef2423ebbaea
 ---
 
 # Limits
@@ -29,6 +31,28 @@ validates against the value recorded in genesis.
 
 Readers enforce the same envelope ceiling explicitly, so the write path
 cannot admit a commit that a parser would later reject.
+
+## Concurrent submissions
+
+| Limit | Value |
+|---|---|
+| Submissions inside the sequencer at once | 32 |
+
+The count includes the submission holding the sequencer lock, so 32 means
+one in progress and 31 waiting. Over that bound a submission is refused
+rather than queued, and the refusal says `sequencer at capacity`.
+
+The refusal comes first. It is taken before the signed intent is parsed,
+before any admission hook runs, before the payload tree is written, and
+before anything is chained onto the sequence ref. A refused submission
+therefore costs almost nothing and leaves no object behind, which is what
+makes this a back-pressure signal a caller can act on rather than a late
+failure after the work is already spent. A caller can tell it apart from
+a malformed or unauthorized submission programmatically.
+
+The bound belongs to Gitseq's resident. A program embedding the kernel
+directly may leave it unset, which means an unbounded queue; that is the
+embedding opt-out, not a posture Gitseq takes.
 
 ## Genesis sequencer key
 
