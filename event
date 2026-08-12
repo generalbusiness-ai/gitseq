@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact MCP ordinary-lane fixtures implementation at 515cf306b4829f4d9be84f8212ec9ca9f31d67c0.","body":{"commit":"515cf306b4829f4d9be84f8212ec9ca9f31d67c0","path":"cmd/gitseq-mcp"}}
+{"kind":"artifact","text":"Exact gs shared immutable fixtures implementation at 515cf306b4829f4d9be84f8212ec9ca9f31d67c0.","body":{"commit":"515cf306b4829f4d9be84f8212ec9ca9f31d67c0","path":"cmd/gs"}}
