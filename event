@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8566d7d7abad1b9b1168bb84359bd15e17887c74"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b3237a9a8d5808ef04acd45ded643ce46a58644","text":"Retire my stranded internal/docset candidate; the carried candidate at d77044c4 is the intended replacement, although its stale review lineage must itself be re-cut before merge."}
