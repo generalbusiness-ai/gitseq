@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3db6ea5f646b00dd01bb104342d53043423ef59","text":"Retire this unnecessary duplicate: the final commit changes docs only, so the live internal/app artifact 62b994a7 remains the stable behavior pointer cited by the page."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7aaa539c51c5657f4bab300b465268ab0ddcedb0","text":"Replace the intermediate docs pointer with the corrected final-head docs artifact that cites the surviving application pointer."}
