@@ -74,6 +74,30 @@ status is `stale` outright and the mark is not repeated.
 Satisfied and withdrawn commitments are finished, and are counted in the
 totals rather than listed.
 
+## Why this disagrees with the Work drawer
+
+The browser UI's Work counts and these totals describe different
+populations on purpose, and neither is a rounding of the other.
+
+`gs status` reports commitments by lifecycle status, and reports
+artifacts on their own line. It never adds the two together, because an
+artifact is not a commitment and a total mixing them matches nothing you
+can act on.
+
+The Work drawer answers a different question — what a reader should look
+at — so it derives `active`, `closed` and `attention` from those same
+commitments, and shows artifacts needing attention beside them rather
+than inside them. `attention` deliberately overlaps `active` and
+`closed`, because staleness and dispute are qualifiers sitting on top of
+a lifecycle status: most of what needs attention is already counted
+somewhere else. Adding the drawer's three figures together therefore
+exceeds the number of commitments, which is correct and is why they are
+not presented as a partition.
+
+So a number here and a number there can differ while both are right. If
+you are reconciling them, compare like with like: the drawer's `total`
+is the commitment count, and everything else is a different cut of it.
+
 Each list keeps the **newest 20** entries and says exactly how many older
 ones it omitted — "Showing 20 of 500; 480 older omitted" — so a shortened
 list never reads as a complete one. Request text is normalized to one
