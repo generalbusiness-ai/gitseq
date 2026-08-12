@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6e1b7caf4d692b0957954a38e25adf5fe0403c37","text":"Retire the previous internal/app candidate after the cold-start lifecycle repair changed the exact head."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3b45415425533b47e3b0b03c9920eb727002611d","text":"Retire the previous docs candidate after the cold-start lifecycle repair changed the exact head."}
