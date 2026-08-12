@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Candidate report-basis refusal and its reference documentation at docs on exact head dbbdd8ead8a4ca10cc0d9a957bf4c510356f821d.","body":{"commit":"dbbdd8ead8a4ca10cc0d9a957bf4c510356f821d","path":"docs"}}
+{"kind":"artifact","text":"Candidate application report-basis validation at internal/app on final exact head dbbdd8ead8a4ca10cc0d9a957bf4c510356f821d; application bytes are unchanged from reviewed code commit a35edbc3.","body":{"commit":"dbbdd8ead8a4ca10cc0d9a957bf4c510356f821d","path":"internal/app"}}
