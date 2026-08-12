@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ebe1cff2f9953a78e3cc41c611f78aa95c190d6e","text":"Retire the narrow serve-page candidate; the merged documentation survives at the wider docs path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1802e1d1633a7ed401af47a666866c16674c6da9","text":"Superseded by the merge artifact at internal/kernel for cbddb3d8, which is the path this area keeps using."}
