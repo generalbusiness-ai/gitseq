@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged documentation at docs@cbddb3d8c29369d67d335d92086b073c7ebbb19d. The surviving wide docs path covers the changed serve reference page.","body":{"commit":"cbddb3d8c29369d67d335d92086b073c7ebbb19d","path":"docs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e82ebc60c47cb865dff0f2d52ae064f938ad6542","text":"Retire the pre-merge cmd/gitseq-perf candidate against its merged artifact."}
