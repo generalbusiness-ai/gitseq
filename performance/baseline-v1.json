@@ -1,0 +1,11 @@
+{
+  "schema": "gitseq.performance-baseline.v1",
+  "status": "not-yet-measured",
+  "contract": "performance/contract-v1.json",
+  "hypotheses": [
+    {"name": "exact_head_status_500ms", "classification": "not_yet_measured"},
+    {"name": "tail_at_most_10_2s", "classification": "not_yet_measured"},
+    {"name": "bounded_default_32kib", "classification": "not_yet_measured"},
+    {"name": "warm_depth_20000_64kib", "classification": "not_yet_measured"}
+  ]
+}
