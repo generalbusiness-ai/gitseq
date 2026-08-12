@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Performance telemetry implementation at exact code head","body":{"commit":"154d60127f7efd84170999a6e5ad001191faf624","path":"cmd/gitseq-perf"}}
+{"kind":"artifact","text":"Performance telemetry implementation at exact code head","body":{"commit":"154d60127f7efd84170999a6e5ad001191faf624","path":"cmd/gs"}}
