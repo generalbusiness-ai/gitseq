@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -936,7 +937,7 @@ func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.
 // It is made once per workroom, before this session announces itself there.
 func (s *mcpServer) warnSharedIdentity(ctx context.Context, current *room) error {
 	actor := current.workspace.Config.Actors[s.actor]
-	value, err := s.get(ctx, current, "/v0/presence")
+	value, err := s.get(ctx, current, "/v0/presence-count?actor="+url.QueryEscape(s.actor))
 	if isTransportError(err) {
 		fmt.Fprintln(s.noticeWriter(), "gitseq-mcp: shared-identity check skipped; the resident service is unavailable:", err)
 		return nil
@@ -944,21 +945,16 @@ func (s *mcpServer) warnSharedIdentity(ctx context.Context, current *room) error
 	if err != nil {
 		return err
 	}
-	var snapshot nexus.Snapshot
-	if err := remarshal(value, &snapshot); err != nil {
+	var count struct {
+		Count int `json:"count"`
+	}
+	if err := remarshal(value, &count); err != nil {
 		return err
 	}
-	label := actor.Name + " (" + actor.Fingerprint[:12] + ")"
-	held := 0
-	for _, present := range snapshot.Presence {
-		if present == label {
-			held++
-		}
-	}
-	if held == 0 {
+	if count.Count == 0 {
 		return nil
 	}
-	fmt.Fprintf(s.noticeWriter(), "gitseq-mcp: warning: identity %q is live in %d other session(s); reviews between sessions of this identity carry no independent force, and concurrent sessions may race on claims and presence\n", actor.Name, held)
+	fmt.Fprintf(s.noticeWriter(), "gitseq-mcp: warning: identity %q is live in %d other session(s); reviews between sessions of this identity carry no independent force, and concurrent sessions may race on claims and presence\n", actor.Name, count.Count)
 	return nil
 }
 

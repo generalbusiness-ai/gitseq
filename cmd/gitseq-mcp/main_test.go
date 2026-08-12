@@ -442,7 +442,7 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	defer httpServer.Close()
 
 	server, attached := attachedServer(t, workspace, "human", httpServer.URL, httpServer.Client())
-	// This test concerns query routing, not presence or the sole-identity gate.
+	// This test concerns query routing, not presence or the shared-identity notice.
 	// Mark the already-attached test session as joined so those independent
 	// calls cannot obscure which endpoints work and inspect choose.
 	attached.identityNoticeChecked = true
@@ -1221,6 +1221,9 @@ func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
 	if _, _, err := workspace.AddActor(context.Background(), "human", "claude.2", "agent"); err != nil {
 		t.Fatal(err)
 	}
+	alias := workspace.Config.Actors["human"]
+	alias.Name = "human-alias"
+	workspace.Config.Actors[alias.Name] = alias
 	workroomServer, err := service.New(workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -1238,7 +1241,7 @@ func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
 	}
 	// Do not depart: this is the crash case, so the first 30-second lease is
 	// still visible when its replacement starts.
-	second := newServer("human", workspace.Repo)
+	second, _ := attachedServer(t, workspace, "human-alias", httpServer.URL, httpServer.Client())
 	second.session = "mcp:after-restart"
 	var notices bytes.Buffer
 	second.notices = &notices
@@ -1246,7 +1249,7 @@ func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
 		t.Fatalf("replacement instance refused a shared actor identity: %v", err)
 	}
 	warning := notices.String()
-	for _, want := range []string{`identity "human"`, "1 other session", "no independent force", "race on claims and presence"} {
+	for _, want := range []string{`identity "human-alias"`, "1 other session", "no independent force", "race on claims and presence"} {
 		if !strings.Contains(warning, want) {
 			t.Errorf("shared-identity warning %q does not contain %q", warning, want)
 		}
@@ -1266,15 +1269,15 @@ func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&live); err != nil {
 		t.Fatal(err)
 	}
-	label := "human (" + workspace.Config.Actors["human"].Fingerprint[:12] + ")"
+	label := "human-alias (" + workspace.Config.Actors["human"].Fingerprint[:12] + ")"
 	held := 0
 	for _, present := range live.Presence {
 		if present == label {
 			held++
 		}
 	}
-	if held != 2 {
-		t.Fatalf("live sessions under the shared actor = %d, want 2", held)
+	if held != 1 {
+		t.Fatalf("live sessions under the alias label = %d, want 1", held)
 	}
 	third := newServer("human", workspace.Repo)
 	third.session = "mcp:parallel-worker"
