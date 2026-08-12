@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,8 +18,15 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
+var parallelRepoTests sync.Map
+
 func testRepo(t testing.TB) string {
 	t.Helper()
+	if parallel, ok := t.(interface{ Parallel() }); ok {
+		if _, loaded := parallelRepoTests.LoadOrStore(t, struct{}{}); !loaded {
+			parallel.Parallel()
+		}
+	}
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, output)

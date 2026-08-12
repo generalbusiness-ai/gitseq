@@ -3,7 +3,7 @@
 GO ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
 
 test:
-	$(GO) test ./...
+	$(GO) test -json -short -timeout=30s -parallel=32 -p=2 $(TEST_ARGS) ./... | $(GO) run ./cmd/gitseq-test-report
 
 # The four documentation gates on their own. `make test` runs them too.
 docs:

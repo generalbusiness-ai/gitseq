@@ -31,6 +31,9 @@ import (
 const exampleTimeout = 4 * time.Minute
 
 func TestGateDocumentedCommandsRun(t *testing.T) {
+	if testing.Short() {
+		t.Skip("documented command execution belongs to the dedicated make docs gate")
+	}
 	requireTool(t, "git")
 	requireTool(t, "bash")
 	binaries := buildBinaries(t)

@@ -44,6 +44,10 @@ jobs:
         run: npm ci --prefix ui
 
       - name: Check Go code
+        env:
+          # Local runs may use Go's cache. CI reports an honest uncached timing
+          # sample from the same JSON stream that determines pass or fail.
+          TEST_ARGS: -count=1
         run: |
           make vet
           make test

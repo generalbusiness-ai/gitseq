@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,20 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
+
+var workflowTemplateRoot string
+var batchTemplateRoot string
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if workflowTemplateRoot != "" {
+		_ = os.RemoveAll(workflowTemplateRoot)
+	}
+	if batchTemplateRoot != "" {
+		_ = os.RemoveAll(batchTemplateRoot)
+	}
+	os.Exit(code)
+}
 
 func TestValidateLoopbackListen(t *testing.T) {
 	tests := map[string]bool{
@@ -892,6 +907,7 @@ func TestBatchRefusesUndefinedLabelWithoutLanding(t *testing.T) {
 // so a closing delimiter reads to it as a clean end of input and the acts
 // before it land.
 func TestBatchRefusesTrailingInputWithoutLanding(t *testing.T) {
+	fixture := newBatchFixture(t)
 	for _, testCase := range []struct{ name, trailing string }{
 		{"stray array delimiter", "]"},
 		{"stray object delimiter", "}"},
@@ -901,7 +917,6 @@ func TestBatchRefusesTrailingInputWithoutLanding(t *testing.T) {
 		{"malformed bytes", "not json"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			fixture := newBatchFixture(t)
 			before := fixture.snapshot()
 			printed, err := fixture.runFile("operator", fmt.Sprintf(`[
 			  {"verb": "state", "kind": "assert", "text": "first", "rests_on": [%q], "idempotency_key": "trailing-first"}
@@ -1097,19 +1112,55 @@ type batchFixture struct {
 	genesis   string
 }
 
+var batchTemplateOnce sync.Once
+var batchTemplateErr error
+
 func newBatchFixture(t *testing.T) batchFixture {
 	t.Helper()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
-	testGit(t, "", "init", "-b", "main", repo)
-	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	template := batchTemplate(t)
+	if output, err := exec.Command("cp", "-R", template+"/.", repo).CombinedOutput(); err != nil {
+		t.Fatalf("copy batch fixture: %v: %s", err, output)
+	}
+	configPath := filepath.Join(repo, ".git", "gitseq", "config.json")
+	config, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := workspace.AddActor(ctx, "operator", "worker", "agent"); err != nil {
+	config = bytes.ReplaceAll(config, []byte(template), []byte(repo))
+	if err := os.WriteFile(configPath, config, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := app.Open(ctx, repo)
+	if err != nil {
 		t.Fatal(err)
 	}
 	return batchFixture{t: t, ctx: ctx, repo: repo, workspace: workspace, genesis: workspace.EventID(workspace.Config.Genesis)}
+}
+
+func batchTemplate(t *testing.T) string {
+	t.Helper()
+	batchTemplateOnce.Do(func() {
+		batchTemplateRoot, batchTemplateErr = os.MkdirTemp("", "gitseq-gs-batch-")
+		if batchTemplateErr != nil {
+			return
+		}
+		repo := filepath.Join(batchTemplateRoot, "repo")
+		testGit(t, "", "init", "-b", "main", repo)
+		workspace, _, err := app.Init(context.Background(), repo, "operator", 1<<20)
+		if err != nil {
+			batchTemplateErr = err
+			return
+		}
+		if _, _, err := workspace.AddActor(context.Background(), "operator", "worker", "agent"); err != nil {
+			batchTemplateErr = err
+		}
+	})
+	if batchTemplateErr != nil {
+		t.Fatal(batchTemplateErr)
+	}
+	return filepath.Join(batchTemplateRoot, "repo")
 }
 
 func (f batchFixture) snapshot() app.Snapshot {
@@ -1227,73 +1278,127 @@ type workflowFixture struct {
 	promise   string
 }
 
+var workflowTemplateOnce sync.Once
+var workflowTemplateErr error
+var parallelWorkflowTests sync.Map
+var workflowTemplateFixture workflowFixture
+
 func newWorkflowFixture(t *testing.T) workflowFixture {
 	t.Helper()
+	if !strings.Contains(t.Name(), "StateCommandSignsAsTheEnvironmentIdentity") {
+		if _, loaded := parallelWorkflowTests.LoadOrStore(t, struct{}{}); !loaded {
+			t.Parallel()
+		}
+	}
 	ctx := context.Background()
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
 	feature := filepath.Join(root, "feature")
-	testGit(t, "", "init", "-b", "main", repo)
-	testGit(t, repo, "config", "user.name", "Test")
-	testGit(t, repo, "config", "user.email", "test@example.invalid")
-	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
-		t.Fatal(err)
+	template := workflowTemplate(t)
+	if output, err := exec.Command("cp", "-R", template+"/.", repo).CombinedOutput(); err != nil {
+		t.Fatalf("copy workflow fixture: %v: %s", err, output)
 	}
-	testGit(t, repo, "add", "base.txt")
-	testGit(t, repo, "commit", "-m", "base")
-	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	configPath := filepath.Join(repo, ".git", "gitseq", "config.json")
+	config, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := workspace.AddActor(ctx, "operator", "reviewer", "agent"); err != nil {
+	config = bytes.ReplaceAll(config, []byte(template), []byte(repo))
+	if err := os.WriteFile(configPath, config, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	testGit(t, repo, "worktree", "add", "-b", "feature", feature)
-	if err := os.WriteFile(filepath.Join(feature, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	testGit(t, feature, "add", "feature.txt")
-	testGit(t, feature, "commit", "-m", "feature")
-	candidate := testGit(t, feature, "rev-parse", "HEAD")
-	// The feature stands on the base of the repository, exactly as ordinary
-	// work stands on whatever main was when it started. Retiring this is how a
-	// test moves the world without touching the feature commit.
-	groundSubmission, err := workspace.Act(ctx, "operator", app.Act{
-		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "repository base",
-		Body:    map[string]string{"path": ".", "commit": testGit(t, repo, "rev-parse", "HEAD")},
-		RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "ground",
-	})
+	workspace, err := app.Open(ctx, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifactSubmission, err := workspace.Act(ctx, "operator", app.Act{
-		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "feature artifact",
-		Body:    map[string]string{"path": feature, "commit": candidate},
-		RestsOn: []string{groundSubmission.Record.ID}, IdempotencyKey: "artifact",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	requestSubmission, err := workspace.Act(ctx, "operator", app.Act{
-		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
-		Body:    map[string]string{"to": workspace.Config.Actors["reviewer"].Fingerprint, "conditions": "exact head"},
-		RestsOn: []string{artifactSubmission.Record.ID}, IdempotencyKey: "review-request",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	promiseSubmission, err := workspace.Act(ctx, "reviewer", app.Act{
-		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "review exact head",
-		RestsOn: []string{requestSubmission.Record.ID}, IdempotencyKey: "review-promise",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	testGit(t, repo, "worktree", "add", feature, "feature")
 	return workflowFixture{
 		t: t, ctx: ctx, repo: repo, feature: feature, workspace: workspace,
-		candidate: candidate, artifact: artifactSubmission.Record.ID, ground: groundSubmission.Record.ID,
-		request: requestSubmission.Record.ID, promise: promiseSubmission.Record.ID,
+		candidate: workflowTemplateFixture.candidate, artifact: workflowTemplateFixture.artifact, ground: workflowTemplateFixture.ground,
+		request: workflowTemplateFixture.request, promise: workflowTemplateFixture.promise,
 	}
+}
+
+func workflowTemplate(t *testing.T) string {
+	t.Helper()
+	workflowTemplateOnce.Do(func() {
+		workflowTemplateRoot, workflowTemplateErr = os.MkdirTemp("", "gitseq-gs-workflow-")
+		if workflowTemplateErr != nil {
+			return
+		}
+		repo := filepath.Join(workflowTemplateRoot, "repo")
+		testGit(t, "", "init", "-b", "main", repo)
+		testGit(t, repo, "config", "user.name", "Test")
+		testGit(t, repo, "config", "user.email", "test@example.invalid")
+		if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
+			workflowTemplateErr = err
+			return
+		}
+		testGit(t, repo, "add", "base.txt")
+		testGit(t, repo, "commit", "-m", "base")
+		workspace, _, err := app.Init(context.Background(), repo, "operator", 1<<20)
+		if err != nil {
+			workflowTemplateErr = err
+			return
+		}
+		if _, _, err := workspace.AddActor(context.Background(), "operator", "reviewer", "agent"); err != nil {
+			workflowTemplateErr = err
+			return
+		}
+		feature := filepath.Join(workflowTemplateRoot, "feature")
+		testGit(t, repo, "worktree", "add", "-b", "feature", feature)
+		if err := os.WriteFile(filepath.Join(feature, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
+			workflowTemplateErr = err
+			return
+		}
+		testGit(t, feature, "add", "feature.txt")
+		testGit(t, feature, "commit", "-m", "feature")
+		candidate := testGit(t, feature, "rev-parse", "HEAD")
+		groundSubmission, err := workspace.Act(context.Background(), "operator", app.Act{
+			Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "repository base",
+			Body:    map[string]string{"path": ".", "commit": testGit(t, repo, "rev-parse", "HEAD")},
+			RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "ground",
+		})
+		if err != nil {
+			workflowTemplateErr = err
+			return
+		}
+		artifactSubmission, err := workspace.Act(context.Background(), "operator", app.Act{
+			Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "feature artifact",
+			Body:    map[string]string{"path": feature, "commit": candidate},
+			RestsOn: []string{groundSubmission.Record.ID}, IdempotencyKey: "artifact",
+		})
+		if err != nil {
+			workflowTemplateErr = err
+			return
+		}
+		requestSubmission, err := workspace.Act(context.Background(), "operator", app.Act{
+			Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
+			Body:    map[string]string{"to": workspace.Config.Actors["reviewer"].Fingerprint, "conditions": "exact head"},
+			RestsOn: []string{artifactSubmission.Record.ID}, IdempotencyKey: "review-request",
+		})
+		if err != nil {
+			workflowTemplateErr = err
+			return
+		}
+		promiseSubmission, err := workspace.Act(context.Background(), "reviewer", app.Act{
+			Verb: app.VerbState, Kind: workroom.KindPromise, Text: "review exact head",
+			RestsOn: []string{requestSubmission.Record.ID}, IdempotencyKey: "review-promise",
+		})
+		if err != nil {
+			workflowTemplateErr = err
+			return
+		}
+		workflowTemplateFixture = workflowFixture{
+			candidate: candidate, artifact: artifactSubmission.Record.ID, ground: groundSubmission.Record.ID,
+			request: requestSubmission.Record.ID, promise: promiseSubmission.Record.ID,
+		}
+		testGit(t, repo, "worktree", "remove", feature)
+	})
+	if workflowTemplateErr != nil {
+		t.Fatal(workflowTemplateErr)
+	}
+	return filepath.Join(workflowTemplateRoot, "repo")
 }
 
 // moveTheWorld retires the base everything under review rests on, leaving the
@@ -1659,17 +1764,17 @@ func TestSigningActorComesFromFlagThenEnvironmentAndOtherwiseFails(t *testing.T)
 
 // The environment identity reaches a real durable act, not only the resolver.
 func TestStateCommandSignsAsTheEnvironmentIdentity(t *testing.T) {
-	fixture := newWorkflowFixture(t)
-	t.Setenv(actorEnvironment, "reviewer")
+	fixture := newBatchFixture(t)
+	t.Setenv(actorEnvironment, "worker")
 	if err := stateCommand(fixture.ctx, []string{
 		"--repo", fixture.repo, "--kind", "assert", "--text", "signed without --as",
-		"--rests-on", fixture.artifact,
+		"--rests-on", fixture.genesis,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	projection := fixture.snapshot(t).Projection
+	projection := fixture.snapshot().Projection
 	last := projection.Statements[len(projection.Statements)-1]
-	if last.Actor != fixture.workspace.Config.Actors["reviewer"].Fingerprint {
+	if last.Actor != fixture.workspace.Config.Actors["worker"].Fingerprint {
 		t.Fatalf("environment identity signed as %s", last.Actor)
 	}
 }

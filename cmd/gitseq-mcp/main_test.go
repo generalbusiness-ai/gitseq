@@ -1636,6 +1636,9 @@ func TestResidentShutdownHasIndependentDeadline(t *testing.T) {
 }
 
 func TestWhoamiWarmResidentAtSignedDepthIsSubsecond(t *testing.T) {
+	if testing.Short() {
+		t.Skip("signed-depth latency is measured by the maintained performance lane")
+	}
 	ctx := context.Background()
 	workspace, _ := signedWorkspace(t, 64)
 	snapshot, err := workspace.Snapshot(ctx)

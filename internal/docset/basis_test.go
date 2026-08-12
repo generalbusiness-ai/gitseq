@@ -47,6 +47,9 @@ func TestGateEveryPageNamesAGoverningAct(t *testing.T) {
 }
 
 func TestGateNoPageIsUnableToFlare(t *testing.T) {
+	if testing.Short() {
+		t.Skip("full artifact-graph replay belongs to the dedicated make docs gate")
+	}
 	root := mustRoot(t)
 	pages := mustPages(t, root)
 	built := modelCopy(t, pages)

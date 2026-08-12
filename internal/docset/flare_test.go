@@ -16,6 +16,9 @@ import (
 // readers to ignore flares, which comes to the same thing more slowly.
 
 func TestGateRetiringOneActFlaresExactlyItsPages(t *testing.T) {
+	if testing.Short() {
+		t.Skip("full artifact-graph replay belongs to the dedicated make docs gate")
+	}
 	root := mustRoot(t)
 	pages := mustPages(t, root)
 	acts := declaredActs(pages)
@@ -56,6 +59,9 @@ func TestGateRetiringOneActFlaresExactlyItsPages(t *testing.T) {
 // while some act governs that page alone — so it is checked here rather than
 // waited for.
 func TestGateVerifyPageCanFlareAlone(t *testing.T) {
+	if testing.Short() {
+		t.Skip("full artifact-graph replay belongs to the dedicated make docs gate")
+	}
 	root := mustRoot(t)
 	pages := mustPages(t, root)
 	const verifyPage = DocsDir + "/reference/gs/verify.md"
@@ -92,6 +98,9 @@ func TestGateVerifyPageCanFlareAlone(t *testing.T) {
 // exists to prevent — and unlike the test above, this one is falsified by the
 // front matter rather than by the fold, so a careless anchor is caught here.
 func TestGateNoActFlaresMostOfTheSet(t *testing.T) {
+	if testing.Short() {
+		t.Skip("full artifact-graph replay belongs to the dedicated make docs gate")
+	}
 	root := mustRoot(t)
 	pages := mustPages(t, root)
 	limit := len(pages) / 4

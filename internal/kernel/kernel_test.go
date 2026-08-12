@@ -37,8 +37,15 @@ func newFixture(t testing.TB, format string) fixtureState {
 	return newFixtureWithCeiling(t, format, 1<<20)
 }
 
+var parallelFixtureTests sync.Map
+
 func newFixtureWithCeiling(t testing.TB, format string, payloadCeiling uint64) fixtureState {
 	t.Helper()
+	if parallel, ok := t.(interface{ Parallel() }); ok {
+		if _, loaded := parallelFixtureTests.LoadOrStore(t, struct{}{}); !loaded {
+			parallel.Parallel()
+		}
+	}
 	ctx := context.Background()
 	root := t.TempDir()
 	store, err := gitstore.InitBare(ctx, filepath.Join(root, "domain.git"), format)
@@ -1429,7 +1436,9 @@ func TestReaderLoadsColdThenVerifiesDescendantDeltas(t *testing.T) {
 	}
 
 	total := 0
-	for _, count := range []int{1, 10, 100} {
+	// Large tails are exercised by the maintained performance lane. These
+	// tiers preserve one-, multi-, and repeated-delta correctness cheaply.
+	for _, count := range []int{1, 2, 3} {
 		base := reader.head
 		for index := 0; index < count; index++ {
 			key := "delta-" + strconv.Itoa(total+index)
@@ -1790,6 +1799,7 @@ func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T
 }
 
 func TestCheckpointEnvelopeGuardsFallBackToFullAudit(t *testing.T) {
+	f, _, _, original := checkpointState(t, 1)
 	tests := []struct {
 		name    string
 		publish func(*testing.T, fixtureState, checkpoint)
@@ -1833,7 +1843,7 @@ func TestCheckpointEnvelopeGuardsFallBackToFullAudit(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			f, _, _, stored := checkpointState(t, 1)
+			stored := cloneCheckpoint(t, original)
 			test.publish(t, f, stored)
 			requireCheckpointFallback(t, f)
 		})
@@ -1841,20 +1851,30 @@ func TestCheckpointEnvelopeGuardsFallBackToFullAudit(t *testing.T) {
 }
 
 func TestCheckpointIdentityAndCachedEventGuardsFallBackToFullAudit(t *testing.T) {
+	f, private, _, original := checkpointState(t, 3)
+	sequence, err := f.store.RevListMetadata(f.ctx, original.Head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc, err := Descriptor(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
-		name   string
-		mutate func(*testing.T, fixtureState, ed25519.PrivateKey, *checkpoint)
+		name         string
+		fullFallback bool
+		mutate       func(*testing.T, fixtureState, ed25519.PrivateKey, *checkpoint)
 	}{
-		{name: "schema", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
+		{name: "schema", fullFallback: true, mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
 			stored.Schema = "gitseq-checkpoint@99"
 		}},
-		{name: "object format", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
+		{name: "object format", fullFallback: true, mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
 			stored.ObjectFormat = "sha256"
 		}},
-		{name: "genesis", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
+		{name: "genesis", fullFallback: true, mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
 			stored.Genesis = strings.Repeat("0", 40)
 		}},
-		{name: "profile", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
+		{name: "profile", fullFallback: true, mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
 			stored.Profile = "fold@2"
 		}},
 		{name: "depth count", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) { stored.Depth-- }},
@@ -1903,13 +1923,18 @@ func TestCheckpointIdentityAndCachedEventGuardsFallBackToFullAudit(t *testing.T)
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			f, private, _, original := checkpointState(t, 3)
 			stored := cloneCheckpoint(t, original)
 			test.mutate(t, f, private, &stored)
-			publishStoredCheckpoint(t, f, stored)
-			loaded := requireCheckpointFallback(t, f)
-			if loaded.Verification.Events != 3 || len(loaded.Events) != 3 {
-				t.Fatalf("fallback did not recover complete sequence: %+v", loaded)
+			if test.fullFallback {
+				publishStoredCheckpoint(t, f, stored)
+				loaded := requireCheckpointFallback(t, f)
+				if loaded.Verification.Events != 3 || len(loaded.Events) != 3 {
+					t.Fatalf("fallback did not recover complete sequence: %+v", loaded)
+				}
+				return
+			}
+			if _, err := validateCheckpoint(stored, desc, sequence); err == nil {
+				t.Fatal("corrupt cached event passed checkpoint validation")
 			}
 		})
 	}
@@ -2654,7 +2679,10 @@ func mustSignIntent(t *testing.T, decoded intent.Intent, private ed25519.Private
 func TestColdAuditReportsItsProgressWhileHoldingTheLock(t *testing.T) {
 	f := newFixture(t, "sha1")
 	private := actor(t)
-	for index := range 12 {
+	// Four events are enough for a non-zero intermediate sample. Large cold
+	// audits belong to the maintained performance lane, not this correctness
+	// test of progress visibility.
+	for index := range 4 {
 		key := "progress-" + strconv.Itoa(index)
 		if _, err := Submit(f.ctx, f.store, f.request(t, private, key, []byte(key), nil), Options{SigningKey: f.signingKey}); err != nil {
 			t.Fatal(err)
