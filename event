@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review the dead UI surface removal at exact head fd3fb7b525804cefe7f630851f41408a418757df and report approved or changes-requested."}
+{"kind":"promise","text":"I will do the focused re-review of 708170b2. Filing is clean: 3b24793c and e3d92bdc both name the head and are non-stale. I will confirm the delta from 438bdabb is only the new test, then run the mutation myself — the whole finding last round was that the suite passed with the gate reverted, so the only thing that settles it is watching it fail."}
