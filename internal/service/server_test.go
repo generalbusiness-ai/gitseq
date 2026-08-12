@@ -1171,4 +1171,30 @@ func TestAttentionAnswersAndDegradesWithoutRefusing(t *testing.T) {
 	if report := ask(attentionRequest{Session: "someone-else", Events: []string{"event:unwatched"}}); len(report.Actors) != 0 {
 		t.Fatalf("an unrelated event matched: %+v", report.Actors)
 	}
+
+	// One actor in two windows is one row. Aggregation happens on the durable
+	// fingerprint the resident resolved, not on the session, so a person
+	// working from two sessions does not read as two people watching.
+	second, err := json.Marshal(presenceRequest{Actor: "human", Session: "watcher-2", Status: &busy, Focus: &focus})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err = http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+
+	report = ask(attentionRequest{Session: "someone-else", Events: []string{realEvent}})
+	if len(report.Actors) != 1 {
+		t.Fatalf("two sessions of one actor produced %d rows: %+v", len(report.Actors), report.Actors)
+	}
+	if report.Actors[0].Sessions != 2 {
+		t.Fatalf("aggregated row reports %d sessions, want 2: %+v", report.Actors[0].Sessions, report.Actors[0])
+	}
+	// The caller filter still applies per session: asking as one of that
+	// actor's own sessions leaves only the other one visible.
+	if report := ask(attentionRequest{Session: "watcher", Events: []string{realEvent}}); len(report.Actors) != 1 || report.Actors[0].Sessions != 1 {
+		t.Fatalf("asking as one of the actor's own sessions reported %+v", report.Actors)
+	}
 }
