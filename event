@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review exact kernel back-pressure head 183ebe7d00f8821ea79875b42bb7cb265f6efdf1, including the kernel, app, and docs artifacts and the requested sentinel, provenance, architecture, security, simplification, and gate judgments.","body":{"artifact":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ecedfb2b","head":"183ebe7d00f8821ea79875b42bb7cb265f6efdf1"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57defb802c57ff1213c3cd7c2486140e4f516b73"}
