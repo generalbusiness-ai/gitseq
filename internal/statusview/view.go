@@ -72,12 +72,12 @@ type Attempt struct {
 // why it has to be shown: the record it names still reads as it always did, so
 // a page that omits the dissent tells a reader the act is unopposed.
 type Dissent struct {
-	Event    string `json:"event"`
-	Sequence int    `json:"sequence,omitempty"`
-	Actor    string `json:"actor"`
-	Against  string `json:"against,omitempty"`
-	AgainstSequence int `json:"against_sequence,omitempty"`
-	Text     string `json:"text,omitempty"`
+	Event           string `json:"event"`
+	Sequence        int    `json:"sequence,omitempty"`
+	Actor           string `json:"actor"`
+	Against         string `json:"against,omitempty"`
+	AgainstSequence int    `json:"against_sequence,omitempty"`
+	Text            string `json:"text,omitempty"`
 }
 
 type Summary struct {

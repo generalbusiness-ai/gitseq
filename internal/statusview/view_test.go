@@ -461,6 +461,52 @@ func TestStatusPageShowsDissentAgainstTheActItConcerns(t *testing.T) {
 }
 
 // A retired dissent is withdrawn, and showing it would be the opposite error.
+// The dissent list is bounded like every other list on the page, and the bound
+// has to be pinned by a test that fails without it. Removing the Cap call left
+// the whole package green, which meant the page could grow without limit and
+// the "older omitted" notice could silently stop being true — the notice is
+// the only thing telling a reader that what they see is not all there is.
+//
+// Newest-first matters as much as the count. Cap keeps the tail and reverse
+// turns it around, so an off-by-one in either direction would show the oldest
+// twenty objections and call them current.
+func TestDissentsAreBoundedNewestFirstWithAnHonestOmittedCount(t *testing.T) {
+	const filed = ListCap + 5
+	projection := workroom.Projection{Provenance: map[string][]string{}}
+	for index := 1; index <= filed; index++ {
+		event := fmt.Sprintf("objection-%02d", index)
+		projection.Statements = append(projection.Statements, workroom.Statement{
+			Event: event, Actor: "reviewer", Kind: workroom.KindDissent,
+			Text: fmt.Sprintf("objection number %d", index),
+		})
+		projection.Decisions = append(projection.Decisions, workroom.Decision{
+			Event: event, Verdict: workroom.Effective, Sequence: index,
+		})
+	}
+	summary := Build("genesis", "head", filed, projection)
+
+	if len(summary.Dissents) != ListCap {
+		t.Errorf("dissents shown = %d, want the cap %d", len(summary.Dissents), ListCap)
+	}
+	if summary.DissentsOmitted != filed-ListCap {
+		t.Errorf("omitted count = %d, want %d", summary.DissentsOmitted, filed-ListCap)
+	}
+	if got := summary.Dissents[0].Event; got != fmt.Sprintf("objection-%02d", filed) {
+		t.Errorf("first dissent = %q, want the newest", got)
+	}
+	if got := summary.Dissents[len(summary.Dissents)-1].Event; got != fmt.Sprintf("objection-%02d", filed-ListCap+1) {
+		t.Errorf("last dissent = %q, want the oldest still within the cap", got)
+	}
+	rendered := string(Render(summary, ""))
+	notice := fmt.Sprintf("Showing %d of %d; %d older omitted.", ListCap, filed, filed-ListCap)
+	if !strings.Contains(rendered, notice) {
+		t.Errorf("the page does not tell the reader what it left out; want %q in:\n%s", notice, rendered)
+	}
+	if strings.Contains(rendered, "objection number 1\n") {
+		t.Error("an omitted dissent was rendered anyway")
+	}
+}
+
 func TestRetiredDissentIsNotShown(t *testing.T) {
 	projection := workroom.Projection{
 		Statements: []workroom.Statement{
