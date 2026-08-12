@@ -1,0 +1,76 @@
+name: Performance evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Exact base ref
+        required: true
+        default: main
+      candidate:
+        description: Exact candidate ref
+        required: true
+        default: HEAD
+      tier:
+        description: Bounded contract tier
+        required: true
+        type: choice
+        options:
+          - smoke
+          - standard
+        default: smoke
+  schedule:
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out history without stored credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install the declared Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install the pinned comparison tool
+        shell: bash
+        run: go install golang.org/x/perf/cmd/benchstat@v0.0.0-20260709024250-82a0b07e230d
+
+      - name: Run the bounded comparison
+        shell: bash
+        env:
+          PERF_BASE: ${{ github.event_name == 'workflow_dispatch' && inputs.base || 'HEAD^' }}
+          PERF_CANDIDATE: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate || 'HEAD' }}
+          PERF_TIER: ${{ github.event_name == 'workflow_dispatch' && inputs.tier || 'smoke' }}
+        run: |
+          set -euo pipefail
+          go run ./cmd/gitseq-perf compare \
+            --base "$PERF_BASE" \
+            --candidate "$PERF_CANDIDATE" \
+            --tier "$PERF_TIER" \
+            --output performance/evidence
+
+      - name: Retain raw evidence and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: performance-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: performance/evidence/
+          retention-days: 30
+          if-no-files-found: error

@@ -1,0 +1,17 @@
+{
+  "schema": "gitseq.performance-baseline.v1",
+  "status": "smoke-observed",
+  "contract": "performance/contract-v1.json",
+  "contract_digest": "272c8c057d9c8fbf3f72f1b7d0c92e376900fd322d83bdb2b5f08f3b82d03969",
+  "accepted_commit": "83772d0f3e45d3c234120fddb04c49f76fea85df",
+  "recorded_at": "2026-08-11",
+  "environment": {"os":"darwin","architecture":"arm64","go_version":"go1.26.5","git_version":"2.50.1","cpu_model":"Apple M5 Max","sample_population_per_case":1},
+  "hypotheses": [
+    {"name": "exact_head_status_500ms", "classification": "not_yet_measurable", "reason":"one depth-100 cold sample was 4437946250 ns and one warm sample was 8154917 ns"},
+    {"name": "tail_at_most_10_2s", "classification": "met_in_smoke", "observations_ns":{"tail_0":286669000,"tail_1":329573791,"tail_10":716081500}},
+    {"name": "bounded_default_32kib", "classification": "met_in_smoke", "largest_response_bytes":8142},
+    {"name": "warm_depth_20000_64kib", "classification": "not_yet_measurable", "reason":"smoke tier covers depth 100, not depth 20000"}
+  ],
+  "concurrent_reader_writer_pairs": [1, 4, 16],
+  "bounded_soak": {"ceiling_seconds":60,"operation_ceiling":1000,"completed_operations":662}
+}
