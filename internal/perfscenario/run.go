@@ -327,10 +327,15 @@ func prepareOperation(ctx context.Context, options RunOptions) (preparedOperatio
 			if err != nil {
 				return operationResult{}, 0, err
 			}
-			if _, err := service.New(workspace); err != nil {
+			server, err := service.New(workspace)
+			if err != nil {
 				return operationResult{}, 0, err
 			}
-			return operationResult{workspace: workspace}, 1, nil
+			body, err := request(server.Handler(), http.MethodGet, "/v0/status-summary", nil)
+			if err != nil {
+				return operationResult{}, 0, err
+			}
+			return operationResult{response: body, workspace: workspace}, 1, nil
 		}, nil
 	case "cold_status":
 		return func() (operationResult, int, error) {

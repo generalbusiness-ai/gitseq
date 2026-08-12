@@ -84,6 +84,9 @@ func TestSmallExactFixtureAndCompleteOperations(t *testing.T) {
 			if result.LatencyNS <= 0 || result.SetupNS <= 0 || result.TrustedDigest == "" || result.CorrectnessDigest != result.TrustedDigest {
 				t.Fatalf("bad result: %+v", result)
 			}
+			if scenario == "startup" && result.ResponseBytes == 0 {
+				t.Fatal("startup recorded no readiness/status response")
+			}
 			if scenario == "concurrent_read_write" && (result.Concurrency != 4 || result.Operations != 8) {
 				t.Fatalf("concurrency result = %+v, want four reader/writer pairs", result)
 			}
