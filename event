@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2b39404f6cfe3cd9c81396d721d08e2b61b13cf","text":"Retire the docs artifact for merge 2c1443a6. Merge e3bf1653 changed eleven pages under docs/, so this predecessor is superseded; the successor at this path is 050cc4e4."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95af449fda3a750786f01f7c8d27e59c8c44c1b5","text":"Retire the candidate at docs for head b422d4cd, now merged as e3bf1653. The successor at this path is 050cc4e4."}
