@@ -445,7 +445,7 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	// This test concerns query routing, not presence or the sole-identity gate.
 	// Mark the already-attached test session as joined so those independent
 	// calls cannot obscure which endpoints work and inspect choose.
-	attached.checked = true
+	attached.identityNoticeChecked = true
 	attached.announced = true
 
 	value, _, err := server.call(context.Background(), toolCall{Name: "work", Arguments: map[string]any{"limit": 1}})
@@ -704,7 +704,7 @@ func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing
 	}))
 	defer legacy.Close()
 	server, attached := attachedServer(t, workspace, "human", legacy.URL, legacy.Client())
-	attached.checked = true
+	attached.identityNoticeChecked = true
 	attached.announced = true
 
 	value, _, err := server.call(context.Background(), toolCall{Name: "status"})
@@ -776,7 +776,7 @@ func TestAddressedSayFailsClosedWhenResidentDowngradesDuringSessionRepair(t *tes
 	defer legacy.Close()
 
 	server, attached := attachedServer(t, workspace, "human", legacy.URL, legacy.Client())
-	attached.checked = true
+	attached.identityNoticeChecked = true
 	attached.announced = true
 	attached.setInboxAvailable(true)
 
@@ -1212,10 +1212,11 @@ func TestPresenceRenewalRunsBesideCalls(t *testing.T) {
 	server.depart(context.Background())
 }
 
-// One identity, one live session. A second instance under the same name would
-// make the log say a name did work that one of several instances did, and
-// would satisfy the different-agent review rule by spelling alone.
-func TestSecondInstanceRefusesToShareALiveIdentity(t *testing.T) {
+// A crashed adapter leaves its presence lease behind for up to thirty seconds.
+// Its replacement must be able to start immediately under the same actor
+// identity, while making the review-authority and coordination consequences
+// visible to the operator.
+func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
 	workspace := initRepository(t, "repo")
 	if _, _, err := workspace.AddActor(context.Background(), "human", "claude.2", "agent"); err != nil {
 		t.Fatal(err)
@@ -1231,38 +1232,64 @@ func TestSecondInstanceRefusesToShareALiveIdentity(t *testing.T) {
 	}
 
 	first := newServer("human", workspace.Repo)
+	first.session = "mcp:before-crash"
 	if _, err := first.attend(context.Background(), ""); err != nil {
 		t.Fatalf("first instance refused a free identity: %v", err)
 	}
+	// Do not depart: this is the crash case, so the first 30-second lease is
+	// still visible when its replacement starts.
 	second := newServer("human", workspace.Repo)
-	_, err = second.attend(context.Background(), "")
-	var shared *sharedIdentityError
-	if !errors.As(err, &shared) || !strings.Contains(err.Error(), "already live") {
-		t.Fatalf("second instance under one identity = %v", err)
+	second.session = "mcp:after-restart"
+	var notices bytes.Buffer
+	second.notices = &notices
+	if _, err := second.attend(context.Background(), ""); err != nil {
+		t.Fatalf("replacement instance refused a shared actor identity: %v", err)
 	}
-	if !strings.Contains(err.Error(), actorEnvironment) {
-		t.Fatalf("refusal does not say how to fix it: %v", err)
+	warning := notices.String()
+	for _, want := range []string{`identity "human"`, "1 other session", "no independent force", "race on claims and presence"} {
+		if !strings.Contains(warning, want) {
+			t.Errorf("shared-identity warning %q does not contain %q", warning, want)
+		}
 	}
-	// The refusal has to hold on every call, not only the first: a session
-	// that was turned away at the door must not act through a cached
-	// attachment.
-	if _, _, err := second.call(context.Background(), toolCall{Name: "presence"}); !errors.As(err, &shared) {
-		t.Fatalf("a refused instance still acted: %v", err)
+	if _, _, err := second.call(context.Background(), toolCall{Name: "presence"}); err != nil {
+		t.Fatalf("replacement instance could not act: %v", err)
+	}
+	if got := notices.String(); got != warning {
+		t.Fatalf("shared-identity warning repeated after attachment: before %q, after %q", warning, got)
+	}
+	var live nexus.Snapshot
+	response, err := http.Get(httpServer.URL + "/v0/presence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if err := json.NewDecoder(response.Body).Decode(&live); err != nil {
+		t.Fatal(err)
+	}
+	label := "human (" + workspace.Config.Actors["human"].Fingerprint[:12] + ")"
+	held := 0
+	for _, present := range live.Presence {
+		if present == label {
+			held++
+		}
+	}
+	if held != 2 {
+		t.Fatalf("live sessions under the shared actor = %d, want 2", held)
 	}
 	distinct := newServer("claude.2", workspace.Repo)
+	var distinctNotices bytes.Buffer
+	distinct.notices = &distinctNotices
 	if _, err := distinct.attend(context.Background(), ""); err != nil {
 		t.Fatalf("a distinct instance identity was refused: %v", err)
 	}
-
-	first.depart(context.Background())
-	if _, err := second.attend(context.Background(), ""); err != nil {
-		t.Fatalf("identity stayed held after its session departed: %v", err)
+	if distinctNotices.Len() != 0 {
+		t.Fatalf("a distinct actor received a shared-identity warning: %q", distinctNotices.String())
 	}
 }
 
 // The check is only as good as the resident service, and a stopped service
 // must not stop the work. Starting anyway is the stated limit, not an oversight.
-func TestIdentityCheckIsSkippedWhenPresenceCannotBeRead(t *testing.T) {
+func TestSharedIdentityWarningIsSkippedWhenPresenceCannotBeRead(t *testing.T) {
 	workspace := initRepository(t, "repo")
 	dead := httptest.NewServer(nil)
 	baseURL := dead.URL
@@ -1270,8 +1297,13 @@ func TestIdentityCheckIsSkippedWhenPresenceCannotBeRead(t *testing.T) {
 	dead.Close()
 	server, attached := attachedServer(t, workspace, "human", baseURL, client)
 	server.session = "mcp:offline"
-	if err := server.requireSoleIdentity(context.Background(), attached); err != nil {
+	var notices bytes.Buffer
+	server.notices = &notices
+	if err := server.warnSharedIdentity(context.Background(), attached); err != nil {
 		t.Fatalf("unreadable presence blocked startup: %v", err)
+	}
+	if !strings.Contains(notices.String(), "shared-identity check skipped") {
+		t.Fatalf("degraded-open startup did not explain the skipped warning: %q", notices.String())
 	}
 }
 
