@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8844baa503f448ef31c94e79537ea1d3bb9e7b0c","text":"Retire the candidate at internal/app for head 9cd8e8f0, now merged as ff6132ec. The successor at this path is 09711847. Checked first: no page cites it, and nothing in flight rests on it — the report-lifecycle artifact 6360b681 rests on 48bd5acf and my promise, not on this record."}
+{"kind":"artifact","text":"Shared-identity warning carried unchanged onto current main.","body":{"commit":"1c75f9cb7aae7f709fd95600c658571f816371ac","path":"cmd/gitseq-mcp"}}
