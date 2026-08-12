@@ -712,8 +712,10 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 	rests := append([]string(nil), act.RestsOn...)
 	switch act.Verb {
 	case VerbState:
-		if act.Kind == workroom.KindReport {
-			if err := w.validateReportBasis(ctx, rests); err != nil {
+		lifecycle, starter := workroom.StarterLifecycle(act.Kind)
+		if !starter || lifecycle == workroom.LifecycleReport {
+			reporter := intent.ActorFingerprint(private.Public().(ed25519.PublicKey))
+			if err := w.validateReportBasis(ctx, reporter, act.Kind, rests); err != nil {
 				return kernel.Request{}, err
 			}
 		}
@@ -733,30 +735,46 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 	return w.buildRequest(ctx, private, actorName, schema, payload, rests, act.Attachments, act.IdempotencyKey)
 }
 
-// validateReportBasis refuses the one report shape that cannot participate in
-// the work loop. The fold still owns the durable decision, including races in
-// which a promise moves after this check, but filing a request as though it
-// were a promise is a local construction error we can report before signing.
-func (w *Workspace) validateReportBasis(ctx context.Context, rests []string) error {
+// validateReportBasis mirrors the fold's report-lifecycle checks before the
+// request is signed. The fold remains authoritative, including when the log
+// moves after this snapshot, but locally constructed reports should not append
+// when their lifecycle edge is already known to be ineffective or disputed.
+func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, kind workroom.Kind, rests []string) error {
 	snapshot, err := w.Snapshot(ctx)
 	if err != nil {
 		return fmt.Errorf("validate report basis: %w", err)
+	}
+	lifecycles := make(map[workroom.Kind]workroom.Lifecycle, len(snapshot.Vocabulary.Definitions))
+	for _, definition := range snapshot.Vocabulary.Definitions {
+		lifecycles[definition.Name] = definition.Lifecycle
+	}
+	if lifecycles[kind] != workroom.LifecycleReport {
+		return nil
 	}
 	effective := make(map[string]bool, len(snapshot.Projection.Decisions))
 	for _, decision := range snapshot.Projection.Decisions {
 		effective[decision.Event] = decision.Verdict == workroom.Effective
 	}
+	statements := make(map[string]workroom.Statement, len(snapshot.Projection.Statements))
 	for _, statement := range snapshot.Projection.Statements {
-		if statement.Kind != workroom.KindPromise || !effective[statement.Event] {
-			continue
-		}
-		for _, rest := range rests {
-			if rest == statement.Event {
-				return nil
-			}
+		if effective[statement.Event] {
+			statements[statement.Event] = statement
 		}
 	}
-	return errors.New("report requires an effective promise in rests_on; rest on the promise, not its request")
+	var promises []workroom.Statement
+	for _, rest := range rests {
+		statement, ok := statements[rest]
+		if ok && lifecycles[statement.Kind] == workroom.LifecyclePromise {
+			promises = append(promises, statement)
+		}
+	}
+	if len(promises) != 1 {
+		return fmt.Errorf("report requires exactly one effective promise-lifecycle basis in rests_on; got %d", len(promises))
+	}
+	if promises[0].Actor != reporter {
+		return errors.New("report actor must be the promisor of its promise-lifecycle basis")
+	}
+	return nil
 }
 
 func (w *Workspace) buildRequest(ctx context.Context, private ed25519.PrivateKey, actorName, schema string, payload any, rests []string, attachments map[string][]byte, key string) (kernel.Request, error) {

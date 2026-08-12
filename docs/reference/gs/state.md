@@ -81,9 +81,10 @@ Required edges, by kind:
 - a `promise` needs one basis that is an effective `request`, **and** the
   signer must be the performer that request named;
 - a `report` needs one basis that is an effective `promise`, signed by
-  the promisor. Filing a report without an effective promise is refused before
-  anything is appended, with an error telling the caller to rest on the
-  promise rather than its request.
+  the promisor. Before anything is appended, filing checks the active
+  vocabulary for exactly one effective promise-lifecycle basis and checks that
+  its promisor is the report signer. An error tells the caller which rule the
+  draft violates; the fold remains authoritative if the log moves meanwhile.
 
 Anything else in `rests_on` is carried unchecked.
 
