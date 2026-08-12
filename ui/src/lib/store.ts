@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Act, type Actor, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type WorktreeView } from "./api";
-import { ACTIVE_WORK_STATUSES, ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, otherWorkAttentionCounts, workActiveCount, workAttentionCount } from "./work";
+import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, otherWorkAttentionCounts, workActiveCount, workAttentionCount } from "./work";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
@@ -226,7 +226,6 @@ export function forYouItems(projection: Projection | undefined, me: string | und
 }
 
 export const ACTIVE_COMMITMENT_STATUSES: string[] = [...ACTIVE_WORK_STATUSES];
-export const ATTENTION_COMMITMENT_STATUSES: string[] = [...ATTENTION_WORK_STATUSES];
 
 // The header chip's summary of the Work drawer, computed from the projection.
 export function workSummary(projection?: Projection): {
