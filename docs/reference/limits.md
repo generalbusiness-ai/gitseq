@@ -6,7 +6,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e517fd6e34c43f66733b2d78a7200f2b123412db
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aefe829ae81c11c3e33404d9e55f60e43ae31fb2
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66b6cb0b770fe88808130a195babf79fe1ea7746
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f6c9608584a509b037474ff178f6298aa69ea483
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ad6f6e091d389258354b2c985b214decd9cae96
 ---
 
 # Limits
@@ -108,8 +108,11 @@ checkpoint is authenticated under is derived through them.
 
 ## Local view
 
-The browser's event railway is a newest-80 window and says when it is
-truncated.
+The browser's commit graph is a newest-80 window and says when it is
+truncated: the resident caps the graph it serves at 80 commits and marks
+the response truncated, and the view then says "Showing the newest 80
+commits." The event railway beside it is not windowed that way; it folds
+lanes when it runs out of room.
 
 ## What is not limited
 
