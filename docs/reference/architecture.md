@@ -4,9 +4,9 @@ summary: The boundary between Gitseq's semantic-free kernel and replaceable appl
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c45e6fefd3c2b4011b30ba9b4610dcc071617c02
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f0cf16ee1b1517b262088b30ff63b7d0ec9657d4
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d97eed896404f401dae2439928e31c6a0290ed47
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:61bafadb6d6809bdf1b03b77e6bd3119d124f7b3
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:82a33e465eab84f47ad7bd85f16517ade032ab78
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1555aaeed26abbcda075499c45410e83af3646a4
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e517fd6e34c43f66733b2d78a7200f2b123412db
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:63b428d3c3e219ca7a1d9dade8e3f791466fcfe6
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21ffa9246fe0c3b414d12cc1ae45d30b3b4b3cee
