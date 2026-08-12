@@ -7,6 +7,8 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aefe829ae81c11c3e33404d9e55f60e43ae31fb2
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66b6cb0b770fe88808130a195babf79fe1ea7746
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ad6f6e091d389258354b2c985b214decd9cae96
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:45f88594c0937fdffb1803a6475dc7db4fbeaa1b
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0ea5a63aaefb0bcc383ad863c24514db16c56476
 ---
 
 # Limits
@@ -29,6 +31,37 @@ validates against the value recorded in genesis.
 
 Readers enforce the same envelope ceiling explicitly, so the write path
 cannot admit a commit that a parser would later reject.
+
+## Concurrent submissions
+
+| Limit | Value |
+|---|---|
+| Submissions inside the sequencer at once | 32 |
+
+The count includes the submission holding the sequencer lock, so 32 means
+one in progress and 31 waiting. Over that bound a submission is refused
+rather than queued, and the refusal says `sequencer at capacity`.
+
+That refusal is taken first: before the signed intent is parsed, before
+any admission hook runs, before the payload tree is written, and before
+anything is chained onto the sequence ref. A submission refused for
+capacity therefore costs almost nothing and leaves no object behind,
+which is what makes it a signal a caller can act on rather than a late
+failure after the work is already spent.
+
+The same `ErrBackPressure` sentinel also reports one other condition: a
+submission that exhausted its retry limit while chaining under
+contention. Both mean "overload, try again later", and that is why they
+share a sentinel — `errors.Is` separates overload from a malformed or
+unauthorized submission, which is the distinction a caller needs. But
+only the capacity refusal is free. A retry exhaustion has already decoded
+the intent and written objects, so do not read the paragraph above as a
+guarantee about every `ErrBackPressure`. Rotation keeps its own
+unnamed exhaustion error and is not part of this.
+
+The bound belongs to Gitseq's resident. A program embedding the kernel
+directly may leave it unset, which means an unbounded queue; that is the
+embedding opt-out, not a posture Gitseq takes.
 
 ## Genesis sequencer key
 
