@@ -248,15 +248,11 @@ test("UI focus selection adds, removes, and stays bounded", () => {
   assert.equal(toggleActivityFocus(full, "event:z").length, 8);
 });
 
-test("task and event surfaces wire shared selection to advisory focus", () => {
-  const read = (name) => readFileSync(new URL(`../src/components/${name}`, import.meta.url), "utf8");
-  const work = read("WorkDrawer.tsx");
-  const top = read("TopBar.tsx");
-  assert.match(work, /onSelect\(\{ kind: "event", id: event \}\);\s*onOpenThread\(event\)/);
-  assert.match(work, /actor\.focus\.includes\(event\)/);
-  assert.match(top, /toggleActivityFocus\(session\.activity\.focus, selectedEvent\)/);
-  assert.match(top, /setActivity\(\{ focus: \[\] \}\)/);
-});
+// Shared selection and advisory focus were pinned here by four regexes over
+// component source. A source regex fails in both directions: it misses a
+// deleted render site, because the matched text survives, and it reddens on a
+// harmless refactor. The wiring is now driven in a DOM in dom.test.mjs, and
+// the focus rendering behaviourally in components.test.mjs.
 
 test("browser heartbeats renew the lease without revalidating activity focus", () => {
   const session = readFileSync(new URL("../src/lib/session.ts", import.meta.url), "utf8");
