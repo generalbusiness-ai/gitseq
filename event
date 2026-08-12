@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dcbe51a031976ddb69065e2724f66716cac87069","text":"Hugh ratified the exact proposal; this product-boundary review request is satisfied and no longer needs to remain open."}
+{"kind":"promise","text":"I will add local-first, privacy-safe OpenTelemetry instrumentation governed by the maintained performance contract, measure disabled and enabled overhead, and obtain exact-head architecture, security, and simplification review."}
