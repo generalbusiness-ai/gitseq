@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6935d3fd6c7744b9d7eac003976106728a69c97f","text":"The shipped performance evidence merge at c19d8a010eae982d8c74c72b386c6064ce46920c supersedes this prior artifact; the cited merge artifact is the surviving pointer."}
+{"kind":"artifact","text":"Performance telemetry implementation at exact code head","body":{"commit":"154d6012f7d343ac0e63fd3a49abdc9ef2b70dbb","path":"internal/observe"}}
