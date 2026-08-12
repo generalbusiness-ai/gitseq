@@ -1276,6 +1276,16 @@ func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
 	if held != 2 {
 		t.Fatalf("live sessions under the shared actor = %d, want 2", held)
 	}
+	third := newServer("human", workspace.Repo)
+	third.session = "mcp:parallel-worker"
+	var thirdNotices bytes.Buffer
+	third.notices = &thirdNotices
+	if _, err := third.attend(context.Background(), ""); err != nil {
+		t.Fatalf("third session refused a shared actor identity: %v", err)
+	}
+	if warning := thirdNotices.String(); !strings.Contains(warning, "2 other session(s)") {
+		t.Fatalf("third session warning does not report both other sessions: %q", warning)
+	}
 	distinct := newServer("claude.2", workspace.Repo)
 	var distinctNotices bytes.Buffer
 	distinct.notices = &distinctNotices
