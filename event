@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5644516fe30fcb0920b688e19e2ef185d18240f1","text":"Retire cmd/gs legacy predecessor against the merged instrumentation successor; it is not cited by current checked documentation."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8af84cedb400902323902ea518c42862c71b67c7"}
