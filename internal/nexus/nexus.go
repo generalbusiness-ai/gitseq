@@ -213,6 +213,13 @@ type presenceEntry struct {
 	handle      string
 	activity    Activity
 	expiresAt   time.Time
+	// activityChangedAt is when this session's activity last actually moved,
+	// observed by the resident rather than claimed by the client. A heartbeat
+	// renewal carries the lease forward and leaves this alone, so a reader can
+	// tell "still working on it, said so an hour ago" from "just picked it up".
+	// Renewals are frequent and changes are not; a timestamp that moved on
+	// every renewal would report the polling interval instead of the activity.
+	activityChangedAt time.Time
 }
 
 type Hub struct {
@@ -354,7 +361,14 @@ func (h *Hub) announceFor(id, actor, fingerprint, value string, ttl time.Duratio
 		}
 		handle = minted
 	}
-	h.presence[id] = presenceEntry{value: value, actor: actor, fingerprint: fingerprint, inbox: existing.inbox, handle: handle, activity: activity, expiresAt: time.Now().Add(ttl)}
+	now := time.Now()
+	// The activity clock moves only when the activity does. A new session
+	// starts it; a renewal that changes nothing carries the old value forward.
+	changedAt := existing.activityChangedAt
+	if !exists || changedAt.IsZero() || !activityEqual(existing.activity, activity) {
+		changedAt = now
+	}
+	h.presence[id] = presenceEntry{value: value, actor: actor, fingerprint: fingerprint, inbox: existing.inbox, handle: handle, activity: activity, expiresAt: now.Add(ttl), activityChangedAt: changedAt}
 	if exists && existing.value == value && existing.actor == actor && existing.fingerprint == fingerprint && activityEqual(existing.activity, activity) {
 		copy := cloneActivity(activity)
 		return Change{Cursor: Cursor{Generation: h.generation, Position: h.position}, Kind: "renewal", ID: handle, Value: value, Activity: &copy}, nil
@@ -1182,4 +1196,132 @@ func VerifyChain(frames []Frame, trustedNexusKey ed25519.PublicKey) error {
 		}
 	}
 	return nil
+}
+
+// MaxAttentionActors bounds one attention read. Focus is already bounded per
+// session and sessions per actor are bounded, but the number of distinct actors
+// is not, so the aggregate needs its own ceiling or a busy workroom would put an
+// unbounded list on every tool result.
+const MaxAttentionActors = 16
+
+// AttentionActor is one actor whose leased focus names an event the caller is
+// looking at. It is advisory: it reports who says they are attending to the
+// same thing, and confers nothing.
+type AttentionActor struct {
+	// Fingerprint is the full durable fingerprint, never a prefix. A truncated
+	// identity invites the reader to match it against another truncation.
+	Fingerprint string `json:"fingerprint"`
+	Name        string `json:"name"`
+	// Sessions counts this actor's live sessions that matched, so one person
+	// working from two windows reads as one actor rather than two people.
+	Sessions int    `json:"sessions"`
+	Status   string `json:"status"`
+	Note     string `json:"note,omitempty"`
+	// Matched lists the caller's event identifiers this actor's focus contains,
+	// sorted, so the reason for the row is visible rather than inferred.
+	Matched []string `json:"matched"`
+	// ActivityChangedAt is resident-observed and moves only when the activity
+	// moves, so an old timestamp means an old decision, not a quiet client.
+	ActivityChangedAt time.Time `json:"activity_changed_at"`
+}
+
+// FocusedOn reports live actors whose leased focus exactly contains one or more
+// of the given event identifiers, excluding the calling session.
+//
+// Three properties this deliberately holds. Matching is exact string equality
+// on identifiers the caller already has: no prefix, no normalisation, no
+// inference about what relates to what, because a guess about relatedness is
+// exactly the kind of helpfulness that becomes a claim nobody made. The
+// caller's own sessions are filtered out before actors are aggregated rather
+// than after, so an actor who is present in two windows and matches in one does
+// not have the other silently counted. And the result is capped, with the
+// overflow reported rather than dropped.
+func (h *Hub) FocusedOn(exclude string, events []string) ([]AttentionActor, int) {
+	if len(events) == 0 {
+		return nil, 0
+	}
+	wanted := make(map[string]bool, len(events))
+	for _, event := range events {
+		if event != "" {
+			wanted[event] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return nil, 0
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+
+	type aggregate struct {
+		actor     AttentionActor
+		matched   map[string]bool
+		changedAt time.Time
+	}
+	byActor := map[string]*aggregate{}
+	for session, entry := range h.presence {
+		if session == exclude {
+			continue
+		}
+		var hits []string
+		for _, event := range entry.activity.Focus {
+			if wanted[event] {
+				hits = append(hits, event)
+			}
+		}
+		if len(hits) == 0 {
+			continue
+		}
+		// Key on the fingerprint where there is one: it is the durable identity,
+		// and two sessions under one name but different keys are two actors.
+		key := entry.fingerprint
+		if key == "" {
+			key = "name:" + entry.actor
+		}
+		found, held := byActor[key]
+		if !held {
+			found = &aggregate{
+				actor:   AttentionActor{Fingerprint: entry.fingerprint, Name: entry.actor},
+				matched: map[string]bool{},
+			}
+			byActor[key] = found
+		}
+		found.actor.Sessions++
+		for _, hit := range hits {
+			found.matched[hit] = true
+		}
+		// Across an actor's sessions, report the most recent decision and the
+		// status that goes with it, so two windows do not race to describe one
+		// person by whichever map iteration happened to land last.
+		if found.changedAt.IsZero() || entry.activityChangedAt.After(found.changedAt) {
+			found.changedAt = entry.activityChangedAt
+			found.actor.Status = string(entry.activity.Status)
+			found.actor.Note = entry.activity.Note
+		}
+	}
+
+	actors := make([]AttentionActor, 0, len(byActor))
+	for _, found := range byActor {
+		found.actor.ActivityChangedAt = found.changedAt
+		found.actor.Matched = make([]string, 0, len(found.matched))
+		for event := range found.matched {
+			found.actor.Matched = append(found.actor.Matched, event)
+		}
+		sort.Strings(found.actor.Matched)
+		actors = append(actors, found.actor)
+	}
+	// Order by most recently moved, then by fingerprint so the tie is stable
+	// rather than dependent on map iteration.
+	sort.Slice(actors, func(i, j int) bool {
+		if !actors[i].ActivityChangedAt.Equal(actors[j].ActivityChangedAt) {
+			return actors[i].ActivityChangedAt.After(actors[j].ActivityChangedAt)
+		}
+		return actors[i].Fingerprint < actors[j].Fingerprint
+	})
+	omitted := 0
+	if len(actors) > MaxAttentionActors {
+		omitted = len(actors) - MaxAttentionActors
+		actors = actors[:MaxAttentionActors]
+	}
+	return actors, omitted
 }
