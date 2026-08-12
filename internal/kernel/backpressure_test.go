@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 )
 
 // The design gives the sequencer five named refusals, of which back-pressure is
@@ -106,6 +108,82 @@ func TestSubmitRefusesAtCapacityBeforeChaining(t *testing.T) {
 	// The refusal released its slot, so the sequencer still accepts work.
 	if _, err := submitter.Submit(f.ctx, f.request(t, private, "after", []byte("after"), nil)); err != nil {
 		t.Fatalf("submit after refusal = %v, want success", err)
+	}
+	if depth := submitter.inFlight.Load(); depth != 0 {
+		t.Fatalf("in-flight depth after quiescence = %d, want 0", depth)
+	}
+}
+
+// TestSubmitRefusesAtCapacityBeforeParsing pins the other half of "before":
+// the guard sits at method entry, ahead of the parser.
+//
+// TestSubmitRefusesAtCapacityBeforeChaining watches the pre-append hook, which
+// runs well after intent.Verify. A guard moved to just after decoding would
+// still leave that test green, so on its own it proves only "before chaining"
+// and not the "before parsing" the limits page claims. A request whose signed
+// intent cannot be decoded at all separates the two orderings, because the two
+// refusals are distinguishable: reached the guard first means capacity, reached
+// the parser first means malformed, and only one of them is ErrBackPressure.
+func TestSubmitRefusesAtCapacityBeforeParsing(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+
+	// Garbage where the signed intent belongs.
+	malformed := Request{Signed: intent.Signed{Intent: []byte("not a signed intent")}}
+
+	// With a slot free this request is refused for what is wrong with it. Without
+	// this half the test would also pass on a build where every refusal wrapped
+	// ErrBackPressure, which would prove nothing about ordering.
+	free := NewSubmitter(f.store, Options{SigningKey: f.signingKey, MaxQueueDepth: 1})
+	if _, err := free.Submit(f.ctx, malformed); err == nil {
+		t.Fatal("malformed submission below capacity = nil, want a decode refusal")
+	} else if errors.Is(err, ErrBackPressure) {
+		t.Fatalf("malformed submission below capacity = %v, want a decode refusal, not back-pressure", err)
+	}
+
+	release := make(chan struct{})
+	failpoint, arrived := blockAt("before_ref_cas", release)
+	submitter := NewSubmitter(f.store, Options{
+		SigningKey:    f.signingKey,
+		MaxQueueDepth: 1,
+		Failpoint:     failpoint,
+	})
+
+	held := make(chan error, 1)
+	go func() {
+		_, err := submitter.Submit(f.ctx, f.request(t, private, "held", []byte("held"), nil))
+		held <- err
+	}()
+	select {
+	case <-arrived:
+	case err := <-held:
+		t.Fatalf("first submission did not reach the sequencer: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("first submission never arrived at the sequencer")
+	}
+
+	// The slot is occupied and the request is undecodable. Whichever check runs
+	// first names the refusal, so this single assertion is the ordering.
+	refused := make(chan error, 1)
+	go func() {
+		_, err := submitter.Submit(f.ctx, malformed)
+		refused <- err
+	}()
+	var err error
+	select {
+	case err = <-refused:
+	case <-time.After(5 * time.Second):
+		close(release)
+		t.Fatal("malformed submission at capacity queued instead of refusing")
+	}
+	if !errors.Is(err, ErrBackPressure) {
+		close(release)
+		t.Fatalf("malformed submission at capacity = %v, want ErrBackPressure — the capacity guard runs after the parser", err)
+	}
+
+	close(release)
+	if err := <-held; err != nil {
+		t.Fatalf("held submission = %v, want success", err)
 	}
 	if depth := submitter.inFlight.Load(); depth != 0 {
 		t.Fatalf("in-flight depth after quiescence = %d, want 0", depth)
