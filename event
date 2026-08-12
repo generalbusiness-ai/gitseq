@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b7471881210edb79b1671d63df0f83e2715f9e4e","text":"Retire the stale internal/kernel candidate for bed36626. It was stale from birth because its authorization chain descended from an artifact I had retired; the replacement at 58c804aa carries the identical tree on a clean basis."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d3f96a8bfc5e5aff910ce38a7f1f3a54e42717c9","text":"Retire the stale internal/app candidate for bed36626, replaced at 58c804aa on a clean basis."}
