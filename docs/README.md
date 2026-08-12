@@ -87,6 +87,8 @@ Read in this order if you are new:
   [supersede](reference/mcp/supersede.md),
   [work](reference/mcp/work.md),
   [inspect](reference/mcp/inspect.md).
+- [Live attention](reference/live-attention.md) — the advisory adjunct
+  every MCP tool result carries.
 - [Event identifiers](reference/event-identifiers.md) — the one name
   everything else cites.
 - [Limits](reference/limits.md) — sizes and counts a call is refused for

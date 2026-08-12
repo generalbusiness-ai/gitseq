@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -381,14 +382,37 @@ func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) 
 				response.Error = &rpcError{Code: -32602, Message: err.Error()}
 				break
 			}
-			value, err := s.call(ctx, call)
+			value, acted, err := s.call(ctx, call)
+			// Attention rides beside the result on both paths. A failed tool
+			// call is exactly when a caller most needs to know that somebody
+			// addressed them or is looking at the same event, and the durable
+			// outcome above is already decided either way.
+			// The room the call actually acted in, never a room chosen after
+			// the fact. When selection itself failed there is no room, and the
+			// adjunct reports unavailable rather than guessing at one.
+			attention := s.liveAttention(ctx, acted, call, value)
+			text := attentionSummary(attention)
 			if err != nil {
-				response.Result = s.result(map[string]any{"isError": true, "content": []map[string]string{{"type": "text", "text": err.Error()}}})
+				content := []map[string]string{{"type": "text", "text": err.Error()}}
+				if text != "" {
+					content = append(content, map[string]string{"type": "text", "text": text})
+				}
+				response.Result = s.result(map[string]any{"isError": true, "content": content, "live_attention": attention})
 			} else {
 				// The text block is a summary, not a second copy. Restating the
 				// structured payload as pretty-printed JSON doubled every
 				// response while adding nothing a client could not already read.
-				response.Result = s.result(map[string]any{"isError": false, "content": []map[string]string{{"type": "text", "text": summarize(call.Name, value)}}, "structuredContent": value})
+				content := []map[string]string{{"type": "text", "text": summarize(call.Name, value)}}
+				if text != "" {
+					content = append(content, map[string]string{"type": "text", "text": text})
+				}
+				// live_attention is a sibling of structuredContent, not a wrapper
+				// around it. structuredContent stays exactly the tool's own
+				// payload: notes/2026-08-07-bootstrap-task-cycle.md documents a
+				// consumer that reads it directly, and an adjunct that rewrote
+				// the envelope would break every such reader to deliver news
+				// they did not ask for.
+				response.Result = s.result(map[string]any{"isError": false, "content": content, "structuredContent": value, "live_attention": attention})
 			}
 		default:
 			response.Error = &rpcError{Code: -32601, Message: "method not found"}
@@ -614,7 +638,16 @@ func (s *mcpServer) attach(ctx context.Context, repo string) (*room, error) {
 	return current, nil
 }
 
-func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
+// call selects the room this invocation acts in, then dispatches. It returns
+// that exact room alongside the result, including on error paths, because the
+// attention adjunct must read the room the call used and no other.
+//
+// Choosing a room after the fact is the bug this shape prevents. A caller that
+// passes arguments.repo acts in a workroom that need not be the adapter
+// default, and an adjunct that resolved "the default" or "the only attachment"
+// could hand back another repository's addressed inbox and leased focus. That
+// is a disclosure across a boundary the caller drew deliberately.
+func (s *mcpServer) call(ctx context.Context, call toolCall) (any, *room, error) {
 	var current *room
 	var err error
 	// Whoami's resident read has an explicit two-second bound. Attaching the
@@ -626,8 +659,13 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 		current, err = s.attend(ctx, stringValue(call.Arguments["repo"]))
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	value, err := s.dispatch(ctx, call, current)
+	return value, current, err
+}
+
+func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) (any, error) {
 	switch call.Name {
 	case "whoami":
 		return s.whoami(ctx, current)
@@ -1261,4 +1299,157 @@ func randomID() string {
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "gitseq-mcp:", err)
 	os.Exit(1)
+}
+
+// eventIDPattern matches a canonical durable event identifier exactly:
+// genesis and event, both full hashes. Matching this and nothing else is what
+// keeps the attention adjunct an observation rather than a guess. A looser
+// pattern — a bare hash, a prefix, a word that looks like a reference — would
+// let the adapter assert a relationship nobody stated.
+// The surrounding bytes matter as much as the identifier. Without boundaries
+// this pattern happily extracts a canonical-looking identifier out of the
+// middle of a longer token — "xgit:sha1:<40>#git:sha1:<40>y" would yield one —
+// and the adjunct would then report actors focused on an event the caller
+// never named. The documentation promises exact canonical identifiers and no
+// inference, so the match must fail on any adjacent identifier byte.
+//
+// Both boundaries test the same class, and that symmetry is the whole point.
+// An earlier form excluded alphanumerics, colon and hash on the left but only
+// hex on the right, which reads as a boundary and is not one: a trailing "z"
+// left the canonical prefix extractable out of a longer token. What makes a
+// byte a boundary is that it cannot belong to an identifier, and that question
+// has one answer regardless of which end is being asked.
+const eventIDByte = `0-9a-zA-Z:#`
+
+var eventIDPattern = regexp.MustCompile(
+	`(^|[^` + eventIDByte + `])(git:sha1:[0-9a-f]{40}#git:sha1:[0-9a-f]{40})($|[^` + eventIDByte + `])`)
+
+// maxAttentionEvents bounds what one call asks about. A tool that returns a
+// whole projection names thousands of events; asking about all of them would
+// turn an adjunct into the most expensive part of the call.
+const maxAttentionEvents = 32
+
+// attentionEvents collects the durable identifiers this call named or returned.
+// Both directions matter: asking about an event and being handed one are the
+// two ways a caller comes to be looking at it.
+func attentionEvents(call toolCall, result any) []string {
+	var scanned []byte
+	if encoded, err := json.Marshal(call.Arguments); err == nil {
+		scanned = append(scanned, encoded...)
+	}
+	if result != nil {
+		if encoded, err := json.Marshal(result); err == nil {
+			scanned = append(scanned, encoded...)
+		}
+	}
+	seen := map[string]bool{}
+	events := make([]string, 0, 8)
+	// FindAllSubmatch with an overlapping-safe scan: the trailing boundary byte
+	// is consumed by each match, so two adjacent identifiers separated by one
+	// delimiter would otherwise hide the second. Scanning from the end of the
+	// captured identifier rather than the whole match keeps both visible.
+	for offset := 0; offset < len(scanned); {
+		match := eventIDPattern.FindSubmatchIndex(scanned[offset:])
+		if match == nil {
+			break
+		}
+		id := string(scanned[offset+match[4] : offset+match[5]])
+		offset += match[5]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		events = append(events, id)
+		if len(events) == maxAttentionEvents {
+			break
+		}
+	}
+	return events
+}
+
+// liveAttention reads what the caller should notice alongside its own result.
+//
+// It never returns an error and never propagates one. The durable act this
+// rides beside has already happened; failing the call because an advisory read
+// failed would make awareness a precondition for work, which is precisely the
+// coupling the request forbids. An unreachable or unhappy resident yields
+// available=false and nothing more.
+func (s *mcpServer) liveAttention(ctx context.Context, current *room, call toolCall, result any) map[string]any {
+	unavailable := map[string]any{"available": false}
+	if current == nil {
+		return unavailable
+	}
+	if _, ok := current.endpoint(); !ok {
+		return unavailable
+	}
+	value, err := s.post(ctx, current, "/v0/attention", map[string]any{
+		"session": s.session,
+		"events":  attentionEvents(call, result),
+	})
+	if err != nil {
+		return unavailable
+	}
+	report, ok := value.(map[string]any)
+	if !ok {
+		return unavailable
+	}
+	return report
+}
+
+// attentionSummary is the guaranteed text. Structured content is optional for a
+// client; the text block is not, so an interruption that exists only in
+// structuredContent is invisible to anyone who reads only the transcript.
+func attentionSummary(report map[string]any) string {
+	if report == nil || report["available"] != true {
+		return ""
+	}
+	var parts []string
+	if pending := intValue(report["pending"]); pending > 0 {
+		noun := "messages"
+		if pending == 1 {
+			noun = "message"
+		}
+		part := fmt.Sprintf("%d unacknowledged addressed %s", pending, noun)
+		if omitted := intValue(report["omitted"]); omitted > 0 {
+			part += fmt.Sprintf(" (%d not shown)", omitted)
+		}
+		parts = append(parts, part)
+	}
+	if actors, ok := report["actors"].([]any); ok && len(actors) > 0 {
+		var names []string
+		for _, entry := range actors {
+			if row, ok := entry.(map[string]any); ok {
+				name := stringValue(row["name"])
+				if status := stringValue(row["status"]); status != "" && status != "available" {
+					name += " (" + status + ")"
+				}
+				names = append(names, name)
+			}
+		}
+		noun := "actors are"
+		if len(names) == 1 {
+			noun = "actor is"
+		}
+		part := fmt.Sprintf("%d live %s focused on what you just touched: %s", len(names), noun, strings.Join(names, ", "))
+		if omitted := intValue(report["omitted_actors"]); omitted > 0 {
+			part += fmt.Sprintf(", and %d more", omitted)
+		}
+		parts = append(parts, part)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	// Named as advisory in the text itself. The adjunct confers nothing, and a
+	// reader who only ever sees this line should not have to infer that.
+	return "Live (advisory, no durable force): " + strings.Join(parts, "; ") + "."
+}
+
+func intValue(value any) int {
+	switch typed := value.(type) {
+	case float64:
+		return int(typed)
+	case int:
+		return typed
+	}
+	return 0
 }

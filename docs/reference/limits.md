@@ -123,6 +123,42 @@ release the corresponding capacity. Only sessions that registered the current
 versioned inbox protocol consume pending-frame capacity. Conversation and
 inbox state remain process-local and are not durable.
 
+## Live attention
+
+Every completed MCP tool call carries a bounded `live_attention` adjunct
+when the resident can answer for it, including tool-specific error
+results where the attention read itself succeeded. It is advisory
+throughout: it creates no ownership, promise, authority, completion, or
+durable read receipt, and a client that ignores it entirely loses
+nothing but awareness. No resident yields `available: false`, and a
+failed attention read never fails the durable operation it rides beside.
+
+| Limit | Value |
+|---|---|
+| Event identifiers one call asks about | 32, from the tool input and its result combined |
+| Actors reported for those events | 16, with the remainder counted rather than dropped |
+| Frames in the adjunct | the 20-frame priority page above, with pending and omitted counts |
+
+Actors are matched by exact equality on canonical event identifiers the
+caller already holds. There is no prefix matching and no inference about
+what relates to what: a guess about relatedness would be the adapter
+asserting a relationship nobody stated, which is the one thing an
+observation must not do.
+
+Each row carries the full durable fingerprint, never a prefix, because a
+truncated identity invites the reader to match it against another
+truncation. A caller's own sessions are filtered out before actors are
+aggregated, so one person working from two windows reads as one actor
+rather than two people. `activity_changed_at` is observed by the
+resident and moves only when status, focus, or note changes — a
+heartbeat renewal leaves it alone, so an old timestamp means an old
+decision rather than a quiet client.
+
+Addressed frames repeat in the adjunct until the recipient explicitly
+acknowledges them, because reading is not acknowledging. Acknowledgement
+is per leased session, so one session's acknowledgement never clears
+another's.
+
 ## Restart and the checkpoint
 
 | Limit | Value |

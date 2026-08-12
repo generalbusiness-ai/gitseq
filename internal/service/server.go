@@ -107,6 +107,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v0/say", s.handleSay)
 	s.mux.HandleFunc("POST /v0/inbox/register", s.handleInboxRegister)
 	s.mux.HandleFunc("POST /v0/inbox/ack", s.handleInboxAck)
+	s.mux.HandleFunc("POST /v0/attention", s.handleAttention)
 	s.mux.HandleFunc("GET /v0/conversations/{conversation}/frames", s.handleFrames)
 }
 
@@ -624,4 +625,62 @@ func recordEncoding(writer http.ResponseWriter, started time.Time, err error) {
 	if observer != nil {
 		observer.Record(ctx, observe.Measurement{Operation: observe.OperationEncode, Path: observe.PathNone, Outcome: observe.Classify(ctx, err), Duration: time.Since(started), Items: 1})
 	}
+}
+
+// attentionRequest asks what the caller should notice alongside its own result.
+// Events are the exact durable identifiers the calling tool named or returned;
+// they are matched by equality and nothing is inferred from them.
+type attentionRequest struct {
+	Session string   `json:"session"`
+	Events  []string `json:"events,omitempty"`
+}
+
+// AttentionReport is advisory throughout. Every field is leased or ephemeral,
+// and none of it confers ownership, obligation, authority, completion, or a
+// durable read receipt. A client that ignores it entirely loses nothing but
+// awareness.
+type AttentionReport struct {
+	// Available says the resident answered. A false value is the honest
+	// degraded answer and never an error: the durable operation this rides
+	// alongside has already happened.
+	Available bool          `json:"available"`
+	Cursor    *nexus.Cursor `json:"cursor,omitempty"`
+	// Frames are this session's unacknowledged addressed messages, bounded.
+	Frames []nexus.InboxFrame `json:"frames,omitempty"`
+	// Pending is how many are unacknowledged in total and Omitted how many of
+	// those are not in Frames, so a truncated list says so rather than reading
+	// as the whole of it.
+	Pending int `json:"pending"`
+	Omitted int `json:"omitted,omitempty"`
+	// Actors are live actors whose leased focus names one of the given events.
+	Actors        []nexus.AttentionActor `json:"actors,omitempty"`
+	OmittedActors int                    `json:"omitted_actors,omitempty"`
+}
+
+// handleAttention reports live attention for one session.
+//
+// It fails soft by construction. A session that is not present, or that never
+// registered an inbox, still gets an answer: the actor half of the question is
+// about other people's leases and does not depend on the caller holding one.
+// The alternative — refusing the whole read because half of it is unavailable —
+// would make an advisory adjunct behave like a precondition.
+func (s *Server) handleAttention(writer http.ResponseWriter, request *http.Request) {
+	var input attentionRequest
+	if err := decode(request, &input); err != nil {
+		write(writer, nil, err)
+		return
+	}
+	s.liveSnapshot()
+	report := AttentionReport{Available: true}
+	if input.Session != "" {
+		if snapshot, inbox, err := s.hub.SnapshotForSession(input.Session); err == nil {
+			cursor := snapshot.Cursor
+			report.Cursor = &cursor
+			report.Frames = inbox.Frames
+			report.Pending = len(inbox.Frames) + inbox.Skipped
+			report.Omitted = inbox.Skipped
+		}
+	}
+	report.Actors, report.OmittedActors = s.hub.FocusedOn(input.Session, input.Events)
+	write(writer, report, nil)
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1073,4 +1074,127 @@ func getJSON(url string, into any) error {
 	}
 	defer response.Body.Close()
 	return json.NewDecoder(response.Body).Decode(into)
+}
+
+// The attention read is an adjunct, so its failure modes matter more than its
+// happy path. A session the hub has never seen must still get an answer about
+// other people's leases, because refusing the whole read when half of it is
+// unavailable would turn an advisory extra into a precondition.
+func TestAttentionAnswersAndDegradesWithoutRefusing(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, seed, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Focus is constrained to real identifiers from this workroom, so the test
+	// uses the founding record rather than a convenient string.
+	realEvent := seed.ID
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	ask := func(body attentionRequest) AttentionReport {
+		t.Helper()
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := http.Post(httpServer.URL+"/v0/attention", "application/json", bytes.NewReader(encoded))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("attention returned %d for %+v; an advisory read must not refuse", response.StatusCode, body)
+		}
+		raw, err := io.ReadAll(response.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var report AttentionReport
+		if err := json.Unmarshal(raw, &report); err != nil {
+			t.Fatalf("decode %s: %v", raw, err)
+		}
+		return report
+	}
+
+	// An unknown session: no inbox to report, but the read still succeeds.
+	report := ask(attentionRequest{Session: "never-announced", Events: []string{realEvent}})
+	if !report.Available {
+		t.Fatalf("an unknown session made attention unavailable: %+v", report)
+	}
+	if report.Pending != 0 || len(report.Frames) != 0 || len(report.Actors) != 0 {
+		t.Fatalf("an unknown session reported content: %+v", report)
+	}
+
+	// An empty request is legal and says nothing, rather than erroring.
+	if report := ask(attentionRequest{}); !report.Available {
+		t.Fatalf("an empty attention request was refused: %+v", report)
+	}
+
+	// A present session focused on an event is visible to another caller, and
+	// never to itself.
+	busy := nexus.ActivityBusy
+	focus := []string{realEvent}
+	announce, err := json.Marshal(presenceRequest{Actor: "human", Session: "watcher", Status: &busy, Focus: &focus})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(announce))
+	if err != nil {
+		t.Fatal(err)
+	}
+	announced, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("announce failed %d: %s", response.StatusCode, announced)
+	}
+
+	report = ask(attentionRequest{Session: "someone-else", Events: []string{realEvent}})
+	if len(report.Actors) != 1 || report.Actors[0].Name != "human" {
+		t.Fatalf("a focused actor was not reported to another session: %+v", report.Actors)
+	}
+	if report.Actors[0].ActivityChangedAt.IsZero() {
+		t.Fatalf("the actor row carries no activity clock: %+v", report.Actors[0])
+	}
+	if report := ask(attentionRequest{Session: "watcher", Events: []string{realEvent}}); len(report.Actors) != 0 {
+		t.Fatalf("a session was told about its own focus: %+v", report.Actors)
+	}
+	// An event nobody named matches nobody.
+	if report := ask(attentionRequest{Session: "someone-else", Events: []string{"event:unwatched"}}); len(report.Actors) != 0 {
+		t.Fatalf("an unrelated event matched: %+v", report.Actors)
+	}
+
+	// One actor in two windows is one row. Aggregation happens on the durable
+	// fingerprint the resident resolved, not on the session, so a person
+	// working from two sessions does not read as two people watching.
+	second, err := json.Marshal(presenceRequest{Actor: "human", Session: "watcher-2", Status: &busy, Focus: &focus})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err = http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+
+	report = ask(attentionRequest{Session: "someone-else", Events: []string{realEvent}})
+	if len(report.Actors) != 1 {
+		t.Fatalf("two sessions of one actor produced %d rows: %+v", len(report.Actors), report.Actors)
+	}
+	if report.Actors[0].Sessions != 2 {
+		t.Fatalf("aggregated row reports %d sessions, want 2: %+v", report.Actors[0].Sessions, report.Actors[0])
+	}
+	// The caller filter still applies per session: asking as one of that
+	// actor's own sessions leaves only the other one visible.
+	if report := ask(attentionRequest{Session: "watcher", Events: []string{realEvent}}); len(report.Actors) != 1 || report.Actors[0].Sessions != 1 {
+		t.Fatalf("asking as one of the actor's own sessions reported %+v", report.Actors)
+	}
 }
