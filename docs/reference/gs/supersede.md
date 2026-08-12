@@ -24,6 +24,7 @@ Prefer supersession to contradiction.
 | `--rests-on` | | An additional event identifier, repeatable. The target is added first automatically. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
+| `--cited-ok` | `false` | Retire even though tracked documentation still names the target. Without it the retirement is refused and the pages are listed, because a page resting on a withdrawn pointer fails the documentation gate. Use it for a migration that retires first and re-anchors after. |
 
 The target is a **positional argument**, and flag parsing stops at the
 first positional. Put every flag before it.
