@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:131129f4a30ddc60a184184135910dc2ab0145ce"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b7c2ffe5efdd779aff87fe8736adc64f92223b78","text":"Superseded by the merged artifact for cmd/gs at cbddb3d8; the documentation resting on this pointer was re-anchored in 537ab466 before this retirement, so no page is left on a withdrawn basis."}
