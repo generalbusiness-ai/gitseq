@@ -2,8 +2,8 @@
 title: Deploy a resident
 summary: Run the local service, wait for it to be ready, and understand what the loopback boundary trusts.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1555aaeed26abbcda075499c45410e83af3646a4
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:61bafadb6d6809bdf1b03b77e6bd3119d124f7b3
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48bd5acfe51abd4146197a48b0f7674f5676cc5c
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa5182bb85a8347c55bcf229d53b104dde600a7
 ---
 
