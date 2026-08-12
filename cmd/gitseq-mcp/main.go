@@ -938,8 +938,12 @@ func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.
 func (s *mcpServer) warnSharedIdentity(ctx context.Context, current *room) error {
 	actor := current.workspace.Config.Actors[s.actor]
 	value, err := s.get(ctx, current, "/v0/presence-count?actor="+url.QueryEscape(s.actor))
-	if isTransportError(err) || sharedIdentityCountUnavailable(err) {
+	if isTransportError(err) {
 		fmt.Fprintln(s.noticeWriter(), "gitseq-mcp: shared-identity check skipped; the resident service is unavailable:", err)
+		return nil
+	}
+	if sharedIdentityCountUnavailable(err) {
+		fmt.Fprintln(s.noticeWriter(), "gitseq-mcp: shared-identity check skipped; this resident does not support live identity counts")
 		return nil
 	}
 	if err != nil {

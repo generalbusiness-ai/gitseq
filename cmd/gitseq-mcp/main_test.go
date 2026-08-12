@@ -716,8 +716,11 @@ func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing
 	if !status.Live.Degraded || status.PriorityChat.Available {
 		t.Fatalf("legacy resident status invented inbox support: %+v", status)
 	}
-	if !strings.Contains(notices.String(), "shared-identity check skipped") {
+	if !strings.Contains(notices.String(), "resident does not support live identity counts") {
 		t.Fatalf("legacy resident did not receive a visible skipped-check diagnostic: %q", notices.String())
+	}
+	if strings.Contains(notices.String(), "resident service is unavailable") {
+		t.Fatalf("reachable legacy resident was reported unavailable: %q", notices.String())
 	}
 	value, _, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{"cursor": status.Cursor, "timeout_ms": 1}})
 	if err != nil {
