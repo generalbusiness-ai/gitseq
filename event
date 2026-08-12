@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently re-review the current-main-only MCP projection-notes carry at exact head fd527322091eb450c0c7824406a8bbf849a9699b, including focused behavior, provenance, race, docset, architecture, security, and simplification checks. I will not merge it.","body":{"artifact":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6cfcdab91d4fbc4f11149fa890f758166e3d1f7c","head":"fd527322091eb450c0c7824406a8bbf849a9699b"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8de5b14b072509d4abf00ed1b34054922fa2a7cd"}
