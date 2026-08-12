@@ -1,1 +1,1 @@
-{"kind":"assert","text":"approved candidate merged","body":{"merge_approval":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:edbf0f60e47835e96e817abaf817db134277f87b","merge_candidate":"24a85889b3b8ccefd09dad3543e5f41095fc3e4f","merge_head":"188cc89bfa42bf306d2f718fe1ff09778eb09075","merge_target_pre_head":"537ab466aec03d1d2a10be78d042a9e47b92c43a"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:70c72b7ca38421b83344a6cb8b58c13b68d72030","text":"Retire the stale merged docs pointer against the stable identical-tree docs artifact."}
