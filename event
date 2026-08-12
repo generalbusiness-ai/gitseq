@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact gs shared immutable fixtures implementation at 515cf306b4829f4d9be84f8212ec9ca9f31d67c0.","body":{"commit":"515cf306b4829f4d9be84f8212ec9ca9f31d67c0","path":"cmd/gs"}}
+{"kind":"artifact","text":"Exact parallel app correctness fixtures implementation at 515cf306b4829f4d9be84f8212ec9ca9f31d67c0.","body":{"commit":"515cf306b4829f4d9be84f8212ec9ca9f31d67c0","path":"internal/app"}}
