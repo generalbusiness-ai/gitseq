@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:596cd6292a9657e4981a50bd39fb039329dffdd8","text":"Retire the shipped internal/docset predecessor after the approved no-workroom test merged; 55b700c0 is the surviving wider-path artifact."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:51c3024076c8bc26080f229f3ff7f80790cdf1db"}
