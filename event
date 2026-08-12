@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f06859e87da1a6402667966b396bf767777f319e","text":"Retire the pre-merge cmd/gs candidate against its merged artifact."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:532b1c715c9a64fa5700456b3c73d6533a4daaa1","text":"Retire the pre-merge go.mod candidate against its merged artifact."}
