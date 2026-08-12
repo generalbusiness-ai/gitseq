@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged at c7053206: the reference pages at docs. docs/reference/gs/supersede.md and docs/reference/gs/batch.md document --cited-ok, which the surface gate required in the same head as the flag.","body":{"commit":"c705320650e63a835f8d40e04b532716553fcc80","path":"docs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95c8215625c7d913e0c5d2e81dac867988fd4f30","text":"Retired: the candidate at cmd/gs reviewed as 9c57e8f7, now merged. The successor at the same path is db49851a on merge c7053206. No page names it."}
