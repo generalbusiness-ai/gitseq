@@ -38,6 +38,8 @@ writes so a run cannot silently bless its own numbers.
   verified read.
 - **Setup** includes fixture restoration and process preparation. It is kept
   and reported, but excluded from the operation latency.
+- **Bounded soak** stops at the first of the contract's operation or elapsed
+  time ceilings and records the number of operations actually completed.
 - **Not available** is different from zero. Platform counters that cannot be
   read are recorded with a reason.
 - p95 and p99 are emitted only when the contract's minimum sample population

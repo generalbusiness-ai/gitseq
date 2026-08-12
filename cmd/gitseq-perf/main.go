@@ -159,6 +159,7 @@ func workerCommand(ctx context.Context, arguments []string) error {
 	depth := flags.Int("depth", 0, "sample depth")
 	tail := flags.Int("tail", -1, "checkpoint tail; -1 means absent")
 	soakOperations := flags.Int("soak-operations", 0, "bounded soak operations")
+	soakSeconds := flags.Int("soak-seconds", 0, "bounded soak duration")
 	concurrency := flags.Int("concurrency", 0, "concurrent operation count")
 	trace2 := flags.String("trace2", "", "Git Trace2 event output")
 	cpuProfile := flags.String("cpu-profile", "", "CPU profile output")
@@ -175,7 +176,7 @@ func workerCommand(ctx context.Context, arguments []string) error {
 	}
 	result, err := perfscenario.Run(ctx, perfscenario.RunOptions{
 		Scenario: *scenario, Fixture: *fixture, Scratch: *scratch, Depth: *depth,
-		Tail: *tail, Concurrency: *concurrency, SoakOperations: *soakOperations, Trace2Path: *trace2,
+		Tail: *tail, Concurrency: *concurrency, SoakOperations: *soakOperations, SoakSeconds: *soakSeconds, Trace2Path: *trace2,
 		CPUProfilePath: *cpuProfile, HeapProfilePath: *heapProfile,
 	})
 	if err != nil {
@@ -410,7 +411,8 @@ func runWorkerDiagnostic(ctx context.Context, binary, fixture string, selected r
 	arguments := []string{"worker", "--scenario", selected.Scenario, "--fixture", fixture, "--scratch", scratch,
 		"--depth", strconv.Itoa(selected.Depth), "--tail", strconv.Itoa(selected.Tail),
 		"--concurrency", strconv.Itoa(selected.Concurrency),
-		"--soak-operations", strconv.Itoa(contract.SoakOperations)}
+		"--soak-operations", strconv.Itoa(contract.SoakOperations),
+		"--soak-seconds", strconv.Itoa(contract.SoakSeconds)}
 	if trace2 != "" {
 		arguments = append(arguments, "--trace2", trace2)
 	}

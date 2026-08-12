@@ -76,7 +76,7 @@ func TestSmallExactFixtureAndCompleteOperations(t *testing.T) {
 			}
 			result, err := Run(ctx, RunOptions{
 				Scenario: scenario, Fixture: fixture, Scratch: filepath.Join(t.TempDir(), "sample"),
-				Depth: 8, Tail: -1, Concurrency: concurrency, SoakOperations: 8,
+				Depth: 8, Tail: -1, Concurrency: concurrency, SoakOperations: 8, SoakSeconds: 10,
 			})
 			if err != nil {
 				t.Fatal(err)

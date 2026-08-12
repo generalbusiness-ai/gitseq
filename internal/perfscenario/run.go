@@ -34,6 +34,7 @@ type RunOptions struct {
 	Tail            int
 	Concurrency     int
 	SoakOperations  int
+	SoakSeconds     int
 	Trace2Path      string
 	CPUProfilePath  string
 	HeapProfilePath string
@@ -82,11 +83,12 @@ type Result struct {
 }
 
 type operationResult struct {
-	response []byte
-	snapshot *app.Snapshot
-	source   app.SnapshotSource
-	queueNS  *int64
-	cas      *int64
+	response  []byte
+	snapshot  *app.Snapshot
+	workspace *app.Workspace
+	source    app.SnapshotSource
+	queueNS   *int64
+	cas       *int64
 }
 
 // FixtureEvidence identifies the exact immutable fixture state used by one
@@ -148,6 +150,13 @@ func Run(ctx context.Context, options RunOptions) (Result, error) {
 	}
 	if profileErr != nil {
 		return Result{}, profileErr
+	}
+	if observed.snapshot == nil && observed.workspace != nil {
+		snapshot, snapshotErr := observed.workspace.Snapshot(ctx)
+		if snapshotErr != nil {
+			return Result{}, snapshotErr
+		}
+		observed.snapshot = &snapshot
 	}
 	var after runtime.MemStats
 	runtime.ReadMemStats(&after)
@@ -312,7 +321,18 @@ func enableTrace2(path string) (func() error, error) {
 
 func prepareOperation(ctx context.Context, options RunOptions) (preparedOperation, error) {
 	switch options.Scenario {
-	case "startup", "cold_status":
+	case "startup":
+		return func() (operationResult, int, error) {
+			workspace, err := app.Open(ctx, options.Scratch)
+			if err != nil {
+				return operationResult{}, 0, err
+			}
+			if _, err := service.New(workspace); err != nil {
+				return operationResult{}, 0, err
+			}
+			return operationResult{workspace: workspace}, 1, nil
+		}, nil
+	case "cold_status":
 		return func() (operationResult, int, error) {
 			workspace, err := app.Open(ctx, options.Scratch)
 			if err != nil {
@@ -326,8 +346,7 @@ func prepareOperation(ctx context.Context, options RunOptions) (preparedOperatio
 			if err != nil {
 				return operationResult{}, 0, err
 			}
-			snapshot, err := workspace.Snapshot(ctx)
-			return operationResult{response: body, snapshot: &snapshot}, 1, err
+			return operationResult{response: body, workspace: workspace}, 1, nil
 		}, nil
 	case "warm_status":
 		workspace, server, err := openServer(ctx, options.Scratch)
@@ -342,8 +361,7 @@ func prepareOperation(ctx context.Context, options RunOptions) (preparedOperatio
 			if err != nil {
 				return operationResult{}, 0, err
 			}
-			snapshot, err := workspace.Snapshot(ctx)
-			return operationResult{response: body, snapshot: &snapshot}, 1, err
+			return operationResult{response: body, workspace: workspace}, 1, nil
 		}, nil
 	case "submit_ack":
 		workspace, err := app.Open(ctx, options.Scratch)
@@ -363,9 +381,8 @@ func prepareOperation(ctx context.Context, options RunOptions) (preparedOperatio
 				return operationResult{}, 0, err
 			}
 			body, _ := json.Marshal(submission.Record)
-			snapshot, err := workspace.Snapshot(ctx)
 			cas := int64(submission.Result.CASRetries)
-			return operationResult{response: body, snapshot: &snapshot, cas: &cas}, 1, err
+			return operationResult{response: body, workspace: workspace, cas: &cas}, 1, nil
 		}, nil
 	case "submit_wait":
 		return prepareSubmitWait(ctx, options)
@@ -425,8 +442,7 @@ func prepareOperation(ctx context.Context, options RunOptions) (preparedOperatio
 			if err != nil {
 				return operationResult{}, 0, err
 			}
-			snapshot, err := workspace.Snapshot(ctx)
-			return operationResult{response: body, snapshot: &snapshot, queueNS: &waitNS}, 1, err
+			return operationResult{response: body, workspace: workspace, queueNS: &waitNS}, 1, nil
 		}, nil
 	case "concurrent_read_write":
 		return prepareConcurrentReadWrite(ctx, options)
@@ -553,8 +569,7 @@ func prepareConcurrentReadWrite(ctx context.Context, options RunOptions) (prepar
 			}
 			combined = append(combined, result.body...)
 		}
-		snapshot, err := workspace.Snapshot(ctx)
-		return operationResult{response: combined, snapshot: &snapshot}, operationCount, err
+		return operationResult{response: combined, workspace: workspace}, operationCount, nil
 	}, nil
 }
 
@@ -567,13 +582,22 @@ func prepareSoak(ctx context.Context, options RunOptions) (preparedOperation, er
 	if operations < 1 {
 		operations = 32
 	}
+	seconds := options.SoakSeconds
+	if seconds < 1 {
+		seconds = 60
+	}
 	manifest, err := LoadManifest(options.Fixture)
 	if err != nil {
 		return nil, err
 	}
 	return func() (operationResult, int, error) {
 		var last []byte
+		completed := 0
+		deadline := time.Now().Add(time.Duration(seconds) * time.Second)
 		for index := 0; index < operations; index++ {
+			if index > 0 && time.Now().After(deadline) {
+				break
+			}
 			if index%4 == 0 {
 				last, err = request(server.Handler(), http.MethodGet, "/v0/status-summary", nil)
 			} else {
@@ -585,9 +609,9 @@ func prepareSoak(ctx context.Context, options RunOptions) (preparedOperation, er
 			if err != nil {
 				return operationResult{}, 0, err
 			}
+			completed++
 		}
-		snapshot, err := workspace.Snapshot(ctx)
-		return operationResult{response: last, snapshot: &snapshot}, operations, err
+		return operationResult{response: last, workspace: workspace}, completed, nil
 	}, nil
 }
 
