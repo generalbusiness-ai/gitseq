@@ -938,7 +938,7 @@ func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.
 func (s *mcpServer) warnSharedIdentity(ctx context.Context, current *room) error {
 	actor := current.workspace.Config.Actors[s.actor]
 	value, err := s.get(ctx, current, "/v0/presence-count?actor="+url.QueryEscape(s.actor))
-	if isTransportError(err) {
+	if isTransportError(err) || sharedIdentityCountUnavailable(err) {
 		fmt.Fprintln(s.noticeWriter(), "gitseq-mcp: shared-identity check skipped; the resident service is unavailable:", err)
 		return nil
 	}
@@ -1150,6 +1150,11 @@ func inboxProtocolUnavailable(err error) bool {
 	}
 	return refusal.StatusCode == http.StatusMethodNotAllowed || refusal.StatusCode == http.StatusNotFound ||
 		strings.Contains(refusal.Message, `unknown field "session"`)
+}
+
+func sharedIdentityCountUnavailable(err error) bool {
+	var refusal *residentclient.HTTPError
+	return errors.As(err, &refusal) && (refusal.StatusCode == http.StatusMethodNotAllowed || refusal.StatusCode == http.StatusNotFound)
 }
 
 func (s *mcpServer) deadlineFor(path string) time.Duration {

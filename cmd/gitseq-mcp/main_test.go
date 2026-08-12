@@ -704,7 +704,8 @@ func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing
 	}))
 	defer legacy.Close()
 	server, attached := attachedServer(t, workspace, "human", legacy.URL, legacy.Client())
-	attached.identityNoticeChecked = true
+	var notices bytes.Buffer
+	server.notices = &notices
 	attached.announced = true
 
 	value, _, err := server.call(context.Background(), toolCall{Name: "status"})
@@ -714,6 +715,9 @@ func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing
 	status := value.(actorStatus)
 	if !status.Live.Degraded || status.PriorityChat.Available {
 		t.Fatalf("legacy resident status invented inbox support: %+v", status)
+	}
+	if !strings.Contains(notices.String(), "shared-identity check skipped") {
+		t.Fatalf("legacy resident did not receive a visible skipped-check diagnostic: %q", notices.String())
 	}
 	value, _, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{"cursor": status.Cursor, "timeout_ms": 1}})
 	if err != nil {

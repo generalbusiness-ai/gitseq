@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -859,6 +860,42 @@ func TestPublishedHandleCannotAuthorizeDurableActs(t *testing.T) {
 	server.Handler().ServeHTTP(ownResponse, ownRequest)
 	if ownResponse.Code != http.StatusOK {
 		t.Fatalf("the session's owner was refused: %d %s", ownResponse.Code, ownResponse.Body.String())
+	}
+}
+
+func TestPresenceCountReturnsOnlyTheActorAggregate(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	announce, _ := json.Marshal(presenceRequest{Actor: "human", Session: "private-session"})
+	presence := httptest.NewRequest(http.MethodPost, "/v0/presence", bytes.NewReader(announce))
+	presence.Header.Set("Content-Type", "application/json")
+	server.Handler().ServeHTTP(httptest.NewRecorder(), presence)
+
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v0/presence-count?actor=human", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("presence count returned %d: %s", response.Code, response.Body.String())
+	}
+	var result map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result["count"] != float64(1) {
+		t.Fatalf("presence count exposed more than the aggregate: %#v", result)
+	}
+	if strings.Contains(response.Body.String(), "private-session") {
+		t.Fatalf("presence count leaked the private session: %s", response.Body.String())
 	}
 }
 
