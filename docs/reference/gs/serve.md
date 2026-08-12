@@ -24,6 +24,28 @@ It runs in the foreground until stopped.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--listen` | `127.0.0.1:7777` | A loopback address to bind. Port `0` takes any free port. |
+| `--otel-endpoint` | empty | An OTLP/HTTP collector URL to send traces and metrics to. Empty disables observation entirely; nothing is collected and no exporter is started. Gitseq never discovers a collector on its own. |
+| `--profile-listen` | empty | A second loopback address serving Go pprof endpoints. Empty starts no profiler. |
+
+## Observation
+
+Both observation flags are off by default, and off means absent rather
+than quiet: with no `--otel-endpoint` the service records no
+measurements, so there is no sampling decision to explain and no
+collector to trust.
+
+Given an endpoint, `serve` reports how long its own operations take and
+how much work they covered, labelled with a closed vocabulary — the
+operation, a coarse path such as `cache` or `cold`, and an outcome such
+as `ok` or `timeout`. HTTP measurements carry the registered route
+template, never the request path, so an identifier in a URL does not
+become a metric label. Go runtime metrics are included.
+
+`--profile-listen` is separate on purpose. Profiling is a debugging
+session, not steady-state observation, so it binds its own loopback
+address and stops when you stop passing the flag. The address is checked
+to be loopback and refused otherwise, as `--listen` is. Treat anyone who
+can reach that port as able to read the process's memory profile.
 
 ## Example
 

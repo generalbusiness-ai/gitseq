@@ -21,12 +21,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/generalbusiness-ai/gitseq/internal/observe"
 )
 
 var attachmentName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 type Store struct {
-	Repo string
+	Repo     string
+	Observer observe.Observer
 }
 
 // CommitMetadata is the identity-bearing portion of a commit needed by kernel
@@ -56,13 +59,25 @@ func InitBare(ctx context.Context, path, objectFormat string) (Store, error) {
 }
 
 func (s Store) run(ctx context.Context, input []byte, env []string, args ...string) ([]byte, error) {
+	observer := s.Observer
+	if observer == nil {
+		observer = observe.FromContext(ctx)
+	}
+	done := observe.Begin(ctx, observer, observe.OperationGit, observe.GitPath(args))
 	argv := append([]string{"--git-dir", s.Repo}, args...)
 	cmd := exec.CommandContext(ctx, "git", argv...)
 	cmd.Stdin = bytes.NewReader(input)
 	cmd.Env = append(os.Environ(), env...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, bytes.TrimSpace(output))
+		err = fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, bytes.TrimSpace(output))
+		if done != nil {
+			done(err)
+		}
+		return nil, err
+	}
+	if done != nil {
+		done(nil)
 	}
 	return bytes.TrimSpace(output), nil
 }

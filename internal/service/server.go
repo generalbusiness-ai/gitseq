@@ -16,6 +16,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
+	"github.com/generalbusiness-ai/gitseq/internal/observe"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 )
 
@@ -63,19 +64,27 @@ type Server struct {
 	workspace *app.Workspace
 	hub       *nexus.Hub
 	mux       *http.ServeMux
+	observer  observe.Observer
 }
 
 func New(workspace *app.Workspace) (*Server, error) {
+	return NewObserved(workspace, nil)
+}
+
+// NewObserved adds bounded resident observations. Exporter configuration
+// remains the responsibility of the command that composes the server.
+func NewObserved(workspace *app.Workspace, observer observe.Observer) (*Server, error) {
 	hub, err := nexus.New(4096)
 	if err != nil {
 		return nil, err
 	}
-	server := &Server{workspace: workspace, hub: hub, mux: http.NewServeMux()}
+	workspace.SetObserver(observer)
+	server := &Server{workspace: workspace, hub: hub, mux: http.NewServeMux(), observer: observer}
 	server.routes()
 	return server, nil
 }
 
-func (s *Server) Handler() http.Handler { return s.mux }
+func (s *Server) Handler() http.Handler { return observe.HTTPHandler(s.observer, s.mux) }
 
 func (s *Server) routes() {
 	s.mux.Handle("GET /", uiHandler())
@@ -180,9 +189,13 @@ func (s *Server) handleStatusSummary(writer http.ResponseWriter, request *http.R
 		write(writer, nil, err)
 		return
 	}
+	started := time.Now()
 	summary := SummaryStatus{
 		Durable: statusview.Build(status.Durable.Genesis, status.Durable.Head, status.Durable.Depth, status.Durable.Projection),
 		Live:    status.Live, Cursor: status.Cursor,
+	}
+	if s.observer != nil {
+		s.observer.Record(request.Context(), observe.Measurement{Operation: observe.OperationStatusView, Path: observe.PathStatusSummary, Outcome: observe.OutcomeOK, Duration: time.Since(started), Items: int64(status.Durable.Depth)})
 	}
 	write(writer, summary, nil)
 }
@@ -218,6 +231,7 @@ func (s *Server) handleInspect(writer http.ResponseWriter, request *http.Request
 }
 
 func (s *Server) handleWait(writer http.ResponseWriter, request *http.Request) {
+	started := time.Now()
 	var input WaitRequest
 	if err := decode(request, &input); err != nil {
 		write(writer, nil, err)
@@ -238,11 +252,17 @@ func (s *Server) handleWait(writer http.ResponseWriter, request *http.Request) {
 		return observation.Reset || DurableChanged(input.Cursor.Frontier, status.Durable) || len(observation.Changes) > 0 || pending, nil
 	})
 	if err != nil {
+		if s.observer != nil {
+			s.observer.Record(request.Context(), observe.Measurement{Operation: observe.OperationWait, Path: observe.PathLongPoll, Outcome: observe.Classify(request.Context(), err), Duration: time.Since(started), Items: 1})
+		}
 		if request.Context().Err() != nil {
 			return
 		}
 		write(writer, nil, err)
 		return
+	}
+	if s.observer != nil {
+		s.observer.Record(request.Context(), observe.Measurement{Operation: observe.OperationWait, Path: observe.PathLongPoll, Outcome: observe.OutcomeOK, Duration: time.Since(started), Items: 1})
 	}
 	if !changed {
 		response.LiveChanges = nil
@@ -586,12 +606,22 @@ func decode(request *http.Request, target any) error {
 }
 
 func write(writer http.ResponseWriter, value any, err error) {
+	started := time.Now()
 	writer.Header().Set("Content-Type", "application/json")
 	writer.Header().Set("Cache-Control", "no-store")
 	if err != nil {
 		writer.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(writer).Encode(map[string]string{"error": err.Error()})
+		recordEncoding(writer, started, err)
 		return
 	}
-	_ = json.NewEncoder(writer).Encode(value)
+	encodeErr := json.NewEncoder(writer).Encode(value)
+	recordEncoding(writer, started, encodeErr)
+}
+
+func recordEncoding(writer http.ResponseWriter, started time.Time, err error) {
+	ctx, observer := observe.ResponseObserver(writer)
+	if observer != nil {
+		observer.Record(ctx, observe.Measurement{Operation: observe.OperationEncode, Path: observe.PathNone, Outcome: observe.Classify(ctx, err), Duration: time.Since(started), Items: 1})
+	}
 }
