@@ -712,6 +712,11 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 	rests := append([]string(nil), act.RestsOn...)
 	switch act.Verb {
 	case VerbState:
+		if act.Kind == workroom.KindReport {
+			if err := w.validateReportBasis(ctx, rests); err != nil {
+				return kernel.Request{}, err
+			}
+		}
 		schema = workroom.SchemaState
 		payload = workroom.State{Kind: act.Kind, Text: act.Text, Body: act.Body}
 	case VerbRatify:
@@ -726,6 +731,32 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 		return kernel.Request{}, fmt.Errorf("unknown act verb %q", act.Verb)
 	}
 	return w.buildRequest(ctx, private, actorName, schema, payload, rests, act.Attachments, act.IdempotencyKey)
+}
+
+// validateReportBasis refuses the one report shape that cannot participate in
+// the work loop. The fold still owns the durable decision, including races in
+// which a promise moves after this check, but filing a request as though it
+// were a promise is a local construction error we can report before signing.
+func (w *Workspace) validateReportBasis(ctx context.Context, rests []string) error {
+	snapshot, err := w.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("validate report basis: %w", err)
+	}
+	effective := make(map[string]bool, len(snapshot.Projection.Decisions))
+	for _, decision := range snapshot.Projection.Decisions {
+		effective[decision.Event] = decision.Verdict == workroom.Effective
+	}
+	for _, statement := range snapshot.Projection.Statements {
+		if statement.Kind != workroom.KindPromise || !effective[statement.Event] {
+			continue
+		}
+		for _, rest := range rests {
+			if rest == statement.Event {
+				return nil
+			}
+		}
+	}
+	return errors.New("report requires an effective promise in rests_on; rest on the promise, not its request")
 }
 
 func (w *Workspace) buildRequest(ctx context.Context, private ed25519.PrivateKey, actorName, schema string, payload any, rests []string, attachments map[string][]byte, key string) (kernel.Request, error) {

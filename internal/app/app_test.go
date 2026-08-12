@@ -197,6 +197,40 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	}
 }
 
+func TestReportWithoutPromiseIsRefusedBeforeAppend(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "agent", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	request := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "build",
+		Body:    map[string]string{"to": "agent", "conditions": "tests pass"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "request-without-promise",
+	})
+	before, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = workspace.Act(ctx, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindReport, Text: "done",
+		RestsOn: []string{request.ID}, IdempotencyKey: "report-without-promise",
+	})
+	if err == nil || !strings.Contains(err.Error(), "report requires an effective promise") {
+		t.Fatalf("report without promise error = %v", err)
+	}
+	after, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("refused report changed workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+	}
+}
+
 func TestOversizedCausalReferenceDoesNotPoisonSnapshot(t *testing.T) {
 	ctx := context.Background()
 	repo := testRepo(t)
