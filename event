@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b1c50dfcf7c134dba3502add94fca8909f5da4de","text":"The merged ambient-attention internal/service artifact succeeds this shipped predecessor."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:63b428d3c3e219ca7a1d9dade8e3f791466fcfe6","text":"The merged ambient-attention cmd/gitseq-mcp artifact succeeds this shipped predecessor."}
