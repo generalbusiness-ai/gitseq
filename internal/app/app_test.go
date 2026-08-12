@@ -298,6 +298,9 @@ func TestReportPreflightUsesDeclaredLifecycleKinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := workspace.AddActor(ctx, "human", "other", "agent"); err != nil {
+		t.Fatal(err)
+	}
 	declare := func(name workroom.Kind, lifecycle workroom.Lifecycle, basis []workroom.BasisConstraint) {
 		t.Helper()
 		fields, err := json.Marshal([]workroom.FieldConstraint{})
@@ -338,6 +341,24 @@ func TestReportPreflightUsesDeclaredLifecycleKinds(t *testing.T) {
 	fresh, err := Open(ctx, workspace.Repo)
 	if err != nil {
 		t.Fatal(err)
+	}
+	before, err := fresh.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fresh.Act(ctx, "other", Act{
+		Verb: VerbState, Kind: "delivery", Text: "not mine",
+		RestsOn: []string{promise.ID}, IdempotencyKey: "custom-lifecycle-wrong-promisor",
+	})
+	if err == nil || !strings.Contains(err.Error(), "report actor must be the promisor") {
+		t.Fatalf("cold custom report by wrong promisor error = %v", err)
+	}
+	afterRefusal, err := fresh.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterRefusal.Head != before.Head || afterRefusal.Depth != before.Depth {
+		t.Fatalf("cold custom report refusal appended: before=%s/%d after=%s/%d", before.Head, before.Depth, afterRefusal.Head, afterRefusal.Depth)
 	}
 	report := actRecord(t, ctx, fresh, "agent", Act{
 		Verb: VerbState, Kind: "delivery", Text: "done",
