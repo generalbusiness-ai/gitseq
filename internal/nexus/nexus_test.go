@@ -954,3 +954,64 @@ func TestAddressedFramesRepeatUntilAcknowledged(t *testing.T) {
 		t.Fatalf("another session's acknowledgement cleared carol's inbox: %+v", carolInbox.Frames)
 	}
 }
+
+// Attention reports who is attending to something, and that is an identity
+// claim. It must be the resident's observation of who holds a lease, never a
+// client's assertion about someone else.
+//
+// Two properties together make that true, and both are tested here because
+// either alone is insufficient. Identity is keyed on the durable fingerprint,
+// so sharing a display name does not merge two actors into one row. And a
+// session can only ever describe its own focus, so no call can make another
+// actor appear to be watching something.
+func TestAttentionCannotBeUsedToImpersonate(t *testing.T) {
+	hub := newHub(t, 64)
+	busy := ActivityBusy
+	focus := []string{"event:one"}
+
+	// Two different actors that have chosen the same display name.
+	if _, err := hub.AnnounceSessionIdentity("s1", "codex", "fingerprint-real", "v", time.Hour, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hub.AnnounceSessionIdentity("s2", "codex", "fingerprint-impostor", "v", time.Hour, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+		t.Fatal(err)
+	}
+	actors, _ := hub.FocusedOn("", []string{"event:one"})
+	if len(actors) != 2 {
+		t.Fatalf("two fingerprints under one name collapsed to %d row(s): %+v", len(actors), actors)
+	}
+	seen := map[string]bool{}
+	for _, actor := range actors {
+		if actor.Sessions != 1 {
+			t.Fatalf("a row claims %d sessions: %+v", actor.Sessions, actor)
+		}
+		seen[actor.Fingerprint] = true
+	}
+	if !seen["fingerprint-real"] || !seen["fingerprint-impostor"] {
+		t.Fatalf("rows do not carry both distinct fingerprints: %+v", actors)
+	}
+
+	// A row carries the full fingerprint, never a prefix. A truncated identity
+	// invites the reader to match it against another truncation.
+	for _, actor := range actors {
+		if len(actor.Fingerprint) != len("fingerprint-real") && len(actor.Fingerprint) != len("fingerprint-impostor") {
+			t.Fatalf("fingerprint looks truncated: %q", actor.Fingerprint)
+		}
+	}
+
+	// A session can only describe itself. Announcing under one session never
+	// alters what another session is reported as focusing on, so there is no
+	// call shape that makes somebody else appear to be watching an event.
+	elsewhere := []string{"event:two"}
+	if _, err := hub.AnnounceSessionIdentity("s2", "codex", "fingerprint-impostor", "v", time.Hour, ActivityUpdate{Focus: &elsewhere}); err != nil {
+		t.Fatal(err)
+	}
+	actors, _ = hub.FocusedOn("", []string{"event:one"})
+	if len(actors) != 1 || actors[0].Fingerprint != "fingerprint-real" {
+		t.Fatalf("moving one session's focus changed another's: %+v", actors)
+	}
+	actors, _ = hub.FocusedOn("", []string{"event:two"})
+	if len(actors) != 1 || actors[0].Fingerprint != "fingerprint-impostor" {
+		t.Fatalf("the moved session is not reported at its new focus: %+v", actors)
+	}
+}
