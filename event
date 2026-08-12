@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact smaller kernel correctness fixtures implementation at 515cf306b4829f4d9be84f8212ec9ca9f31d67c0.","body":{"commit":"515cf306b4829f4d9be84f8212ec9ca9f31d67c0","path":"internal/kernel"}}
+{"kind":"artifact","text":"Exact short/full documentation gate split at 515cf306b4829f4d9be84f8212ec9ca9f31d67c0, restated without the stale historical docset pointer.","body":{"commit":"515cf306b4829f4d9be84f8212ec9ca9f31d67c0","path":"internal/docset"}}
