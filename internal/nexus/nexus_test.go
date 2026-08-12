@@ -707,3 +707,311 @@ func TestRecipientInboxCapacityRefusesWithoutPublishing(t *testing.T) {
 		t.Fatalf("refused inbox publication mutated the room: before=%+v after=%+v convs=%d", before, after, len(hub.convs))
 	}
 }
+
+// The activity clock reports when a decision was made, not when the client last
+// spoke. Renewals are frequent and changes are rare, so a timestamp that moved
+// on every heartbeat would report the polling interval and tell a reader
+// nothing about whether the focus is fresh.
+func TestActivityChangedAtIgnoresHeartbeatRenewal(t *testing.T) {
+	hub, err := New(64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	busy := ActivityBusy
+	focus := []string{"event:one"}
+	if _, err := hub.AnnounceSessionActivity("s1", "alice", "alice-value", time.Minute, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+		t.Fatal(err)
+	}
+	actors, _ := hub.FocusedOn("", []string{"event:one"})
+	if len(actors) != 1 {
+		t.Fatalf("focus match = %+v, want one actor", actors)
+	}
+	first := actors[0].ActivityChangedAt
+	if first.IsZero() {
+		t.Fatal("a new session left the activity clock unset")
+	}
+
+	// A renewal that changes nothing must carry the same instant forward.
+	if _, err := hub.AnnounceSession("s1", "alice", "alice-value", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	actors, _ = hub.FocusedOn("", []string{"event:one"})
+	if len(actors) != 1 || !actors[0].ActivityChangedAt.Equal(first) {
+		t.Fatalf("a heartbeat moved the activity clock: %v -> %v", first, actors[0].ActivityChangedAt)
+	}
+
+	// An actual change must move it.
+	waiting := ActivityWaiting
+	if _, err := hub.AnnounceSessionActivity("s1", "alice", "alice-value", time.Minute, ActivityUpdate{Status: &waiting}); err != nil {
+		t.Fatal(err)
+	}
+	actors, _ = hub.FocusedOn("", []string{"event:one"})
+	if len(actors) != 1 || !actors[0].ActivityChangedAt.After(first) {
+		t.Fatalf("a status change did not move the activity clock: %v -> %v", first, actors[0].ActivityChangedAt)
+	}
+	if actors[0].Status != string(ActivityWaiting) {
+		t.Fatalf("status = %q, want waiting", actors[0].Status)
+	}
+}
+
+// One person in two windows is one actor. Aggregating by fingerprint after
+// filtering the caller's own sessions is what keeps the reader from being told
+// that two people are looking at their work when only one is.
+func TestFocusedOnAggregatesSessionsAndExcludesTheCaller(t *testing.T) {
+	hub, err := New(64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	busy := ActivityBusy
+	both := []string{"event:one", "event:two"}
+	one := []string{"event:one"}
+	for _, session := range []struct {
+		id, actor, fingerprint string
+		focus                  []string
+	}{
+		{"a1", "alice", "fp-alice", both},
+		{"a2", "alice", "fp-alice", one},
+		{"b1", "bob", "fp-bob", one},
+		{"self", "claude", "fp-claude", one},
+		{"c1", "carol", "fp-carol", []string{"event:elsewhere"}},
+	} {
+		focus := session.focus
+		if _, err := hub.AnnounceSessionIdentity(session.id, session.actor, session.fingerprint, session.id+"-value", time.Minute, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	actors, omitted := hub.FocusedOn("self", []string{"event:one", "event:two"})
+	if omitted != 0 {
+		t.Fatalf("omitted = %d, want 0", omitted)
+	}
+	byName := map[string]AttentionActor{}
+	for _, actor := range actors {
+		byName[actor.Name] = actor
+	}
+	if _, present := byName["claude"]; present {
+		t.Fatalf("the calling session was reported back to itself: %+v", actors)
+	}
+	if _, present := byName["carol"]; present {
+		t.Fatalf("an actor focused elsewhere matched: %+v", actors)
+	}
+	alice, held := byName["alice"]
+	if !held {
+		t.Fatalf("alice missing: %+v", actors)
+	}
+	if alice.Sessions != 2 {
+		t.Fatalf("alice sessions = %d, want 2 aggregated into one row", alice.Sessions)
+	}
+	if alice.Fingerprint != "fp-alice" {
+		t.Fatalf("alice fingerprint = %q, want the full durable fingerprint", alice.Fingerprint)
+	}
+	if len(alice.Matched) != 2 || alice.Matched[0] != "event:one" || alice.Matched[1] != "event:two" {
+		t.Fatalf("alice matched = %v, want both events sorted", alice.Matched)
+	}
+	if bob := byName["bob"]; bob.Sessions != 1 || len(bob.Matched) != 1 {
+		t.Fatalf("bob = %+v, want one session matching one event", bob)
+	}
+}
+
+// Matching is exact. Anything cleverer would be the adapter inventing a
+// relationship nobody stated and presenting it as observation.
+func TestFocusedOnMatchesExactlyAndBoundsItsResult(t *testing.T) {
+	hub, err := New(64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	busy := ActivityBusy
+	exact := []string{"git:sha1:abc#git:sha1:def"}
+	if _, err := hub.AnnounceSessionIdentity("s1", "alice", "fp-alice", "v", time.Minute, ActivityUpdate{Status: &busy, Focus: &exact}); err != nil {
+		t.Fatal(err)
+	}
+	for _, near := range []string{"git:sha1:abc#git:sha1:de", "git:sha1:abc#git:sha1:defg", "GIT:SHA1:ABC#GIT:SHA1:DEF", "def", ""} {
+		if actors, _ := hub.FocusedOn("", []string{near}); len(actors) != 0 {
+			t.Fatalf("near-miss %q matched: %+v", near, actors)
+		}
+	}
+	if actors, _ := hub.FocusedOn("", exact); len(actors) != 1 {
+		t.Fatalf("the exact identifier did not match: %+v", actors)
+	}
+	if actors, omitted := hub.FocusedOn("", nil); len(actors) != 0 || omitted != 0 {
+		t.Fatalf("an empty query returned %+v (%d omitted)", actors, omitted)
+	}
+
+	// More distinct actors than the cap: the excess is counted, not dropped.
+	for index := 0; index < MaxAttentionActors+3; index++ {
+		name := fmt.Sprintf("actor-%02d", index)
+		focus := []string{"crowded"}
+		if _, err := hub.AnnounceSessionIdentity("crowd-"+name, name, "fp-"+name, "v", time.Minute, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	actors, omitted := hub.FocusedOn("", []string{"crowded"})
+	if len(actors) != MaxAttentionActors {
+		t.Fatalf("returned %d actors, want the cap of %d", len(actors), MaxAttentionActors)
+	}
+	if omitted != 3 {
+		t.Fatalf("omitted = %d, want 3 reported rather than silently dropped", omitted)
+	}
+}
+
+// An expired lease is not attention. Advisory state that outlived its lease
+// would be the worst kind of stale: it looks live.
+func TestFocusedOnDropsExpiredSessions(t *testing.T) {
+	hub, err := New(64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	busy := ActivityBusy
+	focus := []string{"event:one"}
+	if _, err := hub.AnnounceSessionIdentity("s1", "alice", "fp-alice", "v", time.Millisecond, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+		t.Fatal(err)
+	}
+	hub.Expire(time.Now().Add(time.Hour))
+	if actors, _ := hub.FocusedOn("", []string{"event:one"}); len(actors) != 0 {
+		t.Fatalf("an expired lease still reported attention: %+v", actors)
+	}
+}
+
+// An addressed frame keeps being reported until the recipient explicitly says
+// it has seen it. That is what makes the attention adjunct an interruption
+// rather than a notification: a tool call that ignores it does not consume it,
+// and the next call says the same thing again.
+//
+// The repetition is not a feature the adjunct adds. It falls out of the inbox
+// holding frames until Acknowledge removes them, and this test exists so that
+// property cannot be quietly optimised away underneath the adjunct that relies
+// on it.
+func TestAddressedFramesRepeatUntilAcknowledged(t *testing.T) {
+	hub := newHub(t, 64)
+	_, aliceKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	announceIdentity(t, hub, "alice", "alice", aliceKey)
+	_, bobKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bob := announceIdentity(t, hub, "bob", "bob", bobKey)
+
+	frame, err := hub.PublishMessageForSession("alice", "", Message{About: "topic", Text: "look at this", Recipients: []string{bob}}, aliceKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reading it changes nothing. Three reads in a row must all report it,
+	// because reading is not acknowledging.
+	for attempt := 1; attempt <= 3; attempt++ {
+		_, inbox, err := hub.SnapshotForSession("bob")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(inbox.Frames) != 1 || inbox.Frames[0].Text != "look at this" {
+			t.Fatalf("read %d reported %+v, want the frame still pending", attempt, inbox.Frames)
+		}
+	}
+
+	// The same holds through the attention query the adjunct actually uses.
+	if actors, _ := hub.FocusedOn("bob", nil); len(actors) != 0 {
+		t.Fatalf("an empty event set matched actors: %+v", actors)
+	}
+
+	handle := fmt.Sprintf("%s:%d", frame.Conversation, frame.Sequence)
+	acknowledged, err := hub.Acknowledge("bob", []string{handle})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acknowledged != 1 {
+		t.Fatalf("acknowledged %d frames, want 1", acknowledged)
+	}
+
+	_, inbox, err := hub.SnapshotForSession("bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inbox.Frames) != 0 {
+		t.Fatalf("an acknowledged frame is still pending: %+v", inbox.Frames)
+	}
+
+	// Acknowledgement is per session, not per actor or per fingerprint. Another
+	// session must not have its interruption cleared by someone else's ack.
+	_, carolKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	carol := announceIdentity(t, hub, "carol", "carol", carolKey)
+	if _, err := hub.PublishMessageForSession("alice", "", Message{About: "topic", Text: "and this", Recipients: []string{carol}}, aliceKey); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hub.Acknowledge("bob", []string{handle}); err != nil {
+		t.Fatal(err)
+	}
+	_, carolInbox, err := hub.SnapshotForSession("carol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(carolInbox.Frames) != 1 {
+		t.Fatalf("another session's acknowledgement cleared carol's inbox: %+v", carolInbox.Frames)
+	}
+}
+
+// Attention reports who is attending to something, and that is an identity
+// claim. It must be the resident's observation of who holds a lease, never a
+// client's assertion about someone else.
+//
+// Two properties together make that true, and both are tested here because
+// either alone is insufficient. Identity is keyed on the durable fingerprint,
+// so sharing a display name does not merge two actors into one row. And a
+// session can only ever describe its own focus, so no call can make another
+// actor appear to be watching something.
+func TestAttentionCannotBeUsedToImpersonate(t *testing.T) {
+	hub := newHub(t, 64)
+	busy := ActivityBusy
+	focus := []string{"event:one"}
+
+	// Two different actors that have chosen the same display name.
+	if _, err := hub.AnnounceSessionIdentity("s1", "codex", "fingerprint-real", "v", time.Hour, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hub.AnnounceSessionIdentity("s2", "codex", "fingerprint-impostor", "v", time.Hour, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+		t.Fatal(err)
+	}
+	actors, _ := hub.FocusedOn("", []string{"event:one"})
+	if len(actors) != 2 {
+		t.Fatalf("two fingerprints under one name collapsed to %d row(s): %+v", len(actors), actors)
+	}
+	seen := map[string]bool{}
+	for _, actor := range actors {
+		if actor.Sessions != 1 {
+			t.Fatalf("a row claims %d sessions: %+v", actor.Sessions, actor)
+		}
+		seen[actor.Fingerprint] = true
+	}
+	if !seen["fingerprint-real"] || !seen["fingerprint-impostor"] {
+		t.Fatalf("rows do not carry both distinct fingerprints: %+v", actors)
+	}
+
+	// A row carries the full fingerprint, never a prefix. A truncated identity
+	// invites the reader to match it against another truncation.
+	for _, actor := range actors {
+		if len(actor.Fingerprint) != len("fingerprint-real") && len(actor.Fingerprint) != len("fingerprint-impostor") {
+			t.Fatalf("fingerprint looks truncated: %q", actor.Fingerprint)
+		}
+	}
+
+	// A session can only describe itself. Announcing under one session never
+	// alters what another session is reported as focusing on, so there is no
+	// call shape that makes somebody else appear to be watching an event.
+	elsewhere := []string{"event:two"}
+	if _, err := hub.AnnounceSessionIdentity("s2", "codex", "fingerprint-impostor", "v", time.Hour, ActivityUpdate{Focus: &elsewhere}); err != nil {
+		t.Fatal(err)
+	}
+	actors, _ = hub.FocusedOn("", []string{"event:one"})
+	if len(actors) != 1 || actors[0].Fingerprint != "fingerprint-real" {
+		t.Fatalf("moving one session's focus changed another's: %+v", actors)
+	}
+	actors, _ = hub.FocusedOn("", []string{"event:two"})
+	if len(actors) != 1 || actors[0].Fingerprint != "fingerprint-impostor" {
+		t.Fatalf("the moved session is not reported at its new focus: %+v", actors)
+	}
+}

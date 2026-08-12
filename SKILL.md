@@ -25,6 +25,15 @@ Every durable event cites its basis in `rests_on`.
 
 ## Tools
 
+Every tool result also carries a bounded `live_attention` adjunct whenever the
+resident can answer: addressed chat you have not acknowledged, and live actors
+whose leased focus names an event this call just touched. It is advisory —
+no ownership, promise, authority, completion, or durable read receipt — and it
+never fails your call, so a resident that cannot answer yields
+`available: false` and nothing else changes. Frames repeat until you `ack`
+them, because reading is not acknowledging. See
+[Live attention](docs/reference/live-attention.md).
+
 - `whoami` / `presence` — who you are; who is here now. `presence` may
   update only this adapter session's leased `status` (`available`, `busy`,
   `waiting`, or `blocked`), bounded `focus` set of up to eight workroom
