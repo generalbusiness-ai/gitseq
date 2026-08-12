@@ -32,10 +32,20 @@ func TestCasesForTierRemainBoundedAndDeterministic(t *testing.T) {
 	if len(first) == 0 || !reflect.DeepEqual(first, second) {
 		t.Fatalf("smoke cases are not stable: %#v / %#v", first, second)
 	}
+	if len(first) != 18 {
+		t.Fatalf("smoke case count = %d, want 18", len(first))
+	}
+	var concurrency []int
 	for _, selected := range first {
 		if selected.Depth > 267 {
 			t.Fatalf("smoke case escaped its depth bound: %+v", selected)
 		}
+		if selected.Scenario == "concurrent_read_write" {
+			concurrency = append(concurrency, selected.Concurrency)
+		}
+	}
+	if !reflect.DeepEqual(concurrency, []int{1, 4, 16}) {
+		t.Fatalf("smoke concurrency = %v, want [1 4 16]", concurrency)
 	}
 	if _, err := casesForTier(contract, "unbounded"); err == nil {
 		t.Fatal("unknown tier was accepted")

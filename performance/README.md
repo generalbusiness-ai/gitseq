@@ -24,7 +24,8 @@ make perf PERF_ARGS='compare --base main --candidate HEAD --tier standard'
 ```
 
 The comparison command refuses dirty source states, keeps setup outside the
-measured interval, writes raw newline JSON and Go benchmark-format files, and
+runs at least two rounds per revision, writes raw newline JSON and Go
+benchmark-format files, and
 runs `benchstat` when the pinned tool is available. Baseline acceptance is a
 reviewed source change: the command refuses automatic `--accept-baseline`
 writes so a run cannot silently bless its own numbers.

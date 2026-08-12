@@ -290,6 +290,9 @@ func laneCommand(ctx context.Context, root string, compare bool, arguments []str
 	for _, runCase := range cases {
 		fixture := fixtures[runCase.Shape]
 		warmups, repetitions := tierCounts(contract, *tier, runCase.Scenario)
+		if compare && repetitions < 2 {
+			repetitions = 2
+		}
 		for revision, binary := range binaries {
 			for warmup := 0; warmup < warmups; warmup++ {
 				if _, err := runWorker(ctx, binary, fixture, runCase, contract, ""); err != nil {
