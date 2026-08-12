@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged instrumentation documentation re-anchor at docs@537ab466aec03d1d2a10be78d042a9e47b92c43a.","body":{"commit":"537ab466aec03d1d2a10be78d042a9e47b92c43a","path":"docs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:27c29e35eb21cc55f21327c5fdaf1016916d4664","text":"Retire the reviewed docs candidate against its merged successor."}
