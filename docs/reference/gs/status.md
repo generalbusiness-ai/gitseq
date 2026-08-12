@@ -52,7 +52,7 @@ gs status --repo "$REPO" --json | head -5
 
 The header names the frontier, its depth, and where the answer came
 from — `verified local`, `resident summary`, or `verified local
-fallback`. Then a line of totals, and five sections:
+fallback`. Then a line of totals, and six sections:
 
 | Section | What is in it |
 |---|---|
@@ -60,6 +60,7 @@ fallback`. Then a line of totals, and five sections:
 | Needs attention | Live commitments in any other state — `stale`, `reneged`, `cancelled`. |
 | Current artifacts | Artifacts that are neither retired nor stale. |
 | Stale artifacts | Artifacts that were retired, and artifacts a retirement reached. |
+| Dissents | Standing objections, each naming the act it is recorded against. |
 | Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
 
 Staleness qualifies a commitment rather than replacing its status. A
