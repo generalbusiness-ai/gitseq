@@ -41,6 +41,11 @@ It uses the _language-action perspective_ to describe acts such as requests,
 promises, reports, agreement, disagreement, and conditions of satisfaction;
 these acts become a lightweight framework for getting things done.
 
+In practice, it's a great tool for working with two or more agents.  Each 
+gets a name, role, and a strong identity.  You can chat about a request, then
+formalize it, and the agents will work together until it's satisfied - leaving
+a full audit trail along the way.
+
 ## Getting Started
 
 Follow [Getting started](docs/getting-started.md) for first-time
