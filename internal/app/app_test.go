@@ -1176,3 +1176,53 @@ func TestResidentSequencerIsBounded(t *testing.T) {
 		t.Fatalf("resident queue depth = %d, want %d", depth, ResidentQueueDepth)
 	}
 }
+
+// Every surface that can retire a record reaches the log through
+// BuildActRequest, so that is where a retirement the documentation still cites
+// has to be refused. It used to be checked in cmd/gs alone: a supersession
+// filed over MCP went straight to the resident, and on 2026-08-12 one retired a
+// record eleven pages named and took main red. The CLI test for the same rule
+// passed throughout, because the CLI was never the hole.
+func TestBuildActRequestRefusesRetiringACitedRecord(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	workspace, seed, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := filepath.Join(repo, "docs", "reference", "thing.md")
+	if err := os.MkdirAll(filepath.Dir(page), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(page, []byte("---\nrests_on:\n  - "+seed.ID+"\n---\n\nprose\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("git", "-C", repo, "add", "docs/reference/thing.md").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v: %s", err, output)
+	}
+
+	retire := Act{Verb: VerbSupersede, Target: seed.ID, Text: "retire it"}
+	if _, err := workspace.BuildActRequest(ctx, private, "human", retire); err == nil {
+		t.Fatal("a retirement was built while a page still cited the target")
+	} else if !strings.Contains(err.Error(), "docs/reference/thing.md") {
+		t.Errorf("the refusal must name the page to repoint, got %v", err)
+	}
+
+	// The escape exists for a migration that retires first and re-anchors
+	// after. It has to be asked for, so that the ordinary case cannot break
+	// the repository by omission.
+	retire.CitedOK = true
+	if _, err := workspace.BuildActRequest(ctx, private, "human", retire); err != nil {
+		t.Errorf("CitedOK must allow the retirement, got %v", err)
+	}
+
+	// A record nothing cites is untouched by any of this.
+	quiet := Act{Verb: VerbSupersede, Target: seed.ID + "-unnamed", Text: "retire it"}
+	if _, err := workspace.BuildActRequest(ctx, private, "human", quiet); err != nil {
+		t.Errorf("an uncited target must build normally, got %v", err)
+	}
+}
