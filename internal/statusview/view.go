@@ -67,6 +67,19 @@ type Attempt struct {
 	Reason   string `json:"reason,omitempty"`
 }
 
+// Dissent is a recorded disagreement standing against the act it concerns.
+// It is append-only and never rewrites what it dissents from, which is exactly
+// why it has to be shown: the record it names still reads as it always did, so
+// a page that omits the dissent tells a reader the act is unopposed.
+type Dissent struct {
+	Event    string `json:"event"`
+	Sequence int    `json:"sequence,omitempty"`
+	Actor    string `json:"actor"`
+	Against  string `json:"against,omitempty"`
+	AgainstSequence int `json:"against_sequence,omitempty"`
+	Text     string `json:"text,omitempty"`
+}
+
 type Summary struct {
 	Genesis string `json:"genesis"`
 	Head    string `json:"head"`
@@ -83,6 +96,8 @@ type Summary struct {
 	StaleOmitted      int          `json:"stale_artifacts_omitted,omitempty"`
 	Attempts          []Attempt    `json:"attempts"`
 	AttemptsOmitted   int          `json:"attempts_omitted,omitempty"`
+	Dissents          []Dissent    `json:"dissents"`
+	DissentsOmitted   int          `json:"dissents_omitted,omitempty"`
 }
 
 // The lanes a commitment can be in. These are exactly the statuses the fold
@@ -217,16 +232,37 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		}
 		summary.Attempts = append(summary.Attempts, Attempt{Event: decision.Event, Sequence: decision.Sequence, Verdict: string(decision.Verdict), Reason: Text(decision.Reason)})
 	}
+	// Dissent carries no lifecycle and satisfies nothing, so it appears in no
+	// commitment lane and no artifact list. Before this it appeared nowhere at
+	// all on the human page: the projection knew about it and only a JSON
+	// reader could find it.
+	for _, statement := range projection.Statements {
+		if statement.Kind != workroom.KindDissent || statement.Retired {
+			continue
+		}
+		view := Dissent{
+			Event: statement.Event, Sequence: sequences[statement.Event],
+			Actor: Text(ActorName(projection, statement.Actor)), Text: Text(statement.Text),
+		}
+		// A dissent rests on the act it concerns, so the first basis names it.
+		if bases := projection.Provenance[statement.Event]; len(bases) > 0 {
+			view.Against = bases[0]
+			view.AgainstSequence = sequences[bases[0]]
+		}
+		summary.Dissents = append(summary.Dissents, view)
+	}
 	summary.Actionable, summary.ActionableOmitted = Cap(summary.Actionable, ListCap)
 	summary.Attention, summary.AttentionOmitted = Cap(summary.Attention, ListCap)
 	summary.CurrentArtifacts, summary.CurrentOmitted = Cap(summary.CurrentArtifacts, ListCap)
 	summary.StaleArtifacts, summary.StaleOmitted = Cap(summary.StaleArtifacts, ListCap)
 	summary.Attempts, summary.AttemptsOmitted = Cap(summary.Attempts, ListCap)
+	summary.Dissents, summary.DissentsOmitted = Cap(summary.Dissents, ListCap)
 	reverse(summary.Actionable)
 	reverse(summary.Attention)
 	reverse(summary.CurrentArtifacts)
 	reverse(summary.StaleArtifacts)
 	reverse(summary.Attempts)
+	reverse(summary.Dissents)
 	return summary
 }
 
@@ -266,6 +302,25 @@ func Render(summary Summary, source string) []byte {
 	renderCommitments(&output, "Needs attention", summary.Attention, summary.AttentionOmitted)
 	renderArtifacts(&output, "Current artifacts", summary.CurrentArtifacts, summary.CurrentOmitted)
 	renderArtifacts(&output, "Stale artifacts", summary.StaleArtifacts, summary.StaleOmitted)
+	// Before the attempts section, because a dissent is a live objection to
+	// something that did take force, while an attempt is something that never
+	// did. A reader scanning for what not to act on wants the first one.
+	output.WriteString("\n## Dissents\n\n")
+	if len(summary.Dissents) == 0 {
+		output.WriteString("None.\n")
+	} else {
+		for _, dissent := range summary.Dissents {
+			fmt.Fprintf(&output, "- %s by %s", name(dissent.Event, dissent.Sequence), dissent.Actor)
+			if dissent.Against != "" {
+				fmt.Fprintf(&output, " against %s", name(dissent.Against, dissent.AgainstSequence))
+			}
+			if dissent.Text != "" {
+				fmt.Fprintf(&output, ": %s", dissent.Text)
+			}
+			output.WriteString("\n")
+		}
+		writeOmitted(&output, len(summary.Dissents), summary.DissentsOmitted)
+	}
 	output.WriteString("\n## Non-effective attempts\n\n")
 	if len(summary.Attempts) == 0 {
 		output.WriteString("None.\n")

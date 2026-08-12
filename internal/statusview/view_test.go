@@ -423,3 +423,56 @@ func TestBoundedStatusNamesEventsByNumber(t *testing.T) {
 		t.Errorf("bounded status stopped abbreviating a git commit:\n%s", rendered)
 	}
 }
+
+// A dissent takes no lifecycle and satisfies nothing, so it lands in no
+// commitment lane and no artifact list. Until it was rendered it appeared
+// nowhere on the human page while sitting plainly in the JSON: the act it
+// objects to still read exactly as it always had, so the page told a reader an
+// approval was unopposed when the record said otherwise.
+func TestStatusPageShowsDissentAgainstTheActItConcerns(t *testing.T) {
+	projection := workroom.Projection{
+		Statements: []workroom.Statement{
+			{Event: "verdict", Actor: "reviewer", Kind: workroom.KindReport, Text: "APPROVED"},
+			{Event: "objection", Actor: "reviewer", Kind: workroom.KindDissent, Text: "do not act on that approval yet"},
+		},
+		Provenance: map[string][]string{"objection": {"verdict"}},
+		Decisions: []workroom.Decision{
+			{Event: "verdict", Verdict: workroom.Effective, Sequence: 1},
+			{Event: "objection", Verdict: workroom.Effective, Sequence: 2},
+		},
+	}
+	summary := Build("genesis", "head", 2, projection)
+	if len(summary.Dissents) != 1 {
+		t.Fatalf("dissents = %+v", summary.Dissents)
+	}
+	if summary.Dissents[0].Against != "verdict" {
+		t.Errorf("dissent must name the act it stands against, got %q", summary.Dissents[0].Against)
+	}
+	rendered := string(Render(summary, ""))
+	if !strings.Contains(rendered, "## Dissents") {
+		t.Fatal("the human page has no dissent section")
+	}
+	if !strings.Contains(rendered, "do not act on that approval yet") {
+		t.Error("the dissent's text is not on the page")
+	}
+	if !strings.Contains(rendered, "#2") || !strings.Contains(rendered, "#1") {
+		t.Errorf("the page must name both the dissent and its target:\n%s", rendered)
+	}
+}
+
+// A retired dissent is withdrawn, and showing it would be the opposite error.
+func TestRetiredDissentIsNotShown(t *testing.T) {
+	projection := workroom.Projection{
+		Statements: []workroom.Statement{
+			{Event: "objection", Actor: "reviewer", Kind: workroom.KindDissent, Text: "withdrawn objection", Retired: true},
+		},
+		Decisions: []workroom.Decision{{Event: "objection", Verdict: workroom.Effective, Sequence: 1}},
+	}
+	summary := Build("genesis", "head", 1, projection)
+	if len(summary.Dissents) != 0 {
+		t.Fatalf("a retired dissent was shown: %+v", summary.Dissents)
+	}
+	if !strings.Contains(string(Render(summary, "")), "## Dissents\n\nNone.") {
+		t.Error("the section should say None when nothing stands")
+	}
+}
