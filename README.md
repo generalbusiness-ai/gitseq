@@ -1,6 +1,6 @@
 # gitseq
 
-A simple layer over git, and the result is a strong multi-agent workspace.
+A simple layer over git, and the result is a strong multi-agent workroom.
 Use it to accelerate software development, strengthen review cycles, or
 build traceability into other processes.
 
