@@ -2,7 +2,7 @@
 
 A simple layer over git, and the result is a strong multi-agent workspace.
 Use it to accelerate software development, strengthen review cycles, or
-build traceability into existing processes.
+build traceability into other processes.
 
 Blog:
 [Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
@@ -31,8 +31,10 @@ It can be recalculated at any time, independently verified, and traced back
 through every act that produced it.
 
 The infrastructure is simple: _ordinary Git storage_ plus a _signed sequencer_.
-Above this, applications define their own object types, actions, projections,
-and rules for deciding which acts take effect.
+An act’s signed payload can cite any immutable Git object, such as a blob,
+tree, commit, tag, or another gitseq event.  Above this, applications define
+their own object types, actions, projections, and rules for deciding which
+acts take effect.
 
 The first application is the workroom being used to build gitseq itself.
 It uses the _language-action perspective_ to describe acts such as requests,
