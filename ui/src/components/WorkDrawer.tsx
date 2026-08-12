@@ -9,7 +9,7 @@ import {
   buildWorkProjection,
   filterPersonalWorkProjection,
   filterWorkProjection,
-  otherWorkAttentionLabel,
+  otherWorkAttentionClause,
   topicChangeSince,
   workCommitmentCounts,
   workItemNeedsAction,
@@ -167,7 +167,7 @@ export function WorkView({
             />
             <FilterCheck
               label="Attention"
-              description={`Stale or disputed, which is a qualifier rather than a status: ${counts.attention} of ${counts.total} commitments, most of them also counted as active or closed. Separately, ${otherWorkAttentionLabel(attentionItemCounts(work?.attention ?? []))} need attention.`}
+              description={`Stale or disputed, which is a qualifier rather than a status: ${counts.attention} of ${counts.total} commitments, most of them also counted as active or closed. Separately, ${otherWorkAttentionClause(attentionItemCounts(work?.attention ?? []))}.`}
               checked={filters.attention}
               count={counts.attention}
               tone="danger"

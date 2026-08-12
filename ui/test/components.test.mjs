@@ -265,6 +265,13 @@ test("identity and personal Work state stay honest at rendered component boundar
     assert.match(markup, /aria-label="follow topic"/);
     assert.match(markup, /Changed since viewed by claude, status open/);
     assert.match(markup, /Focused here: codex \(blocked\)/);
+    // The component boundary, not just the phrase generator. The defect lived
+    // at a call site that composed the noun here and the verb in the template,
+    // so a rendered assertion is what would have caught it. This fixture has no
+    // attention artifacts or unlinked promises, which is the empty case a
+    // healthy workroom shows most often.
+    assert.match(markup, /Separately, nothing else needs attention\./);
+    assert.doesNotMatch(markup, /nothing else need attention/);
     assert.match(markup, /codex · blocked/);
 
     const multiRoom = workroom({});
