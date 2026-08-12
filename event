@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc814dc0b18502ba3cbc5cad1e95bee1eaeccd7c","text":"Retired: the approved candidate at cmd/gitseq-mcp on head 000317cd, now merged. The successor at the same path is e8b52523, on merge commit d93379c2."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ef33e3564e7abf2a51cffc60d34f923c007564a3","text":"Retired: the approved candidate at docs on head 000317cd, now merged. The successor at the same path is 41a6da29, on merge commit d93379c2."}
