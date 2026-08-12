@@ -2,10 +2,7 @@
 title: The work loop
 summary: Request, promise, report, ratification — and who is allowed to close what.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7bf4086034820826093f3e5b88f6076df77f2856
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:963dcd7e18727d410e7331b1159906a28fac8865
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8345229e3dd2d73ab52d67bcf7371edba6d2c97d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
 ---
 
 # The work loop

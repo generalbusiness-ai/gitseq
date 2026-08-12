@@ -2,11 +2,14 @@
 title: gs serve
 summary: Run the resident service: sequencing, presence, change notification, and the browser view.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ec925bb7a282b9199d4aca896578e95485ce5d56
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a13f26c1c7a88f9d98e2d97e4423840530b949a2
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:328aa6777241e67d4b1a122ee45d4e4019eebd11
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa5182bb85a8347c55bcf229d53b104dde600a7
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9d3606442131e4bc700d1310451657bd4eac438
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48bd5acfe51abd4146197a48b0f7674f5676cc5c
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc5ca55fb4a4e67e2395903519f2103a92930268
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b7e8c9c09da8ab7b1e83b2daab9db2e86bfea7a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:05dccd875ac20804b78e3de4dcf80dbe25835a44
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3991ed3d5f102a963671e45cfb1fa5aef0d3d5fd
 ---
 
 # `gs serve`
@@ -23,6 +26,28 @@ It runs in the foreground until stopped.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--listen` | `127.0.0.1:7777` | A loopback address to bind. Port `0` takes any free port. |
+| `--otel-endpoint` | empty | An OTLP/HTTP collector URL to send traces and metrics to. Empty disables observation entirely; nothing is collected and no exporter is started. Gitseq never discovers a collector on its own. |
+| `--profile-listen` | empty | A second loopback address serving Go pprof endpoints. Empty starts no profiler. |
+
+## Observation
+
+Both observation flags are off by default, and off means absent rather
+than quiet: with no `--otel-endpoint` the service records no
+measurements, so there is no sampling decision to explain and no
+collector to trust.
+
+Given an endpoint, `serve` reports how long its own operations take and
+how much work they covered, labelled with a closed vocabulary — the
+operation, a coarse path such as `cache` or `cold`, and an outcome such
+as `ok` or `timeout`. HTTP measurements carry the registered route
+template, never the request path, so an identifier in a URL does not
+become a metric label. Go runtime metrics are included.
+
+`--profile-listen` is separate on purpose. Profiling is a debugging
+session, not steady-state observation, so it binds its own loopback
+address and stops when you stop passing the flag. The address is checked
+to be loopback and refused otherwise, as `--listen` is. Treat anyone who
+can reach that port as able to read the process's memory profile.
 
 ## Example
 
@@ -125,6 +150,22 @@ never fetched by `attach`, never published, and never consulted by
 
 Expired presence leases are swept, so a session that goes away without
 departing does not linger in presence forever.
+
+## Local worktrees
+
+The browser view served by a resident also reports local checkout state.
+It names the served checkout's own absolute path, so a reader can tell
+which repository the page is showing, and otherwise emits only checkout
+basenames, branch and HEAD, and explicit clean, dirty, detached, bare,
+locked, prunable or unavailable state. Disclosing the served path is safe
+because [`gs serve`](serve.md) refuses any listen address that is not
+loopback: whoever is reading the page is already on the host it names.
+
+None of that is part of the durable projection. A checkout associated
+with a commitment only through a commit's `Rests-On:` trailer is marked
+**local** in the view, and that marking is the whole of the claim: a
+trailer is ordinary commit text, not an actor-signed statement, so the
+association is local evidence and nothing the log will vouch for.
 
 ## See also
 

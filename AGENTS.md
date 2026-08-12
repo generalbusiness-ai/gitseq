@@ -55,10 +55,8 @@ per ISO 24495-1, for a technical audience.
    - **Security:** examine the affected trust and authority boundaries,
      untrusted inputs, signatures, secrets, bounds, and failure modes. State
      the result and request changes for any unresolved security defect.
-   - **Simplification:** identify any opportunity to achieve the same result
-     more simply, without weakening the conditions of satisfaction. State the
-     opportunity, or state that none was found; request changes when avoidable
-     machinery would remain.
+   - **Simplification:** identify any opportunity to asimplify, without
+     weakening the conditions of satisfaction. Request changes to cut the fluff.
 5. Merge only an approved exact head. In the same step, retire every live
    artifact that covers what the merge changed and publish a successor at the
    path each area keeps using, by the rules below. Only then may the original

@@ -10,11 +10,15 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
+	"unicode"
 
 	"github.com/fxamacker/cbor/v2"
 
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
+	"github.com/generalbusiness-ai/gitseq/internal/observe"
 )
 
 const (
@@ -25,6 +29,14 @@ const (
 var (
 	ErrIdempotencyConflict = errors.New("idempotency key reused with different intent")
 	ErrNotDescendant       = errors.New("head is not a descendant of verified frontier")
+	// ErrBackPressure is the sequencer's overload refusal for submissions. It is
+	// returned before any chaining work when the submitter is at capacity, and it
+	// wraps a submission's exhausted retry limit, so a caller can tell overload
+	// apart from a malformed or unauthorized submission with errors.Is. Rotation
+	// keeps its own anonymous exhaustion result: it is a rare operator action, not
+	// a load-bearing path, and proving its contention would need a production seam
+	// that exists only for a test.
+	ErrBackPressure = errors.New("sequencer at capacity")
 )
 
 type GenesisDescriptor struct {
@@ -65,6 +77,10 @@ type Options struct {
 	Failpoint         func(string)
 	MaxRetries        int
 	PreAppend         func(context.Context, Admission) error
+	// MaxQueueDepth bounds how many submissions may be inside Submitter.Submit
+	// at once, counting the one holding the lock. Zero leaves the queue
+	// unbounded, which is the behaviour every existing deployment has.
+	MaxQueueDepth int
 }
 
 // Submitter is the resident sequencing path. It retains only a log state that
@@ -81,13 +97,21 @@ type Submitter struct {
 	options Options
 
 	mu    sync.Mutex
-	cache submitCache
+	cache logCache
+
+	// inFlight counts submissions between entering Submit and leaving it. It is
+	// read before the lock so a refusal costs one atomic add rather than a wait.
+	inFlight atomic.Int64
 }
 
-type submitCache struct {
+// logCache is the one verified-history cache shared by resident readers and
+// submitters. It owns the exact/delta/checkpoint/cold transition ladder and
+// publishes new trusted state only after the selected path fully verifies.
+type logCache struct {
 	target              string
 	head                string
 	log                 scannedLog
+	checkpoint          CheckpointOptions
 	fullScans           int
 	deltaScans          int
 	cacheHits           int
@@ -100,14 +124,34 @@ type submitCache struct {
 }
 
 func NewSubmitter(store gitstore.Store, options Options) *Submitter {
-	return &Submitter{store: store, options: options}
+	return &Submitter{
+		store: store, options: options,
+		cache: logCache{checkpoint: CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: options.SigningKey}},
+	}
 }
 
+// Submit refuses at capacity before it chains anything. The check is one atomic
+// add taken before the lock, so a refused submission never waits behind the
+// queue it was refused for, and never writes an object it will not use.
 func (s *Submitter) Submit(ctx context.Context, request Request) (Result, error) {
+	if limit := s.options.MaxQueueDepth; limit > 0 {
+		depth := s.inFlight.Add(1)
+		if depth > int64(limit) {
+			s.inFlight.Add(-1)
+			return Result{}, fmt.Errorf("%w: %d submissions in flight, limit %d", ErrBackPressure, depth-1, limit)
+		}
+		defer s.inFlight.Add(-1)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return submit(ctx, s.store, request, s.options, &s.cache)
 }
+
+// QueueDepth reports the bound this submitter was built with. It exists so a
+// deployment can assert its own posture: zero means unbounded, and a resident
+// that means to be bounded should be able to prove it rather than trust that
+// the option was passed.
+func (s *Submitter) QueueDepth() int { return s.options.MaxQueueDepth }
 
 // Admission deliberately has no payload field. A profile hook can inspect the
 // signed envelope and presented capability material, but not application data.
@@ -327,7 +371,7 @@ func Rotate(ctx context.Context, store gitstore.Store, genesis, successorPublicK
 		if err != nil {
 			return Result{}, err
 		}
-		log, err := scanHead(ctx, store, genesis, head, false)
+		log, err := scanHead(ctx, store, genesis, head, false, nil)
 		if err != nil {
 			return Result{}, err
 		}
@@ -356,7 +400,7 @@ func Rotate(ctx context.Context, store gitstore.Store, genesis, successorPublicK
 	return Result{}, errors.New("CAS retry limit exceeded")
 }
 
-func submit(ctx context.Context, store gitstore.Store, request Request, options Options, cache *submitCache) (Result, error) {
+func submit(ctx context.Context, store gitstore.Store, request Request, options Options, cache *logCache) (Result, error) {
 	decoded, err := intent.Verify(request.Signed)
 	if err != nil {
 		return Result{}, err
@@ -432,92 +476,30 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 	if err != nil {
 		return Result{}, err
 	}
-	checkpointEnabled := cache != nil && options.CheckpointProfile != ""
-	checkpointWritable := checkpointEnabled && options.SigningKey != ""
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		head, err := store.Head(ctx, ref)
+		var (
+			head string
+			log  scannedLog
+		)
+		if cache == nil {
+			head, err = store.Head(ctx, ref)
+			if err == nil {
+				log, err = scanHead(ctx, store, targetOID, head, false, nil)
+			}
+		} else {
+			advance, advanceErr := cache.advance(ctx, store, targetOID, cache.checkpoint.Profile != "", false, nil)
+			err = advanceErr
+			head = advance.Verification.Head
+			log = cache.log
+		}
 		if err != nil {
 			return Result{}, err
 		}
-		var log scannedLog
-		if cache != nil && cache.target == targetOID && cache.head == head {
-			log = cache.log
-			cache.cacheHits++
-		} else {
-			fullScan := false
-			checkpointReset := false
-			checkpointCurrent := false
-			checkpointOptions := CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: options.SigningKey}
-			if cache != nil && cache.target == targetOID && cache.head != "" {
-				log, err = scanAfter(ctx, store, cache.log, head, checkpointEnabled)
-				if err == nil {
-					cache.deltaScans++
-				} else if !errors.Is(err, ErrNotDescendant) {
-					return Result{}, err
-				}
-			}
-			if cache == nil || cache.target != targetOID || cache.head == "" || errors.Is(err, ErrNotDescendant) {
-				checkpointReset = true
-				loadedCheckpoint := false
-				checkpointAdvanced := false
-				if checkpointEnabled {
-					log, checkpointAdvanced, err = loadCheckpoint(ctx, store, targetOID, head, checkpointOptions)
-					if err == nil {
-						loadedCheckpoint = true
-						cache.checkpointLoads++
-					} else {
-						cache.checkpointFallbacks++
-					}
-				}
-				if !loadedCheckpoint {
-					loadPayload := checkpointEnabled
-					log, err = scanHead(ctx, store, targetOID, head, loadPayload)
-					fullScan = true
-				}
-				if err == nil && checkpointEnabled {
-					checkpointCurrent = loadedCheckpoint && !checkpointAdvanced
-					if !checkpointCurrent && checkpointWritable {
-						if writeCheckpoint(ctx, store, log, checkpointOptions) == nil {
-							cache.checkpointWrites++
-							checkpointCurrent = true
-						} else {
-							cache.checkpointFailures++
-						}
-					}
-				}
-			}
-			if err != nil {
-				return Result{}, err
-			}
-			if cache != nil {
-				if checkpointEnabled {
-					if checkpointReset {
-						cache.checkpointEvents = cloneEvents(log.Events)
-						if checkpointCurrent {
-							cache.checkpointAttempt = log.Verification.Depth
-						} else {
-							cache.checkpointAttempt = log.Verification.Depth - checkpointInterval
-						}
-					} else {
-						cache.checkpointEvents = append(cache.checkpointEvents, cloneEvents(log.Events)...)
-					}
-				}
-				// Submission needs the verified frontier and dedup projection, not
-				// a second application-facing copy of the event stream. Checkpoint
-				// events are retained separately only while checkpointing is enabled.
-				log.Events = nil
-				cache.target = targetOID
-				cache.head = head
-				cache.log = log
-				if fullScan {
-					cache.fullScans++
-				}
-			}
+		prior, replay, dedupErr := dedupPrior(log.Dedup, key, request.Signed)
+		if dedupErr != nil {
+			return Result{}, dedupErr
 		}
-		if prior, ok := log.Dedup[key]; ok {
-			if !prior.Signed.Equal(request.Signed) {
-				return Result{}, ErrIdempotencyConflict
-			}
+		if replay {
 			return Result{Commit: prior.Commit, Head: prior.Commit, Replay: true, CASRetries: attempt, BaseHead: head, Timestamp: prior.Timestamp}, nil
 		}
 		actorID := intent.ActorFingerprint(request.Signed.ActorKey)
@@ -549,30 +531,13 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 				Commit: commit, Timestamp: timestamp, Intent: decoded, Signed: cloneSigned(request.Signed), PayloadTree: decoded.PayloadTree,
 				Payload: bytes.Clone(request.Payload), Attachments: cloneByteMap(request.Attachments),
 			}
-			cache.log.Dedup[key] = event
-			cache.log.Verification.Head = commit
-			cache.log.Verification.Depth++
-			cache.log.Verification.Events++
-			cache.head = commit
-			if checkpointEnabled {
-				cache.checkpointEvents = append(cache.checkpointEvents, cloneEvent(event))
-				if checkpointWritable && checkpointDue(cache.log.Verification.Depth, cache.checkpointAttempt) {
-					checkpointLog := cache.log
-					checkpointLog.Events = cache.checkpointEvents
-					if writeCheckpoint(ctx, store, checkpointLog, CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: options.SigningKey}) == nil {
-						cache.checkpointWrites++
-						cache.checkpointAttempt = cache.log.Verification.Depth
-					} else {
-						cache.checkpointFailures++
-					}
-				}
-			}
+			cache.append(ctx, store, key, event)
 		}
 		fail(options, "after_ref_cas")
 		fail(options, "before_reply")
 		return Result{Commit: commit, Head: commit, CASRetries: attempt, BaseHead: head, Timestamp: timestamp}, nil
 	}
-	return Result{}, errors.New("CAS retry limit exceeded")
+	return Result{}, fmt.Errorf("%w: retry limit of %d exceeded while chaining", ErrBackPressure, maxRetries)
 }
 
 func cloneSigned(signed intent.Signed) intent.Signed {
@@ -612,111 +577,233 @@ type LoadResult struct {
 // event stream to the application projection that consumes it. Descendant
 // advances verify only their delta; cold and non-descendant reads remain full
 // audits.
+// Progress is how far a cold audit has got. It exists because the audit is the
+// slowest thing this package does and the least able to say so: Load holds the
+// reader mutex for its whole duration, and callers hold their own on top of
+// that, so by the time anyone can ask, there is nothing left to ask about.
+//
+// Started becomes true only when checkpoint lookup has fallen back to a full
+// scan. Verified counts commits whose complete kernel verification has
+// succeeded. Total is how many there are to check.
+type Progress struct {
+	Started  bool
+	Verified int
+	Total    int
+}
+
+// AuditProgress is written by the verification loop and read by anyone,
+// without either mutex. A fresh tracker belongs to one LoadWithProgress call;
+// its final values remain available while the caller finishes downstream work.
+//
+// It is reporting only. Nothing in the kernel reads it back, no verification
+// decision depends on it, and omitting it changes no accepted result.
+type AuditProgress struct {
+	started  atomic.Bool
+	verified atomic.Int64
+	total    atomic.Int64
+}
+
+func (p *AuditProgress) begin() {
+	p.started.Store(true)
+	p.verified.Store(0)
+	p.total.Store(0)
+}
+
+func (p *AuditProgress) setTotal(total int) {
+	p.total.Store(int64(total))
+}
+
+func (p *AuditProgress) advance(verified int) {
+	p.verified.Store(int64(verified))
+}
+
+// Snapshot returns a coherent-enough monotonic observation for progress UI.
+// The fields are bounded counters, not verification inputs.
+func (p *AuditProgress) Snapshot() Progress {
+	return Progress{Started: p.started.Load(), Verified: int(p.verified.Load()), Total: int(p.total.Load())}
+}
+
 type Reader struct {
 	store gitstore.Store
 
-	mu                  sync.Mutex
-	target              string
-	head                string
-	log                 scannedLog
-	fullScans           int
-	deltaScans          int
-	cacheHits           int
-	checkpoint          CheckpointOptions
-	checkpointLoads     int
-	checkpointFallbacks int
-	checkpointWrites    int
-	checkpointFailures  int
-	checkpointEvents    []Event
-	checkpointAttempt   int
+	mu sync.Mutex
+	logCache
 }
 
 func NewReader(store gitstore.Store, checkpoint ...CheckpointOptions) *Reader {
 	reader := &Reader{store: store}
 	if len(checkpoint) > 0 {
-		reader.checkpoint = checkpoint[0]
+		reader.logCache.checkpoint = checkpoint[0]
 	}
 	return reader
 }
 
 func (r *Reader) Load(ctx context.Context, genesis string) (LoadResult, error) {
+	return r.load(ctx, genesis, nil)
+}
+
+// LoadWithProgress is Load with an optional, semantic-free cold-audit tracker.
+// A checkpoint hit or incremental read leaves the fresh tracker unstarted.
+func (r *Reader) LoadWithProgress(ctx context.Context, genesis string, report *AuditProgress) (LoadResult, error) {
+	return r.load(ctx, genesis, report)
+}
+
+func (r *Reader) load(ctx context.Context, genesis string, report *AuditProgress) (LoadResult, error) {
+	started := time.Now()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	head, err := r.store.Head(ctx, Ref(genesis))
+	advance, err := r.logCache.advance(ctx, r.store, genesis, true, true, report)
 	if err != nil {
+		recordVerify(ctx, observe.PathOther, started, 0, err)
 		return LoadResult{}, err
 	}
-	if r.target == genesis && r.head == head {
-		r.cacheHits++
-		return LoadResult{Verification: r.log.Verification, BaseHead: head}, nil
+	path := observe.PathIncremental
+	switch {
+	case advance.Checkpoint:
+		path = observe.PathCheckpoint
+	case advance.Full:
+		path = observe.PathCold
+	case len(advance.Events) == 0:
+		path = observe.PathCache
 	}
-	if r.target == genesis && r.head != "" {
-		base := r.head
-		log, deltaErr := scanAfter(ctx, r.store, r.log, head, true)
+	recordVerify(ctx, path, started, len(advance.Events), nil)
+	return LoadResult{
+		Events: advance.Events, Verification: advance.Verification, BaseHead: advance.BaseHead,
+		Full: advance.Full, Checkpoint: advance.Checkpoint,
+	}, nil
+}
+
+func recordVerify(ctx context.Context, path observe.Path, started time.Time, items int, err error) {
+	if observer := observe.FromContext(ctx); observer != nil {
+		observer.Record(ctx, observe.Measurement{
+			Operation: observe.OperationVerify, Path: path, Outcome: observe.Classify(ctx, err),
+			Duration: time.Since(started), Items: int64(items),
+		})
+	}
+}
+
+type cacheAdvance struct {
+	BaseHead     string
+	Events       []Event
+	Verification Verification
+	Full         bool
+	Checkpoint   bool
+}
+
+func (c *logCache) advance(ctx context.Context, store gitstore.Store, target string, loadPayload, writeCheckpointOnAdvance bool, report *AuditProgress) (cacheAdvance, error) {
+	head, err := store.Head(ctx, Ref(target))
+	if err != nil {
+		return cacheAdvance{}, err
+	}
+	if c.target == target && c.head == head {
+		c.cacheHits++
+		return cacheAdvance{BaseHead: head, Verification: c.log.Verification}, nil
+	}
+
+	if c.target == target && c.head != "" {
+		baseHead := c.head
+		log, deltaErr := scanAfter(ctx, store, c.log, head, loadPayload)
 		if deltaErr == nil {
 			events := log.Events
-			if r.checkpoint.Profile != "" && r.checkpoint.SigningKey != "" {
-				r.checkpointEvents = append(r.checkpointEvents, cloneEvents(events)...)
-				if checkpointDue(log.Verification.Depth, r.checkpointAttempt) {
-					checkpointLog := log
-					checkpointLog.Events = r.checkpointEvents
-					if writeCheckpoint(ctx, r.store, checkpointLog, r.checkpoint) == nil {
-						r.checkpointWrites++
-						r.checkpointAttempt = log.Verification.Depth
-					} else {
-						r.checkpointFailures++
-					}
-				}
+			if c.checkpointWritable() {
+				c.checkpointEvents = append(c.checkpointEvents, cloneEvents(events)...)
+			}
+			if writeCheckpointOnAdvance {
+				c.maybeWriteCheckpoint(ctx, store, log)
 			}
 			log.Events = nil
-			r.head, r.log = head, log
-			r.deltaScans++
-			return LoadResult{Events: events, Verification: log.Verification, BaseHead: base}, nil
+			c.target, c.head, c.log = target, head, log
+			c.deltaScans++
+			return cacheAdvance{BaseHead: baseHead, Events: events, Verification: log.Verification}, nil
 		}
 		if !errors.Is(deltaErr, ErrNotDescendant) {
-			return LoadResult{}, deltaErr
+			return cacheAdvance{}, deltaErr
 		}
 	}
+
 	var log scannedLog
 	fromCheckpoint := false
 	checkpointAdvanced := false
-	if r.checkpoint.Profile != "" {
-		log, checkpointAdvanced, err = loadCheckpoint(ctx, r.store, genesis, head, r.checkpoint)
+	if c.checkpoint.Profile != "" {
+		log, checkpointAdvanced, err = loadCheckpoint(ctx, store, target, head, c.checkpoint)
 		if err == nil {
 			fromCheckpoint = true
-			r.checkpointLoads++
+			c.checkpointLoads++
 		} else {
-			r.checkpointFallbacks++
+			c.checkpointFallbacks++
 		}
 	}
 	if !fromCheckpoint {
-		log, err = scanHead(ctx, r.store, genesis, head, true)
-		if err != nil {
-			return LoadResult{}, err
+		if report != nil {
+			report.begin()
 		}
-		r.fullScans++
+		log, err = scanHead(ctx, store, target, head, loadPayload, report)
+		if err != nil {
+			return cacheAdvance{}, err
+		}
 	}
+
 	checkpointCurrent := fromCheckpoint && !checkpointAdvanced
-	if r.checkpoint.Profile != "" && r.checkpoint.SigningKey != "" && !checkpointCurrent {
-		if writeCheckpoint(ctx, r.store, log, r.checkpoint) == nil {
-			r.checkpointWrites++
+	if c.checkpoint.Profile != "" && c.checkpoint.SigningKey != "" && !checkpointCurrent {
+		if writeCheckpoint(ctx, store, log, c.checkpoint) == nil {
+			c.checkpointWrites++
 			checkpointCurrent = true
 		} else {
-			r.checkpointFailures++
+			c.checkpointFailures++
 		}
 	}
 	events := log.Events
-	if r.checkpoint.Profile != "" && r.checkpoint.SigningKey != "" {
-		r.checkpointEvents = cloneEvents(events)
+	if c.checkpointWritable() {
+		c.checkpointEvents = cloneEvents(events)
 		if checkpointCurrent {
-			r.checkpointAttempt = log.Verification.Depth
+			c.checkpointAttempt = log.Verification.Depth
 		} else {
-			r.checkpointAttempt = log.Verification.Depth - checkpointInterval
+			c.checkpointAttempt = log.Verification.Depth - checkpointInterval
 		}
+	} else {
+		c.checkpointEvents = nil
+		c.checkpointAttempt = 0
 	}
 	log.Events = nil
-	r.target, r.head, r.log = genesis, head, log
-	return LoadResult{Events: events, Verification: log.Verification, Full: true, Checkpoint: fromCheckpoint}, nil
+	c.target, c.head, c.log = target, head, log
+	if !fromCheckpoint {
+		c.fullScans++
+	}
+	return cacheAdvance{
+		Events: events, Verification: log.Verification,
+		Full: true, Checkpoint: fromCheckpoint,
+	}, nil
+}
+
+func (c *logCache) checkpointWritable() bool {
+	return c.checkpoint.Profile != "" && c.checkpoint.SigningKey != ""
+}
+
+func (c *logCache) maybeWriteCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog) {
+	if !c.checkpointWritable() || !checkpointDue(log.Verification.Depth, c.checkpointAttempt) {
+		return
+	}
+	checkpointLog := log
+	checkpointLog.Events = c.checkpointEvents
+	if writeCheckpoint(ctx, store, checkpointLog, c.checkpoint) == nil {
+		c.checkpointWrites++
+		c.checkpointAttempt = log.Verification.Depth
+	} else {
+		c.checkpointFailures++
+	}
+}
+
+func (c *logCache) append(ctx context.Context, store gitstore.Store, key string, event Event) {
+	c.log.Dedup[key] = eventWithoutPayload(event)
+	c.log.Verification.Head = event.Commit
+	c.log.Verification.Depth++
+	c.log.Verification.Events++
+	c.head = event.Commit
+	if !c.checkpointWritable() {
+		return
+	}
+	c.checkpointEvents = append(c.checkpointEvents, cloneEvent(event))
+	c.maybeWriteCheckpoint(ctx, store, c.log)
 }
 
 // Load verifies a log before returning its application records. Consumers do
@@ -726,7 +813,7 @@ func Load(ctx context.Context, store gitstore.Store, genesis string) ([]Event, V
 	if err != nil {
 		return nil, Verification{}, err
 	}
-	log, err := scanHead(ctx, store, genesis, head, true)
+	log, err := scanHead(ctx, store, genesis, head, true, nil)
 	if err != nil {
 		return nil, Verification{}, err
 	}
@@ -762,7 +849,7 @@ func Verify(ctx context.Context, store gitstore.Store, genesis string) (Verifica
 	if err != nil {
 		return Verification{}, err
 	}
-	log, err := scanHead(ctx, store, genesis, head, false)
+	log, err := scanHead(ctx, store, genesis, head, false, nil)
 	if err != nil {
 		return Verification{}, err
 	}
@@ -773,69 +860,94 @@ func Verify(ctx context.Context, store gitstore.Store, genesis string) (Verifica
 // the immutable head and, in the same traversal, builds the event stream and
 // actor-scoped dedup index. loadPayload controls only whether verified payload
 // bytes are retained.
-func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, loadPayload bool) (scannedLog, error) {
-	commits, err := store.RevList(ctx, head)
+func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, loadPayload bool, report *AuditProgress) (scannedLog, error) {
+	sequence, err := store.RevList(ctx, head)
 	if err != nil {
 		return scannedLog{}, err
 	}
-	if err := validateSequenceBounds(commits, genesis, head); err != nil {
+	if err := validateSequenceBounds(sequence, genesis, head); err != nil {
 		return scannedLog{}, err
 	}
-	genesisMessage, err := store.CommitMessage(ctx, genesis)
-	if err != nil {
-		return scannedLog{}, err
+	if report != nil {
+		report.setTotal(len(sequence))
 	}
-	desc, err := parseGenesisMessage(genesisMessage)
-	if err != nil {
-		return scannedLog{}, err
-	}
-	log := scannedLog{
-		Verification:       Verification{Genesis: genesis, Head: head, Depth: len(commits) - 1},
-		Events:             make([]Event, 0, len(commits)-1),
-		Dedup:              make(map[string]Event, len(commits)-1),
-		sequencerPublicKey: desc.SequencerPublicKey,
-	}
-	for index, commit := range commits {
-		if err := store.VerifySSHCommit(ctx, commit, "sequencer", log.sequencerPublicKey); err != nil {
-			return scannedLog{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)
-		}
-		parents, err := store.CommitParents(ctx, commit)
-		if err != nil {
-			return scannedLog{}, err
+	var (
+		desc  GenesisDescriptor
+		log   scannedLog
+		index int
+	)
+	err = store.WalkRevListMetadata(ctx, head, func(commit gitstore.CommitMetadata) error {
+		if index >= len(sequence) || commit.OID != sequence[index] {
+			return errors.New("history metadata differs from sequence enumeration")
 		}
 		if index == 0 {
-			if err := validateChainParents(index, parents, ""); err != nil {
-				return scannedLog{}, err
+			desc, err = parseGenesisMessage(normalizeGenesisMessage(commit.Message))
+			if err != nil {
+				return err
 			}
-			continue
+			log = scannedLog{
+				Verification:       Verification{Genesis: genesis, Head: head, Depth: len(sequence) - 1},
+				Events:             make([]Event, 0, len(sequence)-1),
+				Dedup:              make(map[string]Event, len(sequence)-1),
+				sequencerPublicKey: desc.SequencerPublicKey,
+			}
 		}
-		if err := validateChainParents(index, parents, commits[index-1]); err != nil {
-			return scannedLog{}, fmt.Errorf("commit %s: %w", commit, err)
+		if err := store.VerifySSHCommit(ctx, commit.OID, "sequencer", log.sequencerPublicKey); err != nil {
+			return fmt.Errorf("commit %s sequencer signature: %w", commit.OID, err)
+		}
+		if index == 0 {
+			if err := validateChainParents(index, commit.Parents, ""); err != nil {
+				return err
+			}
+			index++
+			if report != nil {
+				report.advance(index)
+			}
+			return nil
+		}
+		if err := validateChainParents(index, commit.Parents, sequence[index-1]); err != nil {
+			return fmt.Errorf("commit %s: %w", commit.OID, err)
 		}
 		event, successor, rotation, err := loadCommit(ctx, store, desc, genesis, commit, loadPayload)
 		if err != nil {
-			return scannedLog{}, err
+			return err
 		}
 		if rotation {
 			if successor == log.sequencerPublicKey {
-				return scannedLog{}, fmt.Errorf("commit %s rotates to the current sequencer key", commit)
+				return fmt.Errorf("commit %s rotates to the current sequencer key", commit.OID)
 			}
 			log.sequencerPublicKey = successor
-			continue
+			index++
+			if report != nil {
+				report.advance(index)
+			}
+			return nil
 		}
 		key, err := event.Signed.DedupKey()
 		if err != nil {
-			return scannedLog{}, err
+			return err
 		}
-		if prior, exists := log.Dedup[key]; exists {
-			if !prior.Signed.Equal(event.Signed) {
-				return scannedLog{}, fmt.Errorf("commit %s: %w", commit, ErrIdempotencyConflict)
-			}
-			return scannedLog{}, fmt.Errorf("commit %s duplicates idempotent event %s", commit, prior.Commit)
+		prior, duplicate, dedupErr := dedupPrior(log.Dedup, key, event.Signed)
+		if dedupErr != nil {
+			return fmt.Errorf("commit %s: %w", commit.OID, dedupErr)
+		}
+		if duplicate {
+			return fmt.Errorf("commit %s duplicates idempotent event %s", commit.OID, prior.Commit)
 		}
 		log.Dedup[key] = eventWithoutPayload(event)
 		log.Events = append(log.Events, event)
 		log.Verification.Events++
+		index++
+		if report != nil {
+			report.advance(index)
+		}
+		return nil
+	})
+	if err != nil {
+		return scannedLog{}, err
+	}
+	if index != len(sequence) {
+		return scannedLog{}, errors.New("history metadata differs from sequence enumeration")
 	}
 	return log, nil
 }
@@ -848,6 +960,18 @@ func validateSequenceBounds(commits []string, genesis, head string) error {
 		return errors.New("history does not end at named head")
 	}
 	return nil
+}
+
+// Git's show helpers historically passed commit messages through Store.run,
+// which trims the command's outer whitespace. Metadata enumeration preserves
+// the raw NUL-framed message instead, so scans normalize it at this boundary
+// to keep the established genesis and event byte semantics unchanged.
+func normalizeGenesisMessage(message string) string {
+	return string(bytes.TrimSpace([]byte(message))) + "\n"
+}
+
+func normalizeEventMessage(message string) string {
+	return string(bytes.TrimRightFunc([]byte(message), unicode.IsSpace)) + "\n"
 }
 
 func validateChainParents(index int, parents []string, prior string) error {
@@ -871,122 +995,154 @@ func scanAfter(ctx context.Context, store gitstore.Store, base scannedLog, head 
 	if base.Verification.Genesis == "" || base.Verification.Head == "" {
 		return scannedLog{}, ErrNotDescendant
 	}
-	commits, err := store.RevListAfter(ctx, base.Verification.Head, head)
+	scan := newDeltaScan(ctx, store, base, head, loadPayload, 0)
+	err := store.WalkRevListMetadataAfter(ctx, base.Verification.Head, head, scan.accept)
 	if err != nil {
 		return scannedLog{}, err
 	}
-	return scanListedAfter(ctx, store, base, head, commits, loadPayload)
+	return scan.finish()
 }
 
 // scanListedAfter verifies an already enumerated first-parent suffix. Checkpoint
 // recovery supplies the suffix from the same RevList that binds every cached
 // event to the current sequence, avoiding a second, potentially drifting view
 // of the ref while retaining the ordinary delta verifier's trust checks.
-func scanListedAfter(ctx context.Context, store gitstore.Store, base scannedLog, head string, commits []string, loadPayload bool) (scannedLog, error) {
-	genesis := base.Verification.Genesis
-	if genesis == "" || base.Verification.Head == "" {
+func scanListedAfter(ctx context.Context, store gitstore.Store, base scannedLog, head string, commits []gitstore.CommitMetadata, loadPayload bool) (scannedLog, error) {
+	if base.Verification.Genesis == "" || base.Verification.Head == "" {
 		return scannedLog{}, ErrNotDescendant
 	}
-	if len(commits) == 0 {
-		if head != base.Verification.Head {
+	scan := newDeltaScan(ctx, store, base, head, loadPayload, len(commits))
+	for _, commit := range commits {
+		if err := scan.accept(commit); err != nil {
+			return scannedLog{}, err
+		}
+	}
+	return scan.finish()
+}
+
+type deltaScan struct {
+	ctx            context.Context
+	store          gitstore.Store
+	base           scannedLog
+	head           string
+	loadPayload    bool
+	desc           GenesisDescriptor
+	descLoaded     bool
+	expectedParent string
+	events         []Event
+	additions      map[string]Event
+	positions      int
+}
+
+func newDeltaScan(ctx context.Context, store gitstore.Store, base scannedLog, head string, loadPayload bool, capacity int) *deltaScan {
+	return &deltaScan{
+		ctx: ctx, store: store, base: base, head: head, loadPayload: loadPayload,
+		expectedParent: base.Verification.Head,
+		events:         make([]Event, 0, capacity),
+		additions:      make(map[string]Event, capacity),
+	}
+}
+
+func (s *deltaScan) accept(commit gitstore.CommitMetadata) error {
+	if !s.descLoaded {
+		desc, err := Descriptor(s.ctx, s.store, s.base.Verification.Genesis)
+		if err != nil {
+			return err
+		}
+		s.desc = desc
+		s.descLoaded = true
+	}
+	if err := validateChainParents(1, commit.Parents, s.expectedParent); err != nil {
+		return fmt.Errorf("%w: commit %s does not follow %s: %v", ErrNotDescendant, commit.OID, s.expectedParent, err)
+	}
+	if err := s.store.VerifySSHCommit(s.ctx, commit.OID, "sequencer", s.base.sequencerPublicKey); err != nil {
+		return fmt.Errorf("commit %s sequencer signature: %w", commit.OID, err)
+	}
+	event, successor, rotation, err := loadCommit(s.ctx, s.store, s.desc, s.base.Verification.Genesis, commit, s.loadPayload)
+	if err != nil {
+		return err
+	}
+	if rotation {
+		if successor == s.base.sequencerPublicKey {
+			return fmt.Errorf("commit %s rotates to the current sequencer key", commit.OID)
+		}
+		s.base.sequencerPublicKey = successor
+		s.expectedParent = commit.OID
+		s.positions++
+		return nil
+	}
+	key, err := event.Signed.DedupKey()
+	if err != nil {
+		return err
+	}
+	prior, duplicate, dedupErr := dedupPrior(s.base.Dedup, key, event.Signed)
+	if dedupErr != nil {
+		return fmt.Errorf("commit %s: %w", commit.OID, dedupErr)
+	}
+	if duplicate {
+		return fmt.Errorf("commit %s duplicates idempotent event %s", commit.OID, prior.Commit)
+	}
+	prior, duplicate, dedupErr = dedupPrior(s.additions, key, event.Signed)
+	if dedupErr != nil {
+		return fmt.Errorf("commit %s: %w", commit.OID, dedupErr)
+	}
+	if duplicate {
+		return fmt.Errorf("commit %s duplicates idempotent event %s", commit.OID, prior.Commit)
+	}
+	s.additions[key] = eventWithoutPayload(event)
+	s.events = append(s.events, event)
+	s.expectedParent = commit.OID
+	s.positions++
+	return nil
+}
+
+func (s *deltaScan) finish() (scannedLog, error) {
+	if s.positions == 0 {
+		if s.head != s.base.Verification.Head {
 			return scannedLog{}, ErrNotDescendant
 		}
-		base.Events = nil
-		return base, nil
+		s.base.Events = nil
+		return s.base, nil
 	}
-	desc, err := Descriptor(ctx, store, genesis)
-	if err != nil {
-		return scannedLog{}, err
-	}
-	expectedParent := base.Verification.Head
-	events := make([]Event, 0, len(commits))
-	additions := make(map[string]Event, len(commits))
-	for _, commit := range commits {
-		parents, parentErr := store.CommitParents(ctx, commit)
-		if parentErr != nil {
-			return scannedLog{}, parentErr
-		}
-		if err := validateChainParents(1, parents, expectedParent); err != nil {
-			return scannedLog{}, fmt.Errorf("%w: commit %s does not follow %s: %v", ErrNotDescendant, commit, expectedParent, err)
-		}
-		if err := store.VerifySSHCommit(ctx, commit, "sequencer", base.sequencerPublicKey); err != nil {
-			return scannedLog{}, fmt.Errorf("commit %s sequencer signature: %w", commit, err)
-		}
-		event, successor, rotation, err := loadCommit(ctx, store, desc, genesis, commit, loadPayload)
-		if err != nil {
-			return scannedLog{}, err
-		}
-		if rotation {
-			if successor == base.sequencerPublicKey {
-				return scannedLog{}, fmt.Errorf("commit %s rotates to the current sequencer key", commit)
-			}
-			base.sequencerPublicKey = successor
-			expectedParent = commit
-			continue
-		}
-		key, err := event.Signed.DedupKey()
-		if err != nil {
-			return scannedLog{}, err
-		}
-		if prior, exists := base.Dedup[key]; exists {
-			if !prior.Signed.Equal(event.Signed) {
-				return scannedLog{}, fmt.Errorf("commit %s: %w", commit, ErrIdempotencyConflict)
-			}
-			return scannedLog{}, fmt.Errorf("commit %s duplicates idempotent event %s", commit, prior.Commit)
-		}
-		if prior, exists := additions[key]; exists {
-			if !prior.Signed.Equal(event.Signed) {
-				return scannedLog{}, fmt.Errorf("commit %s: %w", commit, ErrIdempotencyConflict)
-			}
-			return scannedLog{}, fmt.Errorf("commit %s duplicates idempotent event %s", commit, prior.Commit)
-		}
-		additions[key] = eventWithoutPayload(event)
-		events = append(events, event)
-		expectedParent = commit
-	}
-	if expectedParent != head {
+	if s.expectedParent != s.head {
 		return scannedLog{}, ErrNotDescendant
 	}
-	if base.Dedup == nil {
-		base.Dedup = make(map[string]Event, len(additions))
+	if s.base.Dedup == nil {
+		s.base.Dedup = make(map[string]Event, len(s.additions))
 	}
-	for key, event := range additions {
-		base.Dedup[key] = event
+	for key, event := range s.additions {
+		s.base.Dedup[key] = event
 	}
-	base.Verification.Head = head
-	base.Verification.Depth += len(commits)
-	base.Verification.Events += len(events)
-	base.Events = events
-	return base, nil
+	// Additions stay separate until finish, so a failed streamed delta cannot
+	// mutate the resident dedup map. Key rotation likewise changes only this
+	// copied scannedLog until the whole suffix succeeds.
+	s.base.Verification.Head = s.head
+	s.base.Verification.Depth += s.positions
+	s.base.Verification.Events += len(s.events)
+	s.base.Events = s.events
+	return s.base, nil
 }
 
 // loadEvent is the one decoder/verifier for an event commit after its position
 // and sequencer signature have been established. Full and descendant scans
 // deliberately share every envelope, actor signature, target, trailer, tree,
 // and payload check.
-func loadCommit(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, genesis, commit string, loadPayload bool) (Event, string, bool, error) {
-	message, timestamp, err := store.CommitMessageWithTimestamp(ctx, commit)
-	if err != nil {
-		return Event{}, "", false, err
-	}
+func loadCommit(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, genesis string, commit gitstore.CommitMetadata, loadPayload bool) (Event, string, bool, error) {
+	message := normalizeEventMessage(commit.Message)
 	if uint64(len(message)) > desc.PayloadCeiling {
-		return Event{}, "", false, fmt.Errorf("commit %s envelope exceeds genesis ceiling", commit)
+		return Event{}, "", false, fmt.Errorf("commit %s envelope exceeds genesis ceiling", commit.OID)
 	}
 	successor, rotation, err := parseRotationMessage(message)
 	if err != nil {
-		return Event{}, "", false, fmt.Errorf("commit %s: %w", commit, err)
+		return Event{}, "", false, fmt.Errorf("commit %s: %w", commit.OID, err)
 	}
 	if rotation {
-		tree, err := store.CommitTree(ctx, commit)
-		if err != nil {
-			return Event{}, "", false, err
-		}
 		emptyTree, err := store.EmptyTree(ctx)
 		if err != nil {
 			return Event{}, "", false, err
 		}
-		if tree != emptyTree {
-			return Event{}, "", false, fmt.Errorf("commit %s rotation tree is not empty", commit)
+		if commit.Tree != emptyTree {
+			return Event{}, "", false, fmt.Errorf("commit %s rotation tree is not empty", commit.OID)
 		}
 		return Event{}, successor, true, nil
 	}
@@ -994,11 +1150,11 @@ func loadCommit(ctx context.Context, store gitstore.Store, desc GenesisDescripto
 	if err != nil {
 		return Event{}, "", false, err
 	}
-	decoded, err := intent.Verify(signed)
+	decoded, targetMatches, err := verifySignedTarget(signed, "git:"+desc.ObjectFormat+":"+genesis)
 	if err != nil {
 		return Event{}, "", false, err
 	}
-	if decoded.Target != "git:"+desc.ObjectFormat+":"+genesis {
+	if !targetMatches {
 		return Event{}, "", false, errors.New("intent target does not name chain genesis")
 	}
 	if !intent.EqualRefs(decoded.RestsOn, trailers) {
@@ -1008,26 +1164,22 @@ func loadCommit(ctx context.Context, store gitstore.Store, desc GenesisDescripto
 	if err != nil {
 		return Event{}, "", false, err
 	}
-	actualTree, err := store.CommitTree(ctx, commit)
-	if err != nil {
-		return Event{}, "", false, err
-	}
-	if actualTree != treeOID {
+	if commit.Tree != treeOID {
 		return Event{}, "", false, errors.New("commit tree differs from signed intent")
 	}
 	remaining := desc.PayloadCeiling - uint64(len(message))
-	if err := store.ValidatePayloadTree(ctx, actualTree, remaining); err != nil {
-		return Event{}, "", false, fmt.Errorf("commit %s payload shape: %w", commit, err)
+	if err := store.ValidatePayloadTree(ctx, commit.Tree, remaining); err != nil {
+		return Event{}, "", false, fmt.Errorf("commit %s payload shape: %w", commit.OID, err)
 	}
-	event := Event{Commit: commit, Timestamp: timestamp, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
+	event := Event{Commit: commit.OID, Timestamp: commit.Timestamp, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
 	if !loadPayload {
 		return event, "", false, nil
 	}
-	event.Payload, err = store.ReadFile(ctx, commit, "event")
+	event.Payload, err = store.ReadFile(ctx, commit.OID, "event")
 	if err != nil {
 		return Event{}, "", false, err
 	}
-	paths, err := store.ListFiles(ctx, commit, "attachments")
+	paths, err := store.ListFiles(ctx, commit.OID, "attachments")
 	if err != nil {
 		return Event{}, "", false, err
 	}
@@ -1035,7 +1187,7 @@ func loadCommit(ctx context.Context, store gitstore.Store, desc GenesisDescripto
 		event.Attachments = make(map[string][]byte, len(paths))
 	}
 	for _, path := range paths {
-		content, err := store.ReadFile(ctx, commit, path)
+		content, err := store.ReadFile(ctx, commit.OID, path)
 		if err != nil {
 			return Event{}, "", false, err
 		}
@@ -1048,6 +1200,25 @@ func eventWithoutPayload(event Event) Event {
 	event.Payload = nil
 	event.Attachments = nil
 	return event
+}
+
+func dedupPrior(index map[string]Event, key string, signed intent.Signed) (Event, bool, error) {
+	prior, exists := index[key]
+	if !exists {
+		return Event{}, false, nil
+	}
+	if !prior.Signed.Equal(signed) {
+		return Event{}, false, ErrIdempotencyConflict
+	}
+	return prior, true, nil
+}
+
+func verifySignedTarget(signed intent.Signed, target string) (intent.Intent, bool, error) {
+	decoded, err := intent.Verify(signed)
+	if err != nil {
+		return intent.Intent{}, false, err
+	}
+	return decoded, decoded.Target == target, nil
 }
 
 // ExitFailpoint is used only by the one-shot spike CLI. It makes a selected

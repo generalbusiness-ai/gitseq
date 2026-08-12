@@ -7,9 +7,10 @@ import { RetryKeys, eventDiscussionEntries, eventDiscussionFrames, fingerprintOf
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { emptyPersonalWorkMemory, followWorkTopic, loadPersonalWorkMemory, savePersonalWorkMemory, viewWorkTopic } from "../src/lib/memory.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
+import { decodeFrame } from "../src/lib/api.ts";
 import { RAIL_LANES, layoutThreadRailway } from "../src/lib/threadRailway.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
-import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, TOPIC_ALIAS_FIELD, TOPIC_TITLE_FIELD, attentionItemCounts, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, otherWorkAttentionCounts, otherWorkAttentionLabel, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState, workCommitmentCounts } from "../src/lib/work.ts";
+import { ACTIVE_WORK_STATUSES, CLOSED_WORK_STATUSES, TOPIC_ALIAS_FIELD, TOPIC_TITLE_FIELD, attentionItemCounts, buildWorkProjection, filterPersonalWorkProjection, filterWorkProjection, otherWorkAttentionCounts, otherWorkAttentionClause, otherWorkAttentionLabel, topicChangeSince, workActiveCount, workAttentionCount, workItemNeedsAction, workItemState, workCommitmentCounts } from "../src/lib/work.ts";
 import { belongsInRoom, commitmentRelationship, interpretationNotice, isInterpretationGap, kindLabel, statusLabel } from "../src/lib/util.ts";
 import { groupOpenWork, worktreesForCommitment } from "../src/lib/worktrees.ts";
 
@@ -247,15 +248,11 @@ test("UI focus selection adds, removes, and stays bounded", () => {
   assert.equal(toggleActivityFocus(full, "event:z").length, 8);
 });
 
-test("task and event surfaces wire shared selection to advisory focus", () => {
-  const read = (name) => readFileSync(new URL(`../src/components/${name}`, import.meta.url), "utf8");
-  const work = read("WorkDrawer.tsx");
-  const top = read("TopBar.tsx");
-  assert.match(work, /onSelect\(\{ kind: "event", id: event \}\);\s*onOpenThread\(event\)/);
-  assert.match(work, /actor\.focus\.includes\(event\)/);
-  assert.match(top, /toggleActivityFocus\(session\.activity\.focus, selectedEvent\)/);
-  assert.match(top, /setActivity\(\{ focus: \[\] \}\)/);
-});
+// Shared selection and advisory focus were pinned here by four regexes over
+// component source. A source regex fails in both directions: it misses a
+// deleted render site, because the matched text survives, and it reddens on a
+// harmless refactor. The wiring is now driven in a DOM in dom.test.mjs, and
+// the focus rendering behaviourally in components.test.mjs.
 
 test("browser heartbeats renew the lease without revalidating activity focus", () => {
   const session = readFileSync(new URL("../src/lib/session.ts", import.meta.url), "utf8");
@@ -312,6 +309,26 @@ test("quoted mentions address actor names containing spaces", () => {
     ["Ada Lovelace", "grace"],
   );
   assert.deepEqual(mentionAt('hello @"Ada L', 13), { start: 6, partial: "Ada L", quoted: true });
+});
+
+test("mentions require token boundaries and unique roster names", () => {
+  const actors = [
+    { name: "alice", fingerprint: "actor:alice", roles: ["participant"], custody: true },
+    { name: "same", fingerprint: "actor:one", roles: ["participant"], custody: true },
+    { name: "SAME", fingerprint: "actor:two", roles: ["participant"], custody: true },
+  ];
+  const text = "@alice email@alice foo@alice @alice/path @\"alice\"suffix (@alice), @same";
+  assert.deepEqual(mentionNames(text), ["alice", "alice", "same"]);
+  assert.deepEqual(mentionFingerprints(text, actors), ["actor:alice"]);
+  assert.deepEqual(mentionTokens(text).filter((token) => token.mention).map((token) => token.mention), ["alice", "alice", "same"]);
+});
+
+test("browser frame decoding accepts legacy and addressed signed payloads", () => {
+  const frame = (payload) => ({ Conversation: "conversation", Sequence: 3, ActorKey: "actor-key", Payload: Buffer.from(JSON.stringify(payload)).toString("base64") });
+  const legacy = decodeFrame(frame({ about: "topic", text: "legacy", re: "conversation:2" }));
+  const addressed = decodeFrame(frame({ about: "topic", text: "addressed", recipients: ["fingerprint"] }));
+  assert.deepEqual({ about: legacy.about, text: legacy.text, re: legacy.re }, { about: "topic", text: "legacy", re: "conversation:2" });
+  assert.deepEqual({ about: addressed.about, text: addressed.text, re: addressed.re }, { about: "topic", text: "addressed", re: undefined });
 });
 
 test("thread indexing keeps citations out of reply summaries and thread content", () => {
@@ -496,7 +513,7 @@ test("the e8e same-kind evidence artifact is not promoted to a typed replacement
 
 test("supersede provenance links are labeled neutrally on every surface", () => {
   const read = (name) => readFileSync(new URL(`../src/components/${name}`, import.meta.url), "utf8");
-  for (const name of ["SequencePane.tsx", "ThreadPane.tsx", "Stream.tsx"]) {
+  for (const name of ["ThreadPane.tsx", "Stream.tsx"]) {
     const source = read(name);
     assert.match(source, /linked item/);
     assert.doesNotMatch(source, /replacement/);
@@ -813,6 +830,14 @@ test("Work accounts for qualifier attention, stale artifacts, and unlinked promi
   assert.deepEqual(attentionItemCounts(work.attention), { artifacts: 1, unlinkedPromises: 1, total: 2 });
   assert.equal(otherWorkAttentionLabel(otherWorkAttentionCounts(projection)), "1 artifact and 1 unlinked promise");
   assert.equal(otherWorkAttentionLabel({ artifacts: 3, unlinkedPromises: 0 }), "3 artifacts");
+
+  // The clause carries its own verb. The empty case is what a healthy workroom
+  // shows most often, and composing the noun here and the verb at the call site
+  // produced "nothing else need attention".
+  assert.equal(otherWorkAttentionClause({ artifacts: 0, unlinkedPromises: 0 }), "nothing else needs attention");
+  assert.equal(otherWorkAttentionClause({ artifacts: 1, unlinkedPromises: 0 }), "1 artifact needs attention");
+  assert.equal(otherWorkAttentionClause({ artifacts: 3, unlinkedPromises: 0 }), "3 artifacts need attention");
+  assert.equal(otherWorkAttentionClause({ artifacts: 1, unlinkedPromises: 1 }), "1 artifact and 1 unlinked promise need attention");
   assert.equal(otherWorkAttentionLabel({ artifacts: 0, unlinkedPromises: 2 }), "2 unlinked promises");
   assert.equal(otherWorkAttentionLabel({ artifacts: 0, unlinkedPromises: 0 }), "nothing else");
 });

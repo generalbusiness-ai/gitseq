@@ -58,7 +58,7 @@ func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *te
 	}
 	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 2, Projection: projection}
 
-	digest := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, me, "me", true)
+	digest := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
 	if len(digest.AvailableToYou) != 1 {
 		t.Fatalf("available_to_you = %#v", digest.AvailableToYou)
 	}
@@ -73,7 +73,7 @@ func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *te
 		t.Fatalf("status summary hides available work: %q", summary)
 	}
 
-	delta := BuildWait(snapshot, Cursor{}, nil, false, Cursor{}, me, "me", true)
+	delta := BuildWait(snapshot, Cursor{}, nil, false, Cursor{}, nil, me, "me", true)
 	if len(delta.CurrentAvailableToYou) != 1 || delta.CurrentAvailableToYou[0] != available {
 		t.Fatalf("wait does not preserve the current available lane: %#v", delta.CurrentAvailableToYou)
 	}
@@ -83,7 +83,7 @@ func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *te
 }
 
 func TestActorStatusCarriesStaleQualifierWithoutChangingLanes(t *testing.T) {
-	digest := BuildActorStatus(actorQualifierSnapshot(), nexus.Snapshot{}, Cursor{}, me, "me", true)
+	digest := BuildActorStatus(actorQualifierSnapshot(), nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
 	stale := findCommitmentView(digest.WaitingOnYou, "request:reported-stale")
 	if stale == nil {
 		t.Fatalf("a stale report stopped waiting on me: %#v", digest.WaitingOnYou)
@@ -116,7 +116,7 @@ func TestActorStatusCarriesStaleQualifierWithoutChangingLanes(t *testing.T) {
 // wait must apply the same rule, or following the room would quietly undo what
 // status just said.
 func TestWaitDeltaCarriesStaleQualifierWithoutChangingLanes(t *testing.T) {
-	delta := BuildWait(actorQualifierSnapshot(), Cursor{}, nil, false, Cursor{}, me, "me", true)
+	delta := BuildWait(actorQualifierSnapshot(), Cursor{}, nil, false, Cursor{}, nil, me, "me", true)
 	stale := findCommitmentView(delta.CurrentWaitingOnYou, "request:reported-stale")
 	if stale == nil || stale.Status != "reported" || !stale.Stale {
 		t.Fatalf("the delta dropped the qualifier or the lane: %#v", delta.CurrentWaitingOnYou)

@@ -1,10 +1,10 @@
 ---
 title: MCP say
-summary: Publish a signed ephemeral frame, opening a conversation when needed.
+summary: Publish signed ephemeral chat and address live recipients by mention or exact reply.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9d3606442131e4bc700d1310451657bd4eac438
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa5182bb85a8347c55bcf229d53b104dde600a7
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc5ca55fb4a4e67e2395903519f2103a92930268
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
 ---
 
 # `say`
@@ -23,7 +23,27 @@ the permanent record.
 | `about` | required | The event this conversation is anchored at. |
 | `text` | required | What you are saying. |
 | `conversation` | optional | An existing conversation to speak in. Omit it and one is opened at `about` if none is. |
+| `re` | optional | Exact `<conversation>:<sequence>` handle of the parent frame. The parent must exist in this conversation. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+
+The service resolves `@name` and `@"name with spaces"` against the current
+effective Workroom roster immediately before publication. Exactly one effective
+participant must have that name. Unknown or ambiguous mentions remain ordinary
+text. Resolved actor fingerprints are sorted, deduplicated, and included in the
+actor-signed payload. An exact reply also includes the parent frame's author.
+
+Every currently leased session for a resolved recipient joins the conversation,
+so it keeps the conversation alive if the sender leaves. A session receives a
+pending priority-inbox reference only when it registered the current inbox
+protocol. Browser and older-adapter sessions are not enqueued. The publishing
+session does not receive its own frame; another live, inbox-capable session of
+the same actor does. A session that joins later does not receive earlier chat.
+
+Mentions are tokens, not arbitrary substrings. An email address, a name inside
+a larger word, or a path fragment does not silently address an actor. A reply
+handle must name an existing frame in the selected conversation; malformed,
+missing, or cross-conversation parents are refused. Older opaque frames remain
+ordinary conversation history and never acquire invented recipient meaning.
 
 ## Example
 
@@ -65,12 +85,25 @@ Frames are signed and attributed, and any participant can keep a copy
 forever. Forgetting is a property of the room, not a guarantee about
 readers. Never put secrets in either channel.
 
+Addressing is attention, not authority. It creates no request, promise,
+ratification, read receipt, or obligation. Answer with `say` when useful. Call
+[`ack`](ack.md) after handling a priority frame; promote it only when it changes
+scope, a condition of satisfaction, or follow-up work.
+
 ## It fails rather than pretends
 
 `say` requires the resident service. With no service there is no room to
 speak into, and the adapter returns an error rather than accepting speech
 nobody will hear. The durable tools keep working in that situation and
 report a `degraded` cursor.
+
+The resident also refuses publication before opening or changing a
+conversation when its bounded conversation or addressed-inbox capacity is
+full. A refusal creates no empty conversation and no partial delivery.
+An upgraded adapter refuses a syntactically addressed `say` against an older
+resident rather than letting that resident accept the text as opaque chat and
+silently omit recipient delivery. Chat with no mention token or reply remains
+compatible; email addresses and path fragments are not mention tokens.
 
 ## Promoting
 
@@ -84,5 +117,5 @@ satisfaction, or creates follow-up work. Routine progress stays here.
 
 ## See also
 
-- [`state`](state.md), [`presence`](presence.md)
+- [`ack`](ack.md), [`state`](state.md), [`presence`](presence.md)
 - [The record](../../concepts/record.md)

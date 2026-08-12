@@ -2,8 +2,8 @@
 title: gs supersede
 summary: Retire an act, and propagate staleness to everything resting on it.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:718c16a257eeed209434c18e85ca605ed779bf90
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:de8f9a5e18097414d9a96c259340d7ca876e11da
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
 ---
 
 # `gs supersede`
@@ -24,6 +24,7 @@ Prefer supersession to contradiction.
 | `--rests-on` | | An additional event identifier, repeatable. The target is added first automatically. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
+| `--cited-ok` | `false` | Retire even though tracked documentation still names the target. Without it the retirement is refused and the pages are listed, because a page resting on a withdrawn pointer fails the documentation gate. Use it for a migration that retires first and re-anchors after. |
 
 The target is a **positional argument**, and flag parsing stops at the
 first positional. Put every flag before it.

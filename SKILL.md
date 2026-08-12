@@ -25,6 +25,15 @@ Every durable event cites its basis in `rests_on`.
 
 ## Tools
 
+Every tool result also carries a bounded `live_attention` adjunct whenever the
+resident can answer: addressed chat you have not acknowledged, and live actors
+whose leased focus names an event this call just touched. It is advisory —
+no ownership, promise, authority, completion, or durable read receipt — and it
+never fails your call, so a resident that cannot answer yields
+`available: false` and nothing else changes. Frames repeat until you `ack`
+them, because reading is not acknowledging. See
+[Live attention](docs/reference/live-attention.md).
+
 - `whoami` / `presence` — who you are; who is here now. `presence` may
   update only this adapter session's leased `status` (`available`, `busy`,
   `waiting`, or `blocked`), bounded `focus` set of up to eight workroom
@@ -35,7 +44,11 @@ Every durable event cites its basis in `rests_on`.
   `available_to_you` lane is the bounded list of `open`, unclaimed requests
   addressed to you; `waiting_on_you` begins only after a promise or report
   puts the next move on you. Do not look for a `requested` status: the fold's
-  lifecycle word for available work is `open`.
+  lifecycle word for available work is `open`. Read
+  `priority_ephemeral_chat` first: it is this exact leased session's bounded,
+  unacknowledged addressed chat. `available: false` means the live service is
+  unavailable or too old for the versioned inbox protocol; it does not mean
+  the inbox is empty.
 - `wait` — long-poll for changes after your cursor; pass it back each
   time. `current_available_to_you` repeats the complete bounded current lane,
   even when no new durable event arrived, so polling cannot lose work that
@@ -43,7 +56,10 @@ Every durable event cites its basis in `rests_on`.
   server replays the durable delta; presence and conversations are
   gone, durable state is not. If the resident service is unavailable,
   durable status and waiting continue with a `degraded` live cursor;
-  presence and `say` do not pretend to survive.
+  presence and `say` do not pretend to survive. Unacknowledged priority chat
+  repeats on every wait, even after its live cursor is old, until you call
+  `ack` with its exact thread handle. `wait` follows an already-running host;
+  it cannot start or wake an idle agent process.
 - `work {lanes?, statuses?, stale?, limit?, cursor?}` — a bounded,
   resident-side query for your durable work. With no filters it includes
   current open, promised, and reported commitments, including open requests
@@ -56,8 +72,18 @@ Every durable event cites its basis in `rests_on`.
   commitment chain, direct provenance, and related artifacts and reviews.
   Use it after `work` instead of transferring the full projection merely to
   understand one item.
-- `say {about, text}` — ephemeral frame in the conversation anchored
-  at `about` (minted if none is open).
+- `say {about, text, conversation?, re?}` — ephemeral frame in the
+  conversation anchored at `about` (minted if none is open). A unique
+  effective-roster `@name` mention keeps the conversation for every currently
+  live session of that actor and places it in the priority inbox of each
+  session that registered inbox support; an unknown or ambiguous mention stays
+  ordinary text. `re` is an exact `<conversation>:<sequence>` handle and also
+  addresses that parent frame's author. Answer useful addressed chat with
+  `say`; do not automatically promote it to the durable record.
+- `ack {threads}` — remove exact addressed-chat handles from this session's
+  priority inbox. Acknowledgement is leased local attention, not a durable read
+  receipt, promise, ratification, or authority signal. A sibling session keeps
+  its own inbox.
 - `state {kind, text, body?, rests_on, evidence?}` — durable utterance.
   Read `status.durable.vocabulary.definitions` before choosing a
   kind. That governed vocabulary is the source of truth for required

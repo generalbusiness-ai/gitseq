@@ -2,8 +2,21 @@
 title: Architecture layers
 summary: The boundary between Gitseq's semantic-free kernel and replaceable application profiles.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1802e1d1633a7ed401af47a666866c16674c6da9
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:71141a6023431f7093387abec0073593a7ed5d90
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7755a1195e83805be2a8fa5023c70f609891ec40
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f0cf16ee1b1517b262088b30ff63b7d0ec9657d4
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48bd5acfe51abd4146197a48b0f7674f5676cc5c
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21ffa9246fe0c3b414d12cc1ae45d30b3b4b3cee
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:940b782f1d00b7ac7b214eced18f7237a22944c7
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc5ca55fb4a4e67e2395903519f2103a92930268
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66b6cb0b770fe88808130a195babf79fe1ea7746
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b7e8c9c09da8ab7b1e83b2daab9db2e86bfea7a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:05dccd875ac20804b78e3de4dcf80dbe25835a44
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3991ed3d5f102a963671e45cfb1fa5aef0d3d5fd
 ---
 
 # Architecture layers
@@ -113,6 +126,16 @@ leased presence, activity, and ephemeral signed conversation. Its cursor and
 frames die with the process. It does not change the durable sequence and must
 not pretend that live state survived a restart.
 
+Addressed chat keeps this boundary. The Workroom-facing service resolves
+mentions against the effective roster; the nexus receives opaque actor
+fingerprints, validates exact reply handles, includes the final sorted
+recipient list in the actor-signed payload, and retains the conversation for
+every current matching lease. It enqueues priority delivery only for leases
+that registered the versioned inbox protocol. Presence alone does not opt a
+browser or older adapter into an inbox it cannot consume. Per-session inboxes
+and acknowledgements are live attention state, not Workroom authority or
+durable records. Acknowledgement changes no nexus cursor.
+
 `internal/nexus` implements this layer. The resident in `internal/service`
 hosts it alongside the durable application, but co-location is operational
 convenience, not a claim that nexus data has kernel durability.
@@ -164,10 +187,12 @@ state. Live status may be joined to it, but the durable and live cursors remain
 distinct.
 
 `internal/statusview` builds Workroom summaries, orientations, bounded work
-pages, and exact-item inspection. `internal/app` opens a repository, joins the
-kernel records to the Workroom interpreter, and exposes the resulting durable
-snapshot. Readers must report an unbound or unavailable interpreter instead
-of presenting a partial projection as authoritative.
+pages, exact-item inspection, and the bounded join of a caller's live priority
+inbox. `internal/app` opens a repository, joins the kernel records to the
+Workroom interpreter, and exposes the resulting durable snapshot. Readers must
+report an unbound or unavailable interpreter instead of presenting a partial
+projection as authoritative. In particular, a degraded client marks priority
+chat unavailable; it does not invent an empty live inbox.
 
 ### 6. CLI, MCP, skills, connectors, and UI
 

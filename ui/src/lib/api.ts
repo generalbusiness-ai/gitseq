@@ -168,6 +168,14 @@ export interface Cursor {
   live: LiveCursor;
 }
 
+// Rebuild is what the resident says about a cold verified rebuild. Running is
+// false in the ordinary warm case.
+export interface Rebuild {
+  running: boolean;
+  verified?: number;
+  total?: number;
+}
+
 export interface Status {
   durable: DurableSnapshot;
   live: LiveSnapshot;
@@ -214,7 +222,7 @@ export interface Actor {
 export interface Frame {
   Conversation: string;
   Sequence: number;
-  Payload: string; // base64 of {"about","text","re"?}
+  Payload: string; // base64 of {"about","text","re"?,"recipients"?}
   ActorKey: string;
 }
 
@@ -243,6 +251,10 @@ async function json<T>(response: Response): Promise<T> {
 
 export const api = {
   status: () => fetch("/v0/status", { cache: "no-store" }).then((r) => json<Status>(r)),
+  // Deliberately a separate call from status. /v0/status queues behind the
+  // rebuild it would be reporting on, which is the whole reason a verifying
+  // resident looked like a broken page; this one answers while that waits.
+  rebuild: () => fetch("/v0/rebuild", { cache: "no-store" }).then((r) => json<Rebuild>(r)),
   graph: () =>
     fetch("/v0/graph", { cache: "no-store" })
       .then((r) => json<{ commits: GraphCommit[]; truncated?: boolean }>(r))
@@ -310,7 +322,7 @@ export function decodeFrame(frame: Frame): Omit<FrameView, "fingerprint" | "seen
   try {
     // atob yields Latin-1 code units; frames are UTF-8 JSON.
     const bytes = Uint8Array.from(atob(frame.Payload), (c) => c.charCodeAt(0));
-    const payload = JSON.parse(new TextDecoder().decode(bytes)) as { about?: string; text?: string; re?: string };
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as { about?: string; text?: string; re?: string; recipients?: string[] };
     about = payload.about ?? "";
     text = payload.text ?? "";
     re = payload.re || undefined;

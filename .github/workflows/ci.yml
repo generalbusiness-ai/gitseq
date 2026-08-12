@@ -58,6 +58,24 @@ jobs:
       - name: Regenerate the adversarial evidence
         run: make spike
 
+      # The run-specific evidence under spike/.spike/ is where a red run explains
+      # itself: which case failed, or which package the runner died in. Without
+      # this it lives on the runner until the job ends and is then deleted, so a
+      # failure nobody watched live can never be reconstructed. Uploaded only on
+      # failure, because a passing run's evidence adds nothing a reader cannot
+      # regenerate. Thirty days is chosen rather than inherited: these files
+      # describe adversarial security cases, so they are worth keeping long
+      # enough to compare a repeat against its predecessor, and not worth
+      # keeping indefinitely on a public runner.
+      - name: Keep the adversarial evidence from a failed run
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: adversarial-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: spike/.spike/
+          retention-days: 30
+          if-no-files-found: warn
+
       - name: Require reproducible tracked output
         run: git diff --exit-code
 

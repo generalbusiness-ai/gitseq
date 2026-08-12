@@ -42,6 +42,17 @@ func TestValidateLoopbackListen(t *testing.T) {
 	}
 }
 
+func TestProfilerIsDisabledByDefaultAndLoopbackOnly(t *testing.T) {
+	stop, err := serveProfiler(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	if _, err := serveProfiler(context.Background(), "0.0.0.0:0"); err == nil {
+		t.Fatal("profiler accepted a non-loopback listener")
+	}
+}
+
 func TestValidateLoopbackServer(t *testing.T) {
 	tests := map[string]bool{
 		"http://127.0.0.1:7777":   true,
@@ -1697,5 +1708,75 @@ func TestInitRefusesToSeedAnOperatorNobodyChose(t *testing.T) {
 	}
 	if _, exists := workspace.Config.Actors["operator"]; exists {
 		t.Fatal("init seeded a default operator beside the chosen one")
+	}
+}
+
+// Retiring an artifact that documentation still names leaves those pages
+// resting on a withdrawn pointer, which the documentation gate refuses: the
+// repository goes red, and the act that did it is already in an append-only
+// log. Twice in one session a retirement did exactly that, both times through
+// gs batch rather than gs supersede, so both paths are covered here.
+func writeCitingPage(t *testing.T, repo, page, event string) {
+	t.Helper()
+	full := filepath.Join(repo, page)
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte("---\nbasis:\n  - "+event+"\n---\n\nprose\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, repo, "add", page)
+}
+
+func TestSupersedeRefusesWhenDocumentationCitesTheTarget(t *testing.T) {
+	f := newBatchFixture(t)
+	target := f.genesis
+	writeCitingPage(t, f.repo, "docs/reference/thing.md", target)
+
+	err := supersedeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--text", "retire it", target})
+	if err == nil {
+		t.Fatal("supersede was allowed while a page still cited the target")
+	}
+	if !strings.Contains(err.Error(), "docs/reference/thing.md") {
+		t.Errorf("the refusal must name the page to repoint, got %v", err)
+	}
+
+	// The escape exists for migrations that retire first and re-anchor after,
+	// and it must be asked for rather than assumed.
+	if err := supersedeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--text", "retire it", "--cited-ok", target}); err != nil {
+		t.Errorf("--cited-ok must allow the retirement, got %v", err)
+	}
+}
+
+func TestBatchRefusesRetirementWhenDocumentationCitesTheTarget(t *testing.T) {
+	f := newBatchFixture(t)
+	target := f.genesis
+	writeCitingPage(t, f.repo, "docs/concepts/other.md", target)
+
+	acts := `[{"verb":"supersede","target":"` + target + `","text":"retire it"}]`
+	printed, err := f.runFile("operator", acts)
+	if err == nil {
+		t.Fatal("batch was allowed while a page still cited a target")
+	}
+	if !strings.Contains(err.Error(), "docs/concepts/other.md") {
+		t.Errorf("the refusal must name the page, got %v", err)
+	}
+	// Refused before the first append, so nothing is reported and nothing
+	// landed: a batch that cannot land cleanly lands nothing.
+	if strings.TrimSpace(string(printed)) != "" {
+		t.Errorf("a batch refused before appending must print nothing, got %q", printed)
+	}
+}
+
+// An untracked page is not what the gate reads, so it must not block anyone.
+func TestRetirementIgnoresUntrackedPages(t *testing.T) {
+	f := newBatchFixture(t)
+	target := f.genesis
+	full := filepath.Join(f.repo, "scratch.md")
+	if err := os.WriteFile(full, []byte(target), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := supersedeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--text", "retire it", target}); err != nil {
+		t.Errorf("an untracked page must not block a retirement, got %v", err)
 	}
 }

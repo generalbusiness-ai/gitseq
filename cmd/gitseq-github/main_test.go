@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/generalbusiness-ai/gitseq/internal/connector/github"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -23,9 +24,16 @@ func charter(event string, ratified, retired, stale bool) workroom.Statement {
 }
 
 // live is charterIsLive with the arguments this process would actually have
-// been given, so each test varies one thing.
+// been given, so each test varies one thing. It asks about observation, which
+// is what the connector does unless --propose says otherwise; the write path is
+// exercised separately because it is the one that cannot be undone.
 func live(projection workroom.Projection, event string) error {
-	return charterIsLive(projection, event, "generalbusiness-ai", "gitseq", "github-connector")
+	return charterIsLive(projection, event, "generalbusiness-ai", "gitseq", "github-connector", OperationObserve)
+}
+
+// propose is the same doorstep asked about the operation that publishes.
+func propose(projection workroom.Projection, event string) error {
+	return charterIsLive(projection, event, "generalbusiness-ai", "gitseq", "github-connector", OperationPropose)
 }
 
 // The fold does not know what a charter is and will not enforce one, so this
@@ -49,11 +57,17 @@ func TestTheConnectorRefusesToActWithoutALiveCharter(t *testing.T) {
 		t.Error("a retired charter was accepted")
 	}
 
-	// Stale matters as much as retired here. A charter whose basis died is no
-	// longer standing on what it claimed to stand on, and acting under it would
-	// be the connector deciding that the flare did not apply to itself.
+	// Staleness refuses, and briefly did not. The argument for admitting it was
+	// that correct replacement makes a successor stale by construction; that is
+	// false — a successor rests on stable current governance and the separate
+	// supersession links it to the predecessor. Nothing forced the widening, and
+	// it would have converted a flare into continuing authority for an
+	// irreversible public write, on a basis that may be the very scope an
+	// operator withdrew.
 	if err := live(projection(charter(event, true, false, true)), event); err == nil {
-		t.Error("a stale charter was accepted")
+		t.Error("a charter whose authority has moved was accepted")
+	} else if !strings.Contains(err.Error(), "successor") {
+		t.Errorf("the refusal does not say how to repair it: %v", err)
 	}
 
 	if err := live(projection(charter(event, true, false, false)), event); err != nil {
@@ -130,5 +144,232 @@ func TestTheCharterMustAuthorizeThisRepositoryAndActor(t *testing.T) {
 
 	if err := live(projection(charter(event, true, false, false)), event); err != nil {
 		t.Errorf("a charter authorizing exactly this repository and actor was refused: %v", err)
+	}
+}
+
+// chartered builds a live charter that declares exactly these operations.
+// Passing none produces the shape every charter ratified so far has: four
+// scope fields and no statement about reading versus writing.
+func chartered(event string, operations ...string) workroom.Statement {
+	statement := charter(event, true, false, false)
+	if len(operations) > 0 {
+		statement.Body["operations"] = strings.Join(operations, " ")
+	}
+	return statement
+}
+
+// The finding this closes: the doorstep could not tell reading from writing, so
+// any live inbound charter authorized opening a pull request on a public
+// repository under the project's name. Scope alone is not permission — the four
+// fields say *where* the connector may act, and nothing said *what* it may do.
+func TestAnInboundCharterDoesNotAuthorizeWritingToTheForge(t *testing.T) {
+	const event = "git:sha1:g#git:sha1:charter"
+
+	// The shape of every charter ratified so far. It must keep working for
+	// observation, or fixing this would silently disarm the inbound half.
+	silent := projection(chartered(event))
+	if err := live(silent, event); err != nil {
+		t.Errorf("a charter with no declared operations stopped authorizing observation: %v", err)
+	}
+	// And must not authorize the forge write.
+	err := propose(silent, event)
+	if err == nil {
+		t.Fatal("an inbound charter authorized opening a pull request")
+	}
+	if !strings.Contains(err.Error(), "authorizes observe only") {
+		t.Errorf("the refusal does not say why: %q", err)
+	}
+
+	// Declaring observation explicitly is not a licence to write either.
+	if err := propose(projection(chartered(event, OperationObserve)), event); err == nil {
+		t.Error("a charter declaring observation alone authorized proposing")
+	}
+
+	// A charter that says so authorizes it, or the check would be unusable.
+	if err := propose(projection(chartered(event, OperationObserve, OperationPropose)), event); err != nil {
+		t.Errorf("a charter declaring propose refused it: %v", err)
+	}
+	// Declaring propose alone does not smuggle in observation.
+	if err := live(projection(chartered(event, OperationPropose)), event); err == nil {
+		t.Error("a charter declaring propose alone authorized observation")
+	}
+
+	// Scope is still checked alongside the operation, so a charter authorizing
+	// the write for a different repository does not authorize it here.
+	elsewhere := chartered(event, OperationPropose)
+	elsewhere.Body["repo"] = "somewhere-else"
+	if err := propose(projection(elsewhere), event); err == nil {
+		t.Error("a charter for another repository authorized proposing here")
+	}
+}
+
+// A pull request cannot be superseded. So the durable facts it names are
+// checked before it is opened, not merely required to be present: three
+// well-formed strings that have nothing to do with each other would render a
+// rendering pointing at a record that does not say what it claims, and the
+// reader on GitHub has no way to tell.
+func TestAProposalMustNameFactsThatHoldTogether(t *testing.T) {
+	const request = "git:sha1:g#git:sha1:request"
+	const artifact = "git:sha1:g#git:sha1:artifact"
+	const commit = "6ca1266b21306cb96726d345eac9021a91488fe7"
+
+	effective := []workroom.Decision{
+		{Event: request, Verdict: workroom.Effective, Reason: "statement recorded"},
+		{Event: artifact, Verdict: workroom.Effective, Reason: "statement recorded"},
+	}
+	coherent := workroom.Projection{
+		Decisions: effective,
+		Statements: []workroom.Statement{
+			{Event: request, Kind: workroom.KindRequest},
+			{Event: artifact, Kind: workroom.KindArtifact},
+		},
+		Artifacts:  []workroom.Artifact{{Event: artifact, Commit: commit}},
+		Provenance: map[string][]string{artifact: {request}},
+	}
+	if err := proposalIsCoherent(coherent, request, artifact, commit); err != nil {
+		t.Fatalf("a coherent proposal was refused: %v", err)
+	}
+
+	// Each of these is well-formed and supplied. Only the relationship differs.
+	t.Run("unknown request", func(t *testing.T) {
+		if err := proposalIsCoherent(coherent, "git:sha1:g#git:sha1:nothing", artifact, commit); err == nil {
+			t.Error("a request naming nothing was rendered")
+		}
+	})
+	// Presence in Statements is not force. The fold keeps ineffective acts
+	// there on purpose, so a well-formed request the workroom never stood
+	// behind is neither retired nor stale and would otherwise pass.
+	t.Run("ineffective request", func(t *testing.T) {
+		never := coherent
+		never.Decisions = []workroom.Decision{
+			{Event: request, Verdict: workroom.Ineffective, Reason: "dangling promise has no request"},
+			{Event: artifact, Verdict: workroom.Effective, Reason: "statement recorded"},
+		}
+		if err := proposalIsCoherent(never, request, artifact, commit); err == nil {
+			t.Error("a pull request cited a governing request the fold gave no force")
+		}
+	})
+	t.Run("ineffective artifact", func(t *testing.T) {
+		never := coherent
+		never.Decisions = []workroom.Decision{
+			{Event: request, Verdict: workroom.Effective, Reason: "statement recorded"},
+			{Event: artifact, Verdict: workroom.Ineffective, Reason: "statement recorded"},
+		}
+		if err := proposalIsCoherent(never, request, artifact, commit); err == nil {
+			t.Error("a pull request cited an artifact the fold gave no force")
+		}
+	})
+	t.Run("disputed request", func(t *testing.T) {
+		disputed := coherent
+		disputed.Decisions = []workroom.Decision{
+			{Event: request, Verdict: workroom.Disputed, Reason: "competing settlements"},
+			{Event: artifact, Verdict: workroom.Effective, Reason: "statement recorded"},
+		}
+		if err := proposalIsCoherent(disputed, request, artifact, commit); err == nil {
+			t.Error("a disputed request was rendered as governing")
+		}
+	})
+	t.Run("no decision at all", func(t *testing.T) {
+		silent := coherent
+		silent.Decisions = []workroom.Decision{{Event: artifact, Verdict: workroom.Effective}}
+		if err := proposalIsCoherent(silent, request, artifact, commit); err == nil {
+			t.Error("a request with nothing saying it took effect was rendered")
+		}
+	})
+	t.Run("retired artifact", func(t *testing.T) {
+		retired := coherent
+		retired.Statements = []workroom.Statement{
+			{Event: request, Kind: workroom.KindRequest},
+			{Event: artifact, Kind: workroom.KindArtifact, Retired: true},
+		}
+		if err := proposalIsCoherent(retired, request, artifact, commit); err == nil {
+			t.Error("a retired artifact was rendered as current")
+		}
+	})
+	t.Run("stale artifact", func(t *testing.T) {
+		stale := coherent
+		stale.Statements = []workroom.Statement{
+			{Event: request, Kind: workroom.KindRequest},
+			{Event: artifact, Kind: workroom.KindArtifact, Stale: true},
+		}
+		if err := proposalIsCoherent(stale, request, artifact, commit); err == nil {
+			t.Error("a stale artifact was rendered without saying its basis moved")
+		}
+	})
+	t.Run("artifact names another commit", func(t *testing.T) {
+		if err := proposalIsCoherent(coherent, request, artifact, "0000000000000000000000000000000000000000"); err == nil {
+			t.Error("the rendering claimed a commit the artifact does not name")
+		}
+	})
+	t.Run("artifact belongs to other work", func(t *testing.T) {
+		elsewhere := coherent
+		elsewhere.Provenance = map[string][]string{artifact: {"git:sha1:g#git:sha1:other"}}
+		if err := proposalIsCoherent(elsewhere, request, artifact, commit); err == nil {
+			t.Error("a real request was paired with a real artifact from different work")
+		}
+	})
+}
+
+// The composed path, from a projection through clauseSources into admission.
+//
+// The unit fixtures in internal/connector manufacture ClauseSource values
+// directly, so they cannot prove that this command builds them correctly from a
+// real projection — and every defect codex found at this boundary lived in that
+// gap rather than in the admission logic. This exercises what the command
+// actually assembles: the fold's ruling, the signed bases, and the charter the
+// run was told to act under.
+func TestTheCommandAdmitsOnlyEffectiveClausesCitingTheSelectedCharter(t *testing.T) {
+	const chosen = "git:sha1:g#git:sha1:chosen-charter"
+	const other = "git:sha1:g#git:sha1:other-charter"
+
+	clause := func(event, basis string) workroom.Statement {
+		return workroom.Statement{
+			Event: event, Kind: workroom.KindAssert, Actor: "hugh",
+			Body: map[string]string{"connector": "github", "issues": "7"},
+		}
+	}
+	good := clause("git:sha1:g#git:sha1:good", chosen)
+	refused := clause("git:sha1:g#git:sha1:refused", chosen)
+	foreign := clause("git:sha1:g#git:sha1:foreign", other)
+
+	view := workroom.Projection{
+		Statements: []workroom.Statement{good, refused, foreign},
+		Decisions: []workroom.Decision{
+			{Event: good.Event, Verdict: workroom.Effective},
+			{Event: refused.Event, Verdict: workroom.Ineffective, Reason: "request state requires body.conditions"},
+			{Event: foreign.Event, Verdict: workroom.Effective},
+		},
+		Provenance: map[string][]string{
+			good.Event:    {chosen},
+			refused.Event: {chosen},
+			foreign.Event: {other},
+		},
+		Actors: map[string]workroom.ActorState{
+			"hugh": {Name: "hugh", Roles: []string{"operator"}},
+		},
+	}
+
+	reading := github.ClausesFrom(clauseSources(view), authors(view), chosen)
+	if len(reading.Clauses) != 1 {
+		t.Fatalf("admitted %d clauses, want only the effective one citing this charter: %+v", len(reading.Clauses), reading)
+	}
+	if reading.Clauses[0].Event != good.Event {
+		t.Errorf("admitted %q, want %q", reading.Clauses[0].Event, good.Event)
+	}
+
+	reasons := map[string]string{}
+	for _, refusal := range reading.Refusals {
+		reasons[refusal.Event] = refusal.Reason
+	}
+	if !strings.Contains(reasons[refused.Event], "force") {
+		t.Errorf("an ineffective clause was not refused for want of force: %q", reasons[refused.Event])
+	}
+	if !strings.Contains(reasons[foreign.Event], "charter") {
+		t.Errorf("a clause under another charter was not refused for that: %q", reasons[foreign.Event])
+	}
+
+	// A run naming no charter reaches GitHub for nothing at all.
+	if empty := github.ClausesFrom(clauseSources(view), authors(view), ""); len(empty.Clauses) != 0 {
+		t.Fatalf("clauses were admitted with no charter selected: %+v", empty)
 	}
 }

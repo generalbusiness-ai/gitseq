@@ -2,9 +2,15 @@
 title: Components
 summary: The CLI, the resident service, the MCP adapter, the browser view, and the repository underneath.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e697474da72663dac9038a032e57ba7ef718a1a3
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcaecb65ffc4a7dad44d1d44ad7e2ae3246ef48f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9d3606442131e4bc700d1310451657bd4eac438
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7755a1195e83805be2a8fa5023c70f609891ec40
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc5ca55fb4a4e67e2395903519f2103a92930268
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66b6cb0b770fe88808130a195babf79fe1ea7746
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b7e8c9c09da8ab7b1e83b2daab9db2e86bfea7a
 ---
 
 # Components
@@ -39,8 +45,8 @@ branches, exactly as always; the workroom carries the why.
 | `ui/` | The browser projection source. |
 | `internal/service/uidist/` | The committed browser build the resident serves. |
 
-The resident serves the committed build, not `ui/src`, so the two can
-drift. `make ui-check` rebuilds and fails if the committed files differ.
+The resident serves the committed build, not `ui/src`, so changes to the
+browser source and its committed output must travel together.
 
 ## `gs`
 
@@ -62,7 +68,11 @@ See [the `gs` reference](../reference/gs/).
 - **Sequencing under contention.** Concurrent appends are compare-and-swap
   on the git ref and retry, so several actors can write at once.
 - **Presence and ephemeral conversation** — the amnesiac nexus. This
-  state is per-process and does not survive.
+  includes bounded per-session addressed inboxes and acknowledgements. The
+  service resolves Workroom names to fingerprints before the nexus signs and
+  retains the conversation for every current matching lease. Only leases that
+  registered the inbox protocol receive pending inbox references. This state
+  is per-process and does not survive.
 - **Change notification.** Long-poll `wait` returns when something moves,
   rather than making every reader poll.
 
@@ -93,9 +103,9 @@ It is dual-era: it serves the stateless `2026-07-28` shape and the
 the connection, chosen by how the client opens and settled once.
 
 If the resident service is down, the durable tools keep working against
-the local log and report a `degraded` live cursor. `say` and `presence`
-fail rather than pretend, because ephemeral state genuinely does not
-survive.
+the local log and report a `degraded` live cursor. Priority chat is marked
+unavailable; `say`, `ack`, and `presence` fail rather than pretend, because
+ephemeral state genuinely does not survive.
 
 See [the MCP reference](../reference/mcp/) and
 [Configure an agent](../how-to/configure-an-agent.md).

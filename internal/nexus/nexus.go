@@ -9,9 +9,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,9 +37,19 @@ const (
 	ActivityWaiting   ActivityStatus = "waiting"
 	ActivityBlocked   ActivityStatus = "blocked"
 
-	MaxFocusEvents       = 8
-	MaxFocusEventBytes   = 256
-	MaxActivityNoteBytes = 160
+	MaxFocusEvents        = 8
+	MaxFocusEventBytes    = 256
+	MaxActivityNoteBytes  = 160
+	MaxInboxFrames        = 20
+	MaxPendingInboxFrames = 256
+	MaxMessageTextBytes   = 16 << 10
+	MaxMessageIDBytes     = 256
+	MaxMessageRecipients  = 32
+	MaxFramePayloadBytes  = 20 << 10
+	MaxLiveSessions       = 256
+	MaxSessionsPerActor   = 16
+	MaxRetainedFrames     = 4096
+	MaxRetainedBytes      = 8 << 20
 )
 
 // Activity is advisory, leased attention. It has no durable workflow force.
@@ -89,11 +101,12 @@ type Cursor struct {
 }
 
 type Change struct {
-	Cursor   Cursor    `json:"cursor"`
-	Kind     string    `json:"kind"`
-	ID       string    `json:"id"`
-	Value    string    `json:"value,omitempty"`
-	Activity *Activity `json:"activity,omitempty"`
+	Cursor   Cursor      `json:"cursor"`
+	Kind     string      `json:"kind"`
+	ID       string      `json:"id"`
+	Value    string      `json:"value,omitempty"`
+	Activity *Activity   `json:"activity,omitempty"`
+	Frame    *InboxFrame `json:"frame,omitempty"`
 }
 
 type Snapshot struct {
@@ -118,6 +131,46 @@ type Frame struct {
 	NexusSignature      []byte
 }
 
+// Message is the signed, application-neutral chat payload. Recipients are
+// durable actor fingerprints resolved by the service before publication. A
+// reply's exact parent author is added by the nexus under the same lock that
+// sequences the new frame.
+type Message struct {
+	About      string   `json:"about"`
+	Text       string   `json:"text"`
+	Re         string   `json:"re,omitempty"`
+	Recipients []string `json:"recipients,omitempty"`
+}
+
+// InboxFrame is the bounded decoded view delivered to an addressed session.
+// Actor and Recipients are exact fingerprints; Thread is the exact reply
+// handle "<conversation>:<sequence>".
+type InboxFrame struct {
+	Actor        string   `json:"actor"`
+	Text         string   `json:"text"`
+	About        string   `json:"about"`
+	Conversation string   `json:"conversation"`
+	Sequence     uint64   `json:"sequence"`
+	Re           string   `json:"re,omitempty"`
+	Recipients   []string `json:"recipients"`
+	Thread       string   `json:"thread"`
+}
+
+type Inbox struct {
+	Frames  []InboxFrame `json:"frames"`
+	Skipped int          `json:"skipped,omitempty"`
+}
+
+// Observation is one live cursor barrier. Session-specific callers receive
+// the current unacknowledged inbox and addressed inline changes without a race
+// between separately captured snapshots and deltas.
+type Observation struct {
+	Snapshot Snapshot
+	Inbox    Inbox
+	Changes  []Change
+	Reset    bool
+}
+
 type frameActorBody struct {
 	_            struct{} `cbor:",toarray"`
 	Version      uint64
@@ -140,29 +193,51 @@ type conversation struct {
 	last    []byte
 	genesis []byte
 	frames  []Frame
+	about   string
+}
+
+type inboxState struct {
+	refs []frameRef
+}
+
+type frameRef struct {
+	conversation string
+	sequence     uint64
 }
 
 type presenceEntry struct {
-	value     string
-	actor     string
-	handle    string
-	activity  Activity
-	expiresAt time.Time
+	value       string
+	actor       string
+	fingerprint string
+	inbox       bool
+	handle      string
+	activity    Activity
+	expiresAt   time.Time
+	// activityChangedAt is when this session's activity last actually moved,
+	// observed by the resident rather than claimed by the client. A heartbeat
+	// renewal carries the lease forward and leaves this alone, so a reader can
+	// tell "still working on it, said so an hour ago" from "just picked it up".
+	// Renewals are frequent and changes are not; a timestamp that moved on
+	// every renewal would report the polling interval instead of the activity.
+	activityChangedAt time.Time
 }
 
 type Hub struct {
-	mu           sync.Mutex
-	generation   string
-	position     uint64
-	base         uint64
-	historyCap   int
-	history      []Change
-	presence     map[string]presenceEntry
-	convs        map[string]*conversation
-	about        map[string]string
-	participants map[string]map[string]bool
-	publicKey    ed25519.PublicKey
-	privateKey   ed25519.PrivateKey
+	mu             sync.Mutex
+	generation     string
+	position       uint64
+	base           uint64
+	historyCap     int
+	history        []Change
+	presence       map[string]presenceEntry
+	convs          map[string]*conversation
+	about          map[string]string
+	participants   map[string]map[string]bool
+	inboxes        map[string]*inboxState
+	publicKey      ed25519.PublicKey
+	privateKey     ed25519.PrivateKey
+	retainedFrames int
+	retainedBytes  int
 }
 
 func New(historyCap int) (*Hub, error) {
@@ -194,6 +269,7 @@ func NewWithSigningKey(historyCap int, privateKey ed25519.PrivateKey) (*Hub, err
 		convs:        make(map[string]*conversation),
 		about:        make(map[string]string),
 		participants: make(map[string]map[string]bool),
+		inboxes:      make(map[string]*inboxState),
 		publicKey:    bytes.Clone(publicKey),
 		privateKey:   bytes.Clone(privateKey),
 	}, nil
@@ -232,23 +308,47 @@ func (h *Hub) AnnounceSession(id, actor, value string, ttl time.Duration) (Chang
 // session's advisory activity. The private session identifier remains the
 // authority boundary; callers cannot address another lease by public handle.
 func (h *Hub) AnnounceSessionActivity(id, actor, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
+	return h.AnnounceSessionIdentity(id, actor, "", value, ttl, update)
+}
+
+// AnnounceSessionIdentity binds a live lease to both its custodial actor name
+// and its durable actor fingerprint. The name remains private service routing;
+// addressed delivery uses only the fingerprint.
+func (h *Hub) AnnounceSessionIdentity(id, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if id == "" || actor == "" {
 		return Change{}, errors.New("session and actor are required")
 	}
 	h.expire(time.Now())
-	if existing, exists := h.presence[id]; exists && existing.actor != actor {
+	if existing, exists := h.presence[id]; exists && (existing.actor != actor || existing.fingerprint != fingerprint) {
 		return Change{}, errors.New("session is already bound to another actor")
 	}
-	return h.announceFor(id, actor, value, ttl, update)
+	return h.announceFor(id, actor, fingerprint, value, ttl, update)
 }
 
-func (h *Hub) announceFor(id, actor, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
+func (h *Hub) announceFor(id, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
 	if ttl <= 0 {
 		ttl = 30 * time.Second
 	}
 	existing, exists := h.presence[id]
+	if !exists {
+		if len(h.presence) >= MaxLiveSessions {
+			return Change{}, fmt.Errorf("live session limit of %d reached", MaxLiveSessions)
+		}
+		sameActor := 0
+		for _, entry := range h.presence {
+			if (fingerprint != "" && entry.fingerprint == fingerprint) || (fingerprint == "" && entry.fingerprint == "" && entry.actor == actor) {
+				sameActor++
+			}
+		}
+		if sameActor >= MaxSessionsPerActor {
+			return Change{}, fmt.Errorf("actor session limit of %d reached", MaxSessionsPerActor)
+		}
+		// A reused identifier begins a new leased session. Never carry an old
+		// recipient's inbox across expiry or an identity switch.
+		h.deleteInbox(id)
+	}
 	activity, err := normalizeActivity(existing.activity, update, exists)
 	if err != nil {
 		return Change{}, err
@@ -261,13 +361,20 @@ func (h *Hub) announceFor(id, actor, value string, ttl time.Duration, update Act
 		}
 		handle = minted
 	}
-	h.presence[id] = presenceEntry{value: value, actor: actor, handle: handle, activity: activity, expiresAt: time.Now().Add(ttl)}
-	if exists && existing.value == value && existing.actor == actor && activityEqual(existing.activity, activity) {
+	now := time.Now()
+	// The activity clock moves only when the activity does. A new session
+	// starts it; a renewal that changes nothing carries the old value forward.
+	changedAt := existing.activityChangedAt
+	if !exists || changedAt.IsZero() || !activityEqual(existing.activity, activity) {
+		changedAt = now
+	}
+	h.presence[id] = presenceEntry{value: value, actor: actor, fingerprint: fingerprint, inbox: existing.inbox, handle: handle, activity: activity, expiresAt: now.Add(ttl), activityChangedAt: changedAt}
+	if exists && existing.value == value && existing.actor == actor && existing.fingerprint == fingerprint && activityEqual(existing.activity, activity) {
 		copy := cloneActivity(activity)
 		return Change{Cursor: Cursor{Generation: h.generation, Position: h.position}, Kind: "renewal", ID: handle, Value: value, Activity: &copy}, nil
 	}
 	kind := "presence"
-	if exists && existing.value == value && existing.actor == actor {
+	if exists && existing.value == value && existing.actor == actor && existing.fingerprint == fingerprint {
 		kind = "activity"
 	}
 	change := h.append(kind, handle, value)
@@ -329,6 +436,50 @@ func cloneActivity(activity Activity) Activity {
 	return activity
 }
 
+func cloneInboxFrame(frame InboxFrame) InboxFrame {
+	frame.Recipients = append([]string(nil), frame.Recipients...)
+	if frame.Recipients == nil {
+		frame.Recipients = []string{}
+	}
+	return frame
+}
+
+func (h *Hub) cloneInbox(state *inboxState) Inbox {
+	inbox := Inbox{Frames: []InboxFrame{}}
+	if state == nil {
+		return inbox
+	}
+	visible := len(state.refs)
+	if visible > MaxInboxFrames {
+		visible = MaxInboxFrames
+		inbox.Skipped = len(state.refs) - visible
+	}
+	for _, ref := range state.refs[:visible] {
+		if frame, ok := h.inboxFrame(ref); ok {
+			inbox.Frames = append(inbox.Frames, frame)
+		}
+	}
+	return inbox
+}
+
+func (h *Hub) inboxFrame(ref frameRef) (InboxFrame, bool) {
+	conversation := h.convs[ref.conversation]
+	if conversation == nil || ref.sequence >= uint64(len(conversation.frames)) {
+		return InboxFrame{}, false
+	}
+	frame := conversation.frames[ref.sequence]
+	var message Message
+	if json.Unmarshal(frame.Payload, &message) != nil {
+		return InboxFrame{}, false
+	}
+	return InboxFrame{
+		Actor: actorFingerprint(frame.ActorKey), Text: message.Text, About: message.About,
+		Conversation: ref.conversation, Sequence: ref.sequence, Re: message.Re,
+		Recipients: append([]string(nil), message.Recipients...),
+		Thread:     ref.conversation + ":" + strconv.FormatUint(ref.sequence, 10),
+	}, true
+}
+
 func activityEqual(left, right Activity) bool {
 	if left.Status != right.Status || left.Note != right.Note || len(left.Focus) != len(right.Focus) {
 		return false
@@ -346,6 +497,7 @@ func (h *Hub) Depart(id string) Change {
 	defer h.mu.Unlock()
 	handle := h.presence[id].handle
 	delete(h.presence, id)
+	h.deleteInbox(id)
 	change := h.append("departure", handle, "")
 	h.removeParticipant(id)
 	h.forgetAllIfEmpty()
@@ -362,11 +514,16 @@ func (h *Hub) expire(now time.Time) {
 	for id, entry := range h.presence {
 		if !entry.expiresAt.After(now) {
 			delete(h.presence, id)
+			h.deleteInbox(id)
 			h.append("expiration", entry.handle, "")
 			h.removeParticipant(id)
 		}
 	}
 	h.forgetAllIfEmpty()
+}
+
+func (h *Hub) deleteInbox(session string) {
+	delete(h.inboxes, session)
 }
 
 func (h *Hub) forgetAllIfEmpty() {
@@ -395,12 +552,42 @@ func (h *Hub) SessionActor(id string) (string, bool) {
 	return entry.actor, exists && entry.actor != ""
 }
 
+// EnableInbox opts one exact live lease into addressed delivery. Presence by
+// itself is intentionally insufficient: browser and older adapter sessions do
+// not have the private status/wait/ack protocol needed to consume an inbox.
+func (h *Hub) EnableInbox(id string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+	entry, exists := h.presence[id]
+	if !exists {
+		return errors.New("session is not present")
+	}
+	entry.inbox = true
+	h.presence[id] = entry
+	return nil
+}
+
 func (h *Hub) forgetConversation(id string) bool {
-	if _, exists := h.convs[id]; !exists {
+	conversation, exists := h.convs[id]
+	if !exists {
 		return false
+	}
+	h.retainedFrames -= len(conversation.frames)
+	for _, frame := range conversation.frames {
+		h.retainedBytes -= len(frame.Payload)
 	}
 	delete(h.convs, id)
 	delete(h.participants, id)
+	for _, inbox := range h.inboxes {
+		kept := inbox.refs[:0]
+		for _, ref := range inbox.refs {
+			if ref.conversation != id {
+				kept = append(kept, ref)
+			}
+		}
+		inbox.refs = kept
+	}
 	for about, conversation := range h.about {
 		if conversation == id {
 			delete(h.about, about)
@@ -442,6 +629,10 @@ func (h *Hub) Snapshot() Snapshot {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.expire(time.Now())
+	return h.snapshotLocked()
+}
+
+func (h *Hub) snapshotLocked() Snapshot {
 	// Keyed by handle: an observer learns who is here and can follow each
 	// session across renewals without receiving the credential itself.
 	presence := make(map[string]string, len(h.presence))
@@ -461,18 +652,147 @@ func (h *Hub) Snapshot() Snapshot {
 	}
 }
 
+// SnapshotForSession captures global live state and one exact session's
+// unacknowledged addressed inbox under the same cursor barrier. A caller must
+// hold the private session identifier; absent or expired sessions are refused
+// rather than represented as an empty inbox.
+func (h *Hub) SnapshotForSession(session string) (Snapshot, Inbox, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+	if _, exists := h.presence[session]; !exists {
+		return Snapshot{}, Inbox{}, errors.New("session is not present")
+	}
+	return h.snapshotLocked(), h.cloneInbox(h.inboxes[session]), nil
+}
+
+// Observe atomically captures global live state and, when session is nonempty,
+// that exact lease's private inbox. Supplying a cursor also returns changes;
+// an unavailable cursor sets Reset while still returning current state.
+func (h *Hub) Observe(session string, cursor *Cursor) (Observation, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+	if session != "" {
+		if _, exists := h.presence[session]; !exists {
+			return Observation{}, errors.New("session is not present")
+		}
+	}
+	observation := Observation{Snapshot: h.snapshotLocked(), Inbox: h.cloneInbox(h.inboxes[session])}
+	if cursor == nil {
+		return observation, nil
+	}
+	changes, _, err := h.changesSinceLocked(*cursor, session)
+	if err != nil {
+		if errors.Is(err, ErrReset) {
+			observation.Reset = true
+			return observation, nil
+		}
+		return Observation{}, err
+	}
+	observation.Changes = changes
+	return observation, nil
+}
+
+// Acknowledge removes exact thread handles from one leased session's inbox.
+// Repeated or already-expired handles are harmless; malformed handles fail so
+// a client cannot believe it acknowledged something the service could not
+// identify.
+func (h *Hub) Acknowledge(session string, handles []string) (int, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+	if _, exists := h.presence[session]; !exists {
+		return 0, errors.New("session is not present")
+	}
+	if len(handles) > MaxInboxFrames {
+		return 0, fmt.Errorf("acknowledgement has %d handles; maximum is %d", len(handles), MaxInboxFrames)
+	}
+	wanted := make(map[string]bool, len(handles))
+	for _, handle := range handles {
+		if _, _, err := parseThreadHandle(handle); err != nil {
+			return 0, err
+		}
+		wanted[handle] = true
+	}
+	state := h.inboxes[session]
+	if state == nil || len(wanted) == 0 {
+		return 0, nil
+	}
+	removed := 0
+	kept := state.refs[:0]
+	for _, ref := range state.refs {
+		handle := ref.conversation + ":" + strconv.FormatUint(ref.sequence, 10)
+		if !wanted[handle] {
+			kept = append(kept, ref)
+		} else {
+			removed++
+		}
+	}
+	state.refs = kept
+	return removed, nil
+}
+
+func parseThreadHandle(handle string) (string, uint64, error) {
+	if len(handle) > MaxMessageIDBytes {
+		return "", 0, fmt.Errorf("thread handle exceeds %d bytes", MaxMessageIDBytes)
+	}
+	separator := strings.LastIndexByte(handle, ':')
+	if separator <= 0 || separator == len(handle)-1 {
+		return "", 0, errors.New("thread handle must be <conversation>:<sequence>")
+	}
+	sequenceText := handle[separator+1:]
+	sequence, err := strconv.ParseUint(sequenceText, 10, 64)
+	if err != nil || strconv.FormatUint(sequence, 10) != sequenceText {
+		return "", 0, errors.New("thread handle has a non-canonical sequence")
+	}
+	return handle[:separator], sequence, nil
+}
+
 func (h *Hub) ChangesSince(cursor Cursor) ([]Change, Cursor, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.expire(time.Now())
+	return h.changesSinceLocked(cursor, "")
+}
+
+// ChangesSinceForSession keeps ordinary live changes intact but includes a
+// decoded frame only when it is still pending for this exact session.
+func (h *Hub) ChangesSinceForSession(cursor Cursor, session string) ([]Change, Cursor, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+	if _, exists := h.presence[session]; !exists {
+		return nil, Cursor{Generation: h.generation, Position: h.position}, errors.New("session is not present")
+	}
+	return h.changesSinceLocked(cursor, session)
+}
+
+func (h *Hub) changesSinceLocked(cursor Cursor, session string) ([]Change, Cursor, error) {
 	current := Cursor{Generation: h.generation, Position: h.position}
 	if cursor.Generation != h.generation || cursor.Position < h.base || cursor.Position > h.position {
 		return nil, current, ErrReset
 	}
 	changes := make([]Change, 0, h.position-cursor.Position)
+	pending := make(map[string]bool)
+	if inbox := h.inboxes[session]; inbox != nil {
+		for _, ref := range inbox.refs {
+			pending[ref.conversation+":"+strconv.FormatUint(ref.sequence, 10)] = true
+		}
+	}
 	for _, change := range h.history {
 		if change.Cursor.Position > cursor.Position {
-			changes = append(changes, change)
+			copy := change
+			if change.Activity != nil {
+				activity := cloneActivity(*change.Activity)
+				copy.Activity = &activity
+			}
+			copy.Frame = nil
+			if session != "" && change.Frame != nil && pending[change.Frame.Thread] {
+				frame := cloneInboxFrame(*change.Frame)
+				copy.Frame = &frame
+			}
+			changes = append(changes, copy)
 		}
 	}
 	return changes, current, nil
@@ -503,29 +823,22 @@ func verifyBytes(domain string, key ed25519.PublicKey, value any, signature []by
 	return err == nil && ed25519.Verify(key, append([]byte(domain), encoded...), signature)
 }
 
-// PublishForSession resolves the about anchor, opens a conversation when
-// necessary, records participation and publishes as one live-room operation.
+// PublishForSession is the compatibility path for opaque live frames. New
+// application chat uses PublishMessageForSession so addressing is signed.
 func (h *Hub) PublishForSession(session, about, conversationID string, payload []byte, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.expire(time.Now())
-	if _, exists := h.presence[session]; !exists {
+	_, exists := h.presence[session]
+	if !exists {
 		return Frame{}, errors.New("session is not present")
 	}
-	if conversationID == "" {
-		conversationID = h.about[about]
+	if err := h.canPublish(len(payload)); err != nil {
+		return Frame{}, err
 	}
-	if conversationID == "" {
-		nonce := make([]byte, 32)
-		if _, err := rand.Read(nonce); err != nil {
-			return Frame{}, err
-		}
-		var err error
-		conversationID, _, err = h.openConversation(nonce)
-		if err != nil {
-			return Frame{}, err
-		}
-		h.about[about] = conversationID
+	conversationID, err := h.resolveConversation(about, conversationID)
+	if err != nil {
+		return Frame{}, err
 	}
 	frame, err := h.publish(conversationID, payload, actorPrivateKey)
 	if err != nil {
@@ -538,10 +851,256 @@ func (h *Hub) PublishForSession(session, about, conversationID string, payload [
 	return frame, nil
 }
 
+// PublishMessageForSession validates and signs the final recipient list, adds
+// an exact reply parent's author, and enrolls only currently leased recipient
+// sessions in the conversation and their private inboxes.
+func (h *Hub) PublishMessageForSession(session, conversationID string, message Message, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+	entry, exists := h.presence[session]
+	if !exists {
+		return Frame{}, errors.New("session is not present")
+	}
+	actorKey := actorPrivateKey.Public().(ed25519.PublicKey)
+	author := actorFingerprint(actorKey)
+	if entry.fingerprint == "" || entry.fingerprint != author {
+		return Frame{}, errors.New("session actor does not match the signing key")
+	}
+	if err := validateMessage(message); err != nil {
+		return Frame{}, err
+	}
+	recipients, err := normalizeRecipients(message.Recipients)
+	if err != nil {
+		return Frame{}, err
+	}
+	message.Recipients = recipients
+	if message.Re != "" && conversationID == "" {
+		conversationID, _, err = parseThreadHandle(message.Re)
+		if err != nil {
+			return Frame{}, err
+		}
+	}
+	resolvedConversationID, existingConversation, err := h.findConversation(message.About, conversationID)
+	if err != nil {
+		return Frame{}, err
+	}
+	recipients = append([]string(nil), message.Recipients...)
+	if message.Re != "" {
+		parentConversation, parentSequence, err := parseThreadHandle(message.Re)
+		if err != nil {
+			return Frame{}, err
+		}
+		if existingConversation == nil || parentConversation != resolvedConversationID || parentSequence >= uint64(len(existingConversation.frames)) {
+			return Frame{}, errors.New("reply target is not an existing frame in this conversation")
+		}
+		recipients = append(recipients, actorFingerprint(existingConversation.frames[parentSequence].ActorKey))
+	}
+	message.Recipients, err = normalizeRecipients(recipients)
+	if err != nil {
+		return Frame{}, err
+	}
+	payload, err := json.Marshal(message)
+	if err != nil {
+		return Frame{}, err
+	}
+	if err := h.canPublish(len(payload)); err != nil {
+		return Frame{}, err
+	}
+	recipientSet := make(map[string]bool, len(message.Recipients))
+	for _, recipient := range message.Recipients {
+		recipientSet[recipient] = true
+	}
+	recipientParticipants := make([]string, 0)
+	recipientSessions := make([]string, 0)
+	for recipientSession, recipientEntry := range h.presence {
+		if recipientSession == session || !recipientSet[recipientEntry.fingerprint] {
+			continue
+		}
+		recipientParticipants = append(recipientParticipants, recipientSession)
+		if recipientEntry.inbox {
+			recipientSessions = append(recipientSessions, recipientSession)
+		}
+	}
+	if err := h.canEnqueue(recipientSessions); err != nil {
+		return Frame{}, err
+	}
+	conversationID, err = h.resolveConversation(message.About, resolvedConversationID)
+	if err != nil {
+		return Frame{}, err
+	}
+	frame, err := h.publish(conversationID, payload, actorPrivateKey)
+	if err != nil {
+		return Frame{}, err
+	}
+	delivery := InboxFrame{
+		Actor: author, Text: message.Text, About: message.About,
+		Conversation: conversationID, Sequence: frame.Sequence, Re: message.Re,
+		Recipients: append([]string(nil), message.Recipients...),
+		Thread:     conversationID + ":" + strconv.FormatUint(frame.Sequence, 10),
+	}
+	last := len(h.history) - 1
+	h.history[last].Frame = &delivery
+	if h.participants[conversationID] == nil {
+		h.participants[conversationID] = make(map[string]bool)
+	}
+	h.participants[conversationID][session] = true
+	ref := frameRef{conversation: conversationID, sequence: frame.Sequence}
+	for _, recipientSession := range recipientParticipants {
+		h.participants[conversationID][recipientSession] = true
+	}
+	for _, recipientSession := range recipientSessions {
+		h.addInbox(recipientSession, ref)
+	}
+	return frame, nil
+}
+
+func actorFingerprint(key []byte) string {
+	digest := sha256.Sum256(key)
+	return hex.EncodeToString(digest[:])
+}
+
+func validateMessage(message Message) error {
+	if message.About == "" || len(message.About) > MaxMessageIDBytes || !utf8.ValidString(message.About) {
+		return fmt.Errorf("about must be non-empty UTF-8 of at most %d bytes", MaxMessageIDBytes)
+	}
+	if message.Text == "" || len(message.Text) > MaxMessageTextBytes || !utf8.ValidString(message.Text) {
+		return fmt.Errorf("text must be non-empty UTF-8 of at most %d bytes", MaxMessageTextBytes)
+	}
+	if len(message.Re) > MaxMessageIDBytes || !utf8.ValidString(message.Re) {
+		return fmt.Errorf("reply handle must be UTF-8 and at most %d bytes", MaxMessageIDBytes)
+	}
+	if len(message.Recipients) > MaxMessageRecipients {
+		return fmt.Errorf("message has %d recipients; maximum is %d", len(message.Recipients), MaxMessageRecipients)
+	}
+	return nil
+}
+
+func normalizeRecipients(recipients []string) ([]string, error) {
+	if len(recipients) > MaxMessageRecipients+1 {
+		return nil, fmt.Errorf("message has more than %d recipients", MaxMessageRecipients)
+	}
+	seen := make(map[string]bool, len(recipients))
+	normalized := make([]string, 0, len(recipients))
+	for _, recipient := range recipients {
+		if len(recipient) != sha256.Size*2 {
+			return nil, errors.New("recipient must be a full actor fingerprint")
+		}
+		decoded, err := hex.DecodeString(recipient)
+		if err != nil || hex.EncodeToString(decoded) != recipient {
+			return nil, errors.New("recipient must be a lowercase hexadecimal actor fingerprint")
+		}
+		if !seen[recipient] {
+			seen[recipient] = true
+			normalized = append(normalized, recipient)
+		}
+	}
+	if len(normalized) > MaxMessageRecipients {
+		return nil, fmt.Errorf("message has %d recipients; maximum is %d", len(normalized), MaxMessageRecipients)
+	}
+	sort.Strings(normalized)
+	return normalized, nil
+}
+
+func (h *Hub) canEnqueue(sessions []string) error {
+	for _, session := range sessions {
+		if inbox := h.inboxes[session]; inbox != nil && len(inbox.refs) >= MaxPendingInboxFrames {
+			return errors.New("a recipient inbox is full; retry after it is acknowledged or expires")
+		}
+	}
+	return nil
+}
+
+func (h *Hub) addInbox(session string, ref frameRef) {
+	state := h.inboxes[session]
+	if state == nil {
+		state = &inboxState{}
+		h.inboxes[session] = state
+	}
+	for _, pending := range state.refs {
+		if pending == ref {
+			return
+		}
+	}
+	state.refs = append(state.refs, ref)
+}
+
+// findConversation resolves an existing about/conversation pair without
+// changing the room. A blank result means publication may open a new
+// conversation after every payload and inbox bound has passed.
+func (h *Hub) findConversation(about, conversationID string) (string, *conversation, error) {
+	anchored := h.about[about]
+	if conversationID == "" {
+		conversationID = anchored
+	}
+	if conversationID == "" {
+		return "", nil, nil
+	}
+	conversation, exists := h.convs[conversationID]
+	if !exists {
+		return "", nil, errors.New("unknown conversation")
+	}
+	if conversation.about != "" && conversation.about != about {
+		return "", nil, errors.New("conversation does not match the about anchor")
+	}
+	if anchored != "" && anchored != conversationID {
+		return "", nil, errors.New("conversation does not match the about anchor")
+	}
+	return conversationID, conversation, nil
+}
+
+func (h *Hub) resolveConversation(about, conversationID string) (string, error) {
+	anchored := h.about[about]
+	if conversationID == "" {
+		conversationID = anchored
+	}
+	if conversationID != "" {
+		conversation, exists := h.convs[conversationID]
+		if !exists {
+			return "", errors.New("unknown conversation")
+		}
+		if conversation.about != "" && conversation.about != about {
+			return "", errors.New("conversation does not match the about anchor")
+		}
+		if anchored != "" && anchored != conversationID {
+			return "", errors.New("conversation does not match the about anchor")
+		}
+		if anchored == "" {
+			h.about[about] = conversationID
+		}
+		conversation.about = about
+		return conversationID, nil
+	}
+	nonce := make([]byte, 32)
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	opened, _, err := h.openConversation(nonce)
+	if err != nil {
+		return "", err
+	}
+	h.about[about] = opened
+	h.convs[opened].about = about
+	return opened, nil
+}
+
+func (h *Hub) canPublish(payloadBytes int) error {
+	if payloadBytes > MaxFramePayloadBytes {
+		return fmt.Errorf("frame payload exceeds %d bytes", MaxFramePayloadBytes)
+	}
+	if h.retainedFrames >= MaxRetainedFrames || h.retainedBytes+payloadBytes > MaxRetainedBytes {
+		return errors.New("live conversation capacity is full; retry after participants leave")
+	}
+	return nil
+}
+
 func (h *Hub) publish(conversationID string, payload []byte, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
 	conversation, ok := h.convs[conversationID]
 	if !ok {
 		return Frame{}, errors.New("unknown conversation")
+	}
+	if err := h.canPublish(len(payload)); err != nil {
+		return Frame{}, err
 	}
 	body := actorBody(h.generation, conversationID, conversation.next, conversation.last, payload)
 	actorSignature, err := signBytes(actorFrameDomain, actorPrivateKey, body)
@@ -568,6 +1127,8 @@ func (h *Hub) publish(conversationID string, payload []byte, actorPrivateKey ed2
 	conversation.last = digest
 	conversation.next++
 	conversation.frames = append(conversation.frames, frame)
+	h.retainedFrames++
+	h.retainedBytes += len(payload)
 	h.append("frame", conversationID, fmt.Sprint(frame.Sequence))
 	return frame, nil
 }
@@ -635,4 +1196,132 @@ func VerifyChain(frames []Frame, trustedNexusKey ed25519.PublicKey) error {
 		}
 	}
 	return nil
+}
+
+// MaxAttentionActors bounds one attention read. Focus is already bounded per
+// session and sessions per actor are bounded, but the number of distinct actors
+// is not, so the aggregate needs its own ceiling or a busy workroom would put an
+// unbounded list on every tool result.
+const MaxAttentionActors = 16
+
+// AttentionActor is one actor whose leased focus names an event the caller is
+// looking at. It is advisory: it reports who says they are attending to the
+// same thing, and confers nothing.
+type AttentionActor struct {
+	// Fingerprint is the full durable fingerprint, never a prefix. A truncated
+	// identity invites the reader to match it against another truncation.
+	Fingerprint string `json:"fingerprint"`
+	Name        string `json:"name"`
+	// Sessions counts this actor's live sessions that matched, so one person
+	// working from two windows reads as one actor rather than two people.
+	Sessions int    `json:"sessions"`
+	Status   string `json:"status"`
+	Note     string `json:"note,omitempty"`
+	// Matched lists the caller's event identifiers this actor's focus contains,
+	// sorted, so the reason for the row is visible rather than inferred.
+	Matched []string `json:"matched"`
+	// ActivityChangedAt is resident-observed and moves only when the activity
+	// moves, so an old timestamp means an old decision, not a quiet client.
+	ActivityChangedAt time.Time `json:"activity_changed_at"`
+}
+
+// FocusedOn reports live actors whose leased focus exactly contains one or more
+// of the given event identifiers, excluding the calling session.
+//
+// Three properties this deliberately holds. Matching is exact string equality
+// on identifiers the caller already has: no prefix, no normalisation, no
+// inference about what relates to what, because a guess about relatedness is
+// exactly the kind of helpfulness that becomes a claim nobody made. The
+// caller's own sessions are filtered out before actors are aggregated rather
+// than after, so an actor who is present in two windows and matches in one does
+// not have the other silently counted. And the result is capped, with the
+// overflow reported rather than dropped.
+func (h *Hub) FocusedOn(exclude string, events []string) ([]AttentionActor, int) {
+	if len(events) == 0 {
+		return nil, 0
+	}
+	wanted := make(map[string]bool, len(events))
+	for _, event := range events {
+		if event != "" {
+			wanted[event] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return nil, 0
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+
+	type aggregate struct {
+		actor     AttentionActor
+		matched   map[string]bool
+		changedAt time.Time
+	}
+	byActor := map[string]*aggregate{}
+	for session, entry := range h.presence {
+		if session == exclude {
+			continue
+		}
+		var hits []string
+		for _, event := range entry.activity.Focus {
+			if wanted[event] {
+				hits = append(hits, event)
+			}
+		}
+		if len(hits) == 0 {
+			continue
+		}
+		// Key on the fingerprint where there is one: it is the durable identity,
+		// and two sessions under one name but different keys are two actors.
+		key := entry.fingerprint
+		if key == "" {
+			key = "name:" + entry.actor
+		}
+		found, held := byActor[key]
+		if !held {
+			found = &aggregate{
+				actor:   AttentionActor{Fingerprint: entry.fingerprint, Name: entry.actor},
+				matched: map[string]bool{},
+			}
+			byActor[key] = found
+		}
+		found.actor.Sessions++
+		for _, hit := range hits {
+			found.matched[hit] = true
+		}
+		// Across an actor's sessions, report the most recent decision and the
+		// status that goes with it, so two windows do not race to describe one
+		// person by whichever map iteration happened to land last.
+		if found.changedAt.IsZero() || entry.activityChangedAt.After(found.changedAt) {
+			found.changedAt = entry.activityChangedAt
+			found.actor.Status = string(entry.activity.Status)
+			found.actor.Note = entry.activity.Note
+		}
+	}
+
+	actors := make([]AttentionActor, 0, len(byActor))
+	for _, found := range byActor {
+		found.actor.ActivityChangedAt = found.changedAt
+		found.actor.Matched = make([]string, 0, len(found.matched))
+		for event := range found.matched {
+			found.actor.Matched = append(found.actor.Matched, event)
+		}
+		sort.Strings(found.actor.Matched)
+		actors = append(actors, found.actor)
+	}
+	// Order by most recently moved, then by fingerprint so the tie is stable
+	// rather than dependent on map iteration.
+	sort.Slice(actors, func(i, j int) bool {
+		if !actors[i].ActivityChangedAt.Equal(actors[j].ActivityChangedAt) {
+			return actors[i].ActivityChangedAt.After(actors[j].ActivityChangedAt)
+		}
+		return actors[i].Fingerprint < actors[j].Fingerprint
+	})
+	omitted := 0
+	if len(actors) > MaxAttentionActors {
+		omitted = len(actors) - MaxAttentionActors
+		actors = actors[:MaxAttentionActors]
+	}
+	return actors, omitted
 }

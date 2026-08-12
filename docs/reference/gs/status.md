@@ -2,10 +2,10 @@
 title: gs status
 summary: Project the current state of the workroom, bounded by default.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1e07c1f654274392a11ac43943211dd9609f0205
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a40ed6053a0bb5c1eeed9febb540498d4258799f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cccadaa785ee972d3154690bb4ad262d1dcd9633
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:428df978ec0099cd094b5da1ac93b3837885c0a8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66b6cb0b770fe88808130a195babf79fe1ea7746
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
 ---
 
 # `gs status`
@@ -56,8 +56,8 @@ fallback`. Then a line of totals, and five sections:
 
 | Section | What is in it |
 |---|---|
-| Actionable commitments | Commitments someone can advance now: `open`, `requested`, `promised`, `reported`. |
-| Needs attention | Live commitments in any other state — stale, reneged, cancelled, dangling. |
+| Actionable commitments | Commitments someone can advance now: `open`, `promised`, `reported`. |
+| Needs attention | Live commitments in any other state — `stale`, `reneged`, `cancelled`. |
 | Current artifacts | Artifacts that are neither retired nor stale. |
 | Stale artifacts | Artifacts that were retired, and artifacts a retirement reached. |
 | Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
@@ -73,6 +73,30 @@ status is `stale` outright and the mark is not repeated.
 
 Satisfied and withdrawn commitments are finished, and are counted in the
 totals rather than listed.
+
+## Why this disagrees with the Work drawer
+
+The browser UI's Work counts and these totals describe different
+populations on purpose, and neither is a rounding of the other.
+
+`gs status` reports commitments by lifecycle status, and reports
+artifacts on their own line. It never adds the two together, because an
+artifact is not a commitment and a total mixing them matches nothing you
+can act on.
+
+The Work drawer answers a different question — what a reader should look
+at — so it derives `active`, `closed` and `attention` from those same
+commitments, and shows artifacts needing attention beside them rather
+than inside them. `attention` deliberately overlaps `active` and
+`closed`, because staleness and dispute are qualifiers sitting on top of
+a lifecycle status: most of what needs attention is already counted
+somewhere else. Adding the drawer's three figures together therefore
+exceeds the number of commitments, which is correct and is why they are
+not presented as a partition.
+
+So a number here and a number there can differ while both are right. If
+you are reconciling them, compare like with like: the drawer's `total`
+is the commitment count, and everything else is a different cut of it.
 
 Each list keeps the **newest 20** entries and says exactly how many older
 ones it omitted — "Showing 20 of 500; 480 older omitted" — so a shortened
@@ -148,20 +172,6 @@ ordinary full audit, and prints a progress line after one second rather
 than appearing to hang. [`gs verify`](verify.md) never takes the
 checkpoint shortcut: it always audits the whole sequence.
 
-## Local worktrees
-
-The browser view served by a resident also reports local checkout state.
-It names the served checkout's own absolute path, so a reader can tell
-which repository the page is showing, and otherwise emits only checkout
-basenames, branch and HEAD, and explicit clean, dirty, detached, bare,
-locked, prunable or unavailable state. Disclosing the served path is safe
-because [`gs serve`](serve.md) refuses any listen address that is not
-loopback: whoever is reading the page is already on the host it names.
-
-None of that is part of the durable projection. A checkout associated
-with a commitment only through a commit's `Rests-On:` trailer is marked
-**unverified trailer**, because trailer text is not an actor-signed
-statement.
 
 ## See also
 

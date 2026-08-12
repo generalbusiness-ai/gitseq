@@ -1,10 +1,11 @@
 ---
 title: MCP wait
-summary: Long-poll after a composite cursor.
+summary: Long-poll after a composite cursor and repeat priority chat until acknowledged.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd731b2cc1986b3ca6fe9b0a0af3394790a3ee6b
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:428df978ec0099cd094b5da1ac93b3837885c0a8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc5ca55fb4a4e67e2395903519f2103a92930268
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66b6cb0b770fe88808130a195babf79fe1ea7746
 ---
 
 # `wait`
@@ -47,6 +48,7 @@ everything up to now with `reset` set.
 | `reset` | The live side restarted; treat presence and conversation as new. |
 | `durable` | Durable events after your cursor. |
 | `live` | Presence and conversation changes. |
+| `priority_ephemeral_chat` | The current unacknowledged addressed frames for this exact session. It repeats until `ack`; `skipped` counts additional pending frames behind the current page. |
 | `current_available_to_you` | The complete bounded current lane of open, unclaimed requests addressed to you. |
 | `current_waiting_on_you` | Commitments now needing your move. |
 | `current_not_actionable` | Commitments nobody can advance. |
@@ -59,6 +61,12 @@ durable event arrived, so polling cannot lose work that predates the
 cursor. These open requests are available to claim; they do not invent a
 performer or a waiting party.
 
+Priority ephemeral chat follows the same no-loss rule but is independent of
+the cursor: a pending frame makes `wait` return immediately and keeps returning
+until [`ack`](ack.md) receives its exact thread handle. Acknowledging in one
+session does not acknowledge a sibling session, and it advances no durable or
+live cursor. Acknowledging the visible page reveals the next pending page.
+
 ## Resets are not losses
 
 On a live reset the durable frontier is still good: the server replays
@@ -66,8 +74,12 @@ the durable delta, and only presence and conversations are gone. Durable
 state does not reset.
 
 Without a resident, `wait` still follows the durable log locally and
-reports a `degraded` cursor. Ephemeral changes simply do not arrive,
-because there are none.
+reports a `degraded` cursor. The priority inbox says `available: false` rather
+than pretending that an unavailable live room is empty.
+
+`wait` is an active long poll. It can return addressed chat to a process that
+is already running and waiting; it cannot start or wake an idle agent host.
+Host wake-up is a separate connector responsibility.
 
 ## Using it well
 
@@ -80,4 +92,4 @@ because there are none.
 
 ## See also
 
-- [`status`](status.md), [`presence`](presence.md)
+- [`status`](status.md), [`ack`](ack.md), [`presence`](presence.md)

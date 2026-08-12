@@ -9,7 +9,7 @@ import {
   buildWorkProjection,
   filterPersonalWorkProjection,
   filterWorkProjection,
-  otherWorkAttentionLabel,
+  otherWorkAttentionClause,
   topicChangeSince,
   workCommitmentCounts,
   workItemNeedsAction,
@@ -22,6 +22,7 @@ import {
   type WorkTopicChange,
 } from "../lib/work";
 import { worktreesForCommitment, type WorktreeAssociation } from "../lib/worktrees";
+import { RebuildNotice } from "./RebuildNotice";
 import { temporaryDiscussionCounts, temporaryDiscussionLabel, type TemporaryDiscussionCount } from "../lib/interaction";
 import { cn, commitmentRelationship, statusLabel, statusTint } from "../lib/util";
 import { EventTime } from "./EventTime";
@@ -166,7 +167,7 @@ export function WorkView({
             />
             <FilterCheck
               label="Attention"
-              description={`Stale or disputed, which is a qualifier rather than a status: ${counts.attention} of ${counts.total} commitments, most of them also counted as active or closed. Separately, ${otherWorkAttentionLabel(attentionItemCounts(work?.attention ?? []))} need attention.`}
+              description={`Stale or disputed, which is a qualifier rather than a status: ${counts.attention} of ${counts.total} commitments, most of them also counted as active or closed. Separately, ${otherWorkAttentionClause(attentionItemCounts(work?.attention ?? []))}.`}
               checked={filters.attention}
               count={counts.attention}
               tone="danger"
@@ -226,7 +227,10 @@ export function WorkView({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         {!projection || !visible ? (
-          <p className="py-12 text-center text-sm text-faint">Loading work…</p>
+          // RebuildNotice owns both mutually exclusive waiting states. A cold
+          // rebuild replaces the generic loading message; a warm brief read
+          // keeps it.
+          <RebuildNotice />
         ) : visible.topics.length === 0 && visible.attention.length === 0 ? (
           <div className="mx-auto max-w-xl py-16 text-center">
             <p className="font-serif text-lg text-foreground/90">No work matches this view.</p>

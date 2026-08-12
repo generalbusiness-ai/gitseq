@@ -649,13 +649,16 @@ func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
 			return Decision{Event: record.record.ID, Verdict: Disputed, Reason: "kind definition has a live predecessor; supersede it before ratifying a replacement"}
 		}
 	}
-	if state := target.body.(*State); state.Kind == KindRoster && rosterAuthorityRole(*state) != "" {
-		beneficiary := state.Body["actor"]
-		if beneficiary == target.record.Actor || beneficiary == record.record.Actor {
-			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "authority grant cannot be authored or ratified by its beneficiary"}
-		}
-		if rosterAuthorityRole(*state) == "operator" && !f.hasRole(record.record.Actor, "operator") {
-			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "operator standing is required to ratify an operator grant"}
+	if state := target.body.(*State); state.Kind == KindRoster {
+		normalized := normalizeRosterState(state.Body["kind"], state.Body["role"])
+		if normalized.authorityRole != "" {
+			beneficiary := state.Body["actor"]
+			if beneficiary == target.record.Actor || beneficiary == record.record.Actor {
+				return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "authority grant cannot be authored or ratified by its beneficiary"}
+			}
+			if normalized.authorityRole == "operator" && !f.hasRole(record.record.Actor, "operator") {
+				return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "operator standing is required to ratify an operator grant"}
+			}
 		}
 	}
 	satisfier := target.definition.Satisfier
@@ -692,8 +695,9 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "founding operator seed cannot be retired"}
 		}
 		state := governance.body.(*State)
-		role := rosterAuthorityRole(*state)
-		operatorMembership := rosterMembership(*state) && f.membershipCarriesOperator(state.Body["actor"], governance.record.ID)
+		normalized := normalizeRosterState(state.Body["kind"], state.Body["role"])
+		role := normalized.authorityRole
+		operatorMembership := normalized.membership && f.membershipCarriesOperator(state.Body["actor"], governance.record.ID)
 		if role == "operator" || operatorMembership {
 			reason := "operator standing is required to change an operator's membership"
 			if role == "operator" && restoring {
@@ -746,23 +750,54 @@ func (f *foldState) governanceTarget(event string) (*parsedRecord, bool, bool) {
 	return nil, false, false
 }
 
-func rosterMembership(state State) bool {
-	role := state.Body["role"]
-	return state.Body["kind"] == "" || role == "participant"
+type normalizedRosterState struct {
+	membership    bool
+	kind          string
+	authorityRole string
 }
 
-func rosterAuthorityRole(state State) string {
-	role := state.Body["role"]
-	if state.Body["kind"] == "" {
+// normalizeRosterState is the one compatibility boundary for the legacy
+// roster encoding, where role carried either descriptive kind or authority.
+// Modern records carry kind independently. All fold interpretation and the
+// application precondition vocabulary derive from this result.
+func normalizeRosterState(kind, role string) normalizedRosterState {
+	normalized := normalizedRosterState{
+		membership:    kind == "" || role == "participant",
+		kind:          kind,
+		authorityRole: role,
+	}
+	if kind == "" {
 		switch role {
 		case "agent", "human", "service":
-			return ""
+			normalized.kind = role
+			normalized.authorityRole = ""
+		case "operator":
+			normalized.kind = "human"
+		default:
+			normalized.kind = "unspecified"
 		}
 	}
 	if role == "participant" {
-		return ""
+		normalized.authorityRole = ""
 	}
-	return role
+	return normalized
+}
+
+// IsActorKind reports whether a word is one of the descriptive actor kinds the
+// roster vocabulary defines. It answers the one question both callers ask, so
+// it is named for the vocabulary rather than for either of them: the fold's
+// authority precondition asks it to reject a kind word offered as an authority,
+// and the application asks it to accept a kind on a new actor.
+//
+// It delegates to the compatibility normalizer rather than carrying a list, so
+// the vocabulary lives in exactly one place. Both clauses are load-bearing: the
+// normalizer derives kind "unspecified" for any word it does not recognise, so
+// comparing kind alone would admit "unspecified" as a kind. Requiring an empty
+// authority is what separates a word that names a kind from one the normalizer
+// merely failed to classify.
+func IsActorKind(word string) bool {
+	normalized := normalizeRosterState("", word)
+	return normalized.kind == word && normalized.authorityRole == ""
 }
 
 // membershipCarriesOperator includes dormant grants: restoring their retired
@@ -783,30 +818,20 @@ func (f *foldState) addRoleGrant(actor, name, kind, role, statement, ratificatio
 	if actor == "" || role == "" {
 		return
 	}
-	grant := roleGrant{
-		actor: actor, name: name, kind: kind, role: role,
-		statement: statement, ratification: ratification,
+	normalized := normalizeRosterState(kind, role)
+	grantRole := normalized.authorityRole
+	if grantRole == "" {
+		grantRole = "participant"
 	}
-	if kind == "" {
-		// Before kind and authority became independent, every roster record
-		// admitted its actor and stored either a descriptive kind or an
-		// authority in role. Treat all such records uniformly as combined
-		// membership records; a kind-bearing record is the wire discriminator
-		// for the modern split model.
-		grant.membership = true
-		switch role {
-		case "agent", "human", "service":
-			grant.kind, grant.role = role, "participant"
-		case "operator":
-			grant.kind = "human"
-		default:
-			grant.kind = "unspecified"
-		}
-	} else if role == "participant" || ratification == "" {
-		// The only unratified grant is the genesis operator seed, which is
-		// necessarily both membership and authority.
-		grant.membership = true
-	} else if len(restsOn) != 0 {
+	grant := roleGrant{
+		actor: actor, name: name, kind: normalized.kind, role: grantRole,
+		statement: statement, ratification: ratification,
+		membership: normalized.membership || ratification == "",
+	}
+	// The only unratified grant is the genesis operator seed, which is
+	// necessarily both membership and authority. Other modern authority grants
+	// stay bound to their actor's membership statement.
+	if !grant.membership && len(restsOn) != 0 {
 		grant.membershipBasis = restsOn[0]
 	}
 	f.roleGrants = append(f.roleGrants, grant)

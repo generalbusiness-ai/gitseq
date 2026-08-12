@@ -17,11 +17,13 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/observe"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -53,6 +55,12 @@ type VerifiedFrontier struct {
 	Depth int    `json:"depth"`
 }
 
+// ResidentQueueDepth bounds the submissions inside the sequencer at once,
+// counting the one holding the lock. Gitseq's resident always sets it: the
+// kernel treats zero as unbounded, which is the embedding opt-out and not a
+// posture this application takes.
+const ResidentQueueDepth = 32
+
 type Config struct {
 	Version              int               `json:"version"`
 	Genesis              string            `json:"genesis"`
@@ -72,11 +80,14 @@ type Workspace struct {
 	MetaDir   string
 	Store     gitstore.Store
 	Config    Config
+	observer  observe.Observer
 
 	snapshotMu     sync.Mutex
 	snapshotCache  *Snapshot
 	snapshotSource SnapshotSource
 	snapshotFolder *workroom.Folder
+	flightMu       sync.Mutex
+	flight         atomic.Pointer[snapshotFlight]
 	reader         *kernel.Reader
 	submitterOnce  sync.Once
 	submitter      *kernel.Submitter
@@ -85,6 +96,16 @@ type Workspace struct {
 	worktreesCached   []WorktreeView
 	repoPathCached    string
 	worktreesCachedAt time.Time
+}
+
+// snapshotFlight is one shared resident read. Its work outlives any individual
+// HTTP reader; callers may stop waiting without cancelling verification for
+// everybody else. Closing done publishes result and err to all waiters.
+type snapshotFlight struct {
+	done     chan struct{}
+	progress kernel.AuditProgress
+	result   SourcedSnapshot
+	err      error
 }
 
 // Snapshot is an immutable borrowed view. A Workspace may return its resident
@@ -306,6 +327,12 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 }
 
 func Open(ctx context.Context, repo string) (*Workspace, error) {
+	return OpenObserved(ctx, repo, nil)
+}
+
+// OpenObserved opens a workspace with an exporter-neutral observer. Ordinary
+// callers use Open and pay no observation cost.
+func OpenObserved(ctx context.Context, repo string, observer observe.Observer) (*Workspace, error) {
 	gitDir, commonDir, err := ResolveGitDirs(ctx, repo)
 	if err != nil {
 		return nil, err
@@ -323,7 +350,13 @@ func Open(ctx context.Context, repo string) (*Workspace, error) {
 		(config.VerifiedFrontier != nil && (config.VerifiedFrontier.Head == "" || config.VerifiedFrontier.Depth < 0)) {
 		return nil, errors.New("invalid gitseq config")
 	}
-	return &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir}, Config: config}, nil
+	return &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir, Observer: observer}, Config: config, observer: observer}, nil
+}
+
+// SetObserver configures observation before a workspace begins serving.
+func (w *Workspace) SetObserver(observer observe.Observer) {
+	w.observer = observer
+	w.Store.Observer = observer
 }
 
 func Init(ctx context.Context, repo, operatorName string, ceiling uint64) (*Workspace, workroom.Record, error) {
@@ -480,7 +513,7 @@ func (w *Workspace) AddActor(ctx context.Context, operatorName, name, kind strin
 	if kind == "" {
 		kind = "agent"
 	}
-	if kind != "human" && kind != "agent" && kind != "service" {
+	if !workroom.IsActorKind(kind) {
 		return Actor{}, nil, fmt.Errorf("actor kind must be human, agent, or service, got %q", kind)
 	}
 	private, fingerprint, path, err := generateActor(filepath.Join(w.MetaDir, "actors"), name)
@@ -646,7 +679,7 @@ func (w *Workspace) RevokeRole(ctx context.Context, revokerName, actorAddress, r
 }
 
 func validateAuthorityRole(role string) error {
-	if role == "" || role == "participant" || role == "agent" || role == "human" || role == "service" {
+	if role == "" || role == "participant" || workroom.IsActorKind(role) {
 		return fmt.Errorf("invalid authority role %q", role)
 	}
 	return nil
@@ -792,20 +825,34 @@ func (w *Workspace) ResolveActorAddress(address string) (Actor, error) {
 }
 
 func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request) (Submission, error) {
+	done := observe.Begin(ctx, w.observer, observe.OperationSubmit, observe.PathSubmission)
+	var resultErr error
+	defer func() {
+		if done != nil {
+			done(resultErr)
+		}
+	}()
 	if w.Config.ReadOnly {
-		return Submission{}, errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
+		resultErr = errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
+		return Submission{}, resultErr
 	}
 	w.submitterOnce.Do(func() {
 		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{
 			SigningKey: w.Config.SequencerKey, CheckpointProfile: workroom.ProfileVersion, PreAppend: w.allowlist,
+			MaxQueueDepth: ResidentQueueDepth,
 		})
 	})
 	result, err := w.submitter.Submit(ctx, request)
 	if err != nil {
+		resultErr = err
 		return Submission{}, err
+	}
+	if w.observer != nil {
+		w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationSubmit, Path: observe.PathRef, Outcome: observe.OutcomeOK, Items: int64(result.CASRetries)})
 	}
 	decoded, err := intent.Verify(request.Signed)
 	if err != nil {
+		resultErr = err
 		return Submission{}, err
 	}
 	record := workroom.Record{
@@ -873,6 +920,27 @@ func (w *Workspace) EventID(commit string) string {
 	return "git:" + w.Config.ObjectFormat + ":" + w.Config.Genesis + "#git:" + w.Config.ObjectFormat + ":" + commit
 }
 
+// RebuildProgress reports how far a cold verified rebuild has got, and whether
+// one is running at all. It takes no lock. That is not an optimisation: the
+// rebuild holds snapshotMu for its whole duration, so this is the only way a
+// reader can learn that the wait it is in has an end and roughly where.
+//
+// Running is false when no audit is in flight, which is the ordinary warm case
+// — callers should stay quiet then rather than render a finished progress bar.
+func (w *Workspace) RebuildProgress() (progress kernel.Progress, running bool) {
+	flight := w.flight.Load()
+	if flight == nil {
+		return kernel.Progress{}, false
+	}
+	select {
+	case <-flight.done:
+		return kernel.Progress{}, false
+	default:
+	}
+	progress = flight.progress.Snapshot()
+	return progress, progress.Started
+}
+
 func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	result, err := w.SnapshotWithSource(ctx)
 	return result.Snapshot, err
@@ -882,6 +950,53 @@ func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 // while retaining whether the local projection came from a signed checkpoint,
 // a verified incremental continuation, or a cold full audit.
 func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, error) {
+	flight := w.snapshotFlight()
+	select {
+	case <-flight.done:
+		return flight.result, flight.err
+	default:
+	}
+	select {
+	case <-flight.done:
+		return flight.result, flight.err
+	case <-ctx.Done():
+		return SourcedSnapshot{}, ctx.Err()
+	}
+}
+
+// snapshotFlight joins or starts the one resident read in flight. The work
+// deliberately has process lifetime rather than inheriting one caller's
+// cancellation: one disconnected browser must not abort verification for
+// every other reader or make the next request repeat the same cold audit.
+func (w *Workspace) snapshotFlight() *snapshotFlight {
+	w.flightMu.Lock()
+	defer w.flightMu.Unlock()
+	if flight := w.flight.Load(); flight != nil {
+		return flight
+	}
+	flight := &snapshotFlight{done: make(chan struct{})}
+	w.flight.Store(flight)
+	go func() {
+		ctx := observe.WithObserver(context.Background(), w.observer)
+		flight.result, flight.err = w.snapshotWithSource(ctx, &flight.progress)
+		close(flight.done)
+		w.flightMu.Lock()
+		if w.flight.Load() == flight {
+			w.flight.Store(nil)
+		}
+		w.flightMu.Unlock()
+	}()
+	return flight
+}
+
+func (w *Workspace) newReader() *kernel.Reader {
+	return kernel.NewReader(w.Store, kernel.CheckpointOptions{
+		Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
+	})
+}
+
+func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.AuditProgress) (SourcedSnapshot, error) {
+	started := time.Now()
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
 	head, err := w.Store.Head(ctx, kernel.Ref(w.Config.Genesis))
@@ -894,15 +1009,15 @@ func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, er
 		}); err != nil {
 			return SourcedSnapshot{}, err
 		}
+		w.recordSnapshot(ctx, observe.PathCache, started, w.snapshotCache.Depth, nil)
 		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
 	}
 	if w.reader == nil {
-		w.reader = kernel.NewReader(w.Store, kernel.CheckpointOptions{
-			Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
-		})
+		w.reader = w.newReader()
 	}
-	loaded, err := w.reader.Load(ctx, w.Config.Genesis)
+	loaded, err := w.reader.LoadWithProgress(ctx, w.Config.Genesis, progress)
 	if err != nil {
+		w.recordSnapshot(ctx, observe.PathOther, started, 0, err)
 		return SourcedSnapshot{}, err
 	}
 	if err := w.rememberVerifiedFrontier(ctx, loaded.Verification); err != nil {
@@ -925,30 +1040,39 @@ func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, er
 		// The application projection and verified reader must advance as a
 		// pair. If local application state was discarded or mismatched,
 		// deliberately replace the reader and perform a cold full audit.
-		w.reader = kernel.NewReader(w.Store, kernel.CheckpointOptions{
-			Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
-		})
-		loaded, err = w.reader.Load(ctx, w.Config.Genesis)
+		w.reader = w.newReader()
+		loaded, err = w.reader.LoadWithProgress(ctx, w.Config.Genesis, progress)
 		if err != nil {
 			return SourcedSnapshot{}, err
 		}
 	}
 	source := SnapshotSourceIncrementalTail
+	path := observe.PathIncremental
 	if loaded.Full {
 		source = SnapshotSourceColdFullAudit
+		path = observe.PathCold
 		if loaded.Checkpoint {
 			source = SnapshotSourceSignedCheckpointTail
+			path = observe.PathCheckpoint
 		}
 	}
+	foldStarted := time.Now()
 	if loaded.Full {
 		records := make([]workroom.Record, 0, len(loaded.Events))
 		for _, event := range loaded.Events {
 			records = append(records, w.record(event))
 		}
 		w.snapshotFolder = workroom.NewFolder(records)
+		if w.observer != nil {
+			w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationFold, Path: path, Outcome: observe.OutcomeOK, Duration: time.Since(foldStarted), Items: int64(len(records))})
+		}
 	} else {
+		foldStarted := time.Now()
 		for _, event := range loaded.Events[start:] {
 			w.snapshotFolder.Append(w.record(event))
+		}
+		if w.observer != nil {
+			w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationFold, Path: path, Outcome: observe.OutcomeOK, Duration: time.Since(foldStarted), Items: int64(len(loaded.Events[start:]))})
 		}
 	}
 	snapshot := Snapshot{
@@ -957,7 +1081,18 @@ func (w *Workspace) SnapshotWithSource(ctx context.Context) (SourcedSnapshot, er
 	}
 	w.snapshotCache = &snapshot
 	w.snapshotSource = source
+	w.recordSnapshot(ctx, path, started, snapshot.Depth, nil)
 	return SourcedSnapshot{Snapshot: snapshot, Source: source}, nil
+}
+
+func (w *Workspace) recordSnapshot(ctx context.Context, path observe.Path, started time.Time, depth int, err error) {
+	if w.observer == nil {
+		return
+	}
+	w.observer.Record(ctx, observe.Measurement{
+		Operation: observe.OperationSnapshot, Path: path, Outcome: observe.Classify(ctx, err),
+		Duration: time.Since(started), Items: int64(depth),
+	})
 }
 
 func (w *Workspace) record(event kernel.Event) workroom.Record {

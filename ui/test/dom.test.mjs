@@ -289,3 +289,233 @@ test("Link to draft visibly owns the thread draft and submits every exact select
     await vite.close();
   }
 });
+
+// A rebuilding resident is not a broken one, and for several minutes the
+// browser could not tell a reader which it was looking at. This pins what the
+// notice must say and must not: that verification is happening, how far it has
+// got, and no claim that anything failed or that anything shown is current.
+test("the rebuild notice explains verification without implying failure or currentness", async () => {
+  const vite = await createServer({ root: uiRoot, server: { middlewareMode: true }, appType: "custom" });
+  const mounted = createRoot(document.getElementById("root"));
+  const previousFetch = globalThis.fetch;
+
+  let report = { running: true, verified: 300, total: 1200 };
+  globalThis.fetch = async () => ({ ok: true, statusText: "OK", json: async () => report });
+
+  try {
+    const { RebuildNotice } = await vite.ssrLoadModule("/src/components/RebuildNotice.tsx");
+
+    await act(async () => {
+      mounted.render(React.createElement(RebuildNotice, { poll: 1000000 }));
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    const notice = document.querySelector('[role="status"]');
+    assert.notEqual(notice, null, "a rebuild in flight showed no notice at all");
+    assert.equal(notice.getAttribute("aria-live"), "polite");
+    assert.match(notice.textContent, /Verifying durable history/);
+    assert.match(notice.textContent, /verified 300 of 1,200/, "the measured count is not shown");
+    assert.doesNotMatch(document.body.textContent, /Loading work/, "measured rebuild progress was shown alongside generic loading");
+
+    const bar = document.querySelector('[role="progressbar"]');
+    assert.equal(bar.getAttribute("aria-valuenow"), "300");
+    assert.equal(bar.getAttribute("aria-valuemax"), "1200");
+    assert.match(bar.getAttribute("aria-valuetext"), /300 of 1200 records verified/);
+
+    for (const forbidden of [/error/i, /failed/i, /broken/i, /nothing is wrong/i, /up to date/i, /current as of/i]) {
+      assert.doesNotMatch(notice.textContent, forbidden, `the notice implies ${forbidden}`);
+    }
+
+    // Rev-list enumeration can itself take time. Explain that cold work before
+    // claiming a denominator the kernel does not know yet.
+    report = { running: true };
+    await act(async () => {
+      mounted.render(React.createElement(RebuildNotice, { poll: 1000001 }));
+    });
+    await act(async () => { await Promise.resolve(); });
+    assert.match(document.body.textContent, /Preparing to verify durable history/);
+    assert.equal(document.querySelector('[role="progressbar"]'), null);
+
+    // Verification can finish before checkpoint persistence and the Workroom
+    // fold. Keep the measured rebuild state, but say what remains.
+    report = { running: true, verified: 1200, total: 1200 };
+    await act(async () => {
+      mounted.render(React.createElement(RebuildNotice, { poll: 1000002 }));
+    });
+    await act(async () => { await Promise.resolve(); });
+    assert.match(document.body.textContent, /Preparing the verified work view/);
+    assert.doesNotMatch(document.body.textContent, /Loading work/);
+
+    // Warm: show only the ordinary brief loading state, not a finished bar.
+    report = { running: false };
+    await act(async () => {
+      mounted.render(React.createElement(RebuildNotice, { poll: 1000003 }));
+    });
+    await act(async () => { await Promise.resolve(); });
+    assert.equal(document.querySelector('[role="progressbar"]'), null, "a warm resident still showed a progress bar");
+    assert.match(document.body.textContent, /Loading work/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    await act(async () => { mounted.unmount(); });
+    await vite.close();
+  }
+});
+
+// Advisory focus and shared selection are wired through click handlers, so a
+// source regex can neither see the wiring break nor survive a harmless
+// refactor. These drive the real components in a DOM and read what the handler
+// was called with. The rendering half of focus is pinned behaviourally in
+// components.test.mjs; only the click half needs a browser.
+
+const focusRoom = () => {
+  const room = structuredClone(workroom);
+  room.status.durable.projection.statements = [
+    { event: "event-one", actor: "codex-fingerprint", kind: "request", text: "repair the UI", body: { to: "codex-fingerprint" }, timestamp: 10 },
+  ];
+  room.status.durable.projection.decisions = [{ event: "event-one", verdict: "effective", reason: "recorded" }];
+  room.status.durable.projection.commitments = [
+    { request: "event-one", requester: "codex-fingerprint", addressed_to: "codex-fingerprint", status: "open" },
+  ];
+  room.status.durable.projection.provenance = { "event-one": [] };
+  room.status.live.presence = { "handle:codex": "codex (codex-fingerprin)" };
+  room.status.live.activity = { "handle:codex": { status: "blocked", focus: ["event-one"], note: "waiting on review" } };
+  return room;
+};
+
+const buttonByText = (match) =>
+  [...document.querySelectorAll("button")].find((button) => match(button.textContent.trim()));
+
+test("the focus button toggles advisory focus for the selected event", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const calls = [];
+  try {
+    const { TopBar } = await vite.ssrLoadModule("/src/components/TopBar.tsx");
+    const mount = (focus) =>
+      act(async () => {
+        root.render(
+          React.createElement(TopBar, {
+            workroom: focusRoom(),
+            session: { actor: "codex", activity: { status: "available", focus }, setActivity: (next) => calls.push(next) },
+            mainView: "work",
+            selection: { kind: "event", id: "event-one" },
+            onShowWork() {}, onShowActivity() {}, onJumpEvent() {}, onOpenProfile() {},
+          }),
+        );
+      });
+
+    await mount([]);
+    const focusButton = buttonByText((text) => text.startsWith("focus"));
+    assert.ok(focusButton, "focus button did not render for a selected event");
+    await click(focusButton);
+    assert.deepEqual(calls.at(-1), { focus: ["event-one"] }, "focusing did not add the selected event");
+
+    // Focused already: the same button must remove it rather than add it twice.
+    await mount(["event-one"]);
+    const unfocusButton = buttonByText((text) => text === "unfocus");
+    assert.ok(unfocusButton, "unfocus button did not render for a focused selection");
+    await click(unfocusButton);
+    assert.deepEqual(calls.at(-1), { focus: [] }, "unfocusing did not remove the selected event");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+test("the clear button empties advisory focus", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const calls = [];
+  try {
+    const { TopBar } = await vite.ssrLoadModule("/src/components/TopBar.tsx");
+    await act(async () => {
+      root.render(
+        React.createElement(TopBar, {
+          workroom: focusRoom(),
+          session: {
+            actor: "codex",
+            activity: { status: "available", focus: ["event-one", "event-two"] },
+            setActivity: (next) => calls.push(next),
+          },
+          mainView: "work",
+          onShowWork() {}, onShowActivity() {}, onJumpEvent() {}, onOpenProfile() {},
+        }),
+      );
+    });
+    const clear = buttonByText((text) => text === "clear");
+    assert.ok(clear, "clear button did not render while focus was held");
+    await click(clear);
+    assert.deepEqual(calls.at(-1), { focus: [] }, "clear did not empty the held focus");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+test("opening a work item selects the event and opens its thread", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const selected = [];
+  const opened = [];
+  try {
+    const { WorkView } = await vite.ssrLoadModule("/src/components/WorkDrawer.tsx");
+    await act(async () => {
+      root.render(
+        React.createElement(WorkView, {
+          workroom: focusRoom(),
+          session: { actor: "codex", activity: { status: "available", focus: [] }, setActivity() {} },
+          highlight: { events: new Set(), commits: new Set() },
+          onSelect: (selection) => selected.push(selection),
+          onOpenThread: (event) => opened.push(event),
+        }),
+      );
+    });
+    const row = [...document.querySelectorAll("button")].find((button) => button.textContent.includes("repair the UI"));
+    assert.ok(row, "no work row rendered for the open commitment");
+    await click(row);
+    // Both halves matter: selection drives the rest of the surface, and the
+    // thread only opens because the same handler asks for it.
+    assert.deepEqual(selected.at(-1), { kind: "event", id: "event-one" }, "opening a work item did not select its event");
+    assert.deepEqual(opened.at(-1), "event-one", "opening a work item did not open its thread");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+// WorkDrawer renders the focus marker at two sites: the list row and the board
+// card. Breaking the shared FocusActors body reddens tests, but that only shows
+// the component is used somewhere — removing the board site alone left the whole
+// suite green. This drives the real presentation toggle so the board site is
+// pinned on its own.
+test("advisory focus renders on the board card, not only the list row", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  try {
+    const { WorkView } = await vite.ssrLoadModule("/src/components/WorkDrawer.tsx");
+    await act(async () => {
+      root.render(
+        React.createElement(WorkView, {
+          workroom: focusRoom(),
+          session: { actor: "codex", activity: { status: "available", focus: [] }, setActivity() {} },
+          highlight: { events: new Set(), commits: new Set() },
+          onSelect() {}, onOpenThread() {},
+        }),
+      );
+    });
+    const focusMarker = () => document.querySelector('[aria-label^="Focused here:"]');
+    assert.ok(focusMarker(), "the list row did not render the focus marker");
+
+    // Switch presentations through the control a reader would use, so this also
+    // fails if the toggle stops reaching the board.
+    const boardButton = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "Board");
+    assert.ok(boardButton, "no Board presentation control rendered");
+    await click(boardButton);
+
+    assert.ok(focusMarker(), "the board card did not render the focus marker");
+    assert.match(focusMarker().getAttribute("aria-label"), /codex \(blocked\)/, "board focus marker named the wrong actor or status");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});

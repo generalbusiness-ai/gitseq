@@ -11,8 +11,10 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -131,6 +133,7 @@ type room struct {
 	mu        sync.Mutex
 	baseURL   string
 	announced bool
+	inbox     bool
 	// checked records that the sole-identity check has already been made for
 	// this workroom. It survives a lost service, because losing an address
 	// says nothing about who holds the name, and re-checking after our own
@@ -155,6 +158,7 @@ func (r *room) endpoint() (string, bool) {
 	if err != nil {
 		r.baseURL = ""
 		r.announced = false
+		r.inbox = false
 		return "", false
 	}
 	r.baseURL = validated
@@ -169,6 +173,7 @@ func (r *room) lost() {
 	defer r.mu.Unlock()
 	r.baseURL = ""
 	r.announced = false
+	r.inbox = false
 }
 
 func (r *room) joined() {
@@ -181,6 +186,18 @@ func (r *room) present() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.announced
+}
+
+func (r *room) setInboxAvailable(available bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.inbox = available
+}
+
+func (r *room) inboxAvailable() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.inbox
 }
 
 func (r *room) identityChecked() bool {
@@ -365,14 +382,37 @@ func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) 
 				response.Error = &rpcError{Code: -32602, Message: err.Error()}
 				break
 			}
-			value, err := s.call(ctx, call)
+			value, acted, err := s.call(ctx, call)
+			// Attention rides beside the result on both paths. A failed tool
+			// call is exactly when a caller most needs to know that somebody
+			// addressed them or is looking at the same event, and the durable
+			// outcome above is already decided either way.
+			// The room the call actually acted in, never a room chosen after
+			// the fact. When selection itself failed there is no room, and the
+			// adjunct reports unavailable rather than guessing at one.
+			attention := s.liveAttention(ctx, acted, call, value)
+			text := attentionSummary(attention)
 			if err != nil {
-				response.Result = s.result(map[string]any{"isError": true, "content": []map[string]string{{"type": "text", "text": err.Error()}}})
+				content := []map[string]string{{"type": "text", "text": err.Error()}}
+				if text != "" {
+					content = append(content, map[string]string{"type": "text", "text": text})
+				}
+				response.Result = s.result(map[string]any{"isError": true, "content": content, "live_attention": attention})
 			} else {
 				// The text block is a summary, not a second copy. Restating the
 				// structured payload as pretty-printed JSON doubled every
 				// response while adding nothing a client could not already read.
-				response.Result = s.result(map[string]any{"isError": false, "content": []map[string]string{{"type": "text", "text": summarize(call.Name, value)}}, "structuredContent": value})
+				content := []map[string]string{{"type": "text", "text": summarize(call.Name, value)}}
+				if text != "" {
+					content = append(content, map[string]string{"type": "text", "text": text})
+				}
+				// live_attention is a sibling of structuredContent, not a wrapper
+				// around it. structuredContent stays exactly the tool's own
+				// payload: notes/2026-08-07-bootstrap-task-cycle.md documents a
+				// consumer that reads it directly, and an adjunct that rewrote
+				// the envelope would break every such reader to deliver news
+				// they did not ask for.
+				response.Result = s.result(map[string]any{"isError": false, "content": content, "structuredContent": value, "live_attention": attention})
 			}
 		default:
 			response.Error = &rpcError{Code: -32601, Message: "method not found"}
@@ -513,8 +553,8 @@ func tools() []map[string]any {
 			"focus":  map[string]any{"type": "array", "items": stringField, "maxItems": nexus.MaxFocusEvents},
 			"note":   map[string]any{"type": "string", "maxLength": nexus.MaxActivityNoteBytes},
 		}))},
-		{"name": "status", "description": "Project durable workroom state plus a composite cursor; available_to_you contains open unclaimed requests addressed to this actor.", "inputSchema": object(withRepo(nil))},
-		{"name": "wait", "description": "Long-poll after a composite cursor; current_available_to_you repeats the bounded current unclaimed work addressed to this actor.", "inputSchema": object(withRepo(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
+		{"name": "status", "description": "Project durable work and this session's priority ephemeral chat; available_to_you contains open unclaimed requests addressed to this actor.", "inputSchema": object(withRepo(nil))},
+		{"name": "wait", "description": "Long-poll after a composite cursor; repeats unacknowledged priority ephemeral chat until ack is called.", "inputSchema": object(withRepo(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
 		{"name": "work", "description": "Query the current actor's durable work through a bounded resident-side projection. Defaults include addressed unclaimed work and stale commitments.", "inputSchema": object(withRepo(map[string]any{
 			"lanes":    arrayOf(enum("available_to_you", "waiting_on_you", "you_are_waiting_on", "not_actionable")),
 			"statuses": arrayOf(enum("open", "promised", "reported", "satisfied", "stale", "cancelled", "reneged", "withdrawn")),
@@ -523,7 +563,8 @@ func tools() []map[string]any {
 			"cursor":   stringField,
 		}))},
 		{"name": "inspect", "description": "Inspect one exact canonical durable event with its decision, commitment chain, direct provenance, and related review artifacts.", "inputSchema": object(withRepo(map[string]any{"event": stringField}), "event")},
-		{"name": "say", "description": "Publish a signed ephemeral frame, opening a conversation at about when needed.", "inputSchema": object(withRepo(map[string]any{"about": stringField, "text": stringField, "conversation": stringField}), "about", "text")},
+		{"name": "say", "description": "Publish signed ephemeral chat. Unique @name mentions and exact replies address live recipient sessions for priority delivery.", "inputSchema": object(withRepo(map[string]any{"about": stringField, "text": stringField, "conversation": stringField, "re": stringField}), "about", "text")},
+		{"name": "ack", "description": "Acknowledge exact priority-chat thread handles for this leased session. This is not a durable read receipt.", "inputSchema": object(withRepo(map[string]any{"threads": map[string]any{"type": "array", "items": stringField, "maxItems": nexus.MaxInboxFrames}}), "threads")},
 		{"name": "state", "description": "Append a durable attributed utterance. Evidence values are embedded attachments. A request body addresses its performer as name, @name, or fingerprint; the signed event stores the fingerprint.", "inputSchema": object(withRepo(map[string]any{"kind": stringField, "text": stringField, "body": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "rests_on": map[string]any{"type": "array", "items": stringField}, "evidence": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "idempotency_key": stringField}), "kind", "text", "rests_on")},
 		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(withRepo(map[string]any{"target": stringField, "idempotency_key": stringField}), "target")},
 		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(withRepo(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}), "target", "text")},
@@ -597,7 +638,16 @@ func (s *mcpServer) attach(ctx context.Context, repo string) (*room, error) {
 	return current, nil
 }
 
-func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
+// call selects the room this invocation acts in, then dispatches. It returns
+// that exact room alongside the result, including on error paths, because the
+// attention adjunct must read the room the call used and no other.
+//
+// Choosing a room after the fact is the bug this shape prevents. A caller that
+// passes arguments.repo acts in a workroom that need not be the adapter
+// default, and an adjunct that resolved "the default" or "the only attachment"
+// could hand back another repository's addressed inbox and leased focus. That
+// is a disclosure across a boundary the caller drew deliberately.
+func (s *mcpServer) call(ctx context.Context, call toolCall) (any, *room, error) {
 	var current *room
 	var err error
 	// Whoami's resident read has an explicit two-second bound. Attaching the
@@ -609,8 +659,13 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 		current, err = s.attend(ctx, stringValue(call.Arguments["repo"]))
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	value, err := s.dispatch(ctx, call, current)
+	return value, current, err
+}
+
+func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) (any, error) {
 	switch call.Name {
 	case "whoami":
 		return s.whoami(ctx, current)
@@ -638,8 +693,8 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 	case "status":
 		// The digest is applied on both paths so that losing the resident
 		// service changes what is knowable, not the shape of the answer.
-		value, err := s.get(ctx, current, "/v0/status")
-		if isTransportError(err) {
+		value, err := s.postForSession(ctx, current, "/v0/status", map[string]any{"session": s.session})
+		if isTransportError(err) || inboxProtocolUnavailable(err) {
 			local, localErr := s.localStatus(ctx, current)
 			if localErr != nil {
 				return nil, localErr
@@ -656,9 +711,10 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 		return s.digest(current, status, false), nil
 	case "wait":
 		arguments := residentArguments(call.Arguments)
+		arguments["session"] = s.session
 		requested := requestedCursor(arguments)
-		value, err := s.post(ctx, current, "/v0/wait", arguments)
-		if isTransportError(err) {
+		value, err := s.postForSession(ctx, current, "/v0/wait", arguments)
+		if isTransportError(err) || inboxProtocolUnavailable(err) {
 			local, localErr := s.waitDurable(ctx, current, arguments)
 			if localErr != nil {
 				return nil, localErr
@@ -710,7 +766,22 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, error) {
 	case "say":
 		arguments := residentArguments(call.Arguments)
 		arguments["session"] = s.session
-		return s.post(ctx, current, "/v0/say", arguments)
+		if sayNeedsInbox(arguments) {
+			if !current.inboxAvailable() {
+				return nil, errors.New("addressed chat is unavailable until the resident supports gitseq.addressed-inbox.v1")
+			}
+			// The version travels with the mutation as well as registration. If
+			// a new resident is replaced by an old binary at the same URL between
+			// calls, that binary's strict decoder refuses the retry instead of
+			// accepting addressed text as opaque chat.
+			arguments["inbox_version"] = service.InboxProtocolVersion
+		}
+		return s.postForSession(ctx, current, "/v0/say", arguments)
+	case "ack":
+		if !current.inboxAvailable() {
+			return nil, errors.New("priority chat acknowledgement is unavailable until the resident supports gitseq.addressed-inbox.v1")
+		}
+		return s.postForSession(ctx, current, "/v0/inbox/ack", map[string]any{"session": s.session, "threads": stringSlice(call.Arguments["threads"])})
 	case "state":
 		kind, _ := call.Arguments["kind"].(string)
 		text, _ := call.Arguments["text"].(string)
@@ -1063,14 +1134,28 @@ func (s *mcpServer) requireSoleIdentity(ctx context.Context, current *room) erro
 
 func (s *mcpServer) announce(ctx context.Context, current *room) error {
 	_, err := s.post(ctx, current, "/v0/presence", map[string]any{"actor": s.actor, "session": s.session, "ttl_ms": 30000})
-	if err == nil {
-		// Presence carries a name, not a session, so once ours is live the
-		// snapshot can no longer tell this instance from a stranger. The door
-		// check is closed for this workroom rather than left to refuse us our
-		// own identity later.
-		current.identityIsOurs()
+	if err != nil {
+		return err
 	}
-	return err
+	// Presence carries a name, not a session, so once ours is live the
+	// snapshot can no longer tell this instance from a stranger. The door
+	// check is closed for this workroom rather than left to refuse us our
+	// own identity later.
+	current.identityIsOurs()
+	_, err = s.post(ctx, current, "/v0/inbox/register", map[string]any{"session": s.session, "version": service.InboxProtocolVersion})
+	if inboxProtocolUnavailable(err) {
+		current.setInboxAvailable(false)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	current.setInboxAvailable(true)
+	return nil
+}
+
+func sayNeedsInbox(arguments map[string]any) bool {
+	return stringValue(arguments["re"]) != "" || service.HasMentionToken(stringValue(arguments["text"]))
 }
 
 // attended lists the workrooms this session has joined. Presence is a property
@@ -1154,6 +1239,22 @@ func (s *mcpServer) post(ctx context.Context, current *room, path string, value 
 	return result, residentClientError(current, err)
 }
 
+// postForSession repairs the one honest resident-restart race: this adapter
+// may remember a lease from the previous process generation. Re-announcing
+// the same private session once restores only ephemeral state; durable work is
+// never retried through this path.
+func (s *mcpServer) postForSession(ctx context.Context, current *room, path string, value any) (any, error) {
+	result, err := s.post(ctx, current, path, value)
+	var refusal *residentclient.HTTPError
+	if !errors.As(err, &refusal) || refusal.Message != "session is not present" {
+		return result, err
+	}
+	if err := s.announce(ctx, current); err != nil {
+		return nil, err
+	}
+	return s.post(ctx, current, path, value)
+}
+
 func (s *mcpServer) postBoundedJSON(ctx context.Context, current *room, path string, value any, limit int64, target any) error {
 	base, ok := current.endpoint()
 	if !ok {
@@ -1211,6 +1312,15 @@ func residentClientError(current *room, err error) error {
 func isTransportError(err error) bool {
 	var target transportError
 	return errors.As(err, &target)
+}
+
+func inboxProtocolUnavailable(err error) bool {
+	var refusal *residentclient.HTTPError
+	if !errors.As(err, &refusal) {
+		return false
+	}
+	return refusal.StatusCode == http.StatusMethodNotAllowed || refusal.StatusCode == http.StatusNotFound ||
+		strings.Contains(refusal.Message, `unknown field "session"`)
 }
 
 func (s *mcpServer) deadlineFor(path string) time.Duration {
@@ -1345,4 +1455,157 @@ func randomID() string {
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "gitseq-mcp:", err)
 	os.Exit(1)
+}
+
+// eventIDPattern matches a canonical durable event identifier exactly:
+// genesis and event, both full hashes. Matching this and nothing else is what
+// keeps the attention adjunct an observation rather than a guess. A looser
+// pattern — a bare hash, a prefix, a word that looks like a reference — would
+// let the adapter assert a relationship nobody stated.
+// The surrounding bytes matter as much as the identifier. Without boundaries
+// this pattern happily extracts a canonical-looking identifier out of the
+// middle of a longer token — "xgit:sha1:<40>#git:sha1:<40>y" would yield one —
+// and the adjunct would then report actors focused on an event the caller
+// never named. The documentation promises exact canonical identifiers and no
+// inference, so the match must fail on any adjacent identifier byte.
+//
+// Both boundaries test the same class, and that symmetry is the whole point.
+// An earlier form excluded alphanumerics, colon and hash on the left but only
+// hex on the right, which reads as a boundary and is not one: a trailing "z"
+// left the canonical prefix extractable out of a longer token. What makes a
+// byte a boundary is that it cannot belong to an identifier, and that question
+// has one answer regardless of which end is being asked.
+const eventIDByte = `0-9a-zA-Z:#`
+
+var eventIDPattern = regexp.MustCompile(
+	`(^|[^` + eventIDByte + `])(git:sha1:[0-9a-f]{40}#git:sha1:[0-9a-f]{40})($|[^` + eventIDByte + `])`)
+
+// maxAttentionEvents bounds what one call asks about. A tool that returns a
+// whole projection names thousands of events; asking about all of them would
+// turn an adjunct into the most expensive part of the call.
+const maxAttentionEvents = 32
+
+// attentionEvents collects the durable identifiers this call named or returned.
+// Both directions matter: asking about an event and being handed one are the
+// two ways a caller comes to be looking at it.
+func attentionEvents(call toolCall, result any) []string {
+	var scanned []byte
+	if encoded, err := json.Marshal(call.Arguments); err == nil {
+		scanned = append(scanned, encoded...)
+	}
+	if result != nil {
+		if encoded, err := json.Marshal(result); err == nil {
+			scanned = append(scanned, encoded...)
+		}
+	}
+	seen := map[string]bool{}
+	events := make([]string, 0, 8)
+	// FindAllSubmatch with an overlapping-safe scan: the trailing boundary byte
+	// is consumed by each match, so two adjacent identifiers separated by one
+	// delimiter would otherwise hide the second. Scanning from the end of the
+	// captured identifier rather than the whole match keeps both visible.
+	for offset := 0; offset < len(scanned); {
+		match := eventIDPattern.FindSubmatchIndex(scanned[offset:])
+		if match == nil {
+			break
+		}
+		id := string(scanned[offset+match[4] : offset+match[5]])
+		offset += match[5]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		events = append(events, id)
+		if len(events) == maxAttentionEvents {
+			break
+		}
+	}
+	return events
+}
+
+// liveAttention reads what the caller should notice alongside its own result.
+//
+// It never returns an error and never propagates one. The durable act this
+// rides beside has already happened; failing the call because an advisory read
+// failed would make awareness a precondition for work, which is precisely the
+// coupling the request forbids. An unreachable or unhappy resident yields
+// available=false and nothing more.
+func (s *mcpServer) liveAttention(ctx context.Context, current *room, call toolCall, result any) map[string]any {
+	unavailable := map[string]any{"available": false}
+	if current == nil {
+		return unavailable
+	}
+	if _, ok := current.endpoint(); !ok {
+		return unavailable
+	}
+	value, err := s.post(ctx, current, "/v0/attention", map[string]any{
+		"session": s.session,
+		"events":  attentionEvents(call, result),
+	})
+	if err != nil {
+		return unavailable
+	}
+	report, ok := value.(map[string]any)
+	if !ok {
+		return unavailable
+	}
+	return report
+}
+
+// attentionSummary is the guaranteed text. Structured content is optional for a
+// client; the text block is not, so an interruption that exists only in
+// structuredContent is invisible to anyone who reads only the transcript.
+func attentionSummary(report map[string]any) string {
+	if report == nil || report["available"] != true {
+		return ""
+	}
+	var parts []string
+	if pending := intValue(report["pending"]); pending > 0 {
+		noun := "messages"
+		if pending == 1 {
+			noun = "message"
+		}
+		part := fmt.Sprintf("%d unacknowledged addressed %s", pending, noun)
+		if omitted := intValue(report["omitted"]); omitted > 0 {
+			part += fmt.Sprintf(" (%d not shown)", omitted)
+		}
+		parts = append(parts, part)
+	}
+	if actors, ok := report["actors"].([]any); ok && len(actors) > 0 {
+		var names []string
+		for _, entry := range actors {
+			if row, ok := entry.(map[string]any); ok {
+				name := stringValue(row["name"])
+				if status := stringValue(row["status"]); status != "" && status != "available" {
+					name += " (" + status + ")"
+				}
+				names = append(names, name)
+			}
+		}
+		noun := "actors are"
+		if len(names) == 1 {
+			noun = "actor is"
+		}
+		part := fmt.Sprintf("%d live %s focused on what you just touched: %s", len(names), noun, strings.Join(names, ", "))
+		if omitted := intValue(report["omitted_actors"]); omitted > 0 {
+			part += fmt.Sprintf(", and %d more", omitted)
+		}
+		parts = append(parts, part)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	// Named as advisory in the text itself. The adjunct confers nothing, and a
+	// reader who only ever sees this line should not have to infer that.
+	return "Live (advisory, no durable force): " + strings.Join(parts, "; ") + "."
+}
+
+func intValue(value any) int {
+	switch typed := value.(type) {
+	case float64:
+		return int(typed)
+	case int:
+		return typed
+	}
+	return 0
 }

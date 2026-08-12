@@ -4,17 +4,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 // The legacy demo page is gone, and this is what stops it coming back. It was
@@ -583,7 +588,7 @@ func TestActEndpointUsesSessionCustodyAndReplaysSameIdempotencyKey(t *testing.T)
 	}
 }
 
-func TestSayPreservesReplyTarget(t *testing.T) {
+func TestSayValidatesAndPreservesExactReplyTarget(t *testing.T) {
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -601,7 +606,7 @@ func TestSayPreservesReplyTarget(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/v0/presence", bytes.NewReader(announce))
 	request.Header.Set("Content-Type", "application/json")
 	server.Handler().ServeHTTP(httptest.NewRecorder(), request)
-	say, _ := json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Text: "reply", Re: "conversation:7"})
+	say, _ := json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Text: "first"})
 	request = httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(say))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -609,16 +614,193 @@ func TestSayPreservesReplyTarget(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("say returned %d: %s", response.Code, response.Body.String())
 	}
-	var frame nexus.Frame
-	if err := json.NewDecoder(response.Body).Decode(&frame); err != nil {
+	var first nexus.Frame
+	if err := json.NewDecoder(response.Body).Decode(&first); err != nil {
 		t.Fatal(err)
 	}
-	var payload map[string]string
-	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
+	re := first.Conversation + ":" + strconv.FormatUint(first.Sequence, 10)
+	say, _ = json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Conversation: first.Conversation, Text: "reply", Re: re})
+	request = httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(say))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("reply returned %d: %s", response.Code, response.Body.String())
+	}
+	var reply nexus.Frame
+	if err := json.NewDecoder(response.Body).Decode(&reply); err != nil {
 		t.Fatal(err)
 	}
-	if payload["re"] != "conversation:7" {
-		t.Fatalf("reply target = %q", payload["re"])
+	var payload nexus.Message
+	if err := json.Unmarshal(reply.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Re != re {
+		t.Fatalf("reply target = %q", payload.Re)
+	}
+	bad, _ := json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Text: "bad", Re: first.Conversation + ":99"})
+	request = httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(bad))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code == http.StatusOK {
+		t.Fatal("missing reply target was accepted")
+	}
+}
+
+func TestAddressedSayAppearsInPrivateStatusAndWaitUntilAcknowledged(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, genesis, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _, err := workspace.AddActor(ctx, "human", "other", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := func(path string, value any, target any) *httptest.ResponseRecorder {
+		t.Helper()
+		body, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("POST %s returned %d: %s", path, response.Code, response.Body.String())
+		}
+		if target != nil {
+			if err := json.NewDecoder(response.Body).Decode(target); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return response
+	}
+	post("/v0/presence", presenceRequest{Actor: "human", Session: "human-session"}, nil)
+	post("/v0/presence", presenceRequest{Actor: "other", Session: "other-session"}, nil)
+	post("/v0/presence", presenceRequest{Actor: "other", Session: "other-legacy-session"}, nil)
+	post("/v0/inbox/register", inboxRegisterRequest{Session: "other-session", Version: InboxProtocolVersion}, nil)
+	var beforePublication Status
+	post("/v0/status", sessionStatusRequest{Session: "other-session"}, &beforePublication)
+	beforeInvalid := server.hub.Snapshot()
+	invalidSay, _ := json.Marshal(sayRequest{
+		Session: "human-session", About: genesis.ID, Text: "@other must fail closed", InboxVersion: "unknown-inbox-version",
+	})
+	invalidRequest := httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(invalidSay))
+	invalidRequest.Header.Set("Content-Type", "application/json")
+	invalidResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(invalidResponse, invalidRequest)
+	if invalidResponse.Code != http.StatusBadRequest {
+		t.Fatalf("unknown addressed inbox version returned %d: %s", invalidResponse.Code, invalidResponse.Body.String())
+	}
+	afterInvalid := server.hub.Snapshot()
+	if !reflect.DeepEqual(afterInvalid.Conversations, beforeInvalid.Conversations) || afterInvalid.Cursor != beforeInvalid.Cursor {
+		t.Fatalf("unknown addressed inbox version mutated live state: before=%+v after=%+v", beforeInvalid, afterInvalid)
+	}
+
+	var published nexus.Frame
+	post("/v0/say", sayRequest{
+		Session: "human-session", About: genesis.ID, Text: `please review @other and @"unknown person"`, InboxVersion: InboxProtocolVersion,
+	}, &published)
+	var signed nexus.Message
+	if err := json.Unmarshal(published.Payload, &signed); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(signed.Recipients, []string{other.Fingerprint}) {
+		t.Fatalf("signed recipients = %#v, want other only", signed.Recipients)
+	}
+
+	global := httptest.NewRecorder()
+	server.Handler().ServeHTTP(global, httptest.NewRequest(http.MethodGet, "/v0/status", nil))
+	if bytes.Contains(global.Body.Bytes(), []byte(`"inbox"`)) {
+		t.Fatalf("sessionless status leaked a private inbox: %s", global.Body.String())
+	}
+	var addressed Status
+	post("/v0/status", sessionStatusRequest{Session: "other-session"}, &addressed)
+	if addressed.Inbox == nil || len(addressed.Inbox.Frames) != 1 {
+		t.Fatalf("addressed status inbox = %+v", addressed.Inbox)
+	}
+	thread := published.Conversation + ":" + strconv.FormatUint(published.Sequence, 10)
+	if addressed.Inbox.Frames[0].Thread != thread || addressed.Inbox.Frames[0].Actor == "" {
+		t.Fatalf("addressed frame = %+v", addressed.Inbox.Frames[0])
+	}
+	var legacySession Status
+	post("/v0/status", sessionStatusRequest{Session: "other-legacy-session"}, &legacySession)
+	if legacySession.Inbox == nil || len(legacySession.Inbox.Frames) != 0 {
+		t.Fatalf("unregistered legacy session was enqueued: %+v", legacySession.Inbox)
+	}
+	var inline WaitResponse
+	post("/v0/wait", WaitRequest{Cursor: beforePublication.Cursor, TimeoutMS: 20, Session: "other-session"}, &inline)
+	var inlineFrame *nexus.InboxFrame
+	for _, change := range inline.LiveChanges {
+		if change.Frame != nil {
+			inlineFrame = change.Frame
+		}
+	}
+	if inlineFrame == nil || inlineFrame.Thread != thread || inlineFrame.Text != `please review @other and @"unknown person"` {
+		t.Fatalf("pre-publication wait omitted addressed frame: %+v", inline.LiveChanges)
+	}
+
+	var repeated WaitResponse
+	post("/v0/wait", WaitRequest{Cursor: addressed.Cursor, TimeoutMS: 20, Session: "other-session"}, &repeated)
+	if repeated.Status.Inbox == nil || len(repeated.Status.Inbox.Frames) != 1 {
+		t.Fatalf("unacknowledged wait did not repeat inbox: %+v", repeated.Status.Inbox)
+	}
+	var acked map[string]int
+	post("/v0/inbox/ack", inboxAckRequest{Session: "other-session", Threads: []string{thread, thread}}, &acked)
+	if acked["acknowledged"] != 1 {
+		t.Fatalf("acknowledged count = %d, want one actual removal", acked["acknowledged"])
+	}
+	post("/v0/inbox/ack", inboxAckRequest{Session: "other-session", Threads: []string{thread}}, &acked)
+	if acked["acknowledged"] != 0 {
+		t.Fatalf("repeat acknowledgement removed %d frames", acked["acknowledged"])
+	}
+	var acknowledged WaitResponse
+	post("/v0/wait", WaitRequest{Cursor: repeated.Status.Cursor, TimeoutMS: 20, Session: "other-session"}, &acknowledged)
+	if acknowledged.Status.Inbox == nil || len(acknowledged.Status.Inbox.Frames) != 0 {
+		t.Fatalf("acknowledged wait retained inbox: %+v", acknowledged.Status.Inbox)
+	}
+}
+
+func TestMentionResolutionUsesOnlyUniqueEffectiveParticipantNames(t *testing.T) {
+	for _, testCase := range []struct {
+		text string
+		want bool
+	}{
+		{text: `please ask @alice`, want: true},
+		{text: `please ask @"Review Agent"`, want: true},
+		{text: `email@alice`, want: false},
+		{text: `docs/@alice/file`, want: false},
+		{text: `@alice/path`, want: false},
+		{text: `@"Review Agent"suffix`, want: false},
+	} {
+		if got := HasMentionToken(testCase.text); got != testCase.want {
+			t.Errorf("HasMentionToken(%q) = %t, want %t", testCase.text, got, testCase.want)
+		}
+	}
+
+	snapshot := app.Snapshot{Projection: workroom.Projection{Actors: map[string]workroom.ActorState{
+		"fp-alice":       {Name: "Alice", Roles: []string{"participant"}},
+		"fp-quoted":      {Name: "Review Agent", Roles: []string{"participant"}},
+		"fp-duplicate-1": {Name: "same", Roles: []string{"participant"}},
+		"fp-duplicate-2": {Name: "SAME", Roles: []string{"participant"}},
+		"fp-retired":     {Name: "gone", Roles: []string{}, Retired: true},
+		"fp-authority":   {Name: "ratifier-only", Roles: []string{"ratifier"}},
+	}}}
+	got := addressedRecipients(`@alice @ALICE (@"Review Agent"), @same @gone @ratifier-only @unknown email@alice foo@alice @alice/path @"Review Agent"suffix`, snapshot)
+	want := []string{"fp-alice", "fp-quoted"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolved recipients = %#v, want %#v", got, want)
 	}
 }
 
@@ -677,5 +859,342 @@ func TestPublishedHandleCannotAuthorizeDurableActs(t *testing.T) {
 	server.Handler().ServeHTTP(ownResponse, ownRequest)
 	if ownResponse.Code != http.StatusOK {
 		t.Fatalf("the session's owner was refused: %d %s", ownResponse.Code, ownResponse.Body.String())
+	}
+}
+
+// A fold-profile bump must run one resident rebuild, not one audit per browser
+// request. The first reader may leave; another reader still joins the same
+// verification and receives the exact projection only after it is ready.
+func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const records = 30
+	for index := range records {
+		text := "scaled rebuild record " + strconv.Itoa(index)
+		if _, err := workspace.Act(ctx, "human", app.Act{
+			Verb: app.VerbState, Kind: workroom.KindAssert, Text: text,
+			IdempotencyKey: "rebuild-profile-mismatch-" + strconv.Itoa(index),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Leave the repository with an exact signed checkpoint under the previous
+	// application profile. A fresh current-profile Workspace must reject it and
+	// audit from genesis.
+	oldReader := kernel.NewReader(workspace.Store, kernel.CheckpointOptions{
+		Profile: "deliberately-old-test-profile", SigningKey: workspace.Config.SequencerKey,
+	})
+	if _, err := oldReader.Load(ctx, workspace.Config.Genesis); err != nil {
+		t.Fatal(err)
+	}
+	cold, err := app.Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(cold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	firstCtx, cancelFirst := context.WithCancel(ctx)
+	firstRequest, err := http.NewRequestWithContext(firstCtx, http.MethodGet, httpServer.URL+"/v0/status", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstDone := make(chan error, 1)
+	go func() {
+		response, err := http.DefaultClient.Do(firstRequest)
+		if response != nil {
+			response.Body.Close()
+		}
+		firstDone <- err
+	}()
+
+	deadline := time.Now().Add(20 * time.Second)
+	var observed rebuildReport
+	for time.Now().Before(deadline) {
+		if err := getJSON(httpServer.URL+"/v0/rebuild", &observed); err != nil {
+			t.Fatal(err)
+		}
+		if observed.Running && observed.Total > 0 && observed.Verified > 0 && observed.Verified < observed.Total/2 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if !observed.Running || observed.Total == 0 || observed.Verified == 0 || observed.Verified >= observed.Total/2 {
+		cancelFirst()
+		t.Fatalf("no moving cold-rebuild report was observed: %+v", observed)
+	}
+	var bounded map[string]any
+	if err := getJSON(httpServer.URL+"/v0/rebuild", &bounded); err != nil {
+		t.Fatal(err)
+	}
+	for key := range bounded {
+		if key != "running" && key != "verified" && key != "total" {
+			t.Fatalf("rebuild endpoint exposed unbounded field %q", key)
+		}
+	}
+
+	type statusResult struct {
+		status Status
+		err    error
+	}
+	secondDone := make(chan statusResult, 1)
+	go func() {
+		var status Status
+		err := getJSON(httpServer.URL+"/v0/status", &status)
+		secondDone <- statusResult{status: status, err: err}
+	}()
+
+	cancelFirst()
+	select {
+	case err := <-firstDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("the cancelled reader returned %v, want context cancellation", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first status reader did not stop waiting after cancellation")
+	}
+
+	// A third reader remains pending while verification is known to be active;
+	// no stale or partial HTTP response escapes merely because it asked early.
+	thirdCtx, cancelThird := context.WithCancel(ctx)
+	thirdRequest, err := http.NewRequestWithContext(thirdCtx, http.MethodGet, httpServer.URL+"/v0/status", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	thirdDone := make(chan error, 1)
+	go func() {
+		response, err := http.DefaultClient.Do(thirdRequest)
+		if response != nil {
+			response.Body.Close()
+		}
+		thirdDone <- err
+	}()
+	select {
+	case err := <-thirdDone:
+		t.Fatalf("status returned before the known mid-scan rebuild finished: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	var stillRunning rebuildReport
+	if err := getJSON(httpServer.URL+"/v0/rebuild", &stillRunning); err != nil {
+		t.Fatal(err)
+	}
+	if !stillRunning.Running || stillRunning.Verified >= stillRunning.Total {
+		t.Fatalf("the rebuild did not remain active while the third status request stayed pending: %+v", stillRunning)
+	}
+	cancelThird()
+	select {
+	case err := <-thirdDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("the cancelled third reader returned %v, want context cancellation", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the third status reader did not stop after cancellation")
+	}
+
+	lastVerified, fixedTotal := observed.Verified, observed.Total
+	var final Status
+	for time.Now().Before(deadline) {
+		var progress rebuildReport
+		if err := getJSON(httpServer.URL+"/v0/rebuild", &progress); err != nil {
+			t.Fatal(err)
+		}
+		if !progress.Running {
+			select {
+			case result := <-secondDone:
+				if result.err != nil {
+					t.Fatal(result.err)
+				}
+				final = result.status
+			case <-time.After(2 * time.Second):
+				t.Fatal("rebuild became quiet before the joined status reader received the projection")
+			}
+			break
+		}
+		if progress.Total > 0 && progress.Total != fixedTotal {
+			t.Fatalf("one rebuild changed total from %d to %d", fixedTotal, progress.Total)
+		}
+		if progress.Verified < lastVerified {
+			t.Fatalf("progress restarted from %d at %d after the first reader cancelled", lastVerified, progress.Verified)
+		}
+		lastVerified = progress.Verified
+		time.Sleep(time.Millisecond)
+	}
+	if final.Durable.Head == "" {
+		t.Fatal("the joined status reader never received a final projection")
+	}
+	expectedWorkspace, err := app.Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := expectedWorkspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(final.Durable, expected) {
+		t.Fatalf("published durable snapshot differs from an independent verified fold\npublished: %#v\nexpected:  %#v", final.Durable, expected)
+	}
+
+	// Once the rebuild is quiet, the exact projection is already available.
+	immediateCtx, cancelImmediate := context.WithTimeout(ctx, time.Second)
+	defer cancelImmediate()
+	immediateRequest, err := http.NewRequestWithContext(immediateCtx, http.MethodGet, httpServer.URL+"/v0/status", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(immediateRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var immediate Status
+	if err := json.NewDecoder(response.Body).Decode(&immediate); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(immediate.Durable, final.Durable) {
+		t.Fatal("quiet status did not return the complete projection that was atomically published")
+	}
+}
+
+func getJSON(url string, into any) error {
+	response, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	return json.NewDecoder(response.Body).Decode(into)
+}
+
+// The attention read is an adjunct, so its failure modes matter more than its
+// happy path. A session the hub has never seen must still get an answer about
+// other people's leases, because refusing the whole read when half of it is
+// unavailable would turn an advisory extra into a precondition.
+func TestAttentionAnswersAndDegradesWithoutRefusing(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, seed, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Focus is constrained to real identifiers from this workroom, so the test
+	// uses the founding record rather than a convenient string.
+	realEvent := seed.ID
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	ask := func(body attentionRequest) AttentionReport {
+		t.Helper()
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := http.Post(httpServer.URL+"/v0/attention", "application/json", bytes.NewReader(encoded))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("attention returned %d for %+v; an advisory read must not refuse", response.StatusCode, body)
+		}
+		raw, err := io.ReadAll(response.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var report AttentionReport
+		if err := json.Unmarshal(raw, &report); err != nil {
+			t.Fatalf("decode %s: %v", raw, err)
+		}
+		return report
+	}
+
+	// An unknown session: no inbox to report, but the read still succeeds.
+	report := ask(attentionRequest{Session: "never-announced", Events: []string{realEvent}})
+	if !report.Available {
+		t.Fatalf("an unknown session made attention unavailable: %+v", report)
+	}
+	if report.Pending != 0 || len(report.Frames) != 0 || len(report.Actors) != 0 {
+		t.Fatalf("an unknown session reported content: %+v", report)
+	}
+
+	// An empty request is legal and says nothing, rather than erroring.
+	if report := ask(attentionRequest{}); !report.Available {
+		t.Fatalf("an empty attention request was refused: %+v", report)
+	}
+
+	// A present session focused on an event is visible to another caller, and
+	// never to itself.
+	busy := nexus.ActivityBusy
+	focus := []string{realEvent}
+	announce, err := json.Marshal(presenceRequest{Actor: "human", Session: "watcher", Status: &busy, Focus: &focus})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(announce))
+	if err != nil {
+		t.Fatal(err)
+	}
+	announced, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("announce failed %d: %s", response.StatusCode, announced)
+	}
+
+	report = ask(attentionRequest{Session: "someone-else", Events: []string{realEvent}})
+	if len(report.Actors) != 1 || report.Actors[0].Name != "human" {
+		t.Fatalf("a focused actor was not reported to another session: %+v", report.Actors)
+	}
+	if report.Actors[0].ActivityChangedAt.IsZero() {
+		t.Fatalf("the actor row carries no activity clock: %+v", report.Actors[0])
+	}
+	if report := ask(attentionRequest{Session: "watcher", Events: []string{realEvent}}); len(report.Actors) != 0 {
+		t.Fatalf("a session was told about its own focus: %+v", report.Actors)
+	}
+	// An event nobody named matches nobody.
+	if report := ask(attentionRequest{Session: "someone-else", Events: []string{"event:unwatched"}}); len(report.Actors) != 0 {
+		t.Fatalf("an unrelated event matched: %+v", report.Actors)
+	}
+
+	// One actor in two windows is one row. Aggregation happens on the durable
+	// fingerprint the resident resolved, not on the session, so a person
+	// working from two sessions does not read as two people watching.
+	second, err := json.Marshal(presenceRequest{Actor: "human", Session: "watcher-2", Status: &busy, Focus: &focus})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err = http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+
+	report = ask(attentionRequest{Session: "someone-else", Events: []string{realEvent}})
+	if len(report.Actors) != 1 {
+		t.Fatalf("two sessions of one actor produced %d rows: %+v", len(report.Actors), report.Actors)
+	}
+	if report.Actors[0].Sessions != 2 {
+		t.Fatalf("aggregated row reports %d sessions, want 2: %+v", report.Actors[0].Sessions, report.Actors[0])
+	}
+	// The caller filter still applies per session: asking as one of that
+	// actor's own sessions leaves only the other one visible.
+	if report := ask(attentionRequest{Session: "watcher", Events: []string{realEvent}}); len(report.Actors) != 1 || report.Actors[0].Sessions != 1 {
+		t.Fatalf("asking as one of the actor's own sessions reported %+v", report.Actors)
 	}
 }

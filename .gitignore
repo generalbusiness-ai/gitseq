@@ -1,4 +1,8 @@
 /bin/
+# `go build ./cmd/x` with no -o drops the binary here rather than in /bin/.
+/gitseq-github
+/gitseq-mcp
+/gs
 ui/node_modules/
 ui/tsconfig.tsbuildinfo
 

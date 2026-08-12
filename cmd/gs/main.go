@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -27,6 +28,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
+	"github.com/generalbusiness-ai/gitseq/internal/telemetry"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -940,10 +942,57 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
+// citingDocuments lists tracked documentation that names an event, so a
+// retirement can be refused before it lands rather than discovered afterwards
+// by the gate. Retiring an artifact a page cites leaves that page resting on a
+// withdrawn pointer, which TestGateEveryNamedActResolvesToALiveRecord refuses:
+// the repository goes red, and the act that did it is already in an append-only
+// log. The pages are the thing to look at, so they are what the refusal names.
+//
+// git grep rather than a walk, because tracked is the question. An untracked
+// working copy of a page is not what the gate reads, and a page that git does
+// not know about cannot break anyone else.
+func citingDocuments(ctx context.Context, repo, event string) ([]string, error) {
+	output, err := git(ctx, repo, "grep", "--name-only", "--fixed-strings", event, "--", "*.md")
+	if err != nil {
+		// git grep exits non-zero when it matches nothing, which is the
+		// ordinary case and not a failure. Anything else is worth reporting,
+		// but never worth blocking a retirement over: a guard that fails
+		// closed on its own malfunction would make a broken git a broken
+		// workroom.
+		return nil, nil
+	}
+	var pages []string
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if page := strings.TrimSpace(line); page != "" {
+			pages = append(pages, page)
+		}
+	}
+	return pages, nil
+}
+
+// refuseCitedRetirement stops a supersession whose target the documentation
+// still names. The escape exists because a migration legitimately retires
+// first and re-anchors after — the whole-repository artifacts at `.` are
+// exactly that shape — but it must be asked for, so the ordinary case cannot
+// break main by omission.
+func refuseCitedRetirement(ctx context.Context, repo, target string, allowed bool) error {
+	if allowed {
+		return nil
+	}
+	pages, err := citingDocuments(ctx, repo, target)
+	if err != nil || len(pages) == 0 {
+		return err
+	}
+	return fmt.Errorf("retiring %s would leave %d documentation page(s) resting on a withdrawn pointer:\n  %s\nrepoint them at the successor in the same head, or pass --cited-ok to retire anyway and re-anchor after",
+		target, len(pages), strings.Join(pages, "\n  "))
+}
+
 func supersedeCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("supersede", arguments)
 	as := set.String("as", "", "actor name")
 	message := set.String("text", "", "reason")
+	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites the target")
 	serverURL := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	var rests values
@@ -963,6 +1012,9 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	target := set.Arg(0)
+	if err := refuseCitedRetirement(ctx, workspace.Repo, target, *citedOK); err != nil {
+		return err
+	}
 	record, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key})
 	if err != nil {
 		return err
@@ -1058,6 +1110,7 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("batch", arguments)
 	as := set.String("as", "", "actor name for every act in the batch")
 	serverURL := set.String("server", "", "resident sequencer URL")
+	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites a target")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -1078,6 +1131,19 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	_, private, err := workspace.Actor(*as)
 	if err != nil {
 		return err
+	}
+	// Before the first append, for the same reason readBatch reads the whole
+	// file first: a batch that cannot land cleanly should land nothing. Both
+	// times a retirement broke main it came through here, not through the
+	// single-act path, so a guard only on gs supersede would have caught
+	// neither.
+	for position, entry := range acts {
+		if entry.Verb != app.VerbSupersede || strings.HasPrefix(entry.Target, "$") {
+			continue
+		}
+		if err := refuseCitedRetirement(ctx, workspace.Repo, entry.Target, *citedOK); err != nil {
+			return fmt.Errorf("act %d: %w", position, err)
+		}
 	}
 	report, err := runBatch(ctx, workspace, *serverURL, *as, private, acts)
 	if printErr := printJSON(report); printErr != nil && err == nil {
@@ -1453,6 +1519,8 @@ func verifyCommand(ctx context.Context, arguments []string) error {
 func serveCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("serve", arguments)
 	listen := set.String("listen", "127.0.0.1:7777", "HTTP listen address")
+	otlpEndpoint := set.String("otel-endpoint", "", "OTLP/HTTP Collector endpoint; disabled when empty")
+	profileListen := set.String("profile-listen", "", "separate loopback pprof address; disabled when empty")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -1466,10 +1534,20 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	if workspace.Config.ReadOnly {
 		return errors.New("cannot serve a read-only attachment")
 	}
-	server, err := service.New(workspace)
+	telemetryRuntime, err := telemetry.NewOTLP(ctx, *otlpEndpoint)
+	if err != nil {
+		return fmt.Errorf("configure telemetry: %w", err)
+	}
+	defer telemetryRuntime.Shutdown(context.Background())
+	server, err := service.NewObserved(workspace, telemetryRuntime.Observer())
 	if err != nil {
 		return err
 	}
+	stopProfile, err := serveProfiler(ctx, *profileListen)
+	if err != nil {
+		return err
+	}
+	defer stopProfile()
 	// Bind before publishing, so the address advertised to clients is the one
 	// actually being served — including the port the kernel chose when the
 	// listen address asked for any.
@@ -1484,7 +1562,7 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	}
 	defer withdraw()
 	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n", listener.Addr())
-	httpServer := &http.Server{Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second}
+	httpServer := &http.Server{Handler: telemetryRuntime.Handler(server.Handler()), ReadHeaderTimeout: 5 * time.Second}
 	// The watcher retires with the command it serves, so a serving call that
 	// ends some other way does not leave a goroutine holding the server.
 	finished := make(chan struct{})
@@ -1503,6 +1581,36 @@ func serveCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	return nil
+}
+
+func serveProfiler(ctx context.Context, address string) (func(), error) {
+	if address == "" {
+		return func() {}, nil
+	}
+	if err := validateLoopbackListen(address); err != nil {
+		return nil, fmt.Errorf("profile listener: %w", err)
+	}
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /debug/pprof/", pprof.Index)
+	mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("POST /debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		<-ctx.Done()
+		_ = server.Close()
+	}()
+	go func() { _ = server.Serve(listener) }()
+	return func() {
+		_ = server.Close()
+		_ = listener.Close()
+	}, nil
 }
 
 func validateLoopbackListen(address string) error {

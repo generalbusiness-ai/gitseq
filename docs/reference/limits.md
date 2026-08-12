@@ -2,9 +2,12 @@
 title: Limits
 summary: The sizes and counts a call is refused for exceeding.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:328aa6777241e67d4b1a122ee45d4e4019eebd11
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a40ed6053a0bb5c1eeed9febb540498d4258799f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1539075831e59cbc39fefdd6a4e800ba2c150208
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc5ca55fb4a4e67e2395903519f2103a92930268
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66b6cb0b770fe88808130a195babf79fe1ea7746
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b7e8c9c09da8ab7b1e83b2daab9db2e86bfea7a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48bd5acfe51abd4146197a48b0f7674f5676cc5c
 ---
 
 # Limits
@@ -27,6 +30,37 @@ validates against the value recorded in genesis.
 
 Readers enforce the same envelope ceiling explicitly, so the write path
 cannot admit a commit that a parser would later reject.
+
+## Concurrent submissions
+
+| Limit | Value |
+|---|---|
+| Submissions inside the sequencer at once | 32 |
+
+The count includes the submission holding the sequencer lock, so 32 means
+one in progress and 31 waiting. Over that bound a submission is refused
+rather than queued, and the refusal says `sequencer at capacity`.
+
+That refusal is taken first: before the signed intent is parsed, before
+any admission hook runs, before the payload tree is written, and before
+anything is chained onto the sequence ref. A submission refused for
+capacity therefore costs almost nothing and leaves no object behind,
+which is what makes it a signal a caller can act on rather than a late
+failure after the work is already spent.
+
+The same `ErrBackPressure` sentinel also reports one other condition: a
+submission that exhausted its retry limit while chaining under
+contention. Both mean "overload, try again later", and that is why they
+share a sentinel — `errors.Is` separates overload from a malformed or
+unauthorized submission, which is the distinction a caller needs. But
+only the capacity refusal is free. A retry exhaustion has already decoded
+the intent and written objects, so do not read the paragraph above as a
+guarantee about every `ErrBackPressure`. Rotation keeps its own
+unnamed exhaustion error and is not part of this.
+
+The bound belongs to Gitseq's resident. A program embedding the kernel
+directly may leave it unset, which means an unbounded queue; that is the
+embedding opt-out, not a posture Gitseq takes.
 
 ## Genesis sequencer key
 
@@ -66,6 +100,65 @@ User-controlled text in the `gs status` view is normalized to one line
 and capped at 240 bytes. Use `gs status --all` or `gs status --json` when
 you need the whole projection; neither is capped.
 
+Addressed ephemeral chat is also bounded before it is signed and indexed:
+
+| Limit | Value |
+|---|---|
+| Authored chat text | 16 KiB of valid UTF-8 |
+| `about`, reply, or acknowledgement handle | 256 bytes |
+| Signed recipient fingerprints | 32 unique recipients |
+| Signed frame payload | 20 KiB |
+| Current priority inbox page | 20 frames per leased session |
+| Pending addressed frames | 256 per inbox-capable leased session |
+| Acknowledgement batch | 20 exact thread handles |
+| Live sessions | 256 per resident; 16 per actor |
+| Retained conversations | 4,096 frames and 8 MiB of payload per resident |
+
+The priority view returns the oldest 20 pending frames. `skipped` is the count
+of additional pending frames hidden behind that page, not a count of lost
+frames. Acknowledging visible handles reveals the next page. Publication is
+refused before it changes the room when a recipient, reference, frame, or byte
+limit is full. Expiry, departure, acknowledgement, and conversation forgetting
+release the corresponding capacity. Only sessions that registered the current
+versioned inbox protocol consume pending-frame capacity. Conversation and
+inbox state remain process-local and are not durable.
+
+## Live attention
+
+Every completed MCP tool call carries a bounded `live_attention` adjunct
+when the resident can answer for it, including tool-specific error
+results where the attention read itself succeeded. It is advisory
+throughout: it creates no ownership, promise, authority, completion, or
+durable read receipt, and a client that ignores it entirely loses
+nothing but awareness. No resident yields `available: false`, and a
+failed attention read never fails the durable operation it rides beside.
+
+| Limit | Value |
+|---|---|
+| Event identifiers one call asks about | 32, from the tool input and its result combined |
+| Actors reported for those events | 16, with the remainder counted rather than dropped |
+| Frames in the adjunct | the 20-frame priority page above, with pending and omitted counts |
+
+Actors are matched by exact equality on canonical event identifiers the
+caller already holds. There is no prefix matching and no inference about
+what relates to what: a guess about relatedness would be the adapter
+asserting a relationship nobody stated, which is the one thing an
+observation must not do.
+
+Each row carries the full durable fingerprint, never a prefix, because a
+truncated identity invites the reader to match it against another
+truncation. A caller's own sessions are filtered out before actors are
+aggregated, so one person working from two windows reads as one actor
+rather than two people. `activity_changed_at` is observed by the
+resident and moves only when status, focus, or note changes — a
+heartbeat renewal leaves it alone, so an old timestamp means an old
+decision rather than a quiet client.
+
+Addressed frames repeat in the adjunct until the recipient explicitly
+acknowledges them, because reading is not acknowledging. Acknowledgement
+is per leased session, so one session's acknowledgement never clears
+another's.
+
 ## Restart and the checkpoint
 
 | Limit | Value |
@@ -83,8 +176,11 @@ checkpoint is authenticated under is derived through them.
 
 ## Local view
 
-The browser's event railway is a newest-80 window and says when it is
-truncated.
+The browser's commit graph is a newest-80 window and says when it is
+truncated: the resident caps the graph it serves at 80 commits and marks
+the response truncated, and the view then says "Showing the newest 80
+commits." The event railway beside it is not windowed that way; it folds
+lanes when it runs out of room.
 
 ## What is not limited
 

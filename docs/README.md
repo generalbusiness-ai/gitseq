@@ -2,7 +2,14 @@
 title: gitseq documentation
 summary: Map of the documentation set, and how to choose a starting point.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a33b0645b9bd51851cdd9d1787c63a94b993d6a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8fed27446d2441119f676fd3fb0b3cbb3a038ec8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcdbd7cb5b058a09c59b4540d5157f46116026bc
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b749bdeade8afec544344727fb77b5c89348e705
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6adcbc51bb03c6c0b0f8ba6601f23194b033f4b9
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f79617aa07d856b3773f60aa2ae464d41c34fbe5
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
 ---
 
 # gitseq documentation
@@ -68,15 +75,20 @@ Read in this order if you are new:
   [verify](reference/gs/verify.md),
   [serve](reference/gs/serve.md),
   [attach](reference/gs/attach.md).
-- [MCP tools](reference/mcp/) — one page each:
+- MCP reference pages currently in this documentation set:
   [whoami](reference/mcp/whoami.md),
   [presence](reference/mcp/presence.md),
   [status](reference/mcp/status.md),
   [wait](reference/mcp/wait.md),
   [say](reference/mcp/say.md),
+  [ack](reference/mcp/ack.md),
   [state](reference/mcp/state.md),
   [ratify](reference/mcp/ratify.md),
-  [supersede](reference/mcp/supersede.md).
+  [supersede](reference/mcp/supersede.md),
+  [work](reference/mcp/work.md),
+  [inspect](reference/mcp/inspect.md).
+- [Live attention](reference/live-attention.md) — the advisory adjunct
+  every MCP tool result carries.
 - [Event identifiers](reference/event-identifiers.md) — the one name
   everything else cites.
 - [Limits](reference/limits.md) — sizes and counts a call is refused for

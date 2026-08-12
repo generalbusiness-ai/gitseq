@@ -453,6 +453,18 @@ export function otherWorkAttentionLabel(counts: { artifacts: number; unlinkedPro
   return parts.length ? parts.join(" and ") : "nothing else";
 }
 
+// The same phrase with its verb, because the verb depends on what the phrase
+// counted and a call site cannot know. "nothing else" and a single artifact
+// both take "needs"; anything else takes "need". Composing the noun at one call
+// site and the verb at another produced "nothing else need attention", which is
+// the sentence a healthy workroom shows most often and therefore the one most
+// people read.
+export function otherWorkAttentionClause(counts: { artifacts: number; unlinkedPromises: number }): string {
+  const items = counts.artifacts + counts.unlinkedPromises;
+  // "nothing else" is singular too, so zero and one both take "needs".
+  return `${otherWorkAttentionLabel(counts)} ${items <= 1 ? "needs" : "need"} attention`;
+}
+
 // Commitments needing attention. Artifacts and unlinked promises are counted by
 // otherWorkAttentionCounts and reported beside this rather than added to it:
 // they are a different population, the CLI keeps them on their own line, and a

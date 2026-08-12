@@ -605,6 +605,50 @@ func TestAgentRatifierAuthorityLifecycle(t *testing.T) {
 	}
 }
 
+// AddActor must accept exactly the kinds the Workroom vocabulary defines. The
+// expectation is derived from workroom.IsActorKind rather than restated here on
+// purpose: a test that listed human, agent and service again would keep passing
+// while the two lists drifted apart, which is the duplication this seam exists
+// to remove. Adding a kind in one place and not the other fails this.
+func TestAddActorKindsFollowWorkroomVocabulary(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Words the normalizer treats differently: kinds, an authority, the
+	// membership role, the fallback kind it derives for anything unrecognised,
+	// and a word it has never seen.
+	for index, word := range []string{"human", "agent", "service", "operator", "participant", "unspecified", "reviewer"} {
+		_, _, err := workspace.AddActor(ctx, "human", fmt.Sprintf("kind-probe-%d", index), word)
+		if accepted := err == nil; accepted != workroom.IsActorKind(word) {
+			t.Errorf("AddActor kind %q accepted = %v, workroom.IsActorKind = %v", word, accepted, workroom.IsActorKind(word))
+		}
+	}
+	// An omitted kind is defaulted rather than rejected, so it is deliberately
+	// outside the correspondence above; IsActorKind("") is false.
+	actor, _, err := workspace.AddActor(ctx, "human", "kind-probe-default", "")
+	if err != nil {
+		t.Fatalf("AddActor with an omitted kind = %v", err)
+	}
+	if actor.Name != "kind-probe-default" {
+		t.Errorf("defaulted actor = %+v", actor)
+	}
+}
+
+func TestValidateAuthorityRoleUsesRosterKindClassification(t *testing.T) {
+	for _, role := range []string{"", "participant", "agent", "human", "service"} {
+		if err := validateAuthorityRole(role); err == nil {
+			t.Errorf("validateAuthorityRole(%q) accepted a non-authority", role)
+		}
+	}
+	for _, role := range []string{"operator", "ratifier", "custom"} {
+		if err := validateAuthorityRole(role); err != nil {
+			t.Errorf("validateAuthorityRole(%q) = %v", role, err)
+		}
+	}
+}
+
 func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
@@ -1106,4 +1150,29 @@ func statementActor(t *testing.T, workspace *Workspace, ctx context.Context, eve
 	}
 	t.Fatalf("statement %s not found", event)
 	return ""
+}
+
+// The first version of back-pressure shipped a kernel option that no
+// deployment set, so every resident stayed unbounded while the tests passed.
+// This asserts the resident's own posture, so dropping the bound fails here
+// rather than silently restoring the unbounded queue.
+func TestResidentSequencerIsBounded(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Act(ctx, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "force the submitter into existence",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "resident-bound-probe",
+	}); err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	depth := workspace.submitter.QueueDepth()
+	if depth == 0 {
+		t.Fatal("resident sequencer is unbounded; the queue bound was not passed to the kernel")
+	}
+	if depth != ResidentQueueDepth {
+		t.Fatalf("resident queue depth = %d, want %d", depth, ResidentQueueDepth)
+	}
 }

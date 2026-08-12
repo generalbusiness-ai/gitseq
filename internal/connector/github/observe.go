@@ -7,9 +7,16 @@
 //
 // Two operations, deliberately asymmetric. Observing is inbound and only ever
 // appends: an observation is a new event, never a merge. Rendering is outbound
-// and only ever overwrites a surface the connector owns and nothing reads back.
-// Because inbound only appends and outbound only overwrites, the two never need
-// to reconcile, and there is no conflict for an engine to resolve dishonestly.
+// and writes to the forge — currently by opening a pull request, which is not
+// idempotent and cannot be overwritten, so it is invoked deliberately rather
+// than reconciled toward.
+//
+// The asymmetry that matters is not overwrite-versus-append but that neither
+// direction reads the other's writing. Inbound skips pull requests entirely, so
+// what this connector opens can never come back as something it observed. That
+// exclusion is structural: a pull request is a pull request whatever its body
+// says. Because the two never read each other, there is no divergence for an
+// engine to reconcile, and no conflict it could resolve dishonestly.
 package github
 
 import "fmt"

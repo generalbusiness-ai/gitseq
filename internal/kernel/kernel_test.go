@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,6 +34,10 @@ type fixtureState struct {
 }
 
 func newFixture(t testing.TB, format string) fixtureState {
+	return newFixtureWithCeiling(t, format, 1<<20)
+}
+
+func newFixtureWithCeiling(t testing.TB, format string, payloadCeiling uint64) fixtureState {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -50,7 +55,7 @@ func newFixture(t testing.TB, format string) fixtureState {
 		t.Fatal(err)
 	}
 	genesis, err := Create(ctx, store, GenesisDescriptor{
-		Version: 0, ObjectFormat: format, PayloadCeiling: 1 << 20,
+		Version: 0, ObjectFormat: format, PayloadCeiling: payloadCeiling,
 		SequencerPublicKey: publicKey,
 	}, keyPath)
 	if err != nil {
@@ -202,7 +207,7 @@ func checkpointState(t testing.TB, count int) (fixtureState, ed25519.PrivateKey,
 			t.Fatal(err)
 		}
 	}
-	log, err := scanHead(f.ctx, f.store, f.genesis, mustHead(t, f.store, Ref(f.genesis)), true)
+	log, err := scanHead(f.ctx, f.store, f.genesis, mustHead(t, f.store, Ref(f.genesis)), true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -732,7 +737,7 @@ func BenchmarkColdAudit(b *testing.B) {
 		b.Run(strconv.Itoa(count), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				if _, err := scanHead(f.ctx, f.store, f.genesis, heads[count], true); err != nil {
+				if _, err := scanHead(f.ctx, f.store, f.genesis, heads[count], true, nil); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -830,7 +835,7 @@ func BenchmarkCheckpointRestartAtDepth1000(b *testing.B) {
 	b.Run("cold", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, err := scanHead(f.ctx, f.store, f.genesis, head, true); err != nil {
+			if _, err := scanHead(f.ctx, f.store, f.genesis, head, true, nil); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -1155,6 +1160,65 @@ func TestSequenceBoundsPinNamedGenesisAndHeadIndependently(t *testing.T) {
 	}
 	if err := validateSequenceBounds(commits, "genesis", "other-head"); err == nil || !strings.Contains(err.Error(), "named head") {
 		t.Fatalf("wrong head boundary error = %v", err)
+	}
+}
+
+func TestMetadataScanPreservesEstablishedCommitMessageNormalization(t *testing.T) {
+	const ceiling = uint64(4096)
+	f := newFixtureWithCeiling(t, "sha1", ceiling)
+	reader := NewReader(f.store)
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+
+	request := f.request(t, actor(t), "metadata-message", []byte("payload"), nil)
+	decoded := mustVerifyIntent(t, request.Signed)
+	tree, err := f.store.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	establishedMessage := intent.Envelope(request.Signed, decoded.RestsOn)
+	message := establishedMessage + strings.Repeat(" ", int(ceiling)-len(establishedMessage)+64) + "\n"
+	commit, err := f.store.SignedCommit(f.ctx, tree, f.genesis, message, f.signingKey, gitstore.CommitIdentity{
+		AuthorName: "external sequencer", AuthorEmail: "external@example.invalid",
+		CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+
+	var metadata []gitstore.CommitMetadata
+	err = f.store.WalkRevListMetadataAfter(f.ctx, f.genesis, commit, func(commit gitstore.CommitMetadata) error {
+		metadata = append(metadata, commit)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metadata) != 1 {
+		t.Fatalf("metadata suffix length = %d, want 1", len(metadata))
+	}
+	wantMessage, wantTimestamp, err := f.store.CommitMessageWithTimestamp(f.ctx, commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := normalizeEventMessage(metadata[0].Message); got != wantMessage {
+		t.Fatalf("normalized metadata message differs from established scan bytes\ngot:  %q\nwant: %q", got, wantMessage)
+	}
+	if uint64(len(metadata[0].Message)) <= ceiling || uint64(len(wantMessage)+len(request.Payload)) > ceiling {
+		t.Fatalf("test does not cross only the raw metadata ceiling: raw=%d normalized+payload=%d ceiling=%d", len(metadata[0].Message), len(wantMessage)+len(request.Payload), ceiling)
+	}
+	if metadata[0].Timestamp != wantTimestamp {
+		t.Fatalf("metadata timestamp = %d, want %d", metadata[0].Timestamp, wantTimestamp)
+	}
+	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
+		t.Fatalf("delta scan rejected normalized event: %v", err)
+	}
+	if _, err := Verify(f.ctx, f.store, f.genesis); err != nil {
+		t.Fatalf("cold scan rejected normalized event: %v", err)
 	}
 }
 
@@ -1636,7 +1700,7 @@ func TestCheckpointWriterRejectsRetiredSigningKeyAfterRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	head := mustHead(t, f.store, Ref(f.genesis))
-	log, err := scanHead(f.ctx, f.store, f.genesis, head, true)
+	log, err := scanHead(f.ctx, f.store, f.genesis, head, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1678,7 +1742,7 @@ func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		log, err := scanHead(f.ctx, f.store, f.genesis, result.Head, true)
+		log, err := scanHead(f.ctx, f.store, f.genesis, result.Head, true, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2237,6 +2301,41 @@ func TestSubmitterRefreshesCheckpointOnBoundedCadence(t *testing.T) {
 	}
 }
 
+func TestSubmitterDefersDueCheckpointUntilItsCASAppend(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	prior := f.request(t, private, "prior", []byte("prior"), nil)
+	if _, err := Submit(f.ctx, f.store, prior, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := CheckpointOptions{Profile: "test-fold@1", SigningKey: f.signingKey}
+	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointProfile: checkpoint.Profile})
+	if replay, err := submitter.Submit(f.ctx, prior); err != nil || !replay.Replay {
+		t.Fatalf("load checkpoint = %+v, %v", replay, err)
+	}
+	submitter.cache.checkpointAttempt = submitter.cache.log.Verification.Depth - checkpointInterval + 1
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "external", []byte("external"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := submitter.Submit(f.ctx, f.request(t, private, "resident", []byte("resident"), nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if submitter.cache.checkpointWrites != 1 || submitter.cache.checkpointFailures != 0 {
+		t.Fatalf("checkpoint writes=%d failures=%d, want one post-CAS write", submitter.cache.checkpointWrites, submitter.cache.checkpointFailures)
+	}
+	loaded, err := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile}).Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Checkpoint || loaded.Verification.Head != result.Head || len(loaded.Events) != 3 {
+		t.Fatalf("post-CAS checkpoint = %+v, result = %+v", loaded, result)
+	}
+}
+
 func TestReaderFallsBackToFullAuditAfterRefRewind(t *testing.T) {
 	f := newFixture(t, "sha1")
 	private := actor(t)
@@ -2516,7 +2615,7 @@ func TestScanHeadPinsTheApprovedFrontier(t *testing.T) {
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "two", []byte("two"), nil), Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	log, err := scanHead(f.ctx, f.store, approved.Genesis, approved.Head, true)
+	log, err := scanHead(f.ctx, f.store, approved.Genesis, approved.Head, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2542,4 +2641,88 @@ func mustSignIntent(t *testing.T, decoded intent.Intent, private ed25519.Private
 		t.Fatal(err)
 	}
 	return signed
+}
+
+// The audit is the slowest thing this package does and, before this, the least
+// able to say so: Load holds r.mu for its whole duration, so anything that
+// waited for that lock could only ever answer once there was nothing left to
+// report. This proves the counter is readable *while* the scan runs, and moves.
+//
+// The poller is deliberately never joined. If Snapshot needed r.mu it would
+// block there for the whole audit, and joining would turn a wrong design into
+// a hung test instead of a failing one.
+func TestColdAuditReportsItsProgressWhileHoldingTheLock(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	for index := range 12 {
+		key := "progress-" + strconv.Itoa(index)
+		if _, err := Submit(f.ctx, f.store, f.request(t, private, key, []byte(key), nil), Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reader := NewReader(f.store)
+	report := &AuditProgress{}
+	var samples, highest, inconsistent atomic.Int64
+	stop := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if p := report.Snapshot(); p.Started && p.Total > 0 {
+				samples.Add(1)
+				if int64(p.Verified) > highest.Load() {
+					highest.Store(int64(p.Verified))
+				}
+				if p.Verified > p.Total {
+					inconsistent.Add(1)
+				}
+			}
+			runtime.Gosched()
+		}
+	}()
+
+	if _, err := reader.LoadWithProgress(f.ctx, f.genesis, report); err != nil {
+		t.Fatal(err)
+	}
+	close(stop)
+
+	if samples.Load() == 0 {
+		t.Fatal("no progress was observable while the cold audit ran; a reader waiting on it could not be told why")
+	}
+	if highest.Load() == 0 {
+		t.Error("progress never advanced past zero")
+	}
+	if n := inconsistent.Load(); n > 0 {
+		t.Errorf("%d samples claimed more verified than there were to verify", n)
+	}
+	// Retained afterwards so an application can describe checkpoint writing
+	// and projection work without inventing its own verification counter.
+	if p := report.Snapshot(); !p.Started || p.Total == 0 || p.Verified != p.Total {
+		t.Errorf("final progress was not retained at N/N: %+v", p)
+	}
+}
+
+func TestMatchingCheckpointDoesNotStartColdAuditProgress(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "checkpoint-progress", []byte("value"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	options := CheckpointOptions{Profile: "fold@2", SigningKey: f.signingKey}
+	if _, err := NewReader(f.store, options).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+
+	warm := NewReader(f.store, options)
+	warmReport := &AuditProgress{}
+	if _, err := warm.LoadWithProgress(f.ctx, f.genesis, warmReport); err != nil {
+		t.Fatal(err)
+	}
+	if p := warmReport.Snapshot(); p.Started || p.Total != 0 || p.Verified != 0 {
+		t.Errorf("matching checkpoint started cold-audit progress: %+v", p)
+	}
 }

@@ -31,6 +31,60 @@ type testResult struct {
 	Seconds float64 `json:"seconds"`
 }
 
+// The three outcomes a run can have, worst last.
+//
+// "fail" and "error" both exit non-zero, and both should keep CI red. They are
+// separate words because they ask for different things from whoever reads them.
+// A fail says one of the six adversarial security properties did not hold, and
+// that should stop everything. An error says the harness could not establish
+// the properties at all — the test process died, its output would not decode,
+// or a named test never reported — and that should be investigated as a broken
+// runner. Printing one word for both made the tempting reading of a red run,
+// that the spike is flaky again, indistinguishable from a real regression.
+const (
+	statusPass  = "pass"
+	statusError = "error"
+	statusFail  = "fail"
+)
+
+// severity orders the outcomes so that combining many of them keeps the worst.
+// An unknown status counts as an error rather than a pass: a word this program
+// does not recognise is exactly the case where it cannot claim the property
+// held.
+func severity(status string) int {
+	switch status {
+	case statusPass:
+		return 0
+	case statusFail:
+		return 2
+	default:
+		return 1
+	}
+}
+
+// worst returns whichever of the two outcomes a reader should act on first.
+func worst(a, b string) string {
+	if severity(b) > severity(a) {
+		return b
+	}
+	return a
+}
+
+// outcomeOfTest maps one test's result onto the run's vocabulary. Only an
+// actual reported failure is a fail. A test that was skipped or never appeared
+// leaves the property unestablished, which is the harness's problem and not
+// evidence that the property broke.
+func outcomeOfTest(status string) string {
+	switch status {
+	case "pass":
+		return statusPass
+	case "fail":
+		return statusFail
+	default:
+		return statusError
+	}
+}
+
 type caseDefinition struct {
 	Number  int
 	Name    string
@@ -125,27 +179,10 @@ func main() {
 	}
 
 	gitVersion := strings.TrimSpace(string(mustOutput("git", "--version")))
-	report := evidence{Schema: "gitseq.spike-evidence.v0", GoVersion: runtime.Version(), GitVersion: gitVersion, Command: commandDescription, Status: "pass"}
-	for _, definition := range definitions {
-		result := caseResult{Number: definition.Number, Name: definition.Name, Status: "pass", Finding: definition.Finding}
-		for _, key := range definition.Tests {
-			test, found := results[key]
-			if !found {
-				test = testResult{Package: strings.Split(key, ".Test")[0], Test: "Test" + strings.Split(key, ".Test")[1], Status: "missing"}
-			}
-			if test.Status != "pass" {
-				result.Status = "fail"
-				report.Status = "fail"
-			}
-			result.Tests = append(result.Tests, test)
-		}
-		report.Cases = append(report.Cases, result)
-	}
-	if runErr != nil || decodeErr != nil {
-		report.Status = "fail"
-	}
+	report := evidence{Schema: "gitseq.spike-evidence.v0", GoVersion: runtime.Version(), GitVersion: gitVersion, Command: commandDescription}
+	report.Cases, report.Status = summarise(results, runErr, decodeErr)
 	details := stderr
-	if report.Status != "pass" {
+	if report.Status != statusPass {
 		details = failureDetails(report, runnerOutput.String(), stderr, runErr, decodeErr)
 	}
 
@@ -251,9 +288,47 @@ func quotedTests(tests []string) []string {
 	return quoted
 }
 
+// summarise turns the tests that reported into the six cases and one overall
+// outcome. It is separate from main so that both failure modes can be forced in
+// a test rather than inferred from whichever one a real run happens to produce.
+func summarise(results map[string]testResult, runErr, decodeErr error) ([]caseResult, string) {
+	overall := statusPass
+	cases := make([]caseResult, 0, len(definitions))
+	for _, definition := range definitions {
+		result := caseResult{Number: definition.Number, Name: definition.Name, Status: statusPass, Finding: definition.Finding}
+		for _, key := range definition.Tests {
+			test, found := results[key]
+			if !found {
+				test = testResult{Package: strings.Split(key, ".Test")[0], Test: "Test" + strings.Split(key, ".Test")[1], Status: "missing"}
+			}
+			result.Status = worst(result.Status, outcomeOfTest(test.Status))
+			result.Tests = append(result.Tests, test)
+		}
+		overall = worst(overall, result.Status)
+		cases = append(cases, result)
+	}
+	// A dead runner or undecodable output cannot make a property fail; it can
+	// only leave the run unable to say. If a named test already reported a
+	// failure, that is the more serious finding and it survives.
+	if runErr != nil || decodeErr != nil {
+		overall = worst(overall, statusError)
+	}
+	return cases, overall
+}
+
+// headline states, in one line a CI log will carry, which of the two things
+// went wrong. Everything after it is the same either way, because the evidence
+// a reader needs to confirm the headline is the same evidence.
+func headline(status string) string {
+	if status == statusFail {
+		return "adversarial evidence failed: a named security property did not hold"
+	}
+	return "adversarial evidence is inconclusive: the harness could not establish the properties, so this is a runner defect rather than a security regression"
+}
+
 func failureDetails(report evidence, runnerOutput, stderr string, runErr, decodeErr error) string {
 	var text strings.Builder
-	text.WriteString("adversarial evidence failed\n")
+	text.WriteString(headline(report.Status) + "\n")
 	for _, result := range report.Cases {
 		for _, test := range result.Tests {
 			if test.Status != "pass" {
@@ -287,6 +362,9 @@ func stableMarkdown(report evidence) []byte {
 	text.WriteString("# gitseq spike results\n\n")
 	text.WriteString("This tracked file is the stable projection of the six adversarial cases. Run-specific tool versions, timings, and JSON evidence are regenerated under ignored `.spike/`.\n\n")
 	fmt.Fprintf(&text, "Overall: **%s**\n\n", report.Status)
+	if report.Status != statusPass {
+		fmt.Fprintf(&text, "%s\n\n", headline(report.Status))
+	}
 	text.WriteString("| Case | Result | Evidence |\n|---|---|---|\n")
 	for _, result := range report.Cases {
 		tests := append([]testResult(nil), result.Tests...)
@@ -308,6 +386,9 @@ func stableMarkdown(report evidence) []byte {
 func markdown(report evidence, runnerDetails string) []byte {
 	var text strings.Builder
 	fmt.Fprintf(&text, "# gitseq spike results\n\nOverall: **%s**\n\n", report.Status)
+	if report.Status != statusPass {
+		fmt.Fprintf(&text, "%s\n\n", headline(report.Status))
+	}
 	fmt.Fprintf(&text, "Environment: `%s`; `%s`\n\n", report.GoVersion, report.GitVersion)
 	text.WriteString("| Case | Result | Evidence |\n|---|---|---|\n")
 	for _, result := range report.Cases {

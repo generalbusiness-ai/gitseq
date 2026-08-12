@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -271,4 +272,178 @@ func TableKeys(section string) []string {
 		keys = append(keys, match[1])
 	}
 	return keys
+}
+
+// UnmaintainablePath reports why normal merge succession can never maintain an
+// artifact at this path, or "" when it can. A page anchored to such an artifact
+// cannot flare: paths match as exact strings, so no merge will ever publish a
+// successor at one of these, nothing will retire the artifact, and its silence
+// reads as currency.
+//
+// The four shapes are the ones the log has actually accumulated. "." is the
+// whole-repository pointer every merge would have to rewrite. A comma-joined
+// string is several paths pretending to be one, which equals no real path. An
+// absolute filesystem path names one machine's copy of the repository and means
+// nothing in another clone. A branch name is not a location in the tree at all,
+// and disappears when the branch does.
+func UnmaintainablePath(path string) string {
+	switch {
+	case path == ".":
+		return "the whole-repository path, which no merge supersedes"
+	case strings.HasPrefix(path, "/"):
+		return "an absolute filesystem path, which names one machine's checkout"
+	case strings.Contains(path, ","):
+		return "a comma-joined pseudo-path, which is several paths and therefore none"
+	case strings.HasPrefix(path, "request/"), strings.HasPrefix(path, "task/"),
+		strings.HasPrefix(path, "security/"):
+		return "a branch name rather than a path in the tree"
+	}
+	return ""
+}
+
+// CitationVerdict is what a documentation citation may do as a basis. Fatal
+// names a citation that can never serve: nothing about it will improve by
+// waiting. Report names one that is serving correctly and has something to say
+// — staleness is the set working, not the set broken.
+type CitationVerdict struct {
+	Fatal  bool
+	Report bool
+	Reason string
+}
+
+// ClassifyCitation judges one front-matter citation from facts the caller has
+// already resolved against the durable log. It takes primitives rather than
+// workroom types so the whole table can be exercised without a workroom, which
+// is the only way to cover the cases a real log does not currently contain.
+func ClassifyCitation(found, isArtifact, retired, stale bool, path, commit string) CitationVerdict {
+	switch {
+	case !found:
+		return CitationVerdict{Fatal: true, Reason: "resolves to no statement in this workroom"}
+	case !isArtifact:
+		// Retiring the request that asked for a page never makes the page
+		// wrong. Only an artifact stands for the implementation described.
+		return CitationVerdict{Fatal: true, Reason: "is not an artifact, so retiring it would say nothing about the pages naming it"}
+	case retired:
+		return CitationVerdict{Fatal: true, Reason: "is retired, so the pages naming it rest on a withdrawn pointer"}
+	case !canonicalCommit(commit):
+		// Not cosmetic. gs merge refuses anything that is not the full
+		// canonical object ID, and a review verdict resolves to its artifact by
+		// matching this field as an exact string. An abbreviated commit here is
+		// an artifact that cannot take part in merge or review at all.
+		return CitationVerdict{Fatal: true, Reason: "names a commit that is not a full canonical object ID, so it can take no part in merge or review"}
+	}
+	if why := UnmaintainablePath(path); why != "" {
+		return CitationVerdict{Fatal: true, Reason: "sits at " + why + ", so nothing will supersede it and the pages naming it can never flare"}
+	}
+	if stale {
+		// Reported, never fatal. A stale basis means something under this
+		// artifact moved; the pages naming it are flaring, which is what the
+		// set is for. Failing here would redden the whole set for working.
+		return CitationVerdict{Report: true, Reason: "has a basis that moved; the pages naming it are flaring, which is intended"}
+	}
+	return CitationVerdict{}
+}
+
+// canonicalCommit reports whether a commit field is a full object ID. Git's two
+// hash sizes are the only lengths a commit may have; anything shorter is an
+// abbreviation that no exact-string comparison will match.
+func canonicalCommit(commit string) bool {
+	if len(commit) != 40 && len(commit) != 64 {
+		return false
+	}
+	for _, r := range commit {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// BaselineEntry is one known-failing citation: why it fails, and exactly which
+// pages depend on it. The page set is part of the record because the event ID
+// alone cannot distinguish "the same defect, still in the same places" from
+// "the same defect, now in one more place" — and the second is a new violation
+// however familiar the artifact is.
+type BaselineEntry struct {
+	Reason string
+	Pages  []string
+}
+
+// BaselineFinding is one disagreement between the known-failing list and what
+// the gate currently sees.
+type BaselineFinding struct {
+	Citation string
+	Reason   string
+}
+
+// CompareBaseline enforces the three ways a known-failing list may be wrong.
+// New is a citation failing now that nobody has accounted for. Changed is one
+// whose defect, or whose set of dependent pages, is not what was recorded —
+// the page set matters because a citation the list already knows about can
+// spread to a page it did not cover, which is a fresh violation wearing a
+// familiar event ID. Fixed is an entry that has stopped failing: reported as an
+// error too, because a list that keeps entries after their repair is an
+// exceptions file, and the only property that stops this becoming one is that
+// it must shrink.
+func CompareBaseline(failing, baseline map[string]BaselineEntry) (newly, changed, fixed []BaselineFinding) {
+	for citation, current := range failing {
+		recorded, known := baseline[citation]
+		switch {
+		case !known:
+			newly = append(newly, BaselineFinding{Citation: citation, Reason: current.Reason})
+		case recorded.Reason != current.Reason:
+			changed = append(changed, BaselineFinding{Citation: citation,
+				Reason: "recorded as " + recorded.Reason + ", now " + current.Reason})
+		case !samePages(recorded.Pages, current.Pages):
+			changed = append(changed, BaselineFinding{Citation: citation,
+				Reason: "recorded for " + strings.Join(recorded.Pages, ", ") + ", now cited by " + strings.Join(current.Pages, ", ")})
+		}
+	}
+	for citation, recorded := range baseline {
+		if _, still := failing[citation]; !still {
+			fixed = append(fixed, BaselineFinding{Citation: citation,
+				Reason: "no longer failing (was " + recorded.Reason + "); delete this line in the head that repaired it"})
+		}
+	}
+	sort.Slice(newly, func(i, j int) bool { return newly[i].Citation < newly[j].Citation })
+	sort.Slice(changed, func(i, j int) bool { return changed[i].Citation < changed[j].Citation })
+	sort.Slice(fixed, func(i, j int) bool { return fixed[i].Citation < fixed[j].Citation })
+	return newly, changed, fixed
+}
+
+func samePages(recorded, current []string) bool {
+	if len(recorded) != len(current) {
+		return false
+	}
+	for i := range recorded {
+		if recorded[i] != current[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// ParseBaseline reads the known-failing list. A repeated event ID is an error
+// rather than a last-one-wins overwrite: two rows for one citation means the
+// file disagrees with itself about which pages are covered, and silently
+// keeping either would let the uncovered pages through.
+func ParseBaseline(raw string) (map[string]BaselineEntry, error) {
+	entries := make(map[string]BaselineEntry)
+	for number, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("baseline line %d has %d tab-separated fields, want event, reason and pages", number+1, len(fields))
+		}
+		if _, repeated := entries[fields[0]]; repeated {
+			return nil, fmt.Errorf("baseline line %d repeats %s; one citation has one row", number+1, fields[0])
+		}
+		pages := strings.Split(fields[2], ",")
+		sort.Strings(pages)
+		entries[fields[0]] = BaselineEntry{Reason: fields[1], Pages: pages}
+	}
+	return entries, nil
 }

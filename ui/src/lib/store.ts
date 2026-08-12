@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type Act, type Actor, type Commitment, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type Vocabulary, type WorktreeView } from "./api";
-import { ACTIVE_WORK_STATUSES, ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, otherWorkAttentionCounts, workActiveCount, workAttentionCount, workItemState } from "./work";
-import { definitionOf } from "./util";
+import { api, type Act, type Actor, type Cursor, type GraphCommit, type Projection, type Statement, type Status, type WorktreeView } from "./api";
+import { ACTIVE_WORK_STATUSES, ATTENTION_WORK_STATUSES, CLOSED_WORK_STATUSES, otherWorkAttentionCounts, workActiveCount, workAttentionCount } from "./work";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
@@ -252,34 +251,4 @@ export function workSummary(projection?: Projection): {
     active: workActiveCount(projection),
     done: projection.commitments.filter((c) => CLOSED_WORK_STATUSES.includes(c.status as (typeof CLOSED_WORK_STATUSES)[number])).length,
   };
-}
-
-// The stream's three weights: plain talk renders as light message rows;
-// settled record entries as compact one-line rows; only what still awaits a
-// response — active commitments and open proposals — earns card chrome.
-export function statementWeight(
-  statement: Statement,
-  projection: Projection,
-  commitment?: Commitment,
-  vocabulary?: Vocabulary,
-): "card" | "compact" {
-  if (statement.retired || statement.stale) {
-    // Stale commitments still need someone's attention: keep the card.
-    if (commitment && workItemState(commitment).attention) return "card";
-    return "compact";
-  }
-  const definition = definitionOf(statement.kind, vocabulary);
-  if (definition?.lifecycle === "request" || (!vocabulary && statement.kind === "request")) {
-    // Staleness is a qualifier here, not a status, so the attention predicate
-    // has to be asked rather than matching a status list: a stale commitment
-    // still reads "reported" or "satisfied" and would otherwise drop out.
-    return commitment && (ACTIVE_COMMITMENT_STATUSES.includes(commitment.status) || workItemState(commitment).attention)
-      ? "card"
-      : "compact";
-  }
-  if (definition?.render === "proposal" || (!vocabulary && statement.kind === "propose")) {
-    const verdict = projection.decisions.find((d) => d.event === statement.event)?.verdict;
-    return !statement.ratified && verdict === "effective" ? "card" : "compact";
-  }
-  return "compact";
 }

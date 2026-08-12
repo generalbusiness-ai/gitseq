@@ -88,6 +88,24 @@ type LiveView struct {
 	Degraded   bool     `json:"degraded,omitempty"`
 }
 
+type AddressedFrame struct {
+	Actor        string   `json:"actor"`
+	ActorName    string   `json:"actor_name,omitempty"`
+	Text         string   `json:"text"`
+	About        string   `json:"about"`
+	Conversation string   `json:"conversation"`
+	Sequence     uint64   `json:"sequence"`
+	Re           string   `json:"re,omitempty"`
+	Recipients   []string `json:"recipients"`
+	Thread       string   `json:"thread"`
+}
+
+type InboxView struct {
+	Available bool             `json:"available"`
+	Frames    []AddressedFrame `json:"frames"`
+	Skipped   int              `json:"skipped,omitempty"`
+}
+
 type ActorStatus struct {
 	You                   ActorView        `json:"you"`
 	Frontier              []Frontier       `json:"frontier"`
@@ -104,6 +122,7 @@ type ActorStatus struct {
 	YourAttentionSkipped  int              `json:"needs_your_attention_skipped,omitempty"`
 	Totals                ActorTotals      `json:"totals"`
 	Live                  LiveView         `json:"live"`
+	PriorityChat          InboxView        `json:"priority_ephemeral_chat"`
 	FollowWithWait        string           `json:"follow_with_wait"`
 }
 
@@ -119,6 +138,7 @@ type WaitDelta struct {
 	CurrentNotActionable        []CommitmentView `json:"current_not_actionable,omitempty"`
 	CurrentNotActionableSkipped int              `json:"current_not_actionable_skipped,omitempty"`
 	Live                        []nexus.Change   `json:"live,omitempty"`
+	PriorityChat                InboxView        `json:"priority_ephemeral_chat"`
 	Totals                      ActorTotals      `json:"totals"`
 }
 
@@ -239,11 +259,28 @@ func addressedTo(commitment workroom.Commitment, fingerprint string) bool {
 	return commitment.Status == "open" && commitment.AddressedTo == fingerprint && commitment.Promise == "" && commitment.Performer == "" && commitment.WaitingOn == ""
 }
 
-func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, fingerprint, actorName string, degraded bool) ActorStatus {
+func inboxView(projection workroom.Projection, inbox *nexus.Inbox, degraded bool) InboxView {
+	view := InboxView{Available: !degraded, Frames: []AddressedFrame{}}
+	if degraded || inbox == nil {
+		return view
+	}
+	view.Skipped = inbox.Skipped
+	for _, frame := range inbox.Frames {
+		actorName := ActorName(projection, frame.Actor)
+		view.Frames = append(view.Frames, AddressedFrame{
+			Actor: frame.Actor, ActorName: Text(actorName), Text: frame.Text, About: frame.About,
+			Conversation: frame.Conversation, Sequence: frame.Sequence, Re: frame.Re,
+			Recipients: append([]string(nil), frame.Recipients...), Thread: frame.Thread,
+		})
+	}
+	return view
+}
+
+func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, inbox *nexus.Inbox, fingerprint, actorName string, degraded bool) ActorStatus {
 	projection := durable.Projection
 	statements := statementIndex(projection)
 	digest := ActorStatus{You: ActorView{Name: Text(actorName), Fingerprint: fingerprint}, Frontier: cursor.Frontier, Cursor: cursor,
-		Totals: actorTotals(projection, durable.Depth), Live: actorLive(live, degraded),
+		Totals: actorTotals(projection, durable.Depth), Live: actorLive(live, degraded), PriorityChat: inboxView(projection, inbox, degraded),
 		FollowWithWait: "pass cursor back to wait to receive only what changes after it"}
 	if actor, ok := projection.Actors[fingerprint]; ok {
 		digest.You.Kind, digest.You.MembershipEvent = actor.Kind, actor.MembershipEvent
@@ -315,10 +352,10 @@ func BuildOrientation(durable app.Snapshot, fingerprint, actorName string) (Orie
 	}, true
 }
 
-func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset bool, requested Cursor, fingerprint, actorName string, degraded bool) WaitDelta {
+func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset bool, requested Cursor, inbox *nexus.Inbox, fingerprint, actorName string, degraded bool) WaitDelta {
 	projection := durable.Projection
 	statements := statementIndex(projection)
-	delta := WaitDelta{Cursor: cursor, Reset: reset, Live: live, Totals: actorTotals(projection, durable.Depth)}
+	delta := WaitDelta{Cursor: cursor, Reset: reset, Live: live, PriorityChat: inboxView(projection, inbox, degraded), Totals: actorTotals(projection, durable.Depth)}
 	from := 0
 	for _, frontier := range requested.Frontier {
 		if frontier.Genesis == "" || frontier.Genesis == durable.Genesis {
@@ -368,7 +405,13 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 func Summarize(tool string, value any) string {
 	switch shaped := value.(type) {
 	case ActorStatus:
-		return fmt.Sprintf("depth %d, you hold %s roles, %s addressed to you, %s waiting on you, %s you are waiting on, %s not actionable, %s of your acts did not take force; live %s",
+		priority := fmt.Sprintf("priority ephemeral chat: %d unacknowledged", len(shaped.PriorityChat.Frames))
+		if !shaped.PriorityChat.Available {
+			priority = "priority ephemeral chat unavailable"
+		} else if shaped.PriorityChat.Skipped > 0 {
+			priority += fmt.Sprintf(", %d additional pending", shaped.PriorityChat.Skipped)
+		}
+		return fmt.Sprintf("%s; depth %d, you hold %s roles, %s addressed to you, %s waiting on you, %s you are waiting on, %s not actionable, %s of your acts did not take force; live %s", priority,
 			shaped.Totals.Depth, Shown(len(shaped.You.Roles), shaped.You.RolesSkipped),
 			Shown(len(shaped.AvailableToYou), shaped.AvailableToYouSkipped),
 			Shown(len(shaped.WaitingOnYou), shaped.WaitingOnYouSkipped), Shown(len(shaped.YouAreWaiting), shaped.YouAreWaitingSkipped),
@@ -381,7 +424,13 @@ func Summarize(tool string, value any) string {
 		if shaped.Skipped > 0 {
 			skipped = fmt.Sprintf(", %d older events omitted", shaped.Skipped)
 		}
-		return fmt.Sprintf("depth %d, %d new durable events%s%s; currently %s addressed to you, %s waiting on you, %s not actionable",
+		priority := fmt.Sprintf("priority ephemeral chat: %d unacknowledged", len(shaped.PriorityChat.Frames))
+		if !shaped.PriorityChat.Available {
+			priority = "priority ephemeral chat unavailable"
+		} else if shaped.PriorityChat.Skipped > 0 {
+			priority += fmt.Sprintf(", %d additional pending", shaped.PriorityChat.Skipped)
+		}
+		return fmt.Sprintf("%s; depth %d, %d new durable events%s%s; currently %s addressed to you, %s waiting on you, %s not actionable", priority,
 			shaped.Totals.Depth, len(shaped.Durable), skipped, reset,
 			Shown(len(shaped.CurrentAvailableToYou), shaped.CurrentAvailableToSkipped),
 			Shown(len(shaped.CurrentWaitingOnYou), shaped.CurrentWaitingSkipped), Shown(len(shaped.CurrentNotActionable), shaped.CurrentNotActionableSkipped))
