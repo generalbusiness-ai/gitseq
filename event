@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact full-fingerprint live-session count carried unchanged onto current main.","body":{"commit":"1c75f9cb7aae7f709fd95600c658571f816371ac","path":"internal/nexus"}}
+{"kind":"artifact","text":"Aggregate-only presence-count service boundary carried unchanged onto current main.","body":{"commit":"1c75f9cb7aae7f709fd95600c658571f816371ac","path":"internal/service"}}
