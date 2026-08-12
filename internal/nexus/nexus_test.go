@@ -871,3 +871,86 @@ func TestFocusedOnDropsExpiredSessions(t *testing.T) {
 		t.Fatalf("an expired lease still reported attention: %+v", actors)
 	}
 }
+
+// An addressed frame keeps being reported until the recipient explicitly says
+// it has seen it. That is what makes the attention adjunct an interruption
+// rather than a notification: a tool call that ignores it does not consume it,
+// and the next call says the same thing again.
+//
+// The repetition is not a feature the adjunct adds. It falls out of the inbox
+// holding frames until Acknowledge removes them, and this test exists so that
+// property cannot be quietly optimised away underneath the adjunct that relies
+// on it.
+func TestAddressedFramesRepeatUntilAcknowledged(t *testing.T) {
+	hub := newHub(t, 64)
+	_, aliceKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	announceIdentity(t, hub, "alice", "alice", aliceKey)
+	_, bobKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bob := announceIdentity(t, hub, "bob", "bob", bobKey)
+
+	frame, err := hub.PublishMessageForSession("alice", "", Message{About: "topic", Text: "look at this", Recipients: []string{bob}}, aliceKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reading it changes nothing. Three reads in a row must all report it,
+	// because reading is not acknowledging.
+	for attempt := 1; attempt <= 3; attempt++ {
+		_, inbox, err := hub.SnapshotForSession("bob")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(inbox.Frames) != 1 || inbox.Frames[0].Text != "look at this" {
+			t.Fatalf("read %d reported %+v, want the frame still pending", attempt, inbox.Frames)
+		}
+	}
+
+	// The same holds through the attention query the adjunct actually uses.
+	if actors, _ := hub.FocusedOn("bob", nil); len(actors) != 0 {
+		t.Fatalf("an empty event set matched actors: %+v", actors)
+	}
+
+	handle := fmt.Sprintf("%s:%d", frame.Conversation, frame.Sequence)
+	acknowledged, err := hub.Acknowledge("bob", []string{handle})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acknowledged != 1 {
+		t.Fatalf("acknowledged %d frames, want 1", acknowledged)
+	}
+
+	_, inbox, err := hub.SnapshotForSession("bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inbox.Frames) != 0 {
+		t.Fatalf("an acknowledged frame is still pending: %+v", inbox.Frames)
+	}
+
+	// Acknowledgement is per session, not per actor or per fingerprint. Another
+	// session must not have its interruption cleared by someone else's ack.
+	_, carolKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	carol := announceIdentity(t, hub, "carol", "carol", carolKey)
+	if _, err := hub.PublishMessageForSession("alice", "", Message{About: "topic", Text: "and this", Recipients: []string{carol}}, aliceKey); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hub.Acknowledge("bob", []string{handle}); err != nil {
+		t.Fatal(err)
+	}
+	_, carolInbox, err := hub.SnapshotForSession("carol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(carolInbox.Frames) != 1 {
+		t.Fatalf("another session's acknowledgement cleared carol's inbox: %+v", carolInbox.Frames)
+	}
+}
