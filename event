@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6182f99d7c37396f2d87d0f88f7bede3a8f979fa","text":"Retire the shipped cmd/gitseq-perf predecessor against the merged instrumentation successor; no documentation cites this predecessor."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d75a7a9799a7808d5c3d9bf4d0188996c9f9cb3a","text":"Retire the shipped internal/perfscenario predecessor against the merged instrumentation successor; no documentation cites this predecessor."}
