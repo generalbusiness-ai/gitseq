@@ -2,7 +2,7 @@
 title: gitseq documentation
 summary: Map of the documentation set, and how to choose a starting point.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d97eed896404f401dae2439928e31c6a0290ed47
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:61bafadb6d6809bdf1b03b77e6bd3119d124f7b3
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8fed27446d2441119f676fd3fb0b3cbb3a038ec8
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcdbd7cb5b058a09c59b4540d5157f46116026bc
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b749bdeade8afec544344727fb77b5c89348e705
