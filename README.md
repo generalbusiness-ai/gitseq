@@ -20,18 +20,17 @@ Updates replace their previous values, while workflow rules live elsewhere in
 the application.
 
 With gitseq, there's a different way.  If I want to change the status of a 
-task, I just write an update with a different status.  (My update might be
-anything: a correction, or a revision, or a request, or just a status change).
-Similarly with assignee (claiming or dispatching a task), or any other change.
-We'll track the **acts** as immutable events, Each is signed by its author,
-admitted to one verifiable order, and connected to the task and its history
-through strong references.
+task, I just write a _log entry_ with a different status (or a correction,
+revision, request, claiming or assigning a task, or whatever). We track the
+**acts** as immutable events.  Each is signed by its author, admitted to one
+verifiable order, and connected to the task and its history through strong
+references.
 
 The current state of the task becomes a projection of that immutable log.
-It can be recalculated at any time, independently verified, andtraced back
+It can be recalculated at any time, independently verified, and traced back
 through every act that produced it.
 
-The infrastructure is simple: ordinary Git storage plus a signed sequencer.
+The infrastructure is simple: _ordinary Git storage_ plus a _signed sequencer_.
 Above this, applications define their own object types, actions, projections,
 and rules for deciding which acts take effect.
 
