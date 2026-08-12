@@ -3,7 +3,7 @@ title: gs status
 summary: Project the current state of the workroom, bounded by default.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66b6cb0b770fe88808130a195babf79fe1ea7746
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8aa25919999f625d17a15302e3a535cd6c0012c9
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
 ---
@@ -52,7 +52,7 @@ gs status --repo "$REPO" --json | head -5
 
 The header names the frontier, its depth, and where the answer came
 from — `verified local`, `resident summary`, or `verified local
-fallback`. Then a line of totals, and five sections:
+fallback`. Then a line of totals, and six sections:
 
 | Section | What is in it |
 |---|---|
@@ -60,6 +60,7 @@ fallback`. Then a line of totals, and five sections:
 | Needs attention | Live commitments in any other state — `stale`, `reneged`, `cancelled`. |
 | Current artifacts | Artifacts that are neither retired nor stale. |
 | Stale artifacts | Artifacts that were retired, and artifacts a retirement reached. |
+| Dissents | Standing objections, each naming the act it is recorded against. |
 | Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
 
 Staleness qualifies a commitment rather than replacing its status. A
