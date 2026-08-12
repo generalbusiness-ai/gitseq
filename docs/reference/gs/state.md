@@ -4,6 +4,7 @@ summary: Append a durable, attributed utterance.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dd237f3445f2123f9c1db55af0aaec93f0b457ce
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1539075831e59cbc39fefdd6a4e800ba2c150208
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e8657f21215485ba635219aacf304a8b93daa49
 ---
 
 # `gs state`
@@ -80,7 +81,9 @@ Required edges, by kind:
 - a `promise` needs one basis that is an effective `request`, **and** the
   signer must be the performer that request named;
 - a `report` needs one basis that is an effective `promise`, signed by
-  the promisor.
+  the promisor. Filing a report without an effective promise is refused before
+  anything is appended, with an error telling the caller to rest on the
+  promise rather than its request.
 
 Anything else in `rests_on` is carried unchecked.
 
