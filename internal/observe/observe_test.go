@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -40,6 +41,40 @@ func TestGitPathIsFinite(t *testing.T) {
 		if got := GitPath(test.arguments); got != test.want {
 			t.Fatalf("GitPath(%q) = %q, want %q", test.arguments, got, test.want)
 		}
+	}
+}
+
+// The route label is the one metric attribute fed from a value the handler did
+// not choose, so it is the one that can grow without bound. routeTemplate's
+// length ceiling and character allowlist are what keep it finite if a future
+// router ever puts request-derived text in Pattern. Nothing held that guard
+// before: deleting it entirely left this package and internal/telemetry green.
+func TestRouteTemplateIsBounded(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		pattern string
+		want    string
+	}{
+		{"a registered template passes through", "GET /actors/{fingerprint}", "GET /actors/{fingerprint}"},
+		{"an unmatched request is named, not blank", "", "unmatched"},
+		{"a disallowed character collapses", "GET /actors/private?secret=1", "other"},
+		{"a percent-encoded byte collapses", "GET /actors/%2e%2e", "other"},
+		{"a non-ASCII byte collapses", "GET /actors/caf\u00e9", "other"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := routeTemplate(test.pattern); got != test.want {
+				t.Fatalf("routeTemplate(%q) = %q, want %q", test.pattern, got, test.want)
+			}
+		})
+	}
+
+	// The ceiling is a boundary, so pin both sides of it. Testing only a wildly
+	// over-length pattern would still pass if someone raised the limit.
+	if got := routeTemplate(strings.Repeat("a", 96)); got != strings.Repeat("a", 96) {
+		t.Fatalf("a pattern exactly at the ceiling collapsed: %q", got)
+	}
+	if got := routeTemplate(strings.Repeat("a", 97)); got != "other" {
+		t.Fatalf("a pattern one over the ceiling survived: %q", got)
 	}
 }
 
