@@ -4,7 +4,7 @@ summary: Check the exact artifact checkout, then sign a review verdict against i
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c20ea289f3f3cd578adb94ec629f1b45effbdbc5
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b78567c9fdc10c79087ae72099fb8397715fb1a8
 ---
 
 # `gs review`
@@ -76,7 +76,10 @@ Durable checks:
 - the named **promise** is effective, not retired, and owned by the
   reviewer;
 - the promise rests on exactly one standing `request`, which is copied
-  from the graph rather than retyped.
+  from the graph rather than retyped;
+- the reviewer did not sign the artifact under review. Independence is
+  compared by fingerprint, so a self-signed verdict is refused here
+  rather than left for [`gs merge`](merge.md) to catch.
 
 Local checks on `--checkout`:
 
@@ -112,9 +115,12 @@ reviewer signed anyway.
 ## What it produces
 
 A `report` resting on the promise, the request, and the artifact, with
-`body.verdict` and `body.head`, plus `body.stale` and `body.staleness`
-when something underneath had moved. The review requester ratifies it;
-then, for an approval, [`gs merge`](merge.md) can use it.
+`body.verdict`, `body.head` and `body.artifact`, plus `body.stale` and
+`body.staleness` when something underneath had moved. Naming the
+artifact is what lets the projection say who implemented the head, so an
+approval written any other way can leave independence unresolved and
+unmergeable. The review requester ratifies it; then, for an approval,
+[`gs merge`](merge.md) can use it.
 
 ## What it does not replace
 
