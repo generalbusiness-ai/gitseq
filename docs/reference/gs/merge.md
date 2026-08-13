@@ -1,6 +1,6 @@
 ---
 title: gs merge
-summary: Merge only the exact head named by a live, ratified approval.
+summary: Merge an approved exact head and publish its artifact succession.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
@@ -9,7 +9,9 @@ rests_on:
 # `gs merge`
 
 Merges one approved commit into the checkout, after checking that the
-approval really covers that commit and still stands.
+approval really covers that commit and still stands. It then retires the live
+artifact pointers the merge changed and publishes their successors as one
+resumable batch.
 
 ## Flags
 
@@ -111,7 +113,7 @@ or linked worktree.
 Concurrent callers first reserve
 `refs/gitseq/merge-receipts/<approval-hash>` with an atomic compare-and-swap.
 Only one caller can proceed. A successful merge leaves three matching
-records:
+records, followed by the artifact succession authorized by that receipt:
 
 - merge commit trailers naming `Gitseq-Approval`, `Gitseq-Candidate`, and
   `Gitseq-Target-Pre-Head`;
@@ -125,71 +127,42 @@ also prevents replay if local refs and the branch carrying the merge are
 later lost. An interrupted reservation fails closed so it can be
 inspected before any later merge is allowed.
 
-## Afterwards
+The assertion and every successor and retirement use deterministic
+idempotency keys. If submission stops part-way, run the same command again in
+the checkout still at that merge head. It finds the immutable Git receipt and
+resumes the missing suffix; it does not merge a second time or retire a
+successor it already published.
 
-Two things are still yours to do, in this order:
+## Artifact succession
 
-1. Retire every live artifact covering what the merge changed, and
-   publish a successor at the path each area keeps using. That
-   supersession is what makes documents describing the old
-   implementation flare.
-2. Only then may the original requester ratify the implementation
-   report. Self-initiated work has no report to ratify: the ratified
-   approval authorized the merge, and the merge artifact closes it.
+The command reads the first-parent diff of the merge that actually lands. It
+treats stale artifacts as live until they are retired, deduplicates work across
+changed files, publishes all successors, and then retires every covered
+predecessor in the same batch.
 
-The automatic receipt is not the implementation's merge artifact. You
-must still record that artifact and its succession as described above.
-Supply the required plain-language merge commit message with `--text`;
-the receipt trailers are appended to it.
-
-### Choosing the path
-
-Retiring and publishing are two decisions, not one. Retire everything
-live that covers the change; publish one successor per area. Keeping
-them apart is what makes the choice determinate.
-
-Paths match as exact strings. The projection keys artifacts by the path
-field alone — no normalising, no prefixes, no globs — so an artifact at
-`internal/workroom` never reaches a predecessor at
-`internal/workroom/fold.go`, and that predecessor, with everything
-resting on it, stays silent for good. Reuse the string the area already
-uses rather than a better one.
-
-| Situation | What to do |
+| Situation | Enforced result |
 |---|---|
-| One live path covers the change | Publish the successor at that exact string, then retire the predecessor citing the successor. |
-| A directory and something inside it are both live over the same changed file | The wider path wins: publish at the directory, retire the narrower artifact citing the wider one as its successor, and never publish at the narrower string again. |
-| No live artifact covers the change | A first artifact, with nothing to retire. Pick the granularity a reader would cite and keep it stable, because later merges must match it. |
-| The merge renamed a file whose old path has a live artifact, and the new path has none | Publish at the new path first, then retire the old-path artifact citing it. |
-| The merge renamed a file into a path that already has a live artifact | Not a first artifact. Publish the successor at the destination path, superseding the artifact already there, and retire the old-path artifact citing that same successor. Two predecessors, one survivor. |
-| The merge deleted a file with a live artifact | The only bare supersession. Nothing replaced it, so name the merge commit and let the flare ask whoever rested on it to re-anchor. |
+| One live path covers the change | One successor is published at that exact string and every live predecessor there is retired. |
+| A directory and something inside it both cover one changed file | The wider directory wins. One successor is published there; every wider and narrower predecessor is retired. |
+| No live artifact covers an added or modified file | A first artifact is published at the changed file path. |
+| A file is renamed | Its exact old path is retired without a successor there. The destination receives a first artifact or the successor for the live path already covering it. |
+| A file is deleted | Its exact old path is retired with no successor. A live covering directory still receives its successor because the directory changed. |
 
-Name the successor whenever there is one. A supersession that cites its
-replacement says *moved here*; a bare one says *gone*. Getting that wrong
-does not fail — it leaves a reader following the chain at a dead end,
-holding prose about a successor they cannot resolve. Capture the EventID
-when you publish (`ARTIFACT=$(gs state …)`) and pass it as `--rests-on`
-before the positional target; `gs supersede` puts the target first in the
-basis itself, so the flag carries the successor alone.
+`workroom/state@1` refuses new artifacts at `.` and refuses comma-joined
+pseudo-paths. Historical `state@0` artifacts keep their original decisions but
+valid historical paths remain candidates for retirement and succession. New
+raw submissions cannot use `state@0` to bypass the path rule.
 
-[`gs supersede`](supersede.md) is admitted only from the artifact's own
-author or an actor holding `ratifier`. Ask that actor when the artifact
-you must retire is not yours; never sign as them.
+Before moving `HEAD`, `merge` checks whether tracked documentation still cites
+any predecessor it would retire. Git prepares the merge with `--no-commit`, the
+command checks the actual staged result, and a refusal aborts the tentative
+merge with the target unchanged. Only then does it create the receipt commit
+and publish the durable succession.
 
-One path per artifact. A comma-joined string such as
-`AGENTS.md,SKILL.md` is one path that no real predecessor or successor
-can equal, so it flares nothing and nothing flares it. Record two
-artifacts.
-
-### Never publish at `.`
-
-A path every merge rewrites is a global mutex. Everything anchored to it
-flares whenever anyone merges anything, however unrelated, and a flare
-carrying no information teaches people to ignore the flares that do.
-
-Nothing needs to replace it. Which commit `main` carries is a question
-for `git rev-parse main`; per area it is the live artifact at that path,
-which already names the merge commit that last changed it.
+Free-standing [`gs supersede`](supersede.md) still requires the target's author
+or an actor holding `ratifier`. The narrow cross-author exception applies only
+when the supersession cites a receipt signed by the same actor and that receipt
+carries the ratified independent approval chain for the exact merged head.
 
 ## See also
 

@@ -14,10 +14,11 @@ const (
 	// ProfileVersion binds resident checkpoints to the exact deterministic
 	// fold contract that produced them. Any semantic fold change must advance
 	// this value before old checkpoints may be reused.
-	ProfileVersion  = "workroom-fold@2"
-	SchemaState     = "workroom/state@0"
-	SchemaRatify    = "workroom/ratify@0"
-	SchemaSupersede = "workroom/supersede@0"
+	ProfileVersion    = "workroom-fold@3"
+	SchemaStateLegacy = "workroom/state@0"
+	SchemaState       = "workroom/state@1"
+	SchemaRatify      = "workroom/ratify@0"
+	SchemaSupersede   = "workroom/supersede@0"
 )
 
 type Kind string
@@ -66,7 +67,7 @@ func Encode(value any) ([]byte, error) {
 func Decode(schema string, data []byte) (any, error) {
 	var value any
 	switch schema {
-	case SchemaState:
+	case SchemaStateLegacy, SchemaState:
 		value = &State{}
 	case SchemaRatify:
 		value = &Ratify{}
