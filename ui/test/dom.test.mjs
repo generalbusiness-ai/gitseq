@@ -519,3 +519,61 @@ test("advisory focus renders on the board card, not only the list row", async ()
     await vite.close();
   }
 });
+
+// A durable record carries the committer date as an unbounded int64, so a
+// corrupt or hostile one can sit outside the range Date can represent.
+// EventTime called new Date(t*1000).toISOString(), which throws RangeError
+// past +/-8.64e15 ms; React 19 unmounts the whole tree on an uncaught render
+// throw, and a reload replays the same record — so one poisoned event took the
+// entire page down permanently. Finding #4 of the 2026-08-11 security
+// assessment.
+test("an out-of-range timestamp degrades instead of throwing", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  try {
+    const { EventTime } = await vite.ssrLoadModule("/src/components/EventTime.tsx");
+    const beyondRange = 8.64e15 / 1000 + 1;
+    await act(async () => {
+      root.render(React.createElement(EventTime, { timestamp: beyondRange }));
+    });
+    assert.match(document.getElementById("root").textContent, /unreadable time/,
+      "an out-of-range timestamp did not degrade to a readable fallback");
+    assert.equal(document.querySelector("time"), null,
+      "a <time> element was rendered for a date that has no valid dateTime");
+
+    // The ordinary case must keep its machine-readable dateTime.
+    await act(async () => {
+      root.render(React.createElement(EventTime, { timestamp: 1786000000 }));
+    });
+    const element = document.querySelector("time");
+    assert.ok(element, "a valid timestamp stopped rendering a <time> element");
+    assert.ok(element.getAttribute("datetime").startsWith("20"), "the valid case lost its dateTime attribute");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+// Containment, not prevention: the boundary exists so that a render failure
+// nobody predicted costs one subtree rather than the whole session.
+test("a render throw is contained by the error boundary", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const consoleError = console.error;
+  console.error = () => {};
+  try {
+    const { ErrorBoundary } = await vite.ssrLoadModule("/src/components/ErrorBoundary.tsx");
+    const Boom = () => { throw new Error("poisoned record"); };
+    await act(async () => {
+      root.render(React.createElement(ErrorBoundary, null, React.createElement(Boom)));
+    });
+    const text = document.getElementById("root").textContent;
+    assert.match(text, /could not be rendered/, "the boundary did not render its fallback");
+    assert.match(text, /poisoned record/, "the boundary hid the underlying message");
+    assert.ok(document.querySelector('[role="alert"]'), "the fallback is not announced as an alert");
+  } finally {
+    console.error = consoleError;
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
