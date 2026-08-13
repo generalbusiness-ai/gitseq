@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bac3420070f419ff66a3fdb186b6b82182c2b094"}
+{"kind":"propose","text":"Decision: option 1 of bf399575. The kernel stays semantic-free; the dangling in-log reference check lands in the application"}
