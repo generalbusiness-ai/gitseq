@@ -169,7 +169,16 @@ export function seenAt(ms: number): string {
 
 // Durable events use the sequencer's signed Git commit time. Keep this
 // visually and semantically distinct from the client-side "seen" clock above.
+// A durable record carries the committer date as an unbounded int64, so a
+// corrupt or hostile one can sit outside the range JavaScript Date can
+// represent. Rendering "NaN-NaN-NaN" would be a quieter lie than throwing, so
+// this says plainly that the time is unreadable.
+export function isRenderableTimestamp(seconds: number | undefined): seconds is number {
+  return typeof seconds === "number" && Number.isFinite(seconds) && !Number.isNaN(new Date(seconds * 1000).getTime());
+}
+
 export function eventTimestamp(seconds: number): string {
+  if (!isRenderableTimestamp(seconds)) return "unreadable time";
   const date = new Date(seconds * 1000);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
