@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge-driven succession implementation at the amended exact head. It adds explicit crash-window recovery and raw legacy custom-artifact admission regressions on top of the reviewed implementation.","body":{"commit":"fbc59ed9f70fd0883c15cf2b77d450c3cc91f832","path":"cmd/gs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:817dd2f7e15dbcd446cd0442295d3ef40e05d218","text":"Retire this artifact because its commit field was mistyped. The corrected exact-head artifact follows."}
