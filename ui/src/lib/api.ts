@@ -24,6 +24,8 @@ export interface Statement {
   ratified?: boolean;
   retired?: boolean;
   stale?: boolean;
+  // Narrows stale: what moved was the world this statement describes.
+  describes_superseded_world?: boolean;
 }
 
 export interface Commitment {
@@ -39,7 +41,6 @@ export interface Commitment {
   // let clients preserve the underlying open/promised/reported/terminal
   // state when the projection supplies the richer shape.
   stale?: boolean;
-  disputed?: boolean;
 }
 
 export interface Artifact {
@@ -50,6 +51,19 @@ export interface Artifact {
   // basis under it moved while the commit it names stayed exactly what it was.
   retired?: boolean;
   stale: boolean;
+  // Narrows stale: the retired basis underneath is itself an artifact, so the
+  // world moved rather than a pointer being withdrawn.
+  describes_superseded_world?: boolean;
+  // No basis under this artifact can ever be retired, so no supersession can
+  // make it stale. Its silence is not evidence that it is current.
+  unable_to_flare?: boolean;
+  // An earlier artifact at the identical path is still live: a probable
+  // forgotten supersession. A warning about practice, not a verdict.
+  succession_unrecorded?: boolean;
+  // How many earlier live artifacts share this exact path. Per-row, and not
+  // summable across rows — with A, B and C at one path, B counts A and C
+  // counts both, so a total would double-count A.
+  live_predecessors?: number;
 }
 
 export interface Act {
