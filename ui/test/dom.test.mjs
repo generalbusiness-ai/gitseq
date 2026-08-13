@@ -519,6 +519,96 @@ test("advisory focus renders on the board card, not only the list row", async ()
     await vite.close();
   }
 });
+// The main-view selector chooses Work or Activity and nothing else. It used to
+// repeat the global active count and the overlapping attention figure, both of
+// which already sit beside the filters they describe in the Work view — the
+// same number in two places, only one of which can be acted on. Nothing tested
+// that they were there, so nothing would notice them coming back.
+test("the main-view selector carries no work counts", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  try {
+    const { TopBar } = await vite.ssrLoadModule("/src/components/TopBar.tsx");
+    await act(async () => {
+      root.render(
+        React.createElement(TopBar, {
+          workroom: focusRoom(),
+          session: { actor: "codex", activity: { status: "available", focus: [] }, setActivity() {} },
+          mainView: "work",
+          selection: { kind: "event", id: "event-one" },
+          onShowWork() {}, onShowActivity() {}, onJumpEvent() {}, onOpenProfile() {},
+        }),
+      );
+    });
+    const selector = document.querySelector('nav[aria-label="Main view"]');
+    assert.ok(selector, "the main-view selector did not render");
+    const labels = [...selector.querySelectorAll("button")].map((button) => button.textContent.trim());
+    assert.deepEqual(labels, ["Work", "Activity"], `the selector shows more than its two labels: ${labels.join("|")}`);
+    assert.equal(/\d/.test(selector.textContent), false, `a count leaked back into the selector: ${selector.textContent}`);
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+// WorkDrawer is the single visible owner of the lifecycle filter counts: the
+// main-view selector deliberately carries none, so if a count stops rendering
+// here it stops being shown anywhere. Only Active was pinned, and removing
+// count={counts.attention} and count={counts.closed} left the whole suite
+// green — the two figures could vanish silently. Condition 6 of the request.
+//
+// The counts are deliberately non-zero and distinct from each other. FilterCheck
+// renders {count ?? 0}, so an unwired prop still renders a span containing "0";
+// only asserting the exact value catches that, and only distinct values catch a
+// count wired to the wrong filter.
+const countingRoom = () => {
+  const room = structuredClone(workroom);
+  const commitment = (request, status, stale) => ({ request, requester: "codex-fingerprint", performer: "codex-fingerprint", status, ...(stale ? { stale: true } : {}) });
+  room.status.durable.projection.statements = [];
+  room.status.durable.projection.decisions = [];
+  room.status.durable.projection.provenance = {};
+  // active 2, closed 3, attention 4 — attention overlaps both, which is why it
+  // is a qualifier rather than a lifecycle status.
+  room.status.durable.projection.commitments = [
+    commitment("a", "open", true),
+    commitment("b", "promised", true),
+    commitment("c", "satisfied", true),
+    commitment("d", "withdrawn", true),
+    commitment("e", "cancelled", false),
+  ];
+  return room;
+};
+
+test("WorkDrawer keeps a count beside every lifecycle filter", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  try {
+    const { WorkView } = await vite.ssrLoadModule("/src/components/WorkDrawer.tsx");
+    await act(async () => {
+      root.render(
+        React.createElement(WorkView, {
+          workroom: countingRoom(),
+          session: { actor: "codex", activity: { status: "available", focus: [] }, setActivity() {} },
+          highlight: { events: new Set(), commits: new Set() },
+          onSelect() {}, onOpenThread() {},
+        }),
+      );
+    });
+    const filterCount = (label) => {
+      const owner = [...document.querySelectorAll("label")].find((node) => node.textContent.trim().startsWith(label));
+      assert.ok(owner, `no lifecycle filter rendered for ${label}`);
+      const figure = owner.querySelector("span");
+      assert.ok(figure, `the ${label} filter rendered no count`);
+      return figure.textContent.trim();
+    };
+    assert.equal(filterCount("Active"), "2", "Active lost its count beside the filter");
+    assert.equal(filterCount("Attention"), "4", "Attention lost its count beside the filter");
+    assert.equal(filterCount("Closed"), "3", "Closed lost its count beside the filter");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
 
 // A durable record carries the committer date as an unbounded int64, so a
 // corrupt or hostile one can sit outside the range Date can represent.
