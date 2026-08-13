@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:de8cb1556603e1a3786119320ee47e7269e5e06a","text":"The exact head changed to close the independent review findings; this repaired candidate artifact replaces it."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ceeaa0e67a8386bddad24c470c666d567c1b2512","text":"The exact head changed to close the review findings. Fresh re-review request 69330e32 replaces this one."}
