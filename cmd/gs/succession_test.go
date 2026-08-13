@@ -102,9 +102,13 @@ func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *te
 	if err == nil || !strings.Contains(err.Error(), "outside the approved tree") {
 		t.Fatalf("cross-author retirement outside the approved tree error = %v", err)
 	}
-	// A ratifier may already retire anything, so nothing here applies to one.
-	if err := refuseUnreachableCrossAuthorRetirements(projection, unrelated, "approval", "keeper"); err != nil {
-		t.Fatalf("ratifier was refused: %v", err)
+	// Not even for a ratifier, though the fold would let one retire anything.
+	// Standing is live and can be withdrawn between here and the supersessions,
+	// which the fold judges after the target has moved; a refusal that rests on
+	// a role is a refusal that may arrive too late to be worth anything.
+	if err := refuseUnreachableCrossAuthorRetirements(projection, unrelated, "approval", "keeper"); err == nil ||
+		!strings.Contains(err.Error(), "outside the approved tree") {
+		t.Fatalf("ratifier plan outside the approved tree error = %v, want a refusal", err)
 	}
 	// The merger's own pointer needs no merge authority at any path.
 	own := successionPlan{retire: map[string]string{"mine": "docs"}}

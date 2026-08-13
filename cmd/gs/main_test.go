@@ -752,11 +752,13 @@ func TestMergeRefusesASignerWhoDidNotDoTheApprovedWork(t *testing.T) {
 	}
 }
 
-// The rule itself, across the cases a single fixture cannot reach: the actor
-// whose approved work is landing, an actor holding ratifier who has always been
-// able to retire anything, a stranger, and a review whose implementer the
-// record cannot name.
-func TestMergeAuthoritySignerIsTheImplementerOrARatifier(t *testing.T) {
+// The rule itself, across the cases a single fixture cannot reach. One
+// fingerprint admits a merge: the author of the approved artifact. A role does
+// not, however senior — standing is live and can be revoked between this check
+// and the acts it would authorize, and the fold judges those acts after `HEAD`
+// has moved, so a role here is authority that may not survive the merge it
+// allowed. The author of a record that already happened cannot be revoked.
+func TestMergeAuthoritySignerIsExactlyTheApprovedImplementer(t *testing.T) {
 	projection := workroom.Projection{
 		Reviews: []workroom.Review{{Report: "approval", Implementer: "implementer",
 			Independence: workroom.IndependenceIndependent}},
@@ -766,14 +768,14 @@ func TestMergeAuthoritySignerIsTheImplementerOrARatifier(t *testing.T) {
 			"keeper":      {Name: "keeper", Roles: []string{"participant", "ratifier"}},
 		},
 	}
-	for _, merger := range []string{"implementer", "keeper"} {
-		if err := requireApprovedImplementer(projection, "approval", merger); err != nil {
-			t.Errorf("merge signed by %s was refused: %v", merger, err)
-		}
+	if err := requireApprovedImplementer(projection, "approval", "implementer"); err != nil {
+		t.Errorf("merge signed by the approved implementer was refused: %v", err)
 	}
-	if err := requireApprovedImplementer(projection, "approval", "stranger"); err == nil ||
-		!strings.Contains(err.Error(), "approved work is landing") {
-		t.Errorf("merge signed by a stranger error = %v", err)
+	for _, merger := range []string{"stranger", "keeper"} {
+		if err := requireApprovedImplementer(projection, "approval", merger); err == nil ||
+			!strings.Contains(err.Error(), "approved work is landing") {
+			t.Errorf("merge signed by %s error = %v, want a refusal", merger, err)
+		}
 	}
 	if err := requireApprovedImplementer(projection, "approval", ""); err == nil {
 		t.Error("merge with no signing fingerprint was allowed")

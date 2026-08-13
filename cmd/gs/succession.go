@@ -267,16 +267,18 @@ func preflightSuccession(ctx context.Context, workspace *app.Workspace, checkout
 // on the path lineage of the artifact that approval names. The fold holds no
 // repository and cannot check a merge head or a diff, so the reviewer's signed
 // choice of artifact is the only fact bounding the merger that the merger did
-// not write. An actor holding `ratifier` is already free to retire anything and
-// is not checked here.
+// not write.
+//
+// Live standing is deliberately not consulted, though the fold does grant a
+// ratifier free-standing authority to retire anything. Standing can be revoked
+// between this check and the acts it would authorize, and the fold judges each
+// supersession after `HEAD` has moved, so admitting a plan on a role is
+// admitting it on a fact that may not survive the merge. Refusing here is
+// recoverable and costs a caller nothing; discovering it afterwards leaves the
+// target moved and the succession half-done.
 func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, plan successionPlan, approval, actor string) error {
 	if actor == "" {
 		return errors.New("merge succession needs the merging actor's fingerprint")
-	}
-	for _, role := range projection.Actors[actor].Roles {
-		if role == "ratifier" {
-			return nil
-		}
 	}
 	approvedPath := ""
 	for _, statement := range projection.Statements {

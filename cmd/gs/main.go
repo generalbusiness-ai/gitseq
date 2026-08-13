@@ -795,7 +795,7 @@ func retiredBases(projection workroom.Projection, events []string) []string {
 // staleness untouched at the one gate that moves main, where a proposal on
 // exactly that question is still in flight.
 // requireApprovedImplementer refuses a merge signed by anyone but the actor
-// whose approved work is landing, or an actor holding `ratifier`.
+// whose approved work is landing.
 //
 // It is the same boundary the fold applies to a merge receipt, moved to where
 // it can still be obeyed. The fold refuses a receipt signed by anyone else, but
@@ -805,25 +805,25 @@ func retiredBases(projection workroom.Projection, events []string) []string {
 // fingerprint before the merge begins turns an irreversible half-merge into an
 // ordinary refusal.
 //
-// The ratifier clause is not a second contract. `decideSupersede` already lets
-// an actor holding `ratifier` retire anything, so a ratifier merging someone
-// else's approved head has always worked and takes no authority it did not
-// already hold. Refusing it here would break the one actor whose job this is.
+// Only that fingerprint, and no role. A role is live standing, and standing can
+// be revoked between this check and the acts it authorizes: while the tentative
+// merge runs, or while the succession batch appends one act at a time. The fold
+// would then refuse what this let through, after `HEAD` had already moved —
+// exactly the outcome this check exists to remove, reached by a different door.
+// The author of an approved artifact is a fact about a record that has already
+// happened, so it cannot be revoked out from under a merge in flight. A merge
+// path for anyone else needs an authorization that survives concurrent
+// revocation, and that is a design, not a clause.
 func requireApprovedImplementer(projection workroom.Projection, approvalEvent, merger string) error {
 	if merger == "" {
 		return errors.New("merge needs the signing actor's fingerprint")
-	}
-	for _, role := range projection.Actors[merger].Roles {
-		if role == "ratifier" {
-			return nil
-		}
 	}
 	review, found := projection.Review(approvalEvent)
 	if !found || review.Implementer == "" {
 		return errors.New("the record cannot say who implemented this approved head, so nobody may merge it on that approval")
 	}
 	if review.Implementer != merger {
-		return fmt.Errorf("merge must be signed by the actor whose approved work is landing (%s), or by an actor holding ratifier; --as names %s",
+		return fmt.Errorf("merge must be signed by the actor whose approved work is landing (%s); --as names %s",
 			review.Implementer, merger)
 	}
 	return nil

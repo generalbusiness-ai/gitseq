@@ -79,7 +79,7 @@ It prints the resulting merge commit.
 | The verdict is not `approved` | `changes-requested` is not a merge authorization. |
 | `--candidate` differs from the approved head | The reviewer looked at a different commit. |
 | The approval does not rest on the artifact it names | The chain from verdict to code is broken. |
-| `--as` is neither the actor whose approved work is landing nor an actor holding `ratifier` | A ratified approval is public. Without this, any participant could spend its single use, move the target, and strand the succession the fold would then refuse. |
+| `--as` is not the actor whose approved work is landing | A ratified approval is public. Without this, any participant could spend its single use, move the target, and strand the succession the fold would then refuse. |
 | The artifact's commit differs from `--candidate` | Same, from the other end. |
 | The approval was already used or is reserved by another merge | One approval authorizes exactly one merge. |
 | The candidate is already contained in the target | There is no new approved landing to record. |
@@ -218,10 +218,17 @@ successor at its path, and retire it.
 `merge` checks that same signer before it starts, not only the fold afterwards.
 The fold sees a receipt, and a receipt is written after Git has committed: by
 then the target has moved and the approval is spent, so a refusal there arrives
-too late to be obeyed. An actor holding `ratifier` may also sign, and takes no
-new authority by doing so — [`gs supersede`](supersede.md) already lets one
-retire anything, so this is the same standing under another name and both the
-fold and this page say so.
+too late to be obeyed.
+
+That fingerprint is the whole test, and no role stands in for it — not
+`ratifier`, which [`gs supersede`](supersede.md) otherwise lets retire anything.
+A role is live standing and can be revoked between the check and the acts it
+would authorize, while the tentative merge runs or while the succession lands
+one act at a time; the fold would then refuse what the check allowed, after
+`HEAD` had moved. The author of an approved artifact is a fact about a record
+that has already happened, so nothing can withdraw it mid-merge. A merge signed
+by anyone else needs an authorization that survives concurrent revocation, and
+there is none today.
 
 The cost is stated rather than worked around. A merge touching several areas
 carries cross-author authority only within the approved artifact's tree; the
