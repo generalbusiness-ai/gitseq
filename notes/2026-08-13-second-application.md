@@ -104,6 +104,155 @@ state rather than from a roster.
   nexus comes along for free for spectator chat, since live presence is
   application-independent; moves are durable, talk is ephemeral.
 
+## Running it on the web
+
+A chess deployment is one static binary (kernel, chess fold, embedded board
+UI — the same shape as the resident today), a Git repository, and one
+secret: the sequencer key. That is tier 2 of the ladder in
+`notes/2026-08-07-deployment.md`, whose invariants this design inherits
+unchanged — record authority is actor signatures, transport auth is
+borrowed, and no tier ever asks an actor to surrender a private key to a
+service.
+
+The forge-primary storage shape from that note (R4) makes the deployment
+nearly stateless: the container clones the game repository at boot, appends
+locally, and pushes `refs/seq/*` advances back to the forge. Durability is
+the forge plus attached clones, stated as replication, exactly as the
+deployment note requires. A crashed container is the kernel's own failover
+story. This shape fits commodity container hosts as they exist today, so
+the deliverable is a recipe, not infrastructure: the application repository
+ships a `Dockerfile` and a platform file, and "run this on the web" is
+setting the sequencer-key secret and launching. The managed appliance
+remains tier 3 — its seat is reserved by the deployment note, and nothing
+here builds it.
+
+The end state is not container operations. A gitseq application's runtime
+shape — a tiny single-writer sequencer per domain, a static UI, git
+storage — needs no full VM; it is closer to the platforms that deploy from
+a repository push than to machines. So the destination is the deployment
+note's tier-3 appliance wearing that ergonomics: a purpose-built
+Render-or-Vercel-equivalent for gitseq applications, where deploying is
+pointing at an application repository and a data repository and pressing
+deploy, and a security domain is minted per repository in seconds (R5).
+The nearest existing parallel is Cloudflare Artifacts — git-protocol
+storage fronted by edge compute — but that ecosystem is TypeScript-first
+and the fold is Go, so it is a reference for the shape, not a base to
+build on. The tier-2 container recipe above is the interim that proves the
+requirements the platform needs anyway; building the platform is scheduled
+by adoption, not by this note.
+
+Web play adds one component that does not exist yet: a browser signer.
+Players are browsers, so actor keys live in the browser — WebCrypto
+Ed25519, non-extractable, in local storage — signing canonical submission
+intents over the same HTTP intake the deployment note already requires
+(R10). There must be exactly one canonical-intent encoder, shared with the
+Go implementation (compiled to wasm, or one implementation pinned by
+cross-tests), because a second encoder that almost agrees is a fold
+divergence wearing a different hat. Abuse of the open submit surface is
+transport policy: kernel bounds and the admission profile rate-limit it,
+and no identity system is invented to solve what a rate limit solves.
+
+## Identity
+
+Identity lives below the application, so no application reinvents it. The
+kernel's contribution is already exactly right and does not grow: an actor
+is a key, and the kernel proves who signed. Everything above that —
+session-key minting, the attestation vocabulary, the anchor ladder, agent
+credentials — is one shared vocabulary and verification library shipped
+with the host and inherited by every application profile. Chess declares
+nothing about identity: it names players as actor keys and gets anchoring,
+display names, and agent credentials from the host layer. No application
+defines its own attestation kind, and the kernel never learns what an
+attestation is.
+
+A minted browser key is sufficient to play, and must remain so: opening a
+game link and moving is the adoption story, and it requires zero setup,
+zero accounts, and zero prompts. Everything beyond that is an upgrade, not
+a requirement.
+
+Persistent identity is **anchoring as attestation evidence**, the pattern
+the deployment note's R7 already defines for `github=<handle>`, with
+stronger mechanics. A join or roster statement may carry an attestation: a
+persistent root identity's signature over the actor key, the genesis, a
+scope, and an expiry. The application layer verifies the attestation; the
+kernel never learns any of this; revocation is expiry plus a superseding
+statement — succession, the grammar the system already runs on, so a
+revoked key is provable from the log.
+
+The first anchor is Nostr, because its ecosystem is deployed today:
+NIP-07 browser extensions hold the user's persistent key and sign the
+attestation in one prompt; NIP-05 gives display names; NIP-46 remote
+signers cover users whose root key lives off-device; and the attestation
+itself is NIP-26-shaped — a delegation token with conditions and expiry.
+Nostr keys are secp256k1, and that curve stays out of the kernel: the
+Schnorr verification happens in application evidence-checking only. GitHub
+signing keys remain the parallel anchor for developer populations, as R7
+states.
+
+"Log in with GitHub"-style OIDC is the third anchor, and the
+lowest-friction one, with an honestly weaker guarantee. In OIDC the user
+authenticates at the provider and the provider hands the deployment a
+short-lived signed token asserting the account name; the user holds no
+signing key of their own — the provider does. The provider's token is
+audience-bound and expiring, so it cannot itself be the attestation in the
+log. Instead the deployment verifies the token and its own attestor key
+signs the binding — `github:<handle>` to this actor key, scope, expiry —
+as evidence in the join statement. The difference from the Nostr anchor is
+who vouches: a Nostr attestation is self-signed by the user's root key and
+verifiable offline by anyone forever; an OIDC attestation is witnessed —
+the deployment's attestor says the provider said so — and is only as good
+as that attestor's honesty at that moment. Both are the same statement
+shape carrying evidence of stated strength: OIDC-witnessed below a
+published GitHub signing key below a user-signed Nostr attestation. The
+application displays which rung a binding sits on and invents no strength
+it does not have.
+
+The same statement shape is the agent-credential ladder: a human's
+anchored identity attests an agent's Ed25519 actor key with scope and
+expiry. An agent credential is only as strong as the anchor that minted
+it: minted under a user-held key it is self-certifying; minted under an
+OIDC-witnessed binding it carries the attestor's word, and the projection
+says so. This is the dual-signature chain of custody that Block's Buzz
+(July 2026, agents and humans as Nostr keypairs, agents carrying a second
+owner-binding signature) ships for its workspace — expressed here in the
+log itself, where the attestation, its scope, and its supersession are
+signed, ordered, and provable, which is the part Buzz's public materials
+leave unspecified. If Block documents their binding format, aligning is a
+translation, not a redesign.
+
+## Onboarding paths, enumerated for the friction trace
+
+Every review of this design and its implementations must walk these paths
+end to end and report the friction found: for each path, every step from
+first contact to first effective act, the count of prompts, installs, and
+copy-paste steps, every step that could be removed without weakening
+record authority, and every step whose failure is silent. A path that
+cannot be walked in the reviewer's head, step by step, is a finding.
+
+- **Spectator.** Receive a game URL, open it, the board renders from the
+  projection. No key, no prompt.
+- **Anonymous player.** Receive a game URL, open it, a session key is
+  minted silently, one tap joins (the first effective join seats the
+  opponent), move. The budget is zero prompts before the first move.
+- **Anchored player, OIDC.** The anonymous path, then "log in with
+  GitHub": one redirect round-trip to the provider, no extension, no key
+  material handled by the user. Lands a witnessed attestation signed by
+  the deployment's attestor key. The budget is one redirect and zero new
+  installs.
+- **Anchored player, user-held key.** The anonymous path, then one
+  deliberate "link identity" action costing one extension prompt (NIP-07)
+  or one signing-key proof (GitHub signing key), landing a self-certifying
+  attestation statement. Never required to play.
+- **Agent credential.** A human with an anchored identity mints an agent
+  keypair and its attestation, hands the agent the key material it needs,
+  and the agent plays over CLI or MCP. The number of manual steps is the
+  thing to measure.
+- **Deployer.** Clone the application repository, set the sequencer-key
+  secret, launch on a container host, share the URL. The budget is one
+  secret and one command after clone.
+- **Self-hoster.** Install the binary, `gs init --app` against the pinned
+  application commit, play on loopback. This is also the acceptance path.
+
 ## What this gives up
 
 Mixed-application repositories, and in-place migration from one application
@@ -124,6 +273,15 @@ identifiers embed the genesis, so they are globally unambiguous.
    actually importing it, not speculation.
 4. The chess repository: vocabulary, rules-engine fold, per-game projection,
    and a minimal `chess` binary with create, join, move, board, and resign.
-5. Acceptance: a fresh repository, `gs init --app` pointing at the chess
-   repository at a pinned commit, two actor keys, a game played to
-   checkmate, and the fold — not a player — projecting the result.
+5. The web pieces, each its own head: the browser signer with the single
+   shared canonical-intent encoder; the deploy recipe in the application
+   repository; the attestation vocabulary with the anchor ladder
+   (OIDC-witnessed, GitHub signing key, Nostr), OIDC first because it is
+   the lowest-friction rung.
+6. Acceptance, two variants: a fresh repository, `gs init --app` pointing
+   at the chess repository at a pinned commit, two actor keys, a game
+   played to checkmate, the fold — not a player — projecting the result;
+   then the same game through two browsers against a container-hosted
+   deployment whose repository of record is on a forge, one player
+   anonymous and one anchored, with the onboarding paths above walked and
+   their friction counts recorded as part of the review.
