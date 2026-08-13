@@ -119,6 +119,13 @@ type Vocabulary struct {
 	Binding     FoldBinding      `json:"binding"`
 }
 
+// StarterLifecycle identifies compatibility-catalog kinds without constructing
+// a projection. Callers still need the active vocabulary for declared kinds.
+func StarterLifecycle(kind Kind) (Lifecycle, bool) {
+	definition, ok := starterCatalog()[kind]
+	return definition.Lifecycle, ok
+}
+
 // UndefinedKindWarning is what an author has to be told when the kind they
 // wrote is one this record does not define. The act is still admitted and
 // still visible as an attempt — that is deliberate, and the fold still

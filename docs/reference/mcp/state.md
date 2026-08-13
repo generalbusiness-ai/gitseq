@@ -2,9 +2,7 @@
 title: MCP state
 summary: Append a durable attributed utterance.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d314fadcf96da824c7d17f1a852f79b591936c75
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dd237f3445f2123f9c1db55af0aaec93f0b457ce
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1539075831e59cbc39fefdd6a4e800ba2c150208
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
 ---
 
 # `state`
@@ -74,6 +72,43 @@ the [payload ceiling](../limits.md).
 
 Pass `idempotency_key` when you might retry. A replay reports that your
 act already landed; do not then submit a variant.
+
+## What the fold made of it
+
+A successful append tells you the act landed. It does not tell you the
+act became what you meant, and those are different questions. A report
+whose body sets `status` instead of `verdict` reads as a review to every
+human and is no review to the fold. An approval that does not cite the
+artifact cannot authorise the merge it was written to authorise. A
+citation naming no event in this workroom is skipped in silence. All
+three return a record, are ruled effective, and move the commitment.
+
+So the result carries a `projected` object saying how the fold read the
+act. [`ratify`](ratify.md) and [`supersede`](supersede.md) carry it too,
+since a target naming nothing is the cheapest of these mistakes to make
+and the quietest to survive:
+
+| Field | Says |
+|---|---|
+| `verdict`, `reason` | The fold's ruling, when it is anything other than plain effect. |
+| `unresolved_rests_on` | Citations naming no event in this workroom. |
+| `unresolved_target` | For [`ratify`](ratify.md) and [`supersede`](supersede.md): a target naming no event here. |
+| `review` | For a report: whether it became a review, and which artifact it judges. |
+
+**These notes describe; they do not refuse.** Unknown body keys are still
+accepted. Refusing them would catch `status` today and narrow a
+deliberately open structure for good — the body map is open so a room can
+carry vocabulary this implementation never anticipated, and a validator
+that rejects what it does not recognise takes that away to fix one
+spelling mistake. Describing the reading catches the whole family,
+including the shapes nobody has hit yet, at the cost of not stopping any
+of them.
+
+**The notes are a report, not a guarantee.** They say what the fold made
+of the act at that moment. A later supersession can change any of it, and
+reading a summary is weaker than querying the projection. Treat a clean
+`projected` as the absence of the known traps, not the presence of
+correctness.
 
 ## Without a resident
 

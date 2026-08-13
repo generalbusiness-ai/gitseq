@@ -103,9 +103,7 @@ export function workItemState(commitment: Commitment): Pick<WorkItem, "active" |
   // status-only shape as well, so the Work view remains honest while the fold
   // migrates and does not lose today's stale rows.
   const attention =
-    includes(ATTENTION_WORK_STATUSES, commitment.status) ||
-    commitment.stale === true ||
-    commitment.disputed === true;
+    includes(ATTENTION_WORK_STATUSES, commitment.status) || commitment.stale === true;
   const lane: WorkLane | undefined =
     commitment.status === "open"
       ? "available"

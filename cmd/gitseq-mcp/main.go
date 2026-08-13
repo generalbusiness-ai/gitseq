@@ -906,18 +906,174 @@ func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any
 // a kind this room does not define and was told nothing, so a line in a log it
 // never reads would be no warning at all. The act itself is untouched: it
 // landed, and it still projects as undefined-kind.
+//
+// It also reports how the fold read the act, which is a broader question than
+// whether the kind is defined. Everything about a successful append says
+// success — a record comes back, the statement is ruled effective, the
+// commitment moves — and none of that says the act became what its author
+// meant. Acts have landed here reading as reviews and projecting as no review,
+// and approvals have landed unable to authorize the merge they were written to
+// authorize. Those are not spelling mistakes the tool could have caught; they
+// are the difference between what was written and what was read, and only the
+// projection knows it.
 func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.Act, value any) any {
-	if act.Verb != app.VerbState {
-		return value
-	}
 	result, ok := value.(map[string]any)
 	if !ok {
 		return value
 	}
-	if warning := residentclient.UndefinedKindWarning(ctx, current.workspace, act.Kind); warning != "" {
-		result["warning"] = warning
+	// One snapshot serves both answers. main moved the undefined-kind warning
+	// into residentclient.UndefinedKindWarning, which takes its own snapshot;
+	// this call site needs one anyway for the projection notes, and a snapshot
+	// can be a cold fold, so calling the helper here would pay for that twice
+	// on every act. The warning is derived from the snapshot already in hand,
+	// which is exactly what that helper does with its own.
+	snapshot, err := current.workspace.Snapshot(ctx)
+	if err != nil {
+		if act.Verb == app.VerbState {
+			result["warning"] = fmt.Sprintf("cannot tell whether kind %q is defined here: %v", act.Kind, err)
+		}
+		// Every verb is promised these notes, so every verb is told when they
+		// could not be produced. Returning silently would be the failure this
+		// whole disclosure exists to prevent, arriving through the disclosure
+		// itself: a result that looks exactly like one where the fold found
+		// nothing to report.
+		result["projected"] = map[string]any{
+			"unavailable": fmt.Sprintf("the projection could not be read after this act landed, so nothing here says how the fold read it: %v", err),
+		}
+		return result
+	}
+	if act.Verb == app.VerbState {
+		if warning := snapshot.Vocabulary.UndefinedKindWarning(act.Kind); warning != "" {
+			result["warning"] = warning
+		}
+	}
+	if notes := projectionNotes(snapshot.Projection, act, submittedEvent(value)); len(notes) > 0 {
+		result["projected"] = notes
 	}
 	return result
+}
+
+// submittedEvent digs the new event's identifier out of the tool result. The
+// result is a decoded JSON map when the resident sequenced the act and a typed
+// submission when this process did, so it is read back through JSON rather than
+// type-asserted two ways.
+func submittedEvent(value any) string {
+	var submitted struct {
+		Record struct {
+			ID string `json:"id"`
+		} `json:"record"`
+	}
+	if remarshal(value, &submitted) != nil {
+		return ""
+	}
+	return submitted.Record.ID
+}
+
+// projectionNotes says how the fold read this act, in the author's own terms.
+//
+// Each note answers a question the author cannot otherwise ask without a
+// separate projection query, and each corresponds to a way an act has already
+// gone wrong here while every visible signal said it had gone right. The notes
+// describe; they do not refuse. An act that lands is the author's to correct,
+// and refusing unfamiliar bodies would narrow a deliberately open structure.
+//
+// This is a report, not a guarantee. It says what the fold made of the act at
+// this moment, and reading it is weaker than querying the projection — a later
+// supersession can change any of it. Treat a clean set of notes as the absence
+// of the known traps rather than the presence of correctness.
+func projectionNotes(projection workroom.Projection, act app.Act, event string) map[string]any {
+	if event == "" {
+		return nil
+	}
+	notes := map[string]any{}
+
+	// A target naming no event in this workroom. `supersede` and `ratify` carry
+	// their subject here rather than in rests_on, and a fabricated one is the
+	// cheapest mistake to make and the quietest to survive: the act appends, the
+	// record comes back, and the fold rules it ineffective for a target it has
+	// never seen. This is not hypothetical — an act of exactly this shape was
+	// filed against this workroom while this change sat in review.
+	if act.Target != "" && !resolves(projection, act.Target) {
+		notes["unresolved_target"] = act.Target
+	}
+
+	// The fold's own ruling, when it is anything other than plain effect. An
+	// ineffective act still returns a record and still looks like success.
+	for _, decision := range projection.Decisions {
+		if decision.Event == event && decision.Verdict != workroom.Effective {
+			notes["verdict"] = string(decision.Verdict)
+			if decision.Reason != "" {
+				notes["reason"] = decision.Reason
+			}
+		}
+	}
+
+	// Citations that name nothing in this workroom. A fabricated or mistyped
+	// identifier is skipped in silence by validateBasis unless the kind's own
+	// basis constraints happen to need it, so the act connects to nothing and
+	// says so nowhere.
+	var unresolved []string
+	for _, reference := range act.RestsOn {
+		if !resolves(projection, reference) {
+			unresolved = append(unresolved, reference)
+		}
+	}
+	if len(unresolved) > 0 {
+		notes["unresolved_rests_on"] = unresolved
+	}
+
+	// Whether a report became a review, and if so what a merge would make of
+	// it. A report reads as a review to any human the moment its text says
+	// "approved"; the fold only sees body.verdict.
+	// Whether a report became a review is answered from what was submitted and
+	// what the fold decided, never from the absence of a Review row alone. A
+	// report that sets body.verdict and is then ruled ineffective — no promise,
+	// or another precondition unmet — projects no review, and saying it did not
+	// set the field would be telling its author to fix something that is not
+	// wrong while the real reason sits in the verdict note above.
+	if act.Kind == workroom.KindReport {
+		review, found := reviewOf(projection, event)
+		verdict := strings.TrimSpace(act.Body["verdict"])
+		switch {
+		case found && review.Artifact == "":
+			notes["review"] = "yes, but no artifact resolved; `gs merge` refuses an approval whose rests_on omits the artifact for the reviewed head"
+		case found:
+			notes["review"] = "yes, judging artifact " + review.Artifact
+		case verdict == "":
+			notes["review"] = "no: the fold reads a review from body.verdict, which this report does not set"
+		default:
+			notes["review"] = fmt.Sprintf("no: body.verdict is %q, but the fold projected no review for this report — see the verdict and reason above for what it refused", verdict)
+		}
+	}
+	return notes
+}
+
+// resolves reports whether an identifier names an event this workroom holds.
+// A wrong one is indistinguishable from a right one until something asks.
+//
+// Decisions, not statements. There is exactly one decision per durable record,
+// while statements hold only utterances — so ratify and supersede are events
+// with no statement, and the fold explicitly allows superseding a supersession.
+// Searching statements would have called those citations unresolved: a check
+// written to catch fabricated identifiers, reporting real ones as fabricated,
+// which is worse than not checking at all because it teaches readers to ignore
+// it.
+func resolves(projection workroom.Projection, event string) bool {
+	for _, decision := range projection.Decisions {
+		if decision.Event == event {
+			return true
+		}
+	}
+	return false
+}
+
+func reviewOf(projection workroom.Projection, event string) (workroom.Review, bool) {
+	for _, review := range projection.Reviews {
+		if review.Report == event {
+			return review, true
+		}
+	}
+	return workroom.Review{}, false
 }
 
 // warnSharedIdentity tells an operator when this actor identity already has
