@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Checkpoint operator controls at exact head 5eb4e8b7.","body":{"commit":"5eb4e8b756ed46986cb73f87109f31372ea6a849","path":"cmd/gs"}}
+{"kind":"artifact","text":"Checkpoint persistence and checkpoint-clear documentation at exact head 5eb4e8b7.","body":{"commit":"5eb4e8b756ed46986cb73f87109f31372ea6a849","path":"docs"}}
