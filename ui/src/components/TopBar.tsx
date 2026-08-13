@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { AtSign, ClipboardList, MessagesSquare } from "lucide-react";
-import { forYouItems, ticketsOf, workSummary, type Selection, type Workroom } from "../lib/store";
+import { forYouItems, ticketsOf, type Selection, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
 import { cn } from "../lib/util";
-import { otherWorkAttentionLabel } from "../lib/work";
 import { Avatar } from "./Avatar";
 import { fingerprintOfPresentActor, presentActors, toggleActivityFocus } from "../lib/interaction";
 
@@ -32,7 +31,6 @@ export function TopBar({
   const tickets = ticketsOf(durable?.projection);
   const selectedEvent = selection?.kind === "event" ? selection.id : undefined;
   const selectedFocused = Boolean(selectedEvent && session.activity?.focus.includes(selectedEvent));
-  const summary = workSummary(durable?.projection);
   const fingerprintOf = (name: string) => workroom.actors.find((a) => a.name === name)?.fingerprint ?? "";
 
   // "For you": durable acts addressed to me since the stored watermark.
@@ -104,8 +102,6 @@ export function TopBar({
           >
             <ClipboardList className="h-3.5 w-3.5" />
             Work
-            <span className="hidden font-mono text-[10px] sm:inline" title={`${summary.active} active work items across all actors`}>{summary.active}</span>
-            {summary.stale > 0 && <span className="hidden font-mono text-[10px] text-danger sm:inline" title={`${summary.stale} commitments need attention; separately, ${otherWorkAttentionLabel(summary.other)}`}>+{summary.stale}</span>}
           </button>
           <button
             type="button"
