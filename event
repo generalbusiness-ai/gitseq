@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:054f9bd499d432f9aba641a15e7b6d7a890f7fa4"}
+{"kind":"propose","text":"Decision: option 1 of b72e4767. An attachment may exceed the payload ceiling only when the submitter supplies a locator hint\n  saying where the bytes live; nothing is stored implicitly and the log never implies custody it does not have. Implemented in\n  internal/app before signing. The convenience case without a locator keeps today's refusal, with a better message."}
