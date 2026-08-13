@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2af4595c8e2f3af91ad8cdce1ff385a5eab525cc","text":"Retire the older live docs pointer; succession now survives at the merged docs artifact for main commit 0e0e71ad125985df31e07c15fcc0e5dec14cd9ea."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7a6b9ba2ab8eeb2ccc71f7a4fc533b4b1721eb9b","text":"Retire the older live docs pointer; succession now survives at the merged docs artifact for main commit 0e0e71ad125985df31e07c15fcc0e5dec14cd9ea."}
