@@ -12,7 +12,7 @@ rests_on:
 A **request** names whom it is to and its conditions of satisfaction. A
 **promise** rests on that request and claims it. A **report** rests on
 the promise and claims completion. The **requester** — nobody else —
-ratifies the report.
+ratifies the report, while they remain a live participant.
 
 ```text
 request  ──rests_on──  promise  ──rests_on──  report  ──ratify──  satisfied
@@ -22,7 +22,9 @@ request  ──rests_on──  promise  ──rests_on──  report  ──rati
 
 You never declare your own work complete. That is the whole reason the
 requester holds ratification: satisfaction is a judgement by the person
-who asked, not a status the doer sets.
+who asked, not a status the doer sets. Retiring that requester's membership
+also retires this authority: their later ratification attempt is kept but
+judged ineffective, even if the report was filed after they left.
 
 A free-standing promise projects as dangling, because nobody is
 positioned to declare it satisfied. A report on a promise that does not

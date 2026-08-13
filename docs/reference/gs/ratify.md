@@ -51,12 +51,14 @@ Authority is target-specific:
 
 | Target | Who confers force |
 |---|---|
-| A `report` | The **requester** of the request the promise rests on. Nobody else. |
+| A `report` | The **live requester** of the request the promise rests on. Nobody else. |
 | An `assert`, `propose`, or governance statement | An actor holding `ratifier`. |
 | A `roster` grant | An actor holding the target-class authority: `operator` for an operator grant, otherwise `ratifier`. |
 
 Human or agent is an identity kind, not an authority test. An agent with
-a live `ratifier` grant may ratify.
+a live `ratifier` grant may ratify. A requester must likewise still have live
+membership when ratifying a report; authoring the request while admitted does
+not preserve satisfaction authority after removal.
 
 The beneficiary of an authority grant may neither author nor ratify that
 grant. Membership grants are separate from this rule. Report satisfaction

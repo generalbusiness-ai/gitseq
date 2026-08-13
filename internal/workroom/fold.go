@@ -430,6 +430,12 @@ func (f *foldState) addDecision(record Record, parsed *parsedRecord, index int, 
 
 func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 	decision := Decision{Event: record.record.ID, Verdict: Effective, Reason: "statement recorded"}
+	// The genesis roster seed bootstraps the first live participant. Every
+	// later state author must already be a live participant at this position;
+	// retained key custody is not durable speaking authority.
+	if record.index > 0 && !f.hasActor(record.record.Actor) {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "statement author is not in the live roster"}
+	}
 	definition, exists := f.definitions[state.Kind]
 	if !exists {
 		return Decision{Event: record.record.ID, Verdict: UndefinedKind, Reason: fmt.Sprintf("undefined kind %q", state.Kind)}
@@ -669,6 +675,9 @@ func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
 		}
 		if request.record.Actor != record.record.Actor {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "only the requester may declare satisfaction"}
+		}
+		if !f.hasActor(record.record.Actor) {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "requester is not in the live roster"}
 		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "requester declared satisfaction"}
 	}

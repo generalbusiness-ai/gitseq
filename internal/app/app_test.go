@@ -1183,6 +1183,85 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	}
 }
 
+func TestHistoricalCheckpointReplayAppliesLiveMembershipProfile(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, membership, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbSupersede, Target: membership[0].ID, Text: "agent leaves",
+		IdempotencyKey: "agent-leaves",
+	})
+	afterRemoval := actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "custody remains after membership",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "removed-agent-statement",
+	})
+	want, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, ok := want.Projection.Decision(afterRemoval.ID)
+	if !ok || decision.Verdict != workroom.Ineffective || decision.Reason != "statement author is not in the live roster" {
+		t.Fatalf("removed actor's signed statement = %+v, want live-roster refusal", decision)
+	}
+
+	// Simulate a checkpoint produced by the immediately preceding fold. The
+	// restarted application must reject it by profile, replay all signed
+	// history, and publish the same projection under the new rules.
+	oldReader := kernel.NewReader(workspace.Store, kernel.CheckpointOptions{
+		Profile: "workroom-fold@2", SigningKey: workspace.Config.SequencerKey,
+	})
+	if _, err := oldReader.Load(ctx, workspace.Config.Genesis); err != nil {
+		t.Fatal(err)
+	}
+	checkpointRef := kernel.CheckpointRef(workspace.Config.Genesis)
+	oldHead, err := workspace.Store.Head(ctx, checkpointRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readProfile := func(head string) string {
+		t.Helper()
+		data, err := workspace.Store.ReadFileLimit(ctx, head, "checkpoint", 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stored struct {
+			Profile string `json:"profile"`
+		}
+		if err := json.Unmarshal(data, &stored); err != nil {
+			t.Fatal(err)
+		}
+		return stored.Profile
+	}
+	if got := readProfile(oldHead); got != "workroom-fold@2" {
+		t.Fatalf("historical checkpoint profile = %q", got)
+	}
+
+	restarted, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := restarted.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("profile migration changed replay:\nwant=%+v\ngot=%+v", want, got)
+	}
+	newHead, err := workspace.Store.Head(ctx, checkpointRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newHead == oldHead || readProfile(newHead) != workroom.ProfileVersion {
+		t.Fatalf("checkpoint was not migrated: old=%s new=%s profile=%q", oldHead, newHead, readProfile(newHead))
+	}
+}
+
 // Retirement ends both halves of an identity: the durable membership and the
 // local key. What it must not end is the record that the principal acted.
 func TestRetireActorEndsMembershipAndCustodyWhileKeepingThePrincipalVisible(t *testing.T) {

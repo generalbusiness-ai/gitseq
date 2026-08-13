@@ -178,6 +178,13 @@ projects `path@commit`, retirement, succession, and staleness. Another
 application may have no artifacts or may define a different concept under a
 different schema family.
 
+Workroom also makes live membership an application-level authority boundary.
+After the genesis operator seed, a state author must be a live participant,
+and an originating requester must still be live to ratify a report. A departed
+actor may still supersede an earlier act they authored; that narrow cleanup
+exception does not give a new state or ratification force. These are fold
+rules, not kernel admission or signature rules.
+
 ### 5. Projections and queries
 
 A projection is a read model derived from an application interpreter, not a

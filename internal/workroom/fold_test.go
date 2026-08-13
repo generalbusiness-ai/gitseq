@@ -496,6 +496,131 @@ func TestMembershipRevocationRevokesDependentAuthority(t *testing.T) {
 	}
 }
 
+func removedParticipantHistory(t testing.TB, legacy bool) []Record {
+	t.Helper()
+	seedBody := map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}
+	membershipBody := map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}
+	if legacy {
+		delete(seedBody, "kind")
+		membershipBody = map[string]string{"actor": agent, "name": "Agent", "role": "agent"}
+	}
+	return []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: seedBody}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: membershipBody}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRequest, Text: "do it", Body: map[string]string{"to": agent, "conditions": "done"}}, "e0"),
+		event(t, "e4", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "e3"),
+		event(t, "e5", operator, SchemaSupersede, Supersede{Target: "e1", Text: "agent leaves"}, "e1"),
+	}
+}
+
+func TestRemovedParticipantCannotAuthorStateFromAnyCatalogKind(t *testing.T) {
+	// Walking the catalog makes a newly added starter kind part of this guard
+	// automatically. Deliberately incomplete bodies also prove membership is
+	// checked before kind-specific fields or lifecycle bases can give the act
+	// some other meaning.
+	for kind := range starterCatalog() {
+		t.Run(string(kind), func(t *testing.T) {
+			records := append(removedParticipantHistory(t, false),
+				event(t, "after-removal", agent, SchemaState, State{Kind: kind, Text: "after removal"}),
+			)
+			decision, ok := Fold(records).Decision("after-removal")
+			if !ok || decision.Verdict != Ineffective || decision.Reason != "statement author is not in the live roster" {
+				t.Fatalf("removed participant %q state = %+v, want live-roster refusal", kind, decision)
+			}
+		})
+	}
+
+	t.Run("undefined future kind", func(t *testing.T) {
+		records := append(removedParticipantHistory(t, false),
+			event(t, "after-removal", agent, SchemaState, State{Kind: "future-kind", Text: "after removal"}),
+		)
+		decision, _ := Fold(records).Decision("after-removal")
+		if decision.Verdict != Ineffective || decision.Reason != "statement author is not in the live roster" {
+			t.Fatalf("removed participant undefined state = %+v, want live-roster refusal", decision)
+		}
+	})
+}
+
+func TestRemovedParticipantMayOnlyCleanUpOwnPriorAct(t *testing.T) {
+	records := append(removedParticipantHistory(t, false),
+		event(t, "e6", agent, SchemaSupersede, Supersede{Target: "e4", Text: "withdraw my promise"}, "e4"),
+		event(t, "e7", agent, SchemaSupersede, Supersede{Target: "e3", Text: "cancel another actor's request"}, "e3"),
+		event(t, "e8", agent, SchemaState, State{Kind: KindAssert, Text: "cleanup does not restore speaking authority"}, "e6"),
+	)
+	projection := Fold(records)
+	for event, want := range map[string]struct {
+		verdict Verdict
+		reason  string
+	}{
+		"e6": {Effective, "authorized supersession"},
+		"e7": {Ineffective, "actor may not supersede target"},
+		"e8": {Ineffective, "statement author is not in the live roster"},
+	} {
+		decision, _ := projection.Decision(event)
+		if decision.Verdict != want.verdict || decision.Reason != want.reason {
+			t.Errorf("%s = %+v, want %s %q", event, decision, want.verdict, want.reason)
+		}
+	}
+}
+
+func TestRestoredParticipantCanAuthorLaterState(t *testing.T) {
+	records := append(removedParticipantHistory(t, true),
+		event(t, "e6", agent, SchemaState, State{Kind: KindAssert, Text: "while absent"}, "e0"),
+		event(t, "e7", operator, SchemaSupersede, Supersede{Target: "e5", Text: "restore membership"}, "e5"),
+		event(t, "e8", agent, SchemaState, State{Kind: KindAssert, Text: "after restoration"}, "e0"),
+	)
+	projection := Fold(records)
+	for event, want := range map[string]Verdict{"e6": Ineffective, "e7": Effective, "e8": Effective} {
+		decision, _ := projection.Decision(event)
+		if decision.Verdict != want {
+			t.Errorf("%s = %+v, want %s", event, decision, want)
+		}
+	}
+}
+
+func TestRemovedRequesterCannotRatifyReport(t *testing.T) {
+	for _, test := range []struct {
+		name               string
+		removeBeforeReport bool
+	}{
+		{name: "report existed before removal"},
+		{name: "report created after removal", removeBeforeReport: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			records := []Record{
+				event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+				event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+				event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+				event(t, "e3", agent, SchemaState, State{Kind: KindRequest, Text: "operator work", Body: map[string]string{"to": operator, "conditions": "done"}}, "e0"),
+				event(t, "e4", operator, SchemaState, State{Kind: KindPromise, Text: "I will"}, "e3"),
+			}
+			if test.removeBeforeReport {
+				records = append(records, event(t, "e5", operator, SchemaSupersede, Supersede{Target: "e1", Text: "agent leaves"}, "e1"))
+			}
+			records = append(records, event(t, "e6", operator, SchemaState, State{Kind: KindReport, Text: "done"}, "e4"))
+			if !test.removeBeforeReport {
+				records = append(records, event(t, "e5", operator, SchemaSupersede, Supersede{Target: "e1", Text: "agent leaves"}, "e1"))
+			}
+			records = append(records, event(t, "e7", agent, SchemaRatify, Ratify{Target: "e6"}, "e6"))
+
+			projection := Fold(records)
+			if report, _ := projection.Decision("e6"); report.Verdict != Effective {
+				t.Fatalf("report = %+v, want effective", report)
+			}
+			decision, _ := projection.Decision("e7")
+			if decision.Verdict != Ineffective || decision.Reason != "requester is not in the live roster" {
+				t.Fatalf("removed requester ratification = %+v, want live-roster refusal", decision)
+			}
+			for _, commitment := range projection.Commitments {
+				if commitment.Request == "e3" && commitment.Status == "satisfied" {
+					t.Fatalf("removed requester satisfied commitment: %+v", commitment)
+				}
+			}
+		})
+	}
+}
+
 func TestFoundingOperatorSeedCannotBeRetired(t *testing.T) {
 	projection := Fold([]Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
@@ -1287,6 +1412,8 @@ func TestDeclaredLifecycleKindsRemainTotalWithoutExpectedBasis(t *testing.T) {
 	}
 	projection := Fold([]Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
 		event(t, "d0", operator, SchemaState, kindDefinitionState(t, undertaking)),
 		event(t, "d0r", operator, SchemaRatify, Ratify{Target: "d0"}, "d0"),
 		event(t, "d1", operator, SchemaState, kindDefinitionState(t, delivery)),

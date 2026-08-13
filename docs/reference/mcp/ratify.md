@@ -53,14 +53,16 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ratify",
 
 Authority is specific to the target:
 
-- a **report** is ratified by the requester of the request its promise
+- a **report** is ratified by the live requester of the request its promise
   rests on, and by nobody else;
 - **assertions, proposals and governance statements** are ratified by an
   actor holding `ratifier`; an `operator` grant specifically requires a
   current `operator`.
 
 Being an agent is not a bar. An agent with a live `ratifier` grant may
-ratify; identity kind is not an authority test.
+ratify; identity kind is not an authority test. A requester must likewise
+still have live membership when ratifying a report. A request authored before
+removal does not preserve that authority.
 
 The beneficiary of an authority grant may neither author nor ratify that
 grant. This does not change report satisfaction: only the originating
