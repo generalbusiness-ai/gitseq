@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -1235,6 +1236,9 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	if localResult.Source != SnapshotSourceSignedCheckpointTail || !reflect.DeepEqual(localResult.Snapshot, want) {
 		t.Fatalf("local checkpoint did not survive ref loss: source=%q got=%+v want=%+v", localResult.Source, localResult.Snapshot, want)
 	}
+	if repairedRef, err := workspace.Store.Head(ctx, checkpointRef); err != nil || repairedRef != checkpointHead {
+		t.Fatalf("local selector did not restore checkpoint reachability: head=%s want=%s err=%v", repairedRef, checkpointHead, err)
+	}
 	actRecord(t, ctx, fromLocal, "human", Act{
 		Verb: VerbState, Kind: workroom.KindAssert, Text: "no-server checkpoint act",
 		RestsOn: []string{seed.ID}, IdempotencyKey: "no-server-checkpoint-act",
@@ -1255,6 +1259,9 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 		t.Fatalf("no-server checkpoint act differs from independent restart:\nlocal=%+v\nrestart=%+v", localAfterAct, coldProjection)
 	}
 	want = localAfterAct
+	if err := fromLocal.InvalidateCheckpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(pointer, []byte(`{"schema":"gitseq-checkpoint-pointer@1","commit":"`+workspace.Config.Genesis+`"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -1275,6 +1282,78 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	}
 	if repairedHead, err := workspace.Store.Head(ctx, checkpointRef); err != nil || repairedHead == workspace.Config.Genesis {
 		t.Fatalf("full audit did not repair checkpoint ref: head=%s err=%v", repairedHead, err)
+	}
+}
+
+func TestCheckpointOffForcesColdAuditWithoutChangingPersistentSelectors(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	pointer := workspace.checkpointPointerPath()
+	pointerBefore, err := os.ReadFile(pointer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := kernel.CheckpointRef(workspace.Config.Genesis)
+	refBefore, err := workspace.Store.Head(ctx, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(checkpointEnvironment, "off")
+	fresh, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := fresh.SnapshotWithSource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Source != SnapshotSourceColdFullAudit {
+		t.Fatalf("checkpoint-off source = %q, want cold full audit", loaded.Source)
+	}
+	pointerAfter, err := os.ReadFile(pointer)
+	if err != nil || !reflect.DeepEqual(pointerAfter, pointerBefore) {
+		t.Fatalf("checkpoint-off changed pointer: err=%v before=%q after=%q", err, pointerBefore, pointerAfter)
+	}
+	if refAfter, err := workspace.Store.Head(ctx, ref); err != nil || refAfter != refBefore {
+		t.Fatalf("checkpoint-off changed ref: before=%s after=%s err=%v", refBefore, refAfter, err)
+	}
+}
+
+func TestGenesisIsValidatedBeforeCheckpointPathSelection(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(workspace.MetaDir, "config.json")
+	config := workspace.Config
+	config.Genesis = "../outside"
+	content, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(ctx, workspace.Repo); err == nil || !strings.Contains(err.Error(), "invalid genesis object id") {
+		t.Fatalf("Open accepted path-shaped genesis: %v", err)
+	}
+	attachRepo := testRepo(t)
+	if _, err := AttachConfig(ctx, attachRepo, "../outside", "sha1"); err == nil || !strings.Contains(err.Error(), "invalid genesis object id") {
+		t.Fatalf("AttachConfig accepted path-shaped genesis: %v", err)
+	}
+	gitDir, _, err := ResolveGitDirs(ctx, attachRepo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(gitDir, "gitseq")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid attachment created local state: %v", err)
 	}
 }
 

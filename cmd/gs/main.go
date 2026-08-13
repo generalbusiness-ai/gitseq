@@ -102,6 +102,8 @@ func main() {
 		err = provenanceCommand(ctx, os.Args[2:])
 	case "verify":
 		err = verifyCommand(ctx, os.Args[2:])
+	case "checkpoint-clear":
+		err = checkpointClearCommand(ctx, os.Args[2:])
 	case "serve":
 		err = serveCommand(ctx, os.Args[2:])
 	case "attach":
@@ -117,7 +119,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|batch|status|provenance|verify|serve|attach> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|batch|status|provenance|verify|checkpoint-clear|serve|attach> [flags]")
 	os.Exit(2)
 }
 
@@ -1617,6 +1619,24 @@ func verifyCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	return printJSON(verification)
+}
+
+func checkpointClearCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("checkpoint-clear", arguments)
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return errors.New("checkpoint-clear accepts no arguments")
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	if err := workspace.InvalidateCheckpoint(ctx); err != nil {
+		return err
+	}
+	return printJSON(map[string]any{"genesis": workspace.Config.Genesis, "checkpoint": "cleared"})
 }
 
 func serveCommand(ctx context.Context, arguments []string) error {

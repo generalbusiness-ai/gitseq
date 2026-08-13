@@ -73,6 +73,7 @@ Read in this order if you are new:
   [status](reference/gs/status.md),
   [provenance](reference/gs/provenance.md),
   [verify](reference/gs/verify.md),
+  [checkpoint-clear](reference/gs/checkpoint-clear.md),
   [serve](reference/gs/serve.md),
   [attach](reference/gs/attach.md).
 - MCP reference pages currently in this documentation set:

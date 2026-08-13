@@ -34,6 +34,23 @@ type fixtureState struct {
 	format     string
 }
 
+type testCheckpointPointer struct {
+	commit   string
+	loadErr  error
+	storeErr error
+	writes   int
+}
+
+func (p *testCheckpointPointer) Load() (string, error) { return p.commit, p.loadErr }
+func (p *testCheckpointPointer) Store(commit string) error {
+	p.writes++
+	if p.storeErr != nil {
+		return p.storeErr
+	}
+	p.commit = commit
+	return nil
+}
+
 func newFixture(t testing.TB, format string) fixtureState {
 	return newFixtureWithCeiling(t, format, 1<<20)
 }
@@ -1527,26 +1544,61 @@ func TestReaderPersistsSignedCheckpointPointerAcrossRestart(t *testing.T) {
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "persisted", []byte("persisted"), nil), Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	pointer := filepath.Join(t.TempDir(), "gitseq", "checkpoints", f.genesis+".json")
-	options := CheckpointOptions{Profile: "persisted-fold@1", SigningKey: f.signingKey, LocalPath: pointer}
+	pointer := &testCheckpointPointer{}
+	options := CheckpointOptions{Profile: "persisted-fold@1", SigningKey: f.signingKey, Pointer: pointer}
 	written, err := NewReader(f.store, options).Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
 	}
-	commit, err := readCheckpointPointer(pointer)
-	if err != nil {
-		t.Fatalf("read persisted checkpoint pointer: %v", err)
-	}
+	commit := pointer.commit
 	if err := f.store.UpdateRef(f.ctx, CheckpointRef(f.genesis), f.genesis, commit); err != nil {
 		t.Fatal(err)
 	}
-	restarted := NewReader(f.store, CheckpointOptions{Profile: options.Profile, LocalPath: pointer})
+	restarted := NewReader(f.store, CheckpointOptions{Profile: options.Profile, Pointer: pointer})
 	loaded, err := restarted.Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !loaded.Checkpoint || restarted.fullScans != 0 || !reflect.DeepEqual(loaded.Events, written.Events) || loaded.Verification != written.Verification {
 		t.Fatalf("persisted checkpoint restart differs: written=%+v loaded=%+v full=%d", written, loaded, restarted.fullScans)
+	}
+	if repaired, err := f.store.Head(f.ctx, CheckpointRef(f.genesis)); err != nil || repaired != commit {
+		t.Fatalf("local pointer did not repair reachability ref: head=%s want=%s err=%v", repaired, commit, err)
+	}
+	if pointer.writes != 1 {
+		t.Fatalf("unchanged pointer writes = %d, want 1 initial write only", pointer.writes)
+	}
+}
+
+func TestCheckpointPointerFailureStillPublishesReachableRef(t *testing.T) {
+	f := newFixture(t, "sha1")
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "reachable", []byte("reachable"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	pointer := &testCheckpointPointer{storeErr: errors.New("local disk unavailable")}
+	options := CheckpointOptions{Profile: "reachable-ref@1", SigningKey: f.signingKey, Pointer: pointer}
+	loaded, err := NewReader(f.store, options).Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpointCommit, err := f.store.Head(f.ctx, CheckpointRef(f.genesis))
+	if err != nil || checkpointCommit == f.genesis {
+		t.Fatalf("checkpoint ref was not refreshed: commit=%s err=%v", checkpointCommit, err)
+	}
+	command := exec.Command("git", "--git-dir", f.store.Repo, "gc", "--prune=now")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git gc: %v: %s", err, output)
+	}
+	if message, err := f.store.CommitMessage(f.ctx, checkpointCommit); err != nil || strings.TrimSpace(message) != checkpointMarker {
+		t.Fatalf("checkpoint object was not retained by its ref: message=%q err=%v", message, err)
+	}
+	restarted, err := NewReader(f.store, CheckpointOptions{Profile: options.Profile}).Load(f.ctx, f.genesis)
+	if err != nil || !restarted.Checkpoint || !reflect.DeepEqual(restarted.Events, loaded.Events) {
+		t.Fatalf("ref recovery after pointer failure = %+v, err=%v", restarted, err)
 	}
 }
 
@@ -1556,15 +1608,13 @@ func TestReaderRejectsTamperedLocalCheckpointPointerAndUsesSignedRef(t *testing.
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "pointer-fallback", []byte("pointer-fallback"), nil), Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	pointer := filepath.Join(t.TempDir(), "checkpoint.json")
-	options := CheckpointOptions{Profile: "pointer-fallback@1", SigningKey: f.signingKey, LocalPath: pointer}
+	pointer := &testCheckpointPointer{}
+	options := CheckpointOptions{Profile: "pointer-fallback@1", SigningKey: f.signingKey, Pointer: pointer}
 	if _, err := NewReader(f.store, options).Load(f.ctx, f.genesis); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(pointer, []byte(`{"schema":"gitseq-checkpoint-pointer@1","commit":"`+f.genesis+`"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	restarted := NewReader(f.store, CheckpointOptions{Profile: options.Profile, LocalPath: pointer})
+	pointer.commit = f.genesis
+	restarted := NewReader(f.store, CheckpointOptions{Profile: options.Profile, Pointer: pointer})
 	loaded, err := restarted.Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
@@ -1572,13 +1622,11 @@ func TestReaderRejectsTamperedLocalCheckpointPointerAndUsesSignedRef(t *testing.
 	if !loaded.Checkpoint || restarted.fullScans != 0 {
 		t.Fatalf("signed ref fallback = %+v, full scans=%d", loaded, restarted.fullScans)
 	}
-	if repaired, err := readCheckpointPointer(pointer); err != nil || repaired == f.genesis {
-		t.Fatalf("local pointer was not repaired from signed ref: commit=%s err=%v", repaired, err)
+	if pointer.commit == f.genesis {
+		t.Fatalf("local pointer was not repaired from signed ref: commit=%s", pointer.commit)
 	}
-	if err := os.WriteFile(pointer, []byte(`{"schema":"gitseq-checkpoint-pointer@1","commit":"--help"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	malicious := NewReader(f.store, CheckpointOptions{Profile: options.Profile, LocalPath: pointer})
+	pointer.commit = "--help"
+	malicious := NewReader(f.store, CheckpointOptions{Profile: options.Profile, Pointer: pointer})
 	if loaded, err := malicious.Load(f.ctx, f.genesis); err != nil || !loaded.Checkpoint || malicious.fullScans != 0 {
 		t.Fatalf("option-shaped pointer did not safely fall back: loaded=%+v err=%v full=%d", loaded, err, malicious.fullScans)
 	}

@@ -137,18 +137,25 @@ whose participants never see each other and are never told.
 
 ## Restart
 
-The resident and ordinary local `gs` commands share a checkpoint pointer at
-`.git/gitseq/checkpoints/<genesis>.json`. It names a signed checkpoint object
-and is refreshed every 256 accepted events after the last successful write,
-so a new process re-audits only the tail. The compatibility ref
-`refs/gitseq/checkpoints/<genesis>` points to the same object and repairs a
-missing or damaged local pointer. The checkpoint is signed by the sequencer key current at its head,
+The resident and ordinary local `gs` commands share an application-owned
+checkpoint selector at `.git/gitseq/checkpoints/<genesis>.json`. It names a
+signed checkpoint object and is refreshed every 256 accepted events after the
+last successful write, so a new process re-audits only the tail. The ref
+`refs/gitseq/checkpoints/<genesis>` points to the same object, keeps it reachable
+to `git gc`, and repairs a missing or damaged local selector. The selector also
+lets gitseq recover if that local ref was unavailable or rewritten. Neither
+selector is trusted. The checkpoint is signed by the sequencer key current at its head,
 and any key rotation inside the cached prefix is re-read from its own
 sequence commit and checked under the preceding key, so a rotated log
 still restarts from cache. A missing or mismatched checkpoint is only a
 cache miss: it does the full audit instead. Checkpoint refs are local,
 never fetched by `attach`, never published, and never consulted by
 [`gs verify`](verify.md).
+
+For a deliberate cold restart, stop the resident and run
+`gs checkpoint-clear --repo <path>` before starting it again. This clears both
+persistent selectors. `GITSEQ_CHECKPOINT=off gs serve ...` keeps checkpoint
+loading and publication disabled for that resident process.
 
 Expired presence leases are swept, so a session that goes away without
 departing does not linger in presence forever.

@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
-	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
@@ -1382,12 +1381,7 @@ func TestWhoamiUsesBoundedEffectiveResidentOrientationWithoutLocalReplay(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkpointRef := kernel.CheckpointRef(workspace.Config.Genesis)
-	checkpointHead, err := workspace.Store.Head(ctx, checkpointRef)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := workspace.Store.UpdateRef(ctx, checkpointRef, workspace.Config.Genesis, checkpointHead); err != nil {
+	if err := workspace.InvalidateCheckpoint(ctx); err != nil {
 		t.Fatal(err)
 	}
 	eventCommit := strings.TrimPrefix(snapshot.Projection.Statements[len(snapshot.Projection.Statements)-1].Event, workspace.EventID(""))
@@ -1431,11 +1425,6 @@ func TestWhoamiDisclosesCheckpointAndFullAuditFallbacks(t *testing.T) {
 	if _, err := checkpointWriter.Snapshot(ctx); err != nil {
 		t.Fatal(err)
 	}
-	checkpointRef := kernel.CheckpointRef(workspace.Config.Genesis)
-	checkpointHead, err := workspace.Store.Head(ctx, checkpointRef)
-	if err != nil {
-		t.Fatal(err)
-	}
 	dead := httptest.NewServer(nil)
 	baseURL, client := dead.URL, dead.Client()
 	dead.Close()
@@ -1448,7 +1437,7 @@ func TestWhoamiDisclosesCheckpointAndFullAuditFallbacks(t *testing.T) {
 	if checkpoint["source"] != string(app.SnapshotSourceSignedCheckpointTail) || checkpoint["degraded"] != true {
 		t.Fatalf("checkpoint fallback was not disclosed: %#v", checkpoint)
 	}
-	if err := workspace.Store.UpdateRef(ctx, checkpointRef, workspace.Config.Genesis, checkpointHead); err != nil {
+	if err := workspace.InvalidateCheckpoint(ctx); err != nil {
 		t.Fatal(err)
 	}
 	cold, err := app.Open(ctx, workspace.Repo)
@@ -1775,13 +1764,8 @@ func BenchmarkWhoamiColdFullAuditAtActualSignedDepth(b *testing.B) {
 	dead := httptest.NewServer(nil)
 	deadURL, deadClient := dead.URL, dead.Client()
 	dead.Close()
-	checkpointRef := kernel.CheckpointRef(workspace.Config.Genesis)
 	for b.Loop() {
-		checkpointHead, err := workspace.Store.Head(ctx, checkpointRef)
-		if err != nil {
-			b.Fatal(err)
-		}
-		if err := workspace.Store.UpdateRef(ctx, checkpointRef, workspace.Config.Genesis, checkpointHead); err != nil {
+		if err := workspace.InvalidateCheckpoint(ctx); err != nil {
 			b.Fatal(err)
 		}
 		fresh, _ := app.Open(ctx, workspace.Repo)
