@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Loop-cut implementation at exact head 7620fa0a24c555b44a460c9cd98053cc91d33459, including the required deterministic fold profile bump to workroom-fold@4.","body":{"commit":"7620fa0a24c555b44a460c9cd98053cc91d33459","path":"internal/workroom"}}
+{"kind":"artifact","text":"Loop-cut implementation at exact head 7620fa0a24c555b44a460c9cd98053cc91d33459, including the required deterministic fold profile bump to workroom-fold@4.","body":{"commit":"7620fa0a24c555b44a460c9cd98053cc91d33459","path":"docs"}}
