@@ -2,8 +2,8 @@
 title: gs checkpoint-clear
 summary: Clear both persistent checkpoint selectors so the next process performs a cold audit.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:835c3b3106502f352f9baf48e76cdf1edd2e522e
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6011fdfd2e4b6ffceb13638035a2d9bbd3413e57
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:803d96879370a41781be8c614fe74f4814919f53
 ---
 
 # `gs checkpoint-clear`
