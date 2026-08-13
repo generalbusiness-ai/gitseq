@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1ac427db44d2c0e8404e7b1a2873e6b41bc5534c","text":"The stable current-main cmd/gitseq-mcp artifact now stands for this older Codex-owned pointer."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ec8a44b0f9920f65784c948d5e8c7af421406227","text":"The stable current-main internal/nexus artifact now stands for this older Codex-owned pointer."}
