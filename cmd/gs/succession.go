@@ -54,14 +54,14 @@ func parseMergeChanges(raw string) ([]mergeChange, error) {
 		status := fields[position]
 		position++
 		if status == "" || position >= len(fields) {
-			return nil, errorsNewMalformedDiff()
+			return nil, errMalformedDiff
 		}
 		change := mergeChange{status: status, new: fields[position]}
 		position++
 		if status[0] == 'R' || status[0] == 'C' {
 			change.old = change.new
 			if position >= len(fields) {
-				return nil, errorsNewMalformedDiff()
+				return nil, errMalformedDiff
 			}
 			change.new = fields[position]
 			position++
@@ -73,7 +73,7 @@ func parseMergeChanges(raw string) ([]mergeChange, error) {
 	return changes, nil
 }
 
-func errorsNewMalformedDiff() error { return fmt.Errorf("malformed NUL-delimited merge diff") }
+var errMalformedDiff = errors.New("malformed NUL-delimited merge diff")
 
 type successionPlan struct {
 	publish []string
@@ -84,26 +84,22 @@ type successionPlan struct {
 // Live includes stale artifacts: stale says a basis moved, not that the pointer
 // was withdrawn. Historical unmaintainable paths are ignored; state@1 prevents
 // any more from entering the effective set.
-func planSuccession(projection workroom.Projection, changes []mergeChange, mergeHead string, predecessors map[string]bool) successionPlan {
-	type liveArtifact struct {
-		workroom.Artifact
-		publishedByThisMerge bool
-	}
-	var live []liveArtifact
+func planSuccession(projection workroom.Projection, changes []mergeChange, predecessors map[string]bool) successionPlan {
+	var live []workroom.Artifact
 	for _, artifact := range projection.Artifacts {
 		if artifact.Retired || artifact.Path == "." || strings.Contains(artifact.Path, ",") {
 			continue
 		}
-		if predecessors != nil && !predecessors[artifact.Event] && artifact.Commit != mergeHead {
+		if predecessors != nil && !predecessors[artifact.Event] {
 			continue
 		}
-		live = append(live, liveArtifact{Artifact: artifact, publishedByThisMerge: artifact.Commit == mergeHead})
+		live = append(live, artifact)
 	}
 	published := map[string]bool{}
 	retire := map[string]string{}
 
-	covering := func(path string, includeExact bool) []liveArtifact {
-		var found []liveArtifact
+	covering := func(path string, includeExact bool) []workroom.Artifact {
+		var found []workroom.Artifact
 		for _, artifact := range live {
 			if artifact.Path == path {
 				if includeExact {
@@ -117,19 +113,24 @@ func planSuccession(projection workroom.Projection, changes []mergeChange, merge
 		}
 		return found
 	}
-	widest := func(artifacts []liveArtifact, fallback string) string {
-		winner := fallback
+	// The sentinel is emptiness, never the fallback string. An earlier form
+	// seeded the winner with the changed path, so a narrow artifact sitting at
+	// exactly that path left `winner == fallback` true and the next artifact
+	// won by that arm whatever the comparison said — the wider-path rule was
+	// unreachable, and disabling it changed no result anywhere.
+	widest := func(artifacts []workroom.Artifact, fallback string) string {
+		winner := ""
 		for _, artifact := range artifacts {
-			if winner == fallback || widerPath(artifact.Path, winner) {
+			if winner == "" || widerPath(artifact.Path, winner) {
 				winner = artifact.Path
 			}
 		}
+		if winner == "" {
+			return fallback
+		}
 		return winner
 	}
-	assign := func(artifact liveArtifact, successor string) {
-		if artifact.publishedByThisMerge {
-			return
-		}
+	assign := func(artifact workroom.Artifact, successor string) {
 		current, exists := retire[artifact.Event]
 		if !exists || current == "" || (successor != "" && widerPath(successor, current)) {
 			retire[artifact.Event] = successor
@@ -212,15 +213,46 @@ func successionPredecessors(ctx context.Context, checkout string, projection wor
 	return eligible
 }
 
+// preflightSuccession refuses the two retirements that cannot be repaired
+// afterwards, and only those.
+//
+// The citation guard exists because a page resting on a withdrawn pointer has
+// nowhere to go. A merge retirement that this same plan gives a successor is a
+// different act: the supersession names the successor artifact, so the log
+// carries the reader from the old pointer to the current one at a path that
+// still covers the behaviour, and the documentation gate follows that link and
+// flares rather than failing. Refusing it was a deadlock with no legal exit —
+// the successor cannot exist until the merge lands, and the merge could not
+// land until the pages were repointed at the successor. Passing every
+// retirement through as allowed would be the other half of the same mistake,
+// so a bare retirement, which orphans whatever cites it, is still refused here
+// and still needs a deliberate `gs supersede --cited-ok` after the pages move.
 func preflightSuccession(ctx context.Context, workspace *app.Workspace, checkout string, plan successionPlan) error {
+	published := make(map[string]bool, len(plan.publish))
 	for _, path := range plan.publish {
 		if path == "." || strings.Contains(path, ",") {
 			return fmt.Errorf("merge would publish an invalid artifact path %q", path)
 		}
+		published[path] = true
 	}
+	targets := make([]string, 0, len(plan.retire))
 	for target := range plan.retire {
-		if err := workspace.RefuseCitedRetirementInCheckout(ctx, checkout, target, false); err != nil {
-			return err
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+	for _, target := range targets {
+		successor := plan.retire[target]
+		if successor == "" {
+			if err := workspace.RefuseCitedRetirementInCheckout(ctx, checkout, target, false); err != nil {
+				return err
+			}
+			continue
+		}
+		// A named successor only preserves the citation if this merge really
+		// publishes it. A plan claiming one it does not publish would retire
+		// the predecessor and leave the pages pointing at nothing.
+		if !published[successor] {
+			return fmt.Errorf("merge would retire %s naming a successor at %q that it does not publish", target, successor)
 		}
 	}
 	return nil

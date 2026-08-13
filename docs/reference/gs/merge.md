@@ -153,16 +153,59 @@ pseudo-paths. Historical `state@0` artifacts keep their original decisions but
 valid historical paths remain candidates for retirement and succession. New
 raw submissions cannot use `state@0` to bypass the path rule.
 
-Before moving `HEAD`, `merge` checks whether tracked documentation still cites
-any predecessor it would retire. Git prepares the merge with `--no-commit`, the
-command checks the actual staged result, and a refusal aborts the tentative
-merge with the target unchanged. Only then does it create the receipt commit
-and publish the durable succession.
+### Citations across a merge
 
-Free-standing [`gs supersede`](supersede.md) still requires the target's author
-or an actor holding `ratifier`. The narrow cross-author exception applies only
-when the supersession cites a receipt signed by the same actor and that receipt
-carries the ratified independent approval chain for the exact merged head.
+Documentation names the artifacts that vouch for the behaviour it describes, so
+the pages cite exactly the pointers a merge has to retire. Refusing every cited
+retirement would refuse every merge in a documented area, and the usual advice —
+repoint the pages first — cannot be followed, because the successor does not
+exist until the merge lands.
+
+So the two cases are separated. A retirement this merge succeeds goes through:
+the supersession names the successor artifact, the successor stands at the same
+path or at a directory covering it, and a page naming the old pointer flares and
+is told where to re-anchor. A retirement with no successor is refused before
+`HEAD` moves, naming the pages, exactly as
+[`gs supersede`](supersede.md) refuses one: nothing replaces the pointer, so the
+pages would be left with nowhere to go. Retiring it anyway is a deliberate act
+with `gs supersede --cited-ok` once the pages have moved.
+
+The documentation gate reads the same distinction. A citation of a retired
+artifact whose retirement names a covering successor is reported as a flare; a
+citation of a retirement that names nothing still fails the set.
+
+Before moving `HEAD`, `merge` runs this check on the tracked tree that will
+receive the merge. Git prepares the merge with `--no-commit`, the command checks
+the actual staged result, and a refusal aborts the tentative merge with the
+target unchanged. Only then does it create the receipt commit and publish the
+durable succession.
+
+### Who may retire another actor's pointer
+
+Free-standing [`gs supersede`](supersede.md) requires the target's author or an
+actor holding `ratifier`. Merge succession is the one narrow exception, and the
+fold checks all of it from the log alone:
+
+- the supersession cites a merge receipt signed by the same actor;
+- that receipt cites a ratified, effective approval whose verdict is `approved`
+  and whose head is the merged candidate;
+- the approval cites an implementation artifact standing at that candidate and
+  written by someone other than the approver;
+- the receipt is signed by the author of that implementation artifact — the
+  merger of an approved head is the actor whose work it is; and
+- the target carries a successor path in the receipt's signed plan, that path
+  covers the target's own path, and the supersession cites the successor
+  artifact published there.
+
+A receipt therefore reaches exactly the tree its merge republished, and nothing
+else. A retirement with no successor — a deleted path — takes no authority from
+a merge at all and stays with the target's own author or a ratifier.
+
+### Restart residents at the merged commit
+
+This head advances the state schema to `workroom/state@1` and the fold profile
+to `workroom-fold@3`. A binary built before it cannot interpret records written
+after it. Restart every resident sequencer and MCP adapter at the merged commit.
 
 ## See also
 

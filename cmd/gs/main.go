@@ -499,7 +499,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	predecessors := successionPredecessors(ctx, *checkout, snapshot.Projection, targetPreHead, *candidate)
-	plan := planSuccession(snapshot.Projection, changes, "", predecessors)
+	plan := planSuccession(snapshot.Projection, changes, predecessors)
 	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
 	}
@@ -517,11 +517,11 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	head = strings.TrimSpace(head)
-	receipt, err := readMergeReceipt(ctx, *checkout, head)
+	receipt, ok, err := readMergeReceipt(ctx, *checkout, head)
 	if err != nil {
 		return err
 	}
-	if receipt.Approval != *approval || receipt.Candidate != *candidate || receipt.TargetPreHead != targetPreHead || receipt.MergeHead != head {
+	if !ok || receipt.Approval != *approval || receipt.Candidate != *candidate || receipt.TargetPreHead != targetPreHead || receipt.MergeHead != head {
 		return errors.New("resulting merge commit does not carry the requested receipt")
 	}
 	if _, err := git(ctx, *checkout, "update-ref", receiptRef, head, targetPreHead); err != nil {
@@ -574,10 +574,15 @@ func mergeReceiptMessage(text, approval, candidate, targetPreHead string, plan s
 		mergeRetirementsTrailer, retirements, mergeSuccessorsTrailer, successors), nil
 }
 
-func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt, error) {
+// readMergeReceipt separates "this commit is not one of our receipts" from
+// "Git could not be asked". Merge commits already in main predate the sealed
+// succession trailers, so treating their absence as a malformed receipt made a
+// replayed old approval report a parse failure instead of the intended
+// already-used refusal. A false ok is that ordinary fact, not an error.
+func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt, bool, error) {
 	message, err := git(ctx, checkout, "show", "-s", "--format=%B", head)
 	if err != nil {
-		return mergeReceipt{}, err
+		return mergeReceipt{}, false, err
 	}
 	receipt := mergeReceipt{MergeHead: head}
 	for _, line := range strings.Split(message, "\n") {
@@ -596,27 +601,31 @@ func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt,
 	}
 	parents, err := git(ctx, checkout, "rev-list", "--parents", "-n", "1", head)
 	if err != nil {
-		return mergeReceipt{}, err
+		return mergeReceipt{}, false, err
 	}
 	fields := strings.Fields(parents)
 	if receipt.Approval == "" || receipt.Candidate == "" || receipt.TargetPreHead == "" || receipt.Retirements == "" || receipt.Successors == "" || len(fields) != 3 ||
 		fields[0] != head || fields[1] != receipt.TargetPreHead || fields[2] != receipt.Candidate {
-		return mergeReceipt{}, errors.New("malformed merge receipt commit")
+		return mergeReceipt{}, false, nil
 	}
-	return receipt, nil
+	return receipt, true, nil
 }
 
+// existingGitMergeReceipt looks for a complete receipt for this approval. A
+// commit carrying the approval trailer without the rest of the receipt is an
+// older merge, not a failure: it is skipped so the durable receipt check gives
+// the already-used refusal that actually describes the situation.
 func existingGitMergeReceipt(ctx context.Context, checkout, approval string) (mergeReceipt, bool, error) {
 	heads, err := git(ctx, checkout, "log", "--all", "--fixed-strings", "--grep="+mergeApprovalTrailer+approval, "--format=%H")
 	if err != nil {
 		return mergeReceipt{}, false, err
 	}
 	for _, head := range strings.Fields(heads) {
-		receipt, err := readMergeReceipt(ctx, checkout, head)
+		receipt, ok, err := readMergeReceipt(ctx, checkout, head)
 		if err != nil {
 			return mergeReceipt{}, false, err
 		}
-		if receipt.Approval == approval {
+		if ok && receipt.Approval == approval {
 			return receipt, true, nil
 		}
 	}

@@ -744,23 +744,58 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 }
 
 // hasAuthorizedMergeReceipt admits the one cross-author supersession which is
-// not a free-standing act. The signer must cite its own merge receipt, and that
+// not a free-standing act. The signer must cite its own merge receipt, that
 // receipt must carry the complete ratified, independent exact-head approval
-// chain. A bare approval citation is intentionally insufficient: the authority
+// chain, and it must be signed by the actor whose implementation the approval
+// covers. A bare approval citation is intentionally insufficient: the authority
 // is exercised by the merge, not made into a reusable retirement capability.
+//
+// The authority is also bounded by what the merge publishes. Every target must
+// carry a successor path in the signed plan, that path must cover the target's
+// own path, and the supersession must cite the successor artifact published at
+// it. So the reach of a receipt is exactly the tree its merge republished:
+// there is no way to name a stranger's artifact somewhere else and have the
+// receipt carry it. A retirement with no successor — a deleted path — takes no
+// authority from a merge and stays with the target's own author or a ratifier,
+// because nothing the merge published stands over it to bound the claim.
 func (f *foldState) hasAuthorizedMergeReceipt(record *parsedRecord, target string) bool {
+	targetRecord := f.byID[target]
+	if targetRecord == nil {
+		return false
+	}
+	targetPath := ""
+	if artifact, ok := targetRecord.body.(*State); ok {
+		targetPath = artifact.Body["path"]
+	}
+	if targetPath == "" {
+		return false
+	}
 	for _, basis := range record.record.RestsOn[1:] {
 		receipt := f.byID[basis]
 		if receipt == nil || receipt.decision.Verdict != Effective || f.retired(basis) || receipt.record.Actor != record.record.Actor {
 			continue
 		}
-		if successorPath, ok := f.mergeReceiptPlan(receipt)[target]; ok {
-			if successorPath == "" || f.citesMergeSuccessor(record, receipt, successorPath) {
-				return true
-			}
+		successorPath, planned := f.mergeReceiptPlan(receipt)[target]
+		if !planned || !pathCovers(successorPath, targetPath) {
+			continue
+		}
+		if f.citesMergeSuccessor(record, receipt, successorPath) {
+			return true
 		}
 	}
 	return false
+}
+
+// pathCovers reports whether a successor at one path stands over a predecessor
+// at another: the same string, or a directory containing it. Comparison is
+// exact-string and slash-delimited, the same reading the projection gives every
+// other artifact path.
+func pathCovers(successor, predecessor string) bool {
+	if successor == "" || predecessor == "" {
+		return false
+	}
+	return successor == predecessor ||
+		strings.HasPrefix(predecessor, strings.TrimSuffix(successor, "/")+"/")
 }
 
 func (f *foldState) citesMergeSuccessor(record, receipt *parsedRecord, path string) bool {
@@ -780,20 +815,29 @@ func (f *foldState) citesMergeSuccessor(record, receipt *parsedRecord, path stri
 
 // mergeReceiptPlan returns the exact predecessor set authorized by a valid
 // receipt. The plan is signed into the receipt so its authority cannot be
-// borrowed to retire an unrelated artifact.
+// borrowed to retire an unrelated artifact. Both the indexed record and the
+// appended copy are written when the receipt is judged, so one lookup answers
+// for either caller.
 func (f *foldState) mergeReceiptPlan(receipt *parsedRecord) map[string]string {
 	if receipt == nil || f.retired(receipt.record.ID) {
 		return nil
 	}
-	if receipt.mergePlan != nil {
-		return receipt.mergePlan
-	}
-	if canonical := f.byID[receipt.record.ID]; canonical != nil {
-		return canonical.mergePlan
-	}
-	return nil
+	return receipt.mergePlan
 }
 
+// validateMergeReceiptNow judges a merge receipt from the log alone and returns
+// the retirement plan it is allowed to authorize, or nil.
+//
+// Three things are checked because a receipt is otherwise entirely
+// signer-written text. The approval must be effective, ratified, and approve
+// the exact candidate. The implementation artifact it names must be cited by
+// that approval, stand at that candidate, and be authored by someone other than
+// the approver, so the approval is independent. And the receipt must be signed
+// by the author of that implementation artifact: the merger of an approved head
+// is the actor whose work it is. Without that last check the whole chain was
+// public reading — anyone could copy a ratified approval into an assert of
+// their own and mint retirement authority from it, which made a one-signature
+// denial of merge available to every participant.
 func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]string {
 	if receipt == nil || receipt.decision.Verdict != Effective || f.retired(receipt.record.ID) {
 		return nil
@@ -822,6 +866,9 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 	implementation, ok := artifact.body.(*State)
 	if !ok || artifact.definition == nil || artifact.definition.Render != RenderArtifact ||
 		implementation.Body["commit"] != state.Body["merge_candidate"] || artifact.record.Actor == approval.record.Actor {
+		return nil
+	}
+	if receipt.record.Actor != artifact.record.Actor {
 		return nil
 	}
 	var plan map[string]string
@@ -1077,11 +1124,12 @@ func (f *foldState) staleness() (map[string]bool, map[string]bool) {
 		if record.definition != nil && record.definition.Staleness == StalenessExempt {
 			continue
 		}
+		// A merge receipt ignores only the predecessor retirements it signed.
+		// Later retirement of its approval, request, or any other basis still
+		// propagates normally. The plan is a property of the record, not of the
+		// basis being examined, so it is read once.
+		plan := f.mergeReceiptPlan(&record)
 		for _, basis := range record.record.RestsOn {
-			// A merge receipt ignores only the predecessor retirements it signed.
-			// Later retirement of its approval, request, or any other basis still
-			// propagates normally.
-			plan := f.mergeReceiptPlan(&record)
 			if plan != nil {
 				if _, intended := plan[basis]; intended && f.retired(basis) {
 					continue

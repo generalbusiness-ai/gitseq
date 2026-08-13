@@ -13,6 +13,10 @@ const (
 	operator = "actor:operator"
 	agent    = "actor:agent"
 	other    = "actor:other"
+	// A participant with no part in any review: not the implementer, not the
+	// approver, not a ratifier. What such an actor can do is the question the
+	// merge receipt authority has to answer.
+	bystander = "actor:bystander"
 )
 
 func event(t testing.TB, id, actor, schema string, payload any, rests ...string) Record {
@@ -1594,6 +1598,82 @@ func TestMergeReceiptDoesNotAuthorizeAnUnrelatedCrossAuthorRetirement(t *testing
 	decision, _ := Fold(records).Decision("retire")
 	if decision.Verdict != Ineffective || decision.Reason != "actor may not supersede target" {
 		t.Fatalf("unrelated retirement = %+v", decision)
+	}
+}
+
+// The exploit as it was actually run against the previous head. A bare
+// participant with no part in the approval and no merge copied a public
+// ratified approval into an assert of its own, wrote itself a retirement plan,
+// and retired an artifact belonging to the operator. The verdict came back
+// effective, "merge approval authorized artifact succession". Because a retired
+// artifact makes `gs merge` refuse and takes the documentation gate red, that
+// was a one-signature denial of merge available to every participant.
+//
+// The receipt must now be signed by the actor whose implementation the approval
+// covers, so a stranger's copy of it carries no plan at all.
+func TestMergeReceiptFromABystanderAuthorizesNothing(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "bystander-join", operator, SchemaState, State{Kind: KindRoster, Text: "bystander joins", Body: map[string]string{"actor": bystander, "kind": "agent", "name": "Bystander", "role": "participant"}}, "r0"),
+		event(t, "bystander-ratified", operator, SchemaRatify, Ratify{Target: "bystander-join"}, "bystander-join"),
+		event(t, "victim", operator, SchemaState, State{Kind: KindArtifact, Text: "the operator's pointer", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		// Everything below is written by the bystander alone.
+		event(t, "forged", bystander, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "invented",
+			"merge_retirements": `{"victim":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		event(t, "forged-successor", bystander, SchemaState, State{Kind: KindArtifact, Text: "invented successor", Body: map[string]string{"path": "spike", "commit": "invented"}}, "forged"),
+		event(t, "steal", bystander, SchemaSupersede, Supersede{Target: "victim", Text: "minted authority"}, "victim", "forged", "forged-successor"),
+	)
+	projection := Fold(records)
+	decision, _ := projection.Decision("steal")
+	if decision.Verdict != Ineffective || decision.Reason != "actor may not supersede target" {
+		t.Fatalf("forged merge receipt supersession = %+v", decision)
+	}
+	if artifactByEvent(t, projection, "victim").Retired {
+		t.Fatal("a bare participant retired another actor's artifact")
+	}
+}
+
+// The same bound from the other side. The implementer really did merge, but a
+// receipt reaches only what its merge republished: a target the plan does not
+// cover takes no authority from it, whatever the plan claims.
+func TestMergeReceiptReachesOnlyWhatItsSuccessorCovers(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "victim", operator, SchemaState, State{Kind: KindArtifact, Text: "somewhere else entirely", Body: map[string]string{"path": "docs", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"victim":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "victim", Text: "not covered by the successor"}, "victim", "merge", "successor"),
+	)
+	decision, _ := Fold(records).Decision("retire")
+	if decision.Verdict != Ineffective || decision.Reason != "actor may not supersede target" {
+		t.Fatalf("retirement outside the republished tree = %+v", decision)
+	}
+}
+
+// A deleted path has no successor to bound the claim, so the merge takes no
+// cross-author authority over it. The target's own author or a ratifier
+// retires it, which is what the free-standing rule already said.
+func TestMergeReceiptTakesNoAuthorityOverABareRetirement(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "gone", operator, SchemaState, State{Kind: KindArtifact, Text: "a deleted file", Body: map[string]string{"path": "spike/gone.go", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"gone":""}`, "merge_successors": `[]`,
+		}}, "approval"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "gone", Text: "the file is gone"}, "gone", "merge"),
+	)
+	decision, _ := Fold(records).Decision("retire")
+	if decision.Verdict != Ineffective || decision.Reason != "actor may not supersede target" {
+		t.Fatalf("bare cross-author retirement = %+v", decision)
 	}
 }
 

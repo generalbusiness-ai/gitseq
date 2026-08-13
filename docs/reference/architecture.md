@@ -165,8 +165,9 @@ fold, or UI expectations.
 - ratification and supersession rules;
 - path-at-commit artifact statements, retirement, succession, reviews, and
   staleness;
-- guarded review and merge semantics, including the merge receipt whose
-  ratified approval authorizes deterministic cross-author artifact succession;
+- guarded review and merge semantics, including the merge receipt that lets the
+  implementer of an approved head retire the predecessors its own merge
+  republished, and nothing else;
 - Workroom MCP tools and their application meanings;
 - the agent practice in `SKILL.md`;
 - connector clauses and observations; and

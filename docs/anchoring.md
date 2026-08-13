@@ -110,6 +110,22 @@ succession is what lets a reader tell a current page from a forgotten
 one; `gs status` marks an artifact whose predecessor at the same path is
 still live as **succession not recorded**.
 
+## When a basis is retired
+
+Naming the successor is what makes the retirement survivable for the
+pages. A supersession that rests on an artifact standing at the same path,
+or at a directory covering it, tells every page naming the old pointer
+where the behaviour went; the basis gate reports that as a flare and the
+page re-anchors when someone re-reads the prose against the code. A
+supersession that names no such artifact leaves the page pointing at a
+hole, and the gate fails.
+
+This is why [`gs merge`](reference/gs/merge.md) may retire a pointer the
+set still cites. It publishes the successor and names it in the same
+batch, so the link exists before anyone reads it. It refuses when the
+change deletes a path outright, because then there is no successor to
+name.
+
 ## Known limit
 
 Staleness does not propagate through bases that were judged ineffective.

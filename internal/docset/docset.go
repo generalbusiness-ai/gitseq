@@ -315,7 +315,16 @@ type CitationVerdict struct {
 // already resolved against the durable log. It takes primitives rather than
 // workroom types so the whole table can be exercised without a workroom, which
 // is the only way to cover the cases a real log does not currently contain.
-func ClassifyCitation(found, isArtifact, retired, stale bool, path, commit string) CitationVerdict {
+//
+// succeeded is what separates a withdrawn pointer from a moved one. A
+// retirement that names a successor covering the same path leaves the page
+// somewhere to go, and the log says where; that is a flare, the same as
+// staleness, and the page re-anchors when someone re-reads the prose. A
+// retirement that names nothing leaves the page pointing at a hole, which is
+// fatal and always was. Without the distinction the set could not survive its
+// own merges: every merge retires the artifacts the pages cite, so retirement
+// alone being fatal meant either the merge was refused or the set went red.
+func ClassifyCitation(found, isArtifact, retired, succeeded, stale bool, path, commit string) CitationVerdict {
 	switch {
 	case !found:
 		return CitationVerdict{Fatal: true, Reason: "resolves to no statement in this workroom"}
@@ -323,8 +332,8 @@ func ClassifyCitation(found, isArtifact, retired, stale bool, path, commit strin
 		// Retiring the request that asked for a page never makes the page
 		// wrong. Only an artifact stands for the implementation described.
 		return CitationVerdict{Fatal: true, Reason: "is not an artifact, so retiring it would say nothing about the pages naming it"}
-	case retired:
-		return CitationVerdict{Fatal: true, Reason: "is retired, so the pages naming it rest on a withdrawn pointer"}
+	case retired && !succeeded:
+		return CitationVerdict{Fatal: true, Reason: "is retired with no successor, so the pages naming it rest on a withdrawn pointer"}
 	case !canonicalCommit(commit):
 		// Not cosmetic. gs merge refuses anything that is not the full
 		// canonical object ID, and a review verdict resolves to its artifact by
@@ -334,6 +343,9 @@ func ClassifyCitation(found, isArtifact, retired, stale bool, path, commit strin
 	}
 	if why := UnmaintainablePath(path); why != "" {
 		return CitationVerdict{Fatal: true, Reason: "sits at " + why + ", so nothing will supersede it and the pages naming it can never flare"}
+	}
+	if retired {
+		return CitationVerdict{Report: true, Reason: "is retired and its retirement names a successor covering the same path; the pages naming it should re-anchor there"}
 	}
 	if stale {
 		// Reported, never fatal. A stale basis means something under this
