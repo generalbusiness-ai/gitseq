@@ -167,8 +167,9 @@ fold, or UI expectations.
   staleness;
 - guarded review and merge semantics, including the merge receipt that lets the
   implementer of an approved head retire another actor's predecessors only on
-  the path lineage of the artifact that approval names, since the fold is pure
-  over records and can verify no merge head, diff, or tree;
+  the path lineages of the artifacts that approval itself cites, each standing
+  at the approved head and owned by the implementer, since the fold is pure over
+  records and can verify no merge head, diff, or tree;
 - Workroom MCP tools and their application meanings;
 - the agent practice in `SKILL.md`;
 - connector clauses and observations; and

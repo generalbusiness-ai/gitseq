@@ -332,7 +332,8 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 	set, repo := flags("review", arguments)
 	as := set.String("as", "", "reviewer actor name")
 	checkout := set.String("checkout", "", "checkout reviewed")
-	artifact := set.String("artifact", "", "artifact event naming the reviewed head")
+	var artifacts repeatedFlag
+	set.Var(&artifacts, "artifact", "artifact event standing at the reviewed head; repeat to sign the whole reviewed set")
 	promise := set.String("promise", "", "review promise event")
 	verdict := set.String("verdict", "", "approved or changes-requested")
 	message := set.String("text", "", "review report")
@@ -344,8 +345,20 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 	if set.NArg() != 0 {
 		return errors.New("review takes no positional arguments")
 	}
-	if *checkout == "" || *artifact == "" || *promise == "" || *message == "" {
+	if *checkout == "" || len(artifacts) == 0 || *promise == "" || *message == "" {
 		return errors.New("review requires --checkout, --artifact, --promise, and --text")
+	}
+	// The first citation is the primary the verdict names; every citation is a
+	// basis of the report. What a receipt may later retire is read from those
+	// bases and nowhere else, so this list is the reviewer signing a set rather
+	// than the implementer asserting one.
+	artifact := &artifacts[0]
+	for index, cited := range artifacts {
+		for _, earlier := range artifacts[:index] {
+			if earlier == cited {
+				return fmt.Errorf("review cites artifact %s twice", cited)
+			}
+		}
 	}
 	reviewer, err := signingActor(*as)
 	if err != nil {
@@ -360,6 +373,12 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 	}
 	basis, err := validate(ctx, workspace, reviewer, *checkout, *artifact, *promise)
 	if err != nil {
+		return err
+	}
+	// Every co-signed artifact is held to the same standard as the primary:
+	// live, standing, and at the exact head being reviewed. A reviewer signing
+	// a set is answerable for all of it.
+	if err := validateReviewedSet(ctx, workspace, artifacts, basis.Head); err != nil {
 		return err
 	}
 	// Re-read immediately before signing. The verdict names the immutable
@@ -380,7 +399,7 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 	record, err := submitAct(ctx, workspace, *serverURL, reviewer, app.Act{
 		Verb: app.VerbState, Kind: workroom.KindReport, Text: *message,
 		Body:    body,
-		RestsOn: []string{*promise, basis.Request, *artifact}, IdempotencyKey: *key,
+		RestsOn: append([]string{*promise, basis.Request}, artifacts...), IdempotencyKey: *key,
 	})
 	if err != nil {
 		return err

@@ -280,14 +280,9 @@ func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, pla
 	if actor == "" {
 		return errors.New("merge succession needs the merging actor's fingerprint")
 	}
-	approvedPath := ""
-	for _, statement := range projection.Statements {
-		if statement.Event == approval {
-			approvedPath = artifactPath(projection, statement.Body["artifact"])
-		}
-	}
-	if approvedPath == "" {
-		return fmt.Errorf("approval %s names no artifact path, so it bounds no retirement", approval)
+	reviewed := reviewedPaths(projection, approval)
+	if len(reviewed) == 0 {
+		return fmt.Errorf("approval %s puts no artifact path within reach, so it bounds no retirement", approval)
 	}
 	authors := make(map[string]string, len(projection.Statements))
 	for _, statement := range projection.Statements {
@@ -300,13 +295,66 @@ func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, pla
 	sort.Strings(targets)
 	for _, target := range targets {
 		path := artifactPath(projection, target)
-		if authors[target] == actor || sameTreeLineage(approvedPath, path) {
+		if authors[target] == actor || withinReviewedPaths(reviewed, path) {
 			continue
 		}
-		return fmt.Errorf("merge would retire %s at %q, which belongs to another actor and lies outside the approved tree %q:\nhave the approval name an artifact covering it, or ask its author or an actor holding ratifier to retire it",
-			target, path, approvedPath)
+		return fmt.Errorf("merge would retire %s at %q, which belongs to another actor and lies outside the reviewed paths %s:\nhave the approval cover it, or ask its author or an actor holding ratifier to retire it",
+			target, path, strings.Join(reviewed, ", "))
 	}
 	return nil
+}
+
+// reviewedPaths mirrors the fold's own reading of what an approval reaches: the
+// artifacts the reviewer cited as bases of the verdict, each standing at the
+// exact head approved and owned by the implementer it binds. The command has to
+// agree with the fold here, or it refuses merges the fold would allow — which
+// is what stranded a head spanning four maintained trees — or admits ones the
+// fold refuses, which strands a succession after the target has moved.
+//
+// The command applies one check the fold cannot: staleness, which the fold only
+// knows once the whole log is folded. A stale member is held to the same strict
+// rule as the primary, so a reviewed set cannot carry authority on a pointer
+// whose own basis has moved.
+func reviewedPaths(projection workroom.Projection, approval string) []string {
+	review, found := projection.Review(approval)
+	if !found || review.Implementer == "" || review.Head == "" {
+		return nil
+	}
+	authors := make(map[string]string, len(projection.Statements))
+	for _, statement := range projection.Statements {
+		authors[statement.Event] = statement.Actor
+	}
+	standing := make(map[string]workroom.Artifact, len(projection.Artifacts))
+	for _, artifact := range projection.Artifacts {
+		standing[artifact.Event] = artifact
+	}
+	var paths []string
+	seen := make(map[string]bool)
+	for _, basis := range projection.Provenance[approval] {
+		artifact, isArtifact := standing[basis]
+		if !isArtifact || artifact.Retired || artifact.Stale || artifact.Path == "" {
+			continue
+		}
+		if artifact.Commit != review.Head || authors[basis] != review.Implementer {
+			continue
+		}
+		if seen[artifact.Path] {
+			continue
+		}
+		seen[artifact.Path] = true
+		paths = append(paths, artifact.Path)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+func withinReviewedPaths(reviewed []string, path string) bool {
+	for _, within := range reviewed {
+		if sameTreeLineage(within, path) {
+			return true
+		}
+	}
+	return false
 }
 
 func artifactPath(projection workroom.Projection, event string) string {
@@ -464,6 +512,43 @@ func verifySuccession(ctx context.Context, workspace *app.Workspace, receipt mer
 		}
 		if live != 1 {
 			return fmt.Errorf("merge succession left %d current successors at %s, want one", live, path)
+		}
+	}
+	return nil
+}
+
+// repeatedFlag collects a flag given more than once, in order.
+type repeatedFlag []string
+
+func (r *repeatedFlag) String() string { return strings.Join(*r, ",") }
+
+func (r *repeatedFlag) Set(value string) error {
+	if strings.TrimSpace(value) == "" {
+		return errors.New("value may not be blank")
+	}
+	*r = append(*r, value)
+	return nil
+}
+
+// validateReviewedSet holds every co-signed artifact to the primary's standard.
+// The set is what widens a merge receipt's reach, so a member that is retired,
+// ineffective, or standing at another commit must stop the verdict rather than
+// travel inside it unexamined.
+func validateReviewedSet(ctx context.Context, workspace *app.Workspace, artifacts []string, head string) error {
+	if len(artifacts) < 2 {
+		return nil
+	}
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	for _, cited := range artifacts[1:] {
+		artifact, err := liveArtifact(snapshot.Projection, cited)
+		if err != nil {
+			return fmt.Errorf("reviewed artifact %s: %w", cited, err)
+		}
+		if artifact.Commit != head {
+			return fmt.Errorf("reviewed artifact %s stands at %s, not at the reviewed head %s", cited, artifact.Commit, head)
 		}
 	}
 	return nil

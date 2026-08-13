@@ -752,6 +752,56 @@ func TestMergeRefusesASignerWhoDidNotDoTheApprovedWork(t *testing.T) {
 	}
 }
 
+// The refusal this repair narrows, proved end to end on the property that
+// matters: a plan reaching outside what the approval reviewed is refused with
+// the target, the receipt reservation and the durable log all where they were.
+// The checkpoint case reached this refusal for three of the four trees its head
+// actually changed; what must never change is that reaching it costs nothing.
+func TestMergeUnreachableRetirementLeavesEverythingUnchanged(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	// A pointer belonging to another actor, at a path this head never reviewed.
+	stranger, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "another actor's pointer elsewhere",
+		Body:    map[string]string{"path": "elsewhere.txt", "commit": testGit(t, fixture.repo, "rev-parse", "HEAD")},
+		RestsOn: []string{fixture.workspace.EventID(fixture.workspace.Config.Genesis)}, IdempotencyKey: "stranger-elsewhere",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	beforeDepth := fixture.snapshot(t).Depth
+	snapshot := fixture.snapshot(t)
+	plan := successionPlan{publish: []string{"elsewhere.txt"},
+		retire: map[string]string{stranger.Record.ID: "elsewhere.txt"}}
+	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, approval,
+		fixture.workspace.Config.Actors["operator"].Fingerprint); err == nil ||
+		!strings.Contains(err.Error(), "outside the reviewed paths") {
+		t.Fatalf("unreachable retirement error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != before {
+		t.Fatalf("refused plan moved the target to %s, want %s", got, before)
+	}
+	if _, err := git(fixture.ctx, fixture.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
+		t.Fatal("refused plan left a receipt reservation")
+	}
+	if after := fixture.snapshot(t); after.Depth != beforeDepth {
+		t.Fatalf("refused plan appended %d durable record(s)", after.Depth-beforeDepth)
+	}
+	// And the approval is unspent, so the reachable part still lands.
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Land the approved feature and make it available on main.",
+	}); err != nil {
+		t.Fatalf("the reviewed part of the merge was refused: %v", err)
+	}
+	if artifactByEvent(t, fixture.snapshot(t).Projection, stranger.Record.ID).Retired {
+		t.Fatal("the merge retired a pointer outside the reviewed paths")
+	}
+}
+
 // The rule itself, across the cases a single fixture cannot reach. One
 // fingerprint admits a merge: the author of the approved artifact. A role does
 // not, however senior — standing is live and can be revoked between this check
