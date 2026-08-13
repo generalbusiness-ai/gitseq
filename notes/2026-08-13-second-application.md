@@ -149,10 +149,14 @@ game state (whose turn it is) rather than from any roster.
   the in-tree tests can only gesture at.
 - **Vocabulary.** `create` (game parameters, color assignment, and an
   optional invitation — an invited opponent's key, or the hash of a join
-  secret), `join` (names the game; carries the join secret when the game
-  demands one; the first join the fold accepts seats the opponent),
-  `move`, `resign`, `draw-offer`, `draw-accept`, and `anchor` (links a
-  player's session key to a persistent identity; see Identity). A game
+  secret), `join` (points at the create it answers; carries the join secret when
+  the game demands one; the first join the fold accepts seats the
+  opponent), `move` (each move points at the one before it, and the
+  first move points at the join — the causal chain is carried in the
+  signed record itself, which is what lets the fold detect a wrong turn
+  or a second join from the log's own structure), `resign`,
+  `draw-offer`, `draw-accept`, and `anchor` (links a player's session
+  key to a persistent identity; see Identity). A game
   created without an invitation is explicitly open to all: anyone may
   seat, and the creator has chosen that. The invitation exists because
   the log is public and an open seat can be sniped by whoever submits
@@ -245,15 +249,18 @@ The architecture mirrors gitseq's own service, one layer at a time:
 
 A public deployment is the same binary, a Git repository, and secrets that
 are counted honestly below. It follows the tier-2 ladder in
-`notes/2026-08-07-deployment.md`, and adopts — or explicitly amends — that
-note's three tier-2 invariants rather than inheriting them by reference:
+`notes/2026-08-07-deployment.md`, and adopts — or explicitly amends —
+three of that note's tier-2 requirements rather than inheriting them by
+reference:
 
 - **One writer, enforced.** Exactly one process holds the writer lease
   per repository; a process without the lease refuses durable writes and
   says so. Rolling deploys briefly run two containers as a matter of
   course, so the lease is a blocker, not a nicety.
-- **Acknowledge after the push.** When the repository of record lives on
-  a forge (GitHub or similar), the forge ref is the authority. A move is
+- **Acknowledge after the push.** The repository of record lives on a
+  forge (GitHub or similar) — the *forge-primary* storage shape, and
+  this design declares that choice rather than leaving it implied. The
+  forge ref is the authority. A move is
   acknowledged to the player only after the log advance has been pushed
   fast-forward there; a rejected push means no acknowledgment, and the
   move is resubmitted against the true head. No player is ever told
@@ -310,7 +317,10 @@ is an upgrade, never a requirement.
 
 The upgrade is an **anchor**: a statement linking the session key to a
 persistent identity, carrying that identity's endorsement of the key, the
-repository, a scope, and an expiry. Verification happens in the
+repository, a scope, and an expiry. It lands either as evidence on the
+join or as a free-standing statement afterwards, and the after-the-fact
+path is the normal one — play first, anchor later is the ordering the
+whole adoption story demands, and the vocabulary is built for it. Verification happens in the
 application layer; revocation is expiry plus a superseding statement, so a
 revoked key is provable from the log alone.
 
@@ -402,7 +412,7 @@ reviewer's head is a finding, and so is a path without a budget.
   command. GitHub login adds a provider registration, its client secret,
   and the witnessing key — three more setup steps.
 - **Self-hoster.** Clone (or fork) the chess repository, build, `chess
-  init`, `chess serve`, play on loopback. Budget: two commands after
+  init`, `chess serve`, play on loopback. Budget: three commands after
   clone. This is the acceptance path, and it is the whole install story.
 
 ## What this gives up
