@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d9771341abb9218cc813f6d24954a575e0982e8c","text":"The merged artifact at 50ebdead now stands for the shipped cmd/gitseq-mcp behavior from this shared-identity candidate."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d03c1b079c8c2cd7ede2c98e915e0b7ff0b2364a","text":"The merged artifact at 50ebdead now stands for the shipped internal/nexus behavior from this shared-identity candidate."}
