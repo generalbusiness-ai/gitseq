@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Stable shipped shared-identity deployment guidance on main 50ebdead.","body":{"commit":"50ebdead03484ba7e89dba964ad8107bc1f00c45","path":"docs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87253763a841a7e413de41a4ff6a859f7fea4ef7","text":"The non-stale current-main cmd/gitseq-mcp artifact replaces this stale intermediate pointer."}
