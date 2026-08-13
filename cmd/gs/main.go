@@ -430,6 +430,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	merger := workspace.Config.Actors[actor].Fingerprint
 	if found {
 		if existing.Candidate != *candidate {
 			return fmt.Errorf("approval was already used for candidate %s", existing.Candidate)
@@ -472,6 +473,16 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
 		return err
 	}
+	// The last check before Git is touched: the signer. Nothing has been
+	// reserved and nothing has moved, so this refusal costs the caller nothing
+	// and leaves the approval unspent for the actor whose work it is.
+	preMerge, err := workspace.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	if err := requireApprovedImplementer(preMerge.Projection, *approval, merger); err != nil {
+		return err
+	}
 	receiptRef := mergeReceiptRef(*approval)
 	if _, err := git(ctx, *checkout, "update-ref", receiptRef, targetPreHead, ""); err != nil {
 		return errors.New("approval is already reserved or used by another merge")
@@ -503,8 +514,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
 	}
-	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, *approval,
-		workspace.Config.Actors[actor].Fingerprint); err != nil {
+	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, *approval, merger); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
 	}
 	message, err := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead, plan)
@@ -784,6 +794,41 @@ func retiredBases(projection workroom.Projection, events []string) []string {
 // date, which is repair rather than deadlock. It also leaves the meaning of
 // staleness untouched at the one gate that moves main, where a proposal on
 // exactly that question is still in flight.
+// requireApprovedImplementer refuses a merge signed by anyone but the actor
+// whose approved work is landing, or an actor holding `ratifier`.
+//
+// It is the same boundary the fold applies to a merge receipt, moved to where
+// it can still be obeyed. The fold refuses a receipt signed by anyone else, but
+// it only sees the receipt, and by then Git has committed and `HEAD` has moved:
+// the succession is stranded and the single-use approval is spent. Any
+// participant could do that with a public ratified approval. Checking the same
+// fingerprint before the merge begins turns an irreversible half-merge into an
+// ordinary refusal.
+//
+// The ratifier clause is not a second contract. `decideSupersede` already lets
+// an actor holding `ratifier` retire anything, so a ratifier merging someone
+// else's approved head has always worked and takes no authority it did not
+// already hold. Refusing it here would break the one actor whose job this is.
+func requireApprovedImplementer(projection workroom.Projection, approvalEvent, merger string) error {
+	if merger == "" {
+		return errors.New("merge needs the signing actor's fingerprint")
+	}
+	for _, role := range projection.Actors[merger].Roles {
+		if role == "ratifier" {
+			return nil
+		}
+	}
+	review, found := projection.Review(approvalEvent)
+	if !found || review.Implementer == "" {
+		return errors.New("the record cannot say who implemented this approved head, so nobody may merge it on that approval")
+	}
+	if review.Implementer != merger {
+		return fmt.Errorf("merge must be signed by the actor whose approved work is landing (%s), or by an actor holding ratifier; --as names %s",
+			review.Implementer, merger)
+	}
+	return nil
+}
+
 func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent string) error {
 	if err := validateCheckout(ctx, workspace.Repo, checkout, candidate, false); err != nil {
 		return err

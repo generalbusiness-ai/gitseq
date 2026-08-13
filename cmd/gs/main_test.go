@@ -710,6 +710,80 @@ func TestMergeLandsWhenTheCitedPredecessorGetsASuccessor(t *testing.T) {
 	}
 }
 
+// A ratified approval is public, so anyone can read one and call `gs merge`
+// with it. The fold refuses the receipt that comes out — but it only ever sees
+// the receipt, which is written after Git has committed. So the wrong signer
+// moved the target, spent the single-use approval, and stranded the succession,
+// and every check that reported the error had already let it happen. The
+// signer is now part of what is validated before the merge begins.
+func TestMergeRefusesASignerWhoDidNotDoTheApprovedWork(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	before := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	beforeDepth := fixture.snapshot(t).Depth
+
+	// The reviewer is a bare participant: independent enough to approve this
+	// head, and with no part in making it.
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "reviewer", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "A participant who did not do the work must not consume this approval.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "approved work is landing") {
+		t.Fatalf("merge signed by a non-implementer error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != before {
+		t.Fatalf("refused merge moved the target to %s, want %s", got, before)
+	}
+	if _, err := git(fixture.ctx, fixture.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
+		t.Fatal("refused merge left a receipt reservation, so the approval is spent")
+	}
+	if after := fixture.snapshot(t); after.Depth != beforeDepth {
+		t.Fatalf("refused merge appended %d durable record(s)", after.Depth-beforeDepth)
+	}
+	// The approval is untouched, so the actor whose work it is can still land it.
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Land the approved feature and make it available on main.",
+	}); err != nil {
+		t.Fatalf("the implementer could not merge after the refusal: %v", err)
+	}
+}
+
+// The rule itself, across the cases a single fixture cannot reach: the actor
+// whose approved work is landing, an actor holding ratifier who has always been
+// able to retire anything, a stranger, and a review whose implementer the
+// record cannot name.
+func TestMergeAuthoritySignerIsTheImplementerOrARatifier(t *testing.T) {
+	projection := workroom.Projection{
+		Reviews: []workroom.Review{{Report: "approval", Implementer: "implementer",
+			Independence: workroom.IndependenceIndependent}},
+		Actors: map[string]workroom.ActorState{
+			"implementer": {Name: "implementer", Roles: []string{"participant"}},
+			"stranger":    {Name: "stranger", Roles: []string{"participant"}},
+			"keeper":      {Name: "keeper", Roles: []string{"participant", "ratifier"}},
+		},
+	}
+	for _, merger := range []string{"implementer", "keeper"} {
+		if err := requireApprovedImplementer(projection, "approval", merger); err != nil {
+			t.Errorf("merge signed by %s was refused: %v", merger, err)
+		}
+	}
+	if err := requireApprovedImplementer(projection, "approval", "stranger"); err == nil ||
+		!strings.Contains(err.Error(), "approved work is landing") {
+		t.Errorf("merge signed by a stranger error = %v", err)
+	}
+	if err := requireApprovedImplementer(projection, "approval", ""); err == nil {
+		t.Error("merge with no signing fingerprint was allowed")
+	}
+	if err := requireApprovedImplementer(projection, "unresolved", "implementer"); err == nil ||
+		!strings.Contains(err.Error(), "cannot say who implemented") {
+		t.Errorf("merge on an approval with no projected review error = %v", err)
+	}
+}
+
 // The other half of the same rule, and the reason it is not a bypass. A
 // deletion retires a pointer and puts nothing in its place, so a page naming it
 // really is left pointing at a hole. That refusal still runs before `HEAD`
