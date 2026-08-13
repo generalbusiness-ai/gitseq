@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f36b61398193535ba7fe71ad03b0a35dfa136af","text":"Retire the candidate with the incorrectly transcribed commit field; successor 6011fdfd names the exact pushed head."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:129d59360b79ee15093d636942a4db47751f0765","text":"Retire the candidate with the incorrectly transcribed commit field; successor bde159db names the exact pushed head."}
