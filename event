@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1bd5f89ffc0054d9061ec20844b3c35ece40a9b8","text":"Merge retired a covered predecessor; the successor is at docs."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:24d800c0ea95157cd7464d1281f4b3f83b7f205d","text":"Merge retired a covered predecessor; the successor is at cmd/gs."}
