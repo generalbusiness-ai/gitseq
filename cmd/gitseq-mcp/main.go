@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -134,11 +135,11 @@ type room struct {
 	baseURL   string
 	announced bool
 	inbox     bool
-	// checked records that the sole-identity check has already been made for
-	// this workroom. It survives a lost service, because losing an address
-	// says nothing about who holds the name, and re-checking after our own
-	// presence is live would refuse this session its own identity.
-	checked bool
+	// identityNoticeChecked records that this process has already looked for
+	// other live sessions using its actor identity in this workroom. The check
+	// runs before this session announces itself; repeating it afterwards would
+	// count this session in its own warning.
+	identityNoticeChecked bool
 }
 
 // endpoint names the service to use, re-reading the repository's published
@@ -200,16 +201,16 @@ func (r *room) inboxAvailable() bool {
 	return r.inbox
 }
 
-func (r *room) identityChecked() bool {
+func (r *room) sharedIdentityNoticeChecked() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.checked
+	return r.identityNoticeChecked
 }
 
-func (r *room) identityIsOurs() {
+func (r *room) markSharedIdentityNoticeChecked() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.checked = true
+	r.identityNoticeChecked = true
 }
 
 type mcpServer struct {
@@ -218,6 +219,7 @@ type mcpServer struct {
 	repo      string
 	session   string
 	client    *residentclient.Client
+	notices   io.Writer
 	deadlines residentDeadlinePolicy
 
 	roomsMu     sync.Mutex
@@ -251,15 +253,7 @@ func main() {
 	// a workroom to join, and one installation still serves whatever
 	// repository a later call names.
 	//
-	// A shared identity is the exception. It is not a missing workroom to be
-	// picked up later; it is this instance signing as a name another live
-	// session already holds, and it must be refused at the door where the
-	// operator can still fix it in one command.
 	if _, err := server.attend(context.Background(), ""); err != nil {
-		var shared *sharedIdentityError
-		if errors.As(err, &shared) {
-			fatal(err)
-		}
 		fmt.Fprintln(os.Stderr, "gitseq-mcp:", err)
 	}
 	presenceContext, stopPresence := context.WithCancel(context.Background())
@@ -279,6 +273,7 @@ func newServer(actor, repo string) *mcpServer {
 		repo:        absolute(repo),
 		session:     "mcp:" + randomID(),
 		client:      newResidentClient(),
+		notices:     os.Stderr,
 		deadlines:   defaultResidentDeadlines,
 		byPath:      map[string]*room{},
 		byCommonDir: map[string]*room{},
@@ -595,11 +590,11 @@ func (s *mcpServer) attend(ctx context.Context, repo string) (*room, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !current.identityChecked() {
-		if err := s.requireSoleIdentity(ctx, current); err != nil {
+	if !current.sharedIdentityNoticeChecked() {
+		if err := s.warnSharedIdentity(ctx, current); err != nil {
 			return nil, err
 		}
-		current.identityIsOurs()
+		current.markSharedIdentityNoticeChecked()
 	}
 	if !current.present() {
 		if err := s.announce(ctx, current); err == nil {
@@ -1081,19 +1076,13 @@ func reviewOf(projection workroom.Projection, event string) (workroom.Review, bo
 	return workroom.Review{}, false
 }
 
-// sharedIdentityError marks the one attachment failure that must stop the
-// process rather than be reported and retried: another live session already
-// signs as this instance's name.
-type sharedIdentityError struct{ message string }
-
-func (e *sharedIdentityError) Error() string { return e.message }
-
-// requireSoleIdentity refuses to attach a second live session to one durable
-// identity. Concurrent instances signing as one name make the log say that a
-// name did something when one of several instances did, and they satisfy the
-// different-agent review rule by spelling rather than by fingerprint. Sharing
-// the name is the path of least resistance, so it is made an error at the door
-// where the operator can still fix it in one command.
+// warnSharedIdentity tells an operator when this actor identity already has
+// live sessions. That is not an attribution failure: durable records identify
+// the actor fingerprint, not a process, and review independence is enforced by
+// fingerprint. Sessions using one fingerprint therefore cannot review each
+// other independently. They can still race on claims and leased presence, so
+// the adapter makes that coordination risk visible without refusing legitimate
+// multi-device, planner/worker, or crash-restart use.
 //
 // The check reads live presence, so it is exactly as good as the resident
 // service. When presence cannot be read the instance still starts: a stopped
@@ -1102,34 +1091,38 @@ func (e *sharedIdentityError) Error() string { return e.message }
 // two instances starting at the same moment, which neither will see.
 //
 // It is made once per workroom, before this session announces itself there.
-// Afterwards our own presence is in the snapshot, so asking again would refuse
-// this session the identity it already holds.
-func (s *mcpServer) requireSoleIdentity(ctx context.Context, current *room) error {
+func (s *mcpServer) warnSharedIdentity(ctx context.Context, current *room) error {
 	actor := current.workspace.Config.Actors[s.actor]
-	value, err := s.get(ctx, current, "/v0/presence")
+	value, err := s.get(ctx, current, "/v0/presence-count?actor="+url.QueryEscape(s.actor))
 	if isTransportError(err) {
-		fmt.Fprintln(os.Stderr, "gitseq-mcp: shared-identity check skipped; the resident service is unavailable:", err)
+		fmt.Fprintln(s.noticeWriter(), "gitseq-mcp: shared-identity check skipped; the resident service is unavailable:", err)
+		return nil
+	}
+	if sharedIdentityCountUnavailable(err) {
+		fmt.Fprintln(s.noticeWriter(), "gitseq-mcp: shared-identity check skipped; this resident does not support live identity counts")
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	var snapshot nexus.Snapshot
-	if err := remarshal(value, &snapshot); err != nil {
+	var count struct {
+		Count int `json:"count"`
+	}
+	if err := remarshal(value, &count); err != nil {
 		return err
 	}
-	label := actor.Name + " (" + actor.Fingerprint[:12] + ")"
-	held := 0
-	for _, present := range snapshot.Presence {
-		if present == label {
-			held++
-		}
-	}
-	if held == 0 {
+	if count.Count == 0 {
 		return nil
 	}
-	return &sharedIdentityError{message: fmt.Sprintf("identity %q is already live in %d other session(s); concurrent instances must not share one key. Provision an instance identity — gs actor-add --as <operator> --name %s.2 — and start this instance with %s=%s.2",
-		actor.Name, held, actor.Name, actorEnvironment, actor.Name)}
+	fmt.Fprintf(s.noticeWriter(), "gitseq-mcp: warning: identity %q is live in %d other session(s); reviews between sessions of this identity carry no independent force, and concurrent sessions may race on claims and presence\n", actor.Name, count.Count)
+	return nil
+}
+
+func (s *mcpServer) noticeWriter() io.Writer {
+	if s.notices != nil {
+		return s.notices
+	}
+	return os.Stderr
 }
 
 func (s *mcpServer) announce(ctx context.Context, current *room) error {
@@ -1137,11 +1130,7 @@ func (s *mcpServer) announce(ctx context.Context, current *room) error {
 	if err != nil {
 		return err
 	}
-	// Presence carries a name, not a session, so once ours is live the
-	// snapshot can no longer tell this instance from a stranger. The door
-	// check is closed for this workroom rather than left to refuse us our
-	// own identity later.
-	current.identityIsOurs()
+	current.markSharedIdentityNoticeChecked()
 	_, err = s.post(ctx, current, "/v0/inbox/register", map[string]any{"session": s.session, "version": service.InboxProtocolVersion})
 	if inboxProtocolUnavailable(err) {
 		current.setInboxAvailable(false)
@@ -1321,6 +1310,11 @@ func inboxProtocolUnavailable(err error) bool {
 	}
 	return refusal.StatusCode == http.StatusMethodNotAllowed || refusal.StatusCode == http.StatusNotFound ||
 		strings.Contains(refusal.Message, `unknown field "session"`)
+}
+
+func sharedIdentityCountUnavailable(err error) bool {
+	var refusal *residentclient.HTTPError
+	return errors.As(err, &refusal) && (refusal.StatusCode == http.StatusMethodNotAllowed || refusal.StatusCode == http.StatusNotFound)
 }
 
 func (s *mcpServer) deadlineFor(path string) time.Duration {

@@ -942,52 +942,6 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-// citingDocuments lists tracked documentation that names an event, so a
-// retirement can be refused before it lands rather than discovered afterwards
-// by the gate. Retiring an artifact a page cites leaves that page resting on a
-// withdrawn pointer, which TestGateEveryNamedActResolvesToALiveRecord refuses:
-// the repository goes red, and the act that did it is already in an append-only
-// log. The pages are the thing to look at, so they are what the refusal names.
-//
-// git grep rather than a walk, because tracked is the question. An untracked
-// working copy of a page is not what the gate reads, and a page that git does
-// not know about cannot break anyone else.
-func citingDocuments(ctx context.Context, repo, event string) ([]string, error) {
-	output, err := git(ctx, repo, "grep", "--name-only", "--fixed-strings", event, "--", "*.md")
-	if err != nil {
-		// git grep exits non-zero when it matches nothing, which is the
-		// ordinary case and not a failure. Anything else is worth reporting,
-		// but never worth blocking a retirement over: a guard that fails
-		// closed on its own malfunction would make a broken git a broken
-		// workroom.
-		return nil, nil
-	}
-	var pages []string
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		if page := strings.TrimSpace(line); page != "" {
-			pages = append(pages, page)
-		}
-	}
-	return pages, nil
-}
-
-// refuseCitedRetirement stops a supersession whose target the documentation
-// still names. The escape exists because a migration legitimately retires
-// first and re-anchors after — the whole-repository artifacts at `.` are
-// exactly that shape — but it must be asked for, so the ordinary case cannot
-// break main by omission.
-func refuseCitedRetirement(ctx context.Context, repo, target string, allowed bool) error {
-	if allowed {
-		return nil
-	}
-	pages, err := citingDocuments(ctx, repo, target)
-	if err != nil || len(pages) == 0 {
-		return err
-	}
-	return fmt.Errorf("retiring %s would leave %d documentation page(s) resting on a withdrawn pointer:\n  %s\nrepoint them at the successor in the same head, or pass --cited-ok to retire anyway and re-anchor after",
-		target, len(pages), strings.Join(pages, "\n  "))
-}
-
 func supersedeCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("supersede", arguments)
 	as := set.String("as", "", "actor name")
@@ -1012,10 +966,7 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	target := set.Arg(0)
-	if err := refuseCitedRetirement(ctx, workspace.Repo, target, *citedOK); err != nil {
-		return err
-	}
-	record, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key})
+	record, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key, CitedOK: *citedOK})
 	if err != nil {
 		return err
 	}
@@ -1141,11 +1092,11 @@ func batchCommand(ctx context.Context, arguments []string) error {
 		if entry.Verb != app.VerbSupersede || strings.HasPrefix(entry.Target, "$") {
 			continue
 		}
-		if err := refuseCitedRetirement(ctx, workspace.Repo, entry.Target, *citedOK); err != nil {
+		if err := workspace.RefuseCitedRetirement(ctx, entry.Target, *citedOK); err != nil {
 			return fmt.Errorf("act %d: %w", position, err)
 		}
 	}
-	report, err := runBatch(ctx, workspace, *serverURL, *as, private, acts)
+	report, err := runBatch(ctx, workspace, *serverURL, *as, private, acts, *citedOK)
 	if printErr := printJSON(report); printErr != nil && err == nil {
 		err = printErr
 	}
@@ -1189,7 +1140,7 @@ func readBatch(path string) ([]batchAct, error) {
 
 // runBatch checks the whole chain, then appends it act by act against the one
 // verified frontier the workspace already holds.
-func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, acts []batchAct) (batchReport, error) {
+func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, acts []batchAct, citedOK bool) (batchReport, error) {
 	report := batchReport{Acts: make([]batchOutcome, len(acts))}
 	for position, entry := range acts {
 		report.Acts[position] = batchOutcome{Position: position, Label: entry.Label, Outcome: "skipped"}
@@ -1204,6 +1155,7 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 		act := app.Act{
 			Verb: entry.Verb, Kind: entry.Kind, Text: entry.Text, Body: entry.Body,
 			Target: resolveLabel(entry.Target, minted), IdempotencyKey: entry.IdempotencyKey,
+			CitedOK: citedOK,
 		}
 		for _, reference := range entry.RestsOn {
 			act.RestsOn = append(act.RestsOn, resolveLabel(reference, minted))
