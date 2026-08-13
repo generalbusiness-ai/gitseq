@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged shared-identity warning implementation: same durable actor sessions attach with an exact independence warning.","body":{"commit":"50ebdead03484ba7e89dba964ad8107bc1f00c45","path":"cmd/gitseq-mcp"}}
+{"kind":"artifact","text":"Merged exact full-fingerprint live-session aggregate with unchanged session binding.","body":{"commit":"50ebdead03484ba7e89dba964ad8107bc1f00c45","path":"internal/nexus"}}
