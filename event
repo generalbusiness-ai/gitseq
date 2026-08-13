@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Loop-cut documentation candidate at the exact implementation head, based on the docs tree currently carried by main.","body":{"commit":"7620fa0a24c555b44a460c9cd98053cc91d33459","path":"docs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9d9ec6db3cd4df537a9c6b01186153480e36d503","text":"Replace the stale loop-cut Workroom candidate with the exact same implementation head re-filed on current live post-merge bases."}
