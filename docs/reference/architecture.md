@@ -161,12 +161,17 @@ fold, or UI expectations.
 - the `workroom/*` schemas and governed kind vocabulary;
 - its deterministic fold and fold-profile version;
 - actor roster, names, membership, roles, and authority;
-- commitment lifecycles and who is waiting on whom;
+- commitment lifecycles and who is waiting on whom: an explicit report closes
+  when its requester ratifies it, while a promisor's exact-head artifact acts
+  as the implementation report and its sealed approved merge closes the
+  commitment;
 - ratification and supersession rules;
 - path-at-commit artifact statements, retirement, succession, reviews, and
   staleness;
-- guarded review and merge semantics, including the merge receipt whose
-  ratified approval authorizes deterministic cross-author artifact succession;
+- guarded review and merge semantics, including the explicitly ratified review
+  approval required before merge and the receipt which both closes the
+  implementation commitment and authorizes deterministic cross-author artifact
+  succession;
 - Workroom MCP tools and their application meanings;
 - the agent practice in `SKILL.md`;
 - connector clauses and observations; and

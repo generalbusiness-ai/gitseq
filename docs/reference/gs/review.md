@@ -56,7 +56,7 @@ HEAD_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 
 ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
   --text 'Changelog implementation' \
-  --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" --rests-on "$REQUEST")
+  --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" --rests-on "$PROMISE")
 REVIEW_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
   --text 'Review at the exact head' --body to=@carol \
   --body conditions='confirm the named head' --rests-on "$ARTIFACT")
