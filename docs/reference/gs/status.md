@@ -167,8 +167,10 @@ resident one.
 
 ## Cost
 
-The local read consumes a sequencer-signed checkpoint and verifies the
-tail that descends from it. If no checkpoint is usable it performs the
+The local read consumes the shared checkpoint pointer under `.git/gitseq`,
+verifies the sequencer-signed checkpoint object it names, and verifies the
+tail that descends from it. A resident restart and a no-server `gs` process use
+this same path. If no checkpoint is usable it performs the
 ordinary full audit, and prints a progress line after one second rather
 than appearing to hang. [`gs verify`](verify.md) never takes the
 checkpoint shortcut: it always audits the whole sequence.

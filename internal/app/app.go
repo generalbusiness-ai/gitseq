@@ -984,8 +984,9 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 		}
 	}
 	w.submitterOnce.Do(func() {
+		checkpoint := w.checkpointOptions()
 		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{
-			SigningKey: w.Config.SequencerKey, CheckpointProfile: workroom.ProfileVersion, PreAppend: w.allowlist,
+			SigningKey: w.Config.SequencerKey, CheckpointProfile: checkpoint.Profile, CheckpointPath: checkpoint.LocalPath, PreAppend: w.allowlist,
 			MaxQueueDepth: ResidentQueueDepth,
 		})
 	})
@@ -1132,9 +1133,14 @@ func (w *Workspace) snapshotFlight() *snapshotFlight {
 }
 
 func (w *Workspace) newReader() *kernel.Reader {
-	return kernel.NewReader(w.Store, kernel.CheckpointOptions{
+	return kernel.NewReader(w.Store, w.checkpointOptions())
+}
+
+func (w *Workspace) checkpointOptions() kernel.CheckpointOptions {
+	return kernel.CheckpointOptions{
 		Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
-	})
+		LocalPath: filepath.Join(w.MetaDir, "checkpoints", w.Config.Genesis+".json"),
+	}
 }
 
 func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.AuditProgress) (SourcedSnapshot, error) {

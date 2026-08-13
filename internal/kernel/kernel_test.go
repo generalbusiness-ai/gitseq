@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -1491,6 +1492,9 @@ func TestReaderRestartsFromSignedCheckpointAndAuditsDescendantDelta(t *testing.T
 	if !cached.Full || !cached.Checkpoint || restarted.fullScans != 0 || restarted.checkpointLoads != 1 || len(cached.Events) != 3 {
 		t.Fatalf("checkpoint load = %+v, full=%d loads=%d", cached, restarted.fullScans, restarted.checkpointLoads)
 	}
+	if !reflect.DeepEqual(cached.Events, full.Events) || cached.Verification != full.Verification {
+		t.Fatalf("checkpoint fold differs from cold fold:\ncheckpoint=%+v\ncold=%+v", cached, full)
+	}
 	if afterRestart, err := f.store.Head(f.ctx, CheckpointRef(f.genesis)); err != nil || afterRestart != checkpointHead {
 		t.Fatalf("exact checkpoint restart rewrote ref: before=%s after=%s err=%v", checkpointHead, afterRestart, err)
 	}
@@ -1514,6 +1518,69 @@ func TestReaderRestartsFromSignedCheckpointAndAuditsDescendantDelta(t *testing.T
 	}
 	if !advanced.Checkpoint || advanced.Verification.Head != result.Head || len(advanced.Events) != 4 || string(advanced.Events[3].Payload) != "after-checkpoint" {
 		t.Fatalf("checkpoint delta load = %+v", advanced)
+	}
+}
+
+func TestReaderPersistsSignedCheckpointPointerAcrossRestart(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "persisted", []byte("persisted"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	pointer := filepath.Join(t.TempDir(), "gitseq", "checkpoints", f.genesis+".json")
+	options := CheckpointOptions{Profile: "persisted-fold@1", SigningKey: f.signingKey, LocalPath: pointer}
+	written, err := NewReader(f.store, options).Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := readCheckpointPointer(pointer)
+	if err != nil {
+		t.Fatalf("read persisted checkpoint pointer: %v", err)
+	}
+	if err := f.store.UpdateRef(f.ctx, CheckpointRef(f.genesis), f.genesis, commit); err != nil {
+		t.Fatal(err)
+	}
+	restarted := NewReader(f.store, CheckpointOptions{Profile: options.Profile, LocalPath: pointer})
+	loaded, err := restarted.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Checkpoint || restarted.fullScans != 0 || !reflect.DeepEqual(loaded.Events, written.Events) || loaded.Verification != written.Verification {
+		t.Fatalf("persisted checkpoint restart differs: written=%+v loaded=%+v full=%d", written, loaded, restarted.fullScans)
+	}
+}
+
+func TestReaderRejectsTamperedLocalCheckpointPointerAndUsesSignedRef(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "pointer-fallback", []byte("pointer-fallback"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	pointer := filepath.Join(t.TempDir(), "checkpoint.json")
+	options := CheckpointOptions{Profile: "pointer-fallback@1", SigningKey: f.signingKey, LocalPath: pointer}
+	if _, err := NewReader(f.store, options).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pointer, []byte(`{"schema":"gitseq-checkpoint-pointer@1","commit":"`+f.genesis+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	restarted := NewReader(f.store, CheckpointOptions{Profile: options.Profile, LocalPath: pointer})
+	loaded, err := restarted.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Checkpoint || restarted.fullScans != 0 {
+		t.Fatalf("signed ref fallback = %+v, full scans=%d", loaded, restarted.fullScans)
+	}
+	if repaired, err := readCheckpointPointer(pointer); err != nil || repaired == f.genesis {
+		t.Fatalf("local pointer was not repaired from signed ref: commit=%s err=%v", repaired, err)
+	}
+	if err := os.WriteFile(pointer, []byte(`{"schema":"gitseq-checkpoint-pointer@1","commit":"--help"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	malicious := NewReader(f.store, CheckpointOptions{Profile: options.Profile, LocalPath: pointer})
+	if loaded, err := malicious.Load(f.ctx, f.genesis); err != nil || !loaded.Checkpoint || malicious.fullScans != 0 {
+		t.Fatalf("option-shaped pointer did not safely fall back: loaded=%+v err=%v full=%d", loaded, err, malicious.fullScans)
 	}
 }
 

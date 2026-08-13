@@ -137,10 +137,12 @@ whose participants never see each other and are never told.
 
 ## Restart
 
-The resident keeps a signed checkpoint under
-`refs/gitseq/checkpoints/<genesis>` and refreshes it every 256 accepted
-events after its last successful write, so restart re-audits only the
-tail. The checkpoint is signed by the sequencer key current at its head,
+The resident and ordinary local `gs` commands share a checkpoint pointer at
+`.git/gitseq/checkpoints/<genesis>.json`. It names a signed checkpoint object
+and is refreshed every 256 accepted events after the last successful write,
+so a new process re-audits only the tail. The compatibility ref
+`refs/gitseq/checkpoints/<genesis>` points to the same object and repairs a
+missing or damaged local pointer. The checkpoint is signed by the sequencer key current at its head,
 and any key rotation inside the cached prefix is re-read from its own
 sequence commit and checked under the preceding key, so a rotated log
 still restarts from cache. A missing or mismatched checkpoint is only a

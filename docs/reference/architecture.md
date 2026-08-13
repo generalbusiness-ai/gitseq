@@ -97,7 +97,9 @@ The kernel owns:
 - bounds on intent fields, causal-reference counts, envelopes, payloads, and
   attachments;
 - verification of history, object shape, signatures, ordering, and payload
-  binding; and
+  binding;
+- signed, profile-bound verification checkpoints and authenticated descendant
+  continuation, with an optional application-selected local pointer; and
 - sequencer key rotation, sealing, and verified continuation.
 
 An application may supply an admission hook. The kernel owns when that hook is
@@ -254,11 +256,11 @@ the same result.
 |---|---|---|
 | `internal/gitstore` | Ordinary Git storage | Implements object and ref operations. It must remain ignorant of application schemas. |
 | `internal/intent` | Kernel | Owns canonical signed intents and actor-key fingerprints. Schema and `rests_on` are bounded opaque strings. |
-| `internal/kernel` | Kernel | Uses only Git storage and intents. Its application admission callback receives envelope facts, not payload meaning. |
+| `internal/kernel` | Kernel | Uses only Git storage and intents. Its application admission callback receives envelope facts, not payload meaning. Checkpoint profiles and local pointer paths are opaque host inputs; checkpoint validation still uses only kernel facts. |
 | `internal/custody` | Operational kernel support | Manages local keys and migrations above the kernel. Custody policy is not event ontology. |
 | `internal/nexus` | Live runtime | Owns process-local coordination. It is independent of the durable Workroom fold. |
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
-| `internal/app` | Application host and boundary adapter | The deliberate coupling point: it builds Workroom payloads and signed kernel requests, applies application admission, reads kernel events, and runs the Workroom fold. |
+| `internal/app` | Application host and boundary adapter | The deliberate coupling point: it builds Workroom payloads and signed kernel requests, applies application admission, selects the repository-private checkpoint pointer and Workroom fold profile, reads kernel events, and runs the Workroom fold. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, and live state. |
 | `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff and composes the Workroom receipt, successor artifacts, and retirements; Git remains outside the Workroom interpreter. Command grouping must not move Workroom concepts into the kernel packages. |

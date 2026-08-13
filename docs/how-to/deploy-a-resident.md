@@ -120,8 +120,9 @@ participants cannot see each other and are never told.
 
 ## Restart
 
-The resident keeps a signed checkpoint under
-`refs/gitseq/checkpoints/<genesis>`: the original actor-signed events at
+The resident and no-server `gs` commands share a local pointer under
+`.git/gitseq/checkpoints/<genesis>.json`. It names the signed checkpoint object
+also held by the compatibility ref `refs/gitseq/checkpoints/<genesis>`: the original actor-signed events at
 one fully audited sequence head, signed by the sequencer key **current at
 that head**. On restart it checks the checkpoint's object format,
 genesis, exact head and fold-profile version, proves the commit sequence
@@ -139,7 +140,7 @@ A missing, malformed, mismatched, oversized or non-descendant checkpoint
 is only a cache miss: gitseq performs the ordinary full audit and, if it
 holds sequencer custody, replaces the checkpoint.
 
-A writing resident refreshes the ref every 256 accepted events after its
+A writing process refreshes the local pointer and compatibility ref every 256 accepted events after its
 last successful write, so a successful checkpoint usually leaves at most
 255 commits for full delta verification. Persistent storage or signing
 failures make that tail larger.

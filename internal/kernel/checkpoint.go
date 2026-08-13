@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
@@ -15,11 +17,13 @@ import (
 )
 
 const (
-	checkpointSchema   = "gitseq-checkpoint@1"
-	checkpointFile     = "checkpoint"
-	checkpointMarker   = "gitseq-checkpoint-v1"
-	checkpointInterval = 256
-	maxCheckpointBytes = 256 << 20
+	checkpointSchema          = "gitseq-checkpoint@1"
+	checkpointPointerSchema   = "gitseq-checkpoint-pointer@1"
+	checkpointFile            = "checkpoint"
+	checkpointMarker          = "gitseq-checkpoint-v1"
+	checkpointInterval        = 256
+	maxCheckpointBytes        = 256 << 20
+	maxCheckpointPointerBytes = 4 << 10
 )
 
 var ErrNoUsableCheckpoint = errors.New("no usable checkpoint")
@@ -31,6 +35,15 @@ var ErrNoUsableCheckpoint = errors.New("no usable checkpoint")
 type CheckpointOptions struct {
 	Profile    string
 	SigningKey string
+	// LocalPath is an optional process-independent pointer to the signed Git
+	// checkpoint object. Applications place it in repository-private local
+	// state so independent readers and submitters share the same warm start.
+	LocalPath string
+}
+
+type checkpointPointer struct {
+	Schema string `json:"schema"`
+	Commit string `json:"commit"`
 }
 
 type checkpoint struct {
@@ -57,58 +70,96 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	if options.Profile == "" {
 		return scannedLog{}, false, ErrNoUsableCheckpoint
 	}
-	commit, err := store.Head(ctx, CheckpointRef(genesis))
-	if err != nil {
-		return scannedLog{}, false, fmt.Errorf("%w: checkpoint ref: %v", ErrNoUsableCheckpoint, err)
+	var candidates []string
+	if options.LocalPath != "" {
+		if commit, err := readCheckpointPointer(options.LocalPath); err == nil {
+			candidates = append(candidates, commit)
+		}
 	}
+	if commit, err := store.Head(ctx, CheckpointRef(genesis)); err == nil && (len(candidates) == 0 || candidates[0] != commit) {
+		candidates = append(candidates, commit)
+	}
+	if len(candidates) == 0 {
+		return scannedLog{}, false, fmt.Errorf("%w: checkpoint pointer and ref are unavailable", ErrNoUsableCheckpoint)
+	}
+	var lastErr error
+	var best scannedLog
+	bestCommit := ""
+	bestDepth := -1
+	bestAdvanced := false
+	for _, commit := range candidates {
+		log, advanced, depth, err := loadCheckpointCommit(ctx, store, genesis, head, commit, options)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if depth > bestDepth {
+			best, bestCommit, bestDepth, bestAdvanced = log, commit, depth, advanced
+		}
+	}
+	if bestDepth >= 0 {
+		if options.LocalPath != "" {
+			_ = writeCheckpointPointer(options.LocalPath, bestCommit)
+		}
+		return best, bestAdvanced, nil
+	}
+	return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, lastErr)
+}
+
+func loadCheckpointCommit(ctx context.Context, store gitstore.Store, genesis, head, commit string, options CheckpointOptions) (scannedLog, bool, int, error) {
 	desc, err := Descriptor(ctx, store, genesis)
 	if err != nil {
-		return scannedLog{}, false, fmt.Errorf("%w: descriptor: %v", ErrNoUsableCheckpoint, err)
-	}
-	parents, err := store.CommitParents(ctx, commit)
-	if err != nil || len(parents) != 0 {
-		return scannedLog{}, false, fmt.Errorf("%w: checkpoint commit must be parentless", ErrNoUsableCheckpoint)
-	}
-	message, err := store.CommitMessage(ctx, commit)
-	if err != nil || strings.TrimSpace(message) != checkpointMarker {
-		return scannedLog{}, false, fmt.Errorf("%w: checkpoint marker", ErrNoUsableCheckpoint)
-	}
-	files, err := store.ListFiles(ctx, commit, "")
-	if err != nil || len(files) != 1 || files[0] != checkpointFile {
-		return scannedLog{}, false, fmt.Errorf("%w: checkpoint tree shape", ErrNoUsableCheckpoint)
-	}
-	data, err := store.ReadFileLimit(ctx, commit, checkpointFile, maxCheckpointBytes)
-	if err != nil {
-		return scannedLog{}, false, fmt.Errorf("%w: checkpoint payload: %v", ErrNoUsableCheckpoint, err)
-	}
-	stored, err := decodeCheckpoint(data)
-	if err != nil {
-		return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
+		return scannedLog{}, false, 0, fmt.Errorf("%w: descriptor: %v", ErrNoUsableCheckpoint, err)
 	}
 	format, err := store.ObjectFormat(ctx)
 	if err != nil {
-		return scannedLog{}, false, err
+		return scannedLog{}, false, 0, err
+	}
+	// A local pointer is mutable input. Validate it before it reaches any Git
+	// command so it can select only an object ID, never a command-line option.
+	if err := validateObjectID(format, commit); err != nil {
+		return scannedLog{}, false, 0, fmt.Errorf("%w: checkpoint commit: %v", ErrNoUsableCheckpoint, err)
+	}
+	parents, err := store.CommitParents(ctx, commit)
+	if err != nil || len(parents) != 0 {
+		return scannedLog{}, false, 0, fmt.Errorf("%w: checkpoint commit must be parentless", ErrNoUsableCheckpoint)
+	}
+	message, err := store.CommitMessage(ctx, commit)
+	if err != nil || strings.TrimSpace(message) != checkpointMarker {
+		return scannedLog{}, false, 0, fmt.Errorf("%w: checkpoint marker", ErrNoUsableCheckpoint)
+	}
+	files, err := store.ListFiles(ctx, commit, "")
+	if err != nil || len(files) != 1 || files[0] != checkpointFile {
+		return scannedLog{}, false, 0, fmt.Errorf("%w: checkpoint tree shape", ErrNoUsableCheckpoint)
+	}
+	data, err := store.ReadFileLimit(ctx, commit, checkpointFile, maxCheckpointBytes)
+	if err != nil {
+		return scannedLog{}, false, 0, fmt.Errorf("%w: checkpoint payload: %v", ErrNoUsableCheckpoint, err)
+	}
+	stored, err := decodeCheckpoint(data)
+	if err != nil {
+		return scannedLog{}, false, 0, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
 	if stored.Schema != checkpointSchema || stored.ObjectFormat != format || stored.ObjectFormat != desc.ObjectFormat || stored.Genesis != genesis || stored.Profile != options.Profile {
-		return scannedLog{}, false, fmt.Errorf("%w: identity or profile mismatch", ErrNoUsableCheckpoint)
+		return scannedLog{}, false, 0, fmt.Errorf("%w: identity or profile mismatch", ErrNoUsableCheckpoint)
 	}
 	commits, err := store.RevListMetadata(ctx, head)
 	if err != nil {
-		return scannedLog{}, false, fmt.Errorf("%w: sequence: %v", ErrNoUsableCheckpoint, err)
+		return scannedLog{}, false, 0, fmt.Errorf("%w: sequence: %v", ErrNoUsableCheckpoint, err)
 	}
 	if err := validateNamedSequence(head, commits); err != nil {
-		return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
+		return scannedLog{}, false, 0, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
 	log, err := validateCheckpoint(stored, desc, commits)
 	if err != nil {
-		return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
+		return scannedLog{}, false, 0, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
 	sequencerPublicKey, err := verifyCheckpointRotations(ctx, store, stored, desc, commits)
 	if err != nil {
-		return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
+		return scannedLog{}, false, 0, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
 	if err := store.VerifySSHCommit(ctx, commit, "sequencer", sequencerPublicKey); err != nil {
-		return scannedLog{}, false, fmt.Errorf("%w: signature: %v", ErrNoUsableCheckpoint, err)
+		return scannedLog{}, false, 0, fmt.Errorf("%w: signature: %v", ErrNoUsableCheckpoint, err)
 	}
 	log.sequencerPublicKey = sequencerPublicKey
 	prefix := append([]Event(nil), log.Events...)
@@ -116,12 +167,78 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	if advanced {
 		extended, err := scanListedAfter(ctx, store, log, head, commits[stored.Depth+1:], true)
 		if err != nil {
-			return scannedLog{}, false, fmt.Errorf("%w: checkpoint frontier: %v", ErrNoUsableCheckpoint, err)
+			return scannedLog{}, false, 0, fmt.Errorf("%w: checkpoint frontier: %v", ErrNoUsableCheckpoint, err)
 		}
 		log = extended
 		log.Events = append(prefix, extended.Events...)
 	}
-	return log, advanced, nil
+	return log, advanced, stored.Depth, nil
+}
+
+func readCheckpointPointer(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return "", errors.New("checkpoint pointer is not a regular file")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxCheckpointPointerBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxCheckpointPointerBytes {
+		return "", errors.New("checkpoint pointer is too large")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var pointer checkpointPointer
+	if err := decoder.Decode(&pointer); err != nil {
+		return "", err
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF || pointer.Schema != checkpointPointerSchema || pointer.Commit == "" {
+		return "", errors.New("invalid checkpoint pointer")
+	}
+	canonical, err := json.Marshal(pointer)
+	if err != nil || !bytes.Equal(canonical, data) {
+		return "", errors.New("checkpoint pointer is not canonical JSON")
+	}
+	return pointer.Commit, nil
+}
+
+func writeCheckpointPointer(path, commit string) error {
+	data, err := json.Marshal(checkpointPointer{Schema: checkpointPointerSchema, Commit: commit})
+	if err != nil {
+		return err
+	}
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(directory, ".checkpoint-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryPath, path)
 }
 
 func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gitstore.CommitMetadata) (scannedLog, error) {
@@ -310,6 +427,11 @@ func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, 
 	}
 	if err := store.VerifySSHCommit(ctx, commit, "sequencer", log.sequencerPublicKey); err != nil {
 		return fmt.Errorf("checkpoint signature does not match current sequencer key: %w", err)
+	}
+	if options.LocalPath != "" {
+		if err := writeCheckpointPointer(options.LocalPath, commit); err != nil {
+			return fmt.Errorf("persist checkpoint pointer: %w", err)
+		}
 	}
 	ref := CheckpointRef(log.Verification.Genesis)
 	old, _ := store.Head(ctx, ref)

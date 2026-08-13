@@ -1197,6 +1197,10 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("checkpoint ref: %v", err)
 	}
+	pointer := filepath.Join(workspace.MetaDir, "checkpoints", workspace.Config.Genesis+".json")
+	if info, err := os.Stat(pointer); err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("local checkpoint pointer was not persisted at %s: info=%v err=%v", pointer, info, err)
+	}
 
 	restarted, err := Open(ctx, workspace.Repo)
 	if err != nil {
@@ -1218,6 +1222,40 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	}
 
 	if err := workspace.Store.UpdateRef(ctx, checkpointRef, workspace.Config.Genesis, checkpointHead); err != nil {
+		t.Fatal(err)
+	}
+	fromLocal, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localResult, err := fromLocal.SnapshotWithSource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if localResult.Source != SnapshotSourceSignedCheckpointTail || !reflect.DeepEqual(localResult.Snapshot, want) {
+		t.Fatalf("local checkpoint did not survive ref loss: source=%q got=%+v want=%+v", localResult.Source, localResult.Snapshot, want)
+	}
+	actRecord(t, ctx, fromLocal, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "no-server checkpoint act",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "no-server-checkpoint-act",
+	})
+	localAfterAct, err := fromLocal.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coldAfterAct, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coldProjection, err := coldAfterAct.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(localAfterAct, coldProjection) {
+		t.Fatalf("no-server checkpoint act differs from independent restart:\nlocal=%+v\nrestart=%+v", localAfterAct, coldProjection)
+	}
+	want = localAfterAct
+	if err := os.WriteFile(pointer, []byte(`{"schema":"gitseq-checkpoint-pointer@1","commit":"`+workspace.Config.Genesis+`"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	repairing, err := Open(ctx, workspace.Repo)

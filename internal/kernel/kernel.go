@@ -74,6 +74,7 @@ type Result struct {
 type Options struct {
 	SigningKey        string
 	CheckpointProfile string
+	CheckpointPath    string
 	Failpoint         func(string)
 	MaxRetries        int
 	PreAppend         func(context.Context, Admission) error
@@ -126,7 +127,7 @@ type logCache struct {
 func NewSubmitter(store gitstore.Store, options Options) *Submitter {
 	return &Submitter{
 		store: store, options: options,
-		cache: logCache{checkpoint: CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: options.SigningKey}},
+		cache: logCache{checkpoint: CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: options.SigningKey, LocalPath: options.CheckpointPath}},
 	}
 }
 
