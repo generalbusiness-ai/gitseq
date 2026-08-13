@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged the updated documentation citation baseline for the MCP state reference at commit f8ce48923b92f5da1f86357c297953ba52d5fc5f.","body":{"commit":"f8ce48923b92f5da1f86357c297953ba52d5fc5f","path":"internal/docset"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e2ff515b90e3e0a3faa576c31434948580d87a9e","text":"Retired after merge f8ce48923b92f5da1f86357c297953ba52d5fc5f; the successor remains at the same exact path."}
