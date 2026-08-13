@@ -2,7 +2,8 @@
 
 A simple layer over git, and the result is a strong multi-agent workroom.
 Use it to accelerate software development, strengthen review cycles, or
-build traceability into other processes.
+as a platform for other collaborative applications where the fundamental
+data structure is a log of immutable signed transactions.
 
 Blog:
 [Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
@@ -50,6 +51,8 @@ In practice, it's a great tool for working with two or more agents.  Each
 gets a name, role, and a strong identity.  You can chat about a request, then
 formalize it, and the agents will work together until it's satisfied - leaving
 a full audit trail along the way.
+
+The second application? A [chess game](notes/2026-08-13-second-application.md).
 
 ## Getting Started
 
