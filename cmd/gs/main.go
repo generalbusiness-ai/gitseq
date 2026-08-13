@@ -697,6 +697,98 @@ func retiredBases(projection workroom.Projection, events []string) []string {
 // date, which is repair rather than deadlock. It also leaves the meaning of
 // staleness untouched at the one gate that moves main, where a proposal on
 // exactly that question is still in flight.
+// retirementSequence dates every withdrawal: the log position of the effective
+// supersession that retired each target. An act carries no sequence of its own,
+// but every act has exactly one decision, and decisions are numbered.
+func retirementSequence(projection workroom.Projection) map[string]int {
+	position := make(map[string]int, len(projection.Decisions))
+	for _, decision := range projection.Decisions {
+		position[decision.Event] = decision.Sequence
+	}
+	retired := map[string]int{}
+	for _, act := range projection.Acts {
+		if act.Type != "supersede" || act.Verdict != workroom.Effective || act.Target == "" {
+			continue
+		}
+		at := position[act.Event]
+		if first, seen := retired[act.Target]; !seen || at < first {
+			retired[act.Target] = at
+		}
+	}
+	return retired
+}
+
+// staleAsOf answers the only staleness question a merge needs: had the world
+// already moved when this verdict was signed?
+//
+// A reviewer reads one immutable head and signs at one moment. A basis retired
+// before that moment means they judged a world that had already changed, and
+// refusing is right. A basis retired afterwards changes nothing they weighed:
+// the commit is immutable, the artifact still names it, and the diff they read
+// is the diff that would land. Refusing there is not strictness but a race
+// against unrelated bookkeeping — ratified as eae77d2c after a step-5
+// retirement invalidated an approval signed three minutes earlier over
+// unchanged code, and after the repair for a red main could not be merged
+// because it rested on the record whose retirement it was repairing.
+// withdrawnBasis reports whether the verdict directly names a record that has
+// since been retired — in practice the promise it was made under, or the
+// artifact it judged. Withdrawal is not time-bound: taking back either of those
+// repudiates the verdict however late it happens, because they are what the
+// reviewer signed over.
+//
+// This asks only about the approval's own bases. What an artifact rests on is a
+// different matter: a merge artifact rests on the predecessor at its path, and
+// step 5 retires that predecessor by design, so treating it as a withdrawal
+// would refuse every ordinary succession — which is the defect eae77d2c
+// removes. Those are judged by staleAsOf instead.
+func withdrawnBasis(projection workroom.Projection, event string, retired map[string]int) (string, bool) {
+	for _, basis := range projection.Provenance[event] {
+		if _, ever := retired[basis]; ever {
+			return basis, true
+		}
+	}
+	return "", false
+}
+
+// staleAsOf answers the question a merge actually needs about everything deeper
+// than what the verdict names: had the world already moved when this verdict
+// was signed?
+//
+// A reviewer reads one immutable head and signs at one moment. A basis retired
+// before that moment means they judged a world that had already changed, and
+// refusing is right. A basis retired afterwards changes nothing they weighed:
+// the commit is immutable, the artifact still names it, and the diff they read
+// is the diff that would land. Refusing there is not strictness but a race
+// against unrelated bookkeeping — ratified as eae77d2c after a step-5
+// retirement invalidated an approval signed three minutes earlier over
+// unchanged code, and after the repair for a red main could not be merged
+// because it rested on the record whose retirement it was repairing.
+func staleAsOf(projection workroom.Projection, event string, when int, retired map[string]int) bool {
+	seen := map[string]bool{event: true}
+	var frontier []string
+	for _, basis := range projection.Provenance[event] {
+		seen[basis] = true
+		frontier = append(frontier, basis)
+	}
+	for len(frontier) > 0 {
+		var next []string
+		for _, current := range frontier {
+			for _, basis := range projection.Provenance[current] {
+				if seen[basis] {
+					continue
+				}
+				seen[basis] = true
+				if at, ever := retired[basis]; ever && at <= when {
+					return true
+				}
+				next = append(next, basis)
+			}
+		}
+		frontier = next
+	}
+	return false
+}
+
 func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent string) error {
 	if err := validateCheckout(ctx, workspace.Repo, checkout, candidate, false); err != nil {
 		return err
@@ -716,9 +808,16 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 			return fmt.Errorf("approval already has durable merge receipt %s", statement.Event)
 		}
 	}
-	approval, err := liveStatement(projection, approvalEvent, workroom.KindReport)
+	approval, err := standingStatement(projection, approvalEvent, workroom.KindReport)
 	if err != nil {
 		return fmt.Errorf("approval: %w", err)
+	}
+	retired := retirementSequence(projection)
+	if basis, withdrawn := withdrawnBasis(projection, approvalEvent, retired); withdrawn {
+		return fmt.Errorf("approval names a withdrawn record %s: retiring what a verdict rests on repudiates it whenever it happens", basis)
+	}
+	if staleAsOf(projection, approvalEvent, approval.Sequence, retired) {
+		return errors.New("approval is stale: a basis under it was already retired when the verdict was signed, so the review judged a world that had moved")
 	}
 	if !approval.Ratified {
 		return errors.New("approval report is not ratified by its requester")
@@ -733,9 +832,12 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	if artifactEvent == "" || !slices.Contains(projection.Provenance[approvalEvent], artifactEvent) {
 		return errors.New("approval does not rest on its named artifact")
 	}
-	artifact, err := liveArtifact(projection, artifactEvent)
+	artifact, err := standingArtifact(projection, artifactEvent)
 	if err != nil {
 		return fmt.Errorf("approval artifact: %w", err)
+	}
+	if staleAsOf(projection, artifactEvent, approval.Sequence, retired) {
+		return errors.New("approval artifact is stale: a basis under it was already retired when the verdict was signed")
 	}
 	if artifact.Commit != candidate {
 		return fmt.Errorf("approved artifact head %s does not equal candidate %s", artifact.Commit, candidate)
@@ -847,20 +949,6 @@ func standingArtifact(projection workroom.Projection, event string) (workroom.Ar
 	return workroom.Artifact{}, errors.New("artifact event is unknown")
 }
 
-// liveArtifact is the strict reading: current as well as standing.
-func liveArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
-	artifact, err := standingArtifact(projection, event)
-	if err != nil {
-		return workroom.Artifact{}, err
-	}
-	if artifact.Stale {
-		return workroom.Artifact{}, errors.New("artifact is stale")
-	}
-	return artifact, nil
-}
-
-// standingStatement is the same judgement for a statement: refuse what was
-// retired or judged ineffective, and report staleness rather than refuse it.
 func standingStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
 	if !decisionEffective(projection, event) {
 		return workroom.Statement{}, errors.New("statement is not effective")
@@ -877,18 +965,6 @@ func standingStatement(projection workroom.Projection, event string, kind workro
 		}
 	}
 	return workroom.Statement{}, errors.New("statement event is unknown")
-}
-
-// liveStatement is the strict reading: current as well as standing.
-func liveStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
-	statement, err := standingStatement(projection, event, kind)
-	if err != nil {
-		return workroom.Statement{}, err
-	}
-	if statement.Stale {
-		return workroom.Statement{}, errors.New("statement is stale")
-	}
-	return statement, nil
 }
 
 func uniqueStandingBasis(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {

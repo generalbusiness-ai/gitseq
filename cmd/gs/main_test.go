@@ -701,7 +701,13 @@ func TestMergeGuardRefusesChangedCandidate(t *testing.T) {
 	}
 }
 
-func TestMergeGuardRefusesStaleApproval(t *testing.T) {
+// Withdrawal is not time-bound, unlike a moved world. Retiring the promise a
+// review was made under repudiates the verdict however late it happens: the
+// reviewer has taken back the commitment the report discharged, which is a
+// withdrawn pointer rather than succession moving underneath an untouched
+// claim. The temporal rule ratified as eae77d2c deliberately does not relax
+// this case.
+func TestMergeRefusesAnApprovalWhoseOwnBasisWasWithdrawn(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	approval := fixture.review(t)
 	fixture.ratify(t, approval)
@@ -716,11 +722,37 @@ func TestMergeGuardRefusesStaleApproval(t *testing.T) {
 		"--repo", fixture.repo, "--checkout", fixture.repo,
 		"--candidate", fixture.candidate, "--approval", approval,
 	})
-	if err == nil || !strings.Contains(err.Error(), "statement is stale") {
-		t.Fatalf("stale approval error = %v", err)
+	if err == nil || !strings.Contains(err.Error(), "withdrawn record") {
+		t.Fatalf("withdrawn approval basis error = %v", err)
 	}
 	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != base {
 		t.Fatalf("stale approval merge moved HEAD to %s, want %s", got, base)
+	}
+}
+
+// The mirror of the moved-world case, and the whole point of eae77d2c. Here the
+// base is retired AFTER the verdict was signed, so nothing the reviewer weighed
+// changed: the candidate commit is immutable, the artifact still names it, and
+// the diff they read is the diff that lands. Refusing this was not strictness
+// but a race against unrelated succession — on 2026-08-12 a prescribed step-5
+// retirement invalidated an approval signed three minutes earlier over
+// unchanged code, and the repair for a red main could not be merged because it
+// rested on the record whose retirement it repaired.
+func TestMergeAcceptsAWorldThatMovedAfterTheVerdict(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	fixture.moveTheWorld(t)
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Merge the approved feature after unrelated succession moved its base.",
+	}); err != nil {
+		t.Fatalf("a retirement after the verdict blocked the merge: %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got == base {
+		t.Fatal("the merge did not advance HEAD")
 	}
 }
 
