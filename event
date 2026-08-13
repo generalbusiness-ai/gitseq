@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa5e45ee60bfe72895209c9a64790cd28822b4e"}
+{"kind":"artifact","text":"Candidate live-membership authority fold at exact pushed head bbee4a4d9414647354d704046d74477ba27e04c1. Post-genesis states require a live author, removed originating requesters cannot ratify reports, departed-actor self-supersession cleanup remains, and workroom.ProfileVersion advances to @3.","body":{"commit":"bbee4a4d9414647354d704046d74477ba27e04c1","path":"internal/workroom"}}
