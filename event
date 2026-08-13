@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f93ac194642b2fa0a20ba6ebad0d9ffe99467b14","text":"Withdraw this ready report because its candidate artifact bases inherited the retired changes-requested world; a clean exact-head report follows."}
+{"kind":"artifact","text":"Current signed checkpoint kernel candidate at exact head 79138ad2: opaque host selector seam, authenticated deepest-candidate choice, one tail fold, ref-first publication and GC reachability.","body":{"commit":"79138ad22fd88a52eb7007b5575fe996c8228472","path":"internal/kernel"}}
