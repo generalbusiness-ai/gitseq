@@ -1,437 +1,435 @@
-# A second application
+# A second application: chess
 
-2026-08-13. Design for review: what it takes to run an application other than
-Workroom on the Gitseq kernel, decided small. The worked example is chess —
-someone creates a game, someone else joins, they move, someone wins, many
-games in one repository. Revised against review f9d9f9b7, which approved the
-spine and requested changes where stated costs were lower than real costs;
-every finding is resolved in place below.
+2026-08-13. This note designs the second application to run on the gitseq
+kernel: a complete chess service. Someone creates a game, someone else
+joins, they move, someone wins, and many games live in one repository.
+The design is small on purpose, and this note is the specification the
+implementation work will be queued from.
 
-The architecture contract already promises this is possible: the kernel
-proves who signed opaque bytes and where they stand, and an application
-interpreter decides what those bytes mean. The ratified fold-purity decision
-(`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b15de2f8788788a1afe970d6d077f7843862ebf2`)
-keeps unknown kinds opaque for exactly this reason. Nothing exercises the
-promise yet. Chess is the first test that the seam is real: if building it
-requires touching `internal/kernel`, that is a finding, not a task.
+## Start here: running a game
+
+Alice wants to play chess with Bob.
+
+1. Alice gets the chess program: she clones its repository from wherever
+   it lives and builds it, or downloads a release. One binary.
+2. She runs `chess init` in a fresh folder, then `chess serve`. It prints
+   a local address. Opening it shows a lobby.
+3. She creates a game. The app gives her an invitation link. She sends it
+   to Bob.
+4. Bob opens the link and taps **join**. No account, no sign-in, nothing
+   to install. His browser quietly makes a signing key for him, and his
+   join seats him as the opponent.
+5. They play. Each move is a small signed record. Their friend Carol opens
+   the watch link, sees the board move in real time, and chats with them
+   in the side panel.
+6. When checkmate comes, the application — not either player — declares
+   the result.
+
+Everything durable about that game now lives in an ordinary Git
+repository. Push it to any host and the complete, verifiable history of
+every game travels with it. Anyone with a copy can replay it and get
+exactly the same games, moves, and results.
+
+## What gitseq provides
+
+Gitseq keeps a tamper-evident log of signed events inside an ordinary Git
+repository. Its core — the **kernel** — proves exactly two things: who
+signed each event, and in what order the events were accepted. It assigns
+no meaning to them.
+
+Meaning comes from an **application**. An application defines its kinds of
+event (for chess: create, join, move, resign...) and a deterministic
+interpreter — the **fold** — that replays the log from the beginning and
+judges every event. An illegal move is recorded but judged ineffective: it
+sits in the history forever, changing nothing. Replaying the same log with
+the same application always produces the same state, on any machine, with
+no network and no clock — every time-dependent judgement uses the
+sequencer's signed timestamps inside the log, never the reader's clock.
+
+The first application is Workroom, which gitseq's own developers use to
+build gitseq. Chess is the second, and it exists partly to prove the seam
+is real: if building chess requires touching the kernel, that is a finding
+about the kernel, not a task for chess.
 
 ## The core decisions
 
-**One repository, one application, bound at init.** A repository declares its
-application once, in the bootstrap records at the head of the sequence, where
-Workroom already does its governance bootstrap. The binding records the
-application's name, its source as a format-qualified object id
-(`git:sha1:<commit>`, never a bare hash), the provenance URL, and the
-application's fold-profile hash. The binding is signed and permanent: a
-repository is a chess repository for life, and changing applications means
-creating a new repository. There is no namespace machinery because there is
-nothing to disambiguate — the repository is the instance, and games are
-entities inside its one log.
+**One repository, one application, chosen at init.** A repository declares
+its application once, in the first records of its log, and that choice is
+permanent: a chess repository is a chess repository for life, and moving
+to a different application means starting a fresh repository. Games are
+just entries inside the one log, so there is no namespace machinery —
+nothing needs disambiguating.
 
-The binding is positional and host-level. A binding is effective only in the
-bootstrap prefix, or as a supersession of an already-effective binding signed
-by the initializing operator's key; anything binding-shaped anywhere else is
-ineffective. Every host must read it before selecting an interpreter —
-read-binding, then select, then fold, in that order, so no host ever folds
-with the wrong interpreter and repairs afterwards. Because a chess host must
-read the binding without holding Workroom, the binding vocabulary cannot live
-in `workroom/*`: it is a small host-level schema family between the kernel
-and the application profiles, and the implementing head adds its row to the
-architecture layer table.
+The declaration — the **binding** — records the application's name, its
+source commit as a format-qualified object id (`git:sha1:<commit>`, never
+a bare hash), the URL it came from (as provenance, not as authority), and
+the version hash of its fold. A binding is honored only at the head of the
+log, or as a later replacement signed by the key that initialized the
+repository; anything binding-shaped anywhere else has no effect. Every
+program that opens a repository reads the binding first, then selects its
+interpreter, then folds — never the other way around, so no program ever
+interprets a log with the wrong application and repairs afterwards.
+Because a chess program must read bindings without knowing anything about
+Workroom, the binding's small vocabulary belongs to the host layer between
+the kernel and the applications; it gets its own row in the architecture
+reference when implemented.
 
-Repositories that predate this design have no binding record and cannot gain
-one at genesis. The rule for them is explicit: absent a binding, the
-application is Workroom at the profile the binary ships, and the binding
-authority is the genesis bootstrap operator's key per the log. That authority
-is host-level and is not revoked by application-layer roster changes — a
-chess host has no roster to consult — which grants no new power in practice
-(the same key held operator and ratifier from the first event) but is stated
-here so it is a decision rather than a discovery.
+Repositories created before this design have no binding. For them the rule
+is fixed: no binding means Workroom, at the version the binary ships, and
+the binding authority is the key that appears as operator in the log's
+opening records. That authority sits below applications and is not revoked
+by application-level role changes — a chess program has no roster to
+consult. In practice this grants nothing new: the same key has held every
+power since the first event. It is written here so it is a decision, not a
+later discovery.
 
-**The application is committed in Git, and install is clone-and-run.** An
-application is an ordinary Git repository: a Go module that imports the
-Gitseq kernel and host packages and ships its own binary. Its identity is a
-commit — the URL is provenance, a hint about where to fetch; the pinned
-object id is the name. Installing is cloning (or forking) that repository
-from anywhere and running what it builds. The fetch happens in git, where
-the operator chose the URL and can read what arrived; the run is the same
-visible trust act as running any software; and init is then purely local:
-the binary embodies its own name, source commit, and fold-profile hash (Go
-stamps module and VCS identity at build time), so `chess init` records the
-binding from what the binary is. No `--app` flag, no ref resolution at init,
-no copy-paste of a 40-hex hash, no network dependency on the bootstrap path.
-A fork is honestly a different build — the binding records the fork's exact
-commit, which is precisely what the log should say.
+**An application is a Git repository, and installing it is clone-and-run.**
+A gitseq application is an ordinary repository: a Go module that imports
+the gitseq kernel and ships one binary. Its identity is a commit. To
+install it, clone or fork it — from any host, over any transport — and run
+what it builds. The fetch happens in git, where you chose the URL and can
+read what arrived. The build and run are the same visible acts of trust as
+for any software. Then `chess init` is purely local: the binary already
+knows its own name, source commit, and fold version (Go stamps them in at
+build time), and it writes the binding from what it is. No flags, no
+network, nothing to copy by hand. A fork is honestly a different build,
+and the binding records the fork's exact commit — which is exactly what
+the log should say.
 
-Publishing follows for free. Publishing with releases is tagging and
-attaching binaries, which is what release tooling does. Publishing
-source-only is pushing and doing nothing else; a consumer runs
-`go install <module>@<tag>`. No registry, no package format, no plugin
-loader: the registry is the Git hosting ecosystem and the package format is
-a module.
+Publishing costs nothing beyond pushing. Tag releases and attach binaries
+if you like; or publish source only and let consumers `go install` it. No
+registry, no package format, no plugin system: the registry is Git
+hosting, the package format is a module.
 
-**Install authorizes interpretation, never execution.** Recording a binding
-executes nothing, and no gitseq command ever fetches, builds, or runs
-application code as a side effect. What the binding buys is verification: a
-host binary states which application and fold-profile hash it embodies,
-checks that against the repository's binding, and on mismatch reports the
-sequence as kernel-verifiable but application-uninterpretable — the honest
-degraded state the architecture page already defines. The deeper guarantee is
-unconditional and lives below the application: signatures, order, and payload
-binding are kernel facts, so a wrong or malicious interpreter cannot forge
-history, and anyone holding the genuine application at the pinned commit can
-re-fold the log and recover the truth. Interpretation is replaceable; the
-record is not.
+**Installing never executes anything.** Recording a binding runs no code,
+and no gitseq command fetches, builds, or runs application code as a side
+effect. The binding is there for verification: a binary states which
+application and fold version it embodies, checks the repository's binding,
+and on mismatch reports the log as *verifiable but not interpretable* —
+readable proof of who signed what, with an honest refusal to guess what it
+means. That honesty rests on something unconditional: signatures and order
+are kernel facts, so even a wrong or malicious interpreter cannot forge
+history, and anyone who obtains the genuine application at the pinned
+commit can re-fold the log and recover the truth. Interpretation is
+replaceable; the record is not.
 
-Upgrades use the grammar the system already has: a successor binding
-statement, signed by the initializing operator's key, pins the new commit and
-fold-profile hash and supersedes the old binding. An upgrade is not free and
-this note prices it: a fold-profile change invalidates every reader's
-checkpoint by construction, so every host performs a full verified re-fold of
-the log — a real operational event for a long-lived repository, scheduled
-like one.
+**Upgrades are replacements, priced honestly.** Upgrading the application
+means a new binding — signed by the initializing key, pinning the new
+commit and fold version, replacing the old binding. A fold-version change
+invalidates every reader's cached state by construction, so every program
+then re-verifies and re-folds the whole log. For a long-lived repository
+that is a real operational event, and it is scheduled like one.
 
-## The host change
+## The host change in gitseq
 
-`internal/app` is the deliberate coupling point today, and it joins the
-kernel to exactly one interpreter, hardwired. It becomes a host that reads
-the binding, selects one interpreter, once, at repository open, and only
-then folds. There is no per-event routing and no interleaving of application
-families in one log, so the fold of one application never pays for records
-of another. Workroom becomes the first registered profile, and its existing
-tests prove the selection change alters no Workroom behavior. This is the
-single boundary at which the singular becomes plural; the kernel does not
-change.
+Today `internal/app` joins the kernel to exactly one interpreter,
+hardwired. It becomes a host: read the binding, select one interpreter,
+once, at open — then fold. No per-event routing, no mixing of applications
+in one log, so one application's fold never pays for another's records.
+Workroom becomes the first registered profile, and its existing tests
+prove the selection change alters no Workroom behavior. This is the single
+boundary where one-application becomes many; the kernel does not change.
 
-## Chess
+## Chess, the application
 
-Chess is the right second application because its fold has a real rules
-engine rather than bookkeeping, and its authority comes from application
-state rather than from a roster.
+Chess is the right second application because its fold contains a real
+rules engine rather than bookkeeping, and because who-may-act comes from
+game state (whose turn it is) rather than from any roster.
 
-- **Its own repository, from day one.** Not a package in this tree that
-  might someday move out. A separate module that imports Gitseq from outside
-  is the only honest test of the public kernel and host API, which is the
-  real deliverable hiding inside this project. `public_surface_test.go` and
-  `layout_test.go` gesture at that boundary from within; a foreign importer
-  proves it.
+- **Its own repository, from day one.** Chess is not a package inside the
+  gitseq tree; it is a separate module that imports gitseq from outside.
+  That makes it the first honest test of gitseq's public API — a boundary
+  the in-tree tests can only gesture at.
 - **Vocabulary.** `create` (game parameters, color assignment, and an
-  optional invitation: an invited-opponent key, or the hash of a join
-  secret), `join` (rests on the create; carries the join secret when the
-  create demands one; the first effective join seats the opponent), `move`
-  (rests on the previous move or the join), `resign`, `draw-offer`,
-  `draw-accept`, and `anchor` (a post-hoc attestation binding the player's
-  session key to a persistent identity; defined under Identity below). A
-  create with no invitation is explicitly open-to-all: anyone may seat, the
-  game is enumerable, and the creator has chosen that. The invitation
-  exists because the projection is public and open join is otherwise
-  snipeable — a rate limit cannot fix a race that one request wins. The
-  shareable game link carries the join secret in its fragment, so
-  "the link is the invitation" stays true and costs the invitee nothing;
-  a spectator link simply omits it.
-- **Fold.** Deterministic and total, the same shape as the Workroom fold. An
-  illegal move, or a move out of turn, is recorded but judged ineffective —
-  the same append-then-judge pattern the Workroom fold uses for a malformed
-  report. Checkmate and stalemate are computed by the fold, not asserted by
-  a player, so the result is a projection fact and no event can lie about
-  it. Every time-dependent judgement — attestation expiry included — is
-  evaluated against log-internal time, the sequencer-signed timestamp of the
-  position being judged, never the reader's clock; and no network request
-  ever happens inside the fold. Two readers folding the same log get the
-  same projection, always.
-- **Games and seats.** A game is keyed by its create event's identifier.
-  Many games run in one repository; turn order makes append contention
-  negligible. A seat belongs to the player's anchored identity when an
-  anchor exists, else to the session key. That rule is what makes recovery
-  work: an anchored player whose browser key is lost — evicted storage, a
-  new device — mints a fresh session key, anchors it to the same persistent
-  identity, and resumes their seat. An unanchored player's seat is honestly
-  bound to a key that can be lost, and the interface says so.
-- **Identity.** Players are bare kernel actor keys. No roster, no names, no
-  roles, no ratifier, and no import of `internal/workroom` anywhere.
+  optional invitation — an invited opponent's key, or the hash of a join
+  secret), `join` (names the game; carries the join secret when the game
+  demands one; the first join the fold accepts seats the opponent),
+  `move`, `resign`, `draw-offer`, `draw-accept`, and `anchor` (links a
+  player's session key to a persistent identity; see Identity). A game
+  created without an invitation is explicitly open to all: anyone may
+  seat, and the creator has chosen that. The invitation exists because
+  the log is public and an open seat can be sniped by whoever submits
+  first — no rate limit fixes a race that one request wins. The
+  invitation link carries the join secret in its URL fragment, so "the
+  link is the invitation" stays true and costs the invitee nothing; a
+  watch link simply omits it.
+- **The fold judges everything.** Illegal move, wrong turn, second join:
+  recorded, ineffective, and the interface says so. Checkmate and
+  stalemate are computed by the fold, so the result is a fact of the
+  replay and no event can lie about it. No network calls in the fold, and
+  all expiry judged on log-internal time — the determinism rules above.
+- **Games and seats.** A game is identified by its create event. Many
+  games share one repository; chess is turn-based, so contention is
+  negligible. A seat belongs to the player's anchored identity if they
+  have one, otherwise to their session key. That rule is what makes
+  recovery work: an anchored player whose browser lost its key — cleared
+  storage, a new device — makes a fresh session key, anchors it to the
+  same identity, and sits back down. An unanchored seat is honestly bound
+  to a key that can be lost, and the interface says that too.
+- **Players are keys.** No roster, no names, no roles, no import of
+  anything from Workroom.
 
 ## The complete application
 
-The goal is a fully complete chess application, not a demo: multiple games
-tracked in one repository; creating, joining, and watching; and within a
-game, the board and pieces and a single live chat. Its surfaces divide
-exactly along the system's own seams, which is the point of building it:
+The goal is a finished chess service, not a demo. Its features divide
+along gitseq's own seams, which is much of why it is worth building:
 
-- **Durable acts** are the game: create, join, move, resign, draw, anchor.
-  This is what replays identically forever from any clone.
-- **Ephemeral presence** is who is here and what is in motion: players and
-  watchers hold leases on the game's nexus coordinate, so the watcher list
-  is live and honest; presence frames carry motion hints (a piece being
-  dragged, a move being submitted) so the board animates in realtime rather
-  than jumping on projection refresh.
-- **Ephemeral messaging** is the chat panel: one live conversation per game
-  over nexus `say`, dying with the session by contract, never pretending to
-  be a record.
+- **Durable acts** are the game: create, join, move, resign, draw,
+  anchor. This is what replays identically forever from any clone.
+- **Ephemeral presence** is who is here right now: players and watchers
+  hold short-lived leases on the game's live channel, so the watcher list
+  is live and honest, and presence frames carry motion hints — a piece
+  being dragged, a move being submitted — so the board animates smoothly
+  instead of jumping when the record lands.
+- **Ephemeral messaging** is the chat panel: one live conversation per
+  game, which dies with the session by contract and never pretends to be
+  a record.
 
-The truth discipline is inherited from the architecture page and is strict:
-the board renders only what the fold has judged. Presence may *preview*
-motion, but a move lands on the board only when the durable projection
-carries it, and an ineffective act is surfaced, not swallowed — the loser of
-a join race is told the seat was taken, and a move the fold refused snaps
-back with the reason. Chat and presence never claim durability. A cold or
-degraded projection is named on screen — under forge-primary storage a
-freshly started server re-folds at boot, so "the board may be behind" is a
-normal state with a visible name, never a silently stale board presented as
-current.
+The truth discipline is strict. The board renders only what the fold has
+judged. Presence may preview motion, but a move lands only when the
+durable record carries it, and a refused act is surfaced, not swallowed —
+the loser of a join race is told the seat was taken, and a refused move
+snaps back with the reason. A freshly started server is still replaying
+the log, so "the board may be behind" is a normal, named state on screen —
+never a stale board presented as current.
 
-The software architecture mirrors the resident, one layer at a time:
+The architecture mirrors gitseq's own service, one layer at a time:
 
-- **One binary.** The chess repository ships kernel, chess fold, projection,
-  HTTP service, and the embedded static UI in one binary — the same
-  composition `internal/service` uses today. Local play and web play are the
-  same binary with the same routes.
-- **Read path.** Bounded projections: the games list (open, in play,
-  finished) and the game state at a cursor. Plus one query that keeps the
-  browser honest: legal destinations for a selected piece, answered by the
-  fold's own engine. The UI holds no rules engine — it proposes, the fold
-  disposes. There is exactly one implementation of chess in the system, and
-  the review's observation stands as the design rule: the second-encoder
-  hazard was never the intent bytes (the kernel already refuses
-  non-canonical bytes byte-for-byte at submit), it was a second rules
-  engine, and the cure is to never write one.
-- **Write path.** The browser signs canonical submission intents with its
-  session key and POSTs them to the submit intake the deployment note
-  already requires (R10). The signer is small TypeScript over WebCrypto; its
-  encoding is pinned by cross-tests against the Go implementation (the
-  `internal/wireparity` pattern), and the kernel's byte-identical refusal is
-  the backstop that makes an almost-agreeing encoder loud rather than
-  dangerous. No wasm requirement: nothing multi-megabyte rides the
-  zero-prompt path.
-- **Live path.** One event stream per game (SSE or WebSocket) carrying
-  durable appends and nexus frames under their two distinct cursors — the
-  durable/live separation the architecture page requires. The server joins
-  them for transport; the client never confuses them, because the stream
-  labels which world each event belongs to.
+- **One binary** ships kernel, chess fold, projections, HTTP service, and
+  the embedded browser UI. Local play and web play are the same binary.
+- **Read path.** Bounded projections: the games list (open, playing,
+  finished) and each game's state at a cursor. Plus one query that keeps
+  the browser honest: legal destinations for a selected piece, answered
+  by the fold's own engine. The browser holds no rules engine — it
+  proposes, the fold disposes. There is exactly one implementation of
+  chess in the system.
+- **Write path.** The browser signs each act with its session key and
+  POSTs it to the submit endpoint. The signer is small TypeScript over
+  WebCrypto; its encoding is pinned by cross-tests against the Go
+  implementation, and the kernel's byte-exact refusal of non-canonical
+  input is the backstop that makes any near-miss loud rather than
+  dangerous. Nothing heavy rides the join path.
+- **Live path.** One event stream per game carries durable appends and
+  live frames, each labeled with which world it belongs to, under two
+  separate cursors. The server joins them for transport; the client never
+  confuses them.
 - **Keys in the browser.** The session key is WebCrypto Ed25519,
-  non-extractable, in IndexedDB — the only storage that holds structured
-  keys, and the wording matters because the extractable-key-in-localStorage
-  reading is an XSS away from key theft. The page requests persistent
-  storage (`navigator.storage.persist()`), and the interface names the
-  eviction hazard honestly: script-writable storage can be evicted (Safari
-  does so after seven days without interaction), so a long correspondence
-  game on an unanchored key can lose its seat, and the durable fix is the
-  anchor, which also carries the seat to a second device. Viewing is
-  keyless; joining, chatting, or appearing in the watcher list mints the
-  session key silently — still zero prompts.
+  non-extractable, stored in IndexedDB — the wording matters, because an
+  extractable key in ordinary web storage is one script injection away
+  from theft. Browsers may evict script-writable storage (Safari does
+  after seven days without a visit), so the app asks for persistent
+  storage *lazily* — after the first move has landed, or at anchor time —
+  because that request can itself prompt in some browsers and the join
+  path stays at zero prompts. The interface names the eviction hazard
+  honestly; the durable fix is anchoring, which also carries a seat to a
+  second device. Watching needs no key at all; joining, chatting, or
+  appearing in the watcher list mints one silently.
 
 ## Running it on the web
 
-A chess deployment is one binary, a Git repository, and one kernel secret:
-the sequencer key. That is tier 2 of the ladder in
-`notes/2026-08-07-deployment.md`, and this design adopts its invariants
-explicitly rather than by reference — including the two the review found
-omitted:
+A public deployment is the same binary, a Git repository, and secrets that
+are counted honestly below. It follows the tier-2 ladder in
+`notes/2026-08-07-deployment.md`, and adopts — or explicitly amends — that
+note's three tier-2 invariants rather than inheriting them by reference:
 
-- **R2's writer lease, adopted.** Exactly one process holds the writer
-  lease per repository; a process without the lease refuses durable writes
-  and says so. Rolling deploys make overlap the default case, not the edge
-  case, so the lease is a blocker for the web deployment, exactly as the
-  deployment note rates it.
-- **Acknowledgment follows the push.** Under forge-primary storage the
-  forge ref is the authority, and a local compare-and-swap win is not
-  custody. A move is acknowledged to the player only after the sequence
-  advance has been pushed fast-forward to the forge; a rejected push means
-  the move was not acknowledged and is resubmitted against the true head.
-  No player is ever told "accepted" about a move that can be orphaned.
+- **One writer, enforced.** Exactly one process holds the writer lease
+  per repository; a process without the lease refuses durable writes and
+  says so. Rolling deploys briefly run two containers as a matter of
+  course, so the lease is a blocker, not a nicety.
+- **Acknowledge after the push.** When the repository of record lives on
+  a forge (GitHub or similar), the forge ref is the authority. A move is
+  acknowledged to the player only after the log advance has been pushed
+  fast-forward there; a rejected push means no acknowledgment, and the
+  move is resubmitted against the true head. No player is ever told
+  "accepted" about a move that could be orphaned.
+- **The submit endpoint is open, by design.** The deployment note
+  requires networked submissions to carry capability tokens fronted by an
+  identity provider. A public game server amends that scope deliberately:
+  anyone may submit, because zero-setup play is the point, and record
+  authority (the signature on every act) never depended on transport
+  authorization anyway. The capability chain remains the rule for
+  deployments that need authorization; a public application profile opts
+  out on purpose and says so. Volume abuse is answered by kernel bounds
+  and rate limits; seat-sniping is answered by the invitation, because it
+  is a race, not a load problem.
 
-With those stated, the shape stays as before: the container clones the game
-repository at boot, appends under the lease, pushes advances, and durability
-is the forge plus attached clones, stated as replication. The deliverable is
-a recipe — a `Dockerfile` and a platform file in the application repository —
-and "run this on the web" is setting the sequencer-key secret and launching.
-The OIDC anchor, when enabled, honestly costs more: a provider app
-registration, its client secret, and the deployment's witnessing actor key,
-whose public half is anchored in the repository's log at setup (the
-deployment note's R1 issuer pattern) so that bindings remain verifiable
-after the deployment rotates or dies. The OIDC callback is pinned to the
-game's own origin, because a cross-origin round-trip would strand the
-browser key in an unreachable storage partition.
+The shape: the container clones the game repository at boot, appends under
+the lease, and pushes each advance. Durability is the forge plus any other
+clones, stated plainly as "how many copies, refreshed how often". The
+deliverable is a recipe — a `Dockerfile` and a platform file in the chess
+repository — and deploying is: create the data repository on the forge,
+set two secrets (the sequencer's signing key, and the credential that lets
+the container push to the forge), launch, share the URL. Enabling "log in
+with GitHub" adds a provider app registration, its client secret, and a
+witnessing key whose public half is recorded in the log at setup so those
+identity bindings outlive the deployment (see Identity). The login
+round-trip returns to the game's own origin, because a cross-origin
+callback would strand the browser's key in an unreachable storage
+partition.
 
-The end state is not container operations. A gitseq application's runtime
-shape — a tiny single-writer sequencer per domain, a static UI, git
-storage — needs no full VM; it is closer to the platforms that deploy from
-a repository push than to machines. So the destination is the deployment
-note's tier-3 appliance wearing that ergonomics: a purpose-built
-deploy-from-repository platform for gitseq applications, where deploying is
-pointing at an application repository and a data repository, and a security
-domain is minted per repository in seconds (R5). The nearest existing
-parallel is Cloudflare Artifacts — git-protocol storage fronted by edge
-compute — but that ecosystem is TypeScript-first and the fold is Go, so it
-is a reference for the shape, not a base to build on. The tier-2 recipe is
-the interim that proves the requirements the platform needs anyway; building
-the platform is scheduled by adoption, not by this note.
-
-Abuse of the open submit surface divides into two problems with two answers:
-volume is transport policy (kernel bounds and admission-profile rate
-limits), and seat-sniping is not — it is solved by the invitation in the
-create vocabulary, because no rate limit fixes a race that one request wins.
+The end state is not container operations. This runtime — a tiny
+single-writer sequencer, a static UI, git storage — wants a purpose-built
+platform with deploy-from-repository ergonomics: point it at an
+application repository and a data repository, press deploy, get a domain
+in seconds. The nearest existing parallel is Cloudflare Artifacts
+(git-protocol storage fronted by edge compute), but that ecosystem is
+TypeScript-first and the fold is Go, so it is a reference for the shape,
+not a base. The container recipe is the interim that proves what the
+platform will need; building the platform is scheduled by adoption, not by
+this note.
 
 ## Identity
 
 Identity lives below the application, so no application reinvents it. The
-kernel's contribution is already exactly right and does not grow: an actor
-is a key, and the kernel proves who signed. Everything above that —
-session-key minting, the attestation vocabulary, the anchor ladder, agent
-credentials — is one shared vocabulary and verification library shipped
-with the host and inherited by every application profile. Chess declares
-nothing about identity beyond naming `anchor` in its vocabulary; the
-statement shape, verification, and display all come from the host layer.
+kernel already has exactly the right amount: an actor is a key, and the
+kernel proves who signed. Everything above that — minting session keys,
+the attestation vocabulary, the anchor ladder, agent credentials — is one
+shared library and vocabulary in the host layer, inherited by every
+application. Chess names `anchor` in its vocabulary and defines nothing
+else about identity.
 
-A minted browser key is sufficient to play, and must remain so: opening a
-game link and moving is the adoption story, and it requires zero setup,
-zero accounts, and zero prompts. Everything beyond that is an upgrade, not
-a requirement.
+A browser-minted key is enough to play, always. Opening a link and moving
+requires zero setup, zero accounts, zero prompts. Everything beyond that
+is an upgrade, never a requirement.
 
-Persistent identity is **anchoring as attestation evidence**: a statement
-carrying a persistent root identity's signature over the actor key, the
-genesis, a scope, and an expiry. It lands either as evidence on the join or
-as a free-standing `anchor` statement afterwards — the post-hoc path is the
-normal one, since play-first-anchor-later is the ordering the adoption
-story demands. The application layer verifies attestations; expiry is
-judged against log-internal time (see the fold rules above); revocation is
-expiry plus a superseding statement, so a revoked key is provable from the
-log.
+The upgrade is an **anchor**: a statement linking the session key to a
+persistent identity, carrying that identity's endorsement of the key, the
+repository, a scope, and an expiry. Verification happens in the
+application layer; revocation is expiry plus a superseding statement, so a
+revoked key is provable from the log alone.
 
-Anchors differ on two independent axes, and the display shows both rather
-than collapsing them into one rung:
+Anchors differ on two independent axes, and the interface shows both:
 
-- **Who vouches.** Self-signed (the user's own root key made the
-  attestation) is stronger than witnessed (the deployment's actor key says
-  a provider said so).
-- **How it verifies.** An in-log signature verifies offline, forever. A
-  claim that needs a live third-party lookup verifies only while the third
-  party cooperates, and can change its answer later.
+- **Who vouches.** *Self-signed* — the user's own root key signed the
+  endorsement — is stronger than *witnessed* — the deployment's key says
+  a provider said so.
+- **How it verifies.** A signature carried in the log verifies offline,
+  forever. A claim needing a live third-party lookup verifies only while
+  that third party cooperates, and may answer differently later.
 
-The Nostr anchor is self-signed and in-log verifiable — the strongest on
-both axes. NIP-07 browser extensions hold the user's persistent key and
-sign the attestation (typically two prompts on first use — the extensions
-prompt separately for the public key and the signature — and only for users
-who already run one; for everyone else this path honestly begins with an
-extension install and a key backup, which is why it is not the first rung
-built). The attestation is NIP-26-shaped, so aligning with that ecosystem
-costs nothing; the secp256k1 curve stays out of the kernel, verified in
-application evidence-checking only.
+Three anchors, on that grid:
 
-The OIDC anchor — "log in with GitHub" — is witnessed but in-log
-verifiable, and it is the lowest-friction rung: one redirect round-trip,
-one first-use consent screen at the provider, no extension, no key material
-in the user's hands. The provider's token is short-lived and audience-bound
-so it cannot itself be the attestation; the deployment verifies it and
-signs the binding with its own ordinary actor key, whose word a reader
-weighs like any actor's, and whose public key is anchored in the log so the
-binding outlives the deployment. The standing capability this creates —
-whoever holds that key can mint a binding for any handle — is inherent to
-witnessing; sequencing bounds it, since a minted binding still occupies a
-signed position.
+- **Nostr** (self-signed, verifies in-log — strongest on both axes). A
+  NIP-07 browser extension holds the user's persistent key and signs the
+  endorsement — typically two extension prompts on first use, and only
+  for users who already run one; for everyone else this path honestly
+  begins with installing an extension and backing up a key, which is why
+  it is not the first rung built. The endorsement is shaped like a Nostr
+  delegation (NIP-26), so aligning with that ecosystem costs nothing. Its
+  secp256k1 signatures are verified in application code only; that curve
+  never enters the kernel.
+- **"Log in with GitHub"** (witnessed, verifies in-log — the
+  lowest-friction rung). One redirect round-trip, one first-time consent
+  screen at the provider, no extension, no key handling. The provider's
+  token is short-lived and cannot itself be the record, so the deployment
+  verifies it and signs the binding with its own ordinary key — a witness
+  whose word readers weigh like any actor's, and whose public key is
+  recorded in the log so bindings outlive the deployment. Whoever holds
+  that key could mint false bindings; that risk is inherent to
+  witnessing, and sequencing bounds it, since every binding occupies a
+  signed position in the log.
+- **A published forge signing key** (self-signed, but verified by live
+  lookup — weakest on verifiability, whatever its vouching strength). The
+  check fetches the user's published keys from the forge at verification
+  time; the user can delete the key later and retroactively unverify
+  their own history. Like the OIDC check, it runs outside the fold and
+  its result is signed into the log. The browser cannot produce this
+  proof at all — it takes the user's own SSH tooling at a terminal — so
+  this anchor is offered on the command line only.
 
-A forge signing key (the published SSH/GPG key on a GitHub profile) is
-self-signed but *not* in-log verifiable — checking it means fetching the
-handle's published keys from a third party, at that moment, and the user
-can delete the key and retroactively unverify their own history. It is
-therefore the weakest rung on verifiability despite its vouching strength,
-the display says so, and the verification is factored like OIDC's: checked
-outside the fold, with the checked result signed into the log. The browser
-cannot walk this path at all (the proof requires a terminal round-trip
-with the user's SSH tooling), so it is offered on the CLI path only.
+The same statement shape mints **agent credentials**: a person's anchored
+identity endorses an agent's signing key, with scope and expiry. An agent
+credential is exactly as strong as the anchor that minted it, on both
+axes, and the interface says which. (Block's Buzz workspace ships the same
+dual-signature idea — human-owned agents signing their own work — on
+Nostr; here the endorsement, its scope, and its revocation live in the
+signed log itself, so they are provable later rather than taken on faith.)
 
-The same statement shape is the agent-credential ladder: a human's
-anchored identity attests an agent's Ed25519 actor key with scope and
-expiry. An agent credential is only as strong as the anchor that minted
-it, on both axes, and the projection says so. This is the dual-signature
-chain of custody that Block's Buzz ships for its workspace — expressed
-here in the log itself, where the attestation, its scope, and its
-supersession are signed, ordered, and provable, which is the part Buzz's
-public materials leave unspecified.
+## Onboarding paths, with budgets
 
-## Onboarding paths, enumerated for the friction trace
+Every review of this design and its implementations walks these paths end
+to end and reports the friction found: each step from first contact to
+first effective act; every prompt, install, redirect, and copy-paste;
+every step removable without weakening record authority; every step whose
+failure is silent. A path that cannot be walked step by step in the
+reviewer's head is a finding, and so is a path without a budget.
 
-Every review of this design and its implementations must walk these paths
-end to end and report the friction found: for each path, every step from
-first contact to first effective act, the count of prompts, installs,
-redirects, and copy-paste steps, every step that could be removed without
-weakening record authority, and every step whose failure is silent. A path
-that cannot be walked in the reviewer's head, step by step, is a finding.
-Every path carries a budget; a path without one is a finding too.
-
-- **Spectator.** Receive a game URL, open it, the board renders. Budget:
-  two steps to first view, no key, no prompt. The projection's cold or
-  behind state is named on screen, never silent. Appearing in the watcher
-  list or chatting silently mints a session key — still zero prompts.
-- **Anonymous player.** Receive an invitation URL, open it, tap join, move.
-  Budget: zero prompts before the first move. The join secret rides the
-  URL fragment, so the invitation costs the invitee nothing. A lost join
-  race is reported on screen. The key custody and eviction rules above
-  apply, and the interface offers anchoring as the durable fix without
-  ever requiring it.
-- **Anchored player, OIDC.** The anonymous path, then "log in with
-  GitHub". Budget: one redirect round-trip, one first-use provider consent
-  screen, zero installs, zero copy-paste. Lands a witnessed attestation.
-  The callback returns to the game origin.
-- **Anchored player, Nostr.** The anonymous path, then "link identity".
-  Budget for a user already running a NIP-07 extension: two extension
-  prompts, zero installs. For anyone else the path honestly begins with an
-  extension install and key backup, and the interface says so instead of
-  pretending. Never required to play. (The forge signing-key anchor is CLI
-  only; it has no browser budget because it has no browser path.)
-- **Agent credential.** A human with an anchored identity mints an agent
-  keypair, attests it, and configures the agent with its key and the
-  repository. Budget: three manual steps, measured at acceptance.
-- **Deployer.** Clone the application repository, set the sequencer-key
-  secret, launch, share the URL. Budget: one secret and one command after
-  clone. Enabling the OIDC anchor adds a provider registration, its client
-  secret, and the witnessing actor key — three more setup steps, disclosed
-  here and counted when walked.
-- **Self-hoster.** Clone (or fork) the application repository, build and
-  run: `chess init`, play on loopback. Budget: two commands after clone.
-  This is also the acceptance path, and it is the clone-and-run install
-  story in its entirety.
+- **Spectator.** Receive a watch URL, open it, see the board. Budget: two
+  steps, no key, no prompt. A cold or catching-up server is named on
+  screen, never silent. Entering the watcher list or chat mints a session
+  key silently — still zero prompts.
+- **Anonymous player.** Receive an invitation URL, open it, tap join,
+  move. Budget: zero prompts before the first move — persistent-storage
+  permission is deliberately deferred until after the first move so this
+  stays true in every browser. A lost join race is reported. The key can
+  be evicted with the browser's storage; the interface says so and offers
+  anchoring, never requires it.
+- **Anchored player, GitHub login.** The anonymous path, then one
+  redirect round-trip with one first-time consent screen. Zero installs,
+  zero copy-paste.
+- **Anchored player, Nostr.** The anonymous path, then two extension
+  prompts — for users who already run a NIP-07 extension. For anyone
+  else, honestly: an extension install and a key backup first. Never
+  required to play.
+- **Agent credential.** An anchored person mints an agent key, endorses
+  it, and hands the agent its key and the repository. Budget: three
+  manual steps, measured at acceptance.
+- **Deployer.** Create the data repository on a forge; clone the chess
+  repository; set two secrets (sequencer key, forge push credential);
+  launch; share the URL. Budget: one repository, two secrets, one launch
+  command. GitHub login adds a provider registration, its client secret,
+  and the witnessing key — three more setup steps.
+- **Self-hoster.** Clone (or fork) the chess repository, build, `chess
+  init`, `chess serve`, play on loopback. Budget: two commands after
+  clone. This is the acceptance path, and it is the whole install story.
 
 ## What this gives up
 
-Mixed-application repositories, and in-place migration from one application
-to another. Both are accepted costs. Interleaved families would make every
-fold pay rent for records it cannot read, and fresh repositories are what
-migration is for. Cross-references remain possible if ever wanted: event
-identifiers embed the genesis, so they are globally unambiguous. A creator
-who declines an invitation accepts an open, enumerable, snipeable game;
-that is a choice the vocabulary records, not a defect.
+Mixed-application repositories, and in-place migration between
+applications: both deliberately. Mixing would make every fold pay rent for
+records it cannot read, and fresh repositories are what migration is for.
+Cross-references stay possible — event identifiers embed their log's
+genesis, so they are globally unambiguous. And a creator who declines an
+invitation accepts an open, enumerable, snipeable game; the vocabulary
+records that as a choice, not a defect.
 
 ## The work, in order
 
-Once this design is ratified and merged, each numbered item below is queued
-as its own implementation request.
+Once this design is ratified and merged, each item below is queued as its
+own implementation request.
 
-1. The implementing head for the contract change: the host-level binding
-   vocabulary and its new row in `docs/reference/architecture.md`, the
-   read-binding/select/fold order, and the legacy default — updated in the
-   same head that lands them.
+1. The contract change: the host-level binding vocabulary with its new
+   row in `docs/reference/architecture.md`, the read-binding/select/fold
+   order, and the legacy no-binding-means-Workroom rule — one head.
 2. Init-time self-binding and host selection at open in `internal/app`,
    with Workroom as the registered default and its existing tests proving
    zero behavior change.
 3. Whatever public-API surface the external importer needs, driven by
    actually importing it, not speculation.
 4. The chess repository: vocabulary (invitation and anchor included),
-   rules-engine fold with log-internal time, per-game projection, legal-
-   destination query, and a minimal `chess` binary with init, create, join,
-   move, board, and resign.
+   rules-engine fold on log-internal time, per-game projections, the
+   legal-destination query, and a minimal binary with init, serve,
+   create, join, move, board, and resign.
 5. The chess UI, embedded in the same binary: lobby, game view, board and
-   pieces from the durable fold, presence-animated moves, watcher list, and
-   the single per-game chat — the complete-application section above is its
-   specification.
-6. The web deployment: writer lease, acknowledge-after-push, the deploy
-   recipe, and the browser signer with parity tests against the Go encoder.
+   pieces from the durable fold, presence-animated moves, watcher list,
+   and the single per-game chat — the complete-application section above
+   is its specification.
+6. The web deployment: writer lease, acknowledge-after-push, the open
+   submit intake as amended above, the deploy recipe, and the browser
+   signer with parity tests against the Go encoder.
 7. The identity layer in the host: attestation vocabulary, the two-axis
-   display, OIDC witnessing with the anchored attestor key, and the Nostr
-   anchor.
-8. Acceptance, two variants: a fresh repository, clone-and-run, two actor
-   keys, a game played to checkmate, the fold — not a player — projecting
-   the result; then the same game through two browsers against a
-   container-hosted deployment whose repository of record is on a forge,
-   one player anonymous and one anchored, exercising seat recovery after a
-   deliberately cleared browser store, with the onboarding paths above
-   walked and their friction counts recorded as part of the review.
+   display, GitHub-login witnessing with the log-anchored witness key,
+   and the Nostr anchor.
+8. Acceptance, two variants: a fresh repository, clone-and-run, two
+   keys, a game played to checkmate with the fold projecting the result;
+   then the same game through two browsers against a container-hosted
+   deployment whose repository of record is on a forge — one player
+   anonymous, one anchored, seat recovery exercised after a deliberately
+   cleared browser store — with the onboarding paths above walked and
+   their friction counts recorded as part of the review.
+
+---
+
+Provenance: this design rests on the ratified decision that the fold stays
+pure and total and unknown kinds stay opaque,
+`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b15de2f8788788a1afe970d6d077f7843862ebf2`.
