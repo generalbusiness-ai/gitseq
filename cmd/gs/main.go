@@ -410,8 +410,14 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
+	existing, found, err := existingGitMergeReceipt(ctx, *checkout, *approval)
+	if err != nil {
 		return err
+	}
+	if !found {
+		if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
+			return err
+		}
 	}
 	if strings.TrimSpace(*mergeText) == "" {
 		return errors.New("merge requires --text with a plain-language description and impact")
@@ -419,6 +425,40 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	actor, err := signingActor(*as)
 	if err != nil {
 		return err
+	}
+	_, private, err := workspace.Actor(actor)
+	if err != nil {
+		return err
+	}
+	merger := workspace.Config.Actors[actor].Fingerprint
+	if found {
+		if existing.Candidate != *candidate {
+			return fmt.Errorf("approval was already used for candidate %s", existing.Candidate)
+		}
+		checkoutHead, err := git(ctx, *checkout, "rev-parse", "--verify", "HEAD^{commit}")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(checkoutHead) != existing.MergeHead {
+			return fmt.Errorf("approval was already used by merge %s, but checkout is at another head", existing.MergeHead)
+		}
+		refHead, err := git(ctx, *checkout, "rev-parse", "--verify", mergeReceiptRef(*approval))
+		if err != nil {
+			return err
+		}
+		refHead = strings.TrimSpace(refHead)
+		if refHead == existing.TargetPreHead {
+			if _, err := git(ctx, *checkout, "update-ref", mergeReceiptRef(*approval), existing.MergeHead, existing.TargetPreHead); err != nil {
+				return fmt.Errorf("publish resumed merge receipt ref: %w", err)
+			}
+		} else if refHead != existing.MergeHead {
+			return fmt.Errorf("merge receipt ref is at unexpected commit %s", refHead)
+		}
+		if err := recordMergeSuccession(ctx, workspace, *checkout, *serverURL, actor, private, existing); err != nil {
+			return err
+		}
+		fmt.Println(existing.MergeHead)
+		return nil
 	}
 	targetPreHead, err := git(ctx, *checkout, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
@@ -433,45 +473,76 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
 		return err
 	}
+	// The last check before Git is touched: the signer. Nothing has been
+	// reserved and nothing has moved, so this refusal costs the caller nothing
+	// and leaves the approval unspent for the actor whose work it is.
+	preMerge, err := workspace.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	if err := requireApprovedImplementer(preMerge.Projection, *approval, merger); err != nil {
+		return err
+	}
 	receiptRef := mergeReceiptRef(*approval)
 	if _, err := git(ctx, *checkout, "update-ref", receiptRef, targetPreHead, ""); err != nil {
 		return errors.New("approval is already reserved or used by another merge")
 	}
 	landed := false
+	merging := false
 	defer func() {
 		if !landed {
 			_, _ = git(context.Background(), *checkout, "update-ref", "-d", receiptRef, targetPreHead)
+			if merging {
+				_, _ = git(context.Background(), *checkout, "merge", "--abort")
+			}
 		}
 	}()
-	message := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead)
-	if _, err := git(ctx, *checkout, "merge", "--no-ff", "-m", message, "--", *candidate); err != nil {
+	merging = true
+	if _, err := git(ctx, *checkout, "merge", "--no-ff", "--no-commit", "--", *candidate); err != nil {
 		return err
 	}
+	changes, err := stagedMergeChanges(ctx, *checkout)
+	if err != nil {
+		return fmt.Errorf("read tentative merge changes: %w", err)
+	}
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	predecessors := successionPredecessors(ctx, *checkout, snapshot.Projection, targetPreHead, *candidate)
+	plan := planSuccession(snapshot.Projection, changes, predecessors)
+	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
+		return fmt.Errorf("merge succession preflight: %w", err)
+	}
+	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, *approval, merger); err != nil {
+		return fmt.Errorf("merge succession preflight: %w", err)
+	}
+	message, err := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead, plan)
+	if err != nil {
+		return err
+	}
+	if _, err := git(ctx, *checkout, "commit", "-m", message); err != nil {
+		return err
+	}
+	merging = false
+	landed = true
 	head, err := git(ctx, *checkout, "rev-parse", "HEAD")
 	if err != nil {
 		return err
 	}
 	head = strings.TrimSpace(head)
-	receipt, err := readMergeReceipt(ctx, *checkout, head)
+	receipt, ok, err := readMergeReceipt(ctx, *checkout, head)
 	if err != nil {
 		return err
 	}
-	if receipt.Approval != *approval || receipt.Candidate != *candidate || receipt.TargetPreHead != targetPreHead || receipt.MergeHead != head {
+	if !ok || receipt.Approval != *approval || receipt.Candidate != *candidate || receipt.TargetPreHead != targetPreHead || receipt.MergeHead != head {
 		return errors.New("resulting merge commit does not carry the requested receipt")
 	}
 	if _, err := git(ctx, *checkout, "update-ref", receiptRef, head, targetPreHead); err != nil {
 		return fmt.Errorf("publish merge receipt ref: %w", err)
 	}
-	landed = true
-	if _, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{
-		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "approved candidate merged",
-		Body: map[string]string{
-			"merge_approval": *approval, "merge_candidate": *candidate,
-			"merge_target_pre_head": targetPreHead, "merge_head": head,
-		},
-		RestsOn: []string{*approval}, IdempotencyKey: mergeReceiptKey(*approval),
-	}); err != nil {
-		return fmt.Errorf("record merge receipt: %w", err)
+	if err := recordMergeSuccession(ctx, workspace, *checkout, *serverURL, actor, private, receipt); err != nil {
+		return err
 	}
 	fmt.Println(head)
 	return nil
@@ -482,12 +553,16 @@ type mergeReceipt struct {
 	Candidate     string
 	TargetPreHead string
 	MergeHead     string
+	Retirements   string
+	Successors    string
 }
 
 const (
-	mergeApprovalTrailer  = "Gitseq-Approval: "
-	mergeCandidateTrailer = "Gitseq-Candidate: "
-	mergeTargetTrailer    = "Gitseq-Target-Pre-Head: "
+	mergeApprovalTrailer    = "Gitseq-Approval: "
+	mergeCandidateTrailer   = "Gitseq-Candidate: "
+	mergeTargetTrailer      = "Gitseq-Target-Pre-Head: "
+	mergeRetirementsTrailer = "Gitseq-Retirements: "
+	mergeSuccessorsTrailer  = "Gitseq-Successors: "
 )
 
 func mergeReceiptKey(approval string) string {
@@ -499,15 +574,29 @@ func mergeReceiptRef(approval string) string {
 	return "refs/gitseq/merge-receipts/" + strings.TrimPrefix(mergeReceiptKey(approval), "merge-receipt-")
 }
 
-func mergeReceiptMessage(text, approval, candidate, targetPreHead string) string {
-	return fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
-		mergeApprovalTrailer, approval, mergeCandidateTrailer, candidate, mergeTargetTrailer, targetPreHead)
+func mergeReceiptMessage(text, approval, candidate, targetPreHead string, plan successionPlan) (string, error) {
+	retirements, err := json.Marshal(plan.retire)
+	if err != nil {
+		return "", err
+	}
+	successors, err := json.Marshal(plan.publish)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
+		mergeApprovalTrailer, approval, mergeCandidateTrailer, candidate, mergeTargetTrailer, targetPreHead,
+		mergeRetirementsTrailer, retirements, mergeSuccessorsTrailer, successors), nil
 }
 
-func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt, error) {
+// readMergeReceipt separates "this commit is not one of our receipts" from
+// "Git could not be asked". Merge commits already in main predate the sealed
+// succession trailers, so treating their absence as a malformed receipt made a
+// replayed old approval report a parse failure instead of the intended
+// already-used refusal. A false ok is that ordinary fact, not an error.
+func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt, bool, error) {
 	message, err := git(ctx, checkout, "show", "-s", "--format=%B", head)
 	if err != nil {
-		return mergeReceipt{}, err
+		return mergeReceipt{}, false, err
 	}
 	receipt := mergeReceipt{MergeHead: head}
 	for _, line := range strings.Split(message, "\n") {
@@ -518,31 +607,39 @@ func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt,
 			receipt.Candidate = strings.TrimPrefix(line, mergeCandidateTrailer)
 		case strings.HasPrefix(line, mergeTargetTrailer):
 			receipt.TargetPreHead = strings.TrimPrefix(line, mergeTargetTrailer)
+		case strings.HasPrefix(line, mergeRetirementsTrailer):
+			receipt.Retirements = strings.TrimPrefix(line, mergeRetirementsTrailer)
+		case strings.HasPrefix(line, mergeSuccessorsTrailer):
+			receipt.Successors = strings.TrimPrefix(line, mergeSuccessorsTrailer)
 		}
 	}
 	parents, err := git(ctx, checkout, "rev-list", "--parents", "-n", "1", head)
 	if err != nil {
-		return mergeReceipt{}, err
+		return mergeReceipt{}, false, err
 	}
 	fields := strings.Fields(parents)
-	if receipt.Approval == "" || receipt.Candidate == "" || receipt.TargetPreHead == "" || len(fields) != 3 ||
+	if receipt.Approval == "" || receipt.Candidate == "" || receipt.TargetPreHead == "" || receipt.Retirements == "" || receipt.Successors == "" || len(fields) != 3 ||
 		fields[0] != head || fields[1] != receipt.TargetPreHead || fields[2] != receipt.Candidate {
-		return mergeReceipt{}, errors.New("malformed merge receipt commit")
+		return mergeReceipt{}, false, nil
 	}
-	return receipt, nil
+	return receipt, true, nil
 }
 
+// existingGitMergeReceipt looks for a complete receipt for this approval. A
+// commit carrying the approval trailer without the rest of the receipt is an
+// older merge, not a failure: it is skipped so the durable receipt check gives
+// the already-used refusal that actually describes the situation.
 func existingGitMergeReceipt(ctx context.Context, checkout, approval string) (mergeReceipt, bool, error) {
 	heads, err := git(ctx, checkout, "log", "--all", "--fixed-strings", "--grep="+mergeApprovalTrailer+approval, "--format=%H")
 	if err != nil {
 		return mergeReceipt{}, false, err
 	}
 	for _, head := range strings.Fields(heads) {
-		receipt, err := readMergeReceipt(ctx, checkout, head)
+		receipt, ok, err := readMergeReceipt(ctx, checkout, head)
 		if err != nil {
 			return mergeReceipt{}, false, err
 		}
-		if receipt.Approval == approval {
+		if ok && receipt.Approval == approval {
 			return receipt, true, nil
 		}
 	}
@@ -697,6 +794,41 @@ func retiredBases(projection workroom.Projection, events []string) []string {
 // date, which is repair rather than deadlock. It also leaves the meaning of
 // staleness untouched at the one gate that moves main, where a proposal on
 // exactly that question is still in flight.
+// requireApprovedImplementer refuses a merge signed by anyone but the actor
+// whose approved work is landing.
+//
+// It is the same boundary the fold applies to a merge receipt, moved to where
+// it can still be obeyed. The fold refuses a receipt signed by anyone else, but
+// it only sees the receipt, and by then Git has committed and `HEAD` has moved:
+// the succession is stranded and the single-use approval is spent. Any
+// participant could do that with a public ratified approval. Checking the same
+// fingerprint before the merge begins turns an irreversible half-merge into an
+// ordinary refusal.
+//
+// Only that fingerprint, and no role. A role is live standing, and standing can
+// be revoked between this check and the acts it authorizes: while the tentative
+// merge runs, or while the succession batch appends one act at a time. The fold
+// would then refuse what this let through, after `HEAD` had already moved —
+// exactly the outcome this check exists to remove, reached by a different door.
+// The author of an approved artifact is a fact about a record that has already
+// happened, so it cannot be revoked out from under a merge in flight. A merge
+// path for anyone else needs an authorization that survives concurrent
+// revocation, and that is a design, not a clause.
+func requireApprovedImplementer(projection workroom.Projection, approvalEvent, merger string) error {
+	if merger == "" {
+		return errors.New("merge needs the signing actor's fingerprint")
+	}
+	review, found := projection.Review(approvalEvent)
+	if !found || review.Implementer == "" {
+		return errors.New("the record cannot say who implemented this approved head, so nobody may merge it on that approval")
+	}
+	if review.Implementer != merger {
+		return fmt.Errorf("merge must be signed by the actor whose approved work is landing (%s); --as names %s",
+			review.Implementer, merger)
+	}
+	return nil
+}
+
 func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent string) error {
 	if err := validateCheckout(ctx, workspace.Repo, checkout, candidate, false); err != nil {
 		return err

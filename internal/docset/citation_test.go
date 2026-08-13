@@ -52,15 +52,23 @@ func TestUnmaintainablePathNamesEveryShapeSuccessionCannotMaintain(t *testing.T)
 // workroom happens to hold on the day.
 func TestClassifyCitationSeparatesFatalFromReported(t *testing.T) {
 	for _, test := range []struct {
-		name                                string
-		found, isArtifact, retired, stale   bool
-		path, commit                        string
-		wantFatal, wantReport               bool
+		name                                         string
+		found, isArtifact, retired, succeeded, stale bool
+		path, commit                                 string
+		wantFatal, wantReport                        bool
 	}{
 		{name: "resolves to nothing", path: "internal/workroom", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a4", wantFatal: true},
 		{name: "resolves to a request", found: true, path: "internal/workroom", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a4", wantFatal: true},
-		{name: "retired artifact", found: true, isArtifact: true, retired: true, path: "internal/workroom", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a4", wantFatal: true},
+		{name: "retired artifact with no successor", found: true, isArtifact: true, retired: true, path: "internal/workroom", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a4", wantFatal: true},
 		{name: "retired outranks path", found: true, isArtifact: true, retired: true, path: ".", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a4", wantFatal: true},
+		// A merge withdraws the pointer and publishes its successor in the same
+		// act. The page has somewhere to go and the log says where, so this is
+		// the set flaring, not the set broken. Making it fatal is what left
+		// every documented-area merge with no legal move.
+		{name: "retired artifact with a recorded successor", found: true, isArtifact: true, retired: true, succeeded: true, path: "internal/workroom", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a4", wantReport: true},
+		{name: "a successor cannot rescue an unmaintainable path", found: true, isArtifact: true, retired: true, succeeded: true, path: ".", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a4", wantFatal: true},
+		{name: "a successor cannot rescue an abbreviated commit", found: true, isArtifact: true, retired: true, succeeded: true, path: "internal/workroom", commit: "c0c70300", wantFatal: true},
+		{name: "a successor means nothing on a citation that is not an artifact", found: true, succeeded: true, path: "internal/workroom", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a4", wantFatal: true},
 		{name: "whole-repository path", found: true, isArtifact: true, path: ".", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a4", wantFatal: true},
 		{name: "comma-joined path", found: true, isArtifact: true, path: "a,b", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a4", wantFatal: true},
 		{name: "absolute path", found: true, isArtifact: true, path: "/Users/x/repo", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a4", wantFatal: true},
@@ -79,7 +87,7 @@ func TestClassifyCitationSeparatesFatalFromReported(t *testing.T) {
 		{name: "sha256 commit is canonical", found: true, isArtifact: true, path: "internal/nexus", commit: "0f9b257884bb5d39b445d0411c89338f1dc892a40f9b257884bb5d39b445d041"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			got := ClassifyCitation(test.found, test.isArtifact, test.retired, test.stale, test.path, test.commit)
+			got := ClassifyCitation(test.found, test.isArtifact, test.retired, test.succeeded, test.stale, test.path, test.commit)
 			if got.Fatal != test.wantFatal || got.Report != test.wantReport {
 				t.Fatalf("ClassifyCitation() = %+v, want fatal=%v report=%v", got, test.wantFatal, test.wantReport)
 			}
@@ -96,7 +104,7 @@ func TestClassifyCitationSeparatesFatalFromReported(t *testing.T) {
 // stale to fatal would redden the entire set for behaving as designed.
 func TestStaleNeverFailsOnAMaintainablePath(t *testing.T) {
 	for _, path := range []string{"internal/workroom", "cmd/gs", "ui", "internal/app"} {
-		got := ClassifyCitation(true, true, false, true, path, "0f9b257884bb5d39b445d0411c89338f1dc892a4")
+		got := ClassifyCitation(true, true, false, false, true, path, "0f9b257884bb5d39b445d0411c89338f1dc892a4")
 		if got.Fatal {
 			t.Errorf("ClassifyCitation(stale at %q) is fatal; staleness is the set working, not failing", path)
 		}

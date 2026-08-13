@@ -800,8 +800,8 @@ func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, ki
 // git grep rather than a walk, because tracked is the question. An untracked
 // working copy of a page is not what the gate reads, and a page that git does
 // not know about cannot break anyone else.
-func (w *Workspace) citingDocuments(ctx context.Context, event string) []string {
-	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", w.Repo,
+func (w *Workspace) citingDocuments(ctx context.Context, repo, event string) []string {
+	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", repo,
 		"grep", "--name-only", "--fixed-strings", event, "--", "*.md").Output()
 	if err != nil {
 		// git grep exits non-zero when it matches nothing, which is the
@@ -824,10 +824,17 @@ func (w *Workspace) citingDocuments(ctx context.Context, event string) []string 
 // surface can skip it; `gs batch` also calls it ahead of its first append, so
 // a batch that cannot land cleanly lands nothing rather than stopping halfway.
 func (w *Workspace) RefuseCitedRetirement(ctx context.Context, target string, allowed bool) error {
+	return w.RefuseCitedRetirementInCheckout(ctx, w.Repo, target, allowed)
+}
+
+// RefuseCitedRetirementInCheckout evaluates the tracked tree which will
+// actually receive a merge. Linked worktrees may legitimately add or remove a
+// citation independently of Workspace.Repo before their candidate lands.
+func (w *Workspace) RefuseCitedRetirementInCheckout(ctx context.Context, checkout, target string, allowed bool) error {
 	if allowed || strings.TrimSpace(target) == "" {
 		return nil
 	}
-	pages := w.citingDocuments(ctx, target)
+	pages := w.citingDocuments(ctx, checkout, target)
 	if len(pages) == 0 {
 		return nil
 	}
@@ -943,6 +950,39 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 		resultErr = errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
 		return Submission{}, resultErr
 	}
+	decodedIntent, err := intent.Verify(request.Signed)
+	if err != nil {
+		resultErr = err
+		return Submission{}, err
+	}
+	// The fold keeps state@0 readable so historical decisions do not change,
+	// but admission must not let a new raw submission use that schema to evade
+	// state@1's artifact-path rules.
+	if decodedIntent.Schema == workroom.SchemaStateLegacy {
+		decoded, decodeErr := workroom.Decode(decodedIntent.Schema, request.Payload)
+		if decodeErr != nil {
+			resultErr = decodeErr
+			return Submission{}, decodeErr
+		}
+		if state, ok := decoded.(*workroom.State); ok {
+			snapshot, snapshotErr := w.Snapshot(ctx)
+			if snapshotErr != nil {
+				resultErr = snapshotErr
+				return Submission{}, snapshotErr
+			}
+			artifactKind := false
+			for _, definition := range snapshot.Vocabulary.Definitions {
+				if definition.Name == state.Kind && definition.Render == workroom.RenderArtifact {
+					artifactKind = true
+					break
+				}
+			}
+			if artifactKind && (state.Body["path"] == "." || strings.Contains(state.Body["path"], ",")) {
+				resultErr = errors.New("legacy state schema cannot admit an unmaintainable artifact path")
+				return Submission{}, resultErr
+			}
+		}
+	}
 	w.submitterOnce.Do(func() {
 		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{
 			SigningKey: w.Config.SequencerKey, CheckpointProfile: workroom.ProfileVersion, PreAppend: w.allowlist,
@@ -957,14 +997,9 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 	if w.observer != nil {
 		w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationSubmit, Path: observe.PathRef, Outcome: observe.OutcomeOK, Items: int64(result.CASRetries)})
 	}
-	decoded, err := intent.Verify(request.Signed)
-	if err != nil {
-		resultErr = err
-		return Submission{}, err
-	}
 	record := workroom.Record{
 		ID: w.EventID(result.Commit), Timestamp: result.Timestamp, Actor: intent.ActorFingerprint(request.Signed.ActorKey),
-		Schema: decoded.Schema, RestsOn: append([]string(nil), decoded.RestsOn...),
+		Schema: decodedIntent.Schema, RestsOn: append([]string(nil), decodedIntent.RestsOn...),
 		Payload: append([]byte(nil), request.Payload...), Attachments: cloneAttachments(request.Attachments),
 	}
 	w.acceptSnapshot(result, record)

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -580,9 +581,9 @@ func TestMergeGuardMergesOnlyRatifiedApprovedExactHead(t *testing.T) {
 	if output, err := exec.Command("git", "-C", fixture.repo, "merge-base", "--is-ancestor", fixture.candidate, "HEAD").CombinedOutput(); err != nil {
 		t.Fatalf("approved candidate was not merged: %v: %s", err, output)
 	}
-	receipt, err := readMergeReceipt(fixture.ctx, fixture.repo, mergeHead)
-	if err != nil {
-		t.Fatal(err)
+	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, mergeHead)
+	if err != nil || !ok {
+		t.Fatalf("merge head is not a receipt commit: ok=%v err=%v", ok, err)
 	}
 	if receipt.Approval != approval || receipt.Candidate != fixture.candidate || receipt.TargetPreHead != targetPreHead || receipt.MergeHead != mergeHead {
 		t.Fatalf("merge receipt = %+v", receipt)
@@ -599,6 +600,364 @@ func TestMergeGuardMergesOnlyRatifiedApprovedExactHead(t *testing.T) {
 	if durable.Event == "" || durable.Body["merge_candidate"] != fixture.candidate ||
 		durable.Body["merge_target_pre_head"] != targetPreHead || durable.Body["merge_head"] != mergeHead {
 		t.Fatalf("durable merge receipt = %+v", durable)
+	}
+	projection := fixture.snapshot(t).Projection
+	if predecessor := artifactByEvent(t, projection, fixture.artifact); !predecessor.Retired {
+		t.Fatal("merge left the covered predecessor live")
+	}
+	live := 0
+	for _, artifact := range projection.Artifacts {
+		if artifact.Path == "feature.txt" && !artifact.Retired {
+			live++
+			if artifact.Commit != mergeHead {
+				t.Fatalf("live successor commit = %s, want merge head %s", artifact.Commit, mergeHead)
+			}
+		}
+	}
+	if live != 1 {
+		t.Fatalf("live artifacts at feature.txt = %d, want exactly one", live)
+	}
+}
+
+func TestMergeLeavesAnUnrelatedCandidateArtifactLive(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	otherCheckout := filepath.Join(filepath.Dir(fixture.repo), "other-feature")
+	testGit(t, fixture.repo, "worktree", "add", "-b", "other-feature", otherCheckout)
+	if err := os.WriteFile(filepath.Join(otherCheckout, "feature.txt"), []byte("unrelated candidate\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, otherCheckout, "add", "feature.txt")
+	testGit(t, otherCheckout, "commit", "-m", "unrelated candidate at the same artifact path")
+	otherHead := testGit(t, otherCheckout, "rev-parse", "HEAD")
+	unrelated, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "unrelated candidate still under review",
+		Body:    map[string]string{"path": "feature.txt", "commit": otherHead},
+		RestsOn: []string{fixture.workspace.EventID(fixture.workspace.Config.Genesis)}, IdempotencyKey: "unrelated-candidate",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Merge one candidate without withdrawing another proposed world.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	projection := fixture.snapshot(t).Projection
+	if artifactByEvent(t, projection, unrelated.Record.ID).Retired {
+		t.Fatal("merge retired an unrelated unmerged candidate artifact")
+	}
+	if !artifactByEvent(t, projection, fixture.artifact).Retired {
+		t.Fatal("merge did not retire the exact reviewed candidate artifact")
+	}
+}
+
+// The deadlock this repository actually hit. Documentation names the exact
+// artifacts a merge must retire — that is what `rests_on` is for — so refusing
+// every cited retirement refused every documented-area merge, and the advice to
+// repoint the pages first was unsatisfiable because the successor does not
+// exist until the merge lands. A retirement this same merge succeeds must
+// therefore go through, and the pages that named it flare rather than break.
+func TestMergeLandsWhenTheCitedPredecessorGetsASuccessor(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	writeCitingPage(t, fixture.repo, "docs/reference/feature.md", fixture.artifact)
+	testGit(t, fixture.repo, "commit", "-m", "cite the live feature artifact")
+	before := testGit(t, fixture.repo, "rev-parse", "HEAD")
+
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Land the approved feature while a page still cites its predecessor.",
+	}); err != nil {
+		t.Fatalf("cited predecessor with a successor was refused: %v", err)
+	}
+	mergeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	if mergeHead == before {
+		t.Fatal("merge reported success without moving the target")
+	}
+	projection := fixture.snapshot(t).Projection
+	if !artifactByEvent(t, projection, fixture.artifact).Retired {
+		t.Fatal("merge left the cited predecessor live")
+	}
+	// The citation is preserved because the retirement says where the behaviour
+	// went: a successor at the same path, named by the supersession itself.
+	successor := ""
+	for _, artifact := range projection.Artifacts {
+		if artifact.Path == "feature.txt" && artifact.Commit == mergeHead && !artifact.Retired {
+			successor = artifact.Event
+		}
+	}
+	if successor == "" {
+		t.Fatal("merge retired the cited predecessor without publishing a successor at its path")
+	}
+	retirement := ""
+	for _, act := range projection.Acts {
+		if act.Type == "supersede" && act.Target == fixture.artifact && act.Verdict == workroom.Effective {
+			retirement = act.Event
+		}
+	}
+	if retirement == "" {
+		t.Fatal("no effective supersession retired the cited predecessor")
+	}
+	if !slices.Contains(projection.Provenance[retirement], successor) {
+		t.Fatalf("retirement %s does not name the successor %s, so a page citing the predecessor has nowhere to go",
+			retirement, successor)
+	}
+}
+
+// A ratified approval is public, so anyone can read one and call `gs merge`
+// with it. The fold refuses the receipt that comes out — but it only ever sees
+// the receipt, which is written after Git has committed. So the wrong signer
+// moved the target, spent the single-use approval, and stranded the succession,
+// and every check that reported the error had already let it happen. The
+// signer is now part of what is validated before the merge begins.
+func TestMergeRefusesASignerWhoDidNotDoTheApprovedWork(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	before := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	beforeDepth := fixture.snapshot(t).Depth
+
+	// The reviewer is a bare participant: independent enough to approve this
+	// head, and with no part in making it.
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "reviewer", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "A participant who did not do the work must not consume this approval.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "approved work is landing") {
+		t.Fatalf("merge signed by a non-implementer error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != before {
+		t.Fatalf("refused merge moved the target to %s, want %s", got, before)
+	}
+	if _, err := git(fixture.ctx, fixture.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
+		t.Fatal("refused merge left a receipt reservation, so the approval is spent")
+	}
+	if after := fixture.snapshot(t); after.Depth != beforeDepth {
+		t.Fatalf("refused merge appended %d durable record(s)", after.Depth-beforeDepth)
+	}
+	// The approval is untouched, so the actor whose work it is can still land it.
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Land the approved feature and make it available on main.",
+	}); err != nil {
+		t.Fatalf("the implementer could not merge after the refusal: %v", err)
+	}
+}
+
+// The rule itself, across the cases a single fixture cannot reach. One
+// fingerprint admits a merge: the author of the approved artifact. A role does
+// not, however senior — standing is live and can be revoked between this check
+// and the acts it would authorize, and the fold judges those acts after `HEAD`
+// has moved, so a role here is authority that may not survive the merge it
+// allowed. The author of a record that already happened cannot be revoked.
+func TestMergeAuthoritySignerIsExactlyTheApprovedImplementer(t *testing.T) {
+	projection := workroom.Projection{
+		Reviews: []workroom.Review{{Report: "approval", Implementer: "implementer",
+			Independence: workroom.IndependenceIndependent}},
+		Actors: map[string]workroom.ActorState{
+			"implementer": {Name: "implementer", Roles: []string{"participant"}},
+			"stranger":    {Name: "stranger", Roles: []string{"participant"}},
+			"keeper":      {Name: "keeper", Roles: []string{"participant", "ratifier"}},
+		},
+	}
+	if err := requireApprovedImplementer(projection, "approval", "implementer"); err != nil {
+		t.Errorf("merge signed by the approved implementer was refused: %v", err)
+	}
+	for _, merger := range []string{"stranger", "keeper"} {
+		if err := requireApprovedImplementer(projection, "approval", merger); err == nil ||
+			!strings.Contains(err.Error(), "approved work is landing") {
+			t.Errorf("merge signed by %s error = %v, want a refusal", merger, err)
+		}
+	}
+	if err := requireApprovedImplementer(projection, "approval", ""); err == nil {
+		t.Error("merge with no signing fingerprint was allowed")
+	}
+	if err := requireApprovedImplementer(projection, "unresolved", "implementer"); err == nil ||
+		!strings.Contains(err.Error(), "cannot say who implemented") {
+		t.Errorf("merge on an approval with no projected review error = %v", err)
+	}
+}
+
+// The other half of the same rule, and the reason it is not a bypass. A
+// deletion retires a pointer and puts nothing in its place, so a page naming it
+// really is left pointing at a hole. That refusal still runs before `HEAD`
+// moves and still leaves no reservation behind.
+func TestMergeBareRetirementOfACitedPredecessorLeavesTargetUnchanged(t *testing.T) {
+	fixture := newWorkflowFixtureRemoving(t, true)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	writeCitingPage(t, fixture.repo, "docs/reference/base.md", fixture.ground)
+	testGit(t, fixture.repo, "commit", "-m", "cite the live base artifact")
+	before := testGit(t, fixture.repo, "rev-parse", "HEAD")
+
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "This merge must be refused before it changes the target.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "docs/reference/base.md") {
+		t.Fatalf("cited bare retirement merge error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != before {
+		t.Fatalf("refused merge moved target to %s, want %s", got, before)
+	}
+	if _, err := git(fixture.ctx, fixture.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
+		t.Fatal("refused merge left a receipt reservation")
+	}
+}
+
+// The preflight replayed on its own, the way the review that found the deadlock
+// replayed it: the real citing checkout, and the three plan shapes that decide
+// the outcome.
+func TestMergePreflightSeparatesSucceededRetirementFromOrphaning(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	writeCitingPage(t, fixture.repo, "docs/reference/feature.md", fixture.artifact)
+	testGit(t, fixture.repo, "commit", "-m", "cite the live feature artifact")
+
+	succeeded := successionPlan{publish: []string{"feature.txt"},
+		retire: map[string]string{fixture.artifact: "feature.txt"}}
+	if err := preflightSuccession(fixture.ctx, fixture.workspace, fixture.repo, succeeded); err != nil {
+		t.Fatalf("succeeded retirement of a cited predecessor was refused: %v", err)
+	}
+	wider := successionPlan{publish: []string{"docs"},
+		retire: map[string]string{fixture.artifact: "docs"}}
+	if err := preflightSuccession(fixture.ctx, fixture.workspace, fixture.repo, wider); err != nil {
+		t.Fatalf("succession to a covering directory was refused: %v", err)
+	}
+	bare := successionPlan{retire: map[string]string{fixture.artifact: ""}}
+	if err := preflightSuccession(fixture.ctx, fixture.workspace, fixture.repo, bare); err == nil ||
+		!strings.Contains(err.Error(), "docs/reference/feature.md") {
+		t.Fatalf("bare retirement of a cited predecessor error = %v", err)
+	}
+	unpublished := successionPlan{publish: []string{"docs"},
+		retire: map[string]string{fixture.artifact: "feature.txt"}}
+	if err := preflightSuccession(fixture.ctx, fixture.workspace, fixture.repo, unpublished); err == nil ||
+		!strings.Contains(err.Error(), "does not publish") {
+		t.Fatalf("successor this merge never publishes error = %v", err)
+	}
+}
+
+func TestMergeRetryResumesPartlyLandedSuccessionWithoutRemerging(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	targetPreHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	changes, err := mergeChangesBetween(fixture.ctx, fixture.repo, targetPreHead, fixture.candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := fixture.snapshot(t)
+	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, targetPreHead, fixture.candidate)
+	message, err := mergeReceiptMessage("Merge the approved feature.", approval, fixture.candidate, targetPreHead, planSuccession(snapshot.Projection, changes, predecessors))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, fixture.repo, "merge", "--no-ff", "-m", message, fixture.candidate)
+	mergeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	testGit(t, fixture.repo, "update-ref", mergeReceiptRef(approval), mergeHead, "")
+
+	changes, err = mergeChanges(fixture.ctx, fixture.repo, mergeHead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot = fixture.snapshot(t)
+	predecessors = successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, targetPreHead, fixture.candidate)
+	plan := planSuccession(snapshot.Projection, changes, predecessors)
+	acts := successionActs(approval, fixture.candidate, targetPreHead, mergeHead, plan)
+	if len(acts) < 3 {
+		t.Fatalf("succession acts = %d, want receipt, successor, and retirement", len(acts))
+	}
+	_, private, err := fixture.workspace.Actor("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	partial, err := runBatch(fixture.ctx, fixture.workspace, "", "operator", private, acts[:2], false)
+	if err != nil || partial.Landed != 2 {
+		t.Fatalf("partial succession = %+v, %v", partial, err)
+	}
+	beforeRetry := fixture.snapshot(t).Depth
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Resume the already-landed merge succession.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != mergeHead {
+		t.Fatalf("retry re-merged or moved HEAD to %s, want %s", got, mergeHead)
+	}
+	after := fixture.snapshot(t)
+	if after.Depth != beforeRetry+1 {
+		t.Fatalf("retry depth = %d, want %d: only the missing retirement should land", after.Depth, beforeRetry+1)
+	}
+	if !artifactByEvent(t, after.Projection, fixture.artifact).Retired {
+		t.Fatal("retry did not finish predecessor retirement")
+	}
+}
+
+// A merge commit is the first irreversible boundary. If the process stops
+// before its durable receipt lands, retry must recover the exact succession
+// plan sealed into that commit rather than planning again from a later
+// projection. Otherwise an artifact filed after the merge could be retired by
+// a plan nobody reviewed before HEAD moved.
+func TestMergeRetryBeforeDurableReceiptUsesTheSealedGitPlan(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	targetPreHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	changes, err := mergeChangesBetween(fixture.ctx, fixture.repo, targetPreHead, fixture.candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := fixture.snapshot(t)
+	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, targetPreHead, fixture.candidate)
+	sealed := planSuccession(snapshot.Projection, changes, predecessors)
+	message, err := mergeReceiptMessage("Merge the approved feature.", approval, fixture.candidate, targetPreHead, sealed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, fixture.repo, "merge", "--no-ff", "-m", message, fixture.candidate)
+	mergeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	testGit(t, fixture.repo, "update-ref", mergeReceiptRef(approval), mergeHead, "")
+
+	// This statement did not exist when the merge plan was checked and sealed.
+	// Replanning now would incorrectly add it to the retirement set.
+	later, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "artifact filed after the Git merge",
+		Body:    map[string]string{"path": "feature.txt", "commit": mergeHead},
+		RestsOn: []string{fixture.artifact}, IdempotencyKey: "post-merge-artifact",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Resume after Git committed but before the durable receipt.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != mergeHead {
+		t.Fatalf("retry re-merged or moved HEAD to %s, want %s", got, mergeHead)
+	}
+	snapshot = fixture.snapshot(t)
+	if !artifactByEvent(t, snapshot.Projection, fixture.artifact).Retired {
+		t.Fatal("pre-merge predecessor from the sealed plan remains live")
+	}
+	if artifactByEvent(t, snapshot.Projection, later.Record.ID).Retired {
+		t.Fatal("post-merge artifact was retroactively added to the sealed retirement plan")
+	}
+	if !artifactByEvent(t, snapshot.Projection, later.Record.ID).Stale {
+		t.Fatal("post-merge descendant did not flare when its predecessor retired")
 	}
 }
 
@@ -1228,6 +1587,14 @@ type workflowFixture struct {
 }
 
 func newWorkflowFixture(t *testing.T) workflowFixture {
+	return newWorkflowFixtureRemoving(t, false)
+}
+
+// newWorkflowFixtureRemoving optionally makes the candidate delete the base
+// file as well as adding the feature file. A deletion is the one change that
+// produces a retirement with no successor, which is the case merge succession
+// still refuses to force through a citation.
+func newWorkflowFixtureRemoving(t *testing.T, removeBase bool) workflowFixture {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -1253,6 +1620,9 @@ func newWorkflowFixture(t *testing.T) workflowFixture {
 		t.Fatal(err)
 	}
 	testGit(t, feature, "add", "feature.txt")
+	if removeBase {
+		testGit(t, feature, "rm", "-q", "base.txt")
+	}
 	testGit(t, feature, "commit", "-m", "feature")
 	candidate := testGit(t, feature, "rev-parse", "HEAD")
 	// The feature stands on the base of the repository, exactly as ordinary
@@ -1260,7 +1630,7 @@ func newWorkflowFixture(t *testing.T) workflowFixture {
 	// test moves the world without touching the feature commit.
 	groundSubmission, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "repository base",
-		Body:    map[string]string{"path": ".", "commit": testGit(t, repo, "rev-parse", "HEAD")},
+		Body:    map[string]string{"path": "base.txt", "commit": testGit(t, repo, "rev-parse", "HEAD")},
 		RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "ground",
 	})
 	if err != nil {
@@ -1268,7 +1638,7 @@ func newWorkflowFixture(t *testing.T) workflowFixture {
 	}
 	artifactSubmission, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "feature artifact",
-		Body:    map[string]string{"path": feature, "commit": candidate},
+		Body:    map[string]string{"path": "feature.txt", "commit": candidate},
 		RestsOn: []string{groundSubmission.Record.ID}, IdempotencyKey: "artifact",
 	})
 	if err != nil {
@@ -1580,7 +1950,7 @@ func TestReviewGuardRefusesVerdictOnTheReviewersOwnArtifact(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	own, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "the reviewer's own implementation",
-		Body:    map[string]string{"path": fixture.feature, "commit": fixture.candidate},
+		Body:    map[string]string{"path": "feature.txt", "commit": fixture.candidate},
 		RestsOn: []string{fixture.request}, IdempotencyKey: "self-artifact",
 	})
 	if err != nil {
@@ -1606,7 +1976,7 @@ func TestMergeGuardRefusesApprovalSignedByTheImplementer(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	own, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "the reviewer's own implementation",
-		Body:    map[string]string{"path": fixture.feature, "commit": fixture.candidate},
+		Body:    map[string]string{"path": "feature.txt", "commit": fixture.candidate},
 		RestsOn: []string{fixture.request}, IdempotencyKey: "self-artifact",
 	})
 	if err != nil {

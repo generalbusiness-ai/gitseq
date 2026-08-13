@@ -84,11 +84,12 @@ func currentCitations(t *testing.T) (map[string]BaselineEntry, int, error) {
 	for _, artifact := range snapshot.Projection.Artifacts {
 		artifacts[artifact.Event] = artifact
 	}
+	succeeded := SucceededRetirements(snapshot.Projection)
 	failing := make(map[string]BaselineEntry)
 	for _, act := range acts {
 		kind, found := kinds[act]
 		artifact := artifacts[act]
-		verdict := ClassifyCitation(found, kind == workroom.KindArtifact, artifact.Retired, artifact.Stale, artifact.Path, artifact.Commit)
+		verdict := ClassifyCitation(found, kind == workroom.KindArtifact, artifact.Retired, succeeded[act], artifact.Stale, artifact.Path, artifact.Commit)
 		if verdict.Fatal {
 			pages := dependents(pages, act)
 			sort.Strings(pages)

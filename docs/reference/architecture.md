@@ -165,7 +165,10 @@ fold, or UI expectations.
 - ratification and supersession rules;
 - path-at-commit artifact statements, retirement, succession, reviews, and
   staleness;
-- guarded review and merge conventions;
+- guarded review and merge semantics, including the merge receipt that lets the
+  implementer of an approved head retire another actor's predecessors only on
+  the path lineage of the artifact that approval names, since the fold is pure
+  over records and can verify no merge head, diff, or tree;
 - Workroom MCP tools and their application meanings;
 - the agent practice in `SKILL.md`;
 - connector clauses and observations; and
@@ -177,6 +180,13 @@ decodes a Workroom state event, recognizes its governed `artifact` kind, and
 projects `path@commit`, retirement, succession, and staleness. Another
 application may have no artifacts or may define a different concept under a
 different schema family.
+
+Workroom state schemas are prospectively versioned when admission tightens.
+`workroom/state@0` remains readable with the decisions it historically made;
+`workroom/state@1` refuses whole-repository and comma-joined artifact paths.
+This preserves the append-only record while preventing new pointers that
+merge succession cannot maintain. The schema version is Workroom application
+meaning, not a kernel protocol feature.
 
 ### 5. Projections and queries
 
@@ -250,7 +260,7 @@ the same result.
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it builds Workroom payloads and signed kernel requests, applies application admission, reads kernel events, and runs the Workroom fold. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, and live state. |
-| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. Command grouping must not move Workroom concepts into the kernel packages. |
+| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff and composes the Workroom receipt, successor artifacts, and retirements; Git remains outside the Workroom interpreter. Command grouping must not move Workroom concepts into the kernel packages. |
 | `cmd/gitseq-mcp` | Surface | Adapts MCP calls to Workroom and nexus operations. Protocol compatibility and fold compatibility are separate. |
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |
