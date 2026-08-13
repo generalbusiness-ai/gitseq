@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged exact full-fingerprint live-session aggregate with unchanged session binding.","body":{"commit":"50ebdead03484ba7e89dba964ad8107bc1f00c45","path":"internal/nexus"}}
+{"kind":"artifact","text":"Merged aggregate-only presence-count service boundary.","body":{"commit":"50ebdead03484ba7e89dba964ad8107bc1f00c45","path":"internal/service"}}
