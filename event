@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd97fd0687e5275900ef52d8057e5267e96a4923","text":"The cmd/gs candidate at ec453b92 is withdrawn; the successor at the same path is the candidate at 1994bd7d, which removes the ratifier clause review e9c766da refused."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:00c87d2fc7d2333da1c9675f8df47ae3e06b8b96","text":"The docs candidate at ec453b92 is withdrawn; the successor at the same path is the candidate at 1994bd7d, where the merge page no longer claims the ratifier exception."}
