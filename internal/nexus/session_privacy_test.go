@@ -171,6 +171,23 @@ func TestALiveSessionCannotBeReboundToAnotherActor(t *testing.T) {
 	}
 }
 
+func TestLiveSessionCountUsesTheFullFingerprint(t *testing.T) {
+	h := hub(t)
+	sharedPrefix := strings.Repeat("a", 12)
+	if _, err := h.AnnounceSessionIdentity("mcp:one", "alias-one", sharedPrefix+"1", "one", time.Minute, ActivityUpdate{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.AnnounceSessionIdentity("mcp:two", "alias-two", sharedPrefix+"2", "two", time.Minute, ActivityUpdate{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.LiveSessionsForActor(sharedPrefix + "1"); got != 1 {
+		t.Fatalf("sessions for the first full fingerprint = %d, want 1", got)
+	}
+	if got := h.LiveSessionsForActor(sharedPrefix); got != 0 {
+		t.Fatalf("a fingerprint prefix matched %d sessions", got)
+	}
+}
+
 func sum(text string) []byte {
 	digest := sha256.Sum256([]byte(text))
 	return digest[:]

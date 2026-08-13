@@ -101,6 +101,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v0/wait", s.handleWait)
 	s.mux.HandleFunc("POST /v0/submit", s.handleSubmit)
 	s.mux.HandleFunc("GET /v0/presence", s.handlePresence)
+	s.mux.HandleFunc("GET /v0/presence-count", s.handlePresenceCount)
 	s.mux.HandleFunc("GET /v0/rebuild", s.handleRebuild)
 	s.mux.HandleFunc("POST /v0/presence", s.handleAnnounce)
 	s.mux.HandleFunc("DELETE /v0/presence/{session}", s.handleDepart)
@@ -318,6 +319,19 @@ func (s *Server) handleSubmit(writer http.ResponseWriter, request *http.Request)
 
 func (s *Server) handlePresence(writer http.ResponseWriter, _ *http.Request) {
 	write(writer, s.liveSnapshot(), nil)
+}
+
+// handlePresenceCount exposes the one fact an adapter needs before joining:
+// how many live leases already use its exact durable actor fingerprint. The
+// resident resolves the local actor name so neither private session IDs nor
+// public handles cross this boundary.
+func (s *Server) handlePresenceCount(writer http.ResponseWriter, request *http.Request) {
+	actor, _, err := s.workspace.Actor(request.URL.Query().Get("actor"))
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	write(writer, map[string]int{"count": s.hub.LiveSessionsForActor(actor.Fingerprint)}, nil)
 }
 
 // rebuildReport says whether a cold verified rebuild is running and how far it

@@ -29,10 +29,17 @@ gitseq-mcp --actor bot
 
 There is no default actor name. When `--actor` is absent the adapter
 reads the `GITSEQ_ACTOR` environment variable, and refuses to start if
-neither names an identity — a copied setup can never silently attribute
-one instance's work to a name that several instances share. Provision
-each concurrent instance its own identity and set `GITSEQ_ACTOR` in
-that instance's environment.
+neither names an identity.
+
+More than one session may deliberately use the same actor. Durable records
+attribute their work to that actor's fingerprint, not to an individual client
+session. The adapter therefore allows the attachment, but prints a warning
+naming how many other sessions are live. Reviews between those sessions carry
+no independent force because review independence is enforced by fingerprint,
+and the sessions can race on claims and leased presence. Give concurrent loops
+distinct actors only when they need independent authority or review; a second
+device, a planner and worker acting as one principal, or a replacement process
+during the prior session's 30-second lease may reuse the actor intentionally.
 
 Register it **once**. The repository is a parameter of the call, not of
 the installation: a call with no `repo` acts in the working directory the

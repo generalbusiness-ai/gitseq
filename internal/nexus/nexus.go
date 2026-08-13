@@ -552,6 +552,23 @@ func (h *Hub) SessionActor(id string) (string, bool) {
 	return entry.actor, exists && entry.actor != ""
 }
 
+// LiveSessionsForActor reports how many unexpired leases belong to one exact
+// durable actor. It deliberately returns only an aggregate: callers do not
+// receive the private session identifiers or the public handles minted for
+// those leases.
+func (h *Hub) LiveSessionsForActor(fingerprint string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+	held := 0
+	for _, entry := range h.presence {
+		if entry.fingerprint == fingerprint {
+			held++
+		}
+	}
+	return held
+}
+
 // EnableInbox opts one exact live lease into addressed delivery. Presence by
 // itself is intentionally insufficient: browser and older adapter sessions do
 // not have the private status/wait/ack protocol needed to consume an inbox.
