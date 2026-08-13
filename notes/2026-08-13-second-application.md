@@ -13,7 +13,7 @@ keeps unknown kinds opaque for exactly this reason. Nothing exercises the
 promise yet. Chess is the first test that the seam is real: if building it
 requires touching `internal/kernel`, that is a finding, not a task.
 
-## Three decisions
+## The core decisions
 
 **One repository, one application, bound at init.** A repository declares its
 application once, in the bootstrap records at the head of the sequence, where
@@ -174,20 +174,19 @@ Persistent identity is **anchoring as attestation evidence**, the pattern
 the deployment note's R7 already defines for `github=<handle>`, with
 stronger mechanics. A join or roster statement may carry an attestation: a
 persistent root identity's signature over the actor key, the genesis, a
-scope, and an expiry. The application layer verifies the attestation; the
-kernel never learns any of this; revocation is expiry plus a superseding
-statement — succession, the grammar the system already runs on, so a
-revoked key is provable from the log.
+scope, and an expiry. The application layer verifies the attestation;
+revocation is expiry plus a superseding statement — succession, the
+grammar the system already runs on, so a revoked key is provable from the
+log.
 
-The first anchor is Nostr, because its ecosystem is deployed today:
-NIP-07 browser extensions hold the user's persistent key and sign the
-attestation in one prompt; NIP-05 gives display names; NIP-46 remote
-signers cover users whose root key lives off-device; and the attestation
-itself is NIP-26-shaped — a delegation token with conditions and expiry.
-Nostr keys are secp256k1, and that curve stays out of the kernel: the
-Schnorr verification happens in application evidence-checking only. GitHub
-signing keys remain the parallel anchor for developer populations, as R7
-states.
+The first user-held-key anchor is Nostr, because its ecosystem is deployed
+today: NIP-07 browser extensions hold the user's persistent key and sign
+the attestation in one prompt, NIP-05 gives display names, and the
+attestation is NIP-26-shaped — a delegation token with conditions and
+expiry — so aligning with that ecosystem costs nothing. Nostr keys are
+secp256k1, and that curve stays out of the kernel: Schnorr verification
+happens in application evidence-checking only. GitHub signing keys remain
+the parallel anchor for developer populations, as R7 states.
 
 "Log in with GitHub"-style OIDC is the third anchor, and the
 lowest-friction one, with an honestly weaker guarantee. In OIDC the user
@@ -195,9 +194,14 @@ authenticates at the provider and the provider hands the deployment a
 short-lived signed token asserting the account name; the user holds no
 signing key of their own — the provider does. The provider's token is
 audience-bound and expiring, so it cannot itself be the attestation in the
-log. Instead the deployment verifies the token and its own attestor key
-signs the binding — `github:<handle>` to this actor key, scope, expiry —
-as evidence in the join statement. The difference from the Nostr anchor is
+log. Instead the deployment verifies the token and signs the binding —
+`github:<handle>` to this actor key, scope, expiry — with an ordinary
+actor key of its own, and the player's join statement carries that signed
+binding as evidence. Witnessing invents no new kind of key: the deployment
+is just an actor whose word a reader weighs. It does mean a witnessing
+deployment holds this actor key alongside the sequencer key, and an OIDC
+provider registration with its client secret besides; a deployment that
+skips the OIDC anchor stays at one secret. The difference from the Nostr anchor is
 who vouches: a Nostr attestation is self-signed by the user's root key and
 verifiable offline by anyone forever; an OIDC attestation is witnessed —
 the deployment's attestor says the provider said so — and is only as good
@@ -249,7 +253,9 @@ cannot be walked in the reviewer's head, step by step, is a finding.
   thing to measure.
 - **Deployer.** Clone the application repository, set the sequencer-key
   secret, launch on a container host, share the URL. The budget is one
-  secret and one command after clone.
+  secret and one command after clone. Enabling the OIDC anchor honestly
+  costs more: a provider app registration, its client secret, and the
+  deployment's witnessing actor key.
 - **Self-hoster.** Install the binary, `gs init --app` against the pinned
   application commit, play on loopback. This is also the acceptance path.
 
