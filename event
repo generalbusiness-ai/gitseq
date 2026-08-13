@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Final checkpoint operator controls candidate at exact head 7a9e94db: gs checkpoint-clear clears both persistent selectors and reports the affected genesis.","body":{"commit":"7a9e94db9a95c0b00df932fa2d4d878764f0ff29","path":"cmd/gs"}}
+{"kind":"artifact","text":"Final checkpoint architecture and operator documentation candidate at exact head 7a9e94db: live implementation citations, host/kernel boundary, selector roles, GC reachability, invalidation, and off switch.","body":{"commit":"7a9e94db9a95c0b00df932fa2d4d878764f0ff29","path":"docs"}}
