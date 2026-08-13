@@ -43,7 +43,8 @@ per ISO 24495-1, for a technical audience.
    and reports `approved` or
    `changes-requested`; the review requester ratifies that report. Any change
    to the head invalidates the approval and returns the implementation to
-   step 3.
+   step 3. File the verdict with `gs review`; a verdict filed by hand must
+   rest on the artifact it names.
 
    Before approval, every implementation review records three conclusions:
 
