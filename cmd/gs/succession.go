@@ -280,14 +280,9 @@ func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, pla
 	if actor == "" {
 		return errors.New("merge succession needs the merging actor's fingerprint")
 	}
-	approvedPath := ""
-	for _, statement := range projection.Statements {
-		if statement.Event == approval {
-			approvedPath = artifactPath(projection, statement.Body["artifact"])
-		}
-	}
-	if approvedPath == "" {
-		return fmt.Errorf("approval %s names no artifact path, so it bounds no retirement", approval)
+	reviewed := reviewedPaths(projection, approval)
+	if len(reviewed) == 0 {
+		return fmt.Errorf("approval %s puts no artifact path within reach, so it bounds no retirement", approval)
 	}
 	authors := make(map[string]string, len(projection.Statements))
 	for _, statement := range projection.Statements {
@@ -300,13 +295,70 @@ func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, pla
 	sort.Strings(targets)
 	for _, target := range targets {
 		path := artifactPath(projection, target)
-		if authors[target] == actor || sameTreeLineage(approvedPath, path) {
+		if authors[target] == actor || withinReviewedPaths(reviewed, path) {
 			continue
 		}
-		return fmt.Errorf("merge would retire %s at %q, which belongs to another actor and lies outside the approved tree %q:\nhave the approval name an artifact covering it, or ask its author or an actor holding ratifier to retire it",
-			target, path, approvedPath)
+		return fmt.Errorf("merge would retire %s at %q, which belongs to another actor and lies outside the reviewed paths %s:\nhave the approval cover it, or ask its author or an actor holding ratifier to retire it",
+			target, path, strings.Join(reviewed, ", "))
 	}
 	return nil
+}
+
+// reviewedPaths mirrors the fold's own reading of what an approval reaches:
+// every path where the implementer stood an artifact at the exact head that
+// approval names, already recorded when the reviewer signed. The command has to
+// agree with the fold here, or it refuses merges the fold would allow — which
+// is what stranded a head spanning four maintained trees behind an approval
+// that could only cite one of them.
+func reviewedPaths(projection workroom.Projection, approval string) []string {
+	review, found := projection.Review(approval)
+	if !found || review.Implementer == "" || review.Head == "" {
+		return nil
+	}
+	signed := 0
+	for _, statement := range projection.Statements {
+		if statement.Event == approval {
+			signed = statement.Sequence
+		}
+	}
+	if signed == 0 {
+		return nil
+	}
+	standing := make(map[string]workroom.Statement, len(projection.Statements))
+	for _, statement := range projection.Statements {
+		standing[statement.Event] = statement
+	}
+	var paths []string
+	seen := make(map[string]bool)
+	for _, artifact := range projection.Artifacts {
+		if artifact.Retired || artifact.Commit != review.Head || artifact.Path == "" {
+			continue
+		}
+		// The same three facts the fold reads, in the same order: the
+		// implementer's own artifact, at the approved head, already recorded
+		// when the verdict landed. A looser reading here would admit a merge
+		// the fold then refuses, after the target had moved.
+		published, known := standing[artifact.Event]
+		if !known || published.Actor != review.Implementer || published.Sequence >= signed {
+			continue
+		}
+		if seen[artifact.Path] {
+			continue
+		}
+		seen[artifact.Path] = true
+		paths = append(paths, artifact.Path)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+func withinReviewedPaths(reviewed []string, path string) bool {
+	for _, within := range reviewed {
+		if sameTreeLineage(within, path) {
+			return true
+		}
+	}
+	return false
 }
 
 func artifactPath(projection workroom.Projection, event string) string {

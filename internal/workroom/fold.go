@@ -883,11 +883,15 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 		implementation.Body["commit"] != state.Body["merge_candidate"] || artifact.record.Actor == approval.record.Actor {
 		return nil
 	}
-	if receipt.record.Actor != artifact.record.Actor {
+	implementer := artifact.record.Actor
+	if receipt.record.Actor != implementer {
 		return nil
 	}
-	approvedPath := implementation.Body["path"]
-	if approvedPath == "" {
+	if implementation.Body["path"] == "" {
+		return nil
+	}
+	reviewed := f.reviewedPaths(approval, implementer, state.Body["merge_candidate"])
+	if len(reviewed) == 0 {
 		return nil
 	}
 	var plan map[string]string
@@ -896,11 +900,69 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 	}
 	reached := make(map[string]string, len(plan))
 	for target, successor := range plan {
-		if path, ok := f.artifactPath(target); ok && sameTreeLineage(approvedPath, path) {
-			reached[target] = successor
+		path, isArtifact := f.artifactPath(target)
+		if !isArtifact {
+			continue
+		}
+		for _, within := range reviewed {
+			if sameTreeLineage(within, path) {
+				reached[target] = successor
+				break
+			}
 		}
 	}
 	return reached
+}
+
+// reviewedPaths is what an approval puts within reach of the receipt that
+// carries it: every path where the implementer stood an artifact at the exact
+// head approved, already recorded when the reviewer signed.
+//
+// One reviewed head is one body of work, and a body of work spans the paths it
+// changes. Reading only the single artifact the verdict names was true to what
+// `gs review` can currently cite and false to what a reviewer reads: a head
+// touching four maintained trees was approved once and could then succeed the
+// pointer in only one of them, so the merge refused itself and the other three
+// stayed on a predecessor nothing would supersede.
+//
+// Three things keep the widening honest, and none of them is a field of the
+// receipt. The commit must equal the head the verdict names, which the reviewer
+// signed and no one can change afterwards. The artifact must be the
+// implementer's own, so no third party can extend another actor's reach by
+// publishing beside them. And it must already have been in the log when the
+// approval landed, which is the part that stops the set being minted: an
+// implementer cannot reach a new path by publishing a new candidate after the
+// verdict, because the world the reviewer signed over is the world that counts.
+//
+// What this does not establish is worth saying, because the fold cannot say it:
+// holding no repository, it cannot open the approved commit or read its diff,
+// so it takes the implementer's word that the head touches each of these paths.
+// That word is a public artifact statement anyone can check against Git, made
+// before the review rather than in the middle of a merge.
+func (f *foldState) reviewedPaths(approval *parsedRecord, implementer, head string) []string {
+	var paths []string
+	seen := make(map[string]bool)
+	for index := range f.records {
+		candidate := &f.records[index]
+		if candidate.index >= approval.index || candidate.record.Actor != implementer {
+			continue
+		}
+		if candidate.decision.Verdict != Effective || f.retired(candidate.record.ID) {
+			continue
+		}
+		if candidate.definition == nil || candidate.definition.Render != RenderArtifact {
+			continue
+		}
+		body, ok := candidate.body.(*State)
+		if !ok || body.Body["commit"] != head {
+			continue
+		}
+		if path := body.Body["path"]; path != "" && !seen[path] {
+			seen[path] = true
+			paths = append(paths, path)
+		}
+	}
+	return paths
 }
 
 // artifactPath answers where an event stands, and whether it is an artifact at
@@ -1172,11 +1234,11 @@ func (f *foldState) staleness() (map[string]bool, map[string]bool) {
 		if record.definition != nil && record.definition.Staleness == StalenessExempt {
 			continue
 		}
-		// A merge receipt ignores only the predecessor retirements it signed.
-		// Later retirement of its approval, request, or any other basis still
+		// A merge ignores only the predecessor retirements it signed. Later
+		// retirement of its approval, request, or any other basis still
 		// propagates normally. The plan is a property of the record, not of the
 		// basis being examined, so it is read once.
-		plan := f.mergeReceiptPlan(&record)
+		plan := f.mergeSuccessionPlan(&record)
 		for _, basis := range record.record.RestsOn {
 			if plan != nil {
 				if _, intended := plan[basis]; intended && f.retired(basis) {
@@ -1213,6 +1275,45 @@ func (f *foldState) staleness() (map[string]bool, map[string]bool) {
 // an artifact retirement explicitly named by this receipt. It is deliberately
 // false for a mixed cause, so a later request or approval withdrawal still
 // flares the receipt and its successors.
+// mergeSuccessionPlan is the retirement set a record may read as its own act
+// rather than as news: the plan it signed if it is a receipt, and the plan of
+// any receipt it rests on.
+//
+// The second half is what makes ordinary succession possible. Work stands on
+// what it replaces — a successor artifact cites the predecessor it grew out of
+// — and the merge that publishes the successor is the same act that withdraws
+// that predecessor. Reading the withdrawal as staleness marked the successor
+// stale at the moment it was born, and `gs merge` refuses a stale successor, so
+// the merge refused its own result. The only escape was to retire the causal
+// basis first, which is to say to break the record of where the work came from
+// in order to be allowed to record where it went.
+//
+// Only the receipt's own signed plan is carried, so this grants nothing a merge
+// did not already declare: a retirement outside the plan, and every other
+// basis, still propagates normally.
+func (f *foldState) mergeSuccessionPlan(record *parsedRecord) map[string]string {
+	own := f.mergeReceiptPlan(record)
+	var carried []map[string]string
+	for _, basis := range record.record.RestsOn {
+		if plan := f.mergeReceiptPlan(f.byID[basis]); len(plan) != 0 {
+			carried = append(carried, plan)
+		}
+	}
+	if len(carried) == 0 {
+		return own
+	}
+	combined := make(map[string]string, len(own))
+	for target, successor := range own {
+		combined[target] = successor
+	}
+	for _, plan := range carried {
+		for target, successor := range plan {
+			combined[target] = successor
+		}
+	}
+	return combined
+}
+
 func (f *foldState) stalenessCoveredByMergePlan(event string, plan map[string]string, stale map[string]bool, visiting map[string]bool) bool {
 	if visiting[event] {
 		return true

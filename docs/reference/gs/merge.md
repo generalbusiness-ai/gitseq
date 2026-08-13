@@ -148,6 +148,7 @@ predecessor in the same batch.
 | No live artifact covers an added or modified file | A first artifact is published at the changed file path. |
 | A file is renamed | Its exact old path is retired without a successor there. The destination receives a first artifact or the successor for the live path already covering it. |
 | A file is deleted | Its exact old path is retired with no successor. A live covering directory still receives its successor because the directory changed. |
+| A successor rests on the predecessor the same merge retires | The successor stays current. The work stood on what it replaces, and the merge that publishes one withdraws the other in the same act, so that withdrawal is not news arriving underneath it. |
 
 `workroom/state@1` refuses new artifacts at `.` and refuses comma-joined
 pseudo-paths. Historical `state@0` artifacts keep their original decisions but
@@ -194,8 +195,8 @@ fold checks all of it from the log alone:
   written by someone other than the approver;
 - the receipt is signed by the author of that implementation artifact — the
   merger of an approved head is the actor whose work it is;
-- the target's path lies on the path lineage of that approved artifact: the same
-  string, or one path containing the other; and
+- the target's path lies on the path lineage of one of the paths that approval
+  reviewed — the same string, or one path containing the other; and
 - the target carries a successor path in the receipt's signed plan, that path
   covers the target's own path, and the supersession cites the successor
   artifact published there.
@@ -209,9 +210,33 @@ list — is written by the same actor asking for the authority, and a signer can
 publish an artifact at any path. So none of those fields bounds anything.
 
 The approval does. The reviewer is the one party to a merge who did not write
-the receipt, and the artifact that approval names is the reviewer's own signed
-choice. That artifact's path lineage is therefore the whole reach of the
-receipt. Without it, the author of a single approved implementation could invent
+the receipt, and the head that approval names is the reviewer's own signed
+choice. **The paths that approval reviewed** are every path where the
+implementer stood an artifact at that exact head, already recorded when the
+reviewer signed; their lineages are the whole reach of the receipt.
+
+Reading only the single artifact the verdict names was true to what `gs review`
+can cite and false to what a reviewer reads. One head is one body of work and a
+body of work spans the paths it changes, so a head touching four maintained
+trees was approved once and could then succeed the pointer in only one of them:
+the merge refused itself, and the other three stayed on a predecessor nothing
+would supersede.
+
+Three things keep that widening honest, and none is a field of the receipt. The
+commit must equal the head the verdict names, which no one can change
+afterwards. The artifact must be the implementer's own, so nobody extends
+another actor's reach by publishing beside them. And it must already have stood
+in the log when the approval landed, which is what stops the set being minted:
+an implementer cannot reach a new path by publishing a candidate after the
+verdict, because the world the reviewer signed over is the world that counts.
+
+What this does not establish is worth saying. Holding no repository, the fold
+cannot open the approved commit or read its diff, so it takes the implementer's
+word that the head touches each of these paths. That word is a public artifact
+statement anyone can check against Git, made before the review rather than in
+the middle of a merge. Narrowing it further means letting an approval carry the
+whole reviewed set explicitly, which is a change to `gs review` and to what a
+verdict cites, not to this rule. Without it, the author of a single approved implementation could invent
 a merge head, name a stranger's artifact anywhere in the log, publish a
 successor at its path, and retire it.
 
@@ -230,10 +255,10 @@ that has already happened, so nothing can withdraw it mid-merge. A merge signed
 by anyone else needs an authorization that survives concurrent revocation, and
 there is none today.
 
-The cost is stated rather than worked around. A merge touching several areas
-carries cross-author authority only within the approved artifact's tree; the
-predecessors elsewhere stay with their own authors or an actor holding
-`ratifier`, which is where they were before merge succession existed. `merge`
+The cost is stated rather than worked around. A merge carries cross-author
+authority only within the paths its approval reviewed; predecessors elsewhere
+stay with their own authors or an actor holding `ratifier`, which is where they
+were before merge succession existed. `merge`
 refuses such a plan before `HEAD` moves rather than landing and stopping
 half-way, and names the target, its path, and the approved tree.
 
