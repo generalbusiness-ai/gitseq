@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6719049c1b993f5d03af0171b37273a9adcda766","text":"Retire the stale checkpoint kernel candidate; the clean request-based exact-head artifact succeeds it."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5a8b1b3f8b71e6dce2132acb7c6a61c49e7548ec","text":"Retire the stale application checkpoint candidate; the clean request-based exact-head artifact succeeds it."}
