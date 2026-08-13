@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Stable shipped aggregate-only presence-count boundary at current main.","body":{"commit":"50ebdead03484ba7e89dba964ad8107bc1f00c45","path":"internal/service"}}
+{"kind":"artifact","text":"Stable shipped shared-identity deployment guidance at current main.","body":{"commit":"50ebdead03484ba7e89dba964ad8107bc1f00c45","path":"docs"}}
