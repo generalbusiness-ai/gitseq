@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b0b01058a037c3694c048ac33ce4301ccaf6405","text":"The internal/workroom candidate at 5caf6e85 is withdrawn; the successor at the same path is the candidate at a3bf832e, which bounds the merge receipt to the approval that authorized it."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:16fbdc4aa6d12aa3d8f90c74fe9a1e43a32bb2ea","text":"The internal/app candidate at 5caf6e85 is withdrawn; the successor at the same path is the candidate at a3bf832e."}
