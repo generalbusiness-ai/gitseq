@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eae77d2c0895f2e91ee97a9f45dedd45f47448a8"}
+{"kind":"artifact","text":"Stable shipped shared-identity warning implementation at current main.","body":{"commit":"50ebdead03484ba7e89dba964ad8107bc1f00c45","path":"cmd/gitseq-mcp"}}
