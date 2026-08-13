@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd9e4fac00da6c47bd177b08141de85136325c53"}
+{"kind":"assert","text":"approved candidate merged","body":{"merge_approval":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0e3359abed8486a7abb5e389a8ee75a75f92ee81","merge_candidate":"44461577f4ea20a7169c457fa08fb818de24dda3","merge_head":"159293300dcf928ac4ae480a5a6bb61bcb5e5102","merge_target_pre_head":"f8ce48923b92f5da1f86357c297953ba52d5fc5f"}}
