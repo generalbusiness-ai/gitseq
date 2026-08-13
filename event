@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged the MCP state reference for projection outcomes and unresolved citations at commit f8ce48923b92f5da1f86357c297953ba52d5fc5f.","body":{"commit":"f8ce48923b92f5da1f86357c297953ba52d5fc5f","path":"docs/reference/mcp/state.md"}}
+{"kind":"artifact","text":"Merged the updated documentation citation baseline for the MCP state reference at commit f8ce48923b92f5da1f86357c297953ba52d5fc5f.","body":{"commit":"f8ce48923b92f5da1f86357c297953ba52d5fc5f","path":"internal/docset"}}
