@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact application-layer candidate that refuses an approved report missing its named artifact basis before signing.","body":{"commit":"4a751e5ebcba6780e784eb71aad3b90311836d72","path":"internal/app"}}
+{"kind":"artifact","text":"Exact CLI candidate preserving gs review success and merge-time defense for historical malformed approvals.","body":{"commit":"4a751e5ebcba6780e784eb71aad3b90311836d72","path":"cmd/gs"}}
