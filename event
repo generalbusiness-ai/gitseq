@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will retire the remaining Codex-authored predecessor artifacts named by #3621 against the latest live artifact at each identical real path, verify those targets take force, and report the exact paths cleared."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2c0e7eb0ee83fa34e23a95727d4eab676946851c","text":"Retire the older live artifact at README.md; the later live artifact git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6c45b4e3f74bae0dbdaa395c564a2144cfa439f8 is the successor at the identical path."}
