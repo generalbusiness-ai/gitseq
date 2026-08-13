@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Application admission support for merge-driven succession at exact head f046ea452b2d3b66d023cfb9cb52e1de93f524f6.","body":{"commit":"f046ea452b2d3b66d023cfb9cb52e1de93f524f6","path":"internal/app"}}
+{"kind":"artifact","text":"Fold semantics for receipt-bound cross-author succession and prospective artifact paths at exact head f046ea452b2d3b66d023cfb9cb52e1de93f524f6.","body":{"commit":"f046ea452b2d3b66d023cfb9cb52e1de93f524f6","path":"internal/workroom"}}
