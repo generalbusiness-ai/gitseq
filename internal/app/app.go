@@ -718,6 +718,13 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 	rests := append([]string(nil), act.RestsOn...)
 	switch act.Verb {
 	case VerbState:
+		lifecycle, starter := workroom.StarterLifecycle(act.Kind)
+		if !starter || lifecycle == workroom.LifecycleReport {
+			reporter := intent.ActorFingerprint(private.Public().(ed25519.PublicKey))
+			if err := w.validateReportBasis(ctx, reporter, act.Kind, rests); err != nil {
+				return kernel.Request{}, err
+			}
+		}
 		schema = workroom.SchemaState
 		payload = workroom.State{Kind: act.Kind, Text: act.Text, Body: act.Body}
 	case VerbRatify:
@@ -739,6 +746,48 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 		return kernel.Request{}, fmt.Errorf("unknown act verb %q", act.Verb)
 	}
 	return w.buildRequest(ctx, private, actorName, schema, payload, rests, act.Attachments, act.IdempotencyKey)
+}
+
+// validateReportBasis mirrors the fold's report-lifecycle checks before the
+// request is signed. The fold remains authoritative, including when the log
+// moves after this snapshot, but locally constructed reports should not append
+// when their lifecycle edge is already known to be ineffective or disputed.
+func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, kind workroom.Kind, rests []string) error {
+	snapshot, err := w.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("validate report basis: %w", err)
+	}
+	lifecycles := make(map[workroom.Kind]workroom.Lifecycle, len(snapshot.Vocabulary.Definitions))
+	for _, definition := range snapshot.Vocabulary.Definitions {
+		lifecycles[definition.Name] = definition.Lifecycle
+	}
+	if lifecycles[kind] != workroom.LifecycleReport {
+		return nil
+	}
+	effective := make(map[string]bool, len(snapshot.Projection.Decisions))
+	for _, decision := range snapshot.Projection.Decisions {
+		effective[decision.Event] = decision.Verdict == workroom.Effective
+	}
+	statements := make(map[string]workroom.Statement, len(snapshot.Projection.Statements))
+	for _, statement := range snapshot.Projection.Statements {
+		if effective[statement.Event] {
+			statements[statement.Event] = statement
+		}
+	}
+	var promises []workroom.Statement
+	for _, rest := range rests {
+		statement, ok := statements[rest]
+		if ok && lifecycles[statement.Kind] == workroom.LifecyclePromise {
+			promises = append(promises, statement)
+		}
+	}
+	if len(promises) != 1 {
+		return fmt.Errorf("report requires exactly one effective promise-lifecycle basis in rests_on; got %d", len(promises))
+	}
+	if promises[0].Actor != reporter {
+		return errors.New("report actor must be the promisor of its promise-lifecycle basis")
+	}
+	return nil
 }
 
 // citingDocuments lists tracked documentation that names an event, so a

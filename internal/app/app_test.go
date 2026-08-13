@@ -197,6 +197,183 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	}
 }
 
+func TestReportWithoutPromiseIsRefusedBeforeAppend(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "agent", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	request := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "build",
+		Body:    map[string]string{"to": "agent", "conditions": "tests pass"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "request-without-promise",
+	})
+	before, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = workspace.Act(ctx, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindReport, Text: "done",
+		RestsOn: []string{request.ID}, IdempotencyKey: "report-without-promise",
+	})
+	if err == nil || !strings.Contains(err.Error(), "exactly one effective promise-lifecycle basis") {
+		t.Fatalf("report without promise error = %v", err)
+	}
+	after, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("refused report changed workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+	}
+}
+
+func TestReportPreflightRequiresExactlyOnePromiseFromTheReporter(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _, err := workspace.AddActor(ctx, "human", "first", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "second", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	promises := make([]workroom.Record, 2)
+	for index := range promises {
+		request := actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindRequest, Text: fmt.Sprintf("build %d", index),
+			Body:    map[string]string{"to": first.Fingerprint, "conditions": "tests pass"},
+			RestsOn: []string{seed.ID}, IdempotencyKey: fmt.Sprintf("report-preflight-request-%d", index),
+		})
+		promises[index] = actRecord(t, ctx, workspace, "first", Act{
+			Verb: VerbState, Kind: workroom.KindPromise, Text: "I will",
+			RestsOn: []string{request.ID}, IdempotencyKey: fmt.Sprintf("report-preflight-promise-%d", index),
+		})
+	}
+	for _, test := range []struct {
+		name  string
+		actor string
+		rests []string
+		want  string
+	}{
+		{name: "wrong actor", actor: "second", rests: []string{promises[0].ID}, want: "report actor must be the promisor"},
+		{name: "two promises", actor: "first", rests: []string{promises[0].ID, promises[1].ID}, want: "got 2"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before, err := workspace.Snapshot(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = workspace.Act(ctx, test.actor, Act{
+				Verb: VerbState, Kind: workroom.KindReport, Text: "done", RestsOn: test.rests,
+				IdempotencyKey: "report-preflight-" + strings.ReplaceAll(test.name, " ", "-"),
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+			after, err := workspace.Snapshot(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after.Head != before.Head || after.Depth != before.Depth {
+				t.Fatalf("refused report changed workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+			}
+		})
+	}
+}
+
+func TestReportPreflightUsesDeclaredLifecycleKinds(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "other", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	declare := func(name workroom.Kind, lifecycle workroom.Lifecycle, basis []workroom.BasisConstraint) {
+		t.Helper()
+		fields, err := json.Marshal([]workroom.FieldConstraint{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		bases, err := json.Marshal(basis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		definition := actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindKindDef, Text: "define " + string(name),
+			Body: map[string]string{
+				"name": string(name), "fields": string(fields), "basis": string(bases),
+				"satisfier": workroom.SatisfierNone, "render": string(workroom.RenderCommitment),
+				"staleness": string(workroom.StalenessPropagates), "lifecycle": string(lifecycle),
+				"guidance": "test lifecycle",
+			},
+			RestsOn: []string{seed.ID}, IdempotencyKey: "declare-" + string(name),
+		})
+		actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbRatify, Target: definition.ID, IdempotencyKey: "ratify-" + string(name),
+		})
+	}
+	declare("undertaking", workroom.LifecyclePromise, []workroom.BasisConstraint{{Kinds: []workroom.Kind{workroom.KindRequest}, Min: 1, Max: 1}})
+	declare("delivery", workroom.LifecycleReport, []workroom.BasisConstraint{{Kinds: []workroom.Kind{"undertaking"}, Min: 1, Max: 1}})
+	request := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "build",
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "tests pass"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "custom-lifecycle-request",
+	})
+	promise := actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: "undertaking", Text: "I will",
+		RestsOn: []string{request.ID}, IdempotencyKey: "custom-lifecycle-promise",
+	})
+	// Re-open before the report so no cached vocabulary can accidentally make
+	// the declared lifecycle check pass only in a warm resident.
+	fresh, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := fresh.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fresh.Act(ctx, "other", Act{
+		Verb: VerbState, Kind: "delivery", Text: "not mine",
+		RestsOn: []string{promise.ID}, IdempotencyKey: "custom-lifecycle-wrong-promisor",
+	})
+	if err == nil || !strings.Contains(err.Error(), "report actor must be the promisor") {
+		t.Fatalf("cold custom report by wrong promisor error = %v", err)
+	}
+	afterRefusal, err := fresh.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterRefusal.Head != before.Head || afterRefusal.Depth != before.Depth {
+		t.Fatalf("cold custom report refusal appended: before=%s/%d after=%s/%d", before.Head, before.Depth, afterRefusal.Head, afterRefusal.Depth)
+	}
+	report := actRecord(t, ctx, fresh, "agent", Act{
+		Verb: VerbState, Kind: "delivery", Text: "done",
+		RestsOn: []string{promise.ID}, IdempotencyKey: "custom-lifecycle-report",
+	})
+	snapshot, err := fresh.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, ok := snapshot.Projection.Decision(report.ID)
+	if !ok || decision.Verdict != workroom.Effective {
+		t.Fatalf("custom lifecycle report decision = %+v, found=%v", decision, ok)
+	}
+}
+
 func TestOversizedCausalReferenceDoesNotPoisonSnapshot(t *testing.T) {
 	ctx := context.Background()
 	repo := testRepo(t)
