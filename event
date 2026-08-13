@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merged projection-aware MCP state results. The MCP surface now returns effective decisions, fold refusal reasons, and unresolved target or basis diagnostics.","body":{"commit":"f8ce48923b92f5da1f86357c297953ba52d5fc5f","path":"cmd/gitseq-mcp"}}
+{"kind":"artifact","text":"Merged the MCP state reference for projection outcomes and unresolved citations at commit f8ce48923b92f5da1f86357c297953ba52d5fc5f.","body":{"commit":"f8ce48923b92f5da1f86357c297953ba52d5fc5f","path":"docs/reference/mcp/state.md"}}
