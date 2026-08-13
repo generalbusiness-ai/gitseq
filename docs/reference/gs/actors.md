@@ -2,7 +2,7 @@
 title: gs actors
 summary: List principals, their current roles, and whether this repository holds their keys.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6918582b884b2f82fa7ab64242f40d12de845c39
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:265b14724281203aac18927aa37ecc96dfc92523
 ---
 
 # `gs actors`
@@ -61,9 +61,14 @@ so this machine can sign as that actor. It is not durable state and says
 nothing about the roster. An attached clone typically shows `custody:
 false` for everyone.
 
-**A missing principal is not a mistake.** Retiring a membership removes
-someone from the roster entirely; the acts they made stay in the log with
-their signatures intact.
+**A retired principal is still listed.** Retiring a membership leaves the
+principal on the roster with `retired: true` and an empty `roles`, because
+the events it signed are permanent and dropping the row would leave those
+signatures attributed to nothing. Read the flag, not the absence.
+
+**`custody` and `retired` can disagree.** A retired principal whose key
+file survives still shows `custody: true`. That is a local custody problem
+this view is meant to make visible.
 
 ## See also
 

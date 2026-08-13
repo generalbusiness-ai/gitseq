@@ -4,7 +4,7 @@ summary: Check the exact artifact checkout, then sign a review verdict against i
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e37ac7f4c061410d50e88f2af22bc03da84e7f82
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c20ea289f3f3cd578adb94ec629f1b45effbdbc5
 ---
 
 # `gs review`
