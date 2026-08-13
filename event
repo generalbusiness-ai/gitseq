@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aaca477f0067515653cd3add419be0b3242d37f4"}
+{"kind":"artifact","text":"Final signed checkpoint kernel candidate at exact head 7a9e94db: opaque host selector seam, authenticated deepest-candidate choice, one tail fold, ref-first publication and GC reachability.","body":{"commit":"7a9e94db9a95c0b00df932fa2d4d878764f0ff29","path":"internal/kernel"}}
