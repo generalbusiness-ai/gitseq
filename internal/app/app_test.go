@@ -486,6 +486,63 @@ func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {
 	}
 }
 
+func TestAcceptSubmissionRefusesLegacyCustomArtifactPath(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := workroom.KindDefinition{
+		Name: "release-bundle",
+		Fields: []workroom.FieldConstraint{
+			{Operator: workroom.FieldPresent, Name: "path"},
+			{Operator: workroom.FieldPresent, Name: "commit"},
+		},
+		Basis: []workroom.BasisConstraint{}, Satisfier: workroom.SatisfierNone,
+		Render: workroom.RenderArtifact, Staleness: workroom.StalenessPropagates,
+		Lifecycle: workroom.LifecycleNone, Guidance: "Point to a release bundle.",
+	}
+	fields, err := json.Marshal(definition.Fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	basis, err := json.Marshal(definition.Basis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindKindDef, Text: "Define release bundles",
+		Body: map[string]string{
+			"name": string(definition.Name), "fields": string(fields), "basis": string(basis),
+			"satisfier": definition.Satisfier, "render": string(definition.Render),
+			"staleness": string(definition.Staleness), "lifecycle": string(definition.Lifecycle),
+			"guidance": definition.Guidance,
+		},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "define-release-bundle",
+	})
+	if _, err := workspace.Act(ctx, "human", Act{Verb: VerbRatify, Target: declared.ID, IdempotencyKey: "ratify-release-bundle"}); err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := workspace.mustSnapshot(t, ctx).Depth
+	raw, err := workspace.buildRequest(ctx, private, "human", workroom.SchemaStateLegacy, workroom.State{
+		Kind: definition.Name, Text: "invalid legacy path",
+		Body: map[string]string{"path": "release,docs", "commit": "head"},
+	}, []string{seed.ID}, nil, "legacy-custom-artifact-path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.AcceptSubmission(ctx, raw); err == nil || !strings.Contains(err.Error(), "unmaintainable artifact path") {
+		t.Fatalf("legacy custom artifact submission error = %v", err)
+	}
+	if after := workspace.mustSnapshot(t, ctx).Depth; after != before {
+		t.Fatalf("refused legacy submission changed depth from %d to %d", before, after)
+	}
+}
+
 func TestIdempotencyNamespaceIsStableAndLegacySafe(t *testing.T) {
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)

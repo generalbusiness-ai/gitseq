@@ -1,6 +1,7 @@
 package workroom
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -27,10 +28,10 @@ type Record struct {
 }
 
 type Decision struct {
-	Event    string `json:"event"`
-	Sequence int    `json:"sequence"`
-	Verdict Verdict `json:"verdict"`
-	Reason  string  `json:"reason"`
+	Event    string  `json:"event"`
+	Sequence int     `json:"sequence"`
+	Verdict  Verdict `json:"verdict"`
+	Reason   string  `json:"reason"`
 }
 
 type Statement struct {
@@ -207,6 +208,7 @@ type parsedRecord struct {
 	decision   Decision
 	definition *KindDefinition
 	declared   *KindDefinition
+	mergePlan  map[string]string
 }
 
 type roleGrant struct {
@@ -361,6 +363,10 @@ func (f *foldState) append(index int, record Record) {
 	if decision.Verdict != Effective {
 		return
 	}
+	if state, ok := body.(*State); ok && state.Kind == KindAssert {
+		parsed.mergePlan = f.validateMergeReceiptNow(parsed)
+		f.records[len(f.records)-1].mergePlan = parsed.mergePlan
+	}
 	if _, ok := body.(*State); ok && parsed.definition != nil {
 		// A record may repeat a basis. directDependents historically returned
 		// the record once because it used contains; preserve that behavior while
@@ -435,6 +441,19 @@ func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 		return Decision{Event: record.record.ID, Verdict: UndefinedKind, Reason: fmt.Sprintf("undefined kind %q", state.Kind)}
 	}
 	record.definition = &definition
+	// state@1 closes the two path shapes which cannot participate in merge
+	// succession. Keeping the rule on the new schema is deliberate: state@0
+	// records are append-only history, and changing their old decisions during
+	// a refold would erase effective artifacts from provenance.
+	if record.record.Schema == SchemaState && definition.Render == RenderArtifact {
+		path := state.Body["path"]
+		if path == "." {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "artifact path must not be the whole-repository path ."}
+		}
+		if strings.Contains(path, ",") {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "artifact path must name one path, not a comma-joined pseudo-path"}
+		}
+	}
 	if err := validateFields(definition, state.Body); err != nil {
 		verdict := Ineffective
 		if state.Kind == KindKindDef || state.Kind == KindFoldActivation {
@@ -718,7 +737,98 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 	if target.record.Actor == record.record.Actor || f.hasRole(record.record.Actor, "ratifier") {
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized supersession"}
 	}
+	if f.isArtifact(supersede.Target) && f.hasAuthorizedMergeReceipt(record, supersede.Target) {
+		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "merge approval authorized artifact succession"}
+	}
 	return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor may not supersede target"}
+}
+
+// hasAuthorizedMergeReceipt admits the one cross-author supersession which is
+// not a free-standing act. The signer must cite its own merge receipt, and that
+// receipt must carry the complete ratified, independent exact-head approval
+// chain. A bare approval citation is intentionally insufficient: the authority
+// is exercised by the merge, not made into a reusable retirement capability.
+func (f *foldState) hasAuthorizedMergeReceipt(record *parsedRecord, target string) bool {
+	for _, basis := range record.record.RestsOn[1:] {
+		receipt := f.byID[basis]
+		if receipt == nil || receipt.decision.Verdict != Effective || f.retired(basis) || receipt.record.Actor != record.record.Actor {
+			continue
+		}
+		if successorPath, ok := f.mergeReceiptPlan(receipt)[target]; ok {
+			if successorPath == "" || f.citesMergeSuccessor(record, receipt, successorPath) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (f *foldState) citesMergeSuccessor(record, receipt *parsedRecord, path string) bool {
+	state := receipt.body.(*State)
+	for _, basis := range record.record.RestsOn[1:] {
+		candidate := f.byID[basis]
+		if candidate == nil || candidate.decision.Verdict != Effective || f.retired(basis) || candidate.definition == nil || candidate.definition.Render != RenderArtifact {
+			continue
+		}
+		artifact, ok := candidate.body.(*State)
+		if ok && artifact.Body["path"] == path && artifact.Body["commit"] == state.Body["merge_head"] && contains(candidate.record.RestsOn, receipt.record.ID) {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeReceiptPlan returns the exact predecessor set authorized by a valid
+// receipt. The plan is signed into the receipt so its authority cannot be
+// borrowed to retire an unrelated artifact.
+func (f *foldState) mergeReceiptPlan(receipt *parsedRecord) map[string]string {
+	if receipt == nil || f.retired(receipt.record.ID) {
+		return nil
+	}
+	if receipt.mergePlan != nil {
+		return receipt.mergePlan
+	}
+	if canonical := f.byID[receipt.record.ID]; canonical != nil {
+		return canonical.mergePlan
+	}
+	return nil
+}
+
+func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]string {
+	if receipt == nil || receipt.decision.Verdict != Effective || f.retired(receipt.record.ID) {
+		return nil
+	}
+	state, ok := receipt.body.(*State)
+	if !ok || state.Kind != KindAssert || state.Body["merge_head"] == "" || state.Body["merge_target_pre_head"] == "" || state.Body["merge_candidate"] == "" || state.Body["merge_approval"] == "" {
+		return nil
+	}
+	approvalID := state.Body["merge_approval"]
+	if !contains(receipt.record.RestsOn, approvalID) {
+		return nil
+	}
+	approval := f.byID[approvalID]
+	if approval == nil || approval.decision.Verdict != Effective || f.retired(approvalID) || !f.ratified(approvalID) {
+		return nil
+	}
+	verdict, ok := approval.body.(*State)
+	if !ok || verdict.Kind != KindReport || verdict.Body["verdict"] != "approved" || verdict.Body["head"] != state.Body["merge_candidate"] {
+		return nil
+	}
+	artifactID := verdict.Body["artifact"]
+	artifact := f.byID[artifactID]
+	if artifact == nil || artifact.decision.Verdict != Effective || f.retired(artifactID) || !contains(approval.record.RestsOn, artifactID) {
+		return nil
+	}
+	implementation, ok := artifact.body.(*State)
+	if !ok || artifact.definition == nil || artifact.definition.Render != RenderArtifact ||
+		implementation.Body["commit"] != state.Body["merge_candidate"] || artifact.record.Actor == approval.record.Actor {
+		return nil
+	}
+	var plan map[string]string
+	if err := json.Unmarshal([]byte(state.Body["merge_retirements"]), &plan); err != nil || plan == nil {
+		return nil
+	}
+	return plan
 }
 
 // governanceTarget follows an act back to the roster statement whose live
@@ -968,6 +1078,15 @@ func (f *foldState) staleness() (map[string]bool, map[string]bool) {
 			continue
 		}
 		for _, basis := range record.record.RestsOn {
+			// A merge receipt ignores only the predecessor retirements it signed.
+			// Later retirement of its approval, request, or any other basis still
+			// propagates normally.
+			plan := f.mergeReceiptPlan(&record)
+			if plan != nil {
+				if _, intended := plan[basis]; intended && f.retired(basis) {
+					continue
+				}
+			}
 			if target, ok := f.effectiveSup[record.record.ID]; ok && target == basis {
 				continue
 			}
@@ -978,6 +1097,9 @@ func (f *foldState) staleness() (map[string]bool, map[string]bool) {
 			}
 			retiredBasis := f.retired(basis) && mode != StalenessExempt
 			staleBasis := stale[basis] && mode == StalenessPropagates
+			if plan != nil && staleBasis && f.stalenessCoveredByMergePlan(basis, plan, stale, make(map[string]bool)) {
+				continue
+			}
 			if !retiredBasis && !staleBasis {
 				continue
 			}
@@ -989,6 +1111,43 @@ func (f *foldState) staleness() (map[string]bool, map[string]bool) {
 		}
 	}
 	return stale, world
+}
+
+// stalenessCoveredByMergePlan reports whether every live cause below event is
+// an artifact retirement explicitly named by this receipt. It is deliberately
+// false for a mixed cause, so a later request or approval withdrawal still
+// flares the receipt and its successors.
+func (f *foldState) stalenessCoveredByMergePlan(event string, plan map[string]string, stale map[string]bool, visiting map[string]bool) bool {
+	if visiting[event] {
+		return true
+	}
+	visiting[event] = true
+	defer delete(visiting, event)
+	covered := false
+	if f.retired(event) {
+		if _, ok := plan[event]; !ok {
+			return false
+		}
+		covered = true
+	}
+	record := f.byID[event]
+	if record == nil {
+		return covered
+	}
+	for _, basis := range record.record.RestsOn {
+		mode := StalenessPropagates
+		if basisRecord := f.byID[basis]; basisRecord != nil && basisRecord.definition != nil {
+			mode = basisRecord.definition.Staleness
+		}
+		if mode == StalenessExempt || (!f.retired(basis) && !(stale[basis] && mode == StalenessPropagates)) {
+			continue
+		}
+		if !f.stalenessCoveredByMergePlan(basis, plan, stale, visiting) {
+			return false
+		}
+		covered = true
+	}
+	return covered
 }
 
 // isArtifact reports whether an event is an effective artifact statement. It

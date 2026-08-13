@@ -1514,10 +1514,140 @@ func TestSuccessionWarningAppearsUntilThePredecessorIsSuperseded(t *testing.T) {
 func TestSuccessionWarningComparesPathsExactly(t *testing.T) {
 	records := worldRecords(t,
 		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
-		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI and its docs", Body: map[string]string{"path": "spike/cmd/gs,docs", "commit": "ccc333"}}, "w0"),
+		event(t, "w4", agent, SchemaStateLegacy, State{Kind: KindArtifact, Text: "CLI and its docs", Body: map[string]string{"path": "spike/cmd/gs,docs", "commit": "ccc333"}}, "w0"),
 	)
 	if artifactByEvent(t, Fold(records), "w4").SuccessionUnrecorded {
 		t.Fatal("a comma-joined path was treated as succeeding one of its members")
+	}
+}
+
+func TestArtifactAdmissionRefusesWholeRepositoryAndCommaJoinedPathsProspectively(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "legacy-dot", agent, SchemaStateLegacy, State{Kind: KindArtifact, Text: "historical repository pointer", Body: map[string]string{"path": ".", "commit": "aaa111"}}, "w0"),
+		event(t, "new-dot", agent, SchemaState, State{Kind: KindArtifact, Text: "new repository pointer", Body: map[string]string{"path": ".", "commit": "bbb222"}}, "w0"),
+		event(t, "new-comma", agent, SchemaState, State{Kind: KindArtifact, Text: "two paths pretending to be one", Body: map[string]string{"path": "a,b", "commit": "ccc333"}}, "w0"),
+	)
+	projection := Fold(records)
+	if decision, _ := projection.Decision("legacy-dot"); decision.Verdict != Effective {
+		t.Fatalf("legacy artifact was reinterpreted: %+v", decision)
+	}
+	for _, id := range []string{"new-dot", "new-comma"} {
+		decision, _ := projection.Decision(id)
+		if decision.Verdict != Ineffective || !strings.Contains(decision.Reason, "artifact path") {
+			t.Fatalf("%s decision = %+v", id, decision)
+		}
+	}
+}
+
+func TestArtifactAdmissionUsesTheGovernedRenderClass(t *testing.T) {
+	definition := KindDefinition{
+		Name: "release-bundle", Fields: present("path", "commit"), Basis: []BasisConstraint{},
+		Satisfier: SatisfierNone, Render: RenderArtifact, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleNone, Guidance: "Point to a release bundle.",
+	}
+	records := worldRecords(t,
+		event(t, "define", operator, SchemaState, kindDefinitionState(t, definition), "w0"),
+		event(t, "define-ratified", operator, SchemaRatify, Ratify{Target: "define"}, "define"),
+		event(t, "bad", agent, SchemaState, State{Kind: "release-bundle", Text: "bad path", Body: map[string]string{"path": "a,b", "commit": "head"}}, "w0"),
+	)
+	decision, _ := Fold(records).Decision("bad")
+	if decision.Verdict != Ineffective || !strings.Contains(decision.Reason, "artifact path") {
+		t.Fatalf("custom artifact path decision = %+v", decision)
+	}
+}
+
+func TestMergeReceiptAuthorizesCrossAuthorArtifactSupersession(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "older implementation", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"predecessor":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "predecessor", Text: "merge succession"}, "predecessor", "merge", "successor"),
+	)
+	projection := Fold(records)
+	decision, _ := projection.Decision("retire")
+	if decision.Verdict != Effective || decision.Reason != "merge approval authorized artifact succession" {
+		t.Fatalf("cross-author merge succession = %+v", decision)
+	}
+	if !artifactByEvent(t, projection, "predecessor").Retired {
+		t.Fatal("authorized merge succession left the predecessor live")
+	}
+}
+
+func TestMergeReceiptDoesNotAuthorizeAnUnrelatedCrossAuthorRetirement(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "planned predecessor", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "unrelated", operator, SchemaState, State{Kind: KindArtifact, Text: "unrelated", Body: map[string]string{"path": "docs", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"predecessor":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "successor", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "unrelated", Text: "not in plan"}, "unrelated", "merge", "successor"),
+	)
+	decision, _ := Fold(records).Decision("retire")
+	if decision.Verdict != Ineffective || decision.Reason != "actor may not supersede target" {
+		t.Fatalf("unrelated retirement = %+v", decision)
+	}
+}
+
+func TestMergeSuccessorStaysCurrentWhenTheReviewedPredecessorIsRetired(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"r5":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "r5", Text: "the merge replaced the reviewed candidate"}, "r5", "merge", "successor"),
+	)
+	projection := Fold(records)
+	if predecessor := artifactByEvent(t, projection, "r5"); !predecessor.Retired {
+		t.Fatal("reviewed predecessor stayed live")
+	}
+	receipt := statementByEvent(t, projection, "merge")
+	if receipt.Stale || receipt.DescribesSupersededWorld {
+		t.Fatalf("merge receipt flared from its intended retirement: stale=%v world=%v", receipt.Stale, receipt.DescribesSupersededWorld)
+	}
+	successor := artifactByEvent(t, projection, "successor")
+	if successor.Retired || successor.Stale || successor.DescribesSupersededWorld {
+		t.Fatalf("merge successor after predecessor retirement: retired=%v stale=%v world=%v", successor.Retired, successor.Stale, successor.DescribesSupersededWorld)
+	}
+}
+
+func TestMergeReceiptDoesNotHideLaterApprovalRetirement(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"r5":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "retire-candidate", agent, SchemaSupersede, Supersede{Target: "r5", Text: "planned"}, "r5", "merge", "successor"),
+		event(t, "retire-approval", other, SchemaSupersede, Supersede{Target: "approval", Text: "review withdrawn later"}, "approval"),
+	)
+	projection := Fold(records)
+	if !statementByEvent(t, projection, "merge").Stale || !artifactByEvent(t, projection, "successor").Stale {
+		t.Fatal("later approval retirement was hidden by the merge transition")
+	}
+}
+
+func TestFreeStandingSupersessionStillRequiresAuthorOrRatifier(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "older implementation", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "predecessor", Text: "no merge authority"}, "predecessor"),
+	)
+	decision, _ := Fold(records).Decision("retire")
+	if decision.Verdict != Ineffective || decision.Reason != "actor may not supersede target" {
+		t.Fatalf("free-standing cross-author supersession = %+v", decision)
 	}
 }
 
@@ -1982,7 +2112,6 @@ func TestReferencePageAgreesThatRetiredPrincipalsStayOnTheRoster(t *testing.T) {
 		t.Error("docs/concepts/actors.md no longer states what superseding a membership actually leaves behind")
 	}
 }
-
 
 func TestRegenerateGoldens(t *testing.T) {
 	if os.Getenv("REGEN_GOLDENS") == "" {

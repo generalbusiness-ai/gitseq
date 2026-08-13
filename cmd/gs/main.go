@@ -410,8 +410,14 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
+	existing, found, err := existingGitMergeReceipt(ctx, *checkout, *approval)
+	if err != nil {
 		return err
+	}
+	if !found {
+		if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
+			return err
+		}
 	}
 	if strings.TrimSpace(*mergeText) == "" {
 		return errors.New("merge requires --text with a plain-language description and impact")
@@ -419,6 +425,39 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	actor, err := signingActor(*as)
 	if err != nil {
 		return err
+	}
+	_, private, err := workspace.Actor(actor)
+	if err != nil {
+		return err
+	}
+	if found {
+		if existing.Candidate != *candidate {
+			return fmt.Errorf("approval was already used for candidate %s", existing.Candidate)
+		}
+		checkoutHead, err := git(ctx, *checkout, "rev-parse", "--verify", "HEAD^{commit}")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(checkoutHead) != existing.MergeHead {
+			return fmt.Errorf("approval was already used by merge %s, but checkout is at another head", existing.MergeHead)
+		}
+		refHead, err := git(ctx, *checkout, "rev-parse", "--verify", mergeReceiptRef(*approval))
+		if err != nil {
+			return err
+		}
+		refHead = strings.TrimSpace(refHead)
+		if refHead == existing.TargetPreHead {
+			if _, err := git(ctx, *checkout, "update-ref", mergeReceiptRef(*approval), existing.MergeHead, existing.TargetPreHead); err != nil {
+				return fmt.Errorf("publish resumed merge receipt ref: %w", err)
+			}
+		} else if refHead != existing.MergeHead {
+			return fmt.Errorf("merge receipt ref is at unexpected commit %s", refHead)
+		}
+		if err := recordMergeSuccession(ctx, workspace, *checkout, *serverURL, actor, private, existing); err != nil {
+			return err
+		}
+		fmt.Println(existing.MergeHead)
+		return nil
 	}
 	targetPreHead, err := git(ctx, *checkout, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
@@ -438,15 +477,41 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return errors.New("approval is already reserved or used by another merge")
 	}
 	landed := false
+	merging := false
 	defer func() {
 		if !landed {
 			_, _ = git(context.Background(), *checkout, "update-ref", "-d", receiptRef, targetPreHead)
+			if merging {
+				_, _ = git(context.Background(), *checkout, "merge", "--abort")
+			}
 		}
 	}()
-	message := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead)
-	if _, err := git(ctx, *checkout, "merge", "--no-ff", "-m", message, "--", *candidate); err != nil {
+	merging = true
+	if _, err := git(ctx, *checkout, "merge", "--no-ff", "--no-commit", "--", *candidate); err != nil {
 		return err
 	}
+	changes, err := stagedMergeChanges(ctx, *checkout)
+	if err != nil {
+		return fmt.Errorf("read tentative merge changes: %w", err)
+	}
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	predecessors := successionPredecessors(ctx, *checkout, snapshot.Projection, targetPreHead, *candidate)
+	plan := planSuccession(snapshot.Projection, changes, "", predecessors)
+	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
+		return fmt.Errorf("merge succession preflight: %w", err)
+	}
+	message, err := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead, plan)
+	if err != nil {
+		return err
+	}
+	if _, err := git(ctx, *checkout, "commit", "-m", message); err != nil {
+		return err
+	}
+	merging = false
+	landed = true
 	head, err := git(ctx, *checkout, "rev-parse", "HEAD")
 	if err != nil {
 		return err
@@ -462,16 +527,8 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if _, err := git(ctx, *checkout, "update-ref", receiptRef, head, targetPreHead); err != nil {
 		return fmt.Errorf("publish merge receipt ref: %w", err)
 	}
-	landed = true
-	if _, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{
-		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "approved candidate merged",
-		Body: map[string]string{
-			"merge_approval": *approval, "merge_candidate": *candidate,
-			"merge_target_pre_head": targetPreHead, "merge_head": head,
-		},
-		RestsOn: []string{*approval}, IdempotencyKey: mergeReceiptKey(*approval),
-	}); err != nil {
-		return fmt.Errorf("record merge receipt: %w", err)
+	if err := recordMergeSuccession(ctx, workspace, *checkout, *serverURL, actor, private, receipt); err != nil {
+		return err
 	}
 	fmt.Println(head)
 	return nil
@@ -482,12 +539,16 @@ type mergeReceipt struct {
 	Candidate     string
 	TargetPreHead string
 	MergeHead     string
+	Retirements   string
+	Successors    string
 }
 
 const (
-	mergeApprovalTrailer  = "Gitseq-Approval: "
-	mergeCandidateTrailer = "Gitseq-Candidate: "
-	mergeTargetTrailer    = "Gitseq-Target-Pre-Head: "
+	mergeApprovalTrailer    = "Gitseq-Approval: "
+	mergeCandidateTrailer   = "Gitseq-Candidate: "
+	mergeTargetTrailer      = "Gitseq-Target-Pre-Head: "
+	mergeRetirementsTrailer = "Gitseq-Retirements: "
+	mergeSuccessorsTrailer  = "Gitseq-Successors: "
 )
 
 func mergeReceiptKey(approval string) string {
@@ -499,9 +560,18 @@ func mergeReceiptRef(approval string) string {
 	return "refs/gitseq/merge-receipts/" + strings.TrimPrefix(mergeReceiptKey(approval), "merge-receipt-")
 }
 
-func mergeReceiptMessage(text, approval, candidate, targetPreHead string) string {
-	return fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
-		mergeApprovalTrailer, approval, mergeCandidateTrailer, candidate, mergeTargetTrailer, targetPreHead)
+func mergeReceiptMessage(text, approval, candidate, targetPreHead string, plan successionPlan) (string, error) {
+	retirements, err := json.Marshal(plan.retire)
+	if err != nil {
+		return "", err
+	}
+	successors, err := json.Marshal(plan.publish)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
+		mergeApprovalTrailer, approval, mergeCandidateTrailer, candidate, mergeTargetTrailer, targetPreHead,
+		mergeRetirementsTrailer, retirements, mergeSuccessorsTrailer, successors), nil
 }
 
 func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt, error) {
@@ -518,6 +588,10 @@ func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt,
 			receipt.Candidate = strings.TrimPrefix(line, mergeCandidateTrailer)
 		case strings.HasPrefix(line, mergeTargetTrailer):
 			receipt.TargetPreHead = strings.TrimPrefix(line, mergeTargetTrailer)
+		case strings.HasPrefix(line, mergeRetirementsTrailer):
+			receipt.Retirements = strings.TrimPrefix(line, mergeRetirementsTrailer)
+		case strings.HasPrefix(line, mergeSuccessorsTrailer):
+			receipt.Successors = strings.TrimPrefix(line, mergeSuccessorsTrailer)
 		}
 	}
 	parents, err := git(ctx, checkout, "rev-list", "--parents", "-n", "1", head)
@@ -525,7 +599,7 @@ func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt,
 		return mergeReceipt{}, err
 	}
 	fields := strings.Fields(parents)
-	if receipt.Approval == "" || receipt.Candidate == "" || receipt.TargetPreHead == "" || len(fields) != 3 ||
+	if receipt.Approval == "" || receipt.Candidate == "" || receipt.TargetPreHead == "" || receipt.Retirements == "" || receipt.Successors == "" || len(fields) != 3 ||
 		fields[0] != head || fields[1] != receipt.TargetPreHead || fields[2] != receipt.Candidate {
 		return mergeReceipt{}, errors.New("malformed merge receipt commit")
 	}
