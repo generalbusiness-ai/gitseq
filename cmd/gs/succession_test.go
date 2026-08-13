@@ -70,6 +70,61 @@ func TestMergeDeleteRetiresOldPathWithoutSuccessor(t *testing.T) {
 	}
 }
 
+// The command applies the fold's own bound before the merge commit exists, so a
+// plan the fold will refuse never moves the target. The bound is the approval's
+// artifact path, because the fold holds no repository: it cannot open the merge
+// head or read a diff, so the reviewer's signed choice of artifact is the only
+// fact about the merger that the merger did not write.
+func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *testing.T) {
+	projection := workroom.Projection{
+		Statements: []workroom.Statement{
+			{Event: "approval", Actor: "reviewer", Body: map[string]string{"verdict": "approved", "artifact": "approved-artifact"}},
+			{Event: "approved-artifact", Actor: "implementer"},
+			{Event: "mine", Actor: "implementer"},
+			{Event: "inside", Actor: "stranger"},
+			{Event: "covering", Actor: "stranger"},
+			{Event: "elsewhere", Actor: "stranger"},
+		},
+		Artifacts: []workroom.Artifact{
+			{Event: "approved-artifact", Path: "cmd/gs"},
+			{Event: "mine", Path: "docs"},
+			{Event: "inside", Path: "cmd/gs/main.go"},
+			{Event: "covering", Path: "cmd"},
+			{Event: "elsewhere", Path: "docs"},
+		},
+		Actors: map[string]workroom.ActorState{
+			"implementer": {Name: "implementer", Roles: []string{"participant"}},
+			"keeper":      {Name: "keeper", Roles: []string{"participant", "ratifier"}},
+		},
+	}
+	unrelated := successionPlan{retire: map[string]string{"elsewhere": "docs"}}
+	err := refuseUnreachableCrossAuthorRetirements(projection, unrelated, "approval", "implementer")
+	if err == nil || !strings.Contains(err.Error(), "outside the approved tree") {
+		t.Fatalf("cross-author retirement outside the approved tree error = %v", err)
+	}
+	// A ratifier may already retire anything, so nothing here applies to one.
+	if err := refuseUnreachableCrossAuthorRetirements(projection, unrelated, "approval", "keeper"); err != nil {
+		t.Fatalf("ratifier was refused: %v", err)
+	}
+	// The merger's own pointer needs no merge authority at any path.
+	own := successionPlan{retire: map[string]string{"mine": "docs"}}
+	if err := refuseUnreachableCrossAuthorRetirements(projection, own, "approval", "implementer"); err != nil {
+		t.Fatalf("retiring the merger's own artifact was refused: %v", err)
+	}
+	// Both directions of one lineage: inside the approved tree, and the
+	// directory covering it that the wider-path rule retires with it.
+	lineage := successionPlan{retire: map[string]string{"inside": "cmd/gs", "covering": "cmd"}}
+	if err := refuseUnreachableCrossAuthorRetirements(projection, lineage, "approval", "implementer"); err != nil {
+		t.Fatalf("retirement on the approved lineage was refused: %v", err)
+	}
+	// An approval naming no artifact path bounds nothing, so it authorizes
+	// nothing rather than everything.
+	if err := refuseUnreachableCrossAuthorRetirements(projection, unrelated, "missing", "implementer"); err == nil ||
+		!strings.Contains(err.Error(), "bounds no retirement") {
+		t.Fatalf("approval naming no artifact error = %v", err)
+	}
+}
+
 func TestMergePreflightRefusesInvalidGeneratedArtifactPaths(t *testing.T) {
 	for _, path := range []string{".", "cmd/gs,internal/app"} {
 		err := preflightSuccession(context.Background(), nil, "", successionPlan{publish: []string{path}})

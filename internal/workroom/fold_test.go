@@ -1636,19 +1636,53 @@ func TestMergeReceiptFromABystanderAuthorizesNothing(t *testing.T) {
 	}
 }
 
-// The same bound from the other side. The implementer really did merge, but a
-// receipt reaches only what its merge republished: a target the plan does not
-// cover takes no authority from it, whatever the plan claims.
+// The exploit from the other side, and the one the bystander check could not
+// reach: the author of the approved implementation is a bare participant too,
+// and every remaining field of a receipt is written by that same actor. This
+// fold holds no repository, so an invented merge head cannot be opened and no
+// diff can be read; nothing here says the merge ever happened. The probe signs
+// a receipt for an approval covering `spike`, names an operator-authored
+// artifact at the unrelated path `docs`, publishes its own successor there, and
+// retires it. What stops it is the reviewer's signed choice of artifact, which
+// the implementer cannot write.
+func TestMergeReceiptFromTheImplementerReachesNoUnrelatedTree(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "victim", operator, SchemaState, State{Kind: KindArtifact, Text: "the operator's pointer, in another tree", Body: map[string]string{"path": "docs", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		// r5 stands at spike and is the agent's own work, independently
+		// approved. Everything below is the agent writing its own authority.
+		event(t, "forged", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "invented",
+			"merge_retirements": `{"victim":"docs"}`, "merge_successors": `["docs"]`,
+		}}, "approval"),
+		event(t, "forged-successor", agent, SchemaState, State{Kind: KindArtifact, Text: "invented successor", Body: map[string]string{"path": "docs", "commit": "invented"}}, "forged"),
+		event(t, "steal", agent, SchemaSupersede, Supersede{Target: "victim", Text: "minted authority"}, "victim", "forged", "forged-successor"),
+	)
+	projection := Fold(records)
+	decision, _ := projection.Decision("steal")
+	if decision.Verdict != Ineffective || decision.Reason != "actor may not supersede target" {
+		t.Fatalf("implementer-forged merge receipt supersession = %+v", decision)
+	}
+	if artifactByEvent(t, projection, "victim").Retired {
+		t.Fatal("an approval for spike retired another actor's artifact under docs")
+	}
+}
+
+// The same bound from the other side. The implementer really did merge, and the
+// target is inside the approved tree, but a receipt reaches only what its merge
+// republished: a target the successor does not cover takes no authority from
+// it, whatever the plan claims.
 func TestMergeReceiptReachesOnlyWhatItsSuccessorCovers(t *testing.T) {
 	records := reviewRecords(t,
-		event(t, "victim", operator, SchemaState, State{Kind: KindArtifact, Text: "somewhere else entirely", Body: map[string]string{"path": "docs", "commit": "base"}}, "r0"),
+		event(t, "victim", operator, SchemaState, State{Kind: KindArtifact, Text: "inside the approved tree, outside the successor", Body: map[string]string{"path": "spike/other.go", "commit": "base"}}, "r0"),
 		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
 		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
 		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
 			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
-			"merge_retirements": `{"victim":"spike"}`, "merge_successors": `["spike"]`,
+			"merge_retirements": `{"victim":"spike/sub"}`, "merge_successors": `["spike/sub"]`,
 		}}, "approval"),
-		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike/sub", "commit": "merged"}}, "merge"),
 		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "victim", Text: "not covered by the successor"}, "victim", "merge", "successor"),
 	)
 	decision, _ := Fold(records).Decision("retire")

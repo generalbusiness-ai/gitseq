@@ -828,16 +828,31 @@ func (f *foldState) mergeReceiptPlan(receipt *parsedRecord) map[string]string {
 // validateMergeReceiptNow judges a merge receipt from the log alone and returns
 // the retirement plan it is allowed to authorize, or nil.
 //
-// Three things are checked because a receipt is otherwise entirely
-// signer-written text. The approval must be effective, ratified, and approve
-// the exact candidate. The implementation artifact it names must be cited by
-// that approval, stand at that candidate, and be authored by someone other than
-// the approver, so the approval is independent. And the receipt must be signed
-// by the author of that implementation artifact: the merger of an approved head
-// is the actor whose work it is. Without that last check the whole chain was
-// public reading — anyone could copy a ratified approval into an assert of
-// their own and mint retirement authority from it, which made a one-signature
-// denial of merge available to every participant.
+// A receipt is otherwise entirely signer-written text, so what it may reach has
+// to come from records its signer did not write. The approval must be
+// effective, ratified, and approve the exact candidate. The implementation
+// artifact it names must be cited by that approval, stand at that candidate,
+// and be authored by someone other than the approver, so the approval is
+// independent. The receipt must be signed by the author of that implementation
+// artifact, because the merger of an approved head is the actor whose work it
+// is. And the plan is then cut down to the targets standing on the same path
+// lineage as that approved artifact.
+//
+// The last cut is what makes the authority real rather than declared. Every
+// other field of a receipt — the merge head, the retirement plan, the successor
+// list — is written by the same actor asking for the authority, and this fold
+// is pure over records: it holds no repository, so it cannot open a merge
+// commit or read a diff to check any of them. Without the cut, the author of
+// one approved implementation could invent a merge head, name a stranger's
+// artifact anywhere in the log, publish a successor at that path themselves,
+// and retire it: an approval for one tree minted authority over every tree. The
+// reviewer is the one party who did not write the receipt, so the reviewer's
+// own signed choice of artifact is what bounds it.
+//
+// The cost is stated plainly rather than worked around: a merge touching
+// several areas carries cross-author authority only within the approved
+// artifact's tree. Everything else stays where it was before merge succession
+// existed, with the target's author or an actor holding ratifier.
 func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]string {
 	if receipt == nil || receipt.decision.Verdict != Effective || f.retired(receipt.record.ID) {
 		return nil
@@ -871,11 +886,44 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 	if receipt.record.Actor != artifact.record.Actor {
 		return nil
 	}
+	approvedPath := implementation.Body["path"]
+	if approvedPath == "" {
+		return nil
+	}
 	var plan map[string]string
 	if err := json.Unmarshal([]byte(state.Body["merge_retirements"]), &plan); err != nil || plan == nil {
 		return nil
 	}
-	return plan
+	reached := make(map[string]string, len(plan))
+	for target, successor := range plan {
+		if path, ok := f.artifactPath(target); ok && sameTreeLineage(approvedPath, path) {
+			reached[target] = successor
+		}
+	}
+	return reached
+}
+
+// artifactPath answers where an event stands, and whether it is an artifact at
+// all. A plan entry naming anything else reaches nothing.
+func (f *foldState) artifactPath(event string) (string, bool) {
+	record := f.byID[event]
+	if record == nil || record.definition == nil || record.definition.Render != RenderArtifact {
+		return "", false
+	}
+	state, ok := record.body.(*State)
+	if !ok {
+		return "", false
+	}
+	path := state.Body["path"]
+	return path, path != ""
+}
+
+// sameTreeLineage reports whether two artifact paths name one tree: the same
+// string, or one containing the other. The wider direction is deliberate — the
+// documented rule is that a directory artifact wins over one inside it, so a
+// merge must be able to retire the covering pointer as well as the covered one.
+func sameTreeLineage(one, other string) bool {
+	return pathCovers(one, other) || pathCovers(other, one)
 }
 
 // governanceTarget follows an act back to the roster statement whose live

@@ -166,8 +166,9 @@ fold, or UI expectations.
 - path-at-commit artifact statements, retirement, succession, reviews, and
   staleness;
 - guarded review and merge semantics, including the merge receipt that lets the
-  implementer of an approved head retire the predecessors its own merge
-  republished, and nothing else;
+  implementer of an approved head retire another actor's predecessors only on
+  the path lineage of the artifact that approval names, since the fold is pure
+  over records and can verify no merge head, diff, or tree;
 - Workroom MCP tools and their application meanings;
 - the agent practice in `SKILL.md`;
 - connector clauses and observations; and

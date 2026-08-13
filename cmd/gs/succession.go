@@ -258,6 +258,71 @@ func preflightSuccession(ctx context.Context, workspace *app.Workspace, checkout
 	return nil
 }
 
+// refuseUnreachableCrossAuthorRetirements applies the fold's own bound before
+// the merge commit exists, so a plan the fold will not authorize is refused
+// while the target is still unchanged rather than discovered after `HEAD` has
+// moved and half the succession has landed.
+//
+// The bound is the approval's: a receipt reaches another actor's pointer only
+// on the path lineage of the artifact that approval names. The fold holds no
+// repository and cannot check a merge head or a diff, so the reviewer's signed
+// choice of artifact is the only fact bounding the merger that the merger did
+// not write. An actor holding `ratifier` is already free to retire anything and
+// is not checked here.
+func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, plan successionPlan, approval, actor string) error {
+	if actor == "" {
+		return errors.New("merge succession needs the merging actor's fingerprint")
+	}
+	for _, role := range projection.Actors[actor].Roles {
+		if role == "ratifier" {
+			return nil
+		}
+	}
+	approvedPath := ""
+	for _, statement := range projection.Statements {
+		if statement.Event == approval {
+			approvedPath = artifactPath(projection, statement.Body["artifact"])
+		}
+	}
+	if approvedPath == "" {
+		return fmt.Errorf("approval %s names no artifact path, so it bounds no retirement", approval)
+	}
+	authors := make(map[string]string, len(projection.Statements))
+	for _, statement := range projection.Statements {
+		authors[statement.Event] = statement.Actor
+	}
+	targets := make([]string, 0, len(plan.retire))
+	for target := range plan.retire {
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+	for _, target := range targets {
+		path := artifactPath(projection, target)
+		if authors[target] == actor || sameTreeLineage(approvedPath, path) {
+			continue
+		}
+		return fmt.Errorf("merge would retire %s at %q, which belongs to another actor and lies outside the approved tree %q:\nhave the approval name an artifact covering it, or ask its author or an actor holding ratifier to retire it",
+			target, path, approvedPath)
+	}
+	return nil
+}
+
+func artifactPath(projection workroom.Projection, event string) string {
+	for _, artifact := range projection.Artifacts {
+		if artifact.Event == event {
+			return artifact.Path
+		}
+	}
+	return ""
+}
+
+func sameTreeLineage(one, other string) bool {
+	if one == "" || other == "" {
+		return false
+	}
+	return one == other || widerPath(one, other) || widerPath(other, one)
+}
+
 func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checkout, serverURL, actor string, private ed25519.PrivateKey, receipt mergeReceipt) error {
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
@@ -279,6 +344,10 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 		}
 	}
 	if err := preflightSuccession(ctx, workspace, checkout, plan); err != nil {
+		return err
+	}
+	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, receipt.Approval,
+		workspace.Config.Actors[actor].Fingerprint); err != nil {
 		return err
 	}
 	acts := successionActs(receipt.Approval, receipt.Candidate, receipt.TargetPreHead, receipt.MergeHead, plan)

@@ -192,14 +192,38 @@ fold checks all of it from the log alone:
 - the approval cites an implementation artifact standing at that candidate and
   written by someone other than the approver;
 - the receipt is signed by the author of that implementation artifact — the
-  merger of an approved head is the actor whose work it is; and
+  merger of an approved head is the actor whose work it is;
+- the target's path lies on the path lineage of that approved artifact: the same
+  string, or one path containing the other; and
 - the target carries a successor path in the receipt's signed plan, that path
   covers the target's own path, and the supersession cites the successor
   artifact published there.
 
-A receipt therefore reaches exactly the tree its merge republished, and nothing
-else. A retirement with no successor — a deleted path — takes no authority from
-a merge at all and stays with the target's own author or a ratifier.
+### What bounds this, and what does not
+
+The fold is pure over records. It holds no repository, so it cannot open the
+merge head, read its diff, or establish that any merge happened at all. Every
+other field of a receipt — the merge head, the retirement plan, the successor
+list — is written by the same actor asking for the authority, and a signer can
+publish an artifact at any path. So none of those fields bounds anything.
+
+The approval does. The reviewer is the one party to a merge who did not write
+the receipt, and the artifact that approval names is the reviewer's own signed
+choice. That artifact's path lineage is therefore the whole reach of the
+receipt. Without it, the author of a single approved implementation could invent
+a merge head, name a stranger's artifact anywhere in the log, publish a
+successor at its path, and retire it.
+
+The cost is stated rather than worked around. A merge touching several areas
+carries cross-author authority only within the approved artifact's tree; the
+predecessors elsewhere stay with their own authors or an actor holding
+`ratifier`, which is where they were before merge succession existed. `merge`
+refuses such a plan before `HEAD` moves rather than landing and stopping
+half-way, and names the target, its path, and the approved tree.
+
+A retirement with no successor — a deleted path — takes no authority from a
+merge either, because nothing the merge published stands over it to bound the
+claim.
 
 ### Restart residents at the merged commit
 

@@ -503,6 +503,10 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
 	}
+	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, *approval,
+		workspace.Config.Actors[actor].Fingerprint); err != nil {
+		return fmt.Errorf("merge succession preflight: %w", err)
+	}
 	message, err := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead, plan)
 	if err != nil {
 		return err
