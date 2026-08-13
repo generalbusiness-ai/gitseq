@@ -179,6 +179,12 @@ type Act struct {
 	RestsOn        []string
 	Attachments    map[string][]byte
 	IdempotencyKey string
+
+	// CitedOK lets a caller retire a record the documentation still names.
+	// A migration legitimately retires first and re-anchors after, so the
+	// escape has to exist — but it must be asked for, and only a surface
+	// that can offer that choice to a person should ever set it.
+	CitedOK bool
 }
 
 type Submission struct {
@@ -726,6 +732,13 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 		payload = workroom.Ratify{Target: act.Target}
 		rests = []string{act.Target}
 	case VerbSupersede:
+		// Every surface that can retire a record passes through here, which
+		// is why the check lives here and not in the command that happens to
+		// be in front of it. It was in cmd/gs alone, so a retirement filed
+		// over MCP skipped it entirely and took main red on 2026-08-12.
+		if err := w.RefuseCitedRetirement(ctx, act.Target, act.CitedOK); err != nil {
+			return kernel.Request{}, err
+		}
 		schema = workroom.SchemaSupersede
 		payload = workroom.Supersede{Target: act.Target, Text: act.Text}
 		rests = append([]string{act.Target}, rests...)
@@ -775,6 +788,51 @@ func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, ki
 		return errors.New("report actor must be the promisor of its promise-lifecycle basis")
 	}
 	return nil
+}
+
+// citingDocuments lists tracked documentation that names an event, so a
+// retirement can be refused before it lands rather than discovered afterwards
+// by the gate. Retiring a record a page cites leaves that page resting on a
+// withdrawn pointer, which the documentation gate refuses: the repository goes
+// red, and the act that did it is already in an append-only log. The pages are
+// the thing to look at, so they are what the refusal names.
+//
+// git grep rather than a walk, because tracked is the question. An untracked
+// working copy of a page is not what the gate reads, and a page that git does
+// not know about cannot break anyone else.
+func (w *Workspace) citingDocuments(ctx context.Context, event string) []string {
+	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", w.Repo,
+		"grep", "--name-only", "--fixed-strings", event, "--", "*.md").Output()
+	if err != nil {
+		// git grep exits non-zero when it matches nothing, which is the
+		// ordinary case and not a failure. Anything else is worth noticing but
+		// never worth blocking a retirement over: a guard that fails closed on
+		// its own malfunction would make a broken git a broken workroom.
+		return nil
+	}
+	var pages []string
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if page := strings.TrimSpace(line); page != "" {
+			pages = append(pages, page)
+		}
+	}
+	return pages
+}
+
+// RefuseCitedRetirement stops a supersession whose target the documentation
+// still names, whatever surface asked for it. BuildActRequest calls it so no
+// surface can skip it; `gs batch` also calls it ahead of its first append, so
+// a batch that cannot land cleanly lands nothing rather than stopping halfway.
+func (w *Workspace) RefuseCitedRetirement(ctx context.Context, target string, allowed bool) error {
+	if allowed || strings.TrimSpace(target) == "" {
+		return nil
+	}
+	pages := w.citingDocuments(ctx, target)
+	if len(pages) == 0 {
+		return nil
+	}
+	return fmt.Errorf("retiring %s would leave %d documentation page(s) resting on a withdrawn pointer:\n  %s\nrepoint them at the successor in the same head, then retire",
+		target, len(pages), strings.Join(pages, "\n  "))
 }
 
 func (w *Workspace) buildRequest(ctx context.Context, private ed25519.PrivateKey, actorName, schema string, payload any, rests []string, attachments map[string][]byte, key string) (kernel.Request, error) {
