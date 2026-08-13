@@ -10,7 +10,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc5ca55fb4a4e67e2395903519f2103a92930268
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8aa25919999f625d17a15302e3a535cd6c0012c9
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02b730f92830ddaff587e21d83d143439dc0be22
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:416d72476ccd31f44ab7c56de98ac3a0709c4a04
 ---
 
 # Components
@@ -122,8 +122,8 @@ so a reader can tell which repository the page is showing, and otherwise
 emits only checkout basenames, branch and HEAD, and explicit clean,
 dirty, detached, bare, locked, prunable or unavailable state. Naming the
 served path is safe because the service binds loopback addresses only:
-whoever is reading the page is already on the host it names. The railway
-is a newest-80 window and says so when it is truncated, so an older
+whoever is reading the page is already on the host it names. The commit
+graph is a newest-80 window and says so when it is truncated, so an older
 association can be absent without that meaning anything.
 
 ## Choosing a path in
