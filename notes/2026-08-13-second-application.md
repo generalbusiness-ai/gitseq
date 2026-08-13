@@ -25,6 +25,13 @@ Alice wants to play chess with Bob.
 6. When checkmate comes, the application — not either player — declares
    the result.
 
+Or Alice plays alone: she asks an agent to play against her. She creates a
+game and hands her agent the invitation link; the agent joins with its own
+signing key and plays its own moves. To the game an agent is just another
+player — same vocabulary, same rules, same log — and every move it makes
+is signed with its key, so the history always shows exactly who (or what)
+played what.
+
 Everything durable about that game now lives in an ordinary Git
 repository. Push it to any host and the complete, verifiable history of
 every game travels with it. Anyone with a copy can replay it and get
@@ -213,6 +220,15 @@ The architecture mirrors gitseq's own service, one layer at a time:
   live frames, each labeled with which world it belongs to, under two
   separate cursors. The server joins them for transport; the client never
   confuses them.
+- **Agents are players.** The chess binary also exposes its acts over an
+  MCP adapter — list games, show the board, query legal destinations,
+  move, resign — so a conversational agent can play without a browser,
+  exactly as gitseq's own service does for its workroom. The agent brings
+  its own chess judgment; the fold judges legality identically for every
+  player, and an agent's illegal move is refused the same way a human's
+  is. If the agent's key was minted under a person's anchor (see
+  Identity), the log also shows whose agent it is; either way its moves
+  are its own signatures, distinguishable from its owner's forever.
 - **Keys in the browser.** The session key is WebCrypto Ed25519,
   non-extractable, stored in IndexedDB — the wording matters, because an
   extractable key in ordinary web storage is one script injection away
@@ -374,6 +390,12 @@ reviewer's head is a finding, and so is a path without a budget.
 - **Agent credential.** An anchored person mints an agent key, endorses
   it, and hands the agent its key and the repository. Budget: three
   manual steps, measured at acceptance.
+- **Alice asks an agent to play.** For an agent that already has its key
+  and MCP access to the service: paste the invitation link. Budget: one
+  step. First-time setup is the agent-credential path above, plus
+  pointing the agent's MCP configuration at the deployment — counted
+  when walked, and the walk must include an agent that has never seen
+  the service before.
 - **Deployer.** Create the data repository on a forge; clone the chess
   repository; set two secrets (sequencer key, forge push credential);
   launch; share the URL. Budget: one repository, two secrets, one launch
@@ -409,7 +431,8 @@ own implementation request.
 4. The chess repository: vocabulary (invitation and anchor included),
    rules-engine fold on log-internal time, per-game projections, the
    legal-destination query, and a minimal binary with init, serve,
-   create, join, move, board, and resign.
+   create, join, move, board, and resign — plus the MCP adapter exposing
+   the same acts so agents can play.
 5. The chess UI, embedded in the same binary: lobby, game view, board and
    pieces from the durable fold, presence-animated moves, watcher list,
    and the single per-game chat — the complete-application section above
@@ -421,7 +444,8 @@ own implementation request.
    display, GitHub-login witnessing with the log-anchored witness key,
    and the Nostr anchor.
 8. Acceptance, two variants: a fresh repository, clone-and-run, two
-   keys, a game played to checkmate with the fold projecting the result;
+   keys — one seat played by an agent over the MCP adapter — and a game
+   played to checkmate with the fold projecting the result;
    then the same game through two browsers against a container-hosted
    deployment whose repository of record is on a forge — one player
    anonymous, one anchored, seat recovery exercised after a deliberately
