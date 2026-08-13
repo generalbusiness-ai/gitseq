@@ -1,1 +1,1 @@
-{"kind":"propose","text":"Decision: option 1 of bf399575. The kernel stays semantic-free; the dangling in-log reference check lands in the application"}
+{"kind":"assert","text":"Scope answer for 33329544: observation only for now; the outbound half (propose) waits until the connector revert lands and\n  the charter is refiled on a stable basis."}
