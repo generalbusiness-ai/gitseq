@@ -83,11 +83,14 @@ func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *te
 	projection := workroom.Projection{
 		Reviews: []workroom.Review{{Report: "approval", Head: "head1",
 			Implementer: "implementer", Verdict: "approved"}},
+		Provenance: map[string][]string{
+			"approval": {"promise", "approved-artifact", "second-reviewed"},
+		},
 		Statements: []workroom.Statement{
 			{Event: "approved-artifact", Sequence: 1, Actor: "implementer"},
 			{Event: "second-reviewed", Sequence: 2, Actor: "implementer"},
 			{Event: "approval", Sequence: 3, Actor: "reviewer", Body: map[string]string{"verdict": "approved", "artifact": "approved-artifact"}},
-			{Event: "late", Sequence: 4, Actor: "implementer"},
+			{Event: "uncited", Sequence: 4, Actor: "implementer"},
 			{Event: "mine", Sequence: 5, Actor: "implementer"},
 			{Event: "inside", Sequence: 6, Actor: "stranger"},
 			{Event: "covering", Sequence: 7, Actor: "stranger"},
@@ -96,13 +99,13 @@ func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *te
 		Artifacts: []workroom.Artifact{
 			{Event: "approved-artifact", Path: "cmd/gs", Commit: "head1"},
 			{Event: "second-reviewed", Path: "internal/kernel", Commit: "head1"},
-			{Event: "late", Path: "ui", Commit: "head1"},
+			{Event: "uncited", Path: "ui", Commit: "head1"},
 			{Event: "mine", Path: "docs"},
 			{Event: "inside", Path: "cmd/gs/main.go"},
 			{Event: "covering", Path: "cmd"},
 			{Event: "elsewhere", Path: "docs"},
 			{Event: "in-second", Path: "internal/kernel/fold.go"},
-			{Event: "in-late", Path: "ui/src"},
+			{Event: "in-uncited", Path: "ui/src"},
 		},
 		Actors: map[string]workroom.ActorState{
 			"implementer": {Name: "implementer", Roles: []string{"participant"}},
@@ -139,11 +142,12 @@ func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *te
 	if err := refuseUnreachableCrossAuthorRetirements(projection, second, "approval", "implementer"); err != nil {
 		t.Fatalf("retirement on a second reviewed path was refused: %v", err)
 	}
-	// A path the implementer claimed after the verdict was never reviewed.
-	late := successionPlan{retire: map[string]string{"in-late": "ui"}}
-	if err := refuseUnreachableCrossAuthorRetirements(projection, late, "approval", "implementer"); err == nil ||
+	// The implementer's own artifact, at the approved head, that the reviewer
+	// never cited. Seeding one before asking for review must reach nothing.
+	uncited := successionPlan{retire: map[string]string{"in-uncited": "ui"}}
+	if err := refuseUnreachableCrossAuthorRetirements(projection, uncited, "approval", "implementer"); err == nil ||
 		!strings.Contains(err.Error(), "outside the reviewed paths") {
-		t.Fatalf("retirement on a path claimed after the verdict error = %v", err)
+		t.Fatalf("retirement on an uncited path error = %v", err)
 	}
 	// An approval that reaches nothing authorizes nothing, rather than
 	// everything.

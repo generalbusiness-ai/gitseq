@@ -1595,7 +1595,8 @@ func TestMergeReceiptReachesEveryPathTheApprovalReviewed(t *testing.T) {
 		// The implementer's own candidates, both at the approved head, both
 		// standing before the reviewer signs. The verdict can name only one.
 		event(t, "docs-candidate", agent, SchemaState, State{Kind: KindArtifact, Text: "docs at the reviewed head", Body: map[string]string{"path": "docs", "commit": "head1"}}, "r0"),
-		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		// The reviewer signs the set: both artifacts are bases of the verdict.
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5", "docs-candidate"),
 		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
 		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
 			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
@@ -1620,18 +1621,21 @@ func TestMergeReceiptReachesEveryPathTheApprovalReviewed(t *testing.T) {
 	}
 }
 
-// The part of the widening that keeps it from being a licence. The reviewer
-// signs over a world, and the reachable set is what stood in that world: an
-// implementer who publishes a candidate at a fresh path afterwards has reached
-// nothing, or an approval for one tree would become an approval for any tree
-// its holder cared to name later.
-func TestMergeReceiptDoesNotReachAPathPublishedAfterTheApproval(t *testing.T) {
+// The part that keeps the widening from being a licence, and the case an
+// earlier design missed. Ordering the implementer's claims before the verdict
+// stops them being minted afterwards and does nothing about seeding: publish a
+// candidate at an unrelated path first, then obtain an approval citing only the
+// legitimate one, and an inferred set would have handed over that lineage. Only
+// what the reviewer cited reaches anything, so this artifact — the
+// implementer's own, at the approved head, standing well before the verdict —
+// reaches nothing.
+func TestMergeReceiptDoesNotReachAnArtifactTheReviewerDidNotCite(t *testing.T) {
 	records := reviewRecords(t,
 		event(t, "docs-old", operator, SchemaState, State{Kind: KindArtifact, Text: "older docs", Body: map[string]string{"path": "docs", "commit": "base"}}, "r0"),
+		// Seeded before the review is even requested, and never cited by it.
+		event(t, "docs-candidate", agent, SchemaState, State{Kind: KindArtifact, Text: "an uncited claim at docs", Body: map[string]string{"path": "docs", "commit": "head1"}}, "r0"),
 		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
 		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
-		// Minted after the verdict, so it was never reviewed.
-		event(t, "docs-candidate", agent, SchemaState, State{Kind: KindArtifact, Text: "docs claimed late", Body: map[string]string{"path": "docs", "commit": "head1"}}, "r0"),
 		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
 			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
 			"merge_retirements": `{"docs-old":"docs"}`, "merge_successors": `["docs"]`,
@@ -1642,10 +1646,10 @@ func TestMergeReceiptDoesNotReachAPathPublishedAfterTheApproval(t *testing.T) {
 	projection := Fold(records)
 	decision, _ := projection.Decision("retire-docs")
 	if decision.Verdict != Ineffective || decision.Reason != "actor may not supersede target" {
-		t.Fatalf("retirement on a path claimed after the approval = %+v", decision)
+		t.Fatalf("retirement on an uncited path = %+v", decision)
 	}
 	if artifactByEvent(t, projection, "docs-old").Retired {
-		t.Fatal("a path claimed after the verdict retired another actor's artifact")
+		t.Fatal("an uncited path retired another actor's artifact")
 	}
 }
 
@@ -1663,7 +1667,9 @@ func TestMergeReceiptReachIsTheImplementersOwnClaimAtTheApprovedHead(t *testing.
 			records := reviewRecords(t,
 				event(t, "docs-old", operator, SchemaState, State{Kind: KindArtifact, Text: "older docs", Body: map[string]string{"path": "docs", "commit": "base"}}, "r0"),
 				event(t, "docs-claim", probe.author, SchemaState, State{Kind: KindArtifact, Text: "a claim at docs", Body: map[string]string{"path": "docs", "commit": probe.commit}}, "r0"),
-				event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+				// Cited by the reviewer, so only the fold's checks on the member
+				// itself — its owner and its commit — can refuse it.
+				event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5", "docs-claim"),
 				event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
 				event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
 					"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
@@ -1710,6 +1716,40 @@ func TestMergeSuccessorRestingOnThePredecessorItRetiresStaysCurrent(t *testing.T
 	}
 	if !artifactByEvent(t, projection, "predecessor").Retired {
 		t.Fatal("the predecessor stayed live")
+	}
+}
+
+// The exception belongs to the merge's own successor and to nobody else. The
+// signed plan says which retirement is hidden; it says nothing about who may
+// hide it, so citing a receipt and one of its planned predecessors must not buy
+// a record silence about a basis it had no part in replacing. Here the borrower
+// stands at another commit and at no path the merge published, and it goes
+// stale exactly as it would have without the receipt.
+func TestMergePlanIsNotLentToARecordTheMergeDidNotPublish(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "the basis being replaced", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"predecessor":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge", "predecessor"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "predecessor", Text: "merge succession"}, "predecessor", "merge", "successor"),
+		// Not published by this merge: another commit, another path. It cites
+		// the receipt and the retired predecessor and must gain nothing by it.
+		event(t, "borrower", agent, SchemaState, State{Kind: KindArtifact, Text: "an unrelated pointer borrowing the receipt", Body: map[string]string{"path": "ui", "commit": "elsewhere"}}, "merge", "predecessor"),
+	)
+	projection := Fold(records)
+	if successor := artifactByEvent(t, projection, "successor"); successor.Stale {
+		t.Fatal("the merge's own successor went stale from the predecessor it replaced")
+	}
+	borrower := artifactByEvent(t, projection, "borrower")
+	if !borrower.Stale {
+		t.Fatal("a record the merge never published suppressed staleness by citing the receipt")
+	}
+	if !borrower.DescribesSupersededWorld {
+		t.Fatal("the borrower rests on a retired artifact and does not say so")
 	}
 }
 

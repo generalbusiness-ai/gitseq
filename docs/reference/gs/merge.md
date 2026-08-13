@@ -148,7 +148,7 @@ predecessor in the same batch.
 | No live artifact covers an added or modified file | A first artifact is published at the changed file path. |
 | A file is renamed | Its exact old path is retired without a successor there. The destination receives a first artifact or the successor for the live path already covering it. |
 | A file is deleted | Its exact old path is retired with no successor. A live covering directory still receives its successor because the directory changed. |
-| A successor rests on the predecessor the same merge retires | The successor stays current. The work stood on what it replaces, and the merge that publishes one withdraws the other in the same act, so that withdrawal is not news arriving underneath it. |
+| A successor rests on the predecessor the same merge retires | The successor stays current. The work stood on what it replaces, and the merge that publishes one withdraws the other in the same act, so that withdrawal is not news arriving underneath it. Only artifacts that merge actually published — at its merge head, at a path it declared — read it that way; any other record citing the receipt goes stale as usual. |
 
 `workroom/state@1` refuses new artifacts at `.` and refuses comma-joined
 pseudo-paths. Historical `state@0` artifacts keep their original decisions but
@@ -210,33 +210,33 @@ list — is written by the same actor asking for the authority, and a signer can
 publish an artifact at any path. So none of those fields bounds anything.
 
 The approval does. The reviewer is the one party to a merge who did not write
-the receipt, and the head that approval names is the reviewer's own signed
-choice. **The paths that approval reviewed** are every path where the
-implementer stood an artifact at that exact head, already recorded when the
-reviewer signed; their lineages are the whole reach of the receipt.
+the receipt, so what the receipt may reach is read from the verdict's own
+citations: **the artifacts the approval rests on**, and nothing else. Their path
+lineages are the whole reach.
 
-Reading only the single artifact the verdict names was true to what `gs review`
-can cite and false to what a reviewer reads. One head is one body of work and a
-body of work spans the paths it changes, so a head touching four maintained
-trees was approved once and could then succeed the pointer in only one of them:
-the merge refused itself, and the other three stayed on a predecessor nothing
-would supersede.
+One head is one body of work and a body of work spans the paths it changes, so
+a verdict citing a single artifact could succeed the pointer in one tree while
+the other three it changed stayed on a predecessor nothing would supersede.
+`gs review` therefore takes `--artifact` more than once, and a reviewer signs
+the whole set they read. An approval citing one artifact reaches one path, which
+is what every approval written before this existed does.
 
-Three things keep that widening honest, and none is a field of the receipt. The
-commit must equal the head the verdict names, which no one can change
-afterwards. The artifact must be the implementer's own, so nobody extends
-another actor's reach by publishing beside them. And it must already have stood
-in the log when the approval landed, which is what stops the set being minted:
-an implementer cannot reach a new path by publishing a candidate after the
-verdict, because the world the reviewer signed over is the world that counts.
+The set is not inferred. Anything derived from what the implementer published
+is written by the actor asking for the authority: seeding a candidate at an
+unrelated path, then obtaining an approval that cites only the legitimate one,
+would have reached that path too. Requiring the claims to predate the verdict
+closes minting afterwards and does nothing about seeding beforehand. Citation is
+what closes both, because a record's bases are fixed when it is signed.
 
-What this does not establish is worth saying. Holding no repository, the fold
-cannot open the approved commit or read its diff, so it takes the implementer's
-word that the head touches each of these paths. That word is a public artifact
-statement anyone can check against Git, made before the review rather than in
-the middle of a merge. Narrowing it further means letting an approval carry the
-whole reviewed set explicitly, which is a change to `gs review` and to what a
-verdict cites, not to this rule. Without it, the author of a single approved implementation could invent
+Each member is still checked on its own: effective, not withdrawn, standing at
+the exact head the verdict names, and the implementer's own, so a citation
+cannot smuggle in a pointer belonging to someone else or describing another
+commit. `merge` additionally holds every member to the strict staleness rule it
+holds the primary to.
+
+What none of this establishes is worth saying. Holding no repository, the fold
+cannot open the approved commit or read its diff, so it does not know that the
+head touches the paths cited; it knows that the reviewer signed for them. Without it, the author of a single approved implementation could invent
 a merge head, name a stranger's artifact anywhere in the log, publish a
 successor at its path, and retire it.
 

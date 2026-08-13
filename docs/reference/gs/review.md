@@ -22,7 +22,7 @@ review of nothing in particular, because the branch can move afterwards.
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The reviewing actor. |
 | `--checkout` | *(required)* | The working tree the reviewer examined. |
-| `--artifact` | *(required)* | The artifact event naming the reviewed head. |
+| `--artifact` | *(required)* | An artifact standing at the reviewed head. Repeat it to sign the whole set you read: the first is the artifact the verdict names, and every citation bounds what a later [`gs merge`](merge.md) receipt may retire. Each must be live and stand at the same head. |
 | `--promise` | *(required)* | The reviewer's own promise to review. |
 | `--verdict` | *(required)* | `approved` or `changes-requested`. |
 | `--text` | *(required)* | The review itself. |
@@ -134,6 +134,19 @@ signed**, not the judgement.
 Any change to the head invalidates an approval. The implementer records a
 **new** artifact at the new head and asks for review again; the old
 approval describes a commit nobody is proposing any more.
+
+## Signing more than one artifact
+
+A head usually changes several maintained paths, and each keeps its own
+artifact. Citing only one of them approves the head but leaves the rest of the
+succession unauthorized, so the merge that lands it can retire the predecessor
+in one tree and not the others.
+
+Repeat `--artifact` for every artifact you actually read. The set travels as the
+report's own bases, which is what lets `gs merge` treat it as reviewed: a set
+the implementer assembles proves nothing, because the implementer is the party
+asking for the authority. What you cite is what a receipt for this head may
+reach.
 
 ## See also
 
