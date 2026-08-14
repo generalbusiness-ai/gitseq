@@ -120,10 +120,14 @@ participants cannot see each other and are never told.
 
 ## Restart
 
-The resident keeps a signed checkpoint under
-`refs/gitseq/checkpoints/<genesis>`: the original actor-signed events at
-one fully audited sequence head, signed by the sequencer key **current at
-that head**. On restart it checks the checkpoint's object format,
+The resident and no-server `gs` commands share an application-owned selector
+under `.git/gitseq/checkpoints/<genesis>.json`. It names a signed checkpoint
+object. The local ref `refs/gitseq/checkpoints/<genesis>` names the same object:
+the ref keeps it reachable to Git garbage collection and can repair a missing
+or damaged selector, while the selector can recover from an unavailable or
+rewritten ref. Both are selectors, not proof. The object contains the original
+actor-signed events at one fully audited sequence head and is signed by the
+sequencer key **current at that head**. On restart gitseq checks its object format,
 genesis, exact head and fold-profile version, proves the commit sequence
 from genesis to that head from local metadata, and re-reads sequencer
 signatures and payload objects only for events after the frontier.
@@ -139,10 +143,19 @@ A missing, malformed, mismatched, oversized or non-descendant checkpoint
 is only a cache miss: gitseq performs the ordinary full audit and, if it
 holds sequencer custody, replaces the checkpoint.
 
-A writing resident refreshes the ref every 256 accepted events after its
-last successful write, so a successful checkpoint usually leaves at most
-255 commits for full delta verification. Persistent storage or signing
-failures make that tail larger.
+A writing process refreshes the reachability ref before the local selector
+every 256 accepted events after its last successful write. A selector write
+failure therefore cannot leave the new checkpoint object unreferenced. A
+successful checkpoint usually leaves at most 255 commits for full delta
+verification. Persistent storage or signing failures make that tail larger.
+
+To force the next process to audit from genesis, stop any resident for the
+repository and run `gs checkpoint-clear --repo <path>`. This removes the local
+selector and rewinds the checkpoint ref to genesis; the next ordinary read
+rebuilds both after its cold audit. To keep checkpoints disabled for a command
+or process, set `GITSEQ_CHECKPOINT=off`. The off switch neither reads nor writes
+the selectors. It does not turn [`gs verify`](../reference/gs/verify.md) into a
+different operation: `verify` is always cold.
 
 Checkpoint refs are local. `attach` does not fetch them, the documented
 sequence push does not publish them, and `gs verify` never consults them.

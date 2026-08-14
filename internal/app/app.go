@@ -356,6 +356,9 @@ func OpenObserved(ctx context.Context, repo string, observer observe.Observer) (
 		(config.VerifiedFrontier != nil && (config.VerifiedFrontier.Head == "" || config.VerifiedFrontier.Depth < 0)) {
 		return nil, errors.New("invalid gitseq config")
 	}
+	if err := validateGenesis(config.ObjectFormat, config.Genesis); err != nil {
+		return nil, fmt.Errorf("invalid gitseq config: %w", err)
+	}
 	return &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir, Observer: observer}, Config: config, observer: observer}, nil
 }
 
@@ -469,6 +472,9 @@ func (w *Workspace) save() error {
 }
 
 func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Workspace, error) {
+	if err := validateGenesis(objectFormat, genesis); err != nil {
+		return nil, fmt.Errorf("invalid attachment genesis: %w", err)
+	}
 	gitDir, commonDir, err := ResolveGitDirs(ctx, repo)
 	if err != nil {
 		return nil, err
@@ -984,8 +990,9 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 		}
 	}
 	w.submitterOnce.Do(func() {
+		checkpoint := w.checkpointOptions()
 		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{
-			SigningKey: w.Config.SequencerKey, CheckpointProfile: workroom.ProfileVersion, PreAppend: w.allowlist,
+			SigningKey: w.Config.SequencerKey, CheckpointProfile: checkpoint.Profile, CheckpointPointer: checkpoint.Pointer, PreAppend: w.allowlist,
 			MaxQueueDepth: ResidentQueueDepth,
 		})
 	})
@@ -1132,9 +1139,7 @@ func (w *Workspace) snapshotFlight() *snapshotFlight {
 }
 
 func (w *Workspace) newReader() *kernel.Reader {
-	return kernel.NewReader(w.Store, kernel.CheckpointOptions{
-		Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
-	})
+	return kernel.NewReader(w.Store, w.checkpointOptions())
 }
 
 func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.AuditProgress) (SourcedSnapshot, error) {

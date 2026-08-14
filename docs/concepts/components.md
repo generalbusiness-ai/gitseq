@@ -23,7 +23,8 @@ The workroom is an overlay on an ordinary git repository.
 |---|---|
 | `refs/seq/<genesis>` | The sequence. One commit per durable event. |
 | `.git/gitseq/` | Local configuration and actor keys. Not shared. |
-| `refs/gitseq/checkpoints/<genesis>` | A resident's local restart cache. Never published. |
+| `.git/gitseq/checkpoints/<genesis>.json` | The application-owned selector for a sequencer-signed verification checkpoint. It survives process restarts and is never published. |
+| `refs/gitseq/checkpoints/<genesis>` | The reachability and recovery anchor for the same local signed checkpoint object. It keeps `git gc` from pruning the object and is never published. |
 
 Git ignores `refs/seq/*` in both directions, so publishing and fetching
 the sequence are deliberate acts. Your branches, tags and working tree

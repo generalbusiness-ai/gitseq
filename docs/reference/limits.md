@@ -174,6 +174,15 @@ reads. Rotations are the exception to that shortcut: a rotation inside
 the cached prefix still costs a signature check, because the key the
 checkpoint is authenticated under is derived through them.
 
+The repository-private pointer at
+`.git/gitseq/checkpoints/<genesis>.json` is bounded to 4 KiB and written by
+atomic replacement. It is not trusted by itself: it only selects a Git
+checkpoint object whose shape, profile, sequence position, payload bindings,
+and sequencer signature are verified before its cached prefix is used.
+The corresponding local ref is the object's garbage-collection root. The
+pointer exists separately as application-owned, process-independent state: it
+can recover selection after ref loss, while the ref can repair pointer loss.
+
 ## Local view
 
 The browser's commit graph is a newest-80 window and says when it is

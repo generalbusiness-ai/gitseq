@@ -926,6 +926,9 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 	// Leave the repository with an exact signed checkpoint under the previous
 	// application profile. A fresh current-profile Workspace must reject it and
 	// audit from genesis.
+	if err := workspace.InvalidateCheckpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
 	oldReader := kernel.NewReader(workspace.Store, kernel.CheckpointOptions{
 		Profile: "deliberately-old-test-profile", SigningKey: workspace.Config.SequencerKey,
 	})

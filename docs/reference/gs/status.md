@@ -167,11 +167,21 @@ resident one.
 
 ## Cost
 
-The local read consumes a sequencer-signed checkpoint and verifies the
-tail that descends from it. If no checkpoint is usable it performs the
+The local read tries the application-owned checkpoint selector under
+`.git/gitseq` and the local Git reachability ref, verifies the
+sequencer-signed checkpoint object they name, and verifies the tail that
+descends from it. A resident restart and a no-server `gs` process use this same
+path. If no checkpoint is usable it performs the
 ordinary full audit, and prints a progress line after one second rather
 than appearing to hang. [`gs verify`](verify.md) never takes the
 checkpoint shortcut: it always audits the whole sequence.
+
+`gs checkpoint-clear --repo <path>` removes the application selector and
+rewinds the checkpoint ref to genesis. The next new process performs a cold
+audit and rebuilds them. Stop a resident before clearing if the resident itself
+must restart cold, because this command cannot erase another process's verified
+memory. Set `GITSEQ_CHECKPOINT=off` to disable checkpoint loading and writing
+for one command or process without changing the persistent selectors.
 
 
 ## See also

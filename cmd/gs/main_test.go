@@ -212,6 +212,58 @@ func TestSlowLocalAuditReportsProgressWithoutChangingTheResult(t *testing.T) {
 	}
 }
 
+func TestCheckpointClearRemovesBothPersistentSelectors(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	testGit(t, "", "init", "-q", repo)
+	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	pointer := filepath.Join(workspace.MetaDir, "checkpoints", workspace.Config.Genesis+".json")
+	if _, err := os.Stat(pointer); err != nil {
+		t.Fatalf("checkpoint pointer was not created: %v", err)
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout := os.Stdout
+	os.Stdout = writer
+	commandErr := checkpointClearCommand(ctx, []string{"--repo", repo})
+	os.Stdout = stdout
+	writer.Close()
+	printed, readErr := io.ReadAll(reader)
+	reader.Close()
+	if commandErr != nil || readErr != nil {
+		t.Fatalf("checkpoint-clear: command=%v read=%v", commandErr, readErr)
+	}
+	if _, err := os.Stat(pointer); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("checkpoint pointer remains: %v", err)
+	}
+	if head := testGit(t, repo, "rev-parse", kernel.CheckpointRef(workspace.Config.Genesis)); head != workspace.Config.Genesis {
+		t.Fatalf("checkpoint ref = %s, want genesis %s", head, workspace.Config.Genesis)
+	}
+	var result map[string]string
+	if err := json.Unmarshal(printed, &result); err != nil || result["checkpoint"] != "cleared" || result["genesis"] != workspace.Config.Genesis {
+		t.Fatalf("checkpoint-clear output = %q, result=%#v err=%v", printed, result, err)
+	}
+	fresh, err := app.Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := fresh.SnapshotWithSource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Source != app.SnapshotSourceColdFullAudit {
+		t.Fatalf("post-clear source = %q, want cold full audit", loaded.Source)
+	}
+}
+
 func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
