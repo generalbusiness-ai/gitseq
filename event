@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact CLI candidate preserving gs review success and merge defense for historical or independently signed malformed approvals.","body":{"commit":"aa1425112440a9da1fd5c9d1fbe7b5660c5c9781","path":"cmd/gs"}}
+{"kind":"artifact","text":"Exact repository-policy candidate requiring gs review or a hand-filed verdict grounded on its named artifact.","body":{"commit":"aa1425112440a9da1fd5c9d1fbe7b5660c5c9781","path":"AGENTS.md"}}
