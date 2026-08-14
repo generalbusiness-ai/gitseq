@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1c1ba7d681212ef02d5b7d4e5c6fbb1880174183"}
+{"kind":"promise","text":"I will publish the two missing exact-head checkpoint artifacts at cmd/gitseq-mcp and internal/service and replace the withdrawn review with one independent verdict directly covering all six paths, without changing the implementation head."}
