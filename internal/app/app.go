@@ -727,7 +727,7 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 		lifecycle, starter := workroom.StarterLifecycle(act.Kind)
 		if !starter || lifecycle == workroom.LifecycleReport {
 			reporter := intent.ActorFingerprint(private.Public().(ed25519.PublicKey))
-			if err := w.validateReportBasis(ctx, reporter, act.Kind, rests); err != nil {
+			if err := w.validateReportBasis(ctx, reporter, act.Kind, act.Body, rests); err != nil {
 				return kernel.Request{}, err
 			}
 		}
@@ -758,7 +758,7 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 // request is signed. The fold remains authoritative, including when the log
 // moves after this snapshot, but locally constructed reports should not append
 // when their lifecycle edge is already known to be ineffective or disputed.
-func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, kind workroom.Kind, rests []string) error {
+func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, kind workroom.Kind, body map[string]string, rests []string) error {
 	snapshot, err := w.Snapshot(ctx)
 	if err != nil {
 		return fmt.Errorf("validate report basis: %w", err)
@@ -792,6 +792,15 @@ func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, ki
 	}
 	if promises[0].Actor != reporter {
 		return errors.New("report actor must be the promisor of its promise-lifecycle basis")
+	}
+	artifact := body["artifact"]
+	if body["verdict"] == "approved" && artifact != "" {
+		for _, rest := range rests {
+			if rest == artifact {
+				return nil
+			}
+		}
+		return fmt.Errorf("approved report must rest on its named artifact %s; add it to rests_on or file the verdict with gs review", artifact)
 	}
 	return nil
 }

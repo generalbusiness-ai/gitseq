@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
@@ -1237,13 +1238,39 @@ func TestMergeGuardRefusesRatifiedChangesRequestedVerdict(t *testing.T) {
 
 func TestMergeGuardRefusesApprovalNotRestingOnNamedArtifact(t *testing.T) {
 	fixture := newWorkflowFixture(t)
-	approvalSubmission, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
-		Verb: app.VerbState, Kind: workroom.KindReport, Text: "approval with an ungrounded artifact field",
+	// Build below the application write boundary to preserve the merge gate's
+	// defense-in-depth coverage. Ordinary state surfaces now refuse this shape
+	// before signing it; an older or independently signed record can still be
+	// present in an attached sequence.
+	_, private, err := fixture.workspace.Actor("reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := workroom.Encode(workroom.State{
+		Kind: workroom.KindReport, Text: "approval with an ungrounded artifact field",
 		Body: map[string]string{
 			"verdict": "approved", "head": fixture.candidate, "artifact": fixture.artifact,
 		},
-		RestsOn: []string{fixture.promise, fixture.request}, IdempotencyKey: "ungrounded-artifact-approval",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := fixture.workspace.Store.WritePayloadTree(fixture.ctx, payload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version,
+		Target:  "git:" + fixture.workspace.Config.ObjectFormat + ":" + fixture.workspace.Config.Genesis,
+		Schema:  workroom.SchemaState, PayloadTree: "git:" + fixture.workspace.Config.ObjectFormat + ":" + tree,
+		RestsOn:        []string{fixture.promise, fixture.request},
+		IdempotencyNS:  fixture.workspace.Config.IdempotencyNamespace,
+		IdempotencyKey: "ungrounded-artifact-approval",
+	}, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvalSubmission, err := fixture.workspace.AcceptSubmission(fixture.ctx, kernel.Request{Signed: signed, Payload: payload})
 	if err != nil {
 		t.Fatal(err)
 	}

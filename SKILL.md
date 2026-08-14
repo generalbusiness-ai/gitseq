@@ -139,7 +139,8 @@ is still by a different agent. Its ratified approval authorizes the
 merge of that exact head; the merge artifact closes the work. The
 tradeoff is real and worth knowing: this path has no in-flight
 commitment row, so nobody can see from the board that the work is
-underway.
+underway. File a verdict with `gs review`; a verdict filed by hand must rest
+on the artifact it names.
 
 ## Discipline
 

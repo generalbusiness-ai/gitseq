@@ -289,6 +289,66 @@ func TestReportPreflightRequiresExactlyOnePromiseFromTheReporter(t *testing.T) {
 	}
 }
 
+func TestApprovedReportMustRestOnItsNamedArtifactBeforeSigning(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "agent", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	request := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "review",
+		Body:    map[string]string{"to": "agent", "conditions": "review the exact artifact"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "approval-basis-request",
+	})
+	promise := actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindPromise, Text: "I will review it",
+		RestsOn: []string{request.ID}, IdempotencyKey: "approval-basis-promise",
+	})
+	artifact := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindArtifact, Text: "candidate",
+		Body:    map[string]string{"path": "internal/app", "commit": "candidate-head"},
+		RestsOn: []string{request.ID}, IdempotencyKey: "approval-basis-artifact",
+	})
+	approval := Act{
+		Verb: VerbState, Kind: workroom.KindReport, Text: "approved",
+		Body: map[string]string{
+			"verdict": "approved", "head": "candidate-head", "artifact": artifact.ID,
+		},
+		RestsOn: []string{promise.ID}, IdempotencyKey: "approval-without-artifact-basis",
+	}
+	before, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Act(ctx, "agent", approval); err == nil {
+		t.Fatal("an approved report was signed without its named artifact basis")
+	} else {
+		for _, want := range []string{"approved report must rest on its named artifact", artifact.ID, "gs review"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("approval basis error %q does not name %q", err, want)
+			}
+		}
+	}
+	after, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("refused approval changed workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+	}
+
+	approval.RestsOn = append(approval.RestsOn, artifact.ID)
+	approval.IdempotencyKey = "approval-with-artifact-basis"
+	record := actRecord(t, ctx, workspace, "agent", approval)
+	decision, ok := workspace.mustSnapshot(t, ctx).Projection.Decision(record.ID)
+	if !ok || decision.Verdict != workroom.Effective {
+		t.Fatalf("approval with its named artifact basis = %+v, found=%v", decision, ok)
+	}
+}
+
 func TestReportPreflightUsesDeclaredLifecycleKinds(t *testing.T) {
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
