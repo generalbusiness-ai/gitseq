@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will rebase and re-authorize preserved guard 25543905 onto current main, verify semantic compatibility and full gates, publish four exact-head artifacts, report ready, and obtain independent all-four Architecture/Security/Simplification review."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2032c34e7c219b1848cab1995db5296f2ba6bfe1"}
