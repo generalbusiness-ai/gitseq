@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:650fcd5a336a0bda12e0bb17f0150ec48d9a9098","text":"Merge retired a covered predecessor; the successor is at docs."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4426a8b8f83c099dc532417c0a4c6b1cb21fb275","text":"Retire the abandoned stale docs candidate; current docs is the merged item1 successor."}
