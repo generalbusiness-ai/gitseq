@@ -1,1 +1,1 @@
-{"kind":"request","text":"x","body":{"to":"a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:272f79f6c288f1fbf8e462d5d1af1cc0326e2f84","text":"Withdraw: this was an accidental CLI flag probe (text 'x'), not a real request. Nothing rests on it."}
