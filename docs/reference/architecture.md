@@ -153,6 +153,9 @@ below every application profile, because a host must read it without already
 knowing whether the repository contains Workroom, chess, or another
 application.
 
+Every host recognizes the fixed binding schema family
+`gitseq/app-binding@0`; application profiles cannot rename or extend it.
+
 An effective binding records:
 
 - the application name;
@@ -160,6 +163,10 @@ An effective binding records:
 - the source URL as provenance, never as authority; and
 - the fold-profile version or hash that gives the application's records their
   exact meaning.
+
+Reading or recording a binding never fetches, builds, or runs application
+code. The source URL remains inert provenance until a person deliberately
+uses it outside Gitseq.
 
 The binding is effective only in the repository's bootstrap position, or as a
 later replacement signed by the key that initialized the repository. A record
@@ -274,7 +281,7 @@ These surfaces may evolve or be replaced without changing kernel validity.
 They must not infer application force that the selected interpreter did not
 produce.
 
-## Compatibility has five axes
+## Compatibility has six axes
 
 "Compatible with Gitseq" is too broad to be useful. State which contract is
 compatible:
@@ -282,7 +289,7 @@ compatible:
 | Axis | What must agree | Current marker or example |
 |---|---|---|
 | Kernel protocol | Genesis, intent and envelope encodings; sequence and signature rules; bounds; rotation and continuation | Kernel and intent version fields and wire markers |
-| Host binding | Application name, pinned source commit, fold version, binding authority, and interpreter-selection order | Legacy absence selects shipped Workroom; explicit bindings are host-level records |
+| Host binding | Application name, pinned source commit, fold version, binding authority, and interpreter-selection order | `gitseq/app-binding@0`; legacy absence selects shipped Workroom |
 | Application family | Schema family and governance bootstrap interpreted after host selection | `workroom/*` |
 | Interpreter or fold | The exact deterministic meaning assigned to the application record | `workroom.ProfileVersion` and the projected fold binding |
 | Projection contract | Names, types, limits, cursor behavior, and omission rules of derived read models | Workroom status, summary, work-query, and inspect shapes |
