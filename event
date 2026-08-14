@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Checkpoint restart and local-fold regression coverage at exact head 5eb4e8b7.","body":{"commit":"5eb4e8b756ed46986cb73f87109f31372ea6a849","path":"cmd/gitseq-mcp"}}
+{"kind":"artifact","text":"Checkpoint restart and projection-equivalence service coverage at exact head 5eb4e8b7.","body":{"commit":"5eb4e8b756ed46986cb73f87109f31372ea6a849","path":"internal/service"}}
