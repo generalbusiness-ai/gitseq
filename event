@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:96f29809cd4cd8c3bd7f25c9d6d3931b522cf28b","text":"Replace the stale checkpoint cmd/gitseq-mcp candidate; it mistakenly cited an abandoned stale candidate in addition to the live shipped predecessor."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3428a641277f42340a19309bb6cd893038c0f251","text":"Withdraw the stale six-artifact review request; its cmd/gitseq-mcp candidate has been replaced by a clean exact-head artifact."}
