@@ -20,7 +20,7 @@ A traditional application might store those attributes as columns in a database.
 Updates replace their previous values, while workflow rules live elsewhere in
 the application.
 
-With gitseq, there's a different way.  If I want to change the status of a 
+With gitseq, there's [a different way](https://martinfowler.com/eaaDev/EventSourcing.html).  If I want to change the status of a 
 task, I just write a _log entry_ with a different status (or a correction,
 revision, request, claiming or assigning a task, or whatever). We track the
 **acts** as immutable events.  Each is signed by its author, admitted to one
@@ -82,7 +82,7 @@ The kernel sequencer is very simple:
 
 * A series of events produce a log. The events are stored and linked in
   git, under a ref `refs/seq/<genesis-oid>` which points at the head of
-  the log.
+  the log:
   ```
   refs/seq/id → eventₙ → eventₙ₋₁ → … → genesis
   ```
@@ -101,7 +101,12 @@ The kernel sequencer is very simple:
 
 It's just a signed, content-addressed log store, with an authoritative
 order across concurrent submissions from cryptographically-identified
-actors.
+actors.  My Macbook gets ~10 writes per second (shelling out to git,
+not using an in-process library).  Raw read performance is in the region
+of 100k events per second; rendering any application-specific materialized
+view depends on the folding checkpoint interval (see the applications
+section below).  This is more expensive event-sourcing than an unsigned
+log, but has some really nice properties (including simplicity!).
 
 ## The Nexus
 
