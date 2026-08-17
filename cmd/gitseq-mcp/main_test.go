@@ -939,6 +939,56 @@ func TestAdapterStartsFromMainAndLinkedWorktreeInOneWorkroom(t *testing.T) {
 	}
 }
 
+func TestOneAdapterSharesRoomAcrossLinkedWorktrees(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	linked := filepath.Join(root, "linked")
+	if output, err := exec.Command("git", "init", "-q", "-b", "main", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed").CombinedOutput(); err != nil {
+		t.Fatalf("seed ordinary history: %v: %s", err, output)
+	}
+	if _, _, err := app.Init(ctx, repo, "human", 1<<20); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("git", "-C", repo, "worktree", "add", "-qb", "linked", linked).CombinedOutput(); err != nil {
+		t.Fatalf("add linked worktree: %v: %s", err, output)
+	}
+
+	mainGitDir, mainCommonDir, err := app.ResolveGitDirs(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkedGitDir, linkedCommonDir, err := app.ResolveGitDirs(ctx, linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mainGitDir == linkedGitDir || mainCommonDir != linkedCommonDir {
+		t.Fatalf("checkout and repository identities disagree: main git=%q common=%q linked git=%q common=%q", mainGitDir, mainCommonDir, linkedGitDir, linkedCommonDir)
+	}
+
+	server := newServer("human", repo)
+	mainRoom, err := server.attach(ctx, repo)
+	if err != nil {
+		t.Fatalf("attach main checkout: %v", err)
+	}
+	linkedRoom, err := server.attach(ctx, linked)
+	if err != nil {
+		t.Fatalf("attach linked checkout: %v", err)
+	}
+	if mainRoom != linkedRoom {
+		t.Fatal("one adapter allocated separate room and projection caches for linked checkouts")
+	}
+	if len(server.byCommonDir) != 1 || server.byCommonDir[mainCommonDir] != mainRoom {
+		t.Fatalf("common-directory cache does not hold the shared room: %+v", server.byCommonDir)
+	}
+	if server.byPath[absolute(repo)] != mainRoom || server.byPath[absolute(linked)] != mainRoom {
+		t.Fatalf("checkout paths do not resolve to the shared room: %+v", server.byPath)
+	}
+}
+
 // A directory with no workroom is an ordinary answer to one call, not a reason
 // to refuse the connection: the adapter is installed once and pointed at many
 // repositories, most of which are not workrooms.
