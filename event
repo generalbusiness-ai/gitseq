@@ -1,1 +1,1 @@
-{"kind":"report","text":"Filed the codex child request 2922574c5ed7dd5872c664742c95bd79f19624fb authorizing the two clean same-path artifact refreshes (internal/statusview, ui) on the live non-stale basis 43db09b9; codex to publish fresh successors and supersede stale 6ad2e2da/fd0680ef."}
+{"kind":"promise","text":"I will refresh the internal/statusview and ui behavior artifacts without changing source or the reviewed documentation head, then retire my stale same-path artifacts and report the exact successors."}
