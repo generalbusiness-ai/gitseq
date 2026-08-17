@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will audit every live documentation artifact whose provenance rests on a comma-joined pseudo-path artifact, republish each exact document path on the correct live non-stale per-path behavior basis without source or behavior changes, and report the exact successors and retirement blockers cleared."}
+{"kind":"artifact","text":"Re-anchored Run a work loop page; frontmatter now follows the live AGENTS.md work-loop discipline artifact.","body":{"commit":"e1fa1f3ada88cf1a40e852e19a3f91ae08423d89","path":"docs/how-to/run-a-work-loop.md"}}
