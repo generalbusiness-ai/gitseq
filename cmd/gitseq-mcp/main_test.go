@@ -877,6 +877,68 @@ func TestCallsActInTheRepositoryTheyName(t *testing.T) {
 	}
 }
 
+func TestAdapterStartsFromMainAndLinkedWorktreeInOneWorkroom(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	linked := filepath.Join(root, "linked")
+	if output, err := exec.Command("git", "init", "-q", "-b", "main", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed").CombinedOutput(); err != nil {
+		t.Fatalf("seed ordinary history: %v: %s", err, output)
+	}
+	workspace, seed, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("git", "-C", repo, "worktree", "add", "-qb", "linked", linked).CombinedOutput(); err != nil {
+		t.Fatalf("add linked worktree: %v: %s", err, output)
+	}
+
+	mainAdapter := newServer("human", repo)
+	linkedAdapter := newServer("human", linked)
+	mainValue, mainRoom, err := mainAdapter.call(ctx, toolCall{Name: "status"})
+	if err != nil {
+		t.Fatalf("start from main checkout: %v", err)
+	}
+	linkedValue, linkedRoom, err := linkedAdapter.call(ctx, toolCall{Name: "status"})
+	if err != nil {
+		t.Fatalf("start from linked checkout: %v", err)
+	}
+	if mainValue.(actorStatus).Totals.Depth != 1 || linkedValue.(actorStatus).Totals.Depth != 1 {
+		t.Fatalf("initial status disagreed: main=%+v linked=%+v", mainValue, linkedValue)
+	}
+	if mainRoom.workspace.GitDir == linkedRoom.workspace.GitDir || mainRoom.workspace.CommonDir != linkedRoom.workspace.CommonDir {
+		t.Fatalf("adapter conflated checkout and repository scopes: main git=%q common=%q linked git=%q common=%q", mainRoom.workspace.GitDir, mainRoom.workspace.CommonDir, linkedRoom.workspace.GitDir, linkedRoom.workspace.CommonDir)
+	}
+
+	if _, _, err := mainAdapter.call(ctx, toolCall{Name: "state", Arguments: map[string]any{
+		"kind": "assert", "text": "spoken from main", "rests_on": []any{seed.ID}, "idempotency_key": "main-adapter-write",
+	}}); err != nil {
+		t.Fatalf("state from main checkout: %v", err)
+	}
+	if _, _, err := linkedAdapter.call(ctx, toolCall{Name: "state", Arguments: map[string]any{
+		"kind": "assert", "text": "spoken from linked checkout", "rests_on": []any{seed.ID}, "idempotency_key": "linked-adapter-write",
+	}}); err != nil {
+		t.Fatalf("state from linked checkout: %v", err)
+	}
+	mainValue, _, err = mainAdapter.call(ctx, toolCall{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkedValue, _, err = linkedAdapter.call(ctx, toolCall{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mainValue.(actorStatus).Totals.Depth != 3 || linkedValue.(actorStatus).Totals.Depth != 3 {
+		t.Fatalf("adapters did not share one durable sequence: main=%+v linked=%+v", mainValue, linkedValue)
+	}
+	if snapshot, err := workspace.Snapshot(ctx); err != nil || snapshot.Depth != 3 {
+		t.Fatalf("main workspace did not observe both adapter writes: snapshot=%+v err=%v", snapshot, err)
+	}
+}
+
 // A directory with no workroom is an ordinary answer to one call, not a reason
 // to refuse the connection: the adapter is installed once and pointed at many
 // repositories, most of which are not workrooms.

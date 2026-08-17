@@ -1954,6 +1954,62 @@ func testGit(t *testing.T, repo string, arguments ...string) string {
 	return strings.TrimSpace(string(output))
 }
 
+func TestStatusVerifyAndStateShareWorkroomAcrossLinkedCheckouts(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	linked := filepath.Join(root, "linked")
+	testGit(t, "", "init", "-q", "-b", "main", repo)
+	testGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed")
+	workspace, seed, err := app.Init(ctx, repo, "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, repo, "worktree", "add", "-qb", "linked", linked)
+
+	if err := stateCommand(ctx, []string{
+		"--repo", repo, "--as", "operator", "--kind", "assert", "--text", "written from main",
+		"--rests-on", seed.ID, "--idempotency-key", "main-write",
+	}); err != nil {
+		t.Fatalf("state from main checkout: %v", err)
+	}
+	if err := stateCommand(ctx, []string{
+		"--repo", linked, "--as", "operator", "--kind", "assert", "--text", "written from linked checkout",
+		"--rests-on", seed.ID, "--idempotency-key", "linked-write",
+	}); err != nil {
+		t.Fatalf("state from linked checkout: %v", err)
+	}
+	for name, checkout := range map[string]string{"main": repo, "linked": linked} {
+		t.Run(name, func(t *testing.T) {
+			if err := statusCommand(ctx, []string{"--repo", checkout, "--json"}); err != nil {
+				t.Fatalf("status: %v", err)
+			}
+			if err := verifyCommand(ctx, []string{"--repo", checkout}); err != nil {
+				t.Fatalf("verify: %v", err)
+			}
+		})
+	}
+
+	fromLinked, err := app.Open(ctx, linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromLinked.GitDir == workspace.GitDir || fromLinked.CommonDir != workspace.CommonDir {
+		t.Fatalf("checkout and repository scopes were conflated: main git=%q common=%q linked git=%q common=%q", workspace.GitDir, workspace.CommonDir, fromLinked.GitDir, fromLinked.CommonDir)
+	}
+	mainSnapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkedSnapshot, err := fromLinked.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mainSnapshot.Depth != 3 || linkedSnapshot.Depth != 3 || mainSnapshot.Head != linkedSnapshot.Head {
+		t.Fatalf("commands did not share one durable sequence: main=%s/%d linked=%s/%d", mainSnapshot.Head, mainSnapshot.Depth, linkedSnapshot.Head, linkedSnapshot.Depth)
+	}
+}
+
 func contains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
