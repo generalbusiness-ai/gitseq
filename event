@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Linked-worktree gs command regression coverage at the exact pushed head.","body":{"commit":"e19b9ab21e8a95a7665cf64742d7d762cc3b4d8e","path":"cmd/gs"}}
+{"kind":"artifact","text":"Linked-worktree MCP adapter regression coverage at the exact pushed head.","body":{"commit":"e19b9ab21e8a95a7665cf64742d7d762cc3b4d8e","path":"cmd/gitseq-mcp"}}
