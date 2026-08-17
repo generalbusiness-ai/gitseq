@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"The Workroom fold narrows superseded-world propagation to artifact provenance and pins the one-hop reasoning boundary.","body":{"commit":"eb5673fa689339d75f1b2f10ce4e57bf2cb9ffea","path":"internal/workroom"}}
+{"kind":"artifact","text":"The merge gate records ordinary reasoning staleness and refuses only superseded-world provenance.","body":{"commit":"eb5673fa689339d75f1b2f10ce4e57bf2cb9ffea","path":"cmd/gs"}}
