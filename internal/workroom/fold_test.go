@@ -1460,6 +1460,7 @@ func TestRetiredArtifactMarksDependentsAsDescribingASupersededWorld(t *testing.T
 func TestWorldStalenessStopsAtAReviewReasoningChain(t *testing.T) {
 	records := reviewRecords(t,
 		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "direct-answer", agent, SchemaState, State{Kind: KindArtifact, Text: "answer resting directly on the review", Body: map[string]string{"path": "spike/direct-answer", "commit": "head2"}}, "approval"),
 		event(t, "follow-up", operator, SchemaState, State{Kind: KindRequest, Text: "follow the reviewed result", Body: map[string]string{"to": agent, "conditions": "answer the review"}}, "approval"),
 		event(t, "follow-up-promise", agent, SchemaState, State{Kind: KindPromise, Text: "answer the review"}, "follow-up"),
 		event(t, "answer", agent, SchemaState, State{Kind: KindArtifact, Text: "later answer", Body: map[string]string{"path": "spike/answer", "commit": "head2"}}, "follow-up-promise"),
@@ -1469,6 +1470,10 @@ func TestWorldStalenessStopsAtAReviewReasoningChain(t *testing.T) {
 	verdict := statementByEvent(t, projection, "approval")
 	if !verdict.Stale || !verdict.DescribesSupersededWorld {
 		t.Fatalf("verdict directly naming retired artifact: stale=%v world=%v", verdict.Stale, verdict.DescribesSupersededWorld)
+	}
+	directAnswer := artifactByEvent(t, projection, "direct-answer")
+	if !directAnswer.Stale || directAnswer.DescribesSupersededWorld {
+		t.Fatalf("artifact directly answering world-stale reasoning: stale=%v world=%v", directAnswer.Stale, directAnswer.DescribesSupersededWorld)
 	}
 	for _, event := range []string{"follow-up", "follow-up-promise"} {
 		statement := statementByEvent(t, projection, event)

@@ -61,7 +61,8 @@ per ISO 24495-1, for a technical audience.
    Ordinary staleness in a request, promise or report says the reasoning moved;
    it does not make the immutable reviewed head a different commit. A merge may
    land that exact approved head and records the staleness in its receipt. The
-   narrower `describes_superseded_world` fact follows artifact provenance.
+   narrower `describes_superseded_world` fact crosses a direct retired-artifact
+   edge and then follows artifact-to-artifact provenance only.
    `gs merge` refuses that fact: re-check the behaviour and publish an artifact
    on current implementation bases instead of repeating review on the old chain.
 5. Merge only an approved exact head. In the same step, retire every live
