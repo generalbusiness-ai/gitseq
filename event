@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Candidate internal/service artifact at exact head 4f310d62: the resident-served UI embed is regenerated with the locked Node 24.19.0 CI runtime and npm lockfile; repeated builds match CI asset hashes without source or behavior changes.","body":{"commit":"4f310d62f660f67ed28231fbaa61c8ba219b3240","path":"internal/service"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f59e07554090e9ce5f2cd7c5da3822bede12a2b1"}
