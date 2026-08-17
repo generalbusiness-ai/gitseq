@@ -957,6 +957,11 @@ func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
 		Repo: workspace.Repo, GitDir: workspace.GitDir, CommonDir: workspace.CommonDir, MetaDir: t.TempDir(), Store: workspace.Store,
 		Config: Config{Version: 0, Genesis: workspace.Config.Genesis, ObjectFormat: workspace.Config.ObjectFormat, ReadOnly: true},
 	}
+	// An attached view reads the binding for itself, as opening it would: a
+	// workspace that never selected an interpreter has none to fold with.
+	if attached.selected, err = attached.selectHost(ctx); err != nil {
+		t.Fatal(err)
+	}
 	views, err := attached.ActorViews(ctx)
 	if err != nil {
 		t.Fatal(err)
