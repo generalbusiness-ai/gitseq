@@ -2,7 +2,7 @@
 title: Event identifiers
 summary: The one canonical name every durable event is cited by.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d25d4a29644323e6939c86eefd25a24f59425a73
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbb34351b80ceeb7575e112ef7324b3d5de569ac
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:265b14724281203aac18927aa37ecc96dfc92523
 ---
 
