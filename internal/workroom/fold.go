@@ -1210,10 +1210,12 @@ func (f *foldState) retired(event string) bool {
 }
 
 // staleness returns transitive staleness and, narrowing it, the records whose
-// staleness traces back to a retired artifact. A record is world-stale when a
-// retired artifact is the basis that made it stale, or when it rests on
-// something already world-stale, so the distinction survives any number of
-// hops. Records are visited in sequence order and a basis is always cited
+// artifact provenance describes a retired implementation. Ordinary staleness
+// crosses every governed reasoning edge. World staleness crosses a direct
+// retirement edge from an artifact, and then only artifact-to-artifact edges:
+// a request, promise, report, or other reasoning statement records that its
+// argument moved without claiming that every later answer describes the old
+// world. Records are visited in sequence order and a basis is always cited
 // before its dependent, so one pass settles both maps. Which bases can carry
 // staleness at all is the governing definition's business: an exempt kind
 // neither catches staleness nor passes it on, and a terminal one catches it
@@ -1256,7 +1258,8 @@ func (f *foldState) staleness() (map[string]bool, map[string]bool) {
 				continue
 			}
 			stale[record.record.ID] = true
-			if world[basis] || (retiredBasis && f.isArtifact(basis)) {
+			artifactProvenance := f.isArtifact(basis) && f.isArtifact(record.record.ID)
+			if (world[basis] && artifactProvenance) || (retiredBasis && f.isArtifact(basis)) {
 				world[record.record.ID] = true
 				break
 			}

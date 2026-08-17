@@ -58,6 +58,12 @@ per ISO 24495-1, for a technical audience.
      the result and request changes for any unresolved security defect.
    - **Simplification:** identify any opportunity to asimplify, without
      weakening the conditions of satisfaction. Request changes to cut the fluff.
+   Ordinary staleness in a request, promise or report says the reasoning moved;
+   it does not make the immutable reviewed head a different commit. A merge may
+   land that exact approved head and records the staleness in its receipt. The
+   narrower `describes_superseded_world` fact follows artifact provenance.
+   `gs merge` refuses that fact: re-check the behaviour and publish an artifact
+   on current implementation bases instead of repeating review on the old chain.
 5. Merge only an approved exact head. In the same step, retire every live
    artifact that covers what the merge changed and publish a successor at the
    path each area keeps using, by the rules below. Only then may the original
@@ -158,12 +164,14 @@ the work is actually over.
      | .event'
    ```
 
-2. Wait for a quiet wave. Retirement propagates staleness into every review
-   chain that rests on one of these artifacts, and `gs merge` refuses a stale
-   approval and a stale artifact, so a head approved before the migration
-   cannot be merged after it without a fresh review. `gs review` is the softer
-   gate — it proceeds and records the staleness in the verdict — but a verdict
-   signed over a moved world is a worse thing to hand a merger than a wait.
+2. Wait for a quiet wave. Retirement propagates ordinary staleness into every
+   review chain that rests on one of these artifacts. `gs review` and `gs merge`
+   record that reasoning movement rather than refusing it. Artifact provenance
+   is narrower: an approval or artifact that describes a superseded world still
+   cannot merge and needs a current behaviour anchor, not another review of the
+   same chain. A verdict signed during the retirement wave creates avoidable
+   repair even where it can eventually merge, so wait until the first verdicts
+   and approved out-of-main heads are settled.
    Run the migration when no review request is still waiting for its first
    verdict and no approved head is still out of `main`:
 
@@ -185,9 +193,14 @@ the work is actually over.
         unresolved: [$named[] | select((($live[.body.artifact] // false) | not))] | length,
         named: ($named | length)}' .tmp/gs-status.json
 
-   jq -r '[.projection.reviews[]?
+   jq -r '.projection as $p
+     | ([$p.statements[]
+          | select(.describes_superseded_world // false)
+          | .event] | map({key: ., value: true}) | from_entries) as $world
+     | [$p.reviews[]?
            | select(.verdict == "approved" and (.ratified // false))
-           | select((.stale // false) | not)
+           | select((($world[.report] // false) or
+                     ($world[(.artifact // "")] // false)) | not)
            | select((.retired // false) | not)
            | .head] | unique | .[]' .tmp/gs-status.json |
      while read -r commit; do
@@ -229,13 +242,14 @@ the work is actually over.
    absence — a non-zero value there is something to look at before trusting
    `awaiting`.
 
-   Only an approval that could still be acted on counts. `gs merge` refuses a
-   stale or retired approval, so a head held up by one is not waiting for a
-   merger — it is waiting for a fresh review, and no amount of waiting moves
-   it. Counting those makes the precondition unreachable, which is the one
+   Only an approval that could still be acted on counts. `gs merge` records
+   ordinary reasoning staleness, but refuses a retired approval or an approval
+   or primary artifact that describes a superseded world. That head is waiting
+   for a current behaviour anchor, not for a fresh verdict on the same chain.
+   Counting those makes the precondition unreachable, which is the one
    failure a gate on an irreversible step cannot have: it would either block
    for ever or teach the operator to run the migration anyway. Measured
-   against the live log, dropping them removes the stale approval of head
+   against the live log, dropping them removes the world-stale approval of head
    bc469129 and keeps the genuinely outstanding 00b7070d.
 
    A live artifact is not a merge test. The historical merges predate this

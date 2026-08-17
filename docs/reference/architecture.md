@@ -217,12 +217,16 @@ fold, or UI expectations.
 - commitment lifecycles and who is waiting on whom;
 - ratification and supersession rules;
 - path-at-commit artifact statements, retirement, succession, reviews, and
-  staleness;
+  staleness: ordinary staleness crosses governed reasoning edges, while the
+  narrower `describes_superseded_world` fact crosses direct retired-artifact
+  edges and artifact-to-artifact provenance only;
 - guarded review and merge semantics, including the merge receipt that lets the
   implementer of an approved head retire another actor's predecessors only on
   the path lineages of the artifacts that approval itself cites, each standing
   at the approved head and owned by the implementer, since the fold is pure over
-  records and can verify no merge head, diff, or tree;
+  records and can verify no merge head, diff, or tree; merge receipts record
+  ordinary reasoning staleness, while a world-stale approval or artifact must
+  be re-anchored before merge;
 - Workroom MCP tools and their application meanings;
 - the agent practice in `SKILL.md`;
 - connector clauses and observations; and
