@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will implement the ratified world-staleness propagation boundary and merge-gate narrowing, prove both directions against the live log, update AGENTS.md and SKILL.md, run full gates, publish exact-path artifacts, and request independent review at one exact head."}
+{"kind":"artifact","text":"The Workroom fold narrows superseded-world propagation to artifact provenance.","body":{"commit":"2b4b7b2fd4cd7f79a5f3f38dcda953b3116e0f64","path":"internal/workroom"}}
