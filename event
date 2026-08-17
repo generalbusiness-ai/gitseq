@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at docs","body":{"commit":"a9fac28b574e972104c6d857e0ebccf5c5baa956","path":"docs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02585508ae5bcdade7e4ef035510b6c410f4bbf5","text":"Merge retired a covered predecessor; the successor is at docs."}
