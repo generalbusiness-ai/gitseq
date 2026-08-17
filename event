@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Re-anchored gs attach reference to the live cmd/gs implementation artifact.","body":{"commit":"e1fa1f3ada88cf1a40e852e19a3f91ae08423d89","path":"docs/reference/gs/attach.md"}}
+{"kind":"artifact","text":"Re-anchored Publish and audit guide to the live cmd/gs implementation artifact.","body":{"commit":"e1fa1f3ada88cf1a40e852e19a3f91ae08423d89","path":"docs/how-to/publish-and-audit.md"}}
