@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Re-anchored gs state reference to the live internal/workroom and cmd/gs implementation artifacts.","body":{"commit":"e1fa1f3ada88cf1a40e852e19a3f91ae08423d89","path":"docs/reference/gs/state.md"}}
+{"kind":"artifact","text":"Updated the citation baseline to remove the eight repaired comma-path failures; focused and full docset gates now pass.","body":{"commit":"e1fa1f3ada88cf1a40e852e19a3f91ae08423d89","path":"internal/docset"}}
