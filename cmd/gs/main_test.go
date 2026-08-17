@@ -959,7 +959,7 @@ func TestMergeRetryResumesPartlyLandedSuccessionWithoutRemerging(t *testing.T) {
 	}
 	snapshot := fixture.snapshot(t)
 	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, targetPreHead, fixture.candidate)
-	message, err := mergeReceiptMessage("Merge the approved feature.", approval, fixture.candidate, targetPreHead, planSuccession(snapshot.Projection, changes, predecessors))
+	message, err := mergeReceiptMessage("Merge the approved feature.", approval, fixture.candidate, targetPreHead, "", planSuccession(snapshot.Projection, changes, predecessors))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -974,7 +974,7 @@ func TestMergeRetryResumesPartlyLandedSuccessionWithoutRemerging(t *testing.T) {
 	snapshot = fixture.snapshot(t)
 	predecessors = successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, targetPreHead, fixture.candidate)
 	plan := planSuccession(snapshot.Projection, changes, predecessors)
-	acts := successionActs(approval, fixture.candidate, targetPreHead, mergeHead, plan)
+	acts := successionActs(approval, fixture.candidate, targetPreHead, mergeHead, "", plan)
 	if len(acts) < 3 {
 		t.Fatalf("succession acts = %d, want receipt, successor, and retirement", len(acts))
 	}
@@ -1023,7 +1023,7 @@ func TestMergeRetryBeforeDurableReceiptUsesTheSealedGitPlan(t *testing.T) {
 	snapshot := fixture.snapshot(t)
 	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, targetPreHead, fixture.candidate)
 	sealed := planSuccession(snapshot.Projection, changes, predecessors)
-	message, err := mergeReceiptMessage("Merge the approved feature.", approval, fixture.candidate, targetPreHead, sealed)
+	message, err := mergeReceiptMessage("Merge the approved feature.", approval, fixture.candidate, targetPreHead, "", sealed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1163,7 +1163,7 @@ func TestMergeGuardRefusesChangedCandidate(t *testing.T) {
 	}
 }
 
-func TestMergeGuardRefusesStaleApproval(t *testing.T) {
+func TestMergeGuardRecordsAndMergesAReasoningStaleApproval(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	approval := fixture.review(t)
 	fixture.ratify(t, approval)
@@ -1175,20 +1175,39 @@ func TestMergeGuardRefusesStaleApproval(t *testing.T) {
 	}
 	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
 	err := mergeCommand(fixture.ctx, []string{
-		"--repo", fixture.repo, "--checkout", fixture.repo,
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
 		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Merge the exact approved head and record the moved review argument.",
 	})
-	if err == nil || !strings.Contains(err.Error(), "statement is stale") {
-		t.Fatalf("stale approval error = %v", err)
+	if err != nil {
+		t.Fatalf("reasoning-stale approval was refused: %v", err)
 	}
-	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != base {
-		t.Fatalf("stale approval merge moved HEAD to %s, want %s", got, base)
+	mergeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	if mergeHead == base {
+		t.Fatal("reasoning-stale approval merge did not move HEAD")
+	}
+	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, mergeHead)
+	if err != nil || !ok {
+		t.Fatalf("read reasoning-stale merge receipt: ok=%v err=%v", ok, err)
+	}
+	for _, want := range []string{"approval stale", fixture.promise} {
+		if !strings.Contains(receipt.Staleness, want) {
+			t.Fatalf("merge receipt staleness %q does not name %q", receipt.Staleness, want)
+		}
+	}
+	var durable workroom.Statement
+	for _, statement := range fixture.snapshot(t).Projection.Statements {
+		if statement.Body["merge_approval"] == approval {
+			durable = statement
+		}
+	}
+	if durable.Body["stale"] != "true" || durable.Body["staleness"] != receipt.Staleness {
+		t.Fatalf("durable merge receipt did not preserve staleness: %+v", durable)
 	}
 }
 
-// Merge keeps the strict reading that review has given up. The looseness
-// belongs where a reviewer is present to exercise it; this is the step that
-// moves main with nobody weighing anything.
+// World staleness is not repaired by repeating reasoning: the implementation
+// pointer itself follows behaviour that was replaced and must be re-anchored.
 func TestMergeGuardStillRefusesAMovedWorldAfterAnApprovedReview(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	fixture.moveTheWorld(t)
@@ -1199,11 +1218,49 @@ func TestMergeGuardStillRefusesAMovedWorldAfterAnApprovedReview(t *testing.T) {
 		"--repo", fixture.repo, "--checkout", fixture.repo,
 		"--candidate", fixture.candidate, "--approval", approval,
 	})
-	if err == nil || !strings.Contains(err.Error(), "stale") {
+	if err == nil || !strings.Contains(err.Error(), "describes a superseded world") {
 		t.Fatalf("merge over a moved world error = %v", err)
 	}
 	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != base {
 		t.Fatalf("refused merge moved HEAD to %s, want %s", got, base)
+	}
+}
+
+func TestMergeLivenessSeparatesReasoningStaleFromSupersededWorld(t *testing.T) {
+	projection := workroom.Projection{
+		Decisions: []workroom.Decision{
+			{Event: "ordinary-artifact", Verdict: workroom.Effective},
+			{Event: "world-artifact", Verdict: workroom.Effective},
+			{Event: "ordinary-report", Verdict: workroom.Effective},
+			{Event: "world-report", Verdict: workroom.Effective},
+		},
+		Artifacts: []workroom.Artifact{
+			{Event: "ordinary-artifact", Path: "ordinary", Commit: "head", Stale: true},
+			{Event: "world-artifact", Path: "world", Commit: "head", Stale: true, DescribesSupersededWorld: true},
+		},
+		Statements: []workroom.Statement{
+			{Event: "ordinary-artifact", Kind: workroom.KindArtifact, Actor: "implementer", Stale: true},
+			{Event: "world-artifact", Kind: workroom.KindArtifact, Actor: "implementer", Stale: true, DescribesSupersededWorld: true},
+			{Event: "ordinary-report", Kind: workroom.KindReport, Stale: true},
+			{Event: "world-report", Kind: workroom.KindReport, Stale: true, DescribesSupersededWorld: true},
+		},
+		Reviews:    []workroom.Review{{Report: "approval", Implementer: "implementer", Head: "head"}},
+		Provenance: map[string][]string{"approval": {"ordinary-artifact", "world-artifact"}},
+	}
+	if _, err := liveArtifact(projection, "ordinary-artifact"); err != nil {
+		t.Fatalf("ordinary reasoning-stale artifact was refused: %v", err)
+	}
+	if _, err := liveStatement(projection, "ordinary-report", workroom.KindReport); err != nil {
+		t.Fatalf("ordinary reasoning-stale report was refused: %v", err)
+	}
+	if _, err := liveArtifact(projection, "world-artifact"); err == nil || !strings.Contains(err.Error(), "superseded world") {
+		t.Fatalf("world-stale artifact error = %v", err)
+	}
+	if _, err := liveStatement(projection, "world-report", workroom.KindReport); err == nil || !strings.Contains(err.Error(), "superseded world") {
+		t.Fatalf("world-stale report error = %v", err)
+	}
+	if paths := reviewedPaths(projection, "approval"); !slices.Equal(paths, []string{"ordinary"}) {
+		t.Fatalf("reviewed paths = %v, want only the ordinary-stale artifact", paths)
 	}
 }
 

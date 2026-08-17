@@ -436,7 +436,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if !found {
-		if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
+		if _, err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
 			return err
 		}
 	}
@@ -491,7 +491,8 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	}
 	// Repeat the durable and local checks directly before invoking Git. The
 	// merge argument remains the approved object ID, never a movable ref.
-	if err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
+	staleness, err := validateMerge(ctx, workspace, *checkout, *candidate, *approval)
+	if err != nil {
 		return err
 	}
 	// The last check before Git is touched: the signer. Nothing has been
@@ -538,7 +539,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, *approval, merger); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
 	}
-	message, err := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead, plan)
+	message, err := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead, staleness, plan)
 	if err != nil {
 		return err
 	}
@@ -576,6 +577,7 @@ type mergeReceipt struct {
 	MergeHead     string
 	Retirements   string
 	Successors    string
+	Staleness     string
 }
 
 const (
@@ -584,6 +586,7 @@ const (
 	mergeTargetTrailer      = "Gitseq-Target-Pre-Head: "
 	mergeRetirementsTrailer = "Gitseq-Retirements: "
 	mergeSuccessorsTrailer  = "Gitseq-Successors: "
+	mergeStalenessTrailer   = "Gitseq-Staleness: "
 )
 
 func mergeReceiptKey(approval string) string {
@@ -595,7 +598,7 @@ func mergeReceiptRef(approval string) string {
 	return "refs/gitseq/merge-receipts/" + strings.TrimPrefix(mergeReceiptKey(approval), "merge-receipt-")
 }
 
-func mergeReceiptMessage(text, approval, candidate, targetPreHead string, plan successionPlan) (string, error) {
+func mergeReceiptMessage(text, approval, candidate, targetPreHead, staleness string, plan successionPlan) (string, error) {
 	retirements, err := json.Marshal(plan.retire)
 	if err != nil {
 		return "", err
@@ -604,9 +607,13 @@ func mergeReceiptMessage(text, approval, candidate, targetPreHead string, plan s
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
+	message := fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
 		mergeApprovalTrailer, approval, mergeCandidateTrailer, candidate, mergeTargetTrailer, targetPreHead,
-		mergeRetirementsTrailer, retirements, mergeSuccessorsTrailer, successors), nil
+		mergeRetirementsTrailer, retirements, mergeSuccessorsTrailer, successors)
+	if staleness != "" {
+		message += "\n" + mergeStalenessTrailer + staleness
+	}
+	return message, nil
 }
 
 // readMergeReceipt separates "this commit is not one of our receipts" from
@@ -632,6 +639,8 @@ func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt,
 			receipt.Retirements = strings.TrimPrefix(line, mergeRetirementsTrailer)
 		case strings.HasPrefix(line, mergeSuccessorsTrailer):
 			receipt.Successors = strings.TrimPrefix(line, mergeSuccessorsTrailer)
+		case strings.HasPrefix(line, mergeStalenessTrailer):
+			receipt.Staleness = strings.TrimPrefix(line, mergeStalenessTrailer)
 		}
 	}
 	parents, err := git(ctx, checkout, "rev-list", "--parents", "-n", "1", head)
@@ -807,14 +816,12 @@ func retiredBases(projection workroom.Projection, events []string) []string {
 	return found
 }
 
-// validateMerge keeps the strict reading that review has given up. Review is a
-// judgement and merge is the machine acting on one: put the latitude where a
-// reviewer is present to exercise it, and keep the refusal where nobody is.
-// A refused review left a question no one could answer; a refused merge leaves
-// a signed approval standing and asks only that the record be brought up to
-// date, which is repair rather than deadlock. It also leaves the meaning of
-// staleness untouched at the one gate that moves main, where a proposal on
-// exactly that question is still in flight.
+// validateMerge refuses retirement, ineffectiveness, and a record that still
+// describes a superseded world. Ordinary reasoning staleness is evidence, not
+// a veto: the exact immutable head was reviewed, and the merge receipt records
+// what moved underneath its argument. A world-stale artifact still needs
+// re-anchoring because its description follows implementation that was
+// replaced; repeating the same review cannot repair that provenance.
 // requireApprovedImplementer refuses a merge signed by anyone but the actor
 // whose approved work is landing.
 //
@@ -850,48 +857,48 @@ func requireApprovedImplementer(projection workroom.Projection, approvalEvent, m
 	return nil
 }
 
-func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent string) error {
+func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent string) (string, error) {
 	if err := validateCheckout(ctx, workspace.Repo, checkout, candidate, false); err != nil {
-		return err
+		return "", err
 	}
 	if receipt, found, err := existingGitMergeReceipt(ctx, checkout, approvalEvent); err != nil {
-		return err
+		return "", err
 	} else if found {
-		return fmt.Errorf("approval was already used by merge %s into target pre-head %s", receipt.MergeHead, receipt.TargetPreHead)
+		return "", fmt.Errorf("approval was already used by merge %s into target pre-head %s", receipt.MergeHead, receipt.TargetPreHead)
 	}
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	projection := snapshot.Projection
 	for _, statement := range projection.Statements {
 		if statement.Body["merge_approval"] == approvalEvent && decisionEffective(projection, statement.Event) {
-			return fmt.Errorf("approval already has durable merge receipt %s", statement.Event)
+			return "", fmt.Errorf("approval already has durable merge receipt %s", statement.Event)
 		}
 	}
 	approval, err := liveStatement(projection, approvalEvent, workroom.KindReport)
 	if err != nil {
-		return fmt.Errorf("approval: %w", err)
+		return "", fmt.Errorf("approval: %w", err)
 	}
 	if !approval.Ratified {
-		return errors.New("approval report is not ratified by its requester")
+		return "", errors.New("approval report is not ratified by its requester")
 	}
 	if approval.Body["verdict"] != "approved" {
-		return errors.New("review verdict is not approved")
+		return "", errors.New("review verdict is not approved")
 	}
 	if approval.Body["head"] != candidate {
-		return fmt.Errorf("candidate %s does not equal approved head %s", candidate, approval.Body["head"])
+		return "", fmt.Errorf("candidate %s does not equal approved head %s", candidate, approval.Body["head"])
 	}
 	artifactEvent := approval.Body["artifact"]
 	if artifactEvent == "" || !slices.Contains(projection.Provenance[approvalEvent], artifactEvent) {
-		return errors.New("approval does not rest on its named artifact")
+		return "", errors.New("approval does not rest on its named artifact")
 	}
 	artifact, err := liveArtifact(projection, artifactEvent)
 	if err != nil {
-		return fmt.Errorf("approval artifact: %w", err)
+		return "", fmt.Errorf("approval artifact: %w", err)
 	}
 	if artifact.Commit != candidate {
-		return fmt.Errorf("approved artifact head %s does not equal candidate %s", artifact.Commit, candidate)
+		return "", fmt.Errorf("approved artifact head %s does not equal candidate %s", artifact.Commit, candidate)
 	}
 	// The rule that review comes from a different agent is checked here rather
 	// than assumed. An approval the projection cannot call independent does not
@@ -899,15 +906,18 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	// record cannot say who did.
 	review, found := projection.Review(approvalEvent)
 	if !found {
-		return errors.New("approval is not projected as a review")
+		return "", errors.New("approval is not projected as a review")
 	}
 	switch review.Independence {
 	case workroom.IndependenceSelfReview:
-		return errors.New("approval was signed by the actor who implemented this head; an independent review is required")
+		return "", errors.New("approval was signed by the actor who implemented this head; an independent review is required")
 	case workroom.IndependenceIndependent:
-		return nil
+		return reviewStaleness(projection, []reviewPart{
+			{name: "approval", event: approval.Event, stale: approval.Stale, world: approval.DescribesSupersededWorld},
+			{name: "artifact", event: artifact.Event, stale: artifact.Stale, world: artifact.DescribesSupersededWorld},
+		}), nil
 	default:
-		return errors.New("the record cannot say whether this approval was independent; name the reviewed artifact in the review report")
+		return "", errors.New("the record cannot say whether this approval was independent; name the reviewed artifact in the review report")
 	}
 }
 
@@ -1000,14 +1010,15 @@ func standingArtifact(projection workroom.Projection, event string) (workroom.Ar
 	return workroom.Artifact{}, errors.New("artifact event is unknown")
 }
 
-// liveArtifact is the strict reading: current as well as standing.
+// liveArtifact is merge-live: standing, and not describing a superseded world.
+// Ordinary reasoning staleness is recorded by the merge receipt.
 func liveArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
 	artifact, err := standingArtifact(projection, event)
 	if err != nil {
 		return workroom.Artifact{}, err
 	}
-	if artifact.Stale {
-		return workroom.Artifact{}, errors.New("artifact is stale")
+	if artifact.DescribesSupersededWorld {
+		return workroom.Artifact{}, errors.New("artifact describes a superseded world")
 	}
 	return artifact, nil
 }
@@ -1032,14 +1043,15 @@ func standingStatement(projection workroom.Projection, event string, kind workro
 	return workroom.Statement{}, errors.New("statement event is unknown")
 }
 
-// liveStatement is the strict reading: current as well as standing.
+// liveStatement is merge-live: standing, and not describing a superseded
+// world. Ordinary reasoning staleness is recorded by the merge receipt.
 func liveStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
 	statement, err := standingStatement(projection, event, kind)
 	if err != nil {
 		return workroom.Statement{}, err
 	}
-	if statement.Stale {
-		return workroom.Statement{}, errors.New("statement is stale")
+	if statement.DescribesSupersededWorld {
+		return workroom.Statement{}, errors.New("statement describes a superseded world")
 	}
 	return statement, nil
 }

@@ -311,10 +311,10 @@ func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, pla
 // is what stranded a head spanning four maintained trees — or admits ones the
 // fold refuses, which strands a succession after the target has moved.
 //
-// The command applies one check the fold cannot: staleness, which the fold only
-// knows once the whole log is folded. A stale member is held to the same strict
-// rule as the primary, so a reviewed set cannot carry authority on a pointer
-// whose own basis has moved.
+// The command applies one check the fold cannot: whether a candidate describes
+// a superseded world, which is known only after the whole log is folded.
+// Ordinary reasoning staleness remains review evidence and does not erase the
+// reviewer's signed reach over this exact head.
 func reviewedPaths(projection workroom.Projection, approval string) []string {
 	review, found := projection.Review(approval)
 	if !found || review.Implementer == "" || review.Head == "" {
@@ -332,7 +332,7 @@ func reviewedPaths(projection workroom.Projection, approval string) []string {
 	seen := make(map[string]bool)
 	for _, basis := range projection.Provenance[approval] {
 		artifact, isArtifact := standing[basis]
-		if !isArtifact || artifact.Retired || artifact.Stale || artifact.Path == "" {
+		if !isArtifact || artifact.Retired || artifact.DescribesSupersededWorld || artifact.Path == "" {
 			continue
 		}
 		if artifact.Commit != review.Head || authors[basis] != review.Implementer {
@@ -406,7 +406,7 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 		workspace.Config.Actors[actor].Fingerprint); err != nil {
 		return err
 	}
-	acts := successionActs(receipt.Approval, receipt.Candidate, receipt.TargetPreHead, receipt.MergeHead, plan)
+	acts := successionActs(receipt.Approval, receipt.Candidate, receipt.TargetPreHead, receipt.MergeHead, receipt.Staleness, plan)
 	// The exact checkout preflight above is the deliberate authorization for
 	// bypassing Workspace's repository-default citation guard here.
 	if _, err := runBatch(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
@@ -441,7 +441,7 @@ func successionKey(approval, class, value string) string {
 	return "merge-succession-" + hex.EncodeToString(sum[:])
 }
 
-func successionActs(approval, candidate, targetPreHead, mergeHead string, plan successionPlan) []batchAct {
+func successionActs(approval, candidate, targetPreHead, mergeHead, staleness string, plan successionPlan) []batchAct {
 	retirements, err := json.Marshal(plan.retire)
 	if err != nil {
 		return nil
@@ -450,14 +450,19 @@ func successionActs(approval, candidate, targetPreHead, mergeHead string, plan s
 	if err != nil {
 		return nil
 	}
+	receiptBody := map[string]string{
+		"merge_approval": approval, "merge_candidate": candidate,
+		"merge_target_pre_head": targetPreHead, "merge_head": mergeHead,
+		"merge_retirements": string(retirements), "merge_successors": string(successors),
+	}
+	if staleness != "" {
+		receiptBody["stale"] = "true"
+		receiptBody["staleness"] = staleness
+	}
 	acts := []batchAct{{
 		Label: "merge", Verb: app.VerbState, Kind: workroom.KindAssert,
-		Text: "approved candidate merged",
-		Body: map[string]string{
-			"merge_approval": approval, "merge_candidate": candidate,
-			"merge_target_pre_head": targetPreHead, "merge_head": mergeHead,
-			"merge_retirements": string(retirements), "merge_successors": string(successors),
-		},
+		Text:    "approved candidate merged",
+		Body:    receiptBody,
 		RestsOn: []string{approval}, IdempotencyKey: mergeReceiptKey(approval),
 	}}
 	labels := make(map[string]string, len(plan.publish))
@@ -506,7 +511,7 @@ func verifySuccession(ctx context.Context, workspace *app.Workspace, receipt mer
 	for _, path := range plan.publish {
 		live := 0
 		for _, artifact := range snapshot.Projection.Artifacts {
-			if artifact.Path == path && artifact.Commit == receipt.MergeHead && !artifact.Retired && !artifact.Stale {
+			if artifact.Path == path && artifact.Commit == receipt.MergeHead && !artifact.Retired && !artifact.DescribesSupersededWorld {
 				live++
 			}
 		}

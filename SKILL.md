@@ -179,7 +179,13 @@ on the artifact it names.
    projection marks what you skip: an artifact citing nothing reads
    *unable to flare*, and one whose predecessor at the same path is
    still live reads *succession not recorded*. A flare means
-   re-check this, not this is wrong.
+   re-check this, not this is wrong. The narrower *describes a
+   superseded world* flag follows artifact-to-artifact provenance;
+   requests, promises, reports and other reasoning edges carry ordinary
+   staleness but do not pass that flag onward. `gs merge` records ordinary
+   reasoning staleness in its receipt and may land the exact approved head.
+   It refuses a world-stale artifact or approval: re-anchor the artifact on
+   current behaviour rather than asking for another review of the same chain.
 9. **Publish live activity honestly.** Start work with `busy` and its relevant
    focus EventIDs. Publish `waiting` or `blocked` immediately; return to
    `available` and clear focus when leaving. Keep routine failed tests and

@@ -1430,13 +1430,14 @@ func statementByEvent(t *testing.T, projection Projection, id string) Statement 
 }
 
 // A retired artifact under a document means the world moved, and the mark must
-// survive intermediate hops. The distinction is the whole point: only this
-// kind of staleness means go and re-read the code.
+// survive artifact-provenance hops. A reasoning statement still becomes stale,
+// but does not claim that every later argument describes the old world.
 func TestRetiredArtifactMarksDependentsAsDescribingASupersededWorld(t *testing.T) {
 	records := worldRecords(t,
 		event(t, "w3", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation", Body: map[string]string{"path": "spike/cmd/gs", "commit": "aaa111"}}, "w0"),
 		event(t, "w4", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI reference page", Body: map[string]string{"path": "docs/reference/gs.md", "commit": "bbb222"}}, "w3"),
-		event(t, "w5", agent, SchemaState, State{Kind: KindAssert, Text: "The reference documents every subcommand"}, "w4"),
+		event(t, "w5", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI reference index", Body: map[string]string{"path": "docs/reference/index.md", "commit": "bbb222"}}, "w4"),
+		event(t, "w8", agent, SchemaState, State{Kind: KindAssert, Text: "The reference documents every subcommand"}, "w4"),
 		event(t, "w6", agent, SchemaState, State{Kind: KindArtifact, Text: "CLI implementation, replacing aaa111", Body: map[string]string{"path": "spike/cmd/gs", "commit": "ccc333"}}, "w0"),
 		event(t, "w7", agent, SchemaSupersede, Supersede{Target: "w3", Text: "Behaviour replaced at ccc333"}, "w3", "w6"),
 	)
@@ -1446,9 +1447,43 @@ func TestRetiredArtifactMarksDependentsAsDescribingASupersededWorld(t *testing.T
 	if !page.Stale || !page.DescribesSupersededWorld {
 		t.Fatalf("page resting on a retired artifact: stale=%v world=%v", page.Stale, page.DescribesSupersededWorld)
 	}
-	claim := statementByEvent(t, projection, "w5")
-	if !claim.Stale || !claim.DescribesSupersededWorld {
-		t.Fatalf("second hop lost the distinction: stale=%v world=%v", claim.Stale, claim.DescribesSupersededWorld)
+	index := artifactByEvent(t, projection, "w5")
+	if !index.Stale || !index.DescribesSupersededWorld {
+		t.Fatalf("artifact-provenance hop lost the distinction: stale=%v world=%v", index.Stale, index.DescribesSupersededWorld)
+	}
+	claim := statementByEvent(t, projection, "w8")
+	if !claim.Stale || claim.DescribesSupersededWorld {
+		t.Fatalf("reasoning hop carried the world flag: stale=%v world=%v", claim.Stale, claim.DescribesSupersededWorld)
+	}
+}
+
+func TestWorldStalenessStopsAtAReviewReasoningChain(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "direct-answer", agent, SchemaState, State{Kind: KindArtifact, Text: "answer resting directly on the review", Body: map[string]string{"path": "spike/direct-answer", "commit": "head2"}}, "approval"),
+		event(t, "follow-up", operator, SchemaState, State{Kind: KindRequest, Text: "follow the reviewed result", Body: map[string]string{"to": agent, "conditions": "answer the review"}}, "approval"),
+		event(t, "follow-up-promise", agent, SchemaState, State{Kind: KindPromise, Text: "answer the review"}, "follow-up"),
+		event(t, "answer", agent, SchemaState, State{Kind: KindArtifact, Text: "later answer", Body: map[string]string{"path": "spike/answer", "commit": "head2"}}, "follow-up-promise"),
+		event(t, "retire-r5", agent, SchemaSupersede, Supersede{Target: "r5", Text: "implementation replaced"}, "r5"),
+	)
+	projection := Fold(records)
+	verdict := statementByEvent(t, projection, "approval")
+	if !verdict.Stale || !verdict.DescribesSupersededWorld {
+		t.Fatalf("verdict directly naming retired artifact: stale=%v world=%v", verdict.Stale, verdict.DescribesSupersededWorld)
+	}
+	directAnswer := artifactByEvent(t, projection, "direct-answer")
+	if !directAnswer.Stale || directAnswer.DescribesSupersededWorld {
+		t.Fatalf("artifact directly answering world-stale reasoning: stale=%v world=%v", directAnswer.Stale, directAnswer.DescribesSupersededWorld)
+	}
+	for _, event := range []string{"follow-up", "follow-up-promise"} {
+		statement := statementByEvent(t, projection, event)
+		if !statement.Stale || statement.DescribesSupersededWorld {
+			t.Fatalf("%s across reasoning edge: stale=%v world=%v", event, statement.Stale, statement.DescribesSupersededWorld)
+		}
+	}
+	answer := artifactByEvent(t, projection, "answer")
+	if !answer.Stale || answer.DescribesSupersededWorld {
+		t.Fatalf("artifact answering stale request: stale=%v world=%v", answer.Stale, answer.DescribesSupersededWorld)
 	}
 }
 
