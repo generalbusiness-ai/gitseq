@@ -2841,3 +2841,43 @@ func TestMatchingCheckpointDoesNotStartColdAuditProgress(t *testing.T) {
 		t.Errorf("matching checkpoint started cold-audit progress: %+v", p)
 	}
 }
+
+func TestReadOpeningReturnsBoundedAuthenticatedPrefix(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	var appended []Result
+	for _, name := range []string{"first", "second", "third"} {
+		result, err := Submit(f.ctx, f.store, f.request(t, private, name, []byte(name), nil), Options{SigningKey: f.signingKey})
+		if err != nil {
+			t.Fatal(err)
+		}
+		appended = append(appended, result)
+	}
+	opening, err := ReadOpening(f.ctx, f.store, f.genesis, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(opening) != 2 {
+		t.Fatalf("opening = %d events, want the requested bound of 2", len(opening))
+	}
+	for index, event := range opening {
+		if event.Commit != appended[index].Commit || string(event.Payload) != []string{"first", "second"}[index] {
+			t.Fatalf("opening[%d] = %s %q, want %s", index, event.Commit, event.Payload, appended[index].Commit)
+		}
+	}
+	if _, err := ReadOpening(f.ctx, f.store, f.genesis, 0); err != nil {
+		t.Fatalf("bound of zero read anyway: %v", err)
+	}
+}
+
+func TestReadOpeningRefusesACommitTheSequencerDidNotSign(t *testing.T) {
+	f := newFixture(t, "sha1")
+	wrongKey := filepath.Join(t.TempDir(), "wrong-sequencer")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
+		t.Fatal(err)
+	}
+	forged := appendExternalCommit(t, f, f.request(t, actor(t), "forged-opening", []byte("forged"), nil), f.genesis, wrongKey)
+	if _, err := ReadOpening(f.ctx, f.store, f.genesis, 2); err == nil || !strings.Contains(err.Error(), forged+" sequencer signature") {
+		t.Fatalf("opening read of a forged record error = %v", err)
+	}
+}

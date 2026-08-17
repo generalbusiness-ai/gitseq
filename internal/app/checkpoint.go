@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
-	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 const (
@@ -112,7 +111,7 @@ func (w *Workspace) checkpointOptions() kernel.CheckpointOptions {
 		return kernel.CheckpointOptions{}
 	}
 	return kernel.CheckpointOptions{
-		Profile: workroom.ProfileVersion, SigningKey: w.Config.SequencerKey,
+		Profile: w.foldProfile(), SigningKey: w.Config.SequencerKey,
 		Pointer: fileCheckpointPointer{path: w.checkpointPointerPath()},
 	}
 }

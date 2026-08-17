@@ -857,6 +857,67 @@ func Verify(ctx context.Context, store gitstore.Store, genesis string) (Verifica
 	return log.Verification, nil
 }
 
+// errStopOpening ends the opening walk once enough events have been read. It
+// never leaves ReadOpening.
+var errStopOpening = errors.New("opening read complete")
+
+// ReadOpening returns the first limit events of a log without auditing all of
+// it. Each returned event carries the sequencer's signature on its commit, a
+// single-parent chain from the named genesis, its own actor signature, its
+// genesis target, and its payload binding.
+//
+// It is a bounded read, not a verification: the rest of the chain, idempotency,
+// and the head are not examined, so nothing may be folded on its authority.
+// A host reads the application binding out of the opening records this way
+// because it must choose an interpreter before the audit it will then fold.
+func ReadOpening(ctx context.Context, store gitstore.Store, genesis string, limit int) ([]Event, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	desc, err := Descriptor(ctx, store, genesis)
+	if err != nil {
+		return nil, err
+	}
+	var (
+		events []Event
+		prior  string
+		index  int
+	)
+	err = store.WalkRevListMetadata(ctx, Ref(genesis), func(commit gitstore.CommitMetadata) error {
+		if index == 0 && commit.OID != genesis {
+			return errors.New("chain does not begin at named genesis")
+		}
+		if err := validateChainParents(index, commit.Parents, prior); err != nil {
+			return fmt.Errorf("commit %s: %w", commit.OID, err)
+		}
+		if err := store.VerifySSHCommit(ctx, commit.OID, "sequencer", desc.SequencerPublicKey); err != nil {
+			return fmt.Errorf("commit %s sequencer signature: %w", commit.OID, err)
+		}
+		prior = commit.OID
+		index++
+		if index == 1 {
+			return nil
+		}
+		event, successor, rotation, err := loadCommit(ctx, store, desc, genesis, commit, true)
+		if err != nil {
+			return err
+		}
+		if rotation {
+			desc.SequencerPublicKey = successor
+			return nil
+		}
+		events = append(events, event)
+		if len(events) >= limit {
+			return errStopOpening
+		}
+		return nil
+	})
+	if err != nil && !errors.Is(err, errStopOpening) {
+		return nil, err
+	}
+	return events, nil
+}
+
 // scanHead performs the explicit cold/non-descendant full audit. It verifies
 // the immutable head and, in the same traversal, builds the event stream and
 // actor-scoped dedup index. loadPayload controls only whether verified payload
