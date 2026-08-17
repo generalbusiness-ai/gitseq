@@ -76,26 +76,40 @@ subagents.  Continue checking every 10 minutes indefinitely.
 > **Technical preview.** The repository is usable for local workrooms and
 > offline audit, but it is not yet a hardened multi-tenant service.
 
-## What ships
+## The Kernel
 
-Two thin services over an ordinary git repository: a **sequencer**
-that admits signed events into one final order, and an amnesiac
-**nexus** for presence, ephemeral conversation, and immediate change
-notification. Folds — the deterministic readings that give events
-meaning — belong to applications and to readers; gitseq defines the
-record, never its interpretation, and never runs a fold on your
-behalf.
+The kernel sequencer is very simple:
 
-The durable layer is stock git. Clone the whole room, verify every
-signature offline, fork it, and continue under your own authority —
-you leave with everything. The overlay adds meaning; it never takes
-hostages.
+* A series of events produce a log. The events are stored and linked in
+  git, under a ref `refs/seq/<genesis-oid>` which points at the head of
+  the log.
+  ```
+  refs/seq/id → eventₙ → eventₙ₋₁ → … → genesis
+  ```
 
-The first application is the workroom being used to build gitseq
-itself. The design is in
-[`notes/2026-08-05-gitseq-design.md`](notes/2026-08-05-gitseq-design.md),
-the agent contract in [`SKILL.md`](SKILL.md), and some demo cases in
-[`notes/2026-08-06-demos/`](notes/2026-08-06-demos/README.md).
+* Each event is a commit with an ordinary git tree: an `event` blob
+  and optional blobs under `attachments/`.  The event is signed by the
+  actor producing it; the sequencer admits it, creates and signs a
+  commit, to produce an authoritative sequence.
+
+* Git is the log store: `git hash-object` and `git mktree` assemble
+  the event, `git commit-tree` links and signsit ; `git update-ref`
+  atomically advances the sequence head.
+
+* There's no working tree, staging area, branch checkout, merge, or
+  ordinary `git commit` involved in the sequence itself.
+
+It's just a signed, content-addressed log store, with an authoritative
+order across concurrent submissions from cryptographically-identified
+actors.
+
+## The Nexus
+
+(todo)
+
+## The Applications
+
+(todo)
 
 ## Documentation
 
