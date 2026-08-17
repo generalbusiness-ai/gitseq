@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Current cmd/gs behavior at exact main 23c4c759 is unchanged. This fresh same-behavior pointer supplies the live non-stale exact-path anchor required by the dot-path documentation repair; no source, branch, commit, review, or merge changed.","body":{"commit":"23c4c7594d674a994327d0b9325bd69786dbc6b2","path":"cmd/gs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:458c8cb1033a7c21879e269cf68aaae1158dfaf8"}
