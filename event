@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will refresh the internal/statusview and ui behavior artifacts without changing source or the reviewed documentation head, then retire my stale same-path artifacts and report the exact successors."}
+{"kind":"artifact","text":"Current internal/statusview behavior at b2dc4244: bounded projections and live-attention joins remain presentation over verified Workroom state and do not establish durable meaning.","body":{"commit":"b2dc4244d8f564318877d4cb9590b7997c9017d3","path":"internal/statusview"}}
