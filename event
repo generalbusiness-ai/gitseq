@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:71141a6023431f7093387abec0073593a7ed5d90","text":"Retire the comma-joined pseudo-path artifact; record per-path artifacts instead (AGENTS.md)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f685c74639b599cedf490091dcde9ef2870c2eb","text":"Retire the comma-joined pseudo-path artifact; record per-path artifacts instead (AGENTS.md)."}
