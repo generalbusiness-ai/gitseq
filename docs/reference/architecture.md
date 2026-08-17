@@ -173,6 +173,14 @@ a host fact below application roles: retiring an operator inside Workroom does
 not revoke the initializing key's binding authority, because another
 application has no Workroom roster to consult.
 
+The bootstrap binding and a later replacement are one rule read once: the
+binding in force is the last binding record signed by the initializing key, so
+the newest effective binding wins. A binding-shaped record that is
+unauthorized, unparseable, or malformed has no force and leaves the previous
+answer standing. Nobody able to append can therefore make a repository
+unreadable by recording one, and a host never refuses to interpret a
+repository because of a record it should have ignored.
+
 Opening a repository has one fixed order: **read the binding, select the named
 interpreter, then fold**. A host must never fold with a guessed interpreter and
 repair the projection after discovering a mismatch. If the selected
@@ -190,8 +198,13 @@ The detailed product design is recorded in
 artifact
 `git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d5d30c17385f242466e3804a85e1d050a4e30d33`;
 that event is cited here as design history, not as this page's causal basis.
-This section defines the contract only. The following implementation item
-adds binding and interpreter selection behavior in `internal/app`.
+`internal/app` implements this contract: it records the binding at init for an
+application an absent binding does not already name, reads the binding in
+force, and selects one interpreter before it folds or appends anything. The
+read is a bounded pre-audit read rather than a verification — it authenticates
+the initializing actor's signature over an intent that names the genesis and
+the tree the commit carries, and leaves the sequencer chain to the audit that
+runs before any record is folded.
 
 ### 5. Application profile and interpreter
 
@@ -257,7 +270,8 @@ distinct.
 `internal/statusview` builds Workroom summaries, orientations, bounded work
 pages, exact-item inspection, and the bounded join of a caller's live priority
 inbox. `internal/app` opens a repository, joins the kernel records to the
-Workroom interpreter, and exposes the resulting durable snapshot. Readers must
+interpreter the repository is bound to, and exposes the resulting durable
+snapshot. Readers must
 report an unbound or unavailable interpreter instead of presenting a partial
 projection as authoritative. In particular, a degraded client marks priority
 chat unavailable; it does not invent an empty live inbox.
@@ -317,7 +331,7 @@ the same result.
 | `internal/nexus` | Live runtime | Owns process-local coordination. It is independent of the durable Workroom fold. |
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
 | Host binding vocabulary | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and read-binding/select/fold order shared by every host. It has no application ontology. |
-| `internal/app` | Application host and boundary adapter | The deliberate coupling point: today it builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, selects the Workroom fold profile, reads kernel events, and runs the Workroom fold. It will consume the host binding and select one interpreter; that behavior is outside this contract-only head. |
+| `internal/app` | Application host and boundary adapter | The deliberate coupling point: it builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also reads the host binding and selects one interpreter before folding or appending, and keys the checkpoint profile to the selected fold so no checkpoint is reused across interpreters. Workroom is the one interpreter this build holds. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, and live state. |
 | `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff and composes the Workroom receipt, successor artifacts, and retirements; Git remains outside the Workroom interpreter. Command grouping must not move Workroom concepts into the kernel packages. |

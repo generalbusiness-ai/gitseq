@@ -8,8 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"strings"
+	"unicode"
 
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
@@ -30,14 +33,6 @@ const (
 	// compatibility rule is fixed: no binding means workroom at the version
 	// the reader ships.
 	defaultApplication = "workroom"
-
-	// openingRecords bounds the prefix of the log a binding may occupy. The
-	// bootstrap position is the opening of the log, not a position anywhere in
-	// it: a host that binds first records at index 0, and this one records the
-	// operator's opening roster statement first because the workroom fold's
-	// bootstrap grant is positional. Anything binding-shaped later has no
-	// force, and is never read.
-	openingRecords = 2
 )
 
 // binding is a repository's declaration of the application that interprets it.
@@ -58,16 +53,25 @@ type host struct {
 	newFolder   func([]workroom.Record) *workroom.Folder
 }
 
-// hosts is the registry of interpreters this build holds, with workroom
-// registered as the default. It is fixed for the life of the process: a build
-// holds the applications it was compiled with, and nothing installs one at
-// runtime.
-var hosts = map[string]host{
-	defaultApplication: {
-		application: defaultApplication,
-		foldVersion: workroom.ProfileVersion,
-		newFolder:   workroom.NewFolder,
-	},
+// workroomHost is the interpreter this build holds, and the one an absent
+// binding names. A build holds the applications it was compiled with, and
+// nothing installs one at runtime.
+var workroomHost = host{
+	application: defaultApplication,
+	foldVersion: workroom.ProfileVersion,
+	newFolder:   workroom.NewFolder,
+}
+
+// heldHost answers whether this build can interpret one named application.
+// There is exactly one, so this is the whole registry. A map would be an index
+// over a single entry, and a misleading one: newFolder is spelled in Workroom's
+// own types, so no second application could be registered through it anyway.
+// The second application arrives with the interpreter type that can hold it.
+func heldHost(application string) (host, bool) {
+	if application == workroomHost.application {
+		return workroomHost, true
+	}
+	return host{}, false
 }
 
 // selection is one resolved answer to "which interpreter". A refusal is part
@@ -88,9 +92,9 @@ func (w *Workspace) selectHost(ctx context.Context) (selection, error) {
 		return selection{}, err
 	}
 	if recorded == nil {
-		return selection{host: hosts[defaultApplication]}, nil
+		return selection{host: workroomHost}, nil
 	}
-	held, exists := hosts[recorded.Application]
+	held, exists := heldHost(recorded.Application)
 	if !exists {
 		return selection{err: fmt.Errorf("repository is verifiable but uninterpretable: it is bound to application %q, which this build does not hold", recorded.Application)}, nil
 	}
@@ -123,42 +127,104 @@ func (w *Workspace) foldProfile() string {
 	if resolved := w.selected.Load(); resolved != nil && resolved.err == nil {
 		return resolved.host.foldVersion
 	}
-	return hosts[defaultApplication].foldVersion
+	return workroomHost.foldVersion
 }
 
-// readBinding returns the repository's binding, or nil when its log declares
-// none. A log that cannot be read yet — a workroom attached before its objects
+// errFirstRecordUnauthenticated ends the binding scan when the log's first
+// record does not authenticate. It never leaves readBinding.
+var errFirstRecordUnauthenticated = errors.New("the log's first record does not authenticate")
+
+// readBinding returns the binding in force, or nil when the log declares none.
+// A log that cannot be read yet — a workroom attached before its objects
 // arrive — is not an absent binding, so it reports an error and leaves the
 // question open.
+//
+// The binding in force is the last binding record signed by the key that
+// initialized the repository: the actor key on the log's first record. The
+// bootstrap binding and a later replacement are therefore one rule, not two —
+// scan the log in order and keep the last record that qualifies. Binding
+// authority sits below application roles, because another application has no
+// roster to consult.
+//
+// This is a bounded pre-audit read, not a verification. It authenticates
+// exactly what binding authority rests on: the initializing actor's signature
+// over an intent that names this genesis and matches the tree the commit
+// carries. It does not re-verify the sequencer chain, because nothing is
+// folded on its authority — the kernel audit runs before any record is folded,
+// and a chain that does not verify loses its projection there rather than to a
+// mis-selected interpreter.
+//
+// Anything that does not qualify is passed over rather than raised. An
+// unauthorized, unparseable, or malformed binding-shaped record has no force
+// and leaves the previous answer standing, so nobody able to append can make a
+// repository unreadable by recording one.
 func (w *Workspace) readBinding(ctx context.Context) (*binding, error) {
-	opening, err := kernel.ReadOpening(ctx, w.Store, w.Config.Genesis, openingRecords)
+	desc, err := kernel.Descriptor(ctx, w.Store, w.Config.Genesis)
 	if err != nil {
 		return nil, err
 	}
-	var initializing []byte
-	for index, event := range opening {
-		if index == 0 {
-			initializing = event.Signed.ActorKey
-		}
-		if event.Intent.Schema != bindingSchema {
-			continue
-		}
-		// Binding authority is the key that initialized the repository: the
-		// signer of the log's first record. It sits below application roles,
-		// because another application has no roster to consult. A record that
-		// merely resembles a binding has no force, so an unauthorized one is
-		// passed over rather than raised: anyone able to append could
-		// otherwise make a repository unreadable by naming it wrongly.
-		if !bytes.Equal(event.Signed.ActorKey, initializing) {
-			continue
-		}
-		decoded, err := decodeBinding(event.Payload)
+	target := "git:" + desc.ObjectFormat + ":" + w.Config.Genesis
+	var (
+		initializing []byte
+		established  bool
+		inForce      *binding
+	)
+	err = w.Store.WalkRevListMetadata(ctx, kernel.Ref(w.Config.Genesis), func(commit gitstore.CommitMetadata) error {
+		// Genesis and sequencer rotations carry no event envelope.
+		signed, _, err := intent.ParseEnvelope(normalizeEnvelope(commit.Message), desc.PayloadCeiling)
 		if err != nil {
-			return nil, fmt.Errorf("binding record %s: %w", event.Commit, err)
+			return nil
 		}
-		return &decoded, nil
+		if !established {
+			if _, err := intent.Verify(signed); err != nil {
+				return errFirstRecordUnauthenticated
+			}
+			initializing = signed.ActorKey
+			established = true
+		}
+		declared, err := intent.Decode(signed.Intent)
+		if err != nil || declared.Schema != bindingSchema {
+			return nil
+		}
+		if !bytes.Equal(signed.ActorKey, initializing) {
+			return nil
+		}
+		if _, err := intent.Verify(signed); err != nil {
+			return nil
+		}
+		// The intent must name this log, and the commit must carry the tree
+		// the actor signed, or the payload read below is not what was signed.
+		if declared.Target != target {
+			return nil
+		}
+		_, tree, err := gitstore.ParseTypedOID(declared.PayloadTree)
+		if err != nil || tree != commit.Tree {
+			return nil
+		}
+		payload, err := w.Store.ReadFileLimit(ctx, commit.OID, "event", int64(desc.PayloadCeiling))
+		if err != nil {
+			return nil
+		}
+		decoded, err := decodeBinding(payload)
+		if err != nil {
+			return nil
+		}
+		inForce = &decoded
+		return nil
+	})
+	if errors.Is(err, errFirstRecordUnauthenticated) {
+		return nil, nil
 	}
-	return nil, nil
+	if err != nil {
+		return nil, err
+	}
+	return inForce, nil
+}
+
+// normalizeEnvelope matches how the kernel presents a commit message to the
+// envelope parser, so this read admits exactly the envelopes the audit does.
+func normalizeEnvelope(message string) string {
+	return strings.TrimRightFunc(message, unicode.IsSpace) + "\n"
 }
 
 func decodeBinding(payload []byte) (binding, error) {
@@ -247,5 +313,16 @@ func (w *Workspace) buildBindingRequest(ctx context.Context, private ed25519.Pri
 	if err != nil {
 		return kernel.Request{}, err
 	}
-	return w.signRequest(ctx, private, operatorName, bindingSchema, payload, nil, nil, "binding")
+	// Recording a binding is an act at a position in the log, so that is what
+	// the idempotency key names. Retrying one submission is the same act and
+	// appends once; binding again later is a new act whatever it names. A
+	// fixed key would let a repository record only its first binding ever, and
+	// a key over the binding's own bytes would silently swallow the rollback
+	// that re-records an earlier binding — reporting success while leaving the
+	// binding it replaced in force.
+	head, err := w.Store.Head(ctx, kernel.Ref(w.Config.Genesis))
+	if err != nil {
+		return kernel.Request{}, err
+	}
+	return w.signRequest(ctx, private, operatorName, bindingSchema, payload, nil, nil, "binding/"+head)
 }

@@ -363,15 +363,11 @@ func OpenObserved(ctx context.Context, repo string, observer observe.Observer) (
 	if err := validateGenesis(config.ObjectFormat, config.Genesis); err != nil {
 		return nil, fmt.Errorf("invalid gitseq config: %w", err)
 	}
-	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir, Observer: observer}, Config: config, observer: observer}
-	// Read the binding, select the interpreter, then fold. A workroom attached
-	// before its objects arrive has no log to read yet; that question stays
-	// open and is answered later, still before any fold, rather than being
-	// settled by a guess here.
-	if resolved, err := workspace.selectHost(ctx); err == nil {
-		workspace.selected.Store(&resolved)
-	}
-	return workspace, nil
+	// The binding is read on first use, not here. Selection still precedes
+	// every fold and every append, because those are the only callers that ask
+	// for it — and a reader that only verifies kernel facts never needs an
+	// interpreter, so it should not pay to scan the log for one.
+	return &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir, Observer: observer}, Config: config, observer: observer}, nil
 }
 
 // SetObserver configures observation before a workspace begins serving.
@@ -380,21 +376,17 @@ func (w *Workspace) SetObserver(observer observe.Observer) {
 	w.Store.Observer = observer
 }
 
-// Init opens a repository for the application this build runs by default.
+// Init opens a repository for the application this build runs.
 func Init(ctx context.Context, repo, operatorName string, ceiling uint64) (*Workspace, workroom.Record, error) {
-	return initHosted(ctx, repo, operatorName, ceiling, defaultApplication)
+	return initHosted(ctx, repo, operatorName, ceiling, workroomHost)
 }
 
-// initHosted binds a new repository to one registered application for life,
-// and records that binding in its opening records — except for the
-// application an absent binding already names. Recording it there would say
-// nothing a reader does not already know, and would put a record in the
-// opening of every workroom log to say so.
-func initHosted(ctx context.Context, repo, operatorName string, ceiling uint64, application string) (*Workspace, workroom.Record, error) {
-	running, held := hosts[application]
-	if !held {
-		return nil, workroom.Record{}, fmt.Errorf("this build holds no interpreter for application %q", application)
-	}
+// initHosted binds a new repository to one application for life, and records
+// that binding in its opening records — except for the application an absent
+// binding already names. Recording it there would say nothing a reader does
+// not already know, and would put a record in the opening of every workroom
+// log to say so.
+func initHosted(ctx context.Context, repo, operatorName string, ceiling uint64, running host) (*Workspace, workroom.Record, error) {
 	if operatorName == "" {
 		operatorName = "operator"
 	}
@@ -447,7 +439,7 @@ func initHosted(ctx context.Context, repo, operatorName string, ceiling uint64, 
 	if err != nil {
 		return nil, workroom.Record{}, err
 	}
-	if application != defaultApplication {
+	if running.application != defaultApplication {
 		bindingRequest, err := workspace.buildBindingRequest(ctx, private, operatorName, selfBinding(running))
 		if err != nil {
 			return nil, workroom.Record{}, err
