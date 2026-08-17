@@ -82,9 +82,10 @@ type Workspace struct {
 	Config    Config
 	observer  observe.Observer
 
-	// selected is the interpreter this repository is bound to, resolved once
-	// and always before anything folds.
-	selected atomic.Pointer[selection]
+	// selected is the interpreter this repository is bound to. It is resolved
+	// when the workspace is made and never again, so nothing appended
+	// afterwards can change what an open workspace means.
+	selected selection
 
 	snapshotMu     sync.Mutex
 	snapshotCache  *Snapshot
@@ -363,11 +364,19 @@ func OpenObserved(ctx context.Context, repo string, observer observe.Observer) (
 	if err := validateGenesis(config.ObjectFormat, config.Genesis); err != nil {
 		return nil, fmt.Errorf("invalid gitseq config: %w", err)
 	}
-	// The binding is read on first use, not here. Selection still precedes
-	// every fold and every append, because those are the only callers that ask
-	// for it — and a reader that only verifies kernel facts never needs an
-	// interpreter, so it should not pay to scan the log for one.
-	return &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir, Observer: observer}, Config: config, observer: observer}, nil
+	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir, Observer: observer}, Config: config, observer: observer}
+	// Which application interprets this log is settled here, once, before the
+	// workspace can fold or append anything. Reading the binding later would
+	// make the answer depend on what happened after the open: a replacement
+	// recorded meanwhile would silently change the meaning of a workspace
+	// already in use. A repository whose log cannot be read has no answer to
+	// give, so it does not open.
+	selected, err := workspace.selectHost(ctx)
+	if err != nil {
+		return nil, err
+	}
+	workspace.selected = selected
+	return workspace, nil
 }
 
 // SetObserver configures observation before a workspace begins serving.
@@ -426,7 +435,7 @@ func initHosted(ctx context.Context, repo, operatorName string, ceiling uint64, 
 		Version: 0, Genesis: genesis, ObjectFormat: format, PayloadCeiling: ceiling, IdempotencyNamespace: "workroom/v0",
 		SequencerKey: sequencerKey, Actors: map[string]Actor{operatorName: {Name: operatorName, Fingerprint: fingerprint, KeyFile: actorPath}},
 	}}
-	workspace.selected.Store(&selection{host: running})
+	workspace.selected = selection{host: running}
 	request, err := workspace.BuildActRequest(ctx, private, operatorName, Act{
 		Verb: VerbState, Kind: workroom.KindRoster, Text: operatorName + " begins the workroom",
 		Body:           map[string]string{"actor": fingerprint, "kind": "human", "name": operatorName, "role": "operator"},
@@ -534,7 +543,10 @@ func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Wor
 	if err := workspace.save(); err != nil {
 		return nil, err
 	}
-	return workspace, nil
+	// The configuration is written, so opening it is what selects the
+	// interpreter. Attaching and opening then reach the same answer by the same
+	// path, and no workspace leaves this package without one.
+	return Open(ctx, repo)
 }
 
 func (w *Workspace) Actor(name string) (Actor, ed25519.PrivateKey, error) {
@@ -1000,9 +1012,17 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 		resultErr = errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
 		return Submission{}, resultErr
 	}
-	if _, err := w.interpreter(ctx); err != nil {
-		resultErr = err
-		return Submission{}, err
+	if _, refusal := w.interpreter(); refusal != nil {
+		// Appending under an interpreter this build does not hold would write a
+		// record nothing here can read. The refusal also asserts that the
+		// repository verifies, so the kernel speaks first: Snapshot audits the
+		// chain and reports the refusal only once it verifies, so whatever it
+		// reports is the honest answer for this submission too.
+		if _, err := w.Snapshot(ctx); err != nil {
+			refusal = err
+		}
+		resultErr = refusal
+		return Submission{}, refusal
 	}
 	decodedIntent, err := intent.Verify(request.Signed)
 	if err != nil {
@@ -1194,10 +1214,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 	started := time.Now()
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
-	selected, err := w.interpreter(ctx)
-	if err != nil {
-		return SourcedSnapshot{}, err
-	}
+	selected, refusal := w.interpreter()
 	head, err := w.Store.Head(ctx, kernel.Ref(w.Config.Genesis))
 	if err != nil {
 		return SourcedSnapshot{}, err
@@ -1218,6 +1235,13 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 	if err != nil {
 		w.recordSnapshot(ctx, observe.PathOther, started, 0, err)
 		return SourcedSnapshot{}, err
+	}
+	// The kernel has spoken, and only now may the host. A refusal to interpret
+	// asserts that the repository is verifiable, so returning it ahead of the
+	// audit would let an untrusted history pass an unverifiable chain off as a
+	// missing interpreter.
+	if refusal != nil {
+		return SourcedSnapshot{}, refusal
 	}
 	if err := w.rememberVerifiedFrontier(ctx, loaded.Verification); err != nil {
 		return SourcedSnapshot{}, err

@@ -84,8 +84,8 @@ type selection struct {
 }
 
 // selectHost reads the binding and selects the interpreter. The returned error
-// means the log could not be read at all, which is not an answer and must not
-// be cached; a refusal to interpret is carried in the selection instead.
+// means the log could not be read at all, which is not an answer: the
+// workspace does not open, rather than opening with the question left over.
 func (w *Workspace) selectHost(ctx context.Context) (selection, error) {
 	recorded, err := w.readBinding(ctx)
 	if err != nil {
@@ -104,30 +104,30 @@ func (w *Workspace) selectHost(ctx context.Context) (selection, error) {
 	return selection{host: held}, nil
 }
 
-// interpreter returns the selected fold, selecting it first if opening the
-// workspace could not. Concurrent callers may both select; they read the same
-// log position and reach the same answer.
-func (w *Workspace) interpreter(ctx context.Context) (host, error) {
-	if resolved := w.selected.Load(); resolved != nil {
-		return resolved.host, resolved.err
+// interpreter reports the fold chosen when this workspace was made, and the
+// refusal if there is one. The answer is immutable, so every operation on one
+// workspace means the same thing however the log moves under it.
+//
+// A workspace assembled as a struct literal never selected one. It is told so
+// rather than handed the default, because a guessed interpreter is the one
+// thing the open-time order exists to prevent.
+func (w *Workspace) interpreter() (host, error) {
+	if w.selected.host.newFolder == nil && w.selected.err == nil {
+		return host{}, errors.New("workspace has no interpreter: open it with Open, Init, or AttachConfig")
 	}
-	resolved, err := w.selectHost(ctx)
-	if err != nil {
-		return host{}, err
-	}
-	w.selected.Store(&resolved)
-	return resolved.host, resolved.err
+	return w.selected.host, w.selected.err
 }
 
 // foldProfile names the fold that produced local checkpoints, so a checkpoint
-// can never be reused across interpreters. Before selection resolves it names
-// the default; that is a cache key, and a wrong one costs a cold audit rather
-// than a wrong projection, because folding always selects first.
+// can never be reused across interpreters. A refusal names the default; that is
+// a cache key for a repository nothing here will fold, and a wrong one costs a
+// cold audit rather than a wrong projection.
 func (w *Workspace) foldProfile() string {
-	if resolved := w.selected.Load(); resolved != nil && resolved.err == nil {
-		return resolved.host.foldVersion
+	selected, err := w.interpreter()
+	if err != nil {
+		return workroomHost.foldVersion
 	}
-	return workroomHost.foldVersion
+	return selected.foldVersion
 }
 
 // errFirstRecordUnauthenticated ends the binding scan when the log's first

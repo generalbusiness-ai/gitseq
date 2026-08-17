@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -46,7 +49,7 @@ func selectedBy(t *testing.T, ctx context.Context, repo string) (host, error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return reopened.interpreter(ctx)
+	return reopened.interpreter()
 }
 
 func TestWorkroomRepositoryRecordsNoBindingAndSelectsWorkroom(t *testing.T) {
@@ -78,7 +81,7 @@ func TestWorkroomRepositoryRecordsNoBindingAndSelectsWorkroom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reopened.interpreter(ctx); err != nil {
+	if _, err := reopened.interpreter(); err != nil {
 		t.Fatal(err)
 	}
 	if reopened.foldProfile() != workroom.ProfileVersion {
@@ -178,6 +181,133 @@ func TestLaterBindingByTheInitializingKeyReplacesTheOneInForce(t *testing.T) {
 	}
 	if _, err := selectedBy(t, ctx, repo); err == nil || !strings.Contains(err.Error(), "uninterpretable") {
 		t.Fatalf("selection error = %v, want the replacement honoured", err)
+	}
+}
+
+// The selection is fixed when a workspace opens. Reading the binding at first
+// use instead would make the answer depend on what happened after the open: the
+// same workspace would mean one thing before a replacement landed and another
+// after, without reopening.
+func TestSelectionIsFixedAtOpenAgainstALaterReplacement(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	workspace, _, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A replacement recorded through another workspace over the same
+	// repository, after the first one opened and before it first folds.
+	recordBinding(t, ctx, workspace, "human", binding{Application: testApplication, FoldVersion: testFoldVersion})
+	if selected, err := opened.interpreter(); err != nil || selected.application != defaultApplication {
+		t.Fatalf("selected %+v err=%v, want the binding this workspace opened under", selected, err)
+	}
+	if _, err := opened.Snapshot(ctx); err != nil {
+		t.Fatalf("snapshot = %v, want the workspace to keep reading under the binding it opened with", err)
+	}
+	if _, err := opened.Act(ctx, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "still workroom here", IdempotencyKey: "after-replacement"}); err != nil {
+		t.Fatalf("act = %v, want appends to continue under the binding at open", err)
+	}
+	// And the replacement is in force for whoever opens next, so the test
+	// cannot pass by ignoring the record altogether.
+	if _, err := selectedBy(t, ctx, repo); err == nil || !strings.Contains(err.Error(), "uninterpretable") {
+		t.Fatalf("selection error = %v, want the replacement honoured by the next open", err)
+	}
+}
+
+// Selecting at open means a workspace nobody opened has no interpreter. It has
+// to say so: handing it the default would be the guess the open-time order
+// exists to prevent, and folding with the interpreter it never selected would
+// dereference nothing at all.
+func TestAWorkspaceThatNeverOpenedHasNoInterpreter(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unopened := &Workspace{
+		Repo: workspace.Repo, GitDir: workspace.GitDir, CommonDir: workspace.CommonDir,
+		MetaDir: workspace.MetaDir, Store: workspace.Store, Config: workspace.Config,
+	}
+	if _, err := unopened.Snapshot(ctx); err == nil || !strings.Contains(err.Error(), "no interpreter") {
+		t.Fatalf("snapshot = %v, want a refusal naming the interpreter it never selected", err)
+	}
+}
+
+// Kernel verification outranks an interpreter refusal. A refusal says the
+// repository verifies but cannot be interpreted, so a chain that does not
+// verify must never be reported as one: the binding read runs before the audit,
+// and an attacker who can write the ref could otherwise dress an unverifiable
+// history up as a missing interpreter.
+func TestAnUnverifiableChainOutranksTheInterpreterRefusal(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	workspace, _, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A binding the initializing key really signed, so the pre-audit read
+	// honours it and the repository looks bound to an application this build
+	// does not hold.
+	request, err := workspace.buildBindingRequest(ctx, private, "human", binding{Application: testApplication, FoldVersion: testFoldVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared, err := intent.Verify(request.Signed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := workspace.Store.WritePayloadTree(ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The commit carrying it is signed by a key that is not this repository's
+	// sequencer, so the chain does not verify.
+	wrongKey := filepath.Join(t.TempDir(), "wrong-sequencer")
+	if _, err := gitstore.GenerateSSHKey(ctx, wrongKey); err != nil {
+		t.Fatal(err)
+	}
+	head, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged, err := workspace.Store.SignedCommit(ctx, tree, head, intent.Envelope(request.Signed, declared.RestsOn), wrongKey, gitstore.CommitIdentity{
+		AuthorName: "hostile", AuthorEmail: "hostile@example.invalid",
+		CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), forged, head); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.interpreter(); err == nil || !strings.Contains(err.Error(), "uninterpretable") {
+		t.Fatalf("selection error = %v, want the pre-audit read to have honoured the forged binding", err)
+	}
+	if _, err := reopened.Snapshot(ctx); err == nil || !strings.Contains(err.Error(), "sequencer signature") {
+		t.Fatalf("snapshot error = %v, want the sequencer signature failure rather than a refusal to interpret", err)
+	}
+	// The same order holds for an append: nothing may claim this repository
+	// verifies while its chain does not.
+	act, err := reopened.BuildActRequest(ctx, private, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "onto an unverifiable chain", IdempotencyKey: "unverifiable",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.AcceptSubmission(ctx, act); err == nil || !strings.Contains(err.Error(), "sequencer signature") {
+		t.Fatalf("submission error = %v, want the sequencer signature failure to win there too", err)
 	}
 }
 

@@ -183,10 +183,18 @@ repository because of a record it should have ignored.
 
 Opening a repository has one fixed order: **read the binding, select the named
 interpreter, then fold**. A host must never fold with a guessed interpreter and
-repair the projection after discovering a mismatch. If the selected
-interpreter or fold version is unavailable, kernel verification still stands,
-but application state is unavailable and the host must report the repository
-as verifiable but uninterpretable.
+repair the projection after discovering a mismatch. The selection is made when
+the repository is opened and does not change while it stays open: a replacement
+binding recorded afterwards is read by the next open, so no operation changes
+meaning because of activity that followed the open. A repository whose log
+cannot be read has no binding to read and does not open.
+
+If the selected interpreter or fold version is unavailable, kernel verification
+still stands, but application state is unavailable and the host must report the
+repository as verifiable but uninterpretable. That report is a claim about a
+verified repository, so it comes after kernel verification, never before it: an
+unverifiable chain is reported as an unverifiable chain, and no history an
+appender controls can present itself as a missing interpreter instead.
 
 Repositories created before host bindings have a permanent compatibility
 rule: no binding means Workroom at the version shipped by the reader, and the
@@ -199,8 +207,9 @@ artifact
 `git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d5d30c17385f242466e3804a85e1d050a4e30d33`;
 that event is cited here as design history, not as this page's causal basis.
 `internal/app` implements this contract: it records the binding at init for an
-application an absent binding does not already name, reads the binding in
-force, and selects one interpreter before it folds or appends anything. The
+application an absent binding does not already name, and reads the binding in
+force to select one interpreter as the workspace opens, before it can fold or
+append anything. The
 read is a bounded pre-audit read rather than a verification — it authenticates
 the initializing actor's signature over an intent that names the genesis and
 the tree the commit carries, and leaves the sequencer chain to the audit that
@@ -331,7 +340,7 @@ the same result.
 | `internal/nexus` | Live runtime | Owns process-local coordination. It is independent of the durable Workroom fold. |
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
 | Host binding vocabulary | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and read-binding/select/fold order shared by every host. It has no application ontology. |
-| `internal/app` | Application host and boundary adapter | The deliberate coupling point: it builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also reads the host binding and selects one interpreter before folding or appending, and keys the checkpoint profile to the selected fold so no checkpoint is reused across interpreters. Workroom is the one interpreter this build holds. |
+| `internal/app` | Application host and boundary adapter | The deliberate coupling point: it builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also reads the host binding and selects one interpreter as a workspace opens, reports kernel verification ahead of any refusal to interpret, and keys the checkpoint profile to the selected fold so no checkpoint is reused across interpreters. Workroom is the one interpreter this build holds. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, and live state. |
 | `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff and composes the Workroom receipt, successor artifacts, and retirements; Git remains outside the Workroom interpreter. Command grouping must not move Workroom concepts into the kernel packages. |
