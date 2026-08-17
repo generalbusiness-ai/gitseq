@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Re-anchored MCP whoami reference to the live cmd/gitseq-mcp implementation artifact.","body":{"commit":"e1fa1f3ada88cf1a40e852e19a3f91ae08423d89","path":"docs/reference/mcp/whoami.md"}}
+{"kind":"artifact","text":"Re-anchored gs state reference to the live internal/workroom and cmd/gs implementation artifacts.","body":{"commit":"e1fa1f3ada88cf1a40e852e19a3f91ae08423d89","path":"docs/reference/gs/state.md"}}
