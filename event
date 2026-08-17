@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fe537d0492df9ae1e34dd7b529c66e7e9035c527"}
+{"kind":"promise","text":"I will produce the supported-host design decision without editing source: compare both authorization postures, choose one, document credential, signing, custody, storage, compromise, recovery and deployment boundaries, state adversarial shared-host acceptance criteria, obtain independent A/S/S review, and report the reviewed proposal."}
