@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Architecture documentation records the narrowed Workroom staleness and merge contract.","body":{"commit":"eb5673fa689339d75f1b2f10ce4e57bf2cb9ffea","path":"docs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bb2986a22fd8d8f794ad474720df424ec5d24d8c","text":"Replace the reviewed candidate with the repaired exact-head internal/workroom artifact."}
