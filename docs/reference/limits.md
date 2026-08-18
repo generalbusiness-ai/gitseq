@@ -177,8 +177,10 @@ checkpoint is authenticated under is derived through them.
 The repository-private pointer at
 `.git/gitseq/checkpoints/<genesis>.json` is bounded to 4 KiB and written by
 atomic replacement. It is not trusted by itself: it only selects a Git
-checkpoint object whose shape, profile, sequence position, payload bindings,
-and sequencer signature are verified before its cached prefix is used.
+checkpoint object whose shape, kernel identity, sequence position, payload
+bindings, sequencer-key lineage, and signature are verified before its cached
+prefix is used. It carries no application projection or fold-profile key, so
+the authenticated event prefix remains reusable when the host changes folds.
 The corresponding local ref is the object's garbage-collection root. The
 pointer exists separately as application-owned, process-independent state: it
 can recover selection after ref loss, while the ref can repair pointer loss.

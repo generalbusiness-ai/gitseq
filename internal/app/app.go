@@ -87,16 +87,20 @@ type Workspace struct {
 	// afterwards can change what an open workspace means.
 	selected selection
 
-	snapshotMu      sync.Mutex
-	snapshotCache   *Snapshot
-	snapshotSource  SnapshotSource
-	snapshotFolder  *workroom.Folder
-	flightMu        sync.Mutex
-	flight          atomic.Pointer[snapshotFlight]
-	rebuildTestGate func(kernel.Progress)
-	reader          *kernel.Reader
-	submitterOnce   sync.Once
-	submitter       *kernel.Submitter
+	snapshotMu     sync.Mutex
+	snapshotCache  *Snapshot
+	snapshotSource SnapshotSource
+	snapshotFolder *workroom.Folder
+	// snapshotProfile gates application-derived state independently of the
+	// kernel's profile-independent verified-event checkpoint.
+	snapshotProfile    string
+	flightMu           sync.Mutex
+	flight             atomic.Pointer[snapshotFlight]
+	rebuildTestGate    func(kernel.Progress)
+	projectionTestGate func(int)
+	reader             *kernel.Reader
+	submitterOnce      sync.Once
+	submitter          *kernel.Submitter
 
 	worktreesMu       sync.Mutex
 	worktreesCached   []WorktreeView
@@ -1084,7 +1088,7 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 	w.submitterOnce.Do(func() {
 		checkpoint := w.checkpointOptions()
 		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{
-			SigningKey: w.Config.SequencerKey, CheckpointProfile: checkpoint.Profile, CheckpointPointer: checkpoint.Pointer, PreAppend: w.allowlist,
+			SigningKey: w.Config.SequencerKey, CheckpointEnabled: checkpoint.Enabled, CheckpointPointer: checkpoint.Pointer, PreAppend: w.allowlist,
 			MaxQueueDepth: ResidentQueueDepth,
 		})
 	})
@@ -1116,7 +1120,8 @@ func (w *Workspace) acceptSnapshot(result kernel.Result, record workroom.Record)
 	}
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
-	if w.snapshotCache == nil || w.snapshotFolder == nil || w.snapshotCache.Head != result.BaseHead {
+	selected, err := w.interpreter()
+	if err != nil || w.snapshotCache == nil || w.snapshotFolder == nil || w.snapshotProfile != selected.projectionProfile() || w.snapshotCache.Head != result.BaseHead {
 		return
 	}
 	w.snapshotFolder.Append(record)
@@ -1189,6 +1194,13 @@ func (w *Workspace) SetRebuildTestGate(gate func(kernel.Progress)) {
 	w.rebuildTestGate = gate
 }
 
+// SetProjectionRebuildTestGate installs a test-only pause after authenticated
+// events are loaded but before their application projection is folded and
+// published. Production callers leave the gate nil.
+func (w *Workspace) SetProjectionRebuildTestGate(gate func(int)) {
+	w.projectionTestGate = gate
+}
+
 func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	result, err := w.SnapshotWithSource(ctx)
 	return result.Snapshot, err
@@ -1247,11 +1259,12 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
 	selected, refusal := w.interpreter()
+	profile := selected.projectionProfile()
 	head, err := w.Store.Head(ctx, kernel.Ref(w.Config.Genesis))
 	if err != nil {
 		return SourcedSnapshot{}, err
 	}
-	if w.snapshotCache != nil && w.snapshotCache.Head == head {
+	if w.snapshotCache != nil && w.snapshotProfile == profile && w.snapshotCache.Head == head {
 		if err := w.rememberVerifiedFrontier(ctx, kernel.Verification{
 			Genesis: w.snapshotCache.Genesis, Head: w.snapshotCache.Head, Depth: w.snapshotCache.Depth,
 		}); err != nil {
@@ -1278,11 +1291,11 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 	if err := w.rememberVerifiedFrontier(ctx, loaded.Verification); err != nil {
 		return SourcedSnapshot{}, err
 	}
-	if !loaded.Full && w.snapshotCache != nil && w.snapshotCache.Head == loaded.Verification.Head {
+	if !loaded.Full && w.snapshotCache != nil && w.snapshotProfile == profile && w.snapshotCache.Head == loaded.Verification.Head {
 		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
 	}
 	start := 0
-	if !loaded.Full && w.snapshotCache != nil && w.snapshotFolder != nil && w.snapshotCache.Head != loaded.BaseHead {
+	if !loaded.Full && w.snapshotCache != nil && w.snapshotFolder != nil && w.snapshotProfile == profile && w.snapshotCache.Head != loaded.BaseHead {
 		start = -1
 		for index, event := range loaded.Events {
 			if event.Commit == w.snapshotCache.Head {
@@ -1291,7 +1304,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 			}
 		}
 	}
-	if !loaded.Full && (w.snapshotCache == nil || w.snapshotFolder == nil || start < 0) {
+	if !loaded.Full && (w.snapshotCache == nil || w.snapshotFolder == nil || w.snapshotProfile != profile || start < 0) {
 		// The application projection and verified reader must advance as a
 		// pair. If local application state was discarded or mismatched,
 		// deliberately replace the reader and perform a cold full audit.
@@ -1317,6 +1330,9 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		for _, event := range loaded.Events {
 			records = append(records, w.record(event))
 		}
+		if w.projectionTestGate != nil {
+			w.projectionTestGate(len(records))
+		}
 		w.snapshotFolder = selected.newFolder(records)
 		if w.observer != nil {
 			w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationFold, Path: path, Outcome: observe.OutcomeOK, Duration: time.Since(foldStarted), Items: int64(len(records))})
@@ -1335,6 +1351,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		Projection: w.snapshotFolder.Projection(), Vocabulary: w.snapshotFolder.Vocabulary(),
 	}
 	w.snapshotCache = &snapshot
+	w.snapshotProfile = profile
 	w.snapshotSource = source
 	w.recordSnapshot(ctx, path, started, snapshot.Depth, nil)
 	return SourcedSnapshot{Snapshot: snapshot, Source: source}, nil

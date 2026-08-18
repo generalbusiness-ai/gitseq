@@ -146,19 +146,24 @@ The same code/data boundary applies to the restart cache, and the current
 coupling there is unnecessarily conservative.
 
 The kernel checkpoint (`internal/kernel/checkpoint.go`) caches **kernel-verified
-event material** — each `checkpointEvent` is `{Commit, Timestamp, Signed,
-Payload, Attachments}`, the signed commits and their payloads — not folded
-application state. Kernel verification (signatures, sequencer key rotations,
-first-parent chain, object format, genesis) is independent of any application
-fold. Yet `CheckpointOptions.Profile` is "the application fold contract," and
-`readCheckpointCandidate` rejects a stored checkpoint whenever `stored.Profile
-!= profile`. So changing the fold discards a still-valid authenticated prefix
-and forces a full cold re-verification from genesis — paying to re-check
-signatures and rotations that did not change.
+event material**, not folded application state. The compact format stores
+payloads and attachments while commit metadata and signed envelopes remain
+bound to the named sequence and are checked during restart. Kernel verification
+(signatures, sequencer key rotations, first-parent chain, object format,
+genesis) is independent of any application fold. Yet the historical
+`CheckpointOptions.Profile` was "the application fold contract," and
+`readCheckpointCandidate` rejected a stored checkpoint whenever
+`stored.Profile != profile`. So changing the fold discarded a still-valid
+authenticated prefix and forced a full cold re-verification from genesis —
+paying to re-check signatures and rotations that did not change.
 
 **The decoupling.** Key the kernel checkpoint only on *kernel-verification
 identity* — schema, object format, genesis, and the sequencer key lineage —
-and drop `Profile` from its eligibility test. Move `Profile` to gate a separate
+and drop `Profile` from its eligibility test. The already-deployed compact
+schema v2 still carries its historical profile field; schema v3 preserves the
+compact encoding but writes no profile. The reader accepts v1 and v2 after full
+authentication and ignores their historical profile field. Move `Profile` to
+gate the separate in-memory
 **application projection cache**. Then a fold change keeps the authenticated
 event prefix reusable and re-derives only the projection, which is the cheap
 part (the fold runs at ~10^5 events/second; re-verifying signatures and reading

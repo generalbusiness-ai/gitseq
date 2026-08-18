@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"os"
@@ -253,8 +254,9 @@ func checkpointState(t testing.TB, count int) (fixtureState, ed25519.PrivateKey,
 	// Keep the hostile-checkpoint mutation fixtures on the legacy format. The
 	// production writer above still exercises compact encoding and decoding;
 	// these fixtures then prove old v1 checkpoints remain fully authenticated.
-	if stored.Schema == compactCheckpointSchema {
-		stored.Schema = checkpointSchema
+	if stored.Schema == checkpointSchema {
+		stored.Schema = legacyCheckpointSchema
+		stored.Profile = "fold@1"
 		stored.EventCount = 0
 		for index, event := range log.Events {
 			stored.Events[index].Commit = event.Commit
@@ -318,7 +320,7 @@ func publishStoredCheckpoint(t testing.TB, f fixtureState, stored checkpoint) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publishCheckpointBytes(t, f, data, f.signingKey, "", checkpointMarker)
+	publishCheckpointBytes(t, f, data, f.signingKey, "", legacyCheckpointMarker)
 }
 
 func requireCheckpointFallback(t testing.TB, f fixtureState) LoadResult {
@@ -939,9 +941,9 @@ func BenchmarkCompactCheckpointSerializationAtDepth500000(b *testing.B) {
 		payloads[index] = byte(state)
 	}
 	stored := checkpoint{
-		Schema: compactCheckpointSchema, ObjectFormat: "sha1",
+		Schema: checkpointSchema, ObjectFormat: "sha1",
 		Genesis: strings.Repeat("a", 40), Head: strings.Repeat("b", 40),
-		Depth: eventCount, Profile: "workroom-fold@1", EventCount: eventCount,
+		Depth: eventCount, EventCount: eventCount,
 		Events: make([]checkpointEvent, eventCount),
 	}
 	for index := range stored.Events {
@@ -1702,7 +1704,7 @@ func TestCheckpointPointerFailureStillPublishesReachableRef(t *testing.T) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git gc: %v: %s", err, output)
 	}
-	if message, err := f.store.CommitMessage(f.ctx, checkpointCommit); err != nil || strings.TrimSpace(message) != compactCheckpointMarker {
+	if message, err := f.store.CommitMessage(f.ctx, checkpointCommit); err != nil || strings.TrimSpace(message) != checkpointMarker {
 		t.Fatalf("checkpoint object was not retained by its ref: message=%q err=%v", message, err)
 	}
 	restarted, err := NewReader(f.store, CheckpointOptions{Profile: options.Profile}).Load(f.ctx, f.genesis)
@@ -1851,7 +1853,7 @@ func TestReaderRestartsFromCheckpointWrittenAfterRotation(t *testing.T) {
 	// A checkpoint for the rotated prefix is authenticated only by the key
 	// current at that frontier. Re-signing the same trusted bytes with the
 	// retired key must be a cache miss, followed by an ordinary full audit.
-	publishCheckpointBytes(t, f, checkpointData, f.signingKey, "", compactCheckpointMarker)
+	publishCheckpointBytes(t, f, checkpointData, f.signingKey, "", checkpointMarker)
 	fallback := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile})
 	loaded, err := fallback.Load(f.ctx, f.genesis)
 	if err != nil {
@@ -1899,7 +1901,7 @@ func TestCheckpointCannotTrustSuccessorFromUnverifiedRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publishCheckpointBytes(t, f, data, successorKey, "", compactCheckpointMarker)
+	publishCheckpointBytes(t, f, data, successorKey, "", checkpointMarker)
 
 	if _, _, err := loadCheckpoint(f.ctx, f.store, f.genesis, forgedRotation, CheckpointOptions{Profile: checkpoint.Profile}); err == nil || !errors.Is(err, ErrNoUsableCheckpoint) || !strings.Contains(err.Error(), forgedRotation+" sequencer signature") {
 		t.Fatalf("checkpoint trusted successor from unverified rotation: %v", err)
@@ -1940,7 +1942,7 @@ func TestCheckpointWriterRejectsRetiredSigningKeyAfterRotation(t *testing.T) {
 }
 
 func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T) {
-	t.Run("profile", func(t *testing.T) {
+	t.Run("application profile is not kernel identity", func(t *testing.T) {
 		f := newFixture(t, "sha1")
 		private := actor(t)
 		if _, err := Submit(f.ctx, f.store, f.request(t, private, "one", []byte("one"), nil), Options{SigningKey: f.signingKey}); err != nil {
@@ -1954,9 +1956,73 @@ func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		if loaded.Checkpoint || reader.fullScans != 1 || reader.checkpointFallbacks != 1 {
-			t.Fatalf("profile mismatch = %+v, scans=%d fallbacks=%d", loaded, reader.fullScans, reader.checkpointFallbacks)
+		if !loaded.Checkpoint || reader.fullScans != 0 || reader.checkpointFallbacks != 0 {
+			t.Fatalf("profile-independent checkpoint = %+v, scans=%d fallbacks=%d", loaded, reader.fullScans, reader.checkpointFallbacks)
 		}
+	})
+
+	t.Run("legacy profile is ignored after authentication", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 1)
+		stored.Schema = legacyCheckpointSchema
+		stored.Profile = "historical-fold@1"
+		data, err := json.Marshal(stored)
+		if err != nil {
+			t.Fatal(err)
+		}
+		publishCheckpointBytes(t, f, data, f.signingKey, "", legacyCheckpointMarker)
+		reader := NewReader(f.store, CheckpointOptions{Profile: "different-fold@2"})
+		loaded, err := reader.Load(f.ctx, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded.Checkpoint || reader.fullScans != 0 || reader.checkpointFallbacks != 0 {
+			t.Fatalf("legacy checkpoint did not bridge across profile: %+v scans=%d fallbacks=%d", loaded, reader.fullScans, reader.checkpointFallbacks)
+		}
+	})
+
+	t.Run("profiled compact checkpoint is ignored after authentication", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 1)
+		stored.Schema = profiledCompactCheckpointSchema
+		stored.Profile = "historical-fold@2"
+		stored.EventCount = len(stored.Events)
+		data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		publishCheckpointBytes(t, f, data, f.signingKey, "", profiledCompactCheckpointMarker)
+		reader := NewReader(f.store, CheckpointOptions{Profile: "different-fold@3"})
+		loaded, err := reader.Load(f.ctx, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded.Checkpoint || reader.fullScans != 0 || reader.checkpointFallbacks != 0 {
+			t.Fatalf("profiled compact checkpoint did not bridge across profile: %+v scans=%d fallbacks=%d", loaded, reader.fullScans, reader.checkpointFallbacks)
+		}
+	})
+
+	t.Run("profiled compact checkpoint still requires its historical profile field", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 1)
+		stored.Schema = profiledCompactCheckpointSchema
+		stored.Profile = ""
+		stored.EventCount = len(stored.Events)
+		data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		publishCheckpointBytes(t, f, data, f.signingKey, "", profiledCompactCheckpointMarker)
+		requireCheckpointFallback(t, f)
+	})
+
+	t.Run("legacy checkpoint still requires its historical profile field", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 1)
+		stored.Schema = legacyCheckpointSchema
+		stored.Profile = ""
+		data, err := json.Marshal(stored)
+		if err != nil {
+			t.Fatal(err)
+		}
+		publishCheckpointBytes(t, f, data, f.signingKey, "", legacyCheckpointMarker)
+		requireCheckpointFallback(t, f)
 	})
 
 	t.Run("payload", func(t *testing.T) {
@@ -2024,11 +2090,11 @@ func TestCheckpointEnvelopeGuardsFallBackToFullAudit(t *testing.T) {
 				t.Fatal(err)
 			}
 			data, _ := json.Marshal(stored)
-			publishCheckpointBytes(t, f, data, wrongKey, "", checkpointMarker)
+			publishCheckpointBytes(t, f, data, wrongKey, "", legacyCheckpointMarker)
 		}},
 		{name: "parentless", publish: func(t *testing.T, f fixtureState, stored checkpoint) {
 			data, _ := json.Marshal(stored)
-			publishCheckpointBytes(t, f, data, f.signingKey, f.genesis, checkpointMarker)
+			publishCheckpointBytes(t, f, data, f.signingKey, f.genesis, legacyCheckpointMarker)
 		}},
 		{name: "marker", publish: func(t *testing.T, f fixtureState, stored checkpoint) {
 			data, _ := json.Marshal(stored)
@@ -2039,20 +2105,20 @@ func TestCheckpointEnvelopeGuardsFallBackToFullAudit(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			publishCheckpointTree(t, f, tree, f.signingKey, "", checkpointMarker)
+			publishCheckpointTree(t, f, tree, f.signingKey, "", legacyCheckpointMarker)
 		}},
 		{name: "unknown field", publish: func(t *testing.T, f fixtureState, stored checkpoint) {
 			data, _ := json.Marshal(stored)
 			data = append(data[:len(data)-1], []byte(`,"authority":"forged"}`)...)
-			publishCheckpointBytes(t, f, data, f.signingKey, "", checkpointMarker)
+			publishCheckpointBytes(t, f, data, f.signingKey, "", legacyCheckpointMarker)
 		}},
 		{name: "noncanonical json", publish: func(t *testing.T, f fixtureState, stored checkpoint) {
 			data, _ := json.Marshal(stored)
-			publishCheckpointBytes(t, f, append([]byte("\n"), data...), f.signingKey, "", checkpointMarker)
+			publishCheckpointBytes(t, f, append([]byte("\n"), data...), f.signingKey, "", legacyCheckpointMarker)
 		}},
 		{name: "trailing json", publish: func(t *testing.T, f fixtureState, stored checkpoint) {
 			data, _ := json.Marshal(stored)
-			publishCheckpointBytes(t, f, append(data, []byte(`{}`)...), f.signingKey, "", checkpointMarker)
+			publishCheckpointBytes(t, f, append(data, []byte(`{}`)...), f.signingKey, "", legacyCheckpointMarker)
 		}},
 	}
 	for _, test := range tests {
@@ -2077,9 +2143,6 @@ func TestCheckpointIdentityAndCachedEventGuardsFallBackToFullAudit(t *testing.T)
 		}},
 		{name: "genesis", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
 			stored.Genesis = strings.Repeat("0", 40)
-		}},
-		{name: "profile", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
-			stored.Profile = "fold@2"
 		}},
 		{name: "depth count", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) { stored.Depth-- }},
 		{name: "head is final event", mutate: func(_ *testing.T, f fixtureState, _ ed25519.PrivateKey, stored *checkpoint) { stored.Head = f.genesis }},
@@ -2137,6 +2200,22 @@ func TestCheckpointIdentityAndCachedEventGuardsFallBackToFullAudit(t *testing.T)
 			}
 		})
 	}
+
+	t.Run("current compact profile", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 3)
+		stored.Schema = checkpointSchema
+		stored.Profile = "forged-fold@3"
+		stored.EventCount = len(stored.Events)
+		data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		publishCheckpointBytes(t, f, data, f.signingKey, "", checkpointMarker)
+		loaded := requireCheckpointFallback(t, f)
+		if loaded.Verification.Events != 3 || len(loaded.Events) != 3 {
+			t.Fatalf("fallback did not recover complete sequence: %+v", loaded)
+		}
+	})
 }
 
 func TestCheckpointMetadataRequiresOneExactParentAtEveryPosition(t *testing.T) {
@@ -2280,7 +2359,7 @@ func TestCheckpointObjectIDValidationCoversBothFormats(t *testing.T) {
 }
 
 func TestCheckpointDecoderRejectsTrailingJSONAtItsBoundary(t *testing.T) {
-	stored := checkpoint{Schema: checkpointSchema, Profile: "fold@1"}
+	stored := checkpoint{Schema: legacyCheckpointSchema, Profile: "fold@1"}
 	data, err := json.Marshal(stored)
 	if err != nil {
 		t.Fatal(err)
@@ -2295,9 +2374,9 @@ func TestCheckpointDecoderRejectsTrailingJSONAtItsBoundary(t *testing.T) {
 
 func TestCompactCheckpointRoundTripIsDeterministicAndBounded(t *testing.T) {
 	stored := checkpoint{
-		Schema: compactCheckpointSchema, ObjectFormat: "sha1",
+		Schema: checkpointSchema, ObjectFormat: "sha1",
 		Genesis: strings.Repeat("a", 40), Head: strings.Repeat("b", 40),
-		Depth: 2, Profile: "fold@1", EventCount: 2,
+		Depth: 2, EventCount: 2,
 		Events: []checkpointEvent{
 			{Payload: []byte(`{"kind":"first"}`), Attachments: map[string][]byte{"z.txt": []byte("last"), "a.txt": []byte("first")}},
 			{Payload: []byte(`{"kind":"second"}`)},
@@ -2358,7 +2437,7 @@ func TestCompactCheckpointAuthenticatesBeforeDecompression(t *testing.T) {
 	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
 		t.Fatal(err)
 	}
-	publishCheckpointBytes(t, f, malformed, wrongKey, "", compactCheckpointMarker)
+	publishCheckpointBytes(t, f, malformed, wrongKey, "", checkpointMarker)
 	malformedCommit := mustHead(t, f.store, CheckpointRef(f.genesis))
 	desc, err := Descriptor(f.ctx, f.store, f.genesis)
 	if err != nil {
@@ -2368,7 +2447,7 @@ func TestCompactCheckpointAuthenticatesBeforeDecompression(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate, err := readCheckpointCandidate(f.ctx, f.store, desc, f.format, f.genesis, malformedCommit, "fold@1")
+	candidate, err := readCheckpointCandidate(f.ctx, f.store, desc, f.format, f.genesis, malformedCommit)
 	if err != nil {
 		t.Fatalf("compact manifest should parse without inflating its payload: %v", err)
 	}
@@ -2389,26 +2468,27 @@ func TestCompactCheckpointRejectsAuthenticatedPayloadCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	malformed := append(bytes.Clone(data[:len(data)-len(payload)]), []byte("not a gzip stream")...)
-	publishCheckpointBytes(t, f, malformed, f.signingKey, "", compactCheckpointMarker)
+	publishCheckpointBytes(t, f, malformed, f.signingKey, "", checkpointMarker)
 	requireCheckpointFallback(t, f)
 }
 
 func TestCompactCheckpointBindsPayloadsToSequenceOrder(t *testing.T) {
 	f, _, _, stored := checkpointState(t, 2)
-	stored.Schema = compactCheckpointSchema
+	stored.Schema = checkpointSchema
+	stored.Profile = ""
 	stored.EventCount = len(stored.Events)
 	stored.Events[0], stored.Events[1] = stored.Events[1], stored.Events[0]
 	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	publishCheckpointBytes(t, f, data, f.signingKey, "", compactCheckpointMarker)
+	publishCheckpointBytes(t, f, data, f.signingKey, "", checkpointMarker)
 	requireCheckpointFallback(t, f)
 }
 
 func TestCheckpointManifestBoundsCannotOverflowSequenceIndex(t *testing.T) {
 	stored := checkpoint{
-		Schema: compactCheckpointSchema, Genesis: strings.Repeat("a", 40),
+		Schema: checkpointSchema, Genesis: strings.Repeat("a", 40),
 		Head: strings.Repeat("a", 40), Depth: maxIntValue(), EventCount: 0,
 	}
 	sequence := []gitstore.CommitMetadata{{OID: stored.Genesis}}
@@ -2419,9 +2499,9 @@ func TestCheckpointManifestBoundsCannotOverflowSequenceIndex(t *testing.T) {
 
 func TestCompactCheckpointRejectsTrailingCompressedBytes(t *testing.T) {
 	stored := checkpoint{
-		Schema: compactCheckpointSchema, ObjectFormat: "sha1",
+		Schema: checkpointSchema, ObjectFormat: "sha1",
 		Genesis: strings.Repeat("a", 40), Head: strings.Repeat("b", 40),
-		Depth: 1, Profile: "fold@1", EventCount: 1,
+		Depth: 1, EventCount: 1,
 		Events: []checkpointEvent{{Payload: []byte("payload")}},
 	}
 	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
@@ -2468,7 +2548,7 @@ func TestCheckpointMarshalEnforcesDocumentedSizeLimit(t *testing.T) {
 	if maxCheckpointBytes != 256<<20 {
 		t.Fatalf("checkpoint limit = %d, want 256 MiB", maxCheckpointBytes)
 	}
-	stored := checkpoint{Schema: checkpointSchema, Profile: "fold@1"}
+	stored := checkpoint{Schema: legacyCheckpointSchema, Profile: "fold@1"}
 	data, err := json.Marshal(stored)
 	if err != nil {
 		t.Fatal(err)
@@ -2478,6 +2558,40 @@ func TestCheckpointMarshalEnforcesDocumentedSizeLimit(t *testing.T) {
 	}
 	if _, err := marshalCheckpoint(stored, len(data)-1); err == nil {
 		t.Fatal("checkpoint over configured size limit was accepted")
+	}
+}
+
+func TestWrittenCheckpointContainsOnlyKernelVerifiedMaterial(t *testing.T) {
+	f, _, _, _ := checkpointState(t, 1)
+	commit := mustHead(t, f.store, CheckpointRef(f.genesis))
+	data, err := f.store.ReadFileLimit(f.ctx, commit, checkpointFile, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestStart := len(checkpointContainer) + 4
+	if len(data) < manifestStart {
+		t.Fatalf("compact checkpoint is truncated: %d bytes", len(data))
+	}
+	manifestEnd := manifestStart + int(binary.BigEndian.Uint32(data[len(checkpointContainer):manifestStart]))
+	if manifestEnd > len(data) {
+		t.Fatalf("compact checkpoint manifest exceeds payload: end=%d size=%d", manifestEnd, len(data))
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data[manifestStart:manifestEnd], &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"schema", "object_format", "genesis", "head", "depth", "events"} {
+		if _, ok := fields[name]; !ok {
+			t.Fatalf("kernel checkpoint omitted %q: %s", name, data)
+		}
+	}
+	for _, forbidden := range []string{"profile", "projection", "vocabulary", "fold"} {
+		if _, ok := fields[forbidden]; ok {
+			t.Fatalf("kernel checkpoint carried application field %q: %s", forbidden, data)
+		}
+	}
+	if len(fields) != 6 {
+		t.Fatalf("kernel checkpoint fields = %v, want only verified identity and events", fields)
 	}
 }
 

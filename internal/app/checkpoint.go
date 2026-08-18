@@ -111,7 +111,7 @@ func (w *Workspace) checkpointOptions() kernel.CheckpointOptions {
 		return kernel.CheckpointOptions{}
 	}
 	return kernel.CheckpointOptions{
-		Profile: w.foldProfile(), SigningKey: w.Config.SequencerKey,
+		Enabled: true, SigningKey: w.Config.SequencerKey,
 		Pointer: fileCheckpointPointer{path: w.checkpointPointerPath()},
 	}
 }
