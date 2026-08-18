@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Current application-host test seam for deterministic cold-rebuild observation at exact pushed head 1d3ab894; clean replacement pointer on the implementation request.","body":{"commit":"1d3ab89425ef967448148584b74e6b951f4329a1","path":"internal/app"}}
+{"kind":"artifact","text":"Current deterministic resident rebuild regression at exact pushed head 1d3ab894; clean replacement pointer on the implementation request.","body":{"commit":"1d3ab89425ef967448148584b74e6b951f4329a1","path":"internal/service"}}
