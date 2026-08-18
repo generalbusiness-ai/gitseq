@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fdd5d13bed008a0c6d5ea75f15a368fbf80d8b40","text":"Retire the earlier SKILL.md candidate; successor fbc8aef4 repairs the ratified review findings at exact head 076727fe."}
+{"kind":"artifact","text":"Current repaired loop-cut candidate: exact-head merge closure and cross-author merger-identity guard regression, anchored only on the live workroom behavior basis.","body":{"branch":"request/commitment-loop-cut-current-main","commit":"076727fed7677931f173654a61a127975380e487","path":"internal/workroom"}}
