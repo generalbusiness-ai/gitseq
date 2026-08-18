@@ -38,6 +38,15 @@ type runCase struct {
 	Fanout      int
 }
 
+type fixtureKey struct {
+	shape      string
+	actorCount int
+}
+
+func (c runCase) fixtureKey() fixtureKey {
+	return fixtureKey{shape: c.Shape, actorCount: max(c.ActorCount, 1)}
+}
+
 func (c runCase) name() string {
 	tail := ""
 	if c.Scenario == "checkpoint_restart" {
@@ -315,7 +324,7 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 
 	latencies := make(map[string][]float64)
 	for _, runCase := range cases {
-		fixture := fixtures[fixtureKey(runCase.Shape, runCase.ActorCount)]
+		fixture := fixtures[runCase.fixtureKey()]
 		warmups, repetitions := tierCounts(contract, *tier, runCase.Scenario)
 		if compare && repetitions < 2 {
 			repetitions = 2
@@ -464,7 +473,18 @@ func runWorkerDiagnostic(ctx context.Context, binary, fixture string, selected r
 	if err := decoder.Decode(&result); err != nil {
 		return perfscenario.Result{}, fmt.Errorf("decode worker result: %w: %s", err, output)
 	}
+	if err := validateActorCount(selected, result); err != nil {
+		return perfscenario.Result{}, err
+	}
 	return result, nil
+}
+
+func validateActorCount(selected runCase, result perfscenario.Result) error {
+	wantActors := selected.fixtureKey().actorCount
+	if result.ActorCount != wantActors {
+		return fmt.Errorf("worker result %s actor_count = %d, want %d", selected.name(), result.ActorCount, wantActors)
+	}
+	return nil
 }
 
 func casesForTier(contract perflane.Contract, tier string) ([]runCase, error) {
@@ -517,21 +537,17 @@ func tierCounts(contract perflane.Contract, tier, scenario string) (int, int) {
 	}
 }
 
-func ensureFixtures(ctx context.Context, root string, contract perflane.Contract, digest string, cases []runCase) (map[string]string, error) {
-	depths := make(map[string]int)
+func ensureFixtures(ctx context.Context, root string, contract perflane.Contract, digest string, cases []runCase) (map[fixtureKey]string, error) {
+	depths := make(map[fixtureKey]int)
 	for _, selected := range cases {
-		key := fixtureKey(selected.Shape, selected.ActorCount)
+		key := selected.fixtureKey()
 		depths[key] = max(depths[key], selected.Depth)
 	}
-	fixtures := make(map[string]string)
+	fixtures := make(map[fixtureKey]string)
 	for key, depth := range depths {
-		shape, actorCount, err := parseFixtureKey(key)
-		if err != nil {
-			return nil, err
-		}
-		directory := filepath.Join(root, "performance", "fixtures", digest[:16]+"-"+shape+"-actors-"+strconv.Itoa(actorCount)+"-"+strconv.Itoa(depth))
+		directory := filepath.Join(root, "performance", "fixtures", digest[:16]+"-"+key.shape+"-actors-"+strconv.Itoa(key.actorCount)+"-"+strconv.Itoa(depth))
 		if manifest, err := perfscenario.LoadManifest(directory); err == nil {
-			if manifest.GeneratorVersion != contract.GeneratorVersion || manifest.Seed != contract.Seed || manifest.Shape != shape || manifest.Depth != depth || manifest.ActorCount != actorCount {
+			if manifest.GeneratorVersion != contract.GeneratorVersion || manifest.Seed != contract.Seed || manifest.Shape != key.shape || manifest.Depth != depth || manifest.ActorCount != key.actorCount {
 				return nil, fmt.Errorf("cached fixture %s does not match its key", directory)
 			}
 			fixtures[key] = directory
@@ -541,7 +557,7 @@ func ensureFixtures(ctx context.Context, root string, contract perflane.Contract
 		}
 		manifest, err := perfscenario.Prepare(ctx, directory, perfscenario.FixturePlan{
 			GeneratorVersion: contract.GeneratorVersion, Seed: contract.Seed, Depth: depth,
-			Shape: shape, PayloadBuckets: contract.PayloadBuckets, CheckpointDepths: checkpointDepths(contract, depth), ActorCount: actorCount,
+			Shape: key.shape, PayloadBuckets: contract.PayloadBuckets, CheckpointDepths: checkpointDepths(contract, depth), ActorCount: key.actorCount,
 		})
 		if err != nil {
 			return nil, err
@@ -552,19 +568,6 @@ func ensureFixtures(ctx context.Context, root string, contract perflane.Contract
 		fixtures[key] = directory
 	}
 	return fixtures, nil
-}
-
-func fixtureKey(shape string, actorCount int) string {
-	return shape + "\x00" + strconv.Itoa(max(actorCount, 1))
-}
-
-func parseFixtureKey(key string) (string, int, error) {
-	shape, value, ok := strings.Cut(key, "\x00")
-	if !ok {
-		return "", 0, fmt.Errorf("invalid fixture key %q", key)
-	}
-	actorCount, err := strconv.Atoi(value)
-	return shape, actorCount, err
 }
 
 func checkpointDepths(contract perflane.Contract, maxDepth int) []int {
