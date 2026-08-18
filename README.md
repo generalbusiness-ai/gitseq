@@ -279,5 +279,5 @@ evidence that preceded the technical preview.
 
 This technical preview is distributed under the [MIT License](LICENSE).
 Read the [security policy](SECURITY.md) before using it with sensitive
-material; vulnerability reports should be addressed to me directly
-(`hughpyle@gmail.com`).  Contributions are welcome.
+material. Report vulnerabilities privately and directly to the maintainer;
+never use a public issue or gitseq workroom. Contributions are welcome.
