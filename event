@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:981c89238444da0362722a156f66f1e83ebe87f1","text":"Retire the ordinary-stale intermediate pointer; the clean replacement at the same path is 4b350ba3."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ac9eb2bc5b17da4aca9c6b9d5edcff668e0385a","text":"Retire the ordinary-stale intermediate pointer; the clean replacement at the same path is 9acce7fe."}
