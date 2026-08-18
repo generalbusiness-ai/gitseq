@@ -42,9 +42,11 @@ A transparency-log witness is exactly that outside observer, made durable and
 public. It bears directly on two things already on record — one open security
 item and one standing claim:
 
-- **P1 — multiple residents for one repository** (`85fe10f1`). Two residents
-  racing on one repo is the local version of the same hazard; a witness is
-  the global version of the answer.
+- **P1 — multiple residents for one repository** (`85fe10f1`). A neighbouring
+  but distinct hazard, with a distinct protection. Concurrent residents leave
+  the durable CAS log correct; what they split is process-local presence and
+  conversation, into separate rooms. A head witness detects durable rollback,
+  forks and equivocation. Neither is the other's answer.
 - The **"authoritative order across concurrent submissions"** claim itself.
   Today that claim rests on the operator not rewriting the ref. A witness
   turns a silent rewrite into a detectable event.
@@ -53,7 +55,9 @@ item and one standing claim:
 
 - **Attestation payload:** something like `{genesis, head, depth, timestamp}`,
   signed. The head and depth are the load-bearing fields; genesis scopes it to
-  one repository; the timestamp orders witnesses.
+  one repository; the timestamp is the signer's own claim about when it
+  signed, so external ordering comes from the transparency log's inclusion
+  order or integrated time, not from the payload.
 - **Submission:** periodically publish that attestation to the transparency
   log — cadence to be decided (per-merge, or time-based, or both). This is
   out-of-band and asynchronous.
