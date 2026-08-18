@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -939,6 +940,18 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	rebuildHeld := make(chan struct{})
+	releaseRebuild := make(chan struct{})
+	var heldOnce, releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseRebuild) }) }
+	t.Cleanup(release)
+	cold.SetRebuildTestGate(func(progress kernel.Progress) {
+		if progress.Verified != 2 {
+			return
+		}
+		heldOnce.Do(func() { close(rebuildHeld) })
+		<-releaseRebuild
+	})
 	server, err := New(cold)
 	if err != nil {
 		t.Fatal(err)
@@ -961,15 +974,15 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 	}()
 
 	deadline := time.Now().Add(20 * time.Second)
+	select {
+	case <-rebuildHeld:
+	case <-time.After(20 * time.Second):
+		cancelFirst()
+		t.Fatal("cold rebuild did not reach the deterministic mid-scan gate")
+	}
 	var observed rebuildReport
-	for time.Now().Before(deadline) {
-		if err := getJSON(httpServer.URL+"/v0/rebuild", &observed); err != nil {
-			t.Fatal(err)
-		}
-		if observed.Running && observed.Total > 0 && observed.Verified > 0 && observed.Verified < observed.Total/2 {
-			break
-		}
-		time.Sleep(time.Millisecond)
+	if err := getJSON(httpServer.URL+"/v0/rebuild", &observed); err != nil {
+		t.Fatal(err)
 	}
 	if !observed.Running || observed.Total == 0 || observed.Verified == 0 || observed.Verified >= observed.Total/2 {
 		cancelFirst()
@@ -1006,7 +1019,8 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 		t.Fatal("the first status reader did not stop waiting after cancellation")
 	}
 
-	// A third reader remains pending while verification is known to be active;
+	// A third reader remains pending while the rebuild is held after two fully
+	// verified commits; no sleep or verifier speed determines this interval.
 	// no stale or partial HTTP response escapes merely because it asked early.
 	thirdCtx, cancelThird := context.WithCancel(ctx)
 	thirdRequest, err := http.NewRequestWithContext(thirdCtx, http.MethodGet, httpServer.URL+"/v0/status", nil)
@@ -1030,7 +1044,7 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 	if err := getJSON(httpServer.URL+"/v0/rebuild", &stillRunning); err != nil {
 		t.Fatal(err)
 	}
-	if !stillRunning.Running || stillRunning.Verified >= stillRunning.Total {
+	if !stillRunning.Running || stillRunning.Verified != observed.Verified || stillRunning.Total != observed.Total {
 		t.Fatalf("the rebuild did not remain active while the third status request stayed pending: %+v", stillRunning)
 	}
 	cancelThird()
@@ -1042,6 +1056,7 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 	case <-time.After(5 * time.Second):
 		t.Fatal("the third status reader did not stop after cancellation")
 	}
+	release()
 
 	lastVerified, fixedTotal := observed.Verified, observed.Total
 	var final Status

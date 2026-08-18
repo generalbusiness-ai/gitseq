@@ -602,6 +602,14 @@ type AuditProgress struct {
 	started  atomic.Bool
 	verified atomic.Int64
 	total    atomic.Int64
+	testGate func(Progress)
+}
+
+// SetTestGate installs a test-only pause after each fully verified commit.
+// Production callers leave it nil. Tests that need to observe an in-flight
+// audit can hold the verifier without making correctness depend on timing.
+func (p *AuditProgress) SetTestGate(gate func(Progress)) {
+	p.testGate = gate
 }
 
 func (p *AuditProgress) begin() {
@@ -616,6 +624,9 @@ func (p *AuditProgress) setTotal(total int) {
 
 func (p *AuditProgress) advance(verified int) {
 	p.verified.Store(int64(verified))
+	if p.testGate != nil {
+		p.testGate(p.Snapshot())
+	}
 }
 
 // Snapshot returns a coherent-enough monotonic observation for progress UI.
@@ -861,7 +872,7 @@ func Verify(ctx context.Context, store gitstore.Store, genesis string) (Verifica
 // the immutable head and, in the same traversal, builds the event stream and
 // actor-scoped dedup index. loadPayload controls only whether verified payload
 // bytes are retained.
-func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, loadPayload bool, report *AuditProgress) (scannedLog, error) {
+func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, loadPayload bool, report *AuditProgress) (result scannedLog, resultErr error) {
 	sequence, err := store.RevList(ctx, head)
 	if err != nil {
 		return scannedLog{}, err
@@ -872,19 +883,41 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 	if report != nil {
 		report.setTotal(len(sequence))
 	}
+	objectFormat := ""
+	switch len(genesis) {
+	case 40:
+		objectFormat = "sha1"
+	case 64:
+		objectFormat = "sha256"
+	default:
+		return scannedLog{}, errors.New("named genesis has an invalid object id")
+	}
+	batch, err := store.OpenAuditBatch(ctx, objectFormat)
+	if err != nil {
+		return scannedLog{}, err
+	}
+	defer func() {
+		if err := batch.Close(); resultErr == nil && err != nil {
+			result = scannedLog{}
+			resultErr = err
+		}
+	}()
 	var (
-		desc  GenesisDescriptor
-		log   scannedLog
-		index int
+		desc GenesisDescriptor
+		log  scannedLog
 	)
-	err = store.WalkRevListMetadata(ctx, head, func(commit gitstore.CommitMetadata) error {
-		if index >= len(sequence) || commit.OID != sequence[index] {
-			return errors.New("history metadata differs from sequence enumeration")
+	for index, oid := range sequence {
+		commit, err := batch.ReadCommit(oid)
+		if err != nil {
+			return scannedLog{}, err
 		}
 		if index == 0 {
 			desc, err = parseGenesisMessage(normalizeGenesisMessage(commit.Message))
 			if err != nil {
-				return err
+				return scannedLog{}, err
+			}
+			if desc.ObjectFormat != objectFormat {
+				return scannedLog{}, errors.New("genesis object format differs from repository object format")
 			}
 			log = scannedLog{
 				Verification:       Verification{Genesis: genesis, Head: head, Depth: len(sequence) - 1},
@@ -893,62 +926,52 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 				sequencerPublicKey: desc.SequencerPublicKey,
 			}
 		}
-		if err := store.VerifySSHCommit(ctx, commit.OID, "sequencer", log.sequencerPublicKey); err != nil {
-			return fmt.Errorf("commit %s sequencer signature: %w", commit.OID, err)
+		if err := gitstore.VerifySSHSignature(commit, log.sequencerPublicKey); err != nil {
+			return scannedLog{}, fmt.Errorf("commit %s sequencer signature: %w", commit.OID, err)
 		}
 		if index == 0 {
 			if err := validateChainParents(index, commit.Parents, ""); err != nil {
-				return err
+				return scannedLog{}, err
 			}
-			index++
 			if report != nil {
-				report.advance(index)
+				report.advance(index + 1)
 			}
-			return nil
+			continue
 		}
 		if err := validateChainParents(index, commit.Parents, sequence[index-1]); err != nil {
-			return fmt.Errorf("commit %s: %w", commit.OID, err)
+			return scannedLog{}, fmt.Errorf("commit %s: %w", commit.OID, err)
 		}
-		event, successor, rotation, err := loadCommit(ctx, store, desc, genesis, commit, loadPayload)
+		event, successor, rotation, err := loadCommit(ctx, store, batch, desc, genesis, commit.CommitMetadata, loadPayload)
 		if err != nil {
-			return err
+			return scannedLog{}, err
 		}
 		if rotation {
 			if successor == log.sequencerPublicKey {
-				return fmt.Errorf("commit %s rotates to the current sequencer key", commit.OID)
+				return scannedLog{}, fmt.Errorf("commit %s rotates to the current sequencer key", commit.OID)
 			}
 			log.sequencerPublicKey = successor
-			index++
 			if report != nil {
-				report.advance(index)
+				report.advance(index + 1)
 			}
-			return nil
+			continue
 		}
 		key, err := event.Signed.DedupKey()
 		if err != nil {
-			return err
+			return scannedLog{}, err
 		}
 		prior, duplicate, dedupErr := dedupPrior(log.Dedup, key, event.Signed)
 		if dedupErr != nil {
-			return fmt.Errorf("commit %s: %w", commit.OID, dedupErr)
+			return scannedLog{}, fmt.Errorf("commit %s: %w", commit.OID, dedupErr)
 		}
 		if duplicate {
-			return fmt.Errorf("commit %s duplicates idempotent event %s", commit.OID, prior.Commit)
+			return scannedLog{}, fmt.Errorf("commit %s duplicates idempotent event %s", commit.OID, prior.Commit)
 		}
 		log.Dedup[key] = eventWithoutPayload(event)
 		log.Events = append(log.Events, event)
 		log.Verification.Events++
-		index++
 		if report != nil {
-			report.advance(index)
+			report.advance(index + 1)
 		}
-		return nil
-	})
-	if err != nil {
-		return scannedLog{}, err
-	}
-	if index != len(sequence) {
-		return scannedLog{}, errors.New("history metadata differs from sequence enumeration")
 	}
 	return log, nil
 }
@@ -1059,7 +1082,7 @@ func (s *deltaScan) accept(commit gitstore.CommitMetadata) error {
 	if err := s.store.VerifySSHCommit(s.ctx, commit.OID, "sequencer", s.base.sequencerPublicKey); err != nil {
 		return fmt.Errorf("commit %s sequencer signature: %w", commit.OID, err)
 	}
-	event, successor, rotation, err := loadCommit(s.ctx, s.store, s.desc, s.base.Verification.Genesis, commit, s.loadPayload)
+	event, successor, rotation, err := loadCommit(s.ctx, s.store, nil, s.desc, s.base.Verification.Genesis, commit, s.loadPayload)
 	if err != nil {
 		return err
 	}
@@ -1128,7 +1151,7 @@ func (s *deltaScan) finish() (scannedLog, error) {
 // and sequencer signature have been established. Full and descendant scans
 // deliberately share every envelope, actor signature, target, trailer, tree,
 // and payload check.
-func loadCommit(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, genesis string, commit gitstore.CommitMetadata, loadPayload bool) (Event, string, bool, error) {
+func loadCommit(ctx context.Context, store gitstore.Store, batch *gitstore.AuditBatch, desc GenesisDescriptor, genesis string, commit gitstore.CommitMetadata, loadPayload bool) (Event, string, bool, error) {
 	message := normalizeEventMessage(commit.Message)
 	if uint64(len(message)) > desc.PayloadCeiling {
 		return Event{}, "", false, fmt.Errorf("commit %s envelope exceeds genesis ceiling", commit.OID)
@@ -1138,11 +1161,18 @@ func loadCommit(ctx context.Context, store gitstore.Store, desc GenesisDescripto
 		return Event{}, "", false, fmt.Errorf("commit %s: %w", commit.OID, err)
 	}
 	if rotation {
-		emptyTree, err := store.EmptyTree(ctx)
+		empty := false
+		if batch != nil {
+			empty, err = batch.TreeIsEmpty(commit.Tree)
+		} else {
+			var emptyTree string
+			emptyTree, err = store.EmptyTree(ctx)
+			empty = commit.Tree == emptyTree
+		}
 		if err != nil {
 			return Event{}, "", false, err
 		}
-		if commit.Tree != emptyTree {
+		if !empty {
 			return Event{}, "", false, fmt.Errorf("commit %s rotation tree is not empty", commit.OID)
 		}
 		return Event{}, successor, true, nil
@@ -1169,10 +1199,17 @@ func loadCommit(ctx context.Context, store gitstore.Store, desc GenesisDescripto
 		return Event{}, "", false, errors.New("commit tree differs from signed intent")
 	}
 	remaining := desc.PayloadCeiling - uint64(len(message))
+	event := Event{Commit: commit.OID, Timestamp: commit.Timestamp, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
+	if batch != nil {
+		event.Payload, event.Attachments, err = batch.PayloadTree(commit.Tree, remaining, loadPayload)
+		if err != nil {
+			return Event{}, "", false, fmt.Errorf("commit %s payload shape: %w", commit.OID, err)
+		}
+		return event, "", false, nil
+	}
 	if err := store.ValidatePayloadTree(ctx, commit.Tree, remaining); err != nil {
 		return Event{}, "", false, fmt.Errorf("commit %s payload shape: %w", commit.OID, err)
 	}
-	event := Event{Commit: commit.OID, Timestamp: commit.Timestamp, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
 	if !loadPayload {
 		return event, "", false, nil
 	}

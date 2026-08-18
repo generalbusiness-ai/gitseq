@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha1"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -569,23 +568,8 @@ func (s Store) VerifySSHCommit(ctx context.Context, oid, principal, publicKey st
 // of this value is security-critical: it is embedded after the principal in an
 // OpenSSH allowed-signers line.
 func ValidateSSHPublicKey(publicKey string) error {
-	fields := strings.Split(publicKey, " ")
-	if len(fields) != 2 || fields[0] != "ssh-ed25519" {
-		return errors.New("sequencer public key must be canonical ssh-ed25519")
-	}
-	raw, err := base64.StdEncoding.DecodeString(fields[1])
-	if err != nil || base64.StdEncoding.EncodeToString(raw) != fields[1] {
-		return errors.New("sequencer public key has non-canonical base64")
-	}
-	algorithm, rest, ok := sshWireString(raw)
-	if !ok || string(algorithm) != fields[0] {
-		return errors.New("sequencer public key algorithm mismatch")
-	}
-	key, rest, ok := sshWireString(rest)
-	if !ok || len(key) != 32 || len(rest) != 0 {
-		return errors.New("sequencer public key has invalid ed25519 body")
-	}
-	return nil
+	_, _, err := parseSSHEd25519PublicKey(publicKey)
+	return err
 }
 
 func sshWireString(data []byte) (value, rest []byte, ok bool) {
