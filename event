@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Current deterministic resident rebuild regression at exact pushed head 1d3ab894; clean replacement pointer on the implementation request.","body":{"commit":"1d3ab89425ef967448148584b74e6b951f4329a1","path":"internal/service"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:038dd8a74068a48e893a2c3f630ad48b2cec7324","text":"Retire the ordinary-stale intermediate pointer; the clean replacement at the same path is 8bfdf6df."}
