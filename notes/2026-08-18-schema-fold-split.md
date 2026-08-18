@@ -1,8 +1,9 @@
 # Separating fold upgrades from vocabulary evolution
 
-2026-08-18. **Status: proposed for implementation** — the direction is
-authorized; this note is the governing specification, to be reviewed and then
-implemented. It changes the Workroom meta-kind contract and updates
+2026-08-18. **Status: implementation candidate, not merged** — the direction is
+authorized; this note is the governing specification and records the
+compatibility choices made by the candidate implementation. It changes the
+Workroom meta-kind contract and updates
 `docs/reference/architecture.md`. The kernel stays schema-agnostic; the one
 kernel-side change (the companion checkpoint `Profile` decoupling) *removes* an
 over-coupling to the application fold rather than adding fold awareness.
@@ -22,12 +23,16 @@ sides of the code/data line:
   published fold to a precise transition." Activating it changes what the fold
   *does*.
 
-Both are listed together in `foldInterpreted` (`{kind-def, fold-activation,
-roster}`) and marked non-redefinable — but for different reasons: one is
-trusted code, the other is the schema-agnostic validator's own bootstrap. And
-the conflation is visible in the type: `KindDefinition` carries a `Fold string`
-field, so the declarative "define a noun" language can also smuggle a code
-pointer.
+Before the candidate, both were listed together in `foldInterpreted`
+(`{kind-def, fold-activation, roster}`) and marked non-redefinable — but for
+different reasons: one is trusted code, the other is the schema-agnostic
+validator's own bootstrap. And
+the conflation is visible at the payload boundary: before this implementation,
+a `kind-def` body could carry a `fold` string that the decoder silently ignored,
+while the neighbouring starter meta-kind gave the same vocabulary surface a
+real code-pointer meaning. The Go `KindDefinition` value was already data-only;
+the missing guarantee was rejecting the code pointer at the declared-data
+boundary and removing activation from the current catalog.
 
 Meanwhile the host-binding model (`internal/app`) now resolves *which
 interpreter a repository is bound to* once, before the workspace can fold or
@@ -47,7 +52,8 @@ belongs to the binding, which is anchored to the application the repository
 committed to at init (the mechanism the chess host-binding work landed).
 Concretely:
 
-- Remove the `Fold` field from `KindDefinition`. A kind definition may no
+- Keep `KindDefinition` free of a `Fold` field and reject `body.fold` rather
+  than silently carrying it as extra statement data. A kind definition may no
   longer carry a code pointer.
 - Reframe fold activation (the `path-commit`→code pointer plus its transition)
   as a **facet of the host binding**, signed by the binding authority and
@@ -87,11 +93,16 @@ and their past decisions do not change; `state@0` remains decodable. The change
 governs *new* activations: after it lands, a fold upgrade is expressed through
 the host binding, and `KindDefinition` no longer accepts `Fold`. Existing rooms
 that activated a fold under the old meta-kind (the "existing rooms must declare
-prefix=genesis" path) need a defined bridge — either their last active fold is
-re-expressed as a binding at the migration transition, or the fold continues to
-honor the historical activation for already-bound rooms while refusing new ones.
-Choosing and specifying that bridge is part of the implementation, and the
-architecture-contract update must state it.
+prefix=genesis" path) use the latter bridge: the fold honors already-ratified
+state@0/state@1 activation history and preserves the same transition and
+post-transition uninterpretable seam. The current starter catalog omits
+`fold-activation`; state@2 use is undefined, and application admission refuses
+both a new state@0/state@1 activation and a new ratification@0 of a previously
+unratified legacy activation. Ratification@1 independently makes an activation
+ineffective if it bypasses admission. A later upgrade is an initializer-key-signed
+host-binding replacement. This is append-only: historical records and their
+decisions do not change, while no new application-level activation can take
+force.
 
 ## What chess needs
 
@@ -116,8 +127,9 @@ explicitly out of scope here.
 
 ## Scope and non-goals
 
-- In scope: remove `KindDefinition.Fold`; move fold activation/upgrade under
-  host binding with its trust anchored to the bound application; keep `kind-def`
+- In scope: enforce the already-data-only `KindDefinition` boundary by refusing
+  `body.fold`; move fold activation/upgrade under host binding with its trust
+  anchored to the bound application; keep `kind-def`
   as a pure declarative vocabulary facility; specify the migration bridge for
   historically-activated rooms; update `docs/reference/architecture.md`.
 - Out of scope: implementing a chess statement-envelope vocabulary; a general

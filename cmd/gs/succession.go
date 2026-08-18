@@ -82,8 +82,8 @@ type successionPlan struct {
 
 // planSuccession is deterministic over the merge diff and the fold snapshot.
 // Live includes stale artifacts: stale says a basis moved, not that the pointer
-// was withdrawn. Historical unmaintainable paths are ignored; state@1 prevents
-// any more from entering the effective set.
+// was withdrawn. Historical unmaintainable paths are ignored; state@1 and
+// later prevent any more from entering the effective set.
 func planSuccession(projection workroom.Projection, changes []mergeChange, predecessors map[string]bool) successionPlan {
 	var live []workroom.Artifact
 	for _, artifact := range projection.Artifacts {

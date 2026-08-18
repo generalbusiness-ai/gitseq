@@ -118,16 +118,8 @@ func (w *Workspace) interpreter() (host, error) {
 	return w.selected.host, w.selected.err
 }
 
-// foldProfile names the fold that produced local checkpoints, so a checkpoint
-// can never be reused across interpreters. A refusal names the default; that is
-// a cache key for a repository nothing here will fold, and a wrong one costs a
-// cold audit rather than a wrong projection.
-func (w *Workspace) foldProfile() string {
-	selected, err := w.interpreter()
-	if err != nil {
-		return workroomHost.foldVersion
-	}
-	return selected.foldVersion
+func (h host) projectionProfile() string {
+	return h.application + "\x00" + h.foldVersion
 }
 
 // errFirstRecordUnauthenticated ends the binding scan when the log's first

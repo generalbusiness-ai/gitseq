@@ -150,10 +150,11 @@ predecessor in the same batch.
 | A file is deleted | Its exact old path is retired with no successor. A live covering directory still receives its successor because the directory changed. |
 | A successor rests on the predecessor the same merge retires | The successor stays current. The work stood on what it replaces, and the merge that publishes one withdraws the other in the same act, so that withdrawal is not news arriving underneath it. Only artifacts that merge actually published — at its merge head, at a path it declared — read it that way; any other record citing the receipt goes stale as usual. |
 
-`workroom/state@1` refuses new artifacts at `.` and refuses comma-joined
-pseudo-paths. Historical `state@0` artifacts keep their original decisions but
-valid historical paths remain candidates for retirement and succession. New
-raw submissions cannot use `state@0` to bypass the path rule.
+`workroom/state@1` and the current `workroom/state@2` refuse new artifacts at
+`.` and refuse comma-joined pseudo-paths. Historical `state@0` artifacts keep
+their original decisions but valid historical paths remain candidates for
+retirement and succession. New raw submissions cannot use retired state@0 or
+state@1 admission to bypass current rules.
 
 ### Citations across a merge
 
@@ -268,9 +269,12 @@ claim.
 
 ### Restart residents at the merged commit
 
-This head advances the state schema to `workroom/state@1` and the fold profile
-to `workroom-fold@3`. A binary built before it cannot interpret records written
-after it. Restart every resident sequencer and MCP adapter at the merged commit.
+The succession change advanced the state schema to `workroom/state@1` and the
+fold profile to `workroom-fold@3`. The current schema/fold split advances them
+again to `workroom/state@2`, `workroom/ratify@1`, and `workroom-fold@4`; older
+state and ratification records remain readable, but a binary built before the
+current change cannot interpret the new schemas. Restart every resident
+sequencer and MCP adapter at the merged commit.
 
 ## See also
 

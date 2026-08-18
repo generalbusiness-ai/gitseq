@@ -93,9 +93,11 @@ them, because reading is not acknowledging. See
   from a conversation is `state` with the selected signed frames
   embedded as `evidence` — a stranger can then verify it after the
   conversation is forgotten. Select honestly, summarize faithfully.
-- `status.durable.vocabulary.binding` states whether the record has a
-  fold binding. `unbound` and `uninterpretable` are real audit gaps,
-  not warnings to click through. Likewise, a durable decision of
+- `status.durable.vocabulary.binding` preserves the historical state@0 fold
+  activation seam, if the room has one. Current fold upgrades are host-binding
+  replacements and do not enter the declarative vocabulary. `unbound` and
+  `uninterpretable` remain real audit facts about that historical seam, not
+  warnings to click through. Likewise, a durable decision of
   `undefined-kind` or `uninterpretable` stays visible but has no
   semantic force. Surface the gap; do not improvise ambient meaning.
 - A request's `body.to` accepts a configured actor name, `@name`, or

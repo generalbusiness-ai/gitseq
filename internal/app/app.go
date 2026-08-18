@@ -1030,16 +1030,20 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 		resultErr = err
 		return Submission{}, err
 	}
-	// The fold keeps state@0 readable so historical decisions do not change,
-	// but admission must not let a new raw submission use that schema to evade
-	// state@1's artifact-path rules.
-	if decodedIntent.Schema == workroom.SchemaStateLegacy {
+	// The fold keeps state@0 and state@1 readable so historical decisions do
+	// not change, but admission must not let a new raw submission use either
+	// retired schema to evade current rules.
+	if decodedIntent.Schema == workroom.SchemaStateLegacy || decodedIntent.Schema == workroom.SchemaStateV1 {
 		decoded, decodeErr := workroom.Decode(decodedIntent.Schema, request.Payload)
 		if decodeErr != nil {
 			resultErr = decodeErr
 			return Submission{}, decodeErr
 		}
 		if state, ok := decoded.(*workroom.State); ok {
+			if state.Kind == workroom.KindFoldActivation {
+				resultErr = errors.New("legacy state schema cannot admit a fold activation; record a host binding upgrade")
+				return Submission{}, resultErr
+			}
 			snapshot, snapshotErr := w.Snapshot(ctx)
 			if snapshotErr != nil {
 				resultErr = snapshotErr
@@ -1054,6 +1058,25 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 			}
 			if artifactKind && (state.Body["path"] == "." || strings.Contains(state.Body["path"], ",")) {
 				resultErr = errors.New("legacy state schema cannot admit an unmaintainable artifact path")
+				return Submission{}, resultErr
+			}
+		}
+	}
+	if decodedIntent.Schema == workroom.SchemaRatifyLegacy || decodedIntent.Schema == workroom.SchemaRatify {
+		decoded, decodeErr := workroom.Decode(decodedIntent.Schema, request.Payload)
+		if decodeErr != nil {
+			resultErr = decodeErr
+			return Submission{}, decodeErr
+		}
+		ratification := decoded.(*workroom.Ratify)
+		snapshot, snapshotErr := w.Snapshot(ctx)
+		if snapshotErr != nil {
+			resultErr = snapshotErr
+			return Submission{}, snapshotErr
+		}
+		for _, statement := range snapshot.Projection.Statements {
+			if statement.Event == ratification.Target && statement.Kind == workroom.KindFoldActivation {
+				resultErr = errors.New("historical fold activation can no longer be ratified; record a host binding upgrade")
 				return Submission{}, resultErr
 			}
 		}

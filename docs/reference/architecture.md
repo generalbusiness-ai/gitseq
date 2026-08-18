@@ -181,6 +181,13 @@ answer standing. Nobody able to append can therefore make a repository
 unreadable by recording one, and a host never refuses to interpret a
 repository because of a record it should have ignored.
 
+A fold upgrade is therefore a host-binding replacement, not an application
+statement kind. Its source commit and fold version name the interpreter code,
+and its position in the sequence is the transition. The initializing key is
+the binding authority; the host accepts the replacement only when the named
+application and fold are held by the build that opens the repository. The
+source URL remains inert provenance and cannot install code.
+
 Opening a repository has one fixed order: **read the binding, select the named
 interpreter, then fold**. A host must never fold with a guessed interpreter and
 repair the projection after discovering a mismatch. The selection is made when
@@ -264,9 +271,25 @@ different schema family.
 Workroom state schemas are prospectively versioned when admission tightens.
 `workroom/state@0` remains readable with the decisions it historically made;
 `workroom/state@1` refuses whole-repository and comma-joined artifact paths.
-This preserves the append-only record while preventing new pointers that
-merge succession cannot maintain. The schema version is Workroom application
-meaning, not a kernel protocol feature.
+`workroom/state@2` preserves those path rules and removes new in-fold
+activation authority. `workroom/ratify@1` closes the other side of that
+boundary: it cannot make an older, previously unratified activation take
+effect after host binding took ownership of upgrades. This preserves the
+append-only record while preventing new pointers that merge succession cannot
+maintain. The schema version is Workroom application meaning, not a kernel
+protocol feature.
+
+The same bridge preserves state@0/state@1 `fold-activation` history ratified
+with `workroom/ratify@0`:
+the old transition and the uninterpretable seam after it replay exactly as
+before. `fold-activation` is absent from the current starter vocabulary, new
+state@2 records under that name are undefined, and the application refuses a
+new state@0/state@1 activation or a ratification@0 submitted after the
+boundary. A ratification@1 of an activation is ineffective even if it bypasses
+application admission.
+New upgrades are binding replacements at the host layer. `kind-def` remains a
+finite declarative constraint language; a definition carrying `body.fold` is
+uninterpretable and cannot introduce a code pointer.
 
 ### 6. Projections and queries
 

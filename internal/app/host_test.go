@@ -84,8 +84,8 @@ func TestWorkroomRepositoryRecordsNoBindingAndSelectsWorkroom(t *testing.T) {
 	if _, err := reopened.interpreter(); err != nil {
 		t.Fatal(err)
 	}
-	if reopened.foldProfile() != workroom.ProfileVersion {
-		t.Fatalf("checkpoint profile = %q, want %q", reopened.foldProfile(), workroom.ProfileVersion)
+	if reopened.selected.host.projectionProfile() != defaultApplication+"\x00"+workroom.ProfileVersion {
+		t.Fatalf("projection profile = %q, want workroom application and fold", reopened.selected.host.projectionProfile())
 	}
 }
 
@@ -451,6 +451,67 @@ func TestABindingShapedRecordGetsNoForceFromTheWorkroomFold(t *testing.T) {
 		if decision.Event == submission.Record.ID && decision.Verdict == workroom.Effective {
 			t.Fatalf("workroom fold gave a binding record force: %+v", decision)
 		}
+	}
+}
+
+func TestLegacyStateCannotRecordANewFoldActivation(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := workspace.buildRequest(ctx, private, "human", workroom.SchemaStateLegacy, workroom.State{
+		Kind: workroom.KindFoldActivation, Text: "activate through the retired application meta-kind",
+		Body: map[string]string{
+			"fold": "internal/workroom@abc123", "entry": "gitseq/internal/workroom",
+			"interface": "workroom-fold@1", "toolchain": "go1.25.0", "prefix": "genesis",
+		},
+	}, nil, nil, "legacy-fold-activation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := workspace.Verify(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.AcceptSubmission(ctx, request); err == nil || !strings.Contains(err.Error(), "host binding upgrade") {
+		t.Fatalf("legacy fold activation error = %v", err)
+	}
+	after, err := workspace.Verify(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("refused activation advanced verified history: before=%+v after=%+v", before, after)
+	}
+
+	// A room may already contain an unratified state@0 activation. The bridge
+	// keeps that record readable, but ratifying it now would be a new
+	// activation rather than historical replay.
+	appended, err := kernel.Submit(ctx, workspace.Store, request, kernel.Options{SigningKey: workspace.Config.SequencerKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err = reopened.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ratify, err := reopened.BuildActRequest(ctx, private, "human", Act{
+		Verb: VerbRatify, Target: reopened.EventID(appended.Commit), IdempotencyKey: "late-legacy-ratification",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.AcceptSubmission(ctx, ratify); err == nil || !strings.Contains(err.Error(), "can no longer be ratified") {
+		t.Fatalf("late legacy ratification error = %v", err)
 	}
 }
 
