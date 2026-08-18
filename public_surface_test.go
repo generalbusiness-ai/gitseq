@@ -12,6 +12,8 @@ import (
 
 const publicRepository = "https://github.com/generalbusiness-ai/gitseq"
 
+var emailAddress = regexp.MustCompile(`(?i)\b[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}\b`)
+
 // TestPublicRepositorySurface pins the links and least-privilege settings
 // that make this checkout safe to present as a technical preview.
 func TestPublicRepositorySurface(t *testing.T) {
@@ -75,10 +77,13 @@ func TestPublicRepositorySurface(t *testing.T) {
 	}
 
 	for path, forbidden := range map[string][]string{
-		"README.md":   {"hughpyle@gmail.com", "security/advisories/new", "private advisory channel"},
-		"SECURITY.md": {"hughpyle@gmail.com", "security/advisories/new", "private advisory channel"},
+		"README.md":   {"security/advisories/new", "private advisory channel"},
+		"SECURITY.md": {"security/advisories/new", "private advisory channel"},
 	} {
-		content := read(path)
+		content := strings.Join(strings.Fields(read(path)), " ")
+		if emailAddress.MatchString(content) {
+			t.Errorf("%s contains a personal email address", path)
+		}
 		for _, fragment := range forbidden {
 			if strings.Contains(content, fragment) {
 				t.Errorf("%s contains obsolete or personal disclosure channel %q", path, fragment)
