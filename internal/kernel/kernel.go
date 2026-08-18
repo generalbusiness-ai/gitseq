@@ -602,6 +602,14 @@ type AuditProgress struct {
 	started  atomic.Bool
 	verified atomic.Int64
 	total    atomic.Int64
+	testGate func(Progress)
+}
+
+// SetTestGate installs a test-only pause after each fully verified commit.
+// Production callers leave it nil. Tests that need to observe an in-flight
+// audit can hold the verifier without making correctness depend on timing.
+func (p *AuditProgress) SetTestGate(gate func(Progress)) {
+	p.testGate = gate
 }
 
 func (p *AuditProgress) begin() {
@@ -616,6 +624,9 @@ func (p *AuditProgress) setTotal(total int) {
 
 func (p *AuditProgress) advance(verified int) {
 	p.verified.Store(int64(verified))
+	if p.testGate != nil {
+		p.testGate(p.Snapshot())
+	}
 }
 
 // Snapshot returns a coherent-enough monotonic observation for progress UI.

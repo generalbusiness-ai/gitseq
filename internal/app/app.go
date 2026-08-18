@@ -87,15 +87,16 @@ type Workspace struct {
 	// afterwards can change what an open workspace means.
 	selected selection
 
-	snapshotMu     sync.Mutex
-	snapshotCache  *Snapshot
-	snapshotSource SnapshotSource
-	snapshotFolder *workroom.Folder
-	flightMu       sync.Mutex
-	flight         atomic.Pointer[snapshotFlight]
-	reader         *kernel.Reader
-	submitterOnce  sync.Once
-	submitter      *kernel.Submitter
+	snapshotMu      sync.Mutex
+	snapshotCache   *Snapshot
+	snapshotSource  SnapshotSource
+	snapshotFolder  *workroom.Folder
+	flightMu        sync.Mutex
+	flight          atomic.Pointer[snapshotFlight]
+	rebuildTestGate func(kernel.Progress)
+	reader          *kernel.Reader
+	submitterOnce   sync.Once
+	submitter       *kernel.Submitter
 
 	worktreesMu       sync.Mutex
 	worktreesCached   []WorktreeView
@@ -1158,6 +1159,13 @@ func (w *Workspace) RebuildProgress() (progress kernel.Progress, running bool) {
 	return progress, progress.Started
 }
 
+// SetRebuildTestGate installs a test-only pause in cold-audit progress. It
+// must be called before the first snapshot starts. Production callers leave
+// the gate nil.
+func (w *Workspace) SetRebuildTestGate(gate func(kernel.Progress)) {
+	w.rebuildTestGate = gate
+}
+
 func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	result, err := w.SnapshotWithSource(ctx)
 	return result.Snapshot, err
@@ -1192,6 +1200,7 @@ func (w *Workspace) snapshotFlight() *snapshotFlight {
 		return flight
 	}
 	flight := &snapshotFlight{done: make(chan struct{})}
+	flight.progress.SetTestGate(w.rebuildTestGate)
 	w.flight.Store(flight)
 	go func() {
 		ctx := observe.WithObserver(context.Background(), w.observer)
