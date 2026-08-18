@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ea413fb33d519153adff6eabe3dcffc3e6051ae8","text":"Merge retired a covered predecessor; the successor is at internal/kernel."}
+{"kind":"artifact","text":"Repaired loop-cut workflow candidate for AGENTS.md at the exact implementation head.","body":{"branch":"request/commitment-loop-cut-current-main","commit":"076727fed7677931f173654a61a127975380e487","path":"AGENTS.md"}}
