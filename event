@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Cold full-audit integration and deterministic progress-gate repair at the exact pushed head; the strong single-flight and atomic-publication assertions remain intact.","body":{"commit":"1d3ab89425ef967448148584b74e6b951f4329a1","path":"internal/kernel"}}
+{"kind":"artifact","text":"Application-host test seam for deterministic cold-rebuild observation at the exact pushed head; production callers leave the gate nil and snapshot semantics are unchanged.","body":{"commit":"1d3ab89425ef967448148584b74e6b951f4329a1","path":"internal/app"}}
