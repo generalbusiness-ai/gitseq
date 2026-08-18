@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a5f9d26e9dfa765034b4c53001c853a479a1b81e"}
+{"kind":"artifact","text":"Scale envelopes and measured evidence: PREVIEW (50k depth, 8 actors) and FIRST-PRODUCTION (500k depth, 50 actors), with cold audit, restart, warm status, RSS, checkpoint size, fan-out and actor-count costs measured at main 316d5aeb.","body":{"commit":"60ba8f047c4fea5fb6549e15634665976e0b95e4","path":"docs/reference/performance.md"}}
