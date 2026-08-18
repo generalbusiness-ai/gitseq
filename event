@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Cold full-audit integration and exact 50,000-event performance proof at the exact pushed head.","body":{"commit":"a5ccd18bcf04c3d50a123687d89715282144e41e","path":"internal/kernel"}}
+{"kind":"artifact","text":"Resident rebuild regression updated to remain independent of verifier speed at the exact pushed head.","body":{"commit":"a5ccd18bcf04c3d50a123687d89715282144e41e","path":"internal/service"}}
