@@ -250,6 +250,18 @@ func checkpointState(t testing.TB, count int) (fixtureState, ed25519.PrivateKey,
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Keep the hostile-checkpoint mutation fixtures on the legacy format. The
+	// production writer above still exercises compact encoding and decoding;
+	// these fixtures then prove old v1 checkpoints remain fully authenticated.
+	if stored.Schema == compactCheckpointSchema {
+		stored.Schema = checkpointSchema
+		stored.EventCount = 0
+		for index, event := range log.Events {
+			stored.Events[index].Commit = event.Commit
+			stored.Events[index].Timestamp = event.Timestamp
+			stored.Events[index].Signed = cloneSigned(event.Signed)
+		}
+	}
 	return f, private, requests, stored
 }
 
@@ -905,6 +917,56 @@ func BenchmarkCheckpointRestartAtDepth1000(b *testing.B) {
 			}
 		}
 	})
+}
+
+// Run with -benchtime=1x. The 480-byte bodies are deliberately
+// incompressible: together with the compact framing they model a serialized
+// cost above the 450 bytes/event measured from the live Workroom payload mix.
+func BenchmarkCompactCheckpointSerializationAtDepth500000(b *testing.B) {
+	if b.N != 1 {
+		b.Skip("run with -benchtime=1x")
+	}
+	const (
+		eventCount  = 500000
+		payloadSize = 480
+	)
+	payloads := make([]byte, eventCount*payloadSize)
+	state := uint64(0x9e3779b97f4a7c15)
+	for index := range payloads {
+		state ^= state << 13
+		state ^= state >> 7
+		state ^= state << 17
+		payloads[index] = byte(state)
+	}
+	stored := checkpoint{
+		Schema: compactCheckpointSchema, ObjectFormat: "sha1",
+		Genesis: strings.Repeat("a", 40), Head: strings.Repeat("b", 40),
+		Depth: eventCount, Profile: "workroom-fold@1", EventCount: eventCount,
+		Events: make([]checkpointEvent, eventCount),
+	}
+	for index := range stored.Events {
+		start := index * payloadSize
+		stored.Events[index].Payload = payloads[start : start+payloadSize]
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+	if err != nil {
+		b.Fatal(err)
+	}
+	stored.Events = nil
+	payloads = nil
+	runtime.GC()
+	decoded, err := decodeCheckpoint(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.StopTimer()
+	b.ReportMetric(float64(len(data))/(1<<20), "checkpoint_MiB")
+	b.ReportMetric(float64(len(data))/eventCount, "bytes/event")
+	if decoded.EventCount != eventCount || len(decoded.Events) != eventCount {
+		b.Fatalf("decoded events = %d/%d, want %d", decoded.EventCount, len(decoded.Events), eventCount)
+	}
 }
 
 func TestConcurrentCASProducesOneLinearChain(t *testing.T) {
@@ -1640,7 +1702,7 @@ func TestCheckpointPointerFailureStillPublishesReachableRef(t *testing.T) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git gc: %v: %s", err, output)
 	}
-	if message, err := f.store.CommitMessage(f.ctx, checkpointCommit); err != nil || strings.TrimSpace(message) != checkpointMarker {
+	if message, err := f.store.CommitMessage(f.ctx, checkpointCommit); err != nil || strings.TrimSpace(message) != compactCheckpointMarker {
 		t.Fatalf("checkpoint object was not retained by its ref: message=%q err=%v", message, err)
 	}
 	restarted, err := NewReader(f.store, CheckpointOptions{Profile: options.Profile}).Load(f.ctx, f.genesis)
@@ -1789,7 +1851,7 @@ func TestReaderRestartsFromCheckpointWrittenAfterRotation(t *testing.T) {
 	// A checkpoint for the rotated prefix is authenticated only by the key
 	// current at that frontier. Re-signing the same trusted bytes with the
 	// retired key must be a cache miss, followed by an ordinary full audit.
-	publishCheckpointBytes(t, f, checkpointData, f.signingKey, "", checkpointMarker)
+	publishCheckpointBytes(t, f, checkpointData, f.signingKey, "", compactCheckpointMarker)
 	fallback := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile})
 	loaded, err := fallback.Load(f.ctx, f.genesis)
 	if err != nil {
@@ -1837,7 +1899,7 @@ func TestCheckpointCannotTrustSuccessorFromUnverifiedRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publishCheckpointBytes(t, f, data, successorKey, "", checkpointMarker)
+	publishCheckpointBytes(t, f, data, successorKey, "", compactCheckpointMarker)
 
 	if _, _, err := loadCheckpoint(f.ctx, f.store, f.genesis, forgedRotation, CheckpointOptions{Profile: checkpoint.Profile}); err == nil || !errors.Is(err, ErrNoUsableCheckpoint) || !strings.Contains(err.Error(), forgedRotation+" sequencer signature") {
 		t.Fatalf("checkpoint trusted successor from unverified rotation: %v", err)
@@ -2228,6 +2290,146 @@ func TestCheckpointDecoderRejectsTrailingJSONAtItsBoundary(t *testing.T) {
 	}
 	if _, err := decodeCheckpoint(append(data, []byte(`{}`)...)); err == nil || !strings.Contains(err.Error(), "trailing JSON") {
 		t.Fatalf("trailing JSON error = %v", err)
+	}
+}
+
+func TestCompactCheckpointRoundTripIsDeterministicAndBounded(t *testing.T) {
+	stored := checkpoint{
+		Schema: compactCheckpointSchema, ObjectFormat: "sha1",
+		Genesis: strings.Repeat("a", 40), Head: strings.Repeat("b", 40),
+		Depth: 2, Profile: "fold@1", EventCount: 2,
+		Events: []checkpointEvent{
+			{Payload: []byte(`{"kind":"first"}`), Attachments: map[string][]byte{"z.txt": []byte("last"), "a.txt": []byte("first")}},
+			{Payload: []byte(`{"kind":"second"}`)},
+		},
+	}
+	first, err := marshalCheckpoint(stored, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := marshalCheckpoint(stored, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("compact checkpoint encoding is not deterministic")
+	}
+	if !bytes.HasPrefix(first, []byte(checkpointContainer)) {
+		t.Fatal("compact checkpoint has no versioned container marker")
+	}
+	decoded, err := decodeCheckpoint(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(decoded, stored) {
+		t.Fatalf("compact checkpoint round trip differs:\n got: %#v\nwant: %#v", decoded, stored)
+	}
+	if _, err := marshalCheckpoint(stored, len(first)-1); err == nil || !strings.Contains(err.Error(), "exceeds limit") {
+		t.Fatalf("compact checkpoint over limit error = %v", err)
+	}
+}
+
+func TestReaderAcceptsLegacyCheckpointAfterCompactUpgrade(t *testing.T) {
+	f, _, _, stored := checkpointState(t, 3)
+	publishStoredCheckpoint(t, f, stored)
+	reader := NewReader(f.store, CheckpointOptions{Profile: stored.Profile})
+	loaded, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Checkpoint || reader.fullScans != 0 || loaded.Verification.Events != 3 || len(loaded.Events) != 3 {
+		t.Fatalf("legacy checkpoint after compact upgrade = %+v, full scans=%d", loaded, reader.fullScans)
+	}
+}
+
+func TestCompactCheckpointAuthenticatesBeforeDecompression(t *testing.T) {
+	f, _, _, _ := checkpointState(t, 1)
+	checkpointCommit := mustHead(t, f.store, CheckpointRef(f.genesis))
+	data, err := f.store.ReadFileLimit(f.ctx, checkpointCommit, checkpointFile, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, payload, err := decodeCompactCheckpointManifest(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	malformed := append(bytes.Clone(data[:len(data)-len(payload)]), []byte("not a gzip stream")...)
+	wrongKey := filepath.Join(t.TempDir(), "wrong-checkpoint-signer")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
+		t.Fatal(err)
+	}
+	publishCheckpointBytes(t, f, malformed, wrongKey, "", compactCheckpointMarker)
+	malformedCommit := mustHead(t, f.store, CheckpointRef(f.genesis))
+	desc, err := Descriptor(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sequence, err := f.store.RevListMetadata(f.ctx, mustHead(t, f.store, Ref(f.genesis)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := readCheckpointCandidate(f.ctx, f.store, desc, f.format, f.genesis, malformedCommit, "fold@1")
+	if err != nil {
+		t.Fatalf("compact manifest should parse without inflating its payload: %v", err)
+	}
+	if _, err := authenticateCheckpointCandidate(f.ctx, f.store, candidate, desc, sequence); err == nil || !strings.Contains(err.Error(), "signature") || strings.Contains(err.Error(), "gzip") {
+		t.Fatalf("unauthenticated compressed payload error = %v", err)
+	}
+}
+
+func TestCompactCheckpointRejectsAuthenticatedPayloadCorruption(t *testing.T) {
+	f, _, _, _ := checkpointState(t, 1)
+	checkpointCommit := mustHead(t, f.store, CheckpointRef(f.genesis))
+	data, err := f.store.ReadFileLimit(f.ctx, checkpointCommit, checkpointFile, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, payload, err := decodeCompactCheckpointManifest(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	malformed := append(bytes.Clone(data[:len(data)-len(payload)]), []byte("not a gzip stream")...)
+	publishCheckpointBytes(t, f, malformed, f.signingKey, "", compactCheckpointMarker)
+	requireCheckpointFallback(t, f)
+}
+
+func TestCompactCheckpointBindsPayloadsToSequenceOrder(t *testing.T) {
+	f, _, _, stored := checkpointState(t, 2)
+	stored.Schema = compactCheckpointSchema
+	stored.EventCount = len(stored.Events)
+	stored.Events[0], stored.Events[1] = stored.Events[1], stored.Events[0]
+	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publishCheckpointBytes(t, f, data, f.signingKey, "", compactCheckpointMarker)
+	requireCheckpointFallback(t, f)
+}
+
+func TestCheckpointManifestBoundsCannotOverflowSequenceIndex(t *testing.T) {
+	stored := checkpoint{
+		Schema: compactCheckpointSchema, Genesis: strings.Repeat("a", 40),
+		Head: strings.Repeat("a", 40), Depth: maxIntValue(), EventCount: 0,
+	}
+	sequence := []gitstore.CommitMetadata{{OID: stored.Genesis}}
+	if _, err := checkpointEventPositions(stored, stored.EventCount, GenesisDescriptor{}, sequence); err == nil || !strings.Contains(err.Error(), "named sequence") {
+		t.Fatalf("oversized checkpoint depth error = %v", err)
+	}
+}
+
+func TestCompactCheckpointRejectsTrailingCompressedBytes(t *testing.T) {
+	stored := checkpoint{
+		Schema: compactCheckpointSchema, ObjectFormat: "sha1",
+		Genesis: strings.Repeat("a", 40), Head: strings.Repeat("b", 40),
+		Depth: 1, Profile: "fold@1", EventCount: 1,
+		Events: []checkpointEvent{{Payload: []byte("payload")}},
+	}
+	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeCheckpoint(append(data, 0)); err == nil || !strings.Contains(err.Error(), "trailing compressed bytes") {
+		t.Fatalf("trailing compact bytes error = %v", err)
 	}
 }
 
