@@ -381,6 +381,48 @@ func TestMergeClosesACommitmentReportedByAnyReviewedPlannedArtifact(t *testing.T
 	t.Fatal("implementation commitment was not projected")
 }
 
+func TestMergeDoesNotCloseAnotherAuthorsCommitment(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "reviewer-membership", operator, SchemaState, State{Kind: KindRoster, Text: "reviewer joins", Body: map[string]string{"actor": other, "kind": "agent", "name": "Reviewer", "role": "participant"}}, "w0"),
+		event(t, "reviewer-ratified", operator, SchemaRatify, Ratify{Target: "reviewer-membership"}, "reviewer-membership"),
+		event(t, "bystander-membership", operator, SchemaState, State{Kind: KindRoster, Text: "second implementer joins", Body: map[string]string{"actor": bystander, "kind": "agent", "name": "Second implementer", "role": "participant"}}, "w0"),
+		event(t, "bystander-ratified", operator, SchemaRatify, Ratify{Target: "bystander-membership"}, "bystander-membership"),
+		event(t, "primary-request", operator, SchemaState, State{Kind: KindRequest, Text: "implement package", Body: map[string]string{"to": agent, "conditions": "approved head is merged"}}, "w0"),
+		event(t, "primary-promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will implement the package"}, "primary-request"),
+		event(t, "primary-artifact", agent, SchemaState, State{Kind: KindArtifact, Text: "package implementation", Body: map[string]string{"path": "internal/workroom", "commit": "head1"}}, "primary-promise"),
+		event(t, "foreign-request", operator, SchemaState, State{Kind: KindRequest, Text: "implement one file", Body: map[string]string{"to": bystander, "conditions": "approved head is merged"}}, "w0"),
+		event(t, "foreign-promise", bystander, SchemaState, State{Kind: KindPromise, Text: "I will implement the file"}, "foreign-request"),
+		event(t, "foreign-artifact", bystander, SchemaState, State{Kind: KindArtifact, Text: "another actor's file", Body: map[string]string{"path": "internal/workroom/fold.go", "commit": "head1"}}, "foreign-promise"),
+		event(t, "review-request", agent, SchemaState, State{Kind: KindRequest, Text: "review the exact head", Body: map[string]string{"to": other, "conditions": "independent approval"}}, "primary-artifact", "foreign-artifact"),
+		event(t, "review-promise", other, SchemaState, State{Kind: KindPromise, Text: "I will review it"}, "review-request"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "primary-artifact"}}, "review-promise", "primary-artifact", "foreign-artifact"),
+		event(t, "approval-ratified", agent, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"primary-artifact":"internal/workroom","foreign-artifact":"internal/workroom"}`, "merge_successors": `["internal/workroom"]`,
+		}}, "approval"),
+	)
+	projection := Fold(records)
+	seen := make(map[string]bool)
+	for _, commitment := range projection.Commitments {
+		switch commitment.Request {
+		case "primary-request":
+			seen[commitment.Request] = true
+			if commitment.Status != "satisfied" || commitment.Report != "primary-artifact" || commitment.WaitingOn != "" {
+				t.Fatalf("merger's own commitment = %+v", commitment)
+			}
+		case "foreign-request":
+			seen[commitment.Request] = true
+			if commitment.Status != "reported" || commitment.Report != "foreign-artifact" || commitment.WaitingOn != operator {
+				t.Fatalf("merge closed another author's commitment = %+v", commitment)
+			}
+		}
+	}
+	if !seen["primary-request"] || !seen["foreign-request"] {
+		t.Fatalf("implementation commitments missing: %+v", seen)
+	}
+}
+
 func TestMergeDoesNotCloseCommitmentWithoutExplicitApprovalRatification(t *testing.T) {
 	projection := Fold(implementationMergeRecords(t, false))
 	for _, commitment := range projection.Commitments {
