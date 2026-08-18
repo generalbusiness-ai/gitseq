@@ -14,7 +14,7 @@ const (
 	// ProfileVersion binds resident checkpoints to the exact deterministic
 	// fold contract that produced them. Any semantic fold change must advance
 	// this value before old checkpoints may be reused.
-	ProfileVersion    = "workroom-fold@3"
+	ProfileVersion    = "workroom-fold@4"
 	SchemaStateLegacy = "workroom/state@0"
 	SchemaState       = "workroom/state@1"
 	SchemaRatify      = "workroom/ratify@0"

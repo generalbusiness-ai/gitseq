@@ -1,6 +1,6 @@
 ---
 title: The work loop
-summary: Request, promise, report, ratification — and who is allowed to close what.
+summary: How promises become exact artifacts, independently approved merges, or explicit reports.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
 ---
@@ -10,19 +10,25 @@ rests_on:
 ## The shape
 
 A **request** names whom it is to and its conditions of satisfaction. A
-**promise** rests on that request and claims it. A **report** rests on
-the promise and claims completion. The **requester** — nobody else —
-ratifies the report.
+**promise** rests on that request and claims it. For implementing work, an
+**artifact** rests on the promise, names the exact implementation head, and
+serves as the completion report. An independent reviewer records a verdict;
+the review requester ratifies an approval before `gs merge` may use it. The
+merge of that approved exact head closes the implementation commitment.
 
 ```text
-request  ──rests_on──  promise  ──rests_on──  report  ──ratify──  satisfied
-   ▲                      ▲                     ▲                    ▲
- alice                   bot                   bot                 alice
+request ─▶ promise ─▶ artifact ─▶ independent verdict ─▶ ratify ─▶ merge ─▶ satisfied
+ alice      bot         bot              reviewer            bot      approved chain
 ```
 
-You never declare your own work complete. That is the whole reason the
-requester holds ratification: satisfaction is a judgement by the person
-who asked, not a status the doer sets.
+The artifact removes a duplicate `ready-for-review` record; it does not remove
+scrutiny. The review, its verdict, its explicit pre-merge ratification, and the
+different-agent rule are unchanged. The merge is the durable acceptance of the
+implementation result, so no second ratification follows it.
+
+Work that resolves without a merge still uses the general route: the promisor
+files an explicit **report**, and the original requester ratifies it. You never
+declare your own unmerged work complete.
 
 A free-standing promise projects as dangling, because nobody is
 positioned to declare it satisfied. A report on a promise that does not
@@ -54,9 +60,10 @@ After a promise, the same commitment continues:
 promised ───────────┤
                     ├─ a cited event is retired ───────▶ stale
                     │
-                    └─ promisor reports ───────────────▶ reported
-                                                            │
-                                    requester ratifies ─────┴─▶ satisfied
+                    └─ promisor files artifact or report ──▶ reported
+                                                              │
+                         approved exact head merges ──────────┤
+                         requester ratifies explicit report ──┴─▶ satisfied
 ```
 
 | Status | What it means | Who caused it |
@@ -64,8 +71,8 @@ promised ───────────┤
 | `open` | Asked, unclaimed. | the requester, by asking |
 | `withdrawn` | The request was retired before anyone promised. | the requester, or a ratifier |
 | `promised` | Claimed, not yet reported. | the promisor |
-| `reported` | Completion claimed, awaiting judgement. | the promisor |
-| `satisfied` | The requester accepted the report. | the requester |
+| `reported` | Completion claimed by an artifact or explicit report, awaiting its closing act. | the promisor |
+| `satisfied` | The approved exact head merged, or the requester accepted an explicit report. | the merge or the requester |
 | `cancelled` | The request was retired after a promise existed. | the requester, or a ratifier |
 | `reneged` | The promise was retired. | the promisor, or a ratifier |
 | `stale` | Something it rests on died, and no live report stands. | nobody — a consequence |
@@ -78,15 +85,17 @@ not `stale`, even when both are true.
 **Cancelled beats reneged.** If the request and the promise are both
 retired, the commitment reads `cancelled`.
 
-**The newest live report wins.** Reports are read newest first and
-retired ones are skipped, so superseding a report and filing a
-replacement is a supported repair, not a duplicate.
+**Existing completion authority is preserved.** A sealed merge is terminal.
+Otherwise the newest live explicit report keeps the authority reports had
+before artifacts could report implementation work. A conforming artifact is
+the report when the promise has no live explicit report. It conforms when its
+promisor authored it, it names a commit, and it rests on exactly one promise:
+the promise it reports.
 
 **`satisfied` and stale are not exclusive.** Staleness is computed while
-the report is read and survives ratification, so a commitment can be
-both satisfied and stale. That combination is the normal outcome of a
-completed loop, because the merge retires the branch artifact that the
-report and the approval both legitimately cite.
+the completion and closing records are read, so a commitment can be both
+satisfied and stale. A later movement under an already merged result does not
+erase the fact that the merge happened.
 
 ## Where this is defined
 
@@ -107,6 +116,9 @@ And in `internal/workroom/fold.go`:
 - the eight statuses above, and which event causes each;
 - that only the promisor may report — anyone else is refused with *only
   the promisor may report completion*;
+- that a promisor's exact-head artifact resting on one promise discharges the
+  same report obligation, and a sealed merge receipt for that artifact closes
+  the commitment;
 - that an act may be retired by the actor who made it, or by a ratifier,
   and that the retirement must rest first on its target;
 - that an artifact names both a path and a commit;
@@ -127,18 +139,22 @@ that is not projected as a review at all, and an approval signed by the
 actor who implemented the head — or one whose independence the record
 cannot determine.
 
+The merge gate still requires the review approval to be ratified before it can
+act. The merge does not ratify that review verdict; it closes the separate
+implementation commitment after the approval chain has already authorized it.
+
 What is left is **convention nothing checks**: branch and worktree
 naming, the `Rests-On:` trailer on the source commit, deleting the
-worktree after merge, and pushing to origin. The lifecycle alone would
-also accept a promise followed straight by a report, with no branch and
-no artifact — what stops that work reaching `main` is the merge guard,
-not the fold.
+worktree after merge, and pushing to origin. The lifecycle also accepts a
+promise followed straight by an explicit report for work that does not merge.
+What stops such a report reaching `main` is the merge guard, not the fold.
 
 So a green projection is narrower evidence than it looks, but not empty.
 It shows that nobody claimed authority they did not hold, that each act
-carries the bases its own kind requires — a promise resting on exactly
-one request, a report on a promise — and, where work was merged through
-`gs merge`, that an independent reviewer approved that exact commit. It
+carries the bases its own kind requires — a promise resting on exactly one
+request, an explicit report on a promise, or a reporting artifact on its
+single promise — and, where work was merged through `gs merge`, that an
+independent reviewer approved that exact commit and the approval was ratified. It
 does not show that the branch was named well, that the commit carried
 its trailer, or that anyone tidied up afterwards.
 
@@ -159,8 +175,9 @@ trusting a green projection to catch a bad one.
 
 ## Honest states
 
-An unratified report is **honest status**, not failure. It reads
-"reported, awaiting satisfaction". Do not treat it as a gap to be chased.
+A completion artifact before merge, or an unratified explicit report, is
+**honest status**, not failure. It reads "reported, awaiting satisfaction".
+Do not treat it as a gap to be chased.
 
 Superseding your own promise is **reneging**, and it stays visible
 forever. Do it as early as you know you cannot keep it: early reneging is
@@ -180,8 +197,9 @@ Two halves:
 1. The implementing commit carries a trailer, `Rests-On: <event>`. The
    governing event must exist **before** you make the commit; otherwise
    you have to amend the trailer in afterwards and the hash changes.
-2. An `artifact` statement cites the commit as `path@commit` and rests on
-   the decisions that govern it.
+2. An `artifact` statement cites the commit as `path@commit`, rests on the
+   promise it fulfils, and may also cite the decisions and implementation
+   artifacts that govern it. That artifact is the implementation report.
 
 The artifact is the durable pointer to implementation truth. Branch and
 head hints in a request, promise or report body are conveniences for
@@ -205,13 +223,15 @@ Staleness is the one thing it does not refuse. Whether a moved world
 matters to this exact commit is the reviewer's judgement, so the review
 goes ahead and the verdict records what had moved.
 
-After the review requester ratifies an approved report,
+After the review requester explicitly ratifies an approved report,
 [`gs merge`](../reference/gs/merge.md) enforces the other boundary, and
 keeps the strict reading review gives up. It refuses an unratified,
 retired or stale approval or artifact, a non-approval verdict, a
 candidate other than the approved head, and a dirty checkout. It hands
 git the approved object ID, never a branch name, so advancing the
-reviewed branch cannot retarget the merge.
+reviewed branch cannot retarget the merge. Its sealed receipt then closes the
+implementation promise whose reporting artifact was reviewed; it does not
+replace or imply the earlier review ratification.
 
 Running tests and poking at the checkout is still the reviewer's
 evidence. These commands do not replace judgement; they fix the state at

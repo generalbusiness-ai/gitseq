@@ -100,18 +100,17 @@ The `Rests-On:` trailer bridges the commit to the decision that motivated
 it. The event has to exist before the commit, or you are amending the
 trailer in afterwards and changing the hash.
 
-Then point at the exact commit, and report:
+Then point at the exact commit and state what the implementation satisfies:
 
 ```sh
 ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
-  --text 'Greeting implementation' \
+  --text 'Greeting implementation; greeting.txt added' \
   --body path=greeting.txt --body commit="$HEAD_COMMIT" \
-  --rests-on "$REQUEST")
-
-REPORT=$(gs state --repo "$REPO" --as bot --kind report \
-  --text 'ready-for-review; greeting.txt added' \
-  --body head="$HEAD_COMMIT" --rests-on "$PROMISE")
+  --rests-on "$PROMISE")
 ```
+
+The artifact is both the durable pointer to the exact head and the
+implementation report. No second `ready-for-review` record is needed.
 
 ## 4. Review at that exact head
 
@@ -155,69 +154,23 @@ gs merge --repo "$REPO" --as bot --checkout "$REPO" \
 advancing `task/greeting` after approval cannot retarget the merge.
 The approval is consumed by this one repository-wide landing. The merge
 commit, a receipt ref, and a signed workroom assertion record its exact
-candidate, target pre-head, and resulting merge head.
-
-### Move the artifacts the merge moved
-
-The merge changed files, and the artifacts pointing at those files now
-name a commit that is no longer current. Ask git what changed, then ask
-the workroom which paths its live artifacts already use:
-
-```sh
-MERGE=$(git -C "$REPO" rev-parse HEAD)
-git -C "$REPO" diff --name-only "$MERGE^1" "$MERGE"
-gs status --repo "$REPO"
-```
-
-Retire what the change covers and publish one successor per area. Here
-one path covers it, so it is one of each:
-
-```sh
-MERGED_ARTIFACT=$(gs state --repo "$REPO" --as alice --kind artifact \
-  --text 'Greeting, merged' \
-  --body path=greeting.txt --body commit="$MERGE" --rests-on "$REQUEST")
-gs supersede --repo "$REPO" --as bot --rests-on "$MERGED_ARTIFACT" \
-  --text 'Superseded by the merge artifact at the same path.' "$ARTIFACT"
-```
-
-Keep the successor's EventID. A supersession that names its replacement
-says *moved here*; one that does not says *gone*, and a reader following
-the chain stops at a dead end with only prose to go on. Prose is not a
-pointer. Note the order: `--rests-on` carries the successor alone, and
-`gs supersede` puts the target first in the basis itself — and every flag
-must precede the positional target, because flag parsing stops there.
-
-Reuse the exact string the live artifact already uses. Paths match as
-whole strings, so an artifact at `internal/workroom` never reaches one at
-`internal/workroom/fold.go` — a near miss is silent, not an error.
-[`gs merge`](../reference/gs/merge.md) enumerates the situations and their
-reasons, including why nothing is ever published at `.`.
-
-Now — and only now — the original requester closes the loop:
-
-```sh
-gs ratify --repo "$REPO" --as alice "$REPORT"
-```
-
-Attempts beyond your authority are not errors. They are recorded, marked
-ineffective, and stay visible.
+candidate, target pre-head, and resulting merge head. In the same resumable
+batch, `gs merge` publishes the successor at `greeting.txt`, retires the
+covered candidate artifact, and closes the implementation commitment. The
+review approval remains the explicit pre-merge act above; no report or
+ratification follows the merge.
 
 ## 6. Read the record
 
 ```sh
 gs status --repo "$REPO"
-gs provenance --repo "$REPO" "$MERGED_ARTIFACT"
 gs verify --repo "$REPO"
 ```
 
-The audit follows the live artifact, not the retired one. Asking a
-retired artifact for its provenance answers a question about history;
-asking the current one answers the question you have.
-
 `status` projects commitments and who they wait on, artifacts and whether
-they have gone stale, and the attempts that took no force. `provenance`
-walks back from any event through everything it rests on. `verify` checks
-every signature and the integrity of the sequence.
+they have gone stale, and the attempts that took no force. It shows the
+implementation commitment as satisfied and the merged successor artifact as
+live. `verify` checks every signature and the integrity of the sequence.
 
 ## 7. Publish, and audit from a clone
 

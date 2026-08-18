@@ -87,6 +87,11 @@ Required edges, by kind:
   its promisor is the report signer. An error tells the caller which rule the
   draft violates; the fold remains authoritative if the log moves meanwhile.
 
+An artifact can report assigned implementation work without changing the
+governed artifact schema. It qualifies when its signer is the promisor, it
+names a commit, and its bases contain exactly one effective promise: the
+promise it fulfils. Other artifacts retain their ordinary meaning.
+
 Anything else in `rests_on` is carried unchecked.
 
 ## Evidence

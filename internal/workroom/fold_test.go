@@ -298,6 +298,216 @@ func TestReportAwaitsRequester(t *testing.T) {
 	}
 }
 
+func TestArtifactOnPromiseDischargesTheReportObligation(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "request", operator, SchemaState, State{Kind: KindRequest, Text: "implement it", Body: map[string]string{"to": agent, "conditions": "exact head is published"}}, "w0"),
+		event(t, "promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "request"),
+		event(t, "artifact", agent, SchemaState, State{Kind: KindArtifact, Text: "implementation at its exact head", Body: map[string]string{"path": "internal/workroom", "commit": "head1"}}, "promise"),
+	)
+	commitment := Fold(records).Commitments[0]
+	if commitment.Status != "reported" || commitment.Report != "artifact" || commitment.WaitingOn != operator {
+		t.Fatalf("artifact-backed commitment = %+v", commitment)
+	}
+}
+
+func TestOnlyThePromisorsSinglePromiseArtifactActsAsAReport(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "other-membership", operator, SchemaState, State{Kind: KindRoster, Text: "other joins", Body: map[string]string{"actor": other, "kind": "agent", "name": "Other", "role": "participant"}}, "w0"),
+		event(t, "other-ratified", operator, SchemaRatify, Ratify{Target: "other-membership"}, "other-membership"),
+		event(t, "request-1", operator, SchemaState, State{Kind: KindRequest, Text: "one", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+		event(t, "promise-1", agent, SchemaState, State{Kind: KindPromise, Text: "one"}, "request-1"),
+		event(t, "request-2", operator, SchemaState, State{Kind: KindRequest, Text: "two", Body: map[string]string{"to": agent, "conditions": "done"}}, "w0"),
+		event(t, "promise-2", agent, SchemaState, State{Kind: KindPromise, Text: "two"}, "request-2"),
+		event(t, "foreign", other, SchemaState, State{Kind: KindArtifact, Text: "another actor's artifact", Body: map[string]string{"path": "foreign", "commit": "head1"}}, "promise-1"),
+		event(t, "ambiguous", agent, SchemaState, State{Kind: KindArtifact, Text: "one artifact for two promises", Body: map[string]string{"path": "ambiguous", "commit": "head2"}}, "promise-1", "promise-2"),
+	)
+	projection := Fold(records)
+	for _, commitment := range projection.Commitments {
+		if commitment.Status != "promised" || commitment.Report != "" || commitment.WaitingOn != agent {
+			t.Fatalf("non-conforming artifact discharged %+v", commitment)
+		}
+	}
+}
+
+func TestMergeOfApprovedArtifactClosesItsImplementationCommitment(t *testing.T) {
+	projection := Fold(implementationMergeRecords(t, true))
+	var implementation, review Commitment
+	for _, commitment := range projection.Commitments {
+		switch commitment.Request {
+		case "implementation-request":
+			implementation = commitment
+		case "review-request":
+			review = commitment
+		}
+	}
+	if implementation.Status != "satisfied" || implementation.Report != "implementation-artifact" || implementation.WaitingOn != "" {
+		t.Fatalf("merged implementation commitment = %+v", implementation)
+	}
+	if review.Status != "satisfied" || review.Report != "approval" {
+		t.Fatalf("explicit review ratification changed = %+v", review)
+	}
+	reviewProjection := reviewFor(t, projection, "approval")
+	if !reviewProjection.Ratified || reviewProjection.Independence != IndependenceIndependent {
+		t.Fatalf("review gate weakened = %+v", reviewProjection)
+	}
+}
+
+func TestMergeClosesACommitmentReportedByAnyReviewedPlannedArtifact(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "reviewer-membership", operator, SchemaState, State{Kind: KindRoster, Text: "reviewer joins", Body: map[string]string{"actor": other, "kind": "agent", "name": "Reviewer", "role": "participant"}}, "w0"),
+		event(t, "reviewer-ratified", operator, SchemaRatify, Ratify{Target: "reviewer-membership"}, "reviewer-membership"),
+		event(t, "implementation-request", operator, SchemaState, State{Kind: KindRequest, Text: "implement it", Body: map[string]string{"to": agent, "conditions": "approved head is merged"}}, "w0"),
+		event(t, "implementation-promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will implement it"}, "implementation-request"),
+		event(t, "primary-artifact", agent, SchemaState, State{Kind: KindArtifact, Text: "implementation", Body: map[string]string{"path": "internal/workroom", "commit": "head1"}}, "implementation-promise"),
+		event(t, "latest-artifact", agent, SchemaState, State{Kind: KindArtifact, Text: "documentation", Body: map[string]string{"path": "docs", "commit": "head1"}}, "implementation-promise"),
+		event(t, "review-request", agent, SchemaState, State{Kind: KindRequest, Text: "review the exact head", Body: map[string]string{"to": other, "conditions": "independent approval"}}, "primary-artifact", "latest-artifact"),
+		event(t, "review-promise", other, SchemaState, State{Kind: KindPromise, Text: "I will review it"}, "review-request"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "primary-artifact"}}, "review-promise", "primary-artifact", "latest-artifact"),
+		event(t, "approval-ratified", agent, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"primary-artifact":"internal/workroom","latest-artifact":"docs"}`, "merge_successors": `["docs","internal/workroom"]`,
+		}}, "approval"),
+	)
+	for _, commitment := range Fold(records).Commitments {
+		if commitment.Request != "implementation-request" {
+			continue
+		}
+		if commitment.Status != "satisfied" || commitment.Report != "latest-artifact" || commitment.WaitingOn != "" {
+			t.Fatalf("multi-path implementation commitment = %+v", commitment)
+		}
+		return
+	}
+	t.Fatal("implementation commitment was not projected")
+}
+
+func TestMergeDoesNotCloseAnotherAuthorsCommitment(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "reviewer-membership", operator, SchemaState, State{Kind: KindRoster, Text: "reviewer joins", Body: map[string]string{"actor": other, "kind": "agent", "name": "Reviewer", "role": "participant"}}, "w0"),
+		event(t, "reviewer-ratified", operator, SchemaRatify, Ratify{Target: "reviewer-membership"}, "reviewer-membership"),
+		event(t, "bystander-membership", operator, SchemaState, State{Kind: KindRoster, Text: "second implementer joins", Body: map[string]string{"actor": bystander, "kind": "agent", "name": "Second implementer", "role": "participant"}}, "w0"),
+		event(t, "bystander-ratified", operator, SchemaRatify, Ratify{Target: "bystander-membership"}, "bystander-membership"),
+		event(t, "primary-request", operator, SchemaState, State{Kind: KindRequest, Text: "implement package", Body: map[string]string{"to": agent, "conditions": "approved head is merged"}}, "w0"),
+		event(t, "primary-promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will implement the package"}, "primary-request"),
+		event(t, "primary-artifact", agent, SchemaState, State{Kind: KindArtifact, Text: "package implementation", Body: map[string]string{"path": "internal/workroom", "commit": "head1"}}, "primary-promise"),
+		event(t, "foreign-request", operator, SchemaState, State{Kind: KindRequest, Text: "implement one file", Body: map[string]string{"to": bystander, "conditions": "approved head is merged"}}, "w0"),
+		event(t, "foreign-promise", bystander, SchemaState, State{Kind: KindPromise, Text: "I will implement the file"}, "foreign-request"),
+		event(t, "foreign-artifact", bystander, SchemaState, State{Kind: KindArtifact, Text: "another actor's file", Body: map[string]string{"path": "internal/workroom/fold.go", "commit": "head1"}}, "foreign-promise"),
+		event(t, "review-request", agent, SchemaState, State{Kind: KindRequest, Text: "review the exact head", Body: map[string]string{"to": other, "conditions": "independent approval"}}, "primary-artifact", "foreign-artifact"),
+		event(t, "review-promise", other, SchemaState, State{Kind: KindPromise, Text: "I will review it"}, "review-request"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "primary-artifact"}}, "review-promise", "primary-artifact", "foreign-artifact"),
+		event(t, "approval-ratified", agent, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"primary-artifact":"internal/workroom","foreign-artifact":"internal/workroom"}`, "merge_successors": `["internal/workroom"]`,
+		}}, "approval"),
+	)
+	projection := Fold(records)
+	seen := make(map[string]bool)
+	for _, commitment := range projection.Commitments {
+		switch commitment.Request {
+		case "primary-request":
+			seen[commitment.Request] = true
+			if commitment.Status != "satisfied" || commitment.Report != "primary-artifact" || commitment.WaitingOn != "" {
+				t.Fatalf("merger's own commitment = %+v", commitment)
+			}
+		case "foreign-request":
+			seen[commitment.Request] = true
+			if commitment.Status != "reported" || commitment.Report != "foreign-artifact" || commitment.WaitingOn != operator {
+				t.Fatalf("merge closed another author's commitment = %+v", commitment)
+			}
+		}
+	}
+	if !seen["primary-request"] || !seen["foreign-request"] {
+		t.Fatalf("implementation commitments missing: %+v", seen)
+	}
+}
+
+func TestMergeDoesNotCloseCommitmentWithoutExplicitApprovalRatification(t *testing.T) {
+	projection := Fold(implementationMergeRecords(t, false))
+	for _, commitment := range projection.Commitments {
+		if commitment.Request != "implementation-request" {
+			continue
+		}
+		if commitment.Status != "reported" || commitment.Report != "implementation-artifact" || commitment.WaitingOn != operator {
+			t.Fatalf("unratified approval closed implementation commitment = %+v", commitment)
+		}
+		return
+	}
+	t.Fatal("implementation commitment was not projected")
+}
+
+func TestMergeRemainsTerminalForItsImplementationCommitment(t *testing.T) {
+	records := append(implementationMergeRecords(t, true),
+		event(t, "duplicate-report", agent, SchemaState, State{Kind: KindReport, Text: "duplicate completion claim"}, "implementation-promise"),
+	)
+	for _, commitment := range Fold(records).Commitments {
+		if commitment.Request != "implementation-request" {
+			continue
+		}
+		if commitment.Status != "satisfied" || commitment.Report != "implementation-artifact" || commitment.WaitingOn != "" {
+			t.Fatalf("duplicate report reopened merged implementation = %+v", commitment)
+		}
+		return
+	}
+	t.Fatal("implementation commitment was not projected")
+}
+
+func implementationMergeRecords(t *testing.T, ratified bool) []Record {
+	records := worldRecords(t,
+		event(t, "reviewer-membership", operator, SchemaState, State{Kind: KindRoster, Text: "reviewer joins", Body: map[string]string{"actor": other, "kind": "agent", "name": "Reviewer", "role": "participant"}}, "w0"),
+		event(t, "reviewer-ratified", operator, SchemaRatify, Ratify{Target: "reviewer-membership"}, "reviewer-membership"),
+		event(t, "implementation-request", operator, SchemaState, State{Kind: KindRequest, Text: "implement it", Body: map[string]string{"to": agent, "conditions": "approved head is merged"}}, "w0"),
+		event(t, "implementation-promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will implement it"}, "implementation-request"),
+		event(t, "implementation-artifact", agent, SchemaState, State{Kind: KindArtifact, Text: "implementation", Body: map[string]string{"path": "internal/workroom", "commit": "head1"}}, "implementation-promise"),
+		event(t, "review-request", agent, SchemaState, State{Kind: KindRequest, Text: "review the exact head", Body: map[string]string{"to": other, "conditions": "independent approval"}}, "implementation-artifact"),
+		event(t, "review-promise", other, SchemaState, State{Kind: KindPromise, Text: "I will review it"}, "review-request"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "implementation-artifact"}}, "review-promise", "implementation-artifact"),
+	)
+	if ratified {
+		records = append(records, event(t, "approval-ratified", agent, SchemaRatify, Ratify{Target: "approval"}, "approval"))
+	}
+	records = append(records, event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+		"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+		"merge_retirements": `{"implementation-artifact":"internal/workroom"}`, "merge_successors": `["internal/workroom"]`,
+	}}, "approval"))
+	if ratified {
+		records = append(records,
+			event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged implementation", Body: map[string]string{"path": "internal/workroom", "commit": "merged"}}, "merge"),
+			event(t, "candidate-retired", agent, SchemaSupersede, Supersede{Target: "implementation-artifact", Text: "the merge published its successor"}, "implementation-artifact", "merge", "successor"),
+		)
+	}
+	return records
+}
+
+func TestArtifactWithoutMergeStillClosesThroughAnExplicitReport(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "request", operator, SchemaState, State{Kind: KindRequest, Text: "investigate", Body: map[string]string{"to": agent, "conditions": "result recorded"}}, "w0"),
+		event(t, "promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "request"),
+		event(t, "artifact", agent, SchemaState, State{Kind: KindArtifact, Text: "supporting material", Body: map[string]string{"path": "notes/result.md", "commit": "head1"}}, "promise"),
+		event(t, "report", agent, SchemaState, State{Kind: KindReport, Text: "investigation complete"}, "promise"),
+		event(t, "report-ratified", operator, SchemaRatify, Ratify{Target: "report"}, "report"),
+	)
+	commitment := Fold(records).Commitments[0]
+	if commitment.Status != "satisfied" || commitment.Report != "report" || commitment.WaitingOn != "" {
+		t.Fatalf("non-merge commitment = %+v", commitment)
+	}
+}
+
+func TestExplicitReportKeepsAuthorityOverALaterUnmergedArtifact(t *testing.T) {
+	records := worldRecords(t,
+		event(t, "request", operator, SchemaState, State{Kind: KindRequest, Text: "investigate", Body: map[string]string{"to": agent, "conditions": "result recorded"}}, "w0"),
+		event(t, "promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "request"),
+		event(t, "report", agent, SchemaState, State{Kind: KindReport, Text: "investigation complete"}, "promise"),
+		event(t, "report-ratified", operator, SchemaRatify, Ratify{Target: "report"}, "report"),
+		event(t, "artifact", agent, SchemaState, State{Kind: KindArtifact, Text: "supporting material", Body: map[string]string{"path": "notes/result.md", "commit": "head1"}}, "promise"),
+	)
+	commitment := Fold(records).Commitments[0]
+	if commitment.Status != "satisfied" || commitment.Report != "report" || commitment.WaitingOn != "" {
+		t.Fatalf("later artifact displaced explicit report = %+v", commitment)
+	}
+}
+
 func TestStaleCommitmentPreservesReportedTerminalState(t *testing.T) {
 	records := []Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "name": "Human", "role": "operator"}}),

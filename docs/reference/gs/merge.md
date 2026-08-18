@@ -51,7 +51,7 @@ Rests-On: $REQUEST"
 HEAD_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
   --text 'Changelog implementation' \
-  --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" --rests-on "$REQUEST")
+  --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" --rests-on "$PROMISE")
 REVIEW_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
   --text 'Review at the exact head' --body to=@carol \
   --body conditions='confirm the named head' --rests-on "$ARTIFACT")
@@ -133,6 +133,12 @@ idempotency keys. If submission stops part-way, run the same command again in
 the checkout still at that merge head. It finds the immutable Git receipt and
 resumes the missing suffix; it does not merge a second time or retire a
 successor it already published.
+
+When the reviewed candidate artifact rests on its implementer's promise, that
+artifact already serves as the implementation report. The sealed receipt
+closes that commitment; no implementation ratification follows the merge. The
+review approval remains separate and must still be explicitly ratified before
+this command accepts it.
 
 ## Artifact succession
 
@@ -268,9 +274,12 @@ claim.
 
 ### Restart residents at the merged commit
 
-This head advances the state schema to `workroom/state@1` and the fold profile
-to `workroom-fold@3`. A binary built before it cannot interpret records written
-after it. Restart every resident sequencer and MCP adapter at the merged commit.
+The merge-succession change advanced the state schema to `workroom/state@1`;
+this commitment-lifecycle change advances the fold profile to
+`workroom-fold@4`. A binary built before the lifecycle change projects assigned
+implementation commitments under the old report-and-ratify contract. Restart
+every resident sequencer and MCP adapter at the merged commit before relying on
+the new commitment status.
 
 ## See also
 
