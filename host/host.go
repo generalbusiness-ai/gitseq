@@ -227,6 +227,13 @@ type Workspace struct {
 //
 // The repository must already exist as a Git repository and must not already
 // hold a gitseq sequence.
+//
+// Init that fails partway leaves a sequence that no application can open: the
+// configuration is written before the binding, so a later Open refuses it as
+// uninterpretable and a later Init refuses it as already initialized. That is
+// deliberate. Writing the configuration last would instead let a retry create
+// a second sequence beside the first without saying so, and a loud refusal
+// whose repair is to discard an empty repository is the better failure.
 func Init(ctx context.Context, repo string, application Application, initializer ed25519.PrivateKey, options Options) (*Workspace, error) {
 	if err := application.validate(); err != nil {
 		return nil, err
@@ -361,6 +368,12 @@ func (w *Workspace) Append(ctx context.Context, signer ed25519.PrivateKey, act A
 	if act.Schema == "" {
 		return Record{}, errors.New("act schema is required")
 	}
+	if w.sequencerKey == "" {
+		// A repository attached for reading holds no sequencer key. Saying so
+		// here is better than letting the kernel refuse an unsigned position
+		// and leaving the caller to work out which key was missing.
+		return Record{}, errors.New("repository is attached read-only: it holds no sequencer key to append with")
+	}
 	if act.Schema == apphost.BindingSchema {
 		// The binding is host vocabulary, not application vocabulary. Letting
 		// an application write one through this path would put a record with
@@ -400,10 +413,10 @@ func (w *Workspace) append(ctx context.Context, signer ed25519.PrivateKey, schem
 	if err != nil {
 		return Record{}, err
 	}
-	public := append(ed25519.PublicKey(nil), signed.ActorKey...)
 	return Record{
-		ID: w.eventID(result.Commit), Actor: intent.ActorFingerprint(signed.ActorKey), ActorKey: public,
-		Schema: schema, Payload: payload, RestsOn: restsOn, Timestamp: result.Timestamp,
+		ID: w.eventID(result.Commit), Actor: intent.ActorFingerprint(signed.ActorKey),
+		ActorKey: ed25519.PublicKey(signed.ActorKey), Schema: schema, Payload: payload,
+		RestsOn: restsOn, Timestamp: result.Timestamp,
 	}, nil
 }
 

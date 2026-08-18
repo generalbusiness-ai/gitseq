@@ -394,3 +394,35 @@ func TestAnUnverifiableChainOutranksTheBindingRefusal(t *testing.T) {
 		t.Fatalf("open = %v, want the verification failure rather than a claim that the repository verifies", err)
 	}
 }
+
+// A repository attached for reading holds no sequencer key. The refusal names
+// that, rather than surfacing whatever the kernel says about an unsigned
+// position.
+func TestAppendRefusesAReadOnlyAttachment(t *testing.T) {
+	ctx := context.Background()
+	repo, _, key := initialized(t, ctx)
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metaDir := apphost.MetaDir(commonDir)
+	config, err := apphost.LoadConfig(metaDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ReadOnly, config.SequencerKey = true, ""
+	if err := apphost.SaveConfig(metaDir, config); err != nil {
+		t.Fatal(err)
+	}
+	attached, err := host.Open(ctx, repo, testApplication())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := attached.Records(ctx); err != nil {
+		t.Fatalf("read of an attached repository = %v, want the records it can still verify", err)
+	}
+	_, err = attached.Append(ctx, key, host.Act{Schema: "test/a@0", Payload: []byte("1")})
+	if err == nil || !strings.Contains(err.Error(), "read-only") {
+		t.Fatalf("append = %v, want a refusal naming the missing sequencer custody", err)
+	}
+}
