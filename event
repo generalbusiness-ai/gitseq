@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:903c37b91e46fa2dca013698cdd3f46aa0edb177"}
+{"kind":"artifact","text":"Cold-audit batch object verification at the repaired exact pushed head; object hashing, SSHSIG verification, hostile parsing, bounds, and the 50,000-event proof remain intact.","body":{"commit":"1d3ab89425ef967448148584b74e6b951f4329a1","path":"internal/gitstore"}}
