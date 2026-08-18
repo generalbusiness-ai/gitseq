@@ -43,7 +43,7 @@ flowchart TB
   subgraph Apps["Replaceable application layer"]
     W1["Workroom v1<br/>vocabulary · fold · projection<br/>CLI/MCP · agent skill · UI"]
     W2["Future Workroom v2<br/>different fold and projection<br/>different UI possible"]
-    Other["Another application<br/>different ontology and workflows<br/>no commitments required"]
+    Other["Another application, in its own module<br/>different ontology and workflows<br/>imports the public host API"]
   end
 
   Git --> Kernel
@@ -252,14 +252,19 @@ The detailed product design is recorded in
 artifact
 `git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d5d30c17385f242466e3804a85e1d050a4e30d33`;
 that event is cited here as design history, not as this page's causal basis.
-`internal/app` implements this contract: it records the binding at init for an
-application an absent binding does not already name, and reads the binding in
-force to select one interpreter as the workspace opens, before it can fold or
-append anything. The
-read is a bounded pre-audit read rather than a verification — it authenticates
-the initializing actor's signature over an intent that names the genesis and
-the tree the commit carries, and leaves the sequencer chain to the audit that
-runs before any record is folded.
+`internal/apphost` holds this vocabulary and the repository state around it:
+what a binding record is, who may record one, which one is in force, and what
+a checkout must remember to reopen its own log. It imports no application
+profile, which is what lets a program that has never heard of Workroom read a
+binding a Workroom build wrote. The read is a bounded pre-audit read rather
+than a verification — it authenticates the initializing actor's signature over
+an intent that names the genesis and the tree the commit carries, and leaves
+the sequencer chain to the audit that runs before any record is folded.
+
+`internal/app` selects this build's interpreter from that vocabulary: it
+records the binding at init for an application an absent binding does not
+already name, and reads the binding in force as the workspace opens, before it
+can fold or append anything.
 
 ### 5. Application profile and interpreter
 
@@ -335,6 +340,39 @@ New upgrades are binding replacements at the host layer. `kind-def` remains a
 finite declarative constraint language; a definition carrying `body.fold` is
 uninterpretable and cannot introduce a code pointer.
 
+#### An application outside this module
+
+An application profile does not have to live in this repository. The `host`
+package is the public surface a Go module outside this one imports to run on
+the kernel, and it is the only gitseq package such a module can import: every
+other package here is `internal/`, which the compiler enforces across the
+module boundary. What that surface exports is therefore the whole contract.
+
+It exports four acts and nothing else. `Init` creates a sequence and binds it
+to the application permanently, recording the binding as the log's first record
+so that the key which signed it is the initializing key from then on. `Open`
+verifies the sequence and then hands it back only to the application it is
+bound to, refusing anything else as verifiable but uninterpretable. `Append`
+signs one act with a caller's key and gives it a position. `Records` returns
+the verified ordered records.
+
+There is no projection in that list, and its absence is the boundary. An
+outside application holds its own fold and its own state; gitseq gives it
+authenticated records in order and reads none of their payloads. Nothing
+registers an outside interpreter inside this build, so `internal/app` cannot
+fold those records and does not try: a Workroom build opening such a
+repository reports it as verifiable but uninterpretable, which is the honest
+answer.
+
+Two postures differ from Workroom's and are deliberate. The public surface
+keeps no roster and applies no admission allowlist, because an outside
+application's actors are keys rather than named members; any well-formed act
+carrying a good signature is admitted, and the fold decides what force it has.
+And it keeps no local signed checkpoint, so each process verifies the log from
+the beginning once at open. Both are the simple posture, not a permanent one:
+the kernel's bounds still apply, and the signature — never the transport, and
+never admission — is what says who acted.
+
 ### 6. Projections and queries
 
 A projection is a read model derived from an application interpreter, not a
@@ -409,7 +447,7 @@ compatible:
 | Application family | Schema family and governance bootstrap interpreted after host selection | `workroom/*` |
 | Interpreter or fold | The exact deterministic meaning assigned to the application record | `workroom.ProfileVersion` and the projected fold binding |
 | Projection contract | Names, types, limits, cursor behavior, and omission rules of derived read models | Workroom status, summary, work-query, and inspect shapes |
-| Surface or UI | Commands, flags, MCP protocol/tool schemas, connector behavior, browser routes and presentation | `gs`, the MCP protocol version, connector flags, and the committed UI build |
+| Surface or UI | Commands, flags, MCP protocol/tool schemas, the exported Go API an outside application imports, connector behavior, browser routes and presentation | `gs`, the MCP protocol version, the `host` package's exported surface, connector flags, and the committed UI build |
 
 A change on one axis does not automatically change the others. For example, a
 new browser layout may preserve the projection and fold; a fold change may
@@ -430,8 +468,9 @@ the same result.
 | `internal/custody` | Operational kernel support | Manages local keys and migrations above the kernel. Custody policy is not event ontology. |
 | `internal/nexus` | Live runtime | Owns process-local coordination. It is independent of the durable Workroom fold. |
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
-| Host binding vocabulary | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and read-binding/select/fold order shared by every host. It has no application ontology. |
-| `internal/app` | Application host and boundary adapter | The deliberate coupling point: it builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also reads the host binding and selects one interpreter as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. |
+| `internal/apphost` | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and the binding in force shared by every host, together with the repository configuration a checkout needs to reopen its own log. It imports no application profile and has no application ontology. |
+| `host` | Application host, public surface | The only package a module outside this one can import. It exports binding at init, opening against a declared application, appending a signed act, and reading the verified record stream — and no projection, because the outside application owns its fold. It depends on the kernel and `internal/apphost`, never on an application profile. |
+| `internal/app` | Application host and boundary adapter | The deliberate coupling point: it builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, and live state. |
 | `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff and composes the Workroom receipt, successor artifacts, and retirements; Git remains outside the Workroom interpreter. Command grouping must not move Workroom concepts into the kernel packages. |
@@ -445,7 +484,10 @@ The important existing dependency direction is real: `internal/kernel` does
 not import `internal/workroom`; `internal/workroom` does not import Git, HTTP,
 or MCP; and `internal/app` joins them. The host binding belongs at that seam,
 not in either lower package or inside a particular application. New code
-should keep application meaning above it. Where `cmd/gs` and
+should keep application meaning above it. `host` and `internal/apphost` sit at
+that seam and must stay free of any application profile: a public surface that
+imported the Workroom-coupled adapter would put layer 4 on top of layer 5, and
+an outside application would inherit meanings it never asked for. Where `cmd/gs` and
 `internal/service` currently compose several layers, treat that as explicit
 integration, not permission to make the lower layers understand Workroom.
 
