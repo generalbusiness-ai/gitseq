@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d4dca0689b8564a26318b42cdd3fe5fe825f0866","text":"Retire the earlier internal/workroom candidate; successor 8225a41e repairs the ratified review findings at exact head 076727fe."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:50be418ef5c94ce1c9590b0452c83ee17fe031aa","text":"Retire the earlier docs candidate; successor 06cf508e repairs the ratified review finding at exact head 076727fe."}
