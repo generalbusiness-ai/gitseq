@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Cold-audit object batching and hash/signature verification at the exact pushed head.","body":{"commit":"a5ccd18bcf04c3d50a123687d89715282144e41e","path":"internal/gitstore"}}
+{"kind":"artifact","text":"Cold full-audit integration and exact 50,000-event performance proof at the exact pushed head.","body":{"commit":"a5ccd18bcf04c3d50a123687d89715282144e41e","path":"internal/kernel"}}
