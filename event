@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:51768e2c38ee30b837ef72b81c4aaafd6da6a91d","text":"Retire the ready report for head a5ccd18b after the ratified changes-requested verdict; a replacement report will name repaired head 1d3ab894."}
+{"kind":"artifact","text":"Current cold-audit batch object verification at repaired exact pushed head 1d3ab894; clean replacement pointer on the implementation request.","body":{"commit":"1d3ab89425ef967448148584b74e6b951f4329a1","path":"internal/gitstore"}}
