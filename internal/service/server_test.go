@@ -1006,7 +1006,7 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 		t.Fatal("the first status reader did not stop waiting after cancellation")
 	}
 
-	// A third reader remains pending while verification is known to be active;
+	// A third reader remains pending while the rebuild is known to be active;
 	// no stale or partial HTTP response escapes merely because it asked early.
 	thirdCtx, cancelThird := context.WithCancel(ctx)
 	thirdRequest, err := http.NewRequestWithContext(thirdCtx, http.MethodGet, httpServer.URL+"/v0/status", nil)
@@ -1030,7 +1030,9 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 	if err := getJSON(httpServer.URL+"/v0/rebuild", &stillRunning); err != nil {
 		t.Fatal(err)
 	}
-	if !stillRunning.Running || stillRunning.Verified >= stillRunning.Total {
+	// Verification may now finish inside this interval; the rebuild still has
+	// to fold and publish atomically before a status reader can return.
+	if !stillRunning.Running {
 		t.Fatalf("the rebuild did not remain active while the third status request stayed pending: %+v", stillRunning)
 	}
 	cancelThird()

@@ -22,7 +22,16 @@ import (
 
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
+	"github.com/generalbusiness-ai/gitseq/internal/observe"
 )
+
+type auditObserver struct {
+	measurements []observe.Measurement
+}
+
+func (o *auditObserver) Record(_ context.Context, measurement observe.Measurement) {
+	o.measurements = append(o.measurements, measurement)
+}
 
 type fixtureState struct {
 	ctx        context.Context
@@ -760,6 +769,44 @@ func BenchmarkColdAudit(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func TestColdAuditUsesConstantGitProcesses(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
+	for index := 0; index < 10; index++ {
+		key := "constant-process-" + strconv.Itoa(index)
+		if _, err := submitter.Submit(f.ctx, f.request(t, private, key, []byte(key), nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	observer := &auditObserver{}
+	f.store.Observer = observer
+	verified, err := Verify(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.Events != 10 {
+		t.Fatalf("verified events = %d, want 10", verified.Events)
+	}
+	var refs, scans, signatures int
+	for _, measurement := range observer.measurements {
+		if measurement.Operation != observe.OperationGit {
+			continue
+		}
+		switch measurement.Path {
+		case observe.PathRef:
+			refs++
+		case observe.PathScan:
+			scans++
+		case observe.PathSignature:
+			signatures++
+		}
+	}
+	if refs != 1 || scans != 2 || signatures != 0 {
+		t.Fatalf("cold audit Git processes: refs=%d scans=%d signatures=%d, want 1/2/0", refs, scans, signatures)
 	}
 }
 
