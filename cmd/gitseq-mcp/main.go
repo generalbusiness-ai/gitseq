@@ -50,6 +50,7 @@ const instructions = "Use status once and wait to follow the workroom; use work 
 const (
 	orientationTimeout        = 2 * time.Second
 	orientationResponseLimit  = 64 << 10
+	actorStatusResponseLimit  = 1 << 20
 	workResponseLimit         = 256 << 10
 	inspectionResponseLimit   = 2 << 20
 	residentResponseLimit     = 64 << 20
@@ -686,9 +687,11 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		live["own"] = own
 		return live, nil
 	case "status":
-		// The digest is applied on both paths so that losing the resident
-		// service changes what is knowable, not the shape of the answer.
-		value, err := s.postForSession(ctx, current, "/v0/status", map[string]any{"session": s.session})
+		// The resident selects this bounded view before encoding. The local
+		// fallback applies the same digest so losing the resident changes what
+		// is knowable, not the shape of the answer.
+		var status actorStatus
+		err := s.postForSessionBoundedJSON(ctx, current, "/v0/actor-status", map[string]any{"session": s.session}, actorStatusResponseLimit, &status)
 		if isTransportError(err) || inboxProtocolUnavailable(err) {
 			local, localErr := s.localStatus(ctx, current)
 			if localErr != nil {
@@ -699,16 +702,13 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		if err != nil {
 			return nil, err
 		}
-		var status service.Status
-		if err := remarshal(value, &status); err != nil {
-			return nil, err
-		}
-		return s.digest(current, status, false), nil
+		return status, nil
 	case "wait":
 		arguments := residentArguments(call.Arguments)
 		arguments["session"] = s.session
 		requested := requestedCursor(arguments)
-		value, err := s.postForSession(ctx, current, "/v0/wait", arguments)
+		var delta waitDelta
+		err := s.postForSessionBoundedJSON(ctx, current, "/v0/actor-wait", arguments, actorStatusResponseLimit, &delta)
 		if isTransportError(err) || inboxProtocolUnavailable(err) {
 			local, localErr := s.waitDurable(ctx, current, arguments)
 			if localErr != nil {
@@ -719,11 +719,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		if err != nil {
 			return nil, err
 		}
-		var response service.WaitResponse
-		if err := remarshal(value, &response); err != nil {
-			return nil, err
-		}
-		return digestWait(response, requested, s.fingerprint(current), s.actor, false), nil
+		return delta, nil
 	case "work":
 		var input statusview.WorkQuery
 		arguments := clone(call.Arguments)
@@ -1255,6 +1251,20 @@ func (s *mcpServer) postBoundedJSON(ctx context.Context, current *room, path str
 	return residentClientError(current, err)
 }
 
+// postForSessionBoundedJSON keeps the restart repair used by the other
+// session routes without first decoding a bounded response into interface{}.
+func (s *mcpServer) postForSessionBoundedJSON(ctx context.Context, current *room, path string, value any, limit int64, target any) error {
+	err := s.postBoundedJSON(ctx, current, path, value, limit, target)
+	var refusal *residentclient.HTTPError
+	if !errors.As(err, &refusal) || refusal.Message != "session is not present" {
+		return err
+	}
+	if err := s.announce(ctx, current); err != nil {
+		return err
+	}
+	return s.postBoundedJSON(ctx, current, path, value, limit, target)
+}
+
 func (s *mcpServer) getBoundedJSON(ctx context.Context, current *room, path string, limit int64, target any) error {
 	base, ok := current.endpoint()
 	if !ok {
@@ -1322,7 +1332,7 @@ func (s *mcpServer) deadlineFor(path string) time.Duration {
 	if deadlines.call <= 0 || deadlines.wait <= 0 || deadlines.shutdown <= 0 {
 		deadlines = defaultResidentDeadlines
 	}
-	if path == "/v0/wait" {
+	if path == "/v0/wait" || path == "/v0/actor-wait" {
 		return deadlines.wait
 	}
 	return deadlines.call

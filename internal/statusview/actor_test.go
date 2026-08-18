@@ -3,6 +3,7 @@ package statusview
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -63,7 +64,7 @@ func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *te
 		t.Fatalf("available_to_you = %#v", digest.AvailableToYou)
 	}
 	available := digest.AvailableToYou[0]
-	if available.Request != "request:mine" || available.Status != "open" || available.AddressedTo != "me" || available.Performer != "" || available.Promise != "" {
+	if available.Request != "request:mine" || available.Status != "open" || available.AddressedTo != "me" || available.Performer != "" || available.Promise != "" || available.Text != "available to me" {
 		t.Fatalf("available request invented or lost responsibility: %#v", available)
 	}
 	if len(digest.WaitingOnYou) != 0 {
@@ -130,5 +131,33 @@ func TestWaitDeltaCarriesStaleQualifierWithoutChangingLanes(t *testing.T) {
 	}
 	if delta.Totals.StaleCommitments["satisfied"] != 1 {
 		t.Fatalf("delta totals cannot identify stale commitments: %#v", delta.Totals)
+	}
+}
+
+func BenchmarkActorStatusAtDepth500000(b *testing.B) {
+	const depth = 500_000
+	projection := workroom.Projection{
+		Decisions:  make([]workroom.Decision, depth),
+		Statements: make([]workroom.Statement, depth),
+		Actors:     map[string]workroom.ActorState{me: {Name: "me", Roles: []string{"participant"}}},
+	}
+	for index := range depth {
+		event := fmt.Sprintf("event:%06d", index)
+		projection.Decisions[index] = workroom.Decision{Event: event, Sequence: index + 1, Verdict: workroom.Effective}
+		projection.Statements[index] = workroom.Statement{Event: event, Sequence: index + 1, Actor: me, Kind: workroom.KindAssert, Text: "linear history"}
+	}
+	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: depth, Projection: projection}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		status := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", false)
+		body, err := json.Marshal(status)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(body) > 1<<20 {
+			b.Fatalf("bounded actor status = %d bytes, want at most 1 MiB", len(body))
+		}
+		b.ReportMetric(float64(len(body)), "response_bytes")
 	}
 }

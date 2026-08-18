@@ -78,6 +78,11 @@ shortened list reads as "20 of 500" rather than as a bare count. That
 matters because some categories never discharge: stale, reneged and
 cancelled commitments, and your own ineffective acts, accumulate forever.
 
+The resident applies those caps before it encodes the response. The adapter
+does not fetch the complete projection and discard most of it afterwards, so
+the bytes transferred grow with the bounded view and its counters rather than
+with workroom depth.
+
 When you need the whole projection rather than an orientation, read it
 another way — [`gs status --json`](../gs/status.md) has no cap.
 

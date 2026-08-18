@@ -27,6 +27,8 @@ type WorkQuery = statusview.WorkQuery
 type WorkPage = statusview.WorkPage
 type InspectRequest = statusview.InspectRequest
 type ItemInspection = statusview.ItemInspection
+type ActorStatus = statusview.ActorStatus
+type WaitDelta = statusview.WaitDelta
 
 const (
 	OrientationProjectionVersion = statusview.OrientationProjectionVersion
@@ -95,10 +97,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v0/act", s.handleAct)
 	s.mux.HandleFunc("GET /v0/status", s.handleStatus)
 	s.mux.HandleFunc("POST /v0/status", s.handleSessionStatus)
+	s.mux.HandleFunc("POST /v0/actor-status", s.handleActorStatus)
 	s.mux.HandleFunc("GET /v0/status-summary", s.handleStatusSummary)
 	s.mux.HandleFunc("POST /v0/work-query", s.handleWorkQuery)
 	s.mux.HandleFunc("POST /v0/inspect", s.handleInspect)
 	s.mux.HandleFunc("POST /v0/wait", s.handleWait)
+	s.mux.HandleFunc("POST /v0/actor-wait", s.handleActorWait)
 	s.mux.HandleFunc("POST /v0/submit", s.handleSubmit)
 	s.mux.HandleFunc("GET /v0/presence", s.handlePresence)
 	s.mux.HandleFunc("GET /v0/presence-count", s.handlePresenceCount)
@@ -185,6 +189,35 @@ func (s *Server) handleSessionStatus(writer http.ResponseWriter, request *http.R
 	write(writer, status, err)
 }
 
+// handleActorStatus selects the bounded actor view before JSON encoding. The
+// session is the only identity input: Observe returns the actor binding and
+// private inbox captured under one nexus lock, so a caller cannot ask for one
+// actor's durable view while attaching another actor's private messages.
+func (s *Server) handleActorStatus(writer http.ResponseWriter, request *http.Request) {
+	var input sessionStatusRequest
+	if err := decode(request, &input); err != nil {
+		write(writer, nil, err)
+		return
+	}
+	if input.Session == "" {
+		write(writer, nil, errors.New("session is required"))
+		return
+	}
+	observation, err := s.hub.Observe(input.Session, nil)
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	status, err := s.statusFromLive(request.Context(), observation, true)
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	digest := statusview.BuildActorStatus(status.Durable, status.Live, status.Cursor, status.Inbox,
+		observation.Fingerprint, observation.Actor, false)
+	write(writer, digest, nil)
+}
+
 func (s *Server) handleStatusSummary(writer http.ResponseWriter, request *http.Request) {
 	status, err := s.status(request.Context())
 	if err != nil {
@@ -233,26 +266,25 @@ func (s *Server) handleInspect(writer http.ResponseWriter, request *http.Request
 }
 
 func (s *Server) handleWait(writer http.ResponseWriter, request *http.Request) {
+	s.handleWaitResponse(writer, request, false)
+}
+
+func (s *Server) handleActorWait(writer http.ResponseWriter, request *http.Request) {
+	s.handleWaitResponse(writer, request, true)
+}
+
+func (s *Server) handleWaitResponse(writer http.ResponseWriter, request *http.Request, actorView bool) {
 	started := time.Now()
 	var input WaitRequest
 	if err := decode(request, &input); err != nil {
 		write(writer, nil, err)
 		return
 	}
-	var response WaitResponse
-	changed, err := Poll(request.Context(), input.TimeoutMS, func() (bool, error) {
-		observation, err := s.hub.Observe(input.Session, &input.Cursor.Live)
-		if err != nil {
-			return false, err
-		}
-		status, err := s.statusFromLive(request.Context(), observation, input.Session != "")
-		if err != nil {
-			return false, err
-		}
-		response = WaitResponse{Status: status, LiveChanges: observation.Changes, Reset: observation.Reset}
-		pending := status.Inbox != nil && len(status.Inbox.Frames) > 0
-		return observation.Reset || DurableChanged(input.Cursor.Frontier, status.Durable) || len(observation.Changes) > 0 || pending, nil
-	})
+	if actorView && input.Session == "" {
+		write(writer, nil, errors.New("session is required"))
+		return
+	}
+	response, observation, changed, err := s.wait(request.Context(), input)
 	if err != nil {
 		if s.observer != nil {
 			s.observer.Record(request.Context(), observe.Measurement{Operation: observe.OperationWait, Path: observe.PathLongPoll, Outcome: observe.Classify(request.Context(), err), Duration: time.Since(started), Items: 1})
@@ -270,7 +302,33 @@ func (s *Server) handleWait(writer http.ResponseWriter, request *http.Request) {
 		response.LiveChanges = nil
 		response.Reset = false
 	}
-	write(writer, response, nil)
+	if !actorView {
+		write(writer, response, nil)
+		return
+	}
+	delta := statusview.BuildWait(response.Status.Durable, response.Status.Cursor, response.LiveChanges, response.Reset,
+		input.Cursor, response.Status.Inbox, observation.Fingerprint, observation.Actor, false)
+	write(writer, delta, nil)
+}
+
+func (s *Server) wait(ctx context.Context, input WaitRequest) (WaitResponse, nexus.Observation, bool, error) {
+	var response WaitResponse
+	var observed nexus.Observation
+	changed, err := Poll(ctx, input.TimeoutMS, func() (bool, error) {
+		observation, err := s.hub.Observe(input.Session, &input.Cursor.Live)
+		if err != nil {
+			return false, err
+		}
+		status, err := s.statusFromLive(ctx, observation, input.Session != "")
+		if err != nil {
+			return false, err
+		}
+		observed = observation
+		response = WaitResponse{Status: status, LiveChanges: observation.Changes, Reset: observation.Reset}
+		pending := status.Inbox != nil && len(status.Inbox.Frames) > 0
+		return observation.Reset || DurableChanged(input.Cursor.Frontier, status.Durable) || len(observation.Changes) > 0 || pending, nil
+	})
+	return response, observed, changed, err
 }
 
 func DurableChanged(frontier []Frontier, durable app.Snapshot) bool {

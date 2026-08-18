@@ -169,6 +169,12 @@ type Observation struct {
 	Inbox    Inbox
 	Changes  []Change
 	Reset    bool
+	// Actor and Fingerprint are captured under the same lock as Inbox. They
+	// never cross the nexus wire boundary; the resident uses them to build a
+	// bounded actor view without accepting an identity alongside the bearer
+	// session or racing a session expiry and rebind.
+	Actor       string `json:"-"`
+	Fingerprint string `json:"-"`
 }
 
 type frameActorBody struct {
@@ -690,12 +696,18 @@ func (h *Hub) Observe(session string, cursor *Cursor) (Observation, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.expire(time.Now())
+	var identity presenceEntry
 	if session != "" {
-		if _, exists := h.presence[session]; !exists {
+		var exists bool
+		identity, exists = h.presence[session]
+		if !exists {
 			return Observation{}, errors.New("session is not present")
 		}
 	}
-	observation := Observation{Snapshot: h.snapshotLocked(), Inbox: h.cloneInbox(h.inboxes[session])}
+	observation := Observation{
+		Snapshot: h.snapshotLocked(), Inbox: h.cloneInbox(h.inboxes[session]),
+		Actor: identity.actor, Fingerprint: identity.fingerprint,
+	}
 	if cursor == nil {
 		return observation, nil
 	}
