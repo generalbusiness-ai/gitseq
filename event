@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:06cf508e90db7760ef61bf5872db1ef6b281675b","text":"Retire the transient stale candidate; eb34cd7e is the same-head docs successor on live non-stale bases."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9dbb00bda443381e29663cd6757412ef652da9b4","text":"Retire the transient stale candidate; 472da802 is the same-head AGENTS.md successor on live non-stale bases."}
