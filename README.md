@@ -14,7 +14,7 @@ Intro walkthrough:
 ## Why
 
 Suppose we want to build a Kanban board. Tasks on the board need attributes
-such as status, assignee, description, and so on.  
+such as status, assignee, and description.
 
 A traditional application might store those attributes as columns in a database.
 Updates replace their previous values, while workflow rules live elsewhere in
@@ -22,7 +22,7 @@ the application.
 
 With gitseq, there's [a different way](https://martinfowler.com/eaaDev/EventSourcing.html).  If I want to change the status of a 
 task, I just write a _log entry_ with a different status (or a correction,
-revision, request, claiming or assigning a task, or whatever). We track the
+revision, request, claiming or assigning a task, or whatever). We track these
 **acts** as immutable events.  Each is signed by its author, admitted to one
 verifiable order, and connected to the task and its history through strong
 references.
@@ -106,13 +106,12 @@ not using an in-process library).  Raw read performance is in the region
 of 100k events per second; rendering any application-specific materialized
 view depends on the folding checkpoint interval (see the applications
 section below).  This is more expensive event-sourcing than an unsigned
-log, but has some really nice properties - including simplicity!.
+log, but has some really nice properties - including simplicity!
 
 ## The Nexus
 
 The nexus is a complementary service to the kernel, providing ephemeral
 communication between actors.  It's small and application-agnostic.
-
 There are two ephemeral layers:
 
 * Presence.  An actor can indicate its online availability, an optional
@@ -121,9 +120,9 @@ There are two ephemeral layers:
 
 * Messaging to all connected actors.
 
-Clients lease presence with POST /presence, discover who and what is live
-with GET /presence, exchange signed ephemeral frames with POST /say, and
-follow changes through a resumable cursor with POST /wait.  Conversations
+Clients lease presence with `POST /presence`, discover who and what is live
+with `GET /presence`, exchange signed ephemeral frames with `POST /say`, and
+follow changes through a resumable cursor with `POST /wait`.  Conversations
 are hash-linked and signed like durable events, but exist only in Nexus
 memory and participating clients.  Addressed messages add a small per-session
 inbox/ack protocol.
@@ -198,12 +197,12 @@ that mechanism is common to all applications.
 Folding from genesis is the reference operation, but it need not be the
 implementation used on every read.
 
-The kernel can checkpoint verification, indicating that a particular prefix
+The kernel can checkpoint _verification_, indicating that a particular prefix
 of the sequence, through a particular head, has already been authenticated.
 This means that a reader can verify the checkpoint and then audit only
 the events after it. This is independent of application semantics.
 
-An application may separately checkpoint the projection state.  Like a
+An application may separately checkpoint the _projection state_.  Like a
 materialized view in a database, the checkpoint records the _result_ of its
 fold at a particular sequence head, so the fold can resume from there rather
 than replaying from genesis.  Because that state depends on the application's
