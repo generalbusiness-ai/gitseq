@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6917765082078116c00e4a476a409e88df67f4d1","text":"Retire the pre-repair internal/service candidate; the same branch is replaced at exact head 1d3ab894 by artifact 4d48784f."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:51768e2c38ee30b837ef72b81c4aaafd6da6a91d","text":"Retire the ready report for head a5ccd18b after the ratified changes-requested verdict; a replacement report will name repaired head 1d3ab894."}
