@@ -5,8 +5,9 @@ run from `make test` and it does not turn one machine's timing into a product
 guarantee.
 
 The versioned contract fixes the logical workload before a run: generator
-version and seed, required log depths, checkpoint tails, complete-operation
-scenarios, concurrent reader/writer pair counts, and retained measurements. A prepared fixture records both a
+version and seed, required log depths through 500,000 records, actor counts,
+dependency fan-outs, checkpoint tails, complete-operation scenarios,
+concurrent reader/writer pair counts, and retained measurements. A prepared fixture records both a
 logical digest and the exact Git materialization used by every compared
 binary. Each measured sample gets fresh writable state because checkpoint
 reads may advance the checkpoint ref.
@@ -24,7 +25,7 @@ make perf PERF_ARGS='compare --base main --candidate HEAD --tier standard'
 ```
 
 The comparison command refuses dirty source states, keeps setup outside the
-runs at least two rounds per revision, writes raw newline JSON and Go
+measured operation, runs at least two rounds per revision, writes raw newline JSON and Go
 benchmark-format files, and
 runs `benchstat` when the pinned tool is available. Baseline acceptance is a
 reviewed source change: the command refuses automatic `--accept-baseline`
@@ -48,13 +49,15 @@ writes so a run cannot silently bless its own numbers.
 Git child-process evidence comes from `GIT_TRACE2_EVENT` in a separate
 diagnostic pass. That observes all inherited Git commands without adding a
 production hook or pretending `internal/gitstore.Store.run` is the only
-process boundary. The raw trace, which can contain local paths and command
-arguments, is summarized and deleted; retained JSON contains only process
-count and cumulative duration. Fixture evidence omits its local path and its
+process boundary. Each diagnostic result carries the process count and
+cumulative duration required by the contract. The raw trace, which can contain
+local paths and command arguments, is summarized and deleted. Fixture evidence omits its local path and its
 depth-sized head map. CPU and memory profiles are also diagnostic reruns
 because both Trace2 and profiling perturb timings.
 
 The scheduled workflow has read-only repository permissions, bounded inputs,
-no secrets, and finite artifact retention. Large fixture generation is cached
-by contract digest, generator version, seed, object format, and shape; it is
-never repeated for every sample.
+no secrets, and finite artifact retention. Large fixture generation writes the
+synthetic signed commits as one Git pack, then uses ordinary verification when
+a sample runs. Fixtures are cached by contract digest, generator version,
+seed, object format, shape, and actor count; they are never repeated for every
+sample.

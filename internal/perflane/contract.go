@@ -24,7 +24,9 @@ const (
 )
 
 var (
-	requiredDepths           = []int{100, 1_000, 10_000, 100_000}
+	requiredDepths           = []int{100, 1_000, 10_000, 100_000, 500_000}
+	requiredActorCounts      = []int{1, 8, 50}
+	requiredFanouts          = []int{1, 8, 16, 64, 256}
 	requiredTails            = []int{0, 1, 10, 255, 256, 1_000}
 	requiredProjectionShapes = []string{
 		"linear",
@@ -71,6 +73,12 @@ var (
 // RequiredDepths returns the contract's required fixture depths.
 func RequiredDepths() []int { return slices.Clone(requiredDepths) }
 
+// RequiredActorCounts returns the required roster-size axis.
+func RequiredActorCounts() []int { return slices.Clone(requiredActorCounts) }
+
+// RequiredDependencyFanouts returns the required causal fan-out axis.
+func RequiredDependencyFanouts() []int { return slices.Clone(requiredFanouts) }
+
 // RequiredCheckpointTails returns the contract's required checkpoint tails.
 func RequiredCheckpointTails() []int { return slices.Clone(requiredTails) }
 
@@ -91,6 +99,8 @@ type Contract struct {
 	GeneratorVersion   string             `json:"generator_version"`
 	Seed               uint64             `json:"seed"`
 	Depths             []int              `json:"depths"`
+	ActorCounts        []int              `json:"actor_counts"`
+	DependencyFanouts  []int              `json:"dependency_fanouts"`
 	CheckpointTails    []int              `json:"checkpoint_tails"`
 	ProjectionShapes   []string           `json:"projection_shapes"`
 	PayloadBuckets     []int              `json:"payload_buckets"`
@@ -157,6 +167,12 @@ func (c Contract) Validate() error {
 	}
 	if !slices.Equal(c.Depths, requiredDepths) {
 		return fmt.Errorf("depths must be %v in that order", requiredDepths)
+	}
+	if !slices.Equal(c.ActorCounts, requiredActorCounts) {
+		return fmt.Errorf("actor_counts must be %v in that order", requiredActorCounts)
+	}
+	if !slices.Equal(c.DependencyFanouts, requiredFanouts) {
+		return fmt.Errorf("dependency_fanouts must be %v in that order", requiredFanouts)
 	}
 	if !slices.Equal(c.CheckpointTails, requiredTails) {
 		return fmt.Errorf("checkpoint_tails must be %v in that order", requiredTails)

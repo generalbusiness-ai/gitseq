@@ -34,6 +34,17 @@ type runCase struct {
 	Depth       int
 	Tail        int
 	Concurrency int
+	ActorCount  int
+	Fanout      int
+}
+
+type fixtureKey struct {
+	shape      string
+	actorCount int
+}
+
+func (c runCase) fixtureKey() fixtureKey {
+	return fixtureKey{shape: c.Shape, actorCount: max(c.ActorCount, 1)}
 }
 
 func (c runCase) name() string {
@@ -45,7 +56,15 @@ func (c runCase) name() string {
 	if c.Concurrency > 0 {
 		concurrency = fmt.Sprintf("/concurrency-%02d", c.Concurrency)
 	}
-	return fmt.Sprintf("%s/shape-%s/depth-%06d%s%s", c.Scenario, c.Shape, c.Depth, tail, concurrency)
+	actors := ""
+	if c.ActorCount > 1 {
+		actors = fmt.Sprintf("/actors-%03d", c.ActorCount)
+	}
+	fanout := ""
+	if c.Fanout > 1 {
+		fanout = fmt.Sprintf("/fanout-%03d", c.Fanout)
+	}
+	return fmt.Sprintf("%s/shape-%s/depth-%06d%s%s%s%s", c.Scenario, c.Shape, c.Depth, tail, concurrency, actors, fanout)
 }
 
 type sampleEnvelope struct {
@@ -127,6 +146,7 @@ func prepareCommand(ctx context.Context, root string, arguments []string) error 
 	output := flags.String("output", "", "new fixture directory")
 	shape := flags.String("shape", "linear", "projection shape")
 	depth := flags.Int("depth", 0, "maximum fixture depth")
+	actors := flags.Int("actors", 1, "fixture actor count")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -140,10 +160,13 @@ func prepareCommand(ctx context.Context, root string, arguments []string) error 
 	if !contains(contract.ProjectionShapes, *shape) {
 		return fmt.Errorf("shape %q is not in the contract", *shape)
 	}
+	if !containsInt(contract.ActorCounts, *actors) {
+		return fmt.Errorf("actor count %d is not in the contract", *actors)
+	}
 	checkpointDepths := checkpointDepths(contract, *depth)
 	manifest, err := perfscenario.Prepare(ctx, *output, perfscenario.FixturePlan{
 		GeneratorVersion: contract.GeneratorVersion, Seed: contract.Seed, Depth: *depth,
-		Shape: *shape, PayloadBuckets: contract.PayloadBuckets, CheckpointDepths: checkpointDepths,
+		Shape: *shape, PayloadBuckets: contract.PayloadBuckets, CheckpointDepths: checkpointDepths, ActorCount: *actors,
 	})
 	if err != nil {
 		return err
@@ -163,6 +186,7 @@ func workerCommand(ctx context.Context, arguments []string) error {
 	soakOperations := flags.Int("soak-operations", 0, "bounded soak operations")
 	soakSeconds := flags.Int("soak-seconds", 0, "bounded soak duration")
 	concurrency := flags.Int("concurrency", 0, "concurrent operation count")
+	fanout := flags.Int("fanout", 1, "dependency fan-out for the measured submission")
 	trace2 := flags.String("trace2", "", "Git Trace2 event output")
 	cpuProfile := flags.String("cpu-profile", "", "CPU profile output")
 	heapProfile := flags.String("heap-profile", "", "heap profile output")
@@ -179,7 +203,7 @@ func workerCommand(ctx context.Context, arguments []string) error {
 	}
 	result, err := perfscenario.Run(ctx, perfscenario.RunOptions{
 		Scenario: *scenario, Fixture: *fixture, Scratch: *scratch, Depth: *depth,
-		Tail: *tail, Concurrency: *concurrency, SoakOperations: *soakOperations, SoakSeconds: *soakSeconds, Trace2Path: *trace2,
+		Tail: *tail, Concurrency: *concurrency, Fanout: *fanout, SoakOperations: *soakOperations, SoakSeconds: *soakSeconds, Trace2Path: *trace2,
 		CPUProfilePath: *cpuProfile, HeapProfilePath: *heapProfile,
 		Telemetry: *withTelemetry,
 	})
@@ -300,7 +324,7 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 
 	latencies := make(map[string][]float64)
 	for _, runCase := range cases {
-		fixture := fixtures[runCase.Shape]
+		fixture := fixtures[runCase.fixtureKey()]
 		warmups, repetitions := tierCounts(contract, *tier, runCase.Scenario)
 		if compare && repetitions < 2 {
 			repetitions = 2
@@ -367,6 +391,10 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 		if err := os.Remove(tracePath); err != nil {
 			return err
 		}
+		if traceResult.GitProcessCount.Value == nil || *traceResult.GitProcessCount.Value != int64(traceSummary.ChildProcessCount) ||
+			traceResult.GitDurationNS.Value == nil || *traceResult.GitDurationNS.Value != traceSummary.CumulativeDuration.Nanoseconds() {
+			return fmt.Errorf("Trace2 diagnostic %s did not populate matching result metrics", runCase.name())
+		}
 		traceEnvelope := sampleEnvelope{Case: runCase.name(), Revision: perflane.CandidateRevision, Round: 0, Position: 0, Result: traceResult, Trace2: &traceSummary}
 		if err := appendJSON(rawFile, traceEnvelope); err != nil {
 			return err
@@ -422,6 +450,7 @@ func runWorkerDiagnostic(ctx context.Context, binary, fixture string, selected r
 	arguments := []string{"worker", "--scenario", selected.Scenario, "--fixture", fixture, "--scratch", scratch,
 		"--depth", strconv.Itoa(selected.Depth), "--tail", strconv.Itoa(selected.Tail),
 		"--concurrency", strconv.Itoa(selected.Concurrency),
+		"--fanout", strconv.Itoa(max(selected.Fanout, 1)),
 		"--soak-operations", strconv.Itoa(contract.SoakOperations),
 		"--soak-seconds", strconv.Itoa(contract.SoakSeconds)}
 	if trace2 != "" {
@@ -444,7 +473,18 @@ func runWorkerDiagnostic(ctx context.Context, binary, fixture string, selected r
 	if err := decoder.Decode(&result); err != nil {
 		return perfscenario.Result{}, fmt.Errorf("decode worker result: %w: %s", err, output)
 	}
+	if err := validateActorCount(selected, result); err != nil {
+		return perfscenario.Result{}, err
+	}
 	return result, nil
+}
+
+func validateActorCount(selected runCase, result perfscenario.Result) error {
+	wantActors := selected.fixtureKey().actorCount
+	if result.ActorCount != wantActors {
+		return fmt.Errorf("worker result %s actor_count = %d, want %d", selected.name(), result.ActorCount, wantActors)
+	}
+	return nil
 }
 
 func casesForTier(contract perflane.Contract, tier string) ([]runCase, error) {
@@ -477,10 +517,10 @@ func casesForTier(contract perflane.Contract, tier string) ([]runCase, error) {
 		if candidate.CheckpointTail != nil {
 			tail = *candidate.CheckpointTail
 		}
-		result = append(result, runCase{Scenario: candidate.Scenario, Shape: "linear", Depth: candidate.Depth, Tail: tail, Concurrency: candidate.Concurrency})
+		result = append(result, runCase{Scenario: candidate.Scenario, Shape: "linear", Depth: candidate.Depth, Tail: tail, Concurrency: candidate.Concurrency, ActorCount: max(candidate.ActorCount, 1), Fanout: max(candidate.Fanout, 1)})
 	}
 	for _, shape := range contract.ProjectionShapes[1:] {
-		result = append(result, runCase{Scenario: "cold_status", Shape: shape, Depth: 100, Tail: -1})
+		result = append(result, runCase{Scenario: "cold_status", Shape: shape, Depth: 100, Tail: -1, ActorCount: 1, Fanout: 1})
 	}
 	return result, nil
 }
@@ -497,26 +537,27 @@ func tierCounts(contract perflane.Contract, tier, scenario string) (int, int) {
 	}
 }
 
-func ensureFixtures(ctx context.Context, root string, contract perflane.Contract, digest string, cases []runCase) (map[string]string, error) {
-	depths := make(map[string]int)
+func ensureFixtures(ctx context.Context, root string, contract perflane.Contract, digest string, cases []runCase) (map[fixtureKey]string, error) {
+	depths := make(map[fixtureKey]int)
 	for _, selected := range cases {
-		depths[selected.Shape] = max(depths[selected.Shape], selected.Depth)
+		key := selected.fixtureKey()
+		depths[key] = max(depths[key], selected.Depth)
 	}
-	fixtures := make(map[string]string)
-	for shape, depth := range depths {
-		directory := filepath.Join(root, "performance", "fixtures", digest[:16]+"-"+shape+"-"+strconv.Itoa(depth))
+	fixtures := make(map[fixtureKey]string)
+	for key, depth := range depths {
+		directory := filepath.Join(root, "performance", "fixtures", digest[:16]+"-"+key.shape+"-actors-"+strconv.Itoa(key.actorCount)+"-"+strconv.Itoa(depth))
 		if manifest, err := perfscenario.LoadManifest(directory); err == nil {
-			if manifest.GeneratorVersion != contract.GeneratorVersion || manifest.Seed != contract.Seed || manifest.Shape != shape || manifest.Depth != depth {
+			if manifest.GeneratorVersion != contract.GeneratorVersion || manifest.Seed != contract.Seed || manifest.Shape != key.shape || manifest.Depth != depth || manifest.ActorCount != key.actorCount {
 				return nil, fmt.Errorf("cached fixture %s does not match its key", directory)
 			}
-			fixtures[shape] = directory
+			fixtures[key] = directory
 			continue
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
 		manifest, err := perfscenario.Prepare(ctx, directory, perfscenario.FixturePlan{
 			GeneratorVersion: contract.GeneratorVersion, Seed: contract.Seed, Depth: depth,
-			Shape: shape, PayloadBuckets: contract.PayloadBuckets, CheckpointDepths: checkpointDepths(contract, depth),
+			Shape: key.shape, PayloadBuckets: contract.PayloadBuckets, CheckpointDepths: checkpointDepths(contract, depth), ActorCount: key.actorCount,
 		})
 		if err != nil {
 			return nil, err
@@ -524,7 +565,7 @@ func ensureFixtures(ctx context.Context, root string, contract perflane.Contract
 		if manifest.ExactDigest == "" {
 			return nil, errors.New("prepared fixture has no exact digest")
 		}
-		fixtures[shape] = directory
+		fixtures[key] = directory
 	}
 	return fixtures, nil
 }
@@ -797,6 +838,15 @@ func sanitize(value string) string {
 }
 
 func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func containsInt(values []int, target int) bool {
 	for _, value := range values {
 		if value == target {
 			return true
