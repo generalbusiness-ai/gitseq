@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3432c36b3babe817ea6a38fb61b976af5cf1ff5c"}
+{"kind":"artifact","text":"Performance CLI at repaired exact head 7ab18c6b: binds every decoded worker result to the requested actor-count case, uses a typed shape/actor cache key, and rejects cached manifests whose actor count differs from that key. Focused, integration, broad, race, vet, build, contract, and diff gates passed.","body":{"commit":"7ab18c6be3fa54ad7bae46ac4565b21d9d89081e","path":"cmd/gitseq-perf"}}
