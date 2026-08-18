@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6565f0ec84d60d1e7667ae10fadb5938a2bc8ff4","text":"Retire the superseded command candidate; the repaired exact-head successor is 50125742 at the same maintained path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5020f8b06c9963388b1c634c3d94239e9edbe6e9","text":"Retire the superseded perflane candidate; the repaired exact-head successor is 9f378f02 at the same maintained path."}
