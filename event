@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Repaired loop-cut documentation candidate: the work-loop summary now includes artifact-as-report and independently approved merge closure.","body":{"branch":"request/commitment-loop-cut-current-main","commit":"076727fed7677931f173654a61a127975380e487","path":"docs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:79e90bb8d9471285ac5b07040a923a9352610ccb"}
