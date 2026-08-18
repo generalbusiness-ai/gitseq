@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Current repaired loop-cut workflow candidate for SKILL.md, anchored only on the live docs and workroom behavior bases.","body":{"branch":"request/commitment-loop-cut-current-main","commit":"076727fed7677931f173654a61a127975380e487","path":"SKILL.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8225a41eb7c1d32e75ffed6cdd7efb3a5e86fcc0","text":"Retire the transient stale candidate; fa20f4c5 is the same-head internal/workroom successor on live non-stale bases."}
