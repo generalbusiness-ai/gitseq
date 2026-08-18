@@ -35,19 +35,20 @@ func TestPublicRepositorySurface(t *testing.T) {
 			publicRepository + ".git",
 			"[MIT License](LICENSE)",
 			"[security policy](SECURITY.md)",
-			"vulnerability reports go through GitHub's private advisory channel, not a public issue or workroom",
+			"Report vulnerabilities privately and directly to the maintainer",
+			"never use a public issue or gitseq workroom",
 		},
 		"docs/getting-started.md": {
 			"git clone " + publicRepository + ".git",
 		},
 		"SECURITY.md": {
 			publicRepository + "/issues",
-			publicRepository + "/security/advisories/new",
 			"technical preview",
 			"There are no supported release branches",
 			"GitHub Issues are public",
 			"suitable for ordinary use and support questions",
 			"Do not put a vulnerability, exploit, credential, private repository content, or personal data in an issue or in a gitseq workroom",
+			"Report vulnerabilities privately and directly to the maintainer",
 			"not open a public issue for a security report",
 			"GitHub settings outside this source tree",
 			"Source CI cannot guarantee those settings",
@@ -69,6 +70,18 @@ func TestPublicRepositorySurface(t *testing.T) {
 		for _, fragment := range required {
 			if !strings.Contains(compact, strings.Join(strings.Fields(fragment), " ")) {
 				t.Errorf("%s does not contain required public surface %q", path, fragment)
+			}
+		}
+	}
+
+	for path, forbidden := range map[string][]string{
+		"README.md":   {"hughpyle@gmail.com", "security/advisories/new", "private advisory channel"},
+		"SECURITY.md": {"hughpyle@gmail.com", "security/advisories/new", "private advisory channel"},
+	} {
+		content := read(path)
+		for _, fragment := range forbidden {
+			if strings.Contains(content, fragment) {
+				t.Errorf("%s contains obsolete or personal disclosure channel %q", path, fragment)
 			}
 		}
 	}
