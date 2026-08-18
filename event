@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:00a6e6737ef0c7a11fce59686c2184581876d124","text":"Retire the pre-repair internal/kernel candidate; the same branch is replaced at exact head 1d3ab894 by artifact 981c8923."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6917765082078116c00e4a476a409e88df67f4d1","text":"Retire the pre-repair internal/service candidate; the same branch is replaced at exact head 1d3ab894 by artifact 4d48784f."}
