@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Head-witness note at the corrected head: the P1 comparison now states the distinct hazards and protections, and the attestation timestamp is the signer's claim rather than the ordering source.","body":{"commit":"6af1c6ba0b8a4dc14f05cc593e8a66f8f236b608","path":"notes/2026-08-18-head-witness.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5d8e509daec4bb5ad1851a944cdfeafaafbd2014","text":"Superseded by the corrected head."}
