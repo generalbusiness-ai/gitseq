@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Deterministic resident rebuild regression at the exact pushed head: the verifier is held after two verified commits while joined readers remain blocked and publication remains atomic.","body":{"commit":"1d3ab89425ef967448148584b74e6b951f4329a1","path":"internal/service"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dc934b75080a43b84f0ee00eb3fb42f1ddd34135","text":"Retire the pre-repair internal/gitstore candidate; the same branch is replaced at exact head 1d3ab894 by artifact 038dd8a7."}
