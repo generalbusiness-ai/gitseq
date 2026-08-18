@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5db428168acc92247e013d2d92d43c49dbe08e56"}
+{"kind":"promise","text":"I will reconcile the public security-disclosure policy across README.md, SECURITY.md, and its public-surface regression, preserving private direct reporting and the never-public guarantees.","body":{"branch":"request/security-disclosure-channel-repair"}}
