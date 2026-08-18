@@ -32,8 +32,8 @@ func TestCasesForTierRemainBoundedAndDeterministic(t *testing.T) {
 	if len(first) == 0 || !reflect.DeepEqual(first, second) {
 		t.Fatalf("smoke cases are not stable: %#v / %#v", first, second)
 	}
-	if len(first) != 18 {
-		t.Fatalf("smoke case count = %d, want 18", len(first))
+	if len(first) != 20 {
+		t.Fatalf("smoke case count = %d, want 20", len(first))
 	}
 	var concurrency []int
 	for _, selected := range first {
@@ -46,6 +46,18 @@ func TestCasesForTierRemainBoundedAndDeterministic(t *testing.T) {
 	}
 	if !reflect.DeepEqual(concurrency, []int{1, 4, 16}) {
 		t.Fatalf("smoke concurrency = %v, want [1 4 16]", concurrency)
+	}
+	var actors, fanouts []int
+	for _, selected := range first {
+		if selected.ActorCount > 1 {
+			actors = append(actors, selected.ActorCount)
+		}
+		if selected.Fanout > 1 {
+			fanouts = append(fanouts, selected.Fanout)
+		}
+	}
+	if !reflect.DeepEqual(actors, []int{8, 50}) || len(fanouts) != 0 {
+		t.Fatalf("smoke scale axes = actors %v fanouts %v", actors, fanouts)
 	}
 	if _, err := casesForTier(contract, "unbounded"); err == nil {
 		t.Fatal("unknown tier was accepted")

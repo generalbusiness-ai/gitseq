@@ -30,6 +30,8 @@ func validContract() Contract {
 		GeneratorVersion:   "fixture-v1",
 		Seed:               42,
 		Depths:             RequiredDepths(),
+		ActorCounts:        RequiredActorCounts(),
+		DependencyFanouts:  RequiredDependencyFanouts(),
 		CheckpointTails:    RequiredCheckpointTails(),
 		ProjectionShapes:   RequiredProjectionShapes(),
 		PayloadBuckets:     []int{128, 1_024, 8_192},
@@ -94,6 +96,8 @@ func TestContractValidation(t *testing.T) {
 		{"schema", func(c *Contract) { c.SchemaVersion = "v2" }, "schema_version"},
 		{"generator", func(c *Contract) { c.GeneratorVersion = "" }, "generator_version"},
 		{"depths", func(c *Contract) { c.Depths[0] = 99 }, "depths"},
+		{"actor counts", func(c *Contract) { c.ActorCounts[0] = 2 }, "actor_counts"},
+		{"fanouts", func(c *Contract) { c.DependencyFanouts[0] = 2 }, "dependency_fanouts"},
 		{"tails", func(c *Contract) { c.CheckpointTails = c.CheckpointTails[:5] }, "checkpoint_tails"},
 		{"shapes", func(c *Contract) { c.ProjectionShapes[0] = "other" }, "projection_shapes"},
 		{"scenarios", func(c *Contract) { c.Scenarios[0] = "other" }, "scenarios"},
@@ -132,6 +136,16 @@ func TestRequiredListsAreCopies(t *testing.T) {
 	depths[0] = 1
 	if RequiredDepths()[0] != 100 {
 		t.Fatal("RequiredDepths exposed mutable package state")
+	}
+	actors := RequiredActorCounts()
+	actors[0] = 2
+	if RequiredActorCounts()[0] != 1 {
+		t.Fatal("RequiredActorCounts exposed mutable package state")
+	}
+	fanouts := RequiredDependencyFanouts()
+	fanouts[0] = 2
+	if RequiredDependencyFanouts()[0] != 1 {
+		t.Fatal("RequiredDependencyFanouts exposed mutable package state")
 	}
 	scenarios := RequiredScenarios()
 	scenarios[0] = "changed"

@@ -7,18 +7,21 @@ func TestBenchmarkCasesHaveStableOrderAndNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) != 50 {
-		t.Fatalf("case count = %d, want 50", len(cases))
+	if len(cases) != 67 {
+		t.Fatalf("case count = %d, want 67", len(cases))
 	}
 	wants := map[int]string{
 		0:  "startup/depth-000100",
-		3:  "startup/depth-100000",
-		20: "checkpoint_restart/depth-000257/tail-0000",
-		25: "checkpoint_restart/depth-001257/tail-1000",
-		26: "honest_fallback/depth-000100",
-		34: "concurrent_read_write/depth-000100/concurrency-01",
-		45: "concurrent_read_write/depth-100000/concurrency-16",
-		49: "bounded_soak/depth-100000",
+		4:  "startup/depth-500000",
+		25: "checkpoint_restart/depth-000257/tail-0000",
+		30: "checkpoint_restart/depth-001257/tail-1000",
+		31: "honest_fallback/depth-000100",
+		41: "concurrent_read_write/depth-000100/concurrency-01",
+		55: "concurrent_read_write/depth-500000/concurrency-16",
+		60: "bounded_soak/depth-500000",
+		61: "cold_status/depth-000100/actors-008",
+		62: "cold_status/depth-000100/actors-050",
+		66: "submit_ack/depth-001000/fanout-256",
 	}
 	for index, want := range wants {
 		if got := cases[index].Name(); got != want {

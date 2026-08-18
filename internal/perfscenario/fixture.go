@@ -37,6 +37,7 @@ type FixturePlan struct {
 	Shape            string
 	PayloadBuckets   []int
 	CheckpointDepths []int
+	ActorCount       int
 }
 
 // Manifest binds a deterministic logical workload to the exact signed Git
@@ -51,6 +52,7 @@ type Manifest struct {
 	Genesis          string            `json:"genesis"`
 	SeedEvent        string            `json:"seed_event"`
 	Actor            string            `json:"actor"`
+	ActorCount       int               `json:"actor_count"`
 	Heads            map[string]string `json:"heads"`
 	Checkpoints      map[string]string `json:"checkpoints"`
 	LogicalDigest    string            `json:"logical_digest"`
@@ -78,6 +80,16 @@ func Prepare(ctx context.Context, directory string, plan FixturePlan) (Manifest,
 	if len(plan.PayloadBuckets) == 0 {
 		return Manifest{}, errors.New("fixture payload buckets are required")
 	}
+	if plan.ActorCount == 0 {
+		plan.ActorCount = 1
+	}
+	if plan.ActorCount < 1 {
+		return Manifest{}, errors.New("fixture actor count must be positive")
+	}
+	minimumDepth := 1 + 2*(plan.ActorCount-1)
+	if plan.Depth < minimumDepth {
+		return Manifest{}, fmt.Errorf("fixture depth %d cannot contain %d actors; need at least %d records", plan.Depth, plan.ActorCount, minimumDepth)
+	}
 	if _, err := os.Stat(directory); err == nil {
 		return Manifest{}, fmt.Errorf("fixture directory already exists: %s", directory)
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -100,39 +112,92 @@ func Prepare(ctx context.Context, directory string, plan FixturePlan) (Manifest,
 	manifest := Manifest{
 		Schema: manifestSchema, GeneratorVersion: plan.GeneratorVersion, Seed: plan.Seed,
 		Shape: plan.Shape, Depth: plan.Depth, Repository: directory,
-		Genesis: workspace.Config.Genesis, SeedEvent: seed.ID, Actor: "operator",
+		Genesis: workspace.Config.Genesis, SeedEvent: seed.ID, Actor: "operator", ActorCount: plan.ActorCount,
 		Heads: map[string]string{"1": seedHead}, Checkpoints: make(map[string]string),
 	}
 	logical := sha256.New()
-	fmt.Fprintf(logical, "%s\n%d\n%s\n", plan.GeneratorVersion, plan.Seed, plan.Shape)
+	fmt.Fprintf(logical, "%s\n%d\n%s\n%d\n", plan.GeneratorVersion, plan.Seed, plan.Shape, plan.ActorCount)
 	prng := perflane.NewPRNG(plan.Seed)
+	depth := 1
+	for index := 1; index < plan.ActorCount; index++ {
+		_, records, addErr := workspace.AddActor(ctx, "operator", fmt.Sprintf("actor-%03d", index+1), "agent")
+		if addErr != nil {
+			return Manifest{}, fmt.Errorf("add fixture actor %d: %w", index+1, addErr)
+		}
+		for recordIndex, record := range records {
+			depth++
+			manifest.Heads[strconv.Itoa(depth)] = eventCommit(record.ID)
+			fmt.Fprintf(logical, "%d\x00actor\x00%d\x00%d\n", depth, index+1, recordIndex)
+		}
+	}
 	lastRequest, lastPromise, lastReport, lastArtifact := "", "", "", ""
-	for depth := 2; depth <= plan.Depth; depth++ {
+	writer, err := newFixtureWriter(workspace, plan.Depth-depth)
+	if err != nil {
+		return Manifest{}, err
+	}
+	bulkBase := manifest.Heads[strconv.Itoa(depth)]
+	for depth++; depth <= plan.Depth; depth++ {
 		bucket := plan.PayloadBuckets[int(prng.Uint64n(uint64(len(plan.PayloadBuckets))))]
 		act := generatedAct(plan.Shape, depth, bucket, workspace.Config.Actors["operator"].Fingerprint, seed.ID, lastRequest, lastPromise, lastReport, lastArtifact)
-		submission, err := workspace.Act(ctx, "operator", act.value)
+		commit, event, err := writer.append(ctx, manifest.Heads[strconv.Itoa(depth-1)], act.value)
 		if err != nil {
 			return Manifest{}, fmt.Errorf("generate depth %d (%s): %w", depth, act.label, err)
 		}
 		fmt.Fprintf(logical, "%d\x00%s\x00%d\x00%s\n", depth, act.label, bucket, act.logical)
-		manifest.Heads[strconv.Itoa(depth)] = submission.Result.Head
+		manifest.Heads[strconv.Itoa(depth)] = commit
 		switch act.label {
 		case "request":
-			lastRequest = submission.Record.ID
+			lastRequest = event
 		case "promise":
-			lastPromise = submission.Record.ID
+			lastPromise = event
 		case "report":
-			lastReport = submission.Record.ID
+			lastReport = event
 		case "artifact":
-			lastArtifact = submission.Record.ID
+			lastArtifact = event
 		}
-		if containsInt(plan.CheckpointDepths, depth) {
-			checkpoint, checkpointErr := workspace.Store.Head(ctx, kernel.CheckpointRef(workspace.Config.Genesis))
-			if checkpointErr != nil {
-				return Manifest{}, fmt.Errorf("checkpoint at depth %d was not written: %w", depth, checkpointErr)
-			}
-			manifest.Checkpoints[strconv.Itoa(depth)] = checkpoint
+	}
+	if err := writer.close(ctx); err != nil {
+		return Manifest{}, err
+	}
+	finalHead := manifest.Heads[strconv.Itoa(plan.Depth)]
+	if finalHead != bulkBase {
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), finalHead, bulkBase); err != nil {
+			return Manifest{}, fmt.Errorf("publish generated fixture head: %w", err)
 		}
+	}
+	currentHead := finalHead
+	for _, checkpointDepth := range plan.CheckpointDepths {
+		checkpointHead := manifest.Heads[strconv.Itoa(checkpointDepth)]
+		if checkpointHead == "" {
+			return Manifest{}, fmt.Errorf("fixture has no head for checkpoint depth %d", checkpointDepth)
+		}
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), checkpointHead, currentHead); err != nil {
+			return Manifest{}, fmt.Errorf("select checkpoint depth %d: %w", checkpointDepth, err)
+		}
+		currentHead = checkpointHead
+		reader, openErr := app.Open(ctx, directory)
+		if openErr != nil {
+			return Manifest{}, openErr
+		}
+		if _, snapshotErr := reader.Snapshot(ctx); snapshotErr != nil {
+			return Manifest{}, fmt.Errorf("verify checkpoint depth %d: %w", checkpointDepth, snapshotErr)
+		}
+		checkpoint, checkpointErr := workspace.Store.Head(ctx, kernel.CheckpointRef(workspace.Config.Genesis))
+		if checkpointErr != nil {
+			return Manifest{}, fmt.Errorf("checkpoint at depth %d was not written: %w", checkpointDepth, checkpointErr)
+		}
+		manifest.Checkpoints[strconv.Itoa(checkpointDepth)] = checkpoint
+	}
+	if currentHead != finalHead {
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), finalHead, currentHead); err != nil {
+			return Manifest{}, fmt.Errorf("restore generated fixture head: %w", err)
+		}
+	}
+	// The writer constructs every object from canonical signed inputs. Check
+	// the final signature with Git as an independent format boundary; each
+	// measured cold run then performs the ordinary full-chain verification.
+	if err := workspace.Store.VerifySSHCommit(ctx, finalHead, "sequencer", publicKeyText(writer.sequencer)); err != nil {
+		return Manifest{}, fmt.Errorf("verify generated fixture head: %w", err)
 	}
 	manifest.LogicalDigest = hex.EncodeToString(logical.Sum(nil))
 	manifest.ExactDigest, err = exactObjectDigest(ctx, directory)
@@ -148,6 +213,13 @@ func Prepare(ctx context.Context, directory string, plan FixturePlan) (Manifest,
 		return Manifest{}, err
 	}
 	return manifest, nil
+}
+
+func eventCommit(event string) string {
+	if index := strings.LastIndexByte(event, ':'); index >= 0 {
+		return event[index+1:]
+	}
+	return ""
 }
 
 type generated struct {
@@ -229,7 +301,7 @@ func LoadManifest(directory string) (Manifest, error) {
 	if err := decoder.Decode(&manifest); err != nil {
 		return Manifest{}, err
 	}
-	if manifest.Schema != manifestSchema || manifest.Repository == "" || manifest.Genesis == "" || manifest.ExactDigest == "" {
+	if manifest.Schema != manifestSchema || manifest.Repository == "" || manifest.Genesis == "" || manifest.ExactDigest == "" || manifest.ActorCount < 1 {
 		return Manifest{}, errors.New("invalid performance fixture manifest")
 	}
 	return manifest, nil
@@ -286,6 +358,7 @@ func Materialize(ctx context.Context, fixture, destination string, sample Sample
 		return fail(fmt.Errorf("set sequence head: %w: %s", commandErr, output))
 	}
 	checkpointRef := string(kernel.CheckpointRef(manifest.Genesis))
+	checkpointPointer := filepath.Join(destinationGit, "gitseq", "checkpoints", manifest.Genesis+".json")
 	if sample.Tail >= 0 {
 		checkpointDepth := sample.Depth - sample.Tail
 		checkpoint := manifest.Checkpoints[strconv.Itoa(checkpointDepth)]
@@ -295,6 +368,20 @@ func Materialize(ctx context.Context, fixture, destination string, sample Sample
 		if output, commandErr := command(ctx, destination, "git", "update-ref", checkpointRef, checkpoint); commandErr != nil {
 			return fail(fmt.Errorf("set checkpoint: %w: %s", commandErr, output))
 		}
+		pointer, encodeErr := json.Marshal(map[string]string{"schema": "gitseq-checkpoint-pointer@1", "commit": checkpoint})
+		if encodeErr != nil {
+			return fail(encodeErr)
+		}
+		if mkdirErr := os.MkdirAll(filepath.Dir(checkpointPointer), 0o700); mkdirErr != nil {
+			return fail(fmt.Errorf("create checkpoint pointer directory: %w", mkdirErr))
+		}
+		if writeErr := os.WriteFile(checkpointPointer, pointer, 0o600); writeErr != nil {
+			return fail(fmt.Errorf("set checkpoint pointer: %w", writeErr))
+		}
+	} else if output, commandErr := command(ctx, destination, "git", "update-ref", "-d", checkpointRef); commandErr != nil {
+		return fail(fmt.Errorf("remove checkpoint: %w: %s", commandErr, output))
+	} else if removeErr := os.Remove(checkpointPointer); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+		return fail(fmt.Errorf("remove checkpoint pointer: %w", removeErr))
 	}
 	return manifest, cleanup, nil
 }
@@ -310,6 +397,10 @@ func rewriteConfig(meta string) error {
 		return err
 	}
 	config.SequencerKey = filepath.Join(meta, filepath.Base(config.SequencerKey))
+	// A sample may select a head older than the source fixture's last verified
+	// position. That source-local rollback witness must not cross into the new
+	// writable sample; its first ordinary audit establishes its own frontier.
+	config.VerifiedFrontier = nil
 	for name, actor := range config.Actors {
 		actor.KeyFile = filepath.Join(meta, "actors", filepath.Base(actor.KeyFile))
 		config.Actors[name] = actor
@@ -380,15 +471,6 @@ func copyTree(source, destination string) error {
 		}
 		return closeErr
 	})
-}
-
-func containsInt(values []int, target int) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 // ParseObjectList is kept small and exported only through tests in this
