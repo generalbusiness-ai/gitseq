@@ -1333,16 +1333,19 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 	}
 	foldStarted := time.Now()
 	if loaded.Full {
-		records := make([]workroom.Record, 0, len(loaded.Events))
-		for _, event := range loaded.Events {
-			records = append(records, w.record(event))
-		}
 		if w.projectionTestGate != nil {
-			w.projectionTestGate(len(records))
+			w.projectionTestGate(len(loaded.Events))
 		}
-		w.snapshotFolder = selected.newFolder(records)
+		w.snapshotFolder = selected.newFolder(nil)
+		for index := range loaded.Events {
+			w.snapshotFolder.Append(w.record(loaded.Events[index]))
+			// A full load transfers the event stream to the application fold.
+			// Release each transport record after it is decoded so the resident
+			// does not hold the complete raw and projected histories together.
+			loaded.Events[index] = kernel.Event{}
+		}
 		if w.observer != nil {
-			w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationFold, Path: path, Outcome: observe.OutcomeOK, Duration: time.Since(foldStarted), Items: int64(len(records))})
+			w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationFold, Path: path, Outcome: observe.OutcomeOK, Duration: time.Since(foldStarted), Items: int64(loaded.Verification.Events)})
 		}
 	} else {
 		foldStarted := time.Now()

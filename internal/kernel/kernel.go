@@ -120,7 +120,7 @@ type logCache struct {
 	checkpointFallbacks int
 	checkpointWrites    int
 	checkpointFailures  int
-	checkpointEvents    []Event
+	checkpointEvents    checkpointEventCache
 	checkpointAttempt   int
 }
 
@@ -718,7 +718,7 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 		if deltaErr == nil {
 			events := log.Events
 			if c.checkpointWritable() {
-				c.checkpointEvents = append(c.checkpointEvents, cloneEvents(events)...)
+				c.checkpointEvents.appendEvents(events)
 			}
 			if writeCheckpointOnAdvance {
 				c.maybeWriteCheckpoint(ctx, store, log)
@@ -766,14 +766,14 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 	}
 	events := log.Events
 	if c.checkpointWritable() {
-		c.checkpointEvents = cloneEvents(events)
+		c.checkpointEvents.reset(events)
 		if checkpointCurrent {
 			c.checkpointAttempt = log.Verification.Depth
 		} else {
 			c.checkpointAttempt = log.Verification.Depth - checkpointInterval
 		}
 	} else {
-		c.checkpointEvents = nil
+		c.checkpointEvents = checkpointEventCache{}
 		c.checkpointAttempt = 0
 	}
 	log.Events = nil
@@ -795,9 +795,10 @@ func (c *logCache) maybeWriteCheckpoint(ctx context.Context, store gitstore.Stor
 	if !c.checkpointWritable() || !checkpointDue(log.Verification.Depth, c.checkpointAttempt) {
 		return
 	}
-	checkpointLog := log
-	checkpointLog.Events = c.checkpointEvents
-	if writeCheckpoint(ctx, store, checkpointLog, c.checkpoint) == nil {
+	// Checkpoint refresh needs only application payloads and attachments. Keep
+	// that compact material rather than a second copy of every signed envelope,
+	// decoded intent, commit identifier, and causal reference in the log.
+	if writeCheckpointCache(ctx, store, log, c.checkpointEvents, c.checkpoint) == nil {
 		c.checkpointWrites++
 		c.checkpointAttempt = log.Verification.Depth
 	} else {
@@ -814,7 +815,7 @@ func (c *logCache) append(ctx context.Context, store gitstore.Store, key string,
 	if !c.checkpointWritable() {
 		return
 	}
-	c.checkpointEvents = append(c.checkpointEvents, cloneEvent(event))
+	c.checkpointEvents.append(event)
 	c.maybeWriteCheckpoint(ctx, store, c.log)
 }
 

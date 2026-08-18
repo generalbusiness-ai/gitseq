@@ -21,3 +21,25 @@ operations. Those are retained workload observations, not service-level objectiv
 The existing size tests remain correctness tripwires; they are not substituted
 for retained performance evidence, and historical point timings are not
 silently promoted into guarantees.
+
+## Resident memory by sequence depth
+
+On 2026-08-19, the reliably cold `cold_status` scenario measured the linear,
+one-actor, fan-out-one fixture at 500, 5,000, and 50,000 records. Each sample
+used a fresh process and writable materialization with the checkpoint ref and
+local checkpoint pointer removed. The fixture's exact digest was
+`694dc12f795d3ef25b8f487e2b5cce64ed860c9e146a9930ee0e0fd0b23fdbdf`.
+The machine was an Apple M5 Max running Darwin arm64, Go 1.26.5, and Git 2.50.1.
+
+| Records | Base `394fcd56` peak RSS | This change peak RSS |
+| ---: | ---: | ---: |
+| 500 | 50,593,792 B | 50,511,872 B |
+| 5,000 | 221,888,512 B | 134,119,424 B |
+| 50,000 | 1,919,893,504 B | 934,969,344 B |
+
+Across the full hundredfold depth range, observed peak-RSS slope fell from
+37,764 to 17,868 bytes per record. The two final unprofiled 50,000-record
+candidate runs peaked at 934,969,344 and 931,643,392 bytes. Both remained below the
+1-GiB bound (1,073,741,824 bytes), with matching trusted and projected
+correctness digests. These are retained point measurements of one workload and
+machine, not a general latency or capacity guarantee.

@@ -30,6 +30,42 @@ type auditObserver struct {
 	measurements []observe.Measurement
 }
 
+func TestCheckpointEventCacheCompressesDepthAndRoundTrips(t *testing.T) {
+	events := make([]Event, checkpointChunkEvents+3)
+	for index := range events {
+		events[index].Payload = bytes.Repeat([]byte{byte(index)}, 32+index%3)
+		if index%1000 == 0 {
+			events[index].Attachments = map[string][]byte{"note": []byte(strconv.Itoa(index))}
+		}
+	}
+	var cache checkpointEventCache
+	cache.reset(events)
+	if cache.err != nil || cache.count != len(events) || len(cache.chunks) != 1 || len(cache.tail) != 3 {
+		t.Fatalf("checkpoint cache = count %d chunks %d tail %d err %v", cache.count, len(cache.chunks), len(cache.tail), cache.err)
+	}
+	stored := checkpoint{
+		Schema: checkpointSchema, ObjectFormat: "sha1", Genesis: strings.Repeat("a", 40),
+		Head: strings.Repeat("b", 40), Depth: len(events),
+		EventCount: cache.count, Cached: true, CachedChunks: cache.chunks, CachedTail: cache.tail,
+	}
+	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeCompactCheckpoint(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Events) != len(events) {
+		t.Fatalf("decoded events = %d, want %d", len(decoded.Events), len(events))
+	}
+	for index := range events {
+		if !bytes.Equal(decoded.Events[index].Payload, events[index].Payload) || !reflect.DeepEqual(decoded.Events[index].Attachments, events[index].Attachments) {
+			t.Fatalf("decoded event %d differs", index)
+		}
+	}
+}
+
 func (o *auditObserver) Record(_ context.Context, measurement observe.Measurement) {
 	o.measurements = append(o.measurements, measurement)
 }
