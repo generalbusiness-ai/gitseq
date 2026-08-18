@@ -21,12 +21,12 @@ it. The two are complementary and independent — one is about who an actor
 is; this one is about whether the log itself has been rewritten.
 
 It is also **not** pluggable actor signing. A companion proposal — abstracting
-the actor `Signer`/`Verifier` so sigstore could substitute for ssh-ed25519 —
-was considered and **declined**, because keyless, short-lived sigstore
-identities fight gitseq's core property: a stable actor id whose signature
-stock `git verify-commit` validates offline, forever. Sigstore appears in
-*this* note only as the transparency log for head checkpoints, never as the
-signing primitive for events.
+the actor signing and verification path so sigstore could substitute for
+ssh-ed25519 — was considered and **declined**, because keyless, short-lived
+sigstore identities fight gitseq's core property: a stable actor id whose
+signature stock `git verify-commit` validates offline, forever. Sigstore
+appears in *this* note only as the transparency log for head checkpoints,
+never as the signing primitive for events.
 
 ## The problem it addresses
 
@@ -39,7 +39,8 @@ second, divergent, equally-well-signed history is also internally valid. Only
 an outside observer who remembers the previous head can tell the two apart.
 
 A transparency-log witness is exactly that outside observer, made durable and
-public. It directly complements two open security items:
+public. It bears directly on two things already on record — one open security
+item and one standing claim:
 
 - **P1 — multiple residents for one repository** (`85fe10f1`). Two residents
   racing on one repo is the local version of the same hazard; a witness is
