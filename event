@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:604db2dcdabd8fb492891625e65e465b0389bc82","text":"Replace the stale review-request draft with the same exact-head review resting only on live current artifacts."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8b29dc5ebae99f46577cd4fd619563ed882e2c45","text":"Replace the prior public_surface_test.go implementation report with the same-path reporting artifact at repaired exact head a1680d71abdb22b3574081d17e90f9a5e8fafbff."}
