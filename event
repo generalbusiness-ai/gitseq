@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bdb61808cf640390447fa2af96f064716722e63e","text":"Retire the stale intermediate README.md replacement; the current same-path successor is 3a976594 at exact repaired head a1680d71."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b90ba742b7d11ae63f7f35141489409c3ff611fa","text":"Retire the stale intermediate SECURITY.md replacement; the current same-path successor is e9f5b2d9 at exact repaired head a1680d71."}
