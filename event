@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Cold-audit batch object verification at the repaired exact pushed head; object hashing, SSHSIG verification, hostile parsing, bounds, and the 50,000-event proof remain intact.","body":{"commit":"1d3ab89425ef967448148584b74e6b951f4329a1","path":"internal/gitstore"}}
+{"kind":"artifact","text":"Cold full-audit integration and deterministic progress-gate repair at the exact pushed head; the strong single-flight and atomic-publication assertions remain intact.","body":{"commit":"1d3ab89425ef967448148584b74e6b951f4329a1","path":"internal/kernel"}}
