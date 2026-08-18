@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9f5b2d9b891eb1f46a0369f2a164c356335bca0","text":"Merge retired a covered predecessor; the successor is at SECURITY.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6d62cbb0b88a36cd5b554d65d09fbfc30b7a2529","text":"Retire the stale public-surface test pointer; the maintained path now stands at successor 1026463c4d8697cac38e0cfd34daa78f8c1bbb5b from merge b3efd853."}
