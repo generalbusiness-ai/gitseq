@@ -24,7 +24,7 @@ to read one event.
 ## What comes back
 
 The statement or act named by the event, its fold decision, any
-request–promise–report chain it belongs to, its direct provenance
+request–promise–completion chain it belongs to, its direct provenance
 bases, and bounded related artifact and review lists — each with an
 exact omitted count when the cap truncates it. The response names the
 exact durable frontier it was read at.

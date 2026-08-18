@@ -1,6 +1,6 @@
 ---
 title: Run a work loop
-summary: Claim work, report it, get it reviewed at an exact head, and close the loop — including the cases that do not go smoothly.
+summary: Claim work, publish its exact artifact, get it reviewed, and close it by merge or explicit report.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94fcda5debd84534bcc09c45e4645f236f72d73e
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
@@ -26,7 +26,7 @@ gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
 gs actor-add --repo "$REPO" --as alice --name carol --kind agent >/dev/null
 ```
 
-## Ask, claim, report
+## Ask, claim, and publish the implementation
 
 ```sh
 REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
@@ -56,20 +56,14 @@ Rests-On: $REQUEST"
 HEAD_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 
 ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
-  --text 'Changelog implementation' \
+  --text 'Changelog implementation; make test and make vet pass' \
   --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" \
-  --rests-on "$REQUEST")
-
-REPORT=$(gs state --repo "$REPO" --as bot --kind report \
-  --text 'ready-for-review; make test and make vet pass' \
-  --body branch=task/changelog --body head="$HEAD_COMMIT" \
   --rests-on "$PROMISE")
 ```
 
-Report the tests and conditions **actually** met. `body.branch` and
-`body.head` are hints that help a local tool find the checkout; they
-claim nothing about it being clean or current. The `artifact` is the
-durable pointer.
+State the tests and conditions **actually** met in the artifact. It is both
+the durable pointer to the exact head and the implementation report. A second
+`ready-for-review` report would repeat those same facts.
 
 ## Give a topic a stable name
 
@@ -134,7 +128,7 @@ HEAD_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 ARTIFACT2=$(gs state --repo "$REPO" --as bot --kind artifact \
   --text 'Changelog implementation at the repaired head' \
   --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" \
-  --rests-on "$REQUEST")
+  --rests-on "$PROMISE")
 
 REVIEW_REQUEST2=$(gs state --repo "$REPO" --as bot --kind request \
   --text 'Re-review at the repaired head' --body to=@carol \
@@ -149,33 +143,19 @@ APPROVAL=$(gs review --repo "$REPO" --as carol --checkout "$REPO" \
 gs ratify --repo "$REPO" --as bot "$APPROVAL"
 ```
 
-## Merge, record the merge, then close
+## Merge and close
 
 ```sh
 git -C "$REPO" switch -q "$BASE"
 gs merge --repo "$REPO" --as bot --checkout "$REPO" \
   --candidate "$HEAD_COMMIT" --approval "$APPROVAL" \
   --text 'Merge the approved changelog and make it available on main.'
-MERGE_COMMIT=$(git -C "$REPO" rev-parse HEAD)
-
-MERGE_ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
-  --text 'Merged the approved changelog head' \
-  --body path=CHANGELOG.md --body commit="$MERGE_COMMIT" \
-  --rests-on "$ARTIFACT2")
-gs supersede --repo "$REPO" --as bot \
-  --text 'superseded by the merge artifact for the same path' "$ARTIFACT2"
-
-gs ratify --repo "$REPO" --as alice "$REPORT"
 ```
 
-Two things happen in that order for a reason. Recording the merge
-artifact **and** superseding the previous artifact for the same path is
-one step: the supersession is what makes documents resting on the old
-artifact flare. Skip it and `gs status` marks the new artifact
-**succession not recorded**.
-
-Only after the merge does the original requester ratify the
-implementation report.
+The command records the merge, publishes the successor artifact, and retires
+the covered candidate artifacts in one resumable batch. Its sealed receipt
+also closes the implementation commitment. The approval was already ratified
+before merge; no implementation report or ratification follows it.
 
 ## Work you cannot finish
 

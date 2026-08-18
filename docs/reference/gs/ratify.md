@@ -62,6 +62,12 @@ The beneficiary of an authority grant may neither author nor ratify that
 grant. Membership grants are separate from this rule. Report satisfaction
 also remains separate: only the originating requester may ratify a report.
 
+An assigned implementation that reaches Git does not use this command for a
+second completion judgement. Its exact-head artifact reports the work, and the
+sealed approved merge closes the implementation commitment. The review
+approval is still explicitly ratified before that merge. Explicit reports for
+work that does not merge continue to use the rule above.
+
 You never ratify your own report. That is the point of the work loop:
 satisfaction is judged by whoever asked.
 

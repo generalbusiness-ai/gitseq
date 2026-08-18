@@ -236,7 +236,10 @@ fold, or UI expectations.
 - the `workroom/*` schemas and governed kind vocabulary;
 - its deterministic fold and fold-profile version;
 - actor roster, names, membership, roles, and authority;
-- commitment lifecycles and who is waiting on whom;
+- commitment lifecycles and who is waiting on whom: an explicit report closes
+  when its requester ratifies it, while a promisor's exact-head artifact acts
+  as the implementation report and its sealed approved merge closes the
+  commitment;
 - ratification and supersession rules;
 - path-at-commit artifact statements, retirement, succession, reviews, and
   staleness: ordinary staleness crosses governed reasoning edges, while the
@@ -248,7 +251,9 @@ fold, or UI expectations.
   at the approved head and owned by the implementer, since the fold is pure over
   records and can verify no merge head, diff, or tree; merge receipts record
   ordinary reasoning staleness, while a world-stale approval or artifact must
-  be re-anchored before merge;
+  be re-anchored before merge; the explicitly ratified review approval remains
+  a pre-merge requirement, and the same sealed receipt closes the implementation
+  commitment whose reporting artifact it merges;
 - Workroom MCP tools and their application meanings;
 - the agent practice in `SKILL.md`;
 - connector clauses and observations; and

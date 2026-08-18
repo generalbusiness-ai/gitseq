@@ -109,6 +109,12 @@ citing a request that does not exist is ineffective, and a report on that
 promise is ineffective in turn, so an unearned approval cannot carry
 force.
 
+An artifact keeps the permissive admission rule in the table. It participates
+in an assigned implementation commitment only when its promisor authored it,
+it names a commit, and its bases contain exactly one promise: the promise it
+reports. A sealed merge of the independently approved exact head then closes
+that commitment; ordinary artifacts remain ordinary artifacts.
+
 For events with a required edge, that edge is necessary and not
 sufficient — the fold also checks who signed. A promise citing a
 perfectly good request is ineffective when its author is not the

@@ -68,8 +68,8 @@ priority ephemeral chat: 0 unacknowledged; depth 1, you hold 3 roles, 0 addresse
 
 `available_to_you` is not waiting debt. Each entry is still `open`, with
 no performer, promise, or waiting party; it merely names you as the actor
-who may claim it. `waiting_on_you` begins only after a promise or report
-puts the next move on you.
+who may claim it. `waiting_on_you` begins only after a promise, reporting
+artifact, or explicit report puts the next move on you.
 
 ## It is bounded
 

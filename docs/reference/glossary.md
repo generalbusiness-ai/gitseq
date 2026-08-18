@@ -43,7 +43,7 @@ pulling the sequence down, so the clone can read and verify the workroom.
 
 **Basis.** An event named in another act's `rests_on`.
 
-**Commitment.** The tracked request–promise–report aggregate and its
+**Commitment.** The tracked request–promise–completion aggregate and its
 current lifecycle state.
 
 **Custody.** Holding an actor's private key. The resident service holds

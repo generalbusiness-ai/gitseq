@@ -1652,6 +1652,7 @@ func addActorRole(actor *ActorState, role, source string) {
 
 func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 	var commitments []Commitment
+	mergedArtifacts := f.mergedArtifacts()
 	for _, requestRecord := range f.records {
 		request, ok := requestRecord.body.(*State)
 		if !ok || requestRecord.definition == nil || requestRecord.definition.Lifecycle != LifecycleRequest || requestRecord.decision.Verdict != Effective {
@@ -1680,21 +1681,20 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 				entry.Status = "reneged"
 				entry.WaitingOn = ""
 			default:
-				reports := f.directDependents(promiseRecord.record.ID, LifecycleReport)
-				for index := len(reports) - 1; index >= 0; index-- {
-					report := reports[index]
-					if f.retired(report.record.ID) {
-						continue
-					}
-					entry.Report = report.record.ID
+				completion := f.latestCompletion(promiseRecord, mergedArtifacts)
+				if completion != nil {
+					entry.Report = completion.record.ID
 					entry.Status = "reported"
 					entry.WaitingOn = requestRecord.record.Actor
-					entry.Stale = stale[requestRecord.record.ID] || stale[promiseRecord.record.ID] || stale[report.record.ID]
-					if f.ratified(report.record.ID) {
+					entry.Stale = stale[requestRecord.record.ID] || stale[promiseRecord.record.ID] || stale[completion.record.ID]
+					if completion.definition.Lifecycle == LifecycleReport && f.ratified(completion.record.ID) {
 						entry.Status = "satisfied"
 						entry.WaitingOn = ""
+					} else if receipt := mergedArtifacts[completion.record.ID]; receipt != nil {
+						entry.Status = "satisfied"
+						entry.WaitingOn = ""
+						entry.Stale = entry.Stale || stale[receipt.record.ID]
 					}
-					break
 				}
 				if entry.Report == "" && (stale[requestRecord.record.ID] || stale[promiseRecord.record.ID]) {
 					entry.Status = "stale"
@@ -1705,6 +1705,102 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 		}
 	}
 	return commitments
+}
+
+// latestCompletion returns the promise's live completion record. A sealed
+// merge is terminal. Otherwise an explicit report keeps the authority it had
+// before artifacts could report implementation work; an artifact is the
+// report when the promise has no live explicit report.
+// A lifecycle report remains the general form: it can close work that never
+// reaches Git, once its requester ratifies it. For implementing work, the
+// promisor's artifact already carries the exact head and the promise it
+// fulfils, so filing a second report would duplicate the same assertion.
+func (f *foldState) latestCompletion(promise *parsedRecord, mergedArtifacts map[string]*parsedRecord) *parsedRecord {
+	var report, artifact, merged *parsedRecord
+	candidates := append([]*parsedRecord(nil), f.directDependents(promise.record.ID, LifecycleReport)...)
+	candidates = append(candidates, f.directDependents(promise.record.ID, LifecycleNone)...)
+	for _, record := range candidates {
+		state, ok := record.body.(*State)
+		if !ok || record.definition == nil {
+			continue
+		}
+		isReport := record.definition.Lifecycle == LifecycleReport
+		promiseBases := f.basesOfLifecycle(record.record.RestsOn, LifecyclePromise)
+		isArtifactReport := record.definition.Render == RenderArtifact && state.Body["commit"] != "" && record.record.Actor == promise.record.Actor &&
+			len(promiseBases) == 1 && promiseBases[0].record.ID == promise.record.ID
+		if !isReport && !isArtifactReport {
+			continue
+		}
+		// A normal retirement withdraws a completion claim. The candidate
+		// artifact is the one exception: merge-driven succession retires it as
+		// it publishes the main-line successor, and that planned retirement
+		// must not erase the merge which satisfied the promise.
+		if f.retired(record.record.ID) && (!isArtifactReport || mergedArtifacts[record.record.ID] == nil) {
+			continue
+		}
+		if receipt := mergedArtifacts[record.record.ID]; receipt != nil {
+			if merged == nil || receipt.index > mergedArtifacts[merged.record.ID].index ||
+				(receipt.index == mergedArtifacts[merged.record.ID].index && record.index > merged.index) {
+				merged = record
+			}
+			continue
+		}
+		if isReport && (report == nil || record.index > report.index) {
+			report = record
+		}
+		if isArtifactReport && (artifact == nil || record.index > artifact.index) {
+			artifact = record
+		}
+	}
+	if merged != nil {
+		return merged
+	}
+	if report != nil {
+		return report
+	}
+	return artifact
+}
+
+// mergedArtifacts indexes every reporting artifact in a live sealed receipt's
+// approved retirement plan. validateMergeReceiptNow sealed the full ratified
+// approval chain when the receipt landed; keeping review ratification explicit
+// makes that chain the authority for automatic commitment closure. Reading the
+// whole reviewed plan matters for a multi-path implementation: the artifact a
+// verdict names is only its primary pointer, not the only artifact it signs.
+func (f *foldState) mergedArtifacts() map[string]*parsedRecord {
+	merged := make(map[string]*parsedRecord)
+	for index := range f.records {
+		receipt := &f.records[index]
+		if receipt.mergePlan == nil || f.retired(receipt.record.ID) {
+			continue
+		}
+		state, ok := receipt.body.(*State)
+		if !ok {
+			continue
+		}
+		approval := f.byID[state.Body["merge_approval"]]
+		if approval == nil {
+			continue
+		}
+		if _, ok := approval.body.(*State); !ok {
+			continue
+		}
+		candidate := state.Body["merge_candidate"]
+		for _, artifactID := range approval.record.RestsOn {
+			if _, planned := receipt.mergePlan[artifactID]; !planned {
+				continue
+			}
+			artifact := f.byID[artifactID]
+			if artifact == nil || artifact.record.Actor != receipt.record.Actor || artifact.definition == nil || artifact.definition.Render != RenderArtifact {
+				continue
+			}
+			implementation, ok := artifact.body.(*State)
+			if ok && implementation.Body["commit"] == candidate {
+				merged[artifactID] = receipt
+			}
+		}
+	}
+	return merged
 }
 
 // reviewBasis carries what a report said about the artifact it judges, kept

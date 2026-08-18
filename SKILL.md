@@ -42,8 +42,9 @@ them, because reading is not acknowledging. See
   promise, claim, report, authorization, or completion signal.
 - `status` — workroom snapshot plus a composite cursor. Its actor-oriented
   `available_to_you` lane is the bounded list of `open`, unclaimed requests
-  addressed to you; `waiting_on_you` begins only after a promise or report
-  puts the next move on you. Do not look for a `requested` status: the fold's
+  addressed to you; `waiting_on_you` begins only after a promise, reporting
+  artifact, or explicit report puts the next move on you. Do not look for a
+  `requested` status: the fold's
   lifecycle word for available work is `open`. Read
   `priority_ephemeral_chat` first: it is this exact leased session's bounded,
   unacknowledged addressed chat. `available: false` means the live service is
@@ -118,11 +119,15 @@ them, because reading is not acknowledging. See
 **The work loop**: a `request` names whom it is to and its
 conditions of satisfaction; a `promise` rests on a request — a
 free-standing promise projects dangling, because no one is
-positioned to declare it satisfied. You `report` against your
-promise; the *requester* ratifies the report — never declare your
-own work complete. An unratified report is honest status
-("reported, awaiting satisfaction"), not a nag-worthy gap and not
-failure. Superseding your own promise is **reneging**, visible
+positioned to declare it satisfied. For implementing work, your exact-head
+artifact rests on that promise and acts as the implementation report; an
+independently approved merge closes the commitment, with no duplicate report
+or post-merge ratification. The review approval remains separate and must be
+explicitly ratified before merge. Work that resolves without a merge uses an
+explicit `report` against the promise, which the *requester* ratifies. A live
+artifact or unratified report is honest status ("reported, awaiting
+satisfaction"), not a nag-worthy gap and not failure. Superseding your own
+promise is **reneging**, visible
 forever: do it as early as you know you cannot keep it — early
 reneging is honorable, late reneging is not. If the requester
 supersedes their request after your promise, you are released; the
@@ -162,8 +167,9 @@ on the artifact it names.
 8. **Bridge real work.** An implementing source commit carries
    `Rests-On:` naming what governs it — the assigned request for work
    another actor asked for, the motivating ratified decision for work
-   you began yourself; then `state {kind: artifact}` cites both the
-   commit and its governing decisions. Unbridged work is
+   you began yourself; then `state {kind: artifact}` cites the commit and its
+   governing decisions. For assigned implementation, it also rests on the
+   promise it fulfils and serves as the implementation report. Unbridged work is
    invisible to staleness tracking — the workroom then lies by
    omission, the one failure this system exists to prevent.
    Two rules follow, one on each side of a document. **Describing
