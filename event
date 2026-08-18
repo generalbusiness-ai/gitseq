@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d3dd61f153f49cdf534ac3133d03c25adb81cb0b","text":"Replace the prior SECURITY.md candidate with the same-path artifact at repaired exact head a1680d71abdb22b3574081d17e90f9a5e8fafbff."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:604db2dcdabd8fb492891625e65e465b0389bc82","text":"Replace the stale review-request draft with the same exact-head review resting only on live current artifacts."}
