@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5020f8b06c9963388b1c634c3d94239e9edbe6e9","text":"Retire the superseded perflane candidate; the repaired exact-head successor is 9f378f02 at the same maintained path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:77fce3946f4deeab280f42dc0f7fb8def2b557d1","text":"Retire the superseded perfscenario candidate; the repaired exact-head successor is 62e84fd1 at the same maintained path."}
