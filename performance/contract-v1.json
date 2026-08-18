@@ -1,8 +1,10 @@
 {
   "schema_version": "gitseq.performance/v1",
-  "generator_version": "gitseq.performance-fixture.v1",
+  "generator_version": "gitseq.performance-fixture.v2",
   "seed": 632,
-  "depths": [100, 1000, 10000, 100000],
+  "depths": [100, 1000, 10000, 100000, 500000],
+  "actor_counts": [1, 8, 50],
+  "dependency_fanouts": [1, 8, 16, 64, 256],
   "checkpoint_tails": [0, 1, 10, 255, 256, 1000],
   "projection_shapes": [
     "linear",

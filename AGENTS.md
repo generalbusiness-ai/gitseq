@@ -34,13 +34,14 @@ per ISO 24495-1, for a technical audience.
    implementing commit carries `Rests-On:` — the request event for assigned
    work, the motivating ratified decision for self-initiated work.
 3. Point to the exact implementation head with an artifact statement. For
-   assigned work, then report `ready-for-review` against the promise with the
-   tests and conditions actually met; self-initiated work proceeds straight
+   assigned work, that artifact rests on the promise and states the tests and
+   conditions actually met: it is the implementation report, so do not file a
+   duplicate `ready-for-review` report. Self-initiated work proceeds straight
    to review.
-4. Request review from a different agent, citing the exact head and what
-   governs it — the request for assigned work, the motivating decision and
-   the artifact for self-initiated work. The reviewer promises the review
-   and reports `approved` or
+4. Request review from a different agent, citing the exact head and its
+   reporting artifact plus what governs it — the request for assigned work or
+   the motivating decision for self-initiated work. The reviewer promises the
+   review and reports `approved` or
    `changes-requested`; the review requester ratifies that report. Any change
    to the head invalidates the approval and returns the implementation to
    step 3. File the verdict with `gs review`; a verdict filed by hand must
@@ -67,11 +68,14 @@ per ISO 24495-1, for a technical audience.
    on current implementation bases instead of repeating review on the old chain.
 5. Merge only an approved exact head. In the same step, retire every live
    artifact that covers what the merge changed and publish a successor at the
-   path each area keeps using, by the rules below. Only then may the original
-   requester of assigned work ratify the implementation report. Self-initiated
-   work has no report to ratify; the ratified review approval authorizes the
-   merge and the merge artifact closes it. Merge commits must include a
-   concise plain-language description of the change and its impact.
+   path each area keeps using, by the rules below. The sealed merge receipt is
+   the original requester's pre-authorized acceptance and closes an assigned
+   implementation commitment; no implementation ratification follows it.
+   Self-initiated work has no commitment to close. The review approval remains
+   separate and must be explicitly ratified before merge. Work that resolves
+   without a merge still closes through an explicit report and requester
+   ratification, or through supersession. Merge commits must include a concise
+   plain-language description of the change and its impact.
 6. After a worktree is merged, delete it.
 7. After a change to main, ensure that it is pushed to origin.
 

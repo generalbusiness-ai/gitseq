@@ -51,7 +51,7 @@ Rests-On: $REQUEST"
 HEAD_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
   --text 'Changelog implementation' \
-  --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" --rests-on "$REQUEST")
+  --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" --rests-on "$PROMISE")
 REVIEW_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
   --text 'Review at the exact head' --body to=@carol \
   --body conditions='confirm the named head' --rests-on "$ARTIFACT")
@@ -133,6 +133,12 @@ idempotency keys. If submission stops part-way, run the same command again in
 the checkout still at that merge head. It finds the immutable Git receipt and
 resumes the missing suffix; it does not merge a second time or retire a
 successor it already published.
+
+When the reviewed candidate artifact rests on its implementer's promise, that
+artifact already serves as the implementation report. The sealed receipt
+closes that commitment; no implementation ratification follows the merge. The
+review approval remains separate and must still be explicitly ratified before
+this command accepts it.
 
 ## Artifact succession
 
@@ -269,12 +275,14 @@ claim.
 
 ### Restart residents at the merged commit
 
-The succession change advanced the state schema to `workroom/state@1` and the
-fold profile to `workroom-fold@3`. The current schema/fold split advances them
-again to `workroom/state@2`, `workroom/ratify@1`, and `workroom-fold@4`; older
-state and ratification records remain readable, but a binary built before the
-current change cannot interpret the new schemas. Restart every resident
-sequencer and MCP adapter at the merged commit.
+The merge-succession change advanced the state schema to `workroom/state@1`,
+and the commitment-lifecycle change advanced the fold profile to
+`workroom-fold@4`. The schema/fold split advances the schemas to
+`workroom/state@2` and `workroom/ratify@1`, and advances the application
+projection profile to `workroom-fold@5`. Older state and ratification records
+remain readable, but a binary built before these changes projects commitments
+under the old contract and cannot interpret the new schemas. Restart every
+resident sequencer and MCP adapter at the merged commit.
 
 ## See also
 

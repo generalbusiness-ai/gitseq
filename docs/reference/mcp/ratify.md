@@ -66,6 +66,12 @@ The beneficiary of an authority grant may neither author nor ratify that
 grant. This does not change report satisfaction: only the originating
 requester may ratify a report.
 
+An assigned implementation that merges has no post-merge implementation
+ratification. Its exact-head artifact serves as its report, and the sealed
+approved merge closes that commitment. The independent review approval still
+requires explicit ratification before merge. Explicit reports for work that
+does not merge keep the rule above.
+
 Never ratify your own report. Satisfaction is judged by whoever asked.
 
 ## An attempt beyond your authority is not an error

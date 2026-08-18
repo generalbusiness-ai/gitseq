@@ -15,12 +15,14 @@ import (
 	"runtime/pprof"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/observe"
+	"github.com/generalbusiness-ai/gitseq/internal/perflane"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/telemetry"
@@ -35,6 +37,7 @@ type RunOptions struct {
 	Depth           int
 	Tail            int
 	Concurrency     int
+	Fanout          int
 	SoakOperations  int
 	SoakSeconds     int
 	Trace2Path      string
@@ -58,6 +61,8 @@ type Result struct {
 	Depth             int                       `json:"depth"`
 	CheckpointTail    *int                      `json:"checkpoint_tail,omitempty"`
 	Concurrency       int                       `json:"concurrency,omitempty"`
+	ActorCount        int                       `json:"actor_count"`
+	Fanout            int                       `json:"dependency_fanout"`
 	SetupNS           int64                     `json:"setup_ns"`
 	LatencyNS         int64                     `json:"latency_ns"`
 	Operations        int                       `json:"operations"`
@@ -76,6 +81,8 @@ type Result struct {
 	QueueWaitNS       OptionalMetric            `json:"queue_wait_ns"`
 	CheckpointNS      OptionalMetric            `json:"checkpoint_ns"`
 	CASRetries        OptionalMetric            `json:"cas_retries"`
+	GitProcessCount   OptionalMetric            `json:"git_process_count"`
+	GitDurationNS     OptionalMetric            `json:"git_duration_ns"`
 	FilesystemRead    OptionalMetric            `json:"filesystem_read_bytes"`
 	FilesystemWrite   OptionalMetric            `json:"filesystem_write_bytes"`
 	CorrectnessDigest string                    `json:"correctness_digest"`
@@ -101,6 +108,7 @@ type FixtureEvidence struct {
 	Seed             uint64 `json:"seed"`
 	Shape            string `json:"shape"`
 	Depth            int    `json:"depth"`
+	ActorCount       int    `json:"actor_count"`
 	Head             string `json:"head"`
 	Checkpoint       string `json:"checkpoint,omitempty"`
 	LogicalDigest    string `json:"logical_digest"`
@@ -181,8 +189,8 @@ func Run(ctx context.Context, options RunOptions) (Result, error) {
 
 	result := Result{
 		Schema: "gitseq.performance-sample.v1", Scenario: options.Scenario, Depth: options.Depth,
-		Concurrency: options.Concurrency,
-		SetupNS:     setupNS, LatencyNS: latency.Nanoseconds(), Operations: operations,
+		Concurrency: options.Concurrency, ActorCount: manifest.ActorCount, Fanout: max(options.Fanout, 1),
+		SetupNS: setupNS, LatencyNS: latency.Nanoseconds(), Operations: operations,
 		Allocations: after.Mallocs - before.Mallocs, AllocatedBytes: after.TotalAlloc - before.TotalAlloc,
 		SteadyMemoryBytes: available(int64(steady.HeapAlloc)), HeapSystemBytes: after.HeapSys,
 		GCCount: after.NumGC - before.NumGC, GCPauseNS: pauseDelta(before, after),
@@ -194,6 +202,24 @@ func Run(ctx context.Context, options RunOptions) (Result, error) {
 		QueueWaitNS:      unavailable("not applicable to scenario"),
 		CheckpointNS:     unavailable("not applicable to scenario"),
 		CASRetries:       unavailable("not exposed by scenario"),
+		GitProcessCount:  unavailable("Git Trace2 diagnostic not requested"),
+		GitDurationNS:    unavailable("Git Trace2 diagnostic not requested"),
+	}
+	if options.Trace2Path != "" {
+		trace, openErr := os.Open(options.Trace2Path)
+		if openErr != nil {
+			return Result{}, fmt.Errorf("open Git Trace2 diagnostic: %w", openErr)
+		}
+		summary, parseErr := perflane.ParseTrace2(trace)
+		closeErr := trace.Close()
+		if parseErr != nil {
+			return Result{}, fmt.Errorf("parse Git Trace2 diagnostic: %w", parseErr)
+		}
+		if closeErr != nil {
+			return Result{}, fmt.Errorf("close Git Trace2 diagnostic: %w", closeErr)
+		}
+		result.GitProcessCount = available(int64(summary.ChildProcessCount))
+		result.GitDurationNS = available(summary.CumulativeDuration.Nanoseconds())
 	}
 	if usageBeforeErr == nil && usageAfterErr == nil {
 		result.CPUTimeNS = available(usageAfter.cpuNS - usageBefore.cpuNS)
@@ -261,7 +287,8 @@ func Run(ctx context.Context, options RunOptions) (Result, error) {
 func fixtureEvidence(manifest Manifest, depth, tail int) FixtureEvidence {
 	evidence := FixtureEvidence{
 		GeneratorVersion: manifest.GeneratorVersion, Seed: manifest.Seed, Shape: manifest.Shape, Depth: depth,
-		Head: manifest.Heads[strconv.Itoa(depth)], LogicalDigest: manifest.LogicalDigest, ExactDigest: manifest.ExactDigest,
+		ActorCount: manifest.ActorCount,
+		Head:       manifest.Heads[strconv.Itoa(depth)], LogicalDigest: manifest.LogicalDigest, ExactDigest: manifest.ExactDigest,
 	}
 	if tail >= 0 {
 		evidence.Checkpoint = manifest.Checkpoints[strconv.Itoa(depth-tail)]
@@ -395,10 +422,14 @@ func prepareOperation(ctx context.Context, options RunOptions, telemetryRuntime 
 		if err != nil {
 			return nil, err
 		}
+		rests, err := fanoutBases(manifest, options.Depth, options.Fanout)
+		if err != nil {
+			return nil, err
+		}
 		return func() (operationResult, int, error) {
 			submission, err := workspace.Act(ctx, "operator", app.Act{
 				Verb: app.VerbState, Kind: workroom.KindAssert, Text: "performance acknowledgement",
-				RestsOn: []string{manifest.SeedEvent}, IdempotencyKey: "performance-submit-ack",
+				RestsOn: rests, IdempotencyKey: "performance-submit-ack",
 			})
 			if err != nil {
 				return operationResult{}, 0, err
@@ -474,6 +505,36 @@ func prepareOperation(ctx context.Context, options RunOptions, telemetryRuntime 
 	default:
 		return nil, fmt.Errorf("unknown performance scenario %q", options.Scenario)
 	}
+}
+
+func fanoutBases(manifest Manifest, depth, fanout int) ([]string, error) {
+	if fanout == 0 {
+		fanout = 1
+	}
+	if fanout < 1 || fanout > depth {
+		return nil, fmt.Errorf("dependency fan-out %d must be between 1 and sample depth %d", fanout, depth)
+	}
+	bases := make([]string, 0, fanout)
+	genesisPrefix, _, ok := strings.Cut(manifest.SeedEvent, "#")
+	if !ok {
+		return nil, errors.New("fixture seed event has no repository prefix")
+	}
+	_, format, ok := strings.Cut(genesisPrefix, ":")
+	if !ok {
+		return nil, errors.New("fixture seed event has no object format")
+	}
+	format, _, ok = strings.Cut(format, ":")
+	if !ok || (format != "sha1" && format != "sha256") {
+		return nil, errors.New("fixture seed event has an invalid object format")
+	}
+	for position := depth; position > depth-fanout; position-- {
+		commit := manifest.Heads[strconv.Itoa(position)]
+		if commit == "" {
+			return nil, fmt.Errorf("fixture has no head at depth %d for dependency fan-out", position)
+		}
+		bases = append(bases, genesisPrefix+"#git:"+format+":"+commit)
+	}
+	return bases, nil
 }
 
 func prepareSubmitWait(ctx context.Context, options RunOptions, telemetryRuntime *telemetry.Runtime) (preparedOperation, error) {

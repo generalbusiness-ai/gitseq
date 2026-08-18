@@ -61,6 +61,11 @@ Implementation requests, promises and reports may carry `branch` and
 `head` as advisory checkout hints. They claim nothing about that checkout
 being clean or current.
 
+An artifact reports assigned implementation work when its signer is the
+promisor, it names the exact implementation commit, and its bases contain
+exactly one effective promise: the promise it fulfils. This adds no required
+artifact field and does not change ordinary artifacts.
+
 ## Evidence
 
 `evidence` is a map of name to content, embedded as attachments in the

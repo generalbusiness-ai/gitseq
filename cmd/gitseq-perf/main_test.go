@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/perflane"
+	"github.com/generalbusiness-ai/gitseq/internal/perfscenario"
 )
 
 func testContract(t *testing.T) perflane.Contract {
@@ -32,8 +34,8 @@ func TestCasesForTierRemainBoundedAndDeterministic(t *testing.T) {
 	if len(first) == 0 || !reflect.DeepEqual(first, second) {
 		t.Fatalf("smoke cases are not stable: %#v / %#v", first, second)
 	}
-	if len(first) != 18 {
-		t.Fatalf("smoke case count = %d, want 18", len(first))
+	if len(first) != 20 {
+		t.Fatalf("smoke case count = %d, want 20", len(first))
 	}
 	var concurrency []int
 	for _, selected := range first {
@@ -47,6 +49,18 @@ func TestCasesForTierRemainBoundedAndDeterministic(t *testing.T) {
 	if !reflect.DeepEqual(concurrency, []int{1, 4, 16}) {
 		t.Fatalf("smoke concurrency = %v, want [1 4 16]", concurrency)
 	}
+	var actors, fanouts []int
+	for _, selected := range first {
+		if selected.ActorCount > 1 {
+			actors = append(actors, selected.ActorCount)
+		}
+		if selected.Fanout > 1 {
+			fanouts = append(fanouts, selected.Fanout)
+		}
+	}
+	if !reflect.DeepEqual(actors, []int{8, 50}) || len(fanouts) != 0 {
+		t.Fatalf("smoke scale axes = actors %v fanouts %v", actors, fanouts)
+	}
 	if _, err := casesForTier(contract, "unbounded"); err == nil {
 		t.Fatal("unknown tier was accepted")
 	}
@@ -57,6 +71,41 @@ func TestCheckpointDepthsAreUniqueAndSorted(t *testing.T) {
 	want := []int{257}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("checkpoint depths = %v, want %v", got, want)
+	}
+}
+
+func TestEnsureFixturesRejectsCachedActorCountMismatch(t *testing.T) {
+	contract := testContract(t)
+	digest, err := perflane.CorrectnessDigest(contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := runCase{Scenario: "cold_status", Shape: "linear", Depth: 100, Tail: -1, ActorCount: 8, Fanout: 1}
+	key := selected.fixtureKey()
+	root := t.TempDir()
+	directory := filepath.Join(root, "performance", "fixtures", digest[:16]+"-"+key.shape+"-actors-8-100")
+	if _, err := perfscenario.Prepare(context.Background(), directory, perfscenario.FixturePlan{
+		GeneratorVersion: contract.GeneratorVersion,
+		Seed:             contract.Seed,
+		Depth:            selected.Depth,
+		Shape:            selected.Shape,
+		PayloadBuckets:   contract.PayloadBuckets,
+		ActorCount:       1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ensureFixtures(context.Background(), root, contract, digest, []runCase{selected}); err == nil || !strings.Contains(err.Error(), "does not match its key") {
+		t.Fatalf("ensureFixtures mismatch error = %v", err)
+	}
+}
+
+func TestWorkerResultActorCountMustMatchCase(t *testing.T) {
+	selected := runCase{Scenario: "cold_status", Shape: "linear", Depth: 100, Tail: -1, ActorCount: 8, Fanout: 1}
+	if err := validateActorCount(selected, perfscenario.Result{ActorCount: 8}); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateActorCount(selected, perfscenario.Result{ActorCount: 1}); err == nil {
+		t.Fatal("mismatched worker actor count was accepted")
 	}
 }
 

@@ -20,17 +20,16 @@ issue][issues] for those topics. Do not put a vulnerability, exploit,
 credential, private repository content, or personal data in an issue or in a
 gitseq workroom.
 
-Use [GitHub private vulnerability reporting][report] for vulnerabilities. Do
-not open a public issue for a security report.
+Report vulnerabilities privately and directly to the maintainer. Do not open a
+public issue for a security report.
 
 Please include the affected commit, the impact you expect, steps or a small
 reproducer, and any mitigations you already know. We will assess reports on a
 best-effort basis and coordinate disclosure when a fix is ready. This preview
 does not operate a bug bounty.
 
-Repository visibility, issue availability, and private vulnerability reporting
-are GitHub settings outside this source tree. Source CI cannot guarantee those
-settings. Recheck them before every public update.
+Repository visibility and issue availability are GitHub settings outside this
+source tree. Source CI cannot guarantee those settings. Recheck them before
+every public update.
 
 [issues]: https://github.com/generalbusiness-ai/gitseq/issues
-[report]: https://github.com/generalbusiness-ai/gitseq/security/advisories/new
