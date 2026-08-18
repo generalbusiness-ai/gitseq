@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
@@ -929,11 +930,11 @@ func validateCheckout(ctx context.Context, workroomRepo, checkout, commit string
 	if want != commit {
 		return fmt.Errorf("commit must be the full canonical object ID: got %s, resolved %s", commit, want)
 	}
-	_, workroomCommon, err := app.ResolveGitDirs(ctx, workroomRepo)
+	_, workroomCommon, err := apphost.ResolveGitDirs(ctx, workroomRepo)
 	if err != nil {
 		return err
 	}
-	_, checkoutCommon, err := app.ResolveGitDirs(ctx, checkout)
+	_, checkoutCommon, err := apphost.ResolveGitDirs(ctx, checkout)
 	if err != nil {
 		return err
 	}

@@ -1,49 +1,22 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"runtime/debug"
-	"strings"
-	"unicode"
 
-	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
-	"github.com/generalbusiness-ai/gitseq/internal/intent"
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
-// The host layer sits between the kernel and the application profiles. It
-// answers one question before any record is folded: which application gives
-// this repository's records their meaning. Reading the binding first is what
-// keeps a reader from interpreting a log with the wrong application and
-// repairing the projection afterwards. See docs/reference/architecture.md,
-// "Application host binding".
-
-const (
-	// bindingSchema is the fixed binding family every host recognizes.
-	// Application profiles cannot rename or extend it.
-	bindingSchema = "gitseq/app-binding@0"
-
-	// defaultApplication is what an absent binding names, permanently. The
-	// compatibility rule is fixed: no binding means workroom at the version
-	// the reader ships.
-	defaultApplication = "workroom"
-)
-
-// binding is a repository's declaration of the application that interprets it.
-// Source commit is format-qualified (`git:sha1:<commit>`), never a bare hash.
-// Source URL is provenance and never authority: nothing here fetches it.
-type binding struct {
-	Application  string `json:"application"`
-	SourceCommit string `json:"source_commit,omitempty"`
-	SourceURL    string `json:"source_url,omitempty"`
-	FoldVersion  string `json:"fold_version"`
-}
+// This file is where the host layer meets the one application profile this
+// build holds. The vocabulary it reads — what a binding is, who may record
+// one, and which one is in force — lives in internal/apphost, because a
+// program that has never heard of Workroom must be able to read it. What is
+// left here is the part that only a build holding an interpreter can do:
+// choose one. See docs/reference/architecture.md, "Application host binding".
 
 // host is one application interpreter this build holds. newFolder is the
 // selection's whole point: the host layer chooses the fold, once, at open.
@@ -57,7 +30,7 @@ type host struct {
 // binding names. A build holds the applications it was compiled with, and
 // nothing installs one at runtime.
 var workroomHost = host{
-	application: defaultApplication,
+	application: apphost.DefaultApplication,
 	foldVersion: workroom.ProfileVersion,
 	newFolder:   workroom.NewFolder,
 }
@@ -66,7 +39,8 @@ var workroomHost = host{
 // There is exactly one, so this is the whole registry. A map would be an index
 // over a single entry, and a misleading one: newFolder is spelled in Workroom's
 // own types, so no second application could be registered through it anyway.
-// The second application arrives with the interpreter type that can hold it.
+// An application outside this module is not registered here at all: it holds
+// its own fold and reads its own records through the public host package.
 func heldHost(application string) (host, bool) {
 	if application == workroomHost.application {
 		return workroomHost, true
@@ -87,7 +61,7 @@ type selection struct {
 // means the log could not be read at all, which is not an answer: the
 // workspace does not open, rather than opening with the question left over.
 func (w *Workspace) selectHost(ctx context.Context) (selection, error) {
-	recorded, err := w.readBinding(ctx)
+	recorded, err := apphost.BindingInForce(ctx, w.Store, w.Config.Genesis)
 	if err != nil {
 		return selection{}, err
 	}
@@ -122,186 +96,18 @@ func (h host) projectionProfile() string {
 	return h.application + "\x00" + h.foldVersion
 }
 
-// errFirstRecordUnauthenticated ends the binding scan when the log's first
-// record does not authenticate. It never leaves readBinding.
-var errFirstRecordUnauthenticated = errors.New("the log's first record does not authenticate")
-
-// readBinding returns the binding in force, or nil when the log declares none.
-// A log that cannot be read yet — a workroom attached before its objects
-// arrive — is not an absent binding, so it reports an error and leaves the
-// question open.
-//
-// The binding in force is the last binding record signed by the key that
-// initialized the repository: the actor key on the log's first record. The
-// bootstrap binding and a later replacement are therefore one rule, not two —
-// scan the log in order and keep the last record that qualifies. Binding
-// authority sits below application roles, because another application has no
-// roster to consult.
-//
-// This is a bounded pre-audit read, not a verification. It authenticates
-// exactly what binding authority rests on: the initializing actor's signature
-// over an intent that names this genesis and matches the tree the commit
-// carries. It does not re-verify the sequencer chain, because nothing is
-// folded on its authority — the kernel audit runs before any record is folded,
-// and a chain that does not verify loses its projection there rather than to a
-// mis-selected interpreter.
-//
-// Anything that does not qualify is passed over rather than raised. An
-// unauthorized, unparseable, or malformed binding-shaped record has no force
-// and leaves the previous answer standing, so nobody able to append can make a
-// repository unreadable by recording one.
-func (w *Workspace) readBinding(ctx context.Context) (*binding, error) {
-	desc, err := kernel.Descriptor(ctx, w.Store, w.Config.Genesis)
-	if err != nil {
-		return nil, err
-	}
-	target := "git:" + desc.ObjectFormat + ":" + w.Config.Genesis
-	var (
-		initializing []byte
-		established  bool
-		inForce      *binding
-	)
-	err = w.Store.WalkRevListMetadata(ctx, kernel.Ref(w.Config.Genesis), func(commit gitstore.CommitMetadata) error {
-		// Genesis and sequencer rotations carry no event envelope.
-		signed, _, err := intent.ParseEnvelope(normalizeEnvelope(commit.Message), desc.PayloadCeiling)
-		if err != nil {
-			return nil
-		}
-		if !established {
-			if _, err := intent.Verify(signed); err != nil {
-				return errFirstRecordUnauthenticated
-			}
-			initializing = signed.ActorKey
-			established = true
-		}
-		declared, err := intent.Decode(signed.Intent)
-		if err != nil || declared.Schema != bindingSchema {
-			return nil
-		}
-		if !bytes.Equal(signed.ActorKey, initializing) {
-			return nil
-		}
-		if _, err := intent.Verify(signed); err != nil {
-			return nil
-		}
-		// The intent must name this log, and the commit must carry the tree
-		// the actor signed, or the payload read below is not what was signed.
-		if declared.Target != target {
-			return nil
-		}
-		_, tree, err := gitstore.ParseTypedOID(declared.PayloadTree)
-		if err != nil || tree != commit.Tree {
-			return nil
-		}
-		payload, err := w.Store.ReadFileLimit(ctx, commit.OID, "event", int64(desc.PayloadCeiling))
-		if err != nil {
-			return nil
-		}
-		decoded, err := decodeBinding(payload)
-		if err != nil {
-			return nil
-		}
-		inForce = &decoded
-		return nil
-	})
-	if errors.Is(err, errFirstRecordUnauthenticated) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return inForce, nil
-}
-
-// normalizeEnvelope matches how the kernel presents a commit message to the
-// envelope parser, so this read admits exactly the envelopes the audit does.
-func normalizeEnvelope(message string) string {
-	return strings.TrimRightFunc(message, unicode.IsSpace) + "\n"
-}
-
-func decodeBinding(payload []byte) (binding, error) {
-	var decoded binding
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&decoded); err != nil {
-		return binding{}, err
-	}
-	if decoder.More() {
-		return binding{}, errors.New("multiple JSON values")
-	}
-	if err := decoded.validate(); err != nil {
-		return binding{}, err
-	}
-	canonical, err := json.Marshal(decoded)
-	if err != nil {
-		return binding{}, err
-	}
-	if !bytes.Equal(canonical, payload) {
-		return binding{}, errors.New("binding payload is not canonical JSON")
-	}
-	return decoded, nil
-}
-
-func (b binding) validate() error {
-	if b.Application == "" {
-		return errors.New("binding application is required")
-	}
-	if b.FoldVersion == "" {
-		return errors.New("binding fold version is required")
-	}
-	if b.SourceCommit != "" {
-		if _, _, err := gitstore.ParseTypedOID(b.SourceCommit); err != nil {
-			return fmt.Errorf("binding source commit: %w", err)
-		}
-	}
-	return nil
-}
-
 // selfBinding is what this build says it is: the host it runs, the fold that
-// host holds, and the commit Go stamped in at build time. An unstamped build
-// records no commit rather than a guess, and no build knows the URL it was
-// cloned from, so provenance stays empty until something can state it truly.
-func selfBinding(running host) binding {
-	return binding{Application: running.application, SourceCommit: sourceCommit(), FoldVersion: running.foldVersion}
-}
-
-func sourceCommit() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return ""
-	}
-	var system, revision, modified string
-	for _, setting := range info.Settings {
-		switch setting.Key {
-		case "vcs":
-			system = setting.Value
-		case "vcs.revision":
-			revision = setting.Value
-		case "vcs.modified":
-			modified = setting.Value
-		}
-	}
-	// A build from a dirty tree is not the commit it was built near, and a
-	// binding that named it would be a claim the binary cannot support.
-	if system != "git" || modified == "true" {
-		return ""
-	}
-	switch len(revision) {
-	case 40:
-		return "git:sha1:" + revision
-	case 64:
-		return "git:sha256:" + revision
-	}
-	return ""
+// host holds, and the commit Go stamped in at build time. No build knows the
+// URL it was cloned from, so provenance stays empty until something can state
+// it truly.
+func selfBinding(running host) apphost.Binding {
+	return apphost.Binding{Application: running.application, SourceCommit: apphost.SourceCommit(), FoldVersion: running.foldVersion}
 }
 
 // buildBindingRequest signs the repository's binding with the initializing
 // key. Recording a binding runs no application code and fetches nothing.
-func (w *Workspace) buildBindingRequest(ctx context.Context, private ed25519.PrivateKey, operatorName string, recorded binding) (kernel.Request, error) {
-	if err := recorded.validate(); err != nil {
-		return kernel.Request{}, err
-	}
-	payload, err := json.Marshal(recorded)
+func (w *Workspace) buildBindingRequest(ctx context.Context, private ed25519.PrivateKey, operatorName string, recorded apphost.Binding) (kernel.Request, error) {
+	payload, err := recorded.Payload()
 	if err != nil {
 		return kernel.Request{}, err
 	}
@@ -316,5 +122,5 @@ func (w *Workspace) buildBindingRequest(ctx context.Context, private ed25519.Pri
 	if err != nil {
 		return kernel.Request{}, err
 	}
-	return w.signRequest(ctx, private, operatorName, bindingSchema, payload, nil, nil, "binding/"+head)
+	return w.signRequest(ctx, private, operatorName, apphost.BindingSchema, payload, nil, nil, "binding/"+head)
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
@@ -26,7 +27,7 @@ func testHost() host {
 
 // recordBinding appends one binding record signed by the named actor, which is
 // how a repository is bound after its opening records.
-func recordBinding(t *testing.T, ctx context.Context, w *Workspace, actorName string, recorded binding) {
+func recordBinding(t *testing.T, ctx context.Context, w *Workspace, actorName string, recorded apphost.Binding) {
 	t.Helper()
 	_, private, err := w.Actor(actorName)
 	if err != nil {
@@ -69,12 +70,12 @@ func TestWorkroomRepositoryRecordsNoBindingAndSelectsWorkroom(t *testing.T) {
 	if snapshot.Depth != 1 {
 		t.Fatalf("depth after init = %d, want 1: the default application records no binding", snapshot.Depth)
 	}
-	recorded, err := workspace.readBinding(ctx)
+	recorded, err := apphost.BindingInForce(ctx, workspace.Store, workspace.Config.Genesis)
 	if err != nil || recorded != nil {
 		t.Fatalf("binding = %+v err=%v, want none", recorded, err)
 	}
 	selected, err := selectedBy(t, ctx, repo)
-	if err != nil || selected.application != defaultApplication {
+	if err != nil || selected.application != apphost.DefaultApplication {
 		t.Fatalf("selected %+v err=%v, want the workroom host", selected, err)
 	}
 	reopened, err := Open(ctx, repo)
@@ -96,9 +97,9 @@ func TestInitRecordsTheBindingOfAnApplicationAbsenceDoesNotName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	recorded, err := workspace.readBinding(ctx)
+	recorded, err := apphost.BindingInForce(ctx, workspace.Store, workspace.Config.Genesis)
 	if err != nil || recorded == nil {
-		t.Fatalf("binding = %+v err=%v, want the recorded binding", recorded, err)
+		t.Fatalf("binding = %+v err=%v, want the recorded apphost.Binding", recorded, err)
 	}
 	if recorded.Application != testApplication || recorded.FoldVersion != testFoldVersion {
 		t.Fatalf("binding = %+v, want application %q at fold %q", recorded, testApplication, testFoldVersion)
@@ -147,7 +148,7 @@ func TestBoundRepositoryRefusesAnotherFoldVersion(t *testing.T) {
 	}
 	// The same application, a different meaning. A fold-version change
 	// invalidates every reader by construction.
-	recordBinding(t, ctx, workspace, "human", binding{Application: defaultApplication, FoldVersion: workroom.ProfileVersion + "1"})
+	recordBinding(t, ctx, workspace, "human", apphost.Binding{Application: apphost.DefaultApplication, FoldVersion: workroom.ProfileVersion + "1"})
 	reopened, err := Open(ctx, repo)
 	if err != nil {
 		t.Fatal(err)
@@ -170,12 +171,12 @@ func TestLaterBindingByTheInitializingKeyReplacesTheOneInForce(t *testing.T) {
 	})
 	// An upgrade is a replacement: a binding recorded long after the opening,
 	// signed by the key that initialized the repository, takes force.
-	recordBinding(t, ctx, workspace, "human", binding{Application: testApplication, FoldVersion: testFoldVersion})
+	recordBinding(t, ctx, workspace, "human", apphost.Binding{Application: testApplication, FoldVersion: testFoldVersion})
 	recorded, err := Open(ctx, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	inForce, err := recorded.readBinding(ctx)
+	inForce, err := apphost.BindingInForce(ctx, recorded.Store, recorded.Config.Genesis)
 	if err != nil || inForce == nil || inForce.Application != testApplication {
 		t.Fatalf("binding = %+v err=%v, want the later replacement in force", inForce, err)
 	}
@@ -201,8 +202,8 @@ func TestSelectionIsFixedAtOpenAgainstALaterReplacement(t *testing.T) {
 	}
 	// A replacement recorded through another workspace over the same
 	// repository, after the first one opened and before it first folds.
-	recordBinding(t, ctx, workspace, "human", binding{Application: testApplication, FoldVersion: testFoldVersion})
-	if selected, err := opened.interpreter(); err != nil || selected.application != defaultApplication {
+	recordBinding(t, ctx, workspace, "human", apphost.Binding{Application: testApplication, FoldVersion: testFoldVersion})
+	if selected, err := opened.interpreter(); err != nil || selected.application != apphost.DefaultApplication {
 		t.Fatalf("selected %+v err=%v, want the binding this workspace opened under", selected, err)
 	}
 	if _, err := opened.Snapshot(ctx); err != nil {
@@ -256,7 +257,7 @@ func TestAnUnverifiableChainOutranksTheInterpreterRefusal(t *testing.T) {
 	// A binding the initializing key really signed, so the pre-audit read
 	// honours it and the repository looks bound to an application this build
 	// does not hold.
-	request, err := workspace.buildBindingRequest(ctx, private, "human", binding{Application: testApplication, FoldVersion: testFoldVersion})
+	request, err := workspace.buildBindingRequest(ctx, private, "human", apphost.Binding{Application: testApplication, FoldVersion: testFoldVersion})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,15 +321,15 @@ func TestTheLastAuthorizedBindingWinsInEitherDirection(t *testing.T) {
 	}
 	// Bound away from workroom, then back. Reading the first binding, or the
 	// first two records, would leave this repository uninterpretable.
-	recordBinding(t, ctx, workspace, "human", binding{Application: testApplication, FoldVersion: testFoldVersion})
-	recordBinding(t, ctx, workspace, "human", binding{Application: defaultApplication, FoldVersion: workroom.ProfileVersion})
+	recordBinding(t, ctx, workspace, "human", apphost.Binding{Application: testApplication, FoldVersion: testFoldVersion})
+	recordBinding(t, ctx, workspace, "human", apphost.Binding{Application: apphost.DefaultApplication, FoldVersion: workroom.ProfileVersion})
 	selected, err := selectedBy(t, ctx, repo)
-	if err != nil || selected.application != defaultApplication {
+	if err != nil || selected.application != apphost.DefaultApplication {
 		t.Fatalf("selected %+v err=%v, want the last binding to win", selected, err)
 	}
 	// And away again, so the test cannot pass by preferring workroom rather
 	// than by ordering.
-	recordBinding(t, ctx, workspace, "human", binding{Application: testApplication, FoldVersion: testFoldVersion + "-next"})
+	recordBinding(t, ctx, workspace, "human", apphost.Binding{Application: testApplication, FoldVersion: testFoldVersion + "-next"})
 	if _, err := selectedBy(t, ctx, repo); err == nil || !strings.Contains(err.Error(), testApplication) {
 		t.Fatalf("selection error = %v, want the last binding to win again", err)
 	}
@@ -344,15 +345,15 @@ func TestARollbackToAnAlreadyRecordedBindingTakesForce(t *testing.T) {
 	// Rolling back to an earlier build records the binding that build already
 	// recorded, byte for byte. It must take force again rather than be
 	// swallowed as a repeat of the act it is undoing.
-	rolledBack := binding{Application: testApplication, FoldVersion: testFoldVersion}
+	rolledBack := apphost.Binding{Application: testApplication, FoldVersion: testFoldVersion}
 	recordBinding(t, ctx, workspace, "human", rolledBack)
-	recordBinding(t, ctx, workspace, "human", binding{Application: testApplication, FoldVersion: testFoldVersion + "-next"})
+	recordBinding(t, ctx, workspace, "human", apphost.Binding{Application: testApplication, FoldVersion: testFoldVersion + "-next"})
 	recordBinding(t, ctx, workspace, "human", rolledBack)
 	reopened, err := Open(ctx, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	inForce, err := reopened.readBinding(ctx)
+	inForce, err := apphost.BindingInForce(ctx, reopened.Store, reopened.Config.Genesis)
 	if err != nil || inForce == nil || inForce.FoldVersion != testFoldVersion {
 		t.Fatalf("binding = %+v err=%v, want the rolled-back binding in force", inForce, err)
 	}
@@ -372,13 +373,13 @@ func TestBindingFromAnotherKeyHasNoForce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspace.Config.Actors["intruder"] = Actor{Name: "intruder", Fingerprint: fingerprint, KeyFile: keyFile}
-	recordBinding(t, ctx, workspace, "intruder", binding{Application: testApplication, FoldVersion: testFoldVersion})
+	workspace.Config.Actors["intruder"] = apphost.Actor{Name: "intruder", Fingerprint: fingerprint, KeyFile: keyFile}
+	recordBinding(t, ctx, workspace, "intruder", apphost.Binding{Application: testApplication, FoldVersion: testFoldVersion})
 	reopened, err := Open(ctx, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	inForce, err := reopened.readBinding(ctx)
+	inForce, err := apphost.BindingInForce(ctx, reopened.Store, reopened.Config.Genesis)
 	if err != nil || inForce != nil {
 		t.Fatalf("binding = %+v err=%v: only the initializing key binds a repository", inForce, err)
 	}
@@ -394,7 +395,7 @@ func TestAMalformedBindingLeavesTheOneInForceStanding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	recordBinding(t, ctx, workspace, "human", binding{Application: defaultApplication, FoldVersion: workroom.ProfileVersion})
+	recordBinding(t, ctx, workspace, "human", apphost.Binding{Application: apphost.DefaultApplication, FoldVersion: workroom.ProfileVersion})
 	_, private, err := workspace.Actor("human")
 	if err != nil {
 		t.Fatal(err)
@@ -403,7 +404,7 @@ func TestAMalformedBindingLeavesTheOneInForceStanding(t *testing.T) {
 	// binding. It has no force, and it must not cost the repository its
 	// interpreter: a malformed record is a record nobody can act on, not an
 	// off switch.
-	malformed, err := workspace.signRequest(ctx, private, "human", bindingSchema, []byte(`{"application":"only-half-a-binding"}`), nil, nil, "malformed-binding")
+	malformed, err := workspace.signRequest(ctx, private, "human", apphost.BindingSchema, []byte(`{"application":"only-half-a-binding"}`), nil, nil, "malformed-binding")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,8 +415,8 @@ func TestAMalformedBindingLeavesTheOneInForceStanding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inForce, err := reopened.readBinding(ctx)
-	if err != nil || inForce == nil || inForce.Application != defaultApplication {
+	inForce, err := apphost.BindingInForce(ctx, reopened.Store, reopened.Config.Genesis)
+	if err != nil || inForce == nil || inForce.Application != apphost.DefaultApplication {
 		t.Fatalf("binding = %+v err=%v, want the last well-formed binding still in force", inForce, err)
 	}
 	if _, err := reopened.Snapshot(ctx); err != nil {
@@ -434,7 +435,7 @@ func TestABindingShapedRecordGetsNoForceFromTheWorkroomFold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request, err := workspace.buildBindingRequest(ctx, private, "human", binding{Application: defaultApplication, FoldVersion: workroom.ProfileVersion})
+	request, err := workspace.buildBindingRequest(ctx, private, "human", apphost.Binding{Application: apphost.DefaultApplication, FoldVersion: workroom.ProfileVersion})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +527,7 @@ func TestRetryingOneBindingSubmissionAppendsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request, err := workspace.buildBindingRequest(ctx, private, "human", binding{Application: defaultApplication, FoldVersion: workroom.ProfileVersion})
+	request, err := workspace.buildBindingRequest(ctx, private, "human", apphost.Binding{Application: apphost.DefaultApplication, FoldVersion: workroom.ProfileVersion})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -556,12 +557,12 @@ func TestBindingPayloadsAreCanonicalAndComplete(t *testing.T) {
 		"empty source commit":  `{"application":"workroom","source_commit":"","fold_version":"workroom-fold@3"}`,
 		"unqualified url form": `{"application":"workroom","source_commit":"sha1:deadbeef","fold_version":"workroom-fold@3"}`,
 	} {
-		if _, err := decodeBinding([]byte(payload)); err == nil {
+		if _, err := apphost.DecodeBinding([]byte(payload)); err == nil {
 			t.Fatalf("%s: decoded %q, want a refusal", name, payload)
 		}
 	}
 	accepted := `{"application":"workroom","source_commit":"git:sha1:0123456789012345678901234567890123456789","source_url":"https://example.invalid/workroom","fold_version":"workroom-fold@3"}`
-	decoded, err := decodeBinding([]byte(accepted))
+	decoded, err := apphost.DecodeBinding([]byte(accepted))
 	if err != nil {
 		t.Fatal(err)
 	}

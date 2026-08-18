@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 )
 
 // Resident says where a repository's resident service is listening. The record
@@ -38,7 +40,7 @@ func (w *Workspace) PublishResident(url string) (withdraw func(), err error) {
 		return nil, err
 	}
 	path := filepath.Join(w.MetaDir, residentFile)
-	if err := writeFileAtomically(path, content); err != nil {
+	if err := apphost.WriteFileAtomically(path, content); err != nil {
 		return nil, err
 	}
 	return func() {

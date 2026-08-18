@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
@@ -897,7 +898,7 @@ func (s *mcpServer) currentResidentOrientation(ctx context.Context, current *roo
 	return orientation, nil
 }
 
-func publicActor(actor app.Actor) map[string]string {
+func publicActor(actor apphost.Actor) map[string]string {
 	return map[string]string{"name": actor.Name, "fingerprint": actor.Fingerprint}
 }
 
