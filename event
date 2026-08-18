@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/workroom","body":{"commit":"ab524c3f4f060c9195cb1b21dca2b3ef9e38f709","path":"internal/workroom"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:472da802cafcb3d913e706f271b9eb7ba6fd61dd","text":"Merge retired a covered predecessor; the successor is at AGENTS.md."}
