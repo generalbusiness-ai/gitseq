@@ -2,7 +2,9 @@ package kernel
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -10,17 +12,22 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 )
 
 const (
-	checkpointSchema   = "gitseq-checkpoint@1"
-	checkpointFile     = "checkpoint"
-	checkpointMarker   = "gitseq-checkpoint-v1"
-	checkpointInterval = 256
-	maxCheckpointBytes = 256 << 20
+	checkpointSchema        = "gitseq-checkpoint@1"
+	compactCheckpointSchema = "gitseq-checkpoint@2"
+	checkpointFile          = "checkpoint"
+	checkpointMarker        = "gitseq-checkpoint-v1"
+	compactCheckpointMarker = "gitseq-checkpoint-v2"
+	checkpointContainer     = "gitseq-checkpoint-container-v2\x00"
+	checkpointInterval      = 256
+	maxCheckpointBytes      = 256 << 20
+	maxCheckpointManifest   = 1 << 20
 )
 
 var ErrNoUsableCheckpoint = errors.New("no usable checkpoint")
@@ -54,6 +61,7 @@ type checkpoint struct {
 	Depth        int               `json:"depth"`
 	Profile      string            `json:"profile"`
 	Events       []checkpointEvent `json:"events"`
+	EventCount   int               `json:"-"`
 }
 
 type checkpointEvent struct {
@@ -62,6 +70,22 @@ type checkpointEvent struct {
 	Signed      intent.Signed     `json:"signed"`
 	Payload     []byte            `json:"payload"`
 	Attachments map[string][]byte `json:"attachments,omitempty"`
+}
+
+type compactCheckpointManifest struct {
+	Schema       string `json:"schema"`
+	ObjectFormat string `json:"object_format"`
+	Genesis      string `json:"genesis"`
+	Head         string `json:"head"`
+	Depth        int    `json:"depth"`
+	Profile      string `json:"profile"`
+	Events       int    `json:"events"`
+}
+
+type checkpointCandidate struct {
+	commit  string
+	stored  checkpoint
+	payload []byte
 }
 
 func CheckpointRef(genesis string) string { return "refs/gitseq/checkpoints/" + genesis }
@@ -103,23 +127,19 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	if err := validateNamedSequence(head, commits); err != nil {
 		return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
-	type candidate struct {
-		commit string
-		stored checkpoint
-	}
-	parsed := make([]candidate, 0, len(candidates))
+	parsed := make([]checkpointCandidate, 0, len(candidates))
 	var lastErr error
 	for _, commit := range candidates {
-		stored, err := readCheckpointCandidate(ctx, store, desc, format, genesis, commit, options.Profile)
+		candidate, err := readCheckpointCandidate(ctx, store, desc, format, genesis, commit, options.Profile)
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		parsed = append(parsed, candidate{commit: commit, stored: stored})
+		parsed = append(parsed, candidate)
 	}
 	sort.SliceStable(parsed, func(i, j int) bool { return parsed[i].stored.Depth > parsed[j].stored.Depth })
 	for _, candidate := range parsed {
-		log, err := authenticateCheckpointCandidate(ctx, store, candidate.commit, candidate.stored, desc, commits)
+		log, err := authenticateCheckpointCandidate(ctx, store, candidate, desc, commits)
 		if err != nil {
 			lastErr = err
 			continue
@@ -149,40 +169,53 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, lastErr)
 }
 
-func readCheckpointCandidate(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, format, genesis, commit, profile string) (checkpoint, error) {
+func readCheckpointCandidate(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, format, genesis, commit, profile string) (checkpointCandidate, error) {
 	// A local pointer is mutable input. Validate it before it reaches any Git
 	// command so it can select only an object ID, never a command-line option.
 	if err := validateObjectID(format, commit); err != nil {
-		return checkpoint{}, fmt.Errorf("%w: checkpoint commit: %v", ErrNoUsableCheckpoint, err)
+		return checkpointCandidate{}, fmt.Errorf("%w: checkpoint commit: %v", ErrNoUsableCheckpoint, err)
 	}
 	parents, err := store.CommitParents(ctx, commit)
 	if err != nil || len(parents) != 0 {
-		return checkpoint{}, fmt.Errorf("%w: checkpoint commit must be parentless", ErrNoUsableCheckpoint)
+		return checkpointCandidate{}, fmt.Errorf("%w: checkpoint commit must be parentless", ErrNoUsableCheckpoint)
 	}
 	message, err := store.CommitMessage(ctx, commit)
-	if err != nil || strings.TrimSpace(message) != checkpointMarker {
-		return checkpoint{}, fmt.Errorf("%w: checkpoint marker", ErrNoUsableCheckpoint)
+	marker := strings.TrimSpace(message)
+	if err != nil || (marker != checkpointMarker && marker != compactCheckpointMarker) {
+		return checkpointCandidate{}, fmt.Errorf("%w: checkpoint marker", ErrNoUsableCheckpoint)
 	}
 	files, err := store.ListFiles(ctx, commit, "")
 	if err != nil || len(files) != 1 || files[0] != checkpointFile {
-		return checkpoint{}, fmt.Errorf("%w: checkpoint tree shape", ErrNoUsableCheckpoint)
+		return checkpointCandidate{}, fmt.Errorf("%w: checkpoint tree shape", ErrNoUsableCheckpoint)
 	}
 	data, err := store.ReadFileLimit(ctx, commit, checkpointFile, maxCheckpointBytes)
 	if err != nil {
-		return checkpoint{}, fmt.Errorf("%w: checkpoint payload: %v", ErrNoUsableCheckpoint, err)
+		return checkpointCandidate{}, fmt.Errorf("%w: checkpoint payload: %v", ErrNoUsableCheckpoint, err)
 	}
-	stored, err := decodeCheckpoint(data)
+	var candidate checkpointCandidate
+	candidate.commit = commit
+	if marker == checkpointMarker {
+		candidate.stored, err = decodeLegacyCheckpoint(data)
+	} else {
+		candidate.stored, candidate.payload, err = decodeCompactCheckpointManifest(data)
+	}
 	if err != nil {
-		return checkpoint{}, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
+		return checkpointCandidate{}, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
-	if stored.Schema != checkpointSchema || stored.ObjectFormat != format || stored.ObjectFormat != desc.ObjectFormat || stored.Genesis != genesis || stored.Profile != profile {
-		return checkpoint{}, fmt.Errorf("%w: identity or profile mismatch", ErrNoUsableCheckpoint)
+	wantSchema := checkpointSchema
+	if marker == compactCheckpointMarker {
+		wantSchema = compactCheckpointSchema
 	}
-	return stored, nil
+	stored := candidate.stored
+	if stored.Schema != wantSchema || stored.ObjectFormat != format || stored.ObjectFormat != desc.ObjectFormat || stored.Genesis != genesis || stored.Profile != profile {
+		return checkpointCandidate{}, fmt.Errorf("%w: identity or profile mismatch", ErrNoUsableCheckpoint)
+	}
+	return candidate, nil
 }
 
-func authenticateCheckpointCandidate(ctx context.Context, store gitstore.Store, commit string, stored checkpoint, desc GenesisDescriptor, commits []gitstore.CommitMetadata) (scannedLog, error) {
-	log, err := validateCheckpoint(stored, desc, commits)
+func authenticateCheckpointCandidate(ctx context.Context, store gitstore.Store, candidate checkpointCandidate, desc GenesisDescriptor, commits []gitstore.CommitMetadata) (scannedLog, error) {
+	stored := candidate.stored
+	eventPositions, err := checkpointEventPositions(stored, checkpointEventCount(stored), desc, commits)
 	if err != nil {
 		return scannedLog{}, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
@@ -190,53 +223,31 @@ func authenticateCheckpointCandidate(ctx context.Context, store gitstore.Store, 
 	if err != nil {
 		return scannedLog{}, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
-	if err := store.VerifySSHCommit(ctx, commit, "sequencer", sequencerPublicKey); err != nil {
+	if err := store.VerifySSHCommit(ctx, candidate.commit, "sequencer", sequencerPublicKey); err != nil {
 		return scannedLog{}, fmt.Errorf("%w: signature: %v", ErrNoUsableCheckpoint, err)
+	}
+	var log scannedLog
+	if stored.Schema == compactCheckpointSchema {
+		log, err = validateCompactCheckpoint(stored, candidate.payload, desc, eventPositions)
+	} else {
+		log, err = validateCheckpointEvents(stored, desc, eventPositions)
+	}
+	if err != nil {
+		return scannedLog{}, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
 	log.sequencerPublicKey = sequencerPublicKey
 	return log, nil
 }
 
 func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gitstore.CommitMetadata) (scannedLog, error) {
-	if stored.Depth < 0 || stored.Depth < len(stored.Events) {
-		return scannedLog{}, errors.New("checkpoint depth is smaller than event count")
+	eventPositions, err := checkpointEventPositions(stored, len(stored.Events), desc, sequence)
+	if err != nil {
+		return scannedLog{}, err
 	}
-	if len(sequence) < stored.Depth+1 || sequence[0].OID != stored.Genesis {
-		return scannedLog{}, errors.New("checkpoint does not begin the named sequence")
-	}
-	if err := validateChainParents(0, sequence[0].Parents, ""); err != nil {
-		return scannedLog{}, errors.New("checkpoint genesis has a parent")
-	}
-	for index := 1; index <= stored.Depth; index++ {
-		if err := validateChainParents(index, sequence[index].Parents, sequence[index-1].OID); err != nil {
-			return scannedLog{}, fmt.Errorf("checkpoint event %d is not single-parent chained", index-1)
-		}
-	}
-	if stored.Depth == 0 {
-		if stored.Head != stored.Genesis {
-			return scannedLog{}, errors.New("empty checkpoint head is not genesis")
-		}
-	}
-	if sequence[stored.Depth].OID != stored.Head {
-		return scannedLog{}, errors.New("checkpoint head is not the claimed sequence frontier")
-	}
-	eventPositions := make([]gitstore.CommitMetadata, 0, len(stored.Events))
-	for index := 1; index <= stored.Depth; index++ {
-		position := sequence[index]
-		if uint64(len(position.Message)) > desc.PayloadCeiling {
-			return scannedLog{}, fmt.Errorf("commit %s envelope exceeds genesis ceiling", position.OID)
-		}
-		_, rotation, err := parseRotationMessage(position.Message)
-		if err != nil {
-			return scannedLog{}, fmt.Errorf("commit %s: %w", position.OID, err)
-		}
-		if !rotation {
-			eventPositions = append(eventPositions, position)
-		}
-	}
-	if len(eventPositions) != len(stored.Events) {
-		return scannedLog{}, errors.New("checkpoint event count does not match sequence prefix")
-	}
+	return validateCheckpointEvents(stored, desc, eventPositions)
+}
+
+func validateCheckpointEvents(stored checkpoint, desc GenesisDescriptor, eventPositions []gitstore.CommitMetadata) (scannedLog, error) {
 	log := scannedLog{
 		Verification:       Verification{Genesis: stored.Genesis, Head: stored.Head, Depth: stored.Depth, Events: len(stored.Events)},
 		Events:             make([]Event, 0, len(stored.Events)),
@@ -259,57 +270,125 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gi
 			return scannedLog{}, fmt.Errorf("event %d cached timestamp differs from sequence commit", index)
 		}
 		seenCommits[cached.Commit] = struct{}{}
-		decoded, targetMatches, err := verifySignedTarget(cached.Signed, "git:"+stored.ObjectFormat+":"+stored.Genesis)
-		if err != nil {
-			return scannedLog{}, fmt.Errorf("event %d actor signature: %w", index, err)
-		}
-		if !targetMatches {
-			return scannedLog{}, fmt.Errorf("event %d target does not name checkpoint genesis", index)
-		}
-		actualSigned, trailers, err := intent.ParseEnvelope(position.Message, desc.PayloadCeiling)
+		actualSigned, _, err := intent.ParseEnvelope(position.Message, desc.PayloadCeiling)
 		if err != nil {
 			return scannedLog{}, fmt.Errorf("event %d commit envelope: %w", index, err)
 		}
 		if !actualSigned.Equal(cached.Signed) {
 			return scannedLog{}, fmt.Errorf("event %d cached intent differs from sequence commit", index)
 		}
-		if !intent.EqualRefs(decoded.RestsOn, trailers) {
-			return scannedLog{}, fmt.Errorf("event %d causal trailers differ from signed intent", index)
-		}
-		format, tree, err := gitstore.ParseTypedOID(decoded.PayloadTree)
-		if err != nil || format != stored.ObjectFormat {
-			return scannedLog{}, fmt.Errorf("event %d payload tree identity", index)
-		}
-		if position.Tree != tree {
-			return scannedLog{}, fmt.Errorf("event %d commit tree differs from signed intent", index)
-		}
-		remaining := desc.PayloadCeiling - uint64(len(position.Message))
-		if err := payloadWithinCeiling(cached.Payload, cached.Attachments, remaining); err != nil {
-			return scannedLog{}, fmt.Errorf("event %d: %w", index, err)
-		}
-		calculated, err := gitstore.HashPayloadTree(stored.ObjectFormat, cached.Payload, cached.Attachments)
-		if err != nil || calculated != tree {
-			return scannedLog{}, fmt.Errorf("event %d payload differs from actor-signed tree", index)
-		}
-		event := Event{
-			Commit: cached.Commit, Timestamp: cached.Timestamp, Intent: decoded, Signed: cloneSigned(cached.Signed), PayloadTree: decoded.PayloadTree,
-			Payload: bytes.Clone(cached.Payload), Attachments: cloneByteMap(cached.Attachments),
-		}
-		key, err := event.Signed.DedupKey()
+		event, err := checkpointEventFromPayload(index, position, cached.Payload, cached.Attachments, stored, desc)
 		if err != nil {
 			return scannedLog{}, err
 		}
-		prior, duplicate, dedupErr := dedupPrior(log.Dedup, key, event.Signed)
-		if dedupErr != nil {
-			return scannedLog{}, fmt.Errorf("event %d: %w", index, dedupErr)
+		if err := appendCheckpointEvent(&log, index, event); err != nil {
+			return scannedLog{}, err
 		}
-		if duplicate {
-			return scannedLog{}, fmt.Errorf("event %d duplicates idempotent event %s", index, prior.Commit)
-		}
-		log.Dedup[key] = eventWithoutPayload(event)
-		log.Events = append(log.Events, event)
 	}
 	return log, nil
+}
+
+func checkpointEventCount(stored checkpoint) int {
+	if stored.Schema == compactCheckpointSchema {
+		return stored.EventCount
+	}
+	return len(stored.Events)
+}
+
+func checkpointEventPositions(stored checkpoint, eventCount int, desc GenesisDescriptor, sequence []gitstore.CommitMetadata) ([]gitstore.CommitMetadata, error) {
+	if stored.Depth < 0 || eventCount < 0 || stored.Depth < eventCount {
+		return nil, errors.New("checkpoint depth is smaller than event count")
+	}
+	if stored.Depth >= len(sequence) || sequence[0].OID != stored.Genesis {
+		return nil, errors.New("checkpoint does not begin the named sequence")
+	}
+	if err := validateChainParents(0, sequence[0].Parents, ""); err != nil {
+		return nil, errors.New("checkpoint genesis has a parent")
+	}
+	for index := 1; index <= stored.Depth; index++ {
+		if err := validateChainParents(index, sequence[index].Parents, sequence[index-1].OID); err != nil {
+			return nil, fmt.Errorf("checkpoint event %d is not single-parent chained", index-1)
+		}
+	}
+	if stored.Depth == 0 {
+		if stored.Head != stored.Genesis {
+			return nil, errors.New("empty checkpoint head is not genesis")
+		}
+	}
+	if sequence[stored.Depth].OID != stored.Head {
+		return nil, errors.New("checkpoint head is not the claimed sequence frontier")
+	}
+	eventPositions := make([]gitstore.CommitMetadata, 0, eventCount)
+	for index := 1; index <= stored.Depth; index++ {
+		position := sequence[index]
+		if uint64(len(position.Message)) > desc.PayloadCeiling {
+			return nil, fmt.Errorf("commit %s envelope exceeds genesis ceiling", position.OID)
+		}
+		_, rotation, err := parseRotationMessage(position.Message)
+		if err != nil {
+			return nil, fmt.Errorf("commit %s: %w", position.OID, err)
+		}
+		if !rotation {
+			eventPositions = append(eventPositions, position)
+		}
+	}
+	if len(eventPositions) != eventCount {
+		return nil, errors.New("checkpoint event count does not match sequence prefix")
+	}
+	return eventPositions, nil
+}
+
+func checkpointEventFromPayload(index int, position gitstore.CommitMetadata, payload []byte, attachments map[string][]byte, stored checkpoint, desc GenesisDescriptor) (Event, error) {
+	actualSigned, trailers, err := intent.ParseEnvelope(position.Message, desc.PayloadCeiling)
+	if err != nil {
+		return Event{}, fmt.Errorf("event %d commit envelope: %w", index, err)
+	}
+	decoded, targetMatches, err := verifySignedTarget(actualSigned, "git:"+stored.ObjectFormat+":"+stored.Genesis)
+	if err != nil {
+		return Event{}, fmt.Errorf("event %d actor signature: %w", index, err)
+	}
+	if !targetMatches {
+		return Event{}, fmt.Errorf("event %d target does not name checkpoint genesis", index)
+	}
+	if !intent.EqualRefs(decoded.RestsOn, trailers) {
+		return Event{}, fmt.Errorf("event %d causal trailers differ from signed intent", index)
+	}
+	format, tree, err := gitstore.ParseTypedOID(decoded.PayloadTree)
+	if err != nil || format != stored.ObjectFormat {
+		return Event{}, fmt.Errorf("event %d payload tree identity", index)
+	}
+	if position.Tree != tree {
+		return Event{}, fmt.Errorf("event %d commit tree differs from signed intent", index)
+	}
+	remaining := desc.PayloadCeiling - uint64(len(position.Message))
+	if err := payloadWithinCeiling(payload, attachments, remaining); err != nil {
+		return Event{}, fmt.Errorf("event %d: %w", index, err)
+	}
+	calculated, err := gitstore.HashPayloadTree(stored.ObjectFormat, payload, attachments)
+	if err != nil || calculated != tree {
+		return Event{}, fmt.Errorf("event %d payload differs from actor-signed tree", index)
+	}
+	return Event{
+		Commit: position.OID, Timestamp: position.Timestamp, Intent: decoded, Signed: actualSigned, PayloadTree: decoded.PayloadTree,
+		Payload: payload, Attachments: attachments,
+	}, nil
+}
+
+func appendCheckpointEvent(log *scannedLog, index int, event Event) error {
+	key, err := event.Signed.DedupKey()
+	if err != nil {
+		return err
+	}
+	prior, duplicate, dedupErr := dedupPrior(log.Dedup, key, event.Signed)
+	if dedupErr != nil {
+		return fmt.Errorf("event %d: %w", index, dedupErr)
+	}
+	if duplicate {
+		return fmt.Errorf("event %d duplicates idempotent event %s", index, prior.Commit)
+	}
+	log.Dedup[key] = eventWithoutPayload(event)
+	log.Events = append(log.Events, event)
+	return nil
 }
 
 // verifyCheckpointRotations derives the key current at the cached frontier
@@ -357,13 +436,13 @@ func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, 
 		return err
 	}
 	stored := checkpoint{
-		Schema: checkpointSchema, ObjectFormat: format, Genesis: log.Verification.Genesis,
+		Schema: compactCheckpointSchema, ObjectFormat: format, Genesis: log.Verification.Genesis,
 		Head: log.Verification.Head, Depth: log.Verification.Depth, Profile: options.Profile,
-		Events: make([]checkpointEvent, 0, len(log.Events)),
+		EventCount: len(log.Events), Events: make([]checkpointEvent, 0, len(log.Events)),
 	}
 	for _, event := range log.Events {
 		stored.Events = append(stored.Events, checkpointEvent{
-			Commit: event.Commit, Timestamp: event.Timestamp, Signed: cloneSigned(event.Signed), Payload: bytes.Clone(event.Payload), Attachments: cloneByteMap(event.Attachments),
+			Payload: event.Payload, Attachments: event.Attachments,
 		})
 	}
 	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
@@ -374,7 +453,7 @@ func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, 
 	if err != nil {
 		return err
 	}
-	commit, err := store.SignedCommit(ctx, tree, "", checkpointMarker+"\n", options.SigningKey, gitstore.CommitIdentity{
+	commit, err := store.SignedCommit(ctx, tree, "", compactCheckpointMarker+"\n", options.SigningKey, gitstore.CommitIdentity{
 		AuthorName: "gitseq checkpoint", AuthorEmail: "checkpoint@gitseq.invalid",
 		CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
 	})
@@ -405,6 +484,9 @@ func validateNamedSequence(head string, commits []gitstore.CommitMetadata) error
 }
 
 func marshalCheckpoint(stored checkpoint, limit int) ([]byte, error) {
+	if stored.Schema == compactCheckpointSchema {
+		return marshalCompactCheckpoint(stored, limit)
+	}
 	data, err := json.Marshal(stored)
 	if err != nil {
 		return nil, err
@@ -416,6 +498,13 @@ func marshalCheckpoint(stored checkpoint, limit int) ([]byte, error) {
 }
 
 func decodeCheckpoint(data []byte) (checkpoint, error) {
+	if bytes.HasPrefix(data, []byte(checkpointContainer)) {
+		return decodeCompactCheckpoint(data)
+	}
+	return decodeLegacyCheckpoint(data)
+}
+
+func decodeLegacyCheckpoint(data []byte) (checkpoint, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var stored checkpoint
@@ -432,6 +521,323 @@ func decodeCheckpoint(data []byte) (checkpoint, error) {
 	}
 	return stored, nil
 }
+
+func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
+	if stored.EventCount != len(stored.Events) || stored.EventCount < 0 {
+		return nil, errors.New("compact checkpoint event count mismatch")
+	}
+	manifest := compactCheckpointManifest{
+		Schema: stored.Schema, ObjectFormat: stored.ObjectFormat, Genesis: stored.Genesis,
+		Head: stored.Head, Depth: stored.Depth, Profile: stored.Profile, Events: stored.EventCount,
+	}
+	encodedManifest, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, err
+	}
+	if len(encodedManifest) > maxCheckpointManifest {
+		return nil, errors.New("checkpoint manifest exceeds limit")
+	}
+	var output bytes.Buffer
+	output.WriteString(checkpointContainer)
+	if err := binary.Write(&output, binary.BigEndian, uint32(len(encodedManifest))); err != nil {
+		return nil, err
+	}
+	output.Write(encodedManifest)
+	if output.Len() > limit {
+		return nil, fmt.Errorf("checkpoint size %d exceeds limit %d", output.Len(), limit)
+	}
+	bounded := &checkpointLimitWriter{output: &output, limit: limit}
+	compressed, err := gzip.NewWriterLevel(bounded, gzip.DefaultCompression)
+	if err != nil {
+		return nil, err
+	}
+	compressed.Header.ModTime = time.Time{}
+	compressed.Header.OS = 255
+	for _, event := range stored.Events {
+		if err := writeCompactCheckpointEvent(compressed, event); err != nil {
+			_ = compressed.Close()
+			return nil, err
+		}
+	}
+	if err := compressed.Close(); err != nil {
+		return nil, err
+	}
+	if output.Len() > limit {
+		return nil, fmt.Errorf("checkpoint size %d exceeds limit %d", output.Len(), limit)
+	}
+	return output.Bytes(), nil
+}
+
+type checkpointLimitWriter struct {
+	output *bytes.Buffer
+	limit  int
+}
+
+func (w *checkpointLimitWriter) Write(data []byte) (int, error) {
+	if len(data) > w.limit-w.output.Len() {
+		return 0, fmt.Errorf("checkpoint exceeds limit %d", w.limit)
+	}
+	return w.output.Write(data)
+}
+
+func writeCompactCheckpointEvent(writer io.Writer, event checkpointEvent) error {
+	if err := writeCheckpointUint64(writer, uint64(len(event.Payload))); err != nil {
+		return err
+	}
+	if _, err := writer.Write(event.Payload); err != nil {
+		return err
+	}
+	if uint64(len(event.Attachments)) > uint64(^uint32(0)) {
+		return errors.New("too many checkpoint attachments")
+	}
+	if err := writeCheckpointUint32(writer, uint32(len(event.Attachments))); err != nil {
+		return err
+	}
+	names := make([]string, 0, len(event.Attachments))
+	for name := range event.Attachments {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if len(name) > int(^uint16(0)) {
+			return errors.New("checkpoint attachment name is too long")
+		}
+		if err := writeCheckpointUint16(writer, uint16(len(name))); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(writer, name); err != nil {
+			return err
+		}
+		content := event.Attachments[name]
+		if err := writeCheckpointUint64(writer, uint64(len(content))); err != nil {
+			return err
+		}
+		if _, err := writer.Write(content); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeCheckpointUint64(writer io.Writer, value uint64) error {
+	var encoded [8]byte
+	binary.BigEndian.PutUint64(encoded[:], value)
+	_, err := writer.Write(encoded[:])
+	return err
+}
+
+func writeCheckpointUint32(writer io.Writer, value uint32) error {
+	var encoded [4]byte
+	binary.BigEndian.PutUint32(encoded[:], value)
+	_, err := writer.Write(encoded[:])
+	return err
+}
+
+func writeCheckpointUint16(writer io.Writer, value uint16) error {
+	var encoded [2]byte
+	binary.BigEndian.PutUint16(encoded[:], value)
+	_, err := writer.Write(encoded[:])
+	return err
+}
+
+func decodeCompactCheckpointManifest(data []byte) (checkpoint, []byte, error) {
+	if !bytes.HasPrefix(data, []byte(checkpointContainer)) {
+		return checkpoint{}, nil, errors.New("checkpoint container marker")
+	}
+	rest := data[len(checkpointContainer):]
+	if len(rest) < 4 {
+		return checkpoint{}, nil, errors.New("checkpoint manifest length")
+	}
+	manifestSize := uint64(binary.BigEndian.Uint32(rest[:4]))
+	rest = rest[4:]
+	if manifestSize == 0 || manifestSize > maxCheckpointManifest || manifestSize > uint64(len(rest)) {
+		return checkpoint{}, nil, errors.New("checkpoint manifest exceeds container")
+	}
+	manifestEnd := int(manifestSize)
+	encoded := rest[:manifestEnd]
+	payload := rest[manifestEnd:]
+	var manifest compactCheckpointManifest
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&manifest); err != nil {
+		return checkpoint{}, nil, err
+	}
+	canonical, err := json.Marshal(manifest)
+	if err != nil || !bytes.Equal(canonical, encoded) {
+		return checkpoint{}, nil, errors.New("checkpoint manifest is not canonical JSON")
+	}
+	if len(payload) == 0 {
+		return checkpoint{}, nil, errors.New("checkpoint payload is empty")
+	}
+	return checkpoint{
+		Schema: manifest.Schema, ObjectFormat: manifest.ObjectFormat, Genesis: manifest.Genesis,
+		Head: manifest.Head, Depth: manifest.Depth, Profile: manifest.Profile, EventCount: manifest.Events,
+	}, payload, nil
+}
+
+func decodeCompactCheckpoint(data []byte) (checkpoint, error) {
+	stored, payload, err := decodeCompactCheckpointManifest(data)
+	if err != nil {
+		return checkpoint{}, err
+	}
+	if stored.EventCount < 0 {
+		return checkpoint{}, errors.New("checkpoint event count is negative")
+	}
+	reader, source, err := openCompactCheckpointPayload(payload)
+	if err != nil {
+		return checkpoint{}, err
+	}
+	stored.Events = make([]checkpointEvent, 0, stored.EventCount)
+	for index := 0; index < stored.EventCount; index++ {
+		event, err := readCompactCheckpointEvent(reader, ^uint64(0))
+		if err != nil {
+			return checkpoint{}, fmt.Errorf("checkpoint event %d: %w", index, err)
+		}
+		stored.Events = append(stored.Events, event)
+	}
+	if err := finishCompactCheckpointPayload(reader, source); err != nil {
+		return checkpoint{}, err
+	}
+	return stored, nil
+}
+
+func validateCompactCheckpoint(stored checkpoint, payload []byte, desc GenesisDescriptor, positions []gitstore.CommitMetadata) (scannedLog, error) {
+	reader, source, err := openCompactCheckpointPayload(payload)
+	if err != nil {
+		return scannedLog{}, err
+	}
+	log := scannedLog{
+		Verification:       Verification{Genesis: stored.Genesis, Head: stored.Head, Depth: stored.Depth, Events: stored.EventCount},
+		Events:             make([]Event, 0, stored.EventCount),
+		Dedup:              make(map[string]Event, stored.EventCount),
+		sequencerPublicKey: desc.SequencerPublicKey,
+	}
+	for index, position := range positions {
+		remaining := desc.PayloadCeiling - uint64(len(position.Message))
+		cached, err := readCompactCheckpointEvent(reader, remaining)
+		if err != nil {
+			return scannedLog{}, fmt.Errorf("checkpoint event %d: %w", index, err)
+		}
+		event, err := checkpointEventFromPayload(index, position, cached.Payload, cached.Attachments, stored, desc)
+		if err != nil {
+			return scannedLog{}, err
+		}
+		if err := appendCheckpointEvent(&log, index, event); err != nil {
+			return scannedLog{}, err
+		}
+	}
+	if err := finishCompactCheckpointPayload(reader, source); err != nil {
+		return scannedLog{}, err
+	}
+	return log, nil
+}
+
+func openCompactCheckpointPayload(payload []byte) (*gzip.Reader, *bytes.Reader, error) {
+	source := bytes.NewReader(payload)
+	reader, err := gzip.NewReader(source)
+	if err != nil {
+		return nil, nil, err
+	}
+	reader.Multistream(false)
+	return reader, source, nil
+}
+
+func finishCompactCheckpointPayload(reader *gzip.Reader, source *bytes.Reader) error {
+	var trailing [1]byte
+	if _, err := reader.Read(trailing[:]); !errors.Is(err, io.EOF) {
+		return errors.New("checkpoint payload has trailing decoded bytes")
+	}
+	if err := reader.Close(); err != nil {
+		return err
+	}
+	if source.Len() != 0 {
+		return errors.New("checkpoint payload has trailing compressed bytes")
+	}
+	return nil
+}
+
+func readCompactCheckpointEvent(reader io.Reader, ceiling uint64) (checkpointEvent, error) {
+	payloadSize, err := readCheckpointUint64(reader)
+	if err != nil {
+		return checkpointEvent{}, err
+	}
+	if payloadSize > ceiling || payloadSize > uint64(maxIntValue()) {
+		return checkpointEvent{}, errors.New("payload exceeds genesis ceiling")
+	}
+	payload := make([]byte, int(payloadSize))
+	if _, err := io.ReadFull(reader, payload); err != nil {
+		return checkpointEvent{}, err
+	}
+	attachmentCount, err := readCheckpointUint32(reader)
+	if err != nil {
+		return checkpointEvent{}, err
+	}
+	if attachmentCount > 1<<20 {
+		return checkpointEvent{}, errors.New("checkpoint attachment count exceeds limit")
+	}
+	var attachments map[string][]byte
+	if attachmentCount > 0 {
+		attachments = make(map[string][]byte, int(attachmentCount))
+	}
+	total := payloadSize
+	for index := uint32(0); index < attachmentCount; index++ {
+		nameSize, err := readCheckpointUint16(reader)
+		if err != nil {
+			return checkpointEvent{}, err
+		}
+		if nameSize == 0 || nameSize > 128 {
+			return checkpointEvent{}, errors.New("invalid checkpoint attachment name length")
+		}
+		nameBytes := make([]byte, int(nameSize))
+		if _, err := io.ReadFull(reader, nameBytes); err != nil {
+			return checkpointEvent{}, err
+		}
+		name := string(nameBytes)
+		if _, duplicate := attachments[name]; duplicate {
+			return checkpointEvent{}, errors.New("duplicate checkpoint attachment")
+		}
+		contentSize, err := readCheckpointUint64(reader)
+		if err != nil {
+			return checkpointEvent{}, err
+		}
+		if total > ceiling || contentSize > ceiling-total || contentSize > uint64(maxIntValue()) {
+			return checkpointEvent{}, errors.New("payload exceeds genesis ceiling")
+		}
+		content := make([]byte, int(contentSize))
+		if _, err := io.ReadFull(reader, content); err != nil {
+			return checkpointEvent{}, err
+		}
+		attachments[name] = content
+		total += contentSize
+	}
+	return checkpointEvent{Payload: payload, Attachments: attachments}, nil
+}
+
+func readCheckpointUint64(reader io.Reader) (uint64, error) {
+	var encoded [8]byte
+	if _, err := io.ReadFull(reader, encoded[:]); err != nil {
+		return 0, err
+	}
+	return binary.BigEndian.Uint64(encoded[:]), nil
+}
+
+func readCheckpointUint32(reader io.Reader) (uint32, error) {
+	var encoded [4]byte
+	if _, err := io.ReadFull(reader, encoded[:]); err != nil {
+		return 0, err
+	}
+	return binary.BigEndian.Uint32(encoded[:]), nil
+}
+
+func readCheckpointUint16(reader io.Reader) (uint16, error) {
+	var encoded [2]byte
+	if _, err := io.ReadFull(reader, encoded[:]); err != nil {
+		return 0, err
+	}
+	return binary.BigEndian.Uint16(encoded[:]), nil
+}
+
+func maxIntValue() int { return int(^uint(0) >> 1) }
 
 func validateObjectID(format, oid string) error {
 	want := 40
