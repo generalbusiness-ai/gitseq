@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-08-18-head-witness.md","body":{"commit":"477634846dbfb6f11b982590c50feb44bc11886c","path":"notes/2026-08-18-head-witness.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:997a35f1c30ea1de3f1ee2fb428f855dace088b0","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-18-head-witness.md."}
