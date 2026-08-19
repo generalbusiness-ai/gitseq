@@ -1,1 +1,1 @@
-{"kind":"report","text":"Done (corrected): the 500k resident-memory-lane child is reissued as a9047812 to codex on the correct live internal/kernel artifact ad5dd1bf (the prior 48b5c77f on b15de2f8 and its report db652bb0 were retired per codex). Full-rebuild stream to bound memory at depth 500k; measurement/bounding only, all contracts preserved; independent claude review."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f7e35a9f610de90a031e0dfd1fee81ae1eb7d80"}
