@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:add8f3960f0ec131a8f5f1306b73e54e39879b65","text":"Retire the whole-repository artifact; succession moves to the per-path artifacts."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:157f05ee340fa319cc356ebb2df53f7e97b83870","text":"Retire the whole-repository artifact; succession moves to the per-path artifacts."}
