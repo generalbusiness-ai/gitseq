@@ -1,0 +1,1 @@
+depth 1000; widths [1,8,16,64,256]; 5 warmups and 100 recorded repetitions at each width; relative limit 0.10; PREVIEW max 64; FIRST-PRODUCTION max 256
