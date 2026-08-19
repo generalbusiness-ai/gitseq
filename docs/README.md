@@ -95,6 +95,8 @@ Read in this order if you are new:
   everything else cites.
 - [Limits](reference/limits.md) — sizes and counts a call is refused for
   exceeding.
+- [Performance evidence](reference/performance.md) — the versioned fan-out
+  measurement contract and its current result.
 - [Glossary](reference/glossary.md) — the vocabulary, in one place.
 
 ## How these pages stay honest
