@@ -1,0 +1,1 @@
+focused; full ./...; targeted race; vet; build; docset; contract validation; gofmt; diff check all pass
