@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -80,7 +81,7 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	if status.Durable.Depth != 1 || len(status.Live.Presence) != 1 || status.Cursor.Frontier[0].Depth != 1 {
 		t.Fatalf("unexpected status: %+v", status)
 	}
-	if len(status.Durable.Vocabulary.Definitions) != 13 || status.Durable.Vocabulary.Binding.Status != "unbound" {
+	if len(status.Durable.Vocabulary.Definitions) != 12 || status.Durable.Vocabulary.Binding.Status != "unbound" {
 		t.Fatalf("status did not serve the room vocabulary and binding state: %+v", status.Durable.Vocabulary)
 	}
 
@@ -900,10 +901,10 @@ func TestPresenceCountReturnsOnlyTheActorAggregate(t *testing.T) {
 	}
 }
 
-// A fold-profile bump must run one resident rebuild, not one audit per browser
+// A checkpoint-backed projection rebuild runs once, not once per browser
 // request. The first reader may leave; another reader still joins the same
-// verification and receives the exact projection only after it is ready.
-func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T) {
+// fold and receives the exact projection only after it is ready.
+func TestCheckpointProjectionRebuildIsSingleFlightAndPublishesAtomically(t *testing.T) {
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -924,16 +925,15 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 		}
 	}
 
-	// Leave the repository with an exact signed checkpoint under the previous
-	// application profile. A fresh current-profile Workspace must reject it and
-	// audit from genesis.
+	// Leave the repository with an exact signed kernel checkpoint. A fresh
+	// workspace reuses it but must still build and publish its own projection.
 	if err := workspace.InvalidateCheckpoint(ctx); err != nil {
 		t.Fatal(err)
 	}
-	oldReader := kernel.NewReader(workspace.Store, kernel.CheckpointOptions{
-		Profile: "deliberately-old-test-profile", SigningKey: workspace.Config.SequencerKey,
+	checkpointWriter := kernel.NewReader(workspace.Store, kernel.CheckpointOptions{
+		Enabled: true, SigningKey: workspace.Config.SequencerKey,
 	})
-	if _, err := oldReader.Load(ctx, workspace.Config.Genesis); err != nil {
+	if _, err := checkpointWriter.Load(ctx, workspace.Config.Genesis); err != nil {
 		t.Fatal(err)
 	}
 	cold, err := app.Open(ctx, repo)
@@ -945,10 +945,12 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 	var heldOnce, releaseOnce sync.Once
 	release := func() { releaseOnce.Do(func() { close(releaseRebuild) }) }
 	t.Cleanup(release)
-	cold.SetRebuildTestGate(func(progress kernel.Progress) {
-		if progress.Verified != 2 {
-			return
+	var rebuilds atomic.Int64
+	cold.SetProjectionRebuildTestGate(func(total int) {
+		if total != records+1 {
+			t.Errorf("projection rebuild events = %d, want %d", total, records+1)
 		}
+		rebuilds.Add(1)
 		heldOnce.Do(func() { close(rebuildHeld) })
 		<-releaseRebuild
 	})
@@ -973,29 +975,19 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 		firstDone <- err
 	}()
 
-	deadline := time.Now().Add(20 * time.Second)
 	select {
 	case <-rebuildHeld:
 	case <-time.After(20 * time.Second):
 		cancelFirst()
-		t.Fatal("cold rebuild did not reach the deterministic mid-scan gate")
+		t.Fatal("checkpoint projection rebuild did not reach its deterministic gate")
 	}
 	var observed rebuildReport
 	if err := getJSON(httpServer.URL+"/v0/rebuild", &observed); err != nil {
 		t.Fatal(err)
 	}
-	if !observed.Running || observed.Total == 0 || observed.Verified == 0 || observed.Verified >= observed.Total/2 {
+	if observed.Running || observed.Total != 0 || observed.Verified != 0 {
 		cancelFirst()
-		t.Fatalf("no moving cold-rebuild report was observed: %+v", observed)
-	}
-	var bounded map[string]any
-	if err := getJSON(httpServer.URL+"/v0/rebuild", &bounded); err != nil {
-		t.Fatal(err)
-	}
-	for key := range bounded {
-		if key != "running" && key != "verified" && key != "total" {
-			t.Fatalf("rebuild endpoint exposed unbounded field %q", key)
-		}
+		t.Fatalf("projection-only rebuild was reported as a cold kernel audit: %+v", observed)
 	}
 
 	type statusResult struct {
@@ -1019,75 +1011,27 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 		t.Fatal("the first status reader did not stop waiting after cancellation")
 	}
 
-	// A third reader remains pending while the rebuild is held after two fully
-	// verified commits; no sleep or verifier speed determines this interval.
-	// no stale or partial HTTP response escapes merely because it asked early.
-	thirdCtx, cancelThird := context.WithCancel(ctx)
-	thirdRequest, err := http.NewRequestWithContext(thirdCtx, http.MethodGet, httpServer.URL+"/v0/status", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	thirdDone := make(chan error, 1)
-	go func() {
-		response, err := http.DefaultClient.Do(thirdRequest)
-		if response != nil {
-			response.Body.Close()
-		}
-		thirdDone <- err
-	}()
+	// The joined reader remains pending while authenticated events are held
+	// before the fold. No stale or partial projection may escape.
 	select {
-	case err := <-thirdDone:
-		t.Fatalf("status returned before the known mid-scan rebuild finished: %v", err)
+	case result := <-secondDone:
+		t.Fatalf("status returned before projection publication: %+v", result)
 	case <-time.After(100 * time.Millisecond):
-	}
-	var stillRunning rebuildReport
-	if err := getJSON(httpServer.URL+"/v0/rebuild", &stillRunning); err != nil {
-		t.Fatal(err)
-	}
-	if !stillRunning.Running || stillRunning.Verified != observed.Verified || stillRunning.Total != observed.Total {
-		t.Fatalf("the rebuild did not remain active while the third status request stayed pending: %+v", stillRunning)
-	}
-	cancelThird()
-	select {
-	case err := <-thirdDone:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("the cancelled third reader returned %v, want context cancellation", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the third status reader did not stop after cancellation")
 	}
 	release()
 
-	lastVerified, fixedTotal := observed.Verified, observed.Total
 	var final Status
-	for time.Now().Before(deadline) {
-		var progress rebuildReport
-		if err := getJSON(httpServer.URL+"/v0/rebuild", &progress); err != nil {
-			t.Fatal(err)
+	select {
+	case result := <-secondDone:
+		if result.err != nil {
+			t.Fatal(result.err)
 		}
-		if !progress.Running {
-			select {
-			case result := <-secondDone:
-				if result.err != nil {
-					t.Fatal(result.err)
-				}
-				final = result.status
-			case <-time.After(2 * time.Second):
-				t.Fatal("rebuild became quiet before the joined status reader received the projection")
-			}
-			break
-		}
-		if progress.Total > 0 && progress.Total != fixedTotal {
-			t.Fatalf("one rebuild changed total from %d to %d", fixedTotal, progress.Total)
-		}
-		if progress.Verified < lastVerified {
-			t.Fatalf("progress restarted from %d at %d after the first reader cancelled", lastVerified, progress.Verified)
-		}
-		lastVerified = progress.Verified
-		time.Sleep(time.Millisecond)
+		final = result.status
+	case <-time.After(5 * time.Second):
+		t.Fatal("the joined status reader did not receive the published projection")
 	}
-	if final.Durable.Head == "" {
-		t.Fatal("the joined status reader never received a final projection")
+	if rebuilds.Load() != 1 {
+		t.Fatalf("projection rebuilds = %d, want one", rebuilds.Load())
 	}
 	expectedWorkspace, err := app.Open(ctx, repo)
 	if err != nil {
@@ -1119,6 +1063,129 @@ func TestProfileMismatchRebuildIsSingleFlightAndPublishesAtomically(t *testing.T
 	}
 	if !reflect.DeepEqual(immediate.Durable, final.Durable) {
 		t.Fatal("quiet status did not return the complete projection that was atomically published")
+	}
+}
+
+// A repository with no usable checkpoint exposes one bounded, moving kernel
+// audit through /v0/rebuild. Concurrent status readers join that audit and no
+// reader receives a projection until the verified fold is complete.
+func TestColdAuditProgressIsSingleFlightAndPublishesAtomically(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const records = 30
+	for index := range records {
+		if _, err := workspace.Act(ctx, "human", app.Act{
+			Verb: app.VerbState, Kind: workroom.KindAssert,
+			Text:           "cold rebuild record " + strconv.Itoa(index),
+			IdempotencyKey: "cold-rebuild-progress-" + strconv.Itoa(index),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := workspace.InvalidateCheckpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	cold, err := app.Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rebuildHeld := make(chan struct{})
+	releaseRebuild := make(chan struct{})
+	var heldOnce, releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseRebuild) }) }
+	t.Cleanup(release)
+	cold.SetRebuildTestGate(func(progress kernel.Progress) {
+		if progress.Verified != 2 {
+			return
+		}
+		heldOnce.Do(func() { close(rebuildHeld) })
+		<-releaseRebuild
+	})
+	server, err := New(cold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer func() {
+		release()
+		httpServer.Close()
+	}()
+
+	type statusResult struct {
+		status Status
+		err    error
+	}
+	requestStatus := func() <-chan statusResult {
+		done := make(chan statusResult, 1)
+		go func() {
+			var status Status
+			done <- statusResult{status: status, err: getJSON(httpServer.URL+"/v0/status", &status)}
+		}()
+		return done
+	}
+	firstDone := requestStatus()
+	select {
+	case <-rebuildHeld:
+	case <-time.After(20 * time.Second):
+		t.Fatal("cold audit did not reach its deterministic progress gate")
+	}
+
+	var observed rebuildReport
+	if err := getJSON(httpServer.URL+"/v0/rebuild", &observed); err != nil {
+		t.Fatal(err)
+	}
+	// The kernel sequence contains the two initialization records in addition
+	// to the application records appended above.
+	if !observed.Running || observed.Verified != 2 || observed.Total != records+2 {
+		t.Fatalf("moving cold-audit report = %+v, want 2/%d", observed, records+2)
+	}
+	var bounded map[string]any
+	if err := getJSON(httpServer.URL+"/v0/rebuild", &bounded); err != nil {
+		t.Fatal(err)
+	}
+	for key := range bounded {
+		if key != "running" && key != "verified" && key != "total" {
+			t.Fatalf("rebuild endpoint exposed unbounded field %q", key)
+		}
+	}
+
+	secondDone := requestStatus()
+	select {
+	case result := <-secondDone:
+		t.Fatalf("joined status returned during the held audit: %+v", result)
+	case <-time.After(100 * time.Millisecond):
+	}
+	release()
+
+	var first, second Status
+	for destination, done := range map[*Status]<-chan statusResult{&first: firstDone, &second: secondDone} {
+		select {
+		case result := <-done:
+			if result.err != nil {
+				t.Fatal(result.err)
+			}
+			*destination = result.status
+		case <-time.After(5 * time.Second):
+			t.Fatal("joined status did not receive the completed projection")
+		}
+	}
+	if first.Durable.Head == "" || !reflect.DeepEqual(first.Durable, second.Durable) {
+		t.Fatal("joined readers did not receive the same complete projection")
+	}
+	var quiet rebuildReport
+	if err := getJSON(httpServer.URL+"/v0/rebuild", &quiet); err != nil {
+		t.Fatal(err)
+	}
+	if quiet.Running || quiet.Verified != 0 || quiet.Total != 0 {
+		t.Fatalf("completed cold audit remained visible: %+v", quiet)
 	}
 }
 

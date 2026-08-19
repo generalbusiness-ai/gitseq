@@ -190,7 +190,7 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	if snapshot.Depth != 7 || len(snapshot.Projection.Commitments) != 1 || snapshot.Projection.Commitments[0].Status != "satisfied" {
 		t.Fatalf("unexpected snapshot: depth=%d commitments=%+v", snapshot.Depth, snapshot.Projection.Commitments)
 	}
-	if len(snapshot.Vocabulary.Definitions) != 13 || snapshot.Vocabulary.Binding.Status != "unbound" {
+	if len(snapshot.Vocabulary.Definitions) != 12 || snapshot.Vocabulary.Binding.Status != "unbound" {
 		t.Fatalf("snapshot vocabulary = %+v", snapshot.Vocabulary)
 	}
 	if _, err := Open(ctx, repo); err != nil {
@@ -1046,6 +1046,50 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 	}
 	if workspace.snapshotFolder == folder || recovered.Head != fourth.Head || recovered.Depth != fourth.Depth {
 		t.Fatalf("discarded projection did not recover by full audit: fourth=%+v recovered=%+v", fourth, recovered)
+	}
+}
+
+func TestProjectionProfileChangeRebuildsFromTheSameKernelCheckpoint(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldFolder := workspace.snapshotFolder
+	oldProfile := workspace.snapshotProfile
+	completed := &snapshotFlight{
+		done: make(chan struct{}),
+		result: SourcedSnapshot{
+			Snapshot: before,
+			Source:   SnapshotSourceSignedCheckpointTail,
+		},
+	}
+	close(completed.done)
+	workspace.flightMu.Lock()
+	workspace.flight.Store(completed)
+	workspace.flightMu.Unlock()
+	workspace.selected = selection{host: host{
+		application: defaultApplication,
+		foldVersion: workroom.ProfileVersion + "-projection-change",
+		newFolder:   workroom.NewFolder,
+	}}
+
+	rebuilt, err := workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rebuilt.Source != SnapshotSourceSignedCheckpointTail {
+		t.Fatalf("projection profile change source = %q, want signed kernel checkpoint", rebuilt.Source)
+	}
+	if workspace.snapshotFolder == oldFolder || workspace.snapshotProfile == oldProfile {
+		t.Fatalf("projection cache survived its profile change: folder=%p profile=%q", workspace.snapshotFolder, workspace.snapshotProfile)
+	}
+	if !reflect.DeepEqual(rebuilt.Snapshot, before) {
+		t.Fatalf("profile-only rebuild changed the projection:\nbefore=%+v\nafter=%+v", before, rebuilt.Snapshot)
 	}
 }
 

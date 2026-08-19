@@ -437,15 +437,18 @@ func (f *foldState) addDecision(record Record, parsed *parsedRecord, index int, 
 func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 	decision := Decision{Event: record.record.ID, Verdict: Effective, Reason: "statement recorded"}
 	definition, exists := f.definitions[state.Kind]
+	if !exists && state.Kind == KindFoldActivation && (record.record.Schema == SchemaStateLegacy || record.record.Schema == SchemaStateV1) {
+		definition, exists = legacyFoldActivationDefinition(), true
+	}
 	if !exists {
 		return Decision{Event: record.record.ID, Verdict: UndefinedKind, Reason: fmt.Sprintf("undefined kind %q", state.Kind)}
 	}
 	record.definition = &definition
 	// state@1 closes the two path shapes which cannot participate in merge
-	// succession. Keeping the rule on the new schema is deliberate: state@0
+	// succession. Keeping the rule off state@0 is deliberate: old
 	// records are append-only history, and changing their old decisions during
 	// a refold would erase effective artifacts from provenance.
-	if record.record.Schema == SchemaState && definition.Render == RenderArtifact {
+	if record.record.Schema != SchemaStateLegacy && definition.Render == RenderArtifact {
 		path := state.Body["path"]
 		if path == "." {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "artifact path must not be the whole-repository path ."}
@@ -657,6 +660,9 @@ func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
 	}
 	if target.decision.Verdict != Effective {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "ratify target is not effective"}
+	}
+	if state := target.body.(*State); state.Kind == KindFoldActivation && record.record.Schema != SchemaRatifyLegacy {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "fold activation moved to the host binding"}
 	}
 	if f.retired(ratify.Target) {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "retired statement cannot be ratified"}

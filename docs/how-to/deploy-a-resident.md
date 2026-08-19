@@ -127,10 +127,12 @@ the ref keeps it reachable to Git garbage collection and can repair a missing
 or damaged selector, while the selector can recover from an unavailable or
 rewritten ref. Both are selectors, not proof. The object contains the original
 actor-signed events at one fully audited sequence head and is signed by the
-sequencer key **current at that head**. On restart gitseq checks its object format,
-genesis, exact head and fold-profile version, proves the commit sequence
-from genesis to that head from local metadata, and re-reads sequencer
-signatures and payload objects only for events after the frontier.
+sequencer key **current at that head**. On restart gitseq checks its checkpoint
+schema, object format, genesis and exact head, proves the commit sequence from
+genesis to that head from local metadata, and re-reads sequencer signatures and
+payload objects only for events after the frontier. The checkpoint contains no
+folded state and is not keyed by the application profile: a fold change reuses
+the authenticated events and rebuilds the separately profile-gated projection.
 
 Because the sequencer key can be rotated in band, deriving the right key
 is part of the check rather than an assumption. Every rotation inside the

@@ -73,7 +73,7 @@ type Result struct {
 
 type Options struct {
 	SigningKey        string
-	CheckpointProfile string
+	CheckpointEnabled bool
 	CheckpointPointer CheckpointPointer
 	Failpoint         func(string)
 	MaxRetries        int
@@ -127,7 +127,7 @@ type logCache struct {
 func NewSubmitter(store gitstore.Store, options Options) *Submitter {
 	return &Submitter{
 		store: store, options: options,
-		cache: logCache{checkpoint: CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: options.SigningKey, Pointer: options.CheckpointPointer}},
+		cache: logCache{checkpoint: CheckpointOptions{Enabled: options.CheckpointEnabled, SigningKey: options.SigningKey, Pointer: options.CheckpointPointer}},
 	}
 }
 
@@ -488,7 +488,7 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 				log, err = scanHead(ctx, store, targetOID, head, false, nil)
 			}
 		} else {
-			advance, advanceErr := cache.advance(ctx, store, targetOID, cache.checkpoint.Profile != "", false, nil)
+			advance, advanceErr := cache.advance(ctx, store, targetOID, cache.checkpoint.enabled(), false, nil)
 			err = advanceErr
 			head = advance.Verification.Head
 			log = cache.log
@@ -736,7 +736,7 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 	var log scannedLog
 	fromCheckpoint := false
 	checkpointAdvanced := false
-	if c.checkpoint.Profile != "" {
+	if c.checkpoint.enabled() {
 		log, checkpointAdvanced, err = loadCheckpoint(ctx, store, target, head, c.checkpoint)
 		if err == nil {
 			fromCheckpoint = true
@@ -756,7 +756,7 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 	}
 
 	checkpointCurrent := fromCheckpoint && !checkpointAdvanced
-	if c.checkpoint.Profile != "" && c.checkpoint.SigningKey != "" && !checkpointCurrent {
+	if c.checkpoint.enabled() && c.checkpoint.SigningKey != "" && !checkpointCurrent {
 		if writeCheckpoint(ctx, store, log, c.checkpoint) == nil {
 			c.checkpointWrites++
 			checkpointCurrent = true
@@ -788,7 +788,7 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 }
 
 func (c *logCache) checkpointWritable() bool {
-	return c.checkpoint.Profile != "" && c.checkpoint.SigningKey != ""
+	return c.checkpoint.enabled() && c.checkpoint.SigningKey != ""
 }
 
 func (c *logCache) maybeWriteCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog) {

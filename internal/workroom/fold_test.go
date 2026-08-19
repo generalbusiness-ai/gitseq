@@ -1292,8 +1292,8 @@ func TestPrefixBindingBindsARecordThatEndsAtItsTransition(t *testing.T) {
 	}}
 	records := []Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
-		event(t, "e1", operator, SchemaState, activation),
-		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e1", operator, SchemaStateLegacy, activation),
+		event(t, "e2", operator, SchemaRatifyLegacy, Ratify{Target: "e1"}, "e1"),
 	}
 	unratified := Evaluate(records[:2]).Vocabulary.Binding
 	if unratified.Status != "unbound" || len(unratified.Transitions) != 0 {
@@ -1305,6 +1305,64 @@ func TestPrefixBindingBindsARecordThatEndsAtItsTransition(t *testing.T) {
 	}
 	if bound.Transitions[0].Activation != "e1" || bound.Transitions[0].Ratification != "e2" || !bound.Transitions[0].Prefix {
 		t.Fatalf("transition = %+v", bound.Transitions[0])
+	}
+}
+
+func TestCurrentStateCannotActivateAFoldButLegacyHistoryStillReplays(t *testing.T) {
+	activation := State{Kind: KindFoldActivation, Text: "activate the next fold", Body: map[string]string{
+		"fold": "spike/internal/workroom@abc123", "entry": "gitseq/spike/internal/workroom",
+		"interface": "workroom-fold@1", "toolchain": "go1.25.0", "prefix": "genesis",
+	}}
+	seed := event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}})
+
+	current := Evaluate([]Record{seed, event(t, "new", operator, SchemaState, activation, "e0")})
+	decision, _ := current.Projection.Decision("new")
+	if decision.Verdict != UndefinedKind || len(current.Vocabulary.Binding.Transitions) != 0 {
+		t.Fatalf("current activation = %+v binding=%+v, want undefined with no transition", decision, current.Vocabulary.Binding)
+	}
+	for _, definition := range current.Vocabulary.Definitions {
+		if definition.Name == KindFoldActivation {
+			t.Fatalf("current vocabulary still advertises fold activation: %+v", definition)
+		}
+	}
+
+	for _, schema := range []string{SchemaStateLegacy, SchemaStateV1} {
+		legacy := Evaluate([]Record{
+			seed,
+			event(t, "old", operator, schema, activation, "e0"),
+			event(t, "old-ratified", operator, SchemaRatifyLegacy, Ratify{Target: "old"}, "old"),
+		})
+		decision, _ = legacy.Projection.Decision("old")
+		if decision.Verdict != Effective || legacy.Vocabulary.Binding.Status != "bound" || len(legacy.Vocabulary.Binding.Transitions) != 1 {
+			t.Fatalf("%s activation = %+v binding=%+v, want historical bridge", schema, decision, legacy.Vocabulary.Binding)
+		}
+	}
+	refused := Evaluate([]Record{
+		seed,
+		event(t, "old", operator, SchemaStateLegacy, activation, "e0"),
+		event(t, "new-ratification", operator, SchemaRatify, Ratify{Target: "old"}, "old"),
+	})
+	decision, _ = refused.Projection.Decision("new-ratification")
+	if decision.Verdict != Ineffective || decision.Reason != "fold activation moved to the host binding" || len(refused.Vocabulary.Binding.Transitions) != 0 {
+		t.Fatalf("current ratification of legacy activation = %+v binding=%+v", decision, refused.Vocabulary.Binding)
+	}
+}
+
+func TestKindDefinitionCannotCarryAFoldCodePointer(t *testing.T) {
+	definition := KindDefinition{
+		Name: "finding", Fields: []FieldConstraint{}, Basis: []BasisConstraint{},
+		Satisfier: SatisfierNone, Render: RenderNote, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleNone, Guidance: "Record one finding.",
+	}
+	state := kindDefinitionState(t, definition)
+	state.Body["fold"] = "internal/workroom@abc123"
+	result := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "definition", operator, SchemaState, state, "e0"),
+	})
+	decision, _ := result.Decision("definition")
+	if decision.Verdict != Uninterpretable || !strings.Contains(decision.Reason, "fold is not part") {
+		t.Fatalf("kind definition carrying code = %+v", decision)
 	}
 }
 
@@ -1526,8 +1584,8 @@ func TestFoldActivationRecordsPrefixBoundaryThenNamesExecutionGap(t *testing.T) 
 	}}
 	result := Evaluate([]Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
-		event(t, "e1", operator, SchemaState, activation),
-		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e1", operator, SchemaStateLegacy, activation),
+		event(t, "e2", operator, SchemaRatifyLegacy, Ratify{Target: "e1"}, "e1"),
 		event(t, "e3", operator, SchemaState, State{Kind: KindAssert, Text: "after the seam"}),
 	})
 	if result.Vocabulary.Binding.Status != "uninterpretable" || len(result.Vocabulary.Binding.Transitions) != 1 {

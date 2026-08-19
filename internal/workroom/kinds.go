@@ -183,19 +183,25 @@ func starterCatalog() map[Kind]KindDefinition {
 			"Activate an admission profile. The newest ratified profile matching this genesis governs; retiring one restores its predecessor."),
 		starter(KindKindDef, present("name", "fields", "basis", "satisfier", "render", "staleness", "lifecycle", "guidance"), nil, "role:ratifier", RenderGovernance, LifecycleNone,
 			"Declare a kind using the finite constraint algebra. Guidance is visible to actors and powerless in the fold."),
-		starter(KindFoldActivation, []FieldConstraint{
-			{Operator: FieldPresent, Name: "fold"}, {Operator: FieldType, Name: "fold", Type: ValuePathCommit},
-			{Operator: FieldPresent, Name: "entry"}, {Operator: FieldPresent, Name: "interface"},
-			{Operator: FieldPresent, Name: "toolchain"}, {Operator: FieldPresent, Name: "prefix"},
-			{Operator: FieldOneOf, Name: "prefix", Values: []string{"genesis"}},
-		}, nil, "role:ratifier", RenderGovernance, LifecycleNone,
-			"Bind a published fold to a precise transition. Existing rooms must declare prefix=genesis."),
 	}
 	catalog := make(map[Kind]KindDefinition, len(definitions))
 	for _, definition := range definitions {
 		catalog[definition.Name] = definition
 	}
 	return catalog
+}
+
+// legacyFoldActivationDefinition is the read bridge for append-only state@0
+// history. New vocabulary does not contain this kind: fold upgrades are host
+// bindings, authorized by the initializing key before an application folds.
+func legacyFoldActivationDefinition() KindDefinition {
+	return starter(KindFoldActivation, []FieldConstraint{
+		{Operator: FieldPresent, Name: "fold"}, {Operator: FieldType, Name: "fold", Type: ValuePathCommit},
+		{Operator: FieldPresent, Name: "entry"}, {Operator: FieldPresent, Name: "interface"},
+		{Operator: FieldPresent, Name: "toolchain"}, {Operator: FieldPresent, Name: "prefix"},
+		{Operator: FieldOneOf, Name: "prefix", Values: []string{"genesis"}},
+	}, nil, "role:ratifier", RenderGovernance, LifecycleNone,
+		"Historical state@0 fold activation retained for deterministic replay; new upgrades use the host binding.")
 }
 
 func starter(name Kind, fields []FieldConstraint, basis []BasisConstraint, satisfier string, render RenderClass, lifecycle Lifecycle, guidance string) KindDefinition {
@@ -225,6 +231,9 @@ func countKinds(minimum, maximum int, kinds ...Kind) []BasisConstraint {
 }
 
 func decodeKindDefinition(state State, source string) (KindDefinition, error) {
+	if _, carriesCode := state.Body["fold"]; carriesCode {
+		return KindDefinition{}, errors.New("fold is not part of the declarative kind-definition language")
+	}
 	definition := KindDefinition{
 		Name: Kind(state.Body["name"]), Satisfier: state.Body["satisfier"],
 		Render: RenderClass(state.Body["render"]), Staleness: StalenessMode(state.Body["staleness"]),
@@ -279,10 +288,9 @@ func decodeCanonicalString(value string, destination any) error {
 var identifier = regexp.MustCompile(`^[a-z][a-z0-9]*([-_][a-z0-9]+)*$`)
 
 // foldInterpreted names the kinds the fold reads directly rather than through
-// their definition: the two meta kinds it interprets to grow the catalog and
-// bind a fold, and roster, from which it extracts membership and authority.
-// A redefinition of any of them would change what the fold does without
-// changing how the fold reads it, so none of them may be redefined.
+// their definition. fold-activation remains reserved because state@0 history
+// still passes through its migration bridge; allowing a declaration to reuse
+// that name would make one token mean both declarative data and trusted code.
 var foldInterpreted = map[Kind]bool{KindKindDef: true, KindFoldActivation: true, KindRoster: true}
 
 func validateDefinition(definition KindDefinition) error {

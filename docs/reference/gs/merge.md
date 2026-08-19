@@ -156,10 +156,11 @@ predecessor in the same batch.
 | A file is deleted | Its exact old path is retired with no successor. A live covering directory still receives its successor because the directory changed. |
 | A successor rests on the predecessor the same merge retires | The successor stays current. The work stood on what it replaces, and the merge that publishes one withdraws the other in the same act, so that withdrawal is not news arriving underneath it. Only artifacts that merge actually published — at its merge head, at a path it declared — read it that way; any other record citing the receipt goes stale as usual. |
 
-`workroom/state@1` refuses new artifacts at `.` and refuses comma-joined
-pseudo-paths. Historical `state@0` artifacts keep their original decisions but
-valid historical paths remain candidates for retirement and succession. New
-raw submissions cannot use `state@0` to bypass the path rule.
+`workroom/state@1` and the current `workroom/state@2` refuse new artifacts at
+`.` and refuse comma-joined pseudo-paths. Historical `state@0` artifacts keep
+their original decisions but valid historical paths remain candidates for
+retirement and succession. New raw submissions cannot use retired state@0 or
+state@1 admission to bypass current rules.
 
 ### Citations across a merge
 
@@ -274,12 +275,14 @@ claim.
 
 ### Restart residents at the merged commit
 
-The merge-succession change advanced the state schema to `workroom/state@1`;
-this commitment-lifecycle change advances the fold profile to
-`workroom-fold@4`. A binary built before the lifecycle change projects assigned
-implementation commitments under the old report-and-ratify contract. Restart
-every resident sequencer and MCP adapter at the merged commit before relying on
-the new commitment status.
+The merge-succession change advanced the state schema to `workroom/state@1`,
+and the commitment-lifecycle change advanced the fold profile to
+`workroom-fold@4`. The schema/fold split advances the schemas to
+`workroom/state@2` and `workroom/ratify@1`, and advances the application
+projection profile to `workroom-fold@5`. Older state and ratification records
+remain readable, but a binary built before these changes projects commitments
+under the old contract and cannot interpret the new schemas. Restart every
+resident sequencer and MCP adapter at the merged commit.
 
 ## See also
 

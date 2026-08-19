@@ -99,14 +99,20 @@ The kernel owns:
   attachments;
 - verification of history, object shape, signatures, ordering, and payload
   binding;
-- signed, profile-bound verification checkpoints and authenticated descendant
-  continuation, with an optional opaque selector supplied by the host; and
+- signed, profile-independent verification checkpoints containing only
+  kernel-verified event material, plus authenticated descendant continuation,
+  with an optional opaque selector supplied by the host; and
 - sequencer key rotation, sealing, and verified continuation.
 
 An application may supply an admission hook. The kernel owns when that hook is
 enforced and what signed envelope and capability material it may inspect. The
 application owns the policy. The hook cannot inspect application payload
 bytes, so it cannot silently turn the kernel into an application interpreter.
+
+The current compact checkpoint schema is `gitseq-checkpoint@3`. It authenticates
+kernel identity and event material but carries no application profile. Readers
+also accept authenticated JSON `@1` and compact `@2` checkpoints; their required
+historical profile field is ignored rather than used as an eligibility key.
 
 The kernel does **not** understand:
 
@@ -180,6 +186,13 @@ unauthorized, unparseable, or malformed has no force and leaves the previous
 answer standing. Nobody able to append can therefore make a repository
 unreadable by recording one, and a host never refuses to interpret a
 repository because of a record it should have ignored.
+
+A fold upgrade is therefore a host-binding replacement, not an application
+statement kind. Its source commit and fold version name the interpreter code,
+and its position in the sequence is the transition. The initializing key is
+the binding authority; the host accepts the replacement only when the named
+application and fold are held by the build that opens the repository. The
+source URL remains inert provenance and cannot install code.
 
 Opening a repository has one fixed order: **read the binding, select the named
 interpreter, then fold**. A host must never fold with a guessed interpreter and
@@ -269,9 +282,25 @@ different schema family.
 Workroom state schemas are prospectively versioned when admission tightens.
 `workroom/state@0` remains readable with the decisions it historically made;
 `workroom/state@1` refuses whole-repository and comma-joined artifact paths.
-This preserves the append-only record while preventing new pointers that
-merge succession cannot maintain. The schema version is Workroom application
-meaning, not a kernel protocol feature.
+`workroom/state@2` preserves those path rules and removes new in-fold
+activation authority. `workroom/ratify@1` closes the other side of that
+boundary: it cannot make an older, previously unratified activation take
+effect after host binding took ownership of upgrades. This preserves the
+append-only record while preventing new pointers that merge succession cannot
+maintain. The schema version is Workroom application meaning, not a kernel
+protocol feature.
+
+The same bridge preserves state@0/state@1 `fold-activation` history ratified
+with `workroom/ratify@0`:
+the old transition and the uninterpretable seam after it replay exactly as
+before. `fold-activation` is absent from the current starter vocabulary, new
+state@2 records under that name are undefined, and the application refuses a
+new state@0/state@1 activation or a ratification@0 submitted after the
+boundary. A ratification@1 of an activation is ineffective even if it bypasses
+application admission.
+New upgrades are binding replacements at the host layer. `kind-def` remains a
+finite declarative constraint language; a definition carrying `body.fold` is
+uninterpretable and cannot introduce a code pointer.
 
 ### 6. Projections and queries
 
@@ -340,12 +369,12 @@ the same result.
 |---|---|---|
 | `internal/gitstore` | Ordinary Git storage | Implements object and ref operations. It must remain ignorant of application schemas. |
 | `internal/intent` | Kernel | Owns canonical signed intents and actor-key fingerprints. Schema and `rests_on` are bounded opaque strings. |
-| `internal/kernel` | Kernel | Uses only Git storage, intents, and an optional host interface that loads or stores an opaque checkpoint object ID. It performs no local checkpoint filesystem I/O. Its application admission callback receives envelope facts, not payload meaning, and every checkpoint candidate is verified from kernel facts. |
+| `internal/kernel` | Kernel | Uses only Git storage, intents, and an optional host interface that loads or stores an opaque checkpoint object ID. It performs no local checkpoint filesystem I/O. Its application admission callback receives envelope facts, not payload meaning. A checkpoint caches only kernel-verified events and kernel identity (schema, object format, genesis, and authenticated sequencer-key lineage), never projection state or an application profile; every candidate is verified from those kernel facts. |
 | `internal/custody` | Operational kernel support | Manages local keys and migrations above the kernel. Custody policy is not event ontology. |
 | `internal/nexus` | Live runtime | Owns process-local coordination. It is independent of the durable Workroom fold. |
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
 | Host binding vocabulary | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and read-binding/select/fold order shared by every host. It has no application ontology. |
-| `internal/app` | Application host and boundary adapter | The deliberate coupling point: it builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also reads the host binding and selects one interpreter as a workspace opens, reports kernel verification ahead of any refusal to interpret, and keys the checkpoint profile to the selected fold so no checkpoint is reused across interpreters. Workroom is the one interpreter this build holds. |
+| `internal/app` | Application host and boundary adapter | The deliberate coupling point: it builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also reads the host binding and selects one interpreter as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, and live state. |
 | `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff and composes the Workroom receipt, successor artifacts, and retirements; Git remains outside the Workroom interpreter. Command grouping must not move Workroom concepts into the kernel packages. |

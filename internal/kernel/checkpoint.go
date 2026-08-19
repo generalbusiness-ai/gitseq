@@ -19,31 +19,35 @@ import (
 )
 
 const (
-	checkpointSchema        = "gitseq-checkpoint@1"
-	compactCheckpointSchema = "gitseq-checkpoint@2"
-	checkpointFile          = "checkpoint"
-	checkpointMarker        = "gitseq-checkpoint-v1"
-	compactCheckpointMarker = "gitseq-checkpoint-v2"
-	checkpointContainer     = "gitseq-checkpoint-container-v2\x00"
-	checkpointInterval      = 256
-	maxCheckpointBytes      = 256 << 20
-	maxCheckpointManifest   = 1 << 20
+	checkpointSchema                = "gitseq-checkpoint@3"
+	profiledCompactCheckpointSchema = "gitseq-checkpoint@2"
+	legacyCheckpointSchema          = "gitseq-checkpoint@1"
+	checkpointFile                  = "checkpoint"
+	checkpointMarker                = "gitseq-checkpoint-v3"
+	profiledCompactCheckpointMarker = "gitseq-checkpoint-v2"
+	legacyCheckpointMarker          = "gitseq-checkpoint-v1"
+	checkpointContainer             = "gitseq-checkpoint-container-v2\x00"
+	checkpointInterval              = 256
+	maxCheckpointBytes              = 256 << 20
+	maxCheckpointManifest           = 1 << 20
 )
 
 var ErrNoUsableCheckpoint = errors.New("no usable checkpoint")
 
-// CheckpointOptions enables the optional Git-backed restart cache. Profile is
-// the application fold contract; changing it makes old derived state
-// ineligible. SigningKey is optional: readers without sequencer custody may
-// consume a valid checkpoint but never publish one.
+// CheckpointOptions enables the optional Git-backed restart cache. The cache
+// contains only kernel-verified event material and is reusable across
+// application folds. SigningKey is optional: readers without sequencer
+// custody may consume a valid checkpoint but never publish one.
 type CheckpointOptions struct {
-	Profile    string
+	Enabled    bool
 	SigningKey string
 	// Pointer is an optional host-owned, process-independent selector for a
 	// signed Git checkpoint object. The kernel assigns it no authority: every
 	// selected object still passes the complete checkpoint verification path.
 	Pointer CheckpointPointer
 }
+
+func (o CheckpointOptions) enabled() bool { return o.Enabled }
 
 // CheckpointPointer is the host seam for local checkpoint selection. It keeps
 // filesystem policy outside the kernel; implementations store only an opaque
@@ -54,14 +58,16 @@ type CheckpointPointer interface {
 }
 
 type checkpoint struct {
-	Schema       string            `json:"schema"`
-	ObjectFormat string            `json:"object_format"`
-	Genesis      string            `json:"genesis"`
-	Head         string            `json:"head"`
-	Depth        int               `json:"depth"`
-	Profile      string            `json:"profile"`
-	Events       []checkpointEvent `json:"events"`
-	EventCount   int               `json:"-"`
+	Schema       string `json:"schema"`
+	ObjectFormat string `json:"object_format"`
+	Genesis      string `json:"genesis"`
+	Head         string `json:"head"`
+	Depth        int    `json:"depth"`
+	// Profile exists only to decode checkpoint@1 and checkpoint@2. Current
+	// checkpoints never write it; projection selectors belong above the kernel.
+	Profile    string            `json:"profile,omitempty"`
+	Events     []checkpointEvent `json:"events"`
+	EventCount int               `json:"-"`
 }
 
 type checkpointEvent struct {
@@ -78,7 +84,7 @@ type compactCheckpointManifest struct {
 	Genesis      string `json:"genesis"`
 	Head         string `json:"head"`
 	Depth        int    `json:"depth"`
-	Profile      string `json:"profile"`
+	Profile      string `json:"profile,omitempty"`
 	Events       int    `json:"events"`
 }
 
@@ -91,7 +97,7 @@ type checkpointCandidate struct {
 func CheckpointRef(genesis string) string { return "refs/gitseq/checkpoints/" + genesis }
 
 func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head string, options CheckpointOptions) (scannedLog, bool, error) {
-	if options.Profile == "" {
+	if !options.enabled() {
 		return scannedLog{}, false, ErrNoUsableCheckpoint
 	}
 	var candidates []string
@@ -130,7 +136,7 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	parsed := make([]checkpointCandidate, 0, len(candidates))
 	var lastErr error
 	for _, commit := range candidates {
-		candidate, err := readCheckpointCandidate(ctx, store, desc, format, genesis, commit, options.Profile)
+		candidate, err := readCheckpointCandidate(ctx, store, desc, format, genesis, commit)
 		if err != nil {
 			lastErr = err
 			continue
@@ -169,7 +175,7 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	return scannedLog{}, false, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, lastErr)
 }
 
-func readCheckpointCandidate(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, format, genesis, commit, profile string) (checkpointCandidate, error) {
+func readCheckpointCandidate(ctx context.Context, store gitstore.Store, desc GenesisDescriptor, format, genesis, commit string) (checkpointCandidate, error) {
 	// A local pointer is mutable input. Validate it before it reaches any Git
 	// command so it can select only an object ID, never a command-line option.
 	if err := validateObjectID(format, commit); err != nil {
@@ -181,7 +187,7 @@ func readCheckpointCandidate(ctx context.Context, store gitstore.Store, desc Gen
 	}
 	message, err := store.CommitMessage(ctx, commit)
 	marker := strings.TrimSpace(message)
-	if err != nil || (marker != checkpointMarker && marker != compactCheckpointMarker) {
+	if err != nil || (marker != checkpointMarker && marker != profiledCompactCheckpointMarker && marker != legacyCheckpointMarker) {
 		return checkpointCandidate{}, fmt.Errorf("%w: checkpoint marker", ErrNoUsableCheckpoint)
 	}
 	files, err := store.ListFiles(ctx, commit, "")
@@ -194,7 +200,7 @@ func readCheckpointCandidate(ctx context.Context, store gitstore.Store, desc Gen
 	}
 	var candidate checkpointCandidate
 	candidate.commit = commit
-	if marker == checkpointMarker {
+	if marker == legacyCheckpointMarker {
 		candidate.stored, err = decodeLegacyCheckpoint(data)
 	} else {
 		candidate.stored, candidate.payload, err = decodeCompactCheckpointManifest(data)
@@ -202,13 +208,25 @@ func readCheckpointCandidate(ctx context.Context, store gitstore.Store, desc Gen
 	if err != nil {
 		return checkpointCandidate{}, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
-	wantSchema := checkpointSchema
-	if marker == compactCheckpointMarker {
-		wantSchema = compactCheckpointSchema
-	}
 	stored := candidate.stored
-	if stored.Schema != wantSchema || stored.ObjectFormat != format || stored.ObjectFormat != desc.ObjectFormat || stored.Genesis != genesis || stored.Profile != profile {
-		return checkpointCandidate{}, fmt.Errorf("%w: identity or profile mismatch", ErrNoUsableCheckpoint)
+	switch {
+	case marker == checkpointMarker && stored.Schema == checkpointSchema:
+		if stored.Profile != "" {
+			return checkpointCandidate{}, fmt.Errorf("%w: application profile in kernel checkpoint", ErrNoUsableCheckpoint)
+		}
+	case marker == profiledCompactCheckpointMarker && stored.Schema == profiledCompactCheckpointSchema:
+		if stored.Profile == "" {
+			return checkpointCandidate{}, fmt.Errorf("%w: profiled compact checkpoint profile is missing", ErrNoUsableCheckpoint)
+		}
+	case marker == legacyCheckpointMarker && stored.Schema == legacyCheckpointSchema:
+		if stored.Profile == "" {
+			return checkpointCandidate{}, fmt.Errorf("%w: legacy checkpoint profile is missing", ErrNoUsableCheckpoint)
+		}
+	default:
+		return checkpointCandidate{}, fmt.Errorf("%w: checkpoint marker/schema mismatch", ErrNoUsableCheckpoint)
+	}
+	if stored.ObjectFormat != format || stored.ObjectFormat != desc.ObjectFormat || stored.Genesis != genesis {
+		return checkpointCandidate{}, fmt.Errorf("%w: kernel identity mismatch", ErrNoUsableCheckpoint)
 	}
 	return candidate, nil
 }
@@ -227,7 +245,7 @@ func authenticateCheckpointCandidate(ctx context.Context, store gitstore.Store, 
 		return scannedLog{}, fmt.Errorf("%w: signature: %v", ErrNoUsableCheckpoint, err)
 	}
 	var log scannedLog
-	if stored.Schema == compactCheckpointSchema {
+	if stored.Schema == checkpointSchema || stored.Schema == profiledCompactCheckpointSchema {
 		log, err = validateCompactCheckpoint(stored, candidate.payload, desc, eventPositions)
 	} else {
 		log, err = validateCheckpointEvents(stored, desc, eventPositions)
@@ -289,7 +307,7 @@ func validateCheckpointEvents(stored checkpoint, desc GenesisDescriptor, eventPo
 }
 
 func checkpointEventCount(stored checkpoint) int {
-	if stored.Schema == compactCheckpointSchema {
+	if stored.Schema == checkpointSchema || stored.Schema == profiledCompactCheckpointSchema {
 		return stored.EventCount
 	}
 	return len(stored.Events)
@@ -428,7 +446,7 @@ func verifyCheckpointRotations(ctx context.Context, store gitstore.Store, stored
 }
 
 func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, options CheckpointOptions) error {
-	if options.Profile == "" || options.SigningKey == "" || len(log.Events) != log.Verification.Events {
+	if !options.enabled() || options.SigningKey == "" || len(log.Events) != log.Verification.Events {
 		return ErrNoUsableCheckpoint
 	}
 	format, err := store.ObjectFormat(ctx)
@@ -436,8 +454,8 @@ func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, 
 		return err
 	}
 	stored := checkpoint{
-		Schema: compactCheckpointSchema, ObjectFormat: format, Genesis: log.Verification.Genesis,
-		Head: log.Verification.Head, Depth: log.Verification.Depth, Profile: options.Profile,
+		Schema: checkpointSchema, ObjectFormat: format, Genesis: log.Verification.Genesis,
+		Head: log.Verification.Head, Depth: log.Verification.Depth,
 		EventCount: len(log.Events), Events: make([]checkpointEvent, 0, len(log.Events)),
 	}
 	for _, event := range log.Events {
@@ -453,7 +471,7 @@ func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, 
 	if err != nil {
 		return err
 	}
-	commit, err := store.SignedCommit(ctx, tree, "", compactCheckpointMarker+"\n", options.SigningKey, gitstore.CommitIdentity{
+	commit, err := store.SignedCommit(ctx, tree, "", checkpointMarker+"\n", options.SigningKey, gitstore.CommitIdentity{
 		AuthorName: "gitseq checkpoint", AuthorEmail: "checkpoint@gitseq.invalid",
 		CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
 	})
@@ -484,7 +502,7 @@ func validateNamedSequence(head string, commits []gitstore.CommitMetadata) error
 }
 
 func marshalCheckpoint(stored checkpoint, limit int) ([]byte, error) {
-	if stored.Schema == compactCheckpointSchema {
+	if stored.Schema == checkpointSchema || stored.Schema == profiledCompactCheckpointSchema {
 		return marshalCompactCheckpoint(stored, limit)
 	}
 	data, err := json.Marshal(stored)

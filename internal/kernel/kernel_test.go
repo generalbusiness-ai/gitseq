@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"os"
@@ -238,7 +239,7 @@ func checkpointState(t testing.TB, count int) (fixtureState, ed25519.PrivateKey,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCheckpoint(f.ctx, f.store, log, CheckpointOptions{Profile: "fold@1", SigningKey: f.signingKey}); err != nil {
+	if err := writeCheckpoint(f.ctx, f.store, log, CheckpointOptions{Enabled: true, SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
 	commit := mustHead(t, f.store, CheckpointRef(f.genesis))
@@ -253,8 +254,9 @@ func checkpointState(t testing.TB, count int) (fixtureState, ed25519.PrivateKey,
 	// Keep the hostile-checkpoint mutation fixtures on the legacy format. The
 	// production writer above still exercises compact encoding and decoding;
 	// these fixtures then prove old v1 checkpoints remain fully authenticated.
-	if stored.Schema == compactCheckpointSchema {
-		stored.Schema = checkpointSchema
+	if stored.Schema == checkpointSchema {
+		stored.Schema = legacyCheckpointSchema
+		stored.Profile = "fold@1"
 		stored.EventCount = 0
 		for index, event := range log.Events {
 			stored.Events[index].Commit = event.Commit
@@ -318,12 +320,12 @@ func publishStoredCheckpoint(t testing.TB, f fixtureState, stored checkpoint) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publishCheckpointBytes(t, f, data, f.signingKey, "", checkpointMarker)
+	publishCheckpointBytes(t, f, data, f.signingKey, "", legacyCheckpointMarker)
 }
 
 func requireCheckpointFallback(t testing.TB, f fixtureState) LoadResult {
 	t.Helper()
-	reader := NewReader(f.store, CheckpointOptions{Profile: "fold@1"})
+	reader := NewReader(f.store, CheckpointOptions{Enabled: true})
 	loaded, err := reader.Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
@@ -831,7 +833,7 @@ func BenchmarkCheckpointRestartAtDepth20000(b *testing.B) {
 	}
 	f := newFixture(b, "sha1")
 	private := actor(b)
-	options := Options{SigningKey: f.signingKey, CheckpointProfile: "benchmark-fold@1"}
+	options := Options{SigningKey: f.signingKey, CheckpointEnabled: true}
 	submitter := NewSubmitter(f.store, options)
 	for index := 0; index < 20000; index++ {
 		key := "checkpoint-20k-" + strconv.Itoa(index)
@@ -856,7 +858,7 @@ func BenchmarkCheckpointRestartAtDepth20000(b *testing.B) {
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
-	reader := NewReader(f.store, CheckpointOptions{Profile: options.CheckpointProfile, SigningKey: f.signingKey})
+	reader := NewReader(f.store, CheckpointOptions{Enabled: true, SigningKey: f.signingKey})
 	loaded, err := reader.Load(f.ctx, f.genesis)
 	if err != nil {
 		b.Fatal(err)
@@ -878,7 +880,7 @@ func BenchmarkCheckpointRestartAtDepth1000(b *testing.B) {
 	}
 	f := newFixture(b, "sha1")
 	private := actor(b)
-	options := Options{SigningKey: f.signingKey, CheckpointProfile: "benchmark-fold@1"}
+	options := Options{SigningKey: f.signingKey, CheckpointEnabled: true}
 	submitter := NewSubmitter(f.store, options)
 	for index := 0; index < 1000; index++ {
 		key := "checkpoint-1k-" + strconv.Itoa(index)
@@ -902,7 +904,7 @@ func BenchmarkCheckpointRestartAtDepth1000(b *testing.B) {
 	b.Run("checkpoint", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, _, err := loadCheckpoint(f.ctx, f.store, f.genesis, head, CheckpointOptions{Profile: options.CheckpointProfile}); err != nil {
+			if _, _, err := loadCheckpoint(f.ctx, f.store, f.genesis, head, CheckpointOptions{Enabled: true}); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -939,9 +941,9 @@ func BenchmarkCompactCheckpointSerializationAtDepth500000(b *testing.B) {
 		payloads[index] = byte(state)
 	}
 	stored := checkpoint{
-		Schema: compactCheckpointSchema, ObjectFormat: "sha1",
+		Schema: checkpointSchema, ObjectFormat: "sha1",
 		Genesis: strings.Repeat("a", 40), Head: strings.Repeat("b", 40),
-		Depth: eventCount, Profile: "workroom-fold@1", EventCount: eventCount,
+		Depth: eventCount, EventCount: eventCount,
 		Events: make([]checkpointEvent, eventCount),
 	}
 	for index := range stored.Events {
@@ -1596,7 +1598,7 @@ func TestReaderRestartsFromSignedCheckpointAndAuditsDescendantDelta(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	options := CheckpointOptions{Profile: "test-fold@1", SigningKey: f.signingKey}
+	options := CheckpointOptions{Enabled: true, SigningKey: f.signingKey}
 	writer := NewReader(f.store, options)
 	full, err := writer.Load(f.ctx, f.genesis)
 	if err != nil {
@@ -1654,7 +1656,7 @@ func TestReaderPersistsSignedCheckpointPointerAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	pointer := &testCheckpointPointer{}
-	options := CheckpointOptions{Profile: "persisted-fold@1", SigningKey: f.signingKey, Pointer: pointer}
+	options := CheckpointOptions{Enabled: true, SigningKey: f.signingKey, Pointer: pointer}
 	written, err := NewReader(f.store, options).Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
@@ -1663,7 +1665,7 @@ func TestReaderPersistsSignedCheckpointPointerAcrossRestart(t *testing.T) {
 	if err := f.store.UpdateRef(f.ctx, CheckpointRef(f.genesis), f.genesis, commit); err != nil {
 		t.Fatal(err)
 	}
-	restarted := NewReader(f.store, CheckpointOptions{Profile: options.Profile, Pointer: pointer})
+	restarted := NewReader(f.store, CheckpointOptions{Enabled: true, Pointer: pointer})
 	loaded, err := restarted.Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
@@ -1689,7 +1691,7 @@ func TestCheckpointPointerFailureStillPublishesReachableRef(t *testing.T) {
 		t.Fatal(err)
 	}
 	pointer := &testCheckpointPointer{storeErr: errors.New("local disk unavailable")}
-	options := CheckpointOptions{Profile: "reachable-ref@1", SigningKey: f.signingKey, Pointer: pointer}
+	options := CheckpointOptions{Enabled: true, SigningKey: f.signingKey, Pointer: pointer}
 	loaded, err := NewReader(f.store, options).Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
@@ -1702,10 +1704,10 @@ func TestCheckpointPointerFailureStillPublishesReachableRef(t *testing.T) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git gc: %v: %s", err, output)
 	}
-	if message, err := f.store.CommitMessage(f.ctx, checkpointCommit); err != nil || strings.TrimSpace(message) != compactCheckpointMarker {
+	if message, err := f.store.CommitMessage(f.ctx, checkpointCommit); err != nil || strings.TrimSpace(message) != checkpointMarker {
 		t.Fatalf("checkpoint object was not retained by its ref: message=%q err=%v", message, err)
 	}
-	restarted, err := NewReader(f.store, CheckpointOptions{Profile: options.Profile}).Load(f.ctx, f.genesis)
+	restarted, err := NewReader(f.store, CheckpointOptions{Enabled: true}).Load(f.ctx, f.genesis)
 	if err != nil || !restarted.Checkpoint || !reflect.DeepEqual(restarted.Events, loaded.Events) {
 		t.Fatalf("ref recovery after pointer failure = %+v, err=%v", restarted, err)
 	}
@@ -1718,12 +1720,12 @@ func TestReaderRejectsTamperedLocalCheckpointPointerAndUsesSignedRef(t *testing.
 		t.Fatal(err)
 	}
 	pointer := &testCheckpointPointer{}
-	options := CheckpointOptions{Profile: "pointer-fallback@1", SigningKey: f.signingKey, Pointer: pointer}
+	options := CheckpointOptions{Enabled: true, SigningKey: f.signingKey, Pointer: pointer}
 	if _, err := NewReader(f.store, options).Load(f.ctx, f.genesis); err != nil {
 		t.Fatal(err)
 	}
 	pointer.commit = f.genesis
-	restarted := NewReader(f.store, CheckpointOptions{Profile: options.Profile, Pointer: pointer})
+	restarted := NewReader(f.store, CheckpointOptions{Enabled: true, Pointer: pointer})
 	loaded, err := restarted.Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
@@ -1735,7 +1737,7 @@ func TestReaderRejectsTamperedLocalCheckpointPointerAndUsesSignedRef(t *testing.
 		t.Fatalf("local pointer was not repaired from signed ref: commit=%s", pointer.commit)
 	}
 	pointer.commit = "--help"
-	malicious := NewReader(f.store, CheckpointOptions{Profile: options.Profile, Pointer: pointer})
+	malicious := NewReader(f.store, CheckpointOptions{Enabled: true, Pointer: pointer})
 	if loaded, err := malicious.Load(f.ctx, f.genesis); err != nil || !loaded.Checkpoint || malicious.fullScans != 0 {
 		t.Fatalf("option-shaped pointer did not safely fall back: loaded=%+v err=%v full=%d", loaded, err, malicious.fullScans)
 	}
@@ -1747,7 +1749,7 @@ func TestReaderCheckpointContinuationCarriesRotatedSequencerKey(t *testing.T) {
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "before-rotation", []byte("before-rotation"), nil), Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	checkpoint := CheckpointOptions{Profile: "rotation-fold@1", SigningKey: f.signingKey}
+	checkpoint := CheckpointOptions{Enabled: true, SigningKey: f.signingKey}
 	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
 		t.Fatal(err)
 	}
@@ -1765,7 +1767,7 @@ func TestReaderCheckpointContinuationCarriesRotatedSequencerKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restarted := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile})
+	restarted := NewReader(f.store, CheckpointOptions{Enabled: true})
 	loaded, err := restarted.Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
@@ -1806,7 +1808,7 @@ func TestReaderRestartsFromCheckpointWrittenAfterRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	checkpoint := CheckpointOptions{Profile: "rotation-prefix-fold@1", SigningKey: nextKey}
+	checkpoint := CheckpointOptions{Enabled: true, SigningKey: nextKey}
 	writer := NewReader(f.store, checkpoint)
 	written, err := writer.Load(f.ctx, f.genesis)
 	if err != nil {
@@ -1827,7 +1829,7 @@ func TestReaderRestartsFromCheckpointWrittenAfterRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restarted := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile})
+	restarted := NewReader(f.store, CheckpointOptions{Enabled: true})
 	cached, err := restarted.Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
@@ -1851,8 +1853,8 @@ func TestReaderRestartsFromCheckpointWrittenAfterRotation(t *testing.T) {
 	// A checkpoint for the rotated prefix is authenticated only by the key
 	// current at that frontier. Re-signing the same trusted bytes with the
 	// retired key must be a cache miss, followed by an ordinary full audit.
-	publishCheckpointBytes(t, f, checkpointData, f.signingKey, "", compactCheckpointMarker)
-	fallback := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile})
+	publishCheckpointBytes(t, f, checkpointData, f.signingKey, "", checkpointMarker)
+	fallback := NewReader(f.store, CheckpointOptions{Enabled: true})
 	loaded, err := fallback.Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
@@ -1869,7 +1871,7 @@ func TestCheckpointCannotTrustSuccessorFromUnverifiedRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkpoint := CheckpointOptions{Profile: "forged-rotation-fold@1", SigningKey: f.signingKey}
+	checkpoint := CheckpointOptions{Enabled: true, SigningKey: f.signingKey}
 	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
 		t.Fatal(err)
 	}
@@ -1899,9 +1901,9 @@ func TestCheckpointCannotTrustSuccessorFromUnverifiedRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publishCheckpointBytes(t, f, data, successorKey, "", compactCheckpointMarker)
+	publishCheckpointBytes(t, f, data, successorKey, "", checkpointMarker)
 
-	if _, _, err := loadCheckpoint(f.ctx, f.store, f.genesis, forgedRotation, CheckpointOptions{Profile: checkpoint.Profile}); err == nil || !errors.Is(err, ErrNoUsableCheckpoint) || !strings.Contains(err.Error(), forgedRotation+" sequencer signature") {
+	if _, _, err := loadCheckpoint(f.ctx, f.store, f.genesis, forgedRotation, CheckpointOptions{Enabled: true}); err == nil || !errors.Is(err, ErrNoUsableCheckpoint) || !strings.Contains(err.Error(), forgedRotation+" sequencer signature") {
 		t.Fatalf("checkpoint trusted successor from unverified rotation: %v", err)
 	}
 }
@@ -1928,35 +1930,99 @@ func TestCheckpointWriterRejectsRetiredSigningKeyAfterRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCheckpoint(f.ctx, f.store, log, CheckpointOptions{Profile: "retired-writer-fold@1", SigningKey: f.signingKey}); err == nil || !strings.Contains(err.Error(), "checkpoint signature does not match current sequencer key") {
+	if err := writeCheckpoint(f.ctx, f.store, log, CheckpointOptions{Enabled: true, SigningKey: f.signingKey}); err == nil || !strings.Contains(err.Error(), "checkpoint signature does not match current sequencer key") {
 		t.Fatalf("retired checkpoint signer error = %v", err)
 	}
 	if _, err := f.store.Head(f.ctx, CheckpointRef(f.genesis)); err == nil {
 		t.Fatal("retired signer published an unusable checkpoint")
 	}
-	if err := writeCheckpoint(f.ctx, f.store, log, CheckpointOptions{Profile: "retired-writer-fold@1", SigningKey: nextKey}); err != nil {
+	if err := writeCheckpoint(f.ctx, f.store, log, CheckpointOptions{Enabled: true, SigningKey: nextKey}); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T) {
-	t.Run("profile", func(t *testing.T) {
+	t.Run("application profile is not kernel identity", func(t *testing.T) {
 		f := newFixture(t, "sha1")
 		private := actor(t)
 		if _, err := Submit(f.ctx, f.store, f.request(t, private, "one", []byte("one"), nil), Options{SigningKey: f.signingKey}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := NewReader(f.store, CheckpointOptions{Profile: "fold@1", SigningKey: f.signingKey}).Load(f.ctx, f.genesis); err != nil {
+		if _, err := NewReader(f.store, CheckpointOptions{Enabled: true, SigningKey: f.signingKey}).Load(f.ctx, f.genesis); err != nil {
 			t.Fatal(err)
 		}
-		reader := NewReader(f.store, CheckpointOptions{Profile: "fold@2"})
+		reader := NewReader(f.store, CheckpointOptions{Enabled: true})
 		loaded, err := reader.Load(f.ctx, f.genesis)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if loaded.Checkpoint || reader.fullScans != 1 || reader.checkpointFallbacks != 1 {
-			t.Fatalf("profile mismatch = %+v, scans=%d fallbacks=%d", loaded, reader.fullScans, reader.checkpointFallbacks)
+		if !loaded.Checkpoint || reader.fullScans != 0 || reader.checkpointFallbacks != 0 {
+			t.Fatalf("profile-independent checkpoint = %+v, scans=%d fallbacks=%d", loaded, reader.fullScans, reader.checkpointFallbacks)
 		}
+	})
+
+	t.Run("legacy profile is ignored after authentication", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 1)
+		stored.Schema = legacyCheckpointSchema
+		stored.Profile = "historical-fold@1"
+		data, err := json.Marshal(stored)
+		if err != nil {
+			t.Fatal(err)
+		}
+		publishCheckpointBytes(t, f, data, f.signingKey, "", legacyCheckpointMarker)
+		reader := NewReader(f.store, CheckpointOptions{Enabled: true})
+		loaded, err := reader.Load(f.ctx, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded.Checkpoint || reader.fullScans != 0 || reader.checkpointFallbacks != 0 {
+			t.Fatalf("legacy checkpoint did not bridge across profile: %+v scans=%d fallbacks=%d", loaded, reader.fullScans, reader.checkpointFallbacks)
+		}
+	})
+
+	t.Run("profiled compact checkpoint is ignored after authentication", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 1)
+		stored.Schema = profiledCompactCheckpointSchema
+		stored.Profile = "historical-fold@2"
+		stored.EventCount = len(stored.Events)
+		data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		publishCheckpointBytes(t, f, data, f.signingKey, "", profiledCompactCheckpointMarker)
+		reader := NewReader(f.store, CheckpointOptions{Enabled: true})
+		loaded, err := reader.Load(f.ctx, f.genesis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded.Checkpoint || reader.fullScans != 0 || reader.checkpointFallbacks != 0 {
+			t.Fatalf("profiled compact checkpoint did not bridge across profile: %+v scans=%d fallbacks=%d", loaded, reader.fullScans, reader.checkpointFallbacks)
+		}
+	})
+
+	t.Run("profiled compact checkpoint still requires its historical profile field", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 1)
+		stored.Schema = profiledCompactCheckpointSchema
+		stored.Profile = ""
+		stored.EventCount = len(stored.Events)
+		data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		publishCheckpointBytes(t, f, data, f.signingKey, "", profiledCompactCheckpointMarker)
+		requireCheckpointFallback(t, f)
+	})
+
+	t.Run("legacy checkpoint still requires its historical profile field", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 1)
+		stored.Schema = legacyCheckpointSchema
+		stored.Profile = ""
+		data, err := json.Marshal(stored)
+		if err != nil {
+			t.Fatal(err)
+		}
+		publishCheckpointBytes(t, f, data, f.signingKey, "", legacyCheckpointMarker)
+		requireCheckpointFallback(t, f)
 	})
 
 	t.Run("payload", func(t *testing.T) {
@@ -1971,10 +2037,10 @@ func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T
 			t.Fatal(err)
 		}
 		log.Events[0].Payload = []byte("substituted")
-		if err := writeCheckpoint(f.ctx, f.store, log, CheckpointOptions{Profile: "fold@1", SigningKey: f.signingKey}); err != nil {
+		if err := writeCheckpoint(f.ctx, f.store, log, CheckpointOptions{Enabled: true, SigningKey: f.signingKey}); err != nil {
 			t.Fatal(err)
 		}
-		reader := NewReader(f.store, CheckpointOptions{Profile: "fold@1"})
+		reader := NewReader(f.store, CheckpointOptions{Enabled: true})
 		loaded, err := reader.Load(f.ctx, f.genesis)
 		if err != nil {
 			t.Fatal(err)
@@ -1991,7 +2057,7 @@ func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		options := CheckpointOptions{Profile: "fold@1", SigningKey: f.signingKey}
+		options := CheckpointOptions{Enabled: true, SigningKey: f.signingKey}
 		if _, err := NewReader(f.store, options).Load(f.ctx, f.genesis); err != nil {
 			t.Fatal(err)
 		}
@@ -2002,7 +2068,7 @@ func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		reader := NewReader(f.store, CheckpointOptions{Profile: "fold@1"})
+		reader := NewReader(f.store, CheckpointOptions{Enabled: true})
 		loaded, err := reader.Load(f.ctx, f.genesis)
 		if err != nil {
 			t.Fatal(err)
@@ -2024,11 +2090,11 @@ func TestCheckpointEnvelopeGuardsFallBackToFullAudit(t *testing.T) {
 				t.Fatal(err)
 			}
 			data, _ := json.Marshal(stored)
-			publishCheckpointBytes(t, f, data, wrongKey, "", checkpointMarker)
+			publishCheckpointBytes(t, f, data, wrongKey, "", legacyCheckpointMarker)
 		}},
 		{name: "parentless", publish: func(t *testing.T, f fixtureState, stored checkpoint) {
 			data, _ := json.Marshal(stored)
-			publishCheckpointBytes(t, f, data, f.signingKey, f.genesis, checkpointMarker)
+			publishCheckpointBytes(t, f, data, f.signingKey, f.genesis, legacyCheckpointMarker)
 		}},
 		{name: "marker", publish: func(t *testing.T, f fixtureState, stored checkpoint) {
 			data, _ := json.Marshal(stored)
@@ -2039,20 +2105,20 @@ func TestCheckpointEnvelopeGuardsFallBackToFullAudit(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			publishCheckpointTree(t, f, tree, f.signingKey, "", checkpointMarker)
+			publishCheckpointTree(t, f, tree, f.signingKey, "", legacyCheckpointMarker)
 		}},
 		{name: "unknown field", publish: func(t *testing.T, f fixtureState, stored checkpoint) {
 			data, _ := json.Marshal(stored)
 			data = append(data[:len(data)-1], []byte(`,"authority":"forged"}`)...)
-			publishCheckpointBytes(t, f, data, f.signingKey, "", checkpointMarker)
+			publishCheckpointBytes(t, f, data, f.signingKey, "", legacyCheckpointMarker)
 		}},
 		{name: "noncanonical json", publish: func(t *testing.T, f fixtureState, stored checkpoint) {
 			data, _ := json.Marshal(stored)
-			publishCheckpointBytes(t, f, append([]byte("\n"), data...), f.signingKey, "", checkpointMarker)
+			publishCheckpointBytes(t, f, append([]byte("\n"), data...), f.signingKey, "", legacyCheckpointMarker)
 		}},
 		{name: "trailing json", publish: func(t *testing.T, f fixtureState, stored checkpoint) {
 			data, _ := json.Marshal(stored)
-			publishCheckpointBytes(t, f, append(data, []byte(`{}`)...), f.signingKey, "", checkpointMarker)
+			publishCheckpointBytes(t, f, append(data, []byte(`{}`)...), f.signingKey, "", legacyCheckpointMarker)
 		}},
 	}
 	for _, test := range tests {
@@ -2077,9 +2143,6 @@ func TestCheckpointIdentityAndCachedEventGuardsFallBackToFullAudit(t *testing.T)
 		}},
 		{name: "genesis", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
 			stored.Genesis = strings.Repeat("0", 40)
-		}},
-		{name: "profile", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) {
-			stored.Profile = "fold@2"
 		}},
 		{name: "depth count", mutate: func(_ *testing.T, _ fixtureState, _ ed25519.PrivateKey, stored *checkpoint) { stored.Depth-- }},
 		{name: "head is final event", mutate: func(_ *testing.T, f fixtureState, _ ed25519.PrivateKey, stored *checkpoint) { stored.Head = f.genesis }},
@@ -2137,6 +2200,22 @@ func TestCheckpointIdentityAndCachedEventGuardsFallBackToFullAudit(t *testing.T)
 			}
 		})
 	}
+
+	t.Run("current compact profile", func(t *testing.T) {
+		f, _, _, stored := checkpointState(t, 3)
+		stored.Schema = checkpointSchema
+		stored.Profile = "forged-fold@3"
+		stored.EventCount = len(stored.Events)
+		data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		publishCheckpointBytes(t, f, data, f.signingKey, "", checkpointMarker)
+		loaded := requireCheckpointFallback(t, f)
+		if loaded.Verification.Events != 3 || len(loaded.Events) != 3 {
+			t.Fatalf("fallback did not recover complete sequence: %+v", loaded)
+		}
+	})
 }
 
 func TestCheckpointMetadataRequiresOneExactParentAtEveryPosition(t *testing.T) {
@@ -2280,7 +2359,7 @@ func TestCheckpointObjectIDValidationCoversBothFormats(t *testing.T) {
 }
 
 func TestCheckpointDecoderRejectsTrailingJSONAtItsBoundary(t *testing.T) {
-	stored := checkpoint{Schema: checkpointSchema, Profile: "fold@1"}
+	stored := checkpoint{Schema: legacyCheckpointSchema, Profile: "fold@1"}
 	data, err := json.Marshal(stored)
 	if err != nil {
 		t.Fatal(err)
@@ -2295,9 +2374,9 @@ func TestCheckpointDecoderRejectsTrailingJSONAtItsBoundary(t *testing.T) {
 
 func TestCompactCheckpointRoundTripIsDeterministicAndBounded(t *testing.T) {
 	stored := checkpoint{
-		Schema: compactCheckpointSchema, ObjectFormat: "sha1",
+		Schema: checkpointSchema, ObjectFormat: "sha1",
 		Genesis: strings.Repeat("a", 40), Head: strings.Repeat("b", 40),
-		Depth: 2, Profile: "fold@1", EventCount: 2,
+		Depth: 2, EventCount: 2,
 		Events: []checkpointEvent{
 			{Payload: []byte(`{"kind":"first"}`), Attachments: map[string][]byte{"z.txt": []byte("last"), "a.txt": []byte("first")}},
 			{Payload: []byte(`{"kind":"second"}`)},
@@ -2332,7 +2411,7 @@ func TestCompactCheckpointRoundTripIsDeterministicAndBounded(t *testing.T) {
 func TestReaderAcceptsLegacyCheckpointAfterCompactUpgrade(t *testing.T) {
 	f, _, _, stored := checkpointState(t, 3)
 	publishStoredCheckpoint(t, f, stored)
-	reader := NewReader(f.store, CheckpointOptions{Profile: stored.Profile})
+	reader := NewReader(f.store, CheckpointOptions{Enabled: true})
 	loaded, err := reader.Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
@@ -2358,7 +2437,7 @@ func TestCompactCheckpointAuthenticatesBeforeDecompression(t *testing.T) {
 	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
 		t.Fatal(err)
 	}
-	publishCheckpointBytes(t, f, malformed, wrongKey, "", compactCheckpointMarker)
+	publishCheckpointBytes(t, f, malformed, wrongKey, "", checkpointMarker)
 	malformedCommit := mustHead(t, f.store, CheckpointRef(f.genesis))
 	desc, err := Descriptor(f.ctx, f.store, f.genesis)
 	if err != nil {
@@ -2368,7 +2447,7 @@ func TestCompactCheckpointAuthenticatesBeforeDecompression(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate, err := readCheckpointCandidate(f.ctx, f.store, desc, f.format, f.genesis, malformedCommit, "fold@1")
+	candidate, err := readCheckpointCandidate(f.ctx, f.store, desc, f.format, f.genesis, malformedCommit)
 	if err != nil {
 		t.Fatalf("compact manifest should parse without inflating its payload: %v", err)
 	}
@@ -2389,26 +2468,27 @@ func TestCompactCheckpointRejectsAuthenticatedPayloadCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	malformed := append(bytes.Clone(data[:len(data)-len(payload)]), []byte("not a gzip stream")...)
-	publishCheckpointBytes(t, f, malformed, f.signingKey, "", compactCheckpointMarker)
+	publishCheckpointBytes(t, f, malformed, f.signingKey, "", checkpointMarker)
 	requireCheckpointFallback(t, f)
 }
 
 func TestCompactCheckpointBindsPayloadsToSequenceOrder(t *testing.T) {
 	f, _, _, stored := checkpointState(t, 2)
-	stored.Schema = compactCheckpointSchema
+	stored.Schema = checkpointSchema
+	stored.Profile = ""
 	stored.EventCount = len(stored.Events)
 	stored.Events[0], stored.Events[1] = stored.Events[1], stored.Events[0]
 	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	publishCheckpointBytes(t, f, data, f.signingKey, "", compactCheckpointMarker)
+	publishCheckpointBytes(t, f, data, f.signingKey, "", checkpointMarker)
 	requireCheckpointFallback(t, f)
 }
 
 func TestCheckpointManifestBoundsCannotOverflowSequenceIndex(t *testing.T) {
 	stored := checkpoint{
-		Schema: compactCheckpointSchema, Genesis: strings.Repeat("a", 40),
+		Schema: checkpointSchema, Genesis: strings.Repeat("a", 40),
 		Head: strings.Repeat("a", 40), Depth: maxIntValue(), EventCount: 0,
 	}
 	sequence := []gitstore.CommitMetadata{{OID: stored.Genesis}}
@@ -2419,9 +2499,9 @@ func TestCheckpointManifestBoundsCannotOverflowSequenceIndex(t *testing.T) {
 
 func TestCompactCheckpointRejectsTrailingCompressedBytes(t *testing.T) {
 	stored := checkpoint{
-		Schema: compactCheckpointSchema, ObjectFormat: "sha1",
+		Schema: checkpointSchema, ObjectFormat: "sha1",
 		Genesis: strings.Repeat("a", 40), Head: strings.Repeat("b", 40),
-		Depth: 1, Profile: "fold@1", EventCount: 1,
+		Depth: 1, EventCount: 1,
 		Events: []checkpointEvent{{Payload: []byte("payload")}},
 	}
 	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
@@ -2468,7 +2548,7 @@ func TestCheckpointMarshalEnforcesDocumentedSizeLimit(t *testing.T) {
 	if maxCheckpointBytes != 256<<20 {
 		t.Fatalf("checkpoint limit = %d, want 256 MiB", maxCheckpointBytes)
 	}
-	stored := checkpoint{Schema: checkpointSchema, Profile: "fold@1"}
+	stored := checkpoint{Schema: legacyCheckpointSchema, Profile: "fold@1"}
 	data, err := json.Marshal(stored)
 	if err != nil {
 		t.Fatal(err)
@@ -2478,6 +2558,40 @@ func TestCheckpointMarshalEnforcesDocumentedSizeLimit(t *testing.T) {
 	}
 	if _, err := marshalCheckpoint(stored, len(data)-1); err == nil {
 		t.Fatal("checkpoint over configured size limit was accepted")
+	}
+}
+
+func TestWrittenCheckpointContainsOnlyKernelVerifiedMaterial(t *testing.T) {
+	f, _, _, _ := checkpointState(t, 1)
+	commit := mustHead(t, f.store, CheckpointRef(f.genesis))
+	data, err := f.store.ReadFileLimit(f.ctx, commit, checkpointFile, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestStart := len(checkpointContainer) + 4
+	if len(data) < manifestStart {
+		t.Fatalf("compact checkpoint is truncated: %d bytes", len(data))
+	}
+	manifestEnd := manifestStart + int(binary.BigEndian.Uint32(data[len(checkpointContainer):manifestStart]))
+	if manifestEnd > len(data) {
+		t.Fatalf("compact checkpoint manifest exceeds payload: end=%d size=%d", manifestEnd, len(data))
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data[manifestStart:manifestEnd], &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"schema", "object_format", "genesis", "head", "depth", "events"} {
+		if _, ok := fields[name]; !ok {
+			t.Fatalf("kernel checkpoint omitted %q: %s", name, data)
+		}
+	}
+	for _, forbidden := range []string{"profile", "projection", "vocabulary", "fold"} {
+		if _, ok := fields[forbidden]; ok {
+			t.Fatalf("kernel checkpoint carried application field %q: %s", forbidden, data)
+		}
+	}
+	if len(fields) != 6 {
+		t.Fatalf("kernel checkpoint fields = %v, want only verified identity and events", fields)
 	}
 }
 
@@ -2540,7 +2654,7 @@ func TestTruncatedCheckpointCannotPoisonSubmitterDedup(t *testing.T) {
 	stored.Depth = len(stored.Events)
 	publishStoredCheckpoint(t, f, stored)
 	before := mustHead(t, f.store, Ref(f.genesis))
-	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointProfile: "fold@1"})
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointEnabled: true})
 	replay, err := submitter.Submit(f.ctx, requests[0])
 	if err != nil {
 		t.Fatal(err)
@@ -2553,10 +2667,10 @@ func TestTruncatedCheckpointCannotPoisonSubmitterDedup(t *testing.T) {
 	}
 }
 
-func TestStatelessSubmitIgnoresCheckpointProfileWithoutWritingOrPanicking(t *testing.T) {
+func TestStatelessSubmitIgnoresCheckpointEnablementWithoutWritingOrPanicking(t *testing.T) {
 	f := newFixture(t, "sha1")
 	request := f.request(t, actor(t), "stateless-profile", []byte("stateless-profile"), nil)
-	result, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey, CheckpointProfile: "fold@1"})
+	result, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey, CheckpointEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2574,7 +2688,7 @@ func TestReaderRetriesCheckpointWriteAfterFailure(t *testing.T) {
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "one", []byte("one"), nil), Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	reader := NewReader(f.store, CheckpointOptions{Profile: "fold@1", SigningKey: filepath.Join(t.TempDir(), "missing-key")})
+	reader := NewReader(f.store, CheckpointOptions{Enabled: true, SigningKey: filepath.Join(t.TempDir(), "missing-key")})
 	if _, err := reader.Load(f.ctx, f.genesis); err != nil {
 		t.Fatal(err)
 	}
@@ -2608,11 +2722,11 @@ func TestSubmitterColdStartUsesSignedCheckpointDedup(t *testing.T) {
 	if _, err := Submit(f.ctx, f.store, prior, Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	checkpoint := CheckpointOptions{Profile: "test-fold@1", SigningKey: f.signingKey}
+	checkpoint := CheckpointOptions{Enabled: true, SigningKey: f.signingKey}
 	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
 		t.Fatal(err)
 	}
-	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointProfile: checkpoint.Profile})
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointEnabled: true})
 	if replay, err := submitter.Submit(f.ctx, prior); err != nil || !replay.Replay {
 		t.Fatalf("checkpoint-backed replay = %+v, %v", replay, err)
 	}
@@ -2628,7 +2742,7 @@ func TestSubmitterRefreshesCheckpointOnBoundedCadence(t *testing.T) {
 	if _, err := Submit(f.ctx, f.store, prior, Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	checkpoint := CheckpointOptions{Profile: "test-fold@1", SigningKey: f.signingKey}
+	checkpoint := CheckpointOptions{Enabled: true, SigningKey: f.signingKey}
 	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
 		t.Fatal(err)
 	}
@@ -2636,7 +2750,7 @@ func TestSubmitterRefreshesCheckpointOnBoundedCadence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointProfile: checkpoint.Profile})
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointEnabled: true})
 	if replay, err := submitter.Submit(f.ctx, prior); err != nil || !replay.Replay {
 		t.Fatalf("load checkpoint = %+v, %v", replay, err)
 	}
@@ -2655,7 +2769,7 @@ func TestSubmitterRefreshesCheckpointOnBoundedCadence(t *testing.T) {
 	if after == before || submitter.cache.checkpointWrites != 1 {
 		t.Fatalf("checkpoint was not refreshed: before=%s after=%s writes=%d", before, after, submitter.cache.checkpointWrites)
 	}
-	reader := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile})
+	reader := NewReader(f.store, CheckpointOptions{Enabled: true})
 	loaded, err := reader.Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
@@ -2672,11 +2786,11 @@ func TestSubmitterDefersDueCheckpointUntilItsCASAppend(t *testing.T) {
 	if _, err := Submit(f.ctx, f.store, prior, Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	checkpoint := CheckpointOptions{Profile: "test-fold@1", SigningKey: f.signingKey}
+	checkpoint := CheckpointOptions{Enabled: true, SigningKey: f.signingKey}
 	if _, err := NewReader(f.store, checkpoint).Load(f.ctx, f.genesis); err != nil {
 		t.Fatal(err)
 	}
-	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointProfile: checkpoint.Profile})
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointEnabled: true})
 	if replay, err := submitter.Submit(f.ctx, prior); err != nil || !replay.Replay {
 		t.Fatalf("load checkpoint = %+v, %v", replay, err)
 	}
@@ -2691,7 +2805,7 @@ func TestSubmitterDefersDueCheckpointUntilItsCASAppend(t *testing.T) {
 	if submitter.cache.checkpointWrites != 1 || submitter.cache.checkpointFailures != 0 {
 		t.Fatalf("checkpoint writes=%d failures=%d, want one post-CAS write", submitter.cache.checkpointWrites, submitter.cache.checkpointFailures)
 	}
-	loaded, err := NewReader(f.store, CheckpointOptions{Profile: checkpoint.Profile}).Load(f.ctx, f.genesis)
+	loaded, err := NewReader(f.store, CheckpointOptions{Enabled: true}).Load(f.ctx, f.genesis)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3076,7 +3190,7 @@ func TestMatchingCheckpointDoesNotStartColdAuditProgress(t *testing.T) {
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "checkpoint-progress", []byte("value"), nil), Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
 	}
-	options := CheckpointOptions{Profile: "fold@2", SigningKey: f.signingKey}
+	options := CheckpointOptions{Enabled: true, SigningKey: f.signingKey}
 	if _, err := NewReader(f.store, options).Load(f.ctx, f.genesis); err != nil {
 		t.Fatal(err)
 	}
