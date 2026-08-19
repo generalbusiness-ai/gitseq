@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will execute child ada317ba exactly: remove only the seven fixed retired-dot citation baseline entries, add clean live internal/kernel artifact ad5dd1bf to docs/reference/gs/verify.md frontmatter, make no prose/runtime/other-page/other-baseline changes, run all required gates, and close with an explicit report for Planner ratification before publishing the parent docs artifact."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:78cbc9963bf89d4a8e10dadc67de587199035261"}
