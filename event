@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f8673f8e9f3bc07a833da72e5439304620f0b4be","text":"Merge retired a covered predecessor; the successor is at cmd/gs."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9a39682a525ce54e36ff269fe98a07009dea36cc","text":"Retire the older claude docs artifact at commit b39aaf1a, exposed as a still-live same-path predecessor by the #6356 merge. The surviving successor at docs is cd62ed77a94e547e94cd6fceb2adcbaa22b00c52 at merge 82bf2aa. No replacement is published at docs."}
