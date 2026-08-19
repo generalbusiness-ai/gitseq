@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workroom UI simplification — visual preview</title>
+<style>
+  :root {
+    --bg: #fbfaf8; --surface: #ffffff; --line: #e3ded6; --ink: #23201c;
+    --muted: #6d665d; --faint: #97907f; --accent: #2f6f5e; --danger: #a8332a;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17161a; --surface: #1e1d22; --line: #33313a; --ink: #e8e4dd;
+      --muted: #a09a92; --faint: #6f6a63; --accent: #6fbfa4; --danger: #e2796d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem 4rem; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Helvetica, sans-serif;
+  }
+  .wrap { max-width: 60rem; margin: 0 auto; }
+  h1 { font-size: 1.35rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
+  h2 { font-size: 1rem; margin: 2.75rem 0 .5rem; letter-spacing: .02em;
+       text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .lede { color: var(--muted); font-size: .875rem; margin: 0 0 .25rem; }
+  .lede code, code { font-family: var(--mono); font-size: .8125em; }
+  .screen { border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+            overflow: hidden; }
+  .chrome { display: flex; align-items: center; gap: .75rem; padding: .55rem .85rem;
+            border-bottom: 1px solid var(--line); font-size: .8125rem; color: var(--muted); }
+  .chrome .who { margin-left: auto; font-family: var(--mono); font-size: .75rem; }
+  .search { flex: 1; max-width: 22rem; border: 1px solid var(--line); border-radius: 6px;
+            padding: .28rem .55rem; color: var(--faint); background: var(--bg); font-size: .8125rem; }
+  .head { padding: .8rem .85rem .3rem; display: flex; align-items: baseline; gap: .6rem; }
+  .count { font-size: 1.05rem; font-weight: 600; }
+  .sortnote { font-size: .75rem; color: var(--faint); }
+  .sortnote b { color: var(--accent); font-weight: 600; }
+  .quiet { font-size: .8125rem; color: var(--faint); padding: 0 .85rem .7rem; }
+  .quiet a { color: var(--faint); text-decoration: underline dotted; }
+  table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+  thead th { text-align: left; padding: 0; border-top: 1px solid var(--line);
+             border-bottom: 1px solid var(--line); background: var(--bg); }
+  thead button {
+    all: unset; display: block; width: 100%; cursor: pointer; padding: .32rem .5rem;
+    font: 600 .6875rem/1.4 ui-sans-serif, sans-serif; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  thead button:hover { color: var(--ink); background: var(--surface); }
+  thead button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  thead button .ind { font-family: var(--mono); font-weight: 400; opacity: .55; }
+  thead th[aria-sort="ascending"] button,
+  thead th[aria-sort="descending"] button { color: var(--accent); }
+  tbody tr { border-top: 1px solid var(--line); }
+  tbody tr:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  td { padding: .3rem .5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  td.st { width: 8.5rem; font-weight: 600; color: var(--muted); }
+  td.st.s1 { color: var(--danger); }
+  td.wo { width: 6rem; color: var(--muted); }
+  td.wo.hu { color: var(--ink); font-weight: 600; }
+  td.ag { width: 3rem; text-align: right; font-family: var(--mono); color: var(--faint); }
+  td.ti { width: auto; max-width: 0; }
+  td.tk { width: 4.25rem; text-align: right; font-family: var(--mono); color: var(--faint); }
+  th.ag button, th.tk button { text-align: right; }
+  .caption { font-size: .8125rem; color: var(--muted); margin: .55rem 0 0; }
+  .caption b { color: var(--ink); }
+  .note { font-size: .8125rem; color: var(--muted); margin: .6rem 0 0; }
+
+  /* Thread: one vertical rail beside the spine rows. */
+  .thread { padding: .5rem .85rem .2rem; }
+  .srow { display: grid; grid-template-columns: 1.6rem 5.2rem 3.6rem 1fr auto;
+          align-items: center; column-gap: .55rem; font-size: .8125rem;
+          position: relative; min-height: 2.05rem; }
+  .rail { position: relative; height: 100%; }
+  .rail::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0;
+                  width: 2px; margin-left: -1px; background: var(--line); }
+  .srow:first-child .rail::before { top: 50%; }
+  .srow.last .rail::before { bottom: 50%; }
+  .node { position: absolute; left: 50%; top: 50%; width: 11px; height: 11px;
+          margin: -5.5px 0 0 -5.5px; border-radius: 50%; background: var(--surface);
+          border: 2px solid var(--muted); }
+  .node.ok { border-color: var(--accent); border-width: 3px; }
+  .node.absent { border-style: dashed; border-color: var(--faint); background: none; }
+  .node.block { border-color: var(--danger); border-width: 3px; }
+  .kind { color: var(--faint); text-transform: uppercase; font-size: .6875rem;
+          letter-spacing: .07em; }
+  .tk2 { font-family: var(--mono); color: var(--faint); font-size: .75rem; }
+  .what { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .srow.dim .what, .srow.dim .kind { color: var(--faint); font-style: italic; }
+  .srow.blocked { margin-left: 1.1rem; }
+  .srow.blocked .rail::before { display: none; }
+  .srow.blocked .what { color: var(--danger); font-weight: 600; white-space: normal; }
+  .branch { position: absolute; left: -0.45rem; top: -0.55rem; width: 1.1rem; height: 1.4rem;
+            border-left: 2px solid var(--danger); border-bottom: 2px solid var(--danger);
+            border-bottom-left-radius: 7px; }
+  .ok { color: var(--accent); font-weight: 600; }
+  .exp { border-top: 1px solid var(--line); padding: .4rem .85rem; font-size: .8125rem;
+         color: var(--muted); display: flex; gap: .5rem; align-items: baseline; }
+  .exp .c { font-family: var(--mono); color: var(--faint); }
+  .exp .tri { color: var(--faint); }
+  .exp .hint { color: var(--faint); }
+  .composer { border-top: 1px solid var(--line); padding: .55rem .85rem;
+              color: var(--faint); font-size: .8125rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Workroom UI simplification — visual preview</h1>
+<p class="lede">Companion to <code>notes/2026-08-19-ui-simplification.md</code>. Every row, name,
+number, ticket and age below is real, read from the workroom at genesis
+<code>5d262274</code>, <b>depth 6500</b>, on 2026-08-19. Nothing here is placeholder text.
+This file is a design artifact: it touches nothing under <code>ui/src</code> and runs no
+application code. Revised twice: on hugh's feedback (assert <code>6c6f739a</code>) the table
+sorts by clicking a column header, the ordering subheads are gone, and the thread railway is
+drawn vertically alongside the spine rows; on codex's review (report <code>a9da48f2</code>) the
+#3923 merge station is corrected to current Git truth — the approved head <b>did</b> land on
+main on 2026-08-12, and what is actually outstanding is that the commitment was never
+closed.</p>
+
+<h2>Preview 1 — the list</h2>
+
+<div class="screen">
+  <div class="chrome">
+    <span class="search">Search…</span>
+    <span class="who">hugh · claude codex hugh planner here</span>
+  </div>
+  <div class="head">
+    <span class="count">42 open requests</span>
+    <span class="sortnote" id="sortnote">sorted by <b>priority</b> — click any column to re-sort</span>
+  </div>
+  <div class="quiet">
+    <a href="#">27 of these rest on reasoning that has moved.</a>
+    &nbsp;·&nbsp;
+    <a href="#">110 stale requests nobody claimed.</a>
+  </div>
+  <table id="worklist">
+    <thead>
+      <tr>
+        <th data-key="state"><button type="button">state <span class="ind"></span></button></th>
+        <th data-key="waits"><button type="button">waits on <span class="ind"></span></button></th>
+        <th class="ag" data-key="age"><button type="button">age <span class="ind"></span></button></th>
+        <th data-key="title"><button type="button">title <span class="ind"></span></button></th>
+        <th class="tk" data-key="ticket"><button type="button"># <span class="ind"></span></button></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr data-pri="0" data-state="1" data-waits="codex" data-age="1786241878" data-title="integrate the two independently approved status dependencies onto current main as one review" data-ticket="776"><td class="st s1">needs attention</td><td class="wo">codex</td><td class="ag">10d</td><td class="ti">Integrate the two independently approved status dependencies onto current main as one review</td><td class="tk">#776</td></tr>
+      <tr data-pri="1" data-state="1" data-waits="codex" data-age="1786417239" data-title="correct and complete the kernel–application architecture contract. keep the canonical layere" data-ticket="2964"><td class="st s1">needs attention</td><td class="wo">codex</td><td class="ag">8d</td><td class="ti">correct and complete the kernel–application architecture contract. Keep the canonical layere</td><td class="tk">#2964</td></tr>
+      <tr data-pri="2" data-state="1" data-waits="codex" data-age="1786419612" data-title="complete the kernel–application architecture contract on the existing exact head. keep repos" data-ticket="2985"><td class="st s1">needs attention</td><td class="wo">codex</td><td class="ag">8d</td><td class="ti">complete the kernel–application architecture contract on the existing exact head. Keep repos</td><td class="tk">#2985</td></tr>
+      <tr data-pri="3" data-state="1" data-waits="codex" data-age="1786447446" data-title="repair resident rebuild progress after evidence review of ca7d692. the reported head seriali" data-ticket="3134"><td class="st s1">needs attention</td><td class="wo">codex</td><td class="ag">8d</td><td class="ti">repair resident rebuild progress after evidence review of ca7d692. The reported head seriali</td><td class="tk">#3134</td></tr>
+      <tr data-pri="4" data-state="1" data-waits="codex" data-age="1786485297" data-title="repair the resident-client merge artifact provenance. the original planner request directly " data-ticket="2983"><td class="st s1">needs attention</td><td class="wo">codex</td><td class="ag">7d</td><td class="ti">repair the resident-client merge artifact provenance. The original planner request directly </td><td class="tk">#2983</td></tr>
+      <tr data-pri="5" data-state="1" data-waits="codex" data-age="1786508350" data-title="re-cut the shipped back-pressure repair from this independent assignment. do not rest on the" data-ticket="3923"><td class="st s1">needs attention</td><td class="wo">codex</td><td class="ag">7d</td><td class="ti">re-cut the shipped back-pressure repair from this independent assignment. Do not rest on the</td><td class="tk">#3923</td></tr>
+      <tr data-pri="6" data-state="1" data-waits="codex" data-age="1786542414" data-title="re-cut ambient live attention on current main under a fresh non-stale authorization. preserv" data-ticket="4235"><td class="st s1">needs attention</td><td class="wo">codex</td><td class="ag">6d</td><td class="ti">re-cut ambient live attention on current main under a fresh non-stale authorization. Preserv</td><td class="tk">#4235</td></tr>
+      <tr data-pri="7" data-state="1" data-waits="codex" data-age="1786637316" data-title="fresh live replacement for stale request 1318fde0. complete the stranded ui succession creat" data-ticket="4992"><td class="st s1">needs attention</td><td class="wo">codex</td><td class="ag">5d</td><td class="ti">fresh live replacement for stale request 1318fde0. Complete the stranded UI succession creat</td><td class="tk">#4992</td></tr>
+      <tr data-pri="8" data-state="1" data-waits="planner" data-age="1787137110" data-title="make ordinary staleness quiet and world-staleness loud on the default read surfaces. since t" data-ticket="6349"><td class="st s1">needs attention</td><td class="wo">planner</td><td class="ag">28m</td><td class="ti">make ordinary staleness quiet and world-staleness loud on the default read surfaces. Since t</td><td class="tk">#6349</td></tr>
+      <tr data-pri="9" data-state="1" data-waits="planner" data-age="1787138604" data-title="cut the structural round-trips in the mcp read/write surface, measured during the 2026-08-19" data-ticket="6356"><td class="st s1">needs attention</td><td class="wo">planner</td><td class="ag">3m</td><td class="ti">cut the structural round-trips in the MCP read/write surface, measured during the 2026-08-19</td><td class="tk">#6356</td></tr>
+      <tr data-pri="10" data-state="1" data-waits="planner" data-age="1787138657" data-title="fix two gs cli failure-reporting papercuts found while running the 2026-08-19 settlement bat" data-ticket="6350"><td class="st s1">needs attention</td><td class="wo">planner</td><td class="ag">2m</td><td class="ti">fix two gs CLI failure-reporting papercuts found while running the 2026-08-19 settlement bat</td><td class="tk">#6350</td></tr>
+      <tr data-pri="11" data-state="2" data-waits="unassigned" data-age="1786392785" data-title="p1 architecture: replace the resident's loopback-only trust assumption with an explicit supp" data-ticket="2544"><td class="st s2">unclaimed</td><td class="wo">unassigned</td><td class="ag">8d</td><td class="ti">P1 architecture: replace the resident's loopback-only trust assumption with an explicit supp</td><td class="tk">#2544</td></tr>
+      <tr data-pri="12" data-state="2" data-waits="unassigned" data-age="1786392785" data-title="p1: prevent or deliberately coordinate multiple residents for one repository. durable cas re" data-ticket="2545"><td class="st s2">unclaimed</td><td class="wo">unassigned</td><td class="ag">8d</td><td class="ti">P1: prevent or deliberately coordinate multiple residents for one repository. Durable CAS re</td><td class="tk">#2545</td></tr>
+      <tr data-pri="13" data-state="2" data-waits="unassigned" data-age="1786392785" data-title="p2 production evidence: set explicit scale targets and stress the current linear-history pro" data-ticket="2546"><td class="st s2">unclaimed</td><td class="wo">unassigned</td><td class="ag">8d</td><td class="ti">P2 production evidence: set explicit scale targets and stress the current linear-history pro</td><td class="tk">#2546</td></tr>
+      <tr data-pri="14" data-state="2" data-waits="unassigned" data-age="1787114365" data-title="after the consecutive fan-out lane lands, produce its contract-full verdict and update the s" data-ticket="6257"><td class="st s2">unclaimed</td><td class="wo">unassigned</td><td class="ag">6h</td><td class="ti">After the consecutive fan-out lane lands, produce its contract-full verdict and update the s</td><td class="tk">#6257</td></tr>
+      <tr data-pri="15" data-state="2" data-waits="unassigned" data-age="1787123000" data-title="corrected 500k resident-memory-lane child on the live internal/kernel artifact ad5dd1bf (rep" data-ticket="6307"><td class="st s2">unclaimed</td><td class="wo">unassigned</td><td class="ag">4h</td><td class="ti">corrected 500k resident-memory-lane child on the live internal/kernel artifact ad5dd1bf (rep</td><td class="tk">#6307</td></tr>
+      <tr data-pri="16" data-state="2" data-waits="unassigned" data-age="1787123967" data-title="the versioned consecutive fan-out axis, now authorized — hugh ratified proposal e5b88d52 (b4" data-ticket="6313"><td class="st s2">unclaimed</td><td class="wo">unassigned</td><td class="ag">4h</td><td class="ti">the versioned consecutive fan-out axis, now AUTHORIZED — hugh ratified proposal e5b88d52 (b4</td><td class="tk">#6313</td></tr>
+      <tr data-pri="17" data-state="2" data-waits="unassigned" data-age="1787123967" data-title="the bounded 50 ms one-base-append fixed-cost reduction, now authorized — hugh ratified e5b88" data-ticket="6314"><td class="st s2">unclaimed</td><td class="wo">unassigned</td><td class="ag">4h</td><td class="ti">the bounded 50 ms one-base-append fixed-cost reduction, now AUTHORIZED — hugh ratified e5b88</td><td class="tk">#6314</td></tr>
+      <tr data-pri="18" data-state="2" data-waits="unassigned" data-age="1787136957" data-title="please review exact head 66911ecdbf6dfce6df0582277612f881cd85e9cc on request/ui-simplificati" data-ticket="6454"><td class="st s2">unclaimed</td><td class="wo">unassigned</td><td class="ag">31m</td><td class="ti">please review exact head 66911ecdbf6dfce6df0582277612f881cd85e9cc on request/ui-simplificati</td><td class="tk">#6454</td></tr>
+      <tr data-pri="19" data-state="4" data-waits="planner" data-age="1787138657" data-title="p2 projection scale targets + stress evidence, from the aug-11 security backlog f85f197b (co" data-ticket="5781"><td class="st s4">reported</td><td class="wo">planner</td><td class="ag">2m</td><td class="ti">P2 projection scale targets + stress evidence, from the Aug-11 security backlog f85f197b (co</td><td class="tk">#5781</td></tr>
+      <tr data-pri="20" data-state="4" data-waits="codex" data-age="1787137937" data-title="add a thread-local event railway to the thread panel." data-ticket="1129"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">14m</td><td class="ti">Add a thread-local event railway to the Thread panel.</td><td class="tk">#1129</td></tr>
+      <tr data-pri="21" data-state="4" data-waits="planner" data-age="1787137937" data-title="design the dramatic simplification of the web ui, as a ratifiable note answering one questio" data-ticket="6393"><td class="st s4">reported</td><td class="wo">planner</td><td class="ag">14m</td><td class="ti">design the dramatic simplification of the web UI, as a ratifiable note answering one questio</td><td class="tk">#6393</td></tr>
+      <tr data-pri="22" data-state="4" data-waits="codex" data-age="1787137494" data-title="corrected dot-citation frontmatter repair (11 pages, 14 live-dot citations). replaces withdr" data-ticket="5769"><td class="st s4">in progress</td><td class="wo">codex</td><td class="ag">22m</td><td class="ti">corrected dot-citation frontmatter repair (11 pages, 14 live-dot citations). Replaces withdr</td><td class="tk">#5769</td></tr>
+      <tr data-pri="23" data-state="4" data-waits="claude" data-age="1787137104" data-title="p1 multi-resident coordination, from the aug-11 security backlog 85fe10f1 (codex self-reques" data-ticket="5780"><td class="st s4">in progress</td><td class="wo">claude</td><td class="ag">28m</td><td class="ti">P1 multi-resident coordination, from the Aug-11 security backlog 85fe10f1 (codex self-reques</td><td class="tk">#5780</td></tr>
+      <tr data-pri="24" data-state="4" data-waits="planner" data-age="1787136929" data-title="chess item 3 (public-api surface for the external importer), reassigned to you as the chess " data-ticket="5892"><td class="st s4">reported</td><td class="wo">planner</td><td class="ag">31m</td><td class="ti">chess ITEM 3 (public-API surface for the external importer), reassigned to you as the chess </td><td class="tk">#5892</td></tr>
+      <tr data-pri="25" data-state="4" data-waits="codex" data-age="1787123097" data-title="bound resident memory so a 500,000-record workroom fits the first-production envelope." data-ticket="6212"><td class="st s4">in progress</td><td class="wo">codex</td><td class="ag">4h</td><td class="ti">Bound resident memory so a 500,000-record workroom fits the FIRST-PRODUCTION envelope.</td><td class="tk">#6212</td></tr>
+      <tr data-pri="26" data-state="4" data-waits="claude" data-age="1787095602" data-title="the extracted onboarding-identity core (from chess item 7), decoupled per hugh so easy workr" data-ticket="6058"><td class="st s4">in progress</td><td class="wo">claude</td><td class="ag">12h</td><td class="ti">the EXTRACTED onboarding-identity core (from chess item 7), decoupled per hugh so easy workr</td><td class="tk">#6058</td></tr>
+      <tr data-pri="27" data-state="4" data-waits="codex" data-age="1786965698" data-title="repair the thread-local event railway after exact-head review: bound its lane geometry on re" data-ticket="1444"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">2d</td><td class="ti">Repair the thread-local event railway after exact-head review: bound its lane geometry on re</td><td class="tk">#1444</td></tr>
+      <tr data-pri="28" data-state="4" data-waits="codex" data-age="1786654881" data-title="repair merge succession authorization for reviewed exact heads that span several maintained " data-ticket="5198"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">5d</td><td class="ti">Repair merge succession authorization for reviewed exact heads that span several maintained </td><td class="tk">#5198</td></tr>
+      <tr data-pri="29" data-state="4" data-waits="codex" data-age="1786648637" data-title="add honest resident-rebuild progress to the browser when a fold-profile version bump invalid" data-ticket="2873"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">5d</td><td class="ti">add honest resident-rebuild progress to the browser when a fold-profile version bump invalid</td><td class="tk">#2873</td></tr>
+      <tr data-pri="30" data-state="4" data-waits="codex" data-age="1786635494" data-title="repair the ratified changes-requested review of merge-driven succession on the existing requ" data-ticket="4852"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">5d</td><td class="ti">repair the ratified changes-requested review of merge-driven succession on the existing requ</td><td class="tk">#4852</td></tr>
+      <tr data-pri="31" data-state="4" data-waits="codex" data-age="1786628621" data-title="require live participant membership before new statements gain force." data-ticket="1317"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">5d</td><td class="ti">Require live participant membership before new statements gain force.</td><td class="tk">#1317</td></tr>
+      <tr data-pri="32" data-state="4" data-waits="codex" data-age="1786623853" data-title="independently reauthorize and re-cut the approved dead stream surface deletion from exact fd" data-ticket="4554"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">5d</td><td class="ti">independently reauthorize and re-cut the approved dead Stream surface deletion from exact fd</td><td class="tk">#4554</td></tr>
+      <tr data-pri="33" data-state="4" data-waits="codex" data-age="1786586300" data-title="expose an exact same-fingerprint live-session count for the mcp warning" data-ticket="4603"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">6d</td><td class="ti">Expose an exact same-fingerprint live-session count for the MCP warning</td><td class="tk">#4603</td></tr>
+      <tr data-pri="34" data-state="4" data-waits="codex" data-age="1786586300" data-title="carry the completed shared-identity warning implementation onto the newly merged citation-gu" data-ticket="4640"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">6d</td><td class="ti">Carry the completed shared-identity warning implementation onto the newly merged citation-gu</td><td class="tk">#4640</td></tr>
+      <tr data-pri="35" data-state="4" data-waits="codex" data-age="1786563900" data-title="repair gs batch after exact-head review: reject all trailing input before the first append a" data-ticket="894"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">6d</td><td class="ti">Repair gs batch after exact-head review: reject all trailing input before the first append a</td><td class="tk">#894</td></tr>
+      <tr data-pri="36" data-state="4" data-waits="codex" data-age="1786552228" data-title="codex follow-up: repair the obligation-asserting projection of unclaimed requests so open ad" data-ticket="750"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">6d</td><td class="ti">Codex follow-up: repair the obligation-asserting projection of unclaimed requests so open ad</td><td class="tk">#750</td></tr>
+      <tr data-pri="37" data-state="4" data-waits="codex" data-age="1786503228" data-title="repair the no-workroom citation-gate regression test on the existing request/docset-no-workr" data-ticket="3902"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">7d</td><td class="ti">repair the no-workroom citation-gate regression test on the existing request/docset-no-workr</td><td class="tk">#3902</td></tr>
+      <tr data-pri="38" data-state="4" data-waits="codex" data-age="1786485297" data-title="replace the over-constrained documentation re-anchor assignment. re-anchor all fifteen surve" data-ticket="3632"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">7d</td><td class="ti">replace the over-constrained documentation re-anchor assignment. Re-anchor all fifteen surve</td><td class="tk">#3632</td></tr>
+      <tr data-pri="39" data-state="4" data-waits="codex" data-age="1786485297" data-title="repair the docs re-anchor after the ratified changes-requested review, on the existing reque" data-ticket="3648"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">7d</td><td class="ti">repair the docs re-anchor after the ratified changes-requested review, on the existing reque</td><td class="tk">#3648</td></tr>
+      <tr data-pri="40" data-state="4" data-waits="codex" data-age="1786366324" data-title="carry the independently approved recovered implementation at exact head 364f2aed46a2751df0bd" data-ticket="2269"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">8d</td><td class="ti">Carry the independently approved recovered implementation at exact head 364f2aed46a2751df0bd</td><td class="tk">#2269</td></tr>
+      <tr data-pri="41" data-state="4" data-waits="codex" data-age="1786307045" data-title="repair the inherited adversarial-evidence inventory drift: require both current split kernel" data-ticket="1572"><td class="st s4">reported</td><td class="wo">codex</td><td class="ag">9d</td><td class="ti">Repair the inherited adversarial-evidence inventory drift: require both current split kernel</td><td class="tk">#1572</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p class="caption">Four columns and a ticket, one line each, no filters and no presentation
+switch. <b>No ordering subheads:</b> the <code>state</code> column and the single colour on
+<i>needs attention</i> already say which group a row is in. The default order is the priority
+rule — needs-attention oldest first, then unclaimed, then work waiting on a human, then
+everything running by recency — and <b>every column header sorts</b>: click to sort, click again
+to reverse, click a third time to return to priority order. On this board the priority rule yields 11
+needs-attention, 8 unclaimed, <b>0 waiting on a human</b> — nothing is blocked on hugh — and 23
+running.</p>
+
+<h2>Preview 2 — the thread, #3923</h2>
+
+<div class="screen">
+  <div class="chrome">
+    <span>#3923 · re-cut the shipped back-pressure repair</span>
+    <span class="who">codex → claude</span>
+  </div>
+
+  <div class="thread">
+    <div class="srow">
+      <span class="rail"><span class="node"></span></span>
+      <span class="kind">request</span><span class="tk2">#3923</span>
+      <span class="what">codex asked claude to re-cut the shipped back-pressure repair</span>
+      <span class="tk2">7d</span>
+    </div>
+    <div class="srow">
+      <span class="rail"><span class="node"></span></span>
+      <span class="kind">promise</span><span class="tk2">#3924</span>
+      <span class="what">claude claimed it</span>
+      <span class="tk2">7d</span>
+    </div>
+    <div class="srow">
+      <span class="rail"><span class="node"></span></span>
+      <span class="kind">report</span><span class="tk2">#4043</span>
+      <span class="what">claude reported ready for review at <code>acf13441</code></span>
+      <span class="tk2">7d</span>
+    </div>
+    <div class="srow">
+      <span class="rail"><span class="node ok"></span></span>
+      <span class="kind">verdict</span><span class="tk2">#4075</span>
+      <span class="what"><span class="ok">approved</span> by codex, ratified, over exact head <code>b3bf3083</code></span>
+      <span class="tk2">7d</span>
+    </div>
+    <div class="srow">
+      <span class="rail"><span class="node"></span></span>
+      <span class="kind">merge</span><span class="tk2">44d8b4fa</span>
+      <span class="what"><code>b3bf3083</code> landed on main on 2026-08-12 — asked of git at render time</span>
+      <span class="tk2">7d</span>
+    </div>
+    <div class="srow blocked last">
+      <span class="rail"><span class="branch"></span><span class="node block"></span></span>
+      <span class="kind">open</span><span class="tk2">#4043</span>
+      <span class="what">shipped but never closed — the report was filed 7 days ago and never ratified, so the commitment is still <code>reported</code> and still waits on codex</span>
+      <span class="tk2"></span>
+    </div>
+  </div>
+
+  <div class="exp"><span class="tri">▸</span><span>Repair chain</span><span class="c">41</span>
+    <span class="hint">14 retired predecessor artifacts, 27 supersessions</span></div>
+  <div class="exp"><span class="tri">▸</span><span>Earlier rounds</span><span class="c">3</span>
+    <span class="hint">#4015 and #4033 changes-requested, #4054 an earlier approval</span></div>
+  <div class="exp"><span class="tri">▸</span><span>Superseded claims</span><span class="c">15</span>
+    <span class="hint">refiled requests, replaced promises and reports, ratifications</span></div>
+  <div class="exp"><span class="tri">▸</span><span>Talk</span><span class="c">7</span>
+    <span class="hint">asserts and chat</span></div>
+
+  <div class="composer">Reply…</div>
+</div>
+
+<p class="caption">One <b>vertical rail</b> down the left, one node per row, at that row's own
+position — not a separate horizontal drawing. The open-state branch leaves the rail beside the
+row it concerns, which is where the reader is already looking. Five stations and one branch out
+of the <b>71</b> records that descend from #3923; the other 66 sit behind the four counted
+expanders. Salience is computed from the fold, which is what lets it pick #4075 rather than
+#4054: both are ratified approvals in this thread, and only the later one names the head that
+landed. The status reads off the rail without opening anything — <b>shipped but never
+closed</b> — and it needs both sources: the fold alone says only "reported, waiting on codex",
+while git alone says only that the head is on main. The merge station is where they meet, and
+it is asked of git at render time rather than stored, because an earlier head of this very note
+asserted the opposite and was wrong for seven days.</p>
+
+<p class="note">Data provenance: <code>GET /v0/status</code> at depth 6500; ages computed at
+render time against the record timestamps. Ticket numbers are log sequence numbers, never
+abbreviated event identifiers. The list table carries a small inline script, below, whose only
+effect is to reorder the rows already present — it performs no network access and reads no
+input other than the table's own <code>data-</code> attributes.</p>
+
+</div>
+<script>
+// Demonstrates the click-to-sort behaviour the note specifies. It reorders rows
+// that are already in the document and does nothing else: no network, no storage,
+// no input beyond the table's own data- attributes.
+(function () {
+  var table = document.getElementById("worklist");
+  if (!table) return;
+  var body = table.tBodies[0];
+  var note = document.getElementById("sortnote");
+  var rows = Array.prototype.slice.call(body.rows);
+  var heads = Array.prototype.slice.call(table.tHead.rows[0].cells);
+  var active = null, dir = 1;
+
+  var numeric = { age: true, ticket: true, state: true, pri: true };
+  function val(row, key) {
+    var raw = row.getAttribute("data-" + key);
+    return numeric[key] ? parseFloat(raw) : String(raw || "");
+  }
+  function apply(order, label) {
+    order.forEach(function (r) { body.appendChild(r); });
+    if (note) note.innerHTML = "sorted by <b>" + label + "</b> — click any column to re-sort";
+  }
+  function priority() {
+    active = null; dir = 1;
+    heads.forEach(function (h) { h.removeAttribute("aria-sort"); h.querySelector(".ind").textContent = ""; });
+    apply(rows.slice().sort(function (a, b) { return val(a, "pri") - val(b, "pri"); }), "priority");
+  }
+  heads.forEach(function (head) {
+    var key = head.getAttribute("data-key");
+    head.querySelector("button").addEventListener("click", function () {
+      // Third click on the same column returns to the default priority order.
+      if (active === key && dir === -1) { priority(); return; }
+      dir = active === key ? -1 : 1;
+      active = key;
+      heads.forEach(function (h) { h.removeAttribute("aria-sort"); h.querySelector(".ind").textContent = ""; });
+      head.setAttribute("aria-sort", dir === 1 ? "ascending" : "descending");
+      head.querySelector(".ind").textContent = dir === 1 ? "↑" : "↓";
+      apply(rows.slice().sort(function (a, b) {
+        var x = val(a, key), y = val(b, key);
+        return (x < y ? -1 : x > y ? 1 : val(a, "pri") - val(b, "pri")) * dir;
+      }), head.querySelector("button").textContent.trim().replace(/[↑↓]\s*$/, "") || key);
+    });
+  });
+  priority();
+})();
+</script>
+</body>
+</html>
