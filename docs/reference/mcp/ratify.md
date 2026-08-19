@@ -83,6 +83,11 @@ what took effect.
 So read the current state before retrying, and do not submit a variant of
 an act that already landed.
 
+Every successful write result includes `projected.verdict` with the fold's
+ruling, including `effective`, plus `projected.reason` when the ruling explains
+a refusal or dispute. This is the decision after the record landed, not a
+preview made by the adapter.
+
 ## See also
 
 - [`state`](state.md), [`supersede`](supersede.md)

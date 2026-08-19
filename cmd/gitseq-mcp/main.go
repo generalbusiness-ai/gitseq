@@ -45,13 +45,14 @@ var legacyVersions = map[string]bool{
 	"2024-11-05": true,
 }
 
-const instructions = "Use status once and wait to follow the workroom; use work and inspect for selective durable follow-up; say ephemerally and promote deliberate acts with state."
+const instructions = "Use status once and wait to follow the workroom; use work, artifacts, and inspect for selective durable follow-up; say ephemerally and promote deliberate acts with state."
 
 const (
 	orientationTimeout        = 2 * time.Second
 	orientationResponseLimit  = 64 << 10
 	actorStatusResponseLimit  = 1 << 20
 	workResponseLimit         = 256 << 10
+	artifactResponseLimit     = 2 << 20
 	inspectionResponseLimit   = 2 << 20
 	residentResponseLimit     = 64 << 20
 	residentCallTimeout       = 10 * time.Second
@@ -558,6 +559,11 @@ func tools() []map[string]any {
 			"limit":    map[string]any{"type": "integer", "minimum": 1, "maximum": statusview.WorkPageMax},
 			"cursor":   stringField,
 		}))},
+		{"name": "artifacts", "description": "Page through live artifact bases at exact path strings without fetching the full projection.", "inputSchema": object(withRepo(map[string]any{
+			"paths":  map[string]any{"type": "array", "items": stringField, "minItems": 1, "maxItems": statusview.ArtifactPathMax},
+			"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": statusview.ArtifactPageMax},
+			"cursor": stringField,
+		}), "paths")},
 		{"name": "inspect", "description": "Inspect one exact canonical durable event with its decision, commitment chain, direct provenance, and related review artifacts.", "inputSchema": object(withRepo(map[string]any{"event": stringField}), "event")},
 		{"name": "say", "description": "Publish signed ephemeral chat. Unique @name mentions and exact replies address live recipient sessions for priority delivery.", "inputSchema": object(withRepo(map[string]any{"about": stringField, "text": stringField, "conversation": stringField, "re": stringField}), "about", "text")},
 		{"name": "ack", "description": "Acknowledge exact priority-chat thread handles for this leased session. This is not a durable read receipt.", "inputSchema": object(withRepo(map[string]any{"threads": map[string]any{"type": "array", "items": stringField, "maxItems": nexus.MaxInboxFrames}}), "threads")},
@@ -691,7 +697,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		// fallback applies the same digest so losing the resident changes what
 		// is knowable, not the shape of the answer.
 		var status actorStatus
-		err := s.postForSessionBoundedJSON(ctx, current, "/v0/actor-status", map[string]any{"session": s.session}, actorStatusResponseLimit, &status)
+		err := s.postForSessionBoundedJSON(ctx, current, "/v0/actor-status", map[string]any{"session": s.session}, laneResponseLimit(current, actorStatusResponseLimit, statusview.ListCap), &status)
 		if isTransportError(err) || inboxProtocolUnavailable(err) {
 			local, localErr := s.localStatus(ctx, current)
 			if localErr != nil {
@@ -708,7 +714,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		arguments["session"] = s.session
 		requested := requestedCursor(arguments)
 		var delta waitDelta
-		err := s.postForSessionBoundedJSON(ctx, current, "/v0/actor-wait", arguments, actorStatusResponseLimit, &delta)
+		err := s.postForSessionBoundedJSON(ctx, current, "/v0/actor-wait", arguments, laneResponseLimit(current, actorStatusResponseLimit, statusview.ListCap), &delta)
 		if isTransportError(err) || inboxProtocolUnavailable(err) {
 			local, localErr := s.waitDurable(ctx, current, arguments)
 			if localErr != nil {
@@ -729,7 +735,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		}
 		input.Actor = s.fingerprint(current)
 		var page statusview.WorkPage
-		if err := s.postBoundedJSON(ctx, current, "/v0/work-query", input, workResponseLimit, &page); err != nil {
+		if err := s.postBoundedJSON(ctx, current, "/v0/work-query", input, laneResponseLimit(current, workResponseLimit, statusview.WorkPageMax), &page); err != nil {
 			if !isTransportError(err) {
 				return nil, err
 			}
@@ -738,6 +744,25 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 				return nil, localErr
 			}
 			return statusview.BuildWorkPage(durable, input, true)
+		}
+		return page, nil
+	case "artifacts":
+		var input statusview.ArtifactQuery
+		arguments := clone(call.Arguments)
+		delete(arguments, "repo")
+		if err := remarshal(arguments, &input); err != nil {
+			return nil, err
+		}
+		var page statusview.ArtifactPage
+		if err := s.postBoundedJSON(ctx, current, "/v0/artifact-query", input, artifactResponseLimit, &page); err != nil {
+			if !isTransportError(err) {
+				return nil, err
+			}
+			durable, localErr := current.workspace.Snapshot(ctx)
+			if localErr != nil {
+				return nil, localErr
+			}
+			return statusview.BuildArtifactPage(durable, input, true)
 		}
 		return page, nil
 	case "inspect":
@@ -792,6 +817,24 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 	default:
 		return nil, fmt.Errorf("unknown tool %q", call.Name)
 	}
+}
+
+// laneResponseLimit preserves the byte ceiling while allowing every capped
+// row to carry one full conditions value. Conditions are themselves bounded by
+// the repository's signed payload ceiling; multiplying that by the row cap is
+// still independent of workroom depth. The adapter-wide ceiling remains the
+// final bound even for a repository configured with an unusually large
+// payload.
+func laneResponseLimit(current *room, base int64, rows int) int64 {
+	if current == nil || rows <= 0 || current.workspace.Config.PayloadCeiling == 0 {
+		return base
+	}
+	ceiling := current.workspace.Config.PayloadCeiling
+	maximum := uint64(residentResponseLimit)
+	if uint64(base) >= maximum || ceiling > (maximum-uint64(base))/uint64(rows) {
+		return residentResponseLimit
+	}
+	return base + int64(ceiling*uint64(rows))
 }
 
 func (s *mcpServer) whoami(ctx context.Context, current *room) (any, error) {
@@ -993,10 +1036,11 @@ func projectionNotes(projection workroom.Projection, act app.Act, event string) 
 		notes["unresolved_target"] = act.Target
 	}
 
-	// The fold's own ruling, when it is anything other than plain effect. An
-	// ineffective act still returns a record and still looks like success.
+	// The fold's own ruling, including plain effect. Omitting the common case
+	// forced every caller to ask the projection whether an absent verdict meant
+	// effect or merely meant this reporting step failed.
 	for _, decision := range projection.Decisions {
-		if decision.Event == event && decision.Verdict != workroom.Effective {
+		if decision.Event == event {
 			notes["verdict"] = string(decision.Verdict)
 			if decision.Reason != "" {
 				notes["reason"] = decision.Reason

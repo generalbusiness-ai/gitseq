@@ -56,6 +56,10 @@ everything up to now with `reset` set.
 
 Every list is capped at 20 with its own skipped count.
 
+Current lane rows use the same enriched shape as [`status`](status.md) and
+[`work`](work.md), including full open-request conditions and exact-head review
+state.
+
 The resident selects the durable delta and current actor lanes before it
 encodes the response. Following a deep workroom therefore does not transfer
 the complete projection on every poll. Complete projection access remains an

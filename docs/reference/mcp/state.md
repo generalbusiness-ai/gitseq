@@ -95,7 +95,7 @@ and the quietest to survive:
 
 | Field | Says |
 |---|---|
-| `verdict`, `reason` | The fold's ruling, when it is anything other than plain effect. |
+| `verdict`, `reason` | The fold's ruling. `verdict` is always present, including `effective`; `reason` accompanies rulings that explain a refusal or dispute. |
 | `unresolved_rests_on` | Citations naming no event in this workroom. |
 | `unresolved_target` | For [`ratify`](ratify.md) and [`supersede`](supersede.md): a target naming no event here. |
 | `review` | For a report: whether it became a review, and which artifact it judges. |

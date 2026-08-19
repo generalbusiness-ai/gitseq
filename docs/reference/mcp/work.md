@@ -39,12 +39,28 @@ next cursor only when more remain. A cursor is bound to its exact head
 and filters, so a moved head is an explicit refusal: restart the query
 to read the new world rather than mixing two projections.
 
+Each returned row also carries the facts needed for routine action without an
+`inspect` round trip:
+
+| Field | Meaning |
+|---|---|
+| `conditions` | The full, untruncated `body.conditions` for an open request. |
+| `report_status` | The reported statement's `body.status`, when present. |
+| `reported_head` | The exact head named by the report or reporting artifact. |
+| `latest_review` | The latest effective review for that exact head: its report event, verdict, and explicit `ratified`, `retired`, and `stale` booleans. |
+
+The page still caps its row count. It does not shorten `conditions` or omit
+these fields merely to fit more rows into one answer.
+
 If the resident is unavailable, the tool makes the same bounded
 selection from a verified local snapshot and marks the response
 `degraded`. A resident rejection or oversized response is surfaced,
-not hidden by fallback. The adapter caps work responses at 256 KiB.
+not hidden by fallback. The adapter's byte ceiling is the 256 KiB base plus
+one repository payload ceiling per possible row, capped at 64 MiB. That admits
+full request conditions while remaining independent of workroom depth.
 
 ## See also
 
 - [`inspect`](inspect.md)
+- [`artifacts`](artifacts.md)
 - [`status`](status.md)

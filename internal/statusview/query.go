@@ -54,6 +54,28 @@ type ActorRef struct {
 	Name        string `json:"name"`
 }
 
+// WorkReview is the latest effective review for the exact reported head.
+// Ratified, Retired, and Stale are deliberately not omitted when false: callers
+// need to distinguish an actionable verdict from a row that has no review
+// evidence at all.
+type WorkReview struct {
+	Report   string `json:"report"`
+	Verdict  string `json:"verdict"`
+	Ratified bool   `json:"ratified"`
+	Retired  bool   `json:"retired"`
+	Stale    bool   `json:"stale"`
+}
+
+// WorkDetails carries the bounded facts needed to act on a commitment row.
+// Conditions is copied without text truncation for open requests; the number
+// of rows remains capped by the surrounding status or work page.
+type WorkDetails struct {
+	Conditions   string      `json:"conditions,omitempty"`
+	ReportStatus string      `json:"report_status,omitempty"`
+	ReportedHead string      `json:"reported_head,omitempty"`
+	LatestReview *WorkReview `json:"latest_review,omitempty"`
+}
+
 type WorkItem struct {
 	Request     string    `json:"request"`
 	Lane        WorkLane  `json:"lane"`
@@ -66,6 +88,7 @@ type WorkItem struct {
 	Promise     string    `json:"promise,omitempty"`
 	Report      string    `json:"report,omitempty"`
 	Text        string    `json:"text,omitempty"`
+	WorkDetails
 }
 
 type WorkPage struct {
@@ -226,7 +249,6 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 	for _, status := range query.Statuses {
 		statuses[status] = true
 	}
-	statements := statementIndex(durable.Projection)
 	items := make([]WorkItem, 0, query.Limit)
 	matching := 0
 	for index := len(durable.Projection.Commitments) - 1; index >= 0; index-- {
@@ -253,11 +275,9 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 		if requester != nil {
 			item.Requester = *requester
 		}
-		if statement, held := statements[commitment.Request]; held {
-			item.Text = Text(statement.Text)
-		}
 		items = append(items, item)
 	}
+	enrichWorkRows(durable.Projection, workItemTargets(items))
 	if offset > matching {
 		return WorkPage{}, errors.New("work cursor is beyond the matching result")
 	}
@@ -272,6 +292,87 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 		page.NextCursor = encodeWorkCursor(durable.Head, filter, end)
 	}
 	return page, nil
+}
+
+type workRowTarget struct {
+	Request  string
+	Report   string
+	Status   string
+	Text     *string
+	Details  *WorkDetails
+	artifact string
+}
+
+func workItemTargets(items []WorkItem) []workRowTarget {
+	targets := make([]workRowTarget, len(items))
+	for index := range items {
+		targets[index] = workRowTarget{Request: items[index].Request, Report: items[index].Report,
+			Status: items[index].Status, Text: &items[index].Text, Details: &items[index].WorkDetails}
+	}
+	return targets
+}
+
+// enrichWorkRows scans each projection collection once for only the already
+// capped rows. It avoids both a second inspect call per row and a projection-
+// sized index allocated merely to decorate a bounded response.
+func enrichWorkRows(projection workroom.Projection, targets []workRowTarget) {
+	requests := make(map[string][]int)
+	reports := make(map[string][]int)
+	for index, target := range targets {
+		requests[target.Request] = append(requests[target.Request], index)
+		if target.Report != "" {
+			reports[target.Report] = append(reports[target.Report], index)
+		}
+	}
+	for _, statement := range projection.Statements {
+		for _, index := range requests[statement.Event] {
+			if targets[index].Text != nil {
+				*targets[index].Text = Text(statement.Text)
+			}
+			if targets[index].Status == "open" && targets[index].Details != nil {
+				targets[index].Details.Conditions = statement.Body["conditions"]
+			}
+		}
+		for _, index := range reports[statement.Event] {
+			details := targets[index].Details
+			if details == nil {
+				continue
+			}
+			details.ReportStatus = statement.Body["status"]
+			details.ReportedHead = statement.Body["head"]
+			if details.ReportedHead == "" {
+				details.ReportedHead = statement.Body["commit"]
+			}
+			if details.ReportedHead == "" {
+				targets[index].artifact = statement.Body["artifact"]
+			}
+		}
+	}
+	artifactTargets := make(map[string][]int)
+	for index, target := range targets {
+		if target.artifact != "" {
+			artifactTargets[target.artifact] = append(artifactTargets[target.artifact], index)
+		}
+	}
+	for _, artifact := range projection.Artifacts {
+		for _, index := range artifactTargets[artifact.Event] {
+			targets[index].Details.ReportedHead = artifact.Commit
+		}
+	}
+	headTargets := make(map[string][]int)
+	for index, target := range targets {
+		if target.Details != nil && target.Details.ReportedHead != "" {
+			headTargets[target.Details.ReportedHead] = append(headTargets[target.Details.ReportedHead], index)
+		}
+	}
+	for _, review := range projection.Reviews {
+		for _, index := range headTargets[review.Head] {
+			targets[index].Details.LatestReview = &WorkReview{
+				Report: review.Report, Verdict: review.Verdict, Ratified: review.Ratified,
+				Retired: review.Retired, Stale: review.Stale,
+			}
+		}
+	}
 }
 
 type InspectRequest struct {

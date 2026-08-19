@@ -70,6 +70,11 @@ not enough.
 A supersession must cite its target as the **first** basis. The adapter
 puts it there; anything in `rests_on` follows.
 
+Every successful write result includes `projected.verdict` with the fold's
+ruling, including `effective`, plus `projected.reason` when the ruling explains
+a refusal or dispute. This is the decision after the record landed, not a
+preview made by the adapter.
+
 ## Reversible
 
 Superseding a supersession restores the earlier act, and everything that

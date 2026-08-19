@@ -25,6 +25,8 @@ type Cursor = statusview.Cursor
 type Orientation = statusview.Orientation
 type WorkQuery = statusview.WorkQuery
 type WorkPage = statusview.WorkPage
+type ArtifactQuery = statusview.ArtifactQuery
+type ArtifactPage = statusview.ArtifactPage
 type InspectRequest = statusview.InspectRequest
 type ItemInspection = statusview.ItemInspection
 type ActorStatus = statusview.ActorStatus
@@ -100,6 +102,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v0/actor-status", s.handleActorStatus)
 	s.mux.HandleFunc("GET /v0/status-summary", s.handleStatusSummary)
 	s.mux.HandleFunc("POST /v0/work-query", s.handleWorkQuery)
+	s.mux.HandleFunc("POST /v0/artifact-query", s.handleArtifactQuery)
 	s.mux.HandleFunc("POST /v0/inspect", s.handleInspect)
 	s.mux.HandleFunc("POST /v0/wait", s.handleWait)
 	s.mux.HandleFunc("POST /v0/actor-wait", s.handleActorWait)
@@ -247,6 +250,21 @@ func (s *Server) handleWorkQuery(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	page, err := statusview.BuildWorkPage(durable, input, false)
+	write(writer, page, err)
+}
+
+func (s *Server) handleArtifactQuery(writer http.ResponseWriter, request *http.Request) {
+	var input ArtifactQuery
+	if err := decode(request, &input); err != nil {
+		write(writer, nil, err)
+		return
+	}
+	durable, err := s.workspace.Snapshot(request.Context())
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	page, err := statusview.BuildArtifactPage(durable, input, false)
 	write(writer, page, err)
 }
 

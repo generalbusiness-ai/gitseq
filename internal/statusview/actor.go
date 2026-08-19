@@ -56,6 +56,7 @@ type CommitmentView struct {
 	Text      string `json:"text,omitempty"`
 	Promise   string `json:"promise,omitempty"`
 	Report    string `json:"report,omitempty"`
+	WorkDetails
 }
 
 type EventView struct {
@@ -200,32 +201,19 @@ func viewCommitment(projection workroom.Projection, commitment workroom.Commitme
 	}
 }
 
-// fillCommitmentText scans history once for only the rows that survived their
-// caps. Building an event-sized statement map merely to label at most twenty
-// rows made a bounded response allocate in proportion to the whole log.
-func fillCommitmentText(projection workroom.Projection, groups ...[]CommitmentView) {
-	wanted := make(map[string][]*CommitmentView)
+// fillCommitmentDetails scans history for only the rows that survived their
+// caps. Building event-sized indexes merely to label at most twenty rows per
+// lane would make a bounded response allocate in proportion to the whole log.
+func fillCommitmentDetails(projection workroom.Projection, groups ...[]CommitmentView) {
+	var targets []workRowTarget
 	for _, group := range groups {
 		for index := range group {
 			view := &group[index]
-			wanted[view.Request] = append(wanted[view.Request], view)
+			targets = append(targets, workRowTarget{Request: view.Request, Report: view.Report, Status: view.Status,
+				Text: &view.Text, Details: &view.WorkDetails})
 		}
 	}
-	if len(wanted) == 0 {
-		return
-	}
-	for _, statement := range projection.Statements {
-		views := wanted[statement.Event]
-		for _, view := range views {
-			view.Text = Text(statement.Text)
-		}
-		if len(views) > 0 {
-			delete(wanted, statement.Event)
-			if len(wanted) == 0 {
-				return
-			}
-		}
-	}
+	enrichWorkRows(projection, targets)
 }
 
 func actorTotals(projection workroom.Projection, depth int) ActorTotals {
@@ -369,7 +357,7 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 	digest.YouAreWaiting, digest.YouAreWaitingSkipped = Cap(digest.YouAreWaiting, ListCap)
 	digest.NotActionable, digest.NotActionableSkipped = Cap(digest.NotActionable, ListCap)
 	digest.YourAttention, digest.YourAttentionSkipped = Cap(digest.YourAttention, ListCap)
-	fillCommitmentText(projection, digest.AvailableToYou, digest.WaitingOnYou, digest.YouAreWaiting, digest.NotActionable)
+	fillCommitmentDetails(projection, digest.AvailableToYou, digest.WaitingOnYou, digest.YouAreWaiting, digest.NotActionable)
 	return digest
 }
 
@@ -452,7 +440,7 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 	delta.CurrentAvailableToYou, delta.CurrentAvailableToSkipped = Cap(delta.CurrentAvailableToYou, ListCap)
 	delta.CurrentWaitingOnYou, delta.CurrentWaitingSkipped = Cap(delta.CurrentWaitingOnYou, ListCap)
 	delta.CurrentNotActionable, delta.CurrentNotActionableSkipped = Cap(delta.CurrentNotActionable, ListCap)
-	fillCommitmentText(projection, delta.CurrentAvailableToYou, delta.CurrentWaitingOnYou, delta.CurrentNotActionable)
+	fillCommitmentDetails(projection, delta.CurrentAvailableToYou, delta.CurrentWaitingOnYou, delta.CurrentNotActionable)
 	if degraded {
 		delta.Cursor.Live = nexus.Cursor{Generation: "degraded"}
 	}
@@ -497,6 +485,12 @@ func Summarize(tool string, value any) string {
 			suffix = fmt.Sprintf(", %d remain", shaped.Remaining)
 		}
 		return fmt.Sprintf("depth %d, %d of %d matching work items returned%s", shaped.Frontier.Depth, shaped.Returned, shaped.MatchingTotal, suffix)
+	case ArtifactPage:
+		suffix := ""
+		if shaped.Remaining > 0 {
+			suffix = fmt.Sprintf(", %d remain", shaped.Remaining)
+		}
+		return fmt.Sprintf("depth %d, %d of %d live artifacts returned%s", shaped.Frontier.Depth, shaped.Returned, shaped.MatchingTotal, suffix)
 	case ItemInspection:
 		kind := "event"
 		if shaped.Statement != nil {

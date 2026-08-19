@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -137,6 +138,60 @@ func TestWorkQueryResponseIsBoundedBeforeProjectionSerialization(t *testing.T) {
 	fullLarge, _ := json.Marshal(large)
 	if len(fullLarge) < len(fullSmall)*5 {
 		t.Fatalf("fixture did not materially grow: %d then %d", len(fullSmall), len(fullLarge))
+	}
+}
+
+func TestStatusAndWorkRowsCarryActionableTriageFields(t *testing.T) {
+	conditions := strings.Repeat("full condition ", 40)
+	projection := workroom.Projection{
+		Actors: map[string]workroom.ActorState{queryActor: {Name: "Codex"}, otherActor: {Name: "Claude"}},
+		Statements: []workroom.Statement{
+			{Event: "request:open", Actor: otherActor, Kind: workroom.KindRequest, Text: "open", Body: map[string]string{"conditions": conditions}},
+			{Event: "request:reported", Actor: queryActor, Kind: workroom.KindRequest, Text: "reported"},
+			{Event: "report:complete", Actor: otherActor, Kind: workroom.KindReport, Body: map[string]string{"status": "complete", "head": "head-reviewed"}},
+		},
+		Commitments: []workroom.Commitment{
+			{Request: "request:open", Requester: otherActor, AddressedTo: queryActor, Status: "open"},
+			{Request: "request:reported", Requester: queryActor, Performer: otherActor, Report: "report:complete", WaitingOn: queryActor, Status: "reported"},
+		},
+		Reviews: []workroom.Review{
+			{Report: "review:old", Head: "head-reviewed", Verdict: "changes-requested", Ratified: true},
+			{Report: "review:latest", Head: "head-reviewed", Verdict: "approved", Ratified: false},
+			{Report: "review:retired", Head: "head-reviewed", Verdict: "approved", Ratified: true, Retired: true, Stale: true},
+		},
+	}
+	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 3, Projection: projection}
+	page, err := BuildWorkPage(snapshot, WorkQuery{Actor: queryActor, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byRequest := make(map[string]WorkItem)
+	for _, item := range page.Items {
+		byRequest[item.Request] = item
+	}
+	open := byRequest["request:open"]
+	if open.Conditions != conditions || len(open.Conditions) <= TextCap {
+		t.Fatalf("work row truncated or omitted open conditions: %#v", open)
+	}
+	reported := byRequest["request:reported"]
+	if reported.ReportStatus != "complete" || reported.ReportedHead != "head-reviewed" || reported.LatestReview == nil ||
+		reported.LatestReview.Report != "review:retired" || reported.LatestReview.Verdict != "approved" || !reported.LatestReview.Ratified ||
+		!reported.LatestReview.Retired || !reported.LatestReview.Stale {
+		t.Fatalf("work row cannot settle reported work without inspect: %#v", reported)
+	}
+
+	status := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, queryActor, "Codex", true)
+	if len(status.AvailableToYou) != 1 || status.AvailableToYou[0].Conditions != conditions {
+		t.Fatalf("status row lost full open conditions: %#v", status.AvailableToYou)
+	}
+	if len(status.WaitingOnYou) != 1 {
+		t.Fatalf("reported status row is missing: %#v", status.WaitingOnYou)
+	}
+	statusReported := status.WaitingOnYou[0]
+	if statusReported.ReportStatus != "complete" || statusReported.ReportedHead != "head-reviewed" || statusReported.LatestReview == nil ||
+		statusReported.LatestReview.Report != "review:retired" || statusReported.LatestReview.Verdict != "approved" ||
+		!statusReported.LatestReview.Ratified || !statusReported.LatestReview.Retired || !statusReported.LatestReview.Stale {
+		t.Fatalf("status row cannot settle reported work without inspect: %#v", statusReported)
 	}
 }
 

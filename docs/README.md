@@ -87,6 +87,7 @@ Read in this order if you are new:
   [ratify](reference/mcp/ratify.md),
   [supersede](reference/mcp/supersede.md),
   [work](reference/mcp/work.md),
+  [artifacts](reference/mcp/artifacts.md),
   [inspect](reference/mcp/inspect.md).
 - [Live attention](reference/live-attention.md) — the advisory adjunct
   every MCP tool result carries.
