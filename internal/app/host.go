@@ -60,8 +60,13 @@ type selection struct {
 // selectHost reads the binding and selects the interpreter. The returned error
 // means the log could not be read at all, which is not an answer: the
 // workspace does not open, rather than opening with the question left over.
+//
+// The scan is the ref, because this workspace has verified nothing yet: its
+// audit runs when the fold first reads the log, after the interpreter is
+// chosen. The choice is still made once and never revisited, so a binding
+// recorded afterwards cannot change what an open workspace means.
 func (w *Workspace) selectHost(ctx context.Context) (selection, error) {
-	recorded, err := apphost.BindingInForce(ctx, w.Store, w.Config.Genesis)
+	recorded, err := apphost.BindingInForce(ctx, w.Store, w.Config.Genesis, kernel.Ref(w.Config.Genesis))
 	if err != nil {
 		return selection{}, err
 	}

@@ -6,8 +6,10 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"math"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -235,6 +237,68 @@ func TestPayloadCeilingIsEnforcedAtTheBoundTheApplicationChose(t *testing.T) {
 	if _, err := workspace.Append(ctx, key, host.Act{Schema: "test/a@0", Payload: bytes.Repeat([]byte("x"), 4096)}); err == nil {
 		t.Fatal("append above the ceiling was admitted")
 	}
+}
+
+// The kernel validates before it writes, and Append must not get ahead of it.
+// Writing the payload tree first left the objects of every refused act in the
+// repository, unreachable and never collected, so a submit path open to anyone
+// holding a key was also a way to fill a disk with content nothing references.
+func TestAnActRefusedAboveTheCeilingWritesNoObjects(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	key := testKey(t)
+	workspace, err := host.Init(ctx, repo, testApplication(), key, host.Options{PayloadCeiling: 2048})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := looseObjects(t, commonDir)
+	if _, err := workspace.Append(ctx, key, host.Act{Schema: "test/a@0", Payload: bytes.Repeat([]byte("x"), 4096)}); err == nil {
+		t.Fatal("append above the ceiling was admitted")
+	}
+	if after := looseObjects(t, commonDir); after != before {
+		t.Fatalf("a refused act left %d new objects in the repository, want none", after-before)
+	}
+}
+
+// The genesis ceiling is unsigned and the blob-read limit that carries it is
+// not. A ceiling above MaxInt64 once narrowed to a negative limit, and every
+// binding record read as unreadable: the repository initialized without
+// complaint and then opened as bound to nothing at all.
+func TestARepositoryWhoseCeilingExceedsTheSignedReadLimitStillOpens(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	key := testKey(t)
+	if _, err := host.Init(ctx, repo, testApplication(), key, host.Options{PayloadCeiling: math.MaxUint64}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.Open(ctx, repo, testApplication()); err != nil {
+		t.Fatalf("open = %v, want the binding read under a ceiling above the signed read limit", err)
+	}
+}
+
+// looseObjects counts the objects in a repository. Nothing here packs or
+// collects, so the count moves only when something writes.
+func looseObjects(t *testing.T, commonDir string) int {
+	t.Helper()
+	output, err := exec.Command("git", "--git-dir", commonDir, "count-objects", "-v").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		if rest, found := strings.CutPrefix(line, "count: "); found {
+			count, err := strconv.Atoi(strings.TrimSpace(rest))
+			if err != nil {
+				t.Fatal(err)
+			}
+			return count
+		}
+	}
+	t.Fatalf("git count-objects reported no object count: %s", output)
+	return 0
 }
 
 // A repository is one application's for life, and the refusal says which one

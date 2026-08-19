@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"runtime/debug"
 	"strings"
 	"unicode"
@@ -98,10 +99,18 @@ func DecodeBinding(payload []byte) (Binding, error) {
 // record does not authenticate. It never leaves BindingInForce.
 var errFirstRecordUnauthenticated = errors.New("the log's first record does not authenticate")
 
-// BindingInForce returns the binding in force, or nil when the log declares
-// none. A log that cannot be read yet — a repository attached before its
-// objects arrive — is not an absent binding, so it reports an error and leaves
-// the question open.
+// BindingInForce returns the binding in force at one exact revision, or nil
+// when the history ending there declares none. A log that cannot be read yet —
+// a repository attached before its objects arrive — is not an absent binding,
+// so it reports an error and leaves the question open.
+//
+// The revision is the caller's, and naming it is what keeps the answer honest.
+// A caller that has just verified a frontier passes that commit, so the binding
+// it selects comes out of the history it verified rather than out of whatever
+// the ref points at by the time this runs; a concurrent appender cannot slip a
+// binding into the answer through a frontier nobody checked. A caller with no
+// verified frontier passes the ref, and gets the binding as of whenever it
+// looked.
 //
 // The binding in force is the last binding record signed by the key that
 // initialized the repository: the actor key on the log's first record. The
@@ -122,7 +131,10 @@ var errFirstRecordUnauthenticated = errors.New("the log's first record does not 
 // unauthorized, unparseable, or malformed binding-shaped record has no force
 // and leaves the previous answer standing, so nobody able to append can make a
 // repository unreadable by recording one.
-func BindingInForce(ctx context.Context, store gitstore.Store, genesis string) (*Binding, error) {
+func BindingInForce(ctx context.Context, store gitstore.Store, genesis, revision string) (*Binding, error) {
+	if revision == "" {
+		return nil, errors.New("binding read needs the revision to scan")
+	}
 	desc, err := kernel.Descriptor(ctx, store, genesis)
 	if err != nil {
 		return nil, err
@@ -133,7 +145,7 @@ func BindingInForce(ctx context.Context, store gitstore.Store, genesis string) (
 		established  bool
 		inForce      *Binding
 	)
-	err = store.WalkRevListMetadata(ctx, kernel.Ref(genesis), func(commit gitstore.CommitMetadata) error {
+	err = store.WalkRevListMetadata(ctx, revision, func(commit gitstore.CommitMetadata) error {
 		// Genesis and sequencer rotations carry no event envelope.
 		signed, _, err := intent.ParseEnvelope(NormalizeEnvelope(commit.Message), desc.PayloadCeiling)
 		if err != nil {
@@ -165,7 +177,7 @@ func BindingInForce(ctx context.Context, store gitstore.Store, genesis string) (
 		if err != nil || tree != commit.Tree {
 			return nil
 		}
-		payload, err := store.ReadFileLimit(ctx, commit.OID, "event", int64(desc.PayloadCeiling))
+		payload, err := store.ReadFileLimit(ctx, commit.OID, "event", readLimit(desc.PayloadCeiling))
 		if err != nil {
 			return nil
 		}
@@ -183,6 +195,21 @@ func BindingInForce(ctx context.Context, store gitstore.Store, genesis string) (
 		return nil, err
 	}
 	return inForce, nil
+}
+
+// readLimit carries a genesis payload ceiling into the signed limit
+// [gitstore.Store.ReadFileLimit] takes. The ceiling is unsigned and the limit
+// is not, and a straight conversion of a ceiling above MaxInt64 goes negative:
+// every binding record would then be passed over as unreadable, and a
+// repository that initialized without complaint would open as bound to
+// nothing. Clamping instead loses nothing, because no blob Git can store
+// reaches MaxInt64 bytes, so the clamped limit refuses exactly what the
+// ceiling refuses.
+func readLimit(ceiling uint64) int64 {
+	if ceiling > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return int64(ceiling)
 }
 
 // NormalizeEnvelope matches how the kernel presents a commit message to the

@@ -70,7 +70,7 @@ func TestWorkroomRepositoryRecordsNoBindingAndSelectsWorkroom(t *testing.T) {
 	if snapshot.Depth != 1 {
 		t.Fatalf("depth after init = %d, want 1: the default application records no binding", snapshot.Depth)
 	}
-	recorded, err := apphost.BindingInForce(ctx, workspace.Store, workspace.Config.Genesis)
+	recorded, err := apphost.BindingInForce(ctx, workspace.Store, workspace.Config.Genesis, kernel.Ref(workspace.Config.Genesis))
 	if err != nil || recorded != nil {
 		t.Fatalf("binding = %+v err=%v, want none", recorded, err)
 	}
@@ -85,7 +85,7 @@ func TestWorkroomRepositoryRecordsNoBindingAndSelectsWorkroom(t *testing.T) {
 	if _, err := reopened.interpreter(); err != nil {
 		t.Fatal(err)
 	}
-	if reopened.selected.host.projectionProfile() != defaultApplication+"\x00"+workroom.ProfileVersion {
+	if reopened.selected.host.projectionProfile() != apphost.DefaultApplication+"\x00"+workroom.ProfileVersion {
 		t.Fatalf("projection profile = %q, want workroom application and fold", reopened.selected.host.projectionProfile())
 	}
 }
@@ -97,7 +97,7 @@ func TestInitRecordsTheBindingOfAnApplicationAbsenceDoesNotName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	recorded, err := apphost.BindingInForce(ctx, workspace.Store, workspace.Config.Genesis)
+	recorded, err := apphost.BindingInForce(ctx, workspace.Store, workspace.Config.Genesis, kernel.Ref(workspace.Config.Genesis))
 	if err != nil || recorded == nil {
 		t.Fatalf("binding = %+v err=%v, want the recorded apphost.Binding", recorded, err)
 	}
@@ -176,7 +176,7 @@ func TestLaterBindingByTheInitializingKeyReplacesTheOneInForce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inForce, err := apphost.BindingInForce(ctx, recorded.Store, recorded.Config.Genesis)
+	inForce, err := apphost.BindingInForce(ctx, recorded.Store, recorded.Config.Genesis, kernel.Ref(recorded.Config.Genesis))
 	if err != nil || inForce == nil || inForce.Application != testApplication {
 		t.Fatalf("binding = %+v err=%v, want the later replacement in force", inForce, err)
 	}
@@ -353,7 +353,7 @@ func TestARollbackToAnAlreadyRecordedBindingTakesForce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inForce, err := apphost.BindingInForce(ctx, reopened.Store, reopened.Config.Genesis)
+	inForce, err := apphost.BindingInForce(ctx, reopened.Store, reopened.Config.Genesis, kernel.Ref(reopened.Config.Genesis))
 	if err != nil || inForce == nil || inForce.FoldVersion != testFoldVersion {
 		t.Fatalf("binding = %+v err=%v, want the rolled-back binding in force", inForce, err)
 	}
@@ -379,12 +379,51 @@ func TestBindingFromAnotherKeyHasNoForce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inForce, err := apphost.BindingInForce(ctx, reopened.Store, reopened.Config.Genesis)
+	inForce, err := apphost.BindingInForce(ctx, reopened.Store, reopened.Config.Genesis, kernel.Ref(reopened.Config.Genesis))
 	if err != nil || inForce != nil {
 		t.Fatalf("binding = %+v err=%v: only the initializing key binds a repository", inForce, err)
 	}
 	if _, err := reopened.Snapshot(ctx); err != nil {
 		t.Fatalf("workroom repository stopped reading after an unauthorized binding: %v", err)
+	}
+}
+
+// The binding in force is a question about one history, and the revision is
+// what says which one. A caller that has already verified a frontier reads the
+// binding out of that frontier: asking the ref a second time would leave a gap
+// between the two questions, and a replacement recorded in between would decide
+// what a workspace means on the strength of a frontier nobody verified.
+func TestBindingInForceAnswersForTheRevisionNamed(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	workspace, _, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frontier, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	recordBinding(t, ctx, workspace, "human", apphost.Binding{Application: testApplication, FoldVersion: testFoldVersion})
+
+	atFrontier, err := apphost.BindingInForce(ctx, workspace.Store, workspace.Config.Genesis, frontier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if atFrontier != nil {
+		t.Fatalf("binding at the earlier frontier = %+v, want a replacement recorded after it left out of the answer", atFrontier)
+	}
+	atRef, err := apphost.BindingInForce(ctx, workspace.Store, workspace.Config.Genesis, kernel.Ref(workspace.Config.Genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if atRef == nil || atRef.Application != testApplication {
+		t.Fatalf("binding at the ref = %+v, want the replacement in force", atRef)
+	}
+	// A read with no revision has no history to answer for, and guessing one
+	// is what this parameter exists to stop.
+	if _, err := apphost.BindingInForce(ctx, workspace.Store, workspace.Config.Genesis, ""); err == nil {
+		t.Fatal("a binding read naming no revision was allowed to answer")
 	}
 }
 
@@ -415,7 +454,7 @@ func TestAMalformedBindingLeavesTheOneInForceStanding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inForce, err := apphost.BindingInForce(ctx, reopened.Store, reopened.Config.Genesis)
+	inForce, err := apphost.BindingInForce(ctx, reopened.Store, reopened.Config.Genesis, kernel.Ref(reopened.Config.Genesis))
 	if err != nil || inForce == nil || inForce.Application != apphost.DefaultApplication {
 		t.Fatalf("binding = %+v err=%v, want the last well-formed binding still in force", inForce, err)
 	}

@@ -1108,7 +1108,7 @@ func TestProjectionProfileChangeRebuildsFromTheSameKernelCheckpoint(t *testing.T
 	workspace.flight.Store(completed)
 	workspace.flightMu.Unlock()
 	workspace.selected = selection{host: host{
-		application: defaultApplication,
+		application: apphost.DefaultApplication,
 		foldVersion: workroom.ProfileVersion + "-projection-change",
 		newFolder:   workroom.NewFolder,
 	}}

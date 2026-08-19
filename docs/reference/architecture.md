@@ -242,6 +242,14 @@ verified repository, so it comes after kernel verification, never before it: an
 unverifiable chain is reported as an unverifiable chain, and no history an
 appender controls can present itself as a missing interpreter instead.
 
+A host that verifies first reads the binding out of the exact frontier it
+verified, and the binding read is told which revision to answer for rather than
+consulting the ref itself. Asking the ref a second time would leave a gap
+between the two questions that a concurrent appender can move in, and the
+opened workspace would come back bound by a frontier nobody checked. A host
+with no verified frontier yet — one whose audit runs later, when the fold first
+reads the log — names the ref, and its selection is still fixed at open.
+
 Repositories created before host bindings have a permanent compatibility
 rule: no binding means Workroom at the version shipped by the reader, and the
 binding authority is the bootstrap operator key in the opening records. This

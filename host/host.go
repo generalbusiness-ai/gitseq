@@ -308,6 +308,12 @@ func Init(ctx context.Context, repo string, application Application, initializer
 // bound to. A refusal from here is therefore a claim about a repository whose
 // signatures and order already check out, so no history an appender controls
 // can present an unverifiable chain as a missing interpreter instead.
+//
+// The binding is read at the exact frontier the kernel just verified, not at
+// whatever the ref points at afterwards. Asking the ref a second time would
+// leave a gap between the two questions: an appender racing the open could
+// advance the ref in between, and the workspace would come back bound by a
+// frontier it never verified.
 func Open(ctx context.Context, repo string, application Application) (*Workspace, error) {
 	if err := application.validate(); err != nil {
 		return nil, err
@@ -321,11 +327,13 @@ func Open(ctx context.Context, repo string, application Application) (*Workspace
 		return nil, err
 	}
 	workspace := newWorkspace(config, gitstore.Store{Repo: commonDir})
-	// The kernel speaks first.
-	if _, err := workspace.Records(ctx); err != nil {
+	// The kernel speaks first, and the frontier it verified is what the
+	// binding is then read out of.
+	verified, err := workspace.Records(ctx)
+	if err != nil {
 		return nil, err
 	}
-	recorded, err := apphost.BindingInForce(ctx, workspace.store, config.Genesis)
+	recorded, err := apphost.BindingInForce(ctx, workspace.store, config.Genesis, verified.Head)
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +393,14 @@ func (w *Workspace) Append(ctx context.Context, signer ed25519.PrivateKey, act A
 }
 
 func (w *Workspace) append(ctx context.Context, signer ed25519.PrivateKey, schema string, payload []byte, restsOn []string, idempotencyKey string) (Record, error) {
-	tree, err := w.store.WritePayloadTree(ctx, payload, nil)
+	// The signed intent names the payload tree, so the tree's identity has to
+	// be known before signing — but knowing it is not a reason to write it.
+	// Computing the identity here and leaving the single write to the kernel
+	// keeps the submit path's order intact: an act refused for its size, its
+	// field bounds, or its signature leaves no unreachable objects behind, so
+	// an open submit path cannot be turned into a way of filling a disk with
+	// content nothing will ever reference.
+	tree, err := gitstore.HashPayloadTree(w.objectFormat, payload, nil)
 	if err != nil {
 		return Record{}, err
 	}
