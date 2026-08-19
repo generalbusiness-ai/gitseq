@@ -4,7 +4,8 @@ summary: The versioned dependency fan-out measurement and its contract verdict.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f0047ba0e5d25ad1f9620bf1428a651f37e1a302
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:86288a0f149fa39592758bc97ab422b994f2dcb8
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4da5ebd075a0a28941371add116b564cf9f4f7de
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1fcb0dc893ed227beb99f9bdb2802a2d236e54e3
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:976edb1e242e65cef9d08d7971c3145ce19d5401
 ---
 
 # Performance evidence
@@ -239,11 +240,89 @@ at that depth. It is not an end-to-end result at depth 50,000 or 500,000, not
 a cross-product of depth and fan-out, and not an overall latency pass. Any
 such claim needs its own reviewed contract change and its own evidence.
 
+## One-base append fixed cost
+
+The one-base budget is measured separately from the fan-out verdict above. A
+full alternating comparison started at `2026-08-19T21:16:08Z` with exact base
+`12105a304e0ee0e66d9d3075a011364b40e24fc4` and measured candidate
+`e08e36e2bbdf6f3d7ba104a20654a0f5aea84684`. The candidate computes the
+actor-signed payload-tree identity in memory. Kernel admission remains the sole
+durable writer and still reconstructs and checks that exact identity before
+sequencer signing, signature verification and verified-ref compare-and-swap.
+
+The comparison used the `fanout` tier so the fixed saving was checked across
+the whole dependency-width axis: five warmups and 100 recorded samples per
+revision at widths 1, 8, 16, 64 and 256. Base and candidate samples alternated
+within each case. Setup stayed outside the measured acknowledgement. The run
+recorded 1,000 primary samples plus five candidate diagnostics and completed
+with harness outcome `pass`. That outcome means the run was internally valid;
+it is not the verdict against the 50 ms target. Alternation limits temporal
+drift between revisions, but the samples remain separate distributions; it
+does not pair samples or cancel arbitrary machine load or interference.
+
+| Fan-out | Base p50 | Candidate p50 | Change |
+|---:|---:|---:|---:|
+| 1 | 446.833 ms | 429.809 ms | -17.023 ms; -3.810% |
+| 8 | 444.337 ms | 427.481 ms | -16.856 ms; -3.793% |
+| 16 | 442.258 ms | 426.352 ms | -15.906 ms; -3.597% |
+| 64 | 444.468 ms | 429.231 ms | -15.237 ms; -3.428% |
+| 256 | 437.813 ms | 421.655 ms | -16.158 ms; -3.691% |
+
+The candidate's PREVIEW-through-64 and FIRST-PRODUCTION-through-256 fan-out
+verdicts both remain `pass`; the fixed-cost change did not trade the existing
+relative fan-out result for its latency reduction.
+
+At width one, the base p95, p99 and maximum were 461.827 ms, 488.626 ms and
+495.595 ms. The candidate values were 455.927 ms, 470.668 ms and 472.557 ms.
+The candidate p50 is still 8.60 times the 50 ms budget, so the absolute target
+remains an honest **miss**. The change removes a measured fixed cost; it does
+not claim to solve the much larger cold verification and publication costs.
+
+A separate same-fixture Trace2 diagnostic explains the fixed reduction without
+turning diagnostic latency into a distribution. The exact base started 21 Git
+root processes and recorded 293.938 ms of cumulative Git-process duration. The
+measured candidate started 19 and recorded 272.402 ms. The two removed
+processes are the application-side `hash-object` and `mktree`; kernel admission
+still performs the one authoritative payload-tree write. The retained
+candidate diagnostics also report 19 Git root processes at every width.
+
+The comparison used contract digest
+`b0795bc71c9485210a842decce2fc932627a88072bbd3494a22098fcf66c7d45`,
+fixture head `9dc8f7ae7251183f7f1f2ea8114fd5ed84ab1db0`, fixture logical digest
+`7b3512ee2c7fb3ac95ce6dc01edec89b20194b6dd1f44eaec45a7ce1684a4159`,
+and fixture exact digest
+`24d7353240b0393d98a8da5a9b29c46bc19b75a6ff5f878d4be32c1d356d2932`.
+It ran on Darwin arm64, an 18-core Apple M5 Max with 64 GiB memory, Go 1.26.5
+and Git 2.50.1, from a clean worktree. Every primary sample had equal projected
+and trusted correctness digests. The pinned `benchstat` tool was unavailable;
+the table uses the harness's retained nearest-rank distributions directly.
+
+| File | SHA-256 |
+|---|---|
+| [`evidence.json`](../../performance/retained/append-fixed-20260819-e08e36e2/evidence.json) | `cc2bbd4c4f4ff4c329f177ebbac98480412eea748f55dd5b3e727f37a96a24c8` |
+| [`samples.jsonl`](../../performance/retained/append-fixed-20260819-e08e36e2/samples.jsonl) | `abfe3e5c010d3f0210cb780bfdad59e6c117200cd6af3f4aa6de0d9cffaf9e0e` |
+| [`candidate.bench`](../../performance/retained/append-fixed-20260819-e08e36e2/candidate.bench) | `b1135c758bded12d0da4c2ab44e0b58a9c33568e7d52fe3027da4d0cfb058b75` |
+
+The evidence document and raw sample file retain both exact revisions; the
+benchmark-format file retains the 500 candidate primary samples. Base bench
+output, profiles and traces are not retained. The publishing head is a
+descendant of the measured candidate because this page, its precise measured
+artifact basis and the retained evidence did not exist when sampling began.
+
 ## Preserved contracts
 
-This lane changes measurement order and reporting only. It does not defer or
-remove actor signing, sequencer admission, verified-ref compare-and-swap,
-signature or bound verification, complete fold semantics, idempotency,
-trusted-versus-projected equality, error behaviour, or atomic publication.
-The harness exercises the ordinary submit path and fails the sample if the
-trusted and projected digests differ.
+The earlier fan-out lane changes measurement order and reporting only. This
+fixed-cost lane changes request construction inside the Workroom application
+profile: it computes the signed payload-tree identity without publishing the
+tree before admission. It does not change the kernel contract or move write
+authority out of the kernel.
+
+The actor still signs the same target, schema, payload-tree identity, bases and
+idempotency fields. The sequencer still admits the request, enforces bounds,
+writes the payload tree once, checks that the written identity equals the
+signed identity, signs and verifies the event, and advances the verified ref by
+compare-and-swap. Signature failures, bound failures and CAS failures retain
+their existing behaviour. Publication remains atomic, and the complete fold,
+idempotency, projected-versus-trusted equality and application error semantics
+are unchanged. The harness exercises that ordinary submit path and refuses a
+sample when the two correctness digests differ.
