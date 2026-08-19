@@ -593,6 +593,38 @@ func depth(t *testing.T, workspace *app.Workspace) int {
 	return snapshot.Depth
 }
 
+func TestStateToolRefusesMalformedRequestBeforeAppend(t *testing.T) {
+	ctx := context.Background()
+	workspace := initRepository(t, "repo")
+	if _, _, err := workspace.AddActor(ctx, "human", "worker", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	server := newServer("human", workspace.Repo)
+	for _, test := range []struct {
+		name string
+		body map[string]any
+		want string
+	}{
+		{name: "missing conditions", body: map[string]any{"to": "@worker"}, want: "request state requires body.conditions"},
+		{name: "unknown performer", body: map[string]any{"to": "@nobody", "conditions": "tests pass"}, want: "request body.to"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before := depth(t, workspace)
+			_, _, err := server.call(ctx, toolCall{Name: "state", Arguments: map[string]any{
+				"kind": "request", "text": "malformed request", "body": test.body,
+				"rests_on":        []any{genesisOf(t, workspace)},
+				"idempotency_key": "mcp-malformed-" + strings.ReplaceAll(test.name, " ", "-"),
+			}})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+			if after := depth(t, workspace); after != before {
+				t.Fatalf("refused MCP request changed depth from %d to %d", before, after)
+			}
+		})
+	}
+}
+
 // repo is an adapter selector, not a resident wait field. Cover both forms so
 // stripping it cannot make the named call fall back to the default room.
 func TestResidentWaitKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {

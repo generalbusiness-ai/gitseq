@@ -79,6 +79,13 @@ artifacts in that state `unable to flare`.
 
 Required edges, by kind:
 
+- every local filing surface checks a request-lifecycle draft before signing:
+  `body.conditions` must be present, and `body.to` must resolve to a configured
+  actor. The signed event stores that actor's fingerprint. This applies to
+  declared request-lifecycle kinds as well as the starter `request` kind, and
+  `gs batch` checks each request draft before that act is signed or appended.
+  An error names the failing body field. The fold remains authoritative if the
+  log or active vocabulary moves after this local check;
 - a `promise` needs one basis that is an effective `request`, **and** the
   signer must be the performer that request named;
 - a `report` needs one basis that is an effective `promise`, signed by

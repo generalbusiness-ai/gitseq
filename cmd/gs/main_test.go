@@ -1748,6 +1748,64 @@ func decisionByEvent(t *testing.T, projection workroom.Projection, event string)
 	return workroom.Decision{}
 }
 
+func TestStateRefusesMalformedRequestBeforeAppend(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body []string
+		want string
+	}{
+		{name: "missing conditions", body: []string{"--body", "to=@worker"}, want: "request state requires body.conditions"},
+		{name: "unknown performer", body: []string{"--body", "to=@nobody", "--body", "conditions=tests pass"}, want: "request body.to"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newBatchFixture(t)
+			before := f.snapshot()
+			arguments := []string{
+				"--repo", f.repo, "--as", "operator", "--kind", "request",
+				"--text", "malformed request", "--rests-on", f.genesis,
+				"--idempotency-key", "state-malformed-" + strings.ReplaceAll(test.name, " ", "-"),
+			}
+			arguments = append(arguments, test.body...)
+			err := stateCommand(f.ctx, arguments)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+			after := f.snapshot()
+			if after.Head != before.Head || after.Depth != before.Depth {
+				t.Fatalf("refused state request changed workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+			}
+		})
+	}
+}
+
+func TestBatchRefusesMalformedRequestsBeforeTheirAppend(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "missing conditions", body: `{"to":"@worker"}`, want: "request state requires body.conditions"},
+		{name: "unknown performer", body: `{"to":"@nobody","conditions":"tests pass"}`, want: "request body.to"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newBatchFixture(t)
+			before := f.snapshot()
+			acts := `[{"verb":"state","kind":"request","text":"malformed request","body":` + test.body + `,"rests_on":["` + f.genesis + `"]}]`
+			report, err := f.run("operator", acts)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+			if len(report.Acts) != 1 || report.Acts[0].Outcome != "failed" || report.Error == nil {
+				t.Fatalf("refused batch report = %#v", report)
+			}
+			after := f.snapshot()
+			if after.Head != before.Head || after.Depth != before.Depth {
+				t.Fatalf("refused batch changed workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+			}
+		})
+	}
+}
+
 func actByEvent(t *testing.T, projection workroom.Projection, event string) workroom.Act {
 	t.Helper()
 	for _, act := range projection.Acts {

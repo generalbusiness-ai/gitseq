@@ -719,8 +719,42 @@ func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {
 	if _, err := workspace.Act(ctx, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "bad", Body: map[string]string{"to": "missing", "conditions": "never"},
 		RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "bad-address",
-	}); err == nil {
-		t.Fatal("unknown request performer was accepted by the application edge")
+	}); err == nil || !strings.Contains(err.Error(), "request body.to") {
+		t.Fatalf("unknown request performer error = %v, want body.to", err)
+	}
+}
+
+func TestRequestPreflightRefusesMissingFieldsBeforeSigning(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "agent", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	before := workspace.mustSnapshot(t, ctx)
+	for _, test := range []struct {
+		name string
+		body map[string]string
+		want string
+	}{
+		{name: "conditions", body: map[string]string{"to": "agent"}, want: "request state requires body.conditions"},
+		{name: "performer", body: map[string]string{"conditions": "tests pass"}, want: "request state requires body.to"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := workspace.Act(ctx, "human", Act{
+				Verb: VerbState, Kind: workroom.KindRequest, Text: "malformed request", Body: test.body,
+				RestsOn: []string{seed.ID}, IdempotencyKey: "request-preflight-missing-" + test.name,
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+			after := workspace.mustSnapshot(t, ctx)
+			if after.Head != before.Head || after.Depth != before.Depth {
+				t.Fatalf("refused request changed workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+			}
+		})
 	}
 }
 

@@ -769,15 +769,19 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 	rests := append([]string(nil), act.RestsOn...)
 	switch act.Verb {
 	case VerbState:
+		body, err := w.normalizeRequestShape(ctx, act.Kind, act.Body)
+		if err != nil {
+			return kernel.Request{}, err
+		}
 		lifecycle, starter := workroom.StarterLifecycle(act.Kind)
 		if !starter || lifecycle == workroom.LifecycleReport {
 			reporter := intent.ActorFingerprint(private.Public().(ed25519.PublicKey))
-			if err := w.validateReportBasis(ctx, reporter, act.Kind, act.Body, rests); err != nil {
+			if err := w.validateReportBasis(ctx, reporter, act.Kind, body, rests); err != nil {
 				return kernel.Request{}, err
 			}
 		}
 		schema = workroom.SchemaState
-		payload = workroom.State{Kind: act.Kind, Text: act.Text, Body: act.Body}
+		payload = workroom.State{Kind: act.Kind, Text: act.Text, Body: body}
 	case VerbRatify:
 		schema = workroom.SchemaRatify
 		payload = workroom.Ratify{Target: act.Target}
@@ -797,6 +801,45 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 		return kernel.Request{}, fmt.Errorf("unknown act verb %q", act.Verb)
 	}
 	return w.buildRequest(ctx, private, actorName, schema, payload, rests, act.Attachments, act.IdempotencyKey)
+}
+
+// normalizeRequestShape mirrors the fold's request-lifecycle field and actor
+// checks before the request is signed. The fold remains authoritative if the
+// log moves after this check. The active vocabulary matters: a declared kind
+// can participate in the request lifecycle just as the starter request kind
+// does.
+func (w *Workspace) normalizeRequestShape(ctx context.Context, kind workroom.Kind, body map[string]string) (map[string]string, error) {
+	lifecycle, starter := workroom.StarterLifecycle(kind)
+	if !starter {
+		snapshot, err := w.Snapshot(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("validate request shape: %w", err)
+		}
+		lifecycle = workroom.LifecycleNone
+		for _, definition := range snapshot.Vocabulary.Definitions {
+			if definition.Name == kind {
+				lifecycle = definition.Lifecycle
+				break
+			}
+		}
+	}
+	if lifecycle != workroom.LifecycleRequest {
+		return body, nil
+	}
+	normalized := cloneBody(body)
+	if strings.TrimSpace(normalized["conditions"]) == "" {
+		return nil, fmt.Errorf("%s state requires body.conditions", kind)
+	}
+	address := strings.TrimSpace(normalized["to"])
+	if address == "" {
+		return nil, fmt.Errorf("%s state requires body.to", kind)
+	}
+	actor, err := w.ResolveActorAddress(address)
+	if err != nil {
+		return nil, fmt.Errorf("%s body.to: %w", kind, err)
+	}
+	normalized["to"] = actor.Fingerprint
+	return normalized, nil
 }
 
 // validateReportBasis mirrors the fold's report-lifecycle checks before the
