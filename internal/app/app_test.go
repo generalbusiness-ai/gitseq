@@ -1061,6 +1061,17 @@ func TestProjectionProfileChangeRebuildsFromTheSameKernelCheckpoint(t *testing.T
 	}
 	oldFolder := workspace.snapshotFolder
 	oldProfile := workspace.snapshotProfile
+	completed := &snapshotFlight{
+		done: make(chan struct{}),
+		result: SourcedSnapshot{
+			Snapshot: before,
+			Source:   SnapshotSourceSignedCheckpointTail,
+		},
+	}
+	close(completed.done)
+	workspace.flightMu.Lock()
+	workspace.flight.Store(completed)
+	workspace.flightMu.Unlock()
 	workspace.selected = selection{host: host{
 		application: defaultApplication,
 		foldVersion: workroom.ProfileVersion + "-projection-change",

@@ -1232,7 +1232,14 @@ func (w *Workspace) snapshotFlight() *snapshotFlight {
 	w.flightMu.Lock()
 	defer w.flightMu.Unlock()
 	if flight := w.flight.Load(); flight != nil {
-		return flight
+		select {
+		case <-flight.done:
+			// A completed flight may remain installed until its worker gets
+			// flightMu for cleanup. It is no longer safe to join: the head or
+			// application profile may have changed since its result was made.
+		default:
+			return flight
+		}
 	}
 	flight := &snapshotFlight{done: make(chan struct{})}
 	flight.progress.SetTestGate(w.rebuildTestGate)
