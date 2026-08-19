@@ -92,6 +92,7 @@ func (s *Server) Handler() http.Handler { return observe.HTTPHandler(s.observer,
 
 func (s *Server) routes() {
 	s.mux.Handle("GET /", uiHandler())
+	s.mux.HandleFunc("GET /v0/identity", s.handleIdentity)
 	s.mux.HandleFunc("GET /v0/graph", s.handleGraph)
 	s.mux.HandleFunc("GET /v0/worktrees", s.handleWorktrees)
 	s.mux.HandleFunc("GET /v0/actors", s.handleActors)
@@ -117,6 +118,18 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v0/inbox/ack", s.handleInboxAck)
 	s.mux.HandleFunc("POST /v0/attention", s.handleAttention)
 	s.mux.HandleFunc("GET /v0/conversations/{conversation}/frames", s.handleFrames)
+}
+
+// handleIdentity says which workroom answers here, and nothing else. It exists
+// for one caller: a starting resident deciding whether an existing ownership
+// claim still has a service behind it. That job sets every property of it. It
+// takes no parameters and needs no credential, so nothing about it is worth
+// reaching for; it changes nothing, so it is safe to send to an address read
+// out of a file; and it answers from configuration rather than from a
+// snapshot, because a probe that queued behind a cold audit would make a
+// healthy incumbent look hung and invite a takeover.
+func (s *Server) handleIdentity(writer http.ResponseWriter, request *http.Request) {
+	write(writer, map[string]string{"genesis": s.workspace.Config.Genesis}, nil)
 }
 
 func (s *Server) handleOrientation(writer http.ResponseWriter, request *http.Request) {

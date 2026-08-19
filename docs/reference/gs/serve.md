@@ -120,12 +120,32 @@ boundary is the whole of the protection.
 
 ## One per repository
 
-Run exactly one. Nothing enforces it — there is no lock, and publishing
-the address is not one. Two services on different ports against
-the same repository is the case to avoid: the durable log stays correct,
-because appends are compare-and-swap on the git ref and retry, but
-presence and conversation are per-process, so the two form separate rooms
-whose participants never see each other and are never told.
+Exactly one runs, and serving enforces it. Two services on different ports
+against the same repository is the case being prevented: the durable log
+stays correct, because appends are compare-and-swap on the git ref and
+retry, but presence and conversation are per-process, so the two would form
+separate rooms whose participants never see each other and are never told.
+
+Ownership is a claim at `refs/gitseq/resident/<genesis>`, taken with a git
+ref update carrying the expected old value. Serving binds the listener
+first, so the claim carries the address actually served including a port
+the kernel chose, then contests ownership, and only then serves. Binding is
+not what authorizes serving; holding the claim is. A start that does not
+win the claim closes its listener and exits non-zero without answering
+anything.
+
+The claim is a shared ref in the repository's common directory, so path
+aliases, symlinks and linked worktrees all reach the same one, and separate
+repositories never contend.
+
+A normal stop releases the claim. A killed process leaves it behind, and
+the next start recovers it: it asks the claimed address whether it is still
+serving, and takes the claim only when nothing is listening. Every other
+answer leaves the claim alone and refuses.
+
+The advertisement at `.git/gitseq/resident.json` remains what clients read
+to find the address. It is metadata, written only by the process that holds
+the claim, and it confers no ownership of its own.
 
 ## Refusals
 
@@ -133,7 +153,10 @@ whose participants never see each other and are never told.
 |---|---|
 | A non-loopback `--listen` | `--listen must name a loopback address; the resident service is a trusted local multi-actor custodian` |
 | A read-only attachment | `cannot serve a read-only attachment` |
-| The port is taken | The bind error, before anything is published or announced. |
+| The port is taken | The bind error, before anything is claimed, published or announced. |
+| Another service holds the repository | `refusing to serve: another service already holds this repository's workroom and is answering (<url>)` |
+| The holder cannot be shown to be gone | `refusing to serve: the service holding this repository could not be shown to be gone, so its claim is left alone (<url>); if you are certain no service is running, remove the claim with git update-ref -d refs/gitseq/resident/<genesis>` |
+| The claim cannot be read | `refusing to serve: the ownership claim at refs/gitseq/resident/<genesis> (<object>) cannot be read as a claim: <reason>; …` — a damaged claim is never treated as a vacancy. |
 
 ## Restart
 

@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
@@ -30,6 +31,10 @@ const (
 	// SubmissionResponseLimit is deliberately larger than a normal receipt but
 	// still finite. Request payload size is governed separately by the workroom.
 	SubmissionResponseLimit int64 = 2 << 20
+
+	// IdentityLimit bounds the liveness answer. The whole reply is one short
+	// hex string, so anything larger is not a resident answering.
+	IdentityLimit int64 = 4 << 10
 )
 
 // ResolveActor gives an explicit flag precedence over the process identity.
@@ -258,6 +263,40 @@ func responseError(response *http.Response, data []byte) error {
 		message = "HTTP " + response.Status
 	}
 	return &HTTPError{StatusCode: response.StatusCode, Status: response.Status, Message: message}
+}
+
+// ProbeResident says whether the resident an ownership claim names is still
+// serving that workroom. Only a refused dial is a definitive negative: nothing
+// is listening on that address at all, so the process that wrote the claim is
+// gone. Everything else is ambiguous and leaves the claim alone — a timeout, a
+// connection that accepts and then says nothing, an unparseable or oversized
+// answer, an answer naming a different workroom, or a URL this client will not
+// dial. The asymmetry is the point. A false negative starts a second resident
+// beside a live one, which is the split room this mechanism exists to prevent;
+// a false positive only refuses to start, and says how to clear the claim.
+//
+// The claim is an ordinary file that any local process able to write the
+// repository can put a URL into, so the address is untrusted input and goes
+// through the same loopback validation as every other resident call. Dialing
+// whatever it named would turn starting a service into a request forgery.
+func (c *Client) ProbeResident(ctx context.Context, claim app.ResidentClaim) app.Liveness {
+	base, err := ValidateURL(claim.URL)
+	if err != nil {
+		return app.Ambiguous
+	}
+	var identity struct {
+		Genesis string `json:"genesis"`
+	}
+	if err := c.GetJSON(ctx, base, "/v0/identity", IdentityLimit, &identity); err != nil {
+		if errors.Is(err, syscall.ECONNREFUSED) {
+			return app.Dead
+		}
+		return app.Ambiguous
+	}
+	if identity.Genesis == "" || identity.Genesis != claim.Genesis {
+		return app.Ambiguous
+	}
+	return app.Alive
 }
 
 // Submit sequences a fully signed request through the named resident, or

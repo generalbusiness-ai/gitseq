@@ -1341,3 +1341,61 @@ func TestAttentionAnswersAndDegradesWithoutRefusing(t *testing.T) {
 		t.Fatalf("asking as one of the actor's own sessions reported %+v", report.Actors)
 	}
 }
+
+// The identity endpoint exists so a starting resident can tell a live
+// incumbent from a claim left by a dead one. Everything about it is shaped by
+// that job: it says which workroom answers here and nothing else, it needs no
+// credential, it changes nothing, and it grants no cross-origin authority.
+func TestIdentitySaysWhichWorkroomAnswersAndNothingElse(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	response, err := http.Get(httpServer.URL + "/v0/identity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("identity answered %s", response.Status)
+	}
+	if got := response.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("identity granted cross-origin authority: %q", got)
+	}
+	if got := response.Header.Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("identity is cacheable: %q", got)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var identity map[string]string
+	if err := json.Unmarshal(body, &identity); err != nil {
+		t.Fatalf("identity body %q: %v", body, err)
+	}
+	if len(identity) != 1 || identity["genesis"] != workspace.Config.Genesis {
+		t.Fatalf("identity answered %v; it must carry the genesis and nothing else", identity)
+	}
+
+	// Nothing here accepts a write, so a probe cannot be turned into one.
+	posted, err := http.Post(httpServer.URL+"/v0/identity", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer posted.Body.Close()
+	if posted.StatusCode == http.StatusOK {
+		t.Fatal("identity accepted a POST")
+	}
+}

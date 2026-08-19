@@ -1,7 +1,12 @@
 package app
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,9 +26,11 @@ type Resident struct {
 const residentFile = "resident.json"
 
 // PublishResident advertises this process as the repository's resident service
-// and returns the withdrawal. It is not a lock: the last writer wins, and a
-// record left behind by a dead process costs a client only a refused
-// connection before it falls back to acting locally.
+// and returns the withdrawal. It is endpoint metadata, not authority: the last
+// writer wins, and a record left behind by a dead process costs a client only a
+// refused connection before it falls back to acting locally. Ownership of the
+// repository lives in the claim ref instead — see ClaimResident — and a serving
+// process advertises only after it holds one.
 func (w *Workspace) PublishResident(url string) (withdraw func(), err error) {
 	record := Resident{URL: strings.TrimRight(url, "/"), Genesis: w.Config.Genesis, PID: os.Getpid()}
 	content, err := json.Marshal(record)
@@ -70,4 +77,247 @@ func readResident(path string) (Resident, bool) {
 		return Resident{}, false
 	}
 	return record, true
+}
+
+// ResidentRef names the ownership claim for one workroom. It is an ordinary
+// shared Git ref in the repository's common directory, so every path alias,
+// every symlink, and every linked worktree of one repository contends for the
+// same claim, while two different repositories never contend at all. It sits
+// beside refs/gitseq/checkpoints/<genesis> and never touches the durable event
+// log.
+func ResidentRef(genesis string) string { return "refs/gitseq/resident/" + genesis }
+
+const (
+	// claimLimit bounds the claim read. A claim is a few hundred bytes; the
+	// bound is what stops an oversized object left at the ref from being read
+	// whole before anything about it has been checked.
+	claimLimit = 8 << 10
+
+	// claimAttempts bounds contention. Each attempt is one compare-and-swap,
+	// and exhausting them refuses rather than looping: a claim that keeps
+	// moving under us is a repository other processes are starting on, and
+	// spinning there would trade a clear refusal for an unbounded wait.
+	claimAttempts = 8
+)
+
+// ResidentClaim is the ownership record a serving process holds. The nonce is
+// what gives it an identity: sixteen fresh random bytes make the claim blob's
+// object id unique to this one acquisition, so a compare-and-swap against that
+// id can never match a later claim, and the A-B-A that defeats value
+// compare-and-swap cannot arise. The PID is a diagnostic for a human reading
+// the record and confers nothing.
+type ResidentClaim struct {
+	Genesis string `json:"genesis"`
+	URL     string `json:"url"`
+	Nonce   string `json:"nonce"`
+	PID     int    `json:"pid"`
+}
+
+// Liveness is what a probe learned about an existing claim. The zero value is
+// Ambiguous deliberately: a prober that decided nothing has not shown the
+// incumbent to be gone, and only a definitive negative may authorize a
+// takeover.
+type Liveness int
+
+const (
+	Ambiguous Liveness = iota
+	Alive
+	Dead
+)
+
+// Prober answers whether the resident a claim names is still serving. It is
+// supplied by the caller rather than reached from here: the client that knows
+// how to speak to a resident is built on this package, and it also owns the
+// duty to refuse any address that is not loopback, because a claim is an
+// ordinary file that any local process able to write the repository can put
+// a URL into.
+type Prober func(context.Context, ResidentClaim) Liveness
+
+// ResidentOwnership is a held claim. It carries the exact object id this
+// process wrote, which is the only thing that can withdraw it.
+type ResidentOwnership struct {
+	workspace *Workspace
+	ref       string
+	blob      string
+	claim     ResidentClaim
+}
+
+// Claim reports what this process published as its ownership record.
+func (o *ResidentOwnership) Claim() ResidentClaim { return o.claim }
+
+// ResidentHeldError refuses to serve because ownership could not be taken
+// safely. Serving anyway would split leased presence and ephemeral
+// conversation into two rooms whose participants cannot see each other and are
+// never told, which is the whole failure this claim exists to prevent.
+type ResidentHeldError struct {
+	Ref      string
+	URL      string
+	Reason   string
+	Recovery string
+}
+
+func (e *ResidentHeldError) Error() string {
+	message := "refusing to serve: " + e.Reason
+	if e.URL != "" {
+		message += " (" + e.URL + ")"
+	}
+	if e.Recovery != "" {
+		message += "; " + e.Recovery
+	}
+	return message
+}
+
+// ClaimResident takes exclusive ownership of this repository's resident, and
+// is what authorizes serving. Acquisition, takeover and release are one
+// primitive: a Git ref update carrying the expected old value, the same
+// compare-and-swap the durable log's own append already depends on. Create
+// fails if the ref exists; a takeover fails unless the ref still names exactly
+// the claim that was read and probed; release deletes only this process's own
+// object.
+//
+// Nothing here is trusted as live without a probe, and nothing ambiguous
+// authorizes a takeover: an unreadable, malformed, or foreign claim is a
+// refusal, never a vacancy. That is deliberate asymmetry. Refusing to start
+// costs one operator a message naming the recovery step; starting anyway costs
+// everybody a silently divided room.
+func (w *Workspace) ClaimResident(ctx context.Context, url string, probe Prober) (*ResidentOwnership, error) {
+	if w.Config.ReadOnly {
+		return nil, errors.New("a read-only attachment cannot own a resident")
+	}
+	if probe == nil {
+		return nil, errors.New("claiming a resident needs a prober; without one no incumbent could ever be tested")
+	}
+	address := strings.TrimRight(url, "/")
+	if address == "" {
+		return nil, errors.New("a resident claim needs the address it is serving")
+	}
+	ref := ResidentRef(w.Config.Genesis)
+	recovery := "if you are certain no service is running, remove the claim with `git update-ref -d " + ref + "`"
+	for attempt := 0; attempt < claimAttempts; attempt++ {
+		observed, present, err := w.Store.RefValue(ctx, ref)
+		if err != nil {
+			return nil, fmt.Errorf("read resident claim %s: %w", ref, err)
+		}
+		if !present {
+			ownership, taken, err := w.takeResident(ctx, ref, address, "")
+			if err != nil {
+				return nil, err
+			}
+			if taken {
+				return ownership, nil
+			}
+			continue
+		}
+		incumbent, err := w.readResidentClaim(ctx, observed)
+		if err != nil {
+			return nil, &ResidentHeldError{
+				Ref:      ref,
+				Reason:   fmt.Sprintf("the ownership claim at %s (%s) cannot be read as a claim: %v", ref, observed, err),
+				Recovery: recovery,
+			}
+		}
+		switch probe(ctx, incumbent) {
+		case Alive:
+			return nil, &ResidentHeldError{
+				Ref:    ref,
+				URL:    incumbent.URL,
+				Reason: "another service already holds this repository's workroom and is answering",
+			}
+		case Dead:
+			ownership, taken, err := w.takeResident(ctx, ref, address, observed)
+			if err != nil {
+				return nil, err
+			}
+			if taken {
+				return ownership, nil
+			}
+			continue
+		default:
+			return nil, &ResidentHeldError{
+				Ref:      ref,
+				URL:      incumbent.URL,
+				Reason:   "the service holding this repository could not be shown to be gone, so its claim is left alone",
+				Recovery: recovery,
+			}
+		}
+	}
+	return nil, &ResidentHeldError{
+		Ref:      ref,
+		Reason:   fmt.Sprintf("the ownership claim at %s changed under every one of %d attempts", ref, claimAttempts),
+		Recovery: "another service is starting on this repository; try again once it has settled",
+	}
+}
+
+// takeResident writes a claim and swaps it in against the value that was
+// observed. An empty expected value means the ref must not exist yet. A fresh
+// nonce is generated on every attempt, so a retry never re-offers an object id
+// that a concurrent process could already have seen.
+//
+// A failed swap reports contention rather than an error. Git refuses for one
+// reason that matters here — the ref is no longer what we read — and treating
+// every refusal that way keeps the caller from parsing Git's prose. A store
+// that is genuinely broken exhausts the attempts and then refuses, which is the
+// same fail-closed outcome by a slower route.
+func (w *Workspace) takeResident(ctx context.Context, ref, url, expected string) (*ResidentOwnership, bool, error) {
+	nonce, err := newResidentNonce()
+	if err != nil {
+		return nil, false, err
+	}
+	claim := ResidentClaim{Genesis: w.Config.Genesis, URL: url, Nonce: nonce, PID: os.Getpid()}
+	content, err := json.Marshal(claim)
+	if err != nil {
+		return nil, false, err
+	}
+	blob, err := w.Store.WriteBlob(ctx, content)
+	if err != nil {
+		return nil, false, fmt.Errorf("write resident claim: %w", err)
+	}
+	if err := w.Store.UpdateRef(ctx, ref, blob, expected); err != nil {
+		return nil, false, nil
+	}
+	return &ResidentOwnership{workspace: w, ref: ref, blob: blob, claim: claim}, true, nil
+}
+
+// readResidentClaim reads and validates the claim an object holds. A claim
+// missing any of its parts, or naming a workroom other than the one whose ref
+// it sits at, is corruption rather than an incumbent, and saying so is safer
+// than guessing: the ref name already carries the genesis, so a mismatch inside
+// it cannot be an honest record.
+func (w *Workspace) readResidentClaim(ctx context.Context, oid string) (ResidentClaim, error) {
+	content, err := w.Store.BlobLimit(ctx, oid, claimLimit)
+	if err != nil {
+		return ResidentClaim{}, err
+	}
+	var claim ResidentClaim
+	if err := json.Unmarshal(content, &claim); err != nil {
+		return ResidentClaim{}, err
+	}
+	if claim.Genesis == "" || claim.URL == "" || claim.Nonce == "" {
+		return ResidentClaim{}, errors.New("claim is missing its genesis, address, or nonce")
+	}
+	if claim.Genesis != w.Config.Genesis {
+		return ResidentClaim{}, fmt.Errorf("claim names workroom %s, not %s", claim.Genesis, w.Config.Genesis)
+	}
+	return claim, nil
+}
+
+// Release withdraws the claim, and can only ever withdraw this process's own:
+// the delete carries the object id written at acquisition, so a successor that
+// already took the repository over keeps it. Withdrawal is an optimization, not
+// a correctness requirement — a claim left behind by a crash costs the next
+// starter one refused dial, because no claim is ever trusted as live without a
+// probe.
+func (o *ResidentOwnership) Release(ctx context.Context) {
+	if o == nil {
+		return
+	}
+	_ = o.workspace.Store.DeleteRef(ctx, o.ref, o.blob)
+}
+
+func newResidentNonce() (string, error) {
+	buffer := make([]byte, 16)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", fmt.Errorf("generate resident claim nonce: %w", err)
+	}
+	return hex.EncodeToString(buffer), nil
 }
