@@ -3,7 +3,7 @@ title: The record
 summary: What a durable event is, what the fold makes of it, and why a recorded act may carry no force.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:720a506647f095d95a079b667b2e9c6cc8dc8084
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1539075831e59cbc39fefdd6a4e800ba2c150208
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3cd3c438a2a5eaac579ddc22ccccde367a49177
 ---
 
 # The record
