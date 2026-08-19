@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will execute the exact fixed-cost performance-page citation cleanup on request/fixed-cost-citation-successor, changing only the specified front-matter value, run the required gates, publish the exact docs artifact, and obtain independent review before landing.","body":{"request":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9ca558ab9a4042233956ddb4bd33045df073bdc"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3bb2240c521ef0069c7115f032f122237d789bbc"}
