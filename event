@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:13fd15c05db60798045d62fe510b7755a23be84a","text":"Retire this completion report; ratified review da685415 requires a consecutive fan-out baseline lane and explicit denominator-loosening disclosure."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d04a4deeea4de1bffb9c9358afc3fb96b11f5278","text":"Replace this documentation assignment after ratified review da685415 found its required fan-out-1 axis case does not exist in the current lane."}
