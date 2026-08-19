@@ -1,0 +1,1 @@
+git diff --exit-code 82253ebad375895997f4e66c894e9ef2797d3c4a 77cf193c0c674aa77cb32fbb49846b4ca2cd3e0a -- cmd/gitseq-perf internal/perflane performance docs/README.md docs/reference/performance.md passed
