@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:da68541501534471881910ce250a24ae13953478"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:13fd15c05db60798045d62fe510b7755a23be84a","text":"Retire this completion report; ratified review da685415 requires a consecutive fan-out baseline lane and explicit denominator-loosening disclosure."}
