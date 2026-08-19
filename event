@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9311bdf9bf8968a158410cd2eb44bf5cdb966c7","text":"Retire the older internal/app pointer after the resident-memory merge; the maintained successor is the internal/app artifact at merge 5fc9929c."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f6cc52ad8a7591a8be5ee99222286dc1dc9c6d9","text":"Retire the older internal/kernel pointer after the resident-memory merge; the maintained successor is the internal/kernel artifact at merge 5fc9929c."}
