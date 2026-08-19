@@ -27,10 +27,17 @@ type Totals struct {
 	// rest on a basis somebody retired.
 	StaleCommitments map[string]int `json:"stale_commitments,omitempty"`
 	Artifacts        int            `json:"artifacts"`
-	StaleArtifacts   int            `json:"stale_artifacts"`
-	IneffectiveActs  int            `json:"ineffective_acts"`
-	DisputedActs     int            `json:"disputed_acts"`
-	Statements       int            `json:"statements"`
+	// StaleArtifacts counts every artifact that is not current: retired ones
+	// and ones a retirement reached. RetiredArtifacts and WorldStaleArtifacts
+	// name the two facts inside it that a reader has to act on, because
+	// ordinary staleness reaches nearly every artifact in a long-lived
+	// workroom and a number that large says nothing on its own.
+	StaleArtifacts      int `json:"stale_artifacts"`
+	RetiredArtifacts    int `json:"retired_artifacts"`
+	WorldStaleArtifacts int `json:"world_stale_artifacts"`
+	IneffectiveActs     int `json:"ineffective_acts"`
+	DisputedActs        int `json:"disputed_acts"`
+	Statements          int `json:"statements"`
 }
 
 type Commitment struct {
@@ -39,7 +46,13 @@ type Commitment struct {
 	AddressedTo string `json:"addressed_to,omitempty"`
 	// Stale qualifies Status rather than replacing it. The lifecycle word says
 	// what was last done and who owes the next move; the qualifier says a basis
-	// underneath it was retired, so the outcome is worth re-checking.
+	// underneath it was retired, so the reasoning moved.
+	//
+	// It stays in this payload and it stays out of the rendered rows. Ordinary
+	// reasoning staleness blocks nothing and reaches nearly every commitment
+	// here, so a mark on each row is a warning that fires everywhere and
+	// carries no information; Totals.StaleCommitments says how many rows in
+	// each lane carry it, which is the same fact without the noise.
 	Stale     bool   `json:"stale,omitempty"`
 	Requester string `json:"requester"`
 	Performer string `json:"performer,omitempty"`
@@ -110,9 +123,13 @@ type Summary struct {
 var actionable = map[string]bool{"open": true, "promised": true, "reported": true}
 
 // Terminal commitments are done with: nobody owes a next move. They stay out
-// of the bounded lists so the lists show work, not history — unless they carry
-// the stale qualifier, in which case the world moved under a closed outcome
-// and someone has to re-check it.
+// of the bounded lists so the lists show work, not history.
+//
+// Ordinary reasoning staleness does not bring one back. A basis moving under a
+// closed commitment is the normal condition of an append-only log — nearly
+// nine in ten closed commitments here carry it — so promoting each one into a live
+// lane buried the handful of rows that were genuinely unfinished. The counts
+// in Totals.StaleCommitments keep the fact, per status, without the rows.
 var terminal = map[string]bool{"satisfied": true, "withdrawn": true}
 
 // Cap keeps the newest limit entries and reports exactly how many it omitted.
@@ -171,7 +188,7 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		if commitment.Stale {
 			summary.Totals.StaleCommitments[commitment.Status]++
 		}
-		if terminal[commitment.Status] && !commitment.Stale {
+		if terminal[commitment.Status] {
 			continue
 		}
 		view := Commitment{
@@ -200,6 +217,7 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		case artifact.Retired:
 			state = "retired"
 			summary.Totals.StaleArtifacts++
+			summary.Totals.RetiredArtifacts++
 		case artifact.Stale:
 			state = "stale"
 			summary.Totals.StaleArtifacts++
@@ -207,6 +225,7 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		var notes []string
 		if artifact.DescribesSupersededWorld {
 			notes = append(notes, "describes a superseded world")
+			summary.Totals.WorldStaleArtifacts++
 		}
 		if artifact.UnableToFlare {
 			notes = append(notes, "unable to flare")
@@ -295,9 +314,14 @@ func Render(summary Summary, source string) []byte {
 		}
 		counts = append(counts, count)
 	}
-	fmt.Fprintf(&output, "Commitments: %s. Artifacts: %d current, %d stale. Attempts: %d ineffective, %d disputed.\n",
-		strings.Join(counts, ", "), summary.Totals.Artifacts-summary.Totals.StaleArtifacts, summary.Totals.StaleArtifacts,
-		summary.Totals.IneffectiveActs, summary.Totals.DisputedActs)
+	// The artifact line names the two facts a reader acts on — a pointer that
+	// was withdrawn, and an artifact whose implementation has been replaced —
+	// beside the ordinary staleness that reaches almost everything. One
+	// "stale" figure covering all of it read as an alarm and answered nothing.
+	fmt.Fprintf(&output, "Commitments: %s. Artifacts: %d current, %d stale, %d retired, %d describing a superseded world. Attempts: %d ineffective, %d disputed.\n",
+		strings.Join(counts, ", "), summary.Totals.Artifacts-summary.Totals.StaleArtifacts,
+		summary.Totals.StaleArtifacts-summary.Totals.RetiredArtifacts, summary.Totals.RetiredArtifacts,
+		summary.Totals.WorldStaleArtifacts, summary.Totals.IneffectiveActs, summary.Totals.DisputedActs)
 	renderCommitments(&output, "Actionable commitments", summary.Actionable, summary.ActionableOmitted)
 	renderCommitments(&output, "Needs attention", summary.Attention, summary.AttentionOmitted)
 	renderArtifacts(&output, "Current artifacts", summary.CurrentArtifacts, summary.CurrentOmitted)
@@ -346,11 +370,12 @@ func renderCommitments(output *bytes.Buffer, title string, items []Commitment, o
 		} else if assignment == "" {
 			assignment = "unclaimed"
 		}
-		status := item.Status
-		if item.Stale && item.Status != "stale" {
-			status += " (stale)"
-		}
-		fmt.Fprintf(output, "- %s — %s → %s — `%s`", status, item.Requester, assignment, name(item.Request, item.Sequence))
+		// No stale mark here. Ordinary reasoning staleness reaches most of
+		// these rows and stops none of them, so the mark fired everywhere and
+		// told a reader nothing about which row to pick. The totals line above
+		// carries it per lane — "reported 27 (24 stale)" — and `--all` still
+		// prints it per commitment in its own column.
+		fmt.Fprintf(output, "- %s — %s → %s — `%s`", item.Status, item.Requester, assignment, name(item.Request, item.Sequence))
 		if item.Text != "" {
 			fmt.Fprintf(output, ": %s", item.Text)
 		}

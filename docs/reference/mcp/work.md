@@ -19,7 +19,7 @@ never fetches the complete `/v0/status` projection.
 |---|---|---|
 | `lanes` | optional | Typed relationship lanes: `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Default is all four. |
 | `statuses` | optional | Lifecycle statuses to include: `open`, `promised`, `reported`, `satisfied`, `stale`, `cancelled`, `reneged`, `withdrawn`. An unknown status is an error, not a guess. |
-| `stale` | optional | One staleness policy: `include` (default), `only`, or `exclude`. |
+| `stale` | optional | One staleness policy: `summary` (default), `include`, `only`, or `exclude`. |
 | `limit` | optional | Page size, 1 to 50. Default 20. |
 | `cursor` | optional | The opaque continuation from a previous page. |
 | `repo` | optional | The repository whose workroom this call acts in. |
@@ -28,10 +28,33 @@ Filters are finite, typed choices, not an expression language.
 
 ## What comes back
 
-The default page includes current `open`, `promised`, and `reported`
-commitments — including open, unclaimed requests addressed to the
-configured actor — plus stale commitments in **every** lifecycle state.
-Settled non-stale history requires an explicit status filter.
+The default page is the work still owed: current `open`, `promised` and
+`reported` commitments — including open, unclaimed requests addressed to
+the configured actor — plus commitments the fold left in a `stale`,
+`cancelled` or `reneged` state, which nobody has closed.
+
+A `satisfied` or `withdrawn` commitment is finished, and the default
+leaves it out. Ordinary reasoning staleness does not bring it back: a
+basis moving under a closed commitment is the normal condition of an
+append-only log, it blocks nothing, and listing every one of them buried
+the rows that were still owed. The response says how many were left out
+in `closed_stale_omitted`, so the summary is visible rather than silent.
+
+The four staleness policies:
+
+| `stale` | What comes back |
+|---|---|
+| `summary` (default) | Work still owed. Closed commitments carrying ordinary staleness are counted in `closed_stale_omitted`, not listed. |
+| `include` | The default lanes **and** every closed commitment carrying staleness, each with its own `stale` field. |
+| `only` | Only records carrying staleness, in any lifecycle state. |
+| `exclude` | Only records carrying no staleness. |
+
+Naming any status filter also overrides the summary: `statuses:
+["satisfied"]` returns settled history whether or not it is stale. An
+unknown policy is an error, not a guess.
+
+Every returned row still carries its own `stale` field. The default
+changes which rows are listed, never what a listed row says.
 
 Every response gives the exact durable frontier, the matching total,
 the returned count, the preceding count, the remaining count, and a

@@ -53,7 +53,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 | `you_are_waiting_on` | Commitments where it is not. |
 | `not_actionable` | Commitments involving you that nobody can currently advance. |
 | `needs_your_attention` | Your own acts that did not take force, and events that concern you. |
-| `totals` | Depth, commitment counts by status, artifacts, stale artifacts, ineffective and disputed acts. |
+| `totals` | Depth, commitment counts by status with a stale count beside each, artifact counts split into stale, retired and superseded-world, and ineffective and disputed acts. |
 | `live` | Presence and the live generation, or `degraded`. |
 | `priority_ephemeral_chat` | This exact session's bounded, unacknowledged addressed frames. `available` is false when the resident is unavailable; `skipped` counts additional pending frames behind the current page. |
 | `cursor` | The composite cursor. Pass it back to `wait`. |
@@ -75,6 +75,14 @@ Lane rows carry the same action fields as [`work`](work.md): full
 `conditions` for open requests, `report_status`, `reported_head`, and the
 latest effective review for that exact head with its explicit `ratified` flag.
 Routine triage therefore does not need one `inspect` call per row.
+
+The lanes hold work still owed. A satisfied or withdrawn commitment is
+finished, and ordinary reasoning staleness under it does not reopen it —
+that staleness blocks nothing and reaches most closed commitments, so a
+lane full of it hid the rows that were still owed. `totals
+.stale_commitments` counts it per status instead, and
+[`work`](work.md) with `stale=include` lists every one of the records.
+Each row that is listed still carries its own `stale` field.
 
 ## It is bounded
 

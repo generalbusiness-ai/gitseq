@@ -50,6 +50,8 @@ type CommitmentView struct {
 	Status      string `json:"status"`
 	AddressedTo string `json:"addressed_to,omitempty"`
 	// Stale qualifies Status; it never replaces it. See statusview.Commitment.
+	// The lanes no longer reopen a closed commitment for it: ActorTotals
+	// .StaleCommitments counts it per status instead.
 	Stale     bool   `json:"stale,omitempty"`
 	Requester string `json:"requester"`
 	Performer string `json:"performer,omitempty"`
@@ -73,13 +75,21 @@ type ActorTotals struct {
 	Depth       int            `json:"depth"`
 	Commitments map[string]int `json:"commitments,omitempty"`
 	// StaleCommitments counts, per status, how many carry the stale qualifier.
+	// This is where ordinary staleness on closed commitments is reported: the
+	// lanes above hold work still owed, and satisfied or withdrawn rows are
+	// counted here rather than listed.
 	StaleCommitments map[string]int `json:"stale_commitments,omitempty"`
 	Artifacts        int            `json:"artifacts"`
-	StaleArtifacts   int            `json:"stale_artifacts"`
-	IneffectiveActs  int            `json:"ineffective_acts"`
-	DisputedActs     int            `json:"disputed_acts"`
-	Statements       int            `json:"statements"`
-	FullProjectionAt string         `json:"full_projection_at"`
+	// StaleArtifacts counts every artifact that is not current. The two facts
+	// inside it a reader has to act on are counted separately, because
+	// ordinary staleness reaches nearly all of them.
+	StaleArtifacts      int    `json:"stale_artifacts"`
+	RetiredArtifacts    int    `json:"retired_artifacts"`
+	WorldStaleArtifacts int    `json:"world_stale_artifacts"`
+	IneffectiveActs     int    `json:"ineffective_acts"`
+	DisputedActs        int    `json:"disputed_acts"`
+	Statements          int    `json:"statements"`
+	FullProjectionAt    string `json:"full_projection_at"`
 }
 
 type LiveView struct {
@@ -224,10 +234,16 @@ func actorTotals(projection workroom.Projection, depth int) ActorTotals {
 			staleCounts[commitment.Status]++
 		}
 	}
-	stale, ineffective, disputed := 0, 0, 0
+	stale, retired, world, ineffective, disputed := 0, 0, 0, 0, 0
 	for _, artifact := range projection.Artifacts {
 		if artifact.Retired || artifact.Stale {
 			stale++
+		}
+		if artifact.Retired {
+			retired++
+		}
+		if artifact.DescribesSupersededWorld {
+			world++
 		}
 	}
 	for _, decision := range projection.Decisions {
@@ -239,8 +255,9 @@ func actorTotals(projection workroom.Projection, depth int) ActorTotals {
 		}
 	}
 	return ActorTotals{Depth: depth, Commitments: counts, StaleCommitments: staleCounts, Artifacts: len(projection.Artifacts), StaleArtifacts: stale,
+		RetiredArtifacts: retired, WorldStaleArtifacts: world,
 		IneffectiveActs: ineffective, DisputedActs: disputed, Statements: len(projection.Statements),
-		FullProjectionAt: "GET /v0/status, gs status --all, or gs status --json"}
+		FullProjectionAt: "GET /v0/status, gs status --all, gs status --json, or work with stale=include"}
 }
 
 func actorLive(live nexus.Snapshot, degraded bool) LiveView {
@@ -337,7 +354,7 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 		}
 	}
 	for _, commitment := range projection.Commitments {
-		if !involves(commitment, fingerprint) || (terminal[commitment.Status] && !commitment.Stale) {
+		if !involves(commitment, fingerprint) || terminal[commitment.Status] {
 			continue
 		}
 		view := viewCommitment(projection, commitment)
@@ -425,7 +442,7 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 		delta.Durable = append(delta.Durable, view)
 	}
 	for _, commitment := range projection.Commitments {
-		if !involves(commitment, fingerprint) || (terminal[commitment.Status] && !commitment.Stale) {
+		if !involves(commitment, fingerprint) || terminal[commitment.Status] {
 			continue
 		}
 		view := viewCommitment(projection, commitment)
@@ -483,6 +500,9 @@ func Summarize(tool string, value any) string {
 		suffix := ""
 		if shaped.Remaining > 0 {
 			suffix = fmt.Sprintf(", %d remain", shaped.Remaining)
+		}
+		if shaped.ClosedStaleOmitted > 0 {
+			suffix += fmt.Sprintf("; %d closed commitments carry ordinary staleness and were summarized, pass stale=include to list them", shaped.ClosedStaleOmitted)
 		}
 		return fmt.Sprintf("depth %d, %d of %d matching work items returned%s", shaped.Frontier.Depth, shaped.Returned, shaped.MatchingTotal, suffix)
 	case ArtifactPage:
