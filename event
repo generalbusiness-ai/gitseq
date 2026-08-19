@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"CLI succession and compatibility behavior for the schema/fold split is inspectable at exact head 0c05eca5.","body":{"commit":"0c05eca5d7018f0c696c0e0df382e90649c9ccc6","path":"cmd/gs"}}
+{"kind":"artifact","text":"The workroom skill contract matches the schema/fold lifecycle implemented at exact head 0c05eca5.","body":{"commit":"0c05eca5d7018f0c696c0e0df382e90649c9ccc6","path":"SKILL.md"}}
