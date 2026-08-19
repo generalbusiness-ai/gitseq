@@ -942,7 +942,7 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 		if err := validateChainParents(index, commit.Parents, sequence[index-1]); err != nil {
 			return scannedLog{}, fmt.Errorf("commit %s: %w", commit.OID, err)
 		}
-		event, successor, rotation, err := loadCommit(ctx, store, batch, desc, genesis, commit.CommitMetadata, loadPayload)
+		event, successor, rotation, err := loadCommit(batch, desc, genesis, commit.CommitMetadata, loadPayload)
 		if err != nil {
 			return scannedLog{}, err
 		}
@@ -1023,6 +1023,10 @@ func scanAfter(ctx context.Context, store gitstore.Store, base scannedLog, head 
 	scan := newDeltaScan(ctx, store, base, head, loadPayload, 0)
 	err := store.WalkRevListMetadataAfter(ctx, base.Verification.Head, head, scan.accept)
 	if err != nil {
+		_ = scan.close()
+		return scannedLog{}, err
+	}
+	if err := scan.close(); err != nil {
 		return scannedLog{}, err
 	}
 	return scan.finish()
@@ -1039,8 +1043,12 @@ func scanListedAfter(ctx context.Context, store gitstore.Store, base scannedLog,
 	scan := newDeltaScan(ctx, store, base, head, loadPayload, len(commits))
 	for _, commit := range commits {
 		if err := scan.accept(commit); err != nil {
+			_ = scan.close()
 			return scannedLog{}, err
 		}
+	}
+	if err := scan.close(); err != nil {
+		return scannedLog{}, err
 	}
 	return scan.finish()
 }
@@ -1053,6 +1061,7 @@ type deltaScan struct {
 	loadPayload    bool
 	desc           GenesisDescriptor
 	descLoaded     bool
+	batch          *gitstore.AuditBatch
 	expectedParent string
 	events         []Event
 	additions      map[string]Event
@@ -1077,13 +1086,24 @@ func (s *deltaScan) accept(commit gitstore.CommitMetadata) error {
 		s.desc = desc
 		s.descLoaded = true
 	}
-	if err := validateChainParents(1, commit.Parents, s.expectedParent); err != nil {
-		return fmt.Errorf("%w: commit %s does not follow %s: %v", ErrNotDescendant, commit.OID, s.expectedParent, err)
+	if s.batch == nil {
+		batch, err := s.store.OpenAuditBatch(s.ctx, s.desc.ObjectFormat)
+		if err != nil {
+			return err
+		}
+		s.batch = batch
 	}
-	if err := s.store.VerifySSHCommit(s.ctx, commit.OID, "sequencer", s.base.sequencerPublicKey); err != nil {
-		return fmt.Errorf("commit %s sequencer signature: %w", commit.OID, err)
+	audited, err := s.batch.ReadCommit(commit.OID)
+	if err != nil {
+		return err
 	}
-	event, successor, rotation, err := loadCommit(s.ctx, s.store, nil, s.desc, s.base.Verification.Genesis, commit, s.loadPayload)
+	if err := validateChainParents(1, audited.Parents, s.expectedParent); err != nil {
+		return fmt.Errorf("%w: commit %s does not follow %s: %v", ErrNotDescendant, audited.OID, s.expectedParent, err)
+	}
+	if err := gitstore.VerifySSHSignature(audited, s.base.sequencerPublicKey); err != nil {
+		return fmt.Errorf("commit %s sequencer signature: %w", audited.OID, err)
+	}
+	event, successor, rotation, err := loadCommit(s.batch, s.desc, s.base.Verification.Genesis, audited.CommitMetadata, s.loadPayload)
 	if err != nil {
 		return err
 	}
@@ -1121,6 +1141,15 @@ func (s *deltaScan) accept(commit gitstore.CommitMetadata) error {
 	return nil
 }
 
+func (s *deltaScan) close() error {
+	if s.batch == nil {
+		return nil
+	}
+	err := s.batch.Close()
+	s.batch = nil
+	return err
+}
+
 func (s *deltaScan) finish() (scannedLog, error) {
 	if s.positions == 0 {
 		if s.head != s.base.Verification.Head {
@@ -1152,7 +1181,7 @@ func (s *deltaScan) finish() (scannedLog, error) {
 // and sequencer signature have been established. Full and descendant scans
 // deliberately share every envelope, actor signature, target, trailer, tree,
 // and payload check.
-func loadCommit(ctx context.Context, store gitstore.Store, batch *gitstore.AuditBatch, desc GenesisDescriptor, genesis string, commit gitstore.CommitMetadata, loadPayload bool) (Event, string, bool, error) {
+func loadCommit(batch *gitstore.AuditBatch, desc GenesisDescriptor, genesis string, commit gitstore.CommitMetadata, loadPayload bool) (Event, string, bool, error) {
 	message := normalizeEventMessage(commit.Message)
 	if uint64(len(message)) > desc.PayloadCeiling {
 		return Event{}, "", false, fmt.Errorf("commit %s envelope exceeds genesis ceiling", commit.OID)
@@ -1162,14 +1191,7 @@ func loadCommit(ctx context.Context, store gitstore.Store, batch *gitstore.Audit
 		return Event{}, "", false, fmt.Errorf("commit %s: %w", commit.OID, err)
 	}
 	if rotation {
-		empty := false
-		if batch != nil {
-			empty, err = batch.TreeIsEmpty(commit.Tree)
-		} else {
-			var emptyTree string
-			emptyTree, err = store.EmptyTree(ctx)
-			empty = commit.Tree == emptyTree
-		}
+		empty, err := batch.TreeIsEmpty(commit.Tree)
 		if err != nil {
 			return Event{}, "", false, err
 		}
@@ -1201,36 +1223,9 @@ func loadCommit(ctx context.Context, store gitstore.Store, batch *gitstore.Audit
 	}
 	remaining := desc.PayloadCeiling - uint64(len(message))
 	event := Event{Commit: commit.OID, Timestamp: commit.Timestamp, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
-	if batch != nil {
-		event.Payload, event.Attachments, err = batch.PayloadTree(commit.Tree, remaining, loadPayload)
-		if err != nil {
-			return Event{}, "", false, fmt.Errorf("commit %s payload shape: %w", commit.OID, err)
-		}
-		return event, "", false, nil
-	}
-	if err := store.ValidatePayloadTree(ctx, commit.Tree, remaining); err != nil {
+	event.Payload, event.Attachments, err = batch.PayloadTree(commit.Tree, remaining, loadPayload)
+	if err != nil {
 		return Event{}, "", false, fmt.Errorf("commit %s payload shape: %w", commit.OID, err)
-	}
-	if !loadPayload {
-		return event, "", false, nil
-	}
-	event.Payload, err = store.ReadFile(ctx, commit.OID, "event")
-	if err != nil {
-		return Event{}, "", false, err
-	}
-	paths, err := store.ListFiles(ctx, commit.OID, "attachments")
-	if err != nil {
-		return Event{}, "", false, err
-	}
-	if len(paths) > 0 {
-		event.Attachments = make(map[string][]byte, len(paths))
-	}
-	for _, path := range paths {
-		content, err := store.ReadFile(ctx, commit.OID, path)
-		if err != nil {
-			return Event{}, "", false, err
-		}
-		event.Attachments[strings.TrimPrefix(path, "attachments/")] = content
 	}
 	return event, "", false, nil
 }

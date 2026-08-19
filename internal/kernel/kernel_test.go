@@ -860,6 +860,85 @@ func TestColdAuditUsesConstantGitProcesses(t *testing.T) {
 	}
 }
 
+func TestDeltaAuditUsesConstantGitProcesses(t *testing.T) {
+	for _, listed := range []bool{false, true} {
+		route := "streamed"
+		if listed {
+			route = "listed"
+		}
+		for _, count := range []int{1, 100} {
+			t.Run(route+"/tail-"+strconv.Itoa(count), func(t *testing.T) {
+				f := newFixture(t, "sha1")
+				private := actor(t)
+				submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
+				baseHead, err := f.store.Head(f.ctx, Ref(f.genesis))
+				if err != nil {
+					t.Fatal(err)
+				}
+				base, err := scanHead(f.ctx, f.store, f.genesis, baseHead, true, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				head := baseHead
+				for index := 0; index < count; index++ {
+					key := route + "-constant-process-" + strconv.Itoa(index)
+					result, err := submitter.Submit(f.ctx, f.request(t, private, key, []byte(key), nil))
+					if err != nil {
+						t.Fatal(err)
+					}
+					head = result.Head
+				}
+				expected, err := scanHead(f.ctx, f.store, f.genesis, head, true, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var commits []gitstore.CommitMetadata
+				if listed {
+					err := f.store.WalkRevListMetadataAfter(f.ctx, baseHead, head, func(commit gitstore.CommitMetadata) error {
+						commits = append(commits, commit)
+						return nil
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+
+				observer := &auditObserver{}
+				f.store.Observer = observer
+				var got scannedLog
+				if listed {
+					got, err = scanListedAfter(f.ctx, f.store, base, head, commits, true)
+				} else {
+					got, err = scanAfter(f.ctx, f.store, base, head, true)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got.Verification != expected.Verification || !reflect.DeepEqual(got.Events, expected.Events[len(base.Events):]) || !reflect.DeepEqual(got.Dedup, expected.Dedup) {
+					t.Fatalf("delta differs from cold audit:\ndelta=%+v\ncold=%+v", got.Verification, expected.Verification)
+				}
+				var refs, scans, signatures int
+				for _, measurement := range observer.measurements {
+					if measurement.Operation != observe.OperationGit {
+						continue
+					}
+					switch measurement.Path {
+					case observe.PathRef:
+						refs++
+					case observe.PathScan:
+						scans++
+					case observe.PathSignature:
+						signatures++
+					}
+				}
+				if refs != 0 || scans != 2 || signatures != 0 {
+					t.Fatalf("delta audit Git processes: refs=%d scans=%d signatures=%d, want 0/2/0", refs, scans, signatures)
+				}
+			})
+		}
+	}
+}
+
 // Run with -benchtime=1x. Setup deliberately constructs an ordinary 20,000
 // event history through the signed resident submission path; only restart is
 // timed.
