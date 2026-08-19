@@ -157,6 +157,7 @@ func TestStatusAndWorkRowsCarryActionableTriageFields(t *testing.T) {
 		Reviews: []workroom.Review{
 			{Report: "review:old", Head: "head-reviewed", Verdict: "changes-requested", Ratified: true},
 			{Report: "review:latest", Head: "head-reviewed", Verdict: "approved", Ratified: false},
+			{Report: "review:retired", Head: "head-reviewed", Verdict: "approved", Ratified: true, Retired: true, Stale: true},
 		},
 	}
 	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 3, Projection: projection}
@@ -174,7 +175,8 @@ func TestStatusAndWorkRowsCarryActionableTriageFields(t *testing.T) {
 	}
 	reported := byRequest["request:reported"]
 	if reported.ReportStatus != "complete" || reported.ReportedHead != "head-reviewed" || reported.LatestReview == nil ||
-		reported.LatestReview.Report != "review:latest" || reported.LatestReview.Verdict != "approved" || reported.LatestReview.Ratified {
+		reported.LatestReview.Report != "review:retired" || reported.LatestReview.Verdict != "approved" || !reported.LatestReview.Ratified ||
+		!reported.LatestReview.Retired || !reported.LatestReview.Stale {
 		t.Fatalf("work row cannot settle reported work without inspect: %#v", reported)
 	}
 
@@ -187,7 +189,8 @@ func TestStatusAndWorkRowsCarryActionableTriageFields(t *testing.T) {
 	}
 	statusReported := status.WaitingOnYou[0]
 	if statusReported.ReportStatus != "complete" || statusReported.ReportedHead != "head-reviewed" || statusReported.LatestReview == nil ||
-		statusReported.LatestReview.Verdict != "approved" || statusReported.LatestReview.Ratified {
+		statusReported.LatestReview.Report != "review:retired" || statusReported.LatestReview.Verdict != "approved" ||
+		!statusReported.LatestReview.Ratified || !statusReported.LatestReview.Retired || !statusReported.LatestReview.Stale {
 		t.Fatalf("status row cannot settle reported work without inspect: %#v", statusReported)
 	}
 }

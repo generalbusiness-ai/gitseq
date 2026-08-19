@@ -55,12 +55,15 @@ type ActorRef struct {
 }
 
 // WorkReview is the latest effective review for the exact reported head.
-// Ratified is deliberately not omitted when false: callers need to distinguish
-// an unratified verdict from a row that has no review evidence at all.
+// Ratified, Retired, and Stale are deliberately not omitted when false: callers
+// need to distinguish an actionable verdict from a row that has no review
+// evidence at all.
 type WorkReview struct {
 	Report   string `json:"report"`
 	Verdict  string `json:"verdict"`
 	Ratified bool   `json:"ratified"`
+	Retired  bool   `json:"retired"`
+	Stale    bool   `json:"stale"`
 }
 
 // WorkDetails carries the bounded facts needed to act on a commitment row.
@@ -364,7 +367,10 @@ func enrichWorkRows(projection workroom.Projection, targets []workRowTarget) {
 	}
 	for _, review := range projection.Reviews {
 		for _, index := range headTargets[review.Head] {
-			targets[index].Details.LatestReview = &WorkReview{Report: review.Report, Verdict: review.Verdict, Ratified: review.Ratified}
+			targets[index].Details.LatestReview = &WorkReview{
+				Report: review.Report, Verdict: review.Verdict, Ratified: review.Ratified,
+				Retired: review.Retired, Stale: review.Stale,
+			}
 		}
 	}
 }

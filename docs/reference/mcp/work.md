@@ -47,7 +47,7 @@ Each returned row also carries the facts needed for routine action without an
 | `conditions` | The full, untruncated `body.conditions` for an open request. |
 | `report_status` | The reported statement's `body.status`, when present. |
 | `reported_head` | The exact head named by the report or reporting artifact. |
-| `latest_review` | The latest effective review for that exact head: its report event, verdict, and explicit `ratified` boolean. |
+| `latest_review` | The latest effective review for that exact head: its report event, verdict, and explicit `ratified`, `retired`, and `stale` booleans. |
 
 The page still caps its row count. It does not shorten `conditions` or omit
 these fields merely to fit more rows into one answer.
