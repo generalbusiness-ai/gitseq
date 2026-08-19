@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gitseq-perf","body":{"commit":"05c0ab000cb99455e377dae129da467e516279c6","path":"cmd/gitseq-perf"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/perfscenario","body":{"commit":"05c0ab000cb99455e377dae129da467e516279c6","path":"internal/perfscenario"}}
