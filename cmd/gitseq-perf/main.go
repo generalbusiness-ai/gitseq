@@ -348,6 +348,7 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 	}
 
 	latencies := make(map[string][]float64)
+	primarySamples := 0
 	for _, selected := range cases {
 		fixture := fixtures[selected.fixtureKey()]
 		warmups, repetitions := tierCounts(contract, *tier, selected.Scenario)
@@ -383,6 +384,7 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 				return err
 			}
 			evidence.Samples = append(evidence.Samples, envelope)
+			primarySamples++
 			if err != nil {
 				return fmt.Errorf("sample %s %s: %w", scheduled.Revision, selected.name(), err)
 			}
@@ -462,7 +464,7 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 	if err := os.WriteFile(filepath.Join(*output, "evidence.json"), append(encoded, '\n'), 0o644); err != nil {
 		return err
 	}
-	fmt.Printf("%s: wrote %s (%d primary samples)\n", evidence.Outcome, *output, len(latencies))
+	fmt.Printf("%s: wrote %s (%d primary samples)\n", evidence.Outcome, *output, primarySamples)
 	return nil
 }
 
