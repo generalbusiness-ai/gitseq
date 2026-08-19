@@ -125,6 +125,35 @@ func TestFanoutSummaryKeepsSignedRatioAndMillisecondIncrements(t *testing.T) {
 	}
 }
 
+func TestFanoutSummarySeparatesPreviewFromFirstProduction(t *testing.T) {
+	contract := testContract(t)
+	cases, err := casesForTier(contract, "fanout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	medians := []float64{100_000_000, 105_000_000, 105_000_000, 105_000_000, 120_000_000}
+	distributions := make(map[string]perflane.Distribution)
+	for index, selected := range cases {
+		distributions["candidate/"+selected.name()] = perflane.Distribution{
+			Samples: 100,
+			P50:     perflane.Available(medians[index]),
+		}
+	}
+
+	summaries, err := summarizeFanoutAxis(contract, cases, distributions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := summaries["candidate"]
+	if summary.PreviewVerdict != "pass" || summary.FirstProductionVerdict != "miss" {
+		t.Fatalf("fan-out verdicts = %q / %q, want pass / miss", summary.PreviewVerdict, summary.FirstProductionVerdict)
+	}
+	last := summary.Measurements[len(summary.Measurements)-1]
+	if last.Width != 256 || last.WithinRelativeLimit {
+		t.Fatalf("first-production-only miss = %#v", last)
+	}
+}
+
 func TestCheckpointDepthsAreUniqueAndSorted(t *testing.T) {
 	tests := []struct {
 		maximum int

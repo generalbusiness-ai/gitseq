@@ -60,6 +60,17 @@ correctness digests.
 | 64 | 445.613 ms | 460.090 ms | 482.367 ms | 488.723 ms | -51.718 ms; -10.399% |
 | 256 | 444.809 ms | 450.182 ms | 477.759 ms | 492.071 ms | -52.522 ms; -10.561% |
 
+The width-one denominator was the run's only non-stationary block. Its simple
+median fell from 497.471 ms across rounds 1–100 to 495.168 ms across rounds
+18–100, 474.016 ms across rounds 51–100, and 461.759 ms across rounds 76–100.
+Every sample above 600 ms occurred in its first 17 rounds; the later width
+blocks did not show comparable drift. Five warmups therefore did not settle
+the first measured block. Using the last-quarter width-one median puts the
+later blocks roughly 1.5 to 3.6 percent below the denominator instead of the
+9.2 to 10.6 percent shown by the full-block table. Both release
+classifications still pass, but the signed magnitudes are bounded by this
+ordering and warm-up artifact and should not be read as fan-out speedups.
+
 The relative target permits no more than a 10-percent median increase at
 every measured width through 64 for PREVIEW and through 256 for
 FIRST-PRODUCTION. This run passes both. The width-one median itself is still
