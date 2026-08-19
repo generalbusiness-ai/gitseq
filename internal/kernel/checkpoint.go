@@ -28,6 +28,7 @@ const (
 	legacyCheckpointMarker          = "gitseq-checkpoint-v1"
 	checkpointContainer             = "gitseq-checkpoint-container-v2\x00"
 	checkpointInterval              = 256
+	checkpointChunkEvents           = 4096
 	maxCheckpointBytes              = 256 << 20
 	maxCheckpointManifest           = 1 << 20
 )
@@ -65,9 +66,12 @@ type checkpoint struct {
 	Depth        int    `json:"depth"`
 	// Profile exists only to decode checkpoint@1 and checkpoint@2. Current
 	// checkpoints never write it; projection selectors belong above the kernel.
-	Profile    string            `json:"profile,omitempty"`
-	Events     []checkpointEvent `json:"events"`
-	EventCount int               `json:"-"`
+	Profile      string            `json:"profile,omitempty"`
+	Events       []checkpointEvent `json:"events"`
+	EventCount   int               `json:"-"`
+	Cached       bool              `json:"-"`
+	CachedChunks [][]byte          `json:"-"`
+	CachedTail   []checkpointEvent `json:"-"`
 }
 
 type checkpointEvent struct {
@@ -76,6 +80,54 @@ type checkpointEvent struct {
 	Signed      intent.Signed     `json:"signed"`
 	Payload     []byte            `json:"payload"`
 	Attachments map[string][]byte `json:"attachments,omitempty"`
+}
+
+// checkpointEventCache retains only the material a future compact checkpoint
+// writes. Full chunks are compressed; the raw tail is bounded independently
+// of sequence depth.
+type checkpointEventCache struct {
+	chunks [][]byte
+	tail   []checkpointEvent
+	count  int
+	err    error
+}
+
+func (c *checkpointEventCache) reset(events []Event) {
+	*c = checkpointEventCache{}
+	c.appendEvents(events)
+}
+
+func (c *checkpointEventCache) appendEvents(events []Event) {
+	for _, event := range events {
+		c.append(event)
+	}
+}
+
+func (c *checkpointEventCache) append(event Event) {
+	if c.err != nil {
+		return
+	}
+	c.tail = append(c.tail, checkpointMaterial(event))
+	c.count++
+	if len(c.tail) < checkpointChunkEvents {
+		return
+	}
+	var output bytes.Buffer
+	compressed := gzip.NewWriter(&output)
+	for _, material := range c.tail {
+		if err := writeCompactCheckpointEvent(compressed, material); err != nil {
+			c.err = err
+			_ = compressed.Close()
+			return
+		}
+	}
+	if err := compressed.Close(); err != nil {
+		c.err = err
+		return
+	}
+	c.chunks = append(c.chunks, output.Bytes())
+	clear(c.tail)
+	c.tail = c.tail[:0]
 }
 
 type compactCheckpointManifest struct {
@@ -449,6 +501,17 @@ func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, 
 	if !options.enabled() || options.SigningKey == "" || len(log.Events) != log.Verification.Events {
 		return ErrNoUsableCheckpoint
 	}
+	events := make([]checkpointEvent, 0, len(log.Events))
+	for _, event := range log.Events {
+		events = append(events, checkpointEvent{Payload: event.Payload, Attachments: event.Attachments})
+	}
+	return writeCheckpointEvents(ctx, store, log, events, options)
+}
+
+func writeCheckpointEvents(ctx context.Context, store gitstore.Store, log scannedLog, events []checkpointEvent, options CheckpointOptions) error {
+	if !options.enabled() || options.SigningKey == "" || len(events) != log.Verification.Events {
+		return ErrNoUsableCheckpoint
+	}
 	format, err := store.ObjectFormat(ctx)
 	if err != nil {
 		return err
@@ -456,13 +519,28 @@ func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, 
 	stored := checkpoint{
 		Schema: checkpointSchema, ObjectFormat: format, Genesis: log.Verification.Genesis,
 		Head: log.Verification.Head, Depth: log.Verification.Depth,
-		EventCount: len(log.Events), Events: make([]checkpointEvent, 0, len(log.Events)),
+		EventCount: len(events), Events: events,
 	}
-	for _, event := range log.Events {
-		stored.Events = append(stored.Events, checkpointEvent{
-			Payload: event.Payload, Attachments: event.Attachments,
-		})
+	return publishCheckpoint(ctx, store, log, stored, options)
+}
+
+func writeCheckpointCache(ctx context.Context, store gitstore.Store, log scannedLog, cache checkpointEventCache, options CheckpointOptions) error {
+	if !options.enabled() || options.SigningKey == "" || cache.err != nil || cache.count != log.Verification.Events {
+		return ErrNoUsableCheckpoint
 	}
+	format, err := store.ObjectFormat(ctx)
+	if err != nil {
+		return err
+	}
+	stored := checkpoint{
+		Schema: checkpointSchema, ObjectFormat: format, Genesis: log.Verification.Genesis,
+		Head: log.Verification.Head, Depth: log.Verification.Depth,
+		EventCount: cache.count, Cached: true, CachedChunks: cache.chunks, CachedTail: cache.tail,
+	}
+	return publishCheckpoint(ctx, store, log, stored, options)
+}
+
+func publishCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, stored checkpoint, options CheckpointOptions) error {
 	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
 	if err != nil {
 		return err
@@ -541,7 +619,9 @@ func decodeLegacyCheckpoint(data []byte) (checkpoint, error) {
 }
 
 func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
-	if stored.EventCount != len(stored.Events) || stored.EventCount < 0 {
+	if stored.EventCount < 0 ||
+		(!stored.Cached && stored.EventCount != len(stored.Events)) ||
+		(stored.Cached && stored.EventCount != len(stored.CachedChunks)*checkpointChunkEvents+len(stored.CachedTail)) {
 		return nil, errors.New("compact checkpoint event count mismatch")
 	}
 	manifest := compactCheckpointManifest{
@@ -571,10 +651,35 @@ func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
 	}
 	compressed.Header.ModTime = time.Time{}
 	compressed.Header.OS = 255
-	for _, event := range stored.Events {
-		if err := writeCompactCheckpointEvent(compressed, event); err != nil {
-			_ = compressed.Close()
-			return nil, err
+	if stored.Cached {
+		for _, chunk := range stored.CachedChunks {
+			reader, source, err := openCompactCheckpointPayload(chunk)
+			if err != nil {
+				_ = compressed.Close()
+				return nil, err
+			}
+			if _, err := io.Copy(compressed, reader); err != nil {
+				_ = reader.Close()
+				_ = compressed.Close()
+				return nil, err
+			}
+			if err := finishCompactCheckpointPayload(reader, source); err != nil {
+				_ = compressed.Close()
+				return nil, err
+			}
+		}
+		for _, event := range stored.CachedTail {
+			if err := writeCompactCheckpointEvent(compressed, event); err != nil {
+				_ = compressed.Close()
+				return nil, err
+			}
+		}
+	} else {
+		for _, event := range stored.Events {
+			if err := writeCompactCheckpointEvent(compressed, event); err != nil {
+				_ = compressed.Close()
+				return nil, err
+			}
 		}
 	}
 	if err := compressed.Close(); err != nil {
@@ -897,24 +1002,10 @@ func cloneByteMap(input map[string][]byte) map[string][]byte {
 	return output
 }
 
-func cloneEvent(event Event) Event {
-	event.Intent.RestsOn = append([]string(nil), event.Intent.RestsOn...)
-	event.Intent.CapabilityHash = bytes.Clone(event.Intent.CapabilityHash)
-	event.Signed = cloneSigned(event.Signed)
-	event.Payload = bytes.Clone(event.Payload)
-	event.Attachments = cloneByteMap(event.Attachments)
-	return event
-}
-
-func cloneEvents(events []Event) []Event {
-	if len(events) == 0 {
-		return nil
+func checkpointMaterial(event Event) checkpointEvent {
+	return checkpointEvent{
+		Payload: bytes.Clone(event.Payload), Attachments: cloneByteMap(event.Attachments),
 	}
-	cloned := make([]Event, len(events))
-	for index, event := range events {
-		cloned[index] = cloneEvent(event)
-	}
-	return cloned
 }
 
 func checkpointDue(depth, lastAttempt int) bool {
