@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will implement request-shape validation at every write surface, preserve the fold as authoritative, add deterministic surface-level tests, update the state reference, publish exact-head artifacts, and seek independent review.","body":{"branch":"request/request-shape-guard"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e5070e9c2b6fcb02fe9a00628afcd916197b9f10"}
