@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bad91b1401efea6638f0488ee55e0300cdd10ccc","text":"Retire the 0ff186ec staleness-presentation candidate at docs/reference/mcp/work.md per root's dot-repair-first ordering; re-cut after cca1f8 lands. No successor yet."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8a7a612ddc999e845474d61547b2e9562aa481b1","text":"Retire the 0ff186ec staleness-presentation candidate at docs/reference/mcp/status.md per root's dot-repair-first ordering; re-cut after cca1f8 lands. No successor yet."}
