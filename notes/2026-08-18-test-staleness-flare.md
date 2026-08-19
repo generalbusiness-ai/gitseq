@@ -66,8 +66,10 @@ The selection rule: a test whose subject-assumption is owned by *another file*,
 where a deliberate change there leaves the test green. Two of the four below
 were live on the board the day this note was written, which is the strongest
 part of the argument — the flare would have fired on real, recent, deliberate
-changes. Since then a third has happened for real; it is recorded inside the
-example it belongs to, not added as a new one.
+changes. A third example has since moved too, and checking it turned up the
+sharpest distinction in this note — between a stale *recipe* and lost
+*coverage*; it is recorded inside the example it belongs to, not added as a new
+one.
 
 ### 1. `public_surface_test.go` — purest cross-boundary (fired the wrong way)
 
@@ -134,7 +136,7 @@ coupling gets a mechanical rewrite, which restores green without restoring
 meaning. Compile-invisible couplings — the next two examples — do not even get
 that much.
 
-### 3. `TestVerifierRejectsWrongSequencerSignatureOnColdAudit` — the seam-moved case
+### 3. `TestVerifierRejectsWrongSequencerSignatureOnColdAudit` — the seam moved, the coverage held
 
 internal/kernel/kernel_test.go:648. It appends a commit signed with the *wrong*
 sequencer key and asserts `Verify(...)` errors with a message containing
@@ -145,19 +147,45 @@ in `scanHead`." It rests on two out-of-unit assumptions in `kernel.go`: that
 cold-audit verification happens *at that seam*, and that the error string still
 contains the substring it matches on.
 
-This one is no longer hypothetical. `scanHead` (kernel.go:876) no longer calls
+The seam has since moved. `scanHead` (kernel.go:876) no longer calls
 `store.VerifySSHCommit` at all; it calls `gitstore.VerifySSHSignature` on an
 already-audited commit (kernel.go:930) and wraps the failure as
 `"commit %s sequencer signature: %w"`. The substring survived the move, so the
-test is green and CI has never had anything to say. But the mutation the matrix
-names — "ignore the `VerifySSHCommit` error in `scanHead`" — can no longer be
-applied as written, and nobody has re-derived what the equivalent mutation at
-the new seam is or confirmed this test still catches it. The string coupling is
-the sharp edge: reword away from the substring and it goes red (brittle); move
-the seam while keeping the substring and it goes green-but-toothless, which is
-exactly what happened. The flare — rest it on the verification-seam artifact —
-says "the seam you guard moved; re-run the mutation to confirm this test still
-bites." That is "mutate the seam to test the tests," made durable and automatic.
+test is green and CI has had nothing to say.
+
+The tempting conclusion is that the test has gone toothless. It has not, and
+checking rather than assuming is what makes this the most useful example in the
+note. Applying the equivalent current mutation — ignore the
+`gitstore.VerifySSHSignature` error at kernel.go:930 — makes the test **fail**,
+at kernel_test.go:656, with `error = nil`. The guard still bites at the moved
+seam and still enforces wrong-signer rejection. Behavioral coverage is intact.
+
+What went stale is the *recorded mutation recipe*, not the coverage. The matrix
+still names "ignore the `VerifySSHCommit` error in `scanHead`", and that
+sentence can no longer be applied as written, because the call it names is not
+there any more. Someone reaching for the matrix to re-check this guard has to
+re-derive the mutation before they can run it.
+
+Those are two different kinds of staleness, and separating them is the point:
+
+- **The claim** (this test rejects a wrong sequencer signature on cold audit)
+  is still true, still enforced, and needs nothing.
+- **The recipe** (the named mutation that proves the claim is enforced) refers
+  to a call site that no longer exists, and needs re-deriving.
+
+The flare belongs on the second, and that refines the idea rather than
+confirming it: what needed re-judging here was not the test but the *record of
+how to test the test*. Rest the matrix entry on the verification-seam artifact,
+and moving that seam says "the mutation you recorded names a call that moved;
+re-derive it and re-run." That is a small, bounded, unambiguous action — and,
+run here, it returned a clean confirmation rather than a defect. Which is the
+honest measure of what this signal is worth: not that it catches broken tests
+CI missed, but that it tells you *which* of a hundred recorded assumptions is
+worth spending five minutes re-checking, instead of leaving that judgement to
+whoever happens to read the file next. The string coupling remains the sharp
+edge underneath — reword away from the substring and the test goes red for no
+semantic reason — but on this occasion the coupling held and the guard held
+with it.
 
 ### 4. The merge-gate contract — semantic-contract class
 
@@ -194,7 +222,15 @@ flare has an unambiguous action (re-run the mutation). The two live examples
 above are the argument to keep: `public_surface` shows today's tools too loud
 (red for a policy reword), the checkpoint benchmark shows them too quiet (green
 restored by a mechanical edit after a deliberate contract change, with nobody
-asked whether the assertion still characterizes anything). The verifier-seam
-case is the same quiet failure without even the compiler's prompt, and it has
-now happened in this repository. The flare is the one signal that fits both —
-advisory where red is too loud, present where green is too quiet.
+asked whether the assertion still characterizes anything). The flare is the one
+signal that fits both — advisory where red is too loud, present where green is
+too quiet.
+
+The verifier-seam case sets the expectation for what a pilot would actually
+feel like. Its seam moved, its recorded mutation stopped being applicable, and
+the re-check it prompts came back clean: the guard still bites. Most flares
+will end that way. A signal whose usual answer is "still fine" is worth having
+only if it is cheap and specific, which is the argument for starting with the
+mutation matrix — a small set where each flare names one recipe to re-derive
+and one mutation to re-run — and against ever pointing this at the general
+suite.
