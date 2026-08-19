@@ -39,11 +39,7 @@ var ErrNoUsableCheckpoint = errors.New("no usable checkpoint")
 // application folds. SigningKey is optional: readers without sequencer
 // custody may consume a valid checkpoint but never publish one.
 type CheckpointOptions struct {
-	Enabled bool
-	// Profile is retained for source compatibility with older embedders. A
-	// non-empty value enables checkpoints but never participates in identity
-	// or eligibility; projection caches belong above the kernel.
-	Profile    string
+	Enabled    bool
 	SigningKey string
 	// Pointer is an optional host-owned, process-independent selector for a
 	// signed Git checkpoint object. The kernel assigns it no authority: every
@@ -51,7 +47,7 @@ type CheckpointOptions struct {
 	Pointer CheckpointPointer
 }
 
-func (o CheckpointOptions) enabled() bool { return o.Enabled || o.Profile != "" }
+func (o CheckpointOptions) enabled() bool { return o.Enabled }
 
 // CheckpointPointer is the host seam for local checkpoint selection. It keeps
 // filesystem policy outside the kernel; implementations store only an opaque

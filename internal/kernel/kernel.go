@@ -74,10 +74,6 @@ type Result struct {
 type Options struct {
 	SigningKey        string
 	CheckpointEnabled bool
-	// CheckpointProfile is retained for source compatibility. It enables the
-	// kernel checkpoint but no longer keys it; application projection caches
-	// own profile invalidation.
-	CheckpointProfile string
 	CheckpointPointer CheckpointPointer
 	Failpoint         func(string)
 	MaxRetries        int
@@ -131,7 +127,7 @@ type logCache struct {
 func NewSubmitter(store gitstore.Store, options Options) *Submitter {
 	return &Submitter{
 		store: store, options: options,
-		cache: logCache{checkpoint: CheckpointOptions{Enabled: options.CheckpointEnabled, Profile: options.CheckpointProfile, SigningKey: options.SigningKey, Pointer: options.CheckpointPointer}},
+		cache: logCache{checkpoint: CheckpointOptions{Enabled: options.CheckpointEnabled, SigningKey: options.SigningKey, Pointer: options.CheckpointPointer}},
 	}
 }
 
