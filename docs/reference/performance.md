@@ -4,7 +4,7 @@ summary: The versioned dependency fan-out measurement and its contract verdict.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f0047ba0e5d25ad1f9620bf1428a651f37e1a302
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:86288a0f149fa39592758bc97ab422b994f2dcb8
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1fcb0dc893ed227beb99f9bdb2802a2d236e54e3
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f1569302953f2b46ed91f78414538b5b80454768
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f3a67e0c4d3a06c97c1bf8fa08250af6a77e3977
 ---
 
