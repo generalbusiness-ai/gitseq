@@ -2194,6 +2194,62 @@ func buildGS(t *testing.T) string {
 	return binary
 }
 
+// These checks run the installed command rather than calling batchCommand in
+// process. A returned error is not enough at this boundary: scripts only see
+// the process status, and the positional file is passed to main before the
+// command can decide where to read its acts.
+func TestBatchProcessReadsItsFileAndReportsFailures(t *testing.T) {
+	binary := buildGS(t)
+
+	t.Run("positional file", func(t *testing.T) {
+		repo, workspace := servableRepository(t)
+		seed := workspace.EventID(workspace.Config.Genesis)
+		path := filepath.Join(t.TempDir(), "batch.json")
+		acts := fmt.Sprintf(`[{"verb":"state","kind":"assert","text":"the positional file was read","rests_on":[%q],"idempotency_key":"positional-file"}]`, seed)
+		if err := os.WriteFile(path, []byte(acts), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		output, err := exec.Command(binary, "batch", "--repo", repo, "--as", "human", path).CombinedOutput()
+		if err != nil {
+			t.Fatalf("gs batch file: %v: %s", err, output)
+		}
+		var report batchReport
+		if err := json.Unmarshal(output, &report); err != nil {
+			t.Fatalf("decode batch report %q: %v", output, err)
+		}
+		if report.Landed != 1 || report.Error != nil {
+			t.Fatalf("batch report = %#v, want one landed act and no error", report)
+		}
+	})
+
+	t.Run("bad batch input exits nonzero", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "batch.json")
+		if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		output, err := exec.Command(binary, "batch", "--repo", t.TempDir(), "--as", "human", path).CombinedOutput()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() == 0 {
+			t.Fatalf("gs batch bad input error = %v, output = %q; want non-zero exit", err, output)
+		}
+		if !bytes.Contains(output, []byte("read batch acts")) {
+			t.Fatalf("gs batch bad input output = %q, want parse error", output)
+		}
+	})
+
+	t.Run("missing flag value exits nonzero", func(t *testing.T) {
+		output, err := exec.Command(binary, "batch", "--server").CombinedOutput()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() == 0 {
+			t.Fatalf("gs batch missing flag value error = %v, output = %q; want non-zero exit", err, output)
+		}
+		if !bytes.Contains(output, []byte("flag needs an argument")) {
+			t.Fatalf("gs batch missing flag value output = %q, want flag error", output)
+		}
+	})
+}
+
 func servableRepository(t *testing.T) (string, *app.Workspace) {
 	t.Helper()
 	repo := filepath.Join(t.TempDir(), "repo")
