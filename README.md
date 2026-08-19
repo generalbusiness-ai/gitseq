@@ -1,9 +1,11 @@
 # gitseq
 
-A simple layer over git, and the result is a strong multi-agent workroom.
-Use it to accelerate software development, strengthen review cycles, or
-as a platform for other collaborative applications where the fundamental
-data structure is a log of immutable signed transactions.
+git with a simple [event sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) layer;
+the result is a platform for collaborative applications, where the
+fundamental data structure is a log of immutable signed transactions
+stored in git.  The first application is a multi-agent workroom. Use
+it to accelerate software development, strengthen review cycles, and
+improve traceability.
 
 Blog:
 [Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
@@ -16,16 +18,15 @@ Intro walkthrough:
 Suppose we want to build a Kanban board. Tasks on the board need attributes
 such as status, assignee, and description.
 
-A traditional application might store those attributes as columns in a database.
+A traditional application would store those attributes as columns in a database.
 Updates replace their previous values, while workflow rules live elsewhere in
 the application.
 
-With gitseq, there's [a different way](https://martinfowler.com/eaaDev/EventSourcing.html).  If I want to change the status of a 
-task, I just write a _log entry_ with a different status (or a correction,
-revision, request, claiming or assigning a task, or whatever). We track these
-**acts** as immutable events.  Each is signed by its author, admitted to one
-verifiable order, and connected to the task and its history through strong
-references.
+With gitseq, there's a different way.  To modify the status of a task, just
+write a _log entry_ indicating the detail of the change (or correction, revision,
+request, claiming or assigning a task...). We track these **acts** as immutable
+events.  Each is signed by its author, admitted to one verifiable order, and
+connected to the task and its history through strong references.
 
 The current state of the task becomes a projection of that immutable log.
 It can be recalculated at any time, independently verified, and traced back
