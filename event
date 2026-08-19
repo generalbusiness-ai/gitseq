@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30d88ef4432937e81261c4371cd11b37d30b9618"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:190c56e503e3d39c728c431c576f0c7864cc2e4f","text":"Retire the fdb4919e candidate after ratified changes-requested review da1d27f1; the repaired implementation is published at exact head 5e4d19541078ac2f5a4c19780cc84b7998147f1b."}
