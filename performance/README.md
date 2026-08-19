@@ -34,6 +34,56 @@ recorded repetitions at every width) with:
 make perf PERF_ARGS='run --tier fanout'
 ```
 
+## Retained runs
+
+A run writes into `evidence/`, which is untracked working space and is deleted
+with the worktree that produced it. That is the right default for exploratory
+runs and the wrong one for a run a page publishes a verdict from: the first
+fan-out campaign was lost exactly that way, leaving a reference page citing
+distributions nobody could consult.
+
+So a run whose numbers reach a page is copied into `retained/<run-id>/` before
+review, and that copy is exactly three files:
+
+- `evidence.json` — the harness evidence document, which carries the contract,
+  the environment, the fixture and contract digests, the exact head, and the
+  harness's own latency distributions and axis summary;
+- `samples.jsonl` — every raw sample, one record per line;
+- `candidate.bench` — the primary samples in Go benchmark format.
+
+No separate derived file is retained. The harness's own summaries travel inside
+`evidence.json`, and any further statistic a page computes for itself is
+recomputable from `samples.jsonl`, so a fourth file holding those numbers would
+only be one more thing that can drift away from the samples it describes.
+Anything a reader needs to know about how a run was conducted belongs in the
+page that publishes the verdict, where it is reviewed, rather than in a note
+beside the data.
+
+Profiles, traces and fixtures stay out. The first two are diagnostic reruns
+rather than primary evidence, and fixtures are large and reproducible from the
+contract.
+
+Retention stays a deliberate decision about one run, not an automatic
+consequence of running the harness. The ignore rules above are unchanged, which
+means copying the files in is not enough on its own: `*.bench` is ignored, so
+an ordinary `git add` of the copied directory silently leaves `candidate.bench`
+untracked. Add that one file explicitly:
+
+```text
+mkdir -p retained/<run-id>
+cp evidence/evidence.json evidence/samples.jsonl retained/<run-id>/
+cp evidence/candidate.bench retained/<run-id>/
+git add retained/<run-id>/evidence.json retained/<run-id>/samples.jsonl
+git add -f retained/<run-id>/candidate.bench
+```
+
+Then check that the directory holds the three files and nothing else, because
+the ignore rules will not tell you what they dropped:
+
+```text
+git ls-files retained/<run-id>
+```
+
 Compare two exact commits with repeated, alternating samples with:
 
 ```sh
