@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0495e87e6eab51c73e3acb723022af6ce95e178d"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6fe98ea78ba263dcfb22dc2f78c5dad4e8ac324e","text":"Withdrawn as overtaken: CI now runs make test once (single invocation on current main); the Aug-11 reported head 073d68c7 was never reviewed and is not landable. Any remaining CI pruning deserves a fresh request on live bases."}
