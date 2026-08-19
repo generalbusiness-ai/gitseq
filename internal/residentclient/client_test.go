@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -124,5 +125,93 @@ func TestHTTPRefusalIsNotTransportLoss(t *testing.T) {
 	var refusal *HTTPError
 	if !errors.As(err, &refusal) || IsTransportError(err) || err.Error() != "refused" {
 		t.Fatalf("refusal = %T %v", err, err)
+	}
+}
+
+// Only a refused dial says an ownership claim is stale. Every other answer
+// leaves the claim alone, because taking a repository away from a resident that
+// is actually serving is the split room the claim exists to prevent, while
+// refusing to start only costs one operator a message.
+func TestProbeResidentTreatsOnlyARefusedDialAsDefinitive(t *testing.T) {
+	ctx := context.Background()
+	client := New(2 * time.Second)
+
+	alive := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v0/identity" {
+			t.Errorf("probe asked for %q", request.URL.Path)
+		}
+		if request.Method != http.MethodGet {
+			t.Errorf("probe used %s", request.Method)
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]string{"genesis": "abc123"})
+	}))
+	defer alive.Close()
+	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: alive.URL, Genesis: "abc123"}); got != app.Alive {
+		t.Fatalf("a resident answering for this workroom probed %v", got)
+	}
+	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: alive.URL, Genesis: "another"}); got != app.Ambiguous {
+		t.Fatalf("a port answering for another workroom probed %v; it must not authorize a takeover", got)
+	}
+
+	silent := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte("this is not the identity answer"))
+	}))
+	defer silent.Close()
+	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: silent.URL, Genesis: "abc123"}); got != app.Ambiguous {
+		t.Fatalf("an unparseable answer probed %v", got)
+	}
+
+	// A listener that accepts and then never answers is the wedged incumbent.
+	// It is still an incumbent.
+	hung, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hung.Close()
+	go func() {
+		for {
+			connection, err := hung.Accept()
+			if err != nil {
+				return
+			}
+			defer connection.Close()
+		}
+	}()
+	brief, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer cancel()
+	if got := client.ProbeResident(brief, app.ResidentClaim{URL: "http://" + hung.Addr().String(), Genesis: "abc123"}); got != app.Ambiguous {
+		t.Fatalf("a hung listener probed %v", got)
+	}
+
+	// Nothing listening at all. This is the only case that frees a claim.
+	dead, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := dead.Addr().String()
+	if err := dead.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: "http://" + address, Genesis: "abc123"}); got != app.Dead {
+		t.Fatalf("a refused dial probed %v; stale-owner recovery depends on it", got)
+	}
+}
+
+// A claim is an ordinary file in the repository, so its URL is untrusted input.
+// Probing whatever it named would turn starting a service into a request
+// forgery against any address a local writer chose.
+func TestProbeResidentRefusesToDialAnythingButLoopback(t *testing.T) {
+	client := New(time.Second)
+	for _, url := range []string{
+		"http://198.51.100.7:7777",
+		"http://example.invalid",
+		"https://127.0.0.1:7777",
+		"http://user:secret@127.0.0.1:7777",
+		"http://127.0.0.1:7777/v0/act",
+		"",
+	} {
+		if got := client.ProbeResident(context.Background(), app.ResidentClaim{URL: url, Genesis: "abc123"}); got != app.Ambiguous {
+			t.Errorf("claim URL %q probed %v; it must not be dialled or believed", url, got)
+		}
 	}
 }

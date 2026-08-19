@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -2147,38 +2148,62 @@ func TestServeWithdrawsWhenTheProcessIsInterrupted(t *testing.T) {
 	}
 }
 
-// Withdrawal is conditional for a reason: a service that took the repository
-// over is still serving it, and erasing its record would send every client into
-// degraded mode. Stopping the service it replaced must leave it alone.
-func TestAnInterruptedServiceLeavesItsSuccessorAdvertised(t *testing.T) {
+// Two services on one repository is what the ownership claim prevents, and
+// this is that at the executable level: the second real process refuses, says
+// which address holds the repository, exits non-zero, and leaves the
+// incumbent's claim and advertisement exactly as they were.
+//
+// This replaces a test that asserted the opposite — that a second service took
+// the advertisement over, and that stopping the service it replaced left the
+// successor advertised. That was an honest description of a world with no
+// lock, and it is no longer reachable: there is no way to have two services
+// running, so there is no replaced service to stop. The withdrawal guard that
+// test protected is covered where it now lives, on the claim, in
+// TestATakerRacingACleanShutdownYieldsOneOwnerInEitherOrder.
+func TestASecondServeProcessRefusesAndLeavesTheIncumbentUntouched(t *testing.T) {
+	ctx := context.Background()
 	binary := buildGS(t)
 	repo, workspace := servableRepository(t)
+	ref := app.ResidentRef(workspace.Config.Genesis)
 
-	replaced := startServing(t, binary, repo)
-	first := awaitPublication(t, workspace, "")
-	successor := startServing(t, binary, repo)
-	second := awaitPublication(t, workspace, first)
+	serving := startServing(t, binary, repo)
+	url := awaitPublication(t, workspace, "")
+	held, present, err := workspace.Store.RefValue(ctx, ref)
+	if err != nil || !present {
+		t.Fatalf("a serving process holds no claim: present=%v err=%v", present, err)
+	}
 
-	interrupt(t, replaced)
-	if err := replaced.Wait(); err != nil {
-		t.Fatalf("stopping normally was reported as a failure: %v", err)
+	output, err := exec.Command(binary, "serve", "--repo", repo, "--listen", "127.0.0.1:0").CombinedOutput()
+	if err == nil {
+		t.Fatalf("a second gs serve started beside the one holding the repository: %s", output)
 	}
-	published, ok := workspace.ResidentURL()
-	if !ok || published != second {
-		t.Fatalf("stopping a replaced service took the successor's advertisement %q down to %q/%v", second, published, ok)
+	if !strings.Contains(string(output), url) {
+		t.Fatalf("the refusal does not name the incumbent %q: %s", url, output)
 	}
-	response, err := http.Get(published + "/v0/presence")
+	if value, _, err := workspace.Store.RefValue(ctx, ref); err != nil || value != held {
+		t.Fatalf("the refused process disturbed the claim: %q (was %q) err=%v", value, held, err)
+	}
+	if published, ok := workspace.ResidentURL(); !ok || published != url {
+		t.Fatalf("the refused process took the advertisement: %q ok=%v", published, ok)
+	}
+	response, err := http.Get(url + "/v0/presence")
 	if err != nil {
-		t.Fatalf("the surviving advertisement does not answer: %v", err)
+		t.Fatalf("the incumbent stopped answering: %v", err)
 	}
 	response.Body.Close()
 
-	interrupt(t, successor)
-	if err := successor.Wait(); err != nil {
+	interrupt(t, serving)
+	if err := serving.Wait(); err != nil {
 		t.Fatalf("stopping normally was reported as a failure: %v", err)
 	}
-	if published, ok := workspace.ResidentURL(); ok {
-		t.Fatalf("the last service left the repository advertised at %q", published)
+	if _, present, err := workspace.Store.RefValue(ctx, ref); err != nil || present {
+		t.Fatalf("an interrupted service left its claim behind: present=%v err=%v", present, err)
+	}
+
+	// The repository is free again, so an ordinary start serves it.
+	startServing(t, binary, repo)
+	if next := awaitPublication(t, workspace, url); next == "" {
+		t.Fatal("the repository could not be served after its owner stopped")
 	}
 }
 
@@ -2504,5 +2529,159 @@ func TestRetirementIgnoresUntrackedPages(t *testing.T) {
 	}
 	if err := supersedeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--text", "retire it", target}); err != nil {
 		t.Errorf("an untracked page must not block a retirement, got %v", err)
+	}
+}
+
+// Two services on one repository is the case this refuses. The durable log
+// stays correct either way — appends are compare-and-swap on a Git ref — but
+// presence and ephemeral conversation are per-process, so a second resident
+// would form a second room whose participants never see the first and are never
+// told. The second start therefore refuses, names the incumbent, leaves the
+// claim and the advertisement alone, and serves nothing.
+func TestASecondServeRefusesWhileTheFirstHoldsTheRepository(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(context.Background(), repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := app.ResidentRef(workspace.Config.Genesis)
+
+	ctx, stop := context.WithCancel(context.Background())
+	served := make(chan error, 1)
+	go func() { served <- serveCommand(ctx, []string{"--repo", repo, "--listen", "127.0.0.1:0"}) }()
+
+	var url string
+	for attempt := 0; attempt < 300 && url == ""; attempt++ {
+		if published, ok := workspace.ResidentURL(); ok {
+			url = published
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if url == "" {
+		stop()
+		t.Fatal("serving never published its address")
+	}
+	held, present, err := workspace.Store.RefValue(ctx, ref)
+	if err != nil || !present {
+		stop()
+		t.Fatalf("a serving process holds no claim: present=%v err=%v", present, err)
+	}
+
+	second := serveCommand(context.Background(), []string{"--repo", repo, "--listen", "127.0.0.1:0"})
+	var refusal *app.ResidentHeldError
+	if !errors.As(second, &refusal) {
+		stop()
+		t.Fatalf("a second serve on a held repository returned %v", second)
+	}
+	if refusal.URL != url {
+		stop()
+		t.Fatalf("the refusal named %q, not the incumbent %q", refusal.URL, url)
+	}
+	if value, _, err := workspace.Store.RefValue(ctx, ref); err != nil || value != held {
+		stop()
+		t.Fatalf("the refused start disturbed the claim: %q (was %q) err=%v", value, held, err)
+	}
+	if published, ok := workspace.ResidentURL(); !ok || published != url {
+		stop()
+		t.Fatalf("the refused start advertised itself: %q ok=%v", published, ok)
+	}
+
+	stop()
+	if err := <-served; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("serving failed: %v", err)
+	}
+	// Stopping releases the claim, so the next start is an ordinary one rather
+	// than a recovery.
+	if _, present, err := workspace.Store.RefValue(context.Background(), ref); err != nil || present {
+		t.Fatalf("a stopped service left its claim behind: present=%v err=%v", present, err)
+	}
+
+	next, stopNext := context.WithCancel(context.Background())
+	defer stopNext()
+	after := make(chan error, 1)
+	go func() { after <- serveCommand(next, []string{"--repo", repo, "--listen", "127.0.0.1:0"}) }()
+	var successor string
+	for attempt := 0; attempt < 300 && successor == ""; attempt++ {
+		if published, ok := workspace.ResidentURL(); ok && published != url {
+			successor = published
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if successor == "" {
+		t.Fatal("the repository could not be served again after its owner stopped")
+	}
+	stopNext()
+	if err := <-after; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("the successor failed: %v", err)
+	}
+}
+
+// A claim left behind by a process that died without releasing must not wedge
+// the repository. The next start probes the address, finds nothing listening,
+// and takes the claim over in one compare-and-swap.
+func TestServeRecoversAClaimLeftByADeadOwner(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := app.ResidentRef(workspace.Config.Genesis)
+
+	// An address nothing is listening on, which is what a crashed owner leaves.
+	dead, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := dead.Addr().String()
+	if err := dead.Close(); err != nil {
+		t.Fatal(err)
+	}
+	abandoned, err := json.Marshal(app.ResidentClaim{
+		Genesis: workspace.Config.Genesis,
+		URL:     "http://" + address,
+		Nonce:   "00000000000000000000000000000000",
+		PID:     os.Getpid(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, err := workspace.Store.WriteBlob(ctx, abandoned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workspace.Store.UpdateRef(ctx, ref, blob, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	serving, stop := context.WithCancel(ctx)
+	defer stop()
+	served := make(chan error, 1)
+	go func() { served <- serveCommand(serving, []string{"--repo", repo, "--listen", "127.0.0.1:0"}) }()
+	var url string
+	for attempt := 0; attempt < 300 && url == ""; attempt++ {
+		if published, ok := workspace.ResidentURL(); ok {
+			url = published
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if url == "" {
+		t.Fatal("a claim left by a dead owner wedged the repository")
+	}
+	if value, present, err := workspace.Store.RefValue(ctx, ref); err != nil || !present || value == blob {
+		t.Fatalf("the abandoned claim was not taken over: %q present=%v err=%v", value, present, err)
+	}
+	stop()
+	if err := <-served; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("serving failed: %v", err)
 	}
 }

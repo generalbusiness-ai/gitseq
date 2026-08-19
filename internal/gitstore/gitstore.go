@@ -287,6 +287,88 @@ func (s Store) UpdateRef(ctx context.Context, ref, newOID, oldOID string) error 
 	return err
 }
 
+// DeleteRef removes a ref only while it still names the expected object. The
+// expected value is what makes deletion safe under contention: a ref that has
+// moved on belongs to somebody else, and removing it by name alone would take
+// their record away. Deleting without one is refused rather than supported,
+// because every caller here holds a value it can name.
+func (s Store) DeleteRef(ctx context.Context, ref, oldOID string) error {
+	if oldOID == "" {
+		return errors.New("refusing to delete a ref without an expected old value")
+	}
+	_, err := s.run(ctx, nil, nil, "update-ref", "-d", ref, oldOID)
+	return err
+}
+
+// RefValue reads the object a ref names, and reports absence separately from
+// failure. A ref that does not exist is an ordinary answer callers act on —
+// nobody holds this yet — and folding it into an error would make an empty
+// repository indistinguishable from a broken one.
+func (s Store) RefValue(ctx context.Context, ref string) (string, bool, error) {
+	if ref == "" || strings.ContainsAny(ref, " \t\x00\r\n") {
+		return "", false, fmt.Errorf("invalid ref name %q", ref)
+	}
+	observer := s.Observer
+	if observer == nil {
+		observer = observe.FromContext(ctx)
+	}
+	args := []string{"rev-parse", "--verify", "--quiet", ref}
+	done := observe.Begin(ctx, observer, observe.OperationGit, observe.GitPath(args))
+	cmd := exec.CommandContext(ctx, "git", append([]string{"--git-dir", s.Repo}, args...)...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	value := strings.TrimSpace(stdout.String())
+	if err != nil {
+		// --quiet turns an unresolvable ref into a silent exit 1. That is the
+		// ref being absent. A broken store still exits 128 and still speaks.
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 1 && value == "" && stderr.Len() == 0 {
+			if done != nil {
+				done(nil)
+			}
+			return "", false, nil
+		}
+		err = fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, bytes.TrimSpace(stderr.Bytes()))
+		if done != nil {
+			done(err)
+		}
+		return "", false, err
+	}
+	if done != nil {
+		done(nil)
+	}
+	if value == "" {
+		return "", false, nil
+	}
+	return value, true, nil
+}
+
+// BlobLimit reads a blob after checking its type and size in one Git call, so
+// a ref pointing at a hostile or oversized object cannot force an unbounded
+// allocation before anything has been validated.
+func (s Store) BlobLimit(ctx context.Context, oid string, limit int64) ([]byte, error) {
+	if oid == "" || limit < 0 || strings.ContainsAny(oid, " \t\x00\r\n:") {
+		return nil, errors.New("invalid object id or byte limit")
+	}
+	output, err := s.run(ctx, []byte(oid+"\n"), nil, "cat-file", "--batch-check=%(objecttype) %(objectsize)")
+	if err != nil {
+		return nil, err
+	}
+	fields := strings.Fields(string(output))
+	if len(fields) != 2 || fields[0] != "blob" {
+		return nil, fmt.Errorf("object %s is not a readable blob: %s", oid, output)
+	}
+	size, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse blob size: %w", err)
+	}
+	if size > limit {
+		return nil, fmt.Errorf("blob size %d exceeds limit %d", size, limit)
+	}
+	return s.run(ctx, nil, nil, "cat-file", "blob", oid)
+}
+
 func (s Store) Head(ctx context.Context, ref string) (string, error) {
 	output, err := s.run(ctx, nil, nil, "rev-parse", "--verify", ref)
 	return string(output), err

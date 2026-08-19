@@ -1683,14 +1683,30 @@ func serveCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	defer stopProfile()
-	// Bind before publishing, so the address advertised to clients is the one
+	// Bind before claiming, so the address in the ownership claim is the one
 	// actually being served — including the port the kernel chose when the
-	// listen address asked for any.
+	// listen address asked for any. Binding is not what authorizes serving;
+	// ownership is, and it is taken next.
 	listener, err := net.Listen("tcp", *listen)
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
+	ownership, err := claimResidency(ctx, workspace, "http://"+listener.Addr().String())
+	if err != nil {
+		// Nothing was served and the port does not stay held. A refusing
+		// process must leave the repository exactly as it found it.
+		_ = listener.Close()
+		return err
+	}
+	// Ownership is released only after the listener has stopped accepting, so
+	// whoever wins the freed claim cannot find this process still answering on
+	// the address the claim named.
+	defer func() {
+		_ = listener.Close()
+		release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		ownership.Release(release)
+	}()
 	withdraw, err := workspace.PublishResident("http://" + listener.Addr().String())
 	if err != nil {
 		return err
@@ -1716,6 +1732,25 @@ func serveCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	return nil
+}
+
+// residentProbeTimeout bounds the liveness question asked of an existing
+// claim. It is short because the answer is served from configuration and a
+// healthy resident returns it immediately; a resident that cannot answer this
+// quickly is ambiguous, and ambiguity leaves the claim alone.
+const residentProbeTimeout = 2 * time.Second
+
+// claimResidency takes the repository's one resident claim before anything is
+// served. The probe that decides whether an existing claim still has a service
+// behind it lives in the resident client, which is the one place that knows how
+// to speak to a resident and which addresses are safe to dial at all.
+func claimResidency(ctx context.Context, workspace *app.Workspace, url string) (*app.ResidentOwnership, error) {
+	client := residentclient.New(residentProbeTimeout)
+	return workspace.ClaimResident(ctx, url, func(parent context.Context, claim app.ResidentClaim) app.Liveness {
+		probe, cancel := context.WithTimeout(parent, residentProbeTimeout)
+		defer cancel()
+		return client.ProbeResident(probe, claim)
+	})
 }
 
 func serveProfiler(ctx context.Context, address string) (func(), error) {

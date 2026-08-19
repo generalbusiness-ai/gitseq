@@ -107,16 +107,52 @@ conversation.
 
 ## One service per repository
 
-Run exactly one. Nothing enforces it: there is no lock. Publishing the
-address is not one either — the last service to start wins the
-advertisement, which at least pulls new clients into one room. Stopping
-withdraws it, unless a later service has taken it over.
+Exactly one runs, and this is now enforced. A second `gs serve` on a
+repository that is already served refuses before it serves anything, and
+names the address already holding it.
 
 Two services on different ports against the same repository is the case
-to avoid. The durable log stays correct — appends are compare-and-swap on
-the git ref and retry on contention — but presence and ephemeral
-conversation are per-process, so the two form separate rooms whose
-participants cannot see each other and are never told.
+being prevented. The durable log stays correct either way — appends are
+compare-and-swap on the git ref and retry on contention — but presence and
+ephemeral conversation are per-process, so the two would form separate
+rooms whose participants cannot see each other and are never told.
+
+Ownership is a claim at the ref `refs/gitseq/resident/<genesis>`, holding
+a small record of the address being served and a fresh random nonce. It is
+taken with a git ref update carrying the expected old value, the same
+compare-and-swap the durable log's own appends use, so exactly one of any
+number of simultaneous starts wins it. The claim is an ordinary shared ref
+in the repository's common directory, so every path alias, symlink and
+linked worktree of one repository contends for the same claim, and two
+different repositories never contend at all.
+
+The advertisement at `.git/gitseq/resident.json` is endpoint metadata, not
+authority. Only a process that already holds the claim writes it.
+
+A service that stops normally releases the claim. A service that is killed
+does not, and that is not a wedge: the next start reads the claim, asks the
+address it names whether it is still serving, and takes it over when
+nothing is listening there. Only a refused connection frees a claim.
+Anything else — a timeout, a port that accepts and never answers, an
+unparseable answer, an answer naming another workroom — leaves the claim
+alone and refuses, because starting beside a resident that is really alive
+is worse than not starting at all.
+
+That asymmetry has one operational cost. If the address in a claim is
+reused by an unrelated program that accepts connections, or is firewalled
+so probes time out, `gs serve` will keep refusing. The refusal says what to
+do:
+
+```sh
+git update-ref -d refs/gitseq/resident/<genesis>
+```
+
+Check that no `gs serve` is actually running against the repository first.
+Removing the claim while a service holds it is how you get the two rooms.
+
+This is coordination between cooperating services, not a security boundary.
+Any local process that can write the repository can write the claim, and it
+already has the durable log in reach.
 
 ## Restart
 

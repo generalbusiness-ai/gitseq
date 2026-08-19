@@ -258,3 +258,110 @@ func TestReadFileLimitRejectsOversizeBlob(t *testing.T) {
 		t.Fatalf("bounded read = %q, %v", data, err)
 	}
 }
+
+// The resident ownership claim is a compare-and-swap on a ref, so these three
+// operations are the whole of its exclusivity. Each is checked here against
+// real Git rather than assumed from the manual page.
+func TestRefValueSeparatesAbsenceFromFailure(t *testing.T) {
+	ctx := context.Background()
+	store, err := InitBare(ctx, filepath.Join(t.TempDir(), "repo.git"), "sha1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, present, err := store.RefValue(ctx, "refs/gitseq/resident/absent"); err != nil || present || value != "" {
+		t.Fatalf("an absent ref reported %q present=%v err=%v", value, present, err)
+	}
+	blob, err := store.WriteBlob(ctx, []byte(`{"claim":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateRef(ctx, "refs/gitseq/resident/held", blob, ""); err != nil {
+		t.Fatal(err)
+	}
+	if value, present, err := store.RefValue(ctx, "refs/gitseq/resident/held"); err != nil || !present || value != blob {
+		t.Fatalf("a held ref reported %q present=%v err=%v", value, present, err)
+	}
+	if _, _, err := store.RefValue(ctx, "refs/bad name"); err == nil {
+		t.Fatal("an invalid ref name was accepted")
+	}
+}
+
+// Creating with an empty expected value is what makes two fresh starters
+// resolve to one, and swapping against the observed value is what stops a
+// delayed taker from displacing whoever holds the claim now.
+func TestRefUpdatesAreConditionalOnTheObservedValue(t *testing.T) {
+	ctx := context.Background()
+	store, err := InitBare(ctx, filepath.Join(t.TempDir(), "repo.git"), "sha1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := "refs/gitseq/resident/one"
+	first, err := store.WriteBlob(ctx, []byte("first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.WriteBlob(ctx, []byte("second"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, err := store.WriteBlob(ctx, []byte("third"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateRef(ctx, ref, first, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateRef(ctx, ref, second, ""); err == nil {
+		t.Fatal("a create succeeded against an existing ref")
+	}
+	if err := store.UpdateRef(ctx, ref, second, third); err == nil {
+		t.Fatal("a swap succeeded against a value the ref does not hold")
+	}
+	if err := store.UpdateRef(ctx, ref, second, first); err != nil {
+		t.Fatalf("a swap against the observed value failed: %v", err)
+	}
+	if err := store.DeleteRef(ctx, ref, first); err == nil {
+		t.Fatal("a delete succeeded against a stale expected value")
+	}
+	if err := store.DeleteRef(ctx, ref, ""); err == nil {
+		t.Fatal("a delete with no expected value was allowed")
+	}
+	if err := store.DeleteRef(ctx, ref, second); err != nil {
+		t.Fatalf("a delete against the held value failed: %v", err)
+	}
+	if _, present, err := store.RefValue(ctx, ref); err != nil || present {
+		t.Fatalf("the ref survived its delete: present=%v err=%v", present, err)
+	}
+	if err := store.UpdateRef(ctx, ref, second, first); err == nil {
+		t.Fatal("a swap succeeded against a deleted ref")
+	}
+}
+
+func TestBlobLimitRefusesOversizedAndNonBlobObjects(t *testing.T) {
+	ctx := context.Background()
+	store, err := InitBare(ctx, filepath.Join(t.TempDir(), "repo.git"), "sha1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, err := store.WriteBlob(ctx, []byte("0123456789"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := store.BlobLimit(ctx, blob, 32)
+	if err != nil || string(content) != "0123456789" {
+		t.Fatalf("read within the limit gave %q, %v", content, err)
+	}
+	if _, err := store.BlobLimit(ctx, blob, 4); err == nil {
+		t.Fatal("a blob over the limit was read")
+	}
+	tree, err := store.WriteSingleFileTree(ctx, "event", []byte("payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BlobLimit(ctx, tree, 1024); err == nil {
+		t.Fatal("a tree was read as a blob")
+	}
+	if _, err := store.BlobLimit(ctx, "0000000000000000000000000000000000000000", 1024); err == nil {
+		t.Fatal("a missing object was read as a blob")
+	}
+}

@@ -149,6 +149,39 @@ durable records. Acknowledgement changes no nexus cursor.
 hosts it alongside the durable application, but co-location is operational
 convenience, not a claim that nexus data has kernel durability.
 
+Because this layer is per-process, one repository must have one resident.
+Two would leave the durable sequence correct and still split presence and
+conversation into two rooms whose participants cannot see each other. The
+boundary that prevents it is an ownership claim, and it is separate from the
+address advertisement:
+
+- **Ownership** is the ref `refs/gitseq/resident/<genesis>`, whose blob holds
+  the served address and a fresh random nonce. It is acquired, transferred and
+  released only by a Git ref update carrying the expected old value — the same
+  compare-and-swap the kernel's own append uses, in the same ref store, so it
+  adds no assumption the durable log does not already make. The nonce makes
+  each claim's object ID unique to one acquisition, so a swap that expects a
+  claim can never match a later one. `internal/app` owns this; the ref never
+  touches the event log.
+- **Advertisement** is `.git/gitseq/resident.json`. It tells clients where to
+  connect and confers nothing. Only a process already holding the claim writes
+  it, and a client that reaches a withdrawn or stale address falls back to
+  acting locally as before.
+
+Ownership authorizes serving; binding a listener does not. A resident binds
+first so the claim can carry the real address, contests ownership, and hands
+the listener to the HTTP server only once the claim is held.
+
+Liveness is the one part of this that is not a compare-and-swap, so it is
+deliberately asymmetric. A claim is trusted as held unless the address it
+names refuses a connection outright; a timeout, a silent port, an unparseable
+answer, or an answer from another workroom all leave the claim standing and
+refuse the start. `internal/residentclient` owns that probe, including the
+duty to refuse to dial anything but loopback, because a claim is an ordinary
+repository file and its address is untrusted input. The whole mechanism is
+coordination between cooperating residents, not a defence against a hostile
+local process, which already reaches the repository directly.
+
 ### 4. Application host binding
 
 The host binding selects one application interpreter for the repository before
