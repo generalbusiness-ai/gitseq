@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -54,7 +55,7 @@ func TestCasesForTierRemainBoundedAndDeterministic(t *testing.T) {
 		if selected.ActorCount > 1 {
 			actors = append(actors, selected.ActorCount)
 		}
-		if selected.Fanout > 1 {
+		if selected.Fanout > 0 {
 			fanouts = append(fanouts, selected.Fanout)
 		}
 	}
@@ -63,6 +64,93 @@ func TestCasesForTierRemainBoundedAndDeterministic(t *testing.T) {
 	}
 	if _, err := casesForTier(contract, "unbounded"); err == nil {
 		t.Fatal("unknown tier was accepted")
+	}
+}
+
+func TestFanoutTierIsOneConsecutiveVersionedBlock(t *testing.T) {
+	contract := testContract(t)
+	cases, err := casesForTier(contract, "fanout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"submit_ack/shape-linear/depth-001000/fanout-001",
+		"submit_ack/shape-linear/depth-001000/fanout-008",
+		"submit_ack/shape-linear/depth-001000/fanout-016",
+		"submit_ack/shape-linear/depth-001000/fanout-064",
+		"submit_ack/shape-linear/depth-001000/fanout-256",
+	}
+	var got []string
+	for _, selected := range cases {
+		got = append(got, selected.name())
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("fan-out tier = %v, want %v", got, want)
+	}
+	if warmups, repetitions := tierCounts(contract, "fanout", "submit_ack"); warmups != 5 || repetitions != 100 {
+		t.Fatalf("fan-out counts = %d warmups, %d repetitions", warmups, repetitions)
+	}
+}
+
+func TestFanoutSummaryKeepsSignedRatioAndMillisecondIncrements(t *testing.T) {
+	contract := testContract(t)
+	cases, err := casesForTier(contract, "fanout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	medians := []float64{100_000_000, 110_000_000, 90_000_000, 120_000_000, 105_000_000}
+	distributions := make(map[string]perflane.Distribution)
+	for index, selected := range cases {
+		distributions["candidate/"+selected.name()] = perflane.Distribution{
+			Samples: 100,
+			P50:     perflane.Available(medians[index]),
+		}
+	}
+	summaries, err := summarizeFanoutAxis(contract, cases, distributions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := summaries["candidate"]
+	if summary.Schema != fanoutSchema || summary.Depth != 1_000 || summary.RecordedRepetitions != 100 || summary.OneBaseMedianNS != medians[0] || summary.RelativeLimit != 0.10 {
+		t.Fatalf("summary identity = %#v", summary)
+	}
+	if summary.PreviewVerdict != "miss" || summary.FirstProductionVerdict != "miss" {
+		t.Fatalf("fan-out verdicts = %q / %q", summary.PreviewVerdict, summary.FirstProductionVerdict)
+	}
+	if got := summary.Measurements[2]; got.Width != 16 || math.Abs(got.RelativeIncrement-(-0.1)) > 1e-12 || got.AbsoluteIncrementMS != -10 || !got.WithinRelativeLimit {
+		t.Fatalf("negative increment = %#v", got)
+	}
+	if got := summary.Measurements[3]; got.Width != 64 || math.Abs(got.RelativeIncrement-0.2) > 1e-12 || got.AbsoluteIncrementMS != 20 || got.WithinRelativeLimit {
+		t.Fatalf("positive increment = %#v", got)
+	}
+}
+
+func TestFanoutSummarySeparatesPreviewFromFirstProduction(t *testing.T) {
+	contract := testContract(t)
+	cases, err := casesForTier(contract, "fanout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	medians := []float64{100_000_000, 105_000_000, 105_000_000, 105_000_000, 120_000_000}
+	distributions := make(map[string]perflane.Distribution)
+	for index, selected := range cases {
+		distributions["candidate/"+selected.name()] = perflane.Distribution{
+			Samples: 100,
+			P50:     perflane.Available(medians[index]),
+		}
+	}
+
+	summaries, err := summarizeFanoutAxis(contract, cases, distributions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := summaries["candidate"]
+	if summary.PreviewVerdict != "pass" || summary.FirstProductionVerdict != "miss" {
+		t.Fatalf("fan-out verdicts = %q / %q, want pass / miss", summary.PreviewVerdict, summary.FirstProductionVerdict)
+	}
+	last := summary.Measurements[len(summary.Measurements)-1]
+	if last.Width != 256 || last.WithinRelativeLimit {
+		t.Fatalf("first-production-only miss = %#v", last)
 	}
 }
 
@@ -110,7 +198,7 @@ func TestEnsureFixturesRejectsCachedActorCountMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	selected := runCase{Scenario: "cold_status", Shape: "linear", Depth: 100, Tail: -1, ActorCount: 8, Fanout: 1}
+	selected := runCase{Scenario: "cold_status", Shape: "linear", Depth: 100, Tail: -1, ActorCount: 8}
 	key := selected.fixtureKey()
 	root := t.TempDir()
 	directory := filepath.Join(root, "performance", "fixtures", digest[:16]+"-"+key.shape+"-actors-8-100")
@@ -129,13 +217,16 @@ func TestEnsureFixturesRejectsCachedActorCountMismatch(t *testing.T) {
 	}
 }
 
-func TestWorkerResultActorCountMustMatchCase(t *testing.T) {
-	selected := runCase{Scenario: "cold_status", Shape: "linear", Depth: 100, Tail: -1, ActorCount: 8, Fanout: 1}
-	if err := validateActorCount(selected, perfscenario.Result{ActorCount: 8}); err != nil {
+func TestWorkerResultAxesMustMatchCase(t *testing.T) {
+	selected := runCase{Scenario: "cold_status", Shape: "linear", Depth: 100, Tail: -1, ActorCount: 8}
+	if err := validateWorkerResult(selected, perfscenario.Result{ActorCount: 8, Fanout: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateActorCount(selected, perfscenario.Result{ActorCount: 1}); err == nil {
+	if err := validateWorkerResult(selected, perfscenario.Result{ActorCount: 1, Fanout: 1}); err == nil {
 		t.Fatal("mismatched worker actor count was accepted")
+	}
+	if err := validateWorkerResult(selected, perfscenario.Result{ActorCount: 8, Fanout: 2}); err == nil {
+		t.Fatal("mismatched worker fan-out was accepted")
 	}
 }
 

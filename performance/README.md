@@ -12,10 +12,26 @@ logical digest and the exact Git materialization used by every compared
 binary. Each measured sample gets fresh writable state because checkpoint
 reads may advance the checkpoint ref.
 
+Contract v2 gives dependency fan-out its own ordered axis at depth 1,000. Its
+widths 1, 8, 16, 64, and 256 run as one consecutive block; the width-one case
+is the temporal denominator and is not duplicated in the ordinary depth axis.
+Evidence retains the five separate distributions and reports the signed ratio
+and signed millisecond increment from the width-one median. The contract's
+10-percent relative limit yields separate PREVIEW-through-64 and
+FIRST-PRODUCTION-through-256 verdicts. It does not claim that individual
+samples are paired or that a ratio removes arbitrary load changes.
+
 Run a bounded local smoke sample with:
 
 ```sh
 make perf PERF_ARGS='run --tier smoke'
+```
+
+Run only the full-population consecutive fan-out block (five warmups and 100
+recorded repetitions at every width) with:
+
+```sh
+make perf PERF_ARGS='run --tier fanout'
 ```
 
 Compare two exact commits with repeated, alternating samples with:

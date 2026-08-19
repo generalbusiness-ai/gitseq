@@ -26,12 +26,15 @@ func validContract() Contract {
 		timeouts[scenario] = 60
 	}
 	return Contract{
-		SchemaVersion:      SchemaVersion,
-		GeneratorVersion:   "fixture-v1",
-		Seed:               42,
-		Depths:             RequiredDepths(),
-		ActorCounts:        RequiredActorCounts(),
-		DependencyFanouts:  RequiredDependencyFanouts(),
+		SchemaVersion:    SchemaVersion,
+		GeneratorVersion: "fixture-v1",
+		Seed:             42,
+		Depths:           RequiredDepths(),
+		ActorCounts:      RequiredActorCounts(),
+		DependencyFanout: FanoutAxis{
+			Depth: 1_000, Widths: RequiredDependencyFanouts(), RelativeLimit: 0.10,
+			PreviewMaxWidth: 64, FirstProductionMaxWidth: 256,
+		},
 		CheckpointTails:    RequiredCheckpointTails(),
 		ProjectionShapes:   RequiredProjectionShapes(),
 		PayloadBuckets:     []int{128, 1_024, 8_192},
@@ -97,7 +100,16 @@ func TestContractValidation(t *testing.T) {
 		{"generator", func(c *Contract) { c.GeneratorVersion = "" }, "generator_version"},
 		{"depths", func(c *Contract) { c.Depths[0] = 99 }, "depths"},
 		{"actor counts", func(c *Contract) { c.ActorCounts[0] = 2 }, "actor_counts"},
-		{"fanouts", func(c *Contract) { c.DependencyFanouts[0] = 2 }, "dependency_fanouts"},
+		{"fanout depth absent", func(c *Contract) { c.DependencyFanout.Depth = 999 }, "dependency_fanout_axis.depth"},
+		{"fanout depth too small", func(c *Contract) { c.DependencyFanout.Depth = 100 }, "at least its maximum width"},
+		{"fanouts", func(c *Contract) { c.DependencyFanout.Widths[0] = 2 }, "dependency_fanout_axis.widths"},
+		{"fanout limit", func(c *Contract) { c.DependencyFanout.RelativeLimit = 0 }, "relative_limit"},
+		{"preview fanout", func(c *Contract) { c.DependencyFanout.PreviewMaxWidth = 8_192 }, "preview_max_width"},
+		{"production fanout", func(c *Contract) { c.DependencyFanout.FirstProductionMaxWidth = 8_192 }, "first_production_max_width"},
+		{"fanout envelope order", func(c *Contract) {
+			c.DependencyFanout.PreviewMaxWidth = 256
+			c.DependencyFanout.FirstProductionMaxWidth = 64
+		}, "must not exceed"},
 		{"tails", func(c *Contract) { c.CheckpointTails = c.CheckpointTails[:5] }, "checkpoint_tails"},
 		{"shapes", func(c *Contract) { c.ProjectionShapes[0] = "other" }, "projection_shapes"},
 		{"scenarios", func(c *Contract) { c.Scenarios[0] = "other" }, "scenarios"},

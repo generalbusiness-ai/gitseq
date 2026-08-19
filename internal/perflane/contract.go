@@ -12,7 +12,7 @@ import (
 	"slices"
 )
 
-const SchemaVersion = "gitseq.performance/v1"
+const SchemaVersion = "gitseq.performance/v2"
 
 const (
 	maxAxisValues     = 1_000
@@ -100,7 +100,7 @@ type Contract struct {
 	Seed               uint64             `json:"seed"`
 	Depths             []int              `json:"depths"`
 	ActorCounts        []int              `json:"actor_counts"`
-	DependencyFanouts  []int              `json:"dependency_fanouts"`
+	DependencyFanout   FanoutAxis         `json:"dependency_fanout_axis"`
 	CheckpointTails    []int              `json:"checkpoint_tails"`
 	ProjectionShapes   []string           `json:"projection_shapes"`
 	PayloadBuckets     []int              `json:"payload_buckets"`
@@ -114,6 +114,17 @@ type Contract struct {
 	SoakSeconds        int                `json:"soak_seconds"`
 	CheckpointCases    []CheckpointCase   `json:"checkpoint_cases"`
 	PercentileMinimums PercentileMinimums `json:"percentile_minimums"`
+}
+
+// FanoutAxis selects one explicit consecutive block of submit-ack cases. Its
+// width-one case is the temporal denominator for every wider case; it is not
+// also emitted as an ordinary depth-axis case.
+type FanoutAxis struct {
+	Depth                   int     `json:"depth"`
+	Widths                  []int   `json:"widths"`
+	RelativeLimit           float64 `json:"relative_limit"`
+	PreviewMaxWidth         int     `json:"preview_max_width"`
+	FirstProductionMaxWidth int     `json:"first_production_max_width"`
 }
 
 type CheckpointCase struct {
@@ -171,8 +182,26 @@ func (c Contract) Validate() error {
 	if !slices.Equal(c.ActorCounts, requiredActorCounts) {
 		return fmt.Errorf("actor_counts must be %v in that order", requiredActorCounts)
 	}
-	if !slices.Equal(c.DependencyFanouts, requiredFanouts) {
-		return fmt.Errorf("dependency_fanouts must be %v in that order", requiredFanouts)
+	if !slices.Contains(c.Depths, c.DependencyFanout.Depth) {
+		return errors.New("dependency_fanout_axis.depth must be one of depths")
+	}
+	if !slices.Equal(c.DependencyFanout.Widths, requiredFanouts) {
+		return fmt.Errorf("dependency_fanout_axis.widths must be %v in that order", requiredFanouts)
+	}
+	if c.DependencyFanout.Depth < c.DependencyFanout.Widths[len(c.DependencyFanout.Widths)-1] {
+		return errors.New("dependency_fanout_axis.depth must be at least its maximum width")
+	}
+	if c.DependencyFanout.RelativeLimit <= 0 || c.DependencyFanout.RelativeLimit > 1 {
+		return errors.New("dependency_fanout_axis.relative_limit must be greater than zero and at most one")
+	}
+	if !slices.Contains(c.DependencyFanout.Widths, c.DependencyFanout.PreviewMaxWidth) {
+		return errors.New("dependency_fanout_axis.preview_max_width must be one of widths")
+	}
+	if !slices.Contains(c.DependencyFanout.Widths, c.DependencyFanout.FirstProductionMaxWidth) {
+		return errors.New("dependency_fanout_axis.first_production_max_width must be one of widths")
+	}
+	if c.DependencyFanout.PreviewMaxWidth > c.DependencyFanout.FirstProductionMaxWidth {
+		return errors.New("dependency_fanout_axis.preview_max_width must not exceed first_production_max_width")
 	}
 	if !slices.Equal(c.CheckpointTails, requiredTails) {
 		return fmt.Errorf("checkpoint_tails must be %v in that order", requiredTails)

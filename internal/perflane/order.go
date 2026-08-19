@@ -22,7 +22,7 @@ func (c BenchmarkCase) Name() string {
 	if c.ActorCount > 1 {
 		name += fmt.Sprintf("/actors-%03d", c.ActorCount)
 	}
-	if c.Fanout > 1 {
+	if c.Fanout > 0 {
 		name += fmt.Sprintf("/fanout-%03d", c.Fanout)
 	}
 	return name
@@ -34,7 +34,7 @@ func BenchmarkCases(contract Contract) ([]BenchmarkCase, error) {
 	if err := contract.Validate(); err != nil {
 		return nil, err
 	}
-	count := (len(contract.Scenarios)-2)*len(contract.Depths) + len(contract.CheckpointCases) + len(contract.Depths)*len(contract.Concurrency) + len(contract.ActorCounts) + len(contract.DependencyFanouts) - 2
+	count := (len(contract.Scenarios)-2)*len(contract.Depths) - 1 + len(contract.CheckpointCases) + len(contract.Depths)*len(contract.Concurrency) + len(contract.ActorCounts) - 1 + len(contract.DependencyFanout.Widths)
 	cases := make([]BenchmarkCase, 0, count)
 	for _, scenario := range contract.Scenarios {
 		if scenario == "checkpoint_restart" {
@@ -53,6 +53,9 @@ func BenchmarkCases(contract Contract) ([]BenchmarkCase, error) {
 			continue
 		}
 		for _, depth := range contract.Depths {
+			if scenario == "submit_ack" && depth == contract.DependencyFanout.Depth {
+				continue
+			}
 			cases = append(cases, BenchmarkCase{Scenario: scenario, Depth: depth})
 		}
 	}
@@ -62,15 +65,8 @@ func BenchmarkCases(contract Contract) ([]BenchmarkCase, error) {
 	for _, actorCount := range contract.ActorCounts[1:] {
 		cases = append(cases, BenchmarkCase{Scenario: "cold_status", Depth: axisDepth, ActorCount: actorCount})
 	}
-	fanoutDepth := axisDepth
-	for _, depth := range contract.Depths {
-		if depth >= contract.DependencyFanouts[len(contract.DependencyFanouts)-1] {
-			fanoutDepth = depth
-			break
-		}
-	}
-	for _, fanout := range contract.DependencyFanouts[1:] {
-		cases = append(cases, BenchmarkCase{Scenario: "submit_ack", Depth: fanoutDepth, Fanout: fanout})
+	for _, fanout := range contract.DependencyFanout.Widths {
+		cases = append(cases, BenchmarkCase{Scenario: "submit_ack", Depth: contract.DependencyFanout.Depth, Fanout: fanout})
 	}
 	return cases, nil
 }
