@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	defaultContract = "performance/contract-v1.json"
-	evidenceSchema  = "gitseq.performance-evidence.v1"
+	defaultContract = "performance/contract-v2.json"
+	evidenceSchema  = "gitseq.performance-evidence.v2"
+	fanoutSchema    = "gitseq.performance-fanout-axis/v1"
 )
 
 type runCase struct {
@@ -61,7 +62,7 @@ func (c runCase) name() string {
 		actors = fmt.Sprintf("/actors-%03d", c.ActorCount)
 	}
 	fanout := ""
-	if c.Fanout > 1 {
+	if c.Fanout > 0 {
 		fanout = fmt.Sprintf("/fanout-%03d", c.Fanout)
 	}
 	return fmt.Sprintf("%s/shape-%s/depth-%06d%s%s%s%s", c.Scenario, c.Shape, c.Depth, tail, concurrency, actors, fanout)
@@ -89,8 +90,32 @@ type runEvidence struct {
 	StartedAt       string                           `json:"started_at"`
 	Samples         []sampleEnvelope                 `json:"samples"`
 	Latency         map[string]perflane.Distribution `json:"latency_ns"`
+	FanoutAxis      map[string]fanoutAxisEvidence    `json:"fanout_axis,omitempty"`
 	Outcome         string                           `json:"outcome"`
 	Benchstat       perflane.Evidence[string]        `json:"benchstat"`
+}
+
+type fanoutAxisEvidence struct {
+	Schema                  string              `json:"schema"`
+	Depth                   int                 `json:"depth"`
+	RecordedRepetitions     int                 `json:"recorded_repetitions"`
+	OneBaseMedianNS         float64             `json:"one_base_median_ns"`
+	RelativeLimit           float64             `json:"relative_limit"`
+	PreviewMaxWidth         int                 `json:"preview_max_width"`
+	FirstProductionMaxWidth int                 `json:"first_production_max_width"`
+	PreviewVerdict          string              `json:"preview_verdict"`
+	FirstProductionVerdict  string              `json:"first_production_verdict"`
+	CaseOrder               []string            `json:"case_order"`
+	Measurements            []fanoutMeasurement `json:"measurements"`
+}
+
+type fanoutMeasurement struct {
+	Case                string  `json:"case"`
+	Width               int     `json:"width"`
+	MedianNS            float64 `json:"median_ns"`
+	RelativeIncrement   float64 `json:"relative_increment"`
+	AbsoluteIncrementMS float64 `json:"absolute_increment_ms"`
+	WithinRelativeLimit bool    `json:"within_relative_limit"`
 }
 
 func main() {
@@ -221,7 +246,7 @@ func workerCommand(ctx context.Context, arguments []string) error {
 func laneCommand(ctx context.Context, root string, compare, overhead bool, arguments []string) error {
 	flags := flag.NewFlagSet("lane", flag.ContinueOnError)
 	contractPath := flags.String("contract", filepath.Join(root, defaultContract), "contract path")
-	tier := flags.String("tier", "smoke", "smoke, standard, or full")
+	tier := flags.String("tier", "smoke", "smoke, standard, full, or fanout")
 	output := flags.String("output", filepath.Join(root, "performance", "evidence"), "evidence directory")
 	baseRef := flags.String("base", "main", "exact base ref")
 	candidateRef := flags.String("candidate", "HEAD", "exact candidate ref")
@@ -323,16 +348,16 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 	}
 
 	latencies := make(map[string][]float64)
-	for _, runCase := range cases {
-		fixture := fixtures[runCase.fixtureKey()]
-		warmups, repetitions := tierCounts(contract, *tier, runCase.Scenario)
+	for _, selected := range cases {
+		fixture := fixtures[selected.fixtureKey()]
+		warmups, repetitions := tierCounts(contract, *tier, selected.Scenario)
 		if compare && repetitions < 2 {
 			repetitions = 2
 		}
 		for revision, binary := range binaries {
 			for warmup := 0; warmup < warmups; warmup++ {
-				if _, err := runWorker(ctx, binary, fixture, runCase, contract, "", overhead && revision == perflane.CandidateRevision); err != nil {
-					return fmt.Errorf("warmup %s %s: %w", revision, runCase.name(), err)
+				if _, err := runWorker(ctx, binary, fixture, selected, contract, "", overhead && revision == perflane.CandidateRevision); err != nil {
+					return fmt.Errorf("warmup %s %s: %w", revision, selected.name(), err)
 				}
 			}
 		}
@@ -348,8 +373,8 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 			}
 		}
 		for _, scheduled := range order {
-			result, err := runWorker(ctx, binaries[scheduled.Revision], fixture, runCase, contract, "", overhead && scheduled.Revision == perflane.CandidateRevision)
-			envelope := sampleEnvelope{Case: runCase.name(), Revision: scheduled.Revision, Round: scheduled.Round, Position: scheduled.Position, Result: result}
+			result, err := runWorker(ctx, binaries[scheduled.Revision], fixture, selected, contract, "", overhead && scheduled.Revision == perflane.CandidateRevision)
+			envelope := sampleEnvelope{Case: selected.name(), Revision: scheduled.Revision, Round: scheduled.Round, Position: scheduled.Position, Result: result}
 			if err != nil {
 				envelope.Error = err.Error()
 				evidence.Outcome = "error"
@@ -359,25 +384,31 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 			}
 			evidence.Samples = append(evidence.Samples, envelope)
 			if err != nil {
-				return fmt.Errorf("sample %s %s: %w", scheduled.Revision, runCase.name(), err)
+				return fmt.Errorf("sample %s %s: %w", scheduled.Revision, selected.name(), err)
 			}
-			key := string(scheduled.Revision) + "/" + runCase.name()
+			key := string(scheduled.Revision) + "/" + selected.name()
 			latencies[key] = append(latencies[key], float64(result.LatencyNS))
 			fmt.Fprintf(benchFiles[scheduled.Revision], "BenchmarkGitseq/%s 1 %d ns/op %d B/op %d allocs/op\n",
-				runCase.name(), result.LatencyNS, result.AllocatedBytes, result.Allocations)
+				selected.name(), result.LatencyNS, result.AllocatedBytes, result.Allocations)
 		}
+	}
 
-		tracePath := filepath.Join(*output, sanitize(runCase.name())+".trace2.json")
-		profilePrefix := filepath.Join(*output, "profiles", sanitize(runCase.name()))
+	// Diagnostic reruns deliberately follow all primary case blocks. In
+	// particular, they cannot split the consecutive fan-out denominator and
+	// width distributions with profiling or Trace2 work.
+	for _, selected := range cases {
+		fixture := fixtures[selected.fixtureKey()]
+		tracePath := filepath.Join(*output, sanitize(selected.name())+".trace2.json")
+		profilePrefix := filepath.Join(*output, "profiles", sanitize(selected.name()))
 		if err := os.MkdirAll(filepath.Dir(profilePrefix), 0o755); err != nil {
 			return err
 		}
 		if err := os.Remove(tracePath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		traceResult, traceErr := runWorkerDiagnostic(ctx, binaries[perflane.CandidateRevision], fixture, runCase, contract, tracePath, profilePrefix, overhead)
+		traceResult, traceErr := runWorkerDiagnostic(ctx, binaries[perflane.CandidateRevision], fixture, selected, contract, tracePath, profilePrefix, overhead)
 		if traceErr != nil {
-			return fmt.Errorf("Trace2 diagnostic %s: %w", runCase.name(), traceErr)
+			return fmt.Errorf("Trace2 diagnostic %s: %w", selected.name(), traceErr)
 		}
 		traceFile, err := os.Open(tracePath)
 		if err != nil {
@@ -386,16 +417,16 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 		traceSummary, err := perflane.ParseTrace2(traceFile)
 		traceFile.Close()
 		if err != nil {
-			return fmt.Errorf("Trace2 diagnostic %s: %w", runCase.name(), err)
+			return fmt.Errorf("Trace2 diagnostic %s: %w", selected.name(), err)
 		}
 		if err := os.Remove(tracePath); err != nil {
 			return err
 		}
 		if traceResult.GitProcessCount.Value == nil || *traceResult.GitProcessCount.Value != int64(traceSummary.ChildProcessCount) ||
 			traceResult.GitDurationNS.Value == nil || *traceResult.GitDurationNS.Value != traceSummary.CumulativeDuration.Nanoseconds() {
-			return fmt.Errorf("Trace2 diagnostic %s did not populate matching result metrics", runCase.name())
+			return fmt.Errorf("Trace2 diagnostic %s did not populate matching result metrics", selected.name())
 		}
-		traceEnvelope := sampleEnvelope{Case: runCase.name(), Revision: perflane.CandidateRevision, Round: 0, Position: 0, Result: traceResult, Trace2: &traceSummary}
+		traceEnvelope := sampleEnvelope{Case: selected.name(), Revision: perflane.CandidateRevision, Round: 0, Position: 0, Result: traceResult, Trace2: &traceSummary}
 		if err := appendJSON(rawFile, traceEnvelope); err != nil {
 			return err
 		}
@@ -408,6 +439,10 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 			return err
 		}
 		evidence.Latency[name] = distribution
+	}
+	evidence.FanoutAxis, err = summarizeFanoutAxis(contract, cases, evidence.Latency)
+	if err != nil {
+		return err
 	}
 	if compare {
 		benchstat, err := runBenchstat(ctx, filepath.Join(*output, "base.bench"), filepath.Join(*output, "candidate.bench"))
@@ -473,23 +508,27 @@ func runWorkerDiagnostic(ctx context.Context, binary, fixture string, selected r
 	if err := decoder.Decode(&result); err != nil {
 		return perfscenario.Result{}, fmt.Errorf("decode worker result: %w: %s", err, output)
 	}
-	if err := validateActorCount(selected, result); err != nil {
+	if err := validateWorkerResult(selected, result); err != nil {
 		return perfscenario.Result{}, err
 	}
 	return result, nil
 }
 
-func validateActorCount(selected runCase, result perfscenario.Result) error {
+func validateWorkerResult(selected runCase, result perfscenario.Result) error {
 	wantActors := selected.fixtureKey().actorCount
 	if result.ActorCount != wantActors {
 		return fmt.Errorf("worker result %s actor_count = %d, want %d", selected.name(), result.ActorCount, wantActors)
+	}
+	wantFanout := max(selected.Fanout, 1)
+	if result.Fanout != wantFanout {
+		return fmt.Errorf("worker result %s dependency_fanout = %d, want %d", selected.name(), result.Fanout, wantFanout)
 	}
 	return nil
 }
 
 func casesForTier(contract perflane.Contract, tier string) ([]runCase, error) {
-	if tier != "smoke" && tier != "standard" && tier != "full" {
-		return nil, errors.New("tier must be smoke, standard, or full")
+	if tier != "smoke" && tier != "standard" && tier != "full" && tier != "fanout" {
+		return nil, errors.New("tier must be smoke, standard, full, or fanout")
 	}
 	benchmarkCases, err := perflane.BenchmarkCases(contract)
 	if err != nil {
@@ -507,20 +546,28 @@ func casesForTier(contract perflane.Contract, tier string) ([]runCase, error) {
 	}
 	var result []runCase
 	for _, candidate := range benchmarkCases {
-		if !allowedDepth(candidate.Depth) {
-			continue
-		}
-		if tier == "smoke" && candidate.Scenario != "checkpoint_restart" && candidate.Depth != 100 {
-			continue
+		if tier == "fanout" {
+			if candidate.Fanout == 0 {
+				continue
+			}
+		} else {
+			if !allowedDepth(candidate.Depth) {
+				continue
+			}
+			if tier == "smoke" && candidate.Scenario != "checkpoint_restart" && candidate.Depth != 100 {
+				continue
+			}
 		}
 		tail := -1
 		if candidate.CheckpointTail != nil {
 			tail = *candidate.CheckpointTail
 		}
-		result = append(result, runCase{Scenario: candidate.Scenario, Shape: "linear", Depth: candidate.Depth, Tail: tail, Concurrency: candidate.Concurrency, ActorCount: max(candidate.ActorCount, 1), Fanout: max(candidate.Fanout, 1)})
+		result = append(result, runCase{Scenario: candidate.Scenario, Shape: "linear", Depth: candidate.Depth, Tail: tail, Concurrency: candidate.Concurrency, ActorCount: max(candidate.ActorCount, 1), Fanout: candidate.Fanout})
 	}
-	for _, shape := range contract.ProjectionShapes[1:] {
-		result = append(result, runCase{Scenario: "cold_status", Shape: shape, Depth: 100, Tail: -1, ActorCount: 1, Fanout: 1})
+	if tier != "fanout" {
+		for _, shape := range contract.ProjectionShapes[1:] {
+			result = append(result, runCase{Scenario: "cold_status", Shape: shape, Depth: 100, Tail: -1, ActorCount: 1})
+		}
 	}
 	return result, nil
 }
@@ -532,9 +579,87 @@ func tierCounts(contract perflane.Contract, tier, scenario string) (int, int) {
 	case "standard":
 		warmups := min(contract.Warmups[scenario], 1)
 		return warmups, min(contract.Repetitions[scenario], 5)
+	case "fanout":
+		return contract.Warmups[scenario], contract.Repetitions[scenario]
 	default:
 		return contract.Warmups[scenario], contract.Repetitions[scenario]
 	}
+}
+
+func summarizeFanoutAxis(contract perflane.Contract, cases []runCase, distributions map[string]perflane.Distribution) (map[string]fanoutAxisEvidence, error) {
+	var axisCases []runCase
+	for _, selected := range cases {
+		if selected.Fanout > 0 {
+			axisCases = append(axisCases, selected)
+		}
+	}
+	if len(axisCases) == 0 {
+		return nil, nil
+	}
+	if len(axisCases) != len(contract.DependencyFanout.Widths) {
+		return nil, fmt.Errorf("fan-out block has %d cases, want %d", len(axisCases), len(contract.DependencyFanout.Widths))
+	}
+	caseOrder := make([]string, len(axisCases))
+	for index, selected := range axisCases {
+		if selected.Scenario != "submit_ack" || selected.Depth != contract.DependencyFanout.Depth || selected.Fanout != contract.DependencyFanout.Widths[index] {
+			return nil, fmt.Errorf("fan-out block case %d = %+v, want depth %d width %d", index, selected, contract.DependencyFanout.Depth, contract.DependencyFanout.Widths[index])
+		}
+		caseOrder[index] = selected.name()
+	}
+
+	summaries := make(map[string]fanoutAxisEvidence)
+	for _, revision := range []perflane.Revision{perflane.BaseRevision, perflane.CandidateRevision} {
+		baselineKey := string(revision) + "/" + axisCases[0].name()
+		baseline, ok := distributions[baselineKey]
+		if !ok {
+			continue
+		}
+		if baseline.P50.Value == nil || *baseline.P50.Value <= 0 {
+			return nil, fmt.Errorf("fan-out denominator %s has no positive median", baselineKey)
+		}
+		medianOne := *baseline.P50.Value
+		summary := fanoutAxisEvidence{
+			Schema: fanoutSchema, Depth: contract.DependencyFanout.Depth,
+			RecordedRepetitions: baseline.Samples, OneBaseMedianNS: medianOne,
+			RelativeLimit:           contract.DependencyFanout.RelativeLimit,
+			PreviewMaxWidth:         contract.DependencyFanout.PreviewMaxWidth,
+			FirstProductionMaxWidth: contract.DependencyFanout.FirstProductionMaxWidth,
+			PreviewVerdict:          "pass", FirstProductionVerdict: "pass",
+			CaseOrder: append([]string(nil), caseOrder...), Measurements: make([]fanoutMeasurement, 0, len(axisCases)),
+		}
+		for _, selected := range axisCases {
+			key := string(revision) + "/" + selected.name()
+			distribution, ok := distributions[key]
+			if !ok || distribution.P50.Value == nil {
+				return nil, fmt.Errorf("fan-out case %s has no median", key)
+			}
+			if distribution.Samples != baseline.Samples {
+				return nil, fmt.Errorf("fan-out case %s has %d samples, denominator has %d", key, distribution.Samples, baseline.Samples)
+			}
+			median := *distribution.P50.Value
+			relativeIncrement := median/medianOne - 1
+			withinLimit := median <= medianOne*(1+contract.DependencyFanout.RelativeLimit)
+			summary.Measurements = append(summary.Measurements, fanoutMeasurement{
+				Case: selected.name(), Width: selected.Fanout, MedianNS: median,
+				RelativeIncrement:   relativeIncrement,
+				AbsoluteIncrementMS: (median - medianOne) / float64(time.Millisecond),
+				WithinRelativeLimit: withinLimit,
+			})
+			if !withinLimit {
+				if selected.Fanout <= contract.DependencyFanout.PreviewMaxWidth {
+					summary.PreviewVerdict = "miss"
+				}
+				if selected.Fanout <= contract.DependencyFanout.FirstProductionMaxWidth {
+					summary.FirstProductionVerdict = "miss"
+				}
+			}
+		}
+		summaries[string(revision)] = summary
+	}
+	if len(summaries) == 0 {
+		return nil, errors.New("fan-out cases were selected but no revision distributions were recorded")
+	}
+	return summaries, nil
 }
 
 func ensureFixtures(ctx context.Context, root string, contract perflane.Contract, digest string, cases []runCase) (map[fixtureKey]string, error) {
@@ -607,7 +732,7 @@ func buildComparedWorkers(ctx context.Context, root, base, candidate string) (fu
 			return nil, nil, fmt.Errorf("create %s worktree: %w: %s", revision, err, output)
 		}
 		worktrees[revision] = worktree
-		for _, path := range []string{"cmd/gitseq-perf", "internal/perflane", "internal/perfscenario", "performance/contract-v1.json"} {
+		for _, path := range []string{"cmd/gitseq-perf", "internal/perflane", "internal/perfscenario", defaultContract} {
 			if err := overlay(filepath.Join(root, path), filepath.Join(worktree, path)); err != nil {
 				cleanup()
 				return nil, nil, err
