@@ -92,7 +92,9 @@
     {"depth": 267, "tail": 10},
     {"depth": 512, "tail": 255},
     {"depth": 513, "tail": 256},
-    {"depth": 1257, "tail": 1000}
+    {"depth": 1257, "tail": 1000},
+    {"depth": 50000, "tail": 255},
+    {"depth": 500000, "tail": 255}
   ],
   "percentile_minimums": {"p95": 20, "p99": 100}
 }

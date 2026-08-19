@@ -132,13 +132,13 @@ func TestCheckpointSelectionAndColdMaterializationAreExact(t *testing.T) {
 	ctx := context.Background()
 	fixture := filepath.Join(t.TempDir(), "fixture")
 	manifest, err := Prepare(ctx, fixture, FixturePlan{
-		GeneratorVersion: "test.v2", Seed: 632, Depth: 258, Shape: "linear", PayloadBuckets: []int{8}, CheckpointDepths: []int{257}, ActorCount: 1,
+		GeneratorVersion: "test.v2", Seed: 632, Depth: 513, Shape: "linear", PayloadBuckets: []int{8}, CheckpointDepths: []int{257, 512}, ActorCount: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Checkpoints["257"] == "" {
-		t.Fatal("fixture did not retain its requested checkpoint")
+	if manifest.Checkpoints["257"] == "" || manifest.Checkpoints["512"] == "" {
+		t.Fatal("fixture did not retain both requested checkpoints")
 	}
 
 	coldPath := filepath.Join(t.TempDir(), "cold")
@@ -178,6 +178,24 @@ func TestCheckpointSelectionAndColdMaterializationAreExact(t *testing.T) {
 	}
 	if warmSnapshot.Source != app.SnapshotSourceSignedCheckpointTail || warmSnapshot.Snapshot.Depth != 258 {
 		t.Fatalf("checkpoint sample = source %s depth %d", warmSnapshot.Source, warmSnapshot.Snapshot.Depth)
+	}
+
+	nearHeadPath := filepath.Join(t.TempDir(), "near-head-checkpoint")
+	_, nearHeadCleanup, err := Materialize(ctx, fixture, nearHeadPath, Sample{Depth: 513, Tail: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nearHeadCleanup()
+	nearHead, err := app.Open(ctx, nearHeadPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nearHeadSnapshot, err := nearHead.SnapshotWithSource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nearHeadSnapshot.Source != app.SnapshotSourceSignedCheckpointTail || nearHeadSnapshot.Snapshot.Depth != 513 {
+		t.Fatalf("near-head checkpoint sample = source %s depth %d", nearHeadSnapshot.Source, nearHeadSnapshot.Snapshot.Depth)
 	}
 }
 

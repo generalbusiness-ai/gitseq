@@ -179,6 +179,14 @@ func Prepare(ctx context.Context, directory string, plan FixturePlan) (Manifest,
 		if openErr != nil {
 			return Manifest{}, openErr
 		}
+		// Each retained checkpoint is an independent fixture input. Do not let
+		// an earlier, shallower fixture checkpoint turn preparation of a deep
+		// checkpoint into an enormous verified tail scan. A cold audit keeps
+		// preparation bounded while preserving the ordinary checkpoint writer
+		// and every verification invariant in the checkpoint it produces.
+		if invalidateErr := reader.InvalidateCheckpoint(ctx); invalidateErr != nil {
+			return Manifest{}, fmt.Errorf("clear selector before checkpoint depth %d: %w", checkpointDepth, invalidateErr)
+		}
 		if _, snapshotErr := reader.Snapshot(ctx); snapshotErr != nil {
 			return Manifest{}, fmt.Errorf("verify checkpoint depth %d: %w", checkpointDepth, snapshotErr)
 		}
