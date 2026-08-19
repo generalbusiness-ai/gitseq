@@ -94,6 +94,8 @@ Read in this order if you are new:
   everything else cites.
 - [Limits](reference/limits.md) — sizes and counts a call is refused for
   exceeding.
+- [Performance](reference/performance.md) — the scale envelopes the
+  project measures itself against, and what it costs at them.
 - [Glossary](reference/glossary.md) — the vocabulary, in one place.
 
 ## How these pages stay honest
