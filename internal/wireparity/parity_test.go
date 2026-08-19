@@ -34,6 +34,7 @@ var mirrored = map[string]any{
 	"Decision":   workroom.Decision{},
 	"Statement":  workroom.Statement{},
 	"Commitment": workroom.Commitment{},
+	"Review":     workroom.Review{},
 	"Artifact":   workroom.Artifact{},
 	"Act":        workroom.Act{},
 }

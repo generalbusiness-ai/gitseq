@@ -65,36 +65,6 @@ State the tests and conditions **actually** met in the artifact. It is both
 the durable pointer to the exact head and the implementation report. A second
 `ready-for-review` report would repeat those same facts.
 
-## Give a topic a stable name
-
-The request text stays exactly as its signer wrote it. To give the
-grouped Work topic a shorter display title or a remembered search name,
-attach an ordinary durable statement to the topic:
-
-```sh
-gs state --repo "$REPO" --as alice --kind assert \
-  --text 'Name this topic for shared lookup' \
-  --body topic_title='Changelog release' --rests-on "$REQUEST"
-
-gs state --repo "$REPO" --as alice --kind assert \
-  --text 'Add a shared lookup name' \
-  --body topic_alias=release-readiness --rests-on "$REQUEST"
-```
-
-Use one label field per statement. The signature says who supplied the
-label, and Work shows that attribution without changing the root
-request. The latest live `topic_title` is the display title. Every live
-title and `topic_alias` resolves in search alongside root and descendant
-text, branch hints, and artifact paths.
-
-These labels are durable and shared, not personal bookmarks. Retiring a
-label statement, or making its basis stale, removes that label from
-lookup while preserving its signed history. Names are deliberately not
-unique: if two topics both use `release-readiness`, search returns both
-grouped topics instead of guessing which one the reader meant. Repeating
-the same name on one topic shows it once, attributed to the latest live
-statement.
-
 ## Review, and what happens when changes are requested
 
 ```sh

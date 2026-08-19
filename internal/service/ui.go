@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
@@ -64,6 +65,58 @@ func (s *Server) handleGraph(writer http.ResponseWriter, request *http.Request) 
 		commits = []gitstore.GraphCommit{}
 	}
 	write(writer, graphResponse{Commits: commits, Truncated: truncated}, err)
+}
+
+// landedRequest asks whether a branch already carries the named commits. The
+// browser names commits; it never names the branch, because a branch name is
+// a ref this process resolves and a commit is a value it can validate.
+type landedRequest struct {
+	Commits []string `json:"commits"`
+}
+
+type landedResponse struct {
+	// Which ref the answers are about, so the page can say "landed on main"
+	// rather than inventing the name. Empty when no candidate ref resolved.
+	Branch  string             `json:"branch"`
+	Commits []gitstore.Landing `json:"commits"`
+}
+
+// The mainline, in the order a repository is likely to name it. Resolved here
+// rather than configured: the question this answers is "did it ship", and
+// shipping means reaching the branch the repository publishes.
+var mainlineRefs = []string{"refs/heads/main", "refs/heads/master"}
+
+// handleLanded joins the fold's answer to git's. The fold knows whether a
+// commitment closed; only git knows whether the code landed, and work that
+// shipped and stayed open is invisible on every other surface. Nothing here is
+// stored: a field somebody types can be stale by hand, and this one was.
+func (s *Server) handleLanded(writer http.ResponseWriter, request *http.Request) {
+	var input landedRequest
+	if err := decode(request, &input); err != nil {
+		write(writer, nil, err)
+		return
+	}
+	branch := ""
+	for _, ref := range mainlineRefs {
+		if _, present, err := s.workspace.Store.RefValue(request.Context(), ref); err == nil && present {
+			branch = ref
+			break
+		}
+	}
+	if branch == "" {
+		// No mainline to compare against is not "nothing landed". Every answer
+		// is unknown, and says so.
+		commits := make([]gitstore.Landing, 0, len(input.Commits))
+		for _, commit := range input.Commits {
+			commits = append(commits, gitstore.Landing{Commit: commit, Status: gitstore.LandingUnknown, Reason: "no mainline branch"})
+		}
+		write(writer, landedResponse{Commits: commits}, nil)
+		return
+	}
+	write(writer, landedResponse{
+		Branch:  strings.TrimPrefix(branch, "refs/heads/"),
+		Commits: s.workspace.Store.Landings(request.Context(), branch, input.Commits),
+	}, nil)
 }
 
 type worktreesResponse struct {

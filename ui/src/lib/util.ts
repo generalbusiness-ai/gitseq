@@ -1,83 +1,26 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { Commitment, Vocabulary } from "./api";
+import type { Vocabulary } from "./api";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// One color language across the whole surface. Kind tags are deliberately
-// neutral: green is reserved for satisfied/ratified/current, red for
-// stale/reneged/disputed/dissent, amber for selection/focus only.
-export const neutralKind = "text-muted border-border";
-const legacyKindTint: Record<string, string> = {
-  request: neutralKind,
-  promise: neutralKind,
-  report: neutralKind,
-  propose: neutralKind,
-  assert: neutralKind,
-  dissent: "text-danger border-danger/40",
-  artifact: neutralKind,
-  roster: neutralKind,
-  "infra-key": neutralKind,
-  seal: neutralKind,
-};
-
-export function kindTint(kind: string, vocabulary?: Vocabulary): string {
-  const render = definitionOf(kind, vocabulary)?.render;
-  return render === "dissent" ? "text-danger border-danger/40" : legacyKindTint[kind] ?? neutralKind;
-}
-
-// A badge says which kind an act is, so it wears that kind's own name. Only
-// the two founding kinds whose names read as jargon are translated; a room
-// that declares "finding" and "review-note" gets "finding" and "review-note",
-// not one indistinguishable "note" for every note-class kind.
+// A record says which kind it is, so it wears that kind's own name. Only the
+// two founding kinds whose names read as jargon are translated; a room that
+// declares "finding" and "review-note" gets "finding" and "review-note", not
+// one indistinguishable "note" for every note-class kind.
 const familiarKind: Record<string, string> = { assert: "note", propose: "proposal" };
 
 export function kindLabel(kind: string): string {
   return familiarKind[kind] ?? kind;
 }
 
-export const statusTint: Record<string, string> = {
-  satisfied: "text-ok",
-  reported: "text-muted",
-  promised: "text-muted",
-  open: "text-muted",
-  withdrawn: "text-faint",
-  cancelled: "text-faint",
-  reneged: "text-danger",
-  stale: "text-danger",
-  disputed: "text-danger",
-};
-
-const familiarStatus: Record<string, string> = {
-  open: "open",
-  promised: "in progress",
-  reported: "ready",
-  satisfied: "done",
-  withdrawn: "closed",
-  cancelled: "closed",
-  reneged: "stopped",
-  stale: "stale",
-  disputed: "disputed",
-};
-
-export function statusLabel(status: string): string {
-  return familiarStatus[status] ?? status;
-}
-
-export function commitmentRelationship(commitment: Commitment, nameOf: (fingerprint: string) => string): string | undefined {
-  if (!commitment.promise && commitment.addressed_to) return `addressed to ${nameOf(commitment.addressed_to)} · unclaimed`;
-  if (commitment.waiting_on) return `waiting on ${nameOf(commitment.waiting_on)}`;
-  return undefined;
-}
-
-const legacyWorkOnlyKinds = new Set(["roster", "infra-key", "seal", "artifact"]);
-
-export function belongsInRoom(kind: string, vocabulary?: Vocabulary): boolean {
-  const render = definitionOf(kind, vocabulary)?.render;
-  if (render) return render !== "governance" && render !== "artifact";
-  return !legacyWorkOnlyKinds.has(kind);
+// A record's title is the first line of its text. One definition, because two
+// surfaces showing "the title" must not disagree about what that means.
+export function firstLine(text: string, limit = 0): string {
+  const first = text.split(/\r?\n/, 1)[0].trim() || "Untitled";
+  return limit > 0 && first.length > limit ? `${first.slice(0, limit - 3).trimEnd()}…` : first;
 }
 
 // An act the room cannot read is explained on that act, not counted in a

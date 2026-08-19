@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -1397,5 +1398,77 @@ func TestIdentitySaysWhichWorkroomAnswersAndNothingElse(t *testing.T) {
 	defer posted.Body.Close()
 	if posted.StatusCode == http.StatusOK {
 		t.Fatal("identity accepted a POST")
+	}
+}
+
+// The merge station is asked of git at render time. What matters at this
+// boundary is that a browser cannot name the ref, that a commit which is not
+// on the mainline is reported absent rather than landed, and that the answer
+// carries the branch it is about.
+func TestLandedEndpointAnswersFromTheMainlineItResolves(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	git := func(args ...string) string {
+		t.Helper()
+		full := append([]string{"-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid"}, args...)
+		output, err := exec.Command("git", full...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+		return strings.TrimSpace(string(output))
+	}
+	if output, err := exec.Command("git", "init", "-q", "-b", "main", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	git("commit", "--allow-empty", "-qm", "root")
+	git("checkout", "-qb", "side")
+	git("commit", "--allow-empty", "-qm", "side work")
+	side := git("rev-parse", "HEAD")
+	git("checkout", "-q", "main")
+
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	ask := func(commits ...string) landedResponse {
+		t.Helper()
+		body, _ := json.Marshal(landedRequest{Commits: commits})
+		response, err := http.Post(httpServer.URL+"/v0/landed", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		var answer landedResponse
+		if err := json.NewDecoder(response.Body).Decode(&answer); err != nil {
+			t.Fatal(err)
+		}
+		return answer
+	}
+
+	head := git("rev-parse", "main")
+	answer := ask(head, side)
+	if answer.Branch != "main" {
+		t.Fatalf("the answer names the ref it is about: %#v", answer)
+	}
+	if len(answer.Commits) != 2 {
+		t.Fatalf("one answer per commit: %#v", answer.Commits)
+	}
+	if answer.Commits[0].Status != gitstore.LandingLanded {
+		t.Fatalf("main's own head is on main: %#v", answer.Commits[0])
+	}
+	if answer.Commits[1].Status != gitstore.LandingAbsent {
+		t.Fatalf("an unmerged side head is absent: %#v", answer.Commits[1])
+	}
+	// A ref name arriving as a commit is refused before git runs: only the
+	// server chooses the branch.
+	if refused := ask("main").Commits[0]; refused.Status != gitstore.LandingUnknown {
+		t.Fatalf("a ref name is not a commit: %#v", refused)
 	}
 }

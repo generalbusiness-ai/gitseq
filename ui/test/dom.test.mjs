@@ -75,220 +75,7 @@ function enterText(element, value) {
 
 const tabNamed = (name) => [...document.querySelectorAll("[role=tab]")].find((tab) => tab.textContent.trim() === name);
 
-test("the railway tab shows the rail, its rows navigate, and retargeting returns to the conversation", async () => {
-  const vite = await createServer({
-    root: uiRoot,
-    appType: "custom",
-    logLevel: "silent",
-    server: { middlewareMode: true },
-  });
-  const root = createRoot(document.getElementById("root"));
-  const jumped = [];
-  try {
-    const { ThreadPane } = await vite.ssrLoadModule("/src/components/ThreadPane.tsx");
-    const pane = (event) =>
-      React.createElement(ThreadPane, {
-        workroom,
-        session: { id: "browser", live: true, actor: "codex", setActor() {} },
-        frames: [],
-        target: { kind: "event", event },
-        pending: [],
-        composer: { restsOn: [], frames: [], type: "assert" },
-        onComposer() {},
-        onClose() {},
-        onJumpTo(target) { jumped.push(target); },
-        onOpenProfile() {},
-        onRoute() {},
-        doAct() {},
-        onSay() { return "pending"; },
-        onSayFailed() {},
-      });
 
-    await act(async () => { root.render(pane("root")); });
-    assert.equal(document.querySelector("[data-thread-railway]"), null, "the pane opens on the conversation");
-
-    await click(tabNamed("Railway"));
-    const rail = document.querySelector("[data-thread-railway]");
-    assert.ok(rail, "the Railway tab shows the rail");
-
-    // Every row on the rail is a way into that event.
-    const rows = [...rail.querySelectorAll("[data-thread-rail-event]")];
-    assert.deepEqual(rows.map((row) => row.dataset.threadRailEvent), ["root", "first", "branch", "join"]);
-    await click(rows[2].querySelector("button"));
-    assert.deepEqual(jumped, ["branch"]);
-
-    // Pointing the pane at another thread must not leave the previous
-    // thread's rail on screen.
-    await act(async () => { root.render(pane("first")); });
-    assert.equal(document.querySelector("[data-thread-railway]"), null, "retargeting returns to the conversation");
-    assert.equal(tabNamed("Thread").getAttribute("aria-selected"), "true");
-  } finally {
-    await act(async () => { root.unmount(); });
-    await vite.close();
-  }
-});
-
-test("Link to draft visibly owns the thread draft and submits every exact selected basis", async () => {
-  const vite = await createServer({
-    root: uiRoot,
-    appType: "custom",
-    logLevel: "silent",
-    server: { middlewareMode: true },
-  });
-  const mounted = createRoot(document.getElementById("root"));
-  const previousFetch = globalThis.fetch;
-  const posted = [];
-  let rejectNext = false;
-  globalThis.fetch = async (url, init = {}) => {
-    assert.equal(url, "/v0/act");
-    posted.push(JSON.parse(init.body));
-    if (rejectNext) {
-      rejectNext = false;
-      throw new Error("deliberate linked-draft failure");
-    }
-    return { ok: true, statusText: "OK", json: async () => ({ id: `stored-${posted.length}` }) };
-  };
-
-  const genesis = "git:sha1:1111111111111111111111111111111111111111";
-  const event = (hash) => `${genesis}#git:sha1:${hash.repeat(40).slice(0, 40)}`;
-  const rootEvent = event("a");
-  const firstEvent = event("b");
-  const branchEvent = event("c");
-  const linkedStatements = [
-    statement(rootEvent, "codex", "request", "Build the draft link"),
-    statement(firstEvent, "claude", "promise", "I will review the link"),
-    statement(branchEvent, "hugh", "assert", "Keep the selected basis exact"),
-  ];
-  const linkedProjection = {
-    decisions: linkedStatements.map((item) => ({ event: item.event, verdict: "effective", reason: "recorded" })),
-    acts: [],
-    statements: linkedStatements,
-    commitments: [],
-    artifacts: [],
-    actors: {},
-    provenance: { [rootEvent]: [], [firstEvent]: [rootEvent], [branchEvent]: [rootEvent] },
-  };
-  const linkedRoom = {
-    ...workroom,
-    status: {
-      ...workroom.status,
-      durable: { ...workroom.status.durable, projection: linkedProjection },
-    },
-  };
-
-  try {
-    const [{ ThreadPane }, { durableEventBases }] = await Promise.all([
-      vite.ssrLoadModule("/src/components/ThreadPane.tsx"),
-      vite.ssrLoadModule("/src/components/Composer.tsx"),
-    ]);
-
-    assert.deepEqual(
-      durableEventBases([rootEvent], [rootEvent, firstEvent, firstEvent, branchEvent]),
-      [rootEvent, firstEvent, branchEvent],
-      "automatic and selected bases are de-duplicated without shortening them",
-    );
-    assert.equal(posted.length, 0);
-
-    const paneProps = {
-      workroom: linkedRoom,
-      session: { id: "browser", live: true, actor: "codex", setActor() {} },
-      frames: [{
-        conversation: "temporary",
-        sequence: 0,
-        about: rootEvent,
-        text: "temporary discussion",
-        actor: "claude",
-        fingerprint: "claude",
-        seen: 1,
-        raw: { Conversation: "temporary", Sequence: 0, Payload: "", ActorKey: "" },
-      }],
-      target: { kind: "event", event: rootEvent },
-      pending: [],
-      onClose() {},
-      onJumpTo() {},
-      onOpenProfile() {},
-      onRoute() {},
-      doAct() {},
-      onSay() { return "pending"; },
-      onSayFailed() {},
-      onOpenThread() {},
-    };
-    await act(async () => {
-      mounted.render(React.createElement(ThreadPane, paneProps));
-    });
-
-    const linkButtons = [...document.querySelectorAll('[aria-label="link to draft"]')];
-    assert.equal(linkButtons.length, 2, "only durable child events offer Link; the automatic root and temporary message do not");
-    assert.equal(document.querySelector('[data-conversation="temporary"] [aria-label*="link"]'), null);
-
-    const keptToggle = document.querySelector('[aria-label="make reply temporary"]');
-    await click(keptToggle);
-    assert.equal(keptToggle.getAttribute("aria-label"), "keep reply");
-    assert.equal(keptToggle.getAttribute("aria-pressed"), "false");
-    await click(linkButtons[0]);
-    assert.equal(posted.length, 0, "linking only edits the visible draft");
-    assert.equal(keptToggle.getAttribute("aria-label"), "make reply temporary", "linking the shipped Temporary draft promotes it to Kept");
-    assert.equal(keptToggle.getAttribute("aria-pressed"), "true");
-    assert.equal(linkButtons[0].getAttribute("aria-pressed"), "true");
-    assert.equal(linkButtons[0].getAttribute("aria-label"), "remove link from draft");
-    let chips = document.querySelector('[aria-label="Linked draft items"]');
-    assert.match(chips.textContent, /I will review the link/);
-    assert.equal(chips.querySelectorAll('button[aria-label^="remove link to"]').length, 1);
-
-    await enterText(document.querySelector('[aria-label="thread reply"]'), "Promoted kept reply");
-    await click(document.querySelector('[aria-label="keep reply"]'));
-    await act(async () => { await Promise.resolve(); });
-    assert.equal(posted[0].act, "state");
-    assert.equal(posted[0].kind, "assert", "the promoted draft is submitted durably");
-    assert.deepEqual(posted[0].rests_on, [rootEvent, firstEvent]);
-    assert.equal(document.querySelector('[aria-label="Linked draft items"]'), null, "successful submission clears the linked draft items");
-
-    await click(linkButtons[0]);
-    await click(linkButtons[1]);
-    chips = document.querySelector('[aria-label="Linked draft items"]');
-    assert.equal(chips.querySelectorAll('button[aria-label^="remove link to"]').length, 2, "multiple selected events stay visible");
-
-    await enterText(document.querySelector('[aria-label="thread reply"]'), "Retain links after failure");
-    rejectNext = true;
-    await click(document.querySelector('[aria-label="keep reply"]'));
-    await act(async () => { await Promise.resolve(); });
-    assert.deepEqual(posted[1].rests_on, [rootEvent, firstEvent, branchEvent]);
-    assert.match(document.querySelector('[role="alert"]').textContent, /deliberate linked-draft failure/);
-    assert.equal(document.querySelectorAll('[aria-label="Linked draft items"] button[aria-label^="remove link to"]').length, 2, "failed submission retains every linked draft item");
-
-    await click(document.querySelector('[aria-label="keep reply"]'));
-    await act(async () => { await Promise.resolve(); });
-    assert.deepEqual(posted[2].rests_on, [rootEvent, firstEvent, branchEvent]);
-    assert.equal(document.querySelector('[aria-label="Linked draft items"]'), null, "successful submission clears the linked draft items");
-
-    await click(linkButtons[0]);
-    await click(linkButtons[1]);
-    await click(document.querySelector(`button[aria-label="remove link to #2 · I will review the link"]`));
-    assert.equal(linkButtons[0].getAttribute("aria-pressed"), "false");
-    assert.equal(linkButtons[0].getAttribute("aria-label"), "link to draft");
-    await enterText(document.querySelector('[aria-label="thread reply"]'), "Reply after unlinking");
-    await click(document.querySelector('[aria-label="keep reply"]'));
-    await act(async () => { await Promise.resolve(); });
-    assert.deepEqual(posted[3].rests_on, [rootEvent, branchEvent], "unlinking removes only that exact basis before submission");
-
-    await act(async () => {
-      mounted.render(React.createElement(ThreadPane, {
-        ...paneProps,
-        key: "routed-reply",
-        route: { id: "promise-route", mode: "promise", prefill: "Promise reply" },
-      }));
-    });
-    await click(document.querySelector('[aria-label="link to draft"]'));
-    assert.notEqual(document.querySelector('[aria-label="Linked draft items"]'), null);
-    await click(document.querySelector('[aria-label="cancel reply action"]'));
-    assert.equal(document.querySelector('[aria-label="Linked draft items"]'), null, "cancelling a routed reply restores the default draft without stale links");
-    assert.notEqual(document.querySelector('[aria-label="make reply temporary"]'), null);
-  } finally {
-    globalThis.fetch = previousFetch;
-    await act(async () => { mounted.unmount(); });
-    await vite.close();
-  }
-});
 
 // A rebuilding resident is not a broken one, and for several minutes the
 // browser could not tell a reader which it was looking at. This pins what the
@@ -397,9 +184,8 @@ test("the focus button toggles advisory focus for the selected event", async () 
           React.createElement(TopBar, {
             workroom: focusRoom(),
             session: { actor: "codex", activity: { status: "available", focus }, setActivity: (next) => calls.push(next) },
-            mainView: "work",
-            selection: { kind: "event", id: "event-one" },
-            onShowWork() {}, onShowActivity() {}, onJumpEvent() {}, onOpenProfile() {},
+            selectedEvent: "event-one",
+            onJumpEvent() {},
           }),
         );
       });
@@ -437,8 +223,7 @@ test("the clear button empties advisory focus", async () => {
             activity: { status: "available", focus: ["event-one", "event-two"] },
             setActivity: (next) => calls.push(next),
           },
-          mainView: "work",
-          onShowWork() {}, onShowActivity() {}, onJumpEvent() {}, onOpenProfile() {},
+          onJumpEvent() {},
         }),
       );
     });
@@ -452,104 +237,17 @@ test("the clear button empties advisory focus", async () => {
   }
 });
 
-test("opening a work item selects the event and opens its thread", async () => {
-  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
-  const root = createRoot(document.getElementById("root"));
-  const selected = [];
-  const opened = [];
-  try {
-    const { WorkView } = await vite.ssrLoadModule("/src/components/WorkDrawer.tsx");
-    await act(async () => {
-      root.render(
-        React.createElement(WorkView, {
-          workroom: focusRoom(),
-          session: { actor: "codex", activity: { status: "available", focus: [] }, setActivity() {} },
-          highlight: { events: new Set(), commits: new Set() },
-          onSelect: (selection) => selected.push(selection),
-          onOpenThread: (event) => opened.push(event),
-        }),
-      );
-    });
-    const row = [...document.querySelectorAll("button")].find((button) => button.textContent.includes("repair the UI"));
-    assert.ok(row, "no work row rendered for the open commitment");
-    await click(row);
-    // Both halves matter: selection drives the rest of the surface, and the
-    // thread only opens because the same handler asks for it.
-    assert.deepEqual(selected.at(-1), { kind: "event", id: "event-one" }, "opening a work item did not select its event");
-    assert.deepEqual(opened.at(-1), "event-one", "opening a work item did not open its thread");
-  } finally {
-    await act(async () => root.unmount());
-    await vite.close();
-  }
-});
 
 // WorkDrawer renders the focus marker at two sites: the list row and the board
 // card. Breaking the shared FocusActors body reddens tests, but that only shows
 // the component is used somewhere — removing the board site alone left the whole
 // suite green. This drives the real presentation toggle so the board site is
 // pinned on its own.
-test("advisory focus renders on the board card, not only the list row", async () => {
-  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
-  const root = createRoot(document.getElementById("root"));
-  try {
-    const { WorkView } = await vite.ssrLoadModule("/src/components/WorkDrawer.tsx");
-    await act(async () => {
-      root.render(
-        React.createElement(WorkView, {
-          workroom: focusRoom(),
-          session: { actor: "codex", activity: { status: "available", focus: [] }, setActivity() {} },
-          highlight: { events: new Set(), commits: new Set() },
-          onSelect() {}, onOpenThread() {},
-        }),
-      );
-    });
-    const focusMarker = () => document.querySelector('[aria-label^="Focused here:"]');
-    assert.ok(focusMarker(), "the list row did not render the focus marker");
-
-    // Switch presentations through the control a reader would use, so this also
-    // fails if the toggle stops reaching the board.
-    const boardButton = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "Board");
-    assert.ok(boardButton, "no Board presentation control rendered");
-    await click(boardButton);
-
-    assert.ok(focusMarker(), "the board card did not render the focus marker");
-    assert.match(focusMarker().getAttribute("aria-label"), /codex \(blocked\)/, "board focus marker named the wrong actor or status");
-  } finally {
-    await act(async () => root.unmount());
-    await vite.close();
-  }
-});
 // The main-view selector chooses Work or Activity and nothing else. It used to
 // repeat the global active count and the overlapping attention figure, both of
 // which already sit beside the filters they describe in the Work view — the
 // same number in two places, only one of which can be acted on. Nothing tested
 // that they were there, so nothing would notice them coming back.
-test("the main-view selector carries no work counts", async () => {
-  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
-  const root = createRoot(document.getElementById("root"));
-  try {
-    const { TopBar } = await vite.ssrLoadModule("/src/components/TopBar.tsx");
-    await act(async () => {
-      root.render(
-        React.createElement(TopBar, {
-          workroom: focusRoom(),
-          session: { actor: "codex", activity: { status: "available", focus: [] }, setActivity() {} },
-          mainView: "work",
-          selection: { kind: "event", id: "event-one" },
-          onShowWork() {}, onShowActivity() {}, onJumpEvent() {}, onOpenProfile() {},
-        }),
-      );
-    });
-    const selector = document.querySelector('nav[aria-label="Main view"]');
-    assert.ok(selector, "the main-view selector did not render");
-    const labels = [...selector.querySelectorAll("button")].map((button) => button.textContent.trim());
-    assert.deepEqual(labels, ["Work", "Activity"], `the selector shows more than its two labels: ${labels.join("|")}`);
-    assert.equal(/\d/.test(selector.textContent), false, `a count leaked back into the selector: ${selector.textContent}`);
-  } finally {
-    await act(async () => root.unmount());
-    await vite.close();
-  }
-});
 
 // WorkDrawer is the single visible owner of the lifecycle filter counts: the
 // main-view selector deliberately carries none, so if a count stops rendering
@@ -579,36 +277,6 @@ const countingRoom = () => {
   return room;
 };
 
-test("WorkDrawer keeps a count beside every lifecycle filter", async () => {
-  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
-  const root = createRoot(document.getElementById("root"));
-  try {
-    const { WorkView } = await vite.ssrLoadModule("/src/components/WorkDrawer.tsx");
-    await act(async () => {
-      root.render(
-        React.createElement(WorkView, {
-          workroom: countingRoom(),
-          session: { actor: "codex", activity: { status: "available", focus: [] }, setActivity() {} },
-          highlight: { events: new Set(), commits: new Set() },
-          onSelect() {}, onOpenThread() {},
-        }),
-      );
-    });
-    const filterCount = (label) => {
-      const owner = [...document.querySelectorAll("label")].find((node) => node.textContent.trim().startsWith(label));
-      assert.ok(owner, `no lifecycle filter rendered for ${label}`);
-      const figure = owner.querySelector("span");
-      assert.ok(figure, `the ${label} filter rendered no count`);
-      return figure.textContent.trim();
-    };
-    assert.equal(filterCount("Active"), "2", "Active lost its count beside the filter");
-    assert.equal(filterCount("Attention"), "4", "Attention lost its count beside the filter");
-    assert.equal(filterCount("Closed"), "3", "Closed lost its count beside the filter");
-  } finally {
-    await act(async () => root.unmount());
-    await vite.close();
-  }
-});
 
 // A durable record carries the committer date as an unbounded int64, so a
 // corrupt or hostile one can sit outside the range Date can represent.
@@ -663,6 +331,235 @@ test("a render throw is contained by the error boundary", async () => {
     assert.ok(document.querySelector('[role="alert"]'), "the fallback is not announced as an alert");
   } finally {
     console.error = consoleError;
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The two screens. Sorting and expanding are only observable in a browser: a
+// static render runs neither click.
+// ---------------------------------------------------------------------------
+
+const NOW_S = 1787000000;
+
+function listRoom() {
+  const request = (event, text, ts) => ({ event, sequence: Number(event.slice(1)), actor: "hugh", kind: "request", text, timestamp: ts });
+  const statements = [
+    request("e1", "Zebra work", NOW_S - 5 * 86400),
+    request("e2", "Alpha work", NOW_S - 2 * 86400),
+    request("e3", "Middle work", NOW_S - 86400),
+  ];
+  const projection = {
+    decisions: statements.map((item) => ({ event: item.event, sequence: item.sequence, verdict: "effective", reason: "recorded" })),
+    acts: [],
+    statements,
+    commitments: [
+      { request: "e1", requester: "hugh", performer: "claude", promise: "p1", status: "promised", waiting_on: "claude" },
+      { request: "e2", requester: "hugh", addressed_to: "codex", status: "open" },
+      { request: "e3", requester: "hugh", performer: "claude", promise: "p3", report: "r3", status: "reported", waiting_on: "hugh" },
+    ],
+    reviews: [],
+    artifacts: [],
+    actors: {
+      hugh: { name: "hugh", kind: "human", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
+      claude: { name: "claude", kind: "agent", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
+      codex: { name: "codex", kind: "agent", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
+    },
+    provenance: {},
+  };
+  return {
+    actors: [
+      { name: "hugh", fingerprint: "hugh", roles: [], custody: true },
+      { name: "claude", fingerprint: "claude", roles: [], custody: true },
+      { name: "codex", fingerprint: "codex", roles: [], custody: true },
+    ],
+    offline: false,
+    status: {
+      durable: { genesis: "genesis", head: "head", depth: 3, projection },
+      live: { cursor: { generation: "generation", position: 1 }, presence: {}, activity: {}, conversations: [] },
+      cursor: { frontier: [], live: { generation: "generation", position: 1 } },
+    },
+  };
+}
+
+const titlesOnScreen = () => [...document.querySelectorAll("tbody tr")].map((row) => row.cells[3].textContent);
+const headerNamed = (label) =>
+  [...document.querySelectorAll("thead th button")].find((button) => button.textContent.trim().startsWith(label));
+
+test("clicking a column sorts, clicking again reverses, and a third click restores priority order", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    await act(async () => {
+      root.render(React.createElement(RequestList, { workroom: listRoom(), onOpenThread() {} }));
+    });
+
+    // Priority: unclaimed, then waiting on a human, then running.
+    const priority = titlesOnScreen();
+    assert.deepEqual(priority, ["Alpha work", "Middle work", "Zebra work"]);
+    assert.match(document.body.textContent, /sorted by priority/);
+    // No ordering subheads: the state column says which group a row is in.
+    assert.equal(document.querySelectorAll("tbody tr").length, 3);
+
+    await click(headerNamed("title"));
+    assert.deepEqual(titlesOnScreen(), ["Alpha work", "Middle work", "Zebra work"]);
+    assert.equal(headerNamed("title").closest("th").getAttribute("aria-sort"), "ascending");
+
+    await click(headerNamed("title"));
+    assert.deepEqual(titlesOnScreen(), ["Zebra work", "Middle work", "Alpha work"]);
+    assert.equal(headerNamed("title").closest("th").getAttribute("aria-sort"), "descending");
+
+    await click(headerNamed("title"));
+    assert.deepEqual(titlesOnScreen(), priority, "a third click did not restore priority order");
+    assert.equal(headerNamed("title").closest("th").getAttribute("aria-sort"), "none");
+    // A sort reorders the rows that are there; it never removes one.
+    assert.equal(document.querySelectorAll("tbody tr").length, 3);
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+test("exactly one number heads the list, and each other number opens to its own rows", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const workroom = listRoom();
+    const projection = workroom.status.durable.projection;
+    projection.commitments[0].stale = true;
+    projection.statements.push({ event: "e9", sequence: 9, actor: "hugh", kind: "request", text: "Abandoned work", timestamp: NOW_S - 40 * 86400 });
+    projection.decisions.push({ event: "e9", sequence: 9, verdict: "effective", reason: "recorded" });
+    projection.commitments.push({ request: "e9", requester: "hugh", status: "stale" });
+
+    await act(async () => {
+      root.render(React.createElement(RequestList, { workroom, onOpenThread() {} }));
+    });
+    const heading = document.querySelector("h2");
+    assert.equal(heading.textContent, "3 open requests");
+    assert.equal(document.querySelectorAll("tbody tr").length, 3);
+
+    const summaries = [...document.querySelectorAll("p button")];
+    assert.deepEqual(summaries.map((button) => button.textContent), [
+      "1 of these rest on reasoning that has moved.",
+      "1 stale requests nobody claimed.",
+    ]);
+
+    await click(summaries[1]);
+    assert.equal(document.querySelector("h2").textContent, "1 stale request nobody claimed");
+    assert.deepEqual(titlesOnScreen(), ["Abandoned work"]);
+
+    await click([...document.querySelectorAll("p button")][0]);
+    assert.equal(document.querySelector("h2").textContent, "1 resting on reasoning that has moved");
+    assert.deepEqual(titlesOnScreen(), ["Zebra work"]);
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+test("clicking a row opens that request's thread", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const opened = [];
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    await act(async () => {
+      root.render(React.createElement(RequestList, { workroom: listRoom(), onOpenThread: (event) => opened.push(event) }));
+    });
+    await click(document.querySelector("tbody tr"));
+    assert.deepEqual(opened, ["e2"]);
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+function threadRoom() {
+  const at = NOW_S - 7 * 86400;
+  const statements = [
+    { event: "req", sequence: 1, actor: "codex", kind: "request", text: "re-cut the repair", timestamp: at, body: { to: "claude" } },
+    { event: "promise", sequence: 2, actor: "claude", kind: "promise", text: "Claimed.", timestamp: at },
+    { event: "art", sequence: 3, actor: "claude", kind: "artifact", text: "old artifact", timestamp: at, retired: true },
+    { event: "report", sequence: 4, actor: "claude", kind: "report", text: "ready", timestamp: at, body: { status: "ready-for-review", head: "acf134411781f16ec16817ab7e084a104acb0fac" } },
+    { event: "verdict", sequence: 5, actor: "codex", kind: "report", text: "APPROVED", timestamp: at, body: { verdict: "approved", head: "b3bf30833b93aaec5fc3adab7ffa0b6f0fe7792d" } },
+    { event: "note", sequence: 6, actor: "hugh", kind: "assert", text: "a passing remark", timestamp: at },
+  ];
+  const projection = {
+    decisions: statements.map((item) => ({ event: item.event, sequence: item.sequence, verdict: "effective", reason: "recorded" })),
+    acts: [],
+    statements,
+    commitments: [{ request: "req", requester: "codex", addressed_to: "claude", performer: "claude", promise: "promise", report: "report", status: "reported", waiting_on: "codex" }],
+    reviews: [{ report: "verdict", reviewer: "codex", verdict: "approved", head: "b3bf30833b93aaec5fc3adab7ffa0b6f0fe7792d", independence: "independent", ratified: true }],
+    artifacts: [],
+    actors: {},
+    provenance: { promise: ["req"], art: ["promise"], report: ["promise"], verdict: ["report"], note: ["report"] },
+  };
+  return {
+    actors: [{ name: "codex", fingerprint: "codex", roles: [], custody: true }],
+    offline: false,
+    status: {
+      durable: { genesis: "genesis", head: "head", depth: 6, projection },
+      live: { cursor: { generation: "generation", position: 1 }, presence: {}, activity: {}, conversations: [] },
+      cursor: { frontier: [], live: { generation: "generation", position: 1 } },
+    },
+  };
+}
+
+test("the thread draws one rail of salient stations and keeps its history collapsed", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const asked = [];
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    asked.push(JSON.parse(init.body));
+    return {
+      ok: true,
+      json: async () => ({
+        branch: "main",
+        commits: [{ commit: "b3bf30833b93aaec5fc3adab7ffa0b6f0fe7792d", status: "landed", merge: "44d8b4fa7d62f04d9b240434e8c044eddc00b496", time: NOW_S - 7 * 86400 }],
+      }),
+    };
+  };
+  try {
+    const { Thread } = await vite.ssrLoadModule("/src/components/Thread.tsx");
+    await act(async () => {
+      root.render(
+        React.createElement(Thread, {
+          workroom: threadRoom(),
+          session: { id: "browser", actor: "codex", live: true, setActor() {}, activity: { status: "available", focus: [] }, setActivity() {} },
+          frames: [],
+          root: "req",
+          pending: [],
+          onBack() {}, onOpenThread() {}, onSay: () => "", onSayFailed() {}, doAct() {},
+        }),
+      );
+    });
+
+    // One rail, one node per row, five stations and one blocker branch.
+    const stations = [...document.querySelectorAll("[data-station]")];
+    assert.deepEqual(stations.map((row) => row.dataset.station), ["request", "promise", "report", "verdict", "merge", "blocker-open"]);
+    // The merge station asked git rather than reading a stored field.
+    assert.deepEqual(asked, [{ commits: ["b3bf30833b93aaec5fc3adab7ffa0b6f0fe7792d"] }]);
+    assert.match(document.body.textContent, /landed on main/);
+    assert.match(document.body.textContent, /shipped but never closed/);
+
+    // History is behind explicit expansion, and every expander says its count.
+    const expanders = [...document.querySelectorAll("[aria-expanded]")];
+    assert.ok(expanders.length > 0, "no expanders rendered");
+    for (const expander of expanders) assert.equal(expander.getAttribute("aria-expanded"), "false");
+    assert.doesNotMatch(document.body.textContent, /old artifact/);
+    assert.doesNotMatch(document.body.textContent, /a passing remark/);
+
+    const repair = expanders.find((button) => button.textContent.includes("Repair chain"));
+    assert.match(repair.textContent, /Repair chain1/);
+    await click(repair);
+    assert.equal(repair.getAttribute("aria-expanded"), "true");
+    assert.match(document.body.textContent, /old artifact/);
+  } finally {
+    globalThis.fetch = previousFetch;
     await act(async () => root.unmount());
     await vite.close();
   }
