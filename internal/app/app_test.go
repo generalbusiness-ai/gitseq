@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -989,7 +990,7 @@ func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
 	}
 	attached := &Workspace{
 		Repo: workspace.Repo, GitDir: workspace.GitDir, CommonDir: workspace.CommonDir, MetaDir: t.TempDir(), Store: workspace.Store,
-		Config: Config{Version: 0, Genesis: workspace.Config.Genesis, ObjectFormat: workspace.Config.ObjectFormat, ReadOnly: true},
+		Config: apphost.Config{Version: 0, Genesis: workspace.Config.Genesis, ObjectFormat: workspace.Config.ObjectFormat, ReadOnly: true},
 	}
 	// An attached view reads the binding for itself, as opening it would: a
 	// workspace that never selected an interpreter has none to fold with.
@@ -1107,7 +1108,7 @@ func TestProjectionProfileChangeRebuildsFromTheSameKernelCheckpoint(t *testing.T
 	workspace.flight.Store(completed)
 	workspace.flightMu.Unlock()
 	workspace.selected = selection{host: host{
-		application: defaultApplication,
+		application: apphost.DefaultApplication,
 		foldVersion: workroom.ProfileVersion + "-projection-change",
 		newFolder:   workroom.NewFolder,
 	}}
@@ -1491,7 +1492,7 @@ func TestGenesisIsValidatedBeforeCheckpointPathSelection(t *testing.T) {
 	if _, err := AttachConfig(ctx, attachRepo, "../outside", "sha1"); err == nil || !strings.Contains(err.Error(), "invalid genesis object id") {
 		t.Fatalf("AttachConfig accepted path-shaped genesis: %v", err)
 	}
-	gitDir, _, err := ResolveGitDirs(ctx, attachRepo)
+	gitDir, _, err := apphost.ResolveGitDirs(ctx, attachRepo)
 	if err != nil {
 		t.Fatal(err)
 	}

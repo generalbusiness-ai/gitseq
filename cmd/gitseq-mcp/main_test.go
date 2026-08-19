@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
@@ -1071,11 +1072,11 @@ func TestOneAdapterSharesRoomAcrossLinkedWorktrees(t *testing.T) {
 		t.Fatalf("add linked worktree: %v: %s", err, output)
 	}
 
-	mainGitDir, mainCommonDir, err := app.ResolveGitDirs(ctx, repo)
+	mainGitDir, mainCommonDir, err := apphost.ResolveGitDirs(ctx, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	linkedGitDir, linkedCommonDir, err := app.ResolveGitDirs(ctx, linked)
+	linkedGitDir, linkedCommonDir, err := apphost.ResolveGitDirs(ctx, linked)
 	if err != nil {
 		t.Fatal(err)
 	}

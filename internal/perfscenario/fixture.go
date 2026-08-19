@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/perflane"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -400,7 +401,7 @@ func rewriteConfig(meta string) error {
 	if err != nil {
 		return err
 	}
-	var config app.Config
+	var config apphost.Config
 	if err := json.Unmarshal(content, &config); err != nil {
 		return err
 	}

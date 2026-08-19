@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -20,18 +19,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/observe"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
-
-type Actor struct {
-	Name        string `json:"name"`
-	Fingerprint string `json:"fingerprint"`
-	KeyFile     string `json:"key_file"`
-}
 
 type ActorView struct {
 	Name        string   `json:"name"`
@@ -46,32 +40,11 @@ type ActorView struct {
 	Retired bool `json:"retired,omitempty"`
 }
 
-// VerifiedFrontier is the newest signed sequence position this local
-// workspace has accepted. The marker is local memory, not a witness: its head
-// becomes authoritative only when a later audit verifies a sequence that
-// contains that exact commit at that exact depth.
-type VerifiedFrontier struct {
-	Head  string `json:"head"`
-	Depth int    `json:"depth"`
-}
-
 // ResidentQueueDepth bounds the submissions inside the sequencer at once,
 // counting the one holding the lock. Gitseq's resident always sets it: the
 // kernel treats zero as unbounded, which is the embedding opt-out and not a
 // posture this application takes.
 const ResidentQueueDepth = 32
-
-type Config struct {
-	Version              int               `json:"version"`
-	Genesis              string            `json:"genesis"`
-	ObjectFormat         string            `json:"object_format"`
-	PayloadCeiling       uint64            `json:"payload_ceiling"`
-	IdempotencyNamespace string            `json:"idempotency_namespace,omitempty"`
-	SequencerKey         string            `json:"sequencer_key,omitempty"`
-	ReadOnly             bool              `json:"read_only,omitempty"`
-	Actors               map[string]Actor  `json:"actors,omitempty"`
-	VerifiedFrontier     *VerifiedFrontier `json:"verified_frontier,omitempty"`
-}
 
 type Workspace struct {
 	Repo      string
@@ -79,7 +52,7 @@ type Workspace struct {
 	CommonDir string
 	MetaDir   string
 	Store     gitstore.Store
-	Config    Config
+	Config    apphost.Config
 	observer  observe.Observer
 
 	// selected is the interpreter this repository is bound to. It is resolved
@@ -200,25 +173,6 @@ type Act struct {
 type Submission struct {
 	Result kernel.Result   `json:"result"`
 	Record workroom.Record `json:"record"`
-}
-
-// ResolveGitDirs keeps the selected checkout distinct from repository-wide
-// state. Linked worktrees have their own GitDir, while objects, refs, gitseq
-// configuration, and actor custody belong to CommonDir.
-func ResolveGitDirs(ctx context.Context, repo string) (gitDir, commonDir string, err error) {
-	if repo == "" {
-		repo = "."
-	}
-	cmd := exec.CommandContext(ctx, "git", "-C", repo, "rev-parse", "--path-format=absolute", "--absolute-git-dir", "--git-common-dir")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", "", fmt.Errorf("resolve git dirs: %w: %s", err, strings.TrimSpace(string(output)))
-	}
-	paths := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(paths) != 2 {
-		return "", "", fmt.Errorf("resolve git dirs: expected worktree and common paths, got %q", strings.TrimSpace(string(output)))
-	}
-	return strings.TrimSpace(paths[0]), strings.TrimSpace(paths[1]), nil
 }
 
 // LocalWorktrees projects the served checkout and every linked checkout of its
@@ -349,25 +303,14 @@ func Open(ctx context.Context, repo string) (*Workspace, error) {
 // OpenObserved opens a workspace with an exporter-neutral observer. Ordinary
 // callers use Open and pay no observation cost.
 func OpenObserved(ctx context.Context, repo string, observer observe.Observer) (*Workspace, error) {
-	gitDir, commonDir, err := ResolveGitDirs(ctx, repo)
+	gitDir, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
 	if err != nil {
 		return nil, err
 	}
-	metaDir := filepath.Join(commonDir, "gitseq")
-	content, err := os.ReadFile(filepath.Join(metaDir, "config.json"))
+	metaDir := apphost.MetaDir(commonDir)
+	config, err := apphost.LoadConfig(metaDir)
 	if err != nil {
-		return nil, fmt.Errorf("read gitseq config (run `gs init` first): %w", err)
-	}
-	var config Config
-	if err := json.Unmarshal(content, &config); err != nil {
 		return nil, err
-	}
-	if config.Version != 0 || config.Genesis == "" || config.ObjectFormat == "" || (!config.ReadOnly && config.SequencerKey == "") ||
-		(config.VerifiedFrontier != nil && (config.VerifiedFrontier.Head == "" || config.VerifiedFrontier.Depth < 0)) {
-		return nil, errors.New("invalid gitseq config")
-	}
-	if err := validateGenesis(config.ObjectFormat, config.Genesis); err != nil {
-		return nil, fmt.Errorf("invalid gitseq config: %w", err)
 	}
 	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir, Observer: observer}, Config: config, observer: observer}
 	// Which application interprets this log is settled here, once, before the
@@ -407,12 +350,12 @@ func initHosted(ctx context.Context, repo, operatorName string, ceiling uint64, 
 	if ceiling == 0 {
 		ceiling = 1 << 20
 	}
-	gitDir, commonDir, err := ResolveGitDirs(ctx, repo)
+	gitDir, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
 	if err != nil {
 		return nil, workroom.Record{}, err
 	}
-	metaDir := filepath.Join(commonDir, "gitseq")
-	if _, err := os.Stat(filepath.Join(metaDir, "config.json")); err == nil {
+	metaDir := apphost.MetaDir(commonDir)
+	if _, err := os.Stat(filepath.Join(metaDir, apphost.ConfigFile)); err == nil {
 		return nil, workroom.Record{}, errors.New("workroom already initialized")
 	}
 	if err := os.MkdirAll(filepath.Join(metaDir, "actors"), 0o700); err != nil {
@@ -436,9 +379,9 @@ func initHosted(ctx context.Context, repo, operatorName string, ceiling uint64, 
 	if err != nil {
 		return nil, workroom.Record{}, err
 	}
-	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: store, Config: Config{
+	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: store, Config: apphost.Config{
 		Version: 0, Genesis: genesis, ObjectFormat: format, PayloadCeiling: ceiling, IdempotencyNamespace: "workroom/v0",
-		SequencerKey: sequencerKey, Actors: map[string]Actor{operatorName: {Name: operatorName, Fingerprint: fingerprint, KeyFile: actorPath}},
+		SequencerKey: sequencerKey, Actors: map[string]apphost.Actor{operatorName: {Name: operatorName, Fingerprint: fingerprint, KeyFile: actorPath}},
 	}}
 	workspace.selected = selection{host: running}
 	request, err := workspace.BuildActRequest(ctx, private, operatorName, Act{
@@ -453,7 +396,7 @@ func initHosted(ctx context.Context, repo, operatorName string, ceiling uint64, 
 	if err != nil {
 		return nil, workroom.Record{}, err
 	}
-	if running.application != defaultApplication {
+	if running.application != apphost.DefaultApplication {
 		bindingRequest, err := workspace.buildBindingRequest(ctx, private, operatorName, selfBinding(running))
 		if err != nil {
 			return nil, workroom.Record{}, err
@@ -502,23 +445,19 @@ func readActor(path string) (ed25519.PrivateKey, error) {
 }
 
 func (w *Workspace) save() error {
-	content, err := json.MarshalIndent(w.Config, "", "  ")
-	if err != nil {
-		return err
-	}
-	return writeFileAtomically(filepath.Join(w.MetaDir, "config.json"), append(content, '\n'))
+	return apphost.SaveConfig(w.MetaDir, w.Config)
 }
 
 func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Workspace, error) {
-	if err := validateGenesis(objectFormat, genesis); err != nil {
+	if err := apphost.ValidateGenesis(objectFormat, genesis); err != nil {
 		return nil, fmt.Errorf("invalid attachment genesis: %w", err)
 	}
-	gitDir, commonDir, err := ResolveGitDirs(ctx, repo)
+	gitDir, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
 	if err != nil {
 		return nil, err
 	}
-	metaDir := filepath.Join(commonDir, "gitseq")
-	configPath := filepath.Join(metaDir, "config.json")
+	metaDir := apphost.MetaDir(commonDir)
+	configPath := filepath.Join(metaDir, apphost.ConfigFile)
 	if _, err := os.Stat(configPath); err == nil {
 		workspace, err := Open(ctx, repo)
 		if err != nil {
@@ -540,7 +479,7 @@ func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Wor
 	if err := os.MkdirAll(metaDir, 0o700); err != nil {
 		return nil, err
 	}
-	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir}, Config: Config{Version: 0, Genesis: genesis, ObjectFormat: objectFormat, ReadOnly: true}}
+	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir}, Config: apphost.Config{Version: 0, Genesis: genesis, ObjectFormat: objectFormat, ReadOnly: true}}
 	if err := workspace.save(); err != nil {
 		return nil, err
 	}
@@ -550,44 +489,44 @@ func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Wor
 	return Open(ctx, repo)
 }
 
-func (w *Workspace) Actor(name string) (Actor, ed25519.PrivateKey, error) {
+func (w *Workspace) Actor(name string) (apphost.Actor, ed25519.PrivateKey, error) {
 	actor, ok := w.Config.Actors[name]
 	if !ok {
-		return Actor{}, nil, fmt.Errorf("unknown actor %q", name)
+		return apphost.Actor{}, nil, fmt.Errorf("unknown actor %q", name)
 	}
 	private, err := readActor(actor.KeyFile)
 	return actor, private, err
 }
 
-func (w *Workspace) AddActor(ctx context.Context, operatorName, name, kind string) (Actor, []workroom.Record, error) {
+func (w *Workspace) AddActor(ctx context.Context, operatorName, name, kind string) (apphost.Actor, []workroom.Record, error) {
 	if _, exists := w.Config.Actors[name]; exists {
-		return Actor{}, nil, fmt.Errorf("actor %q already exists", name)
+		return apphost.Actor{}, nil, fmt.Errorf("actor %q already exists", name)
 	}
 	if kind == "" {
 		kind = "agent"
 	}
 	if !workroom.IsActorKind(kind) {
-		return Actor{}, nil, fmt.Errorf("actor kind must be human, agent, or service, got %q", kind)
+		return apphost.Actor{}, nil, fmt.Errorf("actor kind must be human, agent, or service, got %q", kind)
 	}
 	private, fingerprint, path, err := generateActor(filepath.Join(w.MetaDir, "actors"), name)
 	if err != nil {
-		return Actor{}, nil, err
+		return apphost.Actor{}, nil, err
 	}
 	_ = private
-	actor := Actor{Name: name, Fingerprint: fingerprint, KeyFile: path}
+	actor := apphost.Actor{Name: name, Fingerprint: fingerprint, KeyFile: path}
 	stateSubmission, err := w.Act(ctx, operatorName, Act{Verb: VerbState, Kind: workroom.KindRoster, Text: name + " joins as " + kind, Body: map[string]string{"actor": fingerprint, "kind": kind, "name": name, "role": "participant"}, RestsOn: []string{w.EventID(w.Config.Genesis)}, IdempotencyKey: "actor-" + name})
 	if err != nil {
-		return Actor{}, nil, err
+		return apphost.Actor{}, nil, err
 	}
 	state := stateSubmission.Record
 	ratificationSubmission, err := w.Act(ctx, operatorName, Act{Verb: VerbRatify, Target: state.ID, IdempotencyKey: "actor-" + name + "-ratify"})
 	if err != nil {
-		return Actor{}, nil, err
+		return apphost.Actor{}, nil, err
 	}
 	ratification := ratificationSubmission.Record
 	w.Config.Actors[name] = actor
 	if err := w.save(); err != nil {
-		return Actor{}, nil, err
+		return apphost.Actor{}, nil, err
 	}
 	return actor, []workroom.Record{state, ratification}, nil
 }
@@ -1031,7 +970,7 @@ func cloneBody(input map[string]string) map[string]string {
 
 // ResolveActorAddress accepts the human-facing forms used at application
 // edges. Durable request payloads always carry the actor fingerprint.
-func (w *Workspace) ResolveActorAddress(address string) (Actor, error) {
+func (w *Workspace) ResolveActorAddress(address string) (apphost.Actor, error) {
 	name := strings.TrimPrefix(address, "@")
 	if actor, ok := w.Config.Actors[name]; ok {
 		return actor, nil
@@ -1041,7 +980,7 @@ func (w *Workspace) ResolveActorAddress(address string) (Actor, error) {
 			return actor, nil
 		}
 	}
-	return Actor{}, fmt.Errorf("unknown actor address %q", address)
+	return apphost.Actor{}, fmt.Errorf("unknown actor address %q", address)
 }
 
 func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request) (Submission, error) {
@@ -1464,7 +1403,7 @@ func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification k
 			return fmt.Errorf("refuse non-descendant verified frontier: %s does not continue previously verified head %s", verification.Head, previous.Head)
 		}
 	}
-	w.Config.VerifiedFrontier = &VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
+	w.Config.VerifiedFrontier = &apphost.VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
 	if err := w.save(); err != nil {
 		w.Config.VerifiedFrontier = previous
 		return fmt.Errorf("persist verified frontier before returning data: local rollback witness could not advance: %w", err)
@@ -1477,7 +1416,7 @@ func (w *Workspace) ActorViews(ctx context.Context) ([]ActorView, error) {
 	if err != nil {
 		return nil, err
 	}
-	custody := make(map[string]Actor, len(w.Config.Actors))
+	custody := make(map[string]apphost.Actor, len(w.Config.Actors))
 	for _, actor := range w.Config.Actors {
 		custody[actor.Fingerprint] = actor
 	}

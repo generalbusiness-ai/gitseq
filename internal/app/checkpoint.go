@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -84,22 +83,6 @@ func (p fileCheckpointPointer) Store(commit string) error {
 		return err
 	}
 	return os.Rename(temporaryPath, p.path)
-}
-
-func validateGenesis(format, genesis string) error {
-	want := 40
-	if format == "sha256" {
-		want = 64
-	} else if format != "sha1" {
-		return errors.New("unsupported object format")
-	}
-	if len(genesis) != want {
-		return errors.New("invalid genesis object id")
-	}
-	if _, err := hex.DecodeString(genesis); err != nil {
-		return errors.New("invalid genesis object id")
-	}
-	return nil
 }
 
 func (w *Workspace) checkpointPointerPath() string {
