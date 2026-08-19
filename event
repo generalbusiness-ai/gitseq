@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Architecture, resident deployment, merge, and limits documentation describes the schema/fold split at exact head 0c05eca5 and rests on the implementation areas it explains.","body":{"commit":"0c05eca5d7018f0c696c0e0df382e90649c9ccc6","path":"docs"}}
+{"kind":"artifact","text":"The schema/fold split design note and implemented compatibility bridge are current at exact head 0c05eca5.","body":{"commit":"0c05eca5d7018f0c696c0e0df382e90649c9ccc6","path":"notes/2026-08-18-schema-fold-split.md"}}
