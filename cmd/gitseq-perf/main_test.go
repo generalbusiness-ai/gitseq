@@ -67,10 +67,40 @@ func TestCasesForTierRemainBoundedAndDeterministic(t *testing.T) {
 }
 
 func TestCheckpointDepthsAreUniqueAndSorted(t *testing.T) {
-	got := checkpointDepths(testContract(t), 600)
-	want := []int{257}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("checkpoint depths = %v, want %v", got, want)
+	tests := []struct {
+		maximum int
+		want    []int
+	}{
+		{600, []int{257}},
+		{50_000, []int{257, 49_745}},
+		{500_000, []int{257, 49_745, 499_745}},
+	}
+	for _, test := range tests {
+		got := checkpointDepths(testContract(t), test.maximum)
+		if !reflect.DeepEqual(got, test.want) {
+			t.Errorf("checkpoint depths through %d = %v, want %v", test.maximum, got, test.want)
+		}
+	}
+}
+
+func TestFullTierIncludesNearHeadCheckpointCases(t *testing.T) {
+	cases, err := casesForTier(testContract(t), "full")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"checkpoint_restart/shape-linear/depth-050000/tail-0255": false,
+		"checkpoint_restart/shape-linear/depth-500000/tail-0255": false,
+	}
+	for _, selected := range cases {
+		if _, ok := want[selected.name()]; ok {
+			want[selected.name()] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("full tier is missing %s", name)
+		}
 	}
 }
 
