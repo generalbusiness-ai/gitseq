@@ -96,6 +96,13 @@ func (s *Server) handleLanded(writer http.ResponseWriter, request *http.Request)
 		write(writer, nil, err)
 		return
 	}
+	// One cap, before any path. The advertised bound belongs to the endpoint,
+	// not to whichever branch happens to answer: a limit enforced only on the
+	// path that succeeds is not a limit, and the failure path is the easier
+	// one to reach with untrusted input.
+	if len(input.Commits) > gitstore.LandingLimit {
+		input.Commits = input.Commits[:gitstore.LandingLimit]
+	}
 	branch := ""
 	for _, ref := range mainlineRefs {
 		if _, present, err := s.workspace.Store.RefValue(request.Context(), ref); err == nil && present {

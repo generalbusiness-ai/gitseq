@@ -807,3 +807,76 @@ test("a world-stale approval is loud on the rail, and ordinary staleness is not"
   const blockers = buildSpine("req", spineContext(loud)).stations.filter((station) => station.branch);
   assert.equal(blockers.some((station) => /superseded world/.test(station.what)), true);
 });
+
+test("the lifecycle-stale population holds claimed work too, and is not described as unclaimed", () => {
+  const projection = room(
+    [
+      { event: "live", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "abandoned", kind: "request", actor: "hugh", ts: NOW - 30 * DAY },
+      { event: "stalled", kind: "request", actor: "hugh", ts: NOW - 20 * DAY },
+      { event: "stalled-promise", kind: "promise", actor: "claude", ts: NOW - 19 * DAY, parent: "stalled" },
+    ],
+    {
+      commitments: [
+        { request: "live", requester: "hugh", status: "open" },
+        { request: "abandoned", requester: "hugh", status: "stale" },
+        // Claimed, then it went stale. This row is exactly what the earlier
+        // wording lied about: 17 of 110 on the board carried a promise.
+        { request: "stalled", requester: "hugh", performer: "claude", promise: "stalled-promise", status: "stale" },
+      ],
+    },
+  );
+  const stale = workRows(projection, context(projection), true);
+  assert.deepEqual(stale.map((row) => row.event).sort(), ["abandoned", "stalled"]);
+  // The claimed one is kept, not filtered away. Hiding it to rescue a phrase
+  // would be the filtering this whole design deleted, in miniature.
+  const claimed = stale.find((row) => row.event === "stalled");
+  // It renders "stale", not "in progress". A row under a heading that calls
+  // the whole population not-in-flight must not also claim to be running:
+  // that would be one screen contradicting itself about one row.
+  assert.equal(claimed.state, "stale");
+  assert.equal(claimed.waitsOnName, "unassigned");
+  assert.equal(claimed.attention, false);
+  // No row in this population borrows a live lifecycle word.
+  assert.deepEqual([...new Set(stale.map((row) => row.state))], ["stale"]);
+  // And the live list still uses the live words, so "stale" did not leak into
+  // the default screen as a fifth state.
+  assert.deepEqual(workRows(projection, context(projection)).map((row) => row.state), ["unclaimed"]);
+  // And it is absent from the default list, which is live commitments only.
+  assert.deepEqual(workRows(projection, context(projection)).map((row) => row.event), ["live"]);
+});
+
+test("no surface claims the lifecycle-stale rows are unclaimed", () => {
+  const read = (name) => readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
+  const surface = [read("src/components/RequestList.tsx"), read("src/lib/rows.ts")].join("\n");
+  // The phrase may survive only where it is explained as a corrected mistake.
+  const claims = surface.split("\n").filter((line) => /nobody claimed/.test(line) && !/false for|earlier head/.test(line));
+  assert.deepEqual(claims, [], "a surface still calls lifecycle-stale rows unclaimed");
+});
+
+test("world-staleness stays loud in the lifecycle-stale population, and ordinary staleness stays quiet", () => {
+  const projection = room(
+    [
+      { event: "quiet", kind: "request", actor: "hugh", ts: NOW - 30 * DAY },
+      { event: "loud", kind: "request", actor: "hugh", ts: NOW - 30 * DAY, world: true },
+      { event: "loud-promise", kind: "promise", actor: "claude", ts: NOW - 29 * DAY, parent: "loud" },
+    ],
+    {
+      commitments: [
+        { request: "quiet", requester: "hugh", status: "stale" },
+        { request: "loud", requester: "hugh", performer: "claude", promise: "loud-promise", status: "stale" },
+      ],
+    },
+  );
+  const byEvent = new Map(workRows(projection, context(projection), true).map((row) => [row.event, row]));
+  // Both are not in flight, so neither borrows a live word...
+  assert.equal(byEvent.get("quiet").state, "stale");
+  assert.equal(byEvent.get("loud").state, "stale");
+  // ...but the one a merge would refuse is still coloured. Condition 4 says
+  // world-staleness stays loud; a stopped lifecycle does not quiet it.
+  assert.equal(byEvent.get("quiet").attention, false);
+  assert.equal(byEvent.get("loud").attention, true);
+  // And loud rows sort first here, as they do on the live list.
+  assert.equal(byEvent.get("loud").group, 0);
+  assert.equal(byEvent.get("quiet").group, 1);
+});

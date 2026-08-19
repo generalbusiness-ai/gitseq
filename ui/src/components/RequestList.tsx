@@ -60,9 +60,17 @@ export function RequestList({
 
   if (!projection) return <RebuildNotice />;
 
+  // The lifecycle-stale line says what its rows are and nothing more. An
+  // earlier head called them "requests nobody claimed", which is false for
+  // every one that carries a durable promise — 17 of 110 on the board this was
+  // written against. The population is deliberately not filtered to the
+  // unclaimed ones: filters were deleted because they hide work and because
+  // the operator cannot tell, from a filtered screen, what they are not
+  // seeing, and hiding 17 stalled claims to rescue a phrase would be that
+  // mistake in miniature. The count still opens to exactly the rows it counts.
   const headline =
     population === "stale"
-      ? `${rows.length} stale ${rows.length === 1 ? "request" : "requests"} nobody claimed`
+      ? `${rows.length} stale ${rows.length === 1 ? "request" : "requests"}, not in flight`
       : population === "moved"
         ? `${rows.length} resting on reasoning that has moved`
         : `${rows.length} open ${rows.length === 1 ? "request" : "requests"}`;
@@ -107,7 +115,7 @@ export function RequestList({
             <SummaryLink
               active={population === "stale"}
               onClick={() => setPopulation(population === "stale" ? "live" : "stale")}
-              label={`${lifecycleStale.length} stale requests nobody claimed.`}
+              label={`${lifecycleStale.length} stale requests, not in flight.`}
             />
           </p>
 

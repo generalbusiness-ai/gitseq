@@ -1,10 +1,17 @@
 import type { ActorState, Commitment, Projection, Statement } from "./api.ts";
 import { firstLine } from "./util.ts";
 
-// The four words a row may say about itself, and no fifth. Whether a reported
-// row is already approved and waiting on a merge is a fact about *who* it
-// waits on, and belongs in the next column.
-export type RowState = "needs attention" | "unclaimed" | "in progress" | "reported";
+// The four words a live row may say about itself, and no fifth. Whether a
+// reported row is already approved and waiting on a merge is a fact about
+// *who* it waits on, and belongs in the next column.
+//
+// "stale" is not a fifth live state: it belongs only to the lifecycle-stale
+// population, which is a different list reached by its own count. A row there
+// must not borrow a live word — a commitment that was claimed and then went
+// stale is not "in progress", and saying so under a heading that calls the
+// whole population not-in-flight would have the one screen contradict itself
+// about one row.
+export type RowState = "needs attention" | "unclaimed" | "in progress" | "reported" | "stale";
 
 // The priority rule, as the default sort rather than as prose. Groups 0 to 2
 // cannot move without a person, so age is the signal; group 3 is running and
@@ -32,7 +39,7 @@ export interface WorkRow {
 }
 
 // The lifecycle states that are work in flight. Everything else is history or
-// a queue nobody claimed.
+// a queue that is no longer moving.
 const LIVE_STATUSES = ["open", "promised", "reported"];
 
 // Age, in the shortest form that is still true: `3m`, `6h`, `7d`.
@@ -81,7 +88,14 @@ function needsAttention(commitment: Commitment, records: (Statement | undefined)
   return records.some((record) => record?.describes_superseded_world === true);
 }
 
-function rowState(commitment: Commitment, attention: boolean): RowState {
+function rowState(commitment: Commitment, attention: boolean, lifecycleStale: boolean): RowState {
+  // Lifecycle-stale first, and unconditionally. The fold has already said this
+  // commitment is not in flight; no live lifecycle word is true of it, whether
+  // or not somebody once claimed it. The row can still be loud — attention is
+  // carried in its own field, not in this word — so a world-stale stale row
+  // reads "stale" and is coloured, which is both facts at once rather than
+  // either one swallowing the other.
+  if (lifecycleStale) return "stale";
   if (attention) return "needs attention";
   if (commitment.status === "reported") return "reported";
   if (commitment.promise) return "in progress";
@@ -98,6 +112,11 @@ export interface RowContext {
 // each. Lifecycle-stale commitments are counted below the list instead: they
 // are not work in flight, and without that separation 110 of them would sort
 // above the 42 that are actually moving.
+//
+// That second population is every commitment the fold marked lifecycle-stale,
+// claimed or not. Some carry a durable promise — work that was taken up and
+// then stalled — so it is not a queue of unclaimed requests and must not be
+// described as one.
 export function workRows(projection: Projection, context: RowContext, stale = false): WorkRow[] {
   const statements = new Map(projection.statements.map((statement) => [statement.event, statement]));
   const moved = lastMovement(projection);
@@ -108,6 +127,11 @@ export function workRows(projection: Projection, context: RowContext, stale = fa
     if (stale ? !lifecycleStale : !live) continue;
     const request = statements.get(commitment.request);
     if (!request) continue;
+    // Computed for every population. World-staleness and retirement stay loud
+    // wherever they appear: a lifecycle-stale row whose approval or artifact
+    // describes a superseded world is still the thing a merge will refuse, and
+    // quieting it because its lifecycle already stopped would hide the louder
+    // fact behind the duller one.
     const attention = needsAttention(commitment, [
       request,
       commitment.promise ? statements.get(commitment.promise) : undefined,
@@ -118,7 +142,7 @@ export function workRows(projection: Projection, context: RowContext, stale = fa
     rows.push({
       event: commitment.request,
       ticket: context.tickets.get(commitment.request),
-      state: rowState(commitment, attention),
+      state: rowState(commitment, attention, lifecycleStale),
       attention,
       waitsOn,
       waitsOnName: waitsOn ? context.nameOf(waitsOn) : "unassigned",
@@ -136,7 +160,10 @@ export function workRows(projection: Projection, context: RowContext, stale = fa
 
 function priorityGroup(row: WorkRow): number {
   if (row.attention) return 0;
-  if (row.state === "unclaimed") return 1;
+  // Every lifecycle-stale row shares one state, so the group only breaks ties.
+  // It sits with the oldest-first groups because age is the only signal left
+  // in a queue that stopped moving.
+  if (row.state === "unclaimed" || row.state === "stale") return 1;
   if (row.waitsOnHuman) return 2;
   return 3;
 }
@@ -161,6 +188,7 @@ const STATE_ORDER: Record<RowState, number> = {
   unclaimed: 1,
   "in progress": 2,
   reported: 3,
+  stale: 4,
 };
 
 // A sort reorders the rows that are there; a filter decides which rows exist.

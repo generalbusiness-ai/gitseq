@@ -444,11 +444,11 @@ test("exactly one number heads the list, and each other number opens to its own 
     const summaries = [...document.querySelectorAll("p button")];
     assert.deepEqual(summaries.map((button) => button.textContent), [
       "1 of these rest on reasoning that has moved.",
-      "1 stale requests nobody claimed.",
+      "1 stale requests, not in flight.",
     ]);
 
     await click(summaries[1]);
-    assert.equal(document.querySelector("h2").textContent, "1 stale request nobody claimed");
+    assert.equal(document.querySelector("h2").textContent, "1 stale request, not in flight");
     assert.deepEqual(titlesOnScreen(), ["Abandoned work"]);
 
     await click([...document.querySelectorAll("p button")][0]);

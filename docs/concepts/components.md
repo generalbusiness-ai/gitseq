@@ -123,7 +123,7 @@ again to reverse, and a third time returns to priority order. A sort
 reorders the rows that are there; nothing on this screen decides which
 rows exist. One number heads the list and equals the rows beneath it, and
 the two quiet lines below it — work resting on reasoning that has moved,
-and stale requests nobody claimed — each open to exactly the rows they
+and stale requests no longer in flight — each open to exactly the rows they
 count.
 
 Clicking a row opens the second screen, the thread. It draws the

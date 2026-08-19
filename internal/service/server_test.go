@@ -1472,3 +1472,60 @@ func TestLandedEndpointAnswersFromTheMainlineItResolves(t *testing.T) {
 		t.Fatalf("a ref name is not a commit: %#v", refused)
 	}
 }
+
+// The bound is a property of the endpoint. An earlier head enforced it only on
+// the path that finds a mainline, so a repository without one would iterate and
+// echo back every untrusted commit a caller sent. A cap that holds only when
+// the happy path runs is not a cap, and the failure path is the easier one to
+// reach.
+func TestLandedEndpointBoundsTheBatchWithNoMainline(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	// Deliberately neither main nor master, so no mainline ref resolves.
+	if output, err := exec.Command("git", "init", "-q", "-b", "trunk", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	if output, err := exec.Command("git", "-C", repo,
+		"-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+		"commit", "--allow-empty", "-qm", "root").CombinedOutput(); err != nil {
+		t.Fatalf("commit: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	commits := make([]string, gitstore.LandingLimit+5)
+	for index := range commits {
+		commits[index] = strings.Repeat("a", 40)
+	}
+	body, _ := json.Marshal(landedRequest{Commits: commits})
+	response, err := http.Post(httpServer.URL+"/v0/landed", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var answer landedResponse
+	if err := json.NewDecoder(response.Body).Decode(&answer); err != nil {
+		t.Fatal(err)
+	}
+	if len(answer.Commits) != gitstore.LandingLimit {
+		t.Fatalf("no-mainline path returned %d answers, want the %d bound", len(answer.Commits), gitstore.LandingLimit)
+	}
+	if answer.Branch != "" {
+		t.Fatalf("no mainline resolved, so no branch is named: %q", answer.Branch)
+	}
+	for _, landing := range answer.Commits {
+		// Absent would be a lie: with nothing to compare against, the honest
+		// answer is that it could not be determined.
+		if landing.Status != gitstore.LandingUnknown || landing.Reason == "" {
+			t.Fatalf("missing mainline must answer unknown with a reason: %#v", landing)
+		}
+	}
+}
