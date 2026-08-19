@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will pin the gs executable failure contract for #6350: positional batch files must be consumed, bad batch input and missing flag values must exit non-zero, and the existing batch reference must remain accurate.","body":{"branch":"request/cli-failure-exit"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e359d6e7f78a3b9ffce2997abd5a7a8ae95efdb9"}
