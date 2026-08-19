@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3066306abca6508f44335a9f62e29d6537a33e78","text":"Replace the earlier schema/fold service candidate with the repaired exact-head artifact."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7da9d27ca2bcbe999432823ed0c6fa8177ad1bbd","text":"Replace the earlier schema/fold CLI candidate with the repaired exact-head artifact."}
