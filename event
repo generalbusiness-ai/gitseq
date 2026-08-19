@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at performance","body":{"commit":"05c0ab000cb99455e377dae129da467e516279c6","path":"performance"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:37c3007c9d50d73c4012db8c49f03d55fb0aa7da","text":"Merge retired a covered predecessor; the successor is at performance."}
