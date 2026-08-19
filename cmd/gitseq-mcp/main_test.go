@@ -72,7 +72,7 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 	if result["resultType"] != "complete" {
 		t.Fatalf("tool list has no complete result type: %#v", result)
 	}
-	if got := len(result["tools"].([]any)); got != 11 {
+	if got := len(result["tools"].([]any)); got != 12 {
 		t.Fatalf("got %d tools", got)
 	}
 	listed := make(map[string]map[string]any)
@@ -84,7 +84,7 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 			t.Fatalf("tool schema contains properties:null: %#v", tool)
 		}
 	}
-	for _, name := range []string{"work", "inspect"} {
+	for _, name := range []string{"work", "artifacts", "inspect"} {
 		if listed[name] == nil {
 			t.Fatalf("selective tool %q is missing: %#v", name, listed)
 		}
@@ -92,6 +92,10 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 	workProperties := listed["work"]["inputSchema"].(map[string]any)["properties"].(map[string]any)
 	if workProperties["lanes"] == nil || workProperties["statuses"] == nil || workProperties["cursor"] == nil {
 		t.Fatalf("work schema does not expose finite filters and continuation: %#v", workProperties)
+	}
+	artifactProperties := listed["artifacts"]["inputSchema"].(map[string]any)["properties"].(map[string]any)
+	if artifactProperties["paths"] == nil || artifactProperties["limit"] == nil || artifactProperties["cursor"] == nil {
+		t.Fatalf("artifact schema does not expose exact paths and continuation: %#v", artifactProperties)
 	}
 	var callResponse map[string]any
 	if err := json.Unmarshal([]byte(lines[2]), &callResponse); err != nil {
@@ -455,6 +459,14 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	if !ok || page.Frontier.Head == "" || page.Actor.Fingerprint != workspace.Config.Actors["human"].Fingerprint {
 		t.Fatalf("unexpected selective work response: %#v", value)
 	}
+	value, _, err = server.call(context.Background(), toolCall{Name: "artifacts", Arguments: map[string]any{"paths": []any{"ui"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactPage, ok := value.(statusview.ArtifactPage)
+	if !ok || artifactPage.Frontier.Head == "" || artifactPage.MatchingTotal != 0 || len(artifactPage.Paths) != 1 || artifactPage.Paths[0] != "ui" {
+		t.Fatalf("unexpected exact-path artifact response: %#v", value)
+	}
 
 	snapshot, err := workspace.Snapshot(context.Background())
 	if err != nil {
@@ -473,7 +485,7 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	mu.Lock()
 	gotPaths := append([]string(nil), paths...)
 	mu.Unlock()
-	if strings.Join(gotPaths, ",") != "/v0/work-query,/v0/inspect" {
+	if strings.Join(gotPaths, ",") != "/v0/work-query,/v0/artifact-query,/v0/inspect" {
 		t.Fatalf("selective tools used the wrong resident routes: %v", gotPaths)
 	}
 }
@@ -507,6 +519,9 @@ func TestStatusAndWaitUseBoundedResidentViews(t *testing.T) {
 	defer httpServer.Close()
 
 	server, attached := attachedServer(t, workspace, "human", httpServer.URL, httpServer.Client())
+	if got, want := laneResponseLimit(attached, actorStatusResponseLimit, statusview.ListCap), int64(actorStatusResponseLimit)+int64(statusview.ListCap)*int64(workspace.Config.PayloadCeiling); got != want {
+		t.Fatalf("lane response limit = %d, want structurally bounded %d", got, want)
+	}
 	attached.identityNoticeChecked = true
 	attached.announced = true
 	announcement, _ := json.Marshal(map[string]any{"actor": "human", "session": server.session, "ttl_ms": 60_000})
@@ -1339,6 +1354,10 @@ func TestStateToolCarriesTheUndefinedKindWarningInItsResult(t *testing.T) {
 			if summary := summarize("state", value); !strings.Contains(summary, warning) {
 				t.Fatalf("the text block %q does not carry the warning", summary)
 			}
+			projected, ok := result["projected"].(map[string]any)
+			if !ok || projected["verdict"] != string(workroom.UndefinedKind) {
+				t.Fatalf("state result omitted the fold ruling: %#v", result)
+			}
 
 			snapshot, err := workspace.Snapshot(context.Background())
 			if err != nil {
@@ -1368,6 +1387,10 @@ func TestStateToolCarriesTheUndefinedKindWarningInItsResult(t *testing.T) {
 			}
 			if warned, held := value.(map[string]any)["warning"]; held {
 				t.Fatalf("a defined kind warned anyway: %v", warned)
+			}
+			projected, ok = value.(map[string]any)["projected"].(map[string]any)
+			if !ok || projected["verdict"] != string(workroom.Effective) {
+				t.Fatalf("effective state result omitted the fold ruling: %#v", value)
 			}
 		})
 	}
@@ -2040,8 +2063,9 @@ func TestProjectionNotesSayHowTheFoldReadTheAct(t *testing.T) {
 		t.Error("a citation that does resolve was reported as unresolved")
 	}
 
-	// The fold's own ruling, when it is anything but plain effect. An
-	// ineffective act still returns a record and still reads as success.
+	// The fold's own ruling is always present. An ineffective act still returns
+	// a record and still reads as success, while omission on an effective act
+	// would force a second projection read to distinguish effect from failure.
 	ruled := known
 	ruled.Decisions = []workroom.Decision{{Event: event, Verdict: workroom.Ineffective, Reason: "dangling promise has no request"}}
 	notes = projectionNotes(ruled, report, event)
@@ -2050,8 +2074,8 @@ func TestProjectionNotesSayHowTheFoldReadTheAct(t *testing.T) {
 	}
 	effective := known
 	effective.Decisions = []workroom.Decision{{Event: event, Verdict: workroom.Effective}}
-	if _, noisy := projectionNotes(effective, report, event)["verdict"]; noisy {
-		t.Error("an ordinary effective act was annotated with a verdict it did not need")
+	if got := projectionNotes(effective, report, event)["verdict"]; got != string(workroom.Effective) {
+		t.Errorf("an ordinary effective act omitted its fold ruling: %v", got)
 	}
 
 	// With no event to look up there is nothing honest to say.

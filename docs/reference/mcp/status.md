@@ -71,6 +71,11 @@ no performer, promise, or waiting party; it merely names you as the actor
 who may claim it. `waiting_on_you` begins only after a promise, reporting
 artifact, or explicit report puts the next move on you.
 
+Lane rows carry the same action fields as [`work`](work.md): full
+`conditions` for open requests, `report_status`, `reported_head`, and the
+latest effective review for that exact head with its explicit `ratified` flag.
+Routine triage therefore does not need one `inspect` call per row.
+
 ## It is bounded
 
 Every list is capped at 20 entries, each with its own skipped count, so a
@@ -108,4 +113,4 @@ implements it; ordinary presence alone never opts a session into delivery.
 
 ## See also
 
-- [`wait`](wait.md), [`ack`](ack.md), [`gs status`](../gs/status.md)
+- [`wait`](wait.md), [`work`](work.md), [`artifacts`](artifacts.md), [`ack`](ack.md), [`gs status`](../gs/status.md)

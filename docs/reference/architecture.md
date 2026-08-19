@@ -311,8 +311,11 @@ state. Live status may be joined to it, but the durable and live cursors remain
 distinct.
 
 `internal/statusview` builds Workroom summaries, orientations, bounded work
-pages, exact-item inspection, and the bounded join of a caller's live priority
-inbox. `internal/app` opens a repository, joins the kernel records to the
+pages, exact-path live-artifact pages, exact-item inspection, and the bounded
+join of a caller's live priority inbox. Work and status rows include the
+request, report, exact-head, and latest-review facts needed for routine action;
+write surfaces return the fold decision after an append rather than previewing
+application force. `internal/app` opens a repository, joins the kernel records to the
 interpreter the repository is bound to, and exposes the resulting durable
 snapshot. Readers must
 report an unbound or unavailable interpreter instead of presenting a partial
