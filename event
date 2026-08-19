@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8a91e27e2ebec6da618d6bc80ed18d4780dc1456","text":"Retire the 0ac0bcf0 multi-resident candidate at internal/app per root's dot-repair-first ordering; re-cut after cca1f8 lands. No successor yet."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1dfba7738d754c29e3b07c6dcb02be258956616f","text":"Retire the 0ac0bcf0 multi-resident candidate at internal/gitstore per root's dot-repair-first ordering; re-cut after cca1f8 lands. No successor yet."}
