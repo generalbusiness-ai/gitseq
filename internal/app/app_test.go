@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -88,6 +90,100 @@ func TestSubmissionAndReloadPreserveEventTimestamp(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertTimestamp("reloaded", reloaded)
+}
+
+func TestBuildActRequestHashesPayloadTreeUntilAdmissionWritesIt(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unique := "payload tree stays unwritten before admission: " + t.TempDir()
+	act := Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: unique,
+		RestsOn: []string{seed.ID}, IdempotencyKey: "hash-before-admission",
+		Attachments: map[string][]byte{"proof.txt": []byte(unique)},
+	}
+
+	const builders = 16
+	type buildResult struct {
+		request kernel.Request
+		err     error
+	}
+	results := make(chan buildResult, builders)
+	var group sync.WaitGroup
+	for range builders {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			request, buildErr := workspace.BuildActRequest(ctx, private, "human", act)
+			results <- buildResult{request: request, err: buildErr}
+		}()
+	}
+	group.Wait()
+	close(results)
+
+	var request kernel.Request
+	var tree string
+	for result := range results {
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		decoded, err := intent.Verify(result.request.Signed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		format, builtTree, err := gitstore.ParseTypedOID(decoded.PayloadTree)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if format != workspace.Config.ObjectFormat {
+			t.Fatalf("payload tree format = %q, want %q", format, workspace.Config.ObjectFormat)
+		}
+		if tree == "" {
+			tree = builtTree
+			request = result.request
+		} else if builtTree != tree {
+			t.Fatalf("concurrent payload tree = %s, want %s", builtTree, tree)
+		}
+	}
+	if _, err := workspace.Store.ReadFile(ctx, tree, "event"); err == nil {
+		t.Fatalf("BuildActRequest wrote payload tree %s before admission", tree)
+	}
+
+	submission, err := workspace.AcceptSubmission(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, err := workspace.Store.ReadFile(ctx, tree, "event")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(event, request.Payload) {
+		t.Fatalf("written event payload differs from signed request")
+	}
+	attachment, err := workspace.Store.ReadFile(ctx, tree, "attachments/proof.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(attachment) != unique {
+		t.Fatalf("written attachment = %q, want %q", attachment, unique)
+	}
+	snapshot := workspace.mustSnapshot(t, ctx)
+	if snapshot.Head != submission.Result.Head {
+		t.Fatalf("snapshot head = %s, want admitted head %s", snapshot.Head, submission.Result.Head)
+	}
+
+	invalid := act
+	invalid.IdempotencyKey = "invalid-attachment"
+	invalid.Attachments = map[string][]byte{".hidden": []byte("refused")}
+	if _, err := workspace.BuildActRequest(ctx, private, "human", invalid); err == nil || !strings.Contains(err.Error(), "invalid attachment name") {
+		t.Fatalf("invalid attachment error = %v", err)
+	}
 }
 
 // Run with -benchtime=1x. Setup constructs one ordinary signed chain, then
