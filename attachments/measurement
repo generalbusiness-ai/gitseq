@@ -1,0 +1,1 @@
+500 primary samples (100 at each width); 0 correctness mismatches; PREVIEW through 64 and FIRST-PRODUCTION through 256 pass the 10% relative median-increase envelope; width-one fixed 50 ms append budget misses
