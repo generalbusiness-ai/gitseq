@@ -506,11 +506,7 @@ func (w *Workspace) save() error {
 	if err != nil {
 		return err
 	}
-	temporary := filepath.Join(w.MetaDir, "config.json.tmp")
-	if err := os.WriteFile(temporary, append(content, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(temporary, filepath.Join(w.MetaDir, "config.json"))
+	return writeFileAtomically(filepath.Join(w.MetaDir, "config.json"), append(content, '\n'))
 }
 
 func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Workspace, error) {

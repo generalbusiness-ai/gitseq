@@ -38,11 +38,7 @@ func (w *Workspace) PublishResident(url string) (withdraw func(), err error) {
 		return nil, err
 	}
 	path := filepath.Join(w.MetaDir, residentFile)
-	temporary := path + ".tmp"
-	if err := os.WriteFile(temporary, content, 0o600); err != nil {
-		return nil, err
-	}
-	if err := os.Rename(temporary, path); err != nil {
+	if err := writeFileAtomically(path, content); err != nil {
 		return nil, err
 	}
 	return func() {
