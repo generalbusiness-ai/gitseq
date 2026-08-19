@@ -488,48 +488,6 @@ func (s Store) ListFiles(ctx context.Context, commit, directory string) ([]strin
 	return strings.Fields(string(output)), nil
 }
 
-// ValidatePayloadTree checks the kernel's only payload semantics: one event
-// blob, optional flat attachments, and a total inline byte ceiling.
-func (s Store) ValidatePayloadTree(ctx context.Context, tree string, ceiling uint64) error {
-	argv := []string{"--git-dir", s.Repo, "ls-tree", "-lrz", "--full-tree", tree}
-	output, err := exec.CommandContext(ctx, "git", argv...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git ls-tree: %w: %s", err, bytes.TrimSpace(output))
-	}
-	seenEvent := false
-	var total uint64
-	for _, record := range bytes.Split(output, []byte{0}) {
-		if len(record) == 0 {
-			continue
-		}
-		parts := bytes.SplitN(record, []byte{'\t'}, 2)
-		if len(parts) != 2 {
-			return errors.New("malformed payload tree entry")
-		}
-		metadata := strings.Fields(string(parts[0]))
-		path := string(parts[1])
-		if len(metadata) != 4 || metadata[1] != "blob" {
-			return fmt.Errorf("payload path %q is not a blob", path)
-		}
-		size, err := strconv.ParseUint(metadata[3], 10, 64)
-		if err != nil || total > ceiling || size > ceiling-total {
-			return errors.New("payload exceeds genesis ceiling")
-		}
-		total += size
-		switch {
-		case path == "event" && !seenEvent:
-			seenEvent = true
-		case strings.HasPrefix(path, "attachments/") && attachmentName.MatchString(strings.TrimPrefix(path, "attachments/")):
-		default:
-			return fmt.Errorf("invalid payload path %q", path)
-		}
-	}
-	if !seenEvent {
-		return errors.New("payload tree has no event blob")
-	}
-	return nil
-}
-
 func (s Store) CommitParents(ctx context.Context, oid string) ([]string, error) {
 	output, err := s.run(ctx, nil, nil, "show", "-s", "--format=%P", oid)
 	if err != nil {

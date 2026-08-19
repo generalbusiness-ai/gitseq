@@ -939,6 +939,103 @@ func TestDeltaAuditUsesConstantGitProcesses(t *testing.T) {
 	}
 }
 
+func TestListedDeltaUsesOnlyEnumeratedObjectIDs(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
+	baseHead, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	freshBase := func() scannedLog {
+		t.Helper()
+		log, err := scanHead(f.ctx, f.store, f.genesis, baseHead, true, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return log
+	}
+	head := baseHead
+	for index := 0; index < 6; index++ {
+		key := "listed-object-id-" + strconv.Itoa(index)
+		result, err := submitter.Submit(f.ctx, f.request(t, private, key, []byte(key), nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		head = result.Head
+	}
+	var honest []gitstore.CommitMetadata
+	if err := f.store.WalkRevListMetadataAfter(f.ctx, baseHead, head, func(commit gitstore.CommitMetadata) error {
+		honest = append(honest, commit)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(honest) != 6 {
+		t.Fatalf("listed tail has %d records, want 6", len(honest))
+	}
+
+	if _, err := scanListedAfter(f.ctx, f.store, freshBase(), head, cloneCommitMetadata(honest), true); err != nil {
+		t.Fatalf("honest listed tail refused: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func([]gitstore.CommitMetadata) []gitstore.CommitMetadata
+		wantErr bool
+	}{
+		{"reordered", func(commits []gitstore.CommitMetadata) []gitstore.CommitMetadata {
+			commits[2], commits[3] = commits[3], commits[2]
+			return commits
+		}, true},
+		{"dropped-middle", func(commits []gitstore.CommitMetadata) []gitstore.CommitMetadata {
+			return append(commits[:2:2], commits[3:]...)
+		}, true},
+		{"dropped-last", func(commits []gitstore.CommitMetadata) []gitstore.CommitMetadata {
+			return commits[:len(commits)-1]
+		}, true},
+		{"duplicated", func(commits []gitstore.CommitMetadata) []gitstore.CommitMetadata {
+			return append(append(commits[:3:3], commits[2]), commits[3:]...)
+		}, true},
+		{"empty-list-nonmatching-head", func([]gitstore.CommitMetadata) []gitstore.CommitMetadata {
+			return nil
+		}, true},
+		{"forged-metadata-fields", func(commits []gitstore.CommitMetadata) []gitstore.CommitMetadata {
+			for index := range commits {
+				commits[index].Parents = []string{baseHead}
+				commits[index].Tree = "0000000000000000000000000000000000000000"
+				commits[index].Message = "forged rotation\n\nGitseq-Rotate-To: ssh-ed25519 AAAA\n"
+				commits[index].Timestamp = 1
+			}
+			return commits
+		}, false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := scanListedAfter(f.ctx, f.store, freshBase(), head, test.mutate(cloneCommitMetadata(honest)), true)
+			if test.wantErr {
+				if err == nil {
+					t.Fatalf("hostile listed tail %q was accepted", test.name)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("forged manifest metadata changed verification: %v", err)
+			}
+			if got.Verification.Head != head || got.Verification.Events != 6 {
+				t.Fatalf("forged manifest metadata altered the result: %+v", got.Verification)
+			}
+		})
+	}
+}
+
+func cloneCommitMetadata(commits []gitstore.CommitMetadata) []gitstore.CommitMetadata {
+	cloned := make([]gitstore.CommitMetadata, len(commits))
+	copy(cloned, commits)
+	return cloned
+}
+
 // Run with -benchtime=1x. Setup deliberately constructs an ordinary 20,000
 // event history through the signed resident submission path; only restart is
 // timed.
