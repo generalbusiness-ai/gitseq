@@ -47,12 +47,12 @@ func workSnapshot(count int) app.Snapshot {
 	return app.Snapshot{Genesis: "genesis", Head: "head-one", Depth: len(projection.Decisions), Projection: projection}
 }
 
-func TestWorkQueryDefaultsIncludeAddressedAndStaleWorkWithoutWaitingDebt(t *testing.T) {
+func TestWorkQueryDefaultsIncludeAddressedWorkWithoutWaitingDebt(t *testing.T) {
 	page, err := BuildWorkPage(workSnapshot(2), WorkQuery{Actor: queryActor, Limit: 10}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.MatchingTotal != 4 || page.Returned != 4 || page.Remaining != 0 {
+	if page.MatchingTotal != 3 || page.Returned != 3 || page.Remaining != 0 {
 		t.Fatalf("unexpected counts: %+v", page)
 	}
 	lanes := make(map[string]WorkItem)
@@ -66,8 +66,11 @@ func TestWorkQueryDefaultsIncludeAddressedAndStaleWorkWithoutWaitingDebt(t *test
 	if waiting := lanes["request:waiting"]; waiting.Lane != LaneWaitingOnYou || waiting.WaitingOn == nil || waiting.WaitingOn.Fingerprint != queryActor {
 		t.Fatalf("promised work lost its waiting lane: %+v", waiting)
 	}
-	if stale := lanes["request:stale"]; stale.Lane != LaneNotActionable || !stale.Stale || stale.Status != "satisfied" {
-		t.Fatalf("default query hid stale closed work: %+v", stale)
+	if _, included := lanes["request:stale"]; included {
+		t.Fatal("default query buried current work under a closed commitment carrying ordinary staleness")
+	}
+	if page.ClosedStaleOmitted != 1 {
+		t.Fatalf("the default page does not say how many closed stale rows it summarized: %+v", page)
 	}
 	if _, included := lanes["request:unrelated"]; included {
 		t.Fatal("default query included another actor's work")
@@ -79,8 +82,60 @@ func TestWorkQueryDefaultsIncludeAddressedAndStaleWorkWithoutWaitingDebt(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if history.MatchingTotal != 2 {
+	if history.MatchingTotal != 2 || history.ClosedStaleOmitted != 0 {
 		t.Fatalf("explicit lifecycle filter did not recover settled history: %+v", history)
+	}
+}
+
+// Nothing is hidden, only summarized. Every explicit staleness policy returns
+// exactly what it returned before the default became a summary, so a caller
+// who asks for the detail still gets every record.
+func TestExplicitStalePoliciesStillReturnEveryRecord(t *testing.T) {
+	snapshot := workSnapshot(2)
+	included, err := BuildWorkPage(snapshot, WorkQuery{Actor: queryActor, Stale: StaleInclude, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if included.MatchingTotal != 4 || included.ClosedStaleOmitted != 0 {
+		t.Fatalf("stale=include did not list the closed stale commitment: %+v", included)
+	}
+	var closed *WorkItem
+	for index := range included.Items {
+		if included.Items[index].Request == "request:stale" {
+			closed = &included.Items[index]
+		}
+	}
+	if closed == nil || closed.Lane != LaneNotActionable || !closed.Stale || closed.Status != "satisfied" {
+		t.Fatalf("stale=include lost the row, its lane, its status or its qualifier: %+v", included.Items)
+	}
+
+	only, err := BuildWorkPage(snapshot, WorkQuery{Actor: queryActor, Stale: StaleOnly, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if only.MatchingTotal != 1 || only.Items[0].Request != "request:stale" {
+		t.Fatalf("stale=only did not isolate the stale record: %+v", only)
+	}
+
+	excluded, err := BuildWorkPage(snapshot, WorkQuery{Actor: queryActor, Stale: StaleExclude, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if excluded.MatchingTotal != 3 {
+		t.Fatalf("stale=exclude changed: %+v", excluded)
+	}
+
+	// The default is its own policy. Naming it explicitly is allowed and means
+	// the same thing; an unknown word is still refused rather than guessed.
+	named, err := BuildWorkPage(snapshot, WorkQuery{Actor: queryActor, Stale: StaleSummary, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if named.MatchingTotal != 3 || named.ClosedStaleOmitted != 1 {
+		t.Fatalf("naming the default policy changed the answer: %+v", named)
+	}
+	if _, err := BuildWorkPage(snapshot, WorkQuery{Actor: queryActor, Stale: "sometimes"}, false); err == nil {
+		t.Fatal("an unknown staleness policy was guessed rather than refused")
 	}
 }
 

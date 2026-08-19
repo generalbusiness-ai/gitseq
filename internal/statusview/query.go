@@ -32,6 +32,14 @@ const (
 type StaleFilter string
 
 const (
+	// StaleSummary is the policy a caller who names none gets. Ordinary
+	// reasoning staleness on a closed commitment is history: it blocks
+	// nothing, it reaches nearly nine closed commitments in ten here, and listing
+	// each one buried the work still owed. Those rows are counted in
+	// WorkPage.ClosedStaleOmitted rather than returned. Every other staleness
+	// fact is untouched, and every row that is returned still carries its own
+	// stale field.
+	StaleSummary StaleFilter = "summary"
 	StaleInclude StaleFilter = "include"
 	StaleOnly    StaleFilter = "only"
 	StaleExclude StaleFilter = "exclude"
@@ -41,12 +49,15 @@ const (
 // language: callers choose named relationship lanes, lifecycle statuses, and
 // one staleness policy, then continue through an opaque head-bound cursor.
 type WorkQuery struct {
-	Actor    string      `json:"actor"`
-	Lanes    []WorkLane  `json:"lanes,omitempty"`
-	Statuses []string    `json:"statuses,omitempty"`
-	Stale    StaleFilter `json:"stale,omitempty"`
-	Limit    int         `json:"limit,omitempty"`
-	Cursor   string      `json:"cursor,omitempty"`
+	Actor    string     `json:"actor"`
+	Lanes    []WorkLane `json:"lanes,omitempty"`
+	Statuses []string   `json:"statuses,omitempty"`
+	// Stale defaults to StaleSummary, which is not the same as StaleInclude.
+	// The default answers "what is still owed"; include, only and exclude are
+	// the explicit policies and each returns exactly what it always did.
+	Stale  StaleFilter `json:"stale,omitempty"`
+	Limit  int         `json:"limit,omitempty"`
+	Cursor string      `json:"cursor,omitempty"`
 }
 
 type ActorRef struct {
@@ -100,7 +111,11 @@ type WorkPage struct {
 	Before        int        `json:"before"`
 	Remaining     int        `json:"remaining"`
 	NextCursor    string     `json:"next_cursor,omitempty"`
-	Degraded      bool       `json:"degraded,omitempty"`
+	// ClosedStaleOmitted counts the closed commitments the default staleness
+	// policy summarized instead of listing. Nothing is hidden: pass
+	// stale=include, or name the statuses, to get every one of them back.
+	ClosedStaleOmitted int  `json:"closed_stale_omitted,omitempty"`
+	Degraded           bool `json:"degraded,omitempty"`
 }
 
 type workCursor struct {
@@ -137,9 +152,9 @@ func normalizeWorkQuery(input WorkQuery) (WorkQuery, string, error) {
 		return WorkQuery{}, "", fmt.Errorf("limit must be between 1 and %d", WorkPageMax)
 	}
 	if input.Stale == "" {
-		input.Stale = StaleInclude
+		input.Stale = StaleSummary
 	}
-	if input.Stale != StaleInclude && input.Stale != StaleOnly && input.Stale != StaleExclude {
+	if input.Stale != StaleSummary && input.Stale != StaleInclude && input.Stale != StaleOnly && input.Stale != StaleExclude {
 		return WorkQuery{}, "", fmt.Errorf("unknown stale filter %q", input.Stale)
 	}
 	if len(input.Lanes) == 0 {
@@ -250,14 +265,25 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 		statuses[status] = true
 	}
 	items := make([]WorkItem, 0, query.Limit)
-	matching := 0
+	matching, closedStale := 0, 0
 	for index := len(durable.Projection.Commitments) - 1; index >= 0; index-- {
 		commitment := durable.Projection.Commitments[index]
 		lane := commitmentLane(commitment, query.Actor)
 		if lane == "" || !lanes[lane] {
 			continue
 		}
-		if len(statuses) > 0 && !statuses[commitment.Status] || len(statuses) == 0 && !actionable[commitment.Status] && !commitment.Stale {
+		if len(statuses) > 0 {
+			if !statuses[commitment.Status] {
+				continue
+			}
+		} else if !actionable[commitment.Status] && !commitment.Stale {
+			continue
+		} else if query.Stale == StaleSummary && terminal[commitment.Status] {
+			// Named statuses and an explicit staleness policy both say the
+			// caller wants this history. Naming neither asks for the work
+			// still owed, so a satisfied or withdrawn commitment that only
+			// carries ordinary staleness is counted, not listed.
+			closedStale++
 			continue
 		}
 		if query.Stale == StaleOnly && !commitment.Stale || query.Stale == StaleExclude && commitment.Stale {
@@ -286,7 +312,7 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 		Frontier: Frontier{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth},
 		Actor:    ActorRef{Fingerprint: query.Actor, Name: Text(ActorName(durable.Projection, query.Actor))},
 		Items:    items, MatchingTotal: matching, Returned: len(items), Before: offset,
-		Remaining: matching - end, Degraded: degraded,
+		Remaining: matching - end, ClosedStaleOmitted: closedStale, Degraded: degraded,
 	}
 	if end < matching {
 		page.NextCursor = encodeWorkCursor(durable.Head, filter, end)

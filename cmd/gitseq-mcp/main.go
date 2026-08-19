@@ -552,10 +552,10 @@ func tools() []map[string]any {
 		}))},
 		{"name": "status", "description": "Project durable work and this session's priority ephemeral chat; available_to_you contains open unclaimed requests addressed to this actor.", "inputSchema": object(withRepo(nil))},
 		{"name": "wait", "description": "Long-poll after a composite cursor; repeats unacknowledged priority ephemeral chat until ack is called.", "inputSchema": object(withRepo(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
-		{"name": "work", "description": "Query the current actor's durable work through a bounded resident-side projection. Defaults include addressed unclaimed work and stale commitments.", "inputSchema": object(withRepo(map[string]any{
+		{"name": "work", "description": "Query the current actor's durable work through a bounded resident-side projection. Defaults return the work still owed, including addressed unclaimed work; closed commitments carrying only ordinary staleness are counted in closed_stale_omitted instead of listed. Pass stale=include or name statuses to list them.", "inputSchema": object(withRepo(map[string]any{
 			"lanes":    arrayOf(enum("available_to_you", "waiting_on_you", "you_are_waiting_on", "not_actionable")),
 			"statuses": arrayOf(enum("open", "promised", "reported", "satisfied", "stale", "cancelled", "reneged", "withdrawn")),
-			"stale":    enum("include", "only", "exclude"),
+			"stale":    enum("summary", "include", "only", "exclude"),
 			"limit":    map[string]any{"type": "integer", "minimum": 1, "maximum": statusview.WorkPageMax},
 			"cursor":   stringField,
 		}))},

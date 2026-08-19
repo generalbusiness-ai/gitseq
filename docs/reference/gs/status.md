@@ -63,17 +63,57 @@ fallback`. Then a line of totals, and six sections:
 | Dissents | Standing objections, each naming the act it is recorded against. |
 | Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
 
-Staleness qualifies a commitment rather than replacing its status. A
-reported commitment whose basis was retired still reads `reported`,
-still sits with the work awaiting review, and gains a `(stale)` mark;
-the totals count it in both `reported N` and the `(M stale)` beside it.
-A satisfied or withdrawn commitment whose basis moved appears under
-"Needs attention", because the outcome is worth re-checking. A
-commitment that was never reported has no outcome to preserve, so its
-status is `stale` outright and the mark is not repeated.
-
 Satisfied and withdrawn commitments are finished, and are counted in the
 totals rather than listed.
+
+## Two kinds of staleness
+
+Both are called staleness, and only one of them is a reason to stop.
+
+**Ordinary reasoning staleness** means a basis under a record was
+retired. The reasoning that led to the record moved; the record itself
+did not. It blocks nothing: a merge may still land the exact head an
+approval named, and it records the movement in its receipt.
+
+**A superseded world** is narrower. It means the retired ancestor was
+itself an artifact, so the behaviour the record describes has been
+replaced. An approval carrying it cannot merge, and the work needs a
+fresh artifact on current bases rather than another review of the same
+chain.
+
+The difference matters here because the first one is ordinary. In a
+workroom of any age most closed commitments and most artifacts carry it,
+so a mark on every row would fire almost everywhere and tell a reader
+nothing about which row to pick — and a warning that fires everywhere
+teaches people to ignore the one that does not.
+
+So the default view **counts ordinary staleness and marks no row with
+it**:
+
+- Commitment rows carry their lifecycle status and no stale mark. The
+  totals line carries the fact per lane instead: `reported 27 (24
+  stale)` says how many of that lane's commitments rest on something
+  retired.
+- A satisfied or withdrawn commitment stays out of the lists whether or
+  not it is stale. It is finished, and a basis moving under it afterwards
+  does not reopen it. The totals still count it.
+- A commitment that was never reported has no outcome to preserve, so
+  the fold gives it the status `stale` outright. That is unfinished work,
+  it appears under "Needs attention", and the word is not repeated.
+
+The loud facts stay on their own rows. A retired artifact reads
+`retired`, and an artifact describing a superseded world says so in its
+notes, wherever either occurs. The totals line counts each of them
+separately from ordinary staleness:
+
+```
+Artifacts: 55 current, 121 stale, 1037 retired, 388 describing a superseded world.
+```
+
+Nothing is lost. [`--all`](#all) prints a `qualifiers` column with
+`stale` on every commitment that carries it, and `--json` carries the
+`stale` field on every record. The bounded summary the resident serves
+keeps its per-row `stale` field too — only the rendered page is quiet.
 
 ## Why this disagrees with the Work drawer
 

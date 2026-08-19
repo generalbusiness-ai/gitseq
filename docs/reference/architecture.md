@@ -322,6 +322,23 @@ instead of presenting a partial
 projection as authoritative. In particular, a degraded client marks priority
 chat unavailable; it does not invent an empty live inbox.
 
+The bounded views hold a record's staleness apart from its lifecycle, and the
+omission rules that follow are part of the projection contract rather than
+presentation detail. Ordinary reasoning staleness qualifies a status; it does
+not reopen a finished commitment. A satisfied or withdrawn commitment is
+omitted from every default lane whether or not it is stale, and the per-status
+counts carry it instead, so a caller reading a default lane is reading work
+still owed rather than history. The staleness policy on a work query is a
+named value and not an absence: an omitted policy means `summary`, which is
+not `include`, and the explicit `include`, `only` and `exclude` policies each
+return what they always returned. Naming any lifecycle status also overrides
+the summary. A page reports what the summary left out in
+`closed_stale_omitted`, which is omitted when it is zero. Retirement and a
+superseded world remain individually visible wherever they occur and are
+counted apart from ordinary staleness in `retired_artifacts` and
+`world_stale_artifacts`, both always present, because one figure covering
+every non-current artifact answers nothing in a workroom of any age.
+
 ### 7. CLI, MCP, skills, connectors, and UI
 
 The outer surfaces present one application to people and programs:
@@ -330,6 +347,10 @@ The outer surfaces present one application to people and programs:
   projection, review, merge, and resident commands.
 - `cmd/gitseq-mcp` exposes Workroom tools and live coordination over an MCP
   transport. The MCP protocol is a surface contract, not the Workroom fold.
+  The `work` tool's `stale` enum admits `summary`, `include`, `only` and
+  `exclude`, and `summary` is what a call that names no policy receives. The
+  tool schema is the surface contract for that default; the selection it
+  names belongs to the projection above.
 - `SKILL.md` is the normative operating contract for an agent participating
   in the Workroom application.
 - `internal/connector/github` and `cmd/gitseq-github` translate admitted

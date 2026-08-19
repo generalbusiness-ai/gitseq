@@ -194,6 +194,12 @@ func qualifierProjection() workroom.Projection {
 			{Request: "request:promised", Requester: "requester", Performer: "performer", Status: "promised", WaitingOn: "performer"},
 			{Request: "request:never-reported", Requester: "requester", Performer: "performer", Status: "stale", Stale: true},
 		},
+		Artifacts: []workroom.Artifact{
+			{Event: "artifact:current", Path: "internal/a", Commit: "commit-a"},
+			{Event: "artifact:stale", Path: "internal/b", Commit: "commit-b", Stale: true},
+			{Event: "artifact:retired", Path: "internal/c", Commit: "commit-c", Retired: true},
+			{Event: "artifact:world", Path: "internal/d", Commit: "commit-d", Stale: true, DescribesSupersededWorld: true},
+		},
 	}
 }
 
@@ -234,23 +240,47 @@ func TestStaleReportedKeepsItsStatusLaneAndQualifier(t *testing.T) {
 	}
 }
 
-// A satisfied commitment is finished, so the bounded lists leave it out. If a
-// basis under it was retired the outcome is worth re-checking, and dropping
-// the row is the projection lying by omission.
-func TestStaleTerminalCommitmentStaysVisibleAndSettledOneDoesNot(t *testing.T) {
+// A satisfied commitment is finished, so the bounded lists leave it out, and
+// ordinary reasoning staleness does not bring it back. That staleness blocks
+// nothing and reaches most closed commitments, so a row for each one buried
+// the work still owed. The count keeps the fact.
+func TestOrdinaryStalenessDoesNotReopenAClosedCommitment(t *testing.T) {
 	summary := Build("genesis", "head", 1, qualifierProjection())
-	stale := findCommitment(summary.Attention, "request:satisfied-stale")
-	if stale == nil {
-		t.Fatalf("a stale satisfied commitment was skipped entirely: %#v", summary)
+	for _, request := range []string{"request:satisfied-stale", "request:satisfied-clean"} {
+		if findCommitment(summary.Attention, request) != nil || findCommitment(summary.Actionable, request) != nil {
+			t.Fatalf("a finished commitment was listed as work: %s in %#v", request, summary)
+		}
 	}
-	if stale.Status != "satisfied" || !stale.Stale {
-		t.Fatalf("stale satisfied commitment lost its outcome or its qualifier: %#v", *stale)
+	if summary.Totals.Commitments["satisfied"] != 2 || summary.Totals.StaleCommitments["satisfied"] != 1 {
+		t.Fatalf("the counts stopped carrying what the lists no longer show: %#v", summary.Totals)
 	}
-	if findCommitment(summary.Actionable, "request:satisfied-stale") != nil {
-		t.Fatalf("a finished commitment was presented as actionable: %#v", summary.Actionable)
+	// A commitment nobody ever reported has no outcome to preserve, so the
+	// fold gives it the status stale outright. That is unfinished work, not
+	// history, and it stays listed.
+	if findCommitment(summary.Attention, "request:never-reported") == nil {
+		t.Fatalf("a never-reported commitment was summarized away as history: %#v", summary.Attention)
 	}
-	if findCommitment(summary.Attention, "request:satisfied-clean") != nil || findCommitment(summary.Actionable, "request:satisfied-clean") != nil {
-		t.Fatalf("a settled commitment with nothing wrong was listed as work: %#v", summary)
+}
+
+// Ordinary staleness reaches nearly every artifact, so one "stale" figure
+// covering all of it answered nothing. Retirement and a superseded world are
+// the two facts a reader acts on, and each gets its own count and stays
+// visible on its own row.
+func TestArtifactTotalsSeparateTheLoudFactsFromOrdinaryStaleness(t *testing.T) {
+	summary := Build("genesis", "head", 1, qualifierProjection())
+	if summary.Totals.Artifacts != 4 || summary.Totals.StaleArtifacts != 3 ||
+		summary.Totals.RetiredArtifacts != 1 || summary.Totals.WorldStaleArtifacts != 1 {
+		t.Fatalf("artifact totals cannot tell the three conditions apart: %#v", summary.Totals)
+	}
+	rendered := Render(summary, "test")
+	if !bytes.Contains(rendered, []byte("Artifacts: 1 current, 2 stale, 1 retired, 1 describing a superseded world")) {
+		t.Fatalf("the totals line does not name the loud facts:\n%s", rendered)
+	}
+	if !bytes.Contains(rendered, []byte("internal/d@commit-d — `artifact:world` — describes a superseded world")) {
+		t.Fatalf("world-staleness lost its own row:\n%s", rendered)
+	}
+	if !bytes.Contains(rendered, []byte("internal/c@commit-c")) {
+		t.Fatalf("a retired artifact lost its own row:\n%s", rendered)
 	}
 }
 
@@ -267,23 +297,40 @@ func TestBoundedTotalsCountStaleBesideStatus(t *testing.T) {
 	}
 }
 
-func TestRenderedSummaryShowsTheStaleQualifier(t *testing.T) {
-	rendered := Render(Build("genesis", "head", 1, qualifierProjection()), "test")
-	for _, want := range []string{"reported 2 (1 stale)", "satisfied 2 (1 stale)", "reported (stale)", "satisfied (stale)"} {
+// Ordinary staleness is a count per lane on the default page and nothing else.
+// Marking each row fired a warning on nearly every row of a real workroom and
+// changed nothing a reader could do, which is what taught readers to ignore
+// the marks that do mean something.
+func TestRenderedSummaryCountsOrdinaryStalenessPerLaneAndMarksNoRow(t *testing.T) {
+	summary := Build("genesis", "head", 1, qualifierProjection())
+	rendered := Render(summary, "test")
+	for _, want := range []string{"reported 2 (1 stale)", "satisfied 2 (1 stale)"} {
 		if !bytes.Contains(rendered, []byte(want)) {
-			t.Fatalf("rendered status is missing %q:\n%s", want, rendered)
+			t.Fatalf("rendered status is missing the per-lane count %q:\n%s", want, rendered)
 		}
+	}
+	if bytes.Contains(rendered, []byte("(stale)")) {
+		t.Fatalf("rendered status marks a row with ordinary staleness:\n%s", rendered)
 	}
 	if bytes.Contains(rendered, []byte("promised 1 (")) {
 		t.Fatalf("rendered status qualified a commitment that is not stale:\n%s", rendered)
 	}
 	// A commitment that was never reported has no outcome to preserve, so
 	// "stale" is already its whole status. Saying it twice is noise.
-	if bytes.Contains(rendered, []byte("stale (stale)")) || bytes.Contains(rendered, []byte("stale 1 (1 stale)")) {
+	if bytes.Contains(rendered, []byte("stale 1 (1 stale)")) {
 		t.Fatalf("rendered status repeats the word stale:\n%s", rendered)
 	}
 	if !bytes.Contains(rendered, []byte("- stale — Ada")) {
 		t.Fatalf("a never-reported stale commitment lost its row:\n%s", rendered)
+	}
+	// Quieting the page must not quiet the payload. The bounded JSON the
+	// resident serves still carries the qualifier per row.
+	encoded, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, []byte(`"stale":true`)) {
+		t.Fatalf("the bounded JSON stopped carrying the qualifier:\n%s", encoded)
 	}
 }
 

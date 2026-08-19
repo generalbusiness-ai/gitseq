@@ -95,12 +95,13 @@ func TestActorStatusCarriesStaleQualifierWithoutChangingLanes(t *testing.T) {
 	if clean := findCommitmentView(digest.WaitingOnYou, "request:reported-clean"); clean == nil || clean.Stale {
 		t.Fatalf("an unqualified report was marked stale: %#v", clean)
 	}
-	settled := findCommitmentView(digest.NotActionable, "request:satisfied-stale")
-	if settled == nil || settled.Status != "satisfied" || !settled.Stale {
-		t.Fatalf("a stale satisfied commitment was skipped or lost its outcome: %#v", digest.NotActionable)
-	}
-	if findCommitmentView(digest.NotActionable, "request:satisfied-clean") != nil {
-		t.Fatalf("a settled commitment with nothing wrong was listed: %#v", digest.NotActionable)
+	// Ordinary staleness under a finished commitment is history: it blocks
+	// nothing, and a lane full of it hid the rows that are still owed. The
+	// totals below keep the fact.
+	for _, request := range []string{"request:satisfied-stale", "request:satisfied-clean"} {
+		if findCommitmentView(digest.NotActionable, request) != nil {
+			t.Fatalf("a finished commitment was listed in a lane: %s in %#v", request, digest.NotActionable)
+		}
 	}
 	if digest.Totals.StaleCommitments["reported"] != 1 || digest.Totals.StaleCommitments["satisfied"] != 1 {
 		t.Fatalf("actor totals cannot identify stale commitments: %#v", digest.Totals)
@@ -122,12 +123,10 @@ func TestWaitDeltaCarriesStaleQualifierWithoutChangingLanes(t *testing.T) {
 	if stale == nil || stale.Status != "reported" || !stale.Stale {
 		t.Fatalf("the delta dropped the qualifier or the lane: %#v", delta.CurrentWaitingOnYou)
 	}
-	settled := findCommitmentView(delta.CurrentNotActionable, "request:satisfied-stale")
-	if settled == nil || settled.Status != "satisfied" || !settled.Stale {
-		t.Fatalf("the delta skipped a stale satisfied commitment: %#v", delta.CurrentNotActionable)
-	}
-	if findCommitmentView(delta.CurrentNotActionable, "request:satisfied-clean") != nil {
-		t.Fatalf("a settled commitment with nothing wrong was listed: %#v", delta.CurrentNotActionable)
+	for _, request := range []string{"request:satisfied-stale", "request:satisfied-clean"} {
+		if findCommitmentView(delta.CurrentNotActionable, request) != nil {
+			t.Fatalf("the delta listed a finished commitment: %s in %#v", request, delta.CurrentNotActionable)
+		}
 	}
 	if delta.Totals.StaleCommitments["satisfied"] != 1 {
 		t.Fatalf("delta totals cannot identify stale commitments: %#v", delta.Totals)
