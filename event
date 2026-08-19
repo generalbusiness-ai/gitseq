@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-08-18-test-staleness-flare.md","body":{"commit":"62c5a7f4956f9d674734aafd2081800ec59953bc","path":"notes/2026-08-18-test-staleness-flare.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:384f6f756afd81aa00129eb9eaeb5671a7e3e36b","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-18-test-staleness-flare.md."}
