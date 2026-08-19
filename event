@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c212c8ad00a34ea7dd8fbcaf1ba3309cb0d6f0ed","text":"Retire the ordinary-stale in-main cmd/gs predecessor; child 0656d882 authorizes a clean current-main anchor at the same exact path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4a83084c541a936eeb8ae18d5f72006e48a60a5e","text":"Retire the ordinary-stale in-main internal/service predecessor; child 0656d882 authorizes a clean current-main anchor at the same exact path."}
