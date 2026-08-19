@@ -191,17 +191,41 @@ func actIndex(projection workroom.Projection) map[string]workroom.Act {
 	return index
 }
 
-func viewCommitment(projection workroom.Projection, statements map[string]workroom.Statement, commitment workroom.Commitment) CommitmentView {
-	view := CommitmentView{
+func viewCommitment(projection workroom.Projection, commitment workroom.Commitment) CommitmentView {
+	return CommitmentView{
 		Request: commitment.Request, Status: commitment.Status, Stale: commitment.Stale,
 		AddressedTo: Text(ActorName(projection, commitment.AddressedTo)),
 		Requester:   Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
 		Promise: commitment.Promise, Report: commitment.Report,
 	}
-	if statement, ok := statements[commitment.Request]; ok {
-		view.Text = Text(statement.Text)
+}
+
+// fillCommitmentText scans history once for only the rows that survived their
+// caps. Building an event-sized statement map merely to label at most twenty
+// rows made a bounded response allocate in proportion to the whole log.
+func fillCommitmentText(projection workroom.Projection, groups ...[]CommitmentView) {
+	wanted := make(map[string][]*CommitmentView)
+	for _, group := range groups {
+		for index := range group {
+			view := &group[index]
+			wanted[view.Request] = append(wanted[view.Request], view)
+		}
 	}
-	return view
+	if len(wanted) == 0 {
+		return
+	}
+	for _, statement := range projection.Statements {
+		views := wanted[statement.Event]
+		for _, view := range views {
+			view.Text = Text(statement.Text)
+		}
+		if len(views) > 0 {
+			delete(wanted, statement.Event)
+			if len(wanted) == 0 {
+				return
+			}
+		}
+	}
 }
 
 func actorTotals(projection workroom.Projection, depth int) ActorTotals {
@@ -276,9 +300,44 @@ func inboxView(projection workroom.Projection, inbox *nexus.Inbox, degraded bool
 	return view
 }
 
+func actorAttention(projection workroom.Projection, fingerprint, actorName string) []EventView {
+	nonEffective := make(map[string]workroom.Decision)
+	for _, decision := range projection.Decisions {
+		if decision.Verdict != workroom.Effective {
+			nonEffective[decision.Event] = decision
+		}
+	}
+	if len(nonEffective) == 0 {
+		return nil
+	}
+	byEvent := make(map[string]EventView)
+	for _, statement := range projection.Statements {
+		decision, wanted := nonEffective[statement.Event]
+		if !wanted || statement.Actor != fingerprint {
+			continue
+		}
+		byEvent[statement.Event] = EventView{Event: statement.Event, Actor: Text(actorName), Kind: string(statement.Kind),
+			Verdict: string(decision.Verdict), Reason: decision.Reason, Text: Text(statement.Text)}
+	}
+	for _, act := range projection.Acts {
+		decision, wanted := nonEffective[act.Event]
+		if !wanted || act.Actor != fingerprint {
+			continue
+		}
+		byEvent[act.Event] = EventView{Event: act.Event, Actor: Text(actorName), Kind: act.Type,
+			Verdict: string(decision.Verdict), Reason: decision.Reason, Target: act.Target, Text: Text(act.Text)}
+	}
+	attention := make([]EventView, 0, len(byEvent))
+	for _, decision := range projection.Decisions {
+		if view, ok := byEvent[decision.Event]; ok {
+			attention = append(attention, view)
+		}
+	}
+	return attention
+}
+
 func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, inbox *nexus.Inbox, fingerprint, actorName string, degraded bool) ActorStatus {
 	projection := durable.Projection
-	statements := statementIndex(projection)
 	digest := ActorStatus{You: ActorView{Name: Text(actorName), Fingerprint: fingerprint}, Frontier: cursor.Frontier, Cursor: cursor,
 		Totals: actorTotals(projection, durable.Depth), Live: actorLive(live, degraded), PriorityChat: inboxView(projection, inbox, degraded),
 		FollowWithWait: "pass cursor back to wait to receive only what changes after it"}
@@ -293,7 +352,7 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 		if !involves(commitment, fingerprint) || (terminal[commitment.Status] && !commitment.Stale) {
 			continue
 		}
-		view := viewCommitment(projection, statements, commitment)
+		view := viewCommitment(projection, commitment)
 		if !actionable[commitment.Status] {
 			digest.NotActionable = append(digest.NotActionable, view)
 		} else if addressedTo(commitment, fingerprint) {
@@ -304,30 +363,13 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 			digest.YouAreWaiting = append(digest.YouAreWaiting, view)
 		}
 	}
-	acts := actIndex(projection)
-	for _, decision := range projection.Decisions {
-		if decision.Verdict == workroom.Effective {
-			continue
-		}
-		view := EventView{Event: decision.Event, Verdict: string(decision.Verdict), Reason: decision.Reason}
-		switch {
-		case statements[decision.Event].Actor == fingerprint:
-			statement := statements[decision.Event]
-			view.Kind, view.Text = string(statement.Kind), Text(statement.Text)
-		case acts[decision.Event].Actor == fingerprint:
-			act := acts[decision.Event]
-			view.Kind, view.Text, view.Target = act.Type, Text(act.Text), act.Target
-		default:
-			continue
-		}
-		view.Actor = Text(actorName)
-		digest.YourAttention = append(digest.YourAttention, view)
-	}
+	digest.YourAttention = actorAttention(projection, fingerprint, actorName)
 	digest.AvailableToYou, digest.AvailableToYouSkipped = Cap(digest.AvailableToYou, ListCap)
 	digest.WaitingOnYou, digest.WaitingOnYouSkipped = Cap(digest.WaitingOnYou, ListCap)
 	digest.YouAreWaiting, digest.YouAreWaitingSkipped = Cap(digest.YouAreWaiting, ListCap)
 	digest.NotActionable, digest.NotActionableSkipped = Cap(digest.NotActionable, ListCap)
 	digest.YourAttention, digest.YourAttentionSkipped = Cap(digest.YourAttention, ListCap)
+	fillCommitmentText(projection, digest.AvailableToYou, digest.WaitingOnYou, digest.YouAreWaiting, digest.NotActionable)
 	return digest
 }
 
@@ -354,7 +396,6 @@ func BuildOrientation(durable app.Snapshot, fingerprint, actorName string) (Orie
 
 func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset bool, requested Cursor, inbox *nexus.Inbox, fingerprint, actorName string, degraded bool) WaitDelta {
 	projection := durable.Projection
-	statements := statementIndex(projection)
 	delta := WaitDelta{Cursor: cursor, Reset: reset, Live: live, PriorityChat: inboxView(projection, inbox, degraded), Totals: actorTotals(projection, durable.Depth)}
 	from := 0
 	for _, frontier := range requested.Frontier {
@@ -370,7 +411,22 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 		delta.Skipped = len(fresh) - DeltaCap
 		fresh = fresh[len(fresh)-DeltaCap:]
 	}
-	acts := actIndex(projection)
+	wanted := make(map[string]bool, len(fresh))
+	for _, decision := range fresh {
+		wanted[decision.Event] = true
+	}
+	statements := make(map[string]workroom.Statement, len(fresh))
+	for _, statement := range projection.Statements {
+		if wanted[statement.Event] {
+			statements[statement.Event] = statement
+		}
+	}
+	acts := make(map[string]workroom.Act, len(fresh))
+	for _, act := range projection.Acts {
+		if wanted[act.Event] {
+			acts[act.Event] = act
+		}
+	}
 	for _, decision := range fresh {
 		view := EventView{Event: decision.Event, Verdict: string(decision.Verdict), Reason: decision.Reason}
 		if statement, ok := statements[decision.Event]; ok {
@@ -384,7 +440,7 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 		if !involves(commitment, fingerprint) || (terminal[commitment.Status] && !commitment.Stale) {
 			continue
 		}
-		view := viewCommitment(projection, statements, commitment)
+		view := viewCommitment(projection, commitment)
 		if !actionable[commitment.Status] {
 			delta.CurrentNotActionable = append(delta.CurrentNotActionable, view)
 		} else if addressedTo(commitment, fingerprint) {
@@ -396,6 +452,7 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 	delta.CurrentAvailableToYou, delta.CurrentAvailableToSkipped = Cap(delta.CurrentAvailableToYou, ListCap)
 	delta.CurrentWaitingOnYou, delta.CurrentWaitingSkipped = Cap(delta.CurrentWaitingOnYou, ListCap)
 	delta.CurrentNotActionable, delta.CurrentNotActionableSkipped = Cap(delta.CurrentNotActionable, ListCap)
+	fillCommitmentText(projection, delta.CurrentAvailableToYou, delta.CurrentWaitingOnYou, delta.CurrentNotActionable)
 	if degraded {
 		delta.Cursor.Live = nexus.Cursor{Generation: "degraded"}
 	}

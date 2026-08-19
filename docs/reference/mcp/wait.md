@@ -56,6 +56,11 @@ everything up to now with `reset` set.
 
 Every list is capped at 20 with its own skipped count.
 
+The resident selects the durable delta and current actor lanes before it
+encodes the response. Following a deep workroom therefore does not transfer
+the complete projection on every poll. Complete projection access remains an
+explicit [`gs status --json`](../gs/status.md) read.
+
 `current_available_to_you` repeats the current lane even when no new
 durable event arrived, so polling cannot lose work that predates the
 cursor. These open requests are available to claim; they do not invent a

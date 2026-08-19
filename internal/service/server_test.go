@@ -84,6 +84,27 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	if len(status.Durable.Vocabulary.Definitions) != 12 || status.Durable.Vocabulary.Binding.Status != "unbound" {
 		t.Fatalf("status did not serve the room vocabulary and binding state: %+v", status.Durable.Vocabulary)
 	}
+	actorInput, _ := json.Marshal(sessionStatusRequest{Session: "session-1"})
+	response, err = http.Post(httpServer.URL+"/v0/actor-status", "application/json", bytes.NewReader(actorInput))
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorBody, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(actorBody, []byte(`"projection"`)) || bytes.Contains(actorBody, []byte(`"durable"`)) {
+		t.Fatalf("bounded actor status encoded the complete projection: %s", actorBody)
+	}
+	var actorStatus ActorStatus
+	if err := json.Unmarshal(actorBody, &actorStatus); err != nil {
+		t.Fatal(err)
+	}
+	if actorStatus.You.Fingerprint != workspace.Config.Actors["human"].Fingerprint || actorStatus.Totals.Depth != status.Durable.Depth ||
+		actorStatus.Totals.FullProjectionAt == "" {
+		t.Fatalf("bounded actor status lost identity, frontier, or full-projection route: %+v", actorStatus)
+	}
 
 	response, err = http.Get(httpServer.URL + "/v0/status-summary")
 	if err != nil {

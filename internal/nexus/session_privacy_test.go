@@ -186,6 +186,13 @@ func TestLiveSessionCountUsesTheFullFingerprint(t *testing.T) {
 	if got := h.LiveSessionsForActor(sharedPrefix); got != 0 {
 		t.Fatalf("a fingerprint prefix matched %d sessions", got)
 	}
+	observation, err := h.Observe("mcp:one", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.Actor != "alias-one" || observation.Fingerprint != sharedPrefix+"1" {
+		t.Fatalf("observation identity = %q %q", observation.Actor, observation.Fingerprint)
+	}
 }
 
 func sum(text string) []byte {

@@ -478,6 +478,73 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	}
 }
 
+// Status and wait are bounded at the resident boundary, not after the adapter
+// has already transferred and decoded the complete projection. Returning the
+// right small MCP value is insufficient evidence: the old implementation did
+// that too, after paying for /v0/status in full. Blocking both full routes
+// makes this test fail if either transport regresses.
+func TestStatusAndWaitUseBoundedResidentViews(t *testing.T) {
+	if actorStatusResponseLimit != 1<<20 {
+		t.Fatalf("bounded actor response limit = %d, want 1 MiB", actorStatusResponseLimit)
+	}
+	workspace := initRepository(t, "bounded-status")
+	resident, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var paths []string
+	httpServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		mu.Lock()
+		paths = append(paths, request.URL.Path)
+		mu.Unlock()
+		if request.URL.Path == "/v0/status" || request.URL.Path == "/v0/wait" {
+			http.Error(response, "MCP must not fetch the complete projection", http.StatusInternalServerError)
+			return
+		}
+		resident.Handler().ServeHTTP(response, request)
+	}))
+	defer httpServer.Close()
+
+	server, attached := attachedServer(t, workspace, "human", httpServer.URL, httpServer.Client())
+	attached.identityNoticeChecked = true
+	attached.announced = true
+	announcement, _ := json.Marshal(map[string]any{"actor": "human", "session": server.session, "ttl_ms": 60_000})
+	response, err := http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(announcement))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	mu.Lock()
+	paths = nil
+	mu.Unlock()
+
+	value, _, err := server.call(context.Background(), toolCall{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := value.(actorStatus)
+	if status.Frontier[0].Depth != 1 || status.You.Fingerprint != workspace.Config.Actors["human"].Fingerprint {
+		t.Fatalf("unexpected bounded status: %+v", status)
+	}
+	value, _, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{
+		"cursor": status.Cursor, "timeout_ms": 1,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delta := value.(waitDelta); delta.Totals.Depth != 1 {
+		t.Fatalf("unexpected bounded wait: %+v", delta)
+	}
+
+	mu.Lock()
+	gotPaths := append([]string(nil), paths...)
+	mu.Unlock()
+	if strings.Join(gotPaths, ",") != "/v0/actor-status,/v0/actor-wait" {
+		t.Fatalf("status or wait used an unbounded resident route: %v", gotPaths)
+	}
+}
+
 // attachedServer builds an adapter that has already joined one repository,
 // which is the state a tool call leaves behind once it has named one.
 func attachedServer(t testing.TB, workspace *app.Workspace, actor, baseURL string, client *http.Client) (*mcpServer, *room) {

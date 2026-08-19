@@ -97,8 +97,10 @@ gone.
 Every list keeps the newest 20 entries and reports its own omitted count,
 so a shortened list reads as "20 of 500" rather than as a bare count.
 User-controlled text in the `gs status` view is normalized to one line
-and capped at 240 bytes. Use `gs status --all` or `gs status --json` when
-you need the whole projection; neither is capped.
+and capped at 240 bytes. The resident selects MCP status and wait views before
+encoding them; it does not move the complete projection merely to discard it
+in the adapter. Use `gs status --all` or `gs status --json` when you need the
+whole projection; neither is capped.
 
 Addressed ephemeral chat is also bounded before it is signed and indexed:
 
