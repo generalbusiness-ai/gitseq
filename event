@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d81187dc9245bdd0b9e252b4a0e01a4cd0fc1d8b","text":"Retire the older in-main internal/workroom artifact; the clean current-main anchor authorized by request 17b9a002 will succeed it at the same exact path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1d35ad9be8c935c09a97b6a2f61ee7bf23b6a5c4","text":"Retire the older world-stale internal/workroom artifact; the clean current-main anchor authorized by request 17b9a002 will succeed it at the same exact path."}
