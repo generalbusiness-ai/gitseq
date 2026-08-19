@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"The schema/fold split design note and implemented compatibility bridge are current at exact head 0c05eca5.","body":{"commit":"0c05eca5d7018f0c696c0e0df382e90649c9ccc6","path":"notes/2026-08-18-schema-fold-split.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f2584455bbb29cdc25a30b785e52eee4dead5a57","text":"Replace the earlier schema/fold workroom candidate with the repaired exact-head artifact."}
