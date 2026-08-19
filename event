@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d0ba0aca999285cf3a64c3cdb78abbc8efb7ef7a","text":"Merge retired a covered predecessor; the successor is at docs."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:976edb1e242e65cef9d08d7971c3145ce19d5401","text":"Retire the measured-code intermediate after the performance page moved to the merged internal/app successor f3a67e0c and citation repair landed at f3a4d411."}
