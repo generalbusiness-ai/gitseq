@@ -896,7 +896,12 @@ func (w *Workspace) buildRequest(ctx context.Context, private ed25519.PrivateKey
 // submission is signed, so the host binding is stamped with the same identity
 // and idempotency rules as every application record.
 func (w *Workspace) signRequest(ctx context.Context, private ed25519.PrivateKey, actorName, schema string, encoded []byte, rests []string, attachments map[string][]byte, key string) (kernel.Request, error) {
-	tree, err := w.Store.WritePayloadTree(ctx, encoded, attachments)
+	// The signed intent needs the payload tree's identity, but admission owns
+	// the durable write. Computing the identity here avoids publishing the same
+	// blobs and trees twice, and leaves a request rejected during construction
+	// with no objects written. The kernel reconstructs this tree, checks the
+	// exact identity, and only then sequences the event.
+	tree, err := gitstore.HashPayloadTree(w.Config.ObjectFormat, encoded, attachments)
 	if err != nil {
 		return kernel.Request{}, err
 	}
