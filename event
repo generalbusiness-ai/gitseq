@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-08-18-schema-fold-split.md","body":{"commit":"394fcd564f995ce8017b82e56414e5e47a9010d4","path":"notes/2026-08-18-schema-fold-split.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0c84c2974945a040e4bfff975752b491b1350c62","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-18-schema-fold-split.md."}
