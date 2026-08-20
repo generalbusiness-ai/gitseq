@@ -21,6 +21,9 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd0680effdbc154f7f17a8f801bed602f20e3717
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:969a4e7a3ec3b8c4a9721a10b98e0da811de3520
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9736b0cd2d853282ebb5c6f2993a160daad26238
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b99410af38eab88094ff208ff668f8b557021461
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fe48f17b6128732fcc5f072bc128fe72541d5c40
 ---
 
 # Architecture layers
@@ -119,6 +122,17 @@ The current compact checkpoint schema is `gitseq-checkpoint@3`. It authenticates
 kernel identity and event material but carries no application profile. Readers
 also accept authenticated JSON `@1` and compact `@2` checkpoints; their required
 historical profile field is ignored rather than used as an eligibility key.
+
+A full read may transfer verified events to the selected host interpreter as a
+bounded stream instead of retaining a second depth-sized event slice. Delivery
+during a cold audit is provisional until the whole kernel chain succeeds: a
+later invalid event rejects the read, so callback effects cannot become visible
+application state. A compact checkpoint candidate and its suffix are fully
+authenticated before replay. `internal/app` folds either path into a private
+folder and publishes the folder and projection together only after kernel
+verification, complete application folding, frontier persistence and the
+projection gate all succeed. This changes the transfer shape, not signature,
+ordering, bounds, compare-and-swap or application-interpretation authority.
 
 The kernel does **not** understand:
 
