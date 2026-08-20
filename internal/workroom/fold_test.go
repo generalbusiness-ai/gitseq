@@ -7,7 +7,34 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unsafe"
 )
+
+func TestResidentFolderSharesRepeatedDurableStrings(t *testing.T) {
+	text := strings.Repeat("same durable text ", 256)
+	body := map[string]string{"conditions": strings.Repeat("same condition ", 128)}
+	records := []Record{
+		event(t, "seed", operator, SchemaState, State{Kind: KindAssert, Text: text, Body: body}),
+		event(t, "next", operator, SchemaState, State{Kind: KindAssert, Text: text, Body: body}, "seed"),
+	}
+	records[0].ID = strings.Clone("seed")
+	records[1].RestsOn[0] = strings.Clone("seed")
+	folder := NewFolder(records)
+	first := folder.state.records[0].body.(*State)
+	second := folder.state.records[1].body.(*State)
+	if unsafe.StringData(first.Text) != unsafe.StringData(second.Text) {
+		t.Fatal("repeated durable text retained separate backing storage")
+	}
+	if unsafe.StringData(first.Body["conditions"]) != unsafe.StringData(second.Body["conditions"]) {
+		t.Fatal("repeated body value retained separate backing storage")
+	}
+	if unsafe.StringData(folder.state.records[0].record.ID) != unsafe.StringData(folder.state.records[1].record.RestsOn[0]) {
+		t.Fatal("cited event id retained separate backing storage")
+	}
+	if got := folder.Projection(); len(got.Statements) != 2 || got.Statements[0].Text != text || got.Statements[1].Body["conditions"] != body["conditions"] {
+		t.Fatalf("string sharing changed the projection: %+v", got.Statements)
+	}
+}
 
 const (
 	operator = "actor:operator"
