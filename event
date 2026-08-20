@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bfcf6197f09100c0078b2cf756518aa94e31dff1","text":"Retire the withdrawn cmd/gs artifact against its live same-path successor; all tracked documentation citations now name the successor."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:076ced4d914d84d4a70e7eaad949efeb4db98d10","text":"Retire the withdrawn internal/nexus artifact against its live same-path successor; all tracked documentation citations now name the successor."}
