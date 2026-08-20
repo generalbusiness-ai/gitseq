@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f713bdb87c3ddc83f977c5388d2d771ddebbda9a","text":"Merge retired a covered predecessor; the successor is at internal/kernel."}
+{"kind":"promise","text":"I will independently review exact head 9197c43b9fb0fdc0f74e418a9171e362272583f9 across the internal/kernel and docs artifacts, verify the requested admission semantics, compatibility, index construction, mutation evidence, gates, and Architecture/Security/Simplification conclusions, then report approved or changes-requested without merging."}
