@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-08-20-composite-kinds.md","body":{"commit":"38ed66b2c9ed7988d45f14bcedb99bf34a221924","path":"notes/2026-08-20-composite-kinds.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cf4739f2d5104a1d13733c8787934cff6a301eb4","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-20-composite-kinds.md."}
