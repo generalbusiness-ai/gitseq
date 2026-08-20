@@ -58,13 +58,12 @@ func TestGateEveryNamedActResolvesToALiveRecord(t *testing.T) {
 	for _, artifact := range snapshot.Projection.Artifacts {
 		artifacts[artifact.Event] = artifact
 	}
-	succeeded := SucceededRetirements(snapshot.Projection)
 
 	failing := make(map[string]BaselineEntry)
 	for _, act := range acts {
 		kind, found := kinds[act]
 		artifact := artifacts[act]
-		verdict := ClassifyCitation(found, kind == workroom.KindArtifact, artifact.Retired, succeeded[act], artifact.Stale, artifact.Path, artifact.Commit)
+		verdict := ClassifyCitation(found, kind == workroom.KindArtifact, artifact.Retired, artifact.Succeeded, artifact.Stale, artifact.Path, artifact.Commit)
 		switch {
 		case verdict.Fatal:
 			naming := dependents(pages, act)

@@ -154,13 +154,23 @@ Artifact rows carry a state and any notes:
 | State | Meaning |
 |---|---|
 | `current` | It stands, and nothing under it has been retired. |
-| `retired` | This artifact was itself superseded. |
+| `succeeded` | It was superseded, and the act that superseded it rests on an artifact covering the same path. The pointer moved; the log says where. |
+| `retired` | It was superseded and no successor was named. The pointer was withdrawn and there is nowhere to follow it to. |
 | `stale` | A basis was retired. Re-check the thing it describes. |
 
-Both non-current states are listed under stale artifacts, because to a
-reader looking for what is current they mean the same thing: not this
-one. They are named apart because a withdrawn pointer and a moved world
-call for different work.
+All three non-current states are listed under stale artifacts, because to
+a reader looking for what is current they mean the same thing: not this
+one. They are named apart because a replaced pointer, a withdrawn one and
+a moved world call for different work.
+
+Succeeded and retired are the same act read for different content, and
+the difference is what the act rested on. `gs supersede` naming a
+successor at the same path — which is what every merge does — says the
+behaviour moved there. A bare `gs supersede` says the behaviour is gone,
+or the claim was never true. Only the second makes the reasoning above it
+flare, so a finished loop no longer flares itself on the merge that
+finished it. In the `--all` tables these read `SUCCEEDED — replaced at
+the same path` and `RETIRED — withdrawn with no successor`.
 
 | Note | Meaning |
 |---|---|

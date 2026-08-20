@@ -89,8 +89,14 @@ func RenderStatus(projection Projection) []byte {
 		for _, artifact := range projection.Artifacts {
 			status := "current"
 			switch {
+			case artifact.Succeeded:
+				// Replaced, not withdrawn. The retirement named where the
+				// behaviour went, so a reader following this row has somewhere
+				// to go. A bare RETIRED does not, and the two need reading
+				// differently.
+				status = "SUCCEEDED — replaced at the same path"
 			case artifact.Retired:
-				status = "RETIRED"
+				status = "RETIRED — withdrawn with no successor"
 			case artifact.DescribesSupersededWorld:
 				status = "STALE — describes a superseded world"
 			case artifact.Stale:

@@ -81,6 +81,12 @@ type Artifact struct {
 	// Retired records that this artifact statement was itself superseded. The
 	// pointer has been withdrawn and nothing may rest on it again.
 	Retired bool `json:"retired,omitempty"`
+	// Succeeded narrows Retired: the act that withdrew this pointer also rested
+	// on an artifact covering the same path, so it says where the behaviour
+	// went. A retirement that names nothing is a condemnation, and the two
+	// mean opposite things to whoever stood on the artifact — one is answered,
+	// the other has to go and look.
+	Succeeded bool `json:"succeeded,omitempty"`
 	// Stale records that a basis under this artifact was retired. It is a
 	// different fact from Retired, and carrying both in one boolean cost every
 	// reader the ability to tell a withdrawn pointer from a moved world. The
@@ -1271,7 +1277,7 @@ func (f *foldState) retired(event string) bool {
 // staleness at all is the governing definition's business: an exempt kind
 // neither catches staleness nor passes it on, and a terminal one catches it
 // without passing it on.
-func (f *foldState) staleness() (map[string]bool, map[string]bool) {
+func (f *foldState) staleness(succeeded map[string]bool) (map[string]bool, map[string]bool) {
 	stale := make(map[string]bool)
 	world := make(map[string]bool)
 	for _, record := range f.records {
@@ -1301,6 +1307,16 @@ func (f *foldState) staleness() (map[string]bool, map[string]bool) {
 				mode = basisRecord.definition.Staleness
 			}
 			retiredBasis := f.retired(basis) && mode != StalenessExempt
+			artifactProvenance := f.isArtifact(basis) && f.isArtifact(record.record.ID)
+			// A succeeded retirement moved a pointer; it did not condemn one.
+			// The reasoning that stood on the artifact — the request, the
+			// promise, the report, the approval — is answered by that move, so
+			// it is not news to them and they do not flare. A page above it is
+			// a different matter: the behaviour it describes has changed, and
+			// artifact provenance is exactly the edge that says so.
+			if retiredBasis && succeeded[basis] && !artifactProvenance {
+				retiredBasis = false
+			}
 			staleBasis := stale[basis] && mode == StalenessPropagates
 			if plan != nil && staleBasis && f.stalenessCoveredByMergePlan(basis, plan, stale, make(map[string]bool)) {
 				continue
@@ -1309,7 +1325,6 @@ func (f *foldState) staleness() (map[string]bool, map[string]bool) {
 				continue
 			}
 			stale[record.record.ID] = true
-			artifactProvenance := f.isArtifact(basis) && f.isArtifact(record.record.ID)
 			if (world[basis] && artifactProvenance) || (retiredBasis && f.isArtifact(basis)) {
 				world[record.record.ID] = true
 				break
@@ -1431,6 +1446,48 @@ func (f *foldState) stalenessCoveredByMergePlan(event string, plan map[string]st
 	return covered
 }
 
+// succeededRetirements lists the retired artifacts whose retirement says where
+// the behaviour went: the supersession that withdrew the pointer also rests on
+// an artifact standing at the same path, or at a directory covering it.
+//
+// Succession is a fact the retiring act states, and only that act can state
+// it. The tempting shortcut is structural — treat a retirement as succeeded
+// whenever some later live artifact happens to stand at the same path — and it
+// is wrong in the one case that matters: an artifact retired because its claim
+// was never true would be quietly rescued by the next unrelated publication in
+// that tree, and everything resting on the false claim would stop flaring. The
+// signed basis cannot be supplied by a bystander.
+//
+// One link is followed, not a chain. If the successor is itself later retired,
+// its own retirement carries the same link, so the reader is handed on rather
+// than left guessing.
+func (f *foldState) succeededRetirements() map[string]bool {
+	succeeded := make(map[string]bool)
+	for _, record := range f.records {
+		if record.decision.Verdict != Effective {
+			continue
+		}
+		supersede, isSupersession := record.body.(*Supersede)
+		if !isSupersession {
+			continue
+		}
+		retiredPath, targetIsArtifact := f.artifactPath(supersede.Target)
+		if !targetIsArtifact || !f.isArtifact(supersede.Target) || succeeded[supersede.Target] {
+			continue
+		}
+		for _, basis := range record.record.RestsOn {
+			if basis == supersede.Target || !f.isArtifact(basis) {
+				continue
+			}
+			if successorPath, ok := f.artifactPath(basis); ok && pathCovers(successorPath, retiredPath) {
+				succeeded[supersede.Target] = true
+				break
+			}
+		}
+	}
+	return succeeded
+}
+
 // isArtifact reports whether an event is an effective artifact statement. It
 // is the whole basis of the world-staleness distinction: what the fold can
 // tell about a dead ancestor is how its governing definition renders it.
@@ -1462,7 +1519,8 @@ func (f *foldState) ratified(target string) bool {
 }
 
 func (f *foldState) project() Projection {
-	stale, world := f.staleness()
+	succeeded := f.succeededRetirements()
+	stale, world := f.staleness(succeeded)
 	// Every artifact seen at a path, in order, not only the most recent.
 	// Tracking just the immediate predecessor let a retirement hide a live
 	// ancestor: with A, B and C at one path, retiring B cleared C's warning
@@ -1523,6 +1581,7 @@ func (f *foldState) project() Projection {
 			projection.Artifacts = append(projection.Artifacts, Artifact{
 				Event: record.record.ID, Path: path, Commit: state.Body["commit"],
 				Retired:                  f.retired(record.record.ID),
+				Succeeded:                f.retired(record.record.ID) && succeeded[record.record.ID],
 				Stale:                    stale[record.record.ID],
 				DescribesSupersededWorld: world[record.record.ID],
 				UnableToFlare:            f.unableToFlare(record.record.RestsOn),

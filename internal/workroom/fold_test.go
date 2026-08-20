@@ -2858,3 +2858,174 @@ func eventsOn(projection Projection) []string {
 	}
 	return events
 }
+
+// successionRecords is one complete implementation loop, run the way the
+// discipline says to run it: a request, its promise, the artifact standing at
+// the branch head, an independent approval of that exact head, and the merge
+// receipt that lands it and declares which pointer it will move. What each
+// test adds is the retirement, which is the act under examination.
+func successionRecords(t *testing.T, tail ...Record) []Record {
+	t.Helper()
+	return worldRecords(t,
+		append([]Record{
+			event(t, "reviewer-membership", operator, SchemaState, State{Kind: KindRoster, Text: "reviewer joins", Body: map[string]string{"actor": other, "kind": "agent", "name": "Reviewer", "role": "participant"}}, "w0"),
+			event(t, "reviewer-ratified", operator, SchemaRatify, Ratify{Target: "reviewer-membership"}, "reviewer-membership"),
+			event(t, "implementation-request", operator, SchemaState, State{Kind: KindRequest, Text: "implement it", Body: map[string]string{"to": agent, "conditions": "approved head is merged"}}, "w0"),
+			event(t, "implementation-promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will implement it"}, "implementation-request"),
+			event(t, "implementation-artifact", agent, SchemaState, State{Kind: KindArtifact, Text: "implementation at the branch head", Body: map[string]string{"path": "internal/workroom", "commit": "head1"}}, "implementation-promise"),
+			event(t, "review-request", agent, SchemaState, State{Kind: KindRequest, Text: "review the exact head", Body: map[string]string{"to": other, "conditions": "independent approval"}}, "implementation-artifact"),
+			event(t, "review-promise", other, SchemaState, State{Kind: KindPromise, Text: "I will review it"}, "review-request"),
+			event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "implementation-artifact"}}, "review-promise", "implementation-artifact"),
+			event(t, "approval-ratified", agent, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+			event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+				"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+				"merge_retirements": `{"implementation-artifact":"internal/workroom"}`, "merge_successors": `["internal/workroom"]`,
+			}}, "approval"),
+		}, tail...)...)
+}
+
+func commitmentByRequest(t *testing.T, projection Projection, request string) Commitment {
+	t.Helper()
+	for _, commitment := range projection.Commitments {
+		if commitment.Request == request {
+			return commitment
+		}
+	}
+	t.Fatalf("no commitment projected for %s", request)
+	return Commitment{}
+}
+
+// The merge step is not news to the loop that produced it. When the act that
+// withdraws the branch artifact publishes a successor covering the same path,
+// the pointer moved rather than being condemned, and the reasoning that stood
+// on it — the approval, the report, the commitment — is answered, not
+// undermined. Marking that chain stale said every finished loop needed
+// re-reading, which is the flare that taught readers to ignore flares.
+func TestSuccessionLeavesTheCompletedLoopUnflared(t *testing.T) {
+	projection := Fold(successionRecords(t,
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "landed on main", Body: map[string]string{"path": "internal/workroom", "commit": "merged"}}, "merge", "implementation-artifact"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "implementation-artifact", Text: "landed as merged"}, "implementation-artifact", "successor"),
+	))
+
+	branch := artifactByEvent(t, projection, "implementation-artifact")
+	if !branch.Retired || !branch.Succeeded {
+		t.Fatalf("branch artifact: retired=%v succeeded=%v, want both", branch.Retired, branch.Succeeded)
+	}
+	approval := statementByEvent(t, projection, "approval")
+	if approval.Stale || approval.DescribesSupersededWorld {
+		t.Fatalf("approval: stale=%v world=%v, want neither", approval.Stale, approval.DescribesSupersededWorld)
+	}
+	for _, id := range []string{"implementation-request", "implementation-promise", "review-request", "review-promise", "merge"} {
+		if statementByEvent(t, projection, id).Stale {
+			t.Errorf("%s went stale on the merge that completed it", id)
+		}
+	}
+	commitment := commitmentByRequest(t, projection, "implementation-request")
+	if commitment.Status != "satisfied" || commitment.Stale {
+		t.Errorf("implementation commitment = %+v, want satisfied and not stale", commitment)
+	}
+	if review := commitmentByRequest(t, projection, "review-request"); review.Stale {
+		t.Errorf("review commitment = %+v, want not stale", review)
+	}
+}
+
+// The other direction. A pointer withdrawn with nowhere to go is a
+// condemnation, and everything resting on it has to be told.
+func TestRetirementWithoutASuccessorStillFlaresTheLoop(t *testing.T) {
+	projection := Fold(successionRecords(t,
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "implementation-artifact", Text: "the behaviour was deleted"}, "implementation-artifact"),
+	))
+
+	branch := artifactByEvent(t, projection, "implementation-artifact")
+	if !branch.Retired || branch.Succeeded {
+		t.Fatalf("branch artifact: retired=%v succeeded=%v, want retired and not succeeded", branch.Retired, branch.Succeeded)
+	}
+	approval := statementByEvent(t, projection, "approval")
+	if !approval.Stale || !approval.DescribesSupersededWorld {
+		t.Fatalf("approval: stale=%v world=%v, want both", approval.Stale, approval.DescribesSupersededWorld)
+	}
+	if commitment := commitmentByRequest(t, projection, "review-request"); !commitment.Stale {
+		t.Errorf("review commitment = %+v, want stale", commitment)
+	}
+}
+
+// The boundary the structural reading gets wrong. "A later live artifact
+// exists at the same path" would rescue an artifact retired as wrong the
+// moment anyone published at that path again, however unrelated the later work
+// is. Succession is a fact the retiring act states, not one a bystander can
+// supply afterwards.
+func TestLaterArtifactAtTheSamePathDoesNotRescueACondemnedOne(t *testing.T) {
+	projection := Fold(successionRecords(t,
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "implementation-artifact", Text: "retired as wrong; the claim was never true"}, "implementation-artifact"),
+		event(t, "unrelated", agent, SchemaState, State{Kind: KindArtifact, Text: "different work, same tree", Body: map[string]string{"path": "internal/workroom", "commit": "later"}}, "w0"),
+	))
+
+	if artifactByEvent(t, projection, "implementation-artifact").Succeeded {
+		t.Fatal("an unrelated later artifact at the same path rescued a condemned one")
+	}
+	if approval := statementByEvent(t, projection, "approval"); !approval.Stale {
+		t.Error("the approval of a condemned artifact stopped flaring")
+	}
+}
+
+// Succession answers the reasoning that stood on the artifact. It does not
+// answer a page that describes the behaviour: the code moved, so the prose has
+// to be re-read against it. That flare is what the documentation set is for,
+// and it must survive the same merge that quiets the loop.
+func TestSuccessionStillFlaresTheDocumentationAboveIt(t *testing.T) {
+	projection := Fold(successionRecords(t,
+		event(t, "page", agent, SchemaState, State{Kind: KindArtifact, Text: "the page describing it", Body: map[string]string{"path": "docs/reference/workroom.md", "commit": "head1"}}, "implementation-artifact"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "landed on main", Body: map[string]string{"path": "internal/workroom", "commit": "merged"}}, "merge", "implementation-artifact"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "implementation-artifact", Text: "landed as merged"}, "implementation-artifact", "successor"),
+	))
+
+	page := artifactByEvent(t, projection, "page")
+	if !page.Stale || !page.DescribesSupersededWorld {
+		t.Fatalf("page above a succeeded artifact: stale=%v world=%v, want both", page.Stale, page.DescribesSupersededWorld)
+	}
+}
+
+// Which successor counts. The retiring act has to name an artifact that stands
+// over the retired path — the same string, or a directory containing it.
+// Anything narrower leaves the rest of that tree with no pointer, and anything
+// elsewhere says nothing about this path at all.
+func TestSuccessionFollowsOnlyACoveringSuccessor(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		retiredPath   string
+		successorPath string
+		wantSucceeded bool
+	}{
+		{name: "same path", retiredPath: "cmd/gs", successorPath: "cmd/gs", wantSucceeded: true},
+		{name: "widened to the directory", retiredPath: "internal/app/app.go", successorPath: "internal/app", wantSucceeded: true},
+		{name: "narrowed inside the directory", retiredPath: "internal/workroom", successorPath: "internal/workroom/fold.go"},
+		{name: "unrelated path", retiredPath: "docs", successorPath: "ui"},
+		{name: "prefix that is not a directory", retiredPath: "internal/appraisal", successorPath: "internal/app"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			projection := Fold(worldRecords(t,
+				event(t, "old", agent, SchemaState, State{Kind: KindArtifact, Text: "predecessor", Body: map[string]string{"path": test.retiredPath, "commit": "aaa111"}}, "w0"),
+				event(t, "new", agent, SchemaState, State{Kind: KindArtifact, Text: "successor", Body: map[string]string{"path": test.successorPath, "commit": "bbb222"}}, "w0"),
+				event(t, "retire", agent, SchemaSupersede, Supersede{Target: "old", Text: "withdrawn"}, "old", "new"),
+			))
+			if got := artifactByEvent(t, projection, "old").Succeeded; got != test.wantSucceeded {
+				t.Fatalf("succeeded = %v, want %v for %q retired naming %q", got, test.wantSucceeded, test.retiredPath, test.successorPath)
+			}
+		})
+	}
+}
+
+// A supersession the fold refused withdrew nothing, so it cannot be read as
+// having moved a pointer either.
+func TestRefusedSupersessionRecordsNoSuccession(t *testing.T) {
+	projection := Fold(worldRecords(t,
+		event(t, "old", agent, SchemaState, State{Kind: KindArtifact, Text: "predecessor", Body: map[string]string{"path": "cmd/gs", "commit": "aaa111"}}, "w0"),
+		event(t, "new", agent, SchemaState, State{Kind: KindArtifact, Text: "successor", Body: map[string]string{"path": "cmd/gs", "commit": "bbb222"}}, "w0"),
+		// Not resting first on its target, which the fold refuses.
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "old", Text: "withdrawn"}, "new", "old"),
+	))
+	old := artifactByEvent(t, projection, "old")
+	if old.Retired || old.Succeeded {
+		t.Fatalf("refused supersession: retired=%v succeeded=%v, want neither", old.Retired, old.Succeeded)
+	}
+}
