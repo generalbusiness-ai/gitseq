@@ -428,7 +428,12 @@ fold, or UI expectations.
 - path-at-commit artifact statements, retirement, succession, reviews, and
   staleness: ordinary staleness crosses governed reasoning edges, while the
   narrower `describes_superseded_world` fact crosses direct retired-artifact
-  edges and artifact-to-artifact provenance only;
+  edges and artifact-to-artifact provenance only. A retirement is read for what
+  its own act rested on: a supersession resting on an artifact covering the
+  same path is succession and carries no staleness across reasoning edges,
+  while one naming no covering successor is condemnation and propagates as
+  before. Artifact-to-artifact provenance carries the flare either way, so the
+  pages describing an implementation still move when it does;
 - guarded review and merge semantics, including the merge receipt that lets the
   implementer of an approved head retire another actor's predecessors only on
   the path lineages of the artifacts that approval itself cites, each standing

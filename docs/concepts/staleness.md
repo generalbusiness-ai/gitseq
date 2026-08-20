@@ -34,13 +34,63 @@ is present at that step to weigh the difference.
 
 | Mark | Meaning |
 |---|---|
-| `retired` | This act was superseded. |
+| `succeeded` | This artifact was superseded and the act named where the behaviour went. |
+| `retired` | This act was superseded and nothing was named in its place. |
 | `stale` | Something this rests on was retired. |
 | `stale`, noted `describes a superseded world` | The retired ancestor was itself an artifact, so the implementation it described has been replaced. |
 
-The third narrows the second. It is the one that usually means real work.
-The full tables under `gs status --all` write these as `RETIRED`, `STALE`
-and `STALE — describes a superseded world`.
+The last narrows `stale`. It is the one that usually means real work. The
+full tables under `gs status --all` write these as `SUCCEEDED — replaced
+at the same path`, `RETIRED — withdrawn with no successor`, `STALE` and
+`STALE — describes a superseded world`.
+
+## Replaced is not condemned
+
+Every merge withdraws the artifact that stood at the branch head and
+publishes one at the same path for the head that landed. If that
+withdrawal flared, every completed loop would flare on the act that
+completed it: the approval, the report and the commitment would all be
+told to re-check reasoning that had just been acted on. A flare carrying
+no information teaches people to ignore the flares that do.
+
+So the fold reads a retirement for what its own act rested on.
+
+**Succeeded.** The supersession rests on an artifact standing at the same
+path, or at a directory covering it. The pointer moved and the log says
+where. Nothing resting on the retired artifact goes stale from that act.
+
+**Condemned.** The supersession names no covering artifact — a bare
+`gs supersede`. The behaviour was deleted, or the claim was never true.
+Everything resting on it goes stale, exactly as before.
+
+The signal is what the retiring act rested on, and nothing else. The
+tempting shortcut is structural — call a retirement succeeded whenever
+some later live artifact happens to stand at the same path — and it fails
+on the case that matters most: an artifact retired *because it was wrong*
+would be quietly rescued by the next unrelated publication in that tree,
+and everything resting on the false claim would stop flaring. A successor
+is something the retiring actor states and signs. A bystander cannot
+supply one afterwards.
+
+The link is followed to its end. If the successor is itself replaced
+later, its own retirement carries the next link, and the chain still
+answers for everything that stood on the first artifact. If any successor
+in the chain is instead retired with no successor, the behaviour was
+condemned after all: everything that stood on the predecessor flares then,
+exactly as if its own basis had been withdrawn, so a finished loop cannot
+look current after its replacement has been found wrong.
+
+### What succession does not quiet
+
+Succession answers the reasoning that stood on the artifact. It does not
+answer a page that *describes* it. A document resting on an implementation
+artifact still flares when that artifact is superseded, and still reads
+`describes a superseded world`, because the behaviour it explains has
+changed and the prose has to be re-read against it. That is the whole
+reason the merge step retires the live artifacts covering what it changed.
+
+The rule is the edge, not the act: artifact-to-artifact provenance always
+carries the flare; every other `rests_on` edge is quieted by succession.
 
 ## Two marks about practice
 

@@ -50,6 +50,11 @@ export interface Artifact {
   // Retired and stale are separate facts: the pointer was withdrawn, or a
   // basis under it moved while the commit it names stayed exactly what it was.
   retired?: boolean;
+  // Narrows retired: the act that withdrew this pointer also rested on an
+  // artifact covering the same path, so it says where the behaviour went. A
+  // retirement naming nothing is a condemnation, and the two mean opposite
+  // things to whoever stood on the artifact.
+  succeeded?: boolean;
   stale: boolean;
   // Narrows stale: the retired basis underneath is itself an artifact, so the
   // world moved rather than a pointer being withdrawn.
