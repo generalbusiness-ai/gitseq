@@ -2968,6 +2968,55 @@ func TestLaterArtifactAtTheSamePathDoesNotRescueACondemnedOne(t *testing.T) {
 	}
 }
 
+// Succession is followed to its end. A successor later retired with no
+// successor of its own condemns the behaviour, and the approval, requests,
+// promises and commitments that stood on the predecessor must flare then,
+// or a finished loop would look current after its replacement was found
+// wrong. A successor replaced by a further successor keeps answering.
+func TestCondemnedSuccessorFlaresWhatStoodOnThePredecessor(t *testing.T) {
+	condemned := Fold(successionRecords(t,
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "landed on main", Body: map[string]string{"path": "internal/workroom", "commit": "merged"}}, "merge", "implementation-artifact"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "implementation-artifact", Text: "landed as merged"}, "implementation-artifact", "successor"),
+		event(t, "condemn", agent, SchemaSupersede, Supersede{Target: "successor", Text: "the behaviour was wrong and is withdrawn"}, "successor"),
+	))
+	if branch := artifactByEvent(t, condemned, "implementation-artifact"); !branch.Retired || !branch.Succeeded {
+		t.Fatalf("branch artifact: retired=%v succeeded=%v, want both", branch.Retired, branch.Succeeded)
+	}
+	approval := statementByEvent(t, condemned, "approval")
+	if !approval.Stale || !approval.DescribesSupersededWorld {
+		t.Fatalf("approval after the successor was condemned: stale=%v world=%v, want both", approval.Stale, approval.DescribesSupersededWorld)
+	}
+	for _, id := range []string{"review-request", "review-promise", "merge"} {
+		if !statementByEvent(t, condemned, id).Stale {
+			t.Errorf("%s stayed current after the successor was condemned", id)
+		}
+	}
+	if review := commitmentByRequest(t, condemned, "review-request"); !review.Stale {
+		t.Errorf("review commitment = %+v, want stale", review)
+	}
+
+	replaced := Fold(successionRecords(t,
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "landed on main", Body: map[string]string{"path": "internal/workroom", "commit": "merged"}}, "merge", "implementation-artifact"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "implementation-artifact", Text: "landed as merged"}, "implementation-artifact", "successor"),
+		event(t, "successor2", agent, SchemaState, State{Kind: KindArtifact, Text: "a later merge", Body: map[string]string{"path": "internal/workroom", "commit": "merged2"}}, "successor"),
+		event(t, "retire2", agent, SchemaSupersede, Supersede{Target: "successor", Text: "replaced by merged2"}, "successor", "successor2"),
+	))
+	if approval := statementByEvent(t, replaced, "approval"); approval.Stale || approval.DescribesSupersededWorld {
+		t.Fatalf("approval after a second succession: stale=%v world=%v, want neither", approval.Stale, approval.DescribesSupersededWorld)
+	}
+
+	chained := Fold(successionRecords(t,
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "landed on main", Body: map[string]string{"path": "internal/workroom", "commit": "merged"}}, "merge", "implementation-artifact"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "implementation-artifact", Text: "landed as merged"}, "implementation-artifact", "successor"),
+		event(t, "successor2", agent, SchemaState, State{Kind: KindArtifact, Text: "a later merge", Body: map[string]string{"path": "internal/workroom", "commit": "merged2"}}, "successor"),
+		event(t, "retire2", agent, SchemaSupersede, Supersede{Target: "successor", Text: "replaced by merged2"}, "successor", "successor2"),
+		event(t, "condemn2", agent, SchemaSupersede, Supersede{Target: "successor2", Text: "withdrawn as wrong"}, "successor2"),
+	))
+	if approval := statementByEvent(t, chained, "approval"); !approval.Stale || !approval.DescribesSupersededWorld {
+		t.Fatalf("approval after the end of the chain was condemned: stale=%v world=%v, want both", approval.Stale, approval.DescribesSupersededWorld)
+	}
+}
+
 // Succession answers the reasoning that stood on the artifact. It does not
 // answer a page that describes the behaviour: the code moved, so the prose has
 // to be re-read against it. That flare is what the documentation set is for,

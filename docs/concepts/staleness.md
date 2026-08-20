@@ -72,9 +72,13 @@ and everything resting on the false claim would stop flaring. A successor
 is something the retiring actor states and signs. A bystander cannot
 supply one afterwards.
 
-One link is followed, not a chain. If the successor is itself retired
-later, its own retirement carries the same link, so a reader is handed on
-rather than left guessing.
+The link is followed to its end. If the successor is itself replaced
+later, its own retirement carries the next link, and the chain still
+answers for everything that stood on the first artifact. If any successor
+in the chain is instead retired with no successor, the behaviour was
+condemned after all: everything that stood on the predecessor flares then,
+exactly as if its own basis had been withdrawn, so a finished loop cannot
+look current after its replacement has been found wrong.
 
 ### What succession does not quiet
 

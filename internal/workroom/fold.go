@@ -1277,7 +1277,7 @@ func (f *foldState) retired(event string) bool {
 // staleness at all is the governing definition's business: an exempt kind
 // neither catches staleness nor passes it on, and a terminal one catches it
 // without passing it on.
-func (f *foldState) staleness(succeeded map[string]bool) (map[string]bool, map[string]bool) {
+func (f *foldState) staleness(successors map[string]string) (map[string]bool, map[string]bool) {
 	stale := make(map[string]bool)
 	world := make(map[string]bool)
 	for _, record := range f.records {
@@ -1291,7 +1291,7 @@ func (f *foldState) staleness(succeeded map[string]bool) (map[string]bool, map[s
 		// retirement of its approval, request, or any other basis still
 		// propagates normally. The plan is a property of the record, not of the
 		// basis being examined, so it is read once.
-		plan := f.mergeSuccessionPlan(&record)
+		plan := f.withoutCondemnedSuccessions(f.mergeSuccessionPlan(&record), successors)
 		for _, basis := range record.record.RestsOn {
 			if plan != nil {
 				if _, intended := plan[basis]; intended && f.retired(basis) {
@@ -1314,8 +1314,15 @@ func (f *foldState) staleness(succeeded map[string]bool) (map[string]bool, map[s
 			// it is not news to them and they do not flare. A page above it is
 			// a different matter: the behaviour it describes has changed, and
 			// artifact provenance is exactly the edge that says so.
-			if retiredBasis && succeeded[basis] && !artifactProvenance {
-				retiredBasis = false
+			//
+			// The move is followed to its end. If the successor, or any later
+			// successor in the chain, is itself retired with no successor, the
+			// behaviour was condemned after all, and the reasoning that stood
+			// on the predecessor is told exactly as if its own basis had been.
+			if retiredBasis && !artifactProvenance {
+				if _, moved := successors[basis]; moved && !f.successionCondemned(basis, successors) {
+					retiredBasis = false
+				}
 			}
 			staleBasis := stale[basis] && mode == StalenessPropagates
 			if plan != nil && staleBasis && f.stalenessCoveredByMergePlan(basis, plan, stale, make(map[string]bool)) {
@@ -1458,11 +1465,11 @@ func (f *foldState) stalenessCoveredByMergePlan(event string, plan map[string]st
 // that tree, and everything resting on the false claim would stop flaring. The
 // signed basis cannot be supplied by a bystander.
 //
-// One link is followed, not a chain. If the successor is itself later retired,
-// its own retirement carries the same link, so the reader is handed on rather
-// than left guessing.
-func (f *foldState) succeededRetirements() map[string]bool {
-	succeeded := make(map[string]bool)
+// The map carries the link itself, predecessor to successor, so that staleness
+// can follow the chain: a successor retired later with no successor of its own
+// condemns everything the chain once answered for.
+func (f *foldState) succeededRetirements() map[string]string {
+	succeeded := make(map[string]string)
 	for _, record := range f.records {
 		if record.decision.Verdict != Effective {
 			continue
@@ -1472,7 +1479,7 @@ func (f *foldState) succeededRetirements() map[string]bool {
 			continue
 		}
 		retiredPath, targetIsArtifact := f.artifactPath(supersede.Target)
-		if !targetIsArtifact || !f.isArtifact(supersede.Target) || succeeded[supersede.Target] {
+		if _, already := succeeded[supersede.Target]; !targetIsArtifact || !f.isArtifact(supersede.Target) || already {
 			continue
 		}
 		for _, basis := range record.record.RestsOn {
@@ -1480,12 +1487,51 @@ func (f *foldState) succeededRetirements() map[string]bool {
 				continue
 			}
 			if successorPath, ok := f.artifactPath(basis); ok && pathCovers(successorPath, retiredPath) {
-				succeeded[supersede.Target] = true
+				succeeded[supersede.Target] = basis
 				break
 			}
 		}
 	}
 	return succeeded
+}
+
+// withoutCondemnedSuccessions narrows a receipt's plan to the retirements it
+// may still read as its own act. A planned retirement whose successor chain
+// was later condemned is news to the receipt, exactly as it is to the approval
+// it rests on, so it is removed and the receipt flares with everything else.
+func (f *foldState) withoutCondemnedSuccessions(plan map[string]string, successors map[string]string) map[string]string {
+	if plan == nil {
+		return nil
+	}
+	narrowed := make(map[string]string, len(plan))
+	for artifact, path := range plan {
+		if _, moved := successors[artifact]; moved && f.successionCondemned(artifact, successors) {
+			continue
+		}
+		narrowed[artifact] = path
+	}
+	return narrowed
+}
+
+// successionCondemned follows the successor chain from a succeeded artifact
+// and reports whether it ends in a retirement that names no successor. A
+// chain that ends in a live artifact, or one not yet retired, still answers
+// for the predecessor. A cycle cannot arise from an append-only log, but the
+// walk is bounded by the visited set all the same.
+func (f *foldState) successionCondemned(artifact string, successors map[string]string) bool {
+	visited := map[string]bool{artifact: true}
+	current := artifact
+	for {
+		next, moved := successors[current]
+		if !moved {
+			return f.retired(current)
+		}
+		if visited[next] {
+			return false
+		}
+		visited[next] = true
+		current = next
+	}
 }
 
 // isArtifact reports whether an event is an effective artifact statement. It
@@ -1581,7 +1627,7 @@ func (f *foldState) project() Projection {
 			projection.Artifacts = append(projection.Artifacts, Artifact{
 				Event: record.record.ID, Path: path, Commit: state.Body["commit"],
 				Retired:                  f.retired(record.record.ID),
-				Succeeded:                f.retired(record.record.ID) && succeeded[record.record.ID],
+				Succeeded:                f.retired(record.record.ID) && succeeded[record.record.ID] != "",
 				Stale:                    stale[record.record.ID],
 				DescribesSupersededWorld: world[record.record.ID],
 				UnableToFlare:            f.unableToFlare(record.record.RestsOn),
