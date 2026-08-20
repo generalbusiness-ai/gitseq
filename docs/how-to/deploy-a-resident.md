@@ -2,6 +2,10 @@
 title: Deploy a resident
 summary: Run the local service, wait for it to be ready, and understand what the loopback boundary trusts.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bfcf6197f09100c0078b2cf756518aa94e31dff1
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:076ced4d914d84d4a70e7eaad949efeb4db98d10
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88cc21688aebb4532fdff9614ef72c31fffe36f8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:821e23690a0bc1ae628c26849684a3edf3751437
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48bd5acfe51abd4146197a48b0f7674f5676cc5c
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:68701f489d614b758b26439d335e7f0ec5307544
@@ -23,7 +27,8 @@ git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 gs init --repo "$REPO" --operator alice >/dev/null
 
 PORT="${PORT:-7777}"
-gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" &
+gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" \
+  --acknowledge-trusted-processes &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null || true' EXIT
 ```
@@ -70,26 +75,38 @@ gs state --repo "$REPO" --server "http://127.0.0.1:$PORT" --as alice \
 ## Loopback only, and why
 
 ```sh
-! gs serve --repo "$REPO" --listen 0.0.0.0:9999
+! gs serve --repo "$REPO" --listen 0.0.0.0:9999 \
+  --acknowledge-trusted-processes
 ```
 
-The refusal is deliberate. The service is a **trusted local custodian**
-for several actors at once: it holds their signing keys and signs on
-behalf of whichever session asks.
+The refusal is deliberate. The service is a **trusted local custodian** for
+several actors at once: it holds their signing keys and signs on behalf of
+trusted processes. The required `--acknowledge-trusted-processes` flag records
+that deliberate operating choice for each invocation. Without it, serving
+stops before the repository is opened or an address is published.
 
-That makes a **session identifier a credential**. Present one and the
-service signs with that session's actor key — ephemeral frames through
-`/v0/say` and durable events through `/v0/act` — and will end that
-session's lease on request. So session identifiers are never published.
-Presence and the change stream name each session by an opaque minted
-`session:` handle instead, drawn from system randomness with no
-derivation in either direction. A live session cannot be rebound to a
-different actor.
+The listener host is resolved and every result must be loopback. Each HTTP
+mutation separately rejects a Host that is not wholly loopback, then enforces
+same-origin browser provenance and JSON content type before routing or
+decoding. These guards narrow accidental exposure; they are not shared-host
+authentication.
 
-What remains trusted is the loopback boundary itself, and it is worth
-being exact about how much that carries. Anything that can reach the
-listening port can announce a session for any actor the repository holds
-custody for and then act as that actor — not only ephemeral speech.
+The resident, not the client, mints each private credential from 256 bits of
+system randomness. It binds the credential to one repository and actor.
+Renewal, acts, speech, inbox operations and departure use it in JSON bodies;
+expiry, departure, revocation or process restart invalidates it. Presence and
+the change stream show only a separate random `session:` handle. The handle is
+display-only and grants no authority.
+
+The browser keeps its credential only in memory. The MCP adapter keeps one
+private credential per repository and consumes it internally; ordinary tool
+results, including `whoami`, do not return it. Credentials do not appear in
+status, logs, diagnostics, durable events, URLs, queries or referrers.
+
+What remains trusted is the operating-system boundary itself. Any process
+running as the account that owns the resident can reach loopback and may read
+the repository's actor keys or invoke local `gs` commands directly. Such a
+process can act as any actor whose key the application can open.
 
 Two layers are worth separating, because conflating them overstates the
 damage. Possession of a session makes the custodian produce a **genuinely
@@ -100,10 +117,38 @@ reads already-decoded records, checks no signatures, and can rule a
 perfectly signed act ineffective on its merits. The boundary buys an
 attacker authentic authorship, not automatic force.
 
-There is no authentication below that line, by design. On a machine with
-untrusted local users or processes, that boundary is the whole of the
-protection, and it protects the durable record as well as the
-conversation.
+There is no authentication below that line, by design. A multi-user service,
+container boundary shared with untrusted workloads, or remote listener is not
+a supported deployment.
+
+## Supported deployment checklist
+
+Run the resident under one dedicated OS account whose processes you trust.
+Protect the repository's **common Git directory**, not only one checkout: it
+contains actor and sequencer keys, the sequence refs, resident claim,
+checkpoint selectors and linked-worktree metadata. Give other accounts no
+read or write access to that directory.
+
+Apply the same rule to every path that can copy or expose it:
+
+- backups and volume snapshots;
+- developer shells, editors, debuggers, profilers and crash reporters;
+- synchronisation tools and cloud-drive clients; and
+- copied repositories, worktrees, archives and temporary migration paths.
+
+Encrypt and access-control backups and snapshots. Test recovery into an
+equally trusted account. Do not restore a repository carrying live actor keys
+onto a less trusted host merely to inspect it; use a read-only attachment or a
+copy without private custody instead.
+
+If the account, host, backup, snapshot or copied common directory may have
+been exposed, stop the resident, revoke access to the host, preserve the
+durable log for audit, and treat every actor and sequencer key in that custody
+set as compromised. Recover from a known-good protected copy when possible.
+Rotate the sequencer key through the verified in-band rotation procedure and
+replace or retire affected actor keys and capabilities according to the
+application's governance. Restarting the resident only revokes live
+credentials; it does not rotate durable keys or undo signed acts.
 
 ## One service per repository
 

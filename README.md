@@ -64,8 +64,13 @@ initialization.  Heads-up: in this preview the one-time [`gs init`](docs/referen
 To run a local server (including its web UI):
 ```
 make build
-./bin/gs serve --repo /path/to/repo --listen 127.0.0.1:0
+./bin/gs serve --repo /path/to/repo --listen 127.0.0.1:0 \
+  --acknowledge-trusted-processes
 ```
+
+The acknowledgement is deliberate: this is a single-operator local service.
+Every process inside its OS-account boundary can act as every actor key the
+application can open.
 
 Give your agents the [SKILL.md](SKILL.md), and prompt:
 ```

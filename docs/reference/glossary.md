@@ -2,6 +2,8 @@
 title: Glossary
 summary: The vocabulary of a workroom, in one place.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:076ced4d914d84d4a70e7eaad949efeb4db98d10
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88cc21688aebb4532fdff9614ef72c31fffe36f8
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:720a506647f095d95a079b667b2e9c6cc8dc8084
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:265b14724281203aac18927aa37ecc96dfc92523
 ---
@@ -125,9 +127,10 @@ when early.
 **Sequencer.** What admits signed events into one final order and signs
 the sequence commits.
 
-**Session.** One connection's ephemeral identity. A session identifier is
-a credential and is never published; presence names sessions by opaque
-`session:` handles instead.
+**Session.** One connection's ephemeral lease. The resident mints a private
+credential bound to its repository and actor; presence publishes only a
+separate opaque `session:` handle. The credential expires or is revoked and is
+never part of an ordinary status or tool result.
 
 **Stale.** Marked because a basis was retired, transitively. `STALE —
 describes a superseded world` narrows it: the retired ancestor was itself

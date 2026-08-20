@@ -2,6 +2,8 @@
 title: MCP status
 summary: Project durable work, live presence, and this session's priority ephemeral chat.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e6080d3d101923bbbe4797517543ebada8831b8f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88cc21688aebb4532fdff9614ef72c31fffe36f8
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc5ca55fb4a4e67e2395903519f2103a92930268
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
@@ -58,6 +60,11 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 | `priority_ephemeral_chat` | This exact session's bounded, unacknowledged addressed frames. `available` is false when the resident is unavailable; `skipped` counts additional pending frames behind the current page. |
 | `cursor` | The composite cursor. Pass it back to `wait`. |
 | `follow_with_wait` | A reminder of exactly that. |
+
+The resident-minted credential is not part of this response. It remains
+private adapter state and is absent from durable, live, diagnostic and summary
+views. The resident's ordinary HTTP status and browser join view separately
+state the trusted-process boundary under which that credential is meaningful.
 
 There is also a one-line text summary, which is usually enough:
 
