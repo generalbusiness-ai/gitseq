@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7948b68b9ada4c863abe49854f9e06d111c473b9"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3fec5026175d8f198ef8aa6530980339b0f7bfcf","text":"Retire the historical self-request. Planner's current-world cross-actor replacement 00279a9c now solely governs supported-host implementation."}
