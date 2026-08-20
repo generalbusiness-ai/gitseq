@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b99410af38eab88094ff208ff668f8b557021461","text":"Retire the shipped intermediate internal/app artifact after the two maintained pages were repointed to its merge successor."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1303d36457ad43404647dcf18fdbc729bb19931e","text":"Retire the shipped intermediate cmd/gitseq-perf artifact after the two maintained pages were repointed to its merge successor."}
