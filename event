@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cf4739f2d5104a1d13733c8787934cff6a301eb4","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-20-composite-kinds.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9736b0cd2d853282ebb5c6f2993a160daad26238","text":"Retire the shipped intermediate internal/kernel artifact after the two maintained pages were repointed to its merge successor."}
