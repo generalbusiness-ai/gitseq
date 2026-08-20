@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d2ebb14a44317f73818d82edcc5f26d4db99ca86"}
+{"kind":"promise","text":"Planner promises the review requested in 2daf1efd: independent review of the composite-kinds design note at exact head a63f0953c2f52e965406c5cbd682cee17a365c8c, artifact cf4739f2 at notes/2026-08-20-composite-kinds.md, against all six stated conditions plus explicit Architecture, Security and Simplification conclusions, reporting approved or changes-requested."}
