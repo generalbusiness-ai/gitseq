@@ -15,6 +15,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:facc02bf61763cbcbd6015d93966135851a66c46
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd0680effdbc154f7f17a8f801bed602f20e3717
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:969a4e7a3ec3b8c4a9721a10b98e0da811de3520
 ---
 
 # Architecture layers
@@ -274,6 +275,86 @@ records the binding at init for an application an absent binding does not
 already name, and reads the binding in force as the workspace opens, before it
 can fold or append anything.
 
+#### Host identity
+
+Identity sits in this layer for the same reason the binding does. An
+application must not have to invent it, and a host must be able to read it
+without already holding an application profile, so the vocabulary is fixed
+here and inherited rather than redefined by each application.
+
+The kernel already answers the only identity question it can answer without
+meaning: which key signed this record. A key with nothing more than that is a
+first-class actor, and a repository that never says anything else about it is
+complete. Everything above that is an upgrade, never a requirement.
+
+The upgrade is an **anchor**: a record saying that one signing key belongs to a
+persistent identity, for this repository, within a scope, until an expiry.
+Three fixed schema families carry it — `gitseq/identity-witness@0`,
+`gitseq/identity-anchor@0`, and `gitseq/identity-revoke@0` — and application
+profiles cannot rename or extend them.
+
+An anchor is not simply strong or weak. Two independent things vary, and both
+are reported, because collapsing them into one number hides which assumption a
+reader is making. **Vouching** says who stands behind the endorsement.
+**Verification** says what a reader must trust to check it: a signature carried
+in the log verifies offline forever, while a claim needing a third party to
+answer again verifies only while that third party cooperates.
+
+One vouching rung is implemented: **witnessed**, where a deployment's key says
+a provider said so. The stronger rung, where the identity's own key signs and
+nobody beyond the identity has to be trusted, is deferred along with the
+providers that would occupy it — Nostr, and a published forge signing key.
+Nothing here names it, because a value the code can never produce reads to a
+caller as a state to handle and to a reviewer as a rung that was built. The
+axis is ordered so that adding it later is one more value and a reduction rule
+the verification axis already follows.
+
+Vouching is never claimed in a payload, only derived from which key signed the
+record, so no record can promote itself. A witness declaration is in force only
+when the key that initialized the repository signed it — the same authority the
+binding answers to, and for the same reason, since another application has no
+roster to consult. The last authorized declaration wins, so rotating the
+witness key is one more record, and it does not reach back: anchors the
+previous key signed keep the force they had where they stand. A witness is
+declared for named identity schemes and cannot mint an identity outside them,
+so adding a provider is a visible act rather than a silent widening.
+
+An endorsement from any other key is a delegation — a new device, or an agent
+credential. It names no identity and inherits the endorser's, reduced to the
+weaker value on each axis, because nobody can hand on more than they hold. It
+cannot outlive the anchor it rests on, and withdrawing that anchor withdraws
+what it minted, or a revocation would leave standing the keys it was called to
+stop.
+
+Resolution is the authority, and nothing here gates appending. An identity
+record that is unauthorized, unparseable, malformed, naming another repository,
+or claiming an identity its signer cannot hand on is recorded exactly as signed
+and resolves to nothing, leaving the previous answer standing. So no appender
+can make a repository's identities unreadable by writing a record, and no
+admission check has to be trusted to keep one out.
+
+Expiry and withdrawal are judged against the sequencer's signed timestamp on
+the record being folded, never against the reader's clock, so two clones
+resolving one log reach the same answers. A provider check — verifying a login
+with the provider that issued it — runs outside the fold, and only its result
+is signed into the log; replaying a log makes no network request, and a clone
+with no access to the provider reads exactly the same identities. That check
+holds the person's bearer token, and the rule that keeps it out of a log is
+that no byte of provider- or transport-controlled text reaches an error from
+it: a refusal is reported as the numeric status with this program's own phrase
+for it, and a transport failure or an unreadable answer in fixed words of the
+package's own. Redaction was considered and refused, because it removes only
+the spelling it goes looking for and the party echoing the credential chooses
+the spelling.
+
+This is the mechanism, not a login system. It authenticates nobody and
+authorizes nothing: it says who a key belongs to and leaves what that is worth
+to the application's fold. Custody of a witness private key belongs to the
+deployment under the supported single-operator host posture, in which every
+process inside the trusted boundary can use every key that deployment holds,
+this one included. Authenticated shared-host support remains deferred, and the
+two-axis display surface belongs to the application, not here.
+
 ### 5. Application profile and interpreter
 
 An application profile gives opaque kernel events meaning. It owns its schema
@@ -455,7 +536,7 @@ compatible:
 | Application family | Schema family and governance bootstrap interpreted after host selection | `workroom/*` |
 | Interpreter or fold | The exact deterministic meaning assigned to the application record | `workroom.ProfileVersion` and the projected fold binding |
 | Projection contract | Names, types, limits, cursor behavior, and omission rules of derived read models | Workroom status, summary, work-query, and inspect shapes |
-| Surface or UI | Commands, flags, MCP protocol/tool schemas, the exported Go API an outside application imports, connector behavior, browser routes and presentation | `gs`, the MCP protocol version, the `host` package's exported surface, connector flags, and the committed UI build |
+| Surface or UI | Commands, flags, MCP protocol/tool schemas, the exported Go API an outside application imports, connector behavior, browser routes and presentation | `gs`, the MCP protocol version, the exported surface of `host` and `host/identity`, connector flags, and the committed UI build |
 
 A change on one axis does not automatically change the others. For example, a
 new browser layout may preserve the projection and fold; a fold change may
@@ -478,6 +559,7 @@ the same result.
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
 | `internal/apphost` | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and the binding in force shared by every host, together with the repository configuration a checkout needs to reopen its own log. It imports no application profile and has no application ontology. |
 | `host` | Application host, public surface | The only package a module outside this one can import. It exports binding at init, opening against a declared application, appending a signed act, and reading the verified record stream — and no projection, because the outside application owns its fold. It depends on the kernel and `internal/apphost`, never on an application profile. |
+| `host/identity` | Application host, public surface | Holds the host identity vocabulary an application inherits rather than reinvents: the witness declaration, the anchor, the withdrawal, and the two-axis resolution that judges them. It imports `host` and no application profile, gates no append, and reads no clock. The provider check that turns a login into an identity runs outside the fold, and only its result is recorded. |
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. |
@@ -492,7 +574,8 @@ The important existing dependency direction is real: `internal/kernel` does
 not import `internal/workroom`; `internal/workroom` does not import Git, HTTP,
 or MCP; and `internal/app` joins them. The host binding belongs at that seam,
 not in either lower package or inside a particular application. New code
-should keep application meaning above it. `host` and `internal/apphost` sit at
+should keep application meaning above it. `host`, `host/identity` and
+`internal/apphost` sit at
 that seam and must stay free of any application profile: a public surface that
 imported the Workroom-coupled adapter would put layer 4 on top of layer 5, and
 an outside application would inherit meanings it never asked for. Where `cmd/gs` and
