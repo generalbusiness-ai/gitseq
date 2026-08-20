@@ -1788,6 +1788,8 @@ func serveProfiler(ctx context.Context, address string) (func(), error) {
 	}, nil
 }
 
+var lookupIP = net.LookupIP
+
 func validateLoopbackListen(address string) error {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
@@ -1802,7 +1804,7 @@ func validateLoopbackListen(address string) error {
 		}
 		return nil
 	}
-	addresses, err := net.LookupIP(host)
+	addresses, err := lookupIP(host)
 	if err != nil || len(addresses) == 0 {
 		return errors.New("--listen must resolve only to loopback addresses; the resident service is a trusted local multi-actor custodian")
 	}

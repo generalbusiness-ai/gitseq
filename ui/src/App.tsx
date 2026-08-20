@@ -58,7 +58,7 @@ export default function App() {
       const payload = JSON.stringify(input);
       const key = actKeys.current.forAttempt(intent, payload);
       try {
-        await api.act({ ...input, credential: session.id, idempotency_key: key });
+        await api.act({ ...input, credential: session.credential, idempotency_key: key });
         actKeys.current.succeeded(intent, key);
       } catch (error) {
         setActError(error instanceof Error ? error.message : String(error));
@@ -66,7 +66,7 @@ export default function App() {
         inFlight.current.delete(intent);
       }
     },
-    [session.id],
+    [session.credential],
   );
 
   return (

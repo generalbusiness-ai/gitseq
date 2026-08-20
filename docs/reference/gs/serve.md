@@ -174,10 +174,16 @@ the claim, and it confers no ownership of its own.
 
 ## Refusals
 
+Every hostname in `--listen`, including `localhost`, is resolved through the
+host resolver. Resolution must succeed, return at least one address, and
+return only loopback addresses. A host that fails to resolve, or resolves to
+both loopback and non-loopback addresses, is refused.
+
 | Situation | Message |
 |---|---|
 | The acknowledgement is absent | `serving requires --acknowledge-trusted-processes: every process inside this resident boundary can act as every actor key this application can open` |
-| A non-loopback `--listen` | `--listen must name a loopback address; the resident service is a trusted local multi-actor custodian` |
+| A literal non-loopback `--listen` | `--listen must name a loopback address; the resident service is a trusted local multi-actor custodian` |
+| A `--listen` hostname fails to resolve or any result is non-loopback | `--listen must resolve only to loopback addresses; the resident service is a trusted local multi-actor custodian` |
 | A read-only attachment | `cannot serve a read-only attachment` |
 | The port is taken | The bind error, before anything is claimed, published or announced. |
 | Another service holds the repository | `refusing to serve: another service already holds this repository's workroom and is answering (<url>)` |

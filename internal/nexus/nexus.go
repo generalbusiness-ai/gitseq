@@ -267,6 +267,7 @@ type Hub struct {
 	privateKey     ed25519.PrivateKey
 	retainedFrames int
 	retainedBytes  int
+	now            func() time.Time
 }
 
 func New(historyCap int) (*Hub, error) {
@@ -301,6 +302,7 @@ func NewWithSigningKey(historyCap int, privateKey ed25519.PrivateKey) (*Hub, err
 		inboxes:      make(map[string]*inboxState),
 		publicKey:    bytes.Clone(publicKey),
 		privateKey:   bytes.Clone(privateKey),
+		now:          time.Now,
 	}, nil
 }
 
@@ -349,7 +351,7 @@ func (h *Hub) AnnounceSessionIdentity(id, actor, fingerprint, value string, ttl 
 	if id == "" || actor == "" {
 		return Change{}, errors.New("session and actor are required")
 	}
-	h.expire(time.Now())
+	h.expire(h.now())
 	if existing, exists := h.presence[id]; exists && (existing.actor != actor || existing.fingerprint != fingerprint) {
 		return Change{}, errors.New("session is already bound to another actor")
 	}
@@ -366,7 +368,7 @@ func (h *Hub) OpenSessionIdentity(actor, fingerprint, value string, ttl time.Dur
 	if actor == "" {
 		return "", Change{}, errors.New("actor is required")
 	}
-	h.expire(time.Now())
+	h.expire(h.now())
 	for {
 		credential, err := mintCredential()
 		if err != nil {
@@ -386,9 +388,12 @@ func (h *Hub) OpenSessionIdentity(actor, fingerprint, value string, ttl time.Dur
 func (h *Hub) RenewSessionIdentity(credential, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
+	if !validCredential(credential) {
+		return Change{}, errors.New("credential is not valid")
+	}
 	entry, exists := h.presence[credential]
-	if !validCredential(credential) || !exists || entry.actor != actor || entry.fingerprint != fingerprint {
+	if !exists || entry.actor != actor || entry.fingerprint != fingerprint {
 		return Change{}, errors.New("credential is not valid")
 	}
 	return h.announceFor(credential, actor, fingerprint, value, ttl, update)
@@ -400,9 +405,12 @@ func (h *Hub) RenewSessionIdentity(credential, actor, fingerprint, value string,
 func (h *Hub) RevokeSession(credential string) (Change, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
+	if !validCredential(credential) {
+		return Change{}, errors.New("credential is not valid")
+	}
 	entry, exists := h.presence[credential]
-	if !validCredential(credential) || !exists {
+	if !exists {
 		return Change{}, errors.New("credential is not valid")
 	}
 	delete(h.presence, credential)
@@ -447,7 +455,7 @@ func (h *Hub) announceFor(id, actor, fingerprint, value string, ttl time.Duratio
 		}
 		handle = minted
 	}
-	now := time.Now()
+	now := h.now()
 	// The activity clock moves only when the activity does. A new session
 	// starts it; a renewal that changes nothing carries the old value forward.
 	changedAt := existing.activityChangedAt
@@ -590,12 +598,6 @@ func (h *Hub) Depart(id string) Change {
 	return change
 }
 
-func (h *Hub) Expire(now time.Time) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.expire(now)
-}
-
 func (h *Hub) expire(now time.Time) {
 	for id, entry := range h.presence {
 		if !entry.expiresAt.After(now) {
@@ -633,7 +635,7 @@ func (h *Hub) HandleFor(id string) string {
 func (h *Hub) SessionActor(id string) (string, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	entry, exists := h.presence[id]
 	return entry.actor, exists && entry.actor != ""
 }
@@ -645,7 +647,7 @@ func (h *Hub) SessionActor(id string) (string, bool) {
 func (h *Hub) LiveSessionsForActor(fingerprint string) int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	held := 0
 	for _, entry := range h.presence {
 		if entry.fingerprint == fingerprint {
@@ -661,7 +663,7 @@ func (h *Hub) LiveSessionsForActor(fingerprint string) int {
 func (h *Hub) EnableInbox(id string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	entry, exists := h.presence[id]
 	if !exists {
 		return errors.New("credential is not valid")
@@ -731,7 +733,7 @@ func (h *Hub) openConversation(nonce []byte) (string, Change, error) {
 func (h *Hub) Snapshot() Snapshot {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	return h.snapshotLocked()
 }
 
@@ -762,7 +764,7 @@ func (h *Hub) snapshotLocked() Snapshot {
 func (h *Hub) SnapshotForSession(session string) (Snapshot, Inbox, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	if _, exists := h.presence[session]; !exists {
 		return Snapshot{}, Inbox{}, errors.New("credential is not valid")
 	}
@@ -775,7 +777,7 @@ func (h *Hub) SnapshotForSession(session string) (Snapshot, Inbox, error) {
 func (h *Hub) Observe(session string, cursor *Cursor) (Observation, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	var identity presenceEntry
 	if session != "" {
 		var exists bool
@@ -810,7 +812,7 @@ func (h *Hub) Observe(session string, cursor *Cursor) (Observation, error) {
 func (h *Hub) Acknowledge(session string, handles []string) (int, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	if _, exists := h.presence[session]; !exists {
 		return 0, errors.New("credential is not valid")
 	}
@@ -861,7 +863,7 @@ func parseThreadHandle(handle string) (string, uint64, error) {
 func (h *Hub) ChangesSince(cursor Cursor) ([]Change, Cursor, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	return h.changesSinceLocked(cursor, "")
 }
 
@@ -870,7 +872,7 @@ func (h *Hub) ChangesSince(cursor Cursor) ([]Change, Cursor, error) {
 func (h *Hub) ChangesSinceForSession(cursor Cursor, session string) ([]Change, Cursor, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	if _, exists := h.presence[session]; !exists {
 		return nil, Cursor{Generation: h.generation, Position: h.position}, errors.New("credential is not valid")
 	}
@@ -937,7 +939,7 @@ func verifyBytes(domain string, key ed25519.PublicKey, value any, signature []by
 func (h *Hub) PublishForSession(session, about, conversationID string, payload []byte, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	_, exists := h.presence[session]
 	if !exists {
 		return Frame{}, errors.New("credential is not valid")
@@ -966,7 +968,7 @@ func (h *Hub) PublishForSession(session, about, conversationID string, payload [
 func (h *Hub) PublishMessageForSession(session, conversationID string, message Message, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	entry, exists := h.presence[session]
 	if !exists {
 		return Frame{}, errors.New("credential is not valid")
@@ -1245,7 +1247,7 @@ func (h *Hub) publish(conversationID string, payload []byte, actorPrivateKey ed2
 func (h *Hub) Frames(conversationID string) ([]Frame, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 	conversation, ok := h.convs[conversationID]
 	if !ok {
 		return nil, errors.New("unknown conversation")
@@ -1360,7 +1362,7 @@ func (h *Hub) FocusedOn(exclude string, events []string) ([]AttentionActor, int)
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.expire(time.Now())
+	h.expire(h.now())
 
 	type aggregate struct {
 		actor     AttentionActor

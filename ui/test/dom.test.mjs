@@ -529,7 +529,7 @@ test("the thread draws one rail of salient stations and keeps its history collap
       root.render(
         React.createElement(Thread, {
           workroom: threadRoom(),
-          session: { id: "browser", actor: "codex", live: true, setActor() {}, activity: { status: "available", focus: [] }, setActivity() {} },
+          session: { credential: "browser", actor: "codex", live: true, setActor() {}, activity: { status: "available", focus: [] }, setActivity() {} },
           frames: [],
           root: "req",
           pending: [],

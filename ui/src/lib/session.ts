@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Activity, type ActivityStatus, type ActivityUpdate } from "./api";
+import { renewCredential } from "./lease";
 
 // The browser is a leased participant like any other client: it announces a
 // lease bound to one actor, heartbeats it, and departs on unload. The resident
 // mints the private credential; this tab keeps it only in memory.
 export interface Session {
-  id: string;
+  credential: string;
   actor?: string;
   live: boolean;
   activity: Activity;
@@ -22,25 +23,25 @@ export function useSession(): Session {
   const activityRef = useRef(activity);
   const credentialRef = useRef("");
   const effective = actor;
-  const [id, setID] = useState("");
+  const [credential, setCredential] = useState("");
 
   useEffect(() => {
     if (!effective) return;
     let stopped = false;
     credentialRef.current = "";
-    setID("");
+    setCredential("");
     const renew = () =>
-      api
-        .announce(effective, credentialRef.current)
-        .then((response) => {
+      renewCredential(effective, credentialRef.current, api.announce)
+        .then((next) => {
           if (stopped) return;
-          if (!credentialRef.current && response.credential) {
-            credentialRef.current = response.credential;
-            setID(response.credential);
-          }
-          setLive(Boolean(credentialRef.current));
+          credentialRef.current = next;
+          setCredential(next);
+          setLive(Boolean(next));
         })
-        .catch(() => !stopped && setLive(false));
+        .catch(() => {
+          if (stopped) return;
+          setLive(false);
+        });
     void renew();
     const timer = setInterval(renew, 15000);
     const bye = () => credentialRef.current && void api.depart(credentialRef.current);
@@ -56,7 +57,7 @@ export function useSession(): Session {
   }, [effective]);
 
   return {
-    id,
+    credential,
     actor: effective,
     live,
     activity,

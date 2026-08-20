@@ -399,7 +399,7 @@ function Composer({
       try {
         await sendTemporaryReply(line, { about: root }, {
           optimistic: onSay,
-          publish: (delivery, message) => api.say(session.id, delivery.about, message, delivery.conversation, delivery.re),
+          publish: (delivery, message) => api.say(session.credential, delivery.about, message, delivery.conversation, delivery.re),
           failed: onSayFailed,
         });
       } catch (thrown) {
@@ -416,9 +416,9 @@ function Composer({
       if (mentioned.length > 0) body.mentions = mentioned.join(" ");
       const input: ActInput =
         type === "withdraw"
-          ? { credential: session.id, act: "supersede", target: basis, text: line, rests_on: [] }
+          ? { credential: session.credential, act: "supersede", target: basis, text: line, rests_on: [] }
           : {
-              credential: session.id,
+              credential: session.credential,
               act: "state",
               kind: type,
               text: line,

@@ -35,7 +35,7 @@ function workroom(presence, suppliedProjection) {
   };
 }
 
-const session = { id: "browser", live: true, setActor() {} };
+const session = { credential: "browser", live: true, setActor() {} };
 
 test("an addressed proposal-ratification request offers the requested decision directly", async () => {
   const vite = await createServer({

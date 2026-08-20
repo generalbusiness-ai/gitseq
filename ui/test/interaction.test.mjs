@@ -7,6 +7,7 @@ import { RetryKeys, eventDiscussionEntries, fingerprintOfPresentActor, fingerpri
 import { mentionAt, mentionFingerprints, mentionNames, mentionTokens } from "../src/lib/mentions.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
 import { decodeFrame } from "../src/lib/api.ts";
+import { renewCredential } from "../src/lib/lease.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { age, sortAfterClick, sortRows, workRows } from "../src/lib/rows.ts";
 import { buildSpine } from "../src/lib/spine.ts";
@@ -208,10 +209,34 @@ test("UI focus selection adds, removes, and stays bounded", () => {
 
 test("browser heartbeats renew the lease without revalidating activity focus", () => {
   const session = readFileSync(new URL("../src/lib/session.ts", import.meta.url), "utf8");
-  assert.match(session, /const renew = \(\) =>\s*api\s*\.announce\(effective, credentialRef\.current\)/);
+  assert.match(session, /const renew = \(\) =>\s*renewCredential\(effective, credentialRef\.current, api\.announce\)/);
   assert.match(session, /setActivity:[\s\S]*api\.announce\(effective, credentialRef\.current, next\)/);
-  assert.doesNotMatch(session, /const renew = \(\) =>[\s\S]*?announce\(effective, credentialRef\.current, activityRef\.current\)/);
+  assert.doesNotMatch(session, /const renew = \(\) =>[\s\S]*?renewCredential\([^)]*activityRef/);
   assert.doesNotMatch(session, /localStorage\.setItem\([^\n]*credential|sessionStorage/);
+});
+
+test("a rejected browser credential is forgotten and the next heartbeat re-mints", async () => {
+  const seen = [];
+  const announce = async (_actor, credential) => {
+    seen.push(credential);
+    if (credential) throw new Error("credential is not valid");
+    return { credential: "credential:fresh" };
+  };
+
+  let credential = await renewCredential("codex", "credential:expired", announce);
+  assert.equal(credential, "");
+  credential = await renewCredential("codex", credential, announce);
+  assert.equal(credential, "credential:fresh");
+  assert.deepEqual(seen, ["credential:expired", ""]);
+});
+
+test("a transport failure does not discard a browser credential", async () => {
+  await assert.rejects(
+    renewCredential("codex", "credential:live", async () => {
+      throw new Error("network unavailable");
+    }),
+    /network unavailable/,
+  );
 });
 
 test("avatar initials read the actor's name, not a decorated label", () => {

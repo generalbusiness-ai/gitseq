@@ -50,7 +50,7 @@ func TestCredentialsAreResidentScopedAndExpire(t *testing.T) {
 	if _, err := second.RenewSessionIdentity(credential, "alice", "actor:alice", "alice", time.Minute, ActivityUpdate{}); err == nil {
 		t.Fatal("credential crossed a resident/repository boundary")
 	}
-	first.Expire(time.Now().Add(time.Second))
+	setHubNow(first, time.Now().Add(time.Second))
 	if _, err := first.RenewSessionIdentity(credential, "alice", "actor:alice", "alice", time.Minute, ActivityUpdate{}); err == nil {
 		t.Fatal("expired credential renewed")
 	}

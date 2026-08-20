@@ -45,6 +45,21 @@ func TestValidateLoopbackListen(t *testing.T) {
 	}
 }
 
+func TestValidateLoopbackListenRejectsMixedResolution(t *testing.T) {
+	previous := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		if host != "mixed.example" {
+			t.Fatalf("lookup host = %q, want mixed.example", host)
+		}
+		return []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("192.0.2.1")}, nil
+	}
+	t.Cleanup(func() { lookupIP = previous })
+
+	if err := validateLoopbackListen("mixed.example:7777"); err == nil {
+		t.Fatal("listener accepted a hostname with a non-loopback resolution")
+	}
+}
+
 func TestServeRequiresExplicitTrustedProcessAcknowledgement(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
