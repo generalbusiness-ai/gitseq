@@ -530,10 +530,6 @@ func checkpointEventFromPayload(index int, position gitstore.CommitMetadata, pay
 	}, nil
 }
 
-func appendCheckpointEvent(log *scannedLog, index int, event Event) error {
-	return appendCheckpointEventInto(log, index, event, true)
-}
-
 func appendCheckpointEventInto(log *scannedLog, index int, event Event, retainEvent bool) error {
 	key, err := event.Signed.DedupKey()
 	if err != nil {
@@ -914,10 +910,6 @@ func decodeCompactCheckpoint(data []byte) (checkpoint, error) {
 		return checkpoint{}, err
 	}
 	return stored, nil
-}
-
-func validateCompactCheckpoint(stored checkpoint, payload []byte, desc GenesisDescriptor, positions []gitstore.CommitMetadata) (scannedLog, error) {
-	return validateCompactCheckpointInto(stored, payload, desc, positions, true)
 }
 
 func validateCompactCheckpointInto(stored checkpoint, payload []byte, desc GenesisDescriptor, positions []gitstore.CommitMetadata, retainEvents bool) (scannedLog, error) {
