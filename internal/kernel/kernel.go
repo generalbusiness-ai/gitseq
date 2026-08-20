@@ -501,15 +501,19 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 		if err != nil {
 			return Result{}, err
 		}
-		if err := resolveReferences(storeFormat, targetOID, log, decoded.RestsOn); err != nil {
-			return Result{}, err
-		}
 		prior, replay, dedupErr := dedupPrior(log.Dedup, key, request.Signed)
 		if dedupErr != nil {
 			return Result{}, dedupErr
 		}
 		if replay {
 			return Result{Commit: prior.Commit, Head: prior.Commit, Replay: true, CASRetries: attempt, BaseHead: head, Timestamp: prior.Timestamp}, nil
+		}
+		// Only a genuinely new submission is held to resolvability. An exact
+		// retry of a record already in the log replays that record whatever its
+		// bases said, because the log already carries it and history is read
+		// as it was written.
+		if err := resolveReferences(storeFormat, targetOID, log, decoded.RestsOn); err != nil {
+			return Result{}, err
 		}
 		actorID := intent.ActorFingerprint(request.Signed.ActorKey)
 		commit, timestamp, err := store.SignedCommitWithTimestamp(ctx, writtenTree, head, message, options.SigningKey, gitstore.CommitIdentity{

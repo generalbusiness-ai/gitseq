@@ -243,6 +243,17 @@ func TestVerifyAcceptsHistoricalDanglingReference(t *testing.T) {
 		t.Fatalf("historical references = %v, want %v", events[len(events)-1].Intent.RestsOn, dangling)
 	}
 
+	// An exact retry of the historical record replays it rather than refusing
+	// it: admission holds only a new submission to resolvability, and the log
+	// already carries this one.
+	retry, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatalf("retry of a historical dangling record = %v, want replay", err)
+	}
+	if !retry.Replay || retry.Commit != historical {
+		t.Fatalf("retry = %+v, want replay of %s", retry, historical)
+	}
+
 	// And the log stays usable: the next record may rest on the historical one,
 	// which is now a real position, whatever its own bases said.
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "after", []byte("after"), []string{eventID(f.format, f.genesis, historical)}), Options{SigningKey: f.signingKey}); err != nil {
