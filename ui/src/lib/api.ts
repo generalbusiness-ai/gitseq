@@ -66,6 +66,25 @@ export interface Artifact {
   live_predecessors?: number;
 }
 
+// A review verdict as the fold computed it. The thread rail reads its
+// salience from here rather than scanning report text: three of the four
+// verdicts in one acceptance thread are superseded rounds, two of them are
+// ratified approvals, and only the latest names the head that landed.
+export interface Review {
+  report: string;
+  timestamp?: number;
+  reviewer: string;
+  verdict: string;
+  head?: string;
+  artifact?: string;
+  implementer?: string;
+  resolved_by?: string;
+  independence: string;
+  ratified?: boolean;
+  retired?: boolean;
+  stale?: boolean;
+}
+
 export interface Act {
   event: string;
   timestamp?: number;
@@ -82,6 +101,7 @@ export interface Projection {
   acts: Act[];
   statements: Statement[];
   commitments: Commitment[];
+  reviews?: Review[];
   artifacts: Artifact[];
   actors: Record<string, ActorState>;
   provenance: Record<string, string[]>;
@@ -196,6 +216,18 @@ export interface Status {
   cursor: Cursor;
 }
 
+// What git says about one commit, asked at render time and never stored.
+// "absent" and "unknown" are different answers: a check that fails must not
+// read as a negative, which is the mistake that left a false sentence
+// standing in a design note for seven days.
+export interface Landing {
+  commit: string;
+  status: "landed" | "absent" | "unknown";
+  merge?: string;
+  time?: number;
+  reason?: string;
+}
+
 export interface GraphCommit {
   hash: string;
   parents: string[];
@@ -286,6 +318,16 @@ export const api = {
       .then((r) => json<LocalRepo>(r))
       .then((local) => ({ repo: local.repo ?? "", worktrees: local.worktrees ?? [] })),
   actors: () => fetch("/v0/actors").then((r) => json<Actor[]>(r)),
+  // The merge station's second source. The browser names commits; the branch
+  // is a ref the service resolves, never one a page may choose.
+  landed: (commits: string[]) =>
+    fetch("/v0/landed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commits }),
+    })
+      .then((r) => json<{ branch: string; commits: Landing[] }>(r))
+      .then((answer) => ({ branch: answer.branch ?? "", commits: answer.commits ?? [] })),
   wait: (cursor: Cursor, timeoutMS = 25000) =>
     fetch("/v0/wait", {
       method: "POST",

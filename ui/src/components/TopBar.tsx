@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { AtSign, ClipboardList, MessagesSquare } from "lucide-react";
-import { forYouItems, ticketsOf, type Selection, type Workroom } from "../lib/store";
+import { AtSign } from "lucide-react";
+import { forYouItems, ticketsOf, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
 import { cn } from "../lib/util";
@@ -10,26 +10,18 @@ import { fingerprintOfPresentActor, presentActors, toggleActivityFocus } from ".
 export function TopBar({
   workroom,
   session,
-  mainView,
-  onShowWork,
-  onShowActivity,
   onJumpEvent,
-  onOpenProfile,
-  selection,
+  selectedEvent,
 }: {
   workroom: Workroom;
   session: Session;
-  mainView: "work" | "activity";
-  onShowWork: () => void;
-  onShowActivity: () => void;
   onJumpEvent: (event: string) => void;
-  onOpenProfile: (fingerprint: string) => void;
-  selection?: Selection;
+  /** The thread that is open, if one is: what advisory focus would name. */
+  selectedEvent?: string;
 }) {
   const durable = workroom.status?.durable;
   const people = presentActors(workroom.status?.live.presence, workroom.status?.live.activity);
   const tickets = ticketsOf(durable?.projection);
-  const selectedEvent = selection?.kind === "event" ? selection.id : undefined;
   const selectedFocused = Boolean(selectedEvent && session.activity?.focus.includes(selectedEvent));
   const fingerprintOf = (name: string) => workroom.actors.find((a) => a.name === name)?.fingerprint ?? "";
 
@@ -93,26 +85,6 @@ export function TopBar({
             )}
           </div>
         )}
-        <nav className="flex rounded-md border border-border p-0.5" aria-label="Main view">
-          <button
-            type="button"
-            aria-pressed={mainView === "work"}
-            onClick={onShowWork}
-            className={cn("flex h-7 items-center gap-1.5 rounded px-2 text-xs focus-visible:outline focus-visible:outline-accent", mainView === "work" ? "bg-elevated text-foreground" : "text-faint hover:text-muted")}
-          >
-            <ClipboardList className="h-3.5 w-3.5" />
-            Work
-          </button>
-          <button
-            type="button"
-            aria-pressed={mainView === "activity"}
-            onClick={onShowActivity}
-            className={cn("flex h-7 items-center gap-1.5 rounded px-2 text-xs focus-visible:outline focus-visible:outline-accent", mainView === "activity" ? "bg-elevated text-foreground" : "text-faint hover:text-muted")}
-          >
-            <MessagesSquare className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Activity</span>
-          </button>
-        </nav>
         <div className="hidden items-center -space-x-1.5 sm:flex">
           {people.length === 0 ? (
             <span className="text-xs text-faint">nobody here</span>
@@ -126,7 +98,6 @@ export function TopBar({
                     name={person.name}
                     title={`${person.name} — ${person.status}${person.note ? ` — ${person.note}` : ""}${person.sessions > 1 ? ` — ${person.sessions} sessions` : ""}`}
                     size={24}
-                    onClick={() => onOpenProfile(fingerprint)}
                     className="ring-2 ring-background"
                   />
                   {person.sessions > 1 && (
@@ -154,14 +125,10 @@ export function TopBar({
           </button>
         )}
         {session.actor && (
-          <button
-            onClick={() => onOpenProfile(myFingerprint)}
-            title="you"
-            className="flex items-center gap-1.5 rounded-md border border-border px-1.5 py-0.5 text-xs text-foreground/85 hover:bg-elevated focus-visible:outline focus-visible:outline-accent"
-          >
+          <span title="you" className="flex items-center gap-1.5 rounded-md border border-border px-1.5 py-0.5 text-xs text-foreground/85">
             <Avatar fingerprint={myFingerprint} name={session.actor} size={18} />
             {session.actor}
-          </button>
+          </span>
         )}
         <div className="hidden h-4 w-px bg-border sm:block" />
         <div className="flex items-center gap-2 text-xs text-faint">

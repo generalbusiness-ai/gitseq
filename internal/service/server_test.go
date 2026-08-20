@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -1397,5 +1398,134 @@ func TestIdentitySaysWhichWorkroomAnswersAndNothingElse(t *testing.T) {
 	defer posted.Body.Close()
 	if posted.StatusCode == http.StatusOK {
 		t.Fatal("identity accepted a POST")
+	}
+}
+
+// The merge station is asked of git at render time. What matters at this
+// boundary is that a browser cannot name the ref, that a commit which is not
+// on the mainline is reported absent rather than landed, and that the answer
+// carries the branch it is about.
+func TestLandedEndpointAnswersFromTheMainlineItResolves(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	git := func(args ...string) string {
+		t.Helper()
+		full := append([]string{"-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid"}, args...)
+		output, err := exec.Command("git", full...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+		return strings.TrimSpace(string(output))
+	}
+	if output, err := exec.Command("git", "init", "-q", "-b", "main", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	git("commit", "--allow-empty", "-qm", "root")
+	git("checkout", "-qb", "side")
+	git("commit", "--allow-empty", "-qm", "side work")
+	side := git("rev-parse", "HEAD")
+	git("checkout", "-q", "main")
+
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	ask := func(commits ...string) landedResponse {
+		t.Helper()
+		body, _ := json.Marshal(landedRequest{Commits: commits})
+		response, err := http.Post(httpServer.URL+"/v0/landed", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		var answer landedResponse
+		if err := json.NewDecoder(response.Body).Decode(&answer); err != nil {
+			t.Fatal(err)
+		}
+		return answer
+	}
+
+	head := git("rev-parse", "main")
+	answer := ask(head, side)
+	if answer.Branch != "main" {
+		t.Fatalf("the answer names the ref it is about: %#v", answer)
+	}
+	if len(answer.Commits) != 2 {
+		t.Fatalf("one answer per commit: %#v", answer.Commits)
+	}
+	if answer.Commits[0].Status != gitstore.LandingLanded {
+		t.Fatalf("main's own head is on main: %#v", answer.Commits[0])
+	}
+	if answer.Commits[1].Status != gitstore.LandingAbsent {
+		t.Fatalf("an unmerged side head is absent: %#v", answer.Commits[1])
+	}
+	// A ref name arriving as a commit is refused before git runs: only the
+	// server chooses the branch.
+	if refused := ask("main").Commits[0]; refused.Status != gitstore.LandingUnknown {
+		t.Fatalf("a ref name is not a commit: %#v", refused)
+	}
+}
+
+// The bound is a property of the endpoint. An earlier head enforced it only on
+// the path that finds a mainline, so a repository without one would iterate and
+// echo back every untrusted commit a caller sent. A cap that holds only when
+// the happy path runs is not a cap, and the failure path is the easier one to
+// reach.
+func TestLandedEndpointBoundsTheBatchWithNoMainline(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	// Deliberately neither main nor master, so no mainline ref resolves.
+	if output, err := exec.Command("git", "init", "-q", "-b", "trunk", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	if output, err := exec.Command("git", "-C", repo,
+		"-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+		"commit", "--allow-empty", "-qm", "root").CombinedOutput(); err != nil {
+		t.Fatalf("commit: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	commits := make([]string, gitstore.LandingLimit+5)
+	for index := range commits {
+		commits[index] = strings.Repeat("a", 40)
+	}
+	body, _ := json.Marshal(landedRequest{Commits: commits})
+	response, err := http.Post(httpServer.URL+"/v0/landed", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var answer landedResponse
+	if err := json.NewDecoder(response.Body).Decode(&answer); err != nil {
+		t.Fatal(err)
+	}
+	if len(answer.Commits) != gitstore.LandingLimit {
+		t.Fatalf("no-mainline path returned %d answers, want the %d bound", len(answer.Commits), gitstore.LandingLimit)
+	}
+	if answer.Branch != "" {
+		t.Fatalf("no mainline resolved, so no branch is named: %q", answer.Branch)
+	}
+	for _, landing := range answer.Commits {
+		// Absent would be a lie: with nothing to compare against, the honest
+		// answer is that it could not be determined.
+		if landing.Status != gitstore.LandingUnknown || landing.Reason == "" {
+			t.Fatalf("missing mainline must answer unknown with a reason: %#v", landing)
+		}
 	}
 }

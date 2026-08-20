@@ -95,6 +95,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v0/identity", s.handleIdentity)
 	s.mux.HandleFunc("GET /v0/graph", s.handleGraph)
 	s.mux.HandleFunc("GET /v0/worktrees", s.handleWorktrees)
+	s.mux.HandleFunc("POST /v0/landed", s.handleLanded)
 	s.mux.HandleFunc("GET /v0/actors", s.handleActors)
 	s.mux.HandleFunc("GET /v0/orientation/{fingerprint}", s.handleOrientation)
 	s.mux.HandleFunc("POST /v0/act", s.handleAct)

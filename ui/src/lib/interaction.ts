@@ -34,13 +34,6 @@ export interface DiscussionEntry<T extends ConversationFrame> {
   depth: number;
 }
 
-export interface TemporaryDiscussionCount {
-  count: number;
-  overflow: boolean;
-}
-
-export const temporaryDiscussionLimit = 20;
-
 export interface TemporaryDelivery {
   about: string;
   conversation?: string;
@@ -77,13 +70,6 @@ export function threadTargetKey(target: ThreadIdentity): string {
     : `frame:${target.conversation}:${target.sequence}`;
 }
 
-// A durable event is the nexus `about` anchor for its temporary discussion.
-// Direct discussion frames belong in that event's pane; replies to one of
-// those frames keep their ordinary frame-thread identity instead.
-export function eventDiscussionFrames<T extends ThreadFrame>(event: string, frames: T[]): T[] {
-  return frames.filter((frame) => frame.about === event && !frame.re);
-}
-
 // Keep the whole event conversation in its event pane. Direct frames are
 // roots; replies follow their exact conversation:sequence parent. Hostile or
 // expired parent references remain visible as roots instead of disappearing.
@@ -113,11 +99,6 @@ export function eventDiscussionEntries<T extends ConversationFrame>(event: strin
   // silently hiding signed talk.
   for (const frame of relevant) append(frame, 0);
   return entries;
-}
-
-export function frameBelongsInRoom(frame: ThreadFrame, durableEvents: ReadonlySet<string>): boolean {
-  const canonicalEvent = /^git:[a-z0-9]+:[0-9a-f]{40,64}#git:[a-z0-9]+:[0-9a-f]{40,64}$/.test(frame.about);
-  return !frame.re && !canonicalEvent && !durableEvents.has(frame.about);
 }
 
 export function pendingForThread<T extends ThreadPending>(target: ThreadIdentity, pending: T[]): T[] {
@@ -161,26 +142,6 @@ export function reconciledPendingIDs(
     matched.push(echo.id);
   }
   return matched;
-}
-
-export function temporaryDiscussionCounts(
-  frames: ThreadFrame[],
-  durableEvents: ReadonlySet<string>,
-  limit = temporaryDiscussionLimit,
-): Map<string, TemporaryDiscussionCount> {
-  const totals = new Map<string, number>();
-  for (const frame of frames) {
-    if (!durableEvents.has(frame.about)) continue;
-    totals.set(frame.about, (totals.get(frame.about) ?? 0) + 1);
-  }
-  return new Map(
-    [...totals].map(([event, total]) => [event, { count: Math.min(total, limit), overflow: total > limit }]),
-  );
-}
-
-export function temporaryDiscussionLabel(summary: TemporaryDiscussionCount | undefined): string | undefined {
-  if (!summary || summary.count === 0) return undefined;
-  return `${summary.count}${summary.overflow ? "+" : ""} temporary`;
 }
 
 export function temporaryReplyDelivery(

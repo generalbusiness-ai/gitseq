@@ -113,19 +113,48 @@ See [the MCP reference](../reference/mcp/) and
 
 ## The browser view
 
-The resident serves a live projection at its listen address: the Work
-board, the event railway, actors, and the artifacts with their staleness
-marks.
+The resident serves a live projection at its listen address, as two
+screens and no more. The first is a list of open requests, one single
+line each: its state, the one actor it waits on, how long since anything
+in its thread moved, its title, and its log number. Priority order is the
+default — needing attention, then unclaimed, then waiting on a human,
+oldest first inside each — and clicking a column header re-sorts, clicks
+again to reverse, and a third time returns to priority order. A sort
+reorders the rows that are there; nothing on this screen decides which
+rows exist. One number heads the list and equals the rows beneath it, and
+the two quiet lines below it — work resting on reasoning that has moved,
+and stale requests no longer in flight — each open to exactly the rows they
+count.
 
-It also reads local worktree state, which is *not* part of the durable
-projection. That endpoint names the served checkout's own absolute path,
-so a reader can tell which repository the page is showing, and otherwise
-emits only checkout basenames, branch and HEAD, and explicit clean,
-dirty, detached, bare, locked, prunable or unavailable state. Naming the
-served path is safe because the service binds loopback addresses only:
-whoever is reading the page is already on the host it names. The commit
-graph is a newest-80 window and says so when it is truncated, so an older
-association can be absent without that meaning anything.
+Clicking a row opens the second screen, the thread. It draws the
+commitment spine as a vertical rail: the request, the promise, the report
+or artifact, the latest review verdict, and whether the approved head
+reached the mainline, with any live blocker branching off beside the row
+it concerns. A station nobody has reached yet is still a row, hollow, and
+names who owes it. Everything else in the thread sits behind counted
+expanders that open to exactly the records they counted, so what is
+elided is stated rather than silent.
+
+The merge station reads two sources, because they can disagree. The fold
+knows whether a commitment closed; only Git knows whether the code
+landed, and work that shipped and stayed open is invisible on every other
+surface. That question is asked of Git when the row is drawn, never
+stored as a field somebody types. Its three answers are kept apart:
+landed, absent, and could-not-be-determined. A check that fails must not
+read as a negative.
+
+Ordinary staleness stays quiet — it is counted below the list and never
+colours a row — while world-staleness and retirement stay loud, because
+those are what a merge will actually refuse.
+
+The resident also reads local worktree state, which is *not* part of the
+durable projection. That endpoint names the served checkout's own
+absolute path, so a reader can tell which repository the page is showing,
+and otherwise emits only checkout basenames, branch and HEAD, and
+explicit clean, dirty, detached, bare, locked, prunable or unavailable
+state. Naming the served path is safe because the service binds loopback
+addresses only: whoever is reading the page is already on the host it
+names.
 
 ## Choosing a path in
 
