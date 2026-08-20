@@ -18,9 +18,11 @@
 // both are reported, because collapsing them into one number would hide which
 // assumption a reader is actually making:
 //
-//   - [Vouching] says who stands behind the endorsement. [SelfSigned] — the
-//     identity's own key signed it — is stronger than [Witnessed] — the
-//     deployment's key says a provider said so.
+//   - [Vouching] says who stands behind the endorsement. This package
+//     implements one rung of it, [Witnessed] — the deployment's key says a
+//     provider said so. A self-signed rung, where the identity's own key
+//     signs, would be the stronger value on this axis; it is deferred, and no
+//     value here claims it.
 //   - [Verification] says what a reader must trust to check it. [InLog] — a
 //     signature carried in the log — verifies offline, forever. [LiveLookup] —
 //     a claim needing a third party to answer again — verifies only while that
@@ -120,6 +122,13 @@ const (
 
 // Vouching says who stands behind an endorsement. Larger is stronger, so the
 // weaker of two is their minimum, which is what a delegation inherits.
+//
+// One rung is implemented, [Witnessed]. A self-signed rung — the identity's
+// own key signing, so that nobody beyond the identity has to be trusted — is
+// where a provider such as Nostr or a published forge signing key would sit,
+// and it is deferred. It is deliberately absent rather than declared and
+// unreachable: a named value that nothing can ever produce reads to a caller
+// as a state to handle, and to a reviewer as a rung that was built.
 type Vouching uint8
 
 const (
@@ -129,17 +138,11 @@ const (
 	// saying a provider vouched for the identity. Readers weigh it exactly as
 	// they weigh that deployment.
 	Witnessed
-	// SelfSigned means the identity's own key signed the endorsement. Nobody
-	// has to be trusted for it beyond the identity itself.
-	SelfSigned
 )
 
 func (v Vouching) String() string {
-	switch v {
-	case Witnessed:
+	if v == Witnessed {
 		return "witnessed"
-	case SelfSigned:
-		return "self-signed"
 	}
 	return "unvouched"
 }

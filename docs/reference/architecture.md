@@ -295,12 +295,19 @@ profiles cannot rename or extend them.
 
 An anchor is not simply strong or weak. Two independent things vary, and both
 are reported, because collapsing them into one number hides which assumption a
-reader is making. **Vouching** says who stands behind the endorsement:
-self-signed, where the identity's own key signed, is stronger than witnessed,
-where a deployment's key says a provider said so. **Verification** says what a
-reader must trust to check it: a signature carried in the log verifies offline
-forever, while a claim needing a third party to answer again verifies only
-while that third party cooperates.
+reader is making. **Vouching** says who stands behind the endorsement.
+**Verification** says what a reader must trust to check it: a signature carried
+in the log verifies offline forever, while a claim needing a third party to
+answer again verifies only while that third party cooperates.
+
+One vouching rung is implemented: **witnessed**, where a deployment's key says
+a provider said so. The stronger rung, where the identity's own key signs and
+nobody beyond the identity has to be trusted, is deferred along with the
+providers that would occupy it — Nostr, and a published forge signing key.
+Nothing here names it, because a value the code can never produce reads to a
+caller as a state to handle and to a reviewer as a rung that was built. The
+axis is ordered so that adding it later is one more value and a reduction rule
+the verification axis already follows.
 
 Vouching is never claimed in a payload, only derived from which key signed the
 record, so no record can promote itself. A witness declaration is in force only
@@ -331,7 +338,14 @@ the record being folded, never against the reader's clock, so two clones
 resolving one log reach the same answers. A provider check — verifying a login
 with the provider that issued it — runs outside the fold, and only its result
 is signed into the log; replaying a log makes no network request, and a clone
-with no access to the provider reads exactly the same identities.
+with no access to the provider reads exactly the same identities. That check
+holds the person's bearer token, and the rule that keeps it out of a log is
+that no byte of provider- or transport-controlled text reaches an error from
+it: a refusal is reported as the numeric status with this program's own phrase
+for it, and a transport failure or an unreadable answer in fixed words of the
+package's own. Redaction was considered and refused, because it removes only
+the spelling it goes looking for and the party echoing the credential chooses
+the spelling.
 
 This is the mechanism, not a login system. It authenticates nobody and
 authorizes nothing: it says who a key belongs to and leaves what that is worth

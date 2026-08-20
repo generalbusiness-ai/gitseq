@@ -135,7 +135,8 @@ func TestUnvouchedKeyResolvesUnanchored(t *testing.T) {
 
 // A delegation carries the endorser's identity and can be no stronger than the
 // endorsement the endorser holds. An agent credential minted under a witnessed
-// anchor is witnessed, never self-signed, whoever signed the delegation.
+// anchor is witnessed, whoever signed the delegation: signing a delegation is
+// not a vouching rung and promotes nothing.
 func TestDelegationInheritsIdentityAndNeverOutranksItsBasis(t *testing.T) {
 	initializer, _ := testKey(t)
 	witness, _ := testKey(t)
@@ -607,7 +608,6 @@ func TestEmptyLogResolvesToNothing(t *testing.T) {
 func TestAxisNamesReadAsTheyAreWritten(t *testing.T) {
 	cases := []struct{ got, want string }{
 		{identity.Witnessed.String(), "witnessed"},
-		{identity.SelfSigned.String(), "self-signed"},
 		{identity.VouchingUnknown.String(), "unvouched"},
 		{identity.InLog.String(), "in-log"},
 		{identity.LiveLookup.String(), "live-lookup"},

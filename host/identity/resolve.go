@@ -163,7 +163,11 @@ func (r *Resolution) admitAnchor(record host.Record, witnessKey ed25519.PublicKe
 			return
 		}
 		entry.identity = parent.identity
-		entry.vouching = min(SelfSigned, parent.vouching)
+		// Signing a delegation is not itself a vouching rung, so the endorser
+		// hands on exactly what it holds. Witnessing is the only rung this
+		// package implements; when a self-signed rung arrives this becomes the
+		// weaker of the two, as the verification axis already is.
+		entry.vouching = parent.vouching
 		entry.verification = min(stated, parent.verification)
 		entry.parent = parent.record
 	}

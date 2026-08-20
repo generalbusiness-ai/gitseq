@@ -1,9 +1,14 @@
 package identity_test
 
 import (
+	"bufio"
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -327,6 +332,107 @@ func TestGitHubCheckBoundsWhatItReadsFromTheProvider(t *testing.T) {
 	if _, err := (identity.GitHub{API: server.URL}).Check(ctx, "gho_valid"); err == nil {
 		t.Fatal("an answer past the ceiling was accepted")
 	}
+}
+
+// A provider writes its own status line, and HTTP/1.1 carries the reason
+// phrase verbatim. A provider that quotes back what it was sent — by malice,
+// or by a careless "unauthorized: <credential>" — hands this package a string
+// with the caller's token in it, and reporting that string is how a credential
+// reaches a log nobody meant to write it to. The rule is stronger than hiding
+// the token: nothing from the status line is reported at all, so a provider
+// cannot place text of its choosing in an error however it encodes it.
+func TestGitHubCheckReportsNothingFromTheProvidersStatusLine(t *testing.T) {
+	ctx := context.Background()
+	const token = "gho_reason_phrase_secret"
+	server := rawStatusServer(t, "401 Unauthorized-"+token)
+
+	_, err := identity.GitHub{API: server}.Check(ctx, token)
+	if err == nil {
+		t.Fatal("a refused token was accepted")
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Errorf("the provider's reason phrase carried the token into an error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "401 Unauthorized") {
+		t.Errorf("error = %v, want the canonical status this program built", err)
+	}
+}
+
+// The HTTP client is the deployment's to set, so the transport is not one this
+// package chose and its error text is not text this package wrote. A transport
+// that reports the request it was handed — a debugging round-tripper, a proxy
+// wrapper, anything hostile — would otherwise publish the Authorization header
+// through the error returned here.
+func TestGitHubCheckReportsNothingFromATransportError(t *testing.T) {
+	ctx := context.Background()
+	const token = "gho_transport_secret"
+	client := &http.Client{Transport: leakyTransport{token: token}}
+
+	_, err := identity.GitHub{API: "https://provider.invalid", Client: client}.Check(ctx, token)
+	if err == nil {
+		t.Fatal("a failed transport was accepted")
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Errorf("the transport error carried the token into an error: %v", err)
+	}
+	if strings.Contains(err.Error(), "dial refused") {
+		t.Errorf("the transport chose text in this error: %v", err)
+	}
+}
+
+// A caller that cancels still learns that it was the cancellation, because
+// that answer is the caller's own and not the transport's.
+func TestGitHubCheckStillReportsTheCallersOwnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := &http.Client{Transport: leakyTransport{token: "gho_secret"}}
+
+	_, err := identity.GitHub{API: "https://provider.invalid", Client: client}.Check(ctx, "gho_secret")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want the caller's own cancellation", err)
+	}
+}
+
+// leakyTransport stands in for any round-tripper that reports what it was
+// asked to send.
+type leakyTransport struct{ token string }
+
+func (l leakyTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, fmt.Errorf("dial refused while sending Authorization: Bearer %s", l.token)
+}
+
+// rawStatusServer answers with a status line written byte for byte, which
+// httptest cannot do: its server composes the reason phrase from Go's own
+// table, so it can never reproduce a provider that chose its own.
+func rawStatusServer(t *testing.T, statusLine string) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				// Read only the request head. Reading to EOF would wait for a
+				// client that is itself waiting for this answer.
+				buffered := bufio.NewReader(conn)
+				for {
+					line, err := buffered.ReadString('\n')
+					if err != nil || line == "\r\n" || line == "\n" {
+						break
+					}
+				}
+				io.WriteString(conn, "HTTP/1.1 "+statusLine+"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+			}()
+		}
+	}()
+	return "http://" + listener.Addr().String()
 }
 
 func githubServer(t *testing.T, wantToken string, id int64, login string) *httptest.Server {
