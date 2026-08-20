@@ -1,11 +1,16 @@
 ---
 title: Performance evidence
-summary: The versioned dependency fan-out measurement and its contract verdict.
+summary: Measured dependency fan-out, append cost and resident-memory evidence.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f0047ba0e5d25ad1f9620bf1428a651f37e1a302
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:86288a0f149fa39592758bc97ab422b994f2dcb8
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f1569302953f2b46ed91f78414538b5b80454768
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f3a67e0c4d3a06c97c1bf8fa08250af6a77e3977
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9736b0cd2d853282ebb5c6f2993a160daad26238
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b99410af38eab88094ff208ff668f8b557021461
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1303d36457ad43404647dcf18fdbc729bb19931e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66fbe1aba3d99c83b3844dd85a19babd205ddd97
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fe48f17b6128732fcc5f072bc128fe72541d5c40
 ---
 
 # Performance evidence
@@ -308,6 +313,64 @@ benchmark-format file retains the 500 candidate primary samples. Base bench
 output, profiles and traces are not retained. The publishing head is a
 descendant of the measured candidate because this page, its precise measured
 artifact basis and the retained evidence did not exist when sampling began.
+
+## 500,000-record resident memory
+
+The bounded memory tier measures one linear, one-actor `cold_status` rebuild at
+every contract depth through 500,000 records:
+
+```text
+make perf PERF_ARGS='run --tier memory'
+```
+
+It runs two fresh-process primary samples per depth, with no warmup. Diagnostic
+reruns start only after every primary sample and do not enter the ranges below.
+The harness outcome `pass` means the run completed with valid fixtures and
+matching correctness digests; the separate target verdict comes from comparing
+peak resident memory with the 4 GiB FIRST-PRODUCTION envelope.
+
+The measured harness and candidate were both exact commit
+`08b7c72c7cf32ade5288093b0a9acb3833cf7bb0`. The run started at
+`2026-08-20T05:37:06Z` on Darwin arm64, an 18-core Apple M5 Max with 64 GiB
+memory, Go 1.26.5 and Git 2.50.1, from a clean worktree.
+
+| Depth | Peak RSS range | Steady memory range | Cold-status latency range |
+|---:|---:|---:|---:|
+| 100 | 0.157 GiB | 0.067 GiB | 0.21 s |
+| 1,000 | 0.158–0.159 GiB | 0.075 GiB | 0.48 s |
+| 10,000 | 0.220 GiB | 0.100 GiB | 2.95–3.09 s |
+| 100,000 | 0.607–0.630 GiB | 0.292 GiB | 27.01–27.15 s |
+| 500,000 | 2.500–2.523 GiB | 1.246 GiB | 133.97–134.17 s |
+
+The worst 500,000-record peak is 2,709,110,784 bytes. That is 36.9 percent
+below 4 GiB, so the measured FIRST-PRODUCTION resident-memory target **passes**.
+The range is observed, not extrapolated. All ten primary samples and all five
+diagnostics had equal projected and independently folded trusted digests. The
+500,000-record fixture head is
+`5bdaab68803394118d82130bcfa14d15dcbc7ccf`; every sample records fixture exact
+digest `062b953f5b460861c64a08eedb02245545c8f75ab0cf8f4b22bb1a1b80265999`.
+
+| File | SHA-256 |
+|---|---|
+| [`evidence.json`](../../performance/retained/resident-memory-20260820-08b7c72c/evidence.json) | `e074957c17a2a29ad95f9514e23316bedb9a269d990aadacea6a75d298a59f52` |
+| [`samples.jsonl`](../../performance/retained/resident-memory-20260820-08b7c72c/samples.jsonl) | `c50f5e585696acdcd4879e4a11a892d9eec7d6af0d41fefb4e984b83322aac65` |
+| [`candidate.bench`](../../performance/retained/resident-memory-20260820-08b7c72c/candidate.bench) | `cdd3a75eac1984c79a0b323c1723f8ce1978da275bcfc1090604e4ef6721ec57` |
+
+The kernel now verifies and transfers a full rebuild without retaining a second
+depth-sized event slice. The application folds that provisional stream into a
+private folder and publishes only after complete verification and folding.
+The Workroom folder also shares repeated immutable identifiers, vocabulary and
+state strings while preserving projection-mutation isolation. The projection
+itself and the kernel's idempotency index still grow with the information they
+must answer, so this is a measured bound for the named workload, not a claim of
+constant memory.
+
+After recording measured usage, the worker builds a separate trusted projection
+to validate the digest. That later two-projection diagnostic is deliberately
+outside `peak_rss_bytes` and `steady_memory_bytes`: a serving resident keeps one
+verified application projection, while the harness keeps two only to check the
+first one. The publishing commit is a descendant of the measured commit because
+this page and the retained evidence did not exist when sampling began.
 
 ## Preserved contracts
 

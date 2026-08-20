@@ -192,6 +192,25 @@ func TestFullTierIncludesNearHeadCheckpointCases(t *testing.T) {
 	}
 }
 
+func TestMemoryTierIsOnlyTheLinearColdDepthAxis(t *testing.T) {
+	contract := testContract(t)
+	cases, err := casesForTier(contract, "memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) != len(contract.Depths) {
+		t.Fatalf("memory cases = %d, want %d", len(cases), len(contract.Depths))
+	}
+	for index, selected := range cases {
+		if selected.Scenario != "cold_status" || selected.Shape != "linear" || selected.Depth != contract.Depths[index] || selected.Tail != -1 || selected.ActorCount != 1 || selected.Fanout != 0 || selected.Concurrency != 0 {
+			t.Fatalf("memory case %d = %+v", index, selected)
+		}
+	}
+	if warmups, repetitions := tierCounts(contract, "memory", "cold_status"); warmups != 0 || repetitions != 2 {
+		t.Fatalf("memory population = %d warmups / %d repetitions, want 0 / 2", warmups, repetitions)
+	}
+}
+
 func TestEnsureFixturesRejectsCachedActorCountMismatch(t *testing.T) {
 	contract := testContract(t)
 	digest, err := perflane.CorrectnessDigest(contract)

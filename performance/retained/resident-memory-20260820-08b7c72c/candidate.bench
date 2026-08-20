@@ -1,0 +1,10 @@
+BenchmarkGitseq/cold_status/shape-linear/depth-000100 1 213603000 ns/op 8012984 B/op 17385 allocs/op
+BenchmarkGitseq/cold_status/shape-linear/depth-000100 1 207938666 ns/op 8015912 B/op 17396 allocs/op
+BenchmarkGitseq/cold_status/shape-linear/depth-001000 1 479403375 ns/op 69787664 B/op 146080 allocs/op
+BenchmarkGitseq/cold_status/shape-linear/depth-001000 1 479249250 ns/op 69825200 B/op 146089 allocs/op
+BenchmarkGitseq/cold_status/shape-linear/depth-010000 1 3085484500 ns/op 663172392 B/op 1431095 allocs/op
+BenchmarkGitseq/cold_status/shape-linear/depth-010000 1 2950863708 ns/op 662850008 B/op 1431116 allocs/op
+BenchmarkGitseq/cold_status/shape-linear/depth-100000 1 27153982750 ns/op 6615247976 B/op 14277803 allocs/op
+BenchmarkGitseq/cold_status/shape-linear/depth-100000 1 27013851292 ns/op 6616003688 B/op 14277321 allocs/op
+BenchmarkGitseq/cold_status/shape-linear/depth-500000 1 134168015000 ns/op 33524073944 B/op 71373764 allocs/op
+BenchmarkGitseq/cold_status/shape-linear/depth-500000 1 133966463166 ns/op 33524066840 B/op 71373254 allocs/op

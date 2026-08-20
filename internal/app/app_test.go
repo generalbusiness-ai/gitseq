@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1221,6 +1222,78 @@ func TestProjectionProfileChangeRebuildsFromTheSameKernelCheckpoint(t *testing.T
 	}
 	if !reflect.DeepEqual(rebuilt.Snapshot, before) {
 		t.Fatalf("profile-only rebuild changed the projection:\nbefore=%+v\nafter=%+v", before, rebuilt.Snapshot)
+	}
+}
+
+func TestColdStreamPublishesOnlyTheCompleteProjection(t *testing.T) {
+	t.Setenv(checkpointEnvironment, "off")
+	ctx := context.Background()
+	repo := testRepo(t)
+	workspace, _, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range 12 {
+		if _, err := workspace.Act(ctx, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "streamed record " + strconv.Itoa(index),
+			IdempotencyKey: "streamed-record-" + strconv.Itoa(index),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cold, err := Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared := make(chan struct{})
+	release := make(chan struct{})
+	var preparedOnce, releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(unblock)
+	cold.SetProjectionRebuildTestGate(func(total int) {
+		if total != want.Depth {
+			t.Errorf("prepared events = %d, want depth %d", total, want.Depth)
+		}
+		preparedOnce.Do(func() { close(prepared) })
+		<-release
+	})
+	type result struct {
+		loaded SourcedSnapshot
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		loaded, err := cold.SnapshotWithSource(ctx)
+		done <- result{loaded: loaded, err: err}
+	}()
+
+	select {
+	case <-prepared:
+	case <-time.After(20 * time.Second):
+		t.Fatal("cold stream did not prepare its projection")
+	}
+	if cold.snapshotCache != nil || cold.snapshotFolder != nil {
+		t.Fatalf("provisional projection escaped before publication: snapshot=%v folder=%p", cold.snapshotCache, cold.snapshotFolder)
+	}
+	unblock()
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if result.loaded.Source != SnapshotSourceColdFullAudit {
+			t.Fatalf("snapshot source = %q, want cold full audit", result.loaded.Source)
+		}
+		if !reflect.DeepEqual(result.loaded.Snapshot, want) {
+			t.Fatalf("published streamed projection differs from ordinary fold\nstreamed: %#v\nordinary: %#v", result.loaded.Snapshot, want)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("cold stream did not publish after release")
 	}
 }
 

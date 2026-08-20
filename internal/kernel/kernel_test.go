@@ -3416,3 +3416,155 @@ func TestMatchingCheckpointDoesNotStartColdAuditProgress(t *testing.T) {
 		t.Errorf("matching checkpoint started cold-audit progress: %+v", p)
 	}
 }
+
+func TestReaderStreamsColdFullLoadWithoutRetainingTransportEvents(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	want := make([]string, 6)
+	for index := range want {
+		want[index] = "stream-" + strconv.Itoa(index)
+		if _, err := Submit(f.ctx, f.store, f.request(t, private, want[index], []byte(want[index]), nil), Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reader := NewReader(f.store)
+	var got []string
+	loaded, err := reader.LoadWithProgressStream(f.ctx, f.genesis, nil, func(event Event) error {
+		got = append(got, string(event.Payload))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Full || loaded.Checkpoint || len(loaded.Events) != 0 {
+		t.Fatalf("streamed load = full %v checkpoint %v events %d", loaded.Full, loaded.Checkpoint, len(loaded.Events))
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("streamed payloads = %q, want %q", got, want)
+	}
+	if loaded.Verification.Events != len(want) || len(reader.log.Dedup) != len(want) || len(reader.log.Events) != 0 {
+		t.Fatalf("verified stream state = verification %+v dedup %d retained %d", loaded.Verification, len(reader.log.Dedup), len(reader.log.Events))
+	}
+
+	callbackCalls := 0
+	cached, err := reader.LoadWithProgressStream(f.ctx, f.genesis, nil, func(Event) error {
+		callbackCalls++
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached.Full || len(cached.Events) != 0 || callbackCalls != 0 || reader.cacheHits != 1 {
+		t.Fatalf("cached stream = %+v callback calls %d cache hits %d", cached, callbackCalls, reader.cacheHits)
+	}
+}
+
+func TestReaderStreamFailureDoesNotPublishVerifiedCache(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	for index := range 4 {
+		key := "stream-failure-" + strconv.Itoa(index)
+		if _, err := Submit(f.ctx, f.store, f.request(t, private, key, []byte(key), nil), Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reader := NewReader(f.store)
+	refusal := errors.New("provisional consumer refused")
+	calls := 0
+	if _, err := reader.LoadWithProgressStream(f.ctx, f.genesis, nil, func(Event) error {
+		calls++
+		if calls == 3 {
+			return refusal
+		}
+		return nil
+	}); !errors.Is(err, refusal) {
+		t.Fatalf("stream failure = %v, want %v", err, refusal)
+	}
+	if calls != 3 {
+		t.Fatalf("callback calls = %d, want 3", calls)
+	}
+	if reader.target != "" || reader.head != "" || reader.log.Verification != (Verification{}) || len(reader.log.Dedup) != 0 || reader.fullScans != 0 {
+		t.Fatalf("failed stream published reader cache: target=%q head=%q verification=%+v dedup=%d scans=%d", reader.target, reader.head, reader.log.Verification, len(reader.log.Dedup), reader.fullScans)
+	}
+
+	loaded, err := reader.Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Full || len(loaded.Events) != 4 || loaded.Verification.Events != 4 || reader.fullScans != 1 {
+		t.Fatalf("recovery load = %+v scans=%d", loaded, reader.fullScans)
+	}
+}
+
+func TestReaderStreamsAuthenticatedCheckpointAndVerifiedSuffix(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	want := make([]string, 6)
+	for index := range 4 {
+		want[index] = "checkpoint-stream-" + strconv.Itoa(index)
+		if _, err := Submit(f.ctx, f.store, f.request(t, private, want[index], []byte(want[index]), nil), Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writer := NewReader(f.store, CheckpointOptions{Enabled: true, SigningKey: f.signingKey})
+	if _, err := writer.Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	for index := 4; index < len(want); index++ {
+		want[index] = "checkpoint-stream-" + strconv.Itoa(index)
+		if _, err := Submit(f.ctx, f.store, f.request(t, private, want[index], []byte(want[index]), nil), Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reader := NewReader(f.store, CheckpointOptions{Enabled: true})
+	var got []string
+	loaded, err := reader.LoadWithProgressStream(f.ctx, f.genesis, nil, func(event Event) error {
+		got = append(got, string(event.Payload))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Full || !loaded.Checkpoint || len(loaded.Events) != 0 || reader.checkpointLoads != 1 || reader.fullScans != 0 {
+		t.Fatalf("checkpoint stream = %+v checkpoint loads %d full scans %d", loaded, reader.checkpointLoads, reader.fullScans)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("checkpoint stream payloads = %q, want %q", got, want)
+	}
+	if loaded.Verification.Events != len(want) || len(reader.log.Dedup) != len(want) || len(reader.log.Events) != 0 {
+		t.Fatalf("checkpoint stream state = verification %+v dedup %d retained %d", loaded.Verification, len(reader.log.Dedup), len(reader.log.Events))
+	}
+}
+
+func TestCheckpointStreamFailureDoesNotRetryOrPublishVerifiedCache(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	for index := range 4 {
+		key := "checkpoint-stream-failure-" + strconv.Itoa(index)
+		if _, err := Submit(f.ctx, f.store, f.request(t, private, key, []byte(key), nil), Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := NewReader(f.store, CheckpointOptions{Enabled: true, SigningKey: f.signingKey}).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+
+	reader := NewReader(f.store, CheckpointOptions{Enabled: true})
+	refusal := errors.New("checkpoint consumer refused")
+	calls := 0
+	if _, err := reader.LoadWithProgressStream(f.ctx, f.genesis, nil, func(Event) error {
+		calls++
+		if calls == 3 {
+			return refusal
+		}
+		return nil
+	}); !errors.Is(err, refusal) {
+		t.Fatalf("checkpoint stream failure = %v, want %v", err, refusal)
+	}
+	if calls != 3 || reader.target != "" || reader.head != "" || reader.fullScans != 0 || reader.checkpointFallbacks != 0 {
+		t.Fatalf("failed checkpoint stream calls=%d target=%q head=%q scans=%d fallbacks=%d", calls, reader.target, reader.head, reader.fullScans, reader.checkpointFallbacks)
+	}
+}

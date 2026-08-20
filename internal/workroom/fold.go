@@ -244,6 +244,7 @@ type foldState struct {
 	records            []parsedRecord
 	byID               map[string]*parsedRecord
 	decisions          map[string]Decision
+	strings            map[string]string
 	effectiveSup       map[string]string
 	retirementCauses   map[string]int
 	roleGrants         []roleGrant
@@ -288,6 +289,7 @@ func Evaluate(records []Record) FoldResult {
 func NewFolder(records []Record) *Folder {
 	state := &foldState{
 		byID: make(map[string]*parsedRecord), decisions: make(map[string]Decision),
+		strings:            make(map[string]string),
 		effectiveSup:       make(map[string]string),
 		retirementCauses:   make(map[string]int),
 		roleGrantsByRole:   make(map[actorRole][]roleGrant),
@@ -326,6 +328,12 @@ func (f *foldState) append(index int, record Record) {
 		f.addDecision(record, nil, index, decision)
 		return
 	}
+	record.ID = f.intern(record.ID)
+	record.Actor = f.intern(record.Actor)
+	record.Schema = f.intern(record.Schema)
+	for index := range record.RestsOn {
+		record.RestsOn[index] = f.intern(record.RestsOn[index])
+	}
 	if _, exists := f.byID[record.ID]; exists {
 		decision.Verdict = Disputed
 		decision.Reason = "duplicate event id"
@@ -343,6 +351,7 @@ func (f *foldState) append(index int, record Record) {
 		f.addDecision(record, nil, index, decision)
 		return
 	}
+	f.internBody(body)
 	parsed := &parsedRecord{record: record, body: body, index: index}
 	if len(f.transitions) != 0 {
 		f.beyondSeam = true
@@ -411,6 +420,42 @@ func (f *foldState) append(index int, record Record) {
 		f.effectiveSup[record.ID] = value.Target
 		changed := f.changeRetirement(value.Target, 1)
 		f.refreshDefinitionsAffectedBy(changed)
+	}
+}
+
+// intern lets the resident retain one backing string for durable values that
+// recur throughout the log. Event identifiers are especially repetitive:
+// every identifier is also cited by later records, indexed by the fold, and
+// projected for readers. Keeping a distinct decoded copy at each occurrence
+// made full-rebuild memory scale with references rather than with information.
+func (f *foldState) intern(value string) string {
+	if value == "" {
+		return ""
+	}
+	if existing, ok := f.strings[value]; ok {
+		return existing
+	}
+	f.strings[value] = value
+	return value
+}
+
+func (f *foldState) internBody(body any) {
+	switch value := body.(type) {
+	case *State:
+		value.Kind = Kind(f.intern(string(value.Kind)))
+		value.Text = f.intern(value.Text)
+		if len(value.Body) != 0 {
+			pooled := make(map[string]string, len(value.Body))
+			for key, field := range value.Body {
+				pooled[f.intern(key)] = f.intern(field)
+			}
+			value.Body = pooled
+		}
+	case *Ratify:
+		value.Target = f.intern(value.Target)
+	case *Supersede:
+		value.Target = f.intern(value.Target)
+		value.Text = f.intern(value.Text)
 	}
 }
 

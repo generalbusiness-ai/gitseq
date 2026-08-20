@@ -34,6 +34,17 @@ recorded repetitions at every width) with:
 make perf PERF_ARGS='run --tier fanout'
 ```
 
+Run the bounded resident-memory axis with two fresh-process `cold_status`
+samples at each contract depth through 500,000 records with:
+
+```sh
+make perf PERF_ARGS='run --tier memory'
+```
+
+This tier keeps the depth range consecutive and excludes the other scenarios,
+actor counts, projection shapes, and checkpoint cases. It exists so the 500k
+resident bound can be measured without running the much larger full contract.
+
 ## Retained runs
 
 A run writes into `evidence/`, which is untracked working space and is deleted

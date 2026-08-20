@@ -246,7 +246,7 @@ func workerCommand(ctx context.Context, arguments []string) error {
 func laneCommand(ctx context.Context, root string, compare, overhead bool, arguments []string) error {
 	flags := flag.NewFlagSet("lane", flag.ContinueOnError)
 	contractPath := flags.String("contract", filepath.Join(root, defaultContract), "contract path")
-	tier := flags.String("tier", "smoke", "smoke, standard, full, or fanout")
+	tier := flags.String("tier", "smoke", "smoke, standard, memory, full, or fanout")
 	output := flags.String("output", filepath.Join(root, "performance", "evidence"), "evidence directory")
 	baseRef := flags.String("base", "main", "exact base ref")
 	candidateRef := flags.String("candidate", "HEAD", "exact candidate ref")
@@ -529,8 +529,8 @@ func validateWorkerResult(selected runCase, result perfscenario.Result) error {
 }
 
 func casesForTier(contract perflane.Contract, tier string) ([]runCase, error) {
-	if tier != "smoke" && tier != "standard" && tier != "full" && tier != "fanout" {
-		return nil, errors.New("tier must be smoke, standard, full, or fanout")
+	if tier != "smoke" && tier != "standard" && tier != "memory" && tier != "full" && tier != "fanout" {
+		return nil, errors.New("tier must be smoke, standard, memory, full, or fanout")
 	}
 	benchmarkCases, err := perflane.BenchmarkCases(contract)
 	if err != nil {
@@ -548,7 +548,11 @@ func casesForTier(contract perflane.Contract, tier string) ([]runCase, error) {
 	}
 	var result []runCase
 	for _, candidate := range benchmarkCases {
-		if tier == "fanout" {
+		if tier == "memory" {
+			if candidate.Scenario != "cold_status" || candidate.ActorCount != 0 {
+				continue
+			}
+		} else if tier == "fanout" {
 			if candidate.Fanout == 0 {
 				continue
 			}
@@ -566,7 +570,7 @@ func casesForTier(contract perflane.Contract, tier string) ([]runCase, error) {
 		}
 		result = append(result, runCase{Scenario: candidate.Scenario, Shape: "linear", Depth: candidate.Depth, Tail: tail, Concurrency: candidate.Concurrency, ActorCount: max(candidate.ActorCount, 1), Fanout: candidate.Fanout})
 	}
-	if tier != "fanout" {
+	if tier != "fanout" && tier != "memory" {
 		for _, shape := range contract.ProjectionShapes[1:] {
 			result = append(result, runCase{Scenario: "cold_status", Shape: shape, Depth: 100, Tail: -1, ActorCount: 1})
 		}
@@ -581,6 +585,8 @@ func tierCounts(contract perflane.Contract, tier, scenario string) (int, int) {
 	case "standard":
 		warmups := min(contract.Warmups[scenario], 1)
 		return warmups, min(contract.Repetitions[scenario], 5)
+	case "memory":
+		return 0, 2
 	case "fanout":
 		return contract.Warmups[scenario], contract.Repetitions[scenario]
 	default:
