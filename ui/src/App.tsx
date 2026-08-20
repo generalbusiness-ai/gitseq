@@ -51,14 +51,14 @@ export default function App() {
   const actKeys = useRef(new RetryKeys());
   const [actError, setActError] = useState<string>();
   const doAct = useCallback(
-    async (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => {
+    async (intent: string, input: Omit<ActInput, "credential" | "idempotency_key">) => {
       if (inFlight.current.has(intent)) return;
       inFlight.current.add(intent);
       setActError(undefined);
       const payload = JSON.stringify(input);
       const key = actKeys.current.forAttempt(intent, payload);
       try {
-        await api.act({ ...input, session: session.id, idempotency_key: key });
+        await api.act({ ...input, credential: session.credential, idempotency_key: key });
         actKeys.current.succeeded(intent, key);
       } catch (error) {
         setActError(error instanceof Error ? error.message : String(error));
@@ -66,7 +66,7 @@ export default function App() {
         inFlight.current.delete(intent);
       }
     },
-    [session.id],
+    [session.credential],
   );
 
   return (
@@ -117,6 +117,9 @@ function JoinGate({ workroom, onJoin }: { workroom: ReturnType<typeof useWorkroo
           Join the workroom
         </h2>
         <p className="mt-1 text-xs text-muted">Everything you do is signed as who you choose.</p>
+        <p className="mt-2 text-xs text-danger">
+          {workroom.status?.trust_boundary ?? "Trusted processes only: every process inside this resident boundary can act as every actor key this application can open."}
+        </p>
         <div className="mt-4 space-y-1.5">
           {workroom.actors.length === 0 && <p className="text-xs italic text-faint">Waiting for the room…</p>}
           {workroom.actors.map((actor, index) => (

@@ -2,6 +2,9 @@
 title: MCP say
 summary: Publish signed ephemeral chat and address live recipients by mention or exact reply.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e6080d3d101923bbbe4797517543ebada8831b8f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:076ced4d914d84d4a70e7eaad949efeb4db98d10
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88cc21688aebb4532fdff9614ef72c31fffe36f8
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc5ca55fb4a4e67e2395903519f2103a92930268
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
@@ -55,7 +58,8 @@ GENESIS=$(gs init --repo "$REPO" --operator alice \
   | sed -n 's/.*"genesis": *"\([^"]*\)".*/\1/p')
 SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")"
 PORT="${PORT:-7777}"
-gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" >/dev/null 2>&1 &
+gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" \
+  --acknowledge-trusted-processes >/dev/null 2>&1 &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null || true' EXIT
 for _ in $(seq 40); do

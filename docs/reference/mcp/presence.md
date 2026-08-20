@@ -2,6 +2,9 @@
 title: MCP presence
 summary: Show who is present and update this session's leased activity.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e6080d3d101923bbbe4797517543ebada8831b8f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:076ced4d914d84d4a70e7eaad949efeb4db98d10
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88cc21688aebb4532fdff9614ef72c31fffe36f8
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc5ca55fb4a4e67e2395903519f2103a92930268
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
@@ -39,7 +42,8 @@ git init -q "$REPO"
 git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 gs init --repo "$REPO" --operator alice >/dev/null
 PORT="${PORT:-7777}"
-gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" >/dev/null 2>&1 &
+gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" \
+  --acknowledge-trusted-processes >/dev/null 2>&1 &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null || true' EXIT
 for _ in $(seq 40); do
@@ -58,7 +62,7 @@ trap - EXIT
 
 Present sessions, the open conversations, and a live cursor. Each session
 is named by an **opaque minted handle** — `session:` followed by random
-hex — not by its session identifier.
+hex — not by its private credential.
 
 The response also includes leased activity keyed by the same opaque session
 handles. It reports each session separately; it does not combine an actor's
@@ -78,14 +82,16 @@ consume. A session that arrives later receives no earlier chat.
 
 Focus is attention, not durable workflow state. It never claims a request,
 makes a promise, reports completion, or grants authority. The adapter supplies
-the actor and private session identifier; callers cannot update somebody
-else's lease by passing either value as an argument.
+the actor. On the first attachment, the resident mints a private credential
+from 256 bits of system randomness and binds it to that actor and repository.
+The adapter keeps it in process memory; callers cannot supply, read or update
+somebody else's credential through the MCP tool.
 
-That distinction is load-bearing. A session identifier is a credential:
-present one to the service and it signs as that actor and will end that
-session's lease. Handles grant nothing, are not derived from the
-identifier in either direction, and are stable enough to follow a renewal
-or notice a departure.
+That distinction is load-bearing. The private credential authorizes renewal,
+speech, acts, inbox access and departure for one exact lease. Public handles
+grant nothing, are not derived from the credential in either direction, and
+are stable enough to follow a renewal or notice a departure. The credential
+never appears in this tool's result or any other ordinary MCP result.
 
 ## It fails rather than pretends
 
@@ -101,11 +107,13 @@ Leases expire, and the resident sweeps expired sessions, so a client that
 disappears without departing leaves the room on its own.
 
 Expiry or explicit departure removes that exact session's inbox and
-conversation participation. Reusing an expired identifier begins with an
-empty inbox. Rebinding a still-live identifier to another actor is refused.
+conversation participation. An expired, revoked, malformed, guessed,
+cross-actor or cross-repository credential is refused with the same fixed
+error. A new attachment receives a new credential and an empty inbox.
 The resident bounds both total live sessions and sessions per actor; see
 [`limits`](../limits.md). A resident restart changes the live generation and
-loses all presence, conversations, and pending inboxes.
+loses all presence, conversations, pending inboxes and credentials. The adapter
+remints on its next resident call without exposing the replacement.
 
 ## See also
 

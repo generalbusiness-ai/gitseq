@@ -2,6 +2,11 @@
 title: gs serve
 summary: Run the resident service: sequencing, presence, change notification, and the browser view.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e6080d3d101923bbbe4797517543ebada8831b8f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bfcf6197f09100c0078b2cf756518aa94e31dff1
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:076ced4d914d84d4a70e7eaad949efeb4db98d10
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88cc21688aebb4532fdff9614ef72c31fffe36f8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:821e23690a0bc1ae628c26849684a3edf3751437
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48bd5acfe51abd4146197a48b0f7674f5676cc5c
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
@@ -26,6 +31,7 @@ It runs in the foreground until stopped.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--listen` | `127.0.0.1:7777` | A loopback address to bind. Port `0` takes any free port. |
+| `--acknowledge-trusted-processes` | `false` | Required. Confirms that every process inside the resident boundary may act as every actor key this application can open. It discloses the boundary; it does not add authentication. |
 | `--otel-endpoint` | empty | An OTLP/HTTP collector URL to send traces and metrics to. Empty disables observation entirely; nothing is collected and no exporter is started. Gitseq never discovers a collector on its own. |
 | `--profile-listen` | empty | A second loopback address serving Go pprof endpoints. Empty starts no profiler. |
 
@@ -57,7 +63,8 @@ git init -q "$REPO"
 gs init --repo "$REPO" --operator alice >/dev/null
 
 PORT="${PORT:-7777}"
-gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" &
+gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" \
+  --acknowledge-trusted-processes &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null || true' EXIT
 
@@ -72,8 +79,11 @@ trap - EXIT
 
 ## Publishing the address
 
-`serve` binds first, then publishes the address it actually bound inside
-the repository, then prints `gitseq workroom http://…` to standard error.
+`serve` validates the acknowledgement and listener first, binds, then
+publishes the address it actually bound inside the repository. It prints
+`gitseq workroom http://…` and the trusted-process boundary to standard error.
+The full and summary resident status responses repeat that boundary as
+`trust_boundary`, and the browser displays it before actor selection.
 So the banner names a port that is really open, a failed start announces
 nothing, and `--listen 127.0.0.1:0` is usable: the kernel picks the port
 and clients read it from the repository rather than being told it. That
@@ -97,26 +107,41 @@ costs a client one refused connection before it acts locally instead.
 ## Loopback only
 
 ```sh
-! gs serve --repo "$REPO" --listen 0.0.0.0:9999
+! gs serve --repo "$REPO" --listen 0.0.0.0:9999 \
+  --acknowledge-trusted-processes
 ```
 
-The refusal is by design. The service is a trusted local custodian for
-several actors: it holds their signing keys and signs on behalf of
-whichever session asks.
+The refusal is by design. `--listen` resolves its host and accepts it only
+when every returned address is loopback. Each mutation also checks its HTTP
+`Host` before routing, then applies the same-origin, fetch-site and JSON
+content-type guards before it decodes input or changes state. There is no
+permissive CORS route.
 
-That makes a **session identifier a credential**. Present one and the
-service signs with that session's actor key — ephemeral frames through
-`/v0/say` and durable events through `/v0/act` — and will end that
-session's lease on request. Session identifiers are therefore never
-published; presence and the change stream name sessions by opaque minted
-`session:` handles instead, and a live session cannot be rebound to
-another actor.
+The service is a trusted local custodian for several actors: it holds their
+signing keys and signs on behalf of whichever trusted process asks. The
+required `--acknowledge-trusted-processes` flag makes that choice explicit on
+each invocation. It does not create a shared-host authentication system.
 
-Anything that can reach the port can act as any actor this repository
-holds custody for. What that buys an attacker is authentic authorship,
-not automatic force: the fold still judges the act on its merits and can
-rule it ineffective. On a machine with untrusted local users, that
-boundary is the whole of the protection.
+When a browser tab or MCP adapter first joins, the resident mints a private
+credential from 256 bits of system randomness and binds it to exactly that
+repository and actor. The client cannot choose it. Renewals, speech, durable
+acts, inbox operations and departure require it. Expiry, departure,
+revocation or resident restart invalidates it; an adapter reconnecting after a
+restart receives a new one. Presence and the change stream expose only a
+separate random `session:` handle for display. The handle grants nothing and
+cannot be substituted for the credential.
+
+Credentials stay in client process memory. They are absent from status,
+presence, MCP tool results, logs, diagnostics, durable events, URL paths,
+queries, referrers and returned URL errors. Departure sends the credential in
+a JSON body to a fixed route.
+
+These measures stop accidental disclosure and cross-session replay. They do
+not protect against a malicious process running as the same OS account: that
+process can reach the loopback port and can often read the repository and its
+actor keys directly or invoke local `gs` commands. Such a process can obtain
+authentic actor signatures. The fold still judges the resulting acts and may
+rule them ineffective, but cryptography cannot recover the operator's intent.
 
 ## One per repository
 
@@ -149,9 +174,16 @@ the claim, and it confers no ownership of its own.
 
 ## Refusals
 
+Every hostname in `--listen`, including `localhost`, is resolved through the
+host resolver. Resolution must succeed, return at least one address, and
+return only loopback addresses. A host that fails to resolve, or resolves to
+both loopback and non-loopback addresses, is refused.
+
 | Situation | Message |
 |---|---|
-| A non-loopback `--listen` | `--listen must name a loopback address; the resident service is a trusted local multi-actor custodian` |
+| The acknowledgement is absent | `serving requires --acknowledge-trusted-processes: every process inside this resident boundary can act as every actor key this application can open` |
+| A literal non-loopback `--listen` | `--listen must name a loopback address; the resident service is a trusted local multi-actor custodian` |
+| A `--listen` hostname fails to resolve or any result is non-loopback | `--listen must resolve only to loopback addresses; the resident service is a trusted local multi-actor custodian` |
 | A read-only attachment | `cannot serve a read-only attachment` |
 | The port is taken | The bind error, before anything is claimed, published or announced. |
 | Another service holds the repository | `refusing to serve: another service already holds this repository's workroom and is answering (<url>)` |
@@ -177,8 +209,9 @@ never fetched by `attach`, never published, and never consulted by
 
 For a deliberate cold restart, stop the resident and run
 `gs checkpoint-clear --repo <path>` before starting it again. This clears both
-persistent selectors. `GITSEQ_CHECKPOINT=off gs serve ...` keeps checkpoint
-loading and publication disabled for that resident process.
+persistent selectors. `GITSEQ_CHECKPOINT=off gs serve ...
+--acknowledge-trusted-processes` keeps checkpoint loading and publication
+disabled for that resident process.
 
 Expired presence leases are swept, so a session that goes away without
 departing does not linger in presence forever.

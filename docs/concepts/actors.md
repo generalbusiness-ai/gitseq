@@ -2,6 +2,9 @@
 title: Actors and authority
 summary: Who may do what in a workroom, why kind is not authority, and how a grant stops conferring.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bfcf6197f09100c0078b2cf756518aa94e31dff1
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:076ced4d914d84d4a70e7eaad949efeb4db98d10
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88cc21688aebb4532fdff9614ef72c31fffe36f8
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:265b14724281203aac18927aa37ecc96dfc92523
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3cd3c438a2a5eaac579ddc22ccccde367a49177
 ---
@@ -104,10 +107,14 @@ grant that could confer again after a later governance change.
 ## Custody
 
 An actor's private key lives under `.git/gitseq/actors/`. The resident
-service holds custody for every actor whose key is in the repository it
-serves, and will sign on behalf of whichever session asks. That is why it
-binds loopback addresses only, and why a session identifier is a
-credential — see [Deploy a resident](../how-to/deploy-a-resident.md).
+service can open every actor key in the repository it serves. Within the
+explicitly acknowledged trusted-process boundary, it mints a private random
+credential for one repository-and-actor lease and signs on that actor's behalf
+when the credential is used. The credential is not authentication against a
+malicious process running as the same OS account; that process may read the
+key or invoke local `gs` directly. That is why serving is loopback-only and
+requires an operator acknowledgement — see
+[Deploy a resident](../how-to/deploy-a-resident.md).
 
 ## See also
 

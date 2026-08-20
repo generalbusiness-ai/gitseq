@@ -143,7 +143,7 @@ func (s *Server) handleWorktrees(writer http.ResponseWriter, request *http.Reque
 // session-bound speech, extended to the three workroom verbs. The service
 // signs with the custodial key of the actor the session announced as.
 type actRequest struct {
-	Session        string            `json:"session"`
+	Session        string            `json:"credential"`
 	Act            string            `json:"act"` // state | ratify | supersede
 	Kind           string            `json:"kind,omitempty"`
 	Text           string            `json:"text,omitempty"`
@@ -161,12 +161,12 @@ func (s *Server) handleAct(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	if input.Session == "" {
-		write(writer, nil, errors.New("session is required"))
+		write(writer, nil, errors.New("credential is required"))
 		return
 	}
 	actorName, present := s.hub.SessionActor(input.Session)
 	if !present {
-		write(writer, nil, errors.New("session is not present"))
+		write(writer, nil, errors.New("credential is not valid"))
 		return
 	}
 

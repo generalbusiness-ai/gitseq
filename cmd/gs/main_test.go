@@ -45,6 +45,39 @@ func TestValidateLoopbackListen(t *testing.T) {
 	}
 }
 
+func TestValidateLoopbackListenRejectsMixedResolution(t *testing.T) {
+	previous := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		if host != "mixed.example" {
+			t.Fatalf("lookup host = %q, want mixed.example", host)
+		}
+		return []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("192.0.2.1")}, nil
+	}
+	t.Cleanup(func() { lookupIP = previous })
+
+	if err := validateLoopbackListen("mixed.example:7777"); err == nil {
+		t.Fatal("listener accepted a hostname with a non-loopback resolution")
+	}
+}
+
+func TestServeRequiresExplicitTrustedProcessAcknowledgement(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(context.Background(), repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = serveCommand(context.Background(), []string{"--repo", repo, "--listen", "127.0.0.1:0"})
+	if err == nil || !strings.Contains(err.Error(), "--acknowledge-trusted-processes") {
+		t.Fatalf("unacknowledged serve error = %v", err)
+	}
+	if _, published := workspace.ResidentURL(); published {
+		t.Fatal("an unacknowledged resident published an address")
+	}
+}
+
 func TestProfilerIsDisabledByDefaultAndLoopbackOnly(t *testing.T) {
 	stop, err := serveProfiler(context.Background(), "")
 	if err != nil {
@@ -2092,7 +2125,9 @@ func TestServePublishesWhereItListensAndWithdrawsOnExit(t *testing.T) {
 	}
 	ctx, stop := context.WithCancel(context.Background())
 	served := make(chan error, 1)
-	go func() { served <- serveCommand(ctx, []string{"--repo", repo, "--listen", "127.0.0.1:0"}) }()
+	go func() {
+		served <- serveCommand(ctx, []string{"--repo", repo, "--listen", "127.0.0.1:0", "--acknowledge-trusted-processes"})
+	}()
 
 	var url string
 	for attempt := 0; attempt < 300 && url == ""; attempt++ {
@@ -2173,7 +2208,7 @@ func TestASecondServeProcessRefusesAndLeavesTheIncumbentUntouched(t *testing.T) 
 		t.Fatalf("a serving process holds no claim: present=%v err=%v", present, err)
 	}
 
-	output, err := exec.Command(binary, "serve", "--repo", repo, "--listen", "127.0.0.1:0").CombinedOutput()
+	output, err := exec.Command(binary, "serve", "--repo", repo, "--listen", "127.0.0.1:0", "--acknowledge-trusted-processes").CombinedOutput()
 	if err == nil {
 		t.Fatalf("a second gs serve started beside the one holding the repository: %s", output)
 	}
@@ -2290,7 +2325,7 @@ func servableRepository(t *testing.T) (string, *app.Workspace) {
 
 func startServing(t *testing.T, binary, repo string) *exec.Cmd {
 	t.Helper()
-	serving := exec.Command(binary, "serve", "--repo", repo, "--listen", "127.0.0.1:0")
+	serving := exec.Command(binary, "serve", "--repo", repo, "--listen", "127.0.0.1:0", "--acknowledge-trusted-processes")
 	serving.Stdout, serving.Stderr = os.Stderr, os.Stderr
 	if err := serving.Start(); err != nil {
 		t.Fatalf("starting gs serve: %v", err)
@@ -2551,7 +2586,9 @@ func TestASecondServeRefusesWhileTheFirstHoldsTheRepository(t *testing.T) {
 
 	ctx, stop := context.WithCancel(context.Background())
 	served := make(chan error, 1)
-	go func() { served <- serveCommand(ctx, []string{"--repo", repo, "--listen", "127.0.0.1:0"}) }()
+	go func() {
+		served <- serveCommand(ctx, []string{"--repo", repo, "--listen", "127.0.0.1:0", "--acknowledge-trusted-processes"})
+	}()
 
 	var url string
 	for attempt := 0; attempt < 300 && url == ""; attempt++ {
@@ -2571,7 +2608,7 @@ func TestASecondServeRefusesWhileTheFirstHoldsTheRepository(t *testing.T) {
 		t.Fatalf("a serving process holds no claim: present=%v err=%v", present, err)
 	}
 
-	second := serveCommand(context.Background(), []string{"--repo", repo, "--listen", "127.0.0.1:0"})
+	second := serveCommand(context.Background(), []string{"--repo", repo, "--listen", "127.0.0.1:0", "--acknowledge-trusted-processes"})
 	var refusal *app.ResidentHeldError
 	if !errors.As(second, &refusal) {
 		stop()
@@ -2603,7 +2640,9 @@ func TestASecondServeRefusesWhileTheFirstHoldsTheRepository(t *testing.T) {
 	next, stopNext := context.WithCancel(context.Background())
 	defer stopNext()
 	after := make(chan error, 1)
-	go func() { after <- serveCommand(next, []string{"--repo", repo, "--listen", "127.0.0.1:0"}) }()
+	go func() {
+		after <- serveCommand(next, []string{"--repo", repo, "--listen", "127.0.0.1:0", "--acknowledge-trusted-processes"})
+	}()
 	var successor string
 	for attempt := 0; attempt < 300 && successor == ""; attempt++ {
 		if published, ok := workspace.ResidentURL(); ok && published != url {
@@ -2665,7 +2704,9 @@ func TestServeRecoversAClaimLeftByADeadOwner(t *testing.T) {
 	serving, stop := context.WithCancel(ctx)
 	defer stop()
 	served := make(chan error, 1)
-	go func() { served <- serveCommand(serving, []string{"--repo", repo, "--listen", "127.0.0.1:0"}) }()
+	go func() {
+		served <- serveCommand(serving, []string{"--repo", repo, "--listen", "127.0.0.1:0", "--acknowledge-trusted-processes"})
+	}()
 	var url string
 	for attempt := 0; attempt < 300 && url == ""; attempt++ {
 		if published, ok := workspace.ResidentURL(); ok {

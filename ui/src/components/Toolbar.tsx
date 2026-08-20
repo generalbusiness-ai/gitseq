@@ -87,7 +87,7 @@ export function semanticActions({
   projection: Projection;
   me?: string;
   onRoute: (mode: SemanticReplyMode, basis: string, prefill: string) => void;
-  doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
+  doAct: (intent: string, input: Omit<ActInput, "credential" | "idempotency_key">) => void;
 }): SemanticAction[] {
   const actions: SemanticAction[] = [];
   if (statement.retired || (decision && decision.verdict !== "effective")) return actions;

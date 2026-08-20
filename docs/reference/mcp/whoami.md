@@ -1,16 +1,16 @@
 ---
 title: MCP whoami
-summary: Show the configured durable actor and the ephemeral session.
+summary: Show the configured durable actor and selected workroom without disclosing the resident credential.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e6080d3d101923bbbe4797517543ebada8831b8f
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:20e9622903b0b55e46955f625ee929212a076024
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:265b14724281203aac18927aa37ecc96dfc92523
 ---
 
 # `whoami`
 
-Reports which actor this adapter process signs as, what the roster
-currently says about that actor, and the session handle for this
-connection.
+Reports which actor this adapter process signs as and what the roster currently
+says about that actor in the selected workroom.
 
 Call it first in a new session. Everything else you do is signed as this
 actor, permanently.
@@ -51,7 +51,6 @@ call whoami '{}' | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 | `frontier` | The exact durable frontier the answer is anchored to: genesis, head, depth. |
 | `source` | The verified path that produced the answer. |
 | `degraded` | `true` when the resident could not be used and a verified local fallback answered. |
-| `session` | This connection's ephemeral handle. |
 | `protocol` | The protocol version the adapter serves. |
 
 `repo` and `genesis` are worth reading before you act. One adapter serves
@@ -69,7 +68,9 @@ boundary plus matching local genesis and head checks. When the resident
 cannot be used, a local fallback sets `degraded: true` and names the
 verified path it actually took: `verified_signed_checkpoint_tail`,
 `verified_incremental_tail`, or `verified_cold_full_audit`. The response
-never includes the local actor key path.
+never includes the local actor key path or the resident-minted credential.
+That credential is private adapter state, scoped to one repository and actor,
+and is replaced after resident restart. No MCP tool returns it.
 
 ## See also
 

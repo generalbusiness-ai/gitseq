@@ -2,6 +2,9 @@
 title: Configure an agent
 summary: Attach an MCP client to a workroom, and check that it can really act.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e6080d3d101923bbbe4797517543ebada8831b8f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:076ced4d914d84d4a70e7eaad949efeb4db98d10
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88cc21688aebb4532fdff9614ef72c31fffe36f8
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc5ca55fb4a4e67e2395903519f2103a92930268
@@ -53,6 +56,19 @@ when the genesis recorded with it matches that workroom. An address that
 stops answering is forgotten and looked up again on the next call, so a
 service started later is picked up without reconnecting the client.
 `--server` is retired: passing it prints a notice and changes nothing.
+
+When a resident is available, it mints a private credential for this adapter
+and binds it to the selected repository and actor. The adapter keeps one such
+credential per repository in process memory, renews it, and replaces it after
+resident restart. It never places the credential in `whoami`, another MCP tool
+result, a URL, a durable event, a log or a diagnostic. Do not ask an agent to
+print or persist it; the MCP surface deliberately gives it no value to print.
+
+The resident must have been started with
+`--acknowledge-trusted-processes`. That acknowledgement means every process in
+the resident's OS-account boundary is trusted to use every actor key the
+application can open. It is not authentication between agents, and it does
+not protect the keys from another process running as the same account.
 
 The actor must exist and its key must be in the repository being acted
 in — `gs actor-add` puts it there. A repository with no workroom, or one
@@ -135,7 +151,9 @@ imply it did.
 
 That is why the examples above work with no resident running at all.
 Start one when you want presence, conversation and the live view; the
-adapter will find it in the repository without being reconfigured.
+adapter will find it in the repository without being reconfigured. The
+[deployment guide](deploy-a-resident.md) shows the required
+`--acknowledge-trusted-processes` invocation and readiness check.
 
 ## See also
 

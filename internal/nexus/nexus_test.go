@@ -27,6 +27,10 @@ func newHub(t *testing.T, historyCap int) *Hub {
 	return hub
 }
 
+func setHubNow(hub *Hub, now time.Time) {
+	hub.now = func() time.Time { return now }
+}
+
 func announceIdentity(t *testing.T, hub *Hub, session, name string, key ed25519.PrivateKey) string {
 	t.Helper()
 	fingerprint := actorFingerprint(key.Public().(ed25519.PublicKey))
@@ -200,7 +204,7 @@ func TestPresenceLeaseExpiresAndForgetsConversations(t *testing.T) {
 		t.Fatal(err)
 	}
 	conversation := frame.Conversation
-	hub.Expire(time.Now().Add(2 * time.Hour))
+	setHubNow(hub, time.Now().Add(2*time.Hour))
 	if snapshot := hub.Snapshot(); len(snapshot.Presence) != 0 || len(snapshot.Conversations) != 0 {
 		t.Fatalf("expired live state retained: %+v", snapshot)
 	}
@@ -270,7 +274,7 @@ func TestLeasedActivityIsBoundedOwnedAndPropagatesThroughTheCursor(t *testing.T)
 	}
 
 	beforeExpiry := hub.Snapshot().Cursor
-	hub.Expire(time.Now().Add(2 * time.Hour))
+	setHubNow(hub, time.Now().Add(2*time.Hour))
 	snapshot := hub.Snapshot()
 	if len(snapshot.Presence) != 0 || len(snapshot.Activity) != 0 {
 		t.Fatalf("expired lease retained presence or focus: %+v", snapshot)
@@ -580,7 +584,7 @@ func TestAddressedInboxIsBoundedAndExpiresWithItsLease(t *testing.T) {
 	if _, next, err := hub.SnapshotForSession("bob"); err != nil || len(next.Frames) != 3 || next.Skipped != 0 {
 		t.Fatalf("ack did not reveal hidden pending frames: %+v err=%v", next, err)
 	}
-	hub.Expire(time.Now().Add(2 * time.Hour))
+	setHubNow(hub, time.Now().Add(2*time.Hour))
 	if _, _, err := hub.SnapshotForSession("bob"); err == nil {
 		t.Fatal("expired session retained an addressable inbox")
 	}
@@ -866,7 +870,7 @@ func TestFocusedOnDropsExpiredSessions(t *testing.T) {
 	if _, err := hub.AnnounceSessionIdentity("s1", "alice", "fp-alice", "v", time.Millisecond, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
 		t.Fatal(err)
 	}
-	hub.Expire(time.Now().Add(time.Hour))
+	setHubNow(hub, time.Now().Add(time.Hour))
 	if actors, _ := hub.FocusedOn("", []string{"event:one"}); len(actors) != 0 {
 		t.Fatalf("an expired lease still reported attention: %+v", actors)
 	}
