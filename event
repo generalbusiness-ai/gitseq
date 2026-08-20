@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88cc21688aebb4532fdff9614ef72c31fffe36f8","text":"Retire the withdrawn internal/service artifact against its live same-path successor; all tracked documentation citations now name the successor."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:821e23690a0bc1ae628c26849684a3edf3751437","text":"Retire the withdrawn ui artifact against its live same-path successor; all tracked documentation citations now name the successor."}
