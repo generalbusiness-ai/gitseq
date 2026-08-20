@@ -121,9 +121,14 @@ perfectly good request is ineffective when its author is not the
 performer the request named.
 
 Everything else in `rests_on` is a claim about meaning, and a substrate
-with no ontology cannot check meaning. A mistyped identifier on an
-`assert` is simply kept. The practical rule does not vary with the table:
-copy identifiers whole, from the emitted event.
+with no ontology cannot check meaning. It can still check existence. An
+identifier for this workroom that names no event in it is refused before
+it is sequenced, whatever the kind, because the log is append-only and a
+dangling reference admitted once can never be repaired. What the
+substrate cannot resolve at all — another workroom's identifier, a string
+that is not an identifier — it keeps, and on an `assert` that costs the
+act nothing. The practical rule does not vary with the table: copy
+identifiers whole, from the emitted event.
 
 ## Nothing is deleted, but things are retired
 

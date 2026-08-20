@@ -94,7 +94,8 @@ The kernel owns:
   accepted position;
 - binding an opaque schema name and opaque payload tree to the signed intent;
 - carrying the signed `rests_on` strings without assigning them application
-  semantics;
+  semantics, while refusing at admission a submitted reference that claims a
+  position in this log and does not name one;
 - idempotency namespaces, keys, replay, and conflicting-retry detection;
 - bounds on intent fields, causal-reference counts, envelopes, payloads, and
   attachments;
@@ -104,6 +105,21 @@ The kernel owns:
   kernel-verified event material, plus authenticated descendant continuation,
   with an optional opaque selector supplied by the host; and
 - sequencer key rotation, sealing, and verified continuation.
+
+Reference resolvability is the one thing the kernel can check about `rests_on`
+without an ontology. A canonical event identifier whose workroom half is the log
+being submitted to asserts that its event half is a position in that sequence,
+and Git alone settles whether it is. Admission refuses a submission that asserts
+it falsely, because the sequence is append-only: a dangling reference admitted
+once is inherited by every fold and every reader afterwards, and no later act
+can repair it. A reference that makes no such assertion — another workroom's
+identifier, a URL, any other opaque string — is carried unchanged, because the
+kernel has nothing to resolve it against.
+
+The check gates submission and nothing else. Verification, checkpoints and
+continuation read history exactly as before, so records sequenced with dangling
+references before the gate existed remain readable and remain part of the
+verified order.
 
 An application may supply an admission hook. The kernel owns when that hook is
 enforced and what signed envelope and capability material it may inspect. The

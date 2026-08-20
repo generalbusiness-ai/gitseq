@@ -405,6 +405,7 @@ func validateCheckpointEventsInto(stored checkpoint, desc GenesisDescriptor, eve
 	log := scannedLog{
 		Verification:       Verification{Genesis: stored.Genesis, Head: stored.Head, Depth: stored.Depth, Events: len(stored.Events)},
 		Dedup:              make(map[string]Event, len(stored.Events)),
+		Positions:          newPositions(stored.Genesis, len(stored.Events)+1),
 		sequencerPublicKey: desc.SequencerPublicKey,
 	}
 	if retainEvents {
@@ -543,6 +544,7 @@ func appendCheckpointEventInto(log *scannedLog, index int, event Event, retainEv
 		return fmt.Errorf("event %d duplicates idempotent event %s", index, prior.Commit)
 	}
 	log.Dedup[key] = eventWithoutPayload(event)
+	log.Positions[event.Commit] = struct{}{}
 	if retainEvent {
 		log.Events = append(log.Events, event)
 	}
@@ -920,6 +922,7 @@ func validateCompactCheckpointInto(stored checkpoint, payload []byte, desc Genes
 	log := scannedLog{
 		Verification:       Verification{Genesis: stored.Genesis, Head: stored.Head, Depth: stored.Depth, Events: stored.EventCount},
 		Dedup:              make(map[string]Event, stored.EventCount),
+		Positions:          newPositions(stored.Genesis, stored.EventCount+1),
 		sequencerPublicKey: desc.SequencerPublicKey,
 	}
 	if retainEvents {
