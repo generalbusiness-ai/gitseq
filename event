@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f4e30518ce502c55ae70ddb20716d30121741444","text":"Merge retired a covered predecessor; the successor is at docs."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc28f533182274d45a5cec7aa1bcdfbe1cb071e4","text":"Merge retired a covered predecessor; the successor is at cmd/gitseq-mcp."}
