@@ -35,6 +35,15 @@ const (
 
 var ErrNoUsableCheckpoint = errors.New("no usable checkpoint")
 
+// checkpointStreamError marks a failure after a valid checkpoint has begun
+// transferring provisional events. The caller must not try another candidate
+// or fall back to a cold scan with the same sink, because that would deliver a
+// duplicate prefix to application state that is waiting to be discarded.
+type checkpointStreamError struct{ err error }
+
+func (e *checkpointStreamError) Error() string { return e.err.Error() }
+func (e *checkpointStreamError) Unwrap() error { return e.err }
+
 // CheckpointOptions enables the optional Git-backed restart cache. The cache
 // contains only kernel-verified event material and is reusable across
 // application folds. SigningKey is optional: readers without sequencer
@@ -149,6 +158,10 @@ type checkpointCandidate struct {
 func CheckpointRef(genesis string) string { return "refs/gitseq/checkpoints/" + genesis }
 
 func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head string, options CheckpointOptions) (scannedLog, bool, error) {
+	return loadCheckpointInto(ctx, store, genesis, head, options, nil)
+}
+
+func loadCheckpointInto(ctx context.Context, store gitstore.Store, genesis, head string, options CheckpointOptions, accept func(Event) error) (scannedLog, bool, error) {
 	if !options.enabled() {
 		return scannedLog{}, false, ErrNoUsableCheckpoint
 	}
@@ -197,21 +210,40 @@ func loadCheckpoint(ctx context.Context, store gitstore.Store, genesis, head str
 	}
 	sort.SliceStable(parsed, func(i, j int) bool { return parsed[i].stored.Depth > parsed[j].stored.Depth })
 	for _, candidate := range parsed {
-		log, err := authenticateCheckpointCandidate(ctx, store, candidate, desc, commits)
+		log, err := authenticateCheckpointCandidateInto(ctx, store, candidate, desc, commits, accept == nil)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 		advanced := candidate.stored.Head != head
+		checkpointBase := log
+		var suffix []gitstore.CommitMetadata
 		if advanced {
+			suffix = commits[candidate.stored.Depth+1:]
 			prefix := append([]Event(nil), log.Events...)
-			extended, err := scanListedAfter(ctx, store, log, head, commits[candidate.stored.Depth+1:], true)
+			extended, err := scanListedAfterMode(ctx, store, log, head, suffix, true, accept == nil, nil)
 			if err != nil {
 				lastErr = fmt.Errorf("%w: checkpoint frontier: %v", ErrNoUsableCheckpoint, err)
 				continue
 			}
 			log = extended
-			log.Events = append(prefix, extended.Events...)
+			if accept == nil {
+				log.Events = append(prefix, extended.Events...)
+			}
+		}
+		if accept != nil {
+			if err := streamCheckpointCandidate(candidate, desc, commits, accept); err != nil {
+				return scannedLog{}, false, &checkpointStreamError{err: err}
+			}
+			if len(suffix) > 0 {
+				replayBase := checkpointBase
+				replayBase.Dedup = nil
+				replayBase.Events = nil
+				if _, err := scanListedAfterMode(ctx, store, replayBase, head, suffix, true, false, accept); err != nil {
+					return scannedLog{}, false, &checkpointStreamError{err: fmt.Errorf("replay checkpoint frontier: %w", err)}
+				}
+			}
+			log.Events = nil
 		}
 		// Repair the Git reachability anchor before the host selector. Each is
 		// only a hint, so a repair failure cannot invalidate an authenticated
@@ -284,6 +316,10 @@ func readCheckpointCandidate(ctx context.Context, store gitstore.Store, desc Gen
 }
 
 func authenticateCheckpointCandidate(ctx context.Context, store gitstore.Store, candidate checkpointCandidate, desc GenesisDescriptor, commits []gitstore.CommitMetadata) (scannedLog, error) {
+	return authenticateCheckpointCandidateInto(ctx, store, candidate, desc, commits, true)
+}
+
+func authenticateCheckpointCandidateInto(ctx context.Context, store gitstore.Store, candidate checkpointCandidate, desc GenesisDescriptor, commits []gitstore.CommitMetadata, retainEvents bool) (scannedLog, error) {
 	stored := candidate.stored
 	eventPositions, err := checkpointEventPositions(stored, checkpointEventCount(stored), desc, commits)
 	if err != nil {
@@ -298,15 +334,59 @@ func authenticateCheckpointCandidate(ctx context.Context, store gitstore.Store, 
 	}
 	var log scannedLog
 	if stored.Schema == checkpointSchema || stored.Schema == profiledCompactCheckpointSchema {
-		log, err = validateCompactCheckpoint(stored, candidate.payload, desc, eventPositions)
+		log, err = validateCompactCheckpointInto(stored, candidate.payload, desc, eventPositions, retainEvents)
 	} else {
-		log, err = validateCheckpointEvents(stored, desc, eventPositions)
+		log, err = validateCheckpointEventsInto(stored, desc, eventPositions, retainEvents)
 	}
 	if err != nil {
 		return scannedLog{}, fmt.Errorf("%w: %v", ErrNoUsableCheckpoint, err)
 	}
 	log.sequencerPublicKey = sequencerPublicKey
 	return log, nil
+}
+
+// streamCheckpointCandidate replays a candidate only after its complete
+// checkpoint and any current-head suffix have already verified. This second
+// bounded pass lets application state consume records without retaining the
+// depth-sized Event slice and without exposing callbacks from a rejected
+// checkpoint candidate.
+func streamCheckpointCandidate(candidate checkpointCandidate, desc GenesisDescriptor, commits []gitstore.CommitMetadata, accept func(Event) error) error {
+	stored := candidate.stored
+	positions, err := checkpointEventPositions(stored, checkpointEventCount(stored), desc, commits)
+	if err != nil {
+		return err
+	}
+	if stored.Schema == checkpointSchema || stored.Schema == profiledCompactCheckpointSchema {
+		reader, source, err := openCompactCheckpointPayload(candidate.payload)
+		if err != nil {
+			return err
+		}
+		for index, position := range positions {
+			remaining := desc.PayloadCeiling - uint64(len(position.Message))
+			cached, err := readCompactCheckpointEvent(reader, remaining)
+			if err != nil {
+				return fmt.Errorf("checkpoint event %d: %w", index, err)
+			}
+			event, err := checkpointEventFromPayload(index, position, cached.Payload, cached.Attachments, stored, desc)
+			if err != nil {
+				return err
+			}
+			if err := accept(event); err != nil {
+				return err
+			}
+		}
+		return finishCompactCheckpointPayload(reader, source)
+	}
+	for index, cached := range stored.Events {
+		event, err := checkpointEventFromPayload(index, positions[index], cached.Payload, cached.Attachments, stored, desc)
+		if err != nil {
+			return err
+		}
+		if err := accept(event); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gitstore.CommitMetadata) (scannedLog, error) {
@@ -318,11 +398,17 @@ func validateCheckpoint(stored checkpoint, desc GenesisDescriptor, sequence []gi
 }
 
 func validateCheckpointEvents(stored checkpoint, desc GenesisDescriptor, eventPositions []gitstore.CommitMetadata) (scannedLog, error) {
+	return validateCheckpointEventsInto(stored, desc, eventPositions, true)
+}
+
+func validateCheckpointEventsInto(stored checkpoint, desc GenesisDescriptor, eventPositions []gitstore.CommitMetadata, retainEvents bool) (scannedLog, error) {
 	log := scannedLog{
 		Verification:       Verification{Genesis: stored.Genesis, Head: stored.Head, Depth: stored.Depth, Events: len(stored.Events)},
-		Events:             make([]Event, 0, len(stored.Events)),
 		Dedup:              make(map[string]Event, len(stored.Events)),
 		sequencerPublicKey: desc.SequencerPublicKey,
+	}
+	if retainEvents {
+		log.Events = make([]Event, 0, len(stored.Events))
 	}
 	seenCommits := make(map[string]struct{}, len(stored.Events))
 	for index, cached := range stored.Events {
@@ -351,7 +437,7 @@ func validateCheckpointEvents(stored checkpoint, desc GenesisDescriptor, eventPo
 		if err != nil {
 			return scannedLog{}, err
 		}
-		if err := appendCheckpointEvent(&log, index, event); err != nil {
+		if err := appendCheckpointEventInto(&log, index, event, retainEvents); err != nil {
 			return scannedLog{}, err
 		}
 	}
@@ -445,6 +531,10 @@ func checkpointEventFromPayload(index int, position gitstore.CommitMetadata, pay
 }
 
 func appendCheckpointEvent(log *scannedLog, index int, event Event) error {
+	return appendCheckpointEventInto(log, index, event, true)
+}
+
+func appendCheckpointEventInto(log *scannedLog, index int, event Event, retainEvent bool) error {
 	key, err := event.Signed.DedupKey()
 	if err != nil {
 		return err
@@ -457,7 +547,9 @@ func appendCheckpointEvent(log *scannedLog, index int, event Event) error {
 		return fmt.Errorf("event %d duplicates idempotent event %s", index, prior.Commit)
 	}
 	log.Dedup[key] = eventWithoutPayload(event)
-	log.Events = append(log.Events, event)
+	if retainEvent {
+		log.Events = append(log.Events, event)
+	}
 	return nil
 }
 
@@ -825,15 +917,21 @@ func decodeCompactCheckpoint(data []byte) (checkpoint, error) {
 }
 
 func validateCompactCheckpoint(stored checkpoint, payload []byte, desc GenesisDescriptor, positions []gitstore.CommitMetadata) (scannedLog, error) {
+	return validateCompactCheckpointInto(stored, payload, desc, positions, true)
+}
+
+func validateCompactCheckpointInto(stored checkpoint, payload []byte, desc GenesisDescriptor, positions []gitstore.CommitMetadata, retainEvents bool) (scannedLog, error) {
 	reader, source, err := openCompactCheckpointPayload(payload)
 	if err != nil {
 		return scannedLog{}, err
 	}
 	log := scannedLog{
 		Verification:       Verification{Genesis: stored.Genesis, Head: stored.Head, Depth: stored.Depth, Events: stored.EventCount},
-		Events:             make([]Event, 0, stored.EventCount),
 		Dedup:              make(map[string]Event, stored.EventCount),
 		sequencerPublicKey: desc.SequencerPublicKey,
+	}
+	if retainEvents {
+		log.Events = make([]Event, 0, stored.EventCount)
 	}
 	for index, position := range positions {
 		remaining := desc.PayloadCeiling - uint64(len(position.Message))
@@ -845,7 +943,7 @@ func validateCompactCheckpoint(stored checkpoint, payload []byte, desc GenesisDe
 		if err != nil {
 			return scannedLog{}, err
 		}
-		if err := appendCheckpointEvent(&log, index, event); err != nil {
+		if err := appendCheckpointEventInto(&log, index, event, retainEvents); err != nil {
 			return scannedLog{}, err
 		}
 	}

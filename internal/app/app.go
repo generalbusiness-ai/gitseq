@@ -1177,8 +1177,8 @@ func (w *Workspace) SetRebuildTestGate(gate func(kernel.Progress)) {
 	w.rebuildTestGate = gate
 }
 
-// SetProjectionRebuildTestGate installs a test-only pause after authenticated
-// events are loaded but before their application projection is folded and
+// SetProjectionRebuildTestGate installs a test-only pause after the complete
+// authenticated application projection is prepared but before it is
 // published. Production callers leave the gate nil.
 func (w *Workspace) SetProjectionRebuildTestGate(gate func(int)) {
 	w.projectionTestGate = gate
@@ -1266,7 +1266,33 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 	if w.reader == nil {
 		w.reader = w.newReader()
 	}
-	loaded, err := w.reader.LoadWithProgress(ctx, w.Config.Genesis, progress)
+	var (
+		streamedFolder       *workroom.Folder
+		streamedEvents       int
+		streamedFoldDuration time.Duration
+	)
+	load := func(reader *kernel.Reader) (kernel.LoadResult, error) {
+		streamedFolder = nil
+		streamedEvents = 0
+		streamedFoldDuration = 0
+		if refusal != nil {
+			return reader.LoadWithProgress(ctx, w.Config.Genesis, progress)
+		}
+		streamedFolder = selected.newFolder(nil)
+		return reader.LoadWithProgressStream(ctx, w.Config.Genesis, progress, func(event kernel.Event) error {
+			started := time.Time{}
+			if w.observer != nil {
+				started = time.Now()
+			}
+			streamedFolder.Append(w.record(event))
+			streamedEvents++
+			if !started.IsZero() {
+				streamedFoldDuration += time.Since(started)
+			}
+			return nil
+		})
+	}
+	loaded, err := load(w.reader)
 	if err != nil {
 		w.recordSnapshot(ctx, observe.PathOther, started, 0, err)
 		return SourcedSnapshot{}, err
@@ -1299,7 +1325,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		// pair. If local application state was discarded or mismatched,
 		// deliberately replace the reader and perform a cold full audit.
 		w.reader = w.newReader()
-		loaded, err = w.reader.LoadWithProgress(ctx, w.Config.Genesis, progress)
+		loaded, err = load(w.reader)
 		if err != nil {
 			return SourcedSnapshot{}, err
 		}
@@ -1314,22 +1340,32 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 			path = observe.PathCheckpoint
 		}
 	}
-	foldStarted := time.Now()
 	if loaded.Full {
-		if w.projectionTestGate != nil {
-			w.projectionTestGate(len(loaded.Events))
-		}
-		w.snapshotFolder = selected.newFolder(nil)
-		for index := range loaded.Events {
-			w.snapshotFolder.Append(w.record(loaded.Events[index]))
-			// A full load transfers the event stream to the application fold.
-			// Release each transport record after it is decoded so the resident
-			// does not hold the complete raw and projected histories together.
-			loaded.Events[index] = kernel.Event{}
+		folder := streamedFolder
+		foldDuration := streamedFoldDuration
+		if len(loaded.Events) > 0 {
+			foldStarted := time.Now()
+			folder = selected.newFolder(nil)
+			for index := range loaded.Events {
+				folder.Append(w.record(loaded.Events[index]))
+				// A checkpoint load still transfers its authenticated transport
+				// records after validation. Release each one after decoding.
+				loaded.Events[index] = kernel.Event{}
+			}
+			foldDuration = time.Since(foldStarted)
+		} else if streamedEvents != loaded.Verification.Events {
+			return SourcedSnapshot{}, fmt.Errorf("streamed projection events = %d, verified events = %d", streamedEvents, loaded.Verification.Events)
 		}
 		if w.observer != nil {
-			w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationFold, Path: path, Outcome: observe.OutcomeOK, Duration: time.Since(foldStarted), Items: int64(loaded.Verification.Events)})
+			w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationFold, Path: path, Outcome: observe.OutcomeOK, Duration: foldDuration, Items: int64(loaded.Verification.Events)})
 		}
+		if w.projectionTestGate != nil {
+			w.projectionTestGate(loaded.Verification.Events)
+		}
+		// The callback fold was provisional while the kernel could still
+		// reject a later commit. Publish it only after the complete audit and
+		// application preparation have both succeeded.
+		w.snapshotFolder = folder
 	} else {
 		foldStarted := time.Now()
 		for _, event := range loaded.Events[start:] {
