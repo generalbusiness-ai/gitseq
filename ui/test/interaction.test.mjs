@@ -208,9 +208,10 @@ test("UI focus selection adds, removes, and stays bounded", () => {
 
 test("browser heartbeats renew the lease without revalidating activity focus", () => {
   const session = readFileSync(new URL("../src/lib/session.ts", import.meta.url), "utf8");
-  assert.match(session, /const renew = \(\) =>\s*api\s*\.announce\(effective, id\)/);
-  assert.match(session, /setActivity:[\s\S]*api\.announce\(effective, id, next\)/);
-  assert.doesNotMatch(session, /const renew = \(\) =>[\s\S]*?announce\(effective, id, activityRef\.current\)/);
+  assert.match(session, /const renew = \(\) =>\s*api\s*\.announce\(effective, credentialRef\.current\)/);
+  assert.match(session, /setActivity:[\s\S]*api\.announce\(effective, credentialRef\.current, next\)/);
+  assert.doesNotMatch(session, /const renew = \(\) =>[\s\S]*?announce\(effective, credentialRef\.current, activityRef\.current\)/);
+  assert.doesNotMatch(session, /localStorage\.setItem\([^\n]*credential|sessionStorage/);
 });
 
 test("avatar initials read the actor's name, not a decorated label", () => {

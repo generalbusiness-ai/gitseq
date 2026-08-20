@@ -26,6 +26,29 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
+func announceCredential(t *testing.T, server *Server, input presenceRequest) (string, nexus.Change) {
+	t.Helper()
+	body, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/v0/presence", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("announce returned %d: %s", response.Code, response.Body.String())
+	}
+	var announced presenceResponse
+	if err := json.NewDecoder(response.Body).Decode(&announced); err != nil {
+		t.Fatal(err)
+	}
+	if announced.Credential == "" {
+		t.Fatal("resident did not return its minted credential")
+	}
+	return announced.Credential, announced.Change
+}
+
 // The legacy demo page is gone, and this is what stops it coming back. It was
 // a second renderer of the same projection, reachable by nobody: registered at
 // one route, linked from no page, named in no document, and covered by one test
@@ -48,6 +71,132 @@ func TestTheUnreachableDemoSurfaceIsGone(t *testing.T) {
 	}
 }
 
+func TestResidentCredentialNeverAppearsOutsideCreationResponse(t *testing.T) {
+	ctx := context.Background()
+	newServer := func(name string) (*Server, *app.Workspace) {
+		repo := filepath.Join(t.TempDir(), name)
+		if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+			t.Fatalf("git init: %v: %s", err, output)
+		}
+		workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		server, err := New(workspace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return server, workspace
+	}
+	first, _ := newServer("first")
+	second, _ := newServer("second")
+	credential, change := announceCredential(t, first, presenceRequest{Actor: "human"})
+	if !strings.HasPrefix(credential, "credential:") || len(credential) < len("credential:")+32 {
+		t.Fatalf("credential does not carry the required entropy shape: %q", credential)
+	}
+
+	for _, path := range []string{"/v0/presence", "/v0/status", "/v0/status-summary"} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+		first.Handler().ServeHTTP(response, request)
+		if strings.Contains(response.Body.String(), credential) {
+			t.Fatalf("%s disclosed the credential: %s", path, response.Body.String())
+		}
+	}
+	if change.ID == credential {
+		t.Fatal("public handle equals private credential")
+	}
+
+	owned, _ := json.Marshal(actRequest{Session: credential, Act: "state", Kind: "assert", Text: "durable text", IdempotencyKey: "credential-disclosure-guard"})
+	request := httptest.NewRequest(http.MethodPost, "/v0/act", bytes.NewReader(owned))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	first.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("credential owner act returned %d: %s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	first.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v0/status", nil))
+	if strings.Contains(response.Body.String(), credential) {
+		t.Fatalf("durable projection disclosed the credential: %s", response.Body.String())
+	}
+
+	// The same actor name in another repository does not broaden the token.
+	body, _ := json.Marshal(actRequest{Session: credential, Act: "state", Kind: "assert", Text: "cross-repository replay"})
+	request = httptest.NewRequest(http.MethodPost, "/v0/act", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	second.Handler().ServeHTTP(response, request)
+	if response.Code == http.StatusOK || strings.Contains(response.Body.String(), credential) {
+		t.Fatalf("cross-repository replay response = %d %s", response.Code, response.Body.String())
+	}
+
+	for _, attempted := range []string{"credential:not-hex", "credential:" + strings.Repeat("0", 64), change.ID} {
+		guessed, _ := json.Marshal(actRequest{Session: attempted, Act: "state", Kind: "assert", Text: "credential guess"})
+		request = httptest.NewRequest(http.MethodPost, "/v0/act", bytes.NewReader(guessed))
+		request.Header.Set("Content-Type", "application/json")
+		response = httptest.NewRecorder()
+		first.Handler().ServeHTTP(response, request)
+		if response.Code == http.StatusOK || strings.Contains(response.Body.String(), attempted) || !strings.Contains(response.Body.String(), "credential is not valid") {
+			t.Fatalf("malformed or guessed credential response = %d %s", response.Code, response.Body.String())
+		}
+	}
+
+	depart, _ := json.Marshal(sessionStatusRequest{Session: credential})
+	request = httptest.NewRequest(http.MethodPost, "/v0/presence/depart", bytes.NewReader(depart))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	first.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("departure returned %d: %s", response.Code, response.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodPost, "/v0/act", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	first.Handler().ServeHTTP(response, request)
+	if response.Code == http.StatusOK || strings.Contains(response.Body.String(), credential) {
+		t.Fatalf("revoked credential replay response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestTrustedHostAndOriginGuardsRunBeforeMutation(t *testing.T) {
+	var called atomic.Int64
+	handler := TrustedHostHandler(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if err := guardMutation(request); err != nil {
+			write(writer, nil, err)
+			return
+		}
+		called.Add(1)
+		write(writer, map[string]bool{"ok": true}, nil)
+	}))
+	request := httptest.NewRequest(http.MethodPost, "http://workroom.example/v0/act", strings.NewReader("{}"))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code == http.StatusOK || called.Load() != 0 {
+		t.Fatal("non-loopback Host reached a mutation")
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "http://127.0.0.1:7777/v0/act", strings.NewReader("{}"))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "https://127.0.0.1:7777")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code == http.StatusOK || called.Load() != 0 {
+		t.Fatal("cross-scheme browser origin reached a mutation")
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "http://localhost:7777/v0/act", strings.NewReader("{}"))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://localhost:7777")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || called.Load() != 1 {
+		t.Fatalf("same-origin loopback mutation = %d, called=%d", response.Code, called.Load())
+	}
+}
+
 func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
@@ -64,13 +213,8 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	}
 	httpServer := httptest.NewServer(server.Handler())
 	defer httpServer.Close()
-	announce, _ := json.Marshal(presenceRequest{Actor: "human", Session: "session-1"})
-	response, err := http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(announce))
-	if err != nil {
-		t.Fatal(err)
-	}
-	response.Body.Close()
-	response, err = http.Get(httpServer.URL + "/v0/status")
+	credential, _ := announceCredential(t, server, presenceRequest{Actor: "human"})
+	response, err := http.Get(httpServer.URL + "/v0/status")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,10 +226,13 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	if status.Durable.Depth != 1 || len(status.Live.Presence) != 1 || status.Cursor.Frontier[0].Depth != 1 {
 		t.Fatalf("unexpected status: %+v", status)
 	}
+	if status.TrustBoundary != TrustedProcessPosture {
+		t.Fatalf("status trust boundary = %q", status.TrustBoundary)
+	}
 	if len(status.Durable.Vocabulary.Definitions) != 12 || status.Durable.Vocabulary.Binding.Status != "unbound" {
 		t.Fatalf("status did not serve the room vocabulary and binding state: %+v", status.Durable.Vocabulary)
 	}
-	actorInput, _ := json.Marshal(sessionStatusRequest{Session: "session-1"})
+	actorInput, _ := json.Marshal(sessionStatusRequest{Session: credential})
 	response, err = http.Post(httpServer.URL+"/v0/actor-status", "application/json", bytes.NewReader(actorInput))
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +265,8 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	}
 	response.Body.Close()
 	if summary.Durable.Genesis != status.Durable.Genesis || summary.Durable.Head != status.Durable.Head ||
-		summary.Durable.Depth != status.Durable.Depth || len(summary.Cursor.Frontier) != 1 || summary.Cursor.Frontier[0].Head != status.Durable.Head {
+		summary.Durable.Depth != status.Durable.Depth || len(summary.Cursor.Frontier) != 1 || summary.Cursor.Frontier[0].Head != status.Durable.Head ||
+		summary.TrustBoundary != TrustedProcessPosture {
 		t.Fatalf("summary frontier differs from full status: summary=%+v full=%+v", summary, status)
 	}
 	fingerprint := workspace.Config.Actors["human"].Fingerprint
@@ -274,14 +422,9 @@ func TestPresenceActivityUsesTheLeaseAndCompositeWait(t *testing.T) {
 		}
 		return response
 	}
-	response := post(presenceRequest{Actor: "human", Session: "private"})
-	var announced nexus.Change
-	if err := json.NewDecoder(response.Body).Decode(&announced); err != nil {
-		t.Fatal(err)
-	}
-	response.Body.Close()
+	credential, announced := announceCredential(t, server, presenceRequest{Actor: "human"})
 
-	response, err = http.Get(httpServer.URL + "/v0/status")
+	response, err := http.Get(httpServer.URL + "/v0/status")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +437,7 @@ func TestPresenceActivityUsesTheLeaseAndCompositeWait(t *testing.T) {
 	blocked := nexus.ActivityBlocked
 	focus := []string{event, event}
 	note := "reviewing"
-	response = post(presenceRequest{Actor: "human", Session: "private", Status: &blocked, Focus: &focus, Note: &note})
+	response = post(presenceRequest{Actor: "human", Session: credential, Status: &blocked, Focus: &focus, Note: &note})
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("activity update returned %d", response.StatusCode)
 	}
@@ -320,23 +463,22 @@ func TestPresenceActivityUsesTheLeaseAndCompositeWait(t *testing.T) {
 
 	// The private session remains bound to its first actor, and the opaque
 	// public handle cannot be used as a substitute credential.
-	response = post(presenceRequest{Actor: "other", Session: "private", Status: &blocked})
+	response = post(presenceRequest{Actor: "other", Session: credential, Status: &blocked})
 	if response.StatusCode < 400 {
 		t.Fatal("another actor updated the live session")
 	}
 	response.Body.Close()
 	response = post(presenceRequest{Actor: "human", Session: announced.ID, Status: &blocked})
-	var separate nexus.Change
-	if err := json.NewDecoder(response.Body).Decode(&separate); err != nil {
-		t.Fatal(err)
+	if response.StatusCode < 400 {
+		t.Fatal("a public handle was accepted as a credential")
 	}
 	response.Body.Close()
-	if separate.ID == announced.ID || server.hub.HandleFor("private") != announced.ID {
-		t.Fatal("a separately announced lease mutated the original private session")
+	if server.hub.HandleFor(credential) != announced.ID {
+		t.Fatal("a rejected public handle changed the original lease")
 	}
 
 	unknown := []string{"git:sha1:elsewhere#git:sha1:deadbeef"}
-	response = post(presenceRequest{Actor: "human", Session: "private", Focus: &unknown})
+	response = post(presenceRequest{Actor: "human", Session: credential, Focus: &unknown})
 	if response.StatusCode < 400 {
 		t.Fatal("cross-room focus was accepted")
 	}
@@ -400,20 +542,13 @@ func TestConversationIsForgottenWhenItsLastParticipantDeparts(t *testing.T) {
 	// The handle is minted by the service and returned on announce; a client
 	// cannot compute it from the session it chose.
 	handles := map[string]string{}
-	for _, session := range []string{"speaker", "bystander"} {
-		body, _ := json.Marshal(presenceRequest{Actor: "human", Session: session})
-		response, err := http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(body))
-		if err != nil {
-			t.Fatal(err)
-		}
-		var announced nexus.Change
-		if err := json.NewDecoder(response.Body).Decode(&announced); err != nil {
-			t.Fatal(err)
-		}
-		response.Body.Close()
-		handles[session] = announced.ID
+	credentials := map[string]string{}
+	for _, name := range []string{"speaker", "bystander"} {
+		credential, announced := announceCredential(t, server, presenceRequest{Actor: "human"})
+		credentials[name] = credential
+		handles[name] = announced.ID
 	}
-	say, _ := json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Text: "ephemeral only"})
+	say, _ := json.Marshal(sayRequest{Session: credentials["speaker"], About: genesis.ID, Text: "ephemeral only"})
 	response, err := http.Post(httpServer.URL+"/v0/say", "application/json", bytes.NewReader(say))
 	if err != nil {
 		t.Fatal(err)
@@ -427,8 +562,8 @@ func TestConversationIsForgottenWhenItsLastParticipantDeparts(t *testing.T) {
 		t.Fatal("say did not create a conversation")
 	}
 
-	request, _ := http.NewRequest(http.MethodDelete, httpServer.URL+"/v0/presence/speaker", nil)
-	response, err = http.DefaultClient.Do(request)
+	depart, _ := json.Marshal(sessionStatusRequest{Session: credentials["speaker"]})
+	response, err = http.Post(httpServer.URL+"/v0/presence/depart", "application/json", bytes.NewReader(depart))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +590,7 @@ func TestConversationIsForgottenWhenItsLastParticipantDeparts(t *testing.T) {
 	}
 }
 
-func TestExpiredSessionBindingDoesNotBlockRebind(t *testing.T) {
+func TestExpiredCredentialCannotRenewAndDoesNotBlockNewLease(t *testing.T) {
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -475,29 +610,21 @@ func TestExpiredSessionBindingDoesNotBlockRebind(t *testing.T) {
 	httpServer := httptest.NewServer(server.Handler())
 	defer httpServer.Close()
 
-	announce := func(actor string, ttl int) int {
-		t.Helper()
-		body, _ := json.Marshal(presenceRequest{Actor: actor, Session: "reused", TTLMS: ttl})
-		response, err := http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(body))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer response.Body.Close()
-		return response.StatusCode
-	}
-	if status := announce("human", 1); status != http.StatusOK {
-		t.Fatalf("initial announce status = %d", status)
-	}
+	credential, _ := announceCredential(t, server, presenceRequest{Actor: "human", TTLMS: 1})
 	time.Sleep(10 * time.Millisecond)
-	if status := announce("other", 30000); status != http.StatusOK {
-		t.Fatalf("expired session could not be rebound: status = %d", status)
+	body, _ := json.Marshal(presenceRequest{Actor: "human", Session: credential, TTLMS: 30000})
+	response, err := http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
 	}
-	bound, present := server.hub.SessionActor("reused")
-	if !present {
-		t.Fatal("rebound session is not present")
+	response.Body.Close()
+	if response.StatusCode == http.StatusOK {
+		t.Fatal("expired credential renewed")
 	}
-	if bound != "other" {
-		t.Fatalf("session remained bound to %q", bound)
+	otherCredential, _ := announceCredential(t, server, presenceRequest{Actor: "other", TTLMS: 30000})
+	bound, present := server.hub.SessionActor(otherCredential)
+	if !present || bound != "other" {
+		t.Fatalf("new lease binding = %q, present=%v", bound, present)
 	}
 }
 
@@ -577,12 +704,9 @@ func TestActEndpointUsesSessionCustodyAndReplaysSameIdempotencyKey(t *testing.T)
 	if len(actors) != 1 || actors[0].Name != "Ada Lovelace" || actors[0].Kind != "human" || !actors[0].Custody {
 		t.Fatalf("actor views = %+v", actors)
 	}
-	announce, _ := json.Marshal(presenceRequest{Actor: "Ada Lovelace", Session: "browser"})
-	presence := httptest.NewRequest(http.MethodPost, "/v0/presence", bytes.NewReader(announce))
-	presence.Header.Set("Content-Type", "application/json")
-	server.Handler().ServeHTTP(httptest.NewRecorder(), presence)
+	credential, _ := announceCredential(t, server, presenceRequest{Actor: "Ada Lovelace"})
 
-	body, _ := json.Marshal(actRequest{Session: "browser", Act: "state", Kind: "propose", Text: "One proposal", IdempotencyKey: "proposal-retry"})
+	body, _ := json.Marshal(actRequest{Session: credential, Act: "state", Kind: "propose", Text: "One proposal", IdempotencyKey: "proposal-retry"})
 	var firstID string
 	for attempt := 0; attempt < 2; attempt++ {
 		request := httptest.NewRequest(http.MethodPost, "/v0/act", bytes.NewReader(body))
@@ -627,12 +751,9 @@ func TestSayValidatesAndPreservesExactReplyTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	announce, _ := json.Marshal(presenceRequest{Actor: "human", Session: "speaker"})
-	request := httptest.NewRequest(http.MethodPost, "/v0/presence", bytes.NewReader(announce))
-	request.Header.Set("Content-Type", "application/json")
-	server.Handler().ServeHTTP(httptest.NewRecorder(), request)
-	say, _ := json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Text: "first"})
-	request = httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(say))
+	credential, _ := announceCredential(t, server, presenceRequest{Actor: "human"})
+	say, _ := json.Marshal(sayRequest{Session: credential, About: genesis.ID, Text: "first"})
+	request := httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(say))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
@@ -644,7 +765,7 @@ func TestSayValidatesAndPreservesExactReplyTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	re := first.Conversation + ":" + strconv.FormatUint(first.Sequence, 10)
-	say, _ = json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Conversation: first.Conversation, Text: "reply", Re: re})
+	say, _ = json.Marshal(sayRequest{Session: credential, About: genesis.ID, Conversation: first.Conversation, Text: "reply", Re: re})
 	request = httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(say))
 	request.Header.Set("Content-Type", "application/json")
 	response = httptest.NewRecorder()
@@ -663,7 +784,7 @@ func TestSayValidatesAndPreservesExactReplyTarget(t *testing.T) {
 	if payload.Re != re {
 		t.Fatalf("reply target = %q", payload.Re)
 	}
-	bad, _ := json.Marshal(sayRequest{Session: "speaker", About: genesis.ID, Text: "bad", Re: first.Conversation + ":99"})
+	bad, _ := json.Marshal(sayRequest{Session: credential, About: genesis.ID, Text: "bad", Re: first.Conversation + ":99"})
 	request = httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(bad))
 	request.Header.Set("Content-Type", "application/json")
 	response = httptest.NewRecorder()
@@ -711,15 +832,15 @@ func TestAddressedSayAppearsInPrivateStatusAndWaitUntilAcknowledged(t *testing.T
 		}
 		return response
 	}
-	post("/v0/presence", presenceRequest{Actor: "human", Session: "human-session"}, nil)
-	post("/v0/presence", presenceRequest{Actor: "other", Session: "other-session"}, nil)
-	post("/v0/presence", presenceRequest{Actor: "other", Session: "other-legacy-session"}, nil)
-	post("/v0/inbox/register", inboxRegisterRequest{Session: "other-session", Version: InboxProtocolVersion}, nil)
+	humanCredential, _ := announceCredential(t, server, presenceRequest{Actor: "human"})
+	otherCredential, _ := announceCredential(t, server, presenceRequest{Actor: "other"})
+	legacyCredential, _ := announceCredential(t, server, presenceRequest{Actor: "other"})
+	post("/v0/inbox/register", inboxRegisterRequest{Session: otherCredential, Version: InboxProtocolVersion}, nil)
 	var beforePublication Status
-	post("/v0/status", sessionStatusRequest{Session: "other-session"}, &beforePublication)
+	post("/v0/status", sessionStatusRequest{Session: otherCredential}, &beforePublication)
 	beforeInvalid := server.hub.Snapshot()
 	invalidSay, _ := json.Marshal(sayRequest{
-		Session: "human-session", About: genesis.ID, Text: "@other must fail closed", InboxVersion: "unknown-inbox-version",
+		Session: humanCredential, About: genesis.ID, Text: "@other must fail closed", InboxVersion: "unknown-inbox-version",
 	})
 	invalidRequest := httptest.NewRequest(http.MethodPost, "/v0/say", bytes.NewReader(invalidSay))
 	invalidRequest.Header.Set("Content-Type", "application/json")
@@ -735,7 +856,7 @@ func TestAddressedSayAppearsInPrivateStatusAndWaitUntilAcknowledged(t *testing.T
 
 	var published nexus.Frame
 	post("/v0/say", sayRequest{
-		Session: "human-session", About: genesis.ID, Text: `please review @other and @"unknown person"`, InboxVersion: InboxProtocolVersion,
+		Session: humanCredential, About: genesis.ID, Text: `please review @other and @"unknown person"`, InboxVersion: InboxProtocolVersion,
 	}, &published)
 	var signed nexus.Message
 	if err := json.Unmarshal(published.Payload, &signed); err != nil {
@@ -751,7 +872,7 @@ func TestAddressedSayAppearsInPrivateStatusAndWaitUntilAcknowledged(t *testing.T
 		t.Fatalf("sessionless status leaked a private inbox: %s", global.Body.String())
 	}
 	var addressed Status
-	post("/v0/status", sessionStatusRequest{Session: "other-session"}, &addressed)
+	post("/v0/status", sessionStatusRequest{Session: otherCredential}, &addressed)
 	if addressed.Inbox == nil || len(addressed.Inbox.Frames) != 1 {
 		t.Fatalf("addressed status inbox = %+v", addressed.Inbox)
 	}
@@ -760,12 +881,12 @@ func TestAddressedSayAppearsInPrivateStatusAndWaitUntilAcknowledged(t *testing.T
 		t.Fatalf("addressed frame = %+v", addressed.Inbox.Frames[0])
 	}
 	var legacySession Status
-	post("/v0/status", sessionStatusRequest{Session: "other-legacy-session"}, &legacySession)
+	post("/v0/status", sessionStatusRequest{Session: legacyCredential}, &legacySession)
 	if legacySession.Inbox == nil || len(legacySession.Inbox.Frames) != 0 {
 		t.Fatalf("unregistered legacy session was enqueued: %+v", legacySession.Inbox)
 	}
 	var inline WaitResponse
-	post("/v0/wait", WaitRequest{Cursor: beforePublication.Cursor, TimeoutMS: 20, Session: "other-session"}, &inline)
+	post("/v0/wait", WaitRequest{Cursor: beforePublication.Cursor, TimeoutMS: 20, Session: otherCredential}, &inline)
 	var inlineFrame *nexus.InboxFrame
 	for _, change := range inline.LiveChanges {
 		if change.Frame != nil {
@@ -777,21 +898,21 @@ func TestAddressedSayAppearsInPrivateStatusAndWaitUntilAcknowledged(t *testing.T
 	}
 
 	var repeated WaitResponse
-	post("/v0/wait", WaitRequest{Cursor: addressed.Cursor, TimeoutMS: 20, Session: "other-session"}, &repeated)
+	post("/v0/wait", WaitRequest{Cursor: addressed.Cursor, TimeoutMS: 20, Session: otherCredential}, &repeated)
 	if repeated.Status.Inbox == nil || len(repeated.Status.Inbox.Frames) != 1 {
 		t.Fatalf("unacknowledged wait did not repeat inbox: %+v", repeated.Status.Inbox)
 	}
 	var acked map[string]int
-	post("/v0/inbox/ack", inboxAckRequest{Session: "other-session", Threads: []string{thread, thread}}, &acked)
+	post("/v0/inbox/ack", inboxAckRequest{Session: otherCredential, Threads: []string{thread, thread}}, &acked)
 	if acked["acknowledged"] != 1 {
 		t.Fatalf("acknowledged count = %d, want one actual removal", acked["acknowledged"])
 	}
-	post("/v0/inbox/ack", inboxAckRequest{Session: "other-session", Threads: []string{thread}}, &acked)
+	post("/v0/inbox/ack", inboxAckRequest{Session: otherCredential, Threads: []string{thread}}, &acked)
 	if acked["acknowledged"] != 0 {
 		t.Fatalf("repeat acknowledgement removed %d frames", acked["acknowledged"])
 	}
 	var acknowledged WaitResponse
-	post("/v0/wait", WaitRequest{Cursor: repeated.Status.Cursor, TimeoutMS: 20, Session: "other-session"}, &acknowledged)
+	post("/v0/wait", WaitRequest{Cursor: repeated.Status.Cursor, TimeoutMS: 20, Session: otherCredential}, &acknowledged)
 	if acknowledged.Status.Inbox == nil || len(acknowledged.Status.Inbox.Frames) != 0 {
 		t.Fatalf("acknowledged wait retained inbox: %+v", acknowledged.Status.Inbox)
 	}
@@ -847,20 +968,9 @@ func TestPublishedHandleCannotAuthorizeDurableActs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	announce, _ := json.Marshal(presenceRequest{Actor: "Ada Lovelace", Session: "private-session"})
-	request := httptest.NewRequest(http.MethodPost, "/v0/presence", bytes.NewReader(announce))
-	request.Header.Set("Content-Type", "application/json")
-	announced := httptest.NewRecorder()
-	server.Handler().ServeHTTP(announced, request)
-	if announced.Code != http.StatusOK {
-		t.Fatalf("announce returned %d: %s", announced.Code, announced.Body.String())
-	}
-	var change nexus.Change
-	if err := json.Unmarshal(announced.Body.Bytes(), &change); err != nil {
-		t.Fatal(err)
-	}
+	credential, change := announceCredential(t, server, presenceRequest{Actor: "Ada Lovelace"})
 	handle := change.ID
-	if handle == "" || handle == "private-session" {
+	if handle == "" || handle == credential {
 		t.Fatalf("presence published %q for the session; it must publish a distinct handle", handle)
 	}
 
@@ -876,7 +986,7 @@ func TestPublishedHandleCannotAuthorizeDurableActs(t *testing.T) {
 	}
 
 	// The owner of the identifier is unaffected.
-	owned, _ := json.Marshal(actRequest{Session: "private-session", Act: "state", Kind: "assert",
+	owned, _ := json.Marshal(actRequest{Session: credential, Act: "state", Kind: "assert",
 		Text: "the owner can still act", IdempotencyKey: "owner-act"})
 	ownRequest := httptest.NewRequest(http.MethodPost, "/v0/act", bytes.NewReader(owned))
 	ownRequest.Header.Set("Content-Type", "application/json")
@@ -901,10 +1011,7 @@ func TestPresenceCountReturnsOnlyTheActorAggregate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	announce, _ := json.Marshal(presenceRequest{Actor: "human", Session: "private-session"})
-	presence := httptest.NewRequest(http.MethodPost, "/v0/presence", bytes.NewReader(announce))
-	presence.Header.Set("Content-Type", "application/json")
-	server.Handler().ServeHTTP(httptest.NewRecorder(), presence)
+	credential, _ := announceCredential(t, server, presenceRequest{Actor: "human"})
 
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v0/presence-count?actor=human", nil))
@@ -918,7 +1025,7 @@ func TestPresenceCountReturnsOnlyTheActorAggregate(t *testing.T) {
 	if len(result) != 1 || result["count"] != float64(1) {
 		t.Fatalf("presence count exposed more than the aggregate: %#v", result)
 	}
-	if strings.Contains(response.Body.String(), "private-session") {
+	if strings.Contains(response.Body.String(), credential) {
 		t.Fatalf("presence count leaked the private session: %s", response.Body.String())
 	}
 }
@@ -1287,19 +1394,7 @@ func TestAttentionAnswersAndDegradesWithoutRefusing(t *testing.T) {
 	// never to itself.
 	busy := nexus.ActivityBusy
 	focus := []string{realEvent}
-	announce, err := json.Marshal(presenceRequest{Actor: "human", Session: "watcher", Status: &busy, Focus: &focus})
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, err := http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(announce))
-	if err != nil {
-		t.Fatal(err)
-	}
-	announced, _ := io.ReadAll(response.Body)
-	response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("announce failed %d: %s", response.StatusCode, announced)
-	}
+	watcherCredential, _ := announceCredential(t, server, presenceRequest{Actor: "human", Status: &busy, Focus: &focus})
 
 	report = ask(attentionRequest{Session: "someone-else", Events: []string{realEvent}})
 	if len(report.Actors) != 1 || report.Actors[0].Name != "human" {
@@ -1308,7 +1403,7 @@ func TestAttentionAnswersAndDegradesWithoutRefusing(t *testing.T) {
 	if report.Actors[0].ActivityChangedAt.IsZero() {
 		t.Fatalf("the actor row carries no activity clock: %+v", report.Actors[0])
 	}
-	if report := ask(attentionRequest{Session: "watcher", Events: []string{realEvent}}); len(report.Actors) != 0 {
+	if report := ask(attentionRequest{Session: watcherCredential, Events: []string{realEvent}}); len(report.Actors) != 0 {
 		t.Fatalf("a session was told about its own focus: %+v", report.Actors)
 	}
 	// An event nobody named matches nobody.
@@ -1319,15 +1414,7 @@ func TestAttentionAnswersAndDegradesWithoutRefusing(t *testing.T) {
 	// One actor in two windows is one row. Aggregation happens on the durable
 	// fingerprint the resident resolved, not on the session, so a person
 	// working from two sessions does not read as two people watching.
-	second, err := json.Marshal(presenceRequest{Actor: "human", Session: "watcher-2", Status: &busy, Focus: &focus})
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, err = http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(second))
-	if err != nil {
-		t.Fatal(err)
-	}
-	response.Body.Close()
+	_, _ = announceCredential(t, server, presenceRequest{Actor: "human", Status: &busy, Focus: &focus})
 
 	report = ask(attentionRequest{Session: "someone-else", Events: []string{realEvent}})
 	if len(report.Actors) != 1 {
@@ -1338,7 +1425,7 @@ func TestAttentionAnswersAndDegradesWithoutRefusing(t *testing.T) {
 	}
 	// The caller filter still applies per session: asking as one of that
 	// actor's own sessions leaves only the other one visible.
-	if report := ask(attentionRequest{Session: "watcher", Events: []string{realEvent}}); len(report.Actors) != 1 || report.Actors[0].Sessions != 1 {
+	if report := ask(attentionRequest{Session: watcherCredential, Events: []string{realEvent}}); len(report.Actors) != 1 || report.Actors[0].Sessions != 1 {
 		t.Fatalf("asking as one of the actor's own sessions reported %+v", report.Actors)
 	}
 }

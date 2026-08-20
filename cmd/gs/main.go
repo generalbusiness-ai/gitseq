@@ -1655,6 +1655,7 @@ func checkpointClearCommand(ctx context.Context, arguments []string) error {
 func serveCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("serve", arguments)
 	listen := set.String("listen", "127.0.0.1:7777", "HTTP listen address")
+	acknowledgeTrustedProcesses := set.Bool("acknowledge-trusted-processes", false, "acknowledge that every process inside the resident boundary may act as every actor key")
 	otlpEndpoint := set.String("otel-endpoint", "", "OTLP/HTTP Collector endpoint; disabled when empty")
 	profileListen := set.String("profile-listen", "", "separate loopback pprof address; disabled when empty")
 	if err := set.Parse(arguments); err != nil {
@@ -1662,6 +1663,9 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	}
 	if err := validateLoopbackListen(*listen); err != nil {
 		return err
+	}
+	if !*acknowledgeTrustedProcesses {
+		return errors.New("serving requires --acknowledge-trusted-processes: every process inside this resident boundary can act as every actor key this application can open")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
@@ -1713,8 +1717,8 @@ func serveCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	defer withdraw()
-	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n", listener.Addr())
-	httpServer := &http.Server{Handler: telemetryRuntime.Handler(server.Handler()), ReadHeaderTimeout: 5 * time.Second}
+	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n%s\n", listener.Addr(), service.TrustedProcessPosture)
+	httpServer := &http.Server{Handler: telemetryRuntime.Handler(service.TrustedHostHandler(server.Handler())), ReadHeaderTimeout: 5 * time.Second}
 	// The watcher retires with the command it serves, so a serving call that
 	// ends some other way does not leave a goroutine holding the server.
 	finished := make(chan struct{})
@@ -1789,12 +1793,23 @@ func validateLoopbackListen(address string) error {
 	if err != nil {
 		return fmt.Errorf("invalid --listen address: %w", err)
 	}
-	if strings.EqualFold(host, "localhost") {
+	if host == "" {
+		return errors.New("--listen must name a loopback address; the resident service is a trusted local multi-actor custodian")
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if !ip.IsLoopback() {
+			return errors.New("--listen must name a loopback address; the resident service is a trusted local multi-actor custodian")
+		}
 		return nil
 	}
-	ip := net.ParseIP(host)
-	if ip == nil || !ip.IsLoopback() {
-		return errors.New("--listen must name a loopback address; the resident service is a trusted local multi-actor custodian")
+	addresses, err := net.LookupIP(host)
+	if err != nil || len(addresses) == 0 {
+		return errors.New("--listen must resolve only to loopback addresses; the resident service is a trusted local multi-actor custodian")
+	}
+	for _, resolved := range addresses {
+		if !resolved.IsLoopback() {
+			return errors.New("--listen must resolve only to loopback addresses; the resident service is a trusted local multi-actor custodian")
+		}
 	}
 	return nil
 }

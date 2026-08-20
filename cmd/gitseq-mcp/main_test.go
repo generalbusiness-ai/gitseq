@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -524,13 +525,10 @@ func TestStatusAndWaitUseBoundedResidentViews(t *testing.T) {
 		t.Fatalf("lane response limit = %d, want structurally bounded %d", got, want)
 	}
 	attached.identityNoticeChecked = true
-	attached.announced = true
-	announcement, _ := json.Marshal(map[string]any{"actor": "human", "session": server.session, "ttl_ms": 60_000})
-	response, err := http.Post(httpServer.URL+"/v0/presence", "application/json", bytes.NewReader(announcement))
-	if err != nil {
+	if err := server.announce(context.Background(), attached); err != nil {
 		t.Fatal(err)
 	}
-	response.Body.Close()
+	attached.joined()
 	mu.Lock()
 	paths = nil
 	mu.Unlock()
@@ -566,7 +564,6 @@ func TestStatusAndWaitUseBoundedResidentViews(t *testing.T) {
 func attachedServer(t testing.TB, workspace *app.Workspace, actor, baseURL string, client *http.Client) (*mcpServer, *room) {
 	t.Helper()
 	server := newServer(actor, workspace.Repo)
-	server.session = "mcp:test"
 	server.client = residentclient.NewWithHTTP(client, residentHTTPTimeout)
 	attached := &room{workspace: workspace, baseURL: strings.TrimRight(baseURL, "/")}
 	server.byPath[server.repo] = attached
@@ -756,9 +753,12 @@ func TestAdapterInjectsItsPrivateSessionForPriorityChatAndAck(t *testing.T) {
 			}
 		}
 	}
-	post("/v0/presence", map[string]any{"actor": "other", "session": "speaker"}, nil)
+	var announced struct {
+		Credential string `json:"credential"`
+	}
+	post("/v0/presence", map[string]any{"actor": "other"}, &announced)
 	var frame nexus.Frame
-	post("/v0/say", map[string]any{"session": "speaker", "about": genesisOf(t, workspace), "text": "@human please review"}, &frame)
+	post("/v0/say", map[string]any{"credential": announced.Credential, "about": genesisOf(t, workspace), "text": "@human please review"}, &frame)
 	waitValue, _, err := server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{"cursor": before.Cursor, "timeout_ms": 50}})
 	if err != nil {
 		t.Fatal(err)
@@ -876,7 +876,7 @@ func TestAddressedSayFailsClosedWhenResidentDowngradesDuringSessionRepair(t *tes
 			}
 			if call == 1 {
 				writer.WriteHeader(http.StatusBadRequest)
-				_, _ = writer.Write([]byte(`{"error":"session is not present"}`))
+				_, _ = writer.Write([]byte(`{"error":"credential is not valid"}`))
 				return
 			}
 			if _, versioned := body["inbox_version"]; versioned {
@@ -887,7 +887,7 @@ func TestAddressedSayFailsClosedWhenResidentDowngradesDuringSessionRepair(t *tes
 			opaquePublishes.Add(1)
 			_ = json.NewEncoder(writer).Encode(map[string]any{"opaque": true})
 		case request.Method == http.MethodPost && request.URL.Path == "/v0/presence":
-			_ = json.NewEncoder(writer).Encode(map[string]any{})
+			_ = json.NewEncoder(writer).Encode(map[string]any{"credential": "credential:" + strings.Repeat("b", 64), "change": map[string]any{}})
 		case request.Method == http.MethodPost && request.URL.Path == "/v0/inbox/register":
 			http.NotFound(writer, request)
 		default:
@@ -899,6 +899,7 @@ func TestAddressedSayFailsClosedWhenResidentDowngradesDuringSessionRepair(t *tes
 	server, attached := attachedServer(t, workspace, "human", legacy.URL, legacy.Client())
 	attached.identityNoticeChecked = true
 	attached.announced = true
+	attached.credential = "credential:" + strings.Repeat("a", 64)
 	attached.setInboxAvailable(true)
 
 	_, _, err := server.call(context.Background(), toolCall{Name: "say", Arguments: map[string]any{
@@ -1220,7 +1221,7 @@ func TestPresenceToolUpdatesOnlyItsOwnBoundedLease(t *testing.T) {
 	value, _, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: map[string]any{
 		"status": "blocked", "focus": []any{event}, "note": "waiting on review",
 		// These are not tool fields and must not override adapter custody.
-		"actor": "other", "session": "forged",
+		"actor": "other", "credential": "forged",
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -1264,6 +1265,82 @@ func TestPresenceToolUpdatesOnlyItsOwnBoundedLease(t *testing.T) {
 	}
 	if _, _, err := server.call(context.Background(), toolCall{Name: "presence", Arguments: map[string]any{"focus": tooMany}}); err == nil {
 		t.Fatal("presence tool accepted unbounded focus")
+	}
+}
+
+func TestCredentialsArePerRepositoryAndAbsentFromToolResultsAndURLs(t *testing.T) {
+	first := initRepository(t, "first")
+	second := initRepository(t, "second")
+	type observedRequest struct {
+		path  string
+		query string
+		body  string
+	}
+	var mu sync.Mutex
+	var departures []observedRequest
+	serve := func(workspace *app.Workspace) *httptest.Server {
+		resident, err := service.New(workspace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			if request.URL.Path == "/v0/presence/depart" {
+				body, _ := io.ReadAll(request.Body)
+				request.Body = io.NopCloser(bytes.NewReader(body))
+				mu.Lock()
+				departures = append(departures, observedRequest{path: request.URL.Path, query: request.URL.RawQuery, body: string(body)})
+				mu.Unlock()
+			}
+			resident.Handler().ServeHTTP(writer, request)
+		}))
+	}
+	firstHTTP := serve(first)
+	defer firstHTTP.Close()
+	secondHTTP := serve(second)
+	defer secondHTTP.Close()
+	withdrawFirst, err := first.PublishResident(firstHTTP.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer withdrawFirst()
+	withdrawSecond, err := second.PublishResident(secondHTTP.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer withdrawSecond()
+
+	server := newServer("human", first.Repo)
+	firstRoom, err := server.attend(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondRoom, err := server.attend(context.Background(), second.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstRoom.credentialValue() == "" || secondRoom.credentialValue() == "" || firstRoom.credentialValue() == secondRoom.credentialValue() {
+		t.Fatal("adapter did not hold distinct resident-minted credentials per repository")
+	}
+	for _, repo := range []string{first.Repo, second.Repo} {
+		value, _, err := server.call(context.Background(), toolCall{Name: "whoami", Arguments: map[string]any{"repo": repo}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, _ := json.Marshal(value)
+		if bytes.Contains(encoded, []byte("credential:")) || bytes.Contains(encoded, []byte(`"session"`)) || bytes.Contains(encoded, []byte(`"credential"`)) {
+			t.Fatalf("whoami disclosed resident authority: %s", encoded)
+		}
+	}
+	server.depart(context.Background())
+	mu.Lock()
+	defer mu.Unlock()
+	if len(departures) != 2 {
+		t.Fatalf("departure requests = %d, want one per repository", len(departures))
+	}
+	for _, request := range departures {
+		if request.path != "/v0/presence/depart" || request.query != "" || !strings.Contains(request.body, `"credential":"credential:`) {
+			t.Fatalf("departure did not keep authority in the fixed JSON body: %+v", request)
+		}
 	}
 }
 
@@ -1476,14 +1553,12 @@ func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
 	}
 
 	first := newServer("human", workspace.Repo)
-	first.session = "mcp:before-crash"
 	if _, err := first.attend(context.Background(), ""); err != nil {
 		t.Fatalf("first instance refused a free identity: %v", err)
 	}
 	// Do not depart: this is the crash case, so the first 30-second lease is
 	// still visible when its replacement starts.
 	second, _ := attachedServer(t, workspace, "human-alias", httpServer.URL, httpServer.Client())
-	second.session = "mcp:after-restart"
 	var notices bytes.Buffer
 	second.notices = &notices
 	if _, err := second.attend(context.Background(), ""); err != nil {
@@ -1521,7 +1596,6 @@ func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
 		t.Fatalf("live sessions under the alias label = %d, want 1", held)
 	}
 	third := newServer("human", workspace.Repo)
-	third.session = "mcp:parallel-worker"
 	var thirdNotices bytes.Buffer
 	third.notices = &thirdNotices
 	if _, err := third.attend(context.Background(), ""); err != nil {
@@ -1550,7 +1624,6 @@ func TestSharedIdentityWarningIsSkippedWhenPresenceCannotBeRead(t *testing.T) {
 	client := dead.Client()
 	dead.Close()
 	server, attached := attachedServer(t, workspace, "human", baseURL, client)
-	server.session = "mcp:offline"
 	var notices bytes.Buffer
 	server.notices = &notices
 	if err := server.warnSharedIdentity(context.Background(), attached); err != nil {
@@ -1586,7 +1659,6 @@ func signedWorkspace(tb testing.TB, depth int) (*app.Workspace, workroom.Record)
 func callWhoami(t testing.TB, workspace *app.Workspace, baseURL string, client *http.Client) map[string]any {
 	t.Helper()
 	server, _ := attachedServer(t, workspace, "human", baseURL, client)
-	server.session = "mcp:test-whoami"
 	value, _, err := server.call(context.Background(), toolCall{Name: "whoami"})
 	if err != nil {
 		t.Fatal(err)
@@ -1887,16 +1959,24 @@ func TestResidentShutdownHasIndependentDeadline(t *testing.T) {
 		t.Fatalf("resident shutdown timeout = %s, want 2s", residentShutdownTimeout)
 	}
 	called := make(chan struct{}, 1)
+	release := make(chan struct{})
 	stalled := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
-		if request.Method == http.MethodDelete {
+		if request.Method == http.MethodPost && request.URL.Path == "/v0/presence/depart" {
 			called <- struct{}{}
-			<-request.Context().Done()
+			select {
+			case <-request.Context().Done():
+			case <-release:
+			}
 		}
 	}))
-	defer stalled.Close()
+	defer func() {
+		close(release)
+		stalled.Close()
+	}()
 	workspace, _ := signedWorkspace(t, 1)
 	server, current := attachedServer(t, workspace, "human", stalled.URL, stalled.Client())
 	current.announced = true
+	current.credential = "credential:" + strings.Repeat("a", 64)
 	server.deadlines.shutdown = 50 * time.Millisecond
 
 	started := time.Now()
@@ -2246,7 +2326,6 @@ func TestLiveAttentionIsAdvisoryAndFailsSoft(t *testing.T) {
 
 	t.Run("no room yields unavailable rather than finding one", func(t *testing.T) {
 		server := newServer("human", workspace.Repo)
-		server.session = "mcp:test"
 		if report := server.liveAttention(context.Background(), nil, toolCall{Name: "status"}, nil); report["available"] != false {
 			t.Fatalf("a nil room produced %+v", report)
 		}
@@ -2339,7 +2418,6 @@ func TestAttentionSummaryStatesTheInterruptionInText(t *testing.T) {
 func TestToolErrorResultStillCarriesLiveAttention(t *testing.T) {
 	workspace := initRepository(t, "repo")
 	server := newServer("human", workspace.Repo)
-	server.session = "mcp:test"
 	defer server.depart(context.Background())
 
 	meta := `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}`
@@ -2396,7 +2474,6 @@ func TestAttentionReadsTheRoomTheCallActedIn(t *testing.T) {
 	second := initRepository(t, "second")
 
 	server := newServer("human", first.Repo)
-	server.session = "mcp:test"
 	firstRoom := &room{workspace: first, baseURL: "http://first.invalid"}
 	secondRoom := &room{workspace: second, baseURL: "http://second.invalid"}
 	server.byPath[first.Repo] = firstRoom

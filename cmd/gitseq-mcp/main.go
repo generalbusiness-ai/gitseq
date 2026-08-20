@@ -134,10 +134,11 @@ type protocolMeta struct {
 type room struct {
 	workspace *app.Workspace
 
-	mu        sync.Mutex
-	baseURL   string
-	announced bool
-	inbox     bool
+	mu         sync.Mutex
+	baseURL    string
+	credential string
+	announced  bool
+	inbox      bool
 	// identityNoticeChecked records that this process has already looked for
 	// other live sessions using its actor identity in this workroom. The check
 	// runs before this session announces itself; repeating it afterwards would
@@ -161,6 +162,7 @@ func (r *room) endpoint() (string, bool) {
 	validated, err := residentclient.ValidateURL(r.baseURL)
 	if err != nil {
 		r.baseURL = ""
+		r.credential = ""
 		r.announced = false
 		r.inbox = false
 		return "", false
@@ -176,6 +178,7 @@ func (r *room) lost() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.baseURL = ""
+	r.credential = ""
 	r.announced = false
 	r.inbox = false
 }
@@ -184,6 +187,26 @@ func (r *room) joined() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.announced = true
+}
+
+func (r *room) credentialValue() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.credential
+}
+
+func (r *room) setCredential(credential string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.credential = credential
+}
+
+func (r *room) clearLease() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.credential = ""
+	r.announced = false
+	r.inbox = false
 }
 
 func (r *room) present() bool {
@@ -220,7 +243,6 @@ type mcpServer struct {
 	era       protocolEra
 	actor     string
 	repo      string
-	session   string
 	client    *residentclient.Client
 	notices   io.Writer
 	deadlines residentDeadlinePolicy
@@ -274,7 +296,6 @@ func newServer(actor, repo string) *mcpServer {
 	return &mcpServer{
 		actor:       actor,
 		repo:        absolute(repo),
-		session:     "mcp:" + randomID(),
 		client:      newResidentClient(),
 		notices:     os.Stderr,
 		deadlines:   defaultResidentDeadlines,
@@ -545,7 +566,7 @@ func tools() []map[string]any {
 		return fields
 	}
 	return []map[string]any{
-		{"name": "whoami", "description": "Show the configured durable actor and ephemeral session.", "inputSchema": object(withRepo(nil))},
+		{"name": "whoami", "description": "Show the configured durable actor and selected workroom without disclosing the resident credential.", "inputSchema": object(withRepo(nil))},
 		{"name": "presence", "description": "Inspect leased presence, or update this session's advisory activity. Focus does not claim or complete work.", "inputSchema": object(withRepo(map[string]any{
 			"status": map[string]any{"type": "string", "enum": []string{"available", "busy", "waiting", "blocked"}},
 			"focus":  map[string]any{"type": "array", "items": stringField, "maxItems": nexus.MaxFocusEvents},
@@ -673,15 +694,20 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 	case "whoami":
 		return s.whoami(ctx, current)
 	case "presence":
-		update := map[string]any{"actor": s.actor, "session": s.session, "ttl_ms": 30000}
+		update := map[string]any{}
 		for _, field := range []string{"status", "focus", "note"} {
 			if value, present := call.Arguments[field]; present {
 				update[field] = value
 			}
 		}
-		own, err := s.post(ctx, current, "/v0/presence", update)
+		own, err := s.announceUpdate(ctx, current, update)
 		if err != nil {
 			return nil, err
+		}
+		if !current.inboxAvailable() {
+			if err := s.registerInbox(ctx, current); err != nil {
+				return nil, err
+			}
 		}
 		value, err := s.get(ctx, current, "/v0/presence")
 		if err != nil {
@@ -698,7 +724,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		// fallback applies the same digest so losing the resident changes what
 		// is knowable, not the shape of the answer.
 		var status actorStatus
-		err := s.postForSessionBoundedJSON(ctx, current, "/v0/actor-status", map[string]any{"session": s.session}, laneResponseLimit(current, actorStatusResponseLimit, statusview.ListCap), &status)
+		err := s.postForSessionBoundedJSON(ctx, current, "/v0/actor-status", map[string]any{"credential": current.credentialValue()}, laneResponseLimit(current, actorStatusResponseLimit, statusview.ListCap), &status)
 		if isTransportError(err) || inboxProtocolUnavailable(err) {
 			local, localErr := s.localStatus(ctx, current)
 			if localErr != nil {
@@ -712,7 +738,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		return status, nil
 	case "wait":
 		arguments := residentArguments(call.Arguments)
-		arguments["session"] = s.session
+		arguments["credential"] = current.credentialValue()
 		requested := requestedCursor(arguments)
 		var delta waitDelta
 		err := s.postForSessionBoundedJSON(ctx, current, "/v0/actor-wait", arguments, laneResponseLimit(current, actorStatusResponseLimit, statusview.ListCap), &delta)
@@ -782,7 +808,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		return inspection, nil
 	case "say":
 		arguments := residentArguments(call.Arguments)
-		arguments["session"] = s.session
+		arguments["credential"] = current.credentialValue()
 		if sayNeedsInbox(arguments) {
 			if !current.inboxAvailable() {
 				return nil, errors.New("addressed chat is unavailable until the resident supports gitseq.addressed-inbox.v1")
@@ -798,7 +824,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		if !current.inboxAvailable() {
 			return nil, errors.New("priority chat acknowledgement is unavailable until the resident supports gitseq.addressed-inbox.v1")
 		}
-		return s.postForSession(ctx, current, "/v0/inbox/ack", map[string]any{"session": s.session, "threads": stringSlice(call.Arguments["threads"])})
+		return s.postForSession(ctx, current, "/v0/inbox/ack", map[string]any{"credential": current.credentialValue(), "threads": stringSlice(call.Arguments["threads"])})
 	case "state":
 		kind, _ := call.Arguments["kind"].(string)
 		text, _ := call.Arguments["text"].(string)
@@ -846,7 +872,7 @@ func (s *mcpServer) whoami(ctx context.Context, current *room) (any, error) {
 		orientation, err := s.currentResidentOrientation(residentContext, current, actor.Fingerprint)
 		if err == nil {
 			return map[string]any{
-				"actor": publicActor(actor), "durable": orientation.You, "session": s.session, "protocol": protocolVersion,
+				"actor": publicActor(actor), "durable": orientation.You, "protocol": protocolVersion,
 				"repo": current.workspace.CommonDir, "genesis": current.workspace.Config.Genesis,
 				"frontier": orientation.Frontier, "source": residentOrientationSource, "degraded": false,
 			}, nil
@@ -865,7 +891,7 @@ func (s *mcpServer) whoami(ctx context.Context, current *room) (any, error) {
 		return nil, errors.New("configured actor is not in the effective durable roster")
 	}
 	return map[string]any{
-		"actor": publicActor(actor), "durable": orientation.You, "session": s.session, "protocol": protocolVersion,
+		"actor": publicActor(actor), "durable": orientation.You, "protocol": protocolVersion,
 		"repo": current.workspace.CommonDir, "genesis": current.workspace.Config.Genesis,
 		"frontier": orientation.Frontier, "source": string(local.Source), "degraded": true,
 	}, nil
@@ -1167,12 +1193,16 @@ func (s *mcpServer) noticeWriter() io.Writer {
 }
 
 func (s *mcpServer) announce(ctx context.Context, current *room) error {
-	_, err := s.post(ctx, current, "/v0/presence", map[string]any{"actor": s.actor, "session": s.session, "ttl_ms": 30000})
+	_, err := s.announceUpdate(ctx, current, nil)
 	if err != nil {
 		return err
 	}
 	current.markSharedIdentityNoticeChecked()
-	_, err = s.post(ctx, current, "/v0/inbox/register", map[string]any{"session": s.session, "version": service.InboxProtocolVersion})
+	return s.registerInbox(ctx, current)
+}
+
+func (s *mcpServer) registerInbox(ctx context.Context, current *room) error {
+	_, err := s.post(ctx, current, "/v0/inbox/register", map[string]any{"credential": current.credentialValue(), "version": service.InboxProtocolVersion})
 	if inboxProtocolUnavailable(err) {
 		current.setInboxAvailable(false)
 		return nil
@@ -1182,6 +1212,43 @@ func (s *mcpServer) announce(ctx context.Context, current *room) error {
 	}
 	current.setInboxAvailable(true)
 	return nil
+}
+
+// announceUpdate asks the resident to mint a credential for a new attachment,
+// or renews the credential already held for this exact repository. The direct
+// HTTP creation response is consumed here and the credential never enters an
+// MCP tool result, diagnostic, log, URL or cross-repository field.
+func (s *mcpServer) announceUpdate(ctx context.Context, current *room, update map[string]any) (any, error) {
+	request := map[string]any{"actor": s.actor, "ttl_ms": 30000}
+	for name, value := range update {
+		request[name] = value
+	}
+	if credential := current.credentialValue(); credential != "" {
+		request["credential"] = credential
+	}
+	result, err := s.post(ctx, current, "/v0/presence", request)
+	var refusal *residentclient.HTTPError
+	if errors.As(err, &refusal) && refusal.Message == "credential is not valid" && current.credentialValue() != "" {
+		current.clearLease()
+		delete(request, "credential")
+		result, err = s.post(ctx, current, "/v0/presence", request)
+	}
+	if err != nil {
+		return nil, err
+	}
+	response, ok := result.(map[string]any)
+	if !ok {
+		return nil, errors.New("resident presence response is not an object")
+	}
+	if current.credentialValue() == "" {
+		credential, _ := response["credential"].(string)
+		if credential == "" {
+			return nil, errors.New("resident did not mint a credential")
+		}
+		current.setCredential(credential)
+	}
+	current.joined()
+	return response["change"], nil
 }
 
 func sayNeedsInbox(arguments map[string]any) bool {
@@ -1232,12 +1299,11 @@ func (s *mcpServer) shutdown() {
 
 func (s *mcpServer) depart(ctx context.Context) {
 	for _, current := range s.attended() {
-		base, ok := current.endpoint()
-		if !ok {
+		if _, ok := current.endpoint(); !ok {
 			continue
 		}
 		requestContext, cancel := context.WithTimeout(ctx, s.deadlineForShutdown())
-		_ = s.client.Delete(requestContext, base, "/v0/presence/"+s.session)
+		_, _ = s.post(requestContext, current, "/v0/presence/depart", map[string]any{"credential": current.credentialValue()})
 		cancel()
 	}
 }
@@ -1276,12 +1342,14 @@ func (s *mcpServer) post(ctx context.Context, current *room, path string, value 
 func (s *mcpServer) postForSession(ctx context.Context, current *room, path string, value any) (any, error) {
 	result, err := s.post(ctx, current, path, value)
 	var refusal *residentclient.HTTPError
-	if !errors.As(err, &refusal) || refusal.Message != "session is not present" {
+	if !errors.As(err, &refusal) || refusal.Message != "credential is not valid" {
 		return result, err
 	}
+	current.clearLease()
 	if err := s.announce(ctx, current); err != nil {
 		return nil, err
 	}
+	setRequestCredential(value, current.credentialValue())
 	return s.post(ctx, current, path, value)
 }
 
@@ -1301,13 +1369,21 @@ func (s *mcpServer) postBoundedJSON(ctx context.Context, current *room, path str
 func (s *mcpServer) postForSessionBoundedJSON(ctx context.Context, current *room, path string, value any, limit int64, target any) error {
 	err := s.postBoundedJSON(ctx, current, path, value, limit, target)
 	var refusal *residentclient.HTTPError
-	if !errors.As(err, &refusal) || refusal.Message != "session is not present" {
+	if !errors.As(err, &refusal) || refusal.Message != "credential is not valid" {
 		return err
 	}
+	current.clearLease()
 	if err := s.announce(ctx, current); err != nil {
 		return err
 	}
+	setRequestCredential(value, current.credentialValue())
 	return s.postBoundedJSON(ctx, current, path, value, limit, target)
+}
+
+func setRequestCredential(value any, credential string) {
+	if request, ok := value.(map[string]any); ok {
+		request["credential"] = credential
+	}
 }
 
 func (s *mcpServer) getBoundedJSON(ctx context.Context, current *room, path string, limit int64, target any) error {
@@ -1364,7 +1440,7 @@ func inboxProtocolUnavailable(err error) bool {
 		return false
 	}
 	return refusal.StatusCode == http.StatusMethodNotAllowed || refusal.StatusCode == http.StatusNotFound ||
-		strings.Contains(refusal.Message, `unknown field "session"`)
+		strings.Contains(refusal.Message, `unknown field "session"`) || strings.Contains(refusal.Message, `unknown field "credential"`)
 }
 
 func sharedIdentityCountUnavailable(err error) bool {
@@ -1588,8 +1664,8 @@ func (s *mcpServer) liveAttention(ctx context.Context, current *room, call toolC
 		return unavailable
 	}
 	value, err := s.post(ctx, current, "/v0/attention", map[string]any{
-		"session": s.session,
-		"events":  attentionEvents(call, result),
+		"credential": current.credentialValue(),
+		"events":     attentionEvents(call, result),
 	})
 	if err != nil {
 		return unavailable

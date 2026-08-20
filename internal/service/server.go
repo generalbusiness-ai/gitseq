@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -35,27 +36,30 @@ type WaitDelta = statusview.WaitDelta
 const (
 	OrientationProjectionVersion = statusview.OrientationProjectionVersion
 	InboxProtocolVersion         = "gitseq.addressed-inbox.v1"
+	TrustedProcessPosture        = "trusted processes only: every process inside this resident boundary can act as every actor key this application can open"
 )
 
 type Status struct {
-	Durable app.Snapshot   `json:"durable"`
-	Live    nexus.Snapshot `json:"live"`
-	Cursor  Cursor         `json:"cursor"`
-	Inbox   *nexus.Inbox   `json:"inbox,omitempty"`
+	Durable       app.Snapshot   `json:"durable"`
+	Live          nexus.Snapshot `json:"live"`
+	Cursor        Cursor         `json:"cursor"`
+	Inbox         *nexus.Inbox   `json:"inbox,omitempty"`
+	TrustBoundary string         `json:"trust_boundary"`
 }
 
 // SummaryStatus is the bounded resident response used by the default CLI.
 // /v0/status remains the complete browser and audit projection.
 type SummaryStatus struct {
-	Durable statusview.Summary `json:"durable"`
-	Live    nexus.Snapshot     `json:"live"`
-	Cursor  Cursor             `json:"cursor"`
+	Durable       statusview.Summary `json:"durable"`
+	Live          nexus.Snapshot     `json:"live"`
+	Cursor        Cursor             `json:"cursor"`
+	TrustBoundary string             `json:"trust_boundary"`
 }
 
 type WaitRequest struct {
 	Cursor    Cursor `json:"cursor"`
 	TimeoutMS int    `json:"timeout_ms,omitempty"`
-	Session   string `json:"session,omitempty"`
+	Session   string `json:"credential,omitempty"`
 }
 
 type WaitResponse struct {
@@ -113,7 +117,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v0/presence-count", s.handlePresenceCount)
 	s.mux.HandleFunc("GET /v0/rebuild", s.handleRebuild)
 	s.mux.HandleFunc("POST /v0/presence", s.handleAnnounce)
-	s.mux.HandleFunc("DELETE /v0/presence/{session}", s.handleDepart)
+	s.mux.HandleFunc("POST /v0/presence/depart", s.handleDepart)
 	s.mux.HandleFunc("POST /v0/say", s.handleSay)
 	s.mux.HandleFunc("POST /v0/inbox/register", s.handleInboxRegister)
 	s.mux.HandleFunc("POST /v0/inbox/ack", s.handleInboxAck)
@@ -170,7 +174,7 @@ func (s *Server) statusFromLive(ctx context.Context, observation nexus.Observati
 	if err != nil {
 		return Status{}, err
 	}
-	status := Status{Durable: durable, Live: observation.Snapshot, Cursor: Cursor{Frontier: []Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}}, Live: observation.Snapshot.Cursor}}
+	status := Status{Durable: durable, Live: observation.Snapshot, Cursor: Cursor{Frontier: []Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}}, Live: observation.Snapshot.Cursor}, TrustBoundary: TrustedProcessPosture}
 	if includeInbox {
 		inbox := observation.Inbox
 		status.Inbox = &inbox
@@ -184,7 +188,7 @@ func (s *Server) handleStatus(writer http.ResponseWriter, request *http.Request)
 }
 
 type sessionStatusRequest struct {
-	Session string `json:"session"`
+	Session string `json:"credential"`
 }
 
 func (s *Server) handleSessionStatus(writer http.ResponseWriter, request *http.Request) {
@@ -194,7 +198,7 @@ func (s *Server) handleSessionStatus(writer http.ResponseWriter, request *http.R
 		return
 	}
 	if input.Session == "" {
-		write(writer, nil, errors.New("session is required"))
+		write(writer, nil, errors.New("credential is required"))
 		return
 	}
 	observation, err := s.hub.Observe(input.Session, nil)
@@ -217,7 +221,7 @@ func (s *Server) handleActorStatus(writer http.ResponseWriter, request *http.Req
 		return
 	}
 	if input.Session == "" {
-		write(writer, nil, errors.New("session is required"))
+		write(writer, nil, errors.New("credential is required"))
 		return
 	}
 	observation, err := s.hub.Observe(input.Session, nil)
@@ -244,7 +248,7 @@ func (s *Server) handleStatusSummary(writer http.ResponseWriter, request *http.R
 	started := time.Now()
 	summary := SummaryStatus{
 		Durable: statusview.Build(status.Durable.Genesis, status.Durable.Head, status.Durable.Depth, status.Durable.Projection),
-		Live:    status.Live, Cursor: status.Cursor,
+		Live:    status.Live, Cursor: status.Cursor, TrustBoundary: TrustedProcessPosture,
 	}
 	if s.observer != nil {
 		s.observer.Record(request.Context(), observe.Measurement{Operation: observe.OperationStatusView, Path: observe.PathStatusSummary, Outcome: observe.OutcomeOK, Duration: time.Since(started), Items: int64(status.Durable.Depth)})
@@ -313,7 +317,7 @@ func (s *Server) handleWaitResponse(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	if actorView && input.Session == "" {
-		write(writer, nil, errors.New("session is required"))
+		write(writer, nil, errors.New("credential is required"))
 		return
 	}
 	response, observation, changed, err := s.wait(request.Context(), input)
@@ -450,11 +454,18 @@ func (s *Server) handleRebuild(writer http.ResponseWriter, _ *http.Request) {
 
 type presenceRequest struct {
 	Actor   string                `json:"actor"`
-	Session string                `json:"session"`
+	Session string                `json:"credential,omitempty"`
 	TTLMS   int                   `json:"ttl_ms,omitempty"`
 	Status  *nexus.ActivityStatus `json:"status,omitempty"`
 	Focus   *[]string             `json:"focus,omitempty"`
 	Note    *string               `json:"note,omitempty"`
+}
+
+type presenceResponse struct {
+	// Credential is returned exactly once, on creation. Callers retain it only
+	// in process memory; renewals and ordinary resident/tool results omit it.
+	Credential string       `json:"credential,omitempty"`
+	Change     nexus.Change `json:"change"`
 }
 
 func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Request) {
@@ -464,10 +475,7 @@ func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 	actor, _, err := s.workspace.Actor(input.Actor)
-	if err != nil || input.Session == "" {
-		if err == nil {
-			err = errors.New("session is required")
-		}
+	if err != nil {
 		write(writer, nil, err)
 		return
 	}
@@ -496,20 +504,28 @@ func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Reques
 	if ttl <= 0 || ttl > 2*time.Minute {
 		ttl = 30 * time.Second
 	}
-	change, err := s.hub.AnnounceSessionIdentity(input.Session, input.Actor, actor.Fingerprint, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, nexus.ActivityUpdate{
-		Status: input.Status, Focus: input.Focus, Note: input.Note,
-	})
-	write(writer, change, err)
+	update := nexus.ActivityUpdate{Status: input.Status, Focus: input.Focus, Note: input.Note}
+	if input.Session == "" {
+		credential, change, err := s.hub.OpenSessionIdentity(input.Actor, actor.Fingerprint, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, update)
+		write(writer, presenceResponse{Credential: credential, Change: change}, err)
+		return
+	}
+	change, err := s.hub.RenewSessionIdentity(input.Session, input.Actor, actor.Fingerprint, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, update)
+	write(writer, presenceResponse{Change: change}, err)
 }
 
 func (s *Server) handleDepart(writer http.ResponseWriter, request *http.Request) {
-	session := request.PathValue("session")
-	change := s.hub.Depart(session)
-	write(writer, change, nil)
+	var input sessionStatusRequest
+	if err := decode(request, &input); err != nil {
+		write(writer, nil, err)
+		return
+	}
+	change, err := s.hub.RevokeSession(input.Session)
+	write(writer, change, err)
 }
 
 type sayRequest struct {
-	Session      string `json:"session"`
+	Session      string `json:"credential"`
 	About        string `json:"about"`
 	Conversation string `json:"conversation,omitempty"`
 	Text         string `json:"text"`
@@ -604,12 +620,12 @@ func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	if input.Session == "" || input.About == "" || input.Text == "" {
-		write(writer, nil, errors.New("session, about, and text are required"))
+		write(writer, nil, errors.New("credential, about, and text are required"))
 		return
 	}
 	actorName, exists := s.hub.SessionActor(input.Session)
 	if !exists {
-		write(writer, nil, errors.New("session is not present"))
+		write(writer, nil, errors.New("credential is not valid"))
 		return
 	}
 	_, private, err := s.workspace.Actor(actorName)
@@ -630,12 +646,12 @@ func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
 }
 
 type inboxAckRequest struct {
-	Session string   `json:"session"`
+	Session string   `json:"credential"`
 	Threads []string `json:"threads"`
 }
 
 type inboxRegisterRequest struct {
-	Session string `json:"session"`
+	Session string `json:"credential"`
 	Version string `json:"version"`
 }
 
@@ -646,7 +662,7 @@ func (s *Server) handleInboxRegister(writer http.ResponseWriter, request *http.R
 		return
 	}
 	if input.Session == "" {
-		write(writer, nil, errors.New("session is required"))
+		write(writer, nil, errors.New("credential is required"))
 		return
 	}
 	if input.Version != InboxProtocolVersion {
@@ -664,7 +680,7 @@ func (s *Server) handleInboxAck(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 	if input.Session == "" {
-		write(writer, nil, errors.New("session is required"))
+		write(writer, nil, errors.New("credential is required"))
 		return
 	}
 	acknowledged, err := s.hub.Acknowledge(input.Session, input.Threads)
@@ -681,17 +697,55 @@ func (s *Server) liveSnapshot() nexus.Snapshot {
 	return s.hub.Snapshot()
 }
 
+// TrustedHostHandler rejects browser and non-browser mutations whose Host is
+// not wholly loopback before a route can decode input or change state. The
+// listener is loopback-only too; this separate request check closes the DNS
+// rebinding shape in which a hostile page reaches that listener under a host
+// name controlled elsewhere.
+func TrustedHostHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead && !loopbackRequestHost(request.Host) {
+			writer.Header().Set("Content-Type", "application/json")
+			writer.Header().Set("Cache-Control", "no-store")
+			writer.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(writer).Encode(map[string]string{"error": "mutation host must resolve only to loopback"})
+			return
+		}
+		next.ServeHTTP(writer, request)
+	})
+}
+
+func loopbackRequestHost(value string) bool {
+	host, _, err := net.SplitHostPort(value)
+	if err != nil || host == "" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	addresses, err := net.LookupIP(host)
+	if err != nil || len(addresses) == 0 {
+		return false
+	}
+	for _, address := range addresses {
+		if !address.IsLoopback() {
+			return false
+		}
+	}
+	return true
+}
+
 // guardMutation is the browser-facing boundary for state-changing calls:
 // JSON content type only (text/plain is CORS-safelisted and needs no
 // preflight), and when a browser identifies the request's provenance the
 // origin must be this host and the fetch site same-origin. Non-browser
 // clients send neither provenance header and pass.
 func guardMutation(request *http.Request) error {
-	if contentType := request.Header.Get("Content-Type"); request.Method != http.MethodDelete && !strings.HasPrefix(contentType, "application/json") {
+	if contentType := request.Header.Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
 		return errors.New("mutations require application/json")
 	}
 	if origin := request.Header.Get("Origin"); origin != "" {
-		if parsed, err := url.Parse(origin); err != nil || parsed.Host != request.Host {
+		if parsed, err := url.Parse(origin); err != nil || parsed.Scheme != "http" || parsed.Host != request.Host || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 			return errors.New("cross-origin mutation refused")
 		}
 	}
@@ -735,7 +789,7 @@ func recordEncoding(writer http.ResponseWriter, started time.Time, err error) {
 // Events are the exact durable identifiers the calling tool named or returned;
 // they are matched by equality and nothing is inferred from them.
 type attentionRequest struct {
-	Session string   `json:"session"`
+	Session string   `json:"credential"`
 	Events  []string `json:"events,omitempty"`
 }
 

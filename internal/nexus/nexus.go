@@ -25,6 +25,8 @@ import (
 const (
 	actorFrameDomain = "gitseq.nexus.actor-frame.v0\x00"
 	nexusFrameDomain = "gitseq.nexus.order-frame.v0\x00"
+	credentialPrefix = "credential:"
+	credentialBytes  = 32
 )
 
 var ErrReset = errors.New("nexus cursor is no longer available; take a new snapshot")
@@ -93,6 +95,27 @@ func mintHandle() (string, error) {
 		return "", err
 	}
 	return "session:" + hex.EncodeToString(raw), nil
+}
+
+// mintCredential creates the private authority for one resident lease. The
+// resident, never its caller, chooses this value. Its fixed shape lets every
+// credential-bearing endpoint reject malformed input before looking up a
+// lease, while 256 bits of system randomness make online guessing irrelevant
+// within the deliberately bounded lifetime of a resident process.
+func mintCredential() (string, error) {
+	raw := make([]byte, credentialBytes)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return credentialPrefix + hex.EncodeToString(raw), nil
+}
+
+func validCredential(value string) bool {
+	if len(value) != len(credentialPrefix)+(credentialBytes*2) || !strings.HasPrefix(value, credentialPrefix) {
+		return false
+	}
+	_, err := hex.DecodeString(value[len(credentialPrefix):])
+	return err == nil
 }
 
 type Cursor struct {
@@ -331,6 +354,63 @@ func (h *Hub) AnnounceSessionIdentity(id, actor, fingerprint, value string, ttl 
 		return Change{}, errors.New("session is already bound to another actor")
 	}
 	return h.announceFor(id, actor, fingerprint, value, ttl, update)
+}
+
+// OpenSessionIdentity mints and binds one new private credential. The actor is
+// selected inside the resident's acknowledged trusted-process boundary; the
+// credential returned here authorizes only that exact binding in this Hub and
+// disappears with this process.
+func (h *Hub) OpenSessionIdentity(actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (string, Change, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if actor == "" {
+		return "", Change{}, errors.New("actor is required")
+	}
+	h.expire(time.Now())
+	for {
+		credential, err := mintCredential()
+		if err != nil {
+			return "", Change{}, err
+		}
+		if _, exists := h.presence[credential]; exists {
+			continue
+		}
+		change, err := h.announceFor(credential, actor, fingerprint, value, ttl, update)
+		return credential, change, err
+	}
+}
+
+// RenewSessionIdentity extends one exact live binding. A malformed, expired,
+// revoked, cross-actor or cross-resident credential receives the same fixed
+// refusal, so errors cannot be used as a credential oracle.
+func (h *Hub) RenewSessionIdentity(credential, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+	entry, exists := h.presence[credential]
+	if !validCredential(credential) || !exists || entry.actor != actor || entry.fingerprint != fingerprint {
+		return Change{}, errors.New("credential is not valid")
+	}
+	return h.announceFor(credential, actor, fingerprint, value, ttl, update)
+}
+
+// RevokeSession ends one exact lease and its inbox immediately. Departure is
+// credential-bearing and therefore fails closed instead of publishing a
+// meaningless departure for an unknown value.
+func (h *Hub) RevokeSession(credential string) (Change, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(time.Now())
+	entry, exists := h.presence[credential]
+	if !validCredential(credential) || !exists {
+		return Change{}, errors.New("credential is not valid")
+	}
+	delete(h.presence, credential)
+	h.deleteInbox(credential)
+	change := h.append("departure", entry.handle, "")
+	h.removeParticipant(credential)
+	h.forgetAllIfEmpty()
+	return change, nil
 }
 
 func (h *Hub) announceFor(id, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
@@ -584,7 +664,7 @@ func (h *Hub) EnableInbox(id string) error {
 	h.expire(time.Now())
 	entry, exists := h.presence[id]
 	if !exists {
-		return errors.New("session is not present")
+		return errors.New("credential is not valid")
 	}
 	entry.inbox = true
 	h.presence[id] = entry
@@ -684,7 +764,7 @@ func (h *Hub) SnapshotForSession(session string) (Snapshot, Inbox, error) {
 	defer h.mu.Unlock()
 	h.expire(time.Now())
 	if _, exists := h.presence[session]; !exists {
-		return Snapshot{}, Inbox{}, errors.New("session is not present")
+		return Snapshot{}, Inbox{}, errors.New("credential is not valid")
 	}
 	return h.snapshotLocked(), h.cloneInbox(h.inboxes[session]), nil
 }
@@ -701,7 +781,7 @@ func (h *Hub) Observe(session string, cursor *Cursor) (Observation, error) {
 		var exists bool
 		identity, exists = h.presence[session]
 		if !exists {
-			return Observation{}, errors.New("session is not present")
+			return Observation{}, errors.New("credential is not valid")
 		}
 	}
 	observation := Observation{
@@ -732,7 +812,7 @@ func (h *Hub) Acknowledge(session string, handles []string) (int, error) {
 	defer h.mu.Unlock()
 	h.expire(time.Now())
 	if _, exists := h.presence[session]; !exists {
-		return 0, errors.New("session is not present")
+		return 0, errors.New("credential is not valid")
 	}
 	if len(handles) > MaxInboxFrames {
 		return 0, fmt.Errorf("acknowledgement has %d handles; maximum is %d", len(handles), MaxInboxFrames)
@@ -792,7 +872,7 @@ func (h *Hub) ChangesSinceForSession(cursor Cursor, session string) ([]Change, C
 	defer h.mu.Unlock()
 	h.expire(time.Now())
 	if _, exists := h.presence[session]; !exists {
-		return nil, Cursor{Generation: h.generation, Position: h.position}, errors.New("session is not present")
+		return nil, Cursor{Generation: h.generation, Position: h.position}, errors.New("credential is not valid")
 	}
 	return h.changesSinceLocked(cursor, session)
 }
@@ -860,7 +940,7 @@ func (h *Hub) PublishForSession(session, about, conversationID string, payload [
 	h.expire(time.Now())
 	_, exists := h.presence[session]
 	if !exists {
-		return Frame{}, errors.New("session is not present")
+		return Frame{}, errors.New("credential is not valid")
 	}
 	if err := h.canPublish(len(payload)); err != nil {
 		return Frame{}, err
@@ -889,7 +969,7 @@ func (h *Hub) PublishMessageForSession(session, conversationID string, message M
 	h.expire(time.Now())
 	entry, exists := h.presence[session]
 	if !exists {
-		return Frame{}, errors.New("session is not present")
+		return Frame{}, errors.New("credential is not valid")
 	}
 	actorKey := actorPrivateKey.Public().(ed25519.PublicKey)
 	author := actorFingerprint(actorKey)

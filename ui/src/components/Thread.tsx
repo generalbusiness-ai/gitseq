@@ -45,7 +45,7 @@ export function Thread({
   onOpenThread: (event: string) => void;
   onSay: (text: string, re?: string, about?: string) => string;
   onSayFailed: (id: string) => void;
-  doAct: (intent: string, input: Omit<ActInput, "session" | "idempotency_key">) => void;
+  doAct: (intent: string, input: Omit<ActInput, "credential" | "idempotency_key">) => void;
   actError?: string;
 }) {
   const projection = workroom.status?.durable.projection;
@@ -416,9 +416,9 @@ function Composer({
       if (mentioned.length > 0) body.mentions = mentioned.join(" ");
       const input: ActInput =
         type === "withdraw"
-          ? { session: session.id, act: "supersede", target: basis, text: line, rests_on: [] }
+          ? { credential: session.id, act: "supersede", target: basis, text: line, rests_on: [] }
           : {
-              session: session.id,
+              credential: session.id,
               act: "state",
               kind: type,
               text: line,

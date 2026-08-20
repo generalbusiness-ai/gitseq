@@ -214,6 +214,7 @@ export interface Status {
   durable: DurableSnapshot;
   live: LiveSnapshot;
   cursor: Cursor;
+  trust_boundary: string;
 }
 
 // What git says about one commit, asked at render time and never stored.
@@ -336,19 +337,24 @@ export const api = {
     }).then((r) => json<{ status: Status; reset?: boolean }>(r)),
   frames: (conversation: string) =>
     fetch(`/v0/conversations/${encodeURIComponent(conversation)}/frames`).then((r) => json<Frame[]>(r)),
-  say: (session: string, about: string, text: string, conversation?: string, re?: string) =>
+  say: (credential: string, about: string, text: string, conversation?: string, re?: string) =>
     fetch("/v0/say", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session, about, text, conversation, re }),
+      body: JSON.stringify({ credential, about, text, conversation, re }),
     }).then((r) => json<unknown>(r)),
-  announce: (actor: string, session: string, activity?: ActivityUpdate) =>
+  announce: (actor: string, credential: string, activity?: ActivityUpdate) =>
     fetch("/v0/presence", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actor, session, ttl_ms: 30000, ...activity }),
-    }).then((r) => json<unknown>(r)),
-  depart: (session: string) => fetch(`/v0/presence/${encodeURIComponent(session)}`, { method: "DELETE" }),
+      body: JSON.stringify({ actor, credential: credential || undefined, ttl_ms: 30000, ...activity }),
+    }).then((r) => json<{ credential?: string; change: unknown }>(r)),
+  depart: (credential: string) =>
+    fetch("/v0/presence/depart", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential }),
+    }),
   act: (input: ActInput) =>
     fetch("/v0/act", {
       method: "POST",
@@ -358,7 +364,7 @@ export const api = {
 };
 
 export interface ActInput {
-  session: string;
+  credential: string;
   act: "state" | "ratify" | "supersede";
   kind?: string;
   text?: string;
