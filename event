@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e6080d3d101923bbbe4797517543ebada8831b8f","text":"Retire the withdrawn cmd/gitseq-mcp artifact against its live same-path successor; all tracked documentation citations now name the successor."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bfcf6197f09100c0078b2cf756518aa94e31dff1","text":"Retire the withdrawn cmd/gs artifact against its live same-path successor; all tracked documentation citations now name the successor."}
