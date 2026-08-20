@@ -39,12 +39,22 @@ Always copy the identifier from the emitted event, not from a display
 that abbreviates it. `gs status` shortens identifiers for reading —
 `git:sha1…02aa808` — and those short forms are not identifiers.
 
-A citation that does not resolve is usually **accepted**. On `assert`,
-`artifact` and `propose` there is no required edge, so a mistyped basis
-is simply kept, and the act records as effective. What you lose is
-silent: the fold marks an artifact whose bases all fail to resolve as
-`unable to flare`, because `supersede` needs a target it can resolve and
-so nothing could ever make that act stale.
+An identifier for this workroom that names no event in it is **refused**
+before it is sequenced, whatever the kind. The identifier asserts that
+the event is at a position in this log, and that is the one claim the
+substrate can settle without knowing what any kind means, so a mistyped
+or invented one comes back as a refusal naming the reference rather than
+as a record nobody can repair. The gate is on new records only:
+identifiers that dangle in existing history stay in it, and still read.
+
+A citation the substrate cannot resolve at all is still **accepted**.
+Another workroom's identifier, or a string that is not an identifier,
+asserts nothing about this log. On `assert`, `artifact` and `propose`
+there is no required edge either, so such a basis is simply kept and the
+act records as effective. What you lose is silent: the fold marks an
+artifact whose bases all fail to resolve as `unable to flare`, because
+`supersede` needs a target it can resolve and so nothing could ever make
+that act stale.
 
 Events with a required edge are stricter, and `ratify` is strictest of
 all — it refuses any citation other than its target. See

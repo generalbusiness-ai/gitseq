@@ -37,6 +37,11 @@ var (
 	// a load-bearing path, and proving its contention would need a production seam
 	// that exists only for a test.
 	ErrBackPressure = errors.New("sequencer at capacity")
+	// ErrUnresolvedReference is admission's refusal of a rests_on entry that
+	// claims a position in the log being submitted to and does not name one. It
+	// gates submission only. History already holds records whose references
+	// dangle, and verification must keep reading them exactly as before.
+	ErrUnresolvedReference = errors.New("causal reference does not resolve in this log")
 )
 
 type GenesisDescriptor struct {
@@ -496,6 +501,9 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 		if err != nil {
 			return Result{}, err
 		}
+		if err := resolveReferences(storeFormat, targetOID, log, decoded.RestsOn); err != nil {
+			return Result{}, err
+		}
 		prior, replay, dedupErr := dedupPrior(log.Dedup, key, request.Signed)
 		if dedupErr != nil {
 			return Result{}, dedupErr
@@ -541,6 +549,51 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 	return Result{}, fmt.Errorf("%w: retry limit of %d exceeded while chaining", ErrBackPressure, maxRetries)
 }
 
+// inLogEvent reads a rests_on entry as a claim about the log being submitted
+// to, and reports the commit it claims. Only the canonical event identifier
+// makes such a claim, and only when its workroom half is this genesis in this
+// repository's object format. Another workroom's identifier, a URL, or any
+// other opaque application string asserts nothing this kernel could resolve, so
+// it is not an in-log reference and is carried unchanged.
+func inLogEvent(reference, format, genesis string) (string, bool) {
+	workroom, event, found := strings.Cut(reference, "#")
+	if !found {
+		return "", false
+	}
+	workroomFormat, workroomOID, err := gitstore.ParseTypedOID(workroom)
+	if err != nil || workroomFormat != format || workroomOID != genesis {
+		return "", false
+	}
+	eventFormat, eventOID, err := gitstore.ParseTypedOID(event)
+	if err != nil || eventFormat != format {
+		return "", false
+	}
+	return eventOID, true
+}
+
+// resolveReferences refuses a submission whose rests_on claims a position in
+// this log that the log does not hold. A dangling in-log reference cannot be
+// repaired afterwards — the sequence is append-only, so every fold and every
+// reader inherits it — and the verified frontier already in hand answers the
+// question without asking Git anything, so a record with many bases costs no
+// more Git work than a record with one.
+//
+// It resolves against the log the submission is about to extend, so a basis
+// another submitter sequenced a moment ago resolves on the next attempt rather
+// than being refused for having lost a race.
+func resolveReferences(format, genesis string, log scannedLog, restsOn []string) error {
+	for _, reference := range restsOn {
+		commit, ok := inLogEvent(reference, format, genesis)
+		if !ok {
+			continue
+		}
+		if _, present := log.Positions[commit]; !present {
+			return fmt.Errorf("%w: %s", ErrUnresolvedReference, reference)
+		}
+	}
+	return nil
+}
+
 func cloneSigned(signed intent.Signed) intent.Signed {
 	return intent.Signed{
 		Intent:    bytes.Clone(signed.Intent),
@@ -557,10 +610,25 @@ type Verification struct {
 }
 
 type scannedLog struct {
-	Verification       Verification
-	Events             []Event
-	Dedup              map[string]Event
+	Verification Verification
+	Events       []Event
+	Dedup        map[string]Event
+	// Positions names every commit a causal reference may cite: the genesis
+	// commit, which is the seed a new workroom's first records rest on, and every
+	// event admitted after it. It is maintained wherever Dedup is, so admission
+	// can settle a reference against verified state instead of asking Git one
+	// reachability question per reference. Rotations are absent on purpose: they
+	// are operator acts on the key, not events any record can bear on.
+	Positions          map[string]struct{}
 	sequencerPublicKey string
+}
+
+// newPositions starts the causal-reference index for a freshly scanned or
+// restored log. The genesis commit is a position before any event exists.
+func newPositions(genesis string, capacity int) map[string]struct{} {
+	index := make(map[string]struct{}, capacity)
+	index[genesis] = struct{}{}
+	return index
 }
 
 // LoadResult is a verified resident read. Full means the complete log was
@@ -854,6 +922,7 @@ func (c *logCache) maybeWriteCheckpoint(ctx context.Context, store gitstore.Stor
 
 func (c *logCache) append(ctx context.Context, store gitstore.Store, key string, event Event) {
 	c.log.Dedup[key] = eventWithoutPayload(event)
+	c.log.Positions[event.Commit] = struct{}{}
 	c.log.Verification.Head = event.Commit
 	c.log.Verification.Depth++
 	c.log.Verification.Events++
@@ -978,6 +1047,7 @@ func scanHeadInto(ctx context.Context, store gitstore.Store, genesis, head strin
 			log = scannedLog{
 				Verification:       Verification{Genesis: genesis, Head: head, Depth: len(sequence) - 1},
 				Dedup:              make(map[string]Event, len(sequence)-1),
+				Positions:          newPositions(genesis, len(sequence)),
 				sequencerPublicKey: desc.SequencerPublicKey,
 			}
 			if accept == nil {
@@ -1025,6 +1095,7 @@ func scanHeadInto(ctx context.Context, store gitstore.Store, genesis, head strin
 			return scannedLog{}, fmt.Errorf("commit %s duplicates idempotent event %s", commit.OID, prior.Commit)
 		}
 		log.Dedup[key] = eventWithoutPayload(event)
+		log.Positions[event.Commit] = struct{}{}
 		if accept == nil {
 			log.Events = append(log.Events, event)
 		} else if err := accept(event); err != nil {
@@ -1248,8 +1319,12 @@ func (s *deltaScan) finish() (scannedLog, error) {
 	if s.base.Dedup == nil {
 		s.base.Dedup = make(map[string]Event, len(s.additions))
 	}
+	if s.base.Positions == nil {
+		s.base.Positions = newPositions(s.base.Verification.Genesis, len(s.additions)+1)
+	}
 	for key, event := range s.additions {
 		s.base.Dedup[key] = event
+		s.base.Positions[event.Commit] = struct{}{}
 	}
 	// Additions stay separate until finish, so a failed streamed delta cannot
 	// mutate the resident dedup map. Key rotation likewise changes only this
