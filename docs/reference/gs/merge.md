@@ -74,8 +74,8 @@ It prints the resulting merge commit.
 
 | Situation | Why |
 |---|---|
-| The approval is ineffective, unratified, retired or stale | An approval that no longer stands approves nothing. |
-| The approved artifact is retired or stale | Same, from the other side of the chain. |
+| The approval is ineffective, unratified, retired, or describes a superseded world | An approval that no longer stands approves nothing. Ordinary staleness is not on this list; see below. |
+| The approved artifact is ineffective, retired, or describes a superseded world | Same, from the other side of the chain. |
 | The verdict is not `approved` | `changes-requested` is not a merge authorization. |
 | `--candidate` differs from the approved head | The reviewer looked at a different commit. |
 | The approval does not rest on the artifact it names | The chain from verdict to code is broken. |
@@ -90,11 +90,25 @@ It prints the resulting merge commit.
 
 Every check runs twice, immediately before git is invoked.
 
-`merge` keeps the strict reading of staleness that
-[`gs review`](review.md) gives up. The latitude belongs where a reviewer
-is present to exercise it, and nobody is present here. A refused merge
-leaves the signed approval standing and asks only that the record be
-brought up to date first.
+### Staleness is recorded, not refused
+
+Ordinary reasoning staleness — a basis under the approval or the artifact
+was retired — does not stop a merge. The reasoning moved; the reviewed
+head did not. It is still the immutable commit the reviewer signed for, so
+`merge` lands that exact head and writes what had moved into the receipt:
+a `Gitseq-Staleness:` trailer on the merge commit, and `stale` and
+`staleness` in the durable assertion. A stale approval therefore merges
+the head it named.
+
+Two narrower facts are refusals. Retirement withdraws the pointer, so a
+retired approval or artifact proposes nothing. And when the retired
+ancestor was itself an artifact, the record `describes a superseded
+world`: the behaviour it covers has been replaced, so the verdict no
+longer speaks for what would land. That case needs a fresh artifact on
+current bases and a fresh review, not another verdict on the same chain.
+
+A refused merge leaves the signed approval standing and asks only that the
+record be brought up to date first.
 
 ## Why an object ID and not a branch
 
@@ -238,8 +252,9 @@ what closes both, because a record's bases are fixed when it is signed.
 Each member is still checked on its own: effective, not withdrawn, standing at
 the exact head the verdict names, and the implementer's own, so a citation
 cannot smuggle in a pointer belonging to someone else or describing another
-commit. `merge` additionally holds every member to the strict staleness rule it
-holds the primary to.
+commit. `merge` holds every member to the same staleness rule it holds the
+primary to: ordinary staleness passes and is recorded, while a member
+describing a superseded world stops the merge.
 
 What none of this establishes is worth saying. Holding no repository, the fold
 cannot open the approved commit or read its diff, so it does not know that the
