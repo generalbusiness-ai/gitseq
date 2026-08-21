@@ -2615,8 +2615,40 @@ func TestCompactCheckpointRoundTripIsDeterministicAndBounded(t *testing.T) {
 	if !reflect.DeepEqual(decoded, stored) {
 		t.Fatalf("compact checkpoint round trip differs:\n got: %#v\nwant: %#v", decoded, stored)
 	}
-	if _, err := marshalCheckpoint(stored, len(first)-1); err == nil || !strings.Contains(err.Error(), "exceeds limit") {
+	if _, err := marshalCheckpoint(stored, len(first)-1); !errors.Is(err, errCheckpointTooLarge) {
 		t.Fatalf("compact checkpoint over limit error = %v", err)
+	}
+}
+
+func TestOversizedCheckpointDoesNotRetryOnEveryAppend(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointEnabled: true})
+	if _, err := submitter.Submit(f.ctx, f.request(t, private, "before-oversize", []byte("before"), nil)); err != nil {
+		t.Fatal(err)
+	}
+	submitter.cache.recordCheckpointFailure(errors.Join(errors.New("encode compact checkpoint"), errCheckpointTooLarge))
+	writes, failures := submitter.cache.checkpointWrites, submitter.cache.checkpointFailures
+	if !submitter.cache.checkpointOversized || submitter.cache.checkpointEvents.count != 0 {
+		t.Fatalf("terminal checkpoint failure was not recorded: %+v", submitter.cache)
+	}
+
+	// Include an external append so both the delta-advance and local-append
+	// retention paths see the terminal state.
+	if _, err := Submit(f.ctx, f.store, f.request(t, private, "external", []byte("external"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 3; index++ {
+		key := "after-oversize-" + strconv.Itoa(index)
+		if _, err := submitter.Submit(f.ctx, f.request(t, private, key, []byte(key), nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if submitter.cache.checkpointFailures != failures || submitter.cache.checkpointWrites != writes {
+		t.Fatalf("terminal checkpoint failure retried: failures=%d->%d writes=%d->%d", failures, submitter.cache.checkpointFailures, writes, submitter.cache.checkpointWrites)
+	}
+	if submitter.cache.checkpointEvents.count != 0 || len(submitter.cache.checkpointEvents.tail) != 0 || len(submitter.cache.checkpointEvents.chunks) != 0 {
+		t.Fatalf("terminal checkpoint retained write material: %+v", submitter.cache.checkpointEvents)
 	}
 }
 
