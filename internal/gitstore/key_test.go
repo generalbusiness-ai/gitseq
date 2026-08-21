@@ -81,6 +81,55 @@ func TestVerifySSHCommitValidatesPublicKeyBeforeFormatting(t *testing.T) {
 	}
 }
 
+func TestSigningAndVerificationQuarantineExecutableGitConfig(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store, err := InitBare(ctx, filepath.Join(root, "repo.git"), "sha1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPath := filepath.Join(root, "sequencer")
+	publicKey, err := GenerateSSHKey(ctx, keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, "sentinel-ran")
+	sentinel := filepath.Join(root, "sentinel")
+	script := "#!/bin/sh\nprintf ran > '" + marker + "'\nexit 1\n"
+	if err := os.WriteFile(sentinel, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.run(ctx, nil, nil, "config", "gpg.ssh.program", sentinel); err != nil {
+		t.Fatal(err)
+	}
+	globalConfig := filepath.Join(root, "hostile-global-config")
+	if err := os.WriteFile(globalConfig, []byte("[invalid\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tree, err := store.EmptyTree(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", globalConfig)
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "gpg.ssh.program")
+	t.Setenv("GIT_CONFIG_VALUE_0", sentinel)
+	commit, err := store.SignedCommit(ctx, tree, "", "test\n", keyPath, CommitIdentity{
+		AuthorName: "test", AuthorEmail: "test@example.invalid",
+		CommitterName: "test", CommitterEmail: "test@example.invalid",
+	})
+	if err != nil {
+		t.Fatalf("hostile config changed signing: %v", err)
+	}
+	if err := store.VerifySSHCommit(ctx, commit, "sequencer", publicKey); err != nil {
+		t.Fatalf("hostile config changed verification: %v", err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("hostile Git configuration invoked sentinel: %v", err)
+	}
+}
+
 func TestSignedCommitTimestampRoundTripsWithMessage(t *testing.T) {
 	ctx := context.Background()
 	store, err := InitBare(ctx, filepath.Join(t.TempDir(), "repo.git"), "sha1")
