@@ -3,6 +3,7 @@ package workroom
 import (
 	"reflect"
 	"testing"
+	"unsafe"
 )
 
 func TestDecodeRejectsNonCanonicalAndMalformedPayloads(t *testing.T) {
@@ -14,7 +15,7 @@ func TestDecodeRejectsNonCanonicalAndMalformedPayloads(t *testing.T) {
 	}{
 		{name: "ordinary", decode: func(data []byte) (any, error) { return Decode(SchemaState, data) }},
 		{name: "pooled", decode: func(data []byte) (any, error) {
-			return decode(SchemaState, data, &testDecodeStringPool{})
+			return decode(SchemaState, data, map[string]string{})
 		}},
 	}
 	for _, decoder := range decoders {
@@ -60,38 +61,25 @@ func TestDecodeRejectsNonCanonicalAndMalformedPayloads(t *testing.T) {
 	}
 }
 
-func TestPooledDecodeRoutesOnlyUnescapedTextBytes(t *testing.T) {
-	pool := &testDecodeStringPool{}
+func TestPooledDecodeReusesResidentText(t *testing.T) {
+	plainResident := string(append([]byte(nil), "plain"...))
+	escapedResident := string(append([]byte(nil), '<'))
+	pool := map[string]string{"plain": plainResident, "<": escapedResident}
 	plain, err := decode(SchemaState, []byte(`{"kind":"assert","text":"plain"}`), pool)
 	if err != nil || plain.(*State).Text != "plain" {
 		t.Fatalf("plain decode = %#v, %v", plain, err)
 	}
-	if pool.byteCalls != 1 || pool.stringCalls != 0 {
-		t.Fatalf("plain callback counts = bytes %d, strings %d", pool.byteCalls, pool.stringCalls)
+	if unsafe.StringData(plain.(*State).Text) != unsafe.StringData(plainResident) {
+		t.Fatal("plain decode did not reuse resident backing")
 	}
 	escaped, err := decode(SchemaState, []byte(`{"kind":"assert","text":"\u003c"}`), pool)
 	if err != nil || escaped.(*State).Text != "<" {
 		t.Fatalf("escaped decode = %#v, %v", escaped, err)
 	}
-	if pool.byteCalls != 1 || pool.stringCalls != 1 {
-		t.Fatalf("escaped callback counts = bytes %d, strings %d", pool.byteCalls, pool.stringCalls)
+	if unsafe.StringData(escaped.(*State).Text) != unsafe.StringData(escapedResident) {
+		t.Fatal("escaped decode did not reuse resident backing")
 	}
 	if _, err := decode(SchemaState, []byte(`{"kind":"assert","text":1}`), pool); err == nil {
 		t.Fatal("pooled decode accepted non-string text")
 	}
-}
-
-type testDecodeStringPool struct {
-	byteCalls   int
-	stringCalls int
-}
-
-func (p *testDecodeStringPool) intern(value string) string {
-	p.stringCalls++
-	return value
-}
-
-func (p *testDecodeStringPool) internBytes(value []byte) string {
-	p.byteCalls++
-	return string(value)
 }
