@@ -85,6 +85,7 @@ func TestCheckpointEventCacheOwnsTailAcrossBorrowedChunkBoundary(t *testing.T) {
 	for index := range second {
 		second[index].Payload = []byte{0x20, byte(index), byte(index >> 8)}
 	}
+	second[0].Attachments = map[string][]byte{"old-tail": []byte("owned")}
 	second[checkpointChunkEvents-prefix].Attachments = map[string][]byte{"boundary": []byte("borrowed")}
 	second[len(second)-1].Attachments = map[string][]byte{"tail": []byte("owned")}
 
@@ -104,6 +105,8 @@ func TestCheckpointEventCacheOwnsTailAcrossBorrowedChunkBoundary(t *testing.T) {
 	// The first call's partial tail, the second call's borrowed complete chunk,
 	// and the final tail must all be independent once appendEvents returns.
 	first[0].Payload[0] ^= 0xff
+	second[0].Payload[0] ^= 0xff
+	second[0].Attachments["old-tail"][0] ^= 0xff
 	borrowed := checkpointChunkEvents - prefix
 	second[borrowed].Payload[0] ^= 0xff
 	second[borrowed].Attachments["boundary"][0] ^= 0xff
