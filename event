@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f752dd782bc0c77cdad40daed9dba23cf9692b9d"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc49ec8aaf96d290d0ca924d7e498a24d54681f9","text":"Retire this obsolete historical self-request rather than self-ratifying its readiness report. Exact repaired head 83e60c30 received independent ratified approval 50a023c5 and landed through merge 63d8d765 with receipt 619a206f; closure report 465820b1 corroborates that the work is shipped."}
