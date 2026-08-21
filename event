@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c654df30f3a14cedaa78cf0721fea45a7ab4165e","text":"Merge retired a covered predecessor; the successor is at cmd/gs."}
+{"kind":"promise","text":"I will add the narrow internal/workroom invariant test on a fresh post-merge branch, mutation-check it against a State-only field addition, run the exact-head gates, and publish it for independent review.","body":{"request":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0c816034a3b4418b5d64965dbdbd3db8f5d467cf"}}
