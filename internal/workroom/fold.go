@@ -346,8 +346,7 @@ func (f *foldState) append(index int, record Record) {
 		f.addDecision(record, nil, index, decision)
 		return
 	}
-	pool := stagedStringPool{committed: f.strings}
-	body, err := decode(record.Schema, record.Payload, &pool)
+	body, err := decode(record.Schema, record.Payload, f.strings)
 	// The decoded body is the fold input retained below. Payload bytes and
 	// attachments are transport material and must not stay pinned for the
 	// resident process lifetime.
@@ -358,7 +357,6 @@ func (f *foldState) append(index int, record Record) {
 		f.addDecision(record, nil, index, decision)
 		return
 	}
-	pool.commit()
 	f.internBody(body)
 	parsed := &parsedRecord{record: record, body: body, index: index}
 	if len(f.transitions) != 0 {
@@ -445,78 +443,6 @@ func (f *foldState) intern(value string) string {
 	}
 	f.strings[value] = value
 	return value
-}
-
-// stagedStringPool lets decoding reuse already-owned strings without changing
-// the resident pool before validation and canonical comparison succeed.
-// Rejected payloads drop the stage and cannot retain their text for the
-// lifetime of the Folder.
-type stagedStringPool struct {
-	committed map[string]string
-	pending   [2]string
-	count     int
-	overflow  map[string]string
-}
-
-func (p *stagedStringPool) intern(value string) string {
-	if value == "" {
-		return ""
-	}
-	if existing, ok := p.committed[value]; ok {
-		return existing
-	}
-	if existing, ok := p.findPending(value); ok {
-		return existing
-	}
-	p.addPending(value)
-	return value
-}
-
-func (p *stagedStringPool) internBytes(value []byte) string {
-	if len(value) == 0 {
-		return ""
-	}
-	if existing, ok := p.committed[string(value)]; ok {
-		return existing
-	}
-	if existing, ok := p.findPending(string(value)); ok {
-		return existing
-	}
-	owned := string(value)
-	p.addPending(owned)
-	return owned
-}
-
-func (p *stagedStringPool) findPending(value string) (string, bool) {
-	for index := 0; index < p.count; index++ {
-		if p.pending[index] == value {
-			return p.pending[index], true
-		}
-	}
-	existing, ok := p.overflow[value]
-	return existing, ok
-}
-
-func (p *stagedStringPool) addPending(value string) {
-	if p.count < len(p.pending) {
-		p.pending[p.count] = value
-		p.count++
-		return
-	}
-	if p.overflow == nil {
-		p.overflow = make(map[string]string)
-	}
-	p.overflow[value] = value
-}
-
-func (p *stagedStringPool) commit() {
-	for index := 0; index < p.count; index++ {
-		value := p.pending[index]
-		p.committed[value] = value
-	}
-	for key, value := range p.overflow {
-		p.committed[key] = value
-	}
 }
 
 func (f *foldState) internBody(body any) {

@@ -69,12 +69,7 @@ func Decode(schema string, data []byte) (any, error) {
 	return decode(schema, data, nil)
 }
 
-type decodeStringPool interface {
-	intern(string) string
-	internBytes([]byte) string
-}
-
-func decode(schema string, data []byte, pool decodeStringPool) (any, error) {
+func decode(schema string, data []byte, pool map[string]string) (any, error) {
 	var value any
 	switch schema {
 	case SchemaStateLegacy, SchemaStateV1, SchemaState:
@@ -118,7 +113,7 @@ type pooledStatePayload struct {
 }
 
 type pooledJSONText struct {
-	pool  decodeStringPool
+	pool  map[string]string
 	value string
 }
 
@@ -133,7 +128,11 @@ func (p *pooledJSONText) UnmarshalJSON(data []byte) error {
 			}
 		}
 		if unescaped {
-			p.value = p.pool.internBytes(content)
+			if existing, ok := p.pool[string(content)]; ok {
+				p.value = existing
+			} else {
+				p.value = string(content)
+			}
 			return nil
 		}
 	}
@@ -141,7 +140,11 @@ func (p *pooledJSONText) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	p.value = p.pool.intern(value)
+	if existing, ok := p.pool[value]; ok {
+		p.value = existing
+	} else {
+		p.value = value
+	}
 	return nil
 }
 
