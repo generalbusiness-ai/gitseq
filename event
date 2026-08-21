@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4a200bb4b1cdd89161a12419eb7359bb4a360719","text":"Replace the obsolete 311a940f internal/connector candidate with the complete exact-head artifact at 106259ea."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d86651c9ba0ba97dd2454328e85aea81ff94ad87","text":"Replace the obsolete 311a940f cmd/gitseq-github candidate with the complete exact-head artifact at 106259ea."}
