@@ -125,7 +125,7 @@ func lastMerge(output string) (string, int64, bool) {
 // an answer here, not a failure, so it is returned as a number; only a git
 // that could not be started at all is an error.
 func (s Store) exitCode(ctx context.Context, args ...string) (int, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"--git-dir", s.Repo}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", storeGitArguments(s.Repo, args...)...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	err := cmd.Run()

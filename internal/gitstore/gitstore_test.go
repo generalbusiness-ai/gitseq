@@ -11,6 +11,83 @@ import (
 	"time"
 )
 
+func TestStoreIgnoresReplacementObjects(t *testing.T) {
+	ctx := context.Background()
+	store, err := InitBare(ctx, filepath.Join(t.TempDir(), "repo.git"), "sha1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalTree, err := store.WriteSingleFileTree(ctx, "event", []byte("original payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacementTree, err := store.WriteSingleFileTree(ctx, "event", []byte("replacement payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalEntry, err := store.run(ctx, nil, nil, "ls-tree", originalTree, "event")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacementEntry, err := store.run(ctx, nil, nil, "ls-tree", replacementTree, "event")
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalFields, replacementFields := strings.Fields(string(originalEntry)), strings.Fields(string(replacementEntry))
+	if len(originalFields) != 4 || len(replacementFields) != 4 {
+		t.Fatalf("unexpected tree entries: %q and %q", originalEntry, replacementEntry)
+	}
+	identity := []string{
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.invalid", "GIT_AUTHOR_DATE=Thu, 07 Apr 2005 22:13:13 +0000",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.invalid", "GIT_COMMITTER_DATE=Thu, 07 Apr 2005 22:13:13 +0000",
+	}
+	original, err := store.run(ctx, []byte("original commit\n"), identity, "commit-tree", originalTree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement, err := store.run(ctx, []byte("replacement commit\n"), identity, "commit-tree", replacementTree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateRef(ctx, "refs/replace/"+string(original), string(replacement), ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateRef(ctx, "refs/replace/"+originalTree, replacementTree, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateRef(ctx, "refs/replace/"+originalFields[2], replacementFields[2], ""); err != nil {
+		t.Fatal(err)
+	}
+
+	message, err := store.CommitMessage(ctx, string(original))
+	if err != nil || message != "original commit\n" {
+		t.Fatalf("replacement changed commit message: %q, %v", message, err)
+	}
+	payload, err := store.ReadFile(ctx, string(original), "event")
+	if err != nil || string(payload) != "original payload" {
+		t.Fatalf("replacement changed payload read: %q, %v", payload, err)
+	}
+	bounded, err := store.ReadFileLimit(ctx, string(original), "event", int64(len("original payload")))
+	if err != nil || string(bounded) != "original payload" {
+		t.Fatalf("replacement changed bounded payload read: %q, %v", bounded, err)
+	}
+	metadata, err := store.RevListMetadata(ctx, string(original))
+	if err != nil || len(metadata) != 1 || metadata[0].OID != string(original) || metadata[0].Tree != originalTree || !strings.HasPrefix(metadata[0].Message, "original commit") {
+		t.Fatalf("replacement changed sequence metadata: %+v, %v", metadata, err)
+	}
+	batch, err := store.OpenAuditBatch(ctx, "sha1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, _, err := batch.PayloadTree(originalTree, uint64(len("original payload")), true)
+	if closeErr := batch.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil || string(read) != "original payload" {
+		t.Fatalf("replacement changed audited payload tree: %q, %v", read, err)
+	}
+}
+
 func TestRevListMetadataReturnsOrderedCommitIdentity(t *testing.T) {
 	ctx := context.Background()
 	store, err := InitBare(ctx, filepath.Join(t.TempDir(), "repo.git"), "sha1")

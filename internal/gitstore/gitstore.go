@@ -71,7 +71,7 @@ func (s Store) runWithEnvironment(ctx context.Context, input []byte, environment
 		observer = observe.FromContext(ctx)
 	}
 	done := observe.Begin(ctx, observer, observe.OperationGit, observe.GitPath(args))
-	argv := append([]string{"--git-dir", s.Repo}, args...)
+	argv := storeGitArguments(s.Repo, args...)
 	cmd := exec.CommandContext(ctx, "git", argv...)
 	cmd.Stdin = bytes.NewReader(input)
 	cmd.Env = environment
@@ -87,6 +87,15 @@ func (s Store) runWithEnvironment(ctx context.Context, input []byte, environment
 		done(nil)
 	}
 	return bytes.TrimSpace(output), nil
+}
+
+// storeGitArguments keeps Git replacement refs outside the immutable object
+// boundary. Every command that reads or verifies objects must resolve the OID
+// that the sequence actually names, never a repository-local substitute.
+func storeGitArguments(repo string, args ...string) []string {
+	argv := make([]string, 0, len(args)+3)
+	argv = append(argv, "--no-replace-objects", "--git-dir", repo)
+	return append(argv, args...)
 }
 
 // hermeticGitEnvironment removes ambient configuration injection while
@@ -358,7 +367,7 @@ func (s Store) RefValue(ctx context.Context, ref string) (string, bool, error) {
 	}
 	args := []string{"rev-parse", "--verify", "--quiet", ref}
 	done := observe.Begin(ctx, observer, observe.OperationGit, observe.GitPath(args))
-	cmd := exec.CommandContext(ctx, "git", append([]string{"--git-dir", s.Repo}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", storeGitArguments(s.Repo, args...)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
@@ -456,7 +465,7 @@ func (s Store) WalkRevListMetadataAfter(ctx context.Context, base, head string, 
 }
 
 func (s Store) walkRevListMetadata(ctx context.Context, revision string, visit func(CommitMetadata) error) error {
-	args := []string{"--git-dir", s.Repo, "log", "-z", "--first-parent", "--reverse", "--format=%H%x00%T%x00%P%x00%ct%x00%B", revision}
+	args := storeGitArguments(s.Repo, "log", "-z", "--first-parent", "--reverse", "--format=%H%x00%T%x00%P%x00%ct%x00%B", revision)
 	cmd := exec.CommandContext(ctx, "git", args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -567,7 +576,7 @@ func (s Store) ReadFile(ctx context.Context, commit, path string) ([]byte, error
 	if commit == "" || path == "" || strings.ContainsAny(path, "\x00\r\n:") {
 		return nil, errors.New("invalid commit or tree path")
 	}
-	argv := []string{"--git-dir", s.Repo, "show", commit + ":" + path}
+	argv := storeGitArguments(s.Repo, "show", commit+":"+path)
 	cmd := exec.CommandContext(ctx, "git", argv...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
