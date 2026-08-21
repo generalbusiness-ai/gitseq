@@ -126,6 +126,7 @@ type logCache struct {
 	checkpointWrites    int
 	checkpointFailures  int
 	checkpointEvents    checkpointEventCache
+	checkpointOversized bool
 	checkpointAttempt   int
 }
 
@@ -807,7 +808,7 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 		log, deltaErr := scanAfter(ctx, store, c.log, head, loadPayload)
 		if deltaErr == nil {
 			events := log.Events
-			if c.checkpointWritable() {
+			if c.checkpointWritable() && !c.checkpointOversized {
 				c.checkpointEvents.appendEvents(events)
 			}
 			if writeCheckpointOnAdvance {
@@ -863,6 +864,10 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 		streamed = fullSink != nil
 	}
 
+	// A verified full rebuild is the reset boundary for a terminal size failure:
+	// the named history may have changed, so one fresh publication attempt is
+	// warranted. Ordinary appends cannot make an oversized history smaller.
+	c.checkpointOversized = false
 	checkpointCurrent := fromCheckpoint && !checkpointAdvanced
 	if c.checkpoint.enabled() && c.checkpoint.SigningKey != "" && !checkpointCurrent {
 		var checkpointErr error
@@ -875,11 +880,11 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 			c.checkpointWrites++
 			checkpointCurrent = true
 		} else {
-			c.checkpointFailures++
+			c.recordCheckpointFailure(checkpointErr)
 		}
 	}
 	events := log.Events
-	if c.checkpointWritable() {
+	if c.checkpointWritable() && !c.checkpointOversized {
 		if streamed {
 			c.checkpointEvents = streamedCheckpoint
 		} else {
@@ -910,17 +915,25 @@ func (c *logCache) checkpointWritable() bool {
 }
 
 func (c *logCache) maybeWriteCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog) {
-	if !c.checkpointWritable() || !checkpointDue(log.Verification.Depth, c.checkpointAttempt) {
+	if !c.checkpointWritable() || c.checkpointOversized || !checkpointDue(log.Verification.Depth, c.checkpointAttempt) {
 		return
 	}
 	// Checkpoint refresh needs only application payloads and attachments. Keep
 	// that compact material rather than a second copy of every signed envelope,
 	// decoded intent, commit identifier, and causal reference in the log.
-	if writeCheckpointCache(ctx, store, log, c.checkpointEvents, c.checkpoint) == nil {
+	if err := writeCheckpointCache(ctx, store, log, c.checkpointEvents, c.checkpoint); err == nil {
 		c.checkpointWrites++
 		c.checkpointAttempt = log.Verification.Depth
 	} else {
-		c.checkpointFailures++
+		c.recordCheckpointFailure(err)
+	}
+}
+
+func (c *logCache) recordCheckpointFailure(err error) {
+	c.checkpointFailures++
+	if errors.Is(err, errCheckpointTooLarge) {
+		c.checkpointOversized = true
+		c.checkpointEvents = checkpointEventCache{}
 	}
 }
 
@@ -931,7 +944,7 @@ func (c *logCache) append(ctx context.Context, store gitstore.Store, key string,
 	c.log.Verification.Depth++
 	c.log.Verification.Events++
 	c.head = event.Commit
-	if !c.checkpointWritable() {
+	if !c.checkpointWritable() || c.checkpointOversized {
 		return
 	}
 	c.checkpointEvents.append(event)

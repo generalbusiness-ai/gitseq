@@ -33,7 +33,10 @@ const (
 	maxCheckpointManifest           = 1 << 20
 )
 
-var ErrNoUsableCheckpoint = errors.New("no usable checkpoint")
+var (
+	ErrNoUsableCheckpoint = errors.New("no usable checkpoint")
+	errCheckpointTooLarge = errors.New("checkpoint exceeds byte limit")
+)
 
 // checkpointStreamError marks a failure after a valid checkpoint has begun
 // transferring provisional events. The caller must not try another candidate
@@ -678,7 +681,7 @@ func marshalCheckpoint(stored checkpoint, limit int) ([]byte, error) {
 		return nil, err
 	}
 	if len(data) > limit {
-		return nil, fmt.Errorf("checkpoint size %d exceeds limit %d", len(data), limit)
+		return nil, fmt.Errorf("%w: size %d exceeds limit %d", errCheckpointTooLarge, len(data), limit)
 	}
 	return data, nil
 }
@@ -723,7 +726,7 @@ func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
 		return nil, err
 	}
 	if len(encodedManifest) > maxCheckpointManifest {
-		return nil, errors.New("checkpoint manifest exceeds limit")
+		return nil, fmt.Errorf("%w: manifest exceeds limit", errCheckpointTooLarge)
 	}
 	var output bytes.Buffer
 	output.WriteString(checkpointContainer)
@@ -732,7 +735,7 @@ func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
 	}
 	output.Write(encodedManifest)
 	if output.Len() > limit {
-		return nil, fmt.Errorf("checkpoint size %d exceeds limit %d", output.Len(), limit)
+		return nil, fmt.Errorf("%w: size %d exceeds limit %d", errCheckpointTooLarge, output.Len(), limit)
 	}
 	bounded := &checkpointLimitWriter{output: &output, limit: limit}
 	compressed, err := gzip.NewWriterLevel(bounded, gzip.DefaultCompression)
@@ -776,7 +779,7 @@ func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
 		return nil, err
 	}
 	if output.Len() > limit {
-		return nil, fmt.Errorf("checkpoint size %d exceeds limit %d", output.Len(), limit)
+		return nil, fmt.Errorf("%w: size %d exceeds limit %d", errCheckpointTooLarge, output.Len(), limit)
 	}
 	return output.Bytes(), nil
 }
@@ -788,7 +791,7 @@ type checkpointLimitWriter struct {
 
 func (w *checkpointLimitWriter) Write(data []byte) (int, error) {
 	if len(data) > w.limit-w.output.Len() {
-		return 0, fmt.Errorf("checkpoint exceeds limit %d", w.limit)
+		return 0, fmt.Errorf("%w: limit %d", errCheckpointTooLarge, w.limit)
 	}
 	return w.output.Write(data)
 }
