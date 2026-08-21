@@ -3,9 +3,11 @@
 /gitseq-github
 /gitseq-mcp
 /gs
+/node_modules/
 ui/node_modules/
 ui/tsconfig.tsbuildinfo
 
 # Local agent state and temporary work never belong in a public checkout.
 /.claude/
 /.tmp/
+/.vscode/
