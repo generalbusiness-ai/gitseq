@@ -43,3 +43,26 @@ the streamed checkpoint builder and does not execute the changed batch
 `appendEvents` path. Schema decoding and text pooling use `cold_status`, where
 the full verified history is decoded and retained. Setup and profiling are
 outside the measured operation.
+
+## Combined 500k integration
+
+The contract `memory` tier compared base `b87afa1e` with combined code head
+`79741ac2`. It passed all 20 primary samples at depths 100, 1,000, 10,000,
+100,000, and 500,000. The clean harness checkout was also `79741ac2`.
+
+At depth 500,000, the two base samples allocated 33,549,453,056 and
+33,550,331,784 bytes. The two candidate samples allocated 16,310,004,608 and
+16,311,203,184 bytes, a 51.38% reduction in the median. Candidate and base
+produced the same correctness and trusted digest in every sample.
+
+Median latency changed by -0.06%, from 133.14 to 133.06 seconds. Median peak
+RSS changed by +1.40%, from 2,667,421,696 to 2,704,654,336 bytes, and median
+steady memory changed by +0.003%, from 1,365,771,552 to 1,365,817,516 bytes.
+Those remain inside the 5% regression guard. The pinned `benchstat` tool was
+not installed, so the evidence records that comparison as unavailable rather
+than as zero.
+
+The retained run contains exactly the required
+[evidence document](retained/2026-08-21-500k-salvage/evidence.json),
+[raw samples](retained/2026-08-21-500k-salvage/samples.jsonl), and
+[candidate benchmark data](retained/2026-08-21-500k-salvage/candidate.bench).
