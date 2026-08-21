@@ -99,6 +99,14 @@ func main() {
 		err = batchCommand(ctx, os.Args[2:])
 	case "status":
 		err = statusCommand(ctx, os.Args[2:])
+	case "work":
+		err = workCommand(ctx, os.Args[2:])
+	case "artifacts":
+		err = artifactsCommand(ctx, os.Args[2:])
+	case "inspect":
+		err = inspectCommand(ctx, os.Args[2:])
+	case "reviews":
+		err = reviewsCommand(ctx, os.Args[2:])
 	case "provenance":
 		err = provenanceCommand(ctx, os.Args[2:])
 	case "verify":
@@ -120,7 +128,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|batch|status|provenance|verify|checkpoint-clear|serve|attach> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|batch|status|work|artifacts|inspect|reviews|provenance|verify|checkpoint-clear|serve|attach> [flags]")
 	os.Exit(2)
 }
 
@@ -1596,6 +1604,227 @@ func loadSnapshotWithProgress(ctx context.Context, progress io.Writer, load func
 	case <-ctx.Done():
 		return app.Snapshot{}, ctx.Err()
 	}
+}
+
+// The bounded query commands below are CLI reach over selections that already
+// exist. Each calls the same statusview builder the MCP tools and the resident
+// HTTP routes call, so a selector means one thing whichever surface asks, and
+// --json prints the page shape those surfaces already return. Their shared
+// helpers and human renderers live in query.go; the entry points live here
+// because this file is the command surface.
+
+func workCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("work", arguments)
+	as := set.String("as", "", "actor whose work is selected")
+	var lanes values
+	set.Var(&lanes, "lane", "relationship lane; repeat to name several (default all four)")
+	var statuses values
+	set.Var(&statuses, "status", "lifecycle status; repeat to name several")
+	stale := set.String("stale", "", "staleness policy: summary, include, only, or exclude")
+	limit := set.Int("limit", 0, "page size")
+	cursor := set.String("cursor", "", "opaque continuation from a previous page")
+	jsonOutput := set.Bool("json", false, "render JSON")
+	serverURL := set.String("server", "", "resident sequencer URL")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return errors.New("work takes no positional arguments")
+	}
+	// A read still needs to know whose work it is. There is no default actor
+	// here for the same reason there is none on a write: the default was a
+	// name several concurrent instances shared.
+	actorName, err := signingActorFrom("--as", *as)
+	if err != nil {
+		return err
+	}
+	workspace, err := openForQuery(ctx, *repo, *serverURL)
+	if err != nil {
+		return err
+	}
+	fingerprint := workspace.Config.Actors[actorName].Fingerprint
+	if fingerprint == "" {
+		return fmt.Errorf("actor %q is not provisioned in this checkout", actorName)
+	}
+	query := statusview.WorkQuery{Actor: fingerprint, Statuses: statuses, Stale: statusview.StaleFilter(*stale), Limit: *limit, Cursor: *cursor}
+	for _, lane := range lanes {
+		query.Lanes = append(query.Lanes, statusview.WorkLane(lane))
+	}
+	var page statusview.WorkPage
+	answered := false
+	if *serverURL != "" {
+		answered = askResident(ctx, workspace, *serverURL, "/v0/work-query", query, &page, func() statusview.Frontier { return page.Frontier })
+	}
+	if !answered {
+		snapshot, err := snapshotWithProgress(ctx, workspace)
+		if err != nil {
+			return err
+		}
+		page, err = statusview.BuildWorkPage(snapshot, query, *serverURL != "")
+		if err != nil {
+			return err
+		}
+	}
+	if *jsonOutput {
+		return printJSON(page)
+	}
+	_, err = os.Stdout.WriteString(renderWorkPage(page, querySource(*serverURL != "", answered)))
+	return err
+}
+
+func artifactsCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("artifacts", arguments)
+	var paths values
+	set.Var(&paths, "path", "exact artifact path; repeat to name several")
+	state := set.String("state", "", "lifecycle state: live, retired, succeeded, or all")
+	reaches := set.String("reaches", "", "select artifacts whose chain of artifact bases reaches an artifact at this exact path")
+	limit := set.Int("limit", 0, "page size")
+	cursor := set.String("cursor", "", "opaque continuation from a previous page")
+	jsonOutput := set.Bool("json", false, "render JSON")
+	serverURL := set.String("server", "", "resident sequencer URL")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return errors.New("artifacts takes no positional arguments")
+	}
+	workspace, err := openForQuery(ctx, *repo, *serverURL)
+	if err != nil {
+		return err
+	}
+	query := statusview.ArtifactQuery{Paths: paths, State: statusview.ArtifactState(*state), Reaches: *reaches, Limit: *limit, Cursor: *cursor}
+	var page statusview.ArtifactPage
+	answered := false
+	if *serverURL != "" {
+		answered = askResident(ctx, workspace, *serverURL, "/v0/artifact-query", query, &page, func() statusview.Frontier { return page.Frontier })
+	}
+	if !answered {
+		snapshot, err := snapshotWithProgress(ctx, workspace)
+		if err != nil {
+			return err
+		}
+		page, err = statusview.BuildArtifactPage(snapshot, query, *serverURL != "")
+		if err != nil {
+			return err
+		}
+	}
+	if *jsonOutput {
+		return printJSON(page)
+	}
+	_, err = os.Stdout.WriteString(renderArtifactPage(page, querySource(*serverURL != "", answered)))
+	return err
+}
+
+func inspectCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("inspect", arguments)
+	jsonOutput := set.Bool("json", false, "render JSON")
+	serverURL := set.String("server", "", "resident sequencer URL")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 1 {
+		return errors.New("inspect requires one event")
+	}
+	event := set.Arg(0)
+	workspace, err := openForQuery(ctx, *repo, *serverURL)
+	if err != nil {
+		return err
+	}
+	var inspection statusview.ItemInspection
+	answered := false
+	if *serverURL != "" {
+		answered = askResident(ctx, workspace, *serverURL, "/v0/inspect", statusview.InspectRequest{Event: event}, &inspection, func() statusview.Frontier { return inspection.Frontier })
+	}
+	if !answered {
+		snapshot, err := snapshotWithProgress(ctx, workspace)
+		if err != nil {
+			return err
+		}
+		inspection, err = statusview.BuildItemInspection(snapshot, event, *serverURL != "")
+		if err != nil {
+			return err
+		}
+	}
+	if *jsonOutput {
+		return printJSON(inspection)
+	}
+	_, err = os.Stdout.WriteString(renderInspection(inspection, querySource(*serverURL != "", answered)))
+	return err
+}
+
+// reviewsCommand answers the runbook's quiet-wave precondition: no review
+// request still waiting for its first verdict, and no approval still out of a
+// named branch. Both halves are one gate, so they are one command; separating
+// them invites running the irreversible step on half an answer.
+//
+// It prints the whole report and then refuses if the gate is not quiet, so a
+// shell can gate on the exit status without reading the text, and a person
+// reading the text can see exactly what is outstanding.
+func reviewsCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("reviews", arguments)
+	branch := set.String("branch", "main", "branch an approved head must already be an ancestor of")
+	checkout := set.String("checkout", "", "checkout whose Git history answers the ancestry question (default --repo)")
+	limit := set.Int("limit", 0, "how many events to name under each count")
+	jsonOutput := set.Bool("json", false, "render JSON")
+	serverURL := set.String("server", "", "resident sequencer URL")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return errors.New("reviews takes no positional arguments")
+	}
+	if *checkout == "" {
+		*checkout = *repo
+	}
+	workspace, err := openForQuery(ctx, *repo, *serverURL)
+	if err != nil {
+		return err
+	}
+	// There is no resident route for this gate, and inventing one would change
+	// a surface this change is not allowed to change. The resident's existing
+	// complete projection is read instead, and the same builder folds it.
+	snapshot := app.Snapshot{}
+	degraded := false
+	if *serverURL != "" {
+		status, remoteErr := fetchFullStatus(ctx, *serverURL)
+		if remoteErr == nil {
+			remoteErr = validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head)
+		}
+		if remoteErr == nil {
+			snapshot = status.Durable
+		} else {
+			fmt.Fprintf(os.Stderr, "gs: resident status unavailable (%v); performing verified local fallback\n", remoteErr)
+			degraded = true
+		}
+	}
+	if snapshot.Head == "" {
+		snapshot, err = snapshotWithProgress(ctx, workspace)
+		if err != nil {
+			return err
+		}
+	}
+	gate, err := statusview.BuildReviewGate(snapshot, *limit, degraded)
+	if err != nil {
+		return err
+	}
+	landing, err := classifyHeads(ctx, *checkout, *branch, gate.ApprovedHeads)
+	if err != nil {
+		return err
+	}
+	if *jsonOutput {
+		if err := printJSON(struct {
+			statusview.ReviewGate
+			Branch    string   `json:"branch"`
+			OutOf     []string `json:"approved_heads_out_of_branch"`
+			Unknown   []string `json:"approved_heads_unknown_here"`
+			QuietGate bool     `json:"quiet"`
+		}{gate, *branch, landing.out, landing.unknown, gate.Quiet() && len(landing.out) == 0 && len(landing.unknown) == 0}); err != nil {
+			return err
+		}
+	} else if _, err := os.Stdout.WriteString(renderReviewGate(gate, *branch, querySource(*serverURL != "", !degraded && *serverURL != ""), landing)); err != nil {
+		return err
+	}
+	return landing.refusal(gate, *branch)
 }
 
 func provenanceCommand(ctx context.Context, arguments []string) error {

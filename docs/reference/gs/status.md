@@ -6,6 +6,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a1055e9d1a044c420c25d249f91c79988cfcda4d
 ---
 
 # `gs status`
@@ -195,6 +196,25 @@ The complete snapshot: the `genesis`, `head` and `depth`, the whole
 `vocabulary` in force. Use it when you need whole event identifiers,
 which both human views abbreviate for reading.
 
+## Selecting instead of dumping
+
+`--json` prints the complete snapshot, which is the right answer when you
+need whole event identifiers and the wrong one when you need a subset. A
+subset has its own commands, and each of them makes its selection before
+anything is rendered:
+
+| Question | Command |
+|---|---|
+| Which artifacts sit at this exact path, and in which state? | [`gs artifacts --path <p> --state live\|retired\|succeeded\|all`](artifacts.md) |
+| Which artifacts still anchor to that path, however many hops away? | [`gs artifacts --reaches <p>`](artifacts.md) |
+| What does one actor still owe, or wait on? | [`gs work --as <actor>`](work.md) |
+| What is this one event, and what does it rest on? | [`gs inspect <event>`](inspect.md) |
+| Is the review queue quiet enough to run an irreversible step? | [`gs reviews --branch main`](reviews.md) |
+
+Each answers in a bounded page and says what it left out, and each prints
+the same JSON shape the matching MCP tool returns, so a caller learns one
+shape rather than one per surface.
+
 ## `--server`
 
 `--server http://127.0.0.1:7777` asks a resident service for the answer
@@ -236,5 +256,6 @@ for one command or process without changing the persistent selectors.
 
 ## See also
 
+- [`gs work`](work.md), [`gs artifacts`](artifacts.md), [`gs inspect`](inspect.md), [`gs reviews`](reviews.md)
 - [`gs provenance`](provenance.md), [`gs verify`](verify.md)
 - [Staleness](../../concepts/staleness.md)

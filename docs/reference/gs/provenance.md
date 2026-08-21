@@ -56,6 +56,18 @@ This works in a fresh clone with no service and no local history beyond
 the fetched sequence. It is the command an auditor uses to ask *what is
 this claim standing on?*
 
+## One event, every hop
+
+The walk is complete and it is per event: it starts where you point it and
+follows every basis it can resolve. It does not filter by kind, so an
+artifact's chain and a request's chain are shown the same way.
+
+The population-wide version of the same question — *which artifacts still
+anchor to this path, however many hops away* — is
+[`gs artifacts --reaches <path>`](artifacts.md). It follows artifact
+provenance only, and answers about every artifact in the log at once
+rather than about one event.
+
 ## What it does not tell you
 
 It reports structure, not judgement. A basis appearing here does not mean
@@ -70,4 +82,5 @@ silently absent. See
 ## See also
 
 - [`gs status`](status.md), [`gs verify`](verify.md)
+- [`gs artifacts`](artifacts.md), [`gs inspect`](inspect.md)
 - [Publish and audit](../../how-to/publish-and-audit.md)
