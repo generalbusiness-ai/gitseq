@@ -59,7 +59,7 @@ func (s Store) OpenAuditBatch(ctx context.Context, objectFormat string) (*AuditB
 		observer = observe.FromContext(ctx)
 	}
 	done := observe.Begin(ctx, observer, observe.OperationGit, observe.PathScan)
-	cmd := exec.CommandContext(ctx, "git", "--git-dir", s.Repo, "cat-file", "--batch")
+	cmd := exec.CommandContext(ctx, "git", storeGitArguments(s.Repo, "cat-file", "--batch")...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		if done != nil {
