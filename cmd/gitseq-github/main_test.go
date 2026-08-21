@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/connector/github"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
@@ -371,5 +375,86 @@ func TestTheCommandAdmitsOnlyEffectiveClausesCitingTheSelectedCharter(t *testing
 	// A run naming no charter reaches GitHub for nothing at all.
 	if empty := github.ClausesFrom(clauseSources(view), authors(view), ""); len(empty.Clauses) != 0 {
 		t.Fatalf("clauses were admitted with no charter selected: %+v", empty)
+	}
+}
+
+func TestObservedStatementsPreserveAuthorshipForTheCorrespondenceFold(t *testing.T) {
+	const connector = "connector-fingerprint"
+	forged := github.ObserveIssue(github.Issue{
+		Owner: "generalbusiness-ai", Repo: "gitseq", Number: 7,
+		Title: "an issue", Author: "someone", URL: "https://example.invalid/7",
+	})
+	genuine := github.ObserveIssue(github.Issue{
+		Owner: "generalbusiness-ai", Repo: "gitseq", Number: 8,
+		Title: "another issue", Author: "someone", URL: "https://example.invalid/8",
+	})
+	projection := workroom.Projection{Statements: []workroom.Statement{
+		{
+			Event: "git:sha1:g#git:sha1:forged", Actor: "ordinary-participant",
+			Body: map[string]string{"source": "github", "external_id": forged.ExternalID},
+		},
+		{
+			Event: "git:sha1:g#git:sha1:genuine", Actor: connector,
+			Body: map[string]string{"source": "github", "external_id": genuine.ExternalID},
+		},
+	}}
+
+	seen := github.Fold(observedStatements(projection), connector)
+	fresh := github.Unobserved([]github.Observation{forged, genuine}, seen)
+	if len(fresh) != 1 || fresh[0].ExternalID != forged.ExternalID {
+		t.Fatalf("command adapter lost authorship at the fold boundary: %+v", fresh)
+	}
+}
+
+func TestDryRunProposalDoesNotRequireLocalConnectorCustody(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, seed, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := func(act app.Act) workroom.Record {
+		t.Helper()
+		submission, err := workspace.Act(ctx, "human", act)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return submission.Record
+	}
+	charter := state(app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPropose, Text: "connector charter",
+		Body: map[string]string{
+			"connector": "github", "owner": "generalbusiness-ai", "repo": "gitseq",
+			"actor": "github-connector", "operations": "propose",
+		},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "charter",
+	})
+	state(app.Act{Verb: app.VerbRatify, Target: charter.ID, IdempotencyKey: "ratify-charter"})
+	request := state(app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "fix issue",
+		Body: map[string]string{
+			"to": workspace.Config.Actors["human"].Fingerprint, "conditions": "exact head",
+		},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "request",
+	})
+	const commit = "1111111111111111111111111111111111111111"
+	artifact := state(app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "candidate",
+		Body:    map[string]string{"path": "internal/connector", "commit": commit},
+		RestsOn: []string{request.ID}, IdempotencyKey: "artifact",
+	})
+
+	err = run(ctx, []string{
+		"--repo", repo, "--as", "github-connector", "--charter", charter.ID,
+		"--owner", "generalbusiness-ai", "--repo-name", "gitseq",
+		"--propose", "7", "--branch", "request/fix", "--base", "main",
+		"--commit", commit, "--request", request.ID, "--artifact", artifact.ID,
+		"--title", "Fix issue", "--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("dry-run proposal required local connector custody: %v", err)
 	}
 }

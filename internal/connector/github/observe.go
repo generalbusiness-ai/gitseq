@@ -111,16 +111,20 @@ func ObserveIssue(issue Issue) Observation {
 // that observed it.
 type Correspondence map[string]string
 
-// Fold builds the correspondence from durable statement bodies. The caller
-// passes what the projection already holds; this package does no I/O.
+// Fold builds the correspondence from statements authored by connectorActor.
+// The caller passes what the projection already holds; this package does no
+// I/O, and body fields alone never confer connector authority.
 //
 // A connector that needs private state to be correct has a design problem. This
 // fold is why one is not needed here: restart the connector with an empty disk
 // and it reconstructs exactly what it knew, because what it knew was always in
 // the log.
-func Fold(statements []Statement) Correspondence {
+func Fold(statements []Statement, connectorActor string) Correspondence {
 	seen := make(Correspondence)
 	for _, statement := range statements {
+		if statement.Actor != connectorActor {
+			continue
+		}
 		if statement.Body["source"] != "github" {
 			continue
 		}
@@ -141,6 +145,7 @@ func Fold(statements []Statement) Correspondence {
 // Statement is the shape Fold needs from a projected durable statement.
 type Statement struct {
 	Event string
+	Actor string
 	Body  map[string]string
 }
 

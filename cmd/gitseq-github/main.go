@@ -101,6 +101,11 @@ func run(ctx context.Context, arguments []string) error {
 		})
 	}
 
+	connectorActor, err := workspace.ResolveActorAddress(actorName)
+	if err != nil {
+		return err
+	}
+
 	reading := github.ClausesFrom(clauseSources(snapshot.Projection), authors(snapshot.Projection), *charter)
 	clauses := reading.Clauses
 	if len(clauses) == 0 {
@@ -137,7 +142,7 @@ func run(ctx context.Context, arguments []string) error {
 		fmt.Printf("clause names %s/%s#%d, which GitHub did not return\n", *owner, *name, number)
 	}
 
-	seen := github.Fold(observedStatements(snapshot.Projection))
+	seen := github.Fold(observedStatements(snapshot.Projection), connectorActor.Fingerprint)
 	fresh := github.Unobserved(admitted, seen)
 	if len(fresh) == 0 {
 		fmt.Printf("%d admitted by %d clauses, nothing new\n", len(admitted), len(clauses))
@@ -422,7 +427,9 @@ func clauseSources(projection workroom.Projection) []github.ClauseSource {
 func observedStatements(projection workroom.Projection) []github.Statement {
 	statements := make([]github.Statement, 0, len(projection.Statements))
 	for _, statement := range projection.Statements {
-		statements = append(statements, github.Statement{Event: statement.Event, Body: statement.Body})
+		statements = append(statements, github.Statement{
+			Event: statement.Event, Actor: statement.Actor, Body: statement.Body,
+		})
 	}
 	return statements
 }
