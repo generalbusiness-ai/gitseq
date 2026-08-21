@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -60,6 +61,53 @@ func TestValidateLoopbackListenRejectsMixedResolution(t *testing.T) {
 	}
 }
 
+func TestResidentHTTPServerBoundsSlowRequestBodies(t *testing.T) {
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if _, err := io.ReadAll(request.Body); err != nil {
+			http.Error(writer, "request body deadline exceeded", http.StatusRequestTimeout)
+			return
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	})
+	server := residentHTTPServer(handler)
+	if server.ReadHeaderTimeout != residentReadHeaderTimeout || server.ReadTimeout != residentReadTimeout ||
+		server.WriteTimeout != residentWriteTimeout || server.IdleTimeout != residentIdleTimeout ||
+		server.MaxHeaderBytes != residentMaxHeaderBytes {
+		t.Fatalf("resident HTTP limits = %+v", server)
+	}
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.ReadTimeout = 50 * time.Millisecond
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		_ = server.Close()
+		<-serveDone
+	})
+
+	connection, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if _, err := fmt.Fprintf(connection, "POST / HTTP/1.1\r\nHost: %s\r\nContent-Length: 100\r\n\r\n{", listener.Addr()); err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.ReadResponse(bufio.NewReader(connection), &http.Request{Method: http.MethodPost})
+	if err != nil {
+		t.Fatalf("slow request did not terminate predictably: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusRequestTimeout {
+		t.Fatalf("slow request returned %d", response.StatusCode)
+	}
+}
 func TestProfilerIsDisabledByDefaultAndLoopbackOnly(t *testing.T) {
 	stop, err := serveProfiler(context.Background(), "")
 	if err != nil {

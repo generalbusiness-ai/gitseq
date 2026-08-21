@@ -1714,7 +1714,7 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	}
 	defer withdraw()
 	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n%s\n", listener.Addr(), service.TrustedProcessPosture)
-	httpServer := &http.Server{Handler: telemetryRuntime.Handler(service.TrustedHostHandler(server.Handler())), ReadHeaderTimeout: 5 * time.Second}
+	httpServer := residentHTTPServer(telemetryRuntime.Handler(service.TrustedHostHandler(server.Handler())))
 	// The watcher retires with the command it serves, so a serving call that
 	// ends some other way does not leave a goroutine holding the server.
 	finished := make(chan struct{})
@@ -1740,6 +1740,25 @@ func serveCommand(ctx context.Context, arguments []string) error {
 // healthy resident returns it immediately; a resident that cannot answer this
 // quickly is ambiguous, and ambiguity leaves the claim alone.
 const residentProbeTimeout = 2 * time.Second
+
+const (
+	residentReadHeaderTimeout = 5 * time.Second
+	residentReadTimeout       = 10 * time.Second
+	residentWriteTimeout      = 40 * time.Second
+	residentIdleTimeout       = 60 * time.Second
+	residentMaxHeaderBytes    = 64 << 10
+)
+
+func residentHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: residentReadHeaderTimeout,
+		ReadTimeout:       residentReadTimeout,
+		WriteTimeout:      residentWriteTimeout,
+		IdleTimeout:       residentIdleTimeout,
+		MaxHeaderBytes:    residentMaxHeaderBytes,
+	}
+}
 
 // claimResidency takes the repository's one resident claim before anything is
 // served. The probe that decides whether an existing claim still has a service
@@ -1772,7 +1791,7 @@ func serveProfiler(ctx context.Context, address string) (func(), error) {
 	mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("POST /debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
-	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	server := residentHTTPServer(mux)
 	go func() {
 		<-ctx.Done()
 		_ = server.Close()

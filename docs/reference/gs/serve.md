@@ -144,6 +144,16 @@ actor keys directly or invoke local `gs` commands. Such a process can obtain
 authentic actor signatures. The fold still judges the resulting acts and may
 rule them ineffective, but cryptography cannot recover the operator's intent.
 
+## Connection limits
+
+Loopback does not make a stalled client harmless. Both the resident listener
+and the optional profiler allow five seconds for request headers, ten seconds
+for the complete request, forty seconds for a response, and sixty seconds for
+an idle connection. Request headers are capped at 64 KiB. Resident JSON
+decoding also stops after 2 MiB. The forty-second response window includes the
+resident's bounded long poll, whose accepted timeout is at most thirty
+seconds.
+
 ## One per repository
 
 Exactly one runs, and serving enforces it. Two services on different ports
