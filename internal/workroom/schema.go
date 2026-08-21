@@ -3,7 +3,6 @@
 package workroom
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,25 +77,55 @@ func Decode(schema string, data []byte) (any, error) {
 	default:
 		return nil, fmt.Errorf("unsupported workroom schema %q", schema)
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(value); err != nil {
+	// The payload is already held in memory by the verified event. Unmarshal it
+	// directly instead of constructing a Decoder, whose refill buffer copies
+	// every payload and makes cold projection memory scale with all bytes read.
+	// Unknown fields and alternate encodings still fail below: canonical
+	// re-encoding cannot equal input that contains anything the typed value did
+	// not consume. Unmarshal itself rejects trailing JSON values.
+	if err := json.Unmarshal(data, value); err != nil {
 		return nil, err
-	}
-	if decoder.More() {
-		return nil, errors.New("multiple JSON values")
 	}
 	if err := validatePayload(value); err != nil {
 		return nil, err
 	}
-	canonical, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	if !bytes.Equal(canonical, data) {
+	if !canonicalJSONEqual(value, data) {
 		return nil, errors.New("workroom payload is not canonical JSON")
 	}
 	return value, nil
+}
+
+// canonicalJSONEqual compares encoding/json's canonical struct and map output
+// directly with the verified payload. Encoder writes one trailing newline;
+// accepting exactly that extra byte avoids Marshal's full-size output copy
+// while preserving the existing byte-for-byte canonicality requirement.
+func canonicalJSONEqual(value any, data []byte) bool {
+	comparison := canonicalJSONComparison{want: data, equal: true}
+	if err := json.NewEncoder(&comparison).Encode(value); err != nil {
+		return false
+	}
+	return comparison.equal && comparison.offset == len(data)+1
+}
+
+type canonicalJSONComparison struct {
+	want   []byte
+	offset int
+	equal  bool
+}
+
+func (c *canonicalJSONComparison) Write(content []byte) (int, error) {
+	for _, value := range content {
+		switch {
+		case c.offset < len(c.want):
+			c.equal = c.equal && value == c.want[c.offset]
+		case c.offset == len(c.want):
+			c.equal = c.equal && value == '\n'
+		default:
+			c.equal = false
+		}
+		c.offset++
+	}
+	return len(content), nil
 }
 
 func validatePayload(value any) error {
