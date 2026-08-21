@@ -186,8 +186,8 @@ on the artifact it names.
    artifact at a path has no predecessor and needs none retired. The
    projection marks what you skip: an artifact citing nothing reads
    *unable to flare*, and one whose predecessor at the same path is
-   still live reads *succession not recorded*. A flare means
-   re-check this, not this is wrong. The narrower *describes a
+   still live reads *succession not recorded*, with the count. A
+   flare means re-check this, not this is wrong. The narrower *describes a
    superseded world* flag follows artifact-to-artifact provenance;
    requests, promises, reports and other reasoning edges carry ordinary
    staleness but do not pass that flag onward. `gs merge` records ordinary
@@ -200,37 +200,35 @@ on the artifact it names.
    exploratory dead ends ephemeral. Promote a material or session-surviving
    blockage as an `assert` resting on the promise, create a child request when
    repair work is needed, and supersede the promise only when withdrawing it.
-   still live reads *succession not recorded*, with the count. A
-   flare means re-check this, not this is wrong.
-   A path is the wire staleness travels along, not a label, so name
-   the paths you actually changed and no more. Paths match as exact
-   strings, with no normalising, prefixes or globs: an artifact at
-   `internal/workroom` never reaches one at
-   `internal/workroom/fold.go`, so reuse the exact string the area
-   already uses rather than renaming it, and never join paths into
-   one — `AGENTS.md,SKILL.md` is a string no predecessor can equal.
-   Retiring and publishing are separate decisions. Retire every live
-   artifact covering the change; publish a successor only at the path
-   the area keeps. Where no live artifact covers the change there is
-   no predecessor to retire and the successor rule cannot choose: this
-   is a first artifact, so pick the granularity a reader would cite, a
-   package directory or a document, and keep that string stable,
-   because the next merge in that area must match it. Where a directory
-   and something inside it are both live over one changed file, the
-   wider path wins: the successor goes there and the narrower artifact
-   is retired by a bare `supersede` naming the surviving path, so the
-   area settles on one granularity.
-   A renamed or deleted file's old path is retired the same way and
-   never published at again; a rename opens a first artifact at the
-   new path, a deletion opens nothing. A bare `supersede` is admitted
-   only from the target's own author or an actor holding `ratifier`,
-   so ask that actor when the artifact to retire is not yours.
-   One artifact at `.` claims the whole repository: the next change
-   anywhere retires it, and everything anchored to it flares however
-   unrelated that change was. Nothing stands in for a
-   whole-repository pointer, and nothing needs to — which commit a
-   branch carries is git's question, and the live artifact at each
-   path already names the commit that last changed that area.
+10. **A path is a wire, not a label.** Staleness travels along it, so name
+    the paths you actually changed and no more. Paths match as exact
+    strings, with no normalising, prefixes or globs: an artifact at
+    `internal/workroom` never reaches one at
+    `internal/workroom/fold.go`, so reuse the exact string the area
+    already uses rather than renaming it, and never join paths into
+    one — `AGENTS.md,SKILL.md` is a string no predecessor can equal.
+    Retiring and publishing are separate decisions. Retire every live
+    artifact covering the change; publish a successor only at the path
+    the area keeps. Where no live artifact covers the change there is
+    no predecessor to retire and the successor rule cannot choose: this
+    is a first artifact, so pick the granularity a reader would cite, a
+    package directory or a document, and keep that string stable,
+    because the next merge in that area must match it. Where a directory
+    and something inside it are both live over one changed file, the
+    wider path wins: the successor goes there and the narrower artifact
+    is retired by a bare `supersede` naming the surviving path, so the
+    area settles on one granularity.
+    A renamed or deleted file's old path is retired the same way and
+    never published at again; a rename opens a first artifact at the
+    new path, a deletion opens nothing. A bare `supersede` is admitted
+    only from the target's own author or an actor holding `ratifier`,
+    so ask that actor when the artifact to retire is not yours.
+    One artifact at `.` claims the whole repository: the next change
+    anywhere retires it, and everything anchored to it flares however
+    unrelated that change was. Nothing stands in for a
+    whole-repository pointer, and nothing needs to — which commit a
+    branch carries is git's question, and the live artifact at each
+    path already names the commit that last changed that area.
 
 ## The repo underneath
 
