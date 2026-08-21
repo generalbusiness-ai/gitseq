@@ -1,10 +1,15 @@
 package github
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -61,6 +66,58 @@ func TestIssuesFollowPagination(t *testing.T) {
 	}
 	if len(issues) != 2 {
 		t.Fatalf("got %d issues across pages, want 2", len(issues))
+	}
+}
+
+func TestIssueListingStopsAtThePageLimitAndLogsWhatWasDropped(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		fmt.Fprintf(w, `[{"number":%s,"pull_request":{"url":"p"}}]`, r.URL.Query().Get("page"))
+	}))
+	defer server.Close()
+
+	var logs bytes.Buffer
+	client := &Client{BaseURL: server.URL, HTTP: server.Client(), Logger: log.New(&logs, "", 0)}
+	issues, err := client.List(context.Background(), "o", "r", (Clause{}).Query())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != maxIssuePages || len(issues) != 0 {
+		t.Fatalf("requests=%d issues=%d, want %d and 0", requests, len(issues), maxIssuePages)
+	}
+	if got := logs.String(); !strings.Contains(got, "after 100 pages and 100 records (0 issues)") || !strings.Contains(got, "dropped all later pages") {
+		t.Fatalf("truncation log = %q", got)
+	}
+}
+
+func TestIssueListingStopsAtTheRecordLimitAndLogsThePartialPage(t *testing.T) {
+	batch := make([]apiIssue, maxIssueRecords+1)
+	for index := range batch {
+		batch[index].Number = index + 1
+	}
+	encoded, err := json.Marshal(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_, _ = w.Write(encoded)
+	}))
+	defer server.Close()
+
+	var logs bytes.Buffer
+	client := &Client{BaseURL: server.URL, HTTP: server.Client(), Logger: log.New(&logs, "", 0)}
+	issues, err := client.List(context.Background(), "o", "r", (Clause{}).Query())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || len(issues) != maxIssueRecords {
+		t.Fatalf("requests=%d issues=%d, want 1 and %d", requests, len(issues), maxIssueRecords)
+	}
+	if got := logs.String(); !strings.Contains(got, "dropped 1 records from that page and all later pages") {
+		t.Fatalf("truncation log = %q", got)
 	}
 }
 
@@ -122,6 +179,106 @@ func TestTokenIsSentWhenPresent(t *testing.T) {
 	}
 	if auth != "" {
 		t.Errorf("Authorization was %q with no token, want none", auth)
+	}
+}
+
+func TestRedirectsAreRefusedWithoutForwardingTheToken(t *testing.T) {
+	tests := []struct {
+		name   string
+		source func(http.Handler) (*httptest.Server, *http.Client)
+		target func(*httptest.Server) string
+	}{
+		{
+			name: "same-host scheme downgrade",
+			source: func(handler http.Handler) (*httptest.Server, *http.Client) {
+				server := httptest.NewTLSServer(handler)
+				return server, server.Client()
+			},
+			target: func(server *httptest.Server) string { return server.URL },
+		},
+		{
+			name: "unrelated hostname",
+			source: func(handler http.Handler) (*httptest.Server, *http.Client) {
+				server := httptest.NewServer(handler)
+				return server, server.Client()
+			},
+			target: func(server *httptest.Server) string {
+				parsed, err := url.Parse(server.URL)
+				if err != nil {
+					t.Fatal(err)
+				}
+				parsed.Host = "localhost:" + parsed.Port()
+				return parsed.String()
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var targetRequests int
+			target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				targetRequests++
+				if authorization := r.Header.Get("Authorization"); authorization != "" {
+					t.Errorf("redirect target received Authorization %q", authorization)
+				}
+				fmt.Fprint(w, `[]`)
+			}))
+			defer target.Close()
+
+			var sourceAuthorization string
+			source, httpClient := test.source(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				sourceAuthorization = r.Header.Get("Authorization")
+				http.Redirect(w, r, test.target(target), http.StatusFound)
+			}))
+			defer source.Close()
+			// Even an injected client that was configured to follow redirects must
+			// not weaken the connector's transport boundary.
+			httpClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return nil }
+			client := &Client{BaseURL: source.URL, HTTP: httpClient, Token: "secret"}
+			if _, err := client.List(context.Background(), "o", "r", (Clause{}).Query()); err == nil || !strings.Contains(err.Error(), errRedirectRefused.Error()) {
+				t.Fatalf("redirect response error = %v", err)
+			}
+			if sourceAuthorization != "Bearer secret" {
+				t.Fatalf("source Authorization = %q", sourceAuthorization)
+			}
+			if targetRequests != 0 {
+				t.Fatalf("redirect target received %d requests", targetRequests)
+			}
+		})
+	}
+}
+
+func TestResponseBodyLimitAppliesAfterDecompression(t *testing.T) {
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	if _, err := writer.Write(bytes.Repeat([]byte("x"), maxResponseBodyBytes+1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Encoding", "gzip")
+		_, _ = w.Write(compressed.Bytes())
+	}))
+	defer server.Close()
+
+	client := &Client{BaseURL: server.URL, HTTP: server.Client()}
+	if _, _, err := client.Number(context.Background(), "o", "r", 1); err == nil || !strings.Contains(err.Error(), "response body exceeds") {
+		t.Fatalf("oversized decompressed response error = %v", err)
+	}
+}
+
+func TestPullRequestResponseBodyIsBounded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write(bytes.Repeat([]byte("x"), maxResponseBodyBytes+1))
+	}))
+	defer server.Close()
+
+	client := &Client{BaseURL: server.URL, HTTP: server.Client()}
+	_, err := client.Open(context.Background(), PullRequest{Owner: "o", Repo: "r"})
+	if err == nil || !strings.Contains(err.Error(), "response body exceeds") {
+		t.Fatalf("oversized pull response error = %v", err)
 	}
 }
 
