@@ -19,7 +19,15 @@ func TestResidentFolderSharesRepeatedDurableStrings(t *testing.T) {
 	}
 	records[0].ID = strings.Clone("seed")
 	records[1].RestsOn[0] = strings.Clone("seed")
-	folder := NewFolder(records)
+	folder := NewFolder(nil)
+	folder.Append(records[0])
+	for index := range records[0].Payload {
+		records[0].Payload[index] ^= 0xff
+	}
+	folder.Append(records[1])
+	for index := range records[1].Payload {
+		records[1].Payload[index] ^= 0xff
+	}
 	first := folder.state.records[0].body.(*State)
 	second := folder.state.records[1].body.(*State)
 	if unsafe.StringData(first.Text) != unsafe.StringData(second.Text) {

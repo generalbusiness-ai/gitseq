@@ -66,10 +66,23 @@ func Encode(value any) ([]byte, error) {
 }
 
 func Decode(schema string, data []byte) (any, error) {
+	return decode(schema, data, nil)
+}
+
+type decodeStringPool interface {
+	intern(string) string
+	internBytes([]byte) string
+}
+
+func decode(schema string, data []byte, pool decodeStringPool) (any, error) {
 	var value any
 	switch schema {
 	case SchemaStateLegacy, SchemaStateV1, SchemaState:
-		value = &State{}
+		if pool == nil {
+			value = &State{}
+		} else {
+			value = &pooledStatePayload{Text: pooledJSONText{pool: pool}}
+		}
 	case SchemaRatifyLegacy, SchemaRatify:
 		value = &Ratify{}
 	case SchemaSupersede:
@@ -86,6 +99,9 @@ func Decode(schema string, data []byte) (any, error) {
 	if err := json.Unmarshal(data, value); err != nil {
 		return nil, err
 	}
+	if pooled, ok := value.(*pooledStatePayload); ok {
+		value = &State{Kind: pooled.Kind, Text: pooled.Text.value, Body: pooled.Body}
+	}
 	if err := validatePayload(value); err != nil {
 		return nil, err
 	}
@@ -93,6 +109,40 @@ func Decode(schema string, data []byte) (any, error) {
 		return nil, errors.New("workroom payload is not canonical JSON")
 	}
 	return value, nil
+}
+
+type pooledStatePayload struct {
+	Kind Kind              `json:"kind"`
+	Text pooledJSONText    `json:"text"`
+	Body map[string]string `json:"body,omitempty"`
+}
+
+type pooledJSONText struct {
+	pool  decodeStringPool
+	value string
+}
+
+func (p *pooledJSONText) UnmarshalJSON(data []byte) error {
+	if len(data) >= 2 && data[0] == '"' && data[len(data)-1] == '"' {
+		content := data[1 : len(data)-1]
+		unescaped := true
+		for _, value := range content {
+			if value == '\\' {
+				unescaped = false
+				break
+			}
+		}
+		if unescaped {
+			p.value = p.pool.internBytes(content)
+			return nil
+		}
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	p.value = p.pool.intern(value)
+	return nil
 }
 
 // canonicalJSONEqual compares encoding/json's canonical struct and map output
