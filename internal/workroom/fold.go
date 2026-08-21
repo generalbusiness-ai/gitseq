@@ -346,7 +346,8 @@ func (f *foldState) append(index int, record Record) {
 		f.addDecision(record, nil, index, decision)
 		return
 	}
-	body, err := decode(record.Schema, record.Payload, f)
+	pool := stagedStringPool{committed: f.strings}
+	body, err := decode(record.Schema, record.Payload, &pool)
 	// The decoded body is the fold input retained below. Payload bytes and
 	// attachments are transport material and must not stay pinned for the
 	// resident process lifetime.
@@ -357,6 +358,7 @@ func (f *foldState) append(index int, record Record) {
 		f.addDecision(record, nil, index, decision)
 		return
 	}
+	pool.commit()
 	f.internBody(body)
 	parsed := &parsedRecord{record: record, body: body, index: index}
 	if len(f.transitions) != 0 {
@@ -445,16 +447,54 @@ func (f *foldState) intern(value string) string {
 	return value
 }
 
-func (f *foldState) internBytes(value []byte) string {
+// stagedStringPool lets decoding reuse already-owned strings without changing
+// the resident pool before validation and canonical comparison succeed.
+// Rejected payloads drop the stage and cannot retain their text for the
+// lifetime of the Folder.
+type stagedStringPool struct {
+	committed map[string]string
+	pending   map[string]string
+}
+
+func (p *stagedStringPool) intern(value string) string {
+	if value == "" {
+		return ""
+	}
+	if existing, ok := p.committed[value]; ok {
+		return existing
+	}
+	if existing, ok := p.pending[value]; ok {
+		return existing
+	}
+	if p.pending == nil {
+		p.pending = make(map[string]string)
+	}
+	p.pending[value] = value
+	return value
+}
+
+func (p *stagedStringPool) internBytes(value []byte) string {
 	if len(value) == 0 {
 		return ""
 	}
-	if existing, ok := f.strings[string(value)]; ok {
+	if existing, ok := p.committed[string(value)]; ok {
+		return existing
+	}
+	if existing, ok := p.pending[string(value)]; ok {
 		return existing
 	}
 	owned := string(value)
-	f.strings[owned] = owned
+	if p.pending == nil {
+		p.pending = make(map[string]string)
+	}
+	p.pending[owned] = owned
 	return owned
+}
+
+func (p *stagedStringPool) commit() {
+	for key, value := range p.pending {
+		p.committed[key] = value
+	}
 }
 
 func (f *foldState) internBody(body any) {

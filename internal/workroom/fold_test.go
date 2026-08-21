@@ -44,6 +44,58 @@ func TestResidentFolderSharesRepeatedDurableStrings(t *testing.T) {
 	}
 }
 
+func TestRejectedPayloadDoesNotPolluteResidentStringPool(t *testing.T) {
+	unique := strings.Repeat("rejected durable text ", 512)
+	cases := []struct {
+		name     string
+		payload  string
+		rejected []string
+	}{
+		{
+			name:     "unknown field",
+			payload:  fmt.Sprintf(`{"kind":"assert","text":%q,"unknown":"x"}`, unique),
+			rejected: []string{unique},
+		},
+		{
+			name:    "duplicate text",
+			payload: fmt.Sprintf(`{"kind":"assert","text":%q,"text":%q}`, unique+" first", unique+" second"),
+			rejected: []string{
+				unique + " first",
+				unique + " second",
+			},
+		},
+		{
+			name:     "noncanonical escape",
+			payload:  `{"kind":"assert","text":"\u007a rejected durable text"}`,
+			rejected: []string{"z rejected durable text"},
+		},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			folder := NewFolder([]Record{event(t, "seed", operator, SchemaState, State{Kind: KindAssert, Text: "seed"})})
+			before := len(folder.state.strings)
+			folder.Append(Record{
+				ID:      "rejected",
+				Actor:   operator,
+				Schema:  SchemaState,
+				Payload: []byte(test.payload),
+			})
+			decision, ok := folder.Projection().Decision("rejected")
+			if !ok || decision.Verdict != Ineffective {
+				t.Fatalf("rejected payload decision = %+v, %v", decision, ok)
+			}
+			if got := len(folder.state.strings); got != before+1 {
+				t.Fatalf("resident string count = %d, want %d (only the event ID)", got, before+1)
+			}
+			for _, value := range test.rejected {
+				if _, retained := folder.state.strings[value]; retained {
+					t.Fatalf("rejected payload retained %q", value)
+				}
+			}
+		})
+	}
+}
+
 const (
 	operator = "actor:operator"
 	agent    = "actor:agent"
