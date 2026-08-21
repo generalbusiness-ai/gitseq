@@ -2652,6 +2652,63 @@ func TestOversizedCheckpointDoesNotRetryOnEveryAppend(t *testing.T) {
 	}
 }
 
+func TestOversizedCheckpointRetriesOnceAfterFullRebuild(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointEnabled: true})
+	first, err := submitter.Submit(f.ctx, f.request(t, private, "before-rebuild", []byte("before"), nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	submitter.cache.recordCheckpointFailure(errors.Join(errors.New("encode compact checkpoint"), errCheckpointTooLarge))
+	writes, failures := submitter.cache.checkpointWrites, submitter.cache.checkpointFailures
+	if !submitter.cache.checkpointOversized || submitter.cache.checkpointEvents.count != 0 {
+		t.Fatalf("terminal checkpoint failure was not recorded: %+v", submitter.cache)
+	}
+
+	second, err := submitter.Submit(f.ctx, f.request(t, private, "discarded", []byte("discarded"), nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpointCommit := mustHead(t, f.store, CheckpointRef(f.genesis))
+	if err := f.store.UpdateRef(f.ctx, CheckpointRef(f.genesis), f.genesis, checkpointCommit); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), first.Head, second.Head); err != nil {
+		t.Fatal(err)
+	}
+
+	afterRebuild := f.request(t, private, "after-rebuild", []byte("after"), nil)
+	result, err := submitter.Submit(f.ctx, afterRebuild)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if submitter.cache.checkpointOversized {
+		t.Fatal("full verified rebuild did not clear the oversized checkpoint latch")
+	}
+	if submitter.cache.checkpointWrites != writes+1 || submitter.cache.checkpointFailures != failures {
+		t.Fatalf("rebuild checkpoint attempts: writes=%d->%d failures=%d->%d", writes, submitter.cache.checkpointWrites, failures, submitter.cache.checkpointFailures)
+	}
+	if head := mustHead(t, f.store, Ref(f.genesis)); head != result.Head || head == first.Head {
+		t.Fatalf("rebuilt ref head = %s, result=%s prior=%s", head, result.Head, first.Head)
+	}
+	loaded, err := NewReader(f.store, CheckpointOptions{Enabled: true}).Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Checkpoint || loaded.Verification.Head != result.Head {
+		t.Fatalf("rebuilt checkpoint load = %+v, want head %s", loaded, result.Head)
+	}
+
+	writes, failures = submitter.cache.checkpointWrites, submitter.cache.checkpointFailures
+	if replay, err := submitter.Submit(f.ctx, afterRebuild); err != nil || !replay.Replay {
+		t.Fatalf("post-rebuild cache replay = %+v, %v", replay, err)
+	}
+	if submitter.cache.checkpointWrites != writes || submitter.cache.checkpointFailures != failures {
+		t.Fatalf("cache hit retried checkpoint: writes=%d->%d failures=%d->%d", writes, submitter.cache.checkpointWrites, failures, submitter.cache.checkpointFailures)
+	}
+}
+
 func TestReaderAcceptsLegacyCheckpointAfterCompactUpgrade(t *testing.T) {
 	f, _, _, stored := checkpointState(t, 3)
 	publishStoredCheckpoint(t, f, stored)
