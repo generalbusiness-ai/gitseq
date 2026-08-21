@@ -211,10 +211,15 @@ on the artifact it names.
    one — `AGENTS.md,SKILL.md` is a string no predecessor can equal.
    Retiring and publishing are separate decisions. Retire every live
    artifact covering the change; publish a successor only at the path
-   the area keeps. Where a directory and something inside it are both
-   live over one changed file, the wider path wins: the successor goes
-   there and the narrower artifact is retired by a bare `supersede`
-   naming the surviving path, so the area settles on one granularity.
+   the area keeps. Where no live artifact covers the change there is
+   no predecessor to retire and the successor rule cannot choose: this
+   is a first artifact, so pick the granularity a reader would cite, a
+   package directory or a document, and keep that string stable,
+   because the next merge in that area must match it. Where a directory
+   and something inside it are both live over one changed file, the
+   wider path wins: the successor goes there and the narrower artifact
+   is retired by a bare `supersede` naming the surviving path, so the
+   area settles on one granularity.
    A renamed or deleted file's old path is retired the same way and
    never published at again; a rename opens a first artifact at the
    new path, a deletion opens nothing. A bare `supersede` is admitted
