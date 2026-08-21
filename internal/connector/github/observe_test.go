@@ -63,9 +63,9 @@ func TestObservationCarriesThePrincipalAsData(t *testing.T) {
 // restart with an empty disk reconstructs exactly what it knew.
 func TestCorrespondenceFoldsFromDurableActs(t *testing.T) {
 	seen := Fold([]Statement{
-		{Event: "git:sha1:g#git:sha1:aaa", Actor: connectorActor, Body: map[string]string{"source": "github", "external_id": "generalbusiness-ai/gitseq#7"}},
-		{Event: "git:sha1:g#git:sha1:bbb", Actor: connectorActor, Body: map[string]string{"source": "slack", "external_id": "C123/456"}},
-		{Event: "git:sha1:g#git:sha1:ccc", Actor: connectorActor, Body: map[string]string{"text": "an ordinary act with no source"}},
+		{Event: "git:sha1:g#git:sha1:aaa", Actor: connectorActor, Effective: true, Body: map[string]string{"source": "github", "external_id": "generalbusiness-ai/gitseq#7"}},
+		{Event: "git:sha1:g#git:sha1:bbb", Actor: connectorActor, Effective: true, Body: map[string]string{"source": "slack", "external_id": "C123/456"}},
+		{Event: "git:sha1:g#git:sha1:ccc", Actor: connectorActor, Effective: true, Body: map[string]string{"text": "an ordinary act with no source"}},
 	}, connectorActor)
 	if got := seen["generalbusiness-ai/gitseq#7"]; got != "git:sha1:g#git:sha1:aaa" {
 		t.Errorf("issue 7 maps to %q, want the observing event", got)
@@ -82,8 +82,8 @@ func TestCorrespondenceFoldsFromDurableActs(t *testing.T) {
 // first observation is the one that happened.
 func TestFoldKeepsTheFirstObservation(t *testing.T) {
 	seen := Fold([]Statement{
-		{Event: "git:sha1:g#git:sha1:first", Actor: connectorActor, Body: map[string]string{"source": "github", "external_id": "o/r#1"}},
-		{Event: "git:sha1:g#git:sha1:second", Actor: connectorActor, Body: map[string]string{"source": "github", "external_id": "o/r#1"}},
+		{Event: "git:sha1:g#git:sha1:first", Actor: connectorActor, Effective: true, Body: map[string]string{"source": "github", "external_id": "o/r#1"}},
+		{Event: "git:sha1:g#git:sha1:second", Actor: connectorActor, Effective: true, Body: map[string]string{"source": "github", "external_id": "o/r#1"}},
 	}, connectorActor)
 	if got := seen["o/r#1"]; got != "git:sha1:g#git:sha1:first" {
 		t.Errorf("correspondence points at %q, want the first observation", got)
@@ -98,7 +98,7 @@ func TestUnobservedSkipsWhatTheLogAlreadyHolds(t *testing.T) {
 	two := ObserveIssue(other)
 
 	seen := Fold([]Statement{
-		{Event: "git:sha1:g#git:sha1:aaa", Actor: connectorActor, Body: map[string]string{"source": "github", "external_id": one.ExternalID}},
+		{Event: "git:sha1:g#git:sha1:aaa", Actor: connectorActor, Effective: true, Body: map[string]string{"source": "github", "external_id": one.ExternalID}},
 	}, connectorActor)
 	fresh := Unobserved([]Observation{one, two}, seen)
 	if len(fresh) != 1 {
@@ -113,7 +113,7 @@ func TestUnobservedSkipsWhatTheLogAlreadyHolds(t *testing.T) {
 func TestASecondPollSubmitsNothing(t *testing.T) {
 	observation := ObserveIssue(issue())
 	seen := Fold([]Statement{
-		{Event: "git:sha1:g#git:sha1:aaa", Actor: connectorActor, Body: map[string]string{"source": "github", "external_id": observation.ExternalID}},
+		{Event: "git:sha1:g#git:sha1:aaa", Actor: connectorActor, Effective: true, Body: map[string]string{"source": "github", "external_id": observation.ExternalID}},
 	}, connectorActor)
 	if fresh := Unobserved([]Observation{observation}, seen); len(fresh) != 0 {
 		t.Errorf("a repeat poll produced %d observations, want none", len(fresh))
@@ -124,8 +124,9 @@ func TestForeignStatementCannotSuppressTheConnectorObservation(t *testing.T) {
 	observation := ObserveIssue(issue())
 	seen := Fold([]Statement{
 		{
-			Event: "git:sha1:g#git:sha1:forged",
-			Actor: "ordinary-participant",
+			Event:     "git:sha1:g#git:sha1:forged",
+			Actor:     "ordinary-participant",
+			Effective: true,
 			Body: map[string]string{
 				"source": "github", "external_id": observation.ExternalID,
 			},

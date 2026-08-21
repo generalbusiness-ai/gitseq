@@ -397,12 +397,39 @@ func TestObservedStatementsPreserveAuthorshipForTheCorrespondenceFold(t *testing
 			Event: "git:sha1:g#git:sha1:genuine", Actor: connector,
 			Body: map[string]string{"source": "github", "external_id": genuine.ExternalID},
 		},
+	}, Decisions: []workroom.Decision{
+		{Event: "git:sha1:g#git:sha1:forged", Verdict: workroom.Effective},
+		{Event: "git:sha1:g#git:sha1:genuine", Verdict: workroom.Effective},
 	}}
 
 	seen := github.Fold(observedStatements(projection), connector)
 	fresh := github.Unobserved([]github.Observation{forged, genuine}, seen)
 	if len(fresh) != 1 || fresh[0].ExternalID != forged.ExternalID {
 		t.Fatalf("command adapter lost authorship at the fold boundary: %+v", fresh)
+	}
+}
+
+func TestIneffectiveConnectorStatementCannotSuppressTheGenuineObservation(t *testing.T) {
+	const connector = "connector-fingerprint"
+	observation := github.ObserveIssue(github.Issue{
+		Owner: "generalbusiness-ai", Repo: "gitseq", Number: 9,
+		Title: "an issue", Author: "someone", URL: "https://example.invalid/9",
+	})
+	const refused = "git:sha1:g#git:sha1:refused"
+	projection := workroom.Projection{
+		Statements: []workroom.Statement{{
+			Event: refused, Actor: connector,
+			Body: map[string]string{"source": "github", "external_id": observation.ExternalID},
+		}},
+		Decisions: []workroom.Decision{{
+			Event: refused, Verdict: workroom.Ineffective, Reason: "refused test statement",
+		}},
+	}
+
+	seen := github.Fold(observedStatements(projection), connector)
+	fresh := github.Unobserved([]github.Observation{observation}, seen)
+	if len(fresh) != 1 || fresh[0].ExternalID != observation.ExternalID {
+		t.Fatalf("ineffective connector statement suppressed the genuine observation: %+v", fresh)
 	}
 }
 

@@ -111,7 +111,8 @@ func ObserveIssue(issue Issue) Observation {
 // that observed it.
 type Correspondence map[string]string
 
-// Fold builds the correspondence from statements authored by connectorActor.
+// Fold builds the correspondence from effective statements authored by
+// connectorActor.
 // The caller passes what the projection already holds; this package does no
 // I/O, and body fields alone never confer connector authority.
 //
@@ -123,6 +124,9 @@ func Fold(statements []Statement, connectorActor string) Correspondence {
 	seen := make(Correspondence)
 	for _, statement := range statements {
 		if statement.Actor != connectorActor {
+			continue
+		}
+		if !statement.Effective {
 			continue
 		}
 		if statement.Body["source"] != "github" {
@@ -144,9 +148,10 @@ func Fold(statements []Statement, connectorActor string) Correspondence {
 
 // Statement is the shape Fold needs from a projected durable statement.
 type Statement struct {
-	Event string
-	Actor string
-	Body  map[string]string
+	Event     string
+	Actor     string
+	Effective bool
+	Body      map[string]string
 }
 
 // Unobserved returns the observations not already present in the
