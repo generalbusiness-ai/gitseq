@@ -374,6 +374,53 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 	}
 }
 
+func TestAttachRejectsHostileRemoteBeforeConfigOrTransport(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("GIT_ALLOW_PROTOCOL", "ext:file")
+
+	for _, test := range []struct {
+		name   string
+		remote func(*testing.T, string) string
+	}{
+		{name: "option", remote: func(*testing.T, string) string { return "--no-recurse-submodules" }},
+		{name: "ext transport", remote: func(t *testing.T, marker string) string {
+			helper := marker + "-helper"
+			if err := os.WriteFile(helper, []byte("#!/bin/sh\n: > \""+marker+"\"\nexit 1\n"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			return "ext::" + helper
+		}},
+		{name: "file transport", remote: func(*testing.T, string) string { return "file:///tmp/untrusted.git" }},
+		{name: "relative path", remote: func(*testing.T, string) string { return filepath.Join("..", "untrusted.git") }},
+		{name: "unknown name", remote: func(*testing.T, string) string { return "unconfigured" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := t.TempDir()
+			testGit(t, "", "init", repo)
+			configPath := filepath.Join(repo, ".git", "config")
+			marker := filepath.Join(t.TempDir(), "remote-helper-ran")
+			remote := test.remote(t, marker)
+			before, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := attachCommand(ctx, []string{"--repo", repo, "--remote", remote, "--genesis", strings.Repeat("0", 40)}); err == nil || !strings.Contains(err.Error(), "configured Git remote") {
+				t.Errorf("attach --remote %q = %v, want configured-remote refusal", remote, err)
+			}
+			after, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(after, before) {
+				t.Fatalf("attach --remote %q changed repository config", remote)
+			}
+			if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("attach --remote %q reached transport helper: %v", remote, err)
+			}
+		})
+	}
+}
+
 func TestAttachRejectsSpentIdempotencyReplayAfterLocalFrontierLoss(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

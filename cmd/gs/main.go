@@ -1850,6 +1850,9 @@ const (
 )
 
 func fetchSequenceRefs(ctx context.Context, repo, remote string) error {
+	if err := validateConfiguredRemote(ctx, repo, remote); err != nil {
+		return err
+	}
 	key := "remote." + remote + ".fetch"
 	existing, _ := git(ctx, repo, "config", "--get-all", key)
 	if containsLine(existing, forcedSequenceFetchRefspec) {
@@ -1862,8 +1865,18 @@ func fetchSequenceRefs(ctx context.Context, repo, remote string) error {
 			return err
 		}
 	}
-	if _, err := git(ctx, repo, "fetch", "--atomic", "--no-tags", remote, sequenceFetchRefspec); err != nil {
+	if _, err := git(ctx, repo, "fetch", "--atomic", "--no-tags", "--", remote, sequenceFetchRefspec); err != nil {
 		return fmt.Errorf("fetch sequence refs without rewind: %w", err)
+	}
+	return nil
+}
+
+func validateConfiguredRemote(ctx context.Context, repo, remote string) error {
+	if remote == "" || strings.HasPrefix(remote, "-") || strings.Contains(remote, "::") || strings.Contains(remote, "://") || filepath.IsAbs(remote) {
+		return fmt.Errorf("--remote must name a configured Git remote, got %q", remote)
+	}
+	if _, err := git(ctx, repo, "remote", "get-url", "--", remote); err != nil {
+		return fmt.Errorf("--remote %q is not a configured Git remote: %w", remote, err)
 	}
 	return nil
 }
