@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ab2bc27c9e0dc700d861258c1029ffd780f00f23","text":"Retire the internal/kernel candidate at head 5b67687f; security repair and retained isolated evidence produced replacement head 12d8ab5d."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b642d9074956a308f5947ccf4a06575d41c11da0","text":"Retire the internal/workroom candidate at head 5b67687f; security repair and retained isolated evidence produced replacement head 12d8ab5d."}
