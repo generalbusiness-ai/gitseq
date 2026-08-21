@@ -1,12 +1,30 @@
 package workroom
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestDecodeRejectsNonCanonicalAndMalformedPayloads(t *testing.T) {
 	canonical := &State{Kind: KindAssert, Text: "x"}
 	canonicalData := []byte(`{"kind":"assert","text":"x"}`)
-	if _, err := Decode(SchemaState, canonicalData); err != nil {
-		t.Fatalf("Decode rejected canonical payload: %v", err)
+	decoders := []struct {
+		name   string
+		decode func([]byte) (any, error)
+	}{
+		{name: "ordinary", decode: func(data []byte) (any, error) { return Decode(SchemaState, data) }},
+		{name: "pooled", decode: func(data []byte) (any, error) {
+			return decode(SchemaState, data, &testDecodeStringPool{})
+		}},
+	}
+	for _, decoder := range decoders {
+		got, err := decoder.decode(canonicalData)
+		if err != nil {
+			t.Fatalf("%s decode rejected canonical payload: %v", decoder.name, err)
+		}
+		if !reflect.DeepEqual(got, canonical) {
+			t.Fatalf("%s decode = %#v, want %#v", decoder.name, got, canonical)
+		}
 	}
 	if !canonicalJSONEqual(canonical, canonicalData) {
 		t.Fatal("canonical comparison rejected canonical payload")
@@ -27,8 +45,10 @@ func TestDecodeRejectsNonCanonicalAndMalformedPayloads(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			data := []byte(test.data)
-			if _, err := Decode(SchemaState, data); err == nil {
-				t.Fatalf("Decode accepted %q", data)
+			for _, decoder := range decoders {
+				if _, err := decoder.decode(data); err == nil {
+					t.Errorf("%s decode accepted %q", decoder.name, data)
+				}
 			}
 			// Decode may reject malformed JSON before reaching this comparison.
 			// Pin the comparison separately so weakening it still makes every
@@ -38,4 +58,40 @@ func TestDecodeRejectsNonCanonicalAndMalformedPayloads(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPooledDecodeRoutesOnlyUnescapedTextBytes(t *testing.T) {
+	pool := &testDecodeStringPool{}
+	plain, err := decode(SchemaState, []byte(`{"kind":"assert","text":"plain"}`), pool)
+	if err != nil || plain.(*State).Text != "plain" {
+		t.Fatalf("plain decode = %#v, %v", plain, err)
+	}
+	if pool.byteCalls != 1 || pool.stringCalls != 0 {
+		t.Fatalf("plain callback counts = bytes %d, strings %d", pool.byteCalls, pool.stringCalls)
+	}
+	escaped, err := decode(SchemaState, []byte(`{"kind":"assert","text":"\u003c"}`), pool)
+	if err != nil || escaped.(*State).Text != "<" {
+		t.Fatalf("escaped decode = %#v, %v", escaped, err)
+	}
+	if pool.byteCalls != 1 || pool.stringCalls != 1 {
+		t.Fatalf("escaped callback counts = bytes %d, strings %d", pool.byteCalls, pool.stringCalls)
+	}
+	if _, err := decode(SchemaState, []byte(`{"kind":"assert","text":1}`), pool); err == nil {
+		t.Fatal("pooled decode accepted non-string text")
+	}
+}
+
+type testDecodeStringPool struct {
+	byteCalls   int
+	stringCalls int
+}
+
+func (p *testDecodeStringPool) intern(value string) string {
+	p.stringCalls++
+	return value
+}
+
+func (p *testDecodeStringPool) internBytes(value []byte) string {
+	p.byteCalls++
+	return string(value)
 }

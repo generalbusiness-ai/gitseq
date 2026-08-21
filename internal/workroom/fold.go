@@ -346,7 +346,7 @@ func (f *foldState) append(index int, record Record) {
 		f.addDecision(record, nil, index, decision)
 		return
 	}
-	body, err := Decode(record.Schema, record.Payload)
+	body, err := decode(record.Schema, record.Payload, f)
 	// The decoded body is the fold input retained below. Payload bytes and
 	// attachments are transport material and must not stay pinned for the
 	// resident process lifetime.
@@ -443,6 +443,18 @@ func (f *foldState) intern(value string) string {
 	}
 	f.strings[value] = value
 	return value
+}
+
+func (f *foldState) internBytes(value []byte) string {
+	if len(value) == 0 {
+		return ""
+	}
+	if existing, ok := f.strings[string(value)]; ok {
+		return existing
+	}
+	owned := string(value)
+	f.strings[owned] = owned
+	return owned
 }
 
 func (f *foldState) internBody(body any) {
