@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:891dd26d9a022c4869dcd740688fa5b7bbf8d515"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9eafac9d7036ac4f32f9514d785df91b2c143ce1","text":"Retire this unclaimed review route: its named artifact now describes a superseded world, so the note must be rechecked and published on current behavior bases before review."}
