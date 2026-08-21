@@ -4,6 +4,9 @@ This directory defines Gitseq's opt-in performance evidence lane. It does not
 run from `make test` and it does not turn one machine's timing into a product
 guarantee.
 
+The [500k memory salvage measurements](500K-SALVAGE.md) record the isolated
+keep-or-drop evidence for the current checkpoint and decode reductions.
+
 The versioned contract fixes the logical workload before a run: generator
 version and seed, required log depths through 500,000 records, actor counts,
 dependency fan-outs, checkpoint tails, complete-operation scenarios,
