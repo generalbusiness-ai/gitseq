@@ -224,14 +224,16 @@ matters to this exact commit is the reviewer's judgement, so the review
 goes ahead and the verdict records what had moved.
 
 After the review requester explicitly ratifies an approved report,
-[`gs merge`](../reference/gs/merge.md) enforces the other boundary, and
-keeps the strict reading review gives up. It refuses an unratified,
-retired or stale approval or artifact, a non-approval verdict, a
-candidate other than the approved head, and a dirty checkout. It hands
-git the approved object ID, never a branch name, so advancing the
-reviewed branch cannot retarget the merge. Its sealed receipt then closes the
-implementation promise whose reporting artifact was reviewed; it does not
-replace or imply the earlier review ratification.
+[`gs merge`](../reference/gs/merge.md) enforces the other boundary. It
+refuses an unratified or retired approval or artifact, one that describes
+a superseded world, a non-approval verdict, a candidate other than the
+approved head, and a dirty checkout. Ordinary staleness is not on that
+list: the reviewed head is immutable, so the merge lands it and records
+what had moved in its receipt. It hands git the approved object ID, never
+a branch name, so advancing the reviewed branch cannot retarget the
+merge. Its sealed receipt then closes the implementation promise whose
+reporting artifact was reviewed; it does not replace or imply the earlier
+review ratification.
 
 Running tests and poking at the checkout is still the reviewer's
 evidence. These commands do not replace judgement; they fix the state at

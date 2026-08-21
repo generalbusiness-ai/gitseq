@@ -27,8 +27,13 @@ The difference decides what happens next. A retired artifact names
 nothing anyone is proposing. A stale one still names the commit it always
 named, so [`gs review`](../reference/gs/review.md) will still review it
 and will record in the verdict what had moved.
-[`gs merge`](../reference/gs/merge.md) refuses both, because no reviewer
-is present at that step to weigh the difference.
+[`gs merge`](../reference/gs/merge.md) refuses the retired one and lands
+the stale one. A withdrawn pointer proposes nothing, while the head an
+approval named is immutable and is still the commit the reviewer signed
+for, so ordinary staleness is written into the merge receipt rather than
+refused. The narrower `describes a superseded world` fact in the table
+below is the exception: `merge` refuses that, because the behaviour the
+record describes has been replaced.
 
 `gs status` marks them separately:
 

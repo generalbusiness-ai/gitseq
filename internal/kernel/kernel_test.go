@@ -232,6 +232,135 @@ func TestInjectedGenesisSignerCannotVerifyASequence(t *testing.T) {
 	}
 }
 
+func TestVerificationIgnoresReplacementGenesisAndEventObjects(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	result, err := Submit(f.ctx, f.store, f.request(t, private, "honest", []byte("honest"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attackerKey := filepath.Join(t.TempDir(), "attacker")
+	attackerPublic, err := gitstore.GenerateSSHKey(f.ctx, attackerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyTree, err := f.store.EmptyTree(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attackerGenesisMessage, err := genesisMessage(GenesisDescriptor{
+		Version: 0, ObjectFormat: "sha1", PayloadCeiling: 1 << 20, SequencerPublicKey: attackerPublic,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attackerGenesis, err := f.store.SignedCommit(f.ctx, emptyTree, "", attackerGenesisMessage, attackerKey, gitstore.CommitIdentity{
+		AuthorName: "attacker", AuthorEmail: "attacker@example.invalid",
+		CommitterName: "attacker", CommitterEmail: "attacker@example.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, "refs/replace/"+f.genesis, attackerGenesis, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	honestMessage, err := f.store.CommitMessage(f.ctx, result.Commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventMetadata, err := f.store.RevListMetadata(f.ctx, result.Commit)
+	if err != nil || len(eventMetadata) == 0 {
+		t.Fatalf("read honest event metadata: %+v, %v", eventMetadata, err)
+	}
+	honestTree := eventMetadata[len(eventMetadata)-1].Tree
+	attackerTree, err := f.store.WritePayloadTree(f.ctx, []byte("replacement payload"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attackerEvent, err := f.store.SignedCommit(f.ctx, attackerTree, f.genesis, honestMessage, attackerKey, gitstore.CommitIdentity{
+		AuthorName: "attacker", AuthorEmail: "attacker@example.invalid",
+		CommitterName: "attacker", CommitterEmail: "attacker@example.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, "refs/replace/"+result.Commit, attackerEvent, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, "refs/replace/"+honestTree, attackerTree, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	verified, err := Verify(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatalf("replacement refs changed sequence verification: %v", err)
+	}
+	if verified.Genesis != f.genesis || verified.Head != result.Head || verified.Events != 1 {
+		t.Fatalf("replacement refs changed verified identity: %+v", verified)
+	}
+	loaded, err := NewReader(f.store, CheckpointOptions{}).Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatalf("replacement refs changed event payload load: %v", err)
+	}
+	if len(loaded.Events) != 1 || string(loaded.Events[0].Payload) != "honest" {
+		t.Fatalf("replacement refs changed event payload: %+v", loaded.Events)
+	}
+}
+
+func TestReaderIgnoresReplacementCheckpointObjects(t *testing.T) {
+	f := newFixture(t, "sha1")
+	if _, err := Submit(f.ctx, f.store, f.request(t, actor(t), "one", []byte("one"), nil), Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	checkpointOptions := CheckpointOptions{Enabled: true, SigningKey: f.signingKey}
+	if _, err := NewReader(f.store, checkpointOptions).Load(f.ctx, f.genesis); err != nil {
+		t.Fatal(err)
+	}
+	checkpointCommit, err := f.store.Head(f.ctx, CheckpointRef(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpointMetadata, err := f.store.RevListMetadata(f.ctx, checkpointCommit)
+	if err != nil || len(checkpointMetadata) != 1 {
+		t.Fatalf("read checkpoint metadata: %+v, %v", checkpointMetadata, err)
+	}
+	checkpointTree := checkpointMetadata[0].Tree
+	checkpointMessage, err := f.store.CommitMessage(f.ctx, checkpointCommit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attackerKey := filepath.Join(t.TempDir(), "checkpoint-attacker")
+	if _, err := gitstore.GenerateSSHKey(f.ctx, attackerKey); err != nil {
+		t.Fatal(err)
+	}
+	attackerTree, err := f.store.WriteSingleFileTree(f.ctx, checkpointFile, []byte("replacement checkpoint"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attackerCheckpoint, err := f.store.SignedCommit(f.ctx, attackerTree, "", checkpointMessage, attackerKey, gitstore.CommitIdentity{
+		AuthorName: "attacker", AuthorEmail: "attacker@example.invalid",
+		CommitterName: "attacker", CommitterEmail: "attacker@example.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, "refs/replace/"+checkpointCommit, attackerCheckpoint, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpdateRef(f.ctx, "refs/replace/"+checkpointTree, attackerTree, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := NewReader(f.store, CheckpointOptions{Enabled: true}).Load(f.ctx, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Checkpoint || len(loaded.Events) != 1 || string(loaded.Events[0].Payload) != "one" {
+		t.Fatalf("replacement ref displaced signed checkpoint: %+v", loaded)
+	}
+}
+
 func (f fixtureState) request(t testing.TB, private ed25519.PrivateKey, key string, payload []byte, rests []string) Request {
 	t.Helper()
 	tree, err := f.scratch.WritePayloadTree(f.ctx, payload, nil)
