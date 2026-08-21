@@ -58,6 +58,14 @@ func InitBare(ctx context.Context, path, objectFormat string) (Store, error) {
 }
 
 func (s Store) run(ctx context.Context, input []byte, env []string, args ...string) ([]byte, error) {
+	return s.runWithEnvironment(ctx, input, append(os.Environ(), env...), args...)
+}
+
+func (s Store) runHermetic(ctx context.Context, input []byte, env []string, args ...string) ([]byte, error) {
+	return s.runWithEnvironment(ctx, input, hermeticGitEnvironment(env), args...)
+}
+
+func (s Store) runWithEnvironment(ctx context.Context, input []byte, environment []string, args ...string) ([]byte, error) {
 	observer := s.Observer
 	if observer == nil {
 		observer = observe.FromContext(ctx)
@@ -66,7 +74,7 @@ func (s Store) run(ctx context.Context, input []byte, env []string, args ...stri
 	argv := append([]string{"--git-dir", s.Repo}, args...)
 	cmd := exec.CommandContext(ctx, "git", argv...)
 	cmd.Stdin = bytes.NewReader(input)
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = environment
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		err = fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, bytes.TrimSpace(output))
@@ -79,6 +87,37 @@ func (s Store) run(ctx context.Context, input []byte, env []string, args ...stri
 		done(nil)
 	}
 	return bytes.TrimSpace(output), nil
+}
+
+// hermeticGitEnvironment removes ambient configuration injection while
+// retaining the repository-local configuration that declares its object
+// format. Signing and verification pin their executable settings explicitly.
+func hermeticGitEnvironment(extra []string) []string {
+	environment := make([]string, 0, len(os.Environ())+len(extra)+3)
+	for _, variable := range append(os.Environ(), extra...) {
+		name, _, _ := strings.Cut(variable, "=")
+		if name == "GIT_CONFIG" || strings.HasPrefix(name, "GIT_CONFIG_") {
+			continue
+		}
+		environment = append(environment, variable)
+	}
+	return append(environment,
+		"GIT_CONFIG_NOSYSTEM=1",
+		"GIT_CONFIG_SYSTEM="+os.DevNull,
+		"GIT_CONFIG_GLOBAL="+os.DevNull,
+	)
+}
+
+func trustedSSHKeygen() (string, error) {
+	program, err := exec.LookPath("ssh-keygen")
+	if err != nil {
+		return "", fmt.Errorf("find ssh-keygen: %w", err)
+	}
+	program, err = filepath.Abs(program)
+	if err != nil {
+		return "", fmt.Errorf("resolve ssh-keygen: %w", err)
+	}
+	return program, nil
 }
 
 func (s Store) ObjectFormat(ctx context.Context) (string, error) {
@@ -260,6 +299,10 @@ func (s Store) SignedCommit(ctx context.Context, tree, parent, message, signingK
 // signed object. A newly projected event can then use the same durable time as
 // a later historical scan without reading the commit back from Git.
 func (s Store) SignedCommitWithTimestamp(ctx context.Context, tree, parent, message, signingKey string, identity CommitIdentity) (string, int64, error) {
+	sshKeygen, err := trustedSSHKeygen()
+	if err != nil {
+		return "", 0, err
+	}
 	timestamp := time.Now().Unix()
 	now := fmt.Sprintf("%d +0000", timestamp)
 	env := []string{
@@ -272,13 +315,14 @@ func (s Store) SignedCommitWithTimestamp(ctx context.Context, tree, parent, mess
 	}
 	args := []string{
 		"-c", "gpg.format=ssh",
+		"-c", "gpg.ssh.program=" + sshKeygen,
 		"-c", "user.signingKey=" + signingKey,
 		"commit-tree", "-S", tree,
 	}
 	if parent != "" {
 		args = append(args, "-p", parent)
 	}
-	output, err := s.run(ctx, []byte(message), env, args...)
+	output, err := s.runHermetic(ctx, []byte(message), env, args...)
 	return string(output), timestamp, err
 }
 
@@ -595,8 +639,13 @@ func (s Store) VerifySSHCommit(ctx context.Context, oid, principal, publicKey st
 	if err := os.WriteFile(path, []byte(line), 0o600); err != nil {
 		return err
 	}
-	_, err = s.run(ctx, nil, nil,
+	sshKeygen, err := trustedSSHKeygen()
+	if err != nil {
+		return err
+	}
+	_, err = s.runHermetic(ctx, nil, nil,
 		"-c", "gpg.format=ssh",
+		"-c", "gpg.ssh.program="+sshKeygen,
 		"-c", "gpg.ssh.allowedSignersFile="+path,
 		"verify-commit", oid,
 	)
