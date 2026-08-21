@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -57,6 +58,96 @@ func TestValidateLoopbackListenRejectsMixedResolution(t *testing.T) {
 
 	if err := validateLoopbackListen("mixed.example:7777"); err == nil {
 		t.Fatal("listener accepted a hostname with a non-loopback resolution")
+	}
+}
+
+func TestResidentHTTPServerBoundsSlowRequestBodies(t *testing.T) {
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if _, err := io.ReadAll(request.Body); err != nil {
+			http.Error(writer, "request body deadline exceeded", http.StatusRequestTimeout)
+			return
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	})
+	server := residentHTTPServer(handler)
+	if server.ReadHeaderTimeout != residentReadHeaderTimeout || server.ReadTimeout != residentReadTimeout ||
+		server.WriteTimeout != residentWriteTimeout || server.IdleTimeout != residentIdleTimeout ||
+		server.MaxHeaderBytes != residentMaxHeaderBytes {
+		t.Fatalf("resident HTTP limits = %+v", server)
+	}
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.ReadTimeout = 50 * time.Millisecond
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		_ = server.Close()
+		<-serveDone
+	})
+
+	connection, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if _, err := fmt.Fprintf(connection, "POST / HTTP/1.1\r\nHost: %s\r\nContent-Length: 100\r\n\r\n{", listener.Addr()); err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.ReadResponse(bufio.NewReader(connection), &http.Request{Method: http.MethodPost})
+	if err != nil {
+		t.Fatalf("slow request did not terminate predictably: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusRequestTimeout {
+		t.Fatalf("slow request returned %d", response.StatusCode)
+	}
+}
+
+func TestResidentHTTPServerLetsColdStatusOutliveWriteTimeout(t *testing.T) {
+	const writeTimeout = 50 * time.Millisecond
+	handler := residentHTTPHandler(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		time.Sleep(3 * writeTimeout)
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	server := residentHTTPServer(handler)
+	server.WriteTimeout = writeTimeout
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		_ = server.Close()
+		<-serveDone
+	})
+
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+	response, err := client.Get("http://" + listener.Addr().String() + "/v0/status")
+	if err != nil {
+		t.Fatalf("slow status was cut by the ordinary write deadline: %v", err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("slow status returned %d", response.StatusCode)
+	}
+
+	response, err = client.Get("http://" + listener.Addr().String() + "/ordinary")
+	if err == nil {
+		response.Body.Close()
+		t.Fatalf("ordinary response survived the %s write deadline with status %d", writeTimeout, response.StatusCode)
 	}
 }
 

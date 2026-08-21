@@ -1714,7 +1714,7 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	}
 	defer withdraw()
 	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n%s\n", listener.Addr(), service.TrustedProcessPosture)
-	httpServer := &http.Server{Handler: telemetryRuntime.Handler(service.TrustedHostHandler(server.Handler())), ReadHeaderTimeout: 5 * time.Second}
+	httpServer := residentHTTPServer(residentHTTPHandler(telemetryRuntime.Handler(service.TrustedHostHandler(server.Handler()))))
 	// The watcher retires with the command it serves, so a serving call that
 	// ends some other way does not leave a goroutine holding the server.
 	finished := make(chan struct{})
@@ -1740,6 +1740,41 @@ func serveCommand(ctx context.Context, arguments []string) error {
 // healthy resident returns it immediately; a resident that cannot answer this
 // quickly is ambiguous, and ambiguity leaves the claim alone.
 const residentProbeTimeout = 2 * time.Second
+
+const (
+	residentReadHeaderTimeout = 5 * time.Second
+	residentReadTimeout       = 10 * time.Second
+	residentWriteTimeout      = 40 * time.Second
+	residentIdleTimeout       = 60 * time.Second
+	residentMaxHeaderBytes    = 64 << 10
+)
+
+func residentHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: residentReadHeaderTimeout,
+		ReadTimeout:       residentReadTimeout,
+		WriteTimeout:      residentWriteTimeout,
+		IdleTimeout:       residentIdleTimeout,
+		MaxHeaderBytes:    residentMaxHeaderBytes,
+	}
+}
+
+// residentHTTPHandler removes the connection-wide response deadline only for
+// /v0/status. A cold verified rebuild can legitimately take longer than the
+// ordinary response budget, and abandoning the client response does not stop
+// that shared rebuild. Every other route keeps the server's write deadline.
+func residentHTTPHandler(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v0/status" {
+			if err := http.NewResponseController(writer).SetWriteDeadline(time.Time{}); err != nil {
+				http.Error(writer, "status response deadline could not be cleared", http.StatusInternalServerError)
+				return
+			}
+		}
+		handler.ServeHTTP(writer, request)
+	})
+}
 
 // claimResidency takes the repository's one resident claim before anything is
 // served. The probe that decides whether an existing claim still has a service
@@ -1772,7 +1807,7 @@ func serveProfiler(ctx context.Context, address string) (func(), error) {
 	mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("POST /debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
-	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	server := residentHTTPServer(mux)
 	go func() {
 		<-ctx.Done()
 		_ = server.Close()
