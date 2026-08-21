@@ -21,6 +21,42 @@ func TestPooledStatePayloadMatchesStateJSONShape(t *testing.T) {
 	}
 }
 
+func TestPooledDecodeMatchesOrdinaryStateDecode(t *testing.T) {
+	state := State{}
+	stateValue := reflect.ValueOf(&state).Elem()
+	for index := 0; index < stateValue.NumField(); index++ {
+		field := stateValue.Field(index)
+		switch field.Kind() {
+		case reflect.String:
+			if stateValue.Type().Field(index).Name == "Kind" {
+				field.SetString(string(KindAssert))
+			} else {
+				field.SetString("value")
+			}
+		case reflect.Map:
+			field.Set(reflect.ValueOf(map[string]string{"key": "value"}))
+		default:
+			t.Fatalf("populate State field %s in this decoder-equivalence test when adding it to schema.go", stateValue.Type().Field(index).Name)
+		}
+	}
+
+	data, err := Encode(&state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinary, err := Decode(SchemaState, data)
+	if err != nil {
+		t.Fatalf("ordinary decode: %v", err)
+	}
+	pooled, err := decode(SchemaState, data, map[string]string{state.Text: state.Text})
+	if err != nil {
+		t.Fatalf("pooled decode: %v", err)
+	}
+	if !reflect.DeepEqual(pooled, ordinary) {
+		t.Fatalf("pooled decode = %#v, ordinary decode = %#v; keep schema.go reconstruction exhaustive", pooled, ordinary)
+	}
+}
+
 func TestDecodeRejectsNonCanonicalAndMalformedPayloads(t *testing.T) {
 	canonical := &State{Kind: KindAssert, Text: "x"}
 	canonicalData := []byte(`{"kind":"assert","text":"x"}`)
