@@ -454,10 +454,15 @@ func clauseSources(projection workroom.Projection) []github.ClauseSource {
 }
 
 func observedStatements(projection workroom.Projection) []github.Statement {
+	effective := make(map[string]bool, len(projection.Decisions))
+	for _, decision := range projection.Decisions {
+		effective[decision.Event] = decision.Verdict == workroom.Effective
+	}
 	statements := make([]github.Statement, 0, len(projection.Statements))
 	for _, statement := range projection.Statements {
 		statements = append(statements, github.Statement{
-			Event: statement.Event, Actor: statement.Actor, Body: statement.Body,
+			Event: statement.Event, Actor: statement.Actor,
+			Effective: effective[statement.Event], Body: statement.Body,
 		})
 	}
 	return statements
