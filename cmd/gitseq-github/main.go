@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/connector/github"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -87,11 +89,10 @@ func run(ctx context.Context, arguments []string) error {
 	if *propose != 0 {
 		operation = OperationPropose
 	}
-	if err := charterIsLive(snapshot.Projection, *charter, *owner, *name, actorName, operation); err != nil {
-		return err
-	}
-
 	if *propose != 0 {
+		if err := charterIsLive(snapshot.Projection, *charter, *owner, *name, actorName, operation); err != nil {
+			return err
+		}
 		if err := proposalIsCoherent(snapshot.Projection, *governing, *artifact, *commit); err != nil {
 			return err
 		}
@@ -99,6 +100,14 @@ func run(ctx context.Context, arguments []string) error {
 			issue: *propose, branch: *branch, base: *base, commit: *commit,
 			request: *governing, artifact: *artifact, title: *title,
 		})
+	}
+
+	connector, err := loadObservationIdentity(workspace, actorName)
+	if err != nil {
+		return err
+	}
+	if err := charterIsLive(snapshot.Projection, *charter, *owner, *name, connector.Name, operation); err != nil {
+		return err
 	}
 
 	reading := github.ClausesFrom(clauseSources(snapshot.Projection), authors(snapshot.Projection), *charter)
@@ -137,7 +146,7 @@ func run(ctx context.Context, arguments []string) error {
 		fmt.Printf("clause names %s/%s#%d, which GitHub did not return\n", *owner, *name, number)
 	}
 
-	seen := github.Fold(observedStatements(snapshot.Projection))
+	seen := github.Fold(observedStatements(snapshot.Projection), connector.Fingerprint)
 	fresh := github.Unobserved(admitted, seen)
 	if len(fresh) == 0 {
 		fmt.Printf("%d admitted by %d clauses, nothing new\n", len(admitted), len(clauses))
@@ -149,13 +158,38 @@ func run(ctx context.Context, arguments []string) error {
 			fmt.Printf("would observe %s (admitted by %s)\n", observation.ExternalID, observation.AdmittedBy)
 			continue
 		}
-		event, err := appendObservation(ctx, workspace, actorName, *server, *charter, observation)
+		event, err := appendObservation(ctx, workspace, connector, *server, *charter, observation)
 		if err != nil {
 			return fmt.Errorf("observing %s: %w", observation.ExternalID, err)
 		}
 		fmt.Printf("observed %s as %s\n", observation.ExternalID, event)
 	}
 	return nil
+}
+
+type observationIdentity struct {
+	Name        string
+	Fingerprint string
+	Private     ed25519.PrivateKey
+}
+
+// loadObservationIdentity binds the correspondence principal to the key that
+// will sign new observations. The key is loaded once and then carried through
+// the run, so a changed key file cannot split filtering from signing.
+func loadObservationIdentity(workspace *app.Workspace, address string) (observationIdentity, error) {
+	configured, err := workspace.ResolveActorAddress(address)
+	if err != nil {
+		return observationIdentity{}, err
+	}
+	_, private, err := workspace.Actor(configured.Name)
+	if err != nil {
+		return observationIdentity{}, err
+	}
+	derived := intent.ActorFingerprint(private.Public().(ed25519.PublicKey))
+	if derived != configured.Fingerprint {
+		return observationIdentity{}, fmt.Errorf("actor %q key fingerprint %s does not match configured fingerprint %s", configured.Name, derived, configured.Fingerprint)
+	}
+	return observationIdentity{Name: configured.Name, Fingerprint: derived, Private: private}, nil
 }
 
 type proposalFlags struct {
@@ -422,7 +456,9 @@ func clauseSources(projection workroom.Projection) []github.ClauseSource {
 func observedStatements(projection workroom.Projection) []github.Statement {
 	statements := make([]github.Statement, 0, len(projection.Statements))
 	for _, statement := range projection.Statements {
-		statements = append(statements, github.Statement{Event: statement.Event, Body: statement.Body})
+		statements = append(statements, github.Statement{
+			Event: statement.Event, Actor: statement.Actor, Body: statement.Body,
+		})
 	}
 	return statements
 }
@@ -441,17 +477,13 @@ func authors(projection workroom.Projection) map[string]github.Author {
 // observation into work is a member filing a request with their own signature
 // on it, which is the whole defence against an issue body that reads like an
 // instruction.
-func appendObservation(ctx context.Context, workspace *app.Workspace, actorName, server, charter string,
+func appendObservation(ctx context.Context, workspace *app.Workspace, actor observationIdentity, server, charter string,
 	observation github.Observation) (string, error) {
-	_, private, err := workspace.Actor(actorName)
-	if err != nil {
-		return "", err
-	}
 	rests := []string{charter}
 	if observation.AdmittedBy != "" && observation.AdmittedBy != charter {
 		rests = append(rests, observation.AdmittedBy)
 	}
-	request, err := workspace.BuildActRequest(ctx, private, actorName, app.Act{
+	request, err := workspace.BuildActRequest(ctx, actor.Private, actor.Name, app.Act{
 		Verb: app.VerbState, Kind: workroom.KindAssert,
 		Text: observation.Text, Body: observation.Body, RestsOn: rests,
 		IdempotencyKey: observation.IdempotencyKey,
