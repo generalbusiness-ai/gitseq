@@ -1714,7 +1714,7 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	}
 	defer withdraw()
 	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n%s\n", listener.Addr(), service.TrustedProcessPosture)
-	httpServer := residentHTTPServer(telemetryRuntime.Handler(service.TrustedHostHandler(server.Handler())))
+	httpServer := residentHTTPServer(residentHTTPHandler(telemetryRuntime.Handler(service.TrustedHostHandler(server.Handler()))))
 	// The watcher retires with the command it serves, so a serving call that
 	// ends some other way does not leave a goroutine holding the server.
 	finished := make(chan struct{})
@@ -1758,6 +1758,22 @@ func residentHTTPServer(handler http.Handler) *http.Server {
 		IdleTimeout:       residentIdleTimeout,
 		MaxHeaderBytes:    residentMaxHeaderBytes,
 	}
+}
+
+// residentHTTPHandler removes the connection-wide response deadline only for
+// /v0/status. A cold verified rebuild can legitimately take longer than the
+// ordinary response budget, and abandoning the client response does not stop
+// that shared rebuild. Every other route keeps the server's write deadline.
+func residentHTTPHandler(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v0/status" {
+			if err := http.NewResponseController(writer).SetWriteDeadline(time.Time{}); err != nil {
+				http.Error(writer, "status response deadline could not be cleared", http.StatusInternalServerError)
+				return
+			}
+		}
+		handler.ServeHTTP(writer, request)
+	})
 }
 
 // claimResidency takes the repository's one resident claim before anything is

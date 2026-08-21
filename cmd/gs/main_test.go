@@ -108,6 +108,49 @@ func TestResidentHTTPServerBoundsSlowRequestBodies(t *testing.T) {
 		t.Fatalf("slow request returned %d", response.StatusCode)
 	}
 }
+
+func TestResidentHTTPServerLetsColdStatusOutliveWriteTimeout(t *testing.T) {
+	const writeTimeout = 50 * time.Millisecond
+	handler := residentHTTPHandler(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		time.Sleep(3 * writeTimeout)
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	server := residentHTTPServer(handler)
+	server.WriteTimeout = writeTimeout
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		_ = server.Close()
+		<-serveDone
+	})
+
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+	response, err := client.Get("http://" + listener.Addr().String() + "/v0/status")
+	if err != nil {
+		t.Fatalf("slow status was cut by the ordinary write deadline: %v", err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("slow status returned %d", response.StatusCode)
+	}
+
+	response, err = client.Get("http://" + listener.Addr().String() + "/ordinary")
+	if err == nil {
+		response.Body.Close()
+		t.Fatalf("ordinary response survived the %s write deadline with status %d", writeTimeout, response.StatusCode)
+	}
+}
+
 func TestProfilerIsDisabledByDefaultAndLoopbackOnly(t *testing.T) {
 	stop, err := serveProfiler(context.Background(), "")
 	if err != nil {
