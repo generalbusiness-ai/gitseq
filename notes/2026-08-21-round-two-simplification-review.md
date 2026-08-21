@@ -116,7 +116,7 @@ current ownership gap.
 **Evidence.** `.github/workflows/ci.yml:46-59` runs `make test`, `make race`,
 and `make spike`. `Makefile:5-13` shows that the first two targets exercise
 the same Go package set, once plain and once under the race detector.
-`spike/cmd/gitseq-report/main.go:217-235` launches another uncached `go test`
+`spike/cmd/gitseq-report/main.go:217-245` launches another uncached `go test`
 for each package containing an adversarial case, and
 `.github/scripts/verify-preview-clone.sh:26-28` runs the complete plain suite
 again in the fresh clone. The earlier single-stream head `e82d9fff` is not an
@@ -124,7 +124,7 @@ ancestor of `main`; it received a ratified changes-requested verdict because
 it removed unique forbidden-path coverage from `layout_test.go`.
 
 **Impact.** Every CI run executes all Go packages three times, plus a fourth
-execution of the adversarial subset. The review of the earlier candidate
+execution of the adversarial subset. Changes-requested report `b88d4573`
 measured 174 seconds for the single race run, so overlapping full-suite
 invocations materially lengthen feedback while dividing responsibility for
 the same evidence.
@@ -237,6 +237,15 @@ re-checked from the durable record and current tree.
   Finding 3 is later semantic creep across that successful boundary.
 - The UI screen reduction is merged. Finding 5 is the smaller set of client
   and test remnants it left behind.
+- TypeScript/Go wire parity now has a bounded gate at
+  `internal/wireparity/parity_test.go:1-57`. It checks field-name parity for
+  six explicitly selected Workroom wire types; that closes the earlier absence
+  claim without pretending to cover every type or semantic constraint.
+- Kernel scan-path Git process amplification is resolved. Cold scans use one
+  `RevList` and one long-lived `OpenAuditBatch`
+  (`internal/kernel/kernel.go:1018,1037,1051-1089`), while incremental scans
+  stream through one metadata process (`internal/kernel/kernel.go:1173` and
+  `internal/gitstore/gitstore.go:454-503`).
 - CI deduplication is implemented and repaired at `073d68c7`, but is not an
   ancestor of the surveyed main and still awaits an effective exact-head
   verdict and merge. Finding 4 records that current state.
@@ -246,10 +255,6 @@ re-checked from the durable record and current tree.
 
 ## Considered but not advanced
 
-- The TypeScript wire types in `ui/src/lib/api.ts` still hand-mirror Go
-  response types, and no parity gate exists in `internal/docset` or `ui`.
-  This remains unaddressed, but it needs a separate contract decision rather
-  than being smuggled into the UI-deletion child.
 - Production-dead Go declarations remain. `SelectAdmissionProfile` and
   `ResolveAdmissionProfile` in `internal/workroom/admission_profile.go` have
   no production caller outside their internal pair, while `Rotate` and
@@ -257,8 +262,6 @@ re-checked from the durable record and current tree.
   caller. Their exported or security-sensitive contracts require a focused
   compatibility review before deletion; finding 5 does not imply the Go side
   is clean.
-- The kernel scan-path Git-subprocess count is unaddressed. It was not
-  re-measured in this review, so no persistence or performance claim is made.
 - The aliases and forwarding helpers in `cmd/gitseq-mcp/digest.go:15-33,56-57`
   include several production-dead names. Their deletion is safe but too small
   to rank beside the seven ownership findings; it can ride with nearby MCP
