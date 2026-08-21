@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will repair the round-two simplification note on a fresh current-main branch, address or explicitly resolve every item in 4aa98c4b, re-check all seven findings against current main, run the documentation and diff checks, publish a new exact-path artifact on live current-world bases, and route a fresh independent review.","body":{"branch":"request/round-two-simplification-content-repair"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fb5e4da6b2257111f44c854d15142053a1cf2770"}
