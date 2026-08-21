@@ -1,0 +1,83 @@
+{
+  "schema": "gitseq.performance-isolated-evidence.v1",
+  "outcome": "pass",
+  "run_date": "2026-08-21",
+  "purpose": "Isolated keep-or-drop measurements for request 3a821e6b",
+  "environment": {
+    "os": "Darwin 25.6.0",
+    "architecture": "arm64",
+    "cpu_model": "Apple M5 Max",
+    "logical_cpus": 18,
+    "memory_bytes": 68719476736,
+    "go_version": "go1.26.5",
+    "git_version": "git version 2.50.1 (Apple Git-155)",
+    "filesystem": "/"
+  },
+  "fixture": {
+    "generator_version": "gitseq.performance-fixture.v2",
+    "seed": 632,
+    "shape": "linear",
+    "depth": 100000,
+    "actor_count": 1,
+    "dependency_fanout": 1,
+    "head": "df6c870c09ad50d915ebc40460d7fecb9abe35fb",
+    "logical_digest": "550b626c3bc05a6977431f9d7738296773c56d29512bc010f4ac8c875a5e6901",
+    "exact_digest": "07968ba07f9454dfaca888fc68a021d5282f54fd5a946fac8c428a332135ef26"
+  },
+  "method": {
+    "rounds_per_revision": 2,
+    "order": [
+      "round 1 base",
+      "round 1 candidate",
+      "round 2 candidate",
+      "round 2 base"
+    ],
+    "fresh_worker_process": true,
+    "profiles_in_primary_samples": false,
+    "source_worktrees_clean": true,
+    "statistics": "Raw ranges and two-sample medians are computed from samples.jsonl; no percentile claim."
+  },
+  "comparisons": [
+    {
+      "name": "checkpoint-borrow",
+      "scenario": "submit_ack",
+      "base_commit": "b87afa1ea35a1a84300a204d4799af05cf22edda",
+      "candidate_commit": "da53996b0f3f9ffffbc82e47a6e64473aaf10f62",
+      "sample_ids": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "name": "schema-copy",
+      "scenario": "cold_status",
+      "base_commit": "b87afa1ea35a1a84300a204d4799af05cf22edda",
+      "candidate_commit": "577a19174743080f29faa6bf5ead3a9537544d30",
+      "candidate_ref": "origin/request/500k-memory-salvage-schema-only",
+      "sample_ids": [
+        5,
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "name": "decode-text-pool",
+      "scenario": "cold_status",
+      "base_commit": "18708744e2291ea484bf54700152e3b728dbfa8d",
+      "candidate_commit": "8744c8f55f3547f9449470cab7baeb7fff1d8b53",
+      "candidate_ref": "origin/request/500k-memory-salvage-pool-only",
+      "sample_ids": [
+        9,
+        10,
+        11,
+        12
+      ]
+    }
+  ],
+  "samples_file": "samples.jsonl",
+  "candidate_benchmark_file": "candidate.bench",
+  "sample_count": 12
+}

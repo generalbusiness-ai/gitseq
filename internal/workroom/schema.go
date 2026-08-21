@@ -3,7 +3,6 @@
 package workroom
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,10 +66,18 @@ func Encode(value any) ([]byte, error) {
 }
 
 func Decode(schema string, data []byte) (any, error) {
+	return decode(schema, data, nil)
+}
+
+func decode(schema string, data []byte, pool map[string]string) (any, error) {
 	var value any
 	switch schema {
 	case SchemaStateLegacy, SchemaStateV1, SchemaState:
-		value = &State{}
+		if pool == nil {
+			value = &State{}
+		} else {
+			value = &pooledStatePayload{Text: pooledJSONText{pool: pool}}
+		}
 	case SchemaRatifyLegacy, SchemaRatify:
 		value = &Ratify{}
 	case SchemaSupersede:
@@ -78,25 +85,100 @@ func Decode(schema string, data []byte) (any, error) {
 	default:
 		return nil, fmt.Errorf("unsupported workroom schema %q", schema)
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(value); err != nil {
+	// The payload is already held in memory by the verified event. Unmarshal it
+	// directly instead of constructing a Decoder, whose refill buffer copies
+	// every payload and makes cold projection memory scale with all bytes read.
+	// Unknown fields and alternate encodings still fail below: canonical
+	// re-encoding cannot equal input that contains anything the typed value did
+	// not consume. Unmarshal itself rejects trailing JSON values.
+	if err := json.Unmarshal(data, value); err != nil {
 		return nil, err
 	}
-	if decoder.More() {
-		return nil, errors.New("multiple JSON values")
+	if pooled, ok := value.(*pooledStatePayload); ok {
+		value = &State{Kind: pooled.Kind, Text: pooled.Text.value, Body: pooled.Body}
 	}
 	if err := validatePayload(value); err != nil {
 		return nil, err
 	}
-	canonical, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	if !bytes.Equal(canonical, data) {
+	if !canonicalJSONEqual(value, data) {
 		return nil, errors.New("workroom payload is not canonical JSON")
 	}
 	return value, nil
+}
+
+type pooledStatePayload struct {
+	Kind Kind              `json:"kind"`
+	Text pooledJSONText    `json:"text"`
+	Body map[string]string `json:"body,omitempty"`
+}
+
+type pooledJSONText struct {
+	pool  map[string]string
+	value string
+}
+
+func (p *pooledJSONText) UnmarshalJSON(data []byte) error {
+	if len(data) >= 2 && data[0] == '"' && data[len(data)-1] == '"' {
+		content := data[1 : len(data)-1]
+		unescaped := true
+		for _, value := range content {
+			if value == '\\' {
+				unescaped = false
+				break
+			}
+		}
+		if unescaped {
+			if existing, ok := p.pool[string(content)]; ok {
+				p.value = existing
+			} else {
+				p.value = string(content)
+			}
+			return nil
+		}
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if existing, ok := p.pool[value]; ok {
+		p.value = existing
+	} else {
+		p.value = value
+	}
+	return nil
+}
+
+// canonicalJSONEqual compares encoding/json's canonical struct and map output
+// directly with the verified payload. Encoder writes one trailing newline;
+// accepting exactly that extra byte avoids Marshal's full-size output copy
+// while preserving the existing byte-for-byte canonicality requirement.
+func canonicalJSONEqual(value any, data []byte) bool {
+	comparison := canonicalJSONComparison{want: data, equal: true}
+	if err := json.NewEncoder(&comparison).Encode(value); err != nil {
+		return false
+	}
+	return comparison.equal && comparison.offset == len(data)+1
+}
+
+type canonicalJSONComparison struct {
+	want   []byte
+	offset int
+	equal  bool
+}
+
+func (c *canonicalJSONComparison) Write(content []byte) (int, error) {
+	for _, value := range content {
+		switch {
+		case c.offset < len(c.want):
+			c.equal = c.equal && value == c.want[c.offset]
+		case c.offset == len(c.want):
+			c.equal = c.equal && value == '\n'
+		default:
+			c.equal = false
+		}
+		c.offset++
+	}
+	return len(content), nil
 }
 
 func validatePayload(value any) error {

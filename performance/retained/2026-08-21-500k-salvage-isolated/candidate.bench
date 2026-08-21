@@ -1,0 +1,6 @@
+BenchmarkGitseqIsolated/checkpoint_borrow/submit_ack/depth-100000 1 23122129916 ns/op 8550400360 B/op 23208144 allocs/op
+BenchmarkGitseqIsolated/checkpoint_borrow/submit_ack/depth-100000 1 23028269542 ns/op 8550454688 B/op 23208170 allocs/op
+BenchmarkGitseqIsolated/schema_copy/cold_status/depth-100000 1 26078588833 ns/op 3756670904 B/op 13777337 allocs/op
+BenchmarkGitseqIsolated/schema_copy/cold_status/depth-100000 1 25889332209 ns/op 3757140176 B/op 13777753 allocs/op
+BenchmarkGitseqIsolated/decode_text_pool/cold_status/depth-100000 1 26204653083 ns/op 3183017416 B/op 13777510 allocs/op
+BenchmarkGitseqIsolated/decode_text_pool/cold_status/depth-100000 1 25935239167 ns/op 3182397544 B/op 13777272 allocs/op
