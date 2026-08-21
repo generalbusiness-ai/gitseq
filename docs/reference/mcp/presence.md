@@ -42,8 +42,7 @@ git init -q "$REPO"
 git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 gs init --repo "$REPO" --operator alice >/dev/null
 PORT="${PORT:-7777}"
-gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" \
-  --acknowledge-trusted-processes >/dev/null 2>&1 &
+gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" >/dev/null 2>&1 &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null || true' EXIT
 for _ in $(seq 40); do
