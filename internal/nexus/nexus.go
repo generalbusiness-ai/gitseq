@@ -359,9 +359,9 @@ func (h *Hub) AnnounceSessionIdentity(id, actor, fingerprint, value string, ttl 
 }
 
 // OpenSessionIdentity mints and binds one new private credential. The actor is
-// selected inside the resident's acknowledged trusted-process boundary; the
-// credential returned here authorizes only that exact binding in this Hub and
-// disappears with this process.
+// selected inside the resident's trusted-process boundary; the credential
+// returned here authorizes only that exact binding in this Hub and disappears
+// with this process.
 func (h *Hub) OpenSessionIdentity(actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (string, Change, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -34,6 +34,9 @@ It runs in the foreground until stopped.
 | `--otel-endpoint` | empty | An OTLP/HTTP collector URL to send traces and metrics to. Empty disables observation entirely; nothing is collected and no exporter is started. Gitseq never discovers a collector on its own. |
 | `--profile-listen` | empty | A second loopback address serving Go pprof endpoints. Empty starts no profiler. |
 
+`--acknowledge-trusted-processes` was removed; a script still passing it
+now fails at flag parsing and should drop it.
+
 ## Observation
 
 Both observation flags are off by default, and off means absent rather
@@ -77,9 +80,9 @@ trap - EXIT
 
 ## Publishing the address
 
-`serve` validates the acknowledgement and listener first, binds, then
-publishes the address it actually bound inside the repository. It prints
-`gitseq workroom http://…` and the trusted-process boundary to standard error.
+`serve` validates the listener first, binds, then publishes the address it
+actually bound inside the repository. It prints `gitseq workroom http://…`
+and the trusted-process boundary to standard error.
 The full and summary resident status responses repeat that boundary as
 `trust_boundary`, and the browser displays it before actor selection.
 So the banner names a port that is really open, a failed start announces
