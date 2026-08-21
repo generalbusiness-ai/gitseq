@@ -1655,7 +1655,6 @@ func checkpointClearCommand(ctx context.Context, arguments []string) error {
 func serveCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("serve", arguments)
 	listen := set.String("listen", "127.0.0.1:7777", "HTTP listen address")
-	acknowledgeTrustedProcesses := set.Bool("acknowledge-trusted-processes", false, "acknowledge that every process inside the resident boundary may act as every actor key")
 	otlpEndpoint := set.String("otel-endpoint", "", "OTLP/HTTP Collector endpoint; disabled when empty")
 	profileListen := set.String("profile-listen", "", "separate loopback pprof address; disabled when empty")
 	if err := set.Parse(arguments); err != nil {
@@ -1663,9 +1662,6 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	}
 	if err := validateLoopbackListen(*listen); err != nil {
 		return err
-	}
-	if !*acknowledgeTrustedProcesses {
-		return errors.New("serving requires --acknowledge-trusted-processes: every process inside this resident boundary can act as every actor key this application can open")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {

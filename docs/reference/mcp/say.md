@@ -58,8 +58,7 @@ GENESIS=$(gs init --repo "$REPO" --operator alice \
   | sed -n 's/.*"genesis": *"\([^"]*\)".*/\1/p')
 SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")"
 PORT="${PORT:-7777}"
-gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" \
-  --acknowledge-trusted-processes >/dev/null 2>&1 &
+gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" >/dev/null 2>&1 &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null || true' EXIT
 for _ in $(seq 40); do

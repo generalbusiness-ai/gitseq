@@ -64,11 +64,14 @@ resident restart. It never places the credential in `whoami`, another MCP tool
 result, a URL, a durable event, a log or a diagnostic. Do not ask an agent to
 print or persist it; the MCP surface deliberately gives it no value to print.
 
-The resident must have been started with
-`--acknowledge-trusted-processes`. That acknowledgement means every process in
-the resident's OS-account boundary is trusted to use every actor key the
-application can open. It is not authentication between agents, and it does
-not protect the keys from another process running as the same account.
+Starting a resident accepts its boundary: trusted processes only, every
+process inside this resident boundary can act as every actor key this
+application can open. The resident prints that sentence next to its address on
+every start. The credential above names one client's session so the resident
+can renew and revoke it. It is not authentication between agents, and it does
+not protect the keys from another process running under the same account:
+anything running as that account can ask the resident to act as any actor
+whose key the repository holds.
 
 The actor must exist and its key must be in the repository being acted
 in — `gs actor-add` puts it there. A repository with no workroom, or one
@@ -152,8 +155,8 @@ imply it did.
 That is why the examples above work with no resident running at all.
 Start one when you want presence, conversation and the live view; the
 adapter will find it in the repository without being reconfigured. The
-[deployment guide](deploy-a-resident.md) shows the required
-`--acknowledge-trusted-processes` invocation and readiness check.
+[deployment guide](deploy-a-resident.md) shows the invocation, the readiness
+check, and the trust boundary you take on by running one.
 
 ## See also
 

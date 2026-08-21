@@ -178,11 +178,11 @@ hosts it alongside the durable application, but co-location is operational
 convenience, not a claim that nexus data has kernel durability.
 
 The supported host posture is one trusted operator account, not a partial
-shared-host authentication system. `gs serve` requires an explicit
-per-invocation acknowledgement, resolves the listener host to loopback only,
-and checks every mutation Host and browser provenance before routing. Within
-that boundary, the resident can open several actor keys and every process
-running as the account is trusted to ask it to act as any of them. Direct local
+shared-host authentication system. `gs serve` discloses that posture on every
+start, resolves the listener host to loopback only, and checks every mutation
+Host and browser provenance before routing. Within that boundary, the resident
+can open several actor keys and every process running as the account is
+trusted to ask it to act as any of them. Direct local
 `gs` key access and malicious same-account processes remain outside the
 resident's protection.
 

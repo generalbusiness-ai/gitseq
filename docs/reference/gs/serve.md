@@ -31,7 +31,6 @@ It runs in the foreground until stopped.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--listen` | `127.0.0.1:7777` | A loopback address to bind. Port `0` takes any free port. |
-| `--acknowledge-trusted-processes` | `false` | Required. Confirms that every process inside the resident boundary may act as every actor key this application can open. It discloses the boundary; it does not add authentication. |
 | `--otel-endpoint` | empty | An OTLP/HTTP collector URL to send traces and metrics to. Empty disables observation entirely; nothing is collected and no exporter is started. Gitseq never discovers a collector on its own. |
 | `--profile-listen` | empty | A second loopback address serving Go pprof endpoints. Empty starts no profiler. |
 
@@ -63,8 +62,7 @@ git init -q "$REPO"
 gs init --repo "$REPO" --operator alice >/dev/null
 
 PORT="${PORT:-7777}"
-gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" \
-  --acknowledge-trusted-processes &
+gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null || true' EXIT
 
@@ -107,8 +105,7 @@ costs a client one refused connection before it acts locally instead.
 ## Loopback only
 
 ```sh
-! gs serve --repo "$REPO" --listen 0.0.0.0:9999 \
-  --acknowledge-trusted-processes
+! gs serve --repo "$REPO" --listen 0.0.0.0:9999
 ```
 
 The refusal is by design. `--listen` resolves its host and accepts it only
@@ -118,9 +115,13 @@ content-type guards before it decodes input or changes state. There is no
 permissive CORS route.
 
 The service is a trusted local custodian for several actors: it holds their
-signing keys and signs on behalf of whichever trusted process asks. The
-required `--acknowledge-trusted-processes` flag makes that choice explicit on
-each invocation. It does not create a shared-host authentication system.
+signing keys and signs on behalf of whichever trusted process asks. Its
+posture is trusted processes only: every process inside this resident boundary
+can act as every actor key this application can open. Starting the service is
+the decision to accept that boundary, and it prints the same sentence next to
+its address on every successful start. Loopback binding limits who can reach
+the service; it is not a shared-host authentication system, and it does not
+separate the actors from one another inside the boundary.
 
 When a browser tab or MCP adapter first joins, the resident mints a private
 credential from 256 bits of system randomness and binds it to exactly that
@@ -181,7 +182,6 @@ both loopback and non-loopback addresses, is refused.
 
 | Situation | Message |
 |---|---|
-| The acknowledgement is absent | `serving requires --acknowledge-trusted-processes: every process inside this resident boundary can act as every actor key this application can open` |
 | A literal non-loopback `--listen` | `--listen must name a loopback address; the resident service is a trusted local multi-actor custodian` |
 | A `--listen` hostname fails to resolve or any result is non-loopback | `--listen must resolve only to loopback addresses; the resident service is a trusted local multi-actor custodian` |
 | A read-only attachment | `cannot serve a read-only attachment` |
@@ -209,9 +209,8 @@ never fetched by `attach`, never published, and never consulted by
 
 For a deliberate cold restart, stop the resident and run
 `gs checkpoint-clear --repo <path>` before starting it again. This clears both
-persistent selectors. `GITSEQ_CHECKPOINT=off gs serve ...
---acknowledge-trusted-processes` keeps checkpoint loading and publication
-disabled for that resident process.
+persistent selectors. `GITSEQ_CHECKPOINT=off gs serve ...` keeps checkpoint
+loading and publication disabled for that resident process.
 
 Expired presence leases are swept, so a session that goes away without
 departing does not linger in presence forever.

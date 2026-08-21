@@ -27,8 +27,7 @@ git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 gs init --repo "$REPO" --operator alice >/dev/null
 
 PORT="${PORT:-7777}"
-gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" \
-  --acknowledge-trusted-processes &
+gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null || true' EXIT
 ```
@@ -75,15 +74,18 @@ gs state --repo "$REPO" --server "http://127.0.0.1:$PORT" --as alice \
 ## Loopback only, and why
 
 ```sh
-! gs serve --repo "$REPO" --listen 0.0.0.0:9999 \
-  --acknowledge-trusted-processes
+! gs serve --repo "$REPO" --listen 0.0.0.0:9999
 ```
 
 The refusal is deliberate. The service is a **trusted local custodian** for
 several actors at once: it holds their signing keys and signs on behalf of
-trusted processes. The required `--acknowledge-trusted-processes` flag records
-that deliberate operating choice for each invocation. Without it, serving
-stops before the repository is opened or an address is published.
+trusted processes. Its posture is trusted processes only: every process inside
+this resident boundary can act as every actor key this application can open.
+Starting the service accepts that boundary, and the service prints the same
+sentence next to its address on every start. Loopback binding limits who can
+reach the service from outside the host. It does nothing about a process
+already inside the boundary, and it does not separate the actors from one
+another there.
 
 The listener host is resolved and every result must be loopback. Each HTTP
 mutation separately rejects a Host that is not wholly loopback, then enforces
