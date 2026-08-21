@@ -453,7 +453,9 @@ func (f *foldState) intern(value string) string {
 // lifetime of the Folder.
 type stagedStringPool struct {
 	committed map[string]string
-	pending   map[string]string
+	pending   [2]string
+	count     int
+	overflow  map[string]string
 }
 
 func (p *stagedStringPool) intern(value string) string {
@@ -463,13 +465,10 @@ func (p *stagedStringPool) intern(value string) string {
 	if existing, ok := p.committed[value]; ok {
 		return existing
 	}
-	if existing, ok := p.pending[value]; ok {
+	if existing, ok := p.findPending(value); ok {
 		return existing
 	}
-	if p.pending == nil {
-		p.pending = make(map[string]string)
-	}
-	p.pending[value] = value
+	p.addPending(value)
 	return value
 }
 
@@ -480,19 +479,42 @@ func (p *stagedStringPool) internBytes(value []byte) string {
 	if existing, ok := p.committed[string(value)]; ok {
 		return existing
 	}
-	if existing, ok := p.pending[string(value)]; ok {
+	if existing, ok := p.findPending(string(value)); ok {
 		return existing
 	}
 	owned := string(value)
-	if p.pending == nil {
-		p.pending = make(map[string]string)
-	}
-	p.pending[owned] = owned
+	p.addPending(owned)
 	return owned
 }
 
+func (p *stagedStringPool) findPending(value string) (string, bool) {
+	for index := 0; index < p.count; index++ {
+		if p.pending[index] == value {
+			return p.pending[index], true
+		}
+	}
+	existing, ok := p.overflow[value]
+	return existing, ok
+}
+
+func (p *stagedStringPool) addPending(value string) {
+	if p.count < len(p.pending) {
+		p.pending[p.count] = value
+		p.count++
+		return
+	}
+	if p.overflow == nil {
+		p.overflow = make(map[string]string)
+	}
+	p.overflow[value] = value
+}
+
 func (p *stagedStringPool) commit() {
-	for key, value := range p.pending {
+	for index := 0; index < p.count; index++ {
+		value := p.pending[index]
+		p.committed[value] = value
+	}
+	for key, value := range p.overflow {
 		p.committed[key] = value
 	}
 }

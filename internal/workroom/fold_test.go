@@ -58,10 +58,11 @@ func TestRejectedPayloadDoesNotPolluteResidentStringPool(t *testing.T) {
 		},
 		{
 			name:    "duplicate text",
-			payload: fmt.Sprintf(`{"kind":"assert","text":%q,"text":%q}`, unique+" first", unique+" second"),
+			payload: fmt.Sprintf(`{"kind":"assert","text":%q,"text":%q,"text":%q}`, unique+" first", unique+" second", unique+" third"),
 			rejected: []string{
 				unique + " first",
 				unique + " second",
+				unique + " third",
 			},
 		},
 		{
