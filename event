@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e7f0cfd852b237bd37c6c08a286d6bac77d84780","text":"Merge retired a covered predecessor; the successor is at docs."}
+{"kind":"artifact","text":"Design note: notes and decisions as one workroom process (draft for discussion; nothing built). Branch notes/notes-and-decisions-draft.","body":{"commit":"075fa9a36a27cce06d57a2726b23a19a61a02be3","path":"notes/2026-08-21-notes-and-decisions.md"}}
