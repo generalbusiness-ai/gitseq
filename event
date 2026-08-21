@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:247abe258b7b18ea6b74a63e825a5cc84656a8ba","text":"Retire this historical fresh-chain self-request as fulfilled by sealed exact-head merge receipt d9d54b46. Candidate 10a5a134 landed as 97ab60c3 after ratified approval 4b8f6611; no post-merge implementation ratification is needed."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b52ddc32bf425f0e9c475b3ad0d6420f9e4e86a0"}
