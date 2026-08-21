@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35b83e899f88ddb981d8f327f448375716cf6282","text":"Retire this completed request. The two public-security fragments were pinned by 8e395a34, carried onto the reviewed head 7bb44f00, and landed on main in merge 4d91ddaa."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bf1f2e7b3d67e65472d552c76aeba44cbd8dcda2","text":"Retire this completed exact-head review request. Codex approved 0590ca75, Claude ratified the approval, and merge 4db6d105 landed that exact head on main."}
