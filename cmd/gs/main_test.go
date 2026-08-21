@@ -151,6 +151,35 @@ func TestResidentHTTPServerLetsColdStatusOutliveWriteTimeout(t *testing.T) {
 	}
 }
 
+// The listener check is not only a check, it is an ordering: a start that
+// refuses must leave the repository exactly as it found it, so no client is
+// ever sent to an address nothing is listening on. The test above exercises
+// the validator alone; this one drives the command, where the ordering lives.
+func TestAServeRefusedForANonLoopbackListenAdvertisesNothing(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(context.Background(), repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The refusal returns at once. The deadline is only so that a build which
+	// serves instead of refusing fails here rather than hanging the package.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = serveCommand(ctx, []string{"--repo", repo, "--listen", "0.0.0.0:0"})
+	if err == nil {
+		t.Fatal("serve accepted a non-loopback listen address")
+	}
+	if !strings.Contains(err.Error(), "loopback") {
+		t.Fatalf("serve refused a non-loopback listen address for another reason: %v", err)
+	}
+	if published, ok := workspace.ResidentURL(); ok {
+		t.Fatalf("a refused serve advertised %q", published)
+	}
+}
+
 func TestProfilerIsDisabledByDefaultAndLoopbackOnly(t *testing.T) {
 	stop, err := serveProfiler(context.Background(), "")
 	if err != nil {
