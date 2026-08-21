@@ -1353,10 +1353,10 @@ func (f *foldState) staleness(successors map[string]string) (map[string]bool, ma
 // what it replaces — a successor artifact cites the predecessor it grew out of
 // — and the merge that publishes the successor is the same act that withdraws
 // that predecessor. Reading the withdrawal as staleness marked the successor
-// stale at the moment it was born, and `gs merge` refuses a stale successor, so
-// the merge refused its own result. The only escape was to retire the causal
-// basis first, which is to break the record of where the work came from in
-// order to be allowed to record where it went.
+// stale at the moment it was born, and `gs merge` then refused a stale
+// successor, so the merge refused its own result. The only escape was to
+// retire the causal basis first, which is to break the record of where the
+// work came from in order to be allowed to record where it went.
 //
 // Only a genuine successor may borrow the plan, and only its own. Citing a
 // receipt is not enough: the signed plan says which retirement is hidden but
