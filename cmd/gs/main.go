@@ -1878,7 +1878,9 @@ func validateConfiguredRemote(ctx context.Context, repo, remote string) error {
 }
 
 func git(ctx context.Context, repo string, arguments ...string) (string, error) {
-	args := append([]string{"-C", repo}, arguments...)
+	args := make([]string, 0, len(arguments)+3)
+	args = append(args, "--no-replace-objects", "-C", repo)
+	args = append(args, arguments...)
 	output, err := exec.CommandContext(ctx, "git", args...).CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(arguments, " "), err, strings.TrimSpace(string(output)))

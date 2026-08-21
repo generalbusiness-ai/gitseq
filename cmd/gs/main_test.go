@@ -735,6 +735,43 @@ func TestMergeGuardMergesOnlyRatifiedApprovedExactHead(t *testing.T) {
 	}
 }
 
+func TestMergeGuardIgnoresReplacementForApprovedCandidate(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+
+	replacementCheckout := filepath.Join(filepath.Dir(fixture.repo), "replacement-candidate")
+	testGit(t, fixture.repo, "worktree", "add", "-b", "replacement-candidate", replacementCheckout, fixture.candidate+"^")
+	if err := os.WriteFile(filepath.Join(replacementCheckout, "feature.txt"), []byte("replacement\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, replacementCheckout, "add", "feature.txt")
+	testGit(t, replacementCheckout, "commit", "-m", "unreviewed replacement content")
+	replacement := testGit(t, replacementCheckout, "rev-parse", "HEAD")
+	testGit(t, fixture.repo, "replace", fixture.candidate, replacement)
+	if got := testGit(t, fixture.repo, "show", fixture.candidate+":feature.txt"); got != "replacement" {
+		t.Fatalf("replacement fixture is inactive: show = %q", got)
+	}
+	if got := testGit(t, fixture.repo, "--no-replace-objects", "show", fixture.candidate+":feature.txt"); got != "feature" {
+		t.Fatalf("approved object content = %q, want feature", got)
+	}
+
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Merge the approved object while ignoring repository-local replacement refs.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(fixture.repo, "feature.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "feature\n" {
+		t.Fatalf("merge landed replacement content %q instead of the approved object", content)
+	}
+}
+
 func TestMergeLeavesAnUnrelatedCandidateArtifactLive(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	approval := fixture.review(t)
