@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,6 +19,19 @@ import (
 // against GitHub Enterprise.
 const DefaultBaseURL = "https://api.github.com"
 
+const (
+	// A GitHub issue body is at most 64 KiB, so an eight-MiB decoded response
+	// leaves room for a full 100-item page and its JSON envelope. The reader
+	// applies this after net/http's transparent decompression.
+	maxResponseBodyBytes = 8 << 20
+	// A clause observes at most 100 pages and 10,000 foreign records. Both
+	// limits are enforced because a hostile endpoint need not honor per_page.
+	maxIssuePages   = 100
+	maxIssueRecords = 10_000
+)
+
+var errRedirectRefused = errors.New("github: redirects are refused")
+
 // Client reads issues from GitHub. It is read-only: nothing in this file
 // writes to the foreign system, because writing is the outbound half and is
 // chartered separately.
@@ -24,6 +39,7 @@ type Client struct {
 	BaseURL string
 	Token   string
 	HTTP    *http.Client
+	Logger  *log.Logger
 }
 
 // NewClient returns a client with sensible defaults.
@@ -31,7 +47,8 @@ func NewClient(token string) *Client {
 	return &Client{
 		BaseURL: DefaultBaseURL,
 		Token:   token,
-		HTTP:    &http.Client{Timeout: 30 * time.Second},
+		HTTP:    &http.Client{Timeout: 30 * time.Second, CheckRedirect: refuseRedirect},
+		Logger:  log.Default(),
 	}
 }
 
@@ -83,7 +100,8 @@ func (a apiIssue) issue(owner, repo string) Issue {
 // filter applied.
 func (c *Client) List(ctx context.Context, owner, repo string, query url.Values) ([]Issue, error) {
 	var issues []Issue
-	for page := 1; ; page++ {
+	observed := 0
+	for page := 1; page <= maxIssuePages; page++ {
 		batch, err := c.issuePage(ctx, owner, repo, query, page)
 		if err != nil {
 			return nil, err
@@ -91,13 +109,32 @@ func (c *Client) List(ctx context.Context, owner, repo string, query url.Values)
 		if len(batch) == 0 {
 			return issues, nil
 		}
-		for _, item := range batch {
+		remaining := maxIssueRecords - observed
+		kept := batch
+		if len(kept) > remaining {
+			kept = kept[:remaining]
+		}
+		observed += len(kept)
+		for _, item := range kept {
 			if item.PullRequest != nil {
 				continue
 			}
 			issues = append(issues, item.issue(owner, repo))
 		}
+		if len(batch) > len(kept) {
+			c.logf("github: truncated issue observation for %s/%s at %d records (%d issues) after page %d; dropped %d records from that page and did not fetch later pages", owner, repo, observed, len(issues), page, len(batch)-len(kept))
+			return issues, nil
+		}
+		if observed == maxIssueRecords {
+			c.logf("github: stopped issue observation for %s/%s at the %d-record limit (%d issues) after page %d; did not fetch later pages", owner, repo, observed, len(issues), page)
+			return issues, nil
+		}
+		if page == maxIssuePages {
+			c.logf("github: stopped issue observation for %s/%s at the %d-page limit with %d records (%d issues); did not fetch later pages", owner, repo, page, observed, len(issues))
+			return issues, nil
+		}
 	}
+	return issues, nil
 }
 
 // Number reads one issue by number, for a selection clause.
@@ -169,7 +206,7 @@ func (c *Client) get(ctx context.Context, endpoint string) ([]byte, int, error) 
 		return nil, 0, err
 	}
 	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
+	body, err := readResponseBody(response.Body)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -184,10 +221,37 @@ func (c *Client) baseURL() string {
 }
 
 func (c *Client) httpClient() *http.Client {
-	if c.HTTP == nil {
-		return http.DefaultClient
+	base := c.HTTP
+	if base == nil {
+		base = http.DefaultClient
 	}
-	return c.HTTP
+	client := *base
+	client.CheckRedirect = refuseRedirect
+	return &client
+}
+
+func refuseRedirect(_ *http.Request, _ []*http.Request) error {
+	return errRedirectRefused
+}
+
+func readResponseBody(body io.Reader) ([]byte, error) {
+	limited := io.LimitReader(body, maxResponseBodyBytes+1)
+	contents, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if len(contents) > maxResponseBodyBytes {
+		return nil, fmt.Errorf("github: response body exceeds %d-byte limit", maxResponseBodyBytes)
+	}
+	return contents, nil
+}
+
+func (c *Client) logf(format string, args ...any) {
+	logger := c.Logger
+	if logger == nil {
+		logger = log.Default()
+	}
+	logger.Printf(format, args...)
 }
 
 // Open asks GitHub to open a pull request and reports what it created.
@@ -251,7 +315,7 @@ func (c *Client) post(ctx context.Context, endpoint string, payload []byte) ([]b
 		return nil, 0, err
 	}
 	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
+	body, err := readResponseBody(response.Body)
 	if err != nil {
 		return nil, 0, err
 	}
