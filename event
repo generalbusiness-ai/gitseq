@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/connector","body":{"commit":"b87afa1ea35a1a84300a204d4799af05cf22edda","path":"internal/connector"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:236ff0752bf1fa3ddbdffb86a4f43bb10bd28efe","text":"Merge retired a covered predecessor; the successor is at internal/connector."}
