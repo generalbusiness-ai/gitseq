@@ -122,15 +122,15 @@ func (c *Client) List(ctx context.Context, owner, repo string, query url.Values)
 			issues = append(issues, item.issue(owner, repo))
 		}
 		if len(batch) > len(kept) {
-			c.logf("github: truncated issue observation for %s/%s at %d records (%d issues) after page %d; dropped %d records from that page and all later pages", owner, repo, observed, len(issues), page, len(batch)-len(kept))
+			c.logf("github: truncated issue observation for %s/%s at %d records (%d issues) after page %d; dropped %d records from that page and did not fetch later pages", owner, repo, observed, len(issues), page, len(batch)-len(kept))
 			return issues, nil
 		}
 		if observed == maxIssueRecords {
-			c.logf("github: truncated issue observation for %s/%s at %d records (%d issues) after page %d; dropped all later pages", owner, repo, observed, len(issues), page)
+			c.logf("github: stopped issue observation for %s/%s at the %d-record limit (%d issues) after page %d; did not fetch later pages", owner, repo, observed, len(issues), page)
 			return issues, nil
 		}
 		if page == maxIssuePages {
-			c.logf("github: truncated issue observation for %s/%s after %d pages and %d records (%d issues); dropped all later pages", owner, repo, page, observed, len(issues))
+			c.logf("github: stopped issue observation for %s/%s at the %d-page limit with %d records (%d issues); did not fetch later pages", owner, repo, page, observed, len(issues))
 			return issues, nil
 		}
 	}

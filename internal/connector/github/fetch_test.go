@@ -69,7 +69,7 @@ func TestIssuesFollowPagination(t *testing.T) {
 	}
 }
 
-func TestIssueListingStopsAtThePageLimitAndLogsWhatWasDropped(t *testing.T) {
+func TestIssueListingStopsAtThePageLimitWithoutClaimingUnfetchedRecordsWereDropped(t *testing.T) {
 	var requests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
@@ -86,8 +86,9 @@ func TestIssueListingStopsAtThePageLimitAndLogsWhatWasDropped(t *testing.T) {
 	if requests != maxIssuePages || len(issues) != 0 {
 		t.Fatalf("requests=%d issues=%d, want %d and 0", requests, len(issues), maxIssuePages)
 	}
-	if got := logs.String(); !strings.Contains(got, "after 100 pages and 100 records (0 issues)") || !strings.Contains(got, "dropped all later pages") {
-		t.Fatalf("truncation log = %q", got)
+	if got := logs.String(); !strings.Contains(got, "at the 100-page limit with 100 records (0 issues)") ||
+		!strings.Contains(got, "did not fetch later pages") || strings.Contains(got, "dropped") {
+		t.Fatalf("page-limit log = %q", got)
 	}
 }
 
@@ -116,8 +117,39 @@ func TestIssueListingStopsAtTheRecordLimitAndLogsThePartialPage(t *testing.T) {
 	if requests != 1 || len(issues) != maxIssueRecords {
 		t.Fatalf("requests=%d issues=%d, want 1 and %d", requests, len(issues), maxIssueRecords)
 	}
-	if got := logs.String(); !strings.Contains(got, "dropped 1 records from that page and all later pages") {
+	if got := logs.String(); !strings.Contains(got, "dropped 1 records from that page and did not fetch later pages") {
 		t.Fatalf("truncation log = %q", got)
+	}
+}
+
+func TestIssueListingStopsAtTheExactRecordLimitWithoutClaimingAnythingWasDropped(t *testing.T) {
+	batch := make([]apiIssue, maxIssueRecords)
+	for index := range batch {
+		batch[index].Number = index + 1
+	}
+	encoded, err := json.Marshal(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_, _ = w.Write(encoded)
+	}))
+	defer server.Close()
+
+	var logs bytes.Buffer
+	client := &Client{BaseURL: server.URL, HTTP: server.Client(), Logger: log.New(&logs, "", 0)}
+	issues, err := client.List(context.Background(), "o", "r", (Clause{}).Query())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || len(issues) != maxIssueRecords {
+		t.Fatalf("requests=%d issues=%d, want 1 and %d", requests, len(issues), maxIssueRecords)
+	}
+	if got := logs.String(); !strings.Contains(got, "at the 10000-record limit") ||
+		!strings.Contains(got, "did not fetch later pages") || strings.Contains(got, "dropped") {
+		t.Fatalf("record-limit log = %q", got)
 	}
 }
 
