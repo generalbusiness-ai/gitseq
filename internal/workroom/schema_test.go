@@ -6,6 +6,57 @@ import (
 	"unsafe"
 )
 
+func TestPooledStatePayloadMatchesStateJSONShape(t *testing.T) {
+	stateType := reflect.TypeOf(State{})
+	pooledType := reflect.TypeOf(pooledStatePayload{})
+	if stateType.NumField() != pooledType.NumField() {
+		t.Fatalf("pooledStatePayload in schema.go has %d fields; State has %d: keep their field set, JSON tags, and declaration order identical", pooledType.NumField(), stateType.NumField())
+	}
+	for index := 0; index < stateType.NumField(); index++ {
+		stateField := stateType.Field(index)
+		pooledField := pooledType.Field(index)
+		if stateField.Name != pooledField.Name || stateField.Tag.Get("json") != pooledField.Tag.Get("json") {
+			t.Errorf("pooledStatePayload field %d in schema.go is %s %q; want State field %s %q", index, pooledField.Name, pooledField.Tag.Get("json"), stateField.Name, stateField.Tag.Get("json"))
+		}
+	}
+}
+
+func TestPooledDecodeMatchesOrdinaryStateDecode(t *testing.T) {
+	state := State{}
+	stateValue := reflect.ValueOf(&state).Elem()
+	for index := 0; index < stateValue.NumField(); index++ {
+		field := stateValue.Field(index)
+		switch field.Kind() {
+		case reflect.String:
+			if stateValue.Type().Field(index).Name == "Kind" {
+				field.SetString(string(KindAssert))
+			} else {
+				field.SetString("value")
+			}
+		case reflect.Map:
+			field.Set(reflect.ValueOf(map[string]string{"key": "value"}))
+		default:
+			t.Fatalf("populate State field %s in this decoder-equivalence test when adding it to schema.go", stateValue.Type().Field(index).Name)
+		}
+	}
+
+	data, err := Encode(&state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinary, err := Decode(SchemaState, data)
+	if err != nil {
+		t.Fatalf("ordinary decode: %v", err)
+	}
+	pooled, err := decode(SchemaState, data, map[string]string{state.Text: state.Text})
+	if err != nil {
+		t.Fatalf("pooled decode: %v", err)
+	}
+	if !reflect.DeepEqual(pooled, ordinary) {
+		t.Fatalf("pooled decode = %#v, ordinary decode = %#v; keep schema.go reconstruction exhaustive", pooled, ordinary)
+	}
+}
+
 func TestDecodeRejectsNonCanonicalAndMalformedPayloads(t *testing.T) {
 	canonical := &State{Kind: KindAssert, Text: "x"}
 	canonicalData := []byte(`{"kind":"assert","text":"x"}`)
