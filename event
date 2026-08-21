@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/connector","body":{"commit":"c2b58f73708553945bf11383348dbde654c3b083","path":"internal/connector"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:80ee8e168951ab2d9011da925a703944d698e502","text":"Merge retired a covered predecessor; the successor is at cmd/gitseq-github."}
