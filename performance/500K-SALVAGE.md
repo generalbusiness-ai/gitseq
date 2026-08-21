@@ -22,18 +22,18 @@ worse.
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Borrow complete checkpoint chunks, `b87afa1e` to `da53996b` | `submit_ack` | 9,192,322,040–9,192,328,280 | 8,550,400,360–8,550,454,688 | -6.98% | 1,669,070,848–1,698,168,832 | 1,376,911,360–1,393,852,416 | -17.71% |
 | Unmarshal and stream the canonical comparison, `b87afa1e` to schema-only `577a1917` | `cold_status` | 6,620,318,560–6,621,318,736 | 3,756,670,904–3,757,140,176 | -43.26% | 559,824,896–571,588,608 | 535,937,024–549,027,840 | -4.11% |
-| Reuse repeated unescaped state text during decode, `18708744` to `704dc7be` | `cold_status` | 3,756,656,568–3,756,976,296 | 3,184,198,440–3,184,297,984 | -15.24% | 528,711,680–574,308,352 | 536,395,776–562,692,096 | -0.36% |
+| Reuse repeated unescaped state text during decode, `18708744` to pool-only `8744c8f5` | `cold_status` | 3,756,467,936–3,757,538,720 | 3,182,397,544–3,183,017,416 | -15.29% | 523,190,272–527,073,280 | 537,542,656–563,052,544 | +4.79% |
 
 The allocation ranges separate for all three parts, so all three are kept.
 The checkpoint change also reduced allocation count by 0.42%. The schema
 change reduced allocation count by 3.51% and garbage collections from 98 to
 69–70. The final string-pool implementation did not add per-record
-allocations: its two samples recorded 13,777,087 and 13,777,131 allocations,
-against 13,777,618 and 13,777,775 for its exact parent.
+allocations: its two samples recorded 13,777,510 and 13,777,272 allocations,
+against 13,777,669 and 13,778,101 for its exact parent.
 
 Median latency changed by -0.39% for checkpoint borrowing, +0.03% for schema
-decoding, and -1.85% for decode-time pooling. Median steady memory changed by
--0.09%, +0.03%, and +0.01%, respectively. Every `cold_status` sample produced
+decoding, and -1.90% for decode-time pooling. Median steady memory changed by
+-0.09%, +0.03%, and +0.02%, respectively. Every `cold_status` sample produced
 the same correctness and trusted digest. Every `submit_ack` sample's trusted
 digest matched its correctness digest; the action-specific digest differs
 between processes because each run creates a fresh signed action.
@@ -43,6 +43,16 @@ the streamed checkpoint builder and does not execute the changed batch
 `appendEvents` path. Schema decoding and text pooling use `cold_status`, where
 the full verified history is decoded and retained. Setup and profiling are
 outside the measured operation.
+
+The isolated evidence is retained as exactly the required
+[evidence document](retained/2026-08-21-500k-salvage-isolated/evidence.json),
+[raw samples](retained/2026-08-21-500k-salvage-isolated/samples.jsonl), and
+[candidate benchmark data](retained/2026-08-21-500k-salvage-isolated/candidate.bench).
+The schema-only candidate remains fetchable at
+`origin/request/500k-memory-salvage-schema-only`; the final transactional
+pool-only candidate remains fetchable at
+`origin/request/500k-memory-salvage-pool-only`. The ranges and medians above
+are recomputable from the retained raw samples.
 
 ## Combined 500k integration
 
