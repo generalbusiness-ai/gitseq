@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aaa2ace8171e7f3d18294d076a0babf7db0e3a28","text":"Retire the invalidated checkpoint artifact; d8a4b15f reports the carried exact head on the current internal/kernel basis."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:81798a21e050cbdbd3e71369e5fb4577d13d4424","text":"Retire the earlier changes-requested checkpoint artifact; d8a4b15f is the current exact-head successor."}
