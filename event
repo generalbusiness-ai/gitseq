@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/nexus","body":{"commit":"32a27dac2aa3fef7275be2708d011004a2ea6801","path":"internal/nexus"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3ae284bf3b4a941c01c07b8cb560aac6c16025dd","text":"Merge retired a covered predecessor; the successor is at docs."}
