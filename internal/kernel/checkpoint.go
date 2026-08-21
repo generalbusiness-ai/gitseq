@@ -110,9 +110,40 @@ func (c *checkpointEventCache) reset(events []Event) {
 }
 
 func (c *checkpointEventCache) appendEvents(events []Event) {
+	// Complete chunks are encoded before this call returns, while the verified
+	// event slice is still owned by the reader. Borrow their immutable payload
+	// bytes directly instead of cloning every historical payload merely to
+	// compress and discard the clone. Only the bounded tail survives the call
+	// and therefore needs independent ownership.
+	for len(events) > 0 && len(c.tail) > 0 {
+		c.append(events[0])
+		events = events[1:]
+	}
+	for len(events) >= checkpointChunkEvents && c.err == nil {
+		c.appendBorrowedChunk(events[:checkpointChunkEvents])
+		events = events[checkpointChunkEvents:]
+	}
 	for _, event := range events {
 		c.append(event)
 	}
+}
+
+func (c *checkpointEventCache) appendBorrowedChunk(events []Event) {
+	var output bytes.Buffer
+	compressed := gzip.NewWriter(&output)
+	for _, event := range events {
+		if err := writeCompactCheckpointEvent(compressed, checkpointReference(event)); err != nil {
+			c.err = err
+			_ = compressed.Close()
+			return
+		}
+	}
+	if err := compressed.Close(); err != nil {
+		c.err = err
+		return
+	}
+	c.chunks = append(c.chunks, output.Bytes())
+	c.count += len(events)
 }
 
 func (c *checkpointEventCache) append(event Event) {
@@ -1102,6 +1133,10 @@ func checkpointMaterial(event Event) checkpointEvent {
 	return checkpointEvent{
 		Payload: bytes.Clone(event.Payload), Attachments: cloneByteMap(event.Attachments),
 	}
+}
+
+func checkpointReference(event Event) checkpointEvent {
+	return checkpointEvent{Payload: event.Payload, Attachments: event.Attachments}
 }
 
 func checkpointDue(depth, lastAttempt int) bool {

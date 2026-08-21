@@ -43,6 +43,15 @@ func TestCheckpointEventCacheCompressesDepthAndRoundTrips(t *testing.T) {
 	if cache.err != nil || cache.count != len(events) || len(cache.chunks) != 1 || len(cache.tail) != 3 {
 		t.Fatalf("checkpoint cache = count %d chunks %d tail %d err %v", cache.count, len(cache.chunks), len(cache.tail), cache.err)
 	}
+	want := make([]checkpointEvent, len(events))
+	for index, event := range events {
+		want[index] = checkpointMaterial(event)
+	}
+	// Full chunks were borrowed only for the synchronous compression step and
+	// the bounded tail was cloned. Neither may retain caller-owned bytes.
+	events[0].Payload[0] ^= 0xff
+	events[len(events)-1].Payload[0] ^= 0xff
+	events[0].Attachments["note"][0] ^= 0xff
 	stored := checkpoint{
 		Schema: checkpointSchema, ObjectFormat: "sha1", Genesis: strings.Repeat("a", 40),
 		Head: strings.Repeat("b", 40), Depth: len(events),
@@ -59,8 +68,66 @@ func TestCheckpointEventCacheCompressesDepthAndRoundTrips(t *testing.T) {
 	if len(decoded.Events) != len(events) {
 		t.Fatalf("decoded events = %d, want %d", len(decoded.Events), len(events))
 	}
-	for index := range events {
-		if !bytes.Equal(decoded.Events[index].Payload, events[index].Payload) || !reflect.DeepEqual(decoded.Events[index].Attachments, events[index].Attachments) {
+	for index := range want {
+		if !bytes.Equal(decoded.Events[index].Payload, want[index].Payload) || !reflect.DeepEqual(decoded.Events[index].Attachments, want[index].Attachments) {
+			t.Fatalf("decoded event %d differs", index)
+		}
+	}
+}
+
+func TestCheckpointEventCacheOwnsTailAcrossBorrowedChunkBoundary(t *testing.T) {
+	const prefix = 3
+	first := make([]Event, prefix)
+	second := make([]Event, checkpointChunkEvents-prefix+checkpointChunkEvents+2)
+	for index := range first {
+		first[index].Payload = []byte{0x10, byte(index)}
+	}
+	for index := range second {
+		second[index].Payload = []byte{0x20, byte(index), byte(index >> 8)}
+	}
+	second[checkpointChunkEvents-prefix].Attachments = map[string][]byte{"boundary": []byte("borrowed")}
+	second[len(second)-1].Attachments = map[string][]byte{"tail": []byte("owned")}
+
+	all := append(append([]Event(nil), first...), second...)
+	want := make([]checkpointEvent, len(all))
+	for index, event := range all {
+		want[index] = checkpointMaterial(event)
+	}
+
+	var cache checkpointEventCache
+	cache.appendEvents(first)
+	cache.appendEvents(second)
+	if cache.err != nil || cache.count != len(all) || len(cache.chunks) != 2 || len(cache.tail) != 2 {
+		t.Fatalf("checkpoint cache = count %d chunks %d tail %d err %v", cache.count, len(cache.chunks), len(cache.tail), cache.err)
+	}
+
+	// The first call's partial tail, the second call's borrowed complete chunk,
+	// and the final tail must all be independent once appendEvents returns.
+	first[0].Payload[0] ^= 0xff
+	borrowed := checkpointChunkEvents - prefix
+	second[borrowed].Payload[0] ^= 0xff
+	second[borrowed].Attachments["boundary"][0] ^= 0xff
+	second[len(second)-1].Payload[0] ^= 0xff
+	second[len(second)-1].Attachments["tail"][0] ^= 0xff
+
+	stored := checkpoint{
+		Schema: checkpointSchema, ObjectFormat: "sha1", Genesis: strings.Repeat("a", 40),
+		Head: strings.Repeat("b", 40), Depth: len(all),
+		EventCount: cache.count, Cached: true, CachedChunks: cache.chunks, CachedTail: cache.tail,
+	}
+	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeCompactCheckpoint(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Events) != len(want) {
+		t.Fatalf("decoded events = %d, want %d", len(decoded.Events), len(want))
+	}
+	for index := range want {
+		if !bytes.Equal(decoded.Events[index].Payload, want[index].Payload) || !reflect.DeepEqual(decoded.Events[index].Attachments, want[index].Attachments) {
 			t.Fatalf("decoded event %d differs", index)
 		}
 	}
