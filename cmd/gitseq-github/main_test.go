@@ -458,3 +458,44 @@ func TestDryRunProposalDoesNotRequireLocalConnectorCustody(t *testing.T) {
 		t.Fatalf("dry-run proposal required local connector custody: %v", err)
 	}
 }
+
+func TestObservationIdentityRefusesConfiguredFingerprintMismatch(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "connector", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configured := workspace.Config.Actors["connector"]
+	configured.Fingerprint = strings.Repeat("0", len(configured.Fingerprint))
+	workspace.Config.Actors["connector"] = configured
+
+	if _, err := loadObservationIdentity(workspace, "connector"); err == nil || !strings.Contains(err.Error(), "does not match configured fingerprint") {
+		t.Fatalf("mismatched connector identity error = %v", err)
+	}
+}
+
+func TestObservationIdentityCanonicalizesActorAddresses(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "connector", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := workspace.Config.Actors["connector"]
+	for _, address := range []string{"connector", "@connector", want.Fingerprint} {
+		identity, err := loadObservationIdentity(workspace, address)
+		if err != nil {
+			t.Fatalf("load %q: %v", address, err)
+		}
+		if identity.Name != "connector" || identity.Fingerprint != want.Fingerprint {
+			t.Fatalf("load %q = %+v, want canonical connector %s", address, identity, want.Fingerprint)
+		}
+	}
+}
