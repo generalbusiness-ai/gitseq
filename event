@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/gitstore","body":{"commit":"e9288b186aa372092259a7c9181d08d150a8c3de","path":"internal/gitstore"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7c05c81c42d296ad0760def6480ef6d38b899fbc","text":"Merge retired a covered predecessor; the successor is at internal/gitstore."}
