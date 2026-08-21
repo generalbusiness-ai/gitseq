@@ -6,6 +6,21 @@ import (
 	"unsafe"
 )
 
+func TestPooledStatePayloadMatchesStateJSONShape(t *testing.T) {
+	stateType := reflect.TypeOf(State{})
+	pooledType := reflect.TypeOf(pooledStatePayload{})
+	if stateType.NumField() != pooledType.NumField() {
+		t.Fatalf("pooledStatePayload in schema.go has %d fields; State has %d: keep their field set, JSON tags, and declaration order identical", pooledType.NumField(), stateType.NumField())
+	}
+	for index := 0; index < stateType.NumField(); index++ {
+		stateField := stateType.Field(index)
+		pooledField := pooledType.Field(index)
+		if stateField.Name != pooledField.Name || stateField.Tag.Get("json") != pooledField.Tag.Get("json") {
+			t.Errorf("pooledStatePayload field %d in schema.go is %s %q; want State field %s %q", index, pooledField.Name, pooledField.Tag.Get("json"), stateField.Name, stateField.Tag.Get("json"))
+		}
+	}
+}
+
 func TestDecodeRejectsNonCanonicalAndMalformedPayloads(t *testing.T) {
 	canonical := &State{Kind: KindAssert, Text: "x"}
 	canonicalData := []byte(`{"kind":"assert","text":"x"}`)
