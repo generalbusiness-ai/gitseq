@@ -1,1 +1,0 @@
-Changed the only active `GITEA__security__INSTALL_LOCK: "true"` line to a YAML comment. `go test -count=1 ./spike/forge` exited 0.

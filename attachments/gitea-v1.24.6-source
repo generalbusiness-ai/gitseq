@@ -1,1 +1,0 @@
-https://github.com/go-gitea/gitea/blob/v1.24.6/docker/root/etc/s6/gitea/setup ; https://github.com/go-gitea/gitea/blob/v1.24.6/modules/setting/setting.go ; https://github.com/go-gitea/gitea/blob/v1.24.6/cmd/web.go ; https://github.com/go-gitea/gitea/blob/v1.24.6/routers/install/routes.go
