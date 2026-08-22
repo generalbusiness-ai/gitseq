@@ -676,6 +676,40 @@ test("a sort reorders the rows that are there and hides none", () => {
   assert.deepEqual(sortRows(rows, { key: "title", descending: true }).map((row) => row.title), ["Zebra", "Alpha"]);
 });
 
+test("every commitment lands in exactly one of the five populations, and closed rows say why", () => {
+  const projection = room(
+    [
+      { event: "open", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "moved", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "stale", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "done", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "cancelled", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "withdrawn", kind: "request", actor: "hugh", ts: NOW - DAY },
+    ],
+    {
+      commitments: [
+        { request: "open", requester: "hugh", status: "open" },
+        { request: "moved", requester: "hugh", status: "promised", promise: "p", performer: "claude", stale: true },
+        { request: "stale", requester: "hugh", status: "stale" },
+        { request: "done", requester: "hugh", status: "satisfied" },
+        { request: "cancelled", requester: "hugh", status: "cancelled" },
+        { request: "withdrawn", requester: "hugh", status: "withdrawn" },
+      ],
+    },
+  );
+  const events = (population) => workRows(projection, context(projection), population).map((row) => row.event).sort();
+  assert.deepEqual(events("live"), ["moved", "open"]);
+  assert.deepEqual(events("moved"), ["moved"]);
+  assert.deepEqual(events("stale"), ["stale"]);
+  assert.deepEqual(events("done"), ["done"]);
+  assert.deepEqual(events("closed"), ["cancelled", "withdrawn"]);
+  // The state word outside the live tabs is the fold's own status, so a
+  // closed row says how it closed rather than a lifecycle word that is not true of it.
+  const states = Object.fromEntries(workRows(projection, context(projection), "closed").map((row) => [row.event, row.state]));
+  assert.deepEqual(states, { cancelled: "cancelled", withdrawn: "withdrawn" });
+  assert.equal(workRows(projection, context(projection), "done")[0].state, "satisfied");
+});
+
 test("lifecycle-stale requests are a separate population, not rows in the default list", () => {
   const projection = room(
     [
@@ -690,7 +724,7 @@ test("lifecycle-stale requests are a separate population, not rows in the defaul
     },
   );
   assert.deepEqual(workRows(projection, context(projection)).map((row) => row.event), ["live"]);
-  assert.deepEqual(workRows(projection, context(projection), true).map((row) => row.event), ["abandoned"]);
+  assert.deepEqual(workRows(projection, context(projection), "stale").map((row) => row.event), ["abandoned"]);
 });
 
 // ---------------------------------------------------------------------------
@@ -852,7 +886,7 @@ test("the lifecycle-stale population holds claimed work too, and is not describe
       ],
     },
   );
-  const stale = workRows(projection, context(projection), true);
+  const stale = workRows(projection, context(projection), "stale");
   assert.deepEqual(stale.map((row) => row.event).sort(), ["abandoned", "stalled"]);
   // The claimed one is kept, not filtered away. Hiding it to rescue a phrase
   // would be the filtering this whole design deleted, in miniature.
@@ -894,7 +928,7 @@ test("world-staleness stays loud in the lifecycle-stale population, and ordinary
       ],
     },
   );
-  const byEvent = new Map(workRows(projection, context(projection), true).map((row) => [row.event, row]));
+  const byEvent = new Map(workRows(projection, context(projection), "stale").map((row) => [row.event, row]));
   // Both are not in flight, so neither borrows a live word...
   assert.equal(byEvent.get("quiet").state, "stale");
   assert.equal(byEvent.get("loud").state, "stale");

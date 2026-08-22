@@ -467,18 +467,23 @@ test("exactly one number heads the list, and each other number opens to its own 
     assert.equal(heading.textContent, "3 open requests");
     assert.equal(document.querySelectorAll("tbody tr").length, 3);
 
-    const summaries = [...document.querySelectorAll("p button")];
-    assert.deepEqual(summaries.map((button) => button.textContent), [
-      "1 of these rest on reasoning that has moved.",
-      "1 stale requests, not in flight.",
-      "1 act awaits ratification.",
+    const tabs = () => [...document.querySelectorAll("[role=tab]")];
+    assert.deepEqual(tabs().map((tab) => tab.textContent), [
+      "open3",
+      "reasoning moved1",
+      "stale, not in flight1",
+      "completed0",
+      "closed, not completed0",
+      "awaiting ratification1",
     ]);
+    assert.deepEqual(tabs().map((tab) => tab.getAttribute("aria-selected")), ["true", "false", "false", "false", "false", "false"]);
 
-    await click(summaries[1]);
+    await click(tabs()[2]);
     assert.equal(document.querySelector("h2").textContent, "1 stale request, not in flight");
     assert.deepEqual(titlesOnScreen(), ["Abandoned work"]);
+    assert.equal(tabs()[2].getAttribute("aria-selected"), "true");
 
-    await click([...document.querySelectorAll("p button")][0]);
+    await click(tabs()[1]);
     assert.equal(document.querySelector("h2").textContent, "1 resting on reasoning that has moved");
     assert.deepEqual(titlesOnScreen(), ["Zebra work"]);
 
