@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gs","body":{"commit":"55926dd255dbf45b14d9090eeef1d583817b9668","path":"cmd/gs"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/statusview","body":{"commit":"55926dd255dbf45b14d9090eeef1d583817b9668","path":"internal/statusview"}}
