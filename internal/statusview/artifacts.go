@@ -41,14 +41,22 @@ const (
 	ArtifactStateAll       ArtifactState = "all"
 )
 
-// ArtifactQuery selects artifacts by exact path and lifecycle state. Paths are
-// wire keys: they are not cleaned, expanded, prefix-matched, or interpreted as
-// globs.
+// ArtifactQuery is the resident HTTP and MCP request contract. It selects live
+// artifacts at exact path strings. Keep CLI-only selectors out of this type:
+// both remote surfaces decode it directly, so sharing a wider request type
+// silently widens their protocol even when the published schemas stay put.
 type ArtifactQuery struct {
-	Paths []string `json:"paths"`
-	// State defaults to ArtifactStateLive, which is the behaviour every
-	// caller had before this field, so an omitted state is not a widening.
-	State ArtifactState `json:"state,omitempty"`
+	Paths  []string `json:"paths"`
+	Limit  int      `json:"limit,omitempty"`
+	Cursor string   `json:"cursor,omitempty"`
+}
+
+// ArtifactSelection is the CLI-only extension over ArtifactQuery. The CLI may
+// ask the extra runbook questions without turning an implementation detail
+// into a resident or MCP compatibility promise.
+type ArtifactSelection struct {
+	Paths []string
+	State ArtifactState
 	// Reaches selects artifacts whose chain of artifact bases arrives at an
 	// artifact recorded at this exact path, following provenance from artifact
 	// to artifact for as many hops as the chain has. It is the anchor a
@@ -58,9 +66,9 @@ type ArtifactQuery struct {
 	// An artifact recorded at the anchor path itself is excluded. It is the
 	// anchor, not something anchored to it, and returning the anchors when
 	// asked what still points at them answers a question nobody asked.
-	Reaches string `json:"reaches,omitempty"`
-	Limit   int    `json:"limit,omitempty"`
-	Cursor  string `json:"cursor,omitempty"`
+	Reaches string
+	Limit   int
+	Cursor  string
 }
 
 // lifecycleOf names which of the three lifecycle states an artifact is in.
@@ -94,36 +102,16 @@ func (state ArtifactState) admits(artifact workroom.Artifact) bool {
 }
 
 type ArtifactRow struct {
-	Event  string `json:"event"`
-	Path   string `json:"path"`
-	Commit string `json:"commit"`
-	Stale  bool   `json:"stale"`
-	// Retired stays because it is in the shipped shape that the resident HTTP
-	// and MCP surfaces already return. It answers a narrower question than
-	// State: whether the pointer was withdrawn at all, not whether a successor
-	// was named in its place.
-	Retired bool `json:"retired"`
-	// State is the lifecycle the selector matched on, carried so that a row
-	// says which of the four states it is in rather than leaving the reader to
-	// reconstruct it from Retired and be unable to.
-	State                    ArtifactState `json:"state"`
-	DescribesSupersededWorld bool          `json:"describes_superseded_world"`
-}
-
-// Lifecycle is the one place any reader asks a row what it is. A row decoded
-// from a resident older than the State field carries an empty string; the
-// narrower Retired bit still answers, and it answers "retired" because that
-// older resident could not tell succeeded apart either. Every caller reads
-// this rather than switching on the fields, so there is one lifecycle fact and
-// one fallback rather than a copy of each per call site.
-func (row ArtifactRow) Lifecycle() ArtifactState {
-	if row.State != "" {
-		return row.State
-	}
-	if row.Retired {
-		return ArtifactStateRetired
-	}
-	return ArtifactStateLive
+	Event   string `json:"event"`
+	Path    string `json:"path"`
+	Commit  string `json:"commit"`
+	Stale   bool   `json:"stale"`
+	Retired bool   `json:"retired"`
+	// Succeeded is omitted on the remote surface's live-only rows, preserving
+	// its response bytes. CLI selections that include retired artifacts need
+	// the bit: Retired alone cannot distinguish replacement from withdrawal.
+	Succeeded                bool `json:"succeeded,omitempty"`
+	DescribesSupersededWorld bool `json:"describes_superseded_world"`
 }
 
 type ArtifactPage struct {
@@ -146,35 +134,67 @@ type artifactCursor struct {
 }
 
 func normalizeArtifactQuery(input ArtifactQuery) (ArtifactQuery, string, error) {
+	if len(input.Paths) == 0 {
+		return ArtifactQuery{}, "", errors.New("at least one exact path is required")
+	}
+	paths, limit, err := normalizeArtifactPaths(input.Paths, input.Limit)
+	if err != nil {
+		return ArtifactQuery{}, "", err
+	}
+	input.Paths, input.Limit = paths, limit
+	// This is the exact pre-CLI-extension cursor fingerprint. Existing HTTP
+	// and MCP cursors remain valid and cannot be spliced across path changes.
+	encoded, _ := json.Marshal(paths)
+	sum := sha256.Sum256(encoded)
+	return input, hex.EncodeToString(sum[:]), nil
+}
+
+func normalizeArtifactSelection(input ArtifactSelection) (ArtifactSelection, string, error) {
 	// A path-less query is admitted only when an anchor selects the population
 	// instead. Without that, an empty path list is the request for everything,
 	// and refusing it is what has always kept an unbounded dump off this
 	// surface; the refusal is left exactly where it was for every caller that
 	// names no anchor.
 	if len(input.Paths) == 0 && input.Reaches == "" {
-		return ArtifactQuery{}, "", errors.New("at least one exact path is required")
+		return ArtifactSelection{}, "", errors.New("at least one exact path is required")
 	}
-	if len(input.Paths) > ArtifactPathMax {
-		return ArtifactQuery{}, "", fmt.Errorf("at most %d exact paths may be queried", ArtifactPathMax)
+	paths, limit, err := normalizeArtifactPaths(input.Paths, input.Limit)
+	if err != nil {
+		return ArtifactSelection{}, "", err
 	}
-	if input.Limit == 0 {
-		input.Limit = ArtifactPageDefault
-	}
-	if input.Limit < 1 || input.Limit > ArtifactPageMax {
-		return ArtifactQuery{}, "", fmt.Errorf("limit must be between 1 and %d", ArtifactPageMax)
-	}
+	input.Paths, input.Limit = paths, limit
 	switch input.State {
 	case "":
 		input.State = ArtifactStateLive
 	case ArtifactStateLive, ArtifactStateRetired, ArtifactStateSucceeded, ArtifactStateAll:
 	default:
-		return ArtifactQuery{}, "", fmt.Errorf("unknown artifact state %q", input.State)
+		return ArtifactSelection{}, "", fmt.Errorf("unknown artifact state %q", input.State)
 	}
-	seen := make(map[string]bool, len(input.Paths))
-	paths := make([]string, 0, len(input.Paths))
-	for _, path := range input.Paths {
+	fingerprintInput := struct {
+		Paths   []string      `json:"paths"`
+		State   ArtifactState `json:"state"`
+		Reaches string        `json:"reaches"`
+	}{input.Paths, input.State, input.Reaches}
+	encoded, _ := json.Marshal(fingerprintInput)
+	sum := sha256.Sum256(encoded)
+	return input, hex.EncodeToString(sum[:]), nil
+}
+
+func normalizeArtifactPaths(input []string, limit int) ([]string, int, error) {
+	if len(input) > ArtifactPathMax {
+		return nil, 0, fmt.Errorf("at most %d exact paths may be queried", ArtifactPathMax)
+	}
+	if limit == 0 {
+		limit = ArtifactPageDefault
+	}
+	if limit < 1 || limit > ArtifactPageMax {
+		return nil, 0, fmt.Errorf("limit must be between 1 and %d", ArtifactPageMax)
+	}
+	seen := make(map[string]bool, len(input))
+	paths := make([]string, 0, len(input))
+	for _, path := range input {
 		if path == "" {
-			return ArtifactQuery{}, "", errors.New("artifact path must not be empty")
+			return nil, 0, errors.New("artifact path must not be empty")
 		}
 		if !seen[path] {
 			seen[path] = true
@@ -182,19 +202,7 @@ func normalizeArtifactQuery(input ArtifactQuery) (ArtifactQuery, string, error) 
 		}
 	}
 	sort.Strings(paths)
-	input.Paths = paths
-	// Every selector goes into the fingerprint, not just the paths. A cursor
-	// carries the fingerprint, so continuing one page's cursor into a query
-	// with a different state or anchor is refused rather than silently
-	// splicing two different result sets together.
-	fingerprintInput := struct {
-		Paths   []string      `json:"paths"`
-		State   ArtifactState `json:"state"`
-		Reaches string        `json:"reaches"`
-	}{paths, input.State, input.Reaches}
-	encoded, _ := json.Marshal(fingerprintInput)
-	sum := sha256.Sum256(encoded)
-	return input, hex.EncodeToString(sum[:]), nil
+	return paths, limit, nil
 }
 
 // artifactsAnchoredAt returns every artifact that reaches an artifact at the
@@ -280,6 +288,21 @@ func BuildArtifactPage(durable app.Snapshot, input ArtifactQuery, degraded bool)
 	if err != nil {
 		return ArtifactPage{}, err
 	}
+	return buildArtifactPage(durable, ArtifactSelection{Paths: query.Paths, State: ArtifactStateLive, Limit: query.Limit, Cursor: query.Cursor}, filter, degraded)
+}
+
+// BuildArtifactSelectionPage exposes the extra finite CLI selectors while
+// sharing the exact filtering, row, pagination, and cursor implementation with
+// the remote live-path query above.
+func BuildArtifactSelectionPage(durable app.Snapshot, input ArtifactSelection, degraded bool) (ArtifactPage, error) {
+	query, filter, err := normalizeArtifactSelection(input)
+	if err != nil {
+		return ArtifactPage{}, err
+	}
+	return buildArtifactPage(durable, query, filter, degraded)
+}
+
+func buildArtifactPage(durable app.Snapshot, query ArtifactSelection, filter string, degraded bool) (ArtifactPage, error) {
 	offset, err := decodeArtifactCursor(query.Cursor, durable.Head, filter)
 	if err != nil {
 		return ArtifactPage{}, err
@@ -311,7 +334,7 @@ func BuildArtifactPage(durable app.Snapshot, input ArtifactQuery, degraded bool)
 			continue
 		}
 		rows = append(rows, ArtifactRow{Event: artifact.Event, Path: artifact.Path, Commit: artifact.Commit,
-			Stale: artifact.Stale, Retired: artifact.Retired, State: lifecycleOf(artifact),
+			Stale: artifact.Stale, Retired: artifact.Retired, Succeeded: artifact.Succeeded,
 			DescribesSupersededWorld: artifact.DescribesSupersededWorld})
 	}
 	if offset > matching {

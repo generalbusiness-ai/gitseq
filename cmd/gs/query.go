@@ -74,21 +74,21 @@ func openForQuery(ctx context.Context, repo, serverURL string) (*app.Workspace, 
 // branch, and so does the refusal here — but it is named apart, because the
 // repair is to fetch it, not to merge it.
 type headLanding struct {
-	in      []string
-	out     []string
-	unknown []string
+	in, out, unknown                []string
+	inTotal, outTotal, unknownTotal int
+	outOmitted, unknownOmitted      int
 }
 
 func (landing headLanding) refusal(gate statusview.ReviewGate, branch string) error {
 	var reasons []string
-	if !gate.Quiet() {
+	if gate.Awaiting > 0 {
 		reasons = append(reasons, fmt.Sprintf("%d review requests await a first verdict", gate.Awaiting))
 	}
-	if len(landing.out) > 0 {
-		reasons = append(reasons, fmt.Sprintf("%d approved heads are not in %s", len(landing.out), branch))
+	if landing.outTotal > 0 {
+		reasons = append(reasons, fmt.Sprintf("%d approved heads are not in %s", landing.outTotal, branch))
 	}
-	if len(landing.unknown) > 0 {
-		reasons = append(reasons, fmt.Sprintf("%d approved heads are unknown to this clone", len(landing.unknown)))
+	if landing.unknownTotal > 0 {
+		reasons = append(reasons, fmt.Sprintf("%d approved heads are unknown to this clone", landing.unknownTotal))
 	}
 	if len(reasons) == 0 {
 		return nil
@@ -96,17 +96,10 @@ func (landing headLanding) refusal(gate statusview.ReviewGate, branch string) er
 	return errors.New("the review queue is not quiet: " + strings.Join(reasons, "; "))
 }
 
-func classifyHeads(ctx context.Context, checkout, branch string, heads []string) (headLanding, error) {
+func classifyHeads(ctx context.Context, checkout, branch string, heads []string, displayLimit int) (headLanding, error) {
 	var landing headLanding
 	if len(heads) == 0 {
 		return landing, nil
-	}
-	// The branch itself has to resolve before any answer about it means
-	// anything. Asking about ancestry of a name Git cannot resolve would
-	// report every head as out of the branch, which is a confident wrong
-	// answer rather than a refusal.
-	if _, err := git(ctx, checkout, "rev-parse", "--verify", "--end-of-options", branch+"^{commit}"); err != nil {
-		return headLanding{}, err
 	}
 	// Two Git processes, whatever the number of heads. The obvious loop runs
 	// `merge-base --is-ancestor` once per head, so the work a caller does grows
@@ -122,6 +115,9 @@ func classifyHeads(ctx context.Context, checkout, branch string, heads []string)
 	// rev-list answers it for all heads at once. Its cost is the repository's
 	// history, not the workroom's length, which is the amplification being
 	// removed.
+	// rev-list also proves the branch resolves. A missing branch fails here
+	// before any head is classified, so the separate rev-parse process would
+	// add no fact.
 	reachable, err := git(ctx, checkout, "rev-list", "--end-of-options", branch)
 	if err != nil {
 		return headLanding{}, err
@@ -157,13 +153,24 @@ func classifyHeads(ctx context.Context, checkout, branch string, heads []string)
 	for _, head := range heads {
 		switch {
 		case ancestors[head]:
-			landing.in = append(landing.in, head)
+			landing.inTotal++
+			if len(landing.in) < displayLimit {
+				landing.in = append(landing.in, head)
+			}
 		case present[head]:
-			landing.out = append(landing.out, head)
+			landing.outTotal++
+			if len(landing.out) < displayLimit {
+				landing.out = append(landing.out, head)
+			}
 		default:
-			landing.unknown = append(landing.unknown, head)
+			landing.unknownTotal++
+			if len(landing.unknown) < displayLimit {
+				landing.unknown = append(landing.unknown, head)
+			}
 		}
 	}
+	landing.outOmitted = landing.outTotal - len(landing.out)
+	landing.unknownOmitted = landing.unknownTotal - len(landing.unknown)
 	return landing, nil
 }
 
@@ -243,6 +250,35 @@ func renderArtifactPage(page statusview.ArtifactPage, source string) string {
 	return out.String()
 }
 
+func buildSupersessionPlan(page statusview.ArtifactPage, message, prefix string) ([]batchAct, error) {
+	if page.Remaining != 0 || page.Returned != page.MatchingTotal {
+		return nil, fmt.Errorf("%d live artifacts match but the bounded plan holds %d; no partial plan was written", page.MatchingTotal, page.Returned)
+	}
+	plan := make([]batchAct, 0, len(page.Artifacts))
+	for _, artifact := range page.Artifacts {
+		plan = append(plan, batchAct{Verb: app.VerbSupersede, Target: artifact.Event, Text: message, IdempotencyKey: prefix + artifact.Event})
+	}
+	return plan, nil
+}
+
+func renderSupersessionPlan(frontier statusview.Frontier, path string, plan []batchAct) string {
+	var out strings.Builder
+	out.WriteString(renderFrontier(frontier, "verified local"))
+	fmt.Fprintf(&out, "Supersession plan: %d live artifacts at exact path %s.\n", len(plan), path)
+	for _, act := range plan {
+		fmt.Fprintf(&out, "  supersede %s\n", act.Target)
+	}
+	return out.String()
+}
+
+func renderStalenessWave(wave statusview.StalenessWave, source string) string {
+	var out strings.Builder
+	out.WriteString(renderFrontier(wave.Frontier, source))
+	fmt.Fprintf(&out, "Staleness wave from %s: %d of %d records reached; %d of %d live artifacts away from that path reach it.\n",
+		wave.Path, wave.Reached, wave.Records, wave.Reaching, wave.LiveArtifacts)
+	return out.String()
+}
+
 // artifactRowState names the row the way the status page names it, so a reader
 // moving between the two does not have to translate. The lifecycle is read
 // from the row rather than reconstructed here: a succeeded artifact and a
@@ -251,13 +287,14 @@ func renderArtifactPage(page statusview.ArtifactPage, source string) string {
 // from --state retired. Lifecycle is reported before staleness because a
 // withdrawn pointer is the louder fact.
 func artifactRowState(row statusview.ArtifactRow) string {
-	switch lifecycle := row.Lifecycle(); lifecycle {
-	case statusview.ArtifactStateRetired, statusview.ArtifactStateSucceeded:
-		return string(lifecycle)
+	switch {
+	case row.Succeeded:
+		return "succeeded"
+	case row.Retired:
+		return "retired"
+	case row.Stale:
+		return "stale"
 	default:
-		if row.Stale {
-			return "stale"
-		}
 		return "current"
 	}
 }
@@ -303,12 +340,18 @@ func renderReviewGate(gate statusview.ReviewGate, branch, source string, landing
 	renderEvents(&out, "awaiting a first verdict", gate.AwaitingRequests, gate.AwaitingOmitted)
 	renderEvents(&out, "unresolved artifact reference", gate.UnresolvedReferences, gate.UnresolvedOmitted)
 	fmt.Fprintf(&out, "Approved heads: %d in %s, %d not in %s, %d unknown to this clone.\n",
-		len(landing.in), branch, len(landing.out), branch, len(landing.unknown))
+		landing.inTotal, branch, landing.outTotal, branch, landing.unknownTotal)
 	for _, head := range landing.out {
 		fmt.Fprintf(&out, "  not in %s: %s\n", branch, head)
 	}
 	for _, head := range landing.unknown {
 		fmt.Fprintf(&out, "  unknown here, fetch before trusting the silence: %s\n", head)
+	}
+	if landing.outOmitted > 0 {
+		fmt.Fprintf(&out, "  %d additional out-of-branch heads omitted from this bounded display.\n", landing.outOmitted)
+	}
+	if landing.unknownOmitted > 0 {
+		fmt.Fprintf(&out, "  %d additional unknown heads omitted from this bounded display.\n", landing.unknownOmitted)
 	}
 	return out.String()
 }

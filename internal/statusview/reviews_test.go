@@ -158,15 +158,14 @@ func TestApprovedHeadsAreOnlyTheOnesStillActionable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(gate.ApprovedHeads) != 1 || gate.ApprovedHeads[0] != "eeee" {
+	if gate.Approved != 1 || len(gate.ApprovedHeads) != 1 || gate.ApprovedHeads[0] != "eeee" {
 		t.Fatalf("approved heads %v, want only the ratified, live, current-world head once", gate.ApprovedHeads)
 	}
 }
 
-// The two sample lists shorten and say so. The approved head list does not,
-// because a head omitted from a gate is a head nobody asked Git about while the
-// caller read "quiet".
-func TestSamplesShortenButTheGateSubjectDoesNot(t *testing.T) {
+// Every displayed list is bounded and reports its omission count. The CLI
+// separately classifies the complete approved-head population.
+func TestEveryReviewDisplayListIsBoundedAndHonest(t *testing.T) {
 	snapshot := gateSnapshot()
 	for index := 0; index < 30; index++ {
 		event := fmt.Sprintf("request:bulk-%02d", index)
@@ -182,11 +181,31 @@ func TestSamplesShortenButTheGateSubjectDoesNot(t *testing.T) {
 	if gate.Awaiting != 33 || len(gate.AwaitingRequests) != 5 || gate.AwaitingOmitted != 28 {
 		t.Fatalf("the awaiting sample did not report its own shortening: %d %d %d", gate.Awaiting, len(gate.AwaitingRequests), gate.AwaitingOmitted)
 	}
-	if len(gate.ApprovedHeads) != 31 {
-		t.Fatalf("approved heads were capped to %d; a gate that omits a head can declare quiet with work outstanding", len(gate.ApprovedHeads))
+	if gate.Approved != 31 || len(gate.ApprovedHeads) != 5 || gate.ApprovedHeadsOmitted != 26 {
+		t.Fatalf("approved head bounds = total %d returned %d omitted %d, want 31/5/26", gate.Approved, len(gate.ApprovedHeads), gate.ApprovedHeadsOmitted)
 	}
 	if gate.Quiet() {
 		t.Fatal("a gate with 33 requests awaiting a first verdict called itself quiet")
+	}
+}
+
+func TestApprovedDisplayOmissionDoesNotMakeTheProjectionGatePermanent(t *testing.T) {
+	snapshot := app.Snapshot{Genesis: "genesis", Head: "many", Depth: 60}
+	for index := 0; index < 60; index++ {
+		snapshot.Projection.Reviews = append(snapshot.Projection.Reviews, workroom.Review{
+			Report: fmt.Sprintf("report-%02d", index), Verdict: "approved", Ratified: true,
+			Head: fmt.Sprintf("head-%02d", index),
+		})
+	}
+	gate, err := BuildReviewGate(snapshot, 5, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate.Approved != 60 || len(gate.ApprovedHeads) != 5 || gate.ApprovedHeadsOmitted != 55 {
+		t.Fatalf("approved display is not bounded honestly: %+v", gate)
+	}
+	if !gate.Quiet() {
+		t.Fatal("display truncation made the projection gate permanently red; Git classification owns the full head verdict")
 	}
 }
 

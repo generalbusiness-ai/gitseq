@@ -12,9 +12,10 @@ Selects artifact statements without fetching the whole projection, by
 three things: the exact path they were recorded at, the lifecycle state
 they are in, and whether their chain of artifact bases reaches an anchor.
 
-This is the selection the MCP [`artifacts`](../mcp/artifacts.md) tool and
-the resident's `/v0/artifact-query` route make, through the same code.
-`--json` prints the same page shape they return.
+The exact live-path selection uses the same page-building code and JSON page
+shape as the MCP [`artifacts`](../mcp/artifacts.md) tool and the resident's
+`/v0/artifact-query` route. Lifecycle and provenance selectors are CLI-only:
+they do not widen either remote request contract.
 
 ## Flags
 
@@ -51,14 +52,14 @@ that was recorded, or the answer is empty.
 Live means **not retired**. Staleness is a different fact and does not
 answer this question: a stale artifact still occupies its path and is
 still the predecessor a successor has to retire. Every returned row
-carries its own `state`, `stale`, `retired` and
+carries its own `succeeded`, `stale`, `retired` and
 `describes_superseded_world` fields whatever state was selected, so a
 row from an `--state all` query says which of the three lifecycles it is
 in rather than leaving the reader to infer it.
 
-`state` is the whole lifecycle in one field, and `retired` answers the
-narrower question of whether the pointer was withdrawn at all. Reading
-`retired` alone cannot tell a superseded artifact from a withdrawn one,
+`retired` says the pointer was withdrawn and `succeeded` says a successor was
+named. Reading `retired` alone cannot tell a replaced artifact from a
+withdrawn one,
 which is the difference that matters to anyone standing on it: one says
 where the behaviour went, the other says go and look.
 
@@ -119,5 +120,6 @@ is an answer. A selector matching every artifact pages like any other.
 
 ## See also
 
-- [`gs status`](status.md), [`gs provenance`](provenance.md), [`gs reviews`](reviews.md)
+- [`gs status`](status.md), [`gs provenance`](provenance.md), [`gs reviews`](reviews.md),
+  [`gs supersession-plan`](supersession-plan.md), [`gs staleness-wave`](staleness-wave.md)
 - [MCP `artifacts`](../mcp/artifacts.md)

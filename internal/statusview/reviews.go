@@ -53,20 +53,52 @@ type ReviewGate struct {
 	// the verdict was signed over. Going through the artifact's commit field
 	// asks a second question whose answer only happens to agree.
 	//
-	// This one list is complete rather than capped, and the other two are
-	// samples beside a total. A capped gate would let an omitted head decide
-	// nothing while the caller read "quiet", and a gate that can declare quiet
-	// with work outstanding is the one failure an irreversible step cannot
-	// have. The list is bounded by the ratified approvals a workroom holds,
-	// which is what the question is actually about.
-	ApprovedHeads []string `json:"approved_heads"`
-	Degraded      bool     `json:"degraded,omitempty"`
+	// Approved is the whole distinct actionable-head count. ApprovedHeads is a
+	// bounded display sample. The CLI classifies the complete population from
+	// the projection through ActionableApprovedHeads, so display omission is
+	// never check omission and already-landed history can still clear the gate.
+	Approved             int      `json:"approved"`
+	ApprovedHeads        []string `json:"approved_heads"`
+	ApprovedHeadsOmitted int      `json:"approved_heads_omitted,omitempty"`
+	Degraded             bool     `json:"degraded,omitempty"`
 }
 
 // Quiet reports whether nothing is still awaiting a first verdict. Whether the
 // approved heads have landed is a question for Git, not for the projection, so
 // it is settled by the caller that can ask.
-func (gate ReviewGate) Quiet() bool { return gate.Awaiting == 0 }
+func (gate ReviewGate) Quiet() bool {
+	return gate.Awaiting == 0
+}
+
+// ActionableApprovedHeads returns the complete deduplicated population for the
+// CLI's Git classifier. It is deliberately separate from ReviewGate's bounded
+// wire/display sample: omission from display must not mean omission from the
+// ancestry check, and an already-landed head must be allowed to clear no matter
+// how many historical approvals precede it.
+func ActionableApprovedHeads(projection workroom.Projection) []string {
+	worldStale := make(map[string]bool)
+	for _, statement := range projection.Statements {
+		if statement.DescribesSupersededWorld {
+			worldStale[statement.Event] = true
+		}
+	}
+	seen := make(map[string]bool)
+	heads := make([]string, 0)
+	for _, review := range projection.Reviews {
+		if review.Verdict != "approved" || !review.Ratified || review.Retired {
+			continue
+		}
+		if worldStale[review.Report] || (review.Artifact != "" && worldStale[review.Artifact]) {
+			continue
+		}
+		if review.Head == "" || seen[review.Head] {
+			continue
+		}
+		seen[review.Head] = true
+		heads = append(heads, review.Head)
+	}
+	return heads
+}
 
 // BuildReviewGate reads the settlement of every review request from the
 // projection the fold produced.
@@ -108,12 +140,6 @@ func BuildReviewGate(durable app.Snapshot, limit int, degraded bool) (ReviewGate
 			settled[commitment.Request] = true
 		}
 	}
-	worldStale := make(map[string]bool)
-	for _, statement := range projection.Statements {
-		if statement.DescribesSupersededWorld {
-			worldStale[statement.Event] = true
-		}
-	}
 
 	gate := ReviewGate{
 		Frontier: Frontier{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth},
@@ -135,32 +161,20 @@ func BuildReviewGate(durable app.Snapshot, limit int, degraded bool) (ReviewGate
 		}
 	}
 
-	seen := make(map[string]bool)
-	gate.ApprovedHeads = []string{}
-	for _, review := range projection.Reviews {
-		if review.Verdict != "approved" || !review.Ratified || review.Retired {
-			continue
-		}
-		if worldStale[review.Report] || (review.Artifact != "" && worldStale[review.Artifact]) {
-			continue
-		}
-		// A review with no head names no commit for Git to answer about.
-		// Carrying it as an empty string would make the branch question
-		// unanswerable rather than answered.
-		if review.Head == "" || seen[review.Head] {
-			continue
-		}
-		seen[review.Head] = true
-		gate.ApprovedHeads = append(gate.ApprovedHeads, review.Head)
-	}
+	approved := ActionableApprovedHeads(projection)
 
 	gate.AwaitingRequests, gate.AwaitingOmitted = Cap(awaiting, limit)
 	gate.UnresolvedReferences, gate.UnresolvedOmitted = Cap(unresolved, limit)
+	gate.Approved = len(approved)
+	gate.ApprovedHeads, gate.ApprovedHeadsOmitted = Cap(approved, limit)
 	if gate.AwaitingRequests == nil {
 		gate.AwaitingRequests = []string{}
 	}
 	if gate.UnresolvedReferences == nil {
 		gate.UnresolvedReferences = []string{}
+	}
+	if gate.ApprovedHeads == nil {
+		gate.ApprovedHeads = []string{}
 	}
 	return gate, nil
 }

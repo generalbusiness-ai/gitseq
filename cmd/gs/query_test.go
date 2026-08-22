@@ -274,6 +274,76 @@ func TestHumanArtifactViewCarriesItsCounts(t *testing.T) {
 	}
 }
 
+func TestSupersessionPlanProducesCompleteBatchInput(t *testing.T) {
+	fixture := newQueryFixture(t)
+	printed, _, err := fixture.run(supersessionPlanCommand,
+		"--path", "CHANGELOG.md", "--text", "retire the old pointer", "--idempotency-prefix", "retire-", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan []batchAct
+	decoder := json.NewDecoder(strings.NewReader(printed))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&plan); err != nil {
+		t.Fatalf("plan is not gs batch input: %v\n%s", err, printed)
+	}
+	if len(plan) != 1 || plan[0].Verb != app.VerbSupersede || plan[0].Target != fixture.artifact || plan[0].Text != "retire the old pointer" || plan[0].IdempotencyKey != "retire-"+fixture.artifact {
+		t.Fatalf("unexpected supersession plan: %+v", plan)
+	}
+}
+
+func TestSupersessionPlanRefusesAPlannedSubset(t *testing.T) {
+	page := statusview.ArtifactPage{MatchingTotal: 2, Returned: 1, Remaining: 1,
+		Artifacts: []statusview.ArtifactRow{{Event: "first", Path: "."}}}
+	if plan, err := buildSupersessionPlan(page, "retire", "key-"); err == nil || plan != nil {
+		t.Fatalf("partial plan was emitted: plan=%+v err=%v", plan, err)
+	}
+}
+
+// These are the five concrete jq programs from the retirement runbook, not a
+// guessed query language. Each assertion compares the new bounded capability
+// to the exact population the old program selected.
+func TestFiveRunbookProgramsHaveCommandParity(t *testing.T) {
+	effective := func(event string) workroom.Decision {
+		return workroom.Decision{Event: event, Verdict: workroom.Effective}
+	}
+	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 8, Projection: workroom.Projection{
+		Artifacts: []workroom.Artifact{
+			{Event: "dot-live", Path: "."}, {Event: "dot-old", Path: ".", Retired: true},
+			{Event: "doc", Path: "docs/why.md"}, {Event: "guide", Path: "docs/guide.md"},
+			{Event: "other", Path: "ui"},
+		},
+		Statements:  []workroom.Statement{{Event: "review-request", Kind: workroom.KindRequest, Body: map[string]string{"artifact": "doc"}}},
+		Commitments: []workroom.Commitment{{Request: "review-request", Status: "open"}},
+		Decisions: []workroom.Decision{
+			effective("dot-live"), effective("dot-old"), effective("doc"), effective("guide"),
+			effective("other"), effective("review-request"),
+		},
+		Provenance: map[string][]string{"doc": {"dot-live"}, "guide": {"doc"}, "other": {"elsewhere"}},
+	}}
+
+	liveDots, err := statusview.BuildArtifactSelectionPage(snapshot, statusview.ArtifactSelection{Paths: []string{"."}, Limit: 50}, false)
+	if err != nil || liveDots.MatchingTotal != 1 || liveDots.Artifacts[0].Event != "dot-live" {
+		t.Fatalf("program 1 exact live path: page=%+v err=%v", liveDots, err)
+	}
+	plan, err := buildSupersessionPlan(liveDots, "retire dot", "retire-dot-")
+	if err != nil || len(plan) != 1 || plan[0].Target != "dot-live" {
+		t.Fatalf("program 2 batch plan: plan=%+v err=%v", plan, err)
+	}
+	gate, err := statusview.BuildReviewGate(snapshot, 50, false)
+	if err != nil || gate.Awaiting != 1 || gate.AwaitingRequests[0] != "review-request" {
+		t.Fatalf("program 3 review quiet gate: gate=%+v err=%v", gate, err)
+	}
+	anchored, err := statusview.BuildArtifactSelectionPage(snapshot, statusview.ArtifactSelection{Reaches: ".", Limit: 50}, false)
+	if err != nil || anchored.MatchingTotal != 2 || anchored.Artifacts[0].Event != "guide" || anchored.Artifacts[1].Event != "doc" {
+		t.Fatalf("program 4 artifact provenance gate: page=%+v err=%v", anchored, err)
+	}
+	wave, err := statusview.BuildStalenessWave(snapshot, ".", false)
+	if err != nil || wave.Records != 6 || wave.Reached != 4 || wave.LiveArtifacts != 3 || wave.Reaching != 2 {
+		t.Fatalf("program 5 whole-log wave: wave=%+v err=%v", wave, err)
+	}
+}
+
 // Adversarial: an event that resolves to nothing. The refusal names the fact
 // and prints no page, rather than rendering an empty inspection that reads like
 // a real answer.
@@ -370,7 +440,7 @@ func TestApprovedHeadsAreSplitThreeWaysNotTwo(t *testing.T) {
 	unmerged := testGit(t, repo, "rev-parse", "HEAD")
 	absent := strings.Repeat("0", len(landed))
 
-	landing, err := classifyHeads(ctx, repo, "main", []string{landed, unmerged, absent})
+	landing, err := classifyHeads(ctx, repo, "main", []string{landed, unmerged, absent}, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,6 +456,32 @@ func TestApprovedHeadsAreSplitThreeWaysNotTwo(t *testing.T) {
 	if landing.refusal(statusview.ReviewGate{}, "main") == nil {
 		t.Fatal("a head out of the branch did not stop the gate")
 	}
+
+	// More actionable heads than any one display page still receive a complete
+	// classification in the same fixed process count. Only the display is
+	// capped; omitted landed heads do not make the gate permanently red.
+	many := make([]string, 0, 66)
+	for index := 0; index < 64; index++ {
+		many = append(many, landed)
+	}
+	many = append(many, unmerged, absent)
+	bounded, err := classifyHeads(ctx, repo, "main", many, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bounded.inTotal != 64 || len(bounded.in) != 5 || bounded.outTotal != 1 || bounded.unknownTotal != 1 {
+		t.Fatalf("bounded full classification lost heads: %+v", bounded)
+	}
+	if bounded.refusal(statusview.ReviewGate{}, "main") == nil {
+		t.Fatal("unknown and unlanded heads did not refuse after a >50-head classification")
+	}
+	allLanded, err := classifyHeads(ctx, repo, "main", many[:64], 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if allLanded.refusal(statusview.ReviewGate{}, "main") != nil {
+		t.Fatalf("all 64 classified landed heads could not clear the gate: %+v", allLanded)
+	}
 }
 
 // Asking about a branch Git cannot resolve would report every head as out of
@@ -396,7 +492,7 @@ func TestAnUnresolvableBranchIsRefusedRatherThanAnswered(t *testing.T) {
 	testGit(t, "", "init", "-q", "-b", "main", repo)
 	testGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "first")
 	head := testGit(t, repo, "rev-parse", "HEAD")
-	if _, err := classifyHeads(ctx, repo, "no-such-branch", []string{head}); err == nil {
+	if _, err := classifyHeads(ctx, repo, "no-such-branch", []string{head}, 50); err == nil {
 		t.Fatal("ancestry was reported against a branch that does not resolve")
 	}
 }
@@ -467,7 +563,7 @@ func TestAncestryCostsTheSameWhateverTheNumberOfHeads(t *testing.T) {
 		for index := range list {
 			list[index] = landed
 		}
-		if _, err := classifyHeads(ctx, repo, "main", list); err != nil {
+		if _, err := classifyHeads(ctx, repo, "main", list, 50); err != nil {
 			t.Fatal(err)
 		}
 		calls, err := os.ReadFile(tally)
@@ -488,17 +584,16 @@ func TestAncestryCostsTheSameWhateverTheNumberOfHeads(t *testing.T) {
 // difference, so --state succeeded returned the right artifacts and reported
 // every one of them as merely retired.
 func TestASucceededArtifactDoesNotReportAsMerelyRetired(t *testing.T) {
-	succeeded := statusview.ArtifactRow{Retired: true, State: statusview.ArtifactStateSucceeded}
-	retired := statusview.ArtifactRow{Retired: true, State: statusview.ArtifactStateRetired}
+	succeeded := statusview.ArtifactRow{Retired: true, Succeeded: true}
+	retired := statusview.ArtifactRow{Retired: true}
 	if artifactRowState(succeeded) == artifactRowState(retired) {
 		t.Fatalf("a succeeded artifact renders as %q, the same as a retired one: the successor is where the behaviour went, and a reader cannot tell", artifactRowState(succeeded))
 	}
 	if got := artifactRowState(succeeded); got != "succeeded" {
 		t.Fatalf("succeeded artifact rendered as %q", got)
 	}
-	// A row from a resident older than the State field carries only Retired.
-	// It must still read as retired rather than as current, because that older
-	// resident could not tell the two apart either.
+	// A remote live-only row carries only Retired=false. If an older local row
+	// carries Retired=true without Succeeded, it still means withdrawal.
 	if got := artifactRowState(statusview.ArtifactRow{Retired: true}); got != "retired" {
 		t.Fatalf("a row without a lifecycle rendered as %q, not retired", got)
 	}

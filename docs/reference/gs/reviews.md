@@ -98,12 +98,16 @@ not to merge it.
 A branch name Git cannot resolve is refused outright. Reporting every head
 as out of a branch that does not exist is a confident wrong answer.
 
-## Bounded, except where it must not be
+## Bounded and fail closed
 
-The awaiting and unresolved lists are samples: `--limit` names how many to
-print, and the report says how many it left out beside the whole-log
-count. The approved head list is **not** shortened. A head omitted from a
-gate is a head nobody asked Git about while the caller read "quiet".
+The awaiting, unresolved and approved-head lists are bounded samples:
+`--limit` names how many to print, and the report says how many it left out
+beside the whole-log count. Display omission is not check omission: `gs`
+classifies the complete actionable approved-head population against Git, then
+prints bounded samples of the heads that are out of the branch or unknown.
+Either population keeps the gate closed. Already-landed heads stop mattering,
+even when more historical approvals exist than one display page can hold. Git
+runs a fixed number of processes, independent of the number of heads.
 
 ## See also
 

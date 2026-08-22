@@ -521,10 +521,11 @@ distinct.
 
 `internal/statusview` builds Workroom summaries, orientations, bounded work
 pages, exact-path artifact pages, exact-item inspection, the whole-log review
-gate, and the bounded join of a caller's live priority inbox. An artifact page
-selects by exact path string, by one of four lifecycle states — live, retired,
-succeeded, all — and by whether an artifact's chain of artifact bases reaches
-an anchor path, which is followed transitively rather than for one hop. The
+gate, the bounded staleness-wave summary, and the bounded join of a caller's
+live priority inbox. The resident and MCP artifact contract remains the live
+exact-path page. A separate CLI selection asks the same page-building core for
+one of four lifecycle states — live, retired, succeeded, all — or for artifacts
+whose chain of artifact bases reaches an anchor path transitively. The
 review gate is a fixed answer rather than a composable filter: it reports
 review requests awaiting a first verdict, references that resolve to no live
 artifact, and the approved heads still worth asking Git about. Whether those
@@ -562,9 +563,10 @@ The outer surfaces present one application to people and programs:
 
 - `cmd/gs` combines storage and kernel operations with Workroom authoring,
   projection, query, review, merge, and resident commands. Its bounded query
-  commands call the same `internal/statusview` builders the MCP tools and the
-  resident routes call, and render the identical page shapes under `--json`;
-  they add reach, not query semantics. Where a query needs a fact Git holds
+  commands reuse the `internal/statusview` filtering and page builders used by
+  the remote surfaces. CLI-only selector request types keep additional reach
+  from widening the resident HTTP or MCP contracts as a side effect. Where a
+  query needs a fact Git holds
   rather than the projection — whether an approved head is an ancestor of a
   branch — that join happens here, because Git remains outside the Workroom
   interpreter.

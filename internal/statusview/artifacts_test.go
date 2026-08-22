@@ -1,11 +1,25 @@
 package statusview
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
+
+// ArtifactQuery is a published resident/MCP input contract. CLI-only state
+// and provenance selectors belong to ArtifactSelection and must not leak back
+// into these bytes through struct sharing.
+func TestArtifactQueryWireContractIsUnchanged(t *testing.T) {
+	encoded, err := json.Marshal(ArtifactQuery{Paths: []string{"ui"}, Limit: 1, Cursor: "next"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(encoded), `{"paths":["ui"],"limit":1,"cursor":"next"}`; got != want {
+		t.Fatalf("artifact query wire bytes = %s, want %s", got, want)
+	}
+}
 
 func artifactSnapshot() app.Snapshot {
 	projection := workroom.Projection{Artifacts: []workroom.Artifact{
@@ -112,7 +126,7 @@ func TestArtifactStateSelectsEachLifecycleApart(t *testing.T) {
 		{ArtifactStateAll, []string{"nested:unrelated", "ui:current", "docs:live", "ui:stale", "ui:retired"}},
 	} {
 		t.Run(string(test.state), func(t *testing.T) {
-			page, err := BuildArtifactPage(artifactSnapshot(), ArtifactQuery{
+			page, err := BuildArtifactSelectionPage(artifactSnapshot(), ArtifactSelection{
 				Paths: []string{"ui", "docs", "ui/src"}, State: test.state, Limit: 50}, false)
 			if err != nil {
 				t.Fatal(err)
@@ -134,31 +148,34 @@ func TestArtifactStateSelectsEachLifecycleApart(t *testing.T) {
 // asking about: one says where the behaviour went, the other says go and look.
 func TestRetiredAndSucceededAreNotTheSameSelection(t *testing.T) {
 	snapshot := anchorSnapshot()
-	withdrawn, err := BuildArtifactPage(snapshot, ArtifactQuery{Paths: []string{".", "internal/workroom"}, State: ArtifactStateRetired, Limit: 50}, false)
+	withdrawn, err := BuildArtifactSelectionPage(snapshot, ArtifactSelection{Paths: []string{".", "internal/workroom"}, State: ArtifactStateRetired, Limit: 50}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := artifactEvents(withdrawn); len(got) != 1 || got[0] != "root:withdrawn" {
 		t.Fatalf("retired selected %v, want only the withdrawn pointer", got)
 	}
-	succeeded, err := BuildArtifactPage(snapshot, ArtifactQuery{Paths: []string{".", "internal/workroom"}, State: ArtifactStateSucceeded, Limit: 50}, false)
+	succeeded, err := BuildArtifactSelectionPage(snapshot, ArtifactSelection{Paths: []string{".", "internal/workroom"}, State: ArtifactStateSucceeded, Limit: 50}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := artifactEvents(succeeded); len(got) != 1 || got[0] != "replaced" {
 		t.Fatalf("succeeded selected %v, want only the replaced pointer", got)
 	}
+	if !succeeded.Artifacts[0].Succeeded || !succeeded.Artifacts[0].Retired {
+		t.Fatalf("succeeded row dropped its lifecycle facts: %+v", succeeded.Artifacts[0])
+	}
 }
 
 func TestArtifactQueryRefusesAnUnknownState(t *testing.T) {
-	_, err := BuildArtifactPage(artifactSnapshot(), ArtifactQuery{Paths: []string{"ui"}, State: "current"}, false)
+	_, err := BuildArtifactSelectionPage(artifactSnapshot(), ArtifactSelection{Paths: []string{"ui"}, State: "current"}, false)
 	if err == nil {
 		t.Fatal("an unknown state was guessed at instead of refused")
 	}
 }
 
 func TestAnchorFollowsArtifactProvenancePastTheFirstHop(t *testing.T) {
-	page, err := BuildArtifactPage(anchorSnapshot(), ArtifactQuery{Reaches: ".", State: ArtifactStateAll, Limit: 50}, false)
+	page, err := BuildArtifactSelectionPage(anchorSnapshot(), ArtifactSelection{Reaches: ".", State: ArtifactStateAll, Limit: 50}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +194,7 @@ func TestAnchorFollowsArtifactProvenancePastTheFirstHop(t *testing.T) {
 	// `replaced` is there only because a retired artifact is still a seed. A
 	// withdrawn pointer does not erase the anchor whatever stood on it follows,
 	// and dropping retired seeds would report that chain as unanchored.
-	live, err := BuildArtifactPage(anchorSnapshot(), ArtifactQuery{Reaches: ".", Limit: 50}, false)
+	live, err := BuildArtifactSelectionPage(anchorSnapshot(), ArtifactSelection{Reaches: ".", Limit: 50}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +207,7 @@ func TestAnchorFollowsArtifactProvenancePastTheFirstHop(t *testing.T) {
 // asked what still points at them answers a question nobody asked, and would
 // make the migration gate unreachable: the `.` artifacts always reach `.`.
 func TestAnchorExcludesTheArtifactsAtTheAnchorPath(t *testing.T) {
-	page, err := BuildArtifactPage(anchorSnapshot(), ArtifactQuery{Reaches: ".", State: ArtifactStateAll, Limit: 50}, false)
+	page, err := BuildArtifactSelectionPage(anchorSnapshot(), ArtifactSelection{Reaches: ".", State: ArtifactStateAll, Limit: 50}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +219,7 @@ func TestAnchorExcludesTheArtifactsAtTheAnchorPath(t *testing.T) {
 }
 
 func TestAnchorAndPathsIntersectRatherThanWiden(t *testing.T) {
-	page, err := BuildArtifactPage(anchorSnapshot(), ArtifactQuery{Paths: []string{"docs/why.md", "ui"}, Reaches: ".", Limit: 50}, false)
+	page, err := BuildArtifactSelectionPage(anchorSnapshot(), ArtifactSelection{Paths: []string{"docs/why.md", "ui"}, Reaches: ".", Limit: 50}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +231,7 @@ func TestAnchorAndPathsIntersectRatherThanWiden(t *testing.T) {
 // Adversarial: a path nobody ever recorded. The honest answer is an empty page
 // that says it is empty, not a refusal that looks like a broken query.
 func TestUnknownPathAnswersWithAnEmptyPage(t *testing.T) {
-	page, err := BuildArtifactPage(artifactSnapshot(), ArtifactQuery{Paths: []string{"no/such/path"}, State: ArtifactStateAll, Limit: 50}, false)
+	page, err := BuildArtifactSelectionPage(artifactSnapshot(), ArtifactSelection{Paths: []string{"no/such/path"}, State: ArtifactStateAll, Limit: 50}, false)
 	if err != nil {
 		t.Fatalf("an unknown path was refused instead of answered: %v", err)
 	}
@@ -226,7 +243,7 @@ func TestUnknownPathAnswersWithAnEmptyPage(t *testing.T) {
 // Adversarial: a selector matching every artifact in the log. It pages like any
 // other answer; it never dumps the projection.
 func TestASelectorMatchingEverythingIsPagedNotDumped(t *testing.T) {
-	page, err := BuildArtifactPage(anchorSnapshot(), ArtifactQuery{Reaches: ".", State: ArtifactStateAll, Limit: 1}, false)
+	page, err := BuildArtifactSelectionPage(anchorSnapshot(), ArtifactSelection{Reaches: ".", State: ArtifactStateAll, Limit: 1}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +256,7 @@ func TestASelectorMatchingEverythingIsPagedNotDumped(t *testing.T) {
 // unbounded dump off this surface, and it stays exactly where it was for every
 // caller that names no anchor.
 func TestNoPathsAndNoAnchorIsStillRefused(t *testing.T) {
-	if _, err := BuildArtifactPage(artifactSnapshot(), ArtifactQuery{State: ArtifactStateAll, Limit: 50}, false); err == nil {
+	if _, err := BuildArtifactSelectionPage(artifactSnapshot(), ArtifactSelection{State: ArtifactStateAll, Limit: 50}, false); err == nil {
 		t.Fatal("a query naming neither a path nor an anchor was admitted")
 	}
 }
@@ -249,14 +266,14 @@ func TestNoPathsAndNoAnchorIsStillRefused(t *testing.T) {
 // join as one page.
 func TestAnArtifactCursorDoesNotCrossAChangeOfState(t *testing.T) {
 	snapshot := artifactSnapshot()
-	first, err := BuildArtifactPage(snapshot, ArtifactQuery{Paths: []string{"ui"}, State: ArtifactStateAll, Limit: 1}, false)
+	first, err := BuildArtifactSelectionPage(snapshot, ArtifactSelection{Paths: []string{"ui"}, State: ArtifactStateAll, Limit: 1}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first.NextCursor == "" {
 		t.Fatal("the first page offered no continuation to test")
 	}
-	if _, err := BuildArtifactPage(snapshot, ArtifactQuery{Paths: []string{"ui"}, State: ArtifactStateLive, Limit: 1, Cursor: first.NextCursor}, false); err == nil {
+	if _, err := BuildArtifactSelectionPage(snapshot, ArtifactSelection{Paths: []string{"ui"}, State: ArtifactStateLive, Limit: 1, Cursor: first.NextCursor}, false); err == nil {
 		t.Fatal("a cursor crossed a change of state")
 	}
 }

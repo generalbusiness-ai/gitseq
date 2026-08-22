@@ -103,6 +103,10 @@ func main() {
 		err = workCommand(ctx, os.Args[2:])
 	case "artifacts":
 		err = artifactsCommand(ctx, os.Args[2:])
+	case "supersession-plan":
+		err = supersessionPlanCommand(ctx, os.Args[2:])
+	case "staleness-wave":
+		err = stalenessWaveCommand(ctx, os.Args[2:])
 	case "inspect":
 		err = inspectCommand(ctx, os.Args[2:])
 	case "reviews":
@@ -128,7 +132,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|batch|status|work|artifacts|inspect|reviews|provenance|verify|checkpoint-clear|serve|attach> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|batch|status|work|artifacts|supersession-plan|staleness-wave|inspect|reviews|provenance|verify|checkpoint-clear|serve|attach> [flags]")
 	os.Exit(2)
 }
 
@@ -1692,18 +1696,44 @@ func artifactsCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	query := statusview.ArtifactQuery{Paths: paths, State: statusview.ArtifactState(*state), Reaches: *reaches, Limit: *limit, Cursor: *cursor}
+	query := statusview.ArtifactSelection{Paths: paths, State: statusview.ArtifactState(*state), Reaches: *reaches, Limit: *limit, Cursor: *cursor}
 	var page statusview.ArtifactPage
 	answered := false
-	if *serverURL != "" {
-		answered = askResident(ctx, workspace, *serverURL, "/v0/artifact-query", query, &page, func() statusview.Frontier { return page.Frontier })
+	var snapshot app.Snapshot
+	degraded := false
+	if *serverURL != "" && *state == "" && *reaches == "" {
+		wire := statusview.ArtifactQuery{Paths: paths, Limit: *limit, Cursor: *cursor}
+		answered = askResident(ctx, workspace, *serverURL, "/v0/artifact-query", wire, &page, func() statusview.Frontier { return page.Frontier })
+	} else if *serverURL != "" {
+		// The extra selectors are deliberately CLI-only. Read the resident's
+		// existing full snapshot instead of smuggling them through the bounded
+		// HTTP request type and silently widening that protocol.
+		status, remoteErr := fetchFullStatus(ctx, *serverURL)
+		if remoteErr == nil {
+			remoteErr = validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head)
+		}
+		if remoteErr == nil {
+			snapshot = status.Durable
+			answered = true
+		} else {
+			fmt.Fprintf(os.Stderr, "gs: resident status unavailable (%v); performing verified local fallback\n", remoteErr)
+			degraded = true
+		}
 	}
 	if !answered {
-		snapshot, err := snapshotWithProgress(ctx, workspace)
+		degraded = degraded || *serverURL != ""
+		if snapshot.Head == "" {
+			snapshot, err = snapshotWithProgress(ctx, workspace)
+			if err != nil {
+				return err
+			}
+		}
+		page, err = statusview.BuildArtifactSelectionPage(snapshot, query, degraded)
 		if err != nil {
 			return err
 		}
-		page, err = statusview.BuildArtifactPage(snapshot, query, *serverURL != "")
+	} else if snapshot.Head != "" {
+		page, err = statusview.BuildArtifactSelectionPage(snapshot, query, false)
 		if err != nil {
 			return err
 		}
@@ -1712,6 +1742,80 @@ func artifactsCommand(ctx context.Context, arguments []string) error {
 		return printJSON(page)
 	}
 	_, err = os.Stdout.WriteString(renderArtifactPage(page, querySource(*serverURL != "", answered)))
+	return err
+}
+
+// supersessionPlanCommand turns one complete bounded page of live artifacts
+// at an exact path into input for gs batch. It refuses before printing if the
+// selected population does not fit, so redirecting its JSON can never create a
+// plausible-looking partial migration file.
+func supersessionPlanCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("supersession-plan", arguments)
+	path := set.String("path", "", "exact live artifact path to retire")
+	message := set.String("text", "", "plain-language supersession reason")
+	prefix := set.String("idempotency-prefix", "supersede-", "prefix joined to each target event")
+	limit := set.Int("limit", statusview.ArtifactPageMax, "maximum complete plan size")
+	jsonOutput := set.Bool("json", false, "emit a gs batch JSON array")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return errors.New("supersession-plan takes no positional arguments")
+	}
+	if *path == "" || *message == "" {
+		return errors.New("supersession-plan requires --path and --text")
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	snapshot, err := snapshotWithProgress(ctx, workspace)
+	if err != nil {
+		return err
+	}
+	page, err := statusview.BuildArtifactSelectionPage(snapshot, statusview.ArtifactSelection{
+		Paths: []string{*path}, State: statusview.ArtifactStateLive, Limit: *limit,
+	}, false)
+	if err != nil {
+		return err
+	}
+	plan, err := buildSupersessionPlan(page, *message, *prefix)
+	if err != nil {
+		return err
+	}
+	if *jsonOutput {
+		return printJSON(plan)
+	}
+	_, err = os.Stdout.WriteString(renderSupersessionPlan(page.Frontier, *path, plan))
+	return err
+}
+
+func stalenessWaveCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("staleness-wave", arguments)
+	path := set.String("path", "", "exact artifact path whose causal wave is measured")
+	jsonOutput := set.Bool("json", false, "render JSON")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 || *path == "" {
+		return errors.New("staleness-wave requires --path and takes no positional arguments")
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	snapshot, err := snapshotWithProgress(ctx, workspace)
+	if err != nil {
+		return err
+	}
+	wave, err := statusview.BuildStalenessWave(snapshot, *path, false)
+	if err != nil {
+		return err
+	}
+	if *jsonOutput {
+		return printJSON(wave)
+	}
+	_, err = os.Stdout.WriteString(renderStalenessWave(wave, "verified local"))
 	return err
 }
 
@@ -1807,18 +1911,28 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	landing, err := classifyHeads(ctx, *checkout, *branch, gate.ApprovedHeads)
+	displayLimit := *limit
+	if displayLimit == 0 {
+		displayLimit = statusview.ReviewListDefault
+	}
+	allApprovedHeads := statusview.ActionableApprovedHeads(snapshot.Projection)
+	landing, err := classifyHeads(ctx, *checkout, *branch, allApprovedHeads, displayLimit)
 	if err != nil {
 		return err
 	}
 	if *jsonOutput {
 		if err := printJSON(struct {
 			statusview.ReviewGate
-			Branch    string   `json:"branch"`
-			OutOf     []string `json:"approved_heads_out_of_branch"`
-			Unknown   []string `json:"approved_heads_unknown_here"`
-			QuietGate bool     `json:"quiet"`
-		}{gate, *branch, landing.out, landing.unknown, gate.Quiet() && len(landing.out) == 0 && len(landing.unknown) == 0}); err != nil {
+			Branch         string   `json:"branch"`
+			OutOf          []string `json:"approved_heads_out_of_branch"`
+			OutOfTotal     int      `json:"approved_heads_out_of_branch_total"`
+			OutOfOmitted   int      `json:"approved_heads_out_of_branch_omitted,omitempty"`
+			Unknown        []string `json:"approved_heads_unknown_here"`
+			UnknownTotal   int      `json:"approved_heads_unknown_here_total"`
+			UnknownOmitted int      `json:"approved_heads_unknown_here_omitted,omitempty"`
+			QuietGate      bool     `json:"quiet"`
+		}{gate, *branch, landing.out, landing.outTotal, landing.outOmitted, landing.unknown, landing.unknownTotal, landing.unknownOmitted,
+			gate.Quiet() && landing.outTotal == 0 && landing.unknownTotal == 0}); err != nil {
 			return err
 		}
 	} else if _, err := os.Stdout.WriteString(renderReviewGate(gate, *branch, querySource(*serverURL != "", !degraded && *serverURL != ""), landing)); err != nil {
