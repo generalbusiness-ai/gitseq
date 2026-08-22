@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ace1fbe91e150bbe341a88904a54a6b450274ee","text":"Withdraw the parent assignment because its SECURITY.md condition conflicts with the ratified disclosure policy and its test. Corrected child ccc9cf85 preserves that policy and authorizes the three non-conflicting repository security gates, with the operator's no-rm-rf constraint."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e24ae0af89373340645a69d1b8773f87ca9953ac"}
