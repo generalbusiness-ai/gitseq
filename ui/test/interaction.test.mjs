@@ -947,4 +947,39 @@ test("the closing station names the ratification in force, not the first one", (
   const closedFirst = original.stations.find((station) => station.kind === "closed");
   assert.equal(closedFirst.event, "ratify-a");
   assert.equal(closedFirst.actor, "alice");
+// One resolver for "which thread does this record belong to", used by every
+// caller. A promise, report, act, artifact or assert lands on its request; a
+// record with no request above it stays itself.
+test("every record resolves to the request whose thread it belongs to", async () => {
+  const { buildRecordIndex } = await import("../src/lib/records.ts");
+  const projection = {
+    decisions: [
+      { event: "req", sequence: 1, verdict: "effective", reason: "recorded" },
+      { event: "promise", sequence: 2, verdict: "effective", reason: "recorded" },
+      { event: "art", sequence: 3, verdict: "effective", reason: "recorded" },
+      { event: "retire", sequence: 4, verdict: "effective", reason: "authorized supersession" },
+      { event: "loose", sequence: 5, verdict: "effective", reason: "recorded" },
+    ],
+    acts: [{ event: "retire", actor: "claude", type: "supersede", target: "art", verdict: "effective", reason: "authorized supersession" }],
+    statements: [
+      { event: "req", sequence: 1, actor: "hugh", kind: "request", text: "Do it" },
+      { event: "promise", sequence: 2, actor: "claude", kind: "promise", text: "Claimed" },
+      { event: "art", sequence: 3, actor: "claude", kind: "artifact", text: "ui at abc" },
+      { event: "loose", sequence: 5, actor: "hugh", kind: "assert", text: "unattached" },
+    ],
+    commitments: [],
+    artifacts: [],
+    actors: {},
+    provenance: { promise: ["req"], art: ["promise"], retire: ["art"], loose: [] },
+  };
+  const index = buildRecordIndex(projection);
+  assert.equal(index.threadRoot("req"), "req");
+  assert.equal(index.threadRoot("promise"), "req");
+  assert.equal(index.threadRoot("art"), "req", "an artifact resolves up its basis chain");
+  assert.equal(index.threadRoot("retire"), "req", "an act resolves through its target");
+  assert.equal(index.threadRoot("loose"), "loose", "no request above it: stays itself, not invented");
+  assert.equal(index.threadRoot("unknown"), "unknown");
+  // An act has a sequence too: the fold's decision carries it.
+  assert.equal(index.sequence("retire"), 4);
+  assert.deepEqual(index.restedOnBy("art"), ["retire"]);
 });

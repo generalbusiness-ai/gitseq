@@ -240,6 +240,7 @@ test("a record's detail shows full ids, body fields and both directions of prove
   const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
   try {
     const { RecordDetail } = await vite.ssrLoadModule("/src/components/RecordDetail.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
     const request = "1111111111111111111111111111111111111111";
     const promise = "2222222222222222222222222222222222222222";
     const report = "3333333333333333333333333333333333333333";
@@ -263,7 +264,8 @@ test("a record's detail shows full ids, body fields and both directions of prove
     const markup = renderToStaticMarkup(
       React.createElement(RecordDetail, {
         event: promise,
-        projection,
+        index: buildRecordIndex(projection),
+        actors: projection.actors,
         tickets: new Map([[request, 1], [promise, 2], [report, 3]]),
         nameOf: (fingerprint) => projection.actors[fingerprint]?.name ?? fingerprint,
         onOpenThread: (event) => opened.push(event),
@@ -319,9 +321,10 @@ test("thread rows start closed and only rows naming something are expandable", a
         doAct() {},
       }),
     );
-    const rows = markup.match(/<li[^>]*data-station[^>]*>/g) ?? [];
+    const rows = markup.split(/(?=<li[^>]*data-station)/).filter((part) => part.includes("data-station"));
     assert.equal(rows.length, 2, "request and unclaimed promise");
-    assert.match(rows[0], /data-station="request"[^>]*aria-expanded="false"/);
+    assert.match(rows[0], /data-station="request"/);
+    assert.match(rows[0], /<button[^>]*aria-expanded="false"[^>]*aria-controls="detail-request"/, "the request row's text is a closed disclosure button");
     assert.doesNotMatch(rows[1], /aria-expanded/, "an unreached station has nothing to open");
     assert.doesNotMatch(markup, /data-record-detail/, "nothing is open until clicked");
   } finally {

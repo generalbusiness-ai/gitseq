@@ -649,3 +649,120 @@ test("the thread draws one rail of salient stations and keeps its history collap
     await vite.close();
   }
 });
+
+// The defining interaction, pinned in a browser: a station's text is a native
+// disclosure button that opens the record's full detail and closes it again;
+// an act row shows its sequence; a reference inside the detail opens its own
+// record's thread without toggling the row it sits in.
+test("clicking a thread row opens its full detail, clicking again closes it, and references navigate", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ branch: "main", commits: [] }) });
+  const opened = [];
+  try {
+    const { Thread } = await vite.ssrLoadModule("/src/components/Thread.tsx");
+    const workroom = threadRoom();
+    const projection = workroom.status.durable.projection;
+    // One supersession in the repair chain, so an act row is on screen.
+    projection.acts.push({ event: "retire", actor: "claude", type: "supersede", target: "art", verdict: "effective", reason: "authorized supersession", timestamp: NOW_S - 86400 });
+    projection.decisions.push({ event: "retire", sequence: 7, verdict: "effective", reason: "authorized supersession" });
+    projection.provenance.retire = ["art"];
+    await act(async () => {
+      root.render(
+        React.createElement(Thread, {
+          workroom,
+          session: { credential: "browser", actor: "codex", live: true, setActor() {}, activity: { status: "available", focus: [] }, setActivity() {} },
+          frames: [],
+          root: "req",
+          pending: [],
+          onBack() {}, onOpenThread: (event) => opened.push(event), onSay: () => "", onSayFailed() {}, doAct() {},
+        }),
+      );
+    });
+
+    const disclosure = (id) => document.querySelector(`button[data-disclosure="${id}"]`);
+    const request = disclosure("detail-request");
+    assert.ok(request, "the request station's text is a native button");
+    assert.equal(request.tagName, "BUTTON");
+    assert.equal(request.getAttribute("aria-expanded"), "false");
+    assert.equal(document.querySelector("[data-record-detail]"), null, "closed until clicked");
+
+    await click(request);
+    assert.equal(request.getAttribute("aria-expanded"), "true");
+    const detail = document.getElementById("detail-request");
+    assert.ok(detail, "aria-controls names the panel that opened");
+    assert.match(detail.textContent, /req/);
+    assert.match(detail.textContent, /rests on/);
+    assert.match(detail.textContent, /rested on by/);
+    assert.match(detail.textContent, /#2/, "the promise is listed as resting on the request");
+
+    // A reference inside the detail navigates and does not toggle the row.
+    const ref = detail.querySelector('button[data-ref="promise"]');
+    assert.ok(ref);
+    await click(ref);
+    assert.deepEqual(opened, ["promise"]);
+    assert.equal(request.getAttribute("aria-expanded"), "true", "the row stayed open");
+
+    await click(request);
+    assert.equal(request.getAttribute("aria-expanded"), "false");
+    assert.equal(document.getElementById("detail-request"), null, "second click closes");
+
+    // An unreached station has nothing to open and is not a button.
+    assert.equal(disclosure("detail-closed"), null);
+
+    // Behind the repair chain expander, the act row opens too and shows the
+    // sequence the fold gave it.
+    const repair = [...document.querySelectorAll("[aria-expanded]")].find((button) => button.textContent.includes("Repair chain"));
+    await click(repair);
+    const actRow = disclosure("detail-retire");
+    assert.ok(actRow, "an elided act row is a disclosure button");
+    await click(actRow);
+    const actDetail = document.getElementById("detail-retire");
+    assert.match(actDetail.textContent, /#7/, "an act shows its sequence");
+    assert.match(actDetail.textContent, /target/);
+    assert.match(actDetail.textContent, /authorized supersession/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+// The list's view survives leaving for a thread and coming back. The host
+// below does what App does — holds the view above the screen switch — and the
+// list is unmounted in between, which is what lost the view before.
+test("the request list keeps its population when the operator leaves and returns", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  try {
+    const { RequestList, defaultListView } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const workroom = listRoom();
+    const projection = workroom.status.durable.projection;
+    projection.statements.push({ event: "e9", sequence: 9, actor: "hugh", kind: "request", text: "Abandoned work", timestamp: NOW_S - 40 * 86400 });
+    projection.decisions.push({ event: "e9", sequence: 9, verdict: "effective", reason: "recorded" });
+    projection.commitments.push({ request: "e9", requester: "hugh", status: "stale" });
+    function Screens() {
+      const [view, setView] = React.useState(defaultListView);
+      const [screen, setScreen] = React.useState("list");
+      if (screen === "thread") {
+        return React.createElement("button", { id: "back", onClick: () => setScreen("list") }, "back");
+      }
+      return React.createElement(RequestList, { workroom, onOpenThread: () => setScreen("thread"), view, onView: setView });
+    }
+    await act(async () => {
+      root.render(React.createElement(Screens));
+    });
+    const tab = () => [...document.querySelectorAll("[role=tab]")].find((button) => button.textContent.startsWith("stale"));
+    await click(tab());
+    assert.equal(document.querySelector("h2").textContent, "1 stale request, not in flight");
+    await click(document.querySelector("tbody tr"));
+    assert.ok(document.getElementById("back"), "on the thread screen; the list is unmounted");
+    await click(document.getElementById("back"));
+    assert.equal(document.querySelector("h2").textContent, "1 stale request, not in flight", "the population survived");
+    assert.equal(tab().getAttribute("aria-selected"), "true");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});

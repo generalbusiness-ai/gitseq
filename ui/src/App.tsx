@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useWorkroom, foldAnchor } from "./lib/store";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useWorkroom } from "./lib/store";
+import { buildRecordIndex } from "./lib/records";
 import { useSession } from "./lib/session";
 import { useFrames } from "./lib/frames";
 import { api, type ActInput } from "./lib/api";
@@ -25,9 +26,12 @@ export default function App() {
 
   const projection = workroom.status?.durable.projection;
 
+  // Any record opens the thread it belongs to, resolved one way for every
+  // caller: a promise, report, act, artifact or assert lands on its request.
+  const index = useMemo(() => (projection ? buildRecordIndex(projection) : undefined), [projection]);
   const openThread = useCallback(
-    (event: string) => setScreen({ kind: "thread", event: foldAnchor(event, projection) }),
-    [projection],
+    (event: string) => setScreen({ kind: "thread", event: index ? index.threadRoot(event) : event }),
+    [index],
   );
   const showList = useCallback(() => setScreen({ kind: "list" }), []);
 
