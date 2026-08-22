@@ -1615,6 +1615,14 @@ func (f *foldState) project() Projection {
 	// ancestor: with A, B and C at one path, retiring B cleared C's warning
 	// while A stayed live.
 	seenByPath := make(map[string][]string)
+	// How many artifacts already seen at each path are still live. project()
+	// runs over a fully folded log, so retired() is final here and a running
+	// count answers exactly what rescanning the path answered, in constant
+	// time per artifact rather than one pass over the path's whole history.
+	// This is not the shortcut the comment above warns against: that one kept
+	// only the immediate predecessor and lost the live ancestor behind a
+	// retired one. A count keeps every ancestor.
+	liveByPath := make(map[string]int)
 	// Review independence needs the author of the artifact for the head judged,
 	// and the commit each artifact stands at, so a verdict cannot be paired
 	// with an artifact for some other head. All three indexes are filled by the
@@ -1661,12 +1669,7 @@ func (f *foldState) project() Projection {
 		// artifact carrying whatever fields it did manage to fill.
 		if record.decision.Verdict == Effective && record.definition != nil && record.definition.Render == RenderArtifact {
 			path := state.Body["path"]
-			live := 0
-			for _, predecessor := range seenByPath[path] {
-				if !f.retired(predecessor) {
-					live++
-				}
-			}
+			live := liveByPath[path]
 			projection.Artifacts = append(projection.Artifacts, Artifact{
 				Event: record.record.ID, Path: path, Commit: state.Body["commit"],
 				Retired:                  f.retired(record.record.ID),
@@ -1678,6 +1681,9 @@ func (f *foldState) project() Projection {
 				LivePredecessors:         live,
 			})
 			seenByPath[path] = append(seenByPath[path], record.record.ID)
+			if !f.retired(record.record.ID) {
+				liveByPath[path]++
+			}
 			if record.decision.Verdict == Effective {
 				implementers[record.record.ID] = record.record.Actor
 				if commit := state.Body["commit"]; commit != "" {
