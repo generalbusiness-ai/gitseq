@@ -245,3 +245,44 @@ func TestAReportMayNotCiteARequestItsPromiseDoesNotAnswer(t *testing.T) {
 		t.Errorf("reason = %q, want %q", decision.Reason, want)
 	}
 }
+
+// Codex's temporal-order blockers, both the same root: the projection was
+// deciding a report's shape from the world as it stands, while admission had
+// already decided it when the record landed. A decision the fold has made is a
+// fact about that moment, and later acts do not reach back and change it.
+func TestAPromisedReportDoesNotBecomeDirectWhenItsPromiseIsLaterWithdrawn(t *testing.T) {
+	// The report cites its promise and that promise's request, which is the
+	// shape gs review writes. Withdrawing the promise afterwards must not make
+	// it a second completion answering the request directly.
+	records := append(directReportSeed(t),
+		event(t, "promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "request"),
+		event(t, "report", agent, SchemaState, State{Kind: KindReport, Text: "done"}, "promise", "request"),
+		event(t, "withdraw", agent, SchemaSupersede, Supersede{Target: "promise", Text: "withdrawn"}, "promise"),
+	)
+	for _, commitment := range Fold(records).Commitments {
+		if commitment.Request != "request" {
+			continue
+		}
+		if commitment.Promise == "" && commitment.Report == "report" {
+			t.Fatalf("the promised report was reclassified as a direct completion: %+v", commitment)
+		}
+	}
+}
+
+func TestALaterPromiseDoesNotHideAnEarlierDirectCompletion(t *testing.T) {
+	// Admitted with no claim standing, so it is a direct completion. Somebody
+	// promising afterwards does not un-report it.
+	records := append(directReportSeed(t),
+		event(t, "report", agent, SchemaState, State{Kind: KindReport, Text: "done"}, "request"),
+		event(t, "late", other, SchemaState, State{Kind: KindPromise, Text: "I will too"}, "request"),
+	)
+	for _, commitment := range Fold(records).Commitments {
+		if commitment.Request == "request" && commitment.Report == "report" {
+			if commitment.Promise != "" || commitment.Performer != agent {
+				t.Fatalf("direct row = %+v, want the reporter with no claim", commitment)
+			}
+			return
+		}
+	}
+	t.Fatal("the admitted direct completion is not on the board")
+}

@@ -261,16 +261,22 @@ type dependentKey struct {
 }
 
 type foldState struct {
-	records            []parsedRecord
-	byID               map[string]*parsedRecord
-	decisions          map[string]Decision
-	strings            map[string]string
-	effectiveSup       map[string]string
-	retirementCauses   map[string]int
-	roleGrants         []roleGrant
-	roleGrantsByRole   map[actorRole][]roleGrant
-	membershipGrants   map[actorStatement][]roleGrant
-	ratifications      map[string][]string
+	records          []parsedRecord
+	byID             map[string]*parsedRecord
+	decisions        map[string]Decision
+	strings          map[string]string
+	effectiveSup     map[string]string
+	retirementCauses map[string]int
+	roleGrants       []roleGrant
+	roleGrantsByRole map[actorRole][]roleGrant
+	membershipGrants map[actorStatement][]roleGrant
+	ratifications    map[string][]string
+	// The claim each report was admitted against, decided once when the record
+	// was folded. Recomputing it later reverses an immutable decision as the
+	// world moves: withdrawing a promise turned its own report into a second
+	// direct completion, and adding a promise made an already-admitted direct
+	// completion vanish. A record's shape is a fact about when it landed.
+	admittedClaims     map[string]reportClaim
 	dependents         map[dependentKey][]*parsedRecord
 	definitions        map[Kind]KindDefinition
 	definitionVersions map[Kind][]*parsedRecord
@@ -315,6 +321,7 @@ func NewFolder(records []Record) *Folder {
 		roleGrantsByRole:   make(map[actorRole][]roleGrant),
 		membershipGrants:   make(map[actorStatement][]roleGrant),
 		ratifications:      make(map[string][]string),
+		admittedClaims:     make(map[string]reportClaim),
 		dependents:         make(map[dependentKey][]*parsedRecord),
 		definitions:        starterCatalog(),
 		definitionVersions: make(map[Kind][]*parsedRecord),
@@ -585,8 +592,22 @@ func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 		}
 	}
 	if definition.Lifecycle == LifecycleReport {
-		if _, refusal := f.reportClaim(record); refusal != nil {
+		claim, refusal := f.reportClaim(record)
+		if refusal != nil {
 			return *refusal
+		}
+		f.admittedClaims[record.record.ID] = claim
+	}
+	// An artifact carrying a commit acts as the implementation report, so it
+	// needs the same fact recorded about it: which claim it completed, decided
+	// when it landed. It is not admitted or refused on that basis — an artifact
+	// answering nothing is still a perfectly good artifact — so this only
+	// remembers, and only when the shape is unambiguous.
+	if definition.Render == RenderArtifact && state.Body["commit"] != "" {
+		if claim, refusal := f.reportClaim(record); refusal == nil && claim.claim.record.Actor == record.record.Actor {
+			f.admittedClaims[record.record.ID] = claim
+		} else if claim.direct && claim.request.body.(*State).Body["to"] == record.record.Actor {
+			f.admittedClaims[record.record.ID] = claim
 		}
 	}
 	if state.Kind == KindRoster && state.Body["role"] == "participant" && state.Body["kind"] == "" {
@@ -1348,8 +1369,8 @@ func (f *foldState) hasActor(actor string) bool {
 // It reads the same normalised claim admission used, so a report that was
 // admitted is ratifiable by exactly the requester that admitted it.
 func (f *foldState) originatingRequest(report *parsedRecord) *parsedRecord {
-	claim, refusal := f.reportClaim(report)
-	if refusal != nil {
+	claim, admitted := f.admittedClaims[report.record.ID]
+	if !admitted {
 		return nil
 	}
 	return claim.request
@@ -1946,12 +1967,12 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 			continue
 		}
 		promises := f.directDependents(requestRecord.record.ID, LifecyclePromise)
-		// A direct completion belongs to the request only while no claim stands
-		// over it. With a live promise the commitment is that promise's, and a
-		// direct report was refused at admission anyway; with the claim
-		// withdrawn, this row is what keeps the accepted completion on the
-		// board instead of showing only the withdrawal.
-		if len(f.liveClaims(requestRecord.record.ID)) == 0 {
+		// A direct completion is projected because it was admitted as one, not
+		// because of how many claims stand now. Gating on the current count
+		// reversed decisions the fold had already made: a later promise hid an
+		// admitted direct completion, and a withdrawn promise turned its own
+		// report into a second one.
+		{
 			completion := f.latestCompletion(&requestRecord, request.Body["to"], mergedArtifacts)
 			// With promises present but none live and nothing reported since,
 			// the request has no row of its own: the reneged rows below are the
@@ -2040,10 +2061,6 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 // what keeps the two shapes one rule instead of two that drift.
 func (f *foldState) latestCompletion(claim *parsedRecord, performer string, mergedArtifacts map[string]*parsedRecord) *parsedRecord {
 	var report, artifact, merged *parsedRecord
-	claimLifecycle := LifecyclePromise
-	if claim.definition != nil && claim.definition.Lifecycle == LifecycleRequest {
-		claimLifecycle = LifecycleRequest
-	}
 	candidates := append([]*parsedRecord(nil), f.directDependents(claim.record.ID, LifecycleReport)...)
 	candidates = append(candidates, f.directDependents(claim.record.ID, LifecycleNone)...)
 	for _, record := range candidates {
@@ -2051,10 +2068,20 @@ func (f *foldState) latestCompletion(claim *parsedRecord, performer string, merg
 		if !ok || record.definition == nil {
 			continue
 		}
-		isReport := record.definition.Lifecycle == LifecycleReport
-		claimBases := f.basesOfLifecycle(record.record.RestsOn, claimLifecycle)
-		isArtifactReport := record.definition.Render == RenderArtifact && state.Body["commit"] != "" && record.record.Actor == performer &&
-			len(claimBases) == 1 && claimBases[0].record.ID == claim.record.ID
+		// A report belongs to the claim it was admitted against, not to whatever
+		// the bases look like now. Reading it any other way lets a later
+		// withdrawal or a later promise move a completion between commitments
+		// after the fold has already decided where it lives.
+		isReport := false
+		if record.definition.Lifecycle == LifecycleReport {
+			admitted, ok := f.admittedClaims[record.record.ID]
+			isReport = ok && admitted.claim.record.ID == claim.record.ID
+		}
+		isArtifactReport := false
+		if record.definition.Render == RenderArtifact && state.Body["commit"] != "" && record.record.Actor == performer {
+			admitted, ok := f.admittedClaims[record.record.ID]
+			isArtifactReport = ok && admitted.claim.record.ID == claim.record.ID
+		}
 		if !isReport && !isArtifactReport {
 			continue
 		}
