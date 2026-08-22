@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -140,17 +141,126 @@ func Cap[T any](items []T, limit int) ([]T, int) {
 	return items[len(items)-limit:], len(items) - limit
 }
 
-// Text normalizes whitespace and caps user-controlled text by bytes.
+// hostile reports whether a rune must be shown as an escape rather than sent
+// to a terminal as itself: every C0 and C1 control, DEL, every format
+// character — the bidi overrides and isolates, and the zero-width marks that
+// let one string print as another — and the line and paragraph separators.
+// Newline, tab and carriage return are in that first class deliberately. A
+// caller that renders text whole must not let it invent lines, because a line
+// an attacker writes looks exactly like a line the program wrote.
+func hostile(value rune) bool {
+	return value < 0x20 || value == 0x7f || (value >= 0x80 && value <= 0x9f) ||
+		unicode.Is(unicode.Cf, value) || value == '\u2028' || value == '\u2029'
+}
+
+// encode writes one rune as a visible escape. The widths are the conventional
+// ones, and they are not decoration: \u is exactly four hex digits, so a rune
+// above U+FFFF written that way would run to five and the next character could
+// not be told from part of the escape.
+func encode(out *strings.Builder, value rune) {
+	switch {
+	case value <= 0xff:
+		fmt.Fprintf(out, `\x%02x`, value)
+	case value <= 0xffff:
+		fmt.Fprintf(out, `\u%04x`, value)
+	default:
+		fmt.Fprintf(out, `\U%08x`, value)
+	}
+}
+
+// neutralized renders a list of user-controlled strings for display. The
+// durable values are unchanged; a caller that needs to match a path exactly
+// reads the record, not the view.
+func neutralized(values []string) []string {
+	rendered := make([]string, len(values))
+	for index, value := range values {
+		rendered[index] = Text(value)
+	}
+	return rendered
+}
+
+// Safe neutralizes user-controlled text a caller renders whole: the same
+// escapes as Text, with no one-line fold and no byte cap, so a long message
+// keeps its length and its runs of spacing exactly.
+//
+// It escapes newline and tab as well. Keeping them would have preserved the
+// shape of a chat message, but shape is exactly what an attacker wants: a
+// newline lets untrusted text add a line to a rendered block, and a reader has
+// no way to tell that line from one the program wrote.
+func Safe(value string) string {
+	var out strings.Builder
+	for index := 0; index < len(value); {
+		decoded, size := utf8.DecodeRuneInString(value[index:])
+		switch {
+		case decoded == utf8.RuneError && size == 1:
+			encode(&out, rune(value[index]))
+		case hostile(decoded):
+			encode(&out, decoded)
+		default:
+			out.WriteString(value[index : index+size])
+		}
+		index += size
+	}
+	return out.String()
+}
+
+// Text renders user-controlled text as one safe terminal line and caps it by
+// bytes. Runs of benign spacing fold to single spaces; anything that could
+// move the cursor, repaint the screen, reorder the line, break it in two, or
+// hide itself is written as a visible escape. A newline is escaped rather
+// than folded: turning it into a space is safe but silent, and a reader
+// cannot then tell a line break from a space somebody typed. Invalid UTF-8 is escaped byte by byte rather than
+// silently replaced, so a reader can tell malformed input from a real U+FFFD.
+//
+// The durable bytes are untouched. This is what a bounded view shows, not what
+// the log holds, and anyone who needs the original can ask for the record.
 func Text(value string) string {
-	value = strings.Join(strings.Fields(value), " ")
-	if len(value) <= TextCap {
-		return value
+	var out strings.Builder
+	// safe is the length of the longest prefix that still leaves room for the
+	// ellipsis, so truncation lands on a token boundary and never inside an
+	// escape.
+	safe, separate := 0, false
+	for index := 0; index < len(value); {
+		decoded, size := utf8.DecodeRuneInString(value[index:])
+		var encoded strings.Builder
+		var token string
+		switch {
+		case decoded == utf8.RuneError && size == 1:
+			encode(&encoded, rune(value[index]))
+			token = encoded.String()
+		case hostile(decoded):
+			// Escaping runs before folding. A newline folded to a space is
+			// harmless but silent: the reader cannot tell which character was
+			// there, and "visibly and unambiguously" is the whole point.
+			encode(&encoded, decoded)
+			token = encoded.String()
+		case unicode.IsSpace(decoded):
+			// Only benign spacing folds. Everything structural was escaped
+			// above.
+			separate = out.Len() > 0
+			index += size
+			continue
+		default:
+			token = value[index : index+size]
+		}
+		index += size
+		width := len(token)
+		if separate {
+			width++
+		}
+		if out.Len()+width > TextCap {
+			return out.String()[:safe] + "…"
+		}
+		if separate {
+			out.WriteByte(' ')
+			separate = false
+		}
+		out.WriteString(token)
+		if out.Len() <= TextCap-len("…") {
+			safe = out.Len()
+		}
 	}
-	limit := TextCap - len("…")
-	for limit > 0 && !utf8.RuneStart(value[limit]) {
-		limit--
-	}
-	return value[:limit] + "…"
+	return out.String()
 }
 
 // ActorName resolves durable fingerprints without ever replacing an unknown

@@ -73,7 +73,7 @@ func BuildStalenessWave(durable app.Snapshot, path string, degraded bool) (Stale
 	}
 	wave := StalenessWave{
 		Frontier: Frontier{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth},
-		Path:     path, Records: len(projection.Decisions), Reached: len(reached), Degraded: degraded,
+		Path:     Text(path), Records: len(projection.Decisions), Reached: len(reached), Degraded: degraded,
 	}
 	for _, artifact := range projection.Artifacts {
 		if artifact.Retired || artifact.Path == path {
