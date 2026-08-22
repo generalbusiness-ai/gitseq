@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -45,40 +46,47 @@ func TestResidentResponsesCarryBrowserSecurityHeaders(t *testing.T) {
 		"Referrer-Policy":         "no-referrer",
 	}
 
-	// Each case pins the status and a fragment of the body it expects, not
-	// only the headers. Without that a case quietly stops reaching the
-	// response path it is named after and still passes, which happened twice
-	// while writing this test: /v0/status returned a 500 from the
-	// cleared-deadline branch rather than an API read, and the malformed-act
-	// case never reached a route at all because httptest.NewRequest defaults
-	// Host to example.com, so TrustedHostHandler refused it as non-loopback
-	// with the same 400 the case below expects for that reason. Two cases
-	// covering one path, and the status alone could not tell them apart.
+	// Each case pins the status, the content type and a fragment of the body it
+	// expects, not only the headers. Without that a case quietly stops reaching
+	// the response path it is named after and still passes, which happened
+	// three times in this file. /v0/status returned a 500 from the
+	// cleared-deadline branch rather than an API read. The malformed-act case
+	// never reached a route at all, because httptest.NewRequest defaults Host
+	// to example.com, so TrustedHostHandler refused it as non-loopback with the
+	// same 400 the last case expects for that reason. And the malformed-act row
+	// then carried an empty body fragment, which strings.Contains satisfies for
+	// any response whatsoever: a pin that pins nothing, in the very row added
+	// to stop the second mistake.
+	asset := firstEmbeddedAsset(t, handler)
 	tests := []struct {
-		name    string
-		status  int
-		body    string
-		request func() *http.Request
+		name        string
+		status      int
+		contentType string
+		body        string
+		request     func() *http.Request
 	}{
-		{"embedded ui", http.StatusOK, "<!doctype html>", func() *http.Request {
+		{"embedded ui", http.StatusOK, "text/html; charset=utf-8", "<!doctype html>", func() *http.Request {
 			return httptest.NewRequest(http.MethodGet, "/", nil)
 		}},
-		{"api read", http.StatusOK, "genesis", func() *http.Request {
+		{"embedded asset", http.StatusOK, "text/css; charset=utf-8", "", func() *http.Request {
+			return httptest.NewRequest(http.MethodGet, asset, nil)
+		}},
+		{"api read", http.StatusOK, "application/json", "genesis", func() *http.Request {
 			return httptest.NewRequest(http.MethodGet, "/v0/identity", nil)
 		}},
-		{"cleared-deadline failure", http.StatusInternalServerError, "deadline could not be cleared", func() *http.Request {
+		{"cleared-deadline failure", http.StatusInternalServerError, "text/plain; charset=utf-8", "deadline could not be cleared", func() *http.Request {
 			return httptest.NewRequest(http.MethodGet, "/v0/status", nil)
 		}},
-		{"unknown route", http.StatusNotFound, "404 page not found", func() *http.Request {
+		{"unknown route", http.StatusNotFound, "text/plain; charset=utf-8", "404 page not found", func() *http.Request {
 			return httptest.NewRequest(http.MethodGet, "/v0/no-such-route", nil)
 		}},
-		{"malformed act", http.StatusBadRequest, "", func() *http.Request {
+		{"malformed act", http.StatusBadRequest, "application/json", "invalid character 'n' looking for beginning of object key string", func() *http.Request {
 			request := httptest.NewRequest(http.MethodPost, "/v0/act", strings.NewReader("{not json"))
 			request.Header.Set("Content-Type", "application/json")
 			request.Host = "127.0.0.1:7777"
 			return request
 		}},
-		{"non-loopback mutation refusal", http.StatusBadRequest, "mutation host must resolve only to loopback", func() *http.Request {
+		{"non-loopback mutation refusal", http.StatusBadRequest, "application/json", "mutation host must resolve only to loopback", func() *http.Request {
 			request := httptest.NewRequest(http.MethodPost, "/v0/act", strings.NewReader("{}"))
 			request.Header.Set("Content-Type", "application/json")
 			request.Host = "203.0.113.1:7777"
@@ -89,11 +97,17 @@ func TestResidentResponsesCarryBrowserSecurityHeaders(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, test.request())
-			if response.Code != test.status || !strings.Contains(response.Body.String(), test.body) {
-				t.Fatalf("this case no longer reaches the path it names: status %d want %d, body %q want a mention of %q", response.Code, test.status, response.Body.String(), test.body)
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d: this case no longer reaches the path it names (body %q)", response.Code, test.status, response.Body.String())
 			}
-			if test.name == "malformed act" && strings.Contains(response.Body.String(), "loopback") {
-				t.Fatalf("the malformed-act case was refused for its host, not its body: %q", response.Body.String())
+			if got := response.Header().Get("Content-Type"); got != test.contentType {
+				t.Fatalf("Content-Type = %q, want %q: this case no longer reaches the path it names", got, test.contentType)
+			}
+			// An empty fragment would make this vacuous, so the rows that
+			// cannot name stable content say so by having none and are held by
+			// status and content type alone.
+			if test.body != "" && !strings.Contains(response.Body.String(), test.body) {
+				t.Fatalf("body = %q, want a mention of %q", response.Body.String(), test.body)
 			}
 			for name, value := range want {
 				if got := response.Header().Get(name); got != value {
@@ -102,6 +116,20 @@ func TestResidentResponsesCarryBrowserSecurityHeaders(t *testing.T) {
 			}
 		})
 	}
+}
+
+// firstEmbeddedAsset reads an asset URL out of the served index rather than
+// naming one, because Vite content-hashes the filenames and any rebuild would
+// otherwise leave a test pointing at a file that no longer exists.
+func firstEmbeddedAsset(t *testing.T, handler http.Handler) string {
+	t.Helper()
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	match := regexp.MustCompile(`/assets/[A-Za-z0-9._-]+\.css`).FindString(response.Body.String())
+	if match == "" {
+		t.Fatalf("no stylesheet asset referenced by the served index: %q", response.Body.String())
+	}
+	return match
 }
 
 // The policy must not have been bought by loosening the boundary it sits
@@ -160,5 +188,32 @@ func TestBrowserSecurityHeadersDoNotBlockLoopbackMutations(t *testing.T) {
 	}
 	if got := response.Header().Get("Referrer-Policy"); got != "no-referrer" {
 		t.Errorf("Referrer-Policy = %q, want no-referrer", got)
+	}
+}
+
+// The profiler listens separately and never passes through residentHandler, so
+// a policy wired only into that composition would miss it. pprof.Index is an
+// HTML page, which is exactly the surface the policy exists for, and the
+// documentation says every resident response carries the headers.
+func TestProfilerResponsesCarryBrowserSecurityHeaders(t *testing.T) {
+	handler := profilerHandler()
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if !strings.Contains(response.Body.String(), "<html") {
+		t.Fatalf("the profiler index is no longer an HTML page: %q", response.Body.String())
+	}
+	for name, value := range map[string]string{
+		"Content-Security-Policy": "frame-ancestors 'none'",
+		"X-Frame-Options":         "DENY",
+		"X-Content-Type-Options":  "nosniff",
+		"Referrer-Policy":         "no-referrer",
+	} {
+		if got := response.Header().Get(name); got != value {
+			t.Errorf("%s = %q, want %q", name, got, value)
+		}
 	}
 }

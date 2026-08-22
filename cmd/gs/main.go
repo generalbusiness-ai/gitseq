@@ -2143,6 +2143,22 @@ func claimResidency(ctx context.Context, workspace *app.Workspace, url string) (
 	})
 }
 
+// profilerHandler is the profiler's whole surface. The profiler is a second
+// listener with its own mux, so it never passes through residentHandler, and
+// pprof.Index answers in HTML: this is a browser surface too. It carries the
+// same policy, which is what lets the documented claim say every response
+// rather than every response except one.
+func profilerHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /debug/pprof/", pprof.Index)
+	mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("POST /debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
+	return service.BrowserSecurityHeaders(mux)
+}
+
 func serveProfiler(ctx context.Context, address string) (func(), error) {
 	if address == "" {
 		return func() {}, nil
@@ -2154,14 +2170,7 @@ func serveProfiler(ctx context.Context, address string) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /debug/pprof/", pprof.Index)
-	mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
-	mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("POST /debug/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
-	server := residentHTTPServer(mux)
+	server := residentHTTPServer(profilerHandler())
 	go func() {
 		<-ctx.Done()
 		_ = server.Close()

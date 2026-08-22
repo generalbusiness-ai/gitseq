@@ -123,7 +123,9 @@ nosniff` and `Referrer-Policy: no-referrer`. Every response means every
 response, including the ones the resident produces by refusing: a rejected
 non-loopback mutation is still a page a browser renders, so the policy is
 applied outside the check that rejects it rather than within the routes it
-protects.
+protects. The `--profile-listen` surface is included: it is a second listener
+with its own routes, and the pprof index is an HTML page, so it carries the
+same policy.
 
 The service is a trusted local custodian for several actors: it holds their
 signing keys and signs on behalf of whichever trusted process asks. Its
