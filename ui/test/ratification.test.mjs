@@ -154,18 +154,24 @@ test("the list shows the ratification queue as its own count, and says when nobo
             },
           },
           onOpenThread() {},
+          // Rendered on the ratification tab, because the undischargeable
+          // note belongs to that population and appears only there. The
+          // count is read off the tab, which is where it now lives.
+          view: { query: "", population: "ratification" },
+          onView() {},
         }),
       );
     };
 
     const withRatifier = render({ [HUGH]: { name: "hugh", kind: "human", roles: ["ratifier"], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} } });
-    assert.match(withRatifier, /1 act awaits ratification\./, "counted on its own line, not added to the open requests");
+    assert.match(withRatifier, /awaiting ratification<span[^>]*>1<\/span>/, "counted on its own tab, not added to the open requests");
+    assert.match(withRatifier, /1 act awaits ratification/, "and the tab it selects heads the list with that count");
     assert.doesNotMatch(withRatifier, /holds `ratifier`/);
 
     // An empty queue and an undischargeable one look identical on screen
     // unless the screen says which it is.
     const without = render({});
-    assert.match(without, /1 act awaits ratification\./);
+    assert.match(without, /1 act awaits ratification/);
   } finally {
     await vite.close();
   }

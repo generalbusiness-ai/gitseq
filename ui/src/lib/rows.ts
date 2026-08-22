@@ -33,20 +33,20 @@ export type RowState =
 // whose reasoning moved underneath them — a subset of "live", not a separate
 // lifecycle state.
 //
-// "ratifiable" is the one population that is not a slice of the commitments:
+// "ratification" is the one population that is not a slice of the commitments:
 // it is built by ratificationRows from the vocabulary, takes different inputs
 // and returns a different shape. It is a tab here because a reader looking for
 // what is owed should find it where the other counts are, not because it is
 // another workRows population — the caller dispatches on it rather than
 // passing it through.
-export type Population = "live" | "moved" | "stale" | "done" | "closed" | "ratifiable";
+export type Population = "live" | "moved" | "stale" | "done" | "closed" | "ratification";
 export const POPULATIONS: { key: Population; label: string }[] = [
   { key: "live", label: "open" },
   { key: "moved", label: "reasoning moved" },
   { key: "stale", label: "stale, not in flight" },
   { key: "done", label: "completed" },
   { key: "closed", label: "closed, not completed" },
-  { key: "ratifiable", label: "awaiting ratification" },
+  { key: "ratification", label: "awaiting ratification" },
 ];
 
 // The priority rule, as the default sort rather than as prose. Groups 0 to 2
@@ -96,7 +96,7 @@ function inPopulation(commitment: Commitment, population: Population): boolean {
     // is unreachable rather than empty — it is here because the switch is
     // exhaustive over Population, which is what makes adding a seventh
     // population a compile error rather than a silently empty tab.
-    case "ratifiable":
+    case "ratification":
       return false;
   }
 }

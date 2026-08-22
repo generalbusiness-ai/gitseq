@@ -488,7 +488,7 @@ test("exactly one number heads the list, and each other number opens to its own 
     assert.equal(document.querySelector("h2").textContent, "1 resting on reasoning that has moved");
     assert.deepEqual(titlesOnScreen(), ["Zebra work"]);
 
-    await click([...document.querySelectorAll("p button")][2]);
+    await click(tabs()[5]);
     assert.equal(document.querySelector("h2").textContent, "1 act awaits ratification");
     assert.deepEqual(titlesOnScreen(), ["Bounded status"]);
   } finally {
@@ -521,10 +521,9 @@ test("the ratification queue says when nobody, or nobody in particular, can disc
       projection.statements.push({ event: "e10", sequence: 10, actor: "codex", kind: "propose", text: "Bounded status", timestamp: NOW_S - 3 * 86400 });
       projection.decisions.push({ event: "e10", sequence: 10, verdict: "effective", reason: "recorded" });
       await act(async () => {
-        root.render(React.createElement(RequestList, { workroom, onOpenThread() {} }));
+        root.render(React.createElement(ListHost, { RequestList, workroom, onOpenThread() {} }));
       });
-      const summaries = [...document.querySelectorAll("p button")];
-      await click(summaries[2]);
+      await click([...document.querySelectorAll("[role=tab]")][5]);
     };
 
     await show({ hugh: [], codex: [] });
