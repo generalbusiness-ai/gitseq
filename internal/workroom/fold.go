@@ -585,56 +585,96 @@ func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 		}
 	}
 	if definition.Lifecycle == LifecycleReport {
-		// A report answers exactly one commitment, and there are two shapes it
-		// can take. The promised shape rests on the promise that claimed the
-		// work. The direct shape rests on the request itself, for an addressee
-		// who did the work without first claiming it — filing a promise to show
-		// work in flight is useful, not obligatory, and requiring it made the
-		// log demand a claim after the fact for work already finished.
-		//
-		// A promise and its own request together are the promised shape, not
-		// two answers: `gs review` has always cited both, the promise for the
-		// commitment and the request for provenance. Which one the report
-		// answers is decided by the promise when there is one, so widening the
-		// basis does not reinterpret every verdict already in the log.
-		promises := f.basesOfLifecycle(record.record.RestsOn, LifecyclePromise)
-		requests := f.basesOfLifecycle(record.record.RestsOn, LifecycleRequest)
-		switch {
-		case len(promises) > 1:
-			return Decision{Event: record.record.ID, Verdict: Disputed, Reason: "report rests on multiple promises"}
-		case len(promises) == 1:
-			if promises[0].record.Actor != record.record.Actor {
-				return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "only the promisor may report completion"}
-			}
-		case len(requests) > 1:
-			return Decision{Event: record.record.ID, Verdict: Disputed, Reason: "report rests on multiple requests"}
-		case len(requests) == 1:
-			request := requests[0].body.(*State)
-			if request.Body["to"] != record.record.Actor {
-				return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "only the requested performer may report directly on a request"}
-			}
-			// One commitment, one closure. A live promise already claimed this
-			// request, so the report belongs on it: two answers to one request
-			// would leave the promise open forever with nothing able to close
-			// it. The reason names the promise so the reporter can refile
-			// against it rather than guess what is in the way.
-			for _, promise := range f.directDependents(requests[0].record.ID, LifecyclePromise) {
-				if promise.record.Actor != record.record.Actor || f.retired(promise.record.ID) {
-					continue
-				}
-				if f.decisions[promise.record.ID].Verdict != Effective {
-					continue
-				}
-				return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: fmt.Sprintf("report rests on the request while promise %s is live; report on the promise", promise.record.ID)}
-			}
-		default:
-			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "report lifecycle basis count is 0, want exactly one promise or request"}
+		if _, refusal := f.reportClaim(record); refusal != nil {
+			return *refusal
 		}
 	}
 	if state.Kind == KindRoster && state.Body["role"] == "participant" && state.Body["kind"] == "" {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "participant roster state requires body.kind"}
 	}
 	return decision
+}
+
+// reportClaim decides which commitment a report answers, once. Admission,
+// ratifiability and the board all read this answer rather than counting bases
+// for themselves, because three places counting independently is how they came
+// to disagree: one accepted a direct report after a withdrawn claim while
+// another still showed the withdrawal and dropped the report.
+//
+// There are two shapes. The promised shape rests on the promise that claimed
+// the work; a request cited beside it is provenance, which is what gs review
+// has always written, and it must be that promise's own request or it is false
+// provenance. The direct shape rests on the request itself, for an addressee
+// who did the work without claiming it first.
+type reportClaim struct {
+	claim   *parsedRecord
+	request *parsedRecord
+	direct  bool
+}
+
+func (f *foldState) reportClaim(record *parsedRecord) (reportClaim, *Decision) {
+	refuse := func(verdict Verdict, reason string) (reportClaim, *Decision) {
+		return reportClaim{}, &Decision{Event: record.record.ID, Verdict: verdict, Reason: reason}
+	}
+	promises := f.basesOfLifecycle(record.record.RestsOn, LifecyclePromise)
+	requests := f.basesOfLifecycle(record.record.RestsOn, LifecycleRequest)
+	switch {
+	case len(promises) > 1:
+		return refuse(Disputed, "report rests on multiple promises")
+	case len(promises) == 1:
+		promise := promises[0]
+		if promise.record.Actor != record.record.Actor {
+			return refuse(Ineffective, "only the promisor may report completion")
+		}
+		governing := f.basesOfLifecycle(promise.record.RestsOn, LifecycleRequest)
+		if len(governing) != 1 {
+			return refuse(Ineffective, "report rests on a promise with no unique request")
+		}
+		// A request beside the promise is provenance, so it has to be the
+		// provenance it claims: any other request would attach this report to a
+		// commitment it never answered and carry that one's staleness with it.
+		for _, cited := range requests {
+			if cited.record.ID != governing[0].record.ID {
+				return refuse(Ineffective, "report cites a request other than the one its promise answers")
+			}
+		}
+		return reportClaim{claim: promise, request: governing[0]}, nil
+	case len(requests) > 1:
+		return refuse(Disputed, "report rests on multiple requests")
+	case len(requests) == 1:
+		request := requests[0]
+		state := request.body.(*State)
+		if state.Body["to"] != record.record.Actor {
+			return refuse(Ineffective, "only the requested performer may report directly on a request")
+		}
+		// One commitment, one closure. A live promise already claimed this
+		// request, so the report belongs on it: two answers to one request
+		// would leave the promise open forever with nothing able to close it.
+		// The reason names the promise so the reporter can refile against it.
+		for _, promise := range f.liveClaims(request.record.ID) {
+			if promise.record.Actor != record.record.Actor {
+				continue
+			}
+			return refuse(Ineffective, fmt.Sprintf("report rests on the request while promise %s is live; report on the promise", promise.record.ID))
+		}
+		return reportClaim{claim: request, request: request, direct: true}, nil
+	default:
+		return refuse(Ineffective, "report lifecycle basis count is 0, want exactly one promise or request")
+	}
+}
+
+// liveClaims are the promises on a request that still stand. A withdrawn claim
+// is history, not a commitment: it neither blocks a direct report nor owns the
+// completion that follows one.
+func (f *foldState) liveClaims(request string) []*parsedRecord {
+	var live []*parsedRecord
+	for _, promise := range f.directDependents(request, LifecyclePromise) {
+		if f.retired(promise.record.ID) || f.decisions[promise.record.ID].Verdict != Effective {
+			continue
+		}
+		live = append(live, promise)
+	}
+	return live
 }
 
 func (f *foldState) validateBasis(record *parsedRecord, definition KindDefinition) *Decision {
@@ -1305,23 +1345,14 @@ func (f *foldState) hasActor(actor string) bool {
 }
 
 // originatingRequest finds who may ratify a report: the actor who asked for it.
-// A report reaches its request through the promise that claimed the work, or
-// directly when the addressee answered without claiming first. Both routes end
-// at the same request, and a report that reaches no unique one is ratifiable by
-// nobody.
+// It reads the same normalised claim admission used, so a report that was
+// admitted is ratifiable by exactly the requester that admitted it.
 func (f *foldState) originatingRequest(report *parsedRecord) *parsedRecord {
-	promises := f.basesOfLifecycle(report.record.RestsOn, LifecyclePromise)
-	if len(promises) == 1 {
-		requests := f.basesOfLifecycle(promises[0].record.RestsOn, LifecycleRequest)
-		if len(requests) != 1 {
-			return nil
-		}
-		return requests[0]
+	claim, refusal := f.reportClaim(report)
+	if refusal != nil {
+		return nil
 	}
-	if requests := f.basesOfLifecycle(report.record.RestsOn, LifecycleRequest); len(requests) == 1 {
-		return requests[0]
-	}
-	return nil
+	return claim.request
 }
 
 // changeRetirement maintains the live supersession projection as each
@@ -1915,34 +1946,46 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 			continue
 		}
 		promises := f.directDependents(requestRecord.record.ID, LifecyclePromise)
-		if len(promises) == 0 {
-			entry := Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, AddressedTo: request.Body["to"], Status: "open", Stale: stale[requestRecord.record.ID]}
-			// Claim and complete in one act. The addressee answered the request
-			// directly, so the commitment was never open in the sense this
-			// branch otherwise means: there is no promise to wait on, and what
-			// the requester owes is a ratification. Reading it as open would
-			// show work already finished as work nobody has taken.
+		// A direct completion belongs to the request only while no claim stands
+		// over it. With a live promise the commitment is that promise's, and a
+		// direct report was refused at admission anyway; with the claim
+		// withdrawn, this row is what keeps the accepted completion on the
+		// board instead of showing only the withdrawal.
+		if len(f.liveClaims(requestRecord.record.ID)) == 0 {
 			completion := f.latestCompletion(&requestRecord, request.Body["to"], mergedArtifacts)
-			switch {
-			case f.retired(requestRecord.record.ID):
-				entry.Status = "withdrawn"
-			case completion != nil:
-				entry.Performer = completion.record.Actor
-				entry.Report = completion.record.ID
-				entry.Status = "reported"
-				entry.WaitingOn = requestRecord.record.Actor
-				entry.Stale = stale[requestRecord.record.ID] || stale[completion.record.ID]
-				if completion.definition.Lifecycle == LifecycleReport && f.ratified(completion.record.ID) {
-					entry.Status = "satisfied"
-					entry.WaitingOn = ""
-				} else if receipt := mergedArtifacts[completion.record.ID]; receipt != nil {
-					entry.Status = "satisfied"
-					entry.WaitingOn = ""
+			// With promises present but none live and nothing reported since,
+			// the request has no row of its own: the reneged rows below are the
+			// whole story, and an "open" row beside them would invite a second
+			// claim the withdrawal already answered.
+			if completion != nil || len(promises) == 0 {
+				entry := Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, AddressedTo: request.Body["to"], Status: "open", Stale: stale[requestRecord.record.ID]}
+				// Claim and complete in one act. The addressee answered the
+				// request directly, so what the requester owes is a
+				// ratification. Reading it as open would show work already
+				// finished as work nobody has taken.
+				switch {
+				case f.retired(requestRecord.record.ID):
+					entry.Status = "withdrawn"
+				case completion != nil:
+					entry.Performer = completion.record.Actor
+					entry.Report = completion.record.ID
+					entry.Status = "reported"
+					entry.WaitingOn = requestRecord.record.Actor
+					entry.Stale = stale[requestRecord.record.ID] || stale[completion.record.ID]
+					if completion.definition.Lifecycle == LifecycleReport && f.ratified(completion.record.ID) {
+						entry.Status = "satisfied"
+						entry.WaitingOn = ""
+					} else if receipt := mergedArtifacts[completion.record.ID]; receipt != nil {
+						entry.Status = "satisfied"
+						entry.WaitingOn = ""
+					}
+				case stale[requestRecord.record.ID]:
+					entry.Status = "stale"
 				}
-			case stale[requestRecord.record.ID]:
-				entry.Status = "stale"
+				commitments = append(commitments, entry)
 			}
-			commitments = append(commitments, entry)
+		}
+		if len(promises) == 0 {
 			continue
 		}
 		for _, promiseRecord := range promises {

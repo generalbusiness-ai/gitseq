@@ -189,3 +189,59 @@ func TestADirectArtifactClosesTheRequestTheSameWay(t *testing.T) {
 	}
 	t.Fatal("no commitment for the request")
 }
+
+// Codex's first blocker. A withdrawn claim is history, and the fold admits a
+// direct report after it — but the board branched on every promise-shaped
+// dependent, live or not, so it showed the withdrawal and dropped the accepted
+// completion. Three places counted bases independently and disagreed; they now
+// read one answer.
+func TestAWithdrawnClaimDoesNotHideTheDirectCompletionThatFollows(t *testing.T) {
+	records := append(directReportSeed(t),
+		event(t, "promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "request"),
+		event(t, "withdraw", agent, SchemaSupersede, Supersede{Target: "promise", Text: "withdrawn"}, "promise"),
+		event(t, "report", agent, SchemaState, State{Kind: KindReport, Text: "done"}, "request"),
+	)
+	projection := Fold(records)
+	if decision, _ := projection.Decision("report"); decision.Verdict != Effective {
+		t.Fatalf("the direct report was refused: %s (%s)", decision.Verdict, decision.Reason)
+	}
+	var reported, reneged bool
+	for _, commitment := range projection.Commitments {
+		if commitment.Request != "request" {
+			continue
+		}
+		switch commitment.Status {
+		case "reported":
+			reported = true
+			if commitment.Report != "report" || commitment.Performer != agent || commitment.Promise != "" {
+				t.Errorf("direct row = %+v, want the report by its performer with no claim", commitment)
+			}
+		case "reneged":
+			reneged = true
+		}
+	}
+	if !reported {
+		t.Error("the accepted direct completion is not on the board")
+	}
+	if !reneged {
+		t.Error("the withdrawn claim is not on the board either; both happened")
+	}
+}
+
+// Codex's second blocker. A request cited beside a promise is provenance, and
+// it has to be the provenance it claims: any other request attaches the report
+// to a commitment it never answered and carries that one's staleness with it.
+func TestAReportMayNotCiteARequestItsPromiseDoesNotAnswer(t *testing.T) {
+	records := append(directReportSeed(t),
+		event(t, "requestB", operator, SchemaState, State{Kind: KindRequest, Text: "Something else", Body: map[string]string{"to": agent, "conditions": "unrelated"}}, "seed"),
+		event(t, "promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "request"),
+		event(t, "report", agent, SchemaState, State{Kind: KindReport, Text: "done"}, "promise", "requestB"),
+	)
+	decision, _ := Fold(records).Decision("report")
+	if decision.Verdict != Ineffective {
+		t.Fatalf("verdict = %q, want ineffective", decision.Verdict)
+	}
+	if want := "report cites a request other than the one its promise answers"; decision.Reason != want {
+		t.Errorf("reason = %q, want %q", decision.Reason, want)
+	}
+}
