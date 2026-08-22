@@ -2146,12 +2146,21 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 	}
 }
 
-// The other half of the profile contract. The test above proves a cache is
-// dropped when the profile string changes and that a rebuild with the same
-// rules gives the same answer. It cannot prove the case the profile exists
-// for: rules that actually changed, where serving the cache would answer with
-// the old world. workroom-fold@9 adds Statement.lifecycle, so an @8 cache holds
+// The other half of the profile contract.
+// TestProjectionProfileChangeRebuildsFromTheSameKernelCheckpoint proves a cache
+// is dropped when the profile string changes and that a rebuild with the same
+// rules gives the same answer. It cannot prove the case the profile exists for:
+// rules that actually changed, where serving the cache would answer with the
+// old world. workroom-fold@9 adds Statement.lifecycle, so an @8 cache holds
 // statements that carry none, and rebuilding must produce them.
+//
+// The cache is keyed on the whole stored identity, the application and the fold
+// version together, so this seeds and asserts that exact composite. A bare fold
+// version would never match whatever the build holds, and the cache would be
+// dropped for the wrong reason: the witness would pass with @9 reverted to @8.
+// The seeded cache stands at the current head, so the profile is the only thing
+// that can cause a replay. Revert ProfileVersion to @8 and the first branch of
+// snapshotWithSource returns the lifecycle-free projection verbatim.
 func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
@@ -2177,31 +2186,24 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 		t.Fatal("no statement carries a lifecycle, so this test cannot tell a rebuild from a stale cache")
 	}
 
-	// What an @8 cache holds: the same projection with the field absent.
+	// What an @8 cache holds: the same projection at the same head with the
+	// field absent.
 	stale := current
 	stale.Projection.Statements = append([]workroom.Statement(nil), current.Projection.Statements...)
 	for i := range stale.Projection.Statements {
 		stale.Projection.Statements[i].Lifecycle = ""
 	}
-	completed := &snapshotFlight{
-		done:   make(chan struct{}),
-		result: SourcedSnapshot{Snapshot: stale, Source: SnapshotSourceSignedCheckpointTail},
-	}
-	close(completed.done)
-	workspace.flightMu.Lock()
-	workspace.flight.Store(completed)
-	workspace.flightMu.Unlock()
-	workspace.snapshotProfile = "workroom-fold@8"
+	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@8"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@9"
+	workspace.snapshotMu.Lock()
+	workspace.snapshotCache = &stale
+	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
+	workspace.snapshotProfile = oldProfile
+	workspace.snapshotMu.Unlock()
 
 	rebuilt, err := workspace.SnapshotWithSource(ctx)
 	if err != nil {
 		t.Fatal(err)
-	}
-	// The stored profile is the application name and fold version together, so
-	// this asks whether the stale one was replaced by one naming the current
-	// fold rather than matching an exact string.
-	if workspace.snapshotProfile == "workroom-fold@8" || !strings.Contains(workspace.snapshotProfile, workroom.ProfileVersion) {
-		t.Fatalf("cache profile = %q, want one naming %q: the older profile was not replaced", workspace.snapshotProfile, workroom.ProfileVersion)
 	}
 	rebuiltLifecycles := 0
 	for _, statement := range rebuilt.Snapshot.Projection.Statements {
@@ -2210,6 +2212,9 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 		}
 	}
 	if rebuiltLifecycles != lifecycles {
-		t.Fatalf("rebuilt projection carries %d lifecycles, want %d: the @8 cache was served instead of replayed", rebuiltLifecycles, lifecycles)
+		t.Fatalf("rebuilt projection carries %d lifecycles, want %d: the %q cache was served instead of replayed", rebuiltLifecycles, lifecycles, oldProfile)
+	}
+	if workspace.snapshotProfile != wantProfile {
+		t.Fatalf("cache profile = %q, want %q: the older profile was not replaced", workspace.snapshotProfile, wantProfile)
 	}
 }
