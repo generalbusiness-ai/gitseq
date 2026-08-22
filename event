@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8fed27446d2441119f676fd3fb0b3cbb3a038ec8","text":"Retire this file-level artifact after merge 7a02f3e1; the surviving artifact granularity is internal/docset."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcdbd7cb5b058a09c59b4540d5157f46116026bc","text":"Retire this file-level artifact after merge 7a02f3e1; the surviving artifact granularity is internal/docset."}
