@@ -6,7 +6,8 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94cadf30855bd467e8b29a4529297c63eac4cb7b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd0680effdbc154f7f17a8f801bed602f20e3717
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:baf0fe4b855ba94003b7c663c343a8ac9089ea84
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:341d731227ff3ac09c017ab181e7e6e0516318dc
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48bd5acfe51abd4146197a48b0f7674f5676cc5c
 ---
 
@@ -189,11 +190,11 @@ can recover selection after ref loss, while the ref can repair pointer loss.
 
 ## Local view
 
-The browser's commit graph is a newest-80 window and says when it is
-truncated: the resident caps the graph it serves at 80 commits and marks
-the response truncated, and the view then says "Showing the newest 80
-commits." The event railway beside it is not windowed that way; it folds
-lanes when it runs out of room.
+The resident caps the commit graph it serves at 80 commits and marks the
+response truncated. Nothing in the browser draws that graph any more: the
+surface it fed was removed. `/v0/graph` is still served, and `ui/` still
+carries an `api.graph` fetcher for it, but nothing calls that fetcher. The
+limit therefore bounds what the endpoint returns, not what any page shows.
 
 ## What is not limited
 
