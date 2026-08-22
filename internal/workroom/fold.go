@@ -53,8 +53,22 @@ type Statement struct {
 	Text      string            `json:"text"`
 	Body      map[string]string `json:"body,omitempty"`
 	Ratified  bool              `json:"ratified,omitempty"`
-	Retired   bool              `json:"retired,omitempty"`
-	Stale     bool              `json:"stale,omitempty"`
+	// RatifiedBy names the act that ratifies this statement now: the latest
+	// ratification of it that is neither retired nor ineffective. Ratified is
+	// this field being non-empty, and both are read from one call, so they
+	// cannot disagree.
+	//
+	// It is projected rather than left to be worked out by a reader because
+	// the rule is not recoverable from what a reader is given. Acts carry no
+	// retirement, so picking the first effective ratification of a target
+	// answers a retired one, and picking the last answers a retired one just
+	// as wrongly when the newest ratification is the withdrawn one. The only
+	// way to tell those apart outside the fold is to rebuild retirement from
+	// the supersede acts, restore included — a second implementation of
+	// authority, in a layer that has no business holding one.
+	RatifiedBy string `json:"ratified_by,omitempty"`
+	Retired    bool   `json:"retired,omitempty"`
+	Stale      bool   `json:"stale,omitempty"`
 	// DescribesSupersededWorld narrows Stale: the retired ancestor that made
 	// this statement stale is itself an artifact, so what moved is the world
 	// the statement describes rather than the argument it stands on. Both are
@@ -1651,10 +1665,15 @@ func (f *foldState) project() Projection {
 		if !ok {
 			continue
 		}
+		// One call, two fields. f.ratified is exactly this being non-empty, so
+		// asking twice would be two implementations of one rule waiting to
+		// drift.
+		ratification := f.activeRatification(record.record.ID)
 		projection.Statements = append(projection.Statements, Statement{
 			Event: record.record.ID, Sequence: record.sequence(),
 			Timestamp: record.record.Timestamp, Actor: record.record.Actor, Kind: state.Kind,
-			Text: state.Text, Body: cloneStringMap(state.Body), Ratified: f.ratified(record.record.ID),
+			Text: state.Text, Body: cloneStringMap(state.Body),
+			Ratified: ratification != "", RatifiedBy: ratification,
 			Retired: f.retired(record.record.ID), Stale: stale[record.record.ID],
 			DescribesSupersededWorld: world[record.record.ID],
 		})

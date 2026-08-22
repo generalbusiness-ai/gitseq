@@ -104,7 +104,8 @@
       "actor": "actor:operator",
       "kind": "propose",
       "text": "Adopt the projection contract",
-      "ratified": true
+      "ratified": true,
+      "ratified_by": "e7"
     },
     {
       "event": "e4",

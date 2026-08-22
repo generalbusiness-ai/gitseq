@@ -22,6 +22,13 @@ export interface Statement {
   text: string;
   body?: Record<string, string>;
   ratified?: boolean;
+  // The act that ratifies this statement now: the latest ratification of it
+  // that is neither retired nor ineffective. `ratified` is this being present.
+  // Read it rather than searching the acts — acts carry no retirement, so
+  // neither the first nor the last effective ratification of a target is the
+  // answer, and telling them apart here would mean rebuilding the fold's
+  // retirement rule in the browser.
+  ratified_by?: string;
   retired?: boolean;
   stale?: boolean;
   // Narrows stale: what moved was the world this statement describes.
