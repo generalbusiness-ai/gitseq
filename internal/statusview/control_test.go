@@ -19,15 +19,16 @@ import (
 // invisible joiner, a C1 control introducer, and a byte that is not UTF-8.
 const hostileText = "before\x1b[2Jafter\x07\rrepaint‮reversed‍hidden\x9bcsi\xffraw"
 
-// forbidden reports every rune a terminal must never receive: the C0 controls
-// other than newline and tab, DEL, the C1 range, and the invisible format
-// characters. Newline and tab are allowed because Safe deliberately keeps the
-// shape of text a caller renders whole.
+// forbidden reports every rune a terminal must never receive from untrusted
+// text: the C0 controls including newline and tab, DEL, the C1 range, the
+// invisible format characters, and the line and paragraph separators. Newline
+// is on the list because a line an attacker adds looks like a line the program
+// wrote.
 func forbidden(value rune) bool {
 	switch {
-	case value == '\n' || value == '\t':
-		return false
-	case value < 0x20 || value == 0x7f || (value >= 0x80 && value <= 0x9f) || unicode.Is(unicode.Cf, value):
+	case value < 0x20 || value == 0x7f || (value >= 0x80 && value <= 0x9f):
+		return true
+	case unicode.Is(unicode.Cf, value) || value == '\u2028' || value == '\u2029':
 		return true
 	case value == utf8.RuneError:
 		return true
@@ -88,21 +89,53 @@ func TestTextCapNeverSplitsAnEscape(t *testing.T) {
 	}
 }
 
-func TestSafeKeepsShapeAndLengthWhileNeutralizingControls(t *testing.T) {
-	whole := "first line\n\tindented\rrepaint\x1b[31mred"
+func TestSafeEscapesStructuralWhitespaceSoTextCannotInventALine(t *testing.T) {
+	whole := "first line\n\tindented\rrepaint\x1b[31mred\u2028separated"
 	got := Safe(whole)
 	if found, bad := firstHostile(got); bad {
 		t.Fatalf("Safe passed %U through: %q", found, got)
 	}
-	if !strings.Contains(got, "first line\n\tindented") {
-		t.Fatalf("Safe flattened text it should have kept: %q", got)
+	for _, want := range []string{`\x0a`, `\x09`, `\x0d`, `\x1b`, `\u2028`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("Safe kept %s as itself: %q", want, got)
+		}
 	}
-	if !strings.Contains(got, `\x0d`) || !strings.Contains(got, `\x1b`) {
-		t.Fatalf("Safe kept a control as itself: %q", got)
+	if strings.Contains(got, "\n") {
+		t.Fatalf("Safe left a real line break in untrusted text: %q", got)
 	}
-	long := strings.Repeat("paragraph text ", 200)
+	if !strings.Contains(got, "first line") || !strings.Contains(got, "separated") {
+		t.Fatalf("Safe dropped legible content: %q", got)
+	}
+}
+
+func TestSafeKeepsLengthAndSpacingThatTextWouldFold(t *testing.T) {
+	long := strings.Repeat("paragraph  text ", 200)
 	if Safe(long) != long {
-		t.Fatal("Safe truncated text it must render whole")
+		t.Fatal("Safe truncated or folded text it must render whole")
+	}
+	if Text(long) == long {
+		t.Fatal("Text should have folded the double spaces and capped the length")
+	}
+}
+
+// A rune above U+FFFF cannot be written as \uNNNN: the escape would run to
+// five hex digits and a hex digit after it would be indistinguishable from
+// part of the escape.
+func TestEscapesAboveTheBasicPlaneAreFixedWidth(t *testing.T) {
+	const languageTag = '\U000e0001' // a format character, so it is escaped
+	for name, got := range map[string]string{
+		"Text": Text(string(languageTag) + "abcdef"),
+		"Safe": Safe(string(languageTag) + "abcdef"),
+	} {
+		if !strings.HasPrefix(got, `\U000e0001abcdef`) {
+			t.Fatalf("%s wrote an ambiguous escape: %q", name, got)
+		}
+	}
+	if got := Safe("\ufeffx"); got != `\ufeffx` {
+		t.Fatalf("a BMP format character should stay four wide: %q", got)
+	}
+	if got := Safe("\x1bx"); got != `\x1bx` {
+		t.Fatalf("a byte-range control should stay two wide: %q", got)
 	}
 }
 
