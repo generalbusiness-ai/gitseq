@@ -125,13 +125,35 @@ may be agents.
 | 1 | author | commits the note on a branch, pushes, publishes | `gs status` shows the artifact at the path | a branch with one Markdown file |
 | 2 | author | review request resting on the artifact, `to=@reviewer` | board row: open request, waiting on reviewer | (tier 1) an ADR-PR opened by the connector |
 | 3 | reviewer | promise, then `gs review` → `approved` or `changes-requested` | board row: verdict | (tier 1) a PR comment rendered from the verdict |
-| 4 | author or ratifier | `gs ratify` the verdict | `gs merge` will now accept it | nothing yet |
-| 5 | merger | `gs merge --candidate <head> --approval <verdict> --text "<summary>"` | receipt; the artifact retired and republished at the merge commit; flares on anything that rested on the draft | the merge commit on `main` whose message is the summary; (tier 1) the PR closed as merged with a final comment |
-| 6 | merger | delete the worktree, push | `main` advanced | the same |
+| 4 | the review requester, and only them | `gs ratify` the verdict | `gs merge` will now accept it | nothing yet |
+| 5 | author | `propose` adopting the decision, resting on the artifact | board row: an unratified proposal | nothing yet |
+| 6 | ratifier | `gs ratify` the proposal | the decision now carries authority | nothing yet |
+| 7 | merger | `gs merge --candidate <head> --approval <verdict> --text "<summary>"` | receipt; the artifact retired and republished at the merge commit; flares on anything that rested on the draft | the merge commit on `main` whose message is the summary; (tier 1) the PR closed as merged with a final comment |
+| 8 | merger | delete the worktree, push | `main` advanced | the same |
 
-Implementation rests on the *post-merge* artifact, not the draft one;
-otherwise it flares at step 5. This is the one place a careful person
-would guess wrong, so the skill says it plainly.
+Step 4 is the review requester and nobody else. `KindReport` is declared
+with `SatisfierOriginatingRequester`, so a ratify from an author who did
+not request the review, or from someone merely holding `ratifier`, is
+ineffective. This note said "author or ratifier" until a reviewer
+checked; the same class of error as `ratify(artifact)`, made twice
+because after correcting one kind's satisfier I did not check the
+others.
+
+Steps 5 and 6 are the adoption proposal, and their position matters.
+They are filed before the merge, on the draft artifact, because the
+proposal records that *this text* was adopted. The merge then retires
+that artifact and republishes at the merge commit, and the proposal
+stays ratified: it named a revision, and that revision is what was
+accepted.
+
+Implementation must reach both. Assigned implementation rests on its
+request, and that request's chain has to reach the ratified proposal and
+the live post-merge artifact — the request cites them, so the chain is
+complete without the commit naming either. Self-initiated implementation
+rests directly on the ratified proposal, per `AGENTS.md`, and should
+cite the live artifact too. Resting on the post-merge artifact alone, as
+an earlier draft of this note said, drops the proposal — which is the
+only thing carrying the authority the proposal exists to carry.
 
 The decision's PR is not the code PR. The decision merges first;
 implementation rests on the merged artifact. Otherwise the artifact
@@ -207,27 +229,46 @@ property of the repository, reviewed like code and visible to
 non-adopters; who is publishing is a property of the process, never
 committed.
 
-The reminder hook: `gs hook install` writes one line into
-`.git/hooks/pre-push`, honouring `core.hooksPath`:
+The reminder hook is optional, records nothing, and its installer has
+to be careful in ways the first draft was not. It prints one line when a
+push contains watched paths that have not been published. That is all it
+does; if it is absent, missing or broken, nothing is lost but the
+reminder.
 
-```text
-exec gs hook run pre-push "$@"
-```
+Installing it means writing an executable file into someone's
+repository, so:
 
-The shim is dumb so that upgrading `gs` upgrades the behaviour. Hooks
-live in the common dir, so one install covers every worktree; an
-agent's `request/<slug>` worktree is covered without doing anything.
-`gs hook install` refuses to run without a `.gitseq`, so nobody gets a
-silent no-op.
+- **Never clobber.** If a `pre-push` hook exists, append or refuse and
+  say which; do not overwrite work the operator did not put there.
+- **Shebang and mode.** Write `#!/bin/sh` and `0755`. A hook without
+  either is silently never run, which is the failure mode this whole
+  note is about.
+- **`core.hooksPath` may be shared.** It can point outside the
+  repository, at a directory several repositories use. Installing there
+  affects all of them, so detect it and refuse rather than surprise
+  someone.
+- **No ambient executable resolution.** Write the absolute path of the
+  `gs` that is installing, not the bare word `gs`. Resolving through
+  `PATH` at push time means whatever binary happens to be first runs
+  with the operator's repository and identity.
+
+The bounded rules the publisher needs are part of part two's
+specification, not decoration: what to do with refs and paths carrying
+unusual bytes, renames and deletions, tags, force pushes, malformed
+YAML, an act count past a ceiling, a partially-applied batch, and acts
+the fold ruled ineffective. Each of those is a way the publisher can
+record something untrue or nothing at all, and each needs a stated
+answer before it is built.
 
 Agents should use the publish step too, and not for convenience. Three
 breakdowns of this exact shape are already on this log. A review request
 cited its report as `…#git:sha1:REPORTLABEL`, a literal placeholder in
-place of an event id, and had to be superseded (`1660ed25`). A report
+place of an event id, and had to be superseded (`git:sha1:5d26…#git:sha1:f3be69cda9eff1fa52ac6b144f29a6e21660ed25`). A report
 carried the same kind of placeholder where an artifact id belonged
-(`cdd4f708`). And an artifact rested on the request instead of the
-promise, which stranded its commitment until a separate closure report
-repaired it. None of the three is possible for a tool that reads the sha
+(`git:sha1:5d26…#git:sha1:71213ea92e1387c841819d607e72ef9dcdd4f708`). And an artifact
+(`git:sha1:5d26…#git:sha1:c654df30f3a14cedaa78cf0721fea45a7ab4165e`)
+rested on the request instead of the promise, which stranded its
+commitment until a separate closure report repaired it. None of the three is possible for a tool that reads the sha
 from git and the promise from the log. An agent typing
 `gs state --body commit=…` by hand is the defect surface, and the
 evidence is that the hand-typed field is the one that goes wrong.
@@ -284,16 +325,32 @@ it and the diff, in this order:
     the map from old to new must be carried explicitly into the merge
     rather than inferred from same-path publication. That merge change
     is what part three exists for.
-  - old file **deleted**: a bare `gs supersede` of the old artifact,
-    resting on N.
+  - old file **deleted**: still merge-sealed, never a bare supersede at
+    branch time. Deletion is the case this note got wrong twice: a
+    `supersede` driven by `supersedes:` front matter would let anyone
+    who can push a branch irreversibly retire anyone's decision, before
+    any review has read it. Front matter is branch-controlled input, and
+    supersession is not reversible. So deletion carries the same signed
+    replacement map into the merge as modification does, and the merge
+    performs the retirement or refuses.
   - old file **untouched** while `supersedes:` is present: file S at
     `(old path, head)` anyway — the statement is still true; the file
     did not change in that commit — and warn that the git-visible stamp
     is missing.
 
-Two consequences. The stamp beats deletion for authority reasons: any
-actor can state a successor artifact at a path, but a bare supersede is
-admitted only from the old artifact's author or a `ratifier`. Modifying
+Cross-author replacement is where this gets genuinely hard, and this
+note defers the algorithm rather than gesturing at one. `gs merge`
+retires only paths its signed artifact set covers, so replacing another
+actor's decision needs the review to co-sign both N and S, and needs a
+signed replacement map the receipt can validate. Neither exists today,
+and specifying them badly is worse than saying they are unspecified.
+Part three is that work; until it is done, replacing a decision authored
+by someone else requires that actor or a `ratifier` to act, which is a
+limitation to state rather than to engineer around.
+
+One consequence of the stamp-over-deletion preference. Any actor can
+state a successor artifact at a path, but supersession is admitted only
+from the old artifact's author or a `ratifier`. Modifying
 the old file lets anyone replace anyone's decision through ordinary
 review; deleting it needs the operator. And paths live in files, ids in
 the log: the file never names an event id, so there is no follow-up
