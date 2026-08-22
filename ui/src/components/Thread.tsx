@@ -10,6 +10,7 @@ import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { mentionFingerprints } from "../lib/mentions";
 import { actorTint, clock, cn, firstLine, interpretationNotice, kindLabel } from "../lib/util";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
+import { RecordDetail } from "./RecordDetail";
 
 export interface PendingSay {
   id: string;
@@ -141,6 +142,18 @@ export function Thread({
                 last={index === spine.stations.length - 1}
                 nameOf={nameOf}
                 actions={actionsFor(projection.statements.find((s) => s.event === station.event))}
+                open={open.has(`detail:${station.id}`)}
+                onToggle={() => toggle(`detail:${station.id}`)}
+                detail={
+                  <RecordDetail
+                    event={station.event}
+                    commit={station.commit}
+                    projection={projection}
+                    tickets={tickets}
+                    nameOf={nameOf}
+                    onOpenThread={onOpenThread}
+                  />
+                }
               />
             ))}
           </ol>
@@ -169,6 +182,9 @@ export function Thread({
                         ticket={tickets.get(event)}
                         nameOf={nameOf}
                         onOpenThread={onOpenThread}
+                        open={open.has(`detail:${event}`)}
+                        onToggle={() => toggle(`detail:${event}`)}
+                        detail={<RecordDetail event={event} projection={projection} tickets={tickets} nameOf={nameOf} onOpenThread={onOpenThread} />}
                       />
                     ))}
                     {expander.id === "talk" &&
@@ -222,38 +238,49 @@ function ThreadHeader({ title, onBack }: { title: string; onBack: () => void }) 
 // One rail node at this row's own vertical position, with the rail drawn
 // through the gutter. A branch — the blocker — leaves the rail sideways beside
 // the row it concerns, which is exactly where a reader is already looking.
+// Clicking the row opens the record's full detail beneath it; clicking again
+// closes it. The node and rail hang from the row's top, so the detail can
+// grow below without moving the node.
 function SpineRow({
   station,
   first,
   last,
   nameOf,
   actions,
+  open,
+  onToggle,
+  detail,
 }: {
   station: Station;
   first: boolean;
   last: boolean;
   nameOf: (fingerprint: string) => string;
   actions: { label: string; symbol: string; tone?: "ok" | "danger"; run: () => void }[];
+  open: boolean;
+  onToggle: () => void;
+  detail: React.ReactNode;
 }) {
   const dim = !station.present;
+  const detailed = Boolean(station.event || station.commit);
   return (
     <li
       data-station={station.id}
       data-present={station.present}
-      className={cn("group relative grid min-h-[2.1rem] items-center gap-x-2 text-xs", station.branch && "ml-5")}
-      style={{ gridTemplateColumns: "1.6rem 5rem 3.5rem 1fr auto" }}
+      aria-expanded={detailed ? open : undefined}
+      onClick={detailed ? onToggle : undefined}
+      className={cn("group relative text-xs", station.branch && "ml-5", detailed && "cursor-pointer")}
     >
-      <span className="relative h-full">
-        {!station.branch && (
-          <span
-            aria-hidden
-            className="absolute left-1/2 -ml-px w-0.5 bg-border"
-            style={{ top: first ? "50%" : 0, bottom: last ? "50%" : 0 }}
-          />
-        )}
-        {station.branch && (
-          <span aria-hidden className="absolute -left-2 -top-2 h-5 w-4 rounded-bl-lg border-b-2 border-l-2 border-danger" />
-        )}
+      {!station.branch && (
+        <span
+          aria-hidden
+          className="absolute left-[0.8rem] -ml-px w-0.5 bg-border"
+          style={{ top: first ? "1.05rem" : 0, bottom: last ? "calc(100% - 1.05rem)" : 0 }}
+        />
+      )}
+      {station.branch && (
+        <span aria-hidden className="absolute -left-2 -top-2 h-5 w-4 rounded-bl-lg border-b-2 border-l-2 border-danger" />
+      )}
+      <span className="absolute left-0 top-0 h-[2.1rem] w-[1.6rem]">
         <span
           aria-hidden
           className={cn(
@@ -264,21 +291,24 @@ function SpineRow({
           )}
         />
       </span>
-      <span className={cn("text-[11px] uppercase tracking-[0.07em]", dim ? "text-faint" : "text-faint")}>{station.kind}</span>
-      <span className="font-mono text-[11px] text-faint">
-        {station.ticket ? `#${station.ticket}` : station.commit ? station.commit.slice(0, 8) : ""}
-      </span>
-      <span
-        className={cn(
-          station.branch ? "font-semibold text-danger" : "truncate",
-          dim && !station.branch && "italic text-faint",
-          !dim && !station.branch && "text-foreground/90",
-        )}
-      >
-        {station.what}
-        {station.actor && !station.branch && <span className="ml-1 text-faint">· {nameOf(station.actor)}</span>}
-      </span>
-      <span className="font-mono text-[11px] text-faint">{station.timestamp ? age(station.timestamp) : ""}</span>
+      <div className="grid min-h-[2.1rem] items-center gap-x-2" style={{ gridTemplateColumns: "1.6rem 5rem 3.5rem 1fr auto" }}>
+        <span />
+        <span className={cn("text-[11px] uppercase tracking-[0.07em]", dim ? "text-faint" : "text-faint")}>{station.kind}</span>
+        <span className="font-mono text-[11px] text-faint">
+          {station.ticket ? `#${station.ticket}` : station.commit ? station.commit.slice(0, 8) : ""}
+        </span>
+        <span
+          className={cn(
+            station.branch ? "font-semibold text-danger" : "truncate",
+            dim && !station.branch && "italic text-faint",
+            !dim && !station.branch && "text-foreground/90",
+          )}
+        >
+          {station.what}
+          {station.actor && !station.branch && <span className="ml-1 text-faint">· {nameOf(station.actor)}</span>}
+        </span>
+        <span className="font-mono text-[11px] text-faint">{station.timestamp ? age(station.timestamp) : ""}</span>
+      </div>
       {actions.length > 0 && (
         <RowToolbar>
           {actions.map((action) => (
@@ -286,24 +316,32 @@ function SpineRow({
           ))}
         </RowToolbar>
       )}
+      {detailed && open && <div className="mb-2 ml-[1.6rem] cursor-auto">{detail}</div>}
     </li>
   );
 }
 
 // A record behind an expander. Anything the fold ruled ineffective is marked
-// where it appears rather than given a bucket of its own.
+// where it appears rather than given a bucket of its own. Clicking the line
+// opens the record's full detail beneath it; clicking again closes it.
 function ElidedRecord({
   event,
   projection,
   ticket,
   nameOf,
   onOpenThread,
+  open,
+  onToggle,
+  detail,
 }: {
   event: string;
   projection: import("../lib/api").Projection;
   ticket?: number;
   nameOf: (fingerprint: string) => string;
   onOpenThread: (event: string) => void;
+  open: boolean;
+  onToggle: () => void;
+  detail: React.ReactNode;
 }) {
   const statement = projection.statements.find((candidate) => candidate.event === event);
   const act = projection.acts.find((candidate) => candidate.event === event);
@@ -316,35 +354,42 @@ function ElidedRecord({
   const ineffective = decision && decision.verdict !== "effective";
   const text = statement?.text ?? act?.text ?? (act ? `${act.type}d` : "");
   const actor = statement?.actor ?? act?.actor ?? "";
+  const stop = (run: () => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    run();
+  };
   return (
-    <div className="flex items-baseline gap-2 text-xs">
-      <button
-        type="button"
-        onClick={() => onOpenThread(event)}
-        title={event}
-        className="shrink-0 font-mono text-[11px] text-faint hover:text-muted focus-visible:outline focus-visible:outline-accent"
-      >
-        {ticket ? `#${ticket}` : "—"}
-      </button>
-      <span className="shrink-0 text-[11px] uppercase tracking-wide text-faint">
-        {kindLabel(statement?.kind ?? act?.type ?? "record")}
-      </span>
-      <span className={cn("min-w-0 flex-1 truncate", statement?.retired ? "text-faint line-through" : "text-muted")}>
-        {firstLine(text)}
-      </span>
-      {linked && (
+    <div data-record={event} aria-expanded={open} onClick={onToggle} className="cursor-pointer">
+      <div className="flex items-baseline gap-2 text-xs">
         <button
           type="button"
-          onClick={() => onOpenThread(linked)}
-          title={linked}
-          className="shrink-0 text-[11px] text-faint hover:text-muted focus-visible:outline focus-visible:outline-accent"
+          onClick={stop(() => onOpenThread(event))}
+          title={event}
+          className="shrink-0 font-mono text-[11px] text-faint hover:text-muted focus-visible:outline focus-visible:outline-accent"
         >
-          linked item
+          {ticket ? `#${ticket}` : "—"}
         </button>
-      )}
-      {statement?.describes_superseded_world && <span className="shrink-0 text-[11px] font-semibold text-danger">superseded world</span>}
-      {ineffective && <span className="shrink-0 text-[11px] text-danger" title={decision?.reason}>{gap ? gap.verdict : "ineffective"}</span>}
-      {actor && <span className="shrink-0 text-faint">{nameOf(actor)}</span>}
+        <span className="shrink-0 text-[11px] uppercase tracking-wide text-faint">
+          {kindLabel(statement?.kind ?? act?.type ?? "record")}
+        </span>
+        <span className={cn("min-w-0 flex-1 truncate", statement?.retired ? "text-faint line-through" : "text-muted")}>
+          {firstLine(text)}
+        </span>
+        {linked && (
+          <button
+            type="button"
+            onClick={stop(() => onOpenThread(linked))}
+            title={linked}
+            className="shrink-0 text-[11px] text-faint hover:text-muted focus-visible:outline focus-visible:outline-accent"
+          >
+            linked item
+          </button>
+        )}
+        {statement?.describes_superseded_world && <span className="shrink-0 text-[11px] font-semibold text-danger">superseded world</span>}
+        {ineffective && <span className="shrink-0 text-[11px] text-danger" title={decision?.reason}>{gap ? gap.verdict : "ineffective"}</span>}
+        {actor && <span className="shrink-0 text-faint">{nameOf(actor)}</span>}
+      </div>
+      {open && <div className="mb-2 mt-1 cursor-auto">{detail}</div>}
     </div>
   );
 }
