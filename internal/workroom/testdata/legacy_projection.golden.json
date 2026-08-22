@@ -120,7 +120,8 @@
         "name": "Agent",
         "role": "agent"
       },
-      "ratified": true
+      "ratified": true,
+      "ratified_by": "e2"
     },
     {
       "event": "e3",
@@ -152,6 +153,7 @@
         "result": "go test ./..."
       },
       "ratified": true,
+      "ratified_by": "e7",
       "stale": true
     },
     {

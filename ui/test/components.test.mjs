@@ -171,3 +171,68 @@ test("every row is one line of exactly five fixed columns", async () => {
     await vite.close();
   }
 });
+
+// Withdrawing a ratification must bring the action back. The toolbar used to
+// ask whether the viewer had ever ratified, which is a different question:
+// once withdrawn, the act is no longer in force, and a lawful re-ratification
+// was hidden forever. What is in force is `ratified_by`, and only the fold can
+// say which act that is.
+test("a withdrawn ratification offers the decision again", async () => {
+  const vite = await createServer({
+    root: uiRoot,
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
+  try {
+    const { semanticActions } = await vite.ssrLoadModule("/src/components/Toolbar.tsx");
+    const viewer = "hugh-fingerprint";
+    const proposal = { event: "proposal", actor: "codex-fingerprint", kind: "propose", text: "Use it.", timestamp: 1 };
+    const request = {
+      event: "request", actor: "codex-fingerprint", kind: "request",
+      text: "Hugh: ratify the proposal or deny it.", body: { to: viewer }, timestamp: 2,
+    };
+    // The viewer ratified, then withdrew it. ratified_by is what the fold says
+    // stands now; the ratify act itself is still in the projection, still
+    // marked effective, which is exactly why searching the acts cannot answer.
+    const build = (ratifiedBy) => ({
+      decisions: [
+        { event: "proposal", verdict: "effective", reason: "recorded" },
+        { event: "request", verdict: "effective", reason: "recorded" },
+      ],
+      acts: [
+        { event: "ratify-a", actor: viewer, type: "ratify", target: "proposal", verdict: "effective", reason: "recorded" },
+        { event: "withdraw-a", actor: viewer, type: "supersede", target: "ratify-a", verdict: "effective", reason: "recorded" },
+      ],
+      statements: [{ ...proposal, ratified: ratifiedBy !== undefined, ratified_by: ratifiedBy }, request],
+      commitments: [{ request: "request", requester: request.actor, addressed_to: viewer, status: "open" }],
+      artifacts: [],
+      actors: {},
+      provenance: { proposal: [], request: ["proposal"] },
+    });
+
+    const withdrawn = build(undefined);
+    const afterWithdrawal = semanticActions({
+      statement: request, commitment: withdrawn.commitments[0], decision: withdrawn.decisions[1],
+      projection: withdrawn, me: viewer, onRoute() {}, doAct() {},
+    });
+    assert.deepEqual(
+      afterWithdrawal.map(({ label }) => label),
+      ["ratify yes", "deny"],
+      "the ratification was withdrawn, so ratifying again is offered",
+    );
+
+    const standing = build("ratify-a");
+    const whileStanding = semanticActions({
+      statement: request, commitment: standing.commitments[0], decision: standing.decisions[1],
+      projection: standing, me: viewer, onRoute() {}, doAct() {},
+    });
+    assert.deepEqual(
+      whileStanding.map(({ label }) => label),
+      ["deny"],
+      "while the viewer's ratification stands, ratifying again is not offered",
+    );
+  } finally {
+    await vite.close();
+  }
+});

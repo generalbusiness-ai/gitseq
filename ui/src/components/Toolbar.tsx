@@ -1,4 +1,5 @@
 import type { ActInput, Commitment, Decision, Projection, Statement } from "../lib/api";
+import { activeRatification } from "../lib/ratification";
 import { cn } from "../lib/util";
 
 export type SemanticReplyMode = "promise" | "report" | "dissent" | "withdraw";
@@ -92,9 +93,11 @@ export function semanticActions({
   const actions: SemanticAction[] = [];
   if (statement.retired || (decision && decision.verdict !== "effective")) return actions;
   const key = (verb: string, target = statement.event) => `${verb}:${target}`;
-  const ratifiedByMe = (target: string) => projection.acts.some(
-    (a) => a.type === "ratify" && a.target === target && a.actor === me && a.verdict === "effective",
-  );
+  // Whether the ratification in force is mine — not whether I ever ratified.
+  // Withdrawing my own ratification must bring the action back, and asking
+  // "did I ever" hides it forever.
+  const ratifiedByMe = (target: Statement) =>
+    me !== undefined && activeRatification(projection, target)?.actor === me;
   if (statement.kind === "request" && commitment && !commitment.promise && me && statement.body?.to === me) {
     const directProposal = (projection.provenance[statement.event] ?? [])
       .map((basis) => ({
@@ -105,8 +108,9 @@ export function semanticActions({
         basisStatement?.kind === "propose" && !basisStatement.retired && basisDecision?.verdict === "effective",
       );
     if (directProposal.length === 1) {
-      const target = directProposal[0].statement!.event;
-      if (!ratifiedByMe(target))
+      const proposal = directProposal[0].statement!;
+      const target = proposal.event;
+      if (!ratifiedByMe(proposal))
         actions.push({ label: "ratify yes", symbol: "👍", tone: "ok", run: () => doAct(key("ratify", target), { act: "ratify", target }) });
       actions.push({ label: "deny", symbol: "👎", tone: "danger", run: () => onRoute("dissent", target, "") });
     } else {
@@ -114,7 +118,7 @@ export function semanticActions({
     }
   }
   if (statement.kind === "propose") {
-    if (!ratifiedByMe(statement.event)) actions.push({ label: "agree", symbol: "👍", tone: "ok", run: () => doAct(key("ratify"), { act: "ratify", target: statement.event }) });
+    if (!ratifiedByMe(statement)) actions.push({ label: "agree", symbol: "👍", tone: "ok", run: () => doAct(key("ratify"), { act: "ratify", target: statement.event }) });
     actions.push({ label: "disagree", symbol: "👎", tone: "danger", run: () => onRoute("dissent", statement.event, "") });
   }
   if (commitment?.promise && me === commitment.performer && commitment.status === "promised")

@@ -424,7 +424,13 @@ fold, or UI expectations.
   when its requester ratifies it, while a promisor's exact-head artifact acts
   as the implementation report and its sealed approved merge closes the
   commitment;
-- ratification and supersession rules;
+- ratification and supersession rules. The projection names the ratification
+  in force for a statement, not only that one exists, because the rule cannot
+  be recovered from what it hands out: projected acts carry no retirement, so
+  neither the first nor the last effective ratification of a target is
+  reliably the surviving one. A reader that picked either would be rebuilding
+  this layer's retirement rule for itself, so the answer is stated here and
+  read everywhere else;
 - path-at-commit artifact statements, retirement, succession, reviews, and
   staleness: ordinary staleness crosses governed reasoning edges, while the
   narrower `describes_superseded_world` fact crosses direct retired-artifact

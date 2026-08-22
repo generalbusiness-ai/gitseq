@@ -906,3 +906,45 @@ test("world-staleness stays loud in the lifecycle-stale population, and ordinary
   assert.equal(byEvent.get("loud").group, 0);
   assert.equal(byEvent.get("quiet").group, 1);
 });
+
+// The closing station named the first effective ratification of the report.
+// Acts keep their effective verdict after being withdrawn, so once a
+// ratification was superseded and replaced, the rail attributed the closure to
+// the withdrawn one — wrong act, wrong actor, wrong time. The fold already
+// decides which ratification is in force; `ratified_by` is that answer.
+test("the closing station names the ratification in force, not the first one", () => {
+  const build = (ratifiedBy) => ({
+    decisions: [
+      { event: "req", sequence: 1, verdict: "effective", reason: "recorded" },
+      { event: "prom", sequence: 2, verdict: "effective", reason: "recorded" },
+      { event: "rep", sequence: 3, verdict: "effective", reason: "recorded" },
+    ],
+    acts: [
+      { event: "ratify-a", actor: "alice", type: "ratify", target: "rep", timestamp: 10, verdict: "effective", reason: "recorded" },
+      { event: "withdraw-a", actor: "alice", type: "supersede", target: "ratify-a", timestamp: 20, verdict: "effective", reason: "recorded" },
+      { event: "ratify-b", actor: "bob", type: "ratify", target: "rep", timestamp: 30, verdict: "effective", reason: "recorded" },
+    ],
+    statements: [
+      { event: "req", sequence: 1, actor: "alice", kind: "request", text: "Do it", body: { to: "bob" }, timestamp: 1 },
+      { event: "prom", sequence: 2, actor: "bob", kind: "promise", text: "I will", timestamp: 2 },
+      { event: "rep", sequence: 3, actor: "bob", kind: "report", text: "Done", timestamp: 3, ratified: true, ratified_by: ratifiedBy },
+    ],
+    commitments: [{ request: "req", requester: "alice", performer: "bob", promise: "prom", report: "rep", status: "satisfied" }],
+    artifacts: [],
+    actors: {},
+    provenance: { prom: ["req"], rep: ["prom"] },
+    reviews: [],
+  });
+
+  const replaced = buildSpine("req", spineContext(build("ratify-b")));
+  const closed = replaced.stations.find((station) => station.kind === "closed");
+  assert.equal(closed.event, "ratify-b", "the surviving ratification closes it");
+  assert.equal(closed.actor, "bob");
+  assert.equal(closed.timestamp, 30);
+
+  // And when the earlier one is the survivor, it is the one shown.
+  const original = buildSpine("req", spineContext(build("ratify-a")));
+  const closedFirst = original.stations.find((station) => station.kind === "closed");
+  assert.equal(closedFirst.event, "ratify-a");
+  assert.equal(closedFirst.actor, "alice");
+});
