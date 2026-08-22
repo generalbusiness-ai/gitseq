@@ -65,19 +65,6 @@ body {
   background: transparent;
 }
 
-@keyframes pulse-dot {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.3;
-  }
-}
-.pulse-dot {
-  animation: pulse-dot 2.4s ease-in-out infinite;
-}
-
 @keyframes rise {
   from {
     opacity: 0;
@@ -92,10 +79,9 @@ body {
   animation: rise 0.25s ease-out both;
 }
 
-/* Respect the platform's motion preference: cards land and dots sit still. */
+/* Respect the platform's motion preference: cards land still. */
 @media (prefers-reduced-motion: reduce) {
-  .rise,
-  .pulse-dot {
+  .rise {
     animation: none;
   }
 }
