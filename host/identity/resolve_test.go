@@ -654,6 +654,7 @@ func TestEmptyLogResolvesToNothing(t *testing.T) {
 func TestAxisNamesReadAsTheyAreWritten(t *testing.T) {
 	cases := []struct{ got, want string }{
 		{identity.Witnessed.String(), "witnessed"},
+		{identity.SelfSigned.String(), "self-signed"},
 		{identity.VouchingUnknown.String(), "unvouched"},
 		{identity.InLog.String(), "in-log"},
 		{identity.LiveLookup.String(), "live-lookup"},

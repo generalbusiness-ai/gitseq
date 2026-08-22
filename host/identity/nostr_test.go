@@ -1,0 +1,304 @@
+package identity_test
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+	"testing"
+
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
+	"github.com/generalbusiness-ai/gitseq/host"
+	"github.com/generalbusiness-ai/gitseq/host/identity"
+)
+
+func nostrKey(t testing.TB) *btcec.PrivateKey {
+	t.Helper()
+	key, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return key
+}
+
+func signNostrAnchor(t testing.TB, key *btcec.PrivateKey, anchor identity.Anchor) identity.Anchor {
+	t.Helper()
+	anchor.Nostr = &identity.NostrProof{
+		PublicKey: hex.EncodeToString(schnorr.SerializePubKey(key.PubKey())),
+	}
+	message, err := identity.NostrDelegation(anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256([]byte(message))
+	signature, err := schnorr.Sign(key, digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor.Nostr.Signature = hex.EncodeToString(signature.Serialize())
+	return anchor
+}
+
+func signNostrWithdrawal(t testing.TB, key *btcec.PrivateKey, revocation identity.Revocation) identity.NostrProof {
+	t.Helper()
+	message, err := identity.NostrWithdrawal(revocation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256([]byte(message))
+	signature, err := schnorr.Sign(key, digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return identity.NostrProof{
+		PublicKey: hex.EncodeToString(schnorr.SerializePubKey(key.PubKey())),
+		Signature: hex.EncodeToString(signature.Serialize()),
+	}
+}
+
+func TestNostrDelegationBindsEveryAuthorityField(t *testing.T) {
+	anchor := identity.Anchor{
+		Genesis:  testGenesis,
+		Subject:  strings.Repeat("a", 64),
+		Scope:    "play & recover",
+		NotAfter: 1234,
+	}
+	got, err := identity.NostrDelegation(anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "nostr:delegation:" + anchor.Subject + ":genesis=" + testGenesis + "&not_after=1234&scope=play+%26+recover"
+	if got != want {
+		t.Fatalf("delegation = %q, want %q", got, want)
+	}
+
+	for name, mutate := range map[string]func(*identity.Anchor){
+		"repository": func(a *identity.Anchor) { a.Genesis = strings.Repeat("0", 40) },
+		"subject":    func(a *identity.Anchor) { a.Subject = strings.Repeat("b", 64) },
+		"scope":      func(a *identity.Anchor) { a.Scope = "watch" },
+		"expiry":     func(a *identity.Anchor) { a.NotAfter++ },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := anchor
+			mutate(&changed)
+			message, err := identity.NostrDelegation(changed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if message == got {
+				t.Fatalf("mutating %s did not change the signed message", name)
+			}
+		})
+	}
+}
+
+func TestSelfSignedNostrAnchorResolvesAndDisplaysBothAxes(t *testing.T) {
+	initializer, _ := testKey(t)
+	session, _ := testKey(t)
+	root := nostrKey(t)
+
+	log := newLog(t, initializer)
+	anchor := signNostrAnchor(t, root, identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(session), Scope: "play",
+	})
+	record := log.add(session, identity.AnchorSchema, anchor, 2000)
+
+	resolved := log.resolve().Lookup(fingerprint(session), 2000)
+	if !resolved.Anchored {
+		t.Fatal("valid Nostr proof resolved as unanchored")
+	}
+	wantIdentity := identity.Identity{
+		Scheme:  identity.NostrScheme,
+		Subject: hex.EncodeToString(schnorr.SerializePubKey(root.PubKey())),
+	}
+	if resolved.Identity != wantIdentity {
+		t.Errorf("identity = %+v, want %+v", resolved.Identity, wantIdentity)
+	}
+	if resolved.Vouching != identity.SelfSigned || resolved.Verification != identity.InLog {
+		t.Errorf("axes = %v/%v, want self-signed/in-log", resolved.Vouching, resolved.Verification)
+	}
+	if resolved.Scope != "play" || resolved.Record != record {
+		t.Errorf("scope/record = %q/%q, want play/%q", resolved.Scope, resolved.Record, record)
+	}
+	wantDisplay := identity.NostrScheme + ":" + wantIdentity.Subject + " (self-signed; in-log)"
+	if got := resolved.Display(fingerprint(session)); got != wantDisplay {
+		t.Errorf("display = %q, want %q", got, wantDisplay)
+	}
+	if got := (identity.Resolved{}).Display(fingerprint(session)); got != fingerprint(session)+" (unanchored)" {
+		t.Errorf("unanchored display = %q", got)
+	}
+}
+
+func TestOnlyTheNostrRootWithdrawsItsAnchor(t *testing.T) {
+	initializer, _ := testKey(t)
+	session, _ := testKey(t)
+	submitter, _ := testKey(t)
+	root := nostrKey(t)
+
+	log := newLog(t, initializer)
+	anchor := signNostrAnchor(t, root, identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(session), Scope: "play",
+	})
+	anchored := log.add(session, identity.AnchorSchema, anchor, 2000)
+	revocation := identity.Revocation{Genesis: testGenesis, Anchor: anchored}
+	wrong := nostrKey(t)
+	wrongProof := signNostrWithdrawal(t, wrong, revocation)
+	revocation.Nostr = &wrongProof
+	log.add(submitter, identity.RevokeSchema, revocation, 3000)
+	if !log.resolve().Lookup(fingerprint(session), 3500).Anchored {
+		t.Fatal("another Nostr root withdrew the anchor")
+	}
+
+	proof := signNostrWithdrawal(t, root, identity.Revocation{Genesis: testGenesis, Anchor: anchored})
+	revocation.Nostr = &proof
+	log.add(submitter, identity.RevokeSchema, revocation, 4000)
+	if log.resolve().Lookup(fingerprint(session), 4000).Anchored {
+		t.Fatal("the Nostr root could not withdraw its anchor through another Gitseq submitter")
+	}
+}
+
+func TestNostrAnchorRequiresBothRootAndSubjectSignatures(t *testing.T) {
+	initializer, _ := testKey(t)
+	session, _ := testKey(t)
+	other, _ := testKey(t)
+	root := nostrKey(t)
+	anchor := signNostrAnchor(t, root, identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(session), Scope: "play", NotAfter: 5000,
+	})
+
+	tests := map[string]func(*logBuilder, identity.Anchor){
+		"wrong gitseq signer": func(log *logBuilder, anchor identity.Anchor) {
+			log.add(other, identity.AnchorSchema, anchor, 2000)
+		},
+		"changed repository": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Genesis = strings.Repeat("0", 40)
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"changed scope": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Scope = "admin"
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"changed expiry": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.NotAfter++
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"changed signature": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Nostr.Signature = strings.Repeat("0", 128)
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"uppercase public key": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Nostr.PublicKey = strings.ToUpper(anchor.Nostr.PublicKey)
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"short public key": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Nostr.PublicKey = "00"
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"uppercase signature": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Nostr.Signature = strings.ToUpper(anchor.Nostr.Signature)
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"second stated identity": func(log *logBuilder, anchor identity.Anchor) {
+			claimed := identity.Identity{Scheme: identity.GitHubScheme, Subject: "1"}
+			anchor.Identity = &claimed
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"live verification claim": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Verification = "live-lookup"
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+	}
+	for name, write := range tests {
+		t.Run(name, func(t *testing.T) {
+			log := newLog(t, initializer)
+			copy := anchor
+			proof := *anchor.Nostr
+			copy.Nostr = &proof
+			write(log, copy)
+			if resolved := log.resolve().Lookup(fingerprint(session), 3000); resolved.Anchored {
+				t.Fatalf("invalid Nostr anchor took force: %+v", resolved)
+			}
+		})
+	}
+}
+
+func TestNostrAnchorAndDelegatedAgentWorkThroughPublicHost(t *testing.T) {
+	ctx := context.Background()
+	workspace, _ := testWorkspace(t, ctx)
+	_, person := testKey(t)
+	joined, err := workspace.Append(ctx, person, host.Act{Schema: "chess/join@0", Payload: []byte("{}")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	log, err := workspace.Records(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := nostrKey(t)
+	anchor := signNostrAnchor(t, root, identity.Anchor{
+		Genesis: log.Genesis, Subject: joined.Actor, Scope: "play",
+	})
+	anchored, err := identity.Endorse(ctx, workspace, person, anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, agent := testKey(t)
+	agentRecord, err := workspace.Append(ctx, agent, host.Act{Schema: "chess/join@0", Payload: []byte("{}")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := identity.Endorse(ctx, workspace, person, identity.Anchor{
+		Subject: agentRecord.Actor, Scope: "move",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolution := resolveWorkspace(t, ctx, workspace)
+	personResolved := resolution.Lookup(joined.Actor, anchored.Timestamp)
+	agentResolved := resolution.Lookup(agentRecord.Actor, credential.Timestamp)
+	if personResolved.Vouching != identity.SelfSigned || agentResolved.Vouching != identity.SelfSigned {
+		t.Fatalf("vouching = person %v, agent %v; want self-signed inheritance", personResolved.Vouching, agentResolved.Vouching)
+	}
+	if agentResolved.Identity != personResolved.Identity || agentResolved.Verification != identity.InLog {
+		t.Fatalf("agent = %+v, want inherited identity %+v and in-log verification", agentResolved, personResolved.Identity)
+	}
+
+	_, submitter := testKey(t)
+	log, err = workspace.Records(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := signNostrWithdrawal(t, root, identity.Revocation{Genesis: log.Genesis, Anchor: anchored.ID})
+	if _, err := identity.RevokeNostr(
+		ctx, workspace, submitter, anchored.ID+"x", proof,
+	); err == nil || !strings.Contains(err.Error(), "signature is invalid") {
+		t.Fatalf("RevokeNostr mutation error = %v, want invalid-signature refusal", err)
+	}
+	withdrawn, err := identity.RevokeNostr(ctx, workspace, submitter, anchored.ID, proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolution = resolveWorkspace(t, ctx, workspace)
+	if resolution.Lookup(joined.Actor, withdrawn.Timestamp).Anchored || resolution.Lookup(agentRecord.Actor, withdrawn.Timestamp).Anchored {
+		t.Fatal("Nostr root withdrawal left the session or its delegated agent anchored")
+	}
+}
+
+func TestEndorseRefusesAnInvalidNostrProofBeforeAppend(t *testing.T) {
+	ctx := context.Background()
+	workspace, _ := testWorkspace(t, ctx)
+	sessionPublic, session := testKey(t)
+	log, err := workspace.Records(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor := signNostrAnchor(t, nostrKey(t), identity.Anchor{
+		Genesis: log.Genesis, Subject: fingerprint(sessionPublic), Scope: "play",
+	})
+	anchor.Scope = "changed-after-signing"
+	if _, err := identity.Endorse(ctx, workspace, session, anchor); err == nil || !strings.Contains(err.Error(), "signature is invalid") {
+		t.Fatalf("Endorse error = %v, want invalid-signature refusal", err)
+	}
+}

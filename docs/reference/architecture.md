@@ -344,17 +344,33 @@ reader is making. **Vouching** says who stands behind the endorsement.
 in the log verifies offline forever, while a claim needing a third party to
 answer again verifies only while that third party cooperates.
 
-One vouching rung is implemented: **witnessed**, where a deployment's key says
-a provider said so. The stronger rung, where the identity's own key signs and
-nobody beyond the identity has to be trusted, is deferred along with the
-providers that would occupy it — Nostr, and a published forge signing key.
-Nothing here names it, because a value the code can never produce reads to a
-caller as a state to handle and to a reviewer as a rung that was built. The
-axis is ordered so that adding it later is one more value and a reduction rule
-the verification axis already follows.
+Two vouching rungs are implemented. **Witnessed** means a deployment's key says
+a provider said so. **Self-signed** means the identity's own Nostr key signed
+the anchor, so nobody beyond that identity has to be trusted for the claim.
+Both are reachable states produced by the resolver, and self-signed is the
+stronger value when a delegation reduces the chain to its weakest rung. A
+published forge signing key remains deferred because its verification would
+need a live lookup.
 
-Vouching is never claimed in a payload, only derived from which key signed the
-record, so no record can promote itself. A witness declaration is in force only
+A Nostr anchor carries a 32-byte x-only public key and 64-byte BIP-340 Schnorr
+signature in lowercase hex. The signature covers the SHA-256 digest of one
+deterministic, domain-separated delegation string binding the repository,
+Gitseq subject key, application-owned scope and expiry. Its shape follows the
+NIP-26 delegation token, but its conditions are Gitseq's and give it no Nostr
+relay or event semantics. The subject's Ed25519 key also signs the containing
+Gitseq record, so the persistent root and the session key both accept the
+binding. The host identity interpreter verifies the secp256k1 proof; the kernel
+continues to verify only its own Ed25519 actor and order and never imports the
+curve or Nostr vocabulary.
+
+The session key that accepted a Nostr anchor may withdraw it through the
+ordinary host act. The persistent Nostr root may also sign a repository-bound
+withdrawal and let any Gitseq actor submit it. That second path matters when the
+session key was lost or compromised; the resolver admits it only when the
+withdrawal proof names the same root as the anchor.
+
+Vouching is never claimed in a payload, only derived from signatures the host
+verifies, so no record can promote itself. A witness declaration is in force only
 when the key that initialized the repository signed it — the same authority the
 binding answers to, and for the same reason, since another application has no
 roster to consult. The last authorized declaration wins, so rotating the
@@ -363,12 +379,12 @@ previous key signed keep the force they had where they stand. A witness is
 declared for named identity schemes and cannot mint an identity outside them,
 so adding a provider is a visible act rather than a silent widening.
 
-An endorsement from any other key is a delegation — a new device, or an agent
-credential. It names no identity and inherits the endorser's, reduced to the
-weaker value on each axis, because nobody can hand on more than they hold. It
-cannot outlive the anchor it rests on, and withdrawing that anchor withdraws
-what it minted, or a revocation would leave standing the keys it was called to
-stop.
+An endorsement from any other anchored key is a delegation — a new device, or
+an agent credential. It names no identity and inherits the endorser's, reduced
+to the weaker value on each axis, because nobody can hand on more than they
+hold. It cannot outlive the anchor it rests on, and withdrawing that anchor
+withdraws what it minted, or a revocation would leave standing the keys it was
+called to stop.
 
 Resolution is the authority, and nothing here gates appending. An identity
 record that is unauthorized, unparseable, malformed, naming another repository,
@@ -397,11 +413,13 @@ the spelling.
 
 This is the mechanism, not a login system. It authenticates nobody and
 authorizes nothing: it says who a key belongs to and leaves what that is worth
-to the application's fold. Custody of a witness private key belongs to the
-deployment under the supported single-operator host posture, in which every
-process inside the trusted boundary can use every key that deployment holds,
-this one included. Authenticated shared-host support remains deferred, and the
-two-axis display surface belongs to the application, not here.
+to the application's fold. The public display helper keeps anchored versus
+unanchored state and both trust axes visible; applications still decide what
+that presentation authorizes, if anything. Custody of a witness private key
+belongs to the deployment under the supported single-operator host posture, in
+which every process inside the trusted boundary can use every key that
+deployment holds, this one included. Authenticated shared-host support remains
+deferred.
 
 ### 5. Application profile and interpreter
 
@@ -647,7 +665,7 @@ the same result.
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
 | `internal/apphost` | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and the binding in force shared by every host, together with the repository configuration a checkout needs to reopen its own log. It imports no application profile and has no application ontology. |
 | `host` | Application host, public surface | The only package a module outside this one can import. It exports binding at init, opening against a declared application, appending a signed act, and reading the verified record stream — and no projection, because the outside application owns its fold. It depends on the kernel and `internal/apphost`, never on an application profile. |
-| `host/identity` | Application host, public surface | Holds the host identity vocabulary an application inherits rather than reinvents: the witness declaration, the anchor, the withdrawal, and the two-axis resolution that judges them at an exact verified record position. It imports `host` and no application profile, gates no append, and reads no clock. The provider check that turns a login into an identity runs outside the fold, and only its result is recorded. |
+| `host/identity` | Application host, public surface | Holds the host identity vocabulary an application inherits rather than reinvents: witness declarations, witnessed GitHub and self-signed Nostr anchors, withdrawal, and two-axis resolution with a plain display at an exact verified record position. It imports `host` and no application profile, gates no append, and reads no clock. Nostr BIP-340 verification stays in this host interpreter, outside the Ed25519 kernel. The provider check that turns a GitHub login into an identity runs outside the fold, and only its result is recorded. |
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it opens the repository's configured actor and sequencer key custody, builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. The trusted resident may invoke this local custody for several actors; the nexus credential does not alter key files, kernel verification or fold authority. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. |

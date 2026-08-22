@@ -111,6 +111,9 @@ func TestNewcomerPlaysUnanchoredThenAnchorsThroughGitHubLogin(t *testing.T) {
 	if resolved.Record != anchor.ID {
 		t.Errorf("answering record = %q, want %q", resolved.Record, anchor.ID)
 	}
+	if got, want := resolved.Display(move.Actor), "alice [github:4242] (witnessed; in-log)"; got != want {
+		t.Errorf("display = %q, want %q", got, want)
+	}
 }
 
 // The recovery and agent-credential path, through a real repository: an

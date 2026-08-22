@@ -72,6 +72,9 @@ type anchorRecord struct {
 	// endorserKey is the hex-encoded key that signed the endorsement, and the
 	// only key that can withdraw it.
 	endorserKey string
+	// nostrKey is the root key that may withdraw a self-signed Nostr anchor.
+	// It is empty for witnessed anchors and inherited delegations.
+	nostrKey string
 }
 
 // Resolution is the identity state of one verified log, ready to be asked
@@ -157,6 +160,18 @@ func (r *Resolution) admitAnchor(record host.Record, at instant, witnessKey ed25
 		endorserKey: hexKey(record.ActorKey),
 	}
 	switch {
+	case anchor.Nostr != nil:
+		// A Nostr root key endorsed this Gitseq actor. The record must also be
+		// signed by the subject so a copied root proof cannot claim a key whose
+		// holder never accepted the binding. Anchor validation has already
+		// checked the BIP-340 signature over repository, subject, scope and
+		// expiry; no network or application profile participates here.
+		if record.Actor != anchor.Subject {
+			return
+		}
+		entry.identity = Identity{Scheme: NostrScheme, Subject: anchor.Nostr.PublicKey}
+		entry.vouching, entry.verification = SelfSigned, InLog
+		entry.nostrKey = anchor.Nostr.PublicKey
 	case witnessKey != nil && bytes.Equal(record.ActorKey, witnessKey):
 		// The deployment's word about what a provider said. It is the only
 		// endorsement that may name an identity, because the provider it
@@ -170,7 +185,7 @@ func (r *Resolution) admitAnchor(record host.Record, at instant, witnessKey ed25
 		// endorser's own identity and can be no stronger than the endorsement
 		// the endorser holds, on either axis. An endorser with nothing to hand
 		// on hands on nothing.
-		if anchor.Identity != nil {
+		if anchor.Identity != nil || anchor.Nostr != nil {
 			return
 		}
 		parent := r.effectiveAt(record.Actor, at)
@@ -179,9 +194,8 @@ func (r *Resolution) admitAnchor(record host.Record, at instant, witnessKey ed25
 		}
 		entry.identity = parent.identity
 		// Signing a delegation is not itself a vouching rung, so the endorser
-		// hands on exactly what it holds. Witnessing is the only rung this
-		// package implements; when a self-signed rung arrives this becomes the
-		// weaker of the two, as the verification axis already is.
+		// hands on exactly what it holds. Both axes remain no stronger than the
+		// parent anchor that minted this credential.
 		entry.vouching = parent.vouching
 		entry.verification = min(stated, parent.verification)
 		entry.parent = parent.record
@@ -199,10 +213,17 @@ func (r *Resolution) admitRevocation(record host.Record, at instant, genesis str
 	if !ok {
 		return
 	}
-	// Withdrawing is the endorser's act, so only the key that made the
-	// endorsement can unmake it.
-	if target.endorserKey != hexKey(record.ActorKey) {
-		return
+	// Withdrawing is the endorser's act. An ordinary anchor answers to the
+	// Ed25519 key that made it; a Nostr anchor also answers to a fresh BIP-340
+	// proof from the root key that endorsed it.
+	if revocation.Nostr != nil {
+		if target.nostrKey == "" || target.nostrKey != revocation.Nostr.PublicKey {
+			return
+		}
+	} else {
+		if target.endorserKey != hexKey(record.ActorKey) {
+			return
+		}
 	}
 	if target.revoked == nil || at.position < target.revoked.position {
 		target.revoked = &at
