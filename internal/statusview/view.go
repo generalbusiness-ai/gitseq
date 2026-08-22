@@ -165,6 +165,66 @@ func ActorName(projection workroom.Projection, fingerprint string) string {
 	return fingerprint
 }
 
+// artifactState reports how a reader should treat an artifact, and any notes
+// worth saying about it. Retired and stale are separate facts and both mean
+// "not this one" to somebody looking for what is current; they are kept apart
+// in the word because a withdrawn pointer and a moved world call for
+// different work. It is a function so the totals pass and the shaping pass
+// cannot drift about what "current" means.
+func artifactState(artifact workroom.Artifact) (string, string) {
+	state := "current"
+	switch {
+	case artifact.Retired:
+		state = "retired"
+	case artifact.Stale:
+		state = "stale"
+	}
+	var notes []string
+	if artifact.DescribesSupersededWorld {
+		notes = append(notes, "describes a superseded world")
+	}
+	if artifact.UnableToFlare {
+		notes = append(notes, "unable to flare")
+	}
+	if artifact.SuccessionUnrecorded {
+		notes = append(notes, "succession not recorded")
+	}
+	return state, strings.Join(notes, ", ")
+}
+
+func commitmentViews(projection workroom.Projection, statements map[string]workroom.Statement, sequences map[string]int, source []workroom.Commitment) []Commitment {
+	if len(source) == 0 {
+		return nil
+	}
+	views := make([]Commitment, 0, len(source))
+	for _, commitment := range source {
+		view := Commitment{
+			Request: commitment.Request, Sequence: sequences[commitment.Request],
+			Status: commitment.Status, Stale: commitment.Stale,
+			AddressedTo: Text(ActorName(projection, commitment.AddressedTo)),
+			Requester:   Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
+			WaitingOn: Text(ActorName(projection, commitment.WaitingOn)),
+		}
+		if statement, ok := statements[commitment.Request]; ok {
+			view.Text = Text(statement.Text)
+		}
+		views = append(views, view)
+	}
+	return views
+}
+
+func artifactViews(sequences map[string]int, source []workroom.Artifact) []Artifact {
+	if len(source) == 0 {
+		return nil
+	}
+	views := make([]Artifact, 0, len(source))
+	for _, artifact := range source {
+		state, notes := artifactState(artifact)
+		views = append(views, Artifact{Event: artifact.Event, Sequence: sequences[artifact.Event], Path: Text(artifact.Path), Commit: artifact.Commit, State: state, Notes: notes})
+	}
+	return views
+}
+
 func Build(genesis, head string, depth int, projection workroom.Projection) Summary {
 	statements := make(map[string]workroom.Statement, len(projection.Statements))
 	for _, statement := range projection.Statements {
@@ -183,6 +243,24 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		Commitments: make(map[string]int), StaleCommitments: make(map[string]int),
 		Artifacts: len(projection.Artifacts), Statements: len(projection.Statements),
 	}}
+	// Two passes, and the split is the point. The first walks everything,
+	// because the totals and the omitted counts are facts about the whole
+	// projection and would be wrong if computed from a sample. It keeps only
+	// source records, which are already resident and hold no copied text. The
+	// second shapes the rows that survive Cap.
+	//
+	// Shaping is what costs: Text runs strings.Fields and strings.Join, so it
+	// allocates twice per field, and ActorName resolves a fingerprint through
+	// the roster. Doing that for every commitment in a workroom of any age, to
+	// then discard all but ListCap of them, is work spent on rows nobody reads
+	// -- and it is spent on attacker-influenced text, which is the part that
+	// matters once that text has to be escaped rather than merely trimmed.
+	//
+	// Nothing about selection depends on a shaped value: lane membership comes
+	// from the commitment status, the artifact flags, the decision verdict and
+	// the statement kind, and order is projection order throughout. That is
+	// what makes moving the boundary safe rather than merely faster.
+	var actionableSource, attentionSource []workroom.Commitment
 	for _, commitment := range projection.Commitments {
 		summary.Totals.Commitments[commitment.Status]++
 		if commitment.Stale {
@@ -191,55 +269,32 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		if terminal[commitment.Status] {
 			continue
 		}
-		view := Commitment{
-			Request: commitment.Request, Sequence: sequences[commitment.Request],
-			Status: commitment.Status, Stale: commitment.Stale,
-			AddressedTo: Text(ActorName(projection, commitment.AddressedTo)),
-			Requester:   Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
-			WaitingOn: Text(ActorName(projection, commitment.WaitingOn)),
-		}
-		if statement, ok := statements[commitment.Request]; ok {
-			view.Text = Text(statement.Text)
-		}
 		if actionable[commitment.Status] {
-			summary.Actionable = append(summary.Actionable, view)
+			actionableSource = append(actionableSource, commitment)
 		} else {
-			summary.Attention = append(summary.Attention, view)
+			attentionSource = append(attentionSource, commitment)
 		}
 	}
+	var currentSource, staleSource []workroom.Artifact
 	for _, artifact := range projection.Artifacts {
-		// Retired and stale are separate facts on the artifact now, and both
-		// mean the same thing to a reader looking for what is current: not
-		// this one. They are kept apart in the state word because a withdrawn
-		// pointer and a moved world call for different work.
-		state := "current"
-		switch {
-		case artifact.Retired:
-			state = "retired"
+		state, _ := artifactState(artifact)
+		switch state {
+		case "retired":
 			summary.Totals.StaleArtifacts++
 			summary.Totals.RetiredArtifacts++
-		case artifact.Stale:
-			state = "stale"
+		case "stale":
 			summary.Totals.StaleArtifacts++
 		}
-		var notes []string
 		if artifact.DescribesSupersededWorld {
-			notes = append(notes, "describes a superseded world")
 			summary.Totals.WorldStaleArtifacts++
 		}
-		if artifact.UnableToFlare {
-			notes = append(notes, "unable to flare")
-		}
-		if artifact.SuccessionUnrecorded {
-			notes = append(notes, "succession not recorded")
-		}
-		view := Artifact{Event: artifact.Event, Sequence: sequences[artifact.Event], Path: Text(artifact.Path), Commit: artifact.Commit, State: state, Notes: strings.Join(notes, ", ")}
 		if state == "current" {
-			summary.CurrentArtifacts = append(summary.CurrentArtifacts, view)
+			currentSource = append(currentSource, artifact)
 		} else {
-			summary.StaleArtifacts = append(summary.StaleArtifacts, view)
+			staleSource = append(staleSource, artifact)
 		}
 	}
+	var attemptSource []workroom.Decision
 	for _, decision := range projection.Decisions {
 		switch decision.Verdict {
 		case workroom.Ineffective:
@@ -249,16 +304,35 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		default:
 			continue
 		}
-		summary.Attempts = append(summary.Attempts, Attempt{Event: decision.Event, Sequence: decision.Sequence, Verdict: string(decision.Verdict), Reason: Text(decision.Reason)})
+		attemptSource = append(attemptSource, decision)
 	}
 	// Dissent carries no lifecycle and satisfies nothing, so it appears in no
 	// commitment lane and no artifact list. Before this it appeared nowhere at
 	// all on the human page: the projection knew about it and only a JSON
 	// reader could find it.
+	var dissentSource []workroom.Statement
 	for _, statement := range projection.Statements {
 		if statement.Kind != workroom.KindDissent || statement.Retired {
 			continue
 		}
+		dissentSource = append(dissentSource, statement)
+	}
+
+	actionableSource, summary.ActionableOmitted = Cap(actionableSource, ListCap)
+	attentionSource, summary.AttentionOmitted = Cap(attentionSource, ListCap)
+	currentSource, summary.CurrentOmitted = Cap(currentSource, ListCap)
+	staleSource, summary.StaleOmitted = Cap(staleSource, ListCap)
+	attemptSource, summary.AttemptsOmitted = Cap(attemptSource, ListCap)
+	dissentSource, summary.DissentsOmitted = Cap(dissentSource, ListCap)
+
+	summary.Actionable = commitmentViews(projection, statements, sequences, actionableSource)
+	summary.Attention = commitmentViews(projection, statements, sequences, attentionSource)
+	summary.CurrentArtifacts = artifactViews(sequences, currentSource)
+	summary.StaleArtifacts = artifactViews(sequences, staleSource)
+	for _, decision := range attemptSource {
+		summary.Attempts = append(summary.Attempts, Attempt{Event: decision.Event, Sequence: decision.Sequence, Verdict: string(decision.Verdict), Reason: Text(decision.Reason)})
+	}
+	for _, statement := range dissentSource {
 		view := Dissent{
 			Event: statement.Event, Sequence: sequences[statement.Event],
 			Actor: Text(ActorName(projection, statement.Actor)), Text: Text(statement.Text),
@@ -270,12 +344,6 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		}
 		summary.Dissents = append(summary.Dissents, view)
 	}
-	summary.Actionable, summary.ActionableOmitted = Cap(summary.Actionable, ListCap)
-	summary.Attention, summary.AttentionOmitted = Cap(summary.Attention, ListCap)
-	summary.CurrentArtifacts, summary.CurrentOmitted = Cap(summary.CurrentArtifacts, ListCap)
-	summary.StaleArtifacts, summary.StaleOmitted = Cap(summary.StaleArtifacts, ListCap)
-	summary.Attempts, summary.AttemptsOmitted = Cap(summary.Attempts, ListCap)
-	summary.Dissents, summary.DissentsOmitted = Cap(summary.Dissents, ListCap)
 	reverse(summary.Actionable)
 	reverse(summary.Attention)
 	reverse(summary.CurrentArtifacts)
