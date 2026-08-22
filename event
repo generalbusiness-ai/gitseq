@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at ui","body":{"commit":"511335e71823333a413544cb8a16e2b6071e7e2e","path":"ui"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:341d731227ff3ac09c017ab181e7e6e0516318dc","text":"Merge retired a covered predecessor; the successor is at internal/service."}
