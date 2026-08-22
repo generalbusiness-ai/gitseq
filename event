@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will review and split the dormant service-boundary work against current main, distinguish already-landed protections from residual gaps, and either close it with evidence or recut only the still-needed bounds."}
+{"kind":"promise","text":"I will review the three separable dormant kernel-store trust-boundary changes against current main, decide each one's present need and shape, and either close or recut only the justified work."}
