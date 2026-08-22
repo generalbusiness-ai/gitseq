@@ -19,6 +19,11 @@ export interface Statement {
   timestamp?: number;
   actor: string;
   kind: string;
+  // The commitment role this record was decided under: the definition in force
+  // at its own position, not whichever definition of that kind stands now.
+  // Classifying a historical record by the current vocabulary gives a different
+  // answer than the fold gave.
+  lifecycle?: string;
   text: string;
   body?: Record<string, string>;
   ratified?: boolean;

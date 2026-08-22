@@ -2059,3 +2059,83 @@ func TestTheWriteBoundaryAsksWhatTheFoldAsks(t *testing.T) {
 		}
 	})
 }
+
+// Codex's fourth mismatch, and the subtlest: the boundary classified every
+// historical statement with the vocabulary as it stands now, while the fold
+// classifies each record with the definition that was in force where it sits.
+// Redefine a promise-lifecycle kind and the two answers diverge, so the
+// boundary signs and appends a record the fold then rules ineffective —
+// spending depth to record a refusal, from a mismatch that was locally known.
+func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	define := func(lifecycle workroom.Lifecycle, key string) workroom.Record {
+		t.Helper()
+		fields, err := json.Marshal([]workroom.FieldConstraint{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		bases, err := json.Marshal([]workroom.BasisConstraint{{Kinds: []workroom.Kind{workroom.KindRequest}, Min: 1, Max: 1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		definition := actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindKindDef, Text: "define undertaking " + key,
+			Body: map[string]string{
+				"name": "undertaking", "fields": string(fields), "basis": string(bases),
+				"satisfier": workroom.SatisfierNone, "render": string(workroom.RenderCommitment),
+				"staleness": string(workroom.StalenessPropagates), "lifecycle": string(lifecycle),
+				"guidance": "test lifecycle",
+			},
+			RestsOn: []string{seed.ID}, IdempotencyKey: "define-" + key,
+		})
+		actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbRatify, Target: definition.ID, IdempotencyKey: "ratify-" + key,
+		})
+		return definition
+	}
+
+	asPromise := define(workroom.LifecyclePromise, "as-promise")
+	request := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "build",
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "tests pass"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "redefinition-request",
+	})
+	// A live claim, recorded while undertaking was a promise.
+	actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: "undertaking", Text: "I will",
+		RestsOn: []string{request.ID}, IdempotencyKey: "claim-under-old-vocabulary",
+	})
+	// Now the kind is redefined to carry no lifecycle at all. The claim keeps
+	// the meaning it had where it stands; only later records see the new one.
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbSupersede, Target: asPromise.ID, Text: "redefining", IdempotencyKey: "retire-as-promise",
+	})
+	define(workroom.LifecycleNone, "as-none")
+
+	before, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = workspace.Act(ctx, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindReport, Text: "done",
+		RestsOn: []string{request.ID}, IdempotencyKey: "report-past-redefined-claim",
+	})
+	if err == nil {
+		t.Fatal("the boundary accepted a direct report the fold refuses, because it read the current vocabulary rather than the claim's own")
+	}
+	after, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("refused report changed the workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+	}
+}

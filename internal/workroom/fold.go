@@ -46,10 +46,17 @@ type Statement struct {
 	// canonical identifier, and the fold still resolves citations only by that
 	// identifier: this is a name for reading and saying, not a second name the
 	// log accepts.
-	Sequence  int               `json:"sequence"`
-	Timestamp int64             `json:"timestamp,omitempty"`
-	Actor     string            `json:"actor"`
-	Kind      Kind              `json:"kind"`
+	Sequence  int    `json:"sequence"`
+	Timestamp int64  `json:"timestamp,omitempty"`
+	Actor     string `json:"actor"`
+	Kind      Kind   `json:"kind"`
+	// Lifecycle is the commitment role this record was decided under: the
+	// definition in force at its own position, not whichever definition of
+	// that kind stands now. A reader classifying a historical record by the
+	// current vocabulary gets a different answer than the fold did, and the
+	// two then disagree about what a record is — which at a write boundary
+	// means signing something the fold will refuse.
+	Lifecycle Lifecycle         `json:"lifecycle,omitempty"`
 	Text      string            `json:"text"`
 	Body      map[string]string `json:"body,omitempty"`
 	Ratified  bool              `json:"ratified,omitempty"`
@@ -1715,6 +1722,16 @@ func (f *foldState) ratified(target string) bool {
 	return f.activeRatification(target) != ""
 }
 
+// lifecycleOf reports the commitment role a record was decided under. It reads
+// the definition the fold bound to that record, so a kind later redefined does
+// not retroactively change what its earlier records were.
+func lifecycleOf(record *parsedRecord) Lifecycle {
+	if record.definition == nil {
+		return LifecycleNone
+	}
+	return record.definition.Lifecycle
+}
+
 func (f *foldState) project() Projection {
 	succeeded := f.succeededRetirements()
 	stale, world := f.staleness(succeeded)
@@ -1766,7 +1783,8 @@ func (f *foldState) project() Projection {
 		projection.Statements = append(projection.Statements, Statement{
 			Event: record.record.ID, Sequence: record.sequence(),
 			Timestamp: record.record.Timestamp, Actor: record.record.Actor, Kind: state.Kind,
-			Text: state.Text, Body: cloneStringMap(state.Body),
+			Lifecycle: lifecycleOf(&record),
+			Text:      state.Text, Body: cloneStringMap(state.Body),
 			Ratified: ratification != "", RatifiedBy: ratification,
 			Retired: f.retired(record.record.ID), Stale: stale[record.record.ID],
 			DescribesSupersededWorld: world[record.record.ID],

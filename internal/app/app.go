@@ -801,7 +801,7 @@ func (w *Workspace) validateDirectReport(request workroom.Statement, reporter st
 		if statement.Actor != reporter || statement.Retired {
 			continue
 		}
-		if lifecycles[statement.Kind] != workroom.LifecyclePromise {
+		if statement.Lifecycle != workroom.LifecyclePromise {
 			continue
 		}
 		for _, basis := range snapshot.Projection.Provenance[statement.Event] {
@@ -822,6 +822,12 @@ func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, ki
 	if err != nil {
 		return fmt.Errorf("validate report basis: %w", err)
 	}
+	// The kind being written is classified by the current vocabulary, because
+	// that is the definition it will be decided under. Every record already in
+	// the log is classified by the lifecycle the fold bound to it, which the
+	// projection now carries: a kind redefined since does not retroactively
+	// change what its earlier records were, and reading them through today's
+	// vocabulary is how this boundary came to admit reports the fold refuses.
 	lifecycles := make(map[workroom.Kind]workroom.Lifecycle, len(snapshot.Vocabulary.Definitions))
 	for _, definition := range snapshot.Vocabulary.Definitions {
 		lifecycles[definition.Name] = definition.Lifecycle
@@ -845,7 +851,7 @@ func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, ki
 		if !ok {
 			continue
 		}
-		switch lifecycles[statement.Kind] {
+		switch statement.Lifecycle {
 		case workroom.LifecyclePromise:
 			promises = append(promises, statement)
 		case workroom.LifecycleRequest:
@@ -870,7 +876,7 @@ func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, ki
 		// ineffective -- spending depth to record a refusal.
 		var governing string
 		for _, basis := range snapshot.Projection.Provenance[promises[0].Event] {
-			if statement, ok := statements[basis]; ok && lifecycles[statement.Kind] == workroom.LifecycleRequest {
+			if statement, ok := statements[basis]; ok && statement.Lifecycle == workroom.LifecycleRequest {
 				if governing != "" {
 					governing = ""
 					break
