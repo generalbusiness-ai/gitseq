@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gs","body":{"commit":"7b0d8a5a9fff114b751ce952cacc55d98a9801e8","path":"cmd/gs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:04cff0df84e37cdd2fa374ba84df76a0ca525c21","text":"Merge retired a covered predecessor; the successor is at cmd/gs."}
