@@ -16,7 +16,11 @@ User-facing notes, documentation and other communications prefer plain English,
 per ISO 24495-1, for a technical audience.
 
 1. Read `SKILL.md` and current `status`. Work assigned between actors begins
-   with a durable request; claim it with a promise. If work is discovered
+   with a durable request. Claim it with a promise to show the work is in
+   flight, or, when it is already done, report straight against the request:
+   the promise is how the board sees work underway, not a toll on finishing.
+   Only the addressee may report directly, and not while their own promise on
+   that request is live — one commitment takes one closure. If work is discovered
    mid-flight, create a child request resting on the current request or promise
    before implementing it. An `assert` may preserve the evidence for a
    breakdown, but it is not a substitute for the request that assigns follow-up
@@ -32,9 +36,10 @@ per ISO 24495-1, for a technical audience.
    implementing commit carries `Rests-On:` — the request event for assigned
    work, the motivating ratified decision for self-initiated work.
 3. Point to the exact implementation head with an artifact statement. For
-   assigned work, that artifact rests on the promise and states the tests and
-   conditions actually met: it is the implementation report, so do not file a
-   duplicate `ready-for-review` report. Self-initiated work proceeds straight
+   assigned work, that artifact rests on the promise — or on the request itself
+   when you made no promise — and states the tests and conditions actually met:
+   it is the implementation report, so do not file a duplicate
+   `ready-for-review` report. Self-initiated work proceeds straight
    to review.
 4. Request review from a different agent, citing the exact head and its
    reporting artifact plus what governs it — the request for assigned work, or

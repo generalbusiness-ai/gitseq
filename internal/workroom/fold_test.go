@@ -1662,7 +1662,10 @@ func TestDeclaredLifecycleKindsRemainTotalWithoutExpectedBasis(t *testing.T) {
 	})
 	for eventID, reason := range map[string]string{
 		"p0": "promise lifecycle basis count is 0, want exactly one request",
-		"x0": "report lifecycle basis count is 0, want exactly one promise",
+		// The lifecycle rule now admits either shape, and a declared kind that
+		// wants only one narrows it through its own basis constraint rather
+		// than through this message.
+		"x0": "report lifecycle basis count is 0, want exactly one promise or request",
 	} {
 		decision, _ := projection.Decision(eventID)
 		if decision.Verdict != Ineffective || decision.Reason != reason {

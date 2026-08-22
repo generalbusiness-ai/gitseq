@@ -101,6 +101,18 @@ export function buildSpine(root: string, context: SpineContext): Spine {
       what: `${nameOf(promise.actor)} claimed it`,
       present: true,
     });
+  } else if (commitment?.report) {
+    // Reported without ever being claimed. The station stays hollow, because
+    // no promise happened, but it is not owed by anybody: saying "unclaimed,
+    // addressed to X" about work already reported would ask its performer for
+    // a claim after the fact, which is the thing dropping the mandatory
+    // promise exists to stop.
+    station({
+      id: "promise",
+      kind: "promise",
+      what: "reported without a claim",
+      present: false,
+    });
   } else {
     const owed = commitment?.addressed_to ?? request?.body?.to;
     station({
