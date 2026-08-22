@@ -3129,6 +3129,12 @@ func TestCheckpointMetadataBindsEnvelopeTrailersAndTreeIndependently(t *testing.
 		{name: "commit envelope", want: "commit envelope", mutate: func(_ *checkpoint, sequence []gitstore.CommitMetadata) {
 			sequence[1].Message = "not a signed envelope"
 		}},
+		{name: "target names checkpoint genesis", want: "target does not name checkpoint genesis", mutate: func(stored *checkpoint, sequence []gitstore.CommitMetadata) {
+			decoded := mustVerifyIntent(t, stored.Events[0].Signed)
+			decoded.Target = "git:sha1:" + strings.Repeat("f", 40)
+			stored.Events[0].Signed = mustSignIntent(t, decoded, private)
+			sequence[1].Message = intent.Envelope(stored.Events[0].Signed, decoded.RestsOn)
+		}},
 		{name: "payload tree identity", want: "payload tree identity", mutate: func(stored *checkpoint, sequence []gitstore.CommitMetadata) {
 			decoded := mustVerifyIntent(t, stored.Events[0].Signed)
 			decoded.PayloadTree = "not-a-typed-object-id"
