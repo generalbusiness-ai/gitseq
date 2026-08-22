@@ -4,7 +4,7 @@ import { useSession } from "./lib/session";
 import { useFrames } from "./lib/frames";
 import { api, type ActInput } from "./lib/api";
 import { TopBar } from "./components/TopBar";
-import { RequestList } from "./components/RequestList";
+import { RequestList, defaultListView, type ListView } from "./components/RequestList";
 import { Thread, type PendingSay } from "./components/Thread";
 import { Avatar } from "./components/Avatar";
 import { reconciledPendingIDs, RetryKeys } from "./lib/interaction";
@@ -19,6 +19,7 @@ export default function App() {
   const session = useSession();
   const { frames } = useFrames(workroom);
   const [screen, setScreen] = useState<Screen>({ kind: "list" });
+  const [listView, setListView] = useState<ListView>(defaultListView);
   // Optimistic say echoes: appended on send, reconciled when the frame lands.
   const [pending, setPending] = useState<PendingSay[]>([]);
 
@@ -79,7 +80,7 @@ export default function App() {
       />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         {screen.kind === "list" ? (
-          <RequestList workroom={workroom} onOpenThread={openThread} />
+          <RequestList workroom={workroom} onOpenThread={openThread} view={listView} onView={setListView} />
         ) : (
           <Thread
             key={screen.event}
