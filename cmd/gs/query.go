@@ -287,16 +287,13 @@ func renderStalenessWave(wave statusview.StalenessWave, source string) string {
 // from --state retired. Lifecycle is reported before staleness because a
 // withdrawn pointer is the louder fact.
 func artifactRowState(row statusview.ArtifactRow) string {
-	switch {
-	case row.Succeeded:
-		return "succeeded"
-	case row.Retired:
-		return "retired"
-	case row.Stale:
-		return "stale"
-	default:
-		return "current"
+	if lifecycle := row.Lifecycle(); lifecycle != statusview.ArtifactStateLive {
+		return string(lifecycle)
 	}
+	if row.Stale {
+		return "stale"
+	}
+	return "current"
 }
 
 func renderInspection(inspection statusview.ItemInspection, source string) string {

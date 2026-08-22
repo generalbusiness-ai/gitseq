@@ -51,11 +51,12 @@ that was recorded, or the answer is empty.
 
 Live means **not retired**. Staleness is a different fact and does not
 answer this question: a stale artifact still occupies its path and is
-still the predecessor a successor has to retire. Every returned row
-carries its own `succeeded`, `stale`, `retired` and
-`describes_superseded_world` fields whatever state was selected, so a
-row from an `--state all` query says which of the three lifecycles it is
-in rather than leaving the reader to infer it.
+still the predecessor a successor has to retire. Every returned row carries
+its own `stale`, `retired` and `describes_superseded_world` fields. The
+`succeeded` field is present only when it is `true`; an absent field means
+`false`. A row from an `--state all` query therefore distinguishes the three
+lifecycles directly: `succeeded: true` marks succeeded, `retired: true` marks
+retired, and neither field being true marks live.
 
 `retired` says the pointer was withdrawn and `succeeded` says a successor was
 named. Reading `retired` alone cannot tell a replaced artifact from a

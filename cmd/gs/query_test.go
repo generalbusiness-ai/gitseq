@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -457,30 +458,74 @@ func TestApprovedHeadsAreSplitThreeWaysNotTwo(t *testing.T) {
 		t.Fatal("a head out of the branch did not stop the gate")
 	}
 
-	// More actionable heads than any one display page still receive a complete
-	// classification in the same fixed process count. Only the display is
-	// capped; omitted landed heads do not make the gate permanently red.
-	many := make([]string, 0, 66)
-	for index := 0; index < 64; index++ {
-		many = append(many, landed)
+	// Exercise the whole projection-to-Git path with more distinct actionable
+	// approvals than one display page can hold.
+	unmergedHeads := []string{unmerged}
+	for index := 1; index < 6; index++ {
+		testGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", fmt.Sprintf("unmerged-%02d", index))
+		unmergedHeads = append(unmergedHeads, testGit(t, repo, "rev-parse", "HEAD"))
 	}
-	many = append(many, unmerged, absent)
-	bounded, err := classifyHeads(ctx, repo, "main", many, 5)
+	absentHeads := []string{absent}
+	for index := 1; index < 6; index++ {
+		absentHeads = append(absentHeads, fmt.Sprintf("%040x", index))
+	}
+	testGit(t, repo, "checkout", "-q", "main")
+	projection := workroom.Projection{}
+	for index := 0; index < 64; index++ {
+		testGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", fmt.Sprintf("landed-%02d", index))
+		head := testGit(t, repo, "rev-parse", "HEAD")
+		projection.Reviews = append(projection.Reviews, workroom.Review{
+			Report: fmt.Sprintf("report-landed-%02d", index), Verdict: "approved", Ratified: true, Head: head,
+		})
+	}
+	for index, head := range unmergedHeads {
+		projection.Reviews = append(projection.Reviews, workroom.Review{
+			Report: fmt.Sprintf("report-unmerged-%02d", index), Verdict: "approved", Ratified: true, Head: head,
+		})
+	}
+	for index, head := range absentHeads {
+		projection.Reviews = append(projection.Reviews, workroom.Review{
+			Report: fmt.Sprintf("report-absent-%02d", index), Verdict: "approved", Ratified: true, Head: head,
+		})
+	}
+	gate, err := statusview.BuildReviewGate(app.Snapshot{Genesis: "g", Head: "h", Projection: projection}, 5, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bounded.inTotal != 64 || len(bounded.in) != 5 || bounded.outTotal != 1 || bounded.unknownTotal != 1 {
+	heads := statusview.ActionableApprovedHeads(projection)
+	if len(heads) != 76 {
+		t.Fatalf("actionable head projection returned %d distinct heads, want 76", len(heads))
+	}
+	bounded, err := classifyHeads(ctx, repo, "main", heads, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate.Approved != 76 || len(gate.ApprovedHeads) != 5 || gate.ApprovedHeadsOmitted != 71 || !gate.Quiet() {
+		t.Fatalf("bounded projection gate lost its honest totals: %+v", gate)
+	}
+	if bounded.inTotal != 64 || len(bounded.in) != 5 || bounded.outTotal != 6 || len(bounded.out) != 5 || bounded.unknownTotal != 6 || len(bounded.unknown) != 5 || bounded.outOmitted != 1 || bounded.unknownOmitted != 1 {
 		t.Fatalf("bounded full classification lost heads: %+v", bounded)
+	}
+	if rendered := renderReviewGate(gate, "main", "test", bounded); !strings.Contains(rendered, "64 in main, 6 not in main, 6 unknown") || !strings.Contains(rendered, "1 additional out-of-branch heads omitted") || !strings.Contains(rendered, "1 additional unknown heads omitted") {
+		t.Fatalf("bounded rendered totals or omissions hid classified heads:\n%s", rendered)
 	}
 	if bounded.refusal(statusview.ReviewGate{}, "main") == nil {
 		t.Fatal("unknown and unlanded heads did not refuse after a >50-head classification")
 	}
-	allLanded, err := classifyHeads(ctx, repo, "main", many[:64], 5)
+	landedProjection := workroom.Projection{Reviews: projection.Reviews[:64]}
+	landedGate, err := statusview.BuildReviewGate(app.Snapshot{Genesis: "g", Head: "h", Projection: landedProjection}, 5, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if allLanded.refusal(statusview.ReviewGate{}, "main") != nil {
+	allLanded, err := classifyHeads(ctx, repo, "main", statusview.ActionableApprovedHeads(landedProjection), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if landedGate.ApprovedHeadsOmitted != 59 || !landedGate.Quiet() || allLanded.refusal(landedGate, "main") != nil {
 		t.Fatalf("all 64 classified landed heads could not clear the gate: %+v", allLanded)
+	}
+	if rendered := renderReviewGate(landedGate, "main", "test", allLanded); !strings.Contains(rendered, "64 in main, 0 not in main, 0 unknown") {
+		t.Fatalf("landed omitted heads did not render quiet totals:\n%s", rendered)
 	}
 }
 
@@ -545,25 +590,28 @@ func TestAncestryCostsTheSameWhateverTheNumberOfHeads(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "repo")
 	testGit(t, "", "init", "-q", "-b", "main", repo)
 	testGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "first")
-	landed := testGit(t, repo, "rev-parse", "HEAD")
+	landed := []string{testGit(t, repo, "rev-parse", "HEAD")}
+	for index := 1; index < 64; index++ {
+		testGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", fmt.Sprintf("landed-%02d", index))
+		landed = append(landed, testGit(t, repo, "rev-parse", "HEAD"))
+	}
 
-	count := func(heads int) int {
-		shim := t.TempDir()
-		tally := filepath.Join(shim, "calls")
-		real, err := exec.LookPath("git")
-		if err != nil {
-			t.Skip("no git on PATH to shim")
-		}
-		script := "#!/bin/sh\nprintf x >> " + tally + "\nexec " + real + " \"$@\"\n"
-		if err := os.WriteFile(filepath.Join(shim, "git"), []byte(script), 0o755); err != nil {
+	shim := t.TempDir()
+	tally := filepath.Join(shim, "calls")
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git on PATH to shim")
+	}
+	script := "#!/bin/sh\nprintf x >> " + tally + "\nexec " + real + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(shim, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", shim+string(os.PathListSeparator)+os.Getenv("PATH"))
+	count := func(heads []string) int {
+		if err := os.WriteFile(tally, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv("PATH", shim+string(os.PathListSeparator)+os.Getenv("PATH"))
-		list := make([]string, heads)
-		for index := range list {
-			list[index] = landed
-		}
-		if _, err := classifyHeads(ctx, repo, "main", list, 50); err != nil {
+		if _, err := classifyHeads(ctx, repo, "main", heads, 50); err != nil {
 			t.Fatal(err)
 		}
 		calls, err := os.ReadFile(tally)
@@ -573,9 +621,9 @@ func TestAncestryCostsTheSameWhateverTheNumberOfHeads(t *testing.T) {
 		return len(calls)
 	}
 
-	few, many := count(2), count(64)
-	if few != many {
-		t.Fatalf("ancestry ran %d git processes for 2 heads and %d for 64; the cost tracks the signed log rather than the repository", few, many)
+	few, many := count(landed[:2]), count(landed)
+	if few != 2 || many != 2 {
+		t.Fatalf("ancestry ran %d git processes for 2 heads and %d for 64, want exactly 2 for each", few, many)
 	}
 }
 

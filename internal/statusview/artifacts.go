@@ -78,10 +78,17 @@ type ArtifactSelection struct {
 // disagree — a succeeded artifact was selected correctly and then reported as
 // merely retired, so four documented states arrived as three.
 func lifecycleOf(artifact workroom.Artifact) ArtifactState {
+	return artifactLifecycle(artifact.Retired, artifact.Succeeded)
+}
+
+// artifactLifecycle is the one lifecycle priority shared by the fold row and
+// its bounded public view. Succeeded is narrower than retired: both bits are
+// true when a successor was named, and that more useful fact wins.
+func artifactLifecycle(retired, succeeded bool) ArtifactState {
 	switch {
-	case artifact.Retired && artifact.Succeeded:
+	case succeeded:
 		return ArtifactStateSucceeded
-	case artifact.Retired:
+	case retired:
 		return ArtifactStateRetired
 	default:
 		return ArtifactStateLive
@@ -112,6 +119,12 @@ type ArtifactRow struct {
 	// the bit: Retired alone cannot distinguish replacement from withdrawal.
 	Succeeded                bool `json:"succeeded,omitempty"`
 	DescribesSupersededWorld bool `json:"describes_superseded_world"`
+}
+
+// Lifecycle names the row using the same priority as selection. It adds no
+// wire field: remote live-only JSON remains byte-for-byte unchanged.
+func (row ArtifactRow) Lifecycle() ArtifactState {
+	return artifactLifecycle(row.Retired, row.Succeeded)
 }
 
 type ArtifactPage struct {

@@ -21,6 +21,39 @@ func TestArtifactQueryWireContractIsUnchanged(t *testing.T) {
 	}
 }
 
+func TestLegacyLiveArtifactPageJSONBytesAreUnchanged(t *testing.T) {
+	page, err := BuildArtifactPage(artifactSnapshot(), ArtifactQuery{Paths: []string{"ui"}, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"frontier":{"genesis":"genesis","head":"head-one","depth":5},"paths":["ui"],"artifacts":[{"event":"ui:current","path":"ui","commit":"new","stale":false,"retired":false,"describes_superseded_world":false},{"event":"ui:stale","path":"ui","commit":"middle","stale":true,"retired":false,"describes_superseded_world":true}],"matching_total":2,"returned":2,"before":0,"remaining":0}`
+	if string(encoded) != want {
+		t.Fatalf("legacy live artifact page bytes changed:\n got %s\nwant %s", encoded, want)
+	}
+}
+
+func TestLegacyPathOnlyCursorStillContinues(t *testing.T) {
+	const cursor = "eyJ2IjoxLCJoZWFkIjoiaGVhZC1vbmUiLCJvZmZzZXQiOjEsImZpbHRlciI6IjFmNzY3ZGM4OTllODA3ODNmNGViODNlMTQ5ZDIzZmY2ZDA1MjNmYjBhNzY1Y2Y1MzgyNTI2MWYyMjAyOWUyODIifQ"
+	first, err := BuildArtifactPage(artifactSnapshot(), ArtifactQuery{Paths: []string{"ui"}, Limit: 1}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.NextCursor != cursor {
+		t.Fatalf("path-only cursor bytes changed:\n got %s\nwant %s", first.NextCursor, cursor)
+	}
+	continued, err := BuildArtifactPage(artifactSnapshot(), ArtifactQuery{Paths: []string{"ui"}, Limit: 1, Cursor: cursor}, false)
+	if err != nil {
+		t.Fatalf("pre-change path-only cursor was refused: %v", err)
+	}
+	if continued.Before != 1 || continued.Returned != 1 || continued.Artifacts[0].Event != "ui:stale" {
+		t.Fatalf("pre-change cursor did not continue its page: %+v", continued)
+	}
+}
+
 func artifactSnapshot() app.Snapshot {
 	projection := workroom.Projection{Artifacts: []workroom.Artifact{
 		{Event: "ui:retired", Path: "ui", Commit: "old", Retired: true, Stale: true, DescribesSupersededWorld: true},
