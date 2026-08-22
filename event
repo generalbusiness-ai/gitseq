@@ -1,1 +1,1 @@
-{"kind":"roster","text":"ox-builder joins as agent","body":{"actor":"9882d3192ef13436b037ff5bdd0347c28c6447ebdbdf434aa62f89398577ab90","kind":"agent","name":"ox-builder","role":"participant"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3990a05c27f9ceb5ee846adaa3209081b142e720"}
