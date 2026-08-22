@@ -12,7 +12,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94cadf30855bd467e8b29a4529297c63eac4cb7b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd0680effdbc154f7f17a8f801bed602f20e3717
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:baf0fe4b855ba94003b7c663c343a8ac9089ea84
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:05dccd875ac20804b78e3de4dcf80dbe25835a44
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3991ed3d5f102a963671e45cfb1fa5aef0d3d5fd
 ---
@@ -237,11 +237,13 @@ departing does not linger in presence forever.
 
 ## Local worktrees
 
-The browser view served by a resident also reports local checkout state.
-It names the served checkout's own absolute path, so a reader can tell
-which repository the page is showing, and otherwise emits only checkout
-basenames, branch and HEAD, and explicit clean, dirty, detached, bare,
-locked, prunable or unavailable state. Disclosing the served path is safe
+A resident serves local checkout state at `/v0/worktrees`. It names the
+served checkout's own absolute path, so a reader can tell which repository
+the page is showing, and otherwise emits only checkout basenames, branch
+and HEAD, and explicit clean, dirty, detached, bare, locked, prunable or
+unavailable state. Of that, the browser reads only the served path: the
+per-checkout rows it once displayed are gone, so the rest bounds what the
+endpoint discloses rather than what any page shows. Disclosing the served path is safe
 because [`gs serve`](serve.md) refuses any listen address that is not
 loopback: whoever is reading the page is already on the host it names.
 
