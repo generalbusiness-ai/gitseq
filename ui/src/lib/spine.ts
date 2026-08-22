@@ -197,12 +197,13 @@ export function buildSpine(root: string, context: SpineContext): Spine {
   }
 
   // Or the ratification that closed the commitment. Both can be true, and
-  // when they disagree that is the thing worth seeing.
-  const closing = commitment?.report
-    ? projection.acts.find(
-        (act) => act.type === "ratify" && act.target === commitment.report && act.verdict === "effective",
-      )
-    : undefined;
+  // when they disagree that is the thing worth seeing. A thread whose root is
+  // not a request — a proposal, an assert — closes when the root itself is
+  // ratified, and that ratification is the last station, not a superseded
+  // claim hidden behind an expander.
+  const ratifies = (target: string) =>
+    projection.acts.find((act) => act.type === "ratify" && act.target === target && act.verdict === "effective");
+  const closing = commitment?.report ? ratifies(commitment.report) : !commitment ? ratifies(root) : undefined;
   if (closing) {
     station({
       id: "closed",
@@ -211,7 +212,7 @@ export function buildSpine(root: string, context: SpineContext): Spine {
       ticket: tickets.get(closing.event),
       actor: closing.actor,
       timestamp: closing.timestamp,
-      what: `${nameOf(closing.actor)} closed it`,
+      what: commitment ? `${nameOf(closing.actor)} closed it` : `${nameOf(closing.actor)} ratified it`,
       present: true,
       tone: "ok",
     });
@@ -310,6 +311,7 @@ function buildExpanders(input: {
   const repair: string[] = [];
   const rounds: string[] = [];
   const superseded: string[] = [];
+  const ratifications: string[] = [];
   const chatter: string[] = [];
 
   for (const event of thread.events) {
@@ -328,7 +330,11 @@ function buildExpanders(input: {
       rounds.push(event);
       continue;
     }
-    if (act?.type === "ratify" || (statement?.retired && ["request", "promise", "report"].includes(statement.kind))) {
+    if (act?.type === "ratify") {
+      ratifications.push(event);
+      continue;
+    }
+    if (statement?.retired && ["request", "promise", "report"].includes(statement.kind)) {
       superseded.push(event);
       continue;
     }
@@ -338,7 +344,8 @@ function buildExpanders(input: {
   const expanders: Expander[] = [
     { id: "repair", label: "Repair chain", hint: "retired predecessor artifacts and the supersessions that retired them", events: repair },
     { id: "rounds", label: "Earlier rounds", hint: "superseded review verdicts", events: rounds },
-    { id: "superseded", label: "Superseded claims", hint: "refiled requests, replaced promises and reports, ratifications", events: superseded },
+    { id: "superseded", label: "Superseded claims", hint: "refiled requests, replaced promises and reports", events: superseded },
+    { id: "ratifications", label: "Ratifications", hint: "records in this thread adopted by a ratifier", events: ratifications },
     { id: "talk", label: "Talk", hint: talk > 0 ? `notes, asserts and ${talk} temporary ${talk === 1 ? "message" : "messages"}` : "notes and asserts", events: chatter },
   ];
   // An expander whose count is zero is not drawn.
