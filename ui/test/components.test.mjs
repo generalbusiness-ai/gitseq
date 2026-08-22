@@ -234,6 +234,11 @@ test("a withdrawn ratification offers the decision again", async () => {
       ["deny"],
       "while the viewer's ratification stands, ratifying again is not offered",
     );
+  } finally {
+    await vite.close();
+  }
+});
+
 // The thread row abbreviates; the detail under it does not. Every fact the
 // projection holds about the record is shown whole, and each basis is a link.
 test("a record's detail shows full ids, body fields and both directions of provenance", async () => {

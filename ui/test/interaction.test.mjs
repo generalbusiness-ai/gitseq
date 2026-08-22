@@ -981,6 +981,8 @@ test("the closing station names the ratification in force, not the first one", (
   const closedFirst = original.stations.find((station) => station.kind === "closed");
   assert.equal(closedFirst.event, "ratify-a");
   assert.equal(closedFirst.actor, "alice");
+});
+
 // One resolver for "which thread does this record belong to", used by every
 // caller. A promise, report, act, artifact or assert lands on its request; a
 // record with no request above it stays itself.
@@ -1028,7 +1030,9 @@ test("ratifying a proposal is the closing station of its thread, not a supersede
       { event: "yes", sequence: 2, verdict: "effective", reason: "authorized ratification" },
     ],
     acts: [{ event: "yes", actor: "hugh", type: "ratify", target: "prop", verdict: "effective", reason: "authorized ratification", timestamp: 2 }],
-    statements: [{ event: "prop", sequence: 1, actor: "planner", kind: "propose", text: "Adopt X", timestamp: 1, ratified: true }],
+    // ratified and ratified_by come from one call in the fold, so a statement
+    // carrying one and not the other is a projection that cannot occur.
+    statements: [{ event: "prop", sequence: 1, actor: "planner", kind: "propose", text: "Adopt X", timestamp: 1, ratified: true, ratified_by: "yes" }],
     commitments: [],
     reviews: [],
     artifacts: [],
@@ -1042,4 +1046,40 @@ test("ratifying a proposal is the closing station of its thread, not a supersede
   assert.match(closed.what, /hugh ratified it/);
   assert.equal(spine.expanders.some((expander) => expander.id === "superseded"), false);
   assert.equal(spine.expanders.some((expander) => expander.events.includes("yes")), false, "a station is not also behind an expander");
+});
+
+// The root arm of the same selector, and the case codex's finding was actually
+// reported against: a proposal with no commitment closes when the proposal
+// itself is ratified. Withdrawing that ratification and ratifying again must
+// move the station to the surviving act. This arm exists only on this branch,
+// so the fix that landed on main could not have covered it — first-effective
+// survived here after it was gone everywhere else.
+test("a proposal's closing station follows a withdrawn and replaced ratification", () => {
+  const build = (ratifiedBy) => ({
+    decisions: [{ event: "prop", sequence: 1, verdict: "effective", reason: "recorded" }],
+    acts: [
+      { event: "ratify-a", actor: "alice", type: "ratify", target: "prop", timestamp: 10, verdict: "effective", reason: "recorded" },
+      { event: "withdraw-a", actor: "alice", type: "supersede", target: "ratify-a", timestamp: 20, verdict: "effective", reason: "recorded" },
+      { event: "ratify-b", actor: "bob", type: "ratify", target: "prop", timestamp: 30, verdict: "effective", reason: "recorded" },
+    ],
+    statements: [
+      { event: "prop", sequence: 1, actor: "codex", kind: "propose", text: "Adopt it", timestamp: 1, ratified: true, ratified_by: ratifiedBy },
+    ],
+    commitments: [],
+    artifacts: [],
+    actors: {},
+    provenance: {},
+    reviews: [],
+  });
+
+  const replaced = buildSpine("prop", spineContext(build("ratify-b")));
+  const closed = replaced.stations.find((station) => station.kind === "closed");
+  assert.equal(closed.event, "ratify-b", "the surviving ratification closes the proposal");
+  assert.equal(closed.actor, "bob");
+  assert.equal(closed.timestamp, 30);
+
+  const original = buildSpine("prop", spineContext(build("ratify-a")));
+  const closedFirst = original.stations.find((station) => station.kind === "closed");
+  assert.equal(closedFirst.event, "ratify-a", "and when the earlier one survives, it is the one shown");
+  assert.equal(closedFirst.actor, "alice");
 });
