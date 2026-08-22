@@ -774,3 +774,62 @@ test("the request list keeps its population when the operator leaves and returns
     await vite.close();
   }
 });
+
+// Codex set this button's onClick to undefined in a mutation worktree and all
+// 71 tests stayed green: the static test beside it asserts the elision and the
+// button's label, which a dead button renders just as well. A bound handler is
+// only pinned by clicking it and observing what changed, so this drives the
+// click in a DOM and asserts every reference arrives, in order.
+test("the show-all button opens the references it counts", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  try {
+    const { RecordDetail, REFERENCE_LIMIT } = await vite.ssrLoadModule("/src/components/RecordDetail.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const base = "base0000000000000000000000000000000000000";
+    const dependents = Array.from({ length: 30 }, (_, i) => `dep${String(i).padStart(37, "0")}`);
+    const projection = {
+      decisions: [],
+      acts: [],
+      statements: [
+        { event: base, sequence: 1, actor: "hugh", kind: "propose", text: "Adopt X" },
+        ...dependents.map((event, i) => ({ event, sequence: i + 2, actor: "claude", kind: "assert", text: `Depends ${i}` })),
+      ],
+      commitments: [],
+      artifacts: [],
+      actors: {},
+      provenance: Object.fromEntries(dependents.map((event) => [event, [base]])),
+    };
+    await act(async () => {
+      root.render(
+        React.createElement(RecordDetail, {
+          event: base,
+          index: buildRecordIndex(projection),
+          actors: projection.actors,
+          tickets: new Map(),
+          nameOf: (f) => f,
+          onOpenThread() {},
+        }),
+      );
+    });
+
+    const refsOnScreen = () => [...document.querySelectorAll("[data-ref]")].map((node) => node.getAttribute("data-ref"));
+    assert.deepEqual(refsOnScreen(), dependents.slice(0, REFERENCE_LIMIT), "the first twelve, in order, before opening");
+
+    const opener = [...document.querySelectorAll("button")].find((button) =>
+      button.textContent.includes("more not shown"),
+    );
+    assert.ok(opener, "the button that counts the rest is on screen");
+    await click(opener);
+
+    assert.deepEqual(refsOnScreen(), dependents, "all thirty, in order, after clicking");
+    assert.equal(
+      [...document.querySelectorAll("button")].find((button) => button.textContent.includes("more not shown")),
+      undefined,
+      "and nothing is left to open",
+    );
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
