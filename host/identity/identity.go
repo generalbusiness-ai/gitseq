@@ -40,7 +40,7 @@
 //	rec, err := identity.Endorse(ctx, ws, endorser, identity.Anchor{...})
 //	rec, err := identity.Revoke(ctx, ws, endorser, anchorRecordID)
 //	res := identity.Resolve(log)
-//	who := res.Lookup(actorFingerprint, recordTimestamp)
+//	who := res.LookupAt(recordID)
 //
 // [Endorse] is one act for both rungs. A deployment holding the witness key
 // endorses a newcomer's session key and names the identity a provider
@@ -78,10 +78,10 @@
 //
 // # Time
 //
-// Expiry is judged against the sequencer's signed timestamp on the record
-// being judged, never against the reader's clock, so two clones folding the
-// same log reach the same answer. [Resolution.Lookup] takes that instant as
-// its argument for exactly this reason.
+// Anchor, delegation and withdrawal boundaries are judged by verified record
+// position. Expiry alone is judged against the sequencer's signed timestamp on
+// the record being judged, never against the reader's clock. [Resolution.LookupAt]
+// resolves that exact record id, so a timestamp tie cannot change authority.
 package identity
 
 import (

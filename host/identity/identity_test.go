@@ -75,7 +75,7 @@ func TestNewcomerPlaysUnanchoredThenAnchorsThroughGitHubLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved := resolveWorkspace(t, ctx, workspace).Lookup(move.Actor, move.Timestamp); resolved.Anchored {
+	if resolved := resolveWorkspace(t, ctx, workspace).LookupAt(move.ID); resolved.Anchored {
 		t.Fatalf("a browser-minted key started out anchored: %+v", resolved)
 	}
 
@@ -93,7 +93,11 @@ func TestNewcomerPlaysUnanchoredThenAnchorsThroughGitHubLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved := resolveWorkspace(t, ctx, workspace).Lookup(move.Actor, anchor.Timestamp)
+	afterAnchor, err := workspace.Append(ctx, session, host.Act{Schema: "chess/move@0", Payload: []byte("e5")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := resolveWorkspace(t, ctx, workspace).LookupAt(afterAnchor.ID)
 	if !resolved.Anchored {
 		t.Fatal("the session key did not anchor after a witnessed GitHub login")
 	}
@@ -144,7 +148,11 @@ func TestAnchoredPersonEndorsesAnotherKeyAndCanWithdrawIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved := resolveWorkspace(t, ctx, workspace).Lookup(agent.Actor, credential.Timestamp)
+	agentAct, err := workspace.Append(ctx, agentKey, host.Act{Schema: "chess/move@0", Payload: []byte("e4")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := resolveWorkspace(t, ctx, workspace).LookupAt(agentAct.ID)
 	if !resolved.Anchored || resolved.Identity != alice {
 		t.Fatalf("agent credential = %+v, want alice's identity", resolved)
 	}
@@ -152,11 +160,15 @@ func TestAnchoredPersonEndorsesAnotherKeyAndCanWithdrawIt(t *testing.T) {
 		t.Errorf("vouching = %v, want witnessed, the strength of the anchor that minted it", resolved.Vouching)
 	}
 
-	withdrawn, err := identity.Revoke(ctx, workspace, personKey, credential.ID)
+	_, err = identity.Revoke(ctx, workspace, personKey, credential.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolveWorkspace(t, ctx, workspace).Lookup(agent.Actor, withdrawn.Timestamp).Anchored {
+	afterWithdrawal, err := workspace.Append(ctx, agentKey, host.Act{Schema: "chess/move@0", Payload: []byte("e5")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolveWorkspace(t, ctx, workspace).LookupAt(afterWithdrawal.ID).Anchored {
 		t.Fatal("the agent credential survived its withdrawal")
 	}
 }
@@ -194,7 +206,15 @@ func TestEndorseWritesThisRepositorysGenesis(t *testing.T) {
 	if written.Genesis != log.Genesis {
 		t.Errorf("recorded genesis = %q, want this repository's %q", written.Genesis, log.Genesis)
 	}
-	if !identity.Resolve(log).Lookup(joined.Actor, record.Timestamp).Anchored {
+	afterAnchor, err := workspace.Append(ctx, session, host.Act{Schema: "chess/move@0", Payload: []byte("e4")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	log, err = workspace.Records(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !identity.Resolve(log).LookupAt(afterAnchor.ID).Anchored {
 		t.Error("an endorsement written for this repository did not resolve in it")
 	}
 }

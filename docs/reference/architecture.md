@@ -377,7 +377,11 @@ and resolves to nothing, leaving the previous answer standing. So no appender
 can make a repository's identities unreadable by writing a record, and no
 admission check has to be trusted to keep one out.
 
-Expiry and withdrawal are judged against the sequencer's signed timestamp on
+Anchor, delegation and withdrawal boundaries are judged against verified log
+position, so records sharing one signed second still follow their immutable
+order. The public identity boundary resolves an exact record id and fails
+closed when that id is unknown or changed; it offers no timestamp-only lookup.
+`NotAfter` expiry alone is judged against the sequencer's signed timestamp on
 the record being folded, never against the reader's clock, so two clones
 resolving one log reach the same answers. A provider check — verifying a login
 with the provider that issued it — runs outside the fold, and only its result
@@ -643,7 +647,7 @@ the same result.
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
 | `internal/apphost` | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and the binding in force shared by every host, together with the repository configuration a checkout needs to reopen its own log. It imports no application profile and has no application ontology. |
 | `host` | Application host, public surface | The only package a module outside this one can import. It exports binding at init, opening against a declared application, appending a signed act, and reading the verified record stream — and no projection, because the outside application owns its fold. It depends on the kernel and `internal/apphost`, never on an application profile. |
-| `host/identity` | Application host, public surface | Holds the host identity vocabulary an application inherits rather than reinvents: the witness declaration, the anchor, the withdrawal, and the two-axis resolution that judges them. It imports `host` and no application profile, gates no append, and reads no clock. The provider check that turns a login into an identity runs outside the fold, and only its result is recorded. |
+| `host/identity` | Application host, public surface | Holds the host identity vocabulary an application inherits rather than reinvents: the witness declaration, the anchor, the withdrawal, and the two-axis resolution that judges them at an exact verified record position. It imports `host` and no application profile, gates no append, and reads no clock. The provider check that turns a login into an identity runs outside the fold, and only its result is recorded. |
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it opens the repository's configured actor and sequencer key custody, builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. The trusted resident may invoke this local custody for several actors; the nexus credential does not alter key files, kernel verification or fold authority. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. |
