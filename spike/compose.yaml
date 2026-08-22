@@ -6,8 +6,19 @@ services:
       GITEA__database__DB_TYPE: sqlite3
       GITEA__service__DISABLE_REGISTRATION: "true"
       GITEA__server__ROOT_URL: http://localhost:3300/
+      # Without this, a fresh data volume boots straight into Gitea's first-run
+      # installer, and whoever reaches it first becomes the administrator.
+      # DISABLE_REGISTRATION does not cover it: that governs self-signup after
+      # installation, not the installer. With the lock set there is no
+      # administrator until one is made through the CLI; FORGE.md carries that
+      # step.
+      GITEA__security__INSTALL_LOCK: "true"
     ports:
-      - "3300:3000"
+      # The published address is explicit and must stay explicit. A bare
+      # "3300:3000" binds 0.0.0.0, which put this development forge - and, on a
+      # fresh volume, its open installer - on every network the host is
+      # attached to.
+      - "127.0.0.1:3300:3000"
     volumes:
       - gitseq-forge-data:/data
     healthcheck:
