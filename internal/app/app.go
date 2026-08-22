@@ -574,10 +574,14 @@ func (w *Workspace) GrantRole(ctx context.Context, grantorName, actorAddress, ro
 // RetireActor ends a principal's membership and its local custody together.
 // Retirement is a supersession of the membership statement, so the fold keeps
 // the principal visible with no roles rather than forgetting that it acted;
-// what stops it acting again is the removal of its key from local custody,
-// because the durable log admits any allowlisted signer. Leaving the key file
-// behind after retiring the name would enlarge the shared key directory with
-// principals nobody is watching, so it is deleted here.
+// what stops it acting again is the fold: after retirement the principal is
+// no longer a live participant, so a later state or ratification it signs is
+// judged ineffective however the record reaches the log. Deleting the key is
+// therefore hygiene rather than the boundary — it was the boundary before the
+// fold enforced membership, and a comment still saying so would send a reader
+// looking for the guard in the wrong layer. Leaving the key file behind would
+// also enlarge the shared key directory with principals nobody is watching,
+// so it is deleted here.
 func (w *Workspace) RetireActor(ctx context.Context, retirerName, actorAddress string) ([]workroom.Record, error) {
 	actor, err := w.ResolveActorAddress(actorAddress)
 	if err != nil {

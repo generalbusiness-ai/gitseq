@@ -455,6 +455,14 @@ projects `path@commit`, retirement, succession, and staleness. Another
 application may have no artifacts or may define a different concept under a
 different schema family.
 
+Workroom also makes live membership an application-level authority boundary.
+After the genesis operator seed, a state author must be a live participant,
+and an originating requester must still be live to ratify a report. A
+departed actor may still supersede an earlier act they authored; that narrow
+cleanup exception confers no force on a new state or on a ratification. These
+are fold rules rather than kernel admission or signature rules: the kernel
+still accepts the signed record, and the application decides what it means.
+
 Workroom state schemas are prospectively versioned when admission tightens.
 `workroom/state@0` remains readable with the decisions it historically made;
 `workroom/state@1` refuses whole-repository and comma-joined artifact paths.

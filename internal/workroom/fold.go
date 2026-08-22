@@ -487,6 +487,21 @@ func (f *foldState) addDecision(record Record, parsed *parsedRecord, index int, 
 
 func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 	decision := Decision{Event: record.record.ID, Verdict: Effective, Reason: "statement recorded"}
+	// Live membership is checked before kind or lifecycle semantics, so the
+	// boundary is one rule rather than a condition repeated per kind — a kind
+	// added later inherits it without anyone remembering to. The genesis seed
+	// is the single exception: it is the record that creates the first
+	// participant, so it cannot be judged against a roster that does not yet
+	// exist.
+	//
+	// What this closes is the gap between holding a key and holding authority.
+	// Removal from the roster was previously advisory against anyone who kept
+	// a key or another clone: the fold read the signature, found it valid, and
+	// admitted the record. Custody of a key is evidence of who signed; it is
+	// not a standing permission to keep speaking.
+	if record.index > 0 && !f.hasActor(record.record.Actor) {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "statement author is not a live participant"}
+	}
 	definition, exists := f.definitions[state.Kind]
 	if !exists && state.Kind == KindFoldActivation && (record.record.Schema == SchemaStateLegacy || record.record.Schema == SchemaStateV1) {
 		definition, exists = legacyFoldActivationDefinition(), true
@@ -745,6 +760,14 @@ func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
 		}
 		if request.record.Actor != record.record.Actor {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "only the requester may declare satisfaction"}
+		}
+		// Being the originating requester is not enough on its own. A departed
+		// requester conferring force is the case that reaches furthest: a
+		// ratified review approval is what gs merge consumes, so a removed
+		// actor able to ratify could still put a head into main long after it
+		// stopped being a participant.
+		if !f.hasActor(record.record.Actor) {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "requester is not a live participant"}
 		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "requester declared satisfaction"}
 	}

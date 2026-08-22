@@ -27,8 +27,11 @@ different-agent rule are unchanged. The merge is the durable acceptance of the
 implementation result, so no second ratification follows it.
 
 Work that resolves without a merge still uses the general route: the promisor
-files an explicit **report**, and the original requester ratifies it. You never
-declare your own unmerged work complete.
+files an explicit **report**, and the original requester ratifies it, so long
+as that requester is still a live participant. You never declare your own
+unmerged work complete. Retiring the requester's membership retires this
+authority with it: a later ratification is kept in the log but judged
+ineffective, even when the report was filed after they left.
 
 A free-standing promise projects as dangling, because nobody is
 positioned to declare it satisfied. A report on a promise that does not

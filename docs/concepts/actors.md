@@ -81,6 +81,20 @@ retired principal from a live one. Measured: superseding a membership
 takes a principal from `[participant]` to retired with no roles, and
 superseding *that supersession* returns them to `[participant]`.
 
+Membership also bounds durable authorship. The genesis seed is the only
+state whose author need not already be live. Every later state from a
+non-member is ineffective, even when the repository still holds that
+principal's signing key: custody of a key is evidence of who signed, not a
+standing permission to keep speaking. Removal does not rewrite verdicts
+earned while the principal was admitted, and restoring membership gives
+force only to later states.
+
+A retired principal cannot ratify a report, including one on a request they
+made while admitted. They may still supersede an earlier act they authored.
+That is deliberately narrow cleanup: it lets someone withdraw their own
+record, but neither author a new effective state, ratify a report, nor
+supersede another actor's act.
+
 Governance retirement and restoration use the authority of the target,
 not ordinary authorship of an old event. A `ratifier` may change ordinary
 membership and ratifier grants. An `operator` grant, or a membership that
