@@ -362,7 +362,7 @@ function listRoom() {
     reviews: [],
     artifacts: [],
     actors: {
-      hugh: { name: "hugh", kind: "human", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
+      hugh: { name: "hugh", kind: "human", roles: ["ratifier"], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
       claude: { name: "claude", kind: "agent", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
       codex: { name: "codex", kind: "agent", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
     },
@@ -376,7 +376,19 @@ function listRoom() {
     ],
     offline: false,
     status: {
-      durable: { genesis: "genesis", head: "head", depth: 3, projection },
+      durable: {
+        genesis: "genesis",
+        head: "head",
+        depth: 3,
+        projection,
+        vocabulary: {
+          definitions: [
+            { name: "propose", satisfier: "role:ratifier", render: "proposal" },
+            { name: "assert", satisfier: "role:ratifier", render: "note" },
+            { name: "request", satisfier: "originating-requester", render: "commitment" },
+          ],
+        },
+      },
       live: { cursor: { generation: "generation", position: 1 }, presence: {}, activity: {}, conversations: [] },
       cursor: { frontier: [], live: { generation: "generation", position: 1 } },
     },
@@ -433,6 +445,13 @@ test("exactly one number heads the list, and each other number opens to its own 
     projection.statements.push({ event: "e9", sequence: 9, actor: "hugh", kind: "request", text: "Abandoned work", timestamp: NOW_S - 40 * 86400 });
     projection.decisions.push({ event: "e9", sequence: 9, verdict: "effective", reason: "recorded" });
     projection.commitments.push({ request: "e9", requester: "hugh", status: "stale" });
+    // A proposal is not a commitment, so it can only ever reach the screen
+    // through a population of its own. The assert beside it names the ratifier
+    // role too and must not be counted.
+    projection.statements.push({ event: "e10", sequence: 10, actor: "codex", kind: "propose", text: "Bounded status", timestamp: NOW_S - 3 * 86400 });
+    projection.statements.push({ event: "e11", sequence: 11, actor: "codex", kind: "assert", text: "A note", timestamp: NOW_S - 3 * 86400 });
+    projection.decisions.push({ event: "e10", sequence: 10, verdict: "effective", reason: "recorded" });
+    projection.decisions.push({ event: "e11", sequence: 11, verdict: "effective", reason: "recorded" });
 
     await act(async () => {
       root.render(React.createElement(RequestList, { workroom, onOpenThread() {} }));
@@ -445,6 +464,7 @@ test("exactly one number heads the list, and each other number opens to its own 
     assert.deepEqual(summaries.map((button) => button.textContent), [
       "1 of these rest on reasoning that has moved.",
       "1 stale requests, not in flight.",
+      "1 act awaits ratification.",
     ]);
 
     await click(summaries[1]);
@@ -454,8 +474,66 @@ test("exactly one number heads the list, and each other number opens to its own 
     await click([...document.querySelectorAll("p button")][0]);
     assert.equal(document.querySelector("h2").textContent, "1 resting on reasoning that has moved");
     assert.deepEqual(titlesOnScreen(), ["Zebra work"]);
+
+    await click([...document.querySelectorAll("p button")][2]);
+    assert.equal(document.querySelector("h2").textContent, "1 act awaits ratification");
+    assert.deepEqual(titlesOnScreen(), ["Bounded status"]);
   } finally {
     await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+// An empty queue and an undischargeable one look identical on screen unless
+// the screen says which it is, so the disclosure is the condition, not a
+// decoration on it. Deleting it left all 68 tests green: every assertion about
+// it was a doesNotMatch on the resolved case, which any missing element
+// satisfies. A guard is only pinned by asserting it is present when it should
+// be.
+test("the ratification queue says when nobody, or nobody in particular, can discharge it", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  let root;
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    // A fresh mount per case. The population is component state, so reusing
+    // one root means the second click toggles back to the live list instead of
+    // opening the queue — which passed silently as "no warning present".
+    const show = async (roles) => {
+      if (root) await act(async () => root.unmount());
+      root = createRoot(document.getElementById("root"));
+      const workroom = listRoom();
+      const projection = workroom.status.durable.projection;
+      projection.actors.hugh.roles = roles.hugh;
+      projection.actors.codex.roles = roles.codex;
+      projection.statements.push({ event: "e10", sequence: 10, actor: "codex", kind: "propose", text: "Bounded status", timestamp: NOW_S - 3 * 86400 });
+      projection.decisions.push({ event: "e10", sequence: 10, verdict: "effective", reason: "recorded" });
+      await act(async () => {
+        root.render(React.createElement(RequestList, { workroom, onOpenThread() {} }));
+      });
+      const summaries = [...document.querySelectorAll("p button")];
+      await click(summaries[2]);
+    };
+
+    await show({ hugh: [], codex: [] });
+    assert.match(document.body.textContent, /Nobody in this room holds .ratifier./,
+      "an owed act with no ratifier must not read as an empty queue");
+    assert.equal(document.querySelectorAll("tbody tr").length, 1,
+      "the obligation still exists when nobody can discharge it");
+    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[1].textContent, "",
+      "with no ratifier the queue names nobody rather than guessing");
+
+    await show({ hugh: ["ratifier"], codex: ["ratifier"] });
+    assert.match(document.body.textContent, /2 actors hold .ratifier./,
+      "two candidates do not determine a next mover, and the screen must say so");
+    assert.equal(document.querySelectorAll("tbody tr").length, 1);
+    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[1].textContent, "");
+
+    await show({ hugh: ["ratifier"], codex: [] });
+    assert.doesNotMatch(document.body.textContent, /holds .ratifier./,
+      "with exactly one ratifier there is nothing to disclose");
+    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[1].textContent, "hugh");
+  } finally {
+    if (root) await act(async () => root.unmount());
     await vite.close();
   }
 });
