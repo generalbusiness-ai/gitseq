@@ -205,9 +205,11 @@ func Safe(value string) string {
 }
 
 // Text renders user-controlled text as one safe terminal line and caps it by
-// bytes. Runs of whitespace fold to single spaces; anything that could move
-// the cursor, repaint the screen, reorder the line, or hide itself is written
-// as a visible escape. Invalid UTF-8 is escaped byte by byte rather than
+// bytes. Runs of benign spacing fold to single spaces; anything that could
+// move the cursor, repaint the screen, reorder the line, break it in two, or
+// hide itself is written as a visible escape. A newline is escaped rather
+// than folded: turning it into a space is safe but silent, and a reader
+// cannot then tell a line break from a space somebody typed. Invalid UTF-8 is escaped byte by byte rather than
 // silently replaced, so a reader can tell malformed input from a real U+FFFD.
 //
 // The durable bytes are untouched. This is what a bounded view shows, not what
@@ -226,16 +228,18 @@ func Text(value string) string {
 		case decoded == utf8.RuneError && size == 1:
 			encode(&encoded, rune(value[index]))
 			token = encoded.String()
+		case hostile(decoded):
+			// Escaping runs before folding. A newline folded to a space is
+			// harmless but silent: the reader cannot tell which character was
+			// there, and "visibly and unambiguously" is the whole point.
+			encode(&encoded, decoded)
+			token = encoded.String()
 		case unicode.IsSpace(decoded):
-			// Folding runs before escaping, so a newline or a carriage return
-			// becomes a separator here rather than an escape. It cannot break
-			// a line it is no longer in.
+			// Only benign spacing folds. Everything structural was escaped
+			// above.
 			separate = out.Len() > 0
 			index += size
 			continue
-		case hostile(decoded):
-			encode(&encoded, decoded)
-			token = encoded.String()
 		default:
 			token = value[index : index+size]
 		}

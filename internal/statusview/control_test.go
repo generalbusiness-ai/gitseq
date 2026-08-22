@@ -65,13 +65,38 @@ func TestTextEscapesEveryControlThatCanDriveATerminal(t *testing.T) {
 	}
 }
 
-func TestTextStillFoldsWhitespaceAndLeavesOrdinaryTextAlone(t *testing.T) {
-	if got := Text("  two\nlines\tand   spaces  "); got != "two lines and spaces" {
-		t.Fatalf("whitespace folding changed: %q", got)
+func TestTextFoldsBenignSpacingAndLeavesOrdinaryTextAlone(t *testing.T) {
+	if got := Text("  two   words  "); got != "two words" {
+		t.Fatalf("benign spacing folding changed: %q", got)
 	}
 	ordinary := "Ada wrote docs/reference/architecture.md and 界 is fine"
 	if got := Text(ordinary); got != ordinary {
 		t.Fatalf("ordinary text was rewritten: %q", got)
+	}
+}
+
+// A structural character folded to a space is safe but silent: the reader
+// cannot tell a line break from a space somebody typed. The request asks for
+// visible and unambiguous, so Text escapes these rather than folding them.
+func TestTextShowsWhichStructuralCharacterWasThere(t *testing.T) {
+	for _, item := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"line feed", "a\nb", `a\x0ab`},
+		{"carriage return", "a\rb", `a\x0db`},
+		{"tab", "a\tb", `a\x09b`},
+		{"line separator", "a\u2028b", `a\u2028b`},
+		{"paragraph separator", "a\u2029b", `a\u2029b`},
+		{"next line", "a\u0085b", `a\x85b`},
+	} {
+		if got := Text(item.input); got != item.want {
+			t.Errorf("%s: Text(%q) = %q, want %q", item.name, item.input, got, item.want)
+		}
+	}
+	if got := Text("a b"); got != "a b" {
+		t.Errorf("an ordinary space should still be a space: %q", got)
 	}
 }
 
