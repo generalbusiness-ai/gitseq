@@ -395,6 +395,13 @@ function listRoom() {
   };
 }
 
+// The list's view (sort, query, population) belongs to its caller, so the
+// screen host holds it the way App does.
+function ListHost({ RequestList, ...props }) {
+  const [view, setView] = React.useState({ query: "", population: "live" });
+  return React.createElement(RequestList, { ...props, view, onView: setView });
+}
+
 const titlesOnScreen = () => [...document.querySelectorAll("tbody tr")].map((row) => row.cells[3].textContent);
 const headerNamed = (label) =>
   [...document.querySelectorAll("thead th button")].find((button) => button.textContent.trim().startsWith(label));
@@ -405,7 +412,7 @@ test("clicking a column sorts, clicking again reverses, and a third click restor
   try {
     const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
     await act(async () => {
-      root.render(React.createElement(RequestList, { workroom: listRoom(), onOpenThread() {} }));
+      root.render(React.createElement(ListHost, { RequestList, workroom: listRoom(), onOpenThread() {} }));
     });
 
     // Priority: unclaimed, then waiting on a human, then running.
@@ -454,7 +461,7 @@ test("exactly one number heads the list, and each other number opens to its own 
     projection.decisions.push({ event: "e11", sequence: 11, verdict: "effective", reason: "recorded" });
 
     await act(async () => {
-      root.render(React.createElement(RequestList, { workroom, onOpenThread() {} }));
+      root.render(React.createElement(ListHost, { RequestList, workroom, onOpenThread() {} }));
     });
     const heading = document.querySelector("h2");
     assert.equal(heading.textContent, "3 open requests");
@@ -545,7 +552,7 @@ test("clicking a row opens that request's thread", async () => {
   try {
     const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
     await act(async () => {
-      root.render(React.createElement(RequestList, { workroom: listRoom(), onOpenThread: (event) => opened.push(event) }));
+      root.render(React.createElement(ListHost, { RequestList, workroom: listRoom(), onOpenThread: (event) => opened.push(event) }));
     });
     await click(document.querySelector("tbody tr"));
     assert.deepEqual(opened, ["e2"]);

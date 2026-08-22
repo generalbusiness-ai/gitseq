@@ -143,6 +143,8 @@ test("every row is one line of exactly five fixed columns", async () => {
     };
     const markup = renderToStaticMarkup(
       React.createElement(RequestList, {
+        view: { query: "", population: "live" },
+        onView() {},
         workroom: {
           actors: [{ name: "codex", fingerprint: "codex", roles: [], custody: true }],
           offline: false,
@@ -322,6 +324,48 @@ test("thread rows start closed and only rows naming something are expandable", a
     assert.match(rows[0], /data-station="request"[^>]*aria-expanded="false"/);
     assert.doesNotMatch(rows[1], /aria-expanded/, "an unreached station has nothing to open");
     assert.doesNotMatch(markup, /data-record-detail/, "nothing is open until clicked");
+  } finally {
+    await vite.close();
+  }
+});
+
+// The list shows the population its caller holds. Owning the view outside
+// the list is what lets it survive a trip into a thread and back.
+test("the request list renders the population and sort its caller holds", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const projection = {
+      decisions: [],
+      acts: [],
+      statements: [
+        { event: "open", sequence: 1, actor: "hugh", kind: "request", text: "Still open", timestamp: 1786500000 },
+        { event: "gone", sequence: 2, actor: "hugh", kind: "request", text: "Went stale", timestamp: 1786500000 },
+      ],
+      commitments: [
+        { request: "open", requester: "hugh", addressed_to: "codex", status: "open" },
+        { request: "gone", requester: "hugh", addressed_to: "codex", status: "stale" },
+      ],
+      reviews: [],
+      artifacts: [],
+      actors: { codex: { name: "codex", kind: "agent", roles: [] } },
+      provenance: {},
+    };
+    const render = (view) =>
+      renderToStaticMarkup(
+        React.createElement(RequestList, {
+          workroom: workroom({}, projection),
+          onOpenThread() {},
+          view,
+          onView() {},
+        }),
+      );
+    const stale = render({ query: "", population: "stale" });
+    assert.match(stale, /1 stale request, not in flight<\/h2>/);
+    assert.match(stale, /Went stale/);
+    assert.doesNotMatch(stale.slice(stale.indexOf("<tbody>")), /Still open/);
+    const live = render({ query: "", population: "live" });
+    assert.match(live, /1 open request<\/h2>/);
   } finally {
     await vite.close();
   }

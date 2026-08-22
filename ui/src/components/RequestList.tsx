@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Search } from "lucide-react";
 import { ticketsOf, type Workroom } from "../lib/store";
 import { age, matchingRows, ratificationRows, sortAfterClick, sortRows, workRows, type Sort, type SortKey, type WorkRow } from "../lib/rows";
@@ -9,6 +9,17 @@ import { RebuildNotice } from "./RebuildNotice";
 // counts it, and each replaces the headline with its own count, so no number
 // on this screen is more than one click from exactly the rows it counts.
 type Population = "live" | "moved" | "stale" | "ratification";
+
+// What the operator chose on this screen. Owned by the caller so it survives
+// opening a thread and coming back: the list is not the place the operator
+// was, it is the question they were asking, and the question should still be
+// on the screen when they return to it.
+export interface ListView {
+  sort?: Sort;
+  query: string;
+  population: Population;
+}
+export const defaultListView: ListView = { query: "", population: "live" };
 
 const COLUMNS: { key: SortKey; label: string; className: string }[] = [
   { key: "state", label: "state", className: "w-[9rem]" },
@@ -25,15 +36,20 @@ const COLUMNS: { key: SortKey; label: string; className: string }[] = [
 export function RequestList({
   workroom,
   onOpenThread,
+  view,
+  onView,
 }: {
   workroom: Workroom;
   onOpenThread: (event: string) => void;
+  view: ListView;
+  onView: (view: ListView) => void;
 }) {
   const projection = workroom.status?.durable.projection;
   const vocabulary = workroom.status?.durable.vocabulary;
-  const [sort, setSort] = useState<Sort>();
-  const [query, setQuery] = useState("");
-  const [population, setPopulation] = useState<Population>("live");
+  const { sort, query, population } = view;
+  const setSort = (update: (current?: Sort) => Sort | undefined) => onView({ ...view, sort: update(view.sort) });
+  const setQuery = (query: string) => onView({ ...view, query });
+  const setPopulation = (population: Population) => onView({ ...view, population });
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
   const nameOf = useMemo(() => {
     const byFingerprint = new Map(workroom.actors.map((actor) => [actor.fingerprint, actor.name]));
