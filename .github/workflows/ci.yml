@@ -50,10 +50,17 @@ jobs:
           make race
           make build
 
+      # ui-check, not ui. Both rebuild the bundle, but only ui-check compares
+      # the result against what is committed. The reproducibility gate below
+      # cannot cover this: Vite emits content-hashed filenames, so a rebuilt
+      # bundle lands as a NEW untracked file, and git diff --exit-code does not
+      # look at untracked files. A head whose committed embed did not match its
+      # UI source passed CI green, and gs serve would have shipped the stale
+      # bundle rather than the reviewed source.
       - name: Check and build the UI
         run: |
           npm test --prefix ui
-          make ui
+          make ui-check
 
       - name: Regenerate the adversarial evidence
         run: make spike

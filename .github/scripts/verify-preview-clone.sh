@@ -7,7 +7,15 @@ origin="$fixture/origin.git"
 checkout="$fixture/checkout"
 head=$(git -C "$root" rev-parse HEAD)
 
-rm -rf "$fixture"
+# Cleared without a recursive force delete: this repository forbids that
+# construct in scripts and tests, because on a path built from a variable it is
+# one bad expansion away from deleting something else. find removes only what
+# is actually there, and the directory is recreated either way.
+if [ -d "$fixture" ]; then
+	find "$fixture" -mindepth 1 -depth -type f -exec rm -f {} +
+	find "$fixture" -mindepth 1 -depth -type d -exec rmdir {} +
+	rmdir "$fixture"
+fi
 mkdir -p "$fixture"
 
 # Model the first-push boundary with a local bare repository: one branch, no
