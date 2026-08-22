@@ -39,7 +39,7 @@ The verbs, by who the viewer is:
 
 | Viewer is | Verbs | Act filed |
 |---|---|---|
-| Addressee of an open request | **Accept** · **Done** · **Can't** | promise on the request · report (see below) · dissent on the request |
+| Addressee of an open request | **Accept** · **Done** · **Decline** | promise on the request · report (see below) · dissent on the request |
 | Performer with a live promise | **Done** · **Blocked** · **Withdraw** | report on the promise · assert on the promise · supersede the promise |
 | Requester of a reported commitment | **Accept** · **Needs work** | ratify the report · dissent on the report |
 | Ratifier, thread root is a proposal | **Agree** · **Disagree** | ratify · dissent |
@@ -71,7 +71,7 @@ are prose in `body.conditions`; the form shows them, it does not parse them.
 - `ui/src/lib/moves.ts` (new): `movesFor(root, index, me)` returns the verb
   list above. It is `semanticActions` moved out of the toolbar, widened to
   the thread rather than one row, and given the three missing verbs
-  (*Done* for an addressee, *Blocked*, *Note*). Pure; tested.
+  (*Done* for an addressee, *Blocked*, *Note*, *Decline*). Pure; tested.
 - `ui/src/components/Thread.tsx`: a `YourMove` bar between the expanders
   and the composer; the composer gains modes `report`, `review`, `assert`
   with their fields; `RowToolbar` and `semanticActions` are deleted from the
@@ -96,9 +96,12 @@ would admit, and the fold still decides.
   talk mode.
 - Mutation: remove the *Done* branch and the browser test fails.
 
-## Open question
+## Decline
 
-Whether *Can't* should exist. A dissent on a request says "I will not do
-this"; the requester then withdraws or reassigns. Without it the only honest
-answer to a request one will not do is silence, which the board reads as
-unclaimed. I think it should exist and say so plainly.
+*Decline* is a dissent on the request: "I will not take this on", with the
+reason in the text — whether the reason is can't or won't. The requester
+then withdraws or reassigns. Without it the only honest answer to a request
+one will not do is silence, which the board reads as unclaimed. The verb is
+*Decline* rather than *Can't* because a verb should name the act, not soften
+it, and *Accept / Decline* is a pair everyone already reads correctly.
+(Agreed with hugh, 2026-08-22.)
