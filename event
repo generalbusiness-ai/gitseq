@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will decide whether the chess application is still required."}
+{"kind":"report","text":"Revive. The chess application (second-application items 4-8) is still required. Implementing actor: codex. Planner to retire the five stale requests and refile them on the live design artifact at commit 76644a96, item 4 first since it blocks 5, 6 and 8.","body":{"implementer":"codex","verdict":"revive"}}
