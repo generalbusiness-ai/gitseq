@@ -143,6 +143,8 @@ test("every row is one line of exactly five fixed columns", async () => {
     };
     const markup = renderToStaticMarkup(
       React.createElement(RequestList, {
+        view: { query: "", population: "live" },
+        onView() {},
         workroom: {
           actors: [{ name: "codex", fingerprint: "codex", roles: [], custody: true }],
           offline: false,
@@ -232,6 +234,189 @@ test("a withdrawn ratification offers the decision again", async () => {
       ["deny"],
       "while the viewer's ratification stands, ratifying again is not offered",
     );
+  } finally {
+    await vite.close();
+  }
+});
+
+// The thread row abbreviates; the detail under it does not. Every fact the
+// projection holds about the record is shown whole, and each basis is a link.
+test("a record's detail shows full ids, body fields and both directions of provenance", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { RecordDetail } = await vite.ssrLoadModule("/src/components/RecordDetail.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const request = "1111111111111111111111111111111111111111";
+    const promise = "2222222222222222222222222222222222222222";
+    const report = "3333333333333333333333333333333333333333";
+    const codex = "codexfingerprint0000000000000000";
+    const hugh = "hughfingerprint00000000000000000";
+    const projection = {
+      decisions: [{ event: promise, sequence: 2, verdict: "effective", reason: "recorded" }],
+      acts: [],
+      statements: [
+        { event: request, sequence: 1, actor: hugh, kind: "request", text: "Do the thing\nwith a second line", timestamp: 1786500000, body: { to: codex } },
+        { event: promise, sequence: 2, actor: codex, kind: "promise", text: "Claimed", timestamp: 1786500100, body: { head: "abcdef0123456789abcdef0123456789abcdef01" }, ratified: true },
+        { event: report, sequence: 3, actor: codex, kind: "report", text: "Done", timestamp: 1786500200 },
+      ],
+      commitments: [],
+      reviews: [],
+      artifacts: [],
+      actors: { [codex]: { name: "codex", kind: "agent", roles: [] }, [hugh]: { name: "hugh", kind: "person", roles: [] } },
+      provenance: { [promise]: [request], [report]: [promise] },
+    };
+    const opened = [];
+    const markup = renderToStaticMarkup(
+      React.createElement(RecordDetail, {
+        event: promise,
+        index: buildRecordIndex(projection),
+        actors: projection.actors,
+        tickets: new Map([[request, 1], [promise, 2], [report, 3]]),
+        nameOf: (fingerprint) => projection.actors[fingerprint]?.name ?? fingerprint,
+        onOpenThread: (event) => opened.push(event),
+      }),
+    );
+    // The whole id, not a prefix; the actor by name and by whole fingerprint.
+    assert.match(markup, new RegExp(promise));
+    assert.match(markup, new RegExp(`codex.*${codex}`));
+    // Every body field, unabbreviated.
+    assert.match(markup, /abcdef0123456789abcdef0123456789abcdef01/);
+    // Both directions of provenance, each naming the record it points at.
+    const restsOn = markup.slice(markup.indexOf("rests on"), markup.indexOf("rested on by"));
+    assert.match(restsOn, new RegExp(`#1.*Do the thing.*${request}`));
+    assert.doesNotMatch(restsOn, /second line/);
+    const restedOnBy = markup.slice(markup.indexOf("rested on by"));
+    assert.match(restedOnBy, new RegExp(`#3.*Done.*${report}`));
+    // The fold's ruling and the record's flags.
+    assert.match(markup, /effective/);
+    assert.match(markup, /ratified/);
+  } finally {
+    await vite.close();
+  }
+});
+
+// A row is closed until clicked. The rail stays one line of fixed columns,
+// and no detail is drawn for a station that names neither a record nor a commit.
+test("thread rows start closed and only rows naming something are expandable", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { Thread } = await vite.ssrLoadModule("/src/components/Thread.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const request = "1111111111111111111111111111111111111111";
+    const projection = {
+      decisions: [{ event: request, sequence: 1, verdict: "effective", reason: "recorded" }],
+      acts: [],
+      statements: [{ event: request, sequence: 1, actor: "hugh", kind: "request", text: "Do the thing", timestamp: 1786500000, body: { to: "codex" } }],
+      commitments: [{ request, requester: "hugh", addressed_to: "codex", status: "open" }],
+      reviews: [],
+      artifacts: [],
+      actors: { codex: { name: "codex", kind: "agent", roles: [] }, hugh: { name: "hugh", kind: "person", roles: [] } },
+      provenance: {},
+    };
+    const markup = renderToStaticMarkup(
+      React.createElement(Thread, {
+        index: buildRecordIndex(projection),
+        workroom: workroom({}, projection),
+        session,
+        frames: [],
+        root: request,
+        pending: [],
+        onBack() {},
+        onOpenThread() {},
+        onSay: () => "id",
+        onSayFailed() {},
+        doAct() {},
+      }),
+    );
+    const rows = markup.split(/(?=<li[^>]*data-station)/).filter((part) => part.includes("data-station"));
+    assert.equal(rows.length, 2, "request and unclaimed promise");
+    assert.match(rows[0], /data-station="request"/);
+    assert.match(rows[0], /<button[^>]*aria-expanded="false"[^>]*aria-controls="detail-request"/, "the request row's text is a closed disclosure button");
+    assert.doesNotMatch(rows[1], /aria-expanded/, "an unreached station has nothing to open");
+    assert.doesNotMatch(markup, /data-record-detail/, "nothing is open until clicked");
+  } finally {
+    await vite.close();
+  }
+});
+
+// The list shows the population its caller holds. Owning the view outside
+// the list is what lets it survive a trip into a thread and back.
+test("the request list renders the population and sort its caller holds", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const projection = {
+      decisions: [],
+      acts: [],
+      statements: [
+        { event: "open", sequence: 1, actor: "hugh", kind: "request", text: "Still open", timestamp: 1786500000 },
+        { event: "gone", sequence: 2, actor: "hugh", kind: "request", text: "Went stale", timestamp: 1786500000 },
+      ],
+      commitments: [
+        { request: "open", requester: "hugh", addressed_to: "codex", status: "open" },
+        { request: "gone", requester: "hugh", addressed_to: "codex", status: "stale" },
+      ],
+      reviews: [],
+      artifacts: [],
+      actors: { codex: { name: "codex", kind: "agent", roles: [] } },
+      provenance: {},
+    };
+    const render = (view) =>
+      renderToStaticMarkup(
+        React.createElement(RequestList, {
+          workroom: workroom({}, projection),
+          onOpenThread() {},
+          view,
+          onView() {},
+        }),
+      );
+    const stale = render({ query: "", population: "stale" });
+    assert.match(stale, /1 stale request, not in flight<\/h2>/);
+    assert.match(stale, /Went stale/);
+    assert.doesNotMatch(stale.slice(stale.indexOf("<tbody>")), /Still open/);
+    const live = render({ query: "", population: "live" });
+    assert.match(live, /1 open request<\/h2>/);
+  } finally {
+    await vite.close();
+  }
+});
+
+// The reference bound is load-bearing: more references than the limit shows
+// the limit, says exactly how many are not shown, and opening shows the rest.
+test("a record with many references shows the first twelve and says how many more there are", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { RecordDetail, REFERENCE_LIMIT } = await vite.ssrLoadModule("/src/components/RecordDetail.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const base = "base0000000000000000000000000000000000000";
+    const dependents = Array.from({ length: 30 }, (_, i) => `dep${String(i).padStart(37, "0")}`);
+    const projection = {
+      decisions: [],
+      acts: [],
+      statements: [
+        { event: base, sequence: 1, actor: "hugh", kind: "propose", text: "Adopt X" },
+        ...dependents.map((event, i) => ({ event, sequence: i + 2, actor: "claude", kind: "assert", text: `Depends ${i}` })),
+      ],
+      commitments: [],
+      artifacts: [],
+      actors: {},
+      provenance: Object.fromEntries(dependents.map((event) => [event, [base]])),
+    };
+    const markup = renderToStaticMarkup(
+      React.createElement(RecordDetail, {
+        event: base,
+        index: buildRecordIndex(projection),
+        actors: projection.actors,
+        tickets: new Map(),
+        nameOf: (f) => f,
+        onOpenThread() {},
+      }),
+    );
+    assert.equal(REFERENCE_LIMIT, 12);
+    const shown = dependents.filter((event) => markup.includes(`data-ref="${event}"`));
+    assert.equal(shown.length, REFERENCE_LIMIT, "exactly the limit is rendered");
+    assert.deepEqual(shown, dependents.slice(0, REFERENCE_LIMIT), "the first ones, in order");
+    assert.match(markup, /18 more not shown — show all 30/);
   } finally {
     await vite.close();
   }

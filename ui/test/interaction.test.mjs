@@ -676,6 +676,40 @@ test("a sort reorders the rows that are there and hides none", () => {
   assert.deepEqual(sortRows(rows, { key: "title", descending: true }).map((row) => row.title), ["Zebra", "Alpha"]);
 });
 
+test("every commitment lands in exactly one of the five populations, and closed rows say why", () => {
+  const projection = room(
+    [
+      { event: "open", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "moved", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "stale", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "done", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "cancelled", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "withdrawn", kind: "request", actor: "hugh", ts: NOW - DAY },
+    ],
+    {
+      commitments: [
+        { request: "open", requester: "hugh", status: "open" },
+        { request: "moved", requester: "hugh", status: "promised", promise: "p", performer: "claude", stale: true },
+        { request: "stale", requester: "hugh", status: "stale" },
+        { request: "done", requester: "hugh", status: "satisfied" },
+        { request: "cancelled", requester: "hugh", status: "cancelled" },
+        { request: "withdrawn", requester: "hugh", status: "withdrawn" },
+      ],
+    },
+  );
+  const events = (population) => workRows(projection, context(projection), population).map((row) => row.event).sort();
+  assert.deepEqual(events("live"), ["moved", "open"]);
+  assert.deepEqual(events("moved"), ["moved"]);
+  assert.deepEqual(events("stale"), ["stale"]);
+  assert.deepEqual(events("done"), ["done"]);
+  assert.deepEqual(events("closed"), ["cancelled", "withdrawn"]);
+  // The state word outside the live tabs is the fold's own status, so a
+  // closed row says how it closed rather than a lifecycle word that is not true of it.
+  const states = Object.fromEntries(workRows(projection, context(projection), "closed").map((row) => [row.event, row.state]));
+  assert.deepEqual(states, { cancelled: "cancelled", withdrawn: "withdrawn" });
+  assert.equal(workRows(projection, context(projection), "done")[0].state, "satisfied");
+});
+
 test("lifecycle-stale requests are a separate population, not rows in the default list", () => {
   const projection = room(
     [
@@ -690,7 +724,7 @@ test("lifecycle-stale requests are a separate population, not rows in the defaul
     },
   );
   assert.deepEqual(workRows(projection, context(projection)).map((row) => row.event), ["live"]);
-  assert.deepEqual(workRows(projection, context(projection), true).map((row) => row.event), ["abandoned"]);
+  assert.deepEqual(workRows(projection, context(projection), "stale").map((row) => row.event), ["abandoned"]);
 });
 
 // ---------------------------------------------------------------------------
@@ -852,7 +886,7 @@ test("the lifecycle-stale population holds claimed work too, and is not describe
       ],
     },
   );
-  const stale = workRows(projection, context(projection), true);
+  const stale = workRows(projection, context(projection), "stale");
   assert.deepEqual(stale.map((row) => row.event).sort(), ["abandoned", "stalled"]);
   // The claimed one is kept, not filtered away. Hiding it to rescue a phrase
   // would be the filtering this whole design deleted, in miniature.
@@ -894,7 +928,7 @@ test("world-staleness stays loud in the lifecycle-stale population, and ordinary
       ],
     },
   );
-  const byEvent = new Map(workRows(projection, context(projection), true).map((row) => [row.event, row]));
+  const byEvent = new Map(workRows(projection, context(projection), "stale").map((row) => [row.event, row]));
   // Both are not in flight, so neither borrows a live word...
   assert.equal(byEvent.get("quiet").state, "stale");
   assert.equal(byEvent.get("loud").state, "stale");
@@ -946,5 +980,106 @@ test("the closing station names the ratification in force, not the first one", (
   const original = buildSpine("req", spineContext(build("ratify-a")));
   const closedFirst = original.stations.find((station) => station.kind === "closed");
   assert.equal(closedFirst.event, "ratify-a");
+  assert.equal(closedFirst.actor, "alice");
+});
+
+// One resolver for "which thread does this record belong to", used by every
+// caller. A promise, report, act, artifact or assert lands on its request; a
+// record with no request above it stays itself.
+test("every record resolves to the request whose thread it belongs to", async () => {
+  const { buildRecordIndex } = await import("../src/lib/records.ts");
+  const projection = {
+    decisions: [
+      { event: "req", sequence: 1, verdict: "effective", reason: "recorded" },
+      { event: "promise", sequence: 2, verdict: "effective", reason: "recorded" },
+      { event: "art", sequence: 3, verdict: "effective", reason: "recorded" },
+      { event: "retire", sequence: 4, verdict: "effective", reason: "authorized supersession" },
+      { event: "loose", sequence: 5, verdict: "effective", reason: "recorded" },
+    ],
+    acts: [{ event: "retire", actor: "claude", type: "supersede", target: "art", verdict: "effective", reason: "authorized supersession" }],
+    statements: [
+      { event: "req", sequence: 1, actor: "hugh", kind: "request", text: "Do it" },
+      { event: "promise", sequence: 2, actor: "claude", kind: "promise", text: "Claimed" },
+      { event: "art", sequence: 3, actor: "claude", kind: "artifact", text: "ui at abc" },
+      { event: "loose", sequence: 5, actor: "hugh", kind: "assert", text: "unattached" },
+    ],
+    commitments: [],
+    artifacts: [],
+    actors: {},
+    provenance: { promise: ["req"], art: ["promise"], retire: ["art"], loose: [] },
+  };
+  const index = buildRecordIndex(projection);
+  assert.equal(index.threadRoot("req"), "req");
+  assert.equal(index.threadRoot("promise"), "req");
+  assert.equal(index.threadRoot("art"), "req", "an artifact resolves up its basis chain");
+  assert.equal(index.threadRoot("retire"), "req", "an act resolves through its target");
+  assert.equal(index.threadRoot("loose"), "loose", "no request above it: stays itself, not invented");
+  assert.equal(index.threadRoot("unknown"), "unknown");
+  // An act has a sequence too: the fold's decision carries it.
+  assert.equal(index.sequence("retire"), 4);
+  assert.deepEqual(index.restedOnBy("art"), ["retire"]);
+});
+
+// A proposal's thread ends at its ratification. Filing that act under
+// "Superseded claims" told the ratifier the opposite of what they had done.
+test("ratifying a proposal is the closing station of its thread, not a superseded claim", async () => {
+  const { buildSpine } = await import("../src/lib/spine.ts");
+  const projection = {
+    decisions: [
+      { event: "prop", sequence: 1, verdict: "effective", reason: "recorded" },
+      { event: "yes", sequence: 2, verdict: "effective", reason: "authorized ratification" },
+    ],
+    acts: [{ event: "yes", actor: "hugh", type: "ratify", target: "prop", verdict: "effective", reason: "authorized ratification", timestamp: 2 }],
+    // ratified and ratified_by come from one call in the fold, so a statement
+    // carrying one and not the other is a projection that cannot occur.
+    statements: [{ event: "prop", sequence: 1, actor: "planner", kind: "propose", text: "Adopt X", timestamp: 1, ratified: true, ratified_by: "yes" }],
+    commitments: [],
+    reviews: [],
+    artifacts: [],
+    actors: {},
+    provenance: { yes: ["prop"] },
+  };
+  const spine = buildSpine("prop", { projection, tickets: new Map([["prop", 1], ["yes", 2]]), nameOf: (f) => f });
+  const closed = spine.stations.find((station) => station.id === "closed");
+  assert.ok(closed, "the ratification is a station");
+  assert.equal(closed.event, "yes");
+  assert.match(closed.what, /hugh ratified it/);
+  assert.equal(spine.expanders.some((expander) => expander.id === "superseded"), false);
+  assert.equal(spine.expanders.some((expander) => expander.events.includes("yes")), false, "a station is not also behind an expander");
+});
+
+// The root arm of the same selector, and the case codex's finding was actually
+// reported against: a proposal with no commitment closes when the proposal
+// itself is ratified. Withdrawing that ratification and ratifying again must
+// move the station to the surviving act. This arm exists only on this branch,
+// so the fix that landed on main could not have covered it — first-effective
+// survived here after it was gone everywhere else.
+test("a proposal's closing station follows a withdrawn and replaced ratification", () => {
+  const build = (ratifiedBy) => ({
+    decisions: [{ event: "prop", sequence: 1, verdict: "effective", reason: "recorded" }],
+    acts: [
+      { event: "ratify-a", actor: "alice", type: "ratify", target: "prop", timestamp: 10, verdict: "effective", reason: "recorded" },
+      { event: "withdraw-a", actor: "alice", type: "supersede", target: "ratify-a", timestamp: 20, verdict: "effective", reason: "recorded" },
+      { event: "ratify-b", actor: "bob", type: "ratify", target: "prop", timestamp: 30, verdict: "effective", reason: "recorded" },
+    ],
+    statements: [
+      { event: "prop", sequence: 1, actor: "codex", kind: "propose", text: "Adopt it", timestamp: 1, ratified: true, ratified_by: ratifiedBy },
+    ],
+    commitments: [],
+    artifacts: [],
+    actors: {},
+    provenance: {},
+    reviews: [],
+  });
+
+  const replaced = buildSpine("prop", spineContext(build("ratify-b")));
+  const closed = replaced.stations.find((station) => station.kind === "closed");
+  assert.equal(closed.event, "ratify-b", "the surviving ratification closes the proposal");
+  assert.equal(closed.actor, "bob");
+  assert.equal(closed.timestamp, 30);
+
+  const original = buildSpine("prop", spineContext(build("ratify-a")));
+  const closedFirst = original.stations.find((station) => station.kind === "closed");
+  assert.equal(closedFirst.event, "ratify-a", "and when the earlier one survives, it is the one shown");
   assert.equal(closedFirst.actor, "alice");
 });

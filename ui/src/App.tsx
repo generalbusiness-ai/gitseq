@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useWorkroom, foldAnchor } from "./lib/store";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useWorkroom } from "./lib/store";
+import { buildRecordIndex } from "./lib/records";
 import { useSession } from "./lib/session";
 import { useFrames } from "./lib/frames";
 import { api, type ActInput } from "./lib/api";
 import { TopBar } from "./components/TopBar";
-import { RequestList } from "./components/RequestList";
+import { RequestList, defaultListView, type ListView } from "./components/RequestList";
 import { Thread, type PendingSay } from "./components/Thread";
 import { Avatar } from "./components/Avatar";
 import { reconciledPendingIDs, RetryKeys } from "./lib/interaction";
@@ -19,14 +20,18 @@ export default function App() {
   const session = useSession();
   const { frames } = useFrames(workroom);
   const [screen, setScreen] = useState<Screen>({ kind: "list" });
+  const [listView, setListView] = useState<ListView>(defaultListView);
   // Optimistic say echoes: appended on send, reconciled when the frame lands.
   const [pending, setPending] = useState<PendingSay[]>([]);
 
   const projection = workroom.status?.durable.projection;
 
+  // Any record opens the thread it belongs to, resolved one way for every
+  // caller: a promise, report, act, artifact or assert lands on its request.
+  const index = useMemo(() => (projection ? buildRecordIndex(projection) : undefined), [projection]);
   const openThread = useCallback(
-    (event: string) => setScreen({ kind: "thread", event: foldAnchor(event, projection) }),
-    [projection],
+    (event: string) => setScreen({ kind: "thread", event: index ? index.threadRoot(event) : event }),
+    [index],
   );
   const showList = useCallback(() => setScreen({ kind: "list" }), []);
 
@@ -78,10 +83,11 @@ export default function App() {
         selectedEvent={screen.kind === "thread" ? screen.event : undefined}
       />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {screen.kind === "list" ? (
-          <RequestList workroom={workroom} onOpenThread={openThread} />
+        {screen.kind === "list" || !index ? (
+          <RequestList workroom={workroom} onOpenThread={openThread} view={listView} onView={setListView} />
         ) : (
           <Thread
+            index={index}
             key={screen.event}
             workroom={workroom}
             session={session}

@@ -1,14 +1,21 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Search } from "lucide-react";
 import { ticketsOf, type Workroom } from "../lib/store";
-import { age, matchingRows, ratificationRows, sortAfterClick, sortRows, workRows, type Sort, type SortKey, type WorkRow } from "../lib/rows";
+import { age, matchingRows, POPULATIONS, ratificationRows, sortAfterClick, sortRows, workRows, type Population, type Sort, type SortKey, type WorkRow } from "../lib/rows";
 import { cn } from "../lib/util";
 import { RebuildNotice } from "./RebuildNotice";
 
-// Which population the list is showing. Each is reached from the number that
-// counts it, and each replaces the headline with its own count, so no number
-// on this screen is more than one click from exactly the rows it counts.
-type Population = "live" | "moved" | "stale" | "ratification";
+
+// What the operator chose on this screen. Owned by the caller so it survives
+// opening a thread and coming back: the list is not the place the operator
+// was, it is the question they were asking, and the question should still be
+// on the screen when they return to it.
+export interface ListView {
+  sort?: Sort;
+  query: string;
+  population: Population;
+}
+export const defaultListView: ListView = { query: "", population: "live" };
 
 const COLUMNS: { key: SortKey; label: string; className: string }[] = [
   { key: "state", label: "state", className: "w-[9rem]" },
@@ -25,15 +32,20 @@ const COLUMNS: { key: SortKey; label: string; className: string }[] = [
 export function RequestList({
   workroom,
   onOpenThread,
+  view,
+  onView,
 }: {
   workroom: Workroom;
   onOpenThread: (event: string) => void;
+  view: ListView;
+  onView: (view: ListView) => void;
 }) {
   const projection = workroom.status?.durable.projection;
   const vocabulary = workroom.status?.durable.vocabulary;
-  const [sort, setSort] = useState<Sort>();
-  const [query, setQuery] = useState("");
-  const [population, setPopulation] = useState<Population>("live");
+  const { sort, query, population } = view;
+  const setSort = (update: (current?: Sort) => Sort | undefined) => onView({ ...view, sort: update(view.sort) });
+  const setQuery = (query: string) => onView({ ...view, query });
+  const setPopulation = (population: Population) => onView({ ...view, population });
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
   const nameOf = useMemo(() => {
     const byFingerprint = new Map(workroom.actors.map((actor) => [actor.fingerprint, actor.name]));
@@ -43,36 +55,33 @@ export function RequestList({
       fingerprint.slice(0, 8);
   }, [projection, workroom.actors]);
 
-  const live = useMemo(
-    () => (projection ? workRows(projection, { nameOf, tickets, actors: projection.actors ?? {} }) : []),
-    [projection, nameOf, tickets],
-  );
-  const lifecycleStale = useMemo(
-    () => (projection ? workRows(projection, { nameOf, tickets, actors: projection.actors ?? {} }, true) : []),
-    [projection, nameOf, tickets],
-  );
-  const moved = useMemo(() => live.filter((row) => row.stale), [live]);
+  const context = useMemo(() => ({ nameOf, tickets, actors: projection?.actors ?? {} }), [nameOf, tickets, projection]);
   // Beside the commitments, not added to them: a different duty, owed by a
-  // different person.
+  // different person. ratificationRows reads the vocabulary and returns
+  // ratifiers alongside its rows, so it is dispatched into the map below
+  // rather than mapped through workRows with the other five. Handing
+  // "ratification" to workRows would return nothing and the tab would count
+  // zero forever, which is the shape this avoids.
   const ratification = useMemo(
     () =>
       projection && vocabulary
-        ? ratificationRows(projection, vocabulary, { nameOf, tickets, actors: projection.actors ?? {} })
+        ? ratificationRows(projection, vocabulary, context)
         : { rows: [], ratifiers: [] },
-    [projection, vocabulary, nameOf, tickets],
+    [projection, vocabulary, context],
   );
-
-  const shown =
-    population === "stale"
-      ? lifecycleStale
-      : population === "moved"
-        ? moved
-        : population === "ratification"
-          ? ratification.rows
-          : live;
+  const populations = useMemo(
+    () =>
+      Object.fromEntries(
+        POPULATIONS.map(({ key }) => [
+          key,
+          key === "ratification" ? ratification.rows : projection ? workRows(projection, context, key) : [],
+        ]),
+      ) as Record<Population, WorkRow[]>,
+    [projection, context, ratification],
+  );
   const rows = useMemo(
-    () => sortRows(matchingRows(shown, query), sort),
-    [shown, query, sort],
+    () => sortRows(matchingRows(populations[population], query), sort),
+    [populations, population, query, sort],
   );
 
   if (!projection) return <RebuildNotice />;
@@ -85,14 +94,14 @@ export function RequestList({
   // the operator cannot tell, from a filtered screen, what they are not
   // seeing, and hiding 17 stalled claims to rescue a phrase would be that
   // mistake in miniature. The count still opens to exactly the rows it counts.
-  const headline =
-    population === "ratification"
-      ? `${rows.length} ${rows.length === 1 ? "act awaits" : "acts await"} ratification`
-      : population === "stale"
-      ? `${rows.length} stale ${rows.length === 1 ? "request" : "requests"}, not in flight`
-      : population === "moved"
-        ? `${rows.length} resting on reasoning that has moved`
-        : `${rows.length} open ${rows.length === 1 ? "request" : "requests"}`;
+  const headline = {
+    live: `${rows.length} open ${rows.length === 1 ? "request" : "requests"}`,
+    moved: `${rows.length} resting on reasoning that has moved`,
+    stale: `${rows.length} stale ${rows.length === 1 ? "request" : "requests"}, not in flight`,
+    done: `${rows.length} completed`,
+    closed: `${rows.length} closed, not completed`,
+    ratification: `${rows.length} ${rows.length === 1 ? "act awaits" : "acts await"} ratification`,
+  }[population];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -112,7 +121,29 @@ export function RequestList({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
         <div className="mx-auto max-w-5xl">
-          <div className="flex flex-wrap items-baseline gap-3 px-1">
+          {/* One tab per population. Every count is one click from exactly
+              the rows it counts, and the tab strip is the only place the
+              operator chooses which rows exist. */}
+          <div role="tablist" aria-label="Request populations" className="flex flex-wrap gap-x-1 border-b border-border px-1">
+            {POPULATIONS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={population === key}
+                onClick={() => setPopulation(key)}
+                className={cn(
+                  "-mb-px flex items-baseline gap-1.5 border-b-2 px-2 py-1.5 text-[11px] focus-visible:outline focus-visible:outline-accent",
+                  population === key ? "border-accent font-medium text-foreground" : "border-transparent text-faint hover:text-muted",
+                )}
+              >
+                {label}
+                <span className="font-mono text-faint">{populations[key].length}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-baseline gap-3 px-1">
             <h2 className="font-serif text-base font-semibold" aria-live="polite">
               {headline}
             </h2>
@@ -121,30 +152,6 @@ export function RequestList({
               {" — click any column to re-sort"}
             </span>
           </div>
-
-          {/* Two quiet lines, each opening to exactly the rows it counts. The
-              second is why the list is 42 rows rather than 152, with the 110
-              sorting above the work that is actually moving. */}
-          <p className="mt-1 flex flex-wrap gap-x-3 px-1 text-[11px] text-faint">
-            <SummaryLink
-              active={population === "moved"}
-              onClick={() => setPopulation(population === "moved" ? "live" : "moved")}
-              label={`${moved.length} of these rest on reasoning that has moved.`}
-            />
-            <SummaryLink
-              active={population === "stale"}
-              onClick={() => setPopulation(population === "stale" ? "live" : "stale")}
-              label={`${lifecycleStale.length} stale requests, not in flight.`}
-            />
-            {/* Not folded into either count above. A proposal does nothing
-                until it is ratified, and until this line existed nothing on
-                the board said so. */}
-            <SummaryLink
-              active={population === "ratification"}
-              onClick={() => setPopulation(population === "ratification" ? "live" : "ratification")}
-              label={`${ratification.rows.length} ${ratification.rows.length === 1 ? "act awaits" : "acts await"} ratification.`}
-            />
-          </p>
 
           <table className="mt-2 w-full table-fixed border-collapse text-xs">
             <thead>
@@ -197,22 +204,6 @@ export function RequestList({
         </div>
       </div>
     </div>
-  );
-}
-
-function SummaryLink({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        "underline decoration-dotted underline-offset-2 focus-visible:outline focus-visible:outline-accent",
-        active ? "font-medium text-accent" : "text-faint hover:text-muted",
-      )}
-    >
-      {label}
-    </button>
   );
 }
 
