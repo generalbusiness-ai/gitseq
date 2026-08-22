@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e1bdb380ea0378449576b2791d1935afec602a2f","text":"Retire the original documentation-citation request. Its outcome was completed by current-world child 01836919 and landed on main as a7a9abe7."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:04cef8f733a3344aaeb9d35a6562f2779e04331a","text":"Retire the intermediate wording-repair request. Current-world child 01836919 superseded it and the corrected documentation landed on main as a7a9abe7."}
