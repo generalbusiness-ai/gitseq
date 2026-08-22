@@ -130,20 +130,11 @@ export function TopBar({
             {session.actor}
           </span>
         )}
-        <div className="hidden h-4 w-px bg-border sm:block" />
-        <div className="flex items-center gap-2 text-xs text-faint">
-          {workroom.offline ? (
-            <span className="text-danger">offline</span>
-          ) : durable ? (
-            <span
-              className={cn("inline-block h-1.5 w-1.5 rounded-full", session.live ? "pulse-dot bg-ok" : "bg-faint")}
-              aria-label={session.live ? "connected" : "connecting"}
-              title={session.live ? "connected" : "connecting"}
-            />
-          ) : (
-            "connecting…"
-          )}
-        </div>
+        {workroom.offline && (
+          <span role="alert" className="text-xs text-danger">
+            offline
+          </span>
+        )}
       </div>
     </header>
   );
