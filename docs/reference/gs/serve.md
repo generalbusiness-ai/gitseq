@@ -117,6 +117,14 @@ when every returned address is loopback. Each mutation also checks its HTTP
 content-type guards before it decodes input or changes state. There is no
 permissive CORS route.
 
+Every response the resident produces carries `Content-Security-Policy:
+frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options:
+nosniff` and `Referrer-Policy: no-referrer`. Every response means every
+response, including the ones the resident produces by refusing: a rejected
+non-loopback mutation is still a page a browser renders, so the policy is
+applied outside the check that rejects it rather than within the routes it
+protects.
+
 The service is a trusted local custodian for several actors: it holds their
 signing keys and signs on behalf of whichever trusted process asks. Its
 posture is trusted processes only: every process inside this resident boundary

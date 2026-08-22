@@ -697,6 +697,38 @@ func (s *Server) liveSnapshot() nexus.Snapshot {
 	return s.hub.Snapshot()
 }
 
+// browserSecurityHeaders is the single statement of the resident's
+// browser-facing response policy. Every value appears once: a second copy is
+// how two response paths quietly drift apart, and drift here is invisible
+// until a browser is already rendering the weaker one.
+//
+// frame-ancestors 'none' and X-Frame-Options DENY say the same thing to
+// different generations of browser, so both are needed and neither is a
+// duplicated value.
+var browserSecurityHeaders = []struct{ name, value string }{
+	{"Content-Security-Policy", "frame-ancestors 'none'"},
+	{"X-Frame-Options", "DENY"},
+	{"X-Content-Type-Options", "nosniff"},
+	{"Referrer-Policy", "no-referrer"},
+}
+
+// BrowserSecurityHeaders applies that policy and must be composed outside
+// every other resident wrapper. The reason is structural rather than stylistic:
+// a wrapper that refuses a request answers it without calling its next
+// handler, so a policy installed underneath is skipped on exactly the
+// responses a refusal produces — and a refusal is still a response a browser
+// renders. Applied outermost, the headers are on the writer before any inner
+// handler can decide not to continue.
+func BrowserSecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		header := writer.Header()
+		for _, policy := range browserSecurityHeaders {
+			header.Set(policy.name, policy.value)
+		}
+		next.ServeHTTP(writer, request)
+	})
+}
+
 // TrustedHostHandler rejects browser and non-browser mutations whose Host is
 // not wholly loopback before a route can decode input or change state. The
 // listener is loopback-only too; this separate request check closes the DNS

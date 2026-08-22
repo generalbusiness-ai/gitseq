@@ -2057,7 +2057,7 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	}
 	defer withdraw()
 	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n%s\n", listener.Addr(), service.TrustedProcessPosture)
-	httpServer := residentHTTPServer(residentHTTPHandler(telemetryRuntime.Handler(service.TrustedHostHandler(server.Handler()))))
+	httpServer := residentHTTPServer(residentHandler(telemetryRuntime, server.Handler()))
 	// The watcher retires with the command it serves, so a serving call that
 	// ends some other way does not leave a goroutine holding the server.
 	finished := make(chan struct{})
@@ -2107,6 +2107,17 @@ func residentHTTPServer(handler http.Handler) *http.Server {
 // /v0/status. A cold verified rebuild can legitimately take longer than the
 // ordinary response budget, and abandoning the client response does not stop
 // that shared rebuild. Every other route keeps the server's write deadline.
+// residentHandler is the resident's whole outward-facing composition, stated
+// once so that the serving command and its regression cannot drift apart. The
+// order is the point. Both residentHTTPHandler and service.TrustedHostHandler
+// answer some requests themselves and return without calling their next
+// handler — a cleared-deadline failure and a non-loopback mutation refusal —
+// so the browser security policy is applied outside both. Anywhere further in
+// is a policy that covers every response except the refusals.
+func residentHandler(telemetryRuntime *telemetry.Runtime, inner http.Handler) http.Handler {
+	return service.BrowserSecurityHeaders(residentHTTPHandler(telemetryRuntime.Handler(service.TrustedHostHandler(inner))))
+}
+
 func residentHTTPHandler(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v0/status" {
