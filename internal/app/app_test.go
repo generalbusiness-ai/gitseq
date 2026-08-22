@@ -1941,3 +1941,121 @@ func TestADirectReportCanActuallyBeBuilt(t *testing.T) {
 		t.Fatal("a stranger's direct report was accepted at the write boundary")
 	}
 }
+
+// The three cases codex named in verdict d7d8d952. All of them are the same
+// question: does the pre-signing boundary ask what the fold asks, or a second
+// narrower question of its own? A boundary that answers differently either
+// refuses work the fold would accept, or signs and appends a record the fold
+// will rule ineffective — spending depth to record a refusal.
+func TestTheWriteBoundaryAsksWhatTheFoldAsks(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	declare := func(name workroom.Kind, lifecycle workroom.Lifecycle, basis []workroom.BasisConstraint) {
+		t.Helper()
+		fields, err := json.Marshal([]workroom.FieldConstraint{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		bases, err := json.Marshal(basis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		definition := actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindKindDef, Text: "define " + string(name),
+			Body: map[string]string{
+				"name": string(name), "fields": string(fields), "basis": string(bases),
+				"satisfier": workroom.SatisfierNone, "render": string(workroom.RenderCommitment),
+				"staleness": string(workroom.StalenessPropagates), "lifecycle": string(lifecycle),
+				"guidance": "test lifecycle",
+			},
+			RestsOn: []string{seed.ID}, IdempotencyKey: "declare-" + string(name),
+		})
+		actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbRatify, Target: definition.ID, IdempotencyKey: "ratify-" + string(name),
+		})
+	}
+	declare("undertaking", workroom.LifecyclePromise, []workroom.BasisConstraint{{Kinds: []workroom.Kind{workroom.KindRequest}, Min: 1, Max: 1}})
+
+	newRequest := func(key string) workroom.Record {
+		t.Helper()
+		return actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindRequest, Text: "build " + key,
+			Body:    map[string]string{"to": agent.Fingerprint, "conditions": "tests pass"},
+			RestsOn: []string{seed.ID}, IdempotencyKey: "request-" + key,
+		})
+	}
+
+	t.Run("an ineffective promise does not block direct completion", func(t *testing.T) {
+		one, two := newRequest("ineffective-a"), newRequest("ineffective-b")
+		// Resting on two requests makes this promise ineffective, while its
+		// provenance still names the request below. A refused record is not a
+		// commitment, so it must not stand in the way of one.
+		refused := actRecord(t, ctx, workspace, "agent", Act{
+			Verb: VerbState, Kind: workroom.KindPromise, Text: "I will, ambiguously",
+			RestsOn: []string{one.ID, two.ID}, IdempotencyKey: "ambiguous-promise",
+		})
+		snapshot, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decision := range snapshot.Projection.Decisions {
+			if decision.Event == refused.ID && decision.Verdict == workroom.Effective {
+				t.Fatalf("the fixture promise was effective; this case proves nothing")
+			}
+		}
+		if _, err := workspace.Act(ctx, "agent", Act{
+			Verb: VerbState, Kind: workroom.KindReport, Text: "done anyway",
+			RestsOn: []string{one.ID}, IdempotencyKey: "direct-past-ineffective",
+		}); err != nil {
+			t.Fatalf("an ineffective promise blocked a direct report: %v", err)
+		}
+	})
+
+	t.Run("a declared active promise kind does block it", func(t *testing.T) {
+		request := newRequest("declared")
+		actRecord(t, ctx, workspace, "agent", Act{
+			Verb: VerbState, Kind: "undertaking", Text: "I will",
+			RestsOn: []string{request.ID}, IdempotencyKey: "declared-promise",
+		})
+		_, err := workspace.Act(ctx, "agent", Act{
+			Verb: VerbState, Kind: workroom.KindReport, Text: "done",
+			RestsOn: []string{request.ID}, IdempotencyKey: "direct-past-declared",
+		})
+		if err == nil || !strings.Contains(err.Error(), "report on the promise") {
+			t.Fatalf("a declared promise-lifecycle claim did not redirect the report: %v", err)
+		}
+	})
+
+	t.Run("a promised report citing an unrelated request is refused before append", func(t *testing.T) {
+		mine, unrelated := newRequest("promised"), newRequest("unrelated")
+		promise := actRecord(t, ctx, workspace, "agent", Act{
+			Verb: VerbState, Kind: workroom.KindPromise, Text: "I will",
+			RestsOn: []string{mine.ID}, IdempotencyKey: "promise-for-unrelated-case",
+		})
+		before, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = workspace.Act(ctx, "agent", Act{
+			Verb: VerbState, Kind: workroom.KindReport, Text: "done",
+			RestsOn: []string{promise.ID, unrelated.ID}, IdempotencyKey: "false-provenance",
+		})
+		if err == nil || !strings.Contains(err.Error(), "cites a request other than the one its promise answers") {
+			t.Fatalf("false provenance was accepted: %v", err)
+		}
+		after, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Head != before.Head || after.Depth != before.Depth {
+			t.Fatalf("refused report changed the workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+		}
+	})
+}
