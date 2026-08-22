@@ -1647,6 +1647,12 @@ func TestDeclaredLifecycleKindsRemainTotalWithoutExpectedBasis(t *testing.T) {
 	}
 	projection := Fold([]Record{
 		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		// The agent has to be a live participant for this test to reach what it
+		// is about. Without the membership rows below the fold refuses p0 and
+		// x0 as unrostered authorship, which is correct but is not the
+		// lifecycle-totality question this test asks.
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e1r", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
 		event(t, "d0", operator, SchemaState, kindDefinitionState(t, undertaking)),
 		event(t, "d0r", operator, SchemaRatify, Ratify{Target: "d0"}, "d0"),
 		event(t, "d1", operator, SchemaState, kindDefinitionState(t, delivery)),
@@ -3137,5 +3143,234 @@ func TestRefusedSupersessionRecordsNoSuccession(t *testing.T) {
 	old := artifactByEvent(t, projection, "old")
 	if old.Retired || old.Succeeded {
 		t.Fatalf("refused supersession: retired=%v succeeded=%v, want neither", old.Retired, old.Succeeded)
+	}
+}
+
+// Removal from the roster was advisory before this boundary existed: the fold
+// read a valid signature and admitted the record, so anyone who kept a key or
+// another clone could keep speaking with force. Custody of a key is evidence of
+// who signed; it is not standing permission to go on signing.
+// The kinds come from the catalog rather than a list written here, so a
+// starter kind added later joins this guard without anybody remembering to.
+// An earlier head named four kinds by hand and called the boundary covered;
+// naming them is exactly the mistake, because the guard sits before kind
+// semantics precisely so that no kind can escape it.
+//
+// The bodies are deliberately incomplete. A kind refused for a missing field
+// would pass this test for the wrong reason, so membership has to be decided
+// before any kind-specific field or lifecycle basis can give the act some
+// other meaning.
+func departedActorHistory(t testing.TB, legacy bool) []Record {
+	t.Helper()
+	seed := map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}
+	membership := map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}
+	if legacy {
+		// A membership recorded before the roster carried a kind field. The
+		// guard has to hold over history it did not write, or every workroom
+		// older than it is exempt.
+		delete(seed, "kind")
+		membership = map[string]string{"actor": agent, "name": "Agent", "role": "agent"}
+	}
+	return []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: seed}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: membership}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "remove", operator, SchemaSupersede, Supersede{Target: "e1", Text: "remove agent"}, "e1"),
+	}
+}
+
+func TestADepartedParticipantCannotAuthorState(t *testing.T) {
+	kinds := []Kind{}
+	for kind := range starterCatalog() {
+		kinds = append(kinds, kind)
+	}
+	// A kind the catalog has declared but nothing has defined, and one it has
+	// never heard of. Both must be refused for the membership reason, not for
+	// being unrecognised: an unknown kind is the easiest way to smuggle an act
+	// past a guard that switches on known ones.
+	kinds = append(kinds, Kind("future-kind"))
+
+	for _, legacy := range []bool{false, true} {
+		for _, kind := range kinds {
+			records := append(append([]Record{}, departedActorHistory(t, legacy)...),
+				event(t, "after", agent, SchemaState, State{Kind: kind, Text: "after removal"}, "e0"),
+			)
+			decision, _ := Fold(records).Decision("after")
+			if decision.Verdict != Ineffective || decision.Reason != departedAuthorReason {
+				t.Errorf("legacy=%v %s authored after removal = %s (%s), want %q: a retained key is not speaking authority",
+					legacy, kind, decision.Verdict, decision.Reason, departedAuthorReason)
+			}
+		}
+	}
+}
+
+// The other half of the same claim, and the half a refusal test cannot make:
+// that these kinds were authorable in the first place. Without it the guard
+// could be refusing everything and every assertion above would still hold.
+func TestALiveParticipantCanAuthorTheSameKinds(t *testing.T) {
+	base := []Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+	}
+	for _, test := range []struct {
+		kind Kind
+		body map[string]string
+	}{
+		{KindAssert, nil},
+		{KindPropose, nil},
+		{KindRequest, map[string]string{"to": operator, "conditions": "x"}},
+		{KindArtifact, map[string]string{"path": "spike", "commit": "head1"}},
+	} {
+		records := append(append([]Record{}, base...),
+			event(t, "live", agent, SchemaState, State{Kind: test.kind, Text: "while a member", Body: test.body}, "e0"),
+		)
+		if decision, _ := Fold(records).Decision("live"); decision.Verdict != Effective {
+			t.Errorf("%s authored while a member = %s (%s), want effective", test.kind, decision.Verdict, decision.Reason)
+		}
+	}
+}
+
+// A report is the kind that carries a commitment to satisfaction, so it is
+// worth pinning on both sides of the removal rather than trusting that it
+// behaves like the rest. Filed before removal it stands; filed after, it does
+// not, and the commitment must not read as satisfied either way.
+func TestADepartedPerformerCannotFileAReport(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		afterRemoval bool
+	}{
+		{name: "filed before removal"},
+		{name: "filed after removal", afterRemoval: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			records := []Record{
+				event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+				event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+				event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+				event(t, "req", operator, SchemaState, State{Kind: KindRequest, Text: "do it", Body: map[string]string{"to": agent, "conditions": "done"}}, "e0"),
+				event(t, "promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "req"),
+			}
+			remove := event(t, "remove", operator, SchemaSupersede, Supersede{Target: "e1", Text: "remove agent"}, "e1")
+			report := event(t, "report", agent, SchemaState, State{Kind: KindReport, Text: "done"}, "promise")
+			if test.afterRemoval {
+				records = append(records, remove, report)
+			} else {
+				records = append(records, report, remove)
+			}
+			decision, _ := Fold(records).Decision("report")
+			if test.afterRemoval {
+				if decision.Verdict != Ineffective || decision.Reason != departedAuthorReason {
+					t.Fatalf("report after removal = %+v, want %q", decision, departedAuthorReason)
+				}
+				return
+			}
+			if decision.Verdict != Effective {
+				t.Fatalf("report before removal = %+v, want effective: removal is not retroactive", decision)
+			}
+		})
+	}
+}
+
+// Restoration has to restore. A boundary that removed authority permanently
+// would make the roster a one-way door and quietly turn every removal into an
+// expulsion nobody voted for.
+func TestRestoredMembershipRestoresAuthorship(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "remove", operator, SchemaSupersede, Supersede{Target: "e1", Text: "remove agent"}, "e1"),
+		event(t, "gap", agent, SchemaState, State{Kind: KindAssert, Text: "while removed"}, "e0"),
+		event(t, "rejoin", operator, SchemaState, State{Kind: KindRoster, Text: "agent rejoins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "rejoin-ratify", operator, SchemaRatify, Ratify{Target: "rejoin"}, "rejoin"),
+		event(t, "resumed", agent, SchemaState, State{Kind: KindAssert, Text: "after rejoining"}, "e0"),
+	})
+	if decision, _ := projection.Decision("gap"); decision.Verdict != Ineffective {
+		t.Errorf("statement in the gap = %s (%s), want ineffective", decision.Verdict, decision.Reason)
+	}
+	if decision, _ := projection.Decision("resumed"); decision.Verdict != Effective {
+		t.Errorf("statement after rejoining = %s (%s), want effective: removal is not expulsion", decision.Verdict, decision.Reason)
+	}
+}
+
+// The originating-requester ratify path is the one that reaches furthest,
+// because gs merge consumes a ratified review approval. A departed requester
+// able to ratify could still put a head into main long after it stopped being
+// a participant, which is authorship of force by another name.
+func TestADepartedRequesterCannotRatifyAReviewApproval(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "requester joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Requester", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "e3", operator, SchemaState, State{Kind: KindRoster, Text: "reviewer joins", Body: map[string]string{"actor": other, "kind": "agent", "name": "Reviewer", "role": "participant"}}, "e0"),
+		event(t, "e4", operator, SchemaRatify, Ratify{Target: "e3"}, "e3"),
+		event(t, "req", agent, SchemaState, State{Kind: KindRequest, Text: "review the head", Body: map[string]string{"to": other, "conditions": "exact head"}}, "e0"),
+		event(t, "promise", other, SchemaState, State{Kind: KindPromise, Text: "will review"}, "req"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "APPROVED", Body: map[string]string{"verdict": "approved", "head": "head1"}}, "promise"),
+		event(t, "remove", operator, SchemaSupersede, Supersede{Target: "e1", Text: "remove requester"}, "e1"),
+		event(t, "ratify", agent, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+	})
+	// The reason matters as much as the verdict. Asserting only that it is not
+	// effective lets the test pass on any unrelated refusal, which is how a
+	// guard can be deleted with every test still green.
+	decision, _ := projection.Decision("ratify")
+	if decision.Verdict != Ineffective || decision.Reason != departedRequesterReason {
+		t.Fatalf("departed requester ratified an approval = %s (%s), want %q: this is what gs merge consumes", decision.Verdict, decision.Reason, departedRequesterReason)
+	}
+}
+
+// The defect this head first shipped with, and the reason the review was
+// refused. decideSupersede has three authority paths past the target-is-mine
+// branch, and only two of them ever asked about membership. The ratifier path
+// asks by accident and correctly: a role grant is active only while the
+// membership it rests on is, so a departed ratifier already fails. The merge
+// receipt path asked nothing at all, so an actor could be removed from the
+// roster and still reach into another author's artifact — the exact boundary
+// the head documented as closed while leaving it open.
+//
+// The history is the authorized cross-author succession, unchanged, with the
+// implementer's membership retired after its receipt and successor are already
+// effective. Everything the receipt path checks still passes; only standing
+// has gone.
+func TestADepartedActorCannotUseAnOldMergeReceipt(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "older implementation", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"predecessor":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		// Removed only now: the receipt, the plan and the successor all stand.
+		event(t, "remove-implementer", operator, SchemaSupersede, Supersede{Target: "r1", Text: "implementer leaves"}, "r1"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "predecessor", Text: "merge succession"}, "predecessor", "merge", "successor"),
+	)
+	projection := Fold(records)
+	decision, _ := projection.Decision("retire")
+	if decision.Verdict != Ineffective || decision.Reason != departedReceiptReason {
+		t.Fatalf("departed actor using an old merge receipt = %+v, want %q: a retained key is not cross-author authority", decision, departedReceiptReason)
+	}
+	if artifactByEvent(t, projection, "predecessor").Retired {
+		t.Fatal("a departed actor retired another author's artifact")
+	}
+}
+
+// One power survives departure, and only one. Withdrawing your own pointer is
+// not authorship of new force, and a departed actor that could not retract its
+// own artifact would leave the log asserting something nobody can correct.
+func TestADepartedActorMayStillSupersedeItsOwnAct(t *testing.T) {
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(t, "e1", operator, SchemaState, State{Kind: KindRoster, Text: "agent joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Agent", "role": "participant"}}, "e0"),
+		event(t, "e2", operator, SchemaRatify, Ratify{Target: "e1"}, "e1"),
+		event(t, "mine", agent, SchemaState, State{Kind: KindArtifact, Text: "my artifact", Body: map[string]string{"path": "spike", "commit": "head1"}}, "e0"),
+		event(t, "remove", operator, SchemaSupersede, Supersede{Target: "e1", Text: "remove agent"}, "e1"),
+		event(t, "retract", agent, SchemaSupersede, Supersede{Target: "mine", Text: "withdrawing my own pointer"}, "mine"),
+	})
+	decision, _ := projection.Decision("retract")
+	if decision.Verdict != Effective {
+		t.Fatalf("departed actor retracting its own act = %s (%s), want effective", decision.Verdict, decision.Reason)
 	}
 }

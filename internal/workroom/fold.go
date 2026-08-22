@@ -487,6 +487,21 @@ func (f *foldState) addDecision(record Record, parsed *parsedRecord, index int, 
 
 func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 	decision := Decision{Event: record.record.ID, Verdict: Effective, Reason: "statement recorded"}
+	// Live membership is checked before kind or lifecycle semantics, so the
+	// boundary is one rule rather than a condition repeated per kind — a kind
+	// added later inherits it without anyone remembering to. The genesis seed
+	// is the single exception: it is the record that creates the first
+	// participant, so it cannot be judged against a roster that does not yet
+	// exist.
+	//
+	// What this closes is the gap between holding a key and holding authority.
+	// Removal from the roster was previously advisory against anyone who kept
+	// a key or another clone: the fold read the signature, found it valid, and
+	// admitted the record. Custody of a key is evidence of who signed; it is
+	// not a standing permission to keep speaking.
+	if record.index > 0 && !f.hasActor(record.record.Actor) {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: departedAuthorReason}
+	}
 	definition, exists := f.definitions[state.Kind]
 	if !exists && state.Kind == KindFoldActivation && (record.record.Schema == SchemaStateLegacy || record.record.Schema == SchemaStateV1) {
 		definition, exists = legacyFoldActivationDefinition(), true
@@ -746,6 +761,14 @@ func (f *foldState) decideRatify(record *parsedRecord, ratify Ratify) Decision {
 		if request.record.Actor != record.record.Actor {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "only the requester may declare satisfaction"}
 		}
+		// Being the originating requester is not enough on its own. A departed
+		// requester conferring force is the case that reaches furthest: a
+		// ratified review approval is what gs merge consumes, so a removed
+		// actor able to ratify could still put a head into main long after it
+		// stopped being a participant.
+		if !f.hasActor(record.record.Actor) {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: departedRequesterReason}
+		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "requester declared satisfaction"}
 	}
 	if strings.HasPrefix(satisfier, "role:") {
@@ -794,7 +817,17 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 	if target.record.Actor == record.record.Actor || f.hasRole(record.record.Actor, "ratifier") {
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized supersession"}
 	}
+	// Past the own-authored branch above, every remaining path is authority
+	// over somebody else's record, and a departed actor holds none of it. The
+	// ratifier branch already refuses one, because a role grant is active only
+	// while the membership it rests on is. This one tested nothing, so a
+	// retained key kept cross-author reach after removal — the boundary this
+	// whole guard exists to close, left open while the documentation said it
+	// was shut.
 	if f.isArtifact(supersede.Target) && f.hasAuthorizedMergeReceipt(record, supersede.Target) {
+		if !f.hasActor(record.record.Actor) {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: departedReceiptReason}
+		}
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "merge approval authorized artifact succession"}
 	}
 	return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor may not supersede target"}
@@ -1208,6 +1241,16 @@ func (f *foldState) hasRole(actor, role string) bool {
 	}
 	return false
 }
+
+// The three refusals the live-membership boundary can give. They are named
+// because the tests assert on them: a guard that refused for some other reason
+// — a missing field, an unknown kind — would satisfy a verdict check while
+// leaving the boundary open, which is the shape of the defect this closes.
+const (
+	departedAuthorReason    = "statement author is not a live participant"
+	departedRequesterReason = "requester is not a live participant"
+	departedReceiptReason   = "merge receipt authority requires live participation"
+)
 
 func (f *foldState) hasActor(actor string) bool {
 	return f.hasRole(actor, "participant")

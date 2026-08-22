@@ -51,7 +51,7 @@ Authority is target-specific:
 
 | Target | Who confers force |
 |---|---|
-| A `report` | The **requester** of the request the promise rests on. Nobody else. |
+| A `report` | The **live requester** of the request the promise rests on. Nobody else. |
 | An `assert`, `propose`, or governance statement | An actor holding `ratifier`. |
 | A `roster` grant | An actor holding the target-class authority: `operator` for an operator grant, otherwise `ratifier`. |
 
