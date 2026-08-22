@@ -180,7 +180,13 @@ convenience, not a claim that nexus data has kernel durability.
 The supported host posture is one trusted operator account, not a partial
 shared-host authentication system. `gs serve` discloses that posture on every
 start, resolves the listener host to loopback only, and checks every mutation
-Host and browser provenance before routing. Within that boundary, the resident
+Host and browser provenance before routing. Every response it sends, asset
+and API alike, carries `Content-Security-Policy: frame-ancestors 'none'`,
+`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and
+`Referrer-Policy: no-referrer`, set outside the handlers so no route can omit
+them: listening on loopback bounds who can reach the resident, not what a
+page already open in the operator's browser may do to it. Within that
+boundary, the resident
 can open several actor keys and every process running as the account is
 trusted to ask it to act as any of them. Direct local
 `gs` key access and malicious same-account processes remain outside the
