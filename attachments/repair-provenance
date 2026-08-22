@@ -1,1 +1,0 @@
-`git show -s --format=%B 1410f8cc` ends with Rests-On original request e952d16d. Inspecting artifact aa7ef519 shows provenance only on original promise b4b3706c and spike predecessor b78567c9; child 5c352718 has no promise.
