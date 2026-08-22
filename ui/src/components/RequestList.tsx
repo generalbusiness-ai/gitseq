@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { ticketsOf, type Workroom } from "../lib/store";
-import { age, matchingRows, sortAfterClick, sortRows, workRows, type Sort, type SortKey, type WorkRow } from "../lib/rows";
+import { age, matchingRows, ratificationRows, sortAfterClick, sortRows, workRows, type Sort, type SortKey, type WorkRow } from "../lib/rows";
 import { cn } from "../lib/util";
 import { RebuildNotice } from "./RebuildNotice";
 
 // Which population the list is showing. Each is reached from the number that
 // counts it, and each replaces the headline with its own count, so no number
 // on this screen is more than one click from exactly the rows it counts.
-type Population = "live" | "moved" | "stale";
+type Population = "live" | "moved" | "stale" | "ratification";
 
 const COLUMNS: { key: SortKey; label: string; className: string }[] = [
   { key: "state", label: "state", className: "w-[9rem]" },
@@ -30,6 +30,7 @@ export function RequestList({
   onOpenThread: (event: string) => void;
 }) {
   const projection = workroom.status?.durable.projection;
+  const vocabulary = workroom.status?.durable.vocabulary;
   const [sort, setSort] = useState<Sort>();
   const [query, setQuery] = useState("");
   const [population, setPopulation] = useState<Population>("live");
@@ -51,8 +52,24 @@ export function RequestList({
     [projection, nameOf, tickets],
   );
   const moved = useMemo(() => live.filter((row) => row.stale), [live]);
+  // Beside the commitments, not added to them: a different duty, owed by a
+  // different person.
+  const ratification = useMemo(
+    () =>
+      projection && vocabulary
+        ? ratificationRows(projection, vocabulary, { nameOf, tickets, actors: projection.actors ?? {} })
+        : { rows: [], ratifiers: [] },
+    [projection, vocabulary, nameOf, tickets],
+  );
 
-  const shown = population === "stale" ? lifecycleStale : population === "moved" ? moved : live;
+  const shown =
+    population === "stale"
+      ? lifecycleStale
+      : population === "moved"
+        ? moved
+        : population === "ratification"
+          ? ratification.rows
+          : live;
   const rows = useMemo(
     () => sortRows(matchingRows(shown, query), sort),
     [shown, query, sort],
@@ -69,7 +86,9 @@ export function RequestList({
   // seeing, and hiding 17 stalled claims to rescue a phrase would be that
   // mistake in miniature. The count still opens to exactly the rows it counts.
   const headline =
-    population === "stale"
+    population === "ratification"
+      ? `${rows.length} ${rows.length === 1 ? "act awaits" : "acts await"} ratification`
+      : population === "stale"
       ? `${rows.length} stale ${rows.length === 1 ? "request" : "requests"}, not in flight`
       : population === "moved"
         ? `${rows.length} resting on reasoning that has moved`
@@ -117,6 +136,14 @@ export function RequestList({
               onClick={() => setPopulation(population === "stale" ? "live" : "stale")}
               label={`${lifecycleStale.length} stale requests, not in flight.`}
             />
+            {/* Not folded into either count above. A proposal does nothing
+                until it is ratified, and until this line existed nothing on
+                the board said so. */}
+            <SummaryLink
+              active={population === "ratification"}
+              onClick={() => setPopulation(population === "ratification" ? "live" : "ratification")}
+              label={`${ratification.rows.length} ${ratification.rows.length === 1 ? "act awaits" : "acts await"} ratification.`}
+            />
           </p>
 
           <table className="mt-2 w-full table-fixed border-collapse text-xs">
@@ -151,6 +178,17 @@ export function RequestList({
               ))}
             </tbody>
           </table>
+          {/* Who is expected to act, when the rows cannot say it themselves.
+              A queue with no ratifier is not a discharged queue, and an empty
+              screen reading "nothing is waiting" would say the opposite of
+              what is true. */}
+          {population === "ratification" && ratification.ratifiers.length !== 1 && (
+            <p className="mt-2 px-1 text-[11px] text-danger">
+              {ratification.ratifiers.length === 0
+                ? "Nobody in this room holds `ratifier`, so nothing here can be discharged."
+                : `${ratification.ratifiers.length} actors hold \`ratifier\`, so no single actor is named as the next mover.`}
+            </p>
+          )}
           {rows.length === 0 && (
             <p className="py-12 text-center text-xs text-faint">
               {query ? "Nothing here matches that." : "Nothing is waiting."}

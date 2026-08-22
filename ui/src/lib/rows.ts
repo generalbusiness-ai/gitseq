@@ -1,4 +1,4 @@
-import type { ActorState, Commitment, Projection, Statement } from "./api.ts";
+import type { ActorState, Commitment, KindDefinition, Projection, Statement, Vocabulary } from "./api.ts";
 import { firstLine } from "./util.ts";
 
 // The four words a live row may say about itself, and no fifth. Whether a
@@ -11,7 +11,13 @@ import { firstLine } from "./util.ts";
 // stale is not "in progress", and saying so under a heading that calls the
 // whole population not-in-flight would have the one screen contradict itself
 // about one row.
-export type RowState = "needs attention" | "unclaimed" | "in progress" | "reported" | "stale";
+export type RowState =
+  | "needs attention"
+  | "unclaimed"
+  | "in progress"
+  | "reported"
+  | "stale"
+  | "awaiting ratification";
 
 // The priority rule, as the default sort rather than as prose. Groups 0 to 2
 // cannot move without a person, so age is the signal; group 3 is running and
@@ -185,6 +191,7 @@ export function sortAfterClick(current: Sort | undefined, key: SortKey): Sort | 
 
 const STATE_ORDER: Record<RowState, number> = {
   "needs attention": 0,
+  "awaiting ratification": 0,
   unclaimed: 1,
   "in progress": 2,
   reported: 3,
@@ -227,4 +234,82 @@ export function matchingRows(rows: readonly WorkRow[], query: string): WorkRow[]
   const needle = query.trim().toLowerCase();
   if (!needle) return [...rows];
   return rows.filter((row) => row.search.includes(needle) || `#${row.ticket}`.includes(needle));
+}
+
+// Ratification is not a commitment, so the list above can never show it. That
+// matters more than it sounds. Conferring force is the principal duty of
+// whoever holds `ratifier`, and it was the one population the board was
+// structurally blind to: it was found by being told in conversation, which is
+// not a queue.
+//
+// It is a population beside the commitments and not a total with them. They
+// are owed by different people for different reasons, and one figure covering
+// both would be a number nobody could act on.
+export interface RatificationView {
+  rows: WorkRow[];
+  /** Who can discharge these. Empty when the room has no ratifier. */
+  ratifiers: string[];
+}
+
+// Which kinds are owed is read from the vocabulary rather than listed here, so
+// a kind declared later is classified by its own definition instead of by
+// whoever remembers to edit this file.
+//
+// Two rules, and the second is the one that decides whether this is a signal
+// or noise. A kind is a candidate when its satisfier names the ratifier role.
+// But `assert` satisfies that test and renders as a note: an assert stands on
+// its author's signature and has already done its job unratified. Counting
+// those put 403 rows in front of the 15 that are genuinely inert without
+// force, and a queue nobody can read is a queue nobody reads. What is actually
+// owed is a kind that does nothing until ratified — a proposal, a governance
+// act — so the render is the discriminator.
+export function awaitsRatification(definition: KindDefinition): boolean {
+  return definition.satisfier === "role:ratifier" && definition.render !== "note";
+}
+
+export function ratificationRows(
+  projection: Projection,
+  vocabulary: Vocabulary,
+  context: RowContext,
+): RatificationView {
+  const owed = new Set(
+    vocabulary.definitions.filter(awaitsRatification).map((definition) => definition.name),
+  );
+  const effective = new Set(
+    projection.decisions
+      .filter((decision) => decision.verdict === "effective")
+      .map((decision) => decision.event),
+  );
+  const ratifiers = Object.entries(context.actors)
+    .filter(([, actor]) => actor.roles?.includes("ratifier"))
+    .map(([fingerprint]) => fingerprint);
+  // Only when exactly one actor can act is there one actor to name. With none
+  // the rows are owed to nobody in the room, and with several the next mover
+  // is not determined — in both cases the column stays empty rather than
+  // picking one, and the caller says which case it is.
+  const waitsOn = ratifiers.length === 1 ? ratifiers[0] : "";
+  const rows: WorkRow[] = [];
+  for (const statement of projection.statements) {
+    if (!owed.has(statement.kind)) continue;
+    // A retired statement asks for nothing and an ineffective one never took
+    // hold, so neither is waiting on anybody.
+    if (statement.ratified || statement.retired) continue;
+    if (!effective.has(statement.event)) continue;
+    const title = firstLine(statement.text);
+    rows.push({
+      event: statement.event,
+      ticket: context.tickets.get(statement.event),
+      state: "awaiting ratification",
+      attention: false,
+      waitsOn,
+      waitsOnName: waitsOn ? context.nameOf(waitsOn) : "",
+      waitsOnHuman: waitsOn ? context.actors[waitsOn]?.kind !== "agent" : false,
+      moved: statement.timestamp ?? 0,
+      title,
+      stale: statement.stale === true,
+      group: 0,
+      search: `${title} ${statement.kind} ${context.nameOf(statement.actor)}`.toLowerCase(),
+    });
+  }
+  return { rows, ratifiers };
 }

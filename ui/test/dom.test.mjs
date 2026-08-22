@@ -362,7 +362,7 @@ function listRoom() {
     reviews: [],
     artifacts: [],
     actors: {
-      hugh: { name: "hugh", kind: "human", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
+      hugh: { name: "hugh", kind: "human", roles: ["ratifier"], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
       claude: { name: "claude", kind: "agent", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
       codex: { name: "codex", kind: "agent", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
     },
@@ -376,7 +376,19 @@ function listRoom() {
     ],
     offline: false,
     status: {
-      durable: { genesis: "genesis", head: "head", depth: 3, projection },
+      durable: {
+        genesis: "genesis",
+        head: "head",
+        depth: 3,
+        projection,
+        vocabulary: {
+          definitions: [
+            { name: "propose", satisfier: "role:ratifier", render: "proposal" },
+            { name: "assert", satisfier: "role:ratifier", render: "note" },
+            { name: "request", satisfier: "originating-requester", render: "commitment" },
+          ],
+        },
+      },
       live: { cursor: { generation: "generation", position: 1 }, presence: {}, activity: {}, conversations: [] },
       cursor: { frontier: [], live: { generation: "generation", position: 1 } },
     },
@@ -433,6 +445,13 @@ test("exactly one number heads the list, and each other number opens to its own 
     projection.statements.push({ event: "e9", sequence: 9, actor: "hugh", kind: "request", text: "Abandoned work", timestamp: NOW_S - 40 * 86400 });
     projection.decisions.push({ event: "e9", sequence: 9, verdict: "effective", reason: "recorded" });
     projection.commitments.push({ request: "e9", requester: "hugh", status: "stale" });
+    // A proposal is not a commitment, so it can only ever reach the screen
+    // through a population of its own. The assert beside it names the ratifier
+    // role too and must not be counted.
+    projection.statements.push({ event: "e10", sequence: 10, actor: "codex", kind: "propose", text: "Bounded status", timestamp: NOW_S - 3 * 86400 });
+    projection.statements.push({ event: "e11", sequence: 11, actor: "codex", kind: "assert", text: "A note", timestamp: NOW_S - 3 * 86400 });
+    projection.decisions.push({ event: "e10", sequence: 10, verdict: "effective", reason: "recorded" });
+    projection.decisions.push({ event: "e11", sequence: 11, verdict: "effective", reason: "recorded" });
 
     await act(async () => {
       root.render(React.createElement(RequestList, { workroom, onOpenThread() {} }));
@@ -445,6 +464,7 @@ test("exactly one number heads the list, and each other number opens to its own 
     assert.deepEqual(summaries.map((button) => button.textContent), [
       "1 of these rest on reasoning that has moved.",
       "1 stale requests, not in flight.",
+      "1 act awaits ratification.",
     ]);
 
     await click(summaries[1]);
@@ -454,6 +474,10 @@ test("exactly one number heads the list, and each other number opens to its own 
     await click([...document.querySelectorAll("p button")][0]);
     assert.equal(document.querySelector("h2").textContent, "1 resting on reasoning that has moved");
     assert.deepEqual(titlesOnScreen(), ["Zebra work"]);
+
+    await click([...document.querySelectorAll("p button")][2]);
+    assert.equal(document.querySelector("h2").textContent, "1 act awaits ratification");
+    assert.deepEqual(titlesOnScreen(), ["Bounded status"]);
   } finally {
     await act(async () => root.unmount());
     await vite.close();
