@@ -123,15 +123,15 @@ may be agents.
 | step | who | does | what they see | what a non-adopter sees |
 |---|---|---|---|---|
 | 1 | author | commits the note on a branch, pushes, publishes | `gs status` shows the artifact at the path | a branch with one Markdown file |
-| 2 | author | review request resting on the artifact, `to=@reviewer` | board row: open request, waiting on reviewer | (tier 1) an ADR-PR opened by the connector |
-| 3 | reviewer | promise, then `gs review` → `approved` or `changes-requested` | board row: verdict | (tier 1) a PR comment rendered from the verdict |
-| 4 | the review requester, and only them | `gs ratify` the verdict | `gs merge` will now accept it | nothing yet |
-| 5 | author | `propose` adopting the decision, resting on the artifact | board row: an unratified proposal | nothing yet |
-| 6 | ratifier | `gs ratify` the proposal | the decision now carries authority | nothing yet |
+| 2 | author | `propose` adopting the decision, resting on the artifact | board row: an unratified proposal | nothing yet |
+| 3 | ratifier | `gs ratify` the proposal | the decision carries authority | nothing yet |
+| 4 | author | review request resting on the artifact *and* the ratified proposal, `to=@reviewer` | board row: open request, waiting on reviewer | (tier 1) an ADR-PR opened by the connector |
+| 5 | reviewer | promise, then `gs review` → `approved` or `changes-requested`, resting on both | board row: verdict | (tier 1) a PR comment rendered from the verdict |
+| 6 | the review requester, and only them | `gs ratify` the verdict | `gs merge` will now accept it | nothing yet |
 | 7 | merger | `gs merge --candidate <head> --approval <verdict> --text "<summary>"` | receipt; the artifact retired and republished at the merge commit; flares on anything that rested on the draft | the merge commit on `main` whose message is the summary; (tier 1) the PR closed as merged with a final comment |
 | 8 | merger | delete the worktree, push | `main` advanced | the same |
 
-Step 4 is the review requester and nobody else. `KindReport` is declared
+Step 6 is the review requester and nobody else. `KindReport` is declared
 with `SatisfierOriginatingRequester`, so a ratify from an author who did
 not request the review, or from someone merely holding `ratifier`, is
 ineffective. This note said "author or ratifier" until a reviewer
@@ -139,21 +139,34 @@ checked; the same class of error as `ratify(artifact)`, made twice
 because after correcting one kind's satisfier I did not check the
 others.
 
-Steps 5 and 6 are the adoption proposal, and their position matters.
-They are filed before the merge, on the draft artifact, because the
-proposal records that *this text* was adopted. The merge then retires
-that artifact and republishes at the merge commit, and the proposal
-stays ratified: it named a revision, and that revision is what was
-accepted.
+Steps 2 and 3 are the adoption proposal, and where it sits in the chain
+is the load-bearing question. An earlier draft filed it beside the
+review and said implementation could cite the proposal and the live
+artifact separately. That does not connect: the post-merge successor
+reaches the receipt, the approval, the review and the draft artifact,
+and reaches the proposal through none of them. Two references in a
+request are two facts side by side, not a chain — and a reader arriving
+at the live artifact cannot get from there to the proposal at all, so
+the artifact does not prove the decision was adopted.
 
-Implementation must reach both. Assigned implementation rests on its
-request, and that request's chain has to reach the ratified proposal and
-the live post-merge artifact — the request cites them, so the chain is
-complete without the commit naming either. Self-initiated implementation
-rests directly on the ratified proposal, per `AGENTS.md`, and should
-cite the live artifact too. Resting on the post-merge artifact alone, as
-an earlier draft of this note said, drops the proposal — which is the
-only thing carrying the authority the proposal exists to carry.
+So the proposal goes *into* the reviewed chain rather than beside it.
+The approval rests on the proposal as well as the artifact, which the
+reviewer is doing anyway: approving a decision means approving that it
+was adopted, and the two are one judgement. The merge then consumes that
+approval, the receipt reaches it, and the successor artifact's
+provenance runs back through approval to proposal without anything new
+being built.
+
+That is why the proposal comes second and third rather than after the
+verdict: the review has to be able to rest on it. It costs one act and one ratification before review rather
+than after, and it is the difference between a chain and a pair of
+unrelated statements.
+
+Implementation then reaches the proposal by ordinary provenance.
+Assigned implementation rests on its request; self-initiated rests on
+the ratified proposal directly, per `AGENTS.md`. Citing the live
+artifact remains useful for a reader, but it is no longer what carries
+the authority.
 
 The decision's PR is not the code PR. The decision merges first;
 implementation rests on the merged artifact. Otherwise the artifact
@@ -238,35 +251,51 @@ reminder.
 Installing it means writing an executable file into someone's
 repository, so:
 
-- **Never clobber.** If a `pre-push` hook exists, append or refuse and
-  say which; do not overwrite work the operator did not put there.
+- **Never clobber, and decide which.** If a `pre-push` hook exists,
+  refuse and print what to add by hand. Appending edits a file the
+  operator wrote, and a reminder is not worth that; refusing is one
+  line of work for them and no risk.
 - **Shebang and mode.** Write `#!/bin/sh` and `0755`. A hook without
   either is silently never run, which is the failure mode this whole
   note is about.
-- **`core.hooksPath` may be shared.** It can point outside the
-  repository, at a directory several repositories use. Installing there
-  affects all of them, so detect it and refuse rather than surprise
-  someone.
+- **`core.hooksPath` may be shared.** Read it; if it is set and resolves
+  outside this repository's `.git`, refuse. That directory may serve
+  several repositories, and a reminder installed for one of them is a
+  change to all of them.
 - **No ambient executable resolution.** Write the absolute path of the
   `gs` that is installing, not the bare word `gs`. Resolving through
   `PATH` at push time means whatever binary happens to be first runs
   with the operator's repository and identity.
 
-The bounded rules the publisher needs are part of part two's
-specification, not decoration: what to do with refs and paths carrying
-unusual bytes, renames and deletions, tags, force pushes, malformed
-YAML, an act count past a ceiling, a partially-applied batch, and acts
-the fold ruled ineffective. Each of those is a way the publisher can
-record something untrue or nothing at all, and each needs a stated
-answer before it is built.
+Hostile and awkward input needs decided outcomes, not a list of things
+to think about. Naming the cases without answering them is how the first
+draft passed for a specification.
+
+| case | outcome |
+|---|---|
+| ref or path with a control byte or newline | refuse the path, publish the rest, report which |
+| path over a length ceiling | refuse that path, report it |
+| rename | publish at the new path; the old path is untouched, since a rename is not a retirement |
+| deletion | publish nothing; retirement is merge-sealed |
+| tag push | ignore; a tag is not a branch head anyone reviews |
+| force push | publish a successor at the new head; the predecessor stays until a merge retires it |
+| malformed front matter | publish the artifact, refuse the `supersedes:` link, report the parse error |
+| more watched paths than a ceiling | refuse the whole batch and report; a partial publication is worse than none |
+| batch partially applied | the outbox retains what did not land, and the next run retries by idempotency key |
+| an act the fold ruled ineffective | keep it in the outbox as failed, surface it; never silently drop |
+
+Two rules stand behind the table. Publish per path rather than all-or-
+nothing, so one bad name does not lose the good ones; and never treat a
+refusal as a success, because the whole point of moving publication
+after the push was to stop recording things that did not happen.
 
 Agents should use the publish step too, and not for convenience. Three
 breakdowns of this exact shape are already on this log. A review request
 cited its report as `…#git:sha1:REPORTLABEL`, a literal placeholder in
-place of an event id, and had to be superseded (`git:sha1:5d26…#git:sha1:f3be69cda9eff1fa52ac6b144f29a6e21660ed25`). A report
+place of an event id, and had to be superseded (`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f3be69cda9eff1fa52ac6b144f29a6e21660ed25`). A report
 carried the same kind of placeholder where an artifact id belonged
-(`git:sha1:5d26…#git:sha1:71213ea92e1387c841819d607e72ef9dcdd4f708`). And an artifact
-(`git:sha1:5d26…#git:sha1:c654df30f3a14cedaa78cf0721fea45a7ab4165e`)
+(`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:71213ea92e1387c841819d607e72ef9dcdd4f708`). And an artifact
+(`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c654df30f3a14cedaa78cf0721fea45a7ab4165e`)
 rested on the request instead of the promise, which stranded its
 commitment until a separate closure report repaired it. None of the three is possible for a tool that reads the sha
 from git and the promise from the log. An agent typing
@@ -338,15 +367,28 @@ it and the diff, in this order:
     did not change in that commit — and warn that the git-visible stamp
     is missing.
 
-Cross-author replacement is where this gets genuinely hard, and this
-note defers the algorithm rather than gesturing at one. `gs merge`
-retires only paths its signed artifact set covers, so replacing another
-actor's decision needs the review to co-sign both N and S, and needs a
-signed replacement map the receipt can validate. Neither exists today,
-and specifying them badly is worse than saying they are unspecified.
-Part three is that work; until it is done, replacing a decision authored
-by someone else requires that actor or a `ratifier` to act, which is a
-limitation to state rather than to engineer around.
+Cross-author retirement already works, within a bound, and an earlier
+draft of this note said it did not. An exact-head approval can co-sign
+several artifact paths, and the merge receipt then authorises retiring
+another actor's artifact at each of those paths. This is not theory: the
+merges recorded on this log retired artifacts authored by two other
+actors under approvals that named the successor artifacts. The rule is
+that the approval's artifact set bounds the reach, which is why a
+multi-path head needs every path named in the verdict.
+
+What is missing is narrower and worth stating exactly. Replacement is a
+*cross-path* move: the successor is at a new path and the predecessor is
+at an old one, and nothing in the receipt says the two are related. So
+the merge can retire the old path when the approval covers it, but it
+cannot check that the retirement is the replacement the author intended
+rather than an unrelated deletion that happened to be in scope. That
+missing link — a signed map from old path to new, validated by the
+receipt — is what part three has to build.
+
+Two things follow that the draft got wrong. A `ratifier` does not bypass
+merge preflight; nothing does. And deletion is not a way around the
+bound either, for the same reason: it is retirement, and retirement is
+merge-sealed.
 
 One consequence of the stamp-over-deletion preference. Any actor can
 state a successor artifact at a path, but supersession is admitted only
@@ -385,7 +427,10 @@ In the order of the split.
 
 **Part one, now.** A "Notes and decisions" section in `SKILL.md`: the
 lifecycle table, the one-sentence path rule, what goes in `--text`, and
-"rest on the merged artifact". This belongs in the skill, not
+the adoption order — propose and ratify before requesting review, so the
+verdict rests on the proposal and the chain from the merged artifact
+reaches it. Resting on the merged artifact alone is what leaves the
+decision unable to prove it was adopted. This belongs in the skill, not
 `AGENTS.md`, which governs development of gitseq itself. No code.
 
 **Part two, its own request and review.** The `.gitseq` parser, `gs
