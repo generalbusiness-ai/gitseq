@@ -1633,3 +1633,117 @@ func TestLandedEndpointBoundsTheBatchWithNoMainline(t *testing.T) {
 		}
 	}
 }
+
+// Browser protections are a property of the server, not of any handler, so
+// the test that matters is the one that finds a route without them. These
+// walk representative routes rather than one: the UI document, an embedded
+// asset, an API success, an API error, and a route that does not exist at
+// all, because a 404 is written by net/http rather than by our code and is
+// exactly the kind of path a per-handler policy would miss.
+func TestEveryResponseCarriesBrowserProtections(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The asset path is read from the committed embed so this test cannot
+	// drift into requesting a filename that no longer ships.
+	asset := embeddedAssetPath(t)
+
+	routes := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"ui document", http.MethodGet, "/"},
+		{"embedded asset", http.MethodGet, asset},
+		{"api success", http.MethodGet, "/v0/status"},
+		{"api error", http.MethodPost, "/v0/act"},
+		{"unknown route", http.MethodGet, "/no-such-path"},
+	}
+	for _, route := range routes {
+		t.Run(route.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, httptest.NewRequest(route.method, route.path, nil))
+			for name, want := range browserProtections {
+				if got := response.Header().Get(name); got != want {
+					t.Errorf("%s %s returned %d and %s = %q, want %q",
+						route.method, route.path, response.Code, name, got, want)
+				}
+			}
+		})
+	}
+}
+
+// A handler that writes its own headers and returns early must not be able to
+// drop the policy. This drives the real error path rather than a stand-in:
+// /v0/act with no body is rejected by the handler before it writes anything
+// of its own.
+func TestAnEarlyHandlerReturnStillCarriesBrowserProtections(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v0/act", strings.NewReader("{")))
+	if response.Code < 400 {
+		t.Fatalf("expected the malformed act to be refused, got %d", response.Code)
+	}
+	for name, want := range browserProtections {
+		if got := response.Header().Get(name); got != want {
+			t.Errorf("refused act (%d) dropped %s = %q, want %q", response.Code, name, got, want)
+		}
+	}
+}
+
+// The values themselves, pinned. A policy is only as good as what it says, and
+// "frame-ancestors 'self'" or "Referrer-Policy: origin" would pass a
+// presence-only check while leaving the risks this closes wide open.
+func TestBrowserProtectionValuesAreTheStrictOnes(t *testing.T) {
+	for name, want := range map[string]string{
+		"Content-Security-Policy": "frame-ancestors 'none'",
+		"X-Frame-Options":         "DENY",
+		"X-Content-Type-Options":  "nosniff",
+		"Referrer-Policy":         "no-referrer",
+	} {
+		if got := browserProtections[name]; got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+	if len(browserProtections) != 4 {
+		t.Errorf("browserProtections carries %d headers, want the 4 pinned above", len(browserProtections))
+	}
+}
+
+func embeddedAssetPath(t *testing.T) string {
+	t.Helper()
+	entries, err := uidist.ReadDir("uidist/assets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			return "/assets/" + entry.Name()
+		}
+	}
+	t.Fatal("the committed embed carries no asset to request")
+	return ""
+}

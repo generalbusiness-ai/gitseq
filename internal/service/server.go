@@ -92,7 +92,12 @@ func NewObserved(workspace *app.Workspace, observer observe.Observer) (*Server, 
 	return server, nil
 }
 
-func (s *Server) Handler() http.Handler { return observe.HTTPHandler(s.observer, s.mux) }
+// Handler wraps the routes in browser protections outermost, so they apply
+// even when there is no observer and observe.HTTPHandler passes the mux
+// straight through.
+func (s *Server) Handler() http.Handler {
+	return secureHeaders(observe.HTTPHandler(s.observer, s.mux))
+}
 
 func (s *Server) routes() {
 	s.mux.Handle("GET /", uiHandler())
