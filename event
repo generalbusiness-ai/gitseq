@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ba2fff366e615bc1e24ee1ad4d0a57cc86a47d83","text":"Merge retired a covered predecessor; the successor is at SKILL.md."}
+{"kind":"promise","text":"I will implement chess item 7’s host identity layer on a dedicated request branch/worktree: attestation vocabulary, anchored/unanchored display, GitHub-login witnessing with a log-anchored witness key, and the Nostr anchor, with tests, architecture-boundary verification, exact-head artifacts, and independent review."}
