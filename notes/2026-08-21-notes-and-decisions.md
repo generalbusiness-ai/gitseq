@@ -83,11 +83,13 @@ This is three pieces of work with different risk. Bundling them would
 let the risky parts ride on the safe one, so each gets its own request
 and review.
 
-**Part one — adoption.** An ordinary Markdown file, an exact-head
-artifact, an independent review, requester ratification, a merge, and a
-separate ratified proposal carrying the authority. Every mechanism
-exists and is exercised daily in this repository. This ships first and
-needs none of the rest.
+**Part one — adoption.** An ordinary Markdown file and an exact-head
+artifact; a proposal to adopt it, ratified; an independent review whose
+request rests on that ratified proposal; the requester ratifying the
+verdict; then the merge. The proposal sits inside the reviewed chain
+rather than beside it — that order is what lets the merged artifact's
+provenance reach it. Every mechanism exists and is exercised daily in
+this repository. This ships first and needs none of the rest.
 
 **Part two — publication and reconciliation.** How an artifact gets
 filed without a person typing a commit hash. This touches identity,
@@ -115,10 +117,17 @@ people who will never see an event id, written from the action log by
 whoever runs the merge, usually an agent. The log stays the authority;
 the message is a render, and a wrong render corrupts nothing.
 
-The cycle, step by step. Actors: **author**, **reviewer** (keyed),
-**ratifier** (operator or holder of the role; may be the reviewer),
-**merger** (whoever runs `gs merge`; often the ratifier). Any of them
-may be agents.
+The cycle, step by step. Actors: **author**, who is also the merger;
+**reviewer** (keyed, and not the author); **ratifier** (operator or
+holder of the role; may be the reviewer). Any of them may be agents.
+
+Author and merger are one actor by construction, not by convention.
+`requireApprovedImplementer` admits a merge only from the actor whose
+approved implementation artifact is landing, and holding `ratifier`
+is deliberately no bypass — the check compares the approval's
+implementer against the signing actor and refuses anyone else. An
+earlier draft of this note called the merger "whoever runs `gs merge`,
+often the ratifier", which describes a merge the tool would refuse.
 
 | step | who | does | what they see | what a non-adopter sees |
 |---|---|---|---|---|
@@ -128,8 +137,8 @@ may be agents.
 | 4 | author | review request resting on the artifact *and* the ratified proposal, `to=@reviewer` | board row: open request, waiting on reviewer | (tier 1) an ADR-PR opened by the connector |
 | 5 | reviewer | promise, then `gs review --artifact … --promise …` → `approved` or `changes-requested`; it reaches the proposal through the request | board row: verdict | (tier 1) a PR comment rendered from the verdict |
 | 6 | the review requester, and only them | `gs ratify` the verdict | `gs merge` will now accept it | nothing yet |
-| 7 | merger | `gs merge --candidate <head> --approval <verdict> --text "<summary>"` | receipt; the artifact retired and republished at the merge commit; flares on anything that rested on the draft | the merge commit on `main` whose message is the summary; (tier 1) the PR closed as merged with a final comment |
-| 8 | merger | delete the worktree, push | `main` advanced | the same |
+| 7 | author (as merger) | `gs merge --candidate <head> --approval <verdict> --text "<summary>"` | receipt; the artifact retired and republished at the merge commit; flares on anything that rested on the draft | the merge commit on `main` whose message is the summary; (tier 1) the PR closed as merged with a final comment |
+| 8 | author (as merger) | delete the worktree, push | `main` advanced | the same |
 
 Step 6 is the review requester and nobody else. `KindReport` is declared
 with `SatisfierOriginatingRequester`, so a ratify from an author who did
