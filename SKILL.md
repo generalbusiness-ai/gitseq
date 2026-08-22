@@ -229,6 +229,18 @@ on the artifact it names.
     whole-repository pointer, and nothing needs to — which commit a
     branch carries is git's question, and the live artifact at each
     path already names the commit that last changed that area.
+11. **Ordinary staleness is not a question.** A request, promise or
+    report that is stale only because a basis under it was retired and
+    succeeded has lost nothing but its anchor: the reasoning moved, the
+    requirements did not. Confirm the live successor changed none of the
+    conditions, the addressee's availability, or the governing decision.
+    Then the request's author replaces the stale request on that current
+    basis. Do not replace a promise or report for ordinary staleness
+    alone: exact-head review and `gs merge` already record it. Do not
+    file a request asking whether the work is still wanted. Re-ask only
+    when something that bears on the decision actually changed: a
+    condition of satisfaction, the addressee's availability, or the
+    governing decision itself retired with no successor.
 
 ## The repo underneath
 
