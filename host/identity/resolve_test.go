@@ -78,6 +78,15 @@ func (b *logBuilder) resolve() *identity.Resolution {
 	return identity.Resolve(host.Log{Genesis: testGenesis, Records: b.records})
 }
 
+func (b *logBuilder) act(key ed25519.PublicKey, at int64) string {
+	return b.add(key, "test/act@0", json.RawMessage(`{}`), at)
+}
+
+func (b *logBuilder) lookup(key ed25519.PublicKey, at int64) identity.Resolved {
+	record := b.act(key, at)
+	return b.resolve().LookupAt(record)
+}
+
 func (b *logBuilder) declareWitness(key ed25519.PublicKey, witness ed25519.PublicKey, schemes []string, at int64) string {
 	return b.add(key, identity.WitnessSchema, identity.WitnessDeclaration{
 		Genesis: testGenesis, Key: hex.EncodeToString(witness), Schemes: schemes,
@@ -103,7 +112,7 @@ func TestWitnessedAnchorGivesASessionKeyAPersistentIdentity(t *testing.T) {
 		Genesis: testGenesis, Subject: fingerprint(session), Identity: &subject, Scope: "play",
 	}, 2000)
 
-	resolved := log.resolve().Lookup(fingerprint(session), 2000)
+	resolved := log.lookup(session, 2000)
 	if !resolved.Anchored {
 		t.Fatal("witnessed session key resolved as unanchored")
 	}
@@ -128,7 +137,7 @@ func TestUnvouchedKeyResolvesUnanchored(t *testing.T) {
 	stranger, _ := testKey(t)
 	log := newLog(t, initializer)
 
-	if resolved := log.resolve().Lookup(fingerprint(stranger), 2000); resolved.Anchored {
+	if resolved := log.lookup(stranger, 2000); resolved.Anchored {
 		t.Fatalf("stranger resolved as anchored: %+v", resolved)
 	}
 }
@@ -151,9 +160,9 @@ func TestDelegationInheritsIdentityAndNeverOutranksItsBasis(t *testing.T) {
 	}, 2000)
 	log.add(person, identity.AnchorSchema, identity.Anchor{
 		Genesis: testGenesis, Subject: fingerprint(agent), Scope: "move",
-	}, 3000)
+	}, 2000)
 
-	resolved := log.resolve().Lookup(fingerprint(agent), 3000)
+	resolved := log.lookup(agent, 2000)
 	if !resolved.Anchored {
 		t.Fatal("agent credential resolved as unanchored")
 	}
@@ -186,13 +195,12 @@ func TestDelegationInheritsTheWeakerVerification(t *testing.T) {
 		Genesis: testGenesis, Subject: fingerprint(agent),
 	}, 3000)
 
-	resolution := log.resolve()
-	if got := resolution.Lookup(fingerprint(person), 2000).Verification; got != identity.LiveLookup {
+	if got := log.lookup(person, 2000).Verification; got != identity.LiveLookup {
 		t.Errorf("witnessed verification = %v, want live-lookup", got)
 	}
 	// The delegation's own signature is in the log, but what it rests on is
 	// not, so the answer is the weaker one.
-	if got := resolution.Lookup(fingerprint(agent), 3000).Verification; got != identity.LiveLookup {
+	if got := log.lookup(agent, 3000).Verification; got != identity.LiveLookup {
 		t.Errorf("delegated verification = %v, want live-lookup", got)
 	}
 }
@@ -212,7 +220,7 @@ func TestAnEndorserWithNoAnchorMintsNothing(t *testing.T) {
 		Genesis: testGenesis, Subject: fingerprint(target),
 	}, 2000)
 
-	if resolved := log.resolve().Lookup(fingerprint(target), 2000); resolved.Anchored {
+	if resolved := log.lookup(target, 2000); resolved.Anchored {
 		t.Fatalf("an unanchored endorser minted an identity: %+v", resolved)
 	}
 }
@@ -236,7 +244,7 @@ func TestOnlyTheWitnessMayNameAnIdentity(t *testing.T) {
 		Genesis: testGenesis, Subject: fingerprint(target), Identity: &bob,
 	}, 3000)
 
-	if resolved := log.resolve().Lookup(fingerprint(target), 3000); resolved.Anchored {
+	if resolved := log.lookup(target, 3000); resolved.Anchored {
 		t.Fatalf("a non-witness named an identity and it took force: %+v", resolved)
 	}
 }
@@ -260,7 +268,7 @@ func TestOnlyTheInitializingKeyDeclaresTheWitness(t *testing.T) {
 	if _, ok := resolution.Witness(); ok {
 		t.Error("a witness declared by the wrong key took force")
 	}
-	if resolved := resolution.Lookup(fingerprint(session), 2000); resolved.Anchored {
+	if resolved := log.lookup(session, 2000); resolved.Anchored {
 		t.Fatalf("an undeclared witness anchored a key: %+v", resolved)
 	}
 }
@@ -279,7 +287,7 @@ func TestWitnessCannotMintOutsideItsDeclaredSchemes(t *testing.T) {
 		Genesis: testGenesis, Subject: fingerprint(session), Identity: &elsewhere,
 	}, 2000)
 
-	if resolved := log.resolve().Lookup(fingerprint(session), 2000); resolved.Anchored {
+	if resolved := log.lookup(session, 2000); resolved.Anchored {
 		t.Fatalf("witness minted an identity in a scheme it was not declared for: %+v", resolved)
 	}
 }
@@ -314,42 +322,47 @@ func TestWitnessRotationReplacesWithoutUnmakingWhatCameBefore(t *testing.T) {
 	if !ok || declared.Key != hex.EncodeToString(second) {
 		t.Fatalf("witness in force = %+v, want the second key", declared)
 	}
-	if !resolution.Lookup(fingerprint(early), 2000).Anchored {
+	if !log.lookup(early, 2000).Anchored {
 		t.Error("an anchor the previous witness signed lost its force")
 	}
-	if !resolution.Lookup(fingerprint(late), 4000).Anchored {
+	if !log.lookup(late, 4000).Anchored {
 		t.Error("the current witness could not anchor")
 	}
-	if resolution.Lookup(fingerprint(stale), 5000).Anchored {
+	if log.lookup(stale, 5000).Anchored {
 		t.Error("a replaced witness key kept witnessing")
 	}
 }
 
-// An endorsement says nothing about the records that came before it, and
-// nothing after it expires. Both edges are judged against the log's own signed
-// time.
-func TestAnchorHoldsOnlyBetweenItsPositionAndItsExpiry(t *testing.T) {
+// An endorsement says nothing about a record before it, even when both carry
+// the same whole-second timestamp. Expiry alone remains timestamp-based.
+func TestAnchorUsesPositionAndExpiryUsesTimestamp(t *testing.T) {
 	initializer, _ := testKey(t)
 	witness, _ := testKey(t)
 	session, _ := testKey(t)
 
 	log := newLog(t, initializer)
 	log.declareWitness(initializer, witness, []string{identity.GitHubScheme}, 1000)
+	before := log.act(session, 2000)
 	subject := alice()
 	log.add(witness, identity.AnchorSchema, identity.Anchor{
 		Genesis: testGenesis, Subject: fingerprint(session), Identity: &subject, NotAfter: 5000,
 	}, 2000)
+	after := log.act(session, 2000)
+	atExpiry := log.act(session, 5000)
+	afterExpiry := log.act(session, 5001)
 
 	resolution := log.resolve()
-	for _, at := range []int64{1999, 5001} {
-		if resolution.Lookup(fingerprint(session), at).Anchored {
-			t.Errorf("anchored at %d, outside the endorsement's window", at)
-		}
+	if resolution.LookupAt(before).Anchored {
+		t.Error("same-second anchor reached backward across its log position")
 	}
-	for _, at := range []int64{2000, 5000} {
-		if !resolution.Lookup(fingerprint(session), at).Anchored {
-			t.Errorf("unanchored at %d, inside the endorsement's window", at)
-		}
+	if !resolution.LookupAt(after).Anchored {
+		t.Error("same-second record after the anchor was not anchored")
+	}
+	if !resolution.LookupAt(atExpiry).Anchored {
+		t.Error("anchor expired before its inclusive NotAfter timestamp")
+	}
+	if resolution.LookupAt(afterExpiry).Anchored {
+		t.Error("anchor survived after its NotAfter timestamp")
 	}
 }
 
@@ -366,15 +379,17 @@ func TestRevocationEndsAnAnchorAtItsOwnPositionAndNoEarlier(t *testing.T) {
 	anchored := log.add(witness, identity.AnchorSchema, identity.Anchor{
 		Genesis: testGenesis, Subject: fingerprint(session), Identity: &subject,
 	}, 2000)
+	before := log.act(session, 4000)
 	log.add(witness, identity.RevokeSchema, identity.Revocation{
 		Genesis: testGenesis, Anchor: anchored,
 	}, 4000)
+	after := log.act(session, 4000)
 
 	resolution := log.resolve()
-	if !resolution.Lookup(fingerprint(session), 3000).Anchored {
+	if !resolution.LookupAt(before).Anchored {
 		t.Error("a withdrawal reached back and unmade a record already folded")
 	}
-	if resolution.Lookup(fingerprint(session), 4000).Anchored {
+	if resolution.LookupAt(after).Anchored {
 		t.Error("an anchor survived its own withdrawal")
 	}
 }
@@ -395,7 +410,7 @@ func TestOnlyTheEndorserWithdrawsAnEndorsement(t *testing.T) {
 		Genesis: testGenesis, Anchor: anchored,
 	}, 3000)
 
-	if !log.resolve().Lookup(fingerprint(session), 4000).Anchored {
+	if !log.lookup(session, 4000).Anchored {
 		t.Fatal("somebody else's revocation withdrew an endorsement")
 	}
 }
@@ -417,15 +432,17 @@ func TestWithdrawingAnAnchorWithdrawsWhatItMinted(t *testing.T) {
 	log.add(person, identity.AnchorSchema, identity.Anchor{
 		Genesis: testGenesis, Subject: fingerprint(agent),
 	}, 3000)
+	before := log.act(agent, 4000)
 	log.add(witness, identity.RevokeSchema, identity.Revocation{
 		Genesis: testGenesis, Anchor: anchored,
 	}, 4000)
+	after := log.act(agent, 4000)
 
 	resolution := log.resolve()
-	if !resolution.Lookup(fingerprint(agent), 3500).Anchored {
+	if !resolution.LookupAt(before).Anchored {
 		t.Error("the agent credential was not in force before the withdrawal")
 	}
-	if resolution.Lookup(fingerprint(agent), 5000).Anchored {
+	if resolution.LookupAt(after).Anchored {
 		t.Error("an agent credential outlived the anchor that minted it")
 	}
 }
@@ -448,7 +465,7 @@ func TestDelegationCannotOutliveTheAnchorItRestsOn(t *testing.T) {
 		Genesis: testGenesis, Subject: fingerprint(agent), NotAfter: 9000,
 	}, 3000)
 
-	if log.resolve().Lookup(fingerprint(agent), 5000).Anchored {
+	if log.lookup(agent, 5000).Anchored {
 		t.Fatal("a delegation named a later expiry than its basis and got it")
 	}
 }
@@ -468,7 +485,7 @@ func TestAnchorFromAnotherRepositoryHasNoForce(t *testing.T) {
 		Subject: fingerprint(session), Identity: &subject,
 	}, 2000)
 
-	if resolved := log.resolve().Lookup(fingerprint(session), 2000); resolved.Anchored {
+	if resolved := log.lookup(session, 2000); resolved.Anchored {
 		t.Fatalf("an endorsement for another repository took force here: %+v", resolved)
 	}
 }
@@ -530,12 +547,12 @@ func TestMalformedRecordsArePassedOverAndLeaveTheAnswerStanding(t *testing.T) {
 	for _, payload := range malformed {
 		log.raw(witness, identity.AnchorSchema, payload, 2000)
 	}
-	if resolved := log.resolve().Lookup(fingerprint(session), 2000); resolved.Anchored {
+	if resolved := log.lookup(session, 2000); resolved.Anchored {
 		t.Errorf("a malformed anchor took force: %+v", resolved)
 	}
 
 	log.raw(witness, identity.AnchorSchema, canonical, 3000)
-	if !log.resolve().Lookup(fingerprint(session), 3000).Anchored {
+	if !log.lookup(session, 3000).Anchored {
 		t.Error("a good anchor after malformed ones did not resolve")
 	}
 }
@@ -579,17 +596,46 @@ func TestTheMostRecentEndorsementInForceAnswers(t *testing.T) {
 	log.add(witness, identity.AnchorSchema, identity.Anchor{
 		Genesis: testGenesis, Subject: fingerprint(session), Identity: &subject, Scope: "watch",
 	}, 2000)
+	between := log.act(session, 2500)
 	log.add(witness, identity.AnchorSchema, identity.Anchor{
 		Genesis: testGenesis, Subject: fingerprint(session), Identity: &subject, Scope: "play",
 	}, 3000)
-
+	after := log.act(session, 3000)
 	resolution := log.resolve()
-	if got := resolution.Lookup(fingerprint(session), 3000).Scope; got != "play" {
+
+	if got := resolution.LookupAt(after).Scope; got != "play" {
 		t.Errorf("scope at 3000 = %q, want the newer %q", got, "play")
 	}
 	// The older endorsement still answers where the newer one does not stand.
-	if got := resolution.Lookup(fingerprint(session), 2500).Scope; got != "watch" {
-		t.Errorf("scope at 2500 = %q, want the older %q", got, "watch")
+	if got := resolution.LookupAt(between).Scope; got != "watch" {
+		t.Errorf("scope before re-anchoring = %q, want the older %q", got, "watch")
+	}
+}
+
+func TestLookupAtFailsClosedForUnknownOrMutatedRecordID(t *testing.T) {
+	initializer, _ := testKey(t)
+	witness, _ := testKey(t)
+	session, _ := testKey(t)
+
+	log := newLog(t, initializer)
+	log.declareWitness(initializer, witness, []string{identity.GitHubScheme}, 1000)
+	subject := alice()
+	log.add(witness, identity.AnchorSchema, identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(session), Identity: &subject,
+	}, 2000)
+	known := log.act(session, 2000)
+	resolution := log.resolve()
+	if !resolution.LookupAt(known).Anchored {
+		t.Fatal("the exact known record did not resolve")
+	}
+	mutated := known[:len(known)-1] + "f"
+	if mutated == known {
+		mutated = known[:len(known)-1] + "e"
+	}
+	for _, recordID := range []string{mutated, "unknown-record-id"} {
+		if got := resolution.LookupAt(recordID); got.Anchored {
+			t.Fatalf("unknown record %q resolved permissively: %+v", recordID, got)
+		}
 	}
 }
 
@@ -600,7 +646,7 @@ func TestEmptyLogResolvesToNothing(t *testing.T) {
 	if _, ok := resolution.Witness(); ok {
 		t.Error("an empty log declared a witness")
 	}
-	if resolution.Lookup("anybody", 1).Anchored {
+	if resolution.LookupAt("unknown-record-id").Anchored {
 		t.Error("an empty log anchored somebody")
 	}
 }

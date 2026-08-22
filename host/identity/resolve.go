@@ -14,6 +14,18 @@ import (
 // a constant rather than a stack.
 const maxChain = 16
 
+// instant is one canonical point in a verified log. Position decides every
+// ordering question; timestamp exists only for externally meaningful expiry.
+type instant struct {
+	position  int
+	timestamp int64
+}
+
+type recordInstant struct {
+	actor string
+	at    instant
+}
+
 // Resolved is what a signing key turns out to be.
 //
 // The zero value is the honest answer for a key nobody has vouched for, and it
@@ -50,14 +62,13 @@ type anchorRecord struct {
 	// anchor. It is followed at lookup time rather than flattened at resolve
 	// time, because withdrawing an anchor has to withdraw what it minted.
 	parent string
-	// from is the position's signed timestamp: an endorsement says nothing
-	// about records that came before it.
-	from int64
+	// from is the endorsement's verified position: it says nothing about
+	// records that came before it, even when their timestamps tie.
+	from instant
 	// notAfter is the stated expiry, zero for none.
 	notAfter int64
-	// revoked is the timestamp of the revocation that withdrew it, zero for
-	// none.
-	revoked int64
+	// revoked is the verified position of the first effective withdrawal.
+	revoked *instant
 	// endorserKey is the hex-encoded key that signed the endorsement, and the
 	// only key that can withdraw it.
 	endorserKey string
@@ -74,6 +85,7 @@ type Resolution struct {
 	witness   *WitnessDeclaration
 	bySubject map[string][]*anchorRecord
 	byRecord  map[string]*anchorRecord
+	records   map[string]recordInstant
 }
 
 // Resolve folds the identity records in a verified log.
@@ -88,6 +100,7 @@ func Resolve(log host.Log) *Resolution {
 		genesis:   log.Genesis,
 		bySubject: map[string][]*anchorRecord{},
 		byRecord:  map[string]*anchorRecord{},
+		records:   map[string]recordInstant{},
 	}
 	if len(log.Records) == 0 {
 		return resolution
@@ -98,7 +111,9 @@ func Resolve(log host.Log) *Resolution {
 	// application profile.
 	initializing := log.Records[0].ActorKey
 	var witnessKey ed25519.PublicKey
-	for _, record := range log.Records {
+	for position, record := range log.Records {
+		at := instant{position: position, timestamp: record.Timestamp}
+		resolution.records[record.ID] = recordInstant{actor: record.Actor, at: at}
 		switch record.Schema {
 		case WitnessSchema:
 			declared, err := decodeBody[WitnessDeclaration](record.Payload)
@@ -117,15 +132,15 @@ func Resolve(log host.Log) *Resolution {
 			// key signed keep the force they had where they stand.
 			resolution.witness, witnessKey = &declared, key
 		case AnchorSchema:
-			resolution.admitAnchor(record, witnessKey)
+			resolution.admitAnchor(record, at, witnessKey)
 		case RevokeSchema:
-			resolution.admitRevocation(record, log.Genesis)
+			resolution.admitRevocation(record, at, log.Genesis)
 		}
 	}
 	return resolution
 }
 
-func (r *Resolution) admitAnchor(record host.Record, witnessKey ed25519.PublicKey) {
+func (r *Resolution) admitAnchor(record host.Record, at instant, witnessKey ed25519.PublicKey) {
 	anchor, err := decodeBody[Anchor](record.Payload)
 	if err != nil || anchor.Genesis != r.genesis {
 		return
@@ -137,7 +152,7 @@ func (r *Resolution) admitAnchor(record host.Record, witnessKey ed25519.PublicKe
 	entry := &anchorRecord{
 		record:      record.ID,
 		scope:       anchor.Scope,
-		from:        record.Timestamp,
+		from:        at,
 		notAfter:    anchor.NotAfter,
 		endorserKey: hexKey(record.ActorKey),
 	}
@@ -158,7 +173,7 @@ func (r *Resolution) admitAnchor(record host.Record, witnessKey ed25519.PublicKe
 		if anchor.Identity != nil {
 			return
 		}
-		parent := r.effectiveAt(record.Actor, record.Timestamp)
+		parent := r.effectiveAt(record.Actor, at)
 		if parent == nil {
 			return
 		}
@@ -175,7 +190,7 @@ func (r *Resolution) admitAnchor(record host.Record, witnessKey ed25519.PublicKe
 	r.byRecord[entry.record] = entry
 }
 
-func (r *Resolution) admitRevocation(record host.Record, genesis string) {
+func (r *Resolution) admitRevocation(record host.Record, at instant, genesis string) {
 	revocation, err := decodeBody[Revocation](record.Payload)
 	if err != nil || revocation.Genesis != genesis {
 		return
@@ -189,8 +204,8 @@ func (r *Resolution) admitRevocation(record host.Record, genesis string) {
 	if target.endorserKey != hexKey(record.ActorKey) {
 		return
 	}
-	if target.revoked == 0 || record.Timestamp < target.revoked {
-		target.revoked = record.Timestamp
+	if target.revoked == nil || at.position < target.revoked.position {
+		target.revoked = &at
 	}
 }
 
@@ -202,13 +217,18 @@ func (r *Resolution) Witness() (WitnessDeclaration, bool) {
 	return *r.witness, true
 }
 
-// Lookup reports who a signing key was at one instant in the log.
-//
-// The instant is a record's signed timestamp — the timestamp of the record
-// being folded, never the reader's clock — which is what makes two clones
-// folding the same log agree about expiry. A key with no endorsement in force
-// at that instant resolves to the zero [Resolved], which is not an error.
-func (r *Resolution) Lookup(actor string, at int64) Resolved {
+// LookupAt reports who signed one exact record at that record's verified log
+// position. An unknown or changed identifier resolves empty; there is no
+// timestamp-only fallback that could turn an ordering tie into authority.
+func (r *Resolution) LookupAt(recordID string) Resolved {
+	record, ok := r.records[recordID]
+	if !ok {
+		return Resolved{}
+	}
+	return r.lookup(record.actor, record.at)
+}
+
+func (r *Resolution) lookup(actor string, at instant) Resolved {
 	candidates := r.bySubject[actor]
 	// The most recent qualifying endorsement answers, so re-anchoring a key —
 	// a wider scope, a later expiry — is one more record.
@@ -224,10 +244,10 @@ func (r *Resolution) Lookup(actor string, at int64) Resolved {
 	return Resolved{}
 }
 
-// effectiveAt is Lookup's internal form, used while folding so that a
-// delegation is judged against the endorsements that already stood when it was
-// recorded.
-func (r *Resolution) effectiveAt(actor string, at int64) *anchorRecord {
+// effectiveAt is lookup's internal form, used while folding so that a
+// delegation is judged against the endorsements that already stood at its
+// exact record position.
+func (r *Resolution) effectiveAt(actor string, at instant) *anchorRecord {
 	candidates := r.bySubject[actor]
 	for i := len(candidates) - 1; i >= 0; i-- {
 		if r.effective(candidates[i], at, 0) {
@@ -240,21 +260,21 @@ func (r *Resolution) effectiveAt(actor string, at int64) *anchorRecord {
 // effective judges one endorsement, and everything it inherits from, at one
 // instant.
 //
-// Revocation wins a tie with the instant asked about: an endorsement withdrawn
-// at the same second as the record being judged is already withdrawn for it.
-// Signed timestamps have one-second resolution, so ties are real, and the safe
-// reading of a withdrawal is the one that takes effect.
-func (r *Resolution) effective(anchor *anchorRecord, at int64, depth int) bool {
+// Position decides both edges: an anchor cannot reach backward, and a
+// revocation takes force at its own record and no earlier. Timestamp is read
+// only for NotAfter expiry. Recursion carries the same instant into every
+// parent, so a delegation cannot blur either boundary.
+func (r *Resolution) effective(anchor *anchorRecord, at instant, depth int) bool {
 	if depth > maxChain {
 		return false
 	}
-	if at < anchor.from {
+	if at.position < anchor.from.position {
 		return false
 	}
-	if anchor.notAfter != 0 && at > anchor.notAfter {
+	if anchor.notAfter != 0 && at.timestamp > anchor.notAfter {
 		return false
 	}
-	if anchor.revoked != 0 && at >= anchor.revoked {
+	if anchor.revoked != nil && at.position >= anchor.revoked.position {
 		return false
 	}
 	if anchor.parent == "" {
