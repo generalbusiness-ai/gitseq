@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f3e11bc8213b6a6b7ff111a1aa2e36f3b0fe982c","text":"Retire ui artifact at bd81fbb1 (reviewed changes-requested in 20978478); succeeded by 4eddb211 at 43daa5f0 on the same branch."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57bc764ac7ed79a99be7d3b29678fa8042892e1f","text":"Retire internal/service artifact at bd81fbb1; succeeded by 27c20b7a at 43daa5f0 on the same branch."}
