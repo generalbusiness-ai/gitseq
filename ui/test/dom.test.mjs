@@ -484,6 +484,60 @@ test("exactly one number heads the list, and each other number opens to its own 
   }
 });
 
+// An empty queue and an undischargeable one look identical on screen unless
+// the screen says which it is, so the disclosure is the condition, not a
+// decoration on it. Deleting it left all 68 tests green: every assertion about
+// it was a doesNotMatch on the resolved case, which any missing element
+// satisfies. A guard is only pinned by asserting it is present when it should
+// be.
+test("the ratification queue says when nobody, or nobody in particular, can discharge it", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  let root;
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    // A fresh mount per case. The population is component state, so reusing
+    // one root means the second click toggles back to the live list instead of
+    // opening the queue — which passed silently as "no warning present".
+    const show = async (roles) => {
+      if (root) await act(async () => root.unmount());
+      root = createRoot(document.getElementById("root"));
+      const workroom = listRoom();
+      const projection = workroom.status.durable.projection;
+      projection.actors.hugh.roles = roles.hugh;
+      projection.actors.codex.roles = roles.codex;
+      projection.statements.push({ event: "e10", sequence: 10, actor: "codex", kind: "propose", text: "Bounded status", timestamp: NOW_S - 3 * 86400 });
+      projection.decisions.push({ event: "e10", sequence: 10, verdict: "effective", reason: "recorded" });
+      await act(async () => {
+        root.render(React.createElement(RequestList, { workroom, onOpenThread() {} }));
+      });
+      const summaries = [...document.querySelectorAll("p button")];
+      await click(summaries[2]);
+    };
+
+    await show({ hugh: [], codex: [] });
+    assert.match(document.body.textContent, /Nobody in this room holds .ratifier./,
+      "an owed act with no ratifier must not read as an empty queue");
+    assert.equal(document.querySelectorAll("tbody tr").length, 1,
+      "the obligation still exists when nobody can discharge it");
+    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[1].textContent, "",
+      "with no ratifier the queue names nobody rather than guessing");
+
+    await show({ hugh: ["ratifier"], codex: ["ratifier"] });
+    assert.match(document.body.textContent, /2 actors hold .ratifier./,
+      "two candidates do not determine a next mover, and the screen must say so");
+    assert.equal(document.querySelectorAll("tbody tr").length, 1);
+    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[1].textContent, "");
+
+    await show({ hugh: ["ratifier"], codex: [] });
+    assert.doesNotMatch(document.body.textContent, /holds .ratifier./,
+      "with exactly one ratifier there is nothing to disclose");
+    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[1].textContent, "hugh");
+  } finally {
+    if (root) await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
 test("clicking a row opens that request's thread", async () => {
   const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
   const root = createRoot(document.getElementById("root"));
