@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:38f276c50b6e9997ccedb365c879b857ceb0f942","text":"Retire ui artifact at 26e25bdf; succeeded by bcc36d56 at 5ea95ce4 on the same branch."}
+{"kind":"promise","text":"I will independently review exact head 1be57f9ce08972a8d94f3ba9c053513ca5b61836, co-sign all three live artifacts, re-measure the full-log decision delta with a verified old baseline, run the requested mutation and fixture checks, and file Architecture, Security, and Simplification conclusions."}
