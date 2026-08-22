@@ -428,6 +428,18 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 
 func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	workspace := initRepository(t, "repo")
+	snapshot, err := workspace.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := snapshot.Projection.Actors[workspace.Config.Actors["human"].Fingerprint].MembershipEvent
+	if _, err := workspace.Act(context.Background(), "human", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "live UI artifact",
+		Body: map[string]string{"path": "ui", "commit": "candidate"}, RestsOn: []string{seed},
+		IdempotencyKey: "mcp-artifact-selector-boundary",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	resident, err := service.New(workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -466,11 +478,29 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	artifactPage, ok := value.(statusview.ArtifactPage)
-	if !ok || artifactPage.Frontier.Head == "" || artifactPage.MatchingTotal != 0 || len(artifactPage.Paths) != 1 || artifactPage.Paths[0] != "ui" {
+	if !ok || artifactPage.Frontier.Head == "" || artifactPage.MatchingTotal != 1 || len(artifactPage.Paths) != 1 || artifactPage.Paths[0] != "ui" {
 		t.Fatalf("unexpected exact-path artifact response: %#v", value)
 	}
+	// State and reaches are CLI-only. MCP schemas are advisory, so the adapter
+	// must also drop these undeclared fields at the executable boundary. If
+	// either leaks through, retired selects zero and the missing anchor selects
+	// zero; the established live exact-path contract selects the one row.
+	for _, extra := range []map[string]any{{"state": "retired"}, {"reaches": "no/such/anchor"}} {
+		arguments := map[string]any{"paths": []any{"ui"}}
+		for key, value := range extra {
+			arguments[key] = value
+		}
+		value, _, err = server.call(context.Background(), toolCall{Name: "artifacts", Arguments: arguments})
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := value.(statusview.ArtifactPage)
+		if page.MatchingTotal != 1 || page.Artifacts[0].Path != "ui" {
+			t.Fatalf("undeclared MCP selector %v changed artifact semantics: %+v", extra, page)
+		}
+	}
 
-	snapshot, err := workspace.Snapshot(context.Background())
+	snapshot, err = workspace.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -487,7 +517,7 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	mu.Lock()
 	gotPaths := append([]string(nil), paths...)
 	mu.Unlock()
-	if strings.Join(gotPaths, ",") != "/v0/work-query,/v0/artifact-query,/v0/inspect" {
+	if strings.Join(gotPaths, ",") != "/v0/work-query,/v0/artifact-query,/v0/artifact-query,/v0/artifact-query,/v0/inspect" {
 		t.Fatalf("selective tools used the wrong resident routes: %v", gotPaths)
 	}
 }

@@ -520,8 +520,17 @@ state. Live status may be joined to it, but the durable and live cursors remain
 distinct.
 
 `internal/statusview` builds Workroom summaries, orientations, bounded work
-pages, exact-path live-artifact pages, exact-item inspection, and the bounded
-join of a caller's live priority inbox. Work and status rows include the
+pages, exact-path artifact pages, exact-item inspection, the whole-log review
+gate, the bounded staleness-wave summary, and the bounded join of a caller's
+live priority inbox. The resident and MCP artifact contract remains the live
+exact-path page. A separate CLI selection asks the same page-building core for
+one of four lifecycle states — live, retired, succeeded, all — or for artifacts
+whose chain of artifact bases reaches an anchor path transitively. The
+review gate is a fixed answer rather than a composable filter: it reports
+review requests awaiting a first verdict, references that resolve to no live
+artifact, and the approved heads still worth asking Git about. Whether those
+heads have landed is a Git question and is answered by the surface that can
+ask, not by the projection. Work and status rows include the
 request, report, exact-head, and latest-review facts needed for routine action;
 write surfaces return the fold decision after an append rather than previewing
 application force. `internal/app` opens a repository, joins the kernel records
@@ -553,7 +562,14 @@ every non-current artifact answers nothing in a workroom of any age.
 The outer surfaces present one application to people and programs:
 
 - `cmd/gs` combines storage and kernel operations with Workroom authoring,
-  projection, review, merge, and resident commands.
+  projection, query, review, merge, and resident commands. Its bounded query
+  commands reuse the `internal/statusview` filtering and page builders used by
+  the remote surfaces. CLI-only selector request types keep additional reach
+  from widening the resident HTTP or MCP contracts as a side effect. Where a
+  query needs a fact Git holds
+  rather than the projection — whether an approved head is an ancestor of a
+  branch — that join happens here, because Git remains outside the Workroom
+  interpreter.
 - `cmd/gitseq-mcp` exposes Workroom tools and live coordination over an MCP
   transport. The MCP protocol is a surface contract, not the Workroom fold.
   The `work` tool's `stale` enum admits `summary`, `include`, `only` and
@@ -617,7 +633,7 @@ the same result.
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it opens the repository's configured actor and sequencer key custody, builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. The trusted resident may invoke this local custody for several actors; the nexus credential does not alter key files, kernel verification or fold authority. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. |
-| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff and composes the Workroom receipt, successor artifacts, and retirements; Git remains outside the Workroom interpreter. Command grouping must not move Workroom concepts into the kernel packages. |
+| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff and composes the Workroom receipt, successor artifacts, and retirements, and it asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Command grouping must not move Workroom concepts into the kernel packages. |
 | `cmd/gitseq-mcp` | Surface | Adapts MCP calls to Workroom and nexus operations. Protocol compatibility and fold compatibility are separate. |
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |

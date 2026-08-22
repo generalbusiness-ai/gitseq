@@ -365,6 +365,23 @@ func TestSelectiveWorkAndInspectionEndpoints(t *testing.T) {
 		t.Fatalf("unexpected selective work page: status=%d page=%+v", response.StatusCode, page)
 	}
 
+	// Artifact state and provenance closure are CLI-only selectors. The HTTP
+	// request contract remains the original exact live paths, and its strict
+	// decoder refuses either field instead of silently honouring it.
+	for _, body := range []string{
+		`{"paths":["ui"],"state":"all"}`,
+		`{"paths":["ui"],"reaches":"."}`,
+	} {
+		response, err = http.Post(httpServer.URL+"/v0/artifact-query", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("CLI-only artifact selector was honoured over HTTP: body=%s status=%d", body, response.StatusCode)
+		}
+	}
+
 	inspect, _ := json.Marshal(InspectRequest{Event: membershipEvent})
 	response, err = http.Post(httpServer.URL+"/v0/inspect", "application/json", bytes.NewReader(inspect))
 	if err != nil {
