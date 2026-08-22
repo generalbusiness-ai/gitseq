@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:61515ff6803608e23a608915c954a4480d14ef7f","text":"Retire internal/service artifact at 26e25bdf; succeeded by e4e802ee at 5ea95ce4 on the same branch."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:37751111d3aece0e8d771667475adcd6b643cc23","text":"Refiled as effdc15f: the head moved from 26e25bdf to 5ea95ce4 (one added commit removing the top-bar connection dot) and the artifacts this request rested on are retired."}
