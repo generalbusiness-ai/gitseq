@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will implement position-aware host identity resolution on a fresh request/identity-position worktree, remove the timestamp-only public lookup, prove same-second ordering and fail-closed record resolution, update the architecture contract, and deliver an exact gated head for independent review."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5cd011a03216865cd76d1b6af303d555c17441d4"}
