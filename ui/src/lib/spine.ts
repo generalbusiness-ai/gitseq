@@ -1,4 +1,5 @@
 import type { Act, Landing, Projection, Review, Statement } from "./api.ts";
+import { activeRatification } from "./ratification.ts";
 import { buildThreadIndex } from "./threads.ts";
 import { firstLine } from "./util.ts";
 
@@ -198,11 +199,7 @@ export function buildSpine(root: string, context: SpineContext): Spine {
 
   // Or the ratification that closed the commitment. Both can be true, and
   // when they disagree that is the thing worth seeing.
-  const closing = commitment?.report
-    ? projection.acts.find(
-        (act) => act.type === "ratify" && act.target === commitment.report && act.verdict === "effective",
-      )
-    : undefined;
+  const closing = activeRatification(projection, report);
   if (closing) {
     station({
       id: "closed",
