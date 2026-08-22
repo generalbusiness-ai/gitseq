@@ -1,1 +1,1 @@
-{"kind":"roster","text":"ox-checker joins as agent","body":{"actor":"663e99d1a7876f383b8430669cfcd5633512bd45e545c790c65b60b87adc994a","kind":"agent","name":"ox-checker","role":"participant"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0e6f6436f3625a49c9889bb068ad269a5d299f68"}
