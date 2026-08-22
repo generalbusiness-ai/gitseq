@@ -307,7 +307,7 @@ func renderInspection(inspection statusview.ItemInspection, source string) strin
 		fmt.Fprintf(&out, "  act %s\n", inspection.Act.Type)
 	}
 	if inspection.Decision != nil {
-		fmt.Fprintf(&out, "  decision %s: %s\n", inspection.Decision.Verdict, inspection.Decision.Reason)
+		fmt.Fprintf(&out, "  decision %s: %s\n", inspection.Decision.Verdict, statusview.Text(inspection.Decision.Reason))
 	}
 	if inspection.Commitment != nil {
 		fmt.Fprintf(&out, "  commitment %s on request %s\n", inspection.Commitment.Status, short(inspection.Commitment.Request))

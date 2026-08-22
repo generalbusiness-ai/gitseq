@@ -24,6 +24,12 @@ import (
 // replaced. And it puts terminal control sequences and a bidi override in every
 // user-controlled field, so that the day this text is escaped rather than
 // merely trimmed, this test says whether the escaping moved with it.
+//
+// That day came. Text now escapes controls, bidi overrides and invalid UTF-8
+// instead of passing them through, so these bytes were recaptured from the
+// escaping implementation. The property the test pins is unchanged: selection
+// happens before shaping, and the output is exact. The golden is verified to
+// contain no control byte and to carry the escapes as visible text.
 func TestBoundedSelectionKeepsExactlyTheOldBytes(t *testing.T) {
 	want, err := os.ReadFile("testdata/bounded-summary-golden.json")
 	if err != nil {

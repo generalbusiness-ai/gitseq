@@ -78,7 +78,7 @@ type WorkReview struct {
 }
 
 // WorkDetails carries the bounded facts needed to act on a commitment row.
-// Conditions is copied without text truncation for open requests; the number
+// Conditions is neutralized but not truncated for open requests; the number
 // of rows remains capped by the surrounding status or work page.
 type WorkDetails struct {
 	Conditions   string      `json:"conditions,omitempty"`
@@ -356,7 +356,7 @@ func enrichWorkRows(projection workroom.Projection, targets []workRowTarget) {
 				*targets[index].Text = Text(statement.Text)
 			}
 			if targets[index].Status == "open" && targets[index].Details != nil {
-				targets[index].Details.Conditions = statement.Body["conditions"]
+				targets[index].Details.Conditions = Safe(statement.Body["conditions"])
 			}
 		}
 		for _, index := range reports[statement.Event] {

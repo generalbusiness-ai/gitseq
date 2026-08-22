@@ -346,7 +346,7 @@ func buildArtifactPage(durable app.Snapshot, query ArtifactSelection, filter str
 		if position < offset || len(rows) == query.Limit {
 			continue
 		}
-		rows = append(rows, ArtifactRow{Event: artifact.Event, Path: artifact.Path, Commit: artifact.Commit,
+		rows = append(rows, ArtifactRow{Event: artifact.Event, Path: Text(artifact.Path), Commit: artifact.Commit,
 			Stale: artifact.Stale, Retired: artifact.Retired, Succeeded: artifact.Succeeded,
 			DescribesSupersededWorld: artifact.DescribesSupersededWorld})
 	}
@@ -355,7 +355,7 @@ func buildArtifactPage(durable app.Snapshot, query ArtifactSelection, filter str
 	}
 	end := offset + len(rows)
 	page := ArtifactPage{Frontier: Frontier{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth},
-		Paths: append([]string(nil), query.Paths...), Artifacts: rows, MatchingTotal: matching, Returned: len(rows),
+		Paths: neutralized(query.Paths), Artifacts: rows, MatchingTotal: matching, Returned: len(rows),
 		Before: offset, Remaining: matching - end, Degraded: degraded}
 	if end < matching {
 		page.NextCursor = encodeArtifactCursor(durable.Head, filter, end)

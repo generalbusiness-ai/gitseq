@@ -297,7 +297,7 @@ func inboxView(projection workroom.Projection, inbox *nexus.Inbox, degraded bool
 	for _, frame := range inbox.Frames {
 		actorName := ActorName(projection, frame.Actor)
 		view.Frames = append(view.Frames, AddressedFrame{
-			Actor: frame.Actor, ActorName: Text(actorName), Text: frame.Text, About: frame.About,
+			Actor: frame.Actor, ActorName: Text(actorName), Text: Safe(frame.Text), About: frame.About,
 			Conversation: frame.Conversation, Sequence: frame.Sequence, Re: frame.Re,
 			Recipients: append([]string(nil), frame.Recipients...), Thread: frame.Thread,
 		})
@@ -322,7 +322,7 @@ func actorAttention(projection workroom.Projection, fingerprint, actorName strin
 			continue
 		}
 		byEvent[statement.Event] = EventView{Event: statement.Event, Actor: Text(actorName), Kind: string(statement.Kind),
-			Verdict: string(decision.Verdict), Reason: decision.Reason, Text: Text(statement.Text)}
+			Verdict: string(decision.Verdict), Reason: Text(decision.Reason), Text: Text(statement.Text)}
 	}
 	for _, act := range projection.Acts {
 		decision, wanted := nonEffective[act.Event]
@@ -330,7 +330,7 @@ func actorAttention(projection workroom.Projection, fingerprint, actorName strin
 			continue
 		}
 		byEvent[act.Event] = EventView{Event: act.Event, Actor: Text(actorName), Kind: act.Type,
-			Verdict: string(decision.Verdict), Reason: decision.Reason, Target: act.Target, Text: Text(act.Text)}
+			Verdict: string(decision.Verdict), Reason: Text(decision.Reason), Target: act.Target, Text: Text(act.Text)}
 	}
 	attention := make([]EventView, 0, len(byEvent))
 	for _, decision := range projection.Decisions {
@@ -347,7 +347,7 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 		Totals: actorTotals(projection, durable.Depth), Live: actorLive(live, degraded), PriorityChat: inboxView(projection, inbox, degraded),
 		FollowWithWait: "pass cursor back to wait to receive only what changes after it"}
 	if actor, ok := projection.Actors[fingerprint]; ok {
-		digest.You.Kind, digest.You.MembershipEvent = actor.Kind, actor.MembershipEvent
+		digest.You.Kind, digest.You.MembershipEvent = Text(actor.Kind), actor.MembershipEvent
 		digest.You.Roles, digest.You.RolesSkipped = CapRoles(actor.Roles, ListCap)
 		if actor.Name != "" {
 			digest.You.Name = Text(actor.Name)
@@ -392,7 +392,7 @@ func BuildOrientation(durable app.Snapshot, fingerprint, actorName string) (Orie
 	}
 	roles, skipped := CapRoles(actor.Roles, ListCap)
 	return Orientation{
-		You: ActorView{Name: Text(name), Fingerprint: fingerprint, Kind: actor.Kind, MembershipEvent: actor.MembershipEvent,
+		You: ActorView{Name: Text(name), Fingerprint: fingerprint, Kind: Text(actor.Kind), MembershipEvent: actor.MembershipEvent,
 			Roles: roles, RolesSkipped: skipped},
 		Frontier:          Frontier{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth},
 		ProjectionVersion: OrientationProjectionVersion,
@@ -433,7 +433,7 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 		}
 	}
 	for _, decision := range fresh {
-		view := EventView{Event: decision.Event, Verdict: string(decision.Verdict), Reason: decision.Reason}
+		view := EventView{Event: decision.Event, Verdict: string(decision.Verdict), Reason: Text(decision.Reason)}
 		if statement, ok := statements[decision.Event]; ok {
 			view.Actor, view.Kind, view.Text = Text(ActorName(projection, statement.Actor)), string(statement.Kind), Text(statement.Text)
 		} else if act, ok := acts[decision.Event]; ok {

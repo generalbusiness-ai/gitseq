@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -140,17 +141,104 @@ func Cap[T any](items []T, limit int) ([]T, int) {
 	return items[len(items)-limit:], len(items) - limit
 }
 
-// Text normalizes whitespace and caps user-controlled text by bytes.
+// hostile reports whether a rune must be shown as an escape rather than sent
+// to a terminal as itself: every C0 and C1 control, DEL, and every format
+// character — the bidi overrides and isolates, and the zero-width marks that
+// let one string print as another. Whitespace never reaches here, because the
+// caller folds it first.
+func hostile(value rune) bool {
+	return value < 0x20 || value == 0x7f || (value >= 0x80 && value <= 0x9f) || unicode.Is(unicode.Cf, value)
+}
+
+// neutralized renders a list of user-controlled strings for display. The
+// durable values are unchanged; a caller that needs to match a path exactly
+// reads the record, not the view.
+func neutralized(values []string) []string {
+	rendered := make([]string, len(values))
+	for index, value := range values {
+		rendered[index] = Text(value)
+	}
+	return rendered
+}
+
+// Safe neutralizes user-controlled text a caller renders whole: same escapes
+// as Text, but no one-line fold and no byte cap. Newline and tab survive,
+// because a caller that shows the whole thing wants its shape; carriage return
+// does not, because it repaints a line already written.
+func Safe(value string) string {
+	var out strings.Builder
+	for index := 0; index < len(value); {
+		decoded, size := utf8.DecodeRuneInString(value[index:])
+		switch {
+		case decoded == utf8.RuneError && size == 1:
+			fmt.Fprintf(&out, `\x%02x`, value[index])
+		case decoded == '\n' || decoded == '\t':
+			out.WriteRune(decoded)
+		case hostile(decoded):
+			if decoded <= 0xff {
+				fmt.Fprintf(&out, `\x%02x`, decoded)
+			} else {
+				fmt.Fprintf(&out, `\u%04x`, decoded)
+			}
+		default:
+			out.WriteString(value[index : index+size])
+		}
+		index += size
+	}
+	return out.String()
+}
+
+// Text renders user-controlled text as one safe terminal line and caps it by
+// bytes. Runs of whitespace fold to single spaces; anything that could move
+// the cursor, repaint the screen, reorder the line, or hide itself is written
+// as a visible escape. Invalid UTF-8 is escaped byte by byte rather than
+// silently replaced, so a reader can tell malformed input from a real U+FFFD.
+//
+// The durable bytes are untouched. This is what a bounded view shows, not what
+// the log holds, and anyone who needs the original can ask for the record.
 func Text(value string) string {
-	value = strings.Join(strings.Fields(value), " ")
-	if len(value) <= TextCap {
-		return value
+	var out strings.Builder
+	// safe is the length of the longest prefix that still leaves room for the
+	// ellipsis, so truncation lands on a token boundary and never inside an
+	// escape.
+	safe, separate := 0, false
+	for index := 0; index < len(value); {
+		decoded, size := utf8.DecodeRuneInString(value[index:])
+		var token string
+		switch {
+		case decoded == utf8.RuneError && size == 1:
+			token = fmt.Sprintf(`\x%02x`, value[index])
+		case unicode.IsSpace(decoded):
+			separate = out.Len() > 0
+			index += size
+			continue
+		case hostile(decoded):
+			if decoded <= 0xff {
+				token = fmt.Sprintf(`\x%02x`, decoded)
+			} else {
+				token = fmt.Sprintf(`\u%04x`, decoded)
+			}
+		default:
+			token = value[index : index+size]
+		}
+		index += size
+		width := len(token)
+		if separate {
+			width++
+		}
+		if out.Len()+width > TextCap {
+			return out.String()[:safe] + "…"
+		}
+		if separate {
+			out.WriteByte(' ')
+			separate = false
+		}
+		out.WriteString(token)
+		if out.Len() <= TextCap-len("…") {
+			safe = out.Len()
+		}
 	}
-	limit := TextCap - len("…")
-	for limit > 0 && !utf8.RuneStart(value[limit]) {
-		limit--
-	}
-	return value[:limit] + "…"
+	return out.String()
 }
 
 // ActorName resolves durable fingerprints without ever replacing an unknown
