@@ -33,6 +33,19 @@ type queryFixture struct {
 func newQueryFixture(t *testing.T) queryFixture {
 	t.Helper()
 	ctx := context.Background()
+	// This test counts Git processes, so it must not inherit the operator's or
+	// the runner's Git configuration: a global gc.auto or maintenance.auto can
+	// start work this fixture never asked for, and that work outlives the test
+	// body and writes into .git while TempDir is removing it. internal/docset
+	// already pins these for the same reason; cmd/gs did not.
+	//
+	// GIT_OPTIONAL_LOCKS=0 is the narrower half. It tells Git not to take
+	// optional locks, so a read-only command cannot write into .git as a side
+	// effect of answering a question. A fixture asserting an exact process
+	// count should not have read-only commands mutating the repository.
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	t.Setenv("GIT_OPTIONAL_LOCKS", "0")
 	repo := filepath.Join(t.TempDir(), "repo")
 	testGit(t, "", "init", "-q", "-b", "main", repo)
 	testGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed")
