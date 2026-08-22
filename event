@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57bc764ac7ed79a99be7d3b29678fa8042892e1f","text":"Retire internal/service artifact at bd81fbb1; succeeded by 27c20b7a at 43daa5f0 on the same branch."}
+{"kind":"promise","text":"I will independently review exact pushed head 43daa5f03f3d662b7ab2ce83c63c05d753eb1aeb, re-check the four availability repairs and the design-note question against code and tests, and file an exact-head Architecture, Security, and Simplification verdict."}
