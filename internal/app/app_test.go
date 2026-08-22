@@ -2128,8 +2128,14 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 		Verb: VerbState, Kind: workroom.KindReport, Text: "done",
 		RestsOn: []string{request.ID}, IdempotencyKey: "report-past-redefined-claim",
 	})
+	// The reason matters as much as the refusal. Asserting only that some error
+	// came back would let this pass through any unrelated fail-closed path and
+	// still read as proof that the claim was seen.
 	if err == nil {
 		t.Fatal("the boundary accepted a direct report the fold refuses, because it read the current vocabulary rather than the claim's own")
+	}
+	if !strings.Contains(err.Error(), "report on the promise") {
+		t.Fatalf("refused, but not because the redefined claim was still seen: %v", err)
 	}
 	after, err := workspace.Snapshot(ctx)
 	if err != nil {
@@ -2137,5 +2143,73 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 	}
 	if after.Head != before.Head || after.Depth != before.Depth {
 		t.Fatalf("refused report changed the workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+	}
+}
+
+// The other half of the profile contract. The test above proves a cache is
+// dropped when the profile string changes and that a rebuild with the same
+// rules gives the same answer. It cannot prove the case the profile exists
+// for: rules that actually changed, where serving the cache would answer with
+// the old world. workroom-fold@9 adds Statement.lifecycle, so an @8 cache holds
+// statements that carry none, and rebuilding must produce them.
+func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "build",
+		Body:    map[string]string{"to": "human", "conditions": "tests pass"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-rebuild-request",
+	})
+	current, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lifecycles := 0
+	for _, statement := range current.Projection.Statements {
+		if statement.Lifecycle != "" {
+			lifecycles++
+		}
+	}
+	if lifecycles == 0 {
+		t.Fatal("no statement carries a lifecycle, so this test cannot tell a rebuild from a stale cache")
+	}
+
+	// What an @8 cache holds: the same projection with the field absent.
+	stale := current
+	stale.Projection.Statements = append([]workroom.Statement(nil), current.Projection.Statements...)
+	for i := range stale.Projection.Statements {
+		stale.Projection.Statements[i].Lifecycle = ""
+	}
+	completed := &snapshotFlight{
+		done:   make(chan struct{}),
+		result: SourcedSnapshot{Snapshot: stale, Source: SnapshotSourceSignedCheckpointTail},
+	}
+	close(completed.done)
+	workspace.flightMu.Lock()
+	workspace.flight.Store(completed)
+	workspace.flightMu.Unlock()
+	workspace.snapshotProfile = "workroom-fold@8"
+
+	rebuilt, err := workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The stored profile is the application name and fold version together, so
+	// this asks whether the stale one was replaced by one naming the current
+	// fold rather than matching an exact string.
+	if workspace.snapshotProfile == "workroom-fold@8" || !strings.Contains(workspace.snapshotProfile, workroom.ProfileVersion) {
+		t.Fatalf("cache profile = %q, want one naming %q: the older profile was not replaced", workspace.snapshotProfile, workroom.ProfileVersion)
+	}
+	rebuiltLifecycles := 0
+	for _, statement := range rebuilt.Snapshot.Projection.Statements {
+		if statement.Lifecycle != "" {
+			rebuiltLifecycles++
+		}
+	}
+	if rebuiltLifecycles != lifecycles {
+		t.Fatalf("rebuilt projection carries %d lifecycles, want %d: the @8 cache was served instead of replayed", rebuiltLifecycles, lifecycles)
 	}
 }

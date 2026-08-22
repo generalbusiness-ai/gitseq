@@ -436,7 +436,18 @@ fold, or UI expectations.
   so a later withdrawal or a later promise cannot move a completion between
   commitments. Widening the basis reinterprets records already in the log — three
   reports refused for want of a promise become effective on a re-fold — so it
-  advances the fold profile to `workroom-fold@8`;
+  advances the fold profile to `workroom-fold@8`. Every projected statement
+  also carries the commitment lifecycle it was decided under: the definition
+  bound at that record's own position, not whichever definition of its kind
+  stands now. A reader classifying a historical record by the current
+  vocabulary would disagree with the fold about what that record is, so a
+  redefined kind would silently change the meaning of claims already made.
+  The one place the current vocabulary is right is the statement not yet
+  appended, which has no position and will be decided under the definition
+  standing when it lands. Carrying the lifecycle changes the exact projection
+  bytes, which is what a projection cache is keyed on, so it advances the
+  profile again to `workroom-fold@9`: a cache written under `@8` is rejected
+  and the history replayed, rather than answered from the old world;
 - ratification and supersession rules. The projection names the ratification
   in force for a statement, not only that one exists, because the rule cannot
   be recovered from what it hands out: projected acts carry no retirement, so

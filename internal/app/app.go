@@ -787,16 +787,15 @@ func (w *Workspace) normalizeRequestShape(ctx context.Context, kind workroom.Kin
 // commitment takes one closure and a claim already made is the thing to report
 // on. The fold decides this again and authoritatively; refusing here only lets
 // an actor learn it before signing rather than after appending.
-func (w *Workspace) validateDirectReport(request workroom.Statement, reporter string, snapshot Snapshot, statements map[string]workroom.Statement, lifecycles map[workroom.Kind]workroom.Lifecycle) error {
+func (w *Workspace) validateDirectReport(request workroom.Statement, reporter string, snapshot Snapshot, statements map[string]workroom.Statement) error {
 	if request.Body["to"] != reporter {
 		return errors.New("only the requested performer may report directly on a request")
 	}
 	// Only effective, unretired promises of the reporter's block the direct
-	// route, and promise-ness is read from the active vocabulary rather than
-	// the built-in starters: a refused record is not a commitment, and a
-	// declared promise-lifecycle kind is. The statements map the caller built
-	// already carries both facts, so this asks the same question the rest of
-	// the boundary asks rather than a second, narrower one.
+	// route: a refused record is not a commitment, and a withdrawn one is
+	// history. Promise-ness is the lifecycle the fold bound to that record at
+	// its own position, which the statements map carries, so a kind redefined
+	// since does not change what an existing claim was.
 	for _, statement := range statements {
 		if statement.Actor != reporter || statement.Retired {
 			continue
@@ -892,7 +891,7 @@ func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, ki
 	case len(requests) > 1:
 		return fmt.Errorf("report requires exactly one effective request-lifecycle basis in rests_on; got %d", len(requests))
 	case len(requests) == 1:
-		if err := w.validateDirectReport(requests[0], reporter, snapshot, statements, lifecycles); err != nil {
+		if err := w.validateDirectReport(requests[0], reporter, snapshot, statements); err != nil {
 			return err
 		}
 	default:
