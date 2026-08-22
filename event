@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9d3a621d58393eb7620841d2fd4aaae4290f4a0","text":"Withdraw this stale review request: its exact report-lifecycle head is already an ancestor of main, so re-review cannot advance work."}
+{"kind":"promise","text":"I will assess the preserved GitHub HTTP-boundary delta against current main and report whether it is safe to discard or needs a fresh current-world implementation request."}
