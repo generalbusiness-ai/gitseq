@@ -10,7 +10,9 @@ import { JSDOM } from "jsdom";
 
 const uiRoot = fileURLToPath(new URL("..", import.meta.url));
 
-const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", { pretendToBeVisual: true });
+// A url is required for a real origin: without one jsdom refuses localStorage,
+// which the notification read position needs.
+const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", { pretendToBeVisual: true, url: "http://localhost/" });
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
@@ -18,6 +20,9 @@ globalThis.HTMLElement = dom.window.HTMLElement;
 globalThis.Element = dom.window.Element;
 globalThis.Node = dom.window.Node;
 globalThis.MouseEvent = dom.window.MouseEvent;
+// The notification read position is browser-local, so the panel only behaves
+// correctly when there is somewhere to remember it.
+globalThis.localStorage = dom.window.localStorage;
 // jsdom lays nothing out, so it ships no scrollTo; the pane only uses it to
 // follow the tail.
 dom.window.Element.prototype.scrollTo = function scrollTo() {};
@@ -562,5 +567,137 @@ test("the thread draws one rail of salient stations and keeps its history collap
     globalThis.fetch = previousFetch;
     await act(async () => root.unmount());
     await vite.close();
+  }
+});
+
+// The notification surface. "N for you" was a counter that jumped you to the
+// oldest unread act, so the reader could not see what the number stood for
+// and could not choose among them. It is now a list hanging off your own
+// face. Both halves — the bell that says there is something, and the row that
+// takes you to one particular thing — are click-wired, so only a DOM can see
+// them work.
+
+const forYouRoom = () => {
+  const room = structuredClone(workroom);
+  room.actors = [
+    { name: "codex", fingerprint: "codex-fingerprint", roles: [], custody: true },
+    { name: "claude", fingerprint: "claude-fingerprint", roles: [], custody: true },
+  ];
+  room.status.durable.projection.statements = [
+    { event: "ask-one", actor: "claude-fingerprint", kind: "request", text: "Repair the citation anchors", body: { to: "codex-fingerprint" }, timestamp: 10 },
+    { event: "ask-two", actor: "claude-fingerprint", kind: "assert", text: "Mentioning you about the gate", body: { mentions: "codex-fingerprint" }, timestamp: 20 },
+    { event: "not-mine", actor: "claude-fingerprint", kind: "request", text: "Somebody else's work", body: { to: "claude-fingerprint" }, timestamp: 30 },
+  ];
+  room.status.durable.projection.decisions = [
+    { event: "ask-one", verdict: "effective", reason: "recorded" },
+    { event: "ask-two", verdict: "effective", reason: "recorded" },
+    { event: "not-mine", verdict: "effective", reason: "recorded" },
+  ];
+  room.status.durable.projection.commitments = [];
+  room.status.durable.projection.provenance = {};
+  room.status.live.presence = {};
+  room.status.live.activity = {};
+  return room;
+};
+
+const mountTopBar = async (root, room, jumped) => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const { TopBar } = await vite.ssrLoadModule("/src/components/TopBar.tsx");
+  await act(async () => {
+    root.render(
+      React.createElement(TopBar, {
+        workroom: room,
+        session: { actor: "codex", activity: { status: "available", focus: [] }, setActivity() {} },
+        onJumpEvent: (event) => jumped.push(event),
+      }),
+    );
+  });
+  return vite;
+};
+
+test("notifications hang off your own avatar and open as a clickable list", async () => {
+  localStorage.clear();
+  const root = createRoot(document.getElementById("root"));
+  const jumped = [];
+  let vite;
+  try {
+    vite = await mountTopBar(root, forYouRoom(), jumped);
+
+    // The old counter is gone: no separate button announcing a number.
+    assert.equal(buttonByText((text) => /for you$/.test(text)), undefined, "the standalone for-you counter still renders");
+
+    // Your own chip carries the count, and opens a menu rather than jumping.
+    const chip = document.querySelector('button[aria-haspopup="menu"]');
+    assert.ok(chip, "the identity chip is not a menu button");
+    assert.equal(chip.getAttribute("aria-expanded"), "false", "the panel started open");
+    assert.match(chip.getAttribute("title"), /2 for you/, "the chip does not say how many are waiting");
+    // A bell on your own face is the whole signal that something is waiting.
+    assert.ok(chip.querySelector(".lucide-bell"), "the avatar carries no bell while notifications are waiting");
+    assert.match(chip.textContent, /2/, "the bell badge does not carry the count");
+    assert.equal(jumped.length, 0, "rendering jumped somewhere on its own");
+
+    await click(chip);
+    const panel = document.querySelector('[role="menu"]');
+    assert.ok(panel, "clicking the avatar did not open the panel");
+
+    // Every notification is listed, named by who sent it and why. The request
+    // addressed to somebody else is not mine and must not appear.
+    const rows = [...panel.querySelectorAll('[role="menuitem"]')];
+    assert.equal(rows.length, 2, "the panel did not list one row per notification");
+    assert.match(rows[0].textContent, /claude asked you/, "a request to me is not shown as asked");
+    assert.match(rows[0].textContent, /Repair the citation anchors/, "the row does not carry the record's title");
+    assert.match(rows[1].textContent, /claude mentioned you/, "a mention is not shown as a mention");
+    assert.doesNotMatch(panel.textContent, /Somebody else's work/, "the panel listed an act addressed to another actor");
+  } finally {
+    await act(async () => root.unmount());
+    await vite?.close();
+  }
+});
+
+test("opening one notification jumps to that one and leaves the others unread", async () => {
+  localStorage.clear();
+  const root = createRoot(document.getElementById("root"));
+  const jumped = [];
+  let vite;
+  try {
+    vite = await mountTopBar(root, forYouRoom(), jumped);
+    await click(document.querySelector('button[aria-haspopup="menu"]'));
+
+    // Choose the SECOND row. A single watermark would bury the first one as a
+    // side effect; the reader chose one act, so only that act is read.
+    const rows = [...document.querySelectorAll('[role="menuitem"]')];
+    await click(rows[1]);
+    assert.deepEqual(jumped, ["ask-two"], "clicking a row did not open that row's event");
+    assert.equal(document.querySelector('[role="menu"]'), null, "the panel stayed open after a choice");
+
+    await click(document.querySelector('button[aria-haspopup="menu"]'));
+    const left = [...document.querySelectorAll('[role="menuitem"]')];
+    assert.equal(left.length, 1, "reading the second notification did not leave exactly one unread");
+    assert.match(left[0].textContent, /Repair the citation anchors/, "the surviving row is not the one left unread");
+  } finally {
+    await act(async () => root.unmount());
+    await vite?.close();
+  }
+});
+
+test("mark all read empties the list and the bell goes quiet", async () => {
+  localStorage.clear();
+  const root = createRoot(document.getElementById("root"));
+  const jumped = [];
+  let vite;
+  try {
+    vite = await mountTopBar(root, forYouRoom(), jumped);
+    await click(document.querySelector('button[aria-haspopup="menu"]'));
+    await click(buttonByText((text) => text === "mark all read"));
+
+    assert.equal(document.querySelectorAll('[role="menuitem"]').length, 0, "marking all read left rows in the list");
+    assert.match(document.querySelector('[role="menu"]').textContent, /Nothing addressed to you is unread/);
+    const quiet = document.querySelector('button[aria-haspopup="menu"]');
+    assert.match(quiet.getAttribute("title"), /nothing for you/);
+    assert.equal(quiet.querySelector(".lucide-bell"), null, "the bell stayed lit with nothing unread");
+    assert.equal(jumped.length, 0, "marking read navigated somewhere");
+  } finally {
+    await act(async () => root.unmount());
+    await vite?.close();
   }
 });

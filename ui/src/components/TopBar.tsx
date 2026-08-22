@@ -1,10 +1,20 @@
-import { useEffect, useState } from "react";
-import { AtSign } from "lucide-react";
-import { forYouItems, ticketsOf, type Workroom } from "../lib/store";
+import { useEffect, useRef, useState } from "react";
+import { AtSign, Bell, Inbox } from "lucide-react";
+import {
+  forYouItems,
+  markAllForYouRead,
+  markForYouRead,
+  NOTHING_READ,
+  ticketsOf,
+  unreadForYou,
+  type ForYouRead,
+  type Workroom,
+} from "../lib/store";
 import type { Session } from "../lib/session";
-import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
-import { cn } from "../lib/util";
+import { loadForYouRead, saveForYouRead } from "../lib/memory";
+import { cn, firstLine, kindLabel } from "../lib/util";
 import { Avatar } from "./Avatar";
+import { EventTime } from "./EventTime";
 import { fingerprintOfPresentActor, presentActors, toggleActivityFocus } from "../lib/interaction";
 
 export function TopBar({
@@ -24,24 +34,51 @@ export function TopBar({
   const tickets = ticketsOf(durable?.projection);
   const selectedFocused = Boolean(selectedEvent && session.activity?.focus.includes(selectedEvent));
   const fingerprintOf = (name: string) => workroom.actors.find((a) => a.name === name)?.fingerprint ?? "";
+  const nameOfFingerprint = (fingerprint: string) =>
+    workroom.actors.find((a) => a.fingerprint === fingerprint)?.name ?? `${fingerprint.slice(0, 8)}…`;
 
-  // "For you": durable acts addressed to me since the stored watermark.
-  // Clicking steps to the oldest unseen one and marks it read; each click
-  // advances one act, so nothing addressed to you can be skipped unseen.
+  // "For you": durable acts addressed to me — a request put to me, or a
+  // mention of me. They hang off my own face in the bar, because that is
+  // where a reader looks for what is theirs, and they open as a list rather
+  // than a count, so choosing which one to read is the reader's move.
   const genesis = durable?.genesis ?? "";
   const myFingerprint = fingerprintOf(session.actor ?? "");
-  const [watermark, setWatermark] = useState(0);
+  const [read, setRead] = useState<ForYouRead>(NOTHING_READ);
+  const [open, setOpen] = useState(false);
   useEffect(() => {
-    setWatermark(loadForYouWatermark(genesis, myFingerprint));
+    setRead(loadForYouRead(genesis, myFingerprint));
   }, [genesis, myFingerprint]);
-  const unseen = forYouItems(durable?.projection, myFingerprint || undefined, watermark);
-  const readOldest = () => {
-    const oldest = unseen[0];
-    if (!oldest) return;
-    onJumpEvent(oldest.event);
-    saveForYouWatermark(genesis, myFingerprint, oldest.ticket);
-    setWatermark(oldest.ticket);
+  const mine = forYouItems(durable?.projection, myFingerprint || undefined);
+  const unseen = unreadForYou(mine, read);
+  const allTickets = mine.map((item) => item.ticket);
+  const remember = (next: ForYouRead) => {
+    saveForYouRead(genesis, myFingerprint, next);
+    setRead(next);
   };
+  const openItem = (event: string, ticket: number) => {
+    onJumpEvent(event);
+    remember(markForYouRead(allTickets, read, ticket));
+    setOpen(false);
+  };
+
+  // The panel closes on Escape and on a click anywhere outside it, so it never
+  // becomes a thing you have to dismiss by finding the button again.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const onPointer = (event: MouseEvent) => {
+      if (!panelRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onPointer);
+    };
+  }, [open]);
 
   return (
     <header className="flex items-center justify-between gap-3 border-b border-border px-3 py-2.5 sm:gap-6 sm:px-6">
@@ -113,22 +150,96 @@ export function TopBar({
             })
           )}
         </div>
-        {unseen.length > 0 && (
-          <button
-            onClick={readOldest}
-            title="for you"
-            className="flex items-center gap-1 rounded-md border border-accent/50 bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20 focus-visible:outline focus-visible:outline-accent"
-          >
-            <AtSign className="h-3 w-3" />
-            {unseen.length}
-            <span className="hidden sm:inline"> for you</span>
-          </button>
-        )}
         {session.actor && (
-          <span title="you" className="flex items-center gap-1.5 rounded-md border border-border px-1.5 py-0.5 text-xs text-foreground/85">
-            <Avatar fingerprint={myFingerprint} name={session.actor} size={18} />
-            {session.actor}
-          </span>
+          <div ref={panelRef} className="relative">
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={open}
+              title={unseen.length > 0 ? `${session.actor} — ${unseen.length} for you` : `${session.actor} — nothing for you`}
+              onClick={() => setOpen((was) => !was)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-xs transition-colors focus-visible:outline focus-visible:outline-accent",
+                unseen.length > 0
+                  ? "border-accent/50 bg-accent/10 text-accent hover:bg-accent/20"
+                  : "border-border text-foreground/85 hover:border-accent/40",
+              )}
+            >
+              <span className="relative flex">
+                <Avatar fingerprint={myFingerprint} name={session.actor} size={18} />
+                {unseen.length > 0 && (
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute -bottom-1 -right-1.5 flex items-center gap-px rounded-full bg-accent px-1 py-px text-[9px] font-semibold leading-none text-background ring-1 ring-background"
+                  >
+                    <Bell className="h-2 w-2" />
+                    {unseen.length}
+                  </span>
+                )}
+              </span>
+              {session.actor}
+            </button>
+            {open && (
+              <div
+                role="menu"
+                aria-label="For you"
+                className="absolute right-0 top-full z-30 mt-1.5 max-h-[70vh] w-[min(24rem,calc(100vw-1.5rem))] overflow-y-auto rounded-md border border-border bg-elevated shadow-lg"
+              >
+                <div className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-1.5">
+                  <span className="text-[11px] font-medium text-muted">
+                    {unseen.length > 0 ? `${unseen.length} for you` : "for you"}
+                  </span>
+                  {unseen.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => remember(markAllForYouRead(allTickets, read))}
+                      className="rounded px-1 text-[11px] text-faint hover:text-muted focus-visible:outline focus-visible:outline-accent"
+                    >
+                      mark all read
+                    </button>
+                  )}
+                </div>
+                {unseen.length === 0 ? (
+                  <p className="flex items-center gap-1.5 px-2.5 py-3 text-xs text-faint">
+                    <Inbox className="h-3.5 w-3.5" />
+                    Nothing addressed to you is unread.
+                  </p>
+                ) : (
+                  <ul>
+                    {unseen.map((item) => (
+                      <li key={item.event}>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => openItem(item.event, item.ticket)}
+                          className="flex w-full flex-col gap-0.5 border-b border-border/60 px-2.5 py-2 text-left last:border-b-0 hover:bg-accent/10 focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                        >
+                          <span className="flex items-center gap-1.5 text-[11px] text-muted">
+                            {item.reason === "request" ? (
+                              <AtSign className="h-3 w-3 shrink-0 text-accent" aria-hidden />
+                            ) : (
+                              <AtSign className="h-3 w-3 shrink-0 text-faint" aria-hidden />
+                            )}
+                            <span className="font-mono tabular-nums text-faint">#{item.ticket}</span>
+                            <span className="truncate">
+                              {nameOfFingerprint(item.actor)} {item.reason === "request" ? "asked you" : "mentioned you"}
+                            </span>
+                            <span className="ml-auto shrink-0 rounded bg-background px-1 font-mono text-[10px] text-faint">
+                              {kindLabel(item.kind)}
+                            </span>
+                          </span>
+                          <span className="line-clamp-2 text-xs text-foreground/90">{firstLine(item.text, 160)}</span>
+                          {item.timestamp ? (
+                            <EventTime timestamp={item.timestamp} className="text-[10px]" />
+                          ) : null}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
         )}
         <div className="hidden h-4 w-px bg-border sm:block" />
         <div className="flex items-center gap-2 text-xs text-faint">
