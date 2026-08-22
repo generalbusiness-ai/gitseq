@@ -83,10 +83,11 @@ export default function App() {
         selectedEvent={screen.kind === "thread" ? screen.event : undefined}
       />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {screen.kind === "list" ? (
+        {screen.kind === "list" || !index ? (
           <RequestList workroom={workroom} onOpenThread={openThread} view={listView} onView={setListView} />
         ) : (
           <Thread
+            index={index}
             key={screen.event}
             workroom={workroom}
             session={session}

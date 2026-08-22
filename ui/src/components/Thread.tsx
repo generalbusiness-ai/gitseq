@@ -11,7 +11,7 @@ import { mentionFingerprints } from "../lib/mentions";
 import { actorTint, clock, cn, firstLine, interpretationNotice, kindLabel } from "../lib/util";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
 import { RecordDetail } from "./RecordDetail";
-import { buildRecordIndex } from "../lib/records";
+import type { RecordIndex } from "../lib/records";
 
 export interface PendingSay {
   id: string;
@@ -30,6 +30,7 @@ export function Thread({
   session,
   frames,
   root,
+  index,
   pending,
   onBack,
   onOpenThread,
@@ -42,6 +43,8 @@ export function Thread({
   session: Session;
   frames: FrameView[];
   root: string;
+  /** The projection's record index, built once by App and shared. */
+  index: RecordIndex;
   pending: PendingSay[];
   onBack: () => void;
   onOpenThread: (event: string) => void;
@@ -52,7 +55,6 @@ export function Thread({
 }) {
   const projection = workroom.status?.durable.projection;
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
-  const index = useMemo(() => (projection ? buildRecordIndex(projection) : undefined), [projection]);
   const nameOf = useMemo(() => {
     const byFingerprint = new Map(workroom.actors.map((actor) => [actor.fingerprint, actor.name]));
     return (fingerprint: string) =>
@@ -97,7 +99,7 @@ export function Thread({
     };
   }, [head]);
 
-  const request = projection?.statements.find((statement) => statement.event === root);
+  const request = index.statement(root);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const [route, setRoute] = useState<{ id: string; mode: SemanticReplyMode; basis: string; prefill: string }>();
   const toggle = (id: string) =>
@@ -108,7 +110,7 @@ export function Thread({
       return next;
     });
 
-  if (!projection || !request || !spine || !index) {
+  if (!projection || !request || !spine) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <ThreadHeader title="Gone" onBack={onBack} />
@@ -121,8 +123,8 @@ export function Thread({
     statement
       ? semanticActions({
           statement,
-          commitment: projection.commitments.find((c) => [c.request, c.promise, c.report].includes(statement.event)),
-          decision: projection.decisions.find((d) => d.event === statement.event),
+          commitment: index.commitment(statement.event),
+          decision: index.decision(statement.event),
           projection,
           me,
           onRoute: (mode, basis, prefill) => setRoute({ id: crypto.randomUUID(), mode, basis, prefill }),
@@ -143,7 +145,7 @@ export function Thread({
                 first={position === 0}
                 last={position === spine.stations.length - 1}
                 nameOf={nameOf}
-                actions={actionsFor(projection.statements.find((s) => s.event === station.event))}
+                actions={actionsFor(station.event ? index.statement(station.event) : undefined)}
                 open={open.has(`detail:${station.id}`)}
                 onToggle={() => toggle(`detail:${station.id}`)}
                 detail={
@@ -182,6 +184,7 @@ export function Thread({
                         key={event}
                         event={event}
                         projection={projection}
+                        index={index}
                         ticket={tickets.get(event)}
                         nameOf={nameOf}
                         onOpenThread={onOpenThread}
@@ -338,6 +341,7 @@ function SpineRow({
 function ElidedRecord({
   event,
   projection,
+  index,
   ticket,
   nameOf,
   onOpenThread,
@@ -347,6 +351,7 @@ function ElidedRecord({
 }: {
   event: string;
   projection: import("../lib/api").Projection;
+  index: RecordIndex;
   ticket?: number;
   nameOf: (fingerprint: string) => string;
   onOpenThread: (event: string) => void;
@@ -354,9 +359,9 @@ function ElidedRecord({
   onToggle: () => void;
   detail: React.ReactNode;
 }) {
-  const statement = projection.statements.find((candidate) => candidate.event === event);
-  const act = projection.acts.find((candidate) => candidate.event === event);
-  const decision = projection.decisions.find((candidate) => candidate.event === event);
+  const statement = index.statement(event);
+  const act = index.act(event);
+  const decision = index.decision(event);
   const gap = interpretationNotice(decision?.verdict, decision?.reason);
   // What a supersession put in the retired record's place, when exactly one
   // current basis says. Neutral wording on purpose: naming a successor is not
