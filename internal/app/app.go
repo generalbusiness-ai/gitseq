@@ -781,6 +781,32 @@ func (w *Workspace) normalizeRequestShape(ctx context.Context, kind workroom.Kin
 	return normalized, nil
 }
 
+// validateDirectReport holds the direct shape to the fold's own terms before
+// the record is signed: only the addressee may answer a request without having
+// claimed it, and not while their own claim on it still stands, because one
+// commitment takes one closure and a claim already made is the thing to report
+// on. The fold decides this again and authoritatively; refusing here only lets
+// an actor learn it before signing rather than after appending.
+func (w *Workspace) validateDirectReport(request workroom.Statement, reporter string, snapshot Snapshot) error {
+	if request.Body["to"] != reporter {
+		return errors.New("only the requested performer may report directly on a request")
+	}
+	for _, statement := range snapshot.Projection.Statements {
+		if statement.Actor != reporter || statement.Retired {
+			continue
+		}
+		if lifecycle, starter := workroom.StarterLifecycle(statement.Kind); !starter || lifecycle != workroom.LifecyclePromise {
+			continue
+		}
+		for _, basis := range snapshot.Projection.Provenance[statement.Event] {
+			if basis == request.Event {
+				return fmt.Errorf("report rests on the request while promise %s is live; report on the promise", statement.Event)
+			}
+		}
+	}
+	return nil
+}
+
 // validateReportBasis mirrors the fold's report-lifecycle checks before the
 // request is signed. The fold remains authoritative, including when the log
 // moves after this snapshot, but locally constructed reports should not append
@@ -807,18 +833,39 @@ func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, ki
 			statements[statement.Event] = statement
 		}
 	}
-	var promises []workroom.Statement
+	var promises, requests []workroom.Statement
 	for _, rest := range rests {
 		statement, ok := statements[rest]
-		if ok && lifecycles[statement.Kind] == workroom.LifecyclePromise {
+		if !ok {
+			continue
+		}
+		switch lifecycles[statement.Kind] {
+		case workroom.LifecyclePromise:
 			promises = append(promises, statement)
+		case workroom.LifecycleRequest:
+			requests = append(requests, statement)
 		}
 	}
-	if len(promises) != 1 {
+	// The same two shapes the fold admits, decided the same way: the promise
+	// when there is one, the request only when there is not. A boundary still
+	// enforcing the older promise-only rule would leave the widened basis
+	// correct in the log and impossible to write, which is worse than never
+	// having widened it.
+	switch {
+	case len(promises) > 1:
 		return fmt.Errorf("report requires exactly one effective promise-lifecycle basis in rests_on; got %d", len(promises))
-	}
-	if promises[0].Actor != reporter {
-		return errors.New("report actor must be the promisor of its promise-lifecycle basis")
+	case len(promises) == 1:
+		if promises[0].Actor != reporter {
+			return errors.New("report actor must be the promisor of its promise-lifecycle basis")
+		}
+	case len(requests) > 1:
+		return fmt.Errorf("report requires exactly one effective request-lifecycle basis in rests_on; got %d", len(requests))
+	case len(requests) == 1:
+		if err := w.validateDirectReport(requests[0], reporter, snapshot); err != nil {
+			return err
+		}
+	default:
+		return errors.New("report requires exactly one effective promise or request lifecycle basis in rests_on")
 	}
 	artifact := body["artifact"]
 	if body["verdict"] == "approved" && artifact != "" {

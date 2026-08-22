@@ -296,13 +296,21 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	}
 }
 
-func TestReportWithoutPromiseIsRefusedBeforeAppend(t *testing.T) {
+// What this holds is refusal *before* append: a report the boundary rejects
+// must leave the workroom exactly as it found it, with nothing signed and no
+// depth spent. It used to make that point with a report that had no promise,
+// which is now a legitimate shape -- the addressee may answer directly. The
+// point survives with a reporter who was never asked, which no shape admits.
+func TestReportFromAStrangerIsRefusedBeforeAppend(t *testing.T) {
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := workspace.AddActor(ctx, "human", "agent", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "stranger", "agent"); err != nil {
 		t.Fatal(err)
 	}
 	request := actRecord(t, ctx, workspace, "human", Act{
@@ -314,12 +322,12 @@ func TestReportWithoutPromiseIsRefusedBeforeAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = workspace.Act(ctx, "agent", Act{
+	_, err = workspace.Act(ctx, "stranger", Act{
 		Verb: VerbState, Kind: workroom.KindReport, Text: "done",
 		RestsOn: []string{request.ID}, IdempotencyKey: "report-without-promise",
 	})
-	if err == nil || !strings.Contains(err.Error(), "exactly one effective promise-lifecycle basis") {
-		t.Fatalf("report without promise error = %v", err)
+	if err == nil || !strings.Contains(err.Error(), "only the requested performer may report directly on a request") {
+		t.Fatalf("stranger's report error = %v", err)
 	}
 	after, err := workspace.Snapshot(ctx)
 	if err != nil {
@@ -1888,5 +1896,48 @@ func TestBuildActRequestRefusesRetiringACitedRecord(t *testing.T) {
 	quiet := Act{Verb: VerbSupersede, Target: seed.ID + "-unnamed", Text: "retire it"}
 	if _, err := workspace.BuildActRequest(ctx, private, "human", quiet); err != nil {
 		t.Errorf("an uncited target must build normally, got %v", err)
+	}
+}
+
+// The write boundary has to admit what the fold admits. A report may rest on
+// the request it answers, and this is where that record is built and signed:
+// if the validator still demands a promise, the rule is widened in the log and
+// unusable by any actor, which is worse than not widening it.
+//
+// This builds and submits the record rather than asking the validator its
+// opinion of one, because the question is whether a direct report can be
+// written at all.
+func TestADirectReportCanActuallyBeBuilt(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "Do the thing",
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "it is done"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "direct-request",
+	})
+
+	// The addressee reports directly, having made no promise. The fold admits
+	// this, so the builder must too.
+	if _, err := workspace.Act(ctx, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindReport, Text: "done",
+		RestsOn: []string{request.ID}, IdempotencyKey: "direct-report",
+	}); err != nil {
+		t.Fatalf("a direct report could not be written: %v", err)
+	}
+
+	// And widening the shape must not widen who may use it: somebody who was
+	// not asked is still refused here, as at the fold.
+	if _, err := workspace.Act(ctx, "human", Act{
+		Verb: VerbState, Kind: workroom.KindReport, Text: "not mine to report",
+		RestsOn: []string{request.ID}, IdempotencyKey: "stranger-report",
+	}); err == nil {
+		t.Fatal("a stranger's direct report was accepted at the write boundary")
 	}
 }
