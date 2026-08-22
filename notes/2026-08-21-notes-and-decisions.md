@@ -126,7 +126,7 @@ may be agents.
 | 2 | author | `propose` adopting the decision, resting on the artifact | board row: an unratified proposal | nothing yet |
 | 3 | ratifier | `gs ratify` the proposal | the decision carries authority | nothing yet |
 | 4 | author | review request resting on the artifact *and* the ratified proposal, `to=@reviewer` | board row: open request, waiting on reviewer | (tier 1) an ADR-PR opened by the connector |
-| 5 | reviewer | promise, then `gs review` → `approved` or `changes-requested`, resting on both | board row: verdict | (tier 1) a PR comment rendered from the verdict |
+| 5 | reviewer | promise, then `gs review --artifact … --promise …` → `approved` or `changes-requested`; it reaches the proposal through the request | board row: verdict | (tier 1) a PR comment rendered from the verdict |
 | 6 | the review requester, and only them | `gs ratify` the verdict | `gs merge` will now accept it | nothing yet |
 | 7 | merger | `gs merge --candidate <head> --approval <verdict> --text "<summary>"` | receipt; the artifact retired and republished at the merge commit; flares on anything that rested on the draft | the merge commit on `main` whose message is the summary; (tier 1) the PR closed as merged with a final comment |
 | 8 | merger | delete the worktree, push | `main` advanced | the same |
@@ -149,28 +149,36 @@ request are two facts side by side, not a chain — and a reader arriving
 at the live artifact cannot get from there to the proposal at all, so
 the artifact does not prove the decision was adopted.
 
-So the proposal goes *into* the reviewed chain rather than beside it.
-The approval rests on the proposal as well as the artifact, which the
-reviewer is doing anyway: approving a decision means approving that it
-was adopted, and the two are one judgement. The merge then consumes that
-approval, the receipt reaches it, and the successor artifact's
-provenance runs back through approval to proposal without anything new
-being built.
+So the proposal goes *into* the reviewed chain rather than beside it,
+and the edge that carries it is the review request. `gs review` records
+its bases as the promise, the review request and the signed artifact
+set; there is no proposal argument and no direct approval-to-proposal
+edge to write. What connects them is that the review request rests on
+the ratified proposal, so the verdict reaches it transitively, the
+merge consumes that verdict, and the receipt and successor artifact
+continue the same provenance.
+
+The distinction matters because a design that assumes a direct edge
+would instruct someone to pass an argument that does not exist. The
+chain is real; the shorthand for it was not.
 
 That is why the proposal comes second and third rather than after the
 verdict: the review has to be able to rest on it. It costs one act and one ratification before review rather
 than after, and it is the difference between a chain and a pair of
 unrelated statements.
 
-Implementation then reaches the proposal by ordinary provenance.
-Assigned implementation rests on its request; self-initiated rests on
-the ratified proposal directly, per `AGENTS.md`. Citing the live
-artifact remains useful for a reader, but it is no longer what carries
-the authority.
+Implementation then reaches the proposal by ordinary provenance, and the
+two paths differ in where the authority sits. An assigned implementation
+*request* is authorised on the merged decision artifact, and the
+implementing commit rests on that request — so the commit reaches the
+decision through the request, not by naming the artifact itself.
+Self-initiated implementation rests directly on the ratified proposal,
+per `AGENTS.md`. Neither path rests on the merged artifact alone.
 
-The decision's PR is not the code PR. The decision merges first;
-implementation rests on the merged artifact. Otherwise the artifact
-cannot exist until the code lands, and `Rests-On:` points at nothing
+The decision's PR is not the code PR. The decision merges first, so the
+implementation request can be authorised on the merged artifact and the
+implementing commit can rest on that request. Otherwise the artifact
+does not exist until the code lands, and `Rests-On:` points at nothing
 during implementation. The exception is the replacement loop in part
 three, which is a second decision cycle, not a code PR carrying a
 decision.
@@ -428,9 +436,10 @@ In the order of the split.
 **Part one, now.** A "Notes and decisions" section in `SKILL.md`: the
 lifecycle table, the one-sentence path rule, what goes in `--text`, and
 the adoption order — propose and ratify before requesting review, so the
-verdict rests on the proposal and the chain from the merged artifact
-reaches it. Resting on the merged artifact alone is what leaves the
-decision unable to prove it was adopted. This belongs in the skill, not
+review request rests on the ratified proposal and the verdict, receipt
+and successor artifact all reach it through that one edge. A design that
+routes authority around the request instead leaves the decision unable
+to prove it was adopted. This belongs in the skill, not
 `AGENTS.md`, which governs development of gitseq itself. No code.
 
 **Part two, its own request and review.** The `.gitseq` parser, `gs
