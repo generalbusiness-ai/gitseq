@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a186b16857404ca840cfc7cdfcafd9173730067d","text":"Superseded by the artifact at c17022cd40de12cb38fc8ea901c29316e9ef24ad, which repairs the write boundary so the widened basis can actually be used."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88556026bfe788cb7f720f29cb8f68e96f805297","text":"Superseded by the artifact at c17022cd40de12cb38fc8ea901c29316e9ef24ad, which repairs the write boundary so the widened basis can actually be used."}
