@@ -352,22 +352,25 @@ stronger value when a delegation reduces the chain to its weakest rung. A
 published forge signing key remains deferred because its verification would
 need a live lookup.
 
-A Nostr anchor carries a 32-byte x-only public key and 64-byte BIP-340 Schnorr
-signature in lowercase hex. The signature covers the SHA-256 digest of one
-deterministic, domain-separated delegation string binding the repository,
-Gitseq subject key, application-owned scope and expiry. Its shape follows the
-NIP-26 delegation token, but its conditions are Gitseq's and give it no Nostr
-relay or event semantics. The subject's Ed25519 key also signs the containing
-Gitseq record, so the persistent root and the session key both accept the
-binding. The host identity interpreter verifies the secp256k1 proof; the kernel
-continues to verify only its own Ed25519 actor and order and never imports the
-curve or Nostr vocabulary.
+A Nostr anchor carries a complete NIP-01 signed event, in the shape returned by
+the standard NIP-07 `signEvent` browser call. Its content is one deterministic,
+domain-separated delegation string binding the repository, Gitseq subject key,
+application-owned scope and expiry. The event uses the fixed ephemeral kind
+`20000` and an empty tag array, so neither field can silently widen the grant;
+its `created_at` participates in the NIP-01 event id but grants no authority and
+does not govern Gitseq time. The proof is not intended for relay publication.
+The subject's Ed25519 key also signs the containing Gitseq record, so the
+persistent root and the session key both accept the binding. The host identity
+interpreter recomputes the NIP-01 event id and verifies its BIP-340 signature;
+the kernel continues to verify only its own Ed25519 actor and order and never
+imports the curve or Nostr vocabulary.
 
 The session key that accepted a Nostr anchor may withdraw it through the
-ordinary host act. The persistent Nostr root may also sign a repository-bound
-withdrawal and let any Gitseq actor submit it. That second path matters when the
-session key was lost or compromised; the resolver admits it only when the
-withdrawal proof names the same root as the anchor.
+ordinary host act. The persistent Nostr root may also use the same NIP-07 event
+envelope to sign a repository-bound withdrawal and let any Gitseq actor submit
+it. That second path matters when the session key was lost or compromised; the
+resolver admits it only when the withdrawal proof names the same root as the
+anchor.
 
 Vouching is never claimed in a payload, only derived from signatures the host
 verifies, so no record can promote itself. A witness declaration is in force only

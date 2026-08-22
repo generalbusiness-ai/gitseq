@@ -1,9 +1,11 @@
 package identity_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -24,20 +26,52 @@ func nostrKey(t testing.TB) *btcec.PrivateKey {
 
 func signNostrAnchor(t testing.TB, key *btcec.PrivateKey, anchor identity.Anchor) identity.Anchor {
 	t.Helper()
-	anchor.Nostr = &identity.NostrProof{
-		PublicKey: hex.EncodeToString(schnorr.SerializePubKey(key.PubKey())),
-	}
 	message, err := identity.NostrDelegation(anchor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest := sha256.Sum256([]byte(message))
-	signature, err := schnorr.Sign(key, digest[:])
+	proof := signNostrEvent(t, key, message)
+	anchor.Nostr = &proof
+	return anchor
+}
+
+func signNostrEvent(t testing.TB, key *btcec.PrivateKey, content string) identity.NostrProof {
+	t.Helper()
+	return signNostrEventAt(t, key, content, 1_700_000_000)
+}
+
+func signNostrEventAt(t testing.TB, key *btcec.PrivateKey, content string, createdAt int64) identity.NostrProof {
+	t.Helper()
+	proof := identity.NostrProof{
+		PubKey:    hex.EncodeToString(schnorr.SerializePubKey(key.PubKey())),
+		CreatedAt: createdAt,
+		Kind:      identity.NostrProofKind,
+		Tags:      [][]string{},
+		Content:   content,
+	}
+	var serialized bytes.Buffer
+	encoder := json.NewEncoder(&serialized)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode([]any{0, proof.PubKey, proof.CreatedAt, proof.Kind, proof.Tags, proof.Content}); err != nil {
+		t.Fatal(err)
+	}
+	id := sha256.Sum256(bytes.TrimSuffix(serialized.Bytes(), []byte{'\n'}))
+	proof.ID = hex.EncodeToString(id[:])
+	signature, err := schnorr.Sign(key, id[:])
 	if err != nil {
 		t.Fatal(err)
 	}
-	anchor.Nostr.Signature = hex.EncodeToString(signature.Serialize())
-	return anchor
+	proof.Sig = hex.EncodeToString(signature.Serialize())
+	return proof
+}
+
+func TestNostrProofUsesNIP01BrowserSerialization(t *testing.T) {
+	proof := signNostrEvent(t, nostrKey(t), "gitseq&nip07")
+	serialized := `[0,"` + proof.PubKey + `",1700000000,20000,[],"gitseq&nip07"]`
+	want := sha256.Sum256([]byte(serialized))
+	if proof.ID != hex.EncodeToString(want[:]) {
+		t.Fatalf("event id = %s, want NIP-01 JSON.stringify digest %x", proof.ID, want)
+	}
 }
 
 func signNostrWithdrawal(t testing.TB, key *btcec.PrivateKey, revocation identity.Revocation) identity.NostrProof {
@@ -46,15 +80,7 @@ func signNostrWithdrawal(t testing.TB, key *btcec.PrivateKey, revocation identit
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest := sha256.Sum256([]byte(message))
-	signature, err := schnorr.Sign(key, digest[:])
-	if err != nil {
-		t.Fatal(err)
-	}
-	return identity.NostrProof{
-		PublicKey: hex.EncodeToString(schnorr.SerializePubKey(key.PubKey())),
-		Signature: hex.EncodeToString(signature.Serialize()),
-	}
+	return signNostrEvent(t, key, message)
 }
 
 func TestNostrDelegationBindsEveryAuthorityField(t *testing.T) {
@@ -130,6 +156,30 @@ func TestSelfSignedNostrAnchorResolvesAndDisplaysBothAxes(t *testing.T) {
 	}
 }
 
+func TestNostrEventTimeDoesNotGovernGitseqResolution(t *testing.T) {
+	initializer, _ := testKey(t)
+	session, _ := testKey(t)
+	root := nostrKey(t)
+	anchor := identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(session), Scope: "play", NotAfter: 2500,
+	}
+	content, err := identity.NostrDelegation(anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := signNostrEventAt(t, root, content, 9_000_000_000)
+	anchor.Nostr = &proof
+
+	log := newLog(t, initializer)
+	log.add(session, identity.AnchorSchema, anchor, 2000)
+	if !log.resolve().Lookup(fingerprint(session), 2400).Anchored {
+		t.Fatal("future Nostr event time prevented the Gitseq anchor taking force")
+	}
+	if log.resolve().Lookup(fingerprint(session), 2501).Anchored {
+		t.Fatal("Nostr event time overrode the Gitseq NotAfter boundary")
+	}
+}
+
 func TestOnlyTheNostrRootWithdrawsItsAnchor(t *testing.T) {
 	initializer, _ := testKey(t)
 	session, _ := testKey(t)
@@ -183,20 +233,44 @@ func TestNostrAnchorRequiresBothRootAndSubjectSignatures(t *testing.T) {
 			anchor.NotAfter++
 			log.add(session, identity.AnchorSchema, anchor, 2000)
 		},
-		"changed signature": func(log *logBuilder, anchor identity.Anchor) {
-			anchor.Nostr.Signature = strings.Repeat("0", 128)
+		"changed event content": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Nostr.Content += "x"
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"changed event id": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Nostr.ID = strings.Repeat("0", 64)
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"changed event public key": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Nostr.PubKey = hex.EncodeToString(schnorr.SerializePubKey(nostrKey(t).PubKey()))
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"changed event signature": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Nostr.Sig = strings.Repeat("0", 128)
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"changed event kind": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Nostr.Kind++
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"added event tag": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Nostr.Tags = [][]string{{"p", strings.Repeat("0", 64)}}
+			log.add(session, identity.AnchorSchema, anchor, 2000)
+		},
+		"changed event time": func(log *logBuilder, anchor identity.Anchor) {
+			anchor.Nostr.CreatedAt++
 			log.add(session, identity.AnchorSchema, anchor, 2000)
 		},
 		"uppercase public key": func(log *logBuilder, anchor identity.Anchor) {
-			anchor.Nostr.PublicKey = strings.ToUpper(anchor.Nostr.PublicKey)
+			anchor.Nostr.PubKey = strings.ToUpper(anchor.Nostr.PubKey)
 			log.add(session, identity.AnchorSchema, anchor, 2000)
 		},
 		"short public key": func(log *logBuilder, anchor identity.Anchor) {
-			anchor.Nostr.PublicKey = "00"
+			anchor.Nostr.PubKey = "00"
 			log.add(session, identity.AnchorSchema, anchor, 2000)
 		},
 		"uppercase signature": func(log *logBuilder, anchor identity.Anchor) {
-			anchor.Nostr.Signature = strings.ToUpper(anchor.Nostr.Signature)
+			anchor.Nostr.Sig = strings.ToUpper(anchor.Nostr.Sig)
 			log.add(session, identity.AnchorSchema, anchor, 2000)
 		},
 		"second stated identity": func(log *logBuilder, anchor identity.Anchor) {

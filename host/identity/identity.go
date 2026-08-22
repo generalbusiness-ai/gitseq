@@ -62,10 +62,10 @@
 //
 // # Where the trust actually sits
 //
-// A self-signed Nostr anchor carries a BIP-340 signature from the identity it
-// names. [NostrDelegation] constructs the deterministic, repository-bound
-// message that signature covers. Its secp256k1 verification belongs here in
-// the host identity interpreter and never enters the Ed25519 kernel.
+// A self-signed Nostr anchor carries the NIP-01 event returned by a NIP-07
+// signEvent call. [NostrDelegation] constructs its deterministic,
+// repository-bound content. NIP-01 event-id and secp256k1 verification belong
+// here in the host identity interpreter and never enter the Ed25519 kernel.
 //
 // A witnessed anchor is the deployment's word. Whoever holds the witness key
 // can mint an anchor for any identity in the schemes that key was declared
@@ -269,10 +269,10 @@ type Anchor struct {
 	// is [InLog] unless a witness says its provider check needs that provider
 	// to answer again. Empty means in-log.
 	Verification string `json:"verification,omitempty"`
-	// Nostr carries a self-signed BIP-340 proof. Its public key becomes the
-	// persistent identity, and its signature covers this anchor's repository,
-	// subject, scope and expiry. It is mutually exclusive with Identity, which
-	// is stated only by a declared deployment witness.
+	// Nostr carries a self-signed NIP-01 event proof. Its public key becomes
+	// the persistent identity, and its event content covers this anchor's
+	// repository, subject, scope and expiry. It is mutually exclusive with
+	// Identity, which is stated only by a declared deployment witness.
 	Nostr *NostrProof `json:"nostr,omitempty"`
 }
 

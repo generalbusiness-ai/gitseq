@@ -1,8 +1,10 @@
 package identity
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/url"
 	"strconv"
@@ -10,35 +12,53 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
-// NostrProof is a self-signed Nostr authorization carried by an anchor or
-// withdrawal.
-// PublicKey is the 32-byte x-only secp256k1 key used by Nostr, and Signature
-// is a 64-byte BIP-340 signature. Both use lowercase hexadecimal encoding.
-//
-// The proof signs SHA-256([NostrDelegation]) rather than a Nostr event. Its
-// domain-separated shape follows NIP-26, while its conditions are Gitseq's own
-// repository, scope and expiry contract; it carries no relay or event meaning.
+// NostrProof is the NIP-01 event returned by a NIP-07 signEvent call for a
+// self-signed anchor or withdrawal. ID, PubKey and Sig use Nostr's lowercase
+// hexadecimal encoding. Kind and Tags are deliberately fixed: Gitseq needs a
+// portable signing envelope, not relay or application metadata.
 type NostrProof struct {
-	PublicKey string `json:"public_key"`
-	Signature string `json:"signature"`
+	ID        string     `json:"id"`
+	PubKey    string     `json:"pubkey"`
+	CreatedAt int64      `json:"created_at"`
+	Kind      int64      `json:"kind"`
+	Tags      [][]string `json:"tags"`
+	Content   string     `json:"content"`
+	Sig       string     `json:"sig"`
 }
 
+// NostrProofKind is an ephemeral NIP-01 kind. Proofs live in the Gitseq log;
+// they are not intended to be published to relays.
+const NostrProofKind int64 = 20000
+
 func (p NostrProof) validate() error {
-	publicKey, err := lowerHex("nostr public key", p.PublicKey, 32)
+	if _, err := lowerHex("nostr event id", p.ID, sha256.Size); err != nil {
+		return err
+	}
+	publicKey, err := lowerHex("nostr public key", p.PubKey, 32)
 	if err != nil {
 		return err
 	}
 	if _, err := schnorr.ParsePubKey(publicKey); err != nil {
 		return errors.New("nostr public key is not a valid secp256k1 key")
 	}
-	if _, err := lowerHex("nostr signature", p.Signature, schnorr.SignatureSize); err != nil {
+	if _, err := lowerHex("nostr signature", p.Sig, schnorr.SignatureSize); err != nil {
 		return err
+	}
+	if p.CreatedAt < 0 {
+		return errors.New("nostr event time cannot be negative")
+	}
+	if p.Kind != NostrProofKind {
+		return errors.New("nostr proof has the wrong event kind")
+	}
+	if p.Tags == nil || len(p.Tags) != 0 {
+		return errors.New("nostr proof event tags must be an empty array")
 	}
 	return nil
 }
 
-// NostrDelegation returns the exact string a Nostr root key signs to endorse
-// an Anchor. The caller signs its SHA-256 digest with BIP-340 Schnorr.
+// NostrDelegation returns the exact content of the NIP-01 event a Nostr root
+// key signs to endorse an Anchor. A NIP-07 client passes that content, an empty
+// tags array, [NostrProofKind] and any honest created_at to signEvent.
 //
 // The message is deterministic and binds every authority-bearing field. Query
 // escaping prevents a scope chosen by an application from changing field
@@ -73,11 +93,11 @@ func validNostrProof(anchor Anchor) bool {
 	if err != nil || anchor.Nostr == nil {
 		return false
 	}
-	return validNostrSignature(message, *anchor.Nostr)
+	return validNostrEvent(message, *anchor.Nostr)
 }
 
-// NostrWithdrawal returns the exact string a Nostr root key signs to withdraw
-// one of its anchors. The caller signs its SHA-256 digest with BIP-340 Schnorr.
+// NostrWithdrawal returns the exact content of the NIP-01 event a Nostr root
+// key signs to withdraw one of its anchors.
 func NostrWithdrawal(revocation Revocation) (string, error) {
 	if revocation.Genesis == "" {
 		return "", errors.New("revocation genesis is required")
@@ -100,11 +120,21 @@ func validNostrWithdrawal(revocation Revocation) bool {
 	if err != nil || revocation.Nostr == nil {
 		return false
 	}
-	return validNostrSignature(message, *revocation.Nostr)
+	return validNostrEvent(message, *revocation.Nostr)
 }
 
-func validNostrSignature(message string, proof NostrProof) bool {
-	publicKey, err := hex.DecodeString(proof.PublicKey)
+func validNostrEvent(content string, proof NostrProof) bool {
+	if proof.Content != content || proof.Kind != NostrProofKind || proof.Tags == nil || len(proof.Tags) != 0 {
+		return false
+	}
+	id, err := nostrEventID(proof)
+	if err != nil {
+		return false
+	}
+	if hex.EncodeToString(id[:]) != proof.ID {
+		return false
+	}
+	publicKey, err := hex.DecodeString(proof.PubKey)
 	if err != nil {
 		return false
 	}
@@ -112,7 +142,7 @@ func validNostrSignature(message string, proof NostrProof) bool {
 	if err != nil {
 		return false
 	}
-	rawSignature, err := hex.DecodeString(proof.Signature)
+	rawSignature, err := hex.DecodeString(proof.Sig)
 	if err != nil {
 		return false
 	}
@@ -120,8 +150,20 @@ func validNostrSignature(message string, proof NostrProof) bool {
 	if err != nil {
 		return false
 	}
-	digest := sha256.Sum256([]byte(message))
-	return signature.Verify(digest[:], key)
+	return signature.Verify(id[:], key)
+}
+
+func nostrEventID(proof NostrProof) ([sha256.Size]byte, error) {
+	var serialized bytes.Buffer
+	encoder := json.NewEncoder(&serialized)
+	// NIP-01 uses the JSON.stringify representation. Our constrained event is
+	// ASCII, but its content contains '&'; disabling HTML escaping matches the
+	// browser representation a NIP-07 extension hashes.
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode([]any{0, proof.PubKey, proof.CreatedAt, proof.Kind, proof.Tags, proof.Content}); err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	return sha256.Sum256(bytes.TrimSuffix(serialized.Bytes(), []byte{'\n'})), nil
 }
 
 func lowerHex(what, value string, size int) ([]byte, error) {

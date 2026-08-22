@@ -164,14 +164,14 @@ func (r *Resolution) admitAnchor(record host.Record, at instant, witnessKey ed25
 		// A Nostr root key endorsed this Gitseq actor. The record must also be
 		// signed by the subject so a copied root proof cannot claim a key whose
 		// holder never accepted the binding. Anchor validation has already
-		// checked the BIP-340 signature over repository, subject, scope and
-		// expiry; no network or application profile participates here.
+		// checked the NIP-01 event id and BIP-340 signature over repository,
+		// subject, scope and expiry; no network or application participates.
 		if record.Actor != anchor.Subject {
 			return
 		}
-		entry.identity = Identity{Scheme: NostrScheme, Subject: anchor.Nostr.PublicKey}
+		entry.identity = Identity{Scheme: NostrScheme, Subject: anchor.Nostr.PubKey}
 		entry.vouching, entry.verification = SelfSigned, InLog
-		entry.nostrKey = anchor.Nostr.PublicKey
+		entry.nostrKey = anchor.Nostr.PubKey
 	case witnessKey != nil && bytes.Equal(record.ActorKey, witnessKey):
 		// The deployment's word about what a provider said. It is the only
 		// endorsement that may name an identity, because the provider it
@@ -217,7 +217,7 @@ func (r *Resolution) admitRevocation(record host.Record, at instant, genesis str
 	// Ed25519 key that made it; a Nostr anchor also answers to a fresh BIP-340
 	// proof from the root key that endorsed it.
 	if revocation.Nostr != nil {
-		if target.nostrKey == "" || target.nostrKey != revocation.Nostr.PublicKey {
+		if target.nostrKey == "" || target.nostrKey != revocation.Nostr.PubKey {
 			return
 		}
 	} else {
