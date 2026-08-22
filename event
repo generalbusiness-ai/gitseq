@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-08-21-notes-and-decisions.md","body":{"commit":"155926d335b45e36c72fe27272d349a473e068bf","path":"notes/2026-08-21-notes-and-decisions.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:841114d9dd0c5c880167792c8ccc4f952153f4d0","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-21-notes-and-decisions.md."}
