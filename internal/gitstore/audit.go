@@ -97,7 +97,28 @@ func (b *AuditBatch) Close() error {
 	}
 	b.closed = true
 	_ = b.stdin.Close()
+	// With stdin closed, a well-behaved cat-file has nothing left to say. Any
+	// byte still waiting is part of a response to something nobody asked for,
+	// and a reader that never looks cannot claim to have refused it.
+	//
+	// One byte is the whole predicate, and reading more would be a deadlock
+	// rather than extra rigour. An earlier revision drained 4096 bytes and then
+	// called Wait: if the unrequested response was larger than the stdout pipe,
+	// git stayed blocked writing the next byte while Wait waited for it to
+	// exit, and neither side could move. So the child is killed before Wait
+	// whenever anything remains - there is nothing left worth reading from a
+	// stream already known to be desynchronised.
+	_, surplusErr := b.stdout.ReadByte()
+	surplus := surplusErr == nil
+	if surplus || !errors.Is(surplusErr, io.EOF) {
+		b.poison()
+	}
 	err := b.cmd.Wait()
+	if surplus {
+		err = errors.New("git cat-file returned output after the last requested object")
+	} else if !errors.Is(surplusErr, io.EOF) {
+		err = fmt.Errorf("draining git cat-file: %w", surplusErr)
+	}
 	if err != nil {
 		if b.ctx.Err() != nil {
 			err = b.ctx.Err()
@@ -126,19 +147,10 @@ func (b *AuditBatch) readObject(oid, wantType string, maxBytes uint64) ([]byte, 
 		b.poison()
 		return nil, fmt.Errorf("read git cat-file header: %w", err)
 	}
-	fields := strings.Fields(strings.TrimSuffix(header, "\n"))
-	if len(fields) != 3 || fields[0] != oid || fields[1] != wantType {
-		b.poison()
-		return nil, fmt.Errorf("git cat-file returned malformed %s header %q", wantType, strings.TrimSpace(header))
-	}
-	size, err := strconv.ParseUint(fields[2], 10, 64)
+	size, err := parseCatFileHeader(header, oid, wantType, maxBytes)
 	if err != nil {
 		b.poison()
-		return nil, fmt.Errorf("git cat-file returned invalid object size: %w", err)
-	}
-	if size > maxBytes || size > uint64(maxInt()) {
-		b.poison()
-		return nil, fmt.Errorf("%s object size %d exceeds limit %d", wantType, size, maxBytes)
+		return nil, err
 	}
 	content := make([]byte, int(size))
 	if _, err := io.ReadFull(b.stdout, content); err != nil {
@@ -158,6 +170,30 @@ func (b *AuditBatch) readObject(oid, wantType string, maxBytes uint64) ([]byte, 
 		return nil, fmt.Errorf("%s object hash differs from requested id", wantType)
 	}
 	return content, nil
+}
+
+// parseCatFileHeader validates one `<oid> SP <type> SP <size> LF` response
+// line.
+//
+// Split on single spaces rather than with strings.Fields, which also accepts
+// tabs and runs of spaces. A reader more permissive than the protocol it
+// validates cannot prove the stream is well formed, and proving that is the
+// only reason this reader exists. Separated from the read loop so the refusals
+// are reachable without staging a damaged repository.
+func parseCatFileHeader(header, oid, wantType string, maxBytes uint64) (uint64, error) {
+	line := strings.TrimSuffix(header, "\n")
+	fields := strings.Split(line, " ")
+	if len(fields) != 3 || fields[0] != oid || fields[1] != wantType {
+		return 0, fmt.Errorf("git cat-file returned malformed %s header %q", wantType, line)
+	}
+	size, err := strconv.ParseUint(fields[2], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("git cat-file returned invalid object size: %w", err)
+	}
+	if size > maxBytes || size > uint64(maxInt()) {
+		return 0, fmt.Errorf("%s object size %d exceeds limit %d", wantType, size, maxBytes)
+	}
+	return size, nil
 }
 
 func (b *AuditBatch) poison() {
