@@ -35,6 +35,17 @@ func signNostrAnchor(t testing.TB, key *btcec.PrivateKey, anchor identity.Anchor
 	return anchor
 }
 
+func signNostrAnchorAt(t testing.TB, key *btcec.PrivateKey, anchor identity.Anchor, createdAt int64) identity.Anchor {
+	t.Helper()
+	message, err := identity.NostrDelegation(anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := signNostrEventAt(t, key, message, createdAt)
+	anchor.Nostr = &proof
+	return anchor
+}
+
 func signNostrEvent(t testing.TB, key *btcec.PrivateKey, content string) identity.NostrProof {
 	t.Helper()
 	return signNostrEventAt(t, key, content, 1_700_000_000)
@@ -130,7 +141,7 @@ func TestSelfSignedNostrAnchorResolvesAndDisplaysBothAxes(t *testing.T) {
 	})
 	record := log.add(session, identity.AnchorSchema, anchor, 2000)
 
-	resolved := log.resolve().Lookup(fingerprint(session), 2000)
+	resolved := log.resolve().LookupAt(record)
 	if !resolved.Anchored {
 		t.Fatal("valid Nostr proof resolved as unanchored")
 	}
@@ -172,10 +183,12 @@ func TestNostrEventTimeDoesNotGovernGitseqResolution(t *testing.T) {
 
 	log := newLog(t, initializer)
 	log.add(session, identity.AnchorSchema, anchor, 2000)
-	if !log.resolve().Lookup(fingerprint(session), 2400).Anchored {
+	beforeExpiry := log.act(session, 2400)
+	if !log.resolve().LookupAt(beforeExpiry).Anchored {
 		t.Fatal("future Nostr event time prevented the Gitseq anchor taking force")
 	}
-	if log.resolve().Lookup(fingerprint(session), 2501).Anchored {
+	afterExpiry := log.act(session, 2501)
+	if log.resolve().LookupAt(afterExpiry).Anchored {
 		t.Fatal("Nostr event time overrode the Gitseq NotAfter boundary")
 	}
 }
@@ -196,15 +209,57 @@ func TestOnlyTheNostrRootWithdrawsItsAnchor(t *testing.T) {
 	wrongProof := signNostrWithdrawal(t, wrong, revocation)
 	revocation.Nostr = &wrongProof
 	log.add(submitter, identity.RevokeSchema, revocation, 3000)
-	if !log.resolve().Lookup(fingerprint(session), 3500).Anchored {
+	afterWrongRoot := log.act(session, 3500)
+	if !log.resolve().LookupAt(afterWrongRoot).Anchored {
 		t.Fatal("another Nostr root withdrew the anchor")
 	}
 
 	proof := signNostrWithdrawal(t, root, identity.Revocation{Genesis: testGenesis, Anchor: anchored})
 	revocation.Nostr = &proof
 	log.add(submitter, identity.RevokeSchema, revocation, 4000)
-	if log.resolve().Lookup(fingerprint(session), 4000).Anchored {
+	afterRightRoot := log.act(session, 4000)
+	if log.resolve().LookupAt(afterRightRoot).Anchored {
 		t.Fatal("the Nostr root could not withdraw its anchor through another Gitseq submitter")
+	}
+}
+
+func TestNostrRootWithdrawalRetiresTheGrantAcrossReplays(t *testing.T) {
+	initializer, _ := testKey(t)
+	session, _ := testKey(t)
+	submitter, _ := testKey(t)
+	root := nostrKey(t)
+
+	log := newLog(t, initializer)
+	anchor := signNostrAnchor(t, root, identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(session), Scope: "play",
+	})
+	first := log.add(session, identity.AnchorSchema, anchor, 2000)
+	// The same subject can copy the identical grant into another Gitseq record.
+	log.add(session, identity.AnchorSchema, anchor, 2500)
+	revocation := identity.Revocation{Genesis: testGenesis, Anchor: first}
+	proof := signNostrWithdrawal(t, root, revocation)
+	revocation.Nostr = &proof
+	log.add(submitter, identity.RevokeSchema, revocation, 3000)
+	afterWithdrawal := log.act(session, 3000)
+	if log.resolve().LookupAt(afterWithdrawal).Anchored {
+		t.Fatal("root withdrawal left a pre-withdrawal replay in force")
+	}
+
+	// A compromised subject key cannot restore the grant by copying the same
+	// root-signed proof into a record with a new Gitseq id.
+	replayed := log.add(session, identity.AnchorSchema, anchor, 4000)
+	if resolved := log.resolve().LookupAt(replayed); resolved.Anchored {
+		t.Fatalf("exact proof replay restored withdrawn authority: %+v", resolved)
+	}
+
+	// Regranting requires a genuinely fresh event signed by the root.
+	fresh := anchor
+	fresh.Nostr = nil
+	fresh = signNostrAnchorAt(t, root, fresh, anchor.Nostr.CreatedAt+1)
+	freshRecord := log.add(session, identity.AnchorSchema, fresh, 5000)
+	resolved := log.resolve().LookupAt(freshRecord)
+	if !resolved.Anchored || resolved.Record != freshRecord {
+		t.Fatalf("fresh root-signed grant did not take force: %+v", resolved)
 	}
 }
 
@@ -290,7 +345,8 @@ func TestNostrAnchorRequiresBothRootAndSubjectSignatures(t *testing.T) {
 			proof := *anchor.Nostr
 			copy.Nostr = &proof
 			write(log, copy)
-			if resolved := log.resolve().Lookup(fingerprint(session), 3000); resolved.Anchored {
+			probe := log.act(session, 3000)
+			if resolved := log.resolve().LookupAt(probe); resolved.Anchored {
 				t.Fatalf("invalid Nostr anchor took force: %+v", resolved)
 			}
 		})
@@ -323,15 +379,20 @@ func TestNostrAnchorAndDelegatedAgentWorkThroughPublicHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	credential, err := identity.Endorse(ctx, workspace, person, identity.Anchor{
+	_, err = identity.Endorse(ctx, workspace, person, identity.Anchor{
 		Subject: agentRecord.Actor, Scope: "move",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	resolution := resolveWorkspace(t, ctx, workspace)
-	personResolved := resolution.Lookup(joined.Actor, anchored.Timestamp)
-	agentResolved := resolution.Lookup(agentRecord.Actor, credential.Timestamp)
+	personResolved := resolution.LookupAt(anchored.ID)
+	agentAct, err := workspace.Append(ctx, agent, host.Act{Schema: "chess/move@0", Payload: []byte("e4")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolution = resolveWorkspace(t, ctx, workspace)
+	agentResolved := resolution.LookupAt(agentAct.ID)
 	if personResolved.Vouching != identity.SelfSigned || agentResolved.Vouching != identity.SelfSigned {
 		t.Fatalf("vouching = person %v, agent %v; want self-signed inheritance", personResolved.Vouching, agentResolved.Vouching)
 	}
@@ -350,13 +411,41 @@ func TestNostrAnchorAndDelegatedAgentWorkThroughPublicHost(t *testing.T) {
 	); err == nil || !strings.Contains(err.Error(), "signature is invalid") {
 		t.Fatalf("RevokeNostr mutation error = %v, want invalid-signature refusal", err)
 	}
-	withdrawn, err := identity.RevokeNostr(ctx, workspace, submitter, anchored.ID, proof)
+	_, err = identity.RevokeNostr(ctx, workspace, submitter, anchored.ID, proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	personAfterWithdrawal, err := workspace.Append(ctx, person, host.Act{Schema: "chess/move@0", Payload: []byte("e5")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentAfterWithdrawal, err := workspace.Append(ctx, agent, host.Act{Schema: "chess/move@0", Payload: []byte("e5")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	resolution = resolveWorkspace(t, ctx, workspace)
-	if resolution.Lookup(joined.Actor, withdrawn.Timestamp).Anchored || resolution.Lookup(agentRecord.Actor, withdrawn.Timestamp).Anchored {
+	if resolution.LookupAt(personAfterWithdrawal.ID).Anchored || resolution.LookupAt(agentAfterWithdrawal.ID).Anchored {
 		t.Fatal("Nostr root withdrawal left the session or its delegated agent anchored")
+	}
+	replayed, err := identity.Endorse(ctx, workspace, person, anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolution = resolveWorkspace(t, ctx, workspace)
+	if resolution.LookupAt(replayed.ID).Anchored {
+		t.Fatal("re-appending the exact Nostr grant restored withdrawn authority")
+	}
+
+	fresh := anchor
+	fresh.Nostr = nil
+	fresh = signNostrAnchorAt(t, root, fresh, anchor.Nostr.CreatedAt+1)
+	regranted, err := identity.Endorse(ctx, workspace, person, fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolution = resolveWorkspace(t, ctx, workspace)
+	if !resolution.LookupAt(regranted.ID).Anchored {
+		t.Fatal("a fresh Nostr event could not regrant authority")
 	}
 }
 

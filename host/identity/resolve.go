@@ -75,6 +75,10 @@ type anchorRecord struct {
 	// nostrKey is the root key that may withdraw a self-signed Nostr anchor.
 	// It is empty for witnessed anchors and inherited delegations.
 	nostrKey string
+	// nostrGrant is the NIP-01 event id. A root withdrawal retires the grant,
+	// not merely one Gitseq record that carried it, so an exact replay cannot
+	// restore authority.
+	nostrGrant string
 }
 
 // Resolution is the identity state of one verified log, ready to be asked
@@ -89,6 +93,9 @@ type Resolution struct {
 	bySubject map[string][]*anchorRecord
 	byRecord  map[string]*anchorRecord
 	records   map[string]recordInstant
+	// revokedNostr makes root withdrawal apply to every earlier or later copy
+	// of the signed grant event.
+	revokedNostr map[string]instant
 }
 
 // Resolve folds the identity records in a verified log.
@@ -100,10 +107,11 @@ type Resolution struct {
 // unreadable by recording one.
 func Resolve(log host.Log) *Resolution {
 	resolution := &Resolution{
-		genesis:   log.Genesis,
-		bySubject: map[string][]*anchorRecord{},
-		byRecord:  map[string]*anchorRecord{},
-		records:   map[string]recordInstant{},
+		genesis:      log.Genesis,
+		bySubject:    map[string][]*anchorRecord{},
+		byRecord:     map[string]*anchorRecord{},
+		records:      map[string]recordInstant{},
+		revokedNostr: map[string]instant{},
 	}
 	if len(log.Records) == 0 {
 		return resolution
@@ -172,6 +180,7 @@ func (r *Resolution) admitAnchor(record host.Record, at instant, witnessKey ed25
 		entry.identity = Identity{Scheme: NostrScheme, Subject: anchor.Nostr.PubKey}
 		entry.vouching, entry.verification = SelfSigned, InLog
 		entry.nostrKey = anchor.Nostr.PubKey
+		entry.nostrGrant = anchor.Nostr.ID
 	case witnessKey != nil && bytes.Equal(record.ActorKey, witnessKey):
 		// The deployment's word about what a provider said. It is the only
 		// endorsement that may name an identity, because the provider it
@@ -220,6 +229,16 @@ func (r *Resolution) admitRevocation(record host.Record, at instant, genesis str
 		if target.nostrKey == "" || target.nostrKey != revocation.Nostr.PubKey {
 			return
 		}
+		// The root withdrew its signed grant, not one transport copy of it. Mark
+		// every copy already seen, and remember the event id so a compromised
+		// session key cannot append the exact proof again afterward. A fresh
+		// root-signed event has a fresh id and can grant again.
+		withdrawnAt, seen := r.revokedNostr[target.nostrGrant]
+		if !seen || at.position < withdrawnAt.position {
+			withdrawnAt = at
+			r.revokedNostr[target.nostrGrant] = withdrawnAt
+		}
+		return
 	} else {
 		if target.endorserKey != hexKey(record.ActorKey) {
 			return
@@ -295,7 +314,11 @@ func (r *Resolution) effective(anchor *anchorRecord, at instant, depth int) bool
 	if anchor.notAfter != 0 && at.timestamp > anchor.notAfter {
 		return false
 	}
-	if anchor.revoked != nil && at.position >= anchor.revoked.position {
+	revoked := anchor.revoked
+	if rootRevoked, ok := r.revokedNostr[anchor.nostrGrant]; ok && (revoked == nil || rootRevoked.position < revoked.position) {
+		revoked = &rootRevoked
+	}
+	if revoked != nil && at.position >= revoked.position {
 		return false
 	}
 	if anchor.parent == "" {

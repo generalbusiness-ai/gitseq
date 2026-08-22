@@ -112,7 +112,9 @@ func Revoke(ctx context.Context, workspace *host.Workspace, endorser ed25519.Pri
 // Submitter signs the containing Gitseq record and need not be the anchored
 // session key: losing that session key is one reason the persistent root must
 // be able to withdraw it. Resolve admits the withdrawal only when the proof's
-// public key is the same root that signed the named anchor.
+// public key is the same root that signed the named anchor. The withdrawal
+// retires that NIP-01 grant event id everywhere it appears, including later
+// replay records; a fresh root-signed event may grant again.
 func RevokeNostr(ctx context.Context, workspace *host.Workspace, submitter ed25519.PrivateKey, anchorRecord string, proof NostrProof) (host.Record, error) {
 	genesis, err := genesisOf(ctx, workspace)
 	if err != nil {

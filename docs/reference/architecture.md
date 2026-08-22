@@ -370,7 +370,10 @@ ordinary host act. The persistent Nostr root may also use the same NIP-07 event
 envelope to sign a repository-bound withdrawal and let any Gitseq actor submit
 it. That second path matters when the session key was lost or compromised; the
 resolver admits it only when the withdrawal proof names the same root as the
-anchor.
+anchor. A root withdrawal retires the signed NIP-01 grant event id, not merely
+one Gitseq record that carried it: every earlier or later replay of that exact
+proof is ineffective from the withdrawal's log position onward. A genuinely
+fresh root-signed event has a fresh id and can grant again.
 
 Vouching is never claimed in a payload, only derived from signatures the host
 verifies, so no record can promote itself. A witness declaration is in force only
