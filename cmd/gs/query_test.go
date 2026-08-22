@@ -589,6 +589,15 @@ func TestAncestryCostsTheSameWhateverTheNumberOfHeads(t *testing.T) {
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	testGit(t, "", "init", "-q", "-b", "main", repo)
+	// Repository-local, so it binds this fixture and leaks into no other test.
+	// Sixty-four commits then a cleanup that must find .git quiet: any
+	// maintenance Git decides to start on its own outlives the test body and
+	// writes into .git while TempDir is removing it, which is what CI reported
+	// as "unlinkat .../repo/.git: directory not empty". The fixture asks for
+	// exactly two Git processes, so it should also be the thing that says no
+	// third one may appear.
+	testGit(t, repo, "config", "maintenance.auto", "false")
+	testGit(t, repo, "config", "gc.auto", "0")
 	testGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "first")
 	landed := []string{testGit(t, repo, "rev-parse", "HEAD")}
 	for index := 1; index < 64; index++ {
