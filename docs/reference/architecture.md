@@ -423,12 +423,18 @@ fold, or UI expectations.
 - commitment lifecycles and who is waiting on whom: an explicit report closes
   when its requester ratifies it, while a promisor's exact-head artifact acts
   as the implementation report and its sealed approved merge closes the
-  commitment. A report rests on exactly one of the promise that claimed the
-  work or the request it answers. The direct shape is admitted only from the
-  request's addressee, and refused while that actor holds a live promise on
-  the same request, so one commitment keeps one closure; it projects as claim
-  and complete, with the reporter as performer, no promise, and the requester
-  waiting. Widening the basis reinterprets records already in the log — three
+  commitment. A report answers exactly one lifecycle claim: the promise that
+  took the work, or — when no promise of the reporter's stands on it — the
+  request itself. What it answers is not the same as what it may cite: a
+  report on a promise may also rest on that promise's governing request as
+  provenance, which is what `gs review` writes, and any other request is
+  refused. The direct shape is admitted only from the request's addressee, and
+  refused while that actor holds a live promise on the same request, so one
+  commitment keeps one closure; it projects as claim and complete, with the
+  reporter as performer, no promise, and the requester waiting. Which claim a
+  report answered is settled when it is folded and read from there afterwards,
+  so a later withdrawal or a later promise cannot move a completion between
+  commitments. Widening the basis reinterprets records already in the log — three
   reports refused for want of a promise become effective on a re-fold — so it
   advances the fold profile to `workroom-fold@8`;
 - ratification and supersession rules. The projection names the ratification
