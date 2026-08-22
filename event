@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4863e4ca6d847c8ae3bd3d037ab5c5c2478c0d3","text":"Retired: it names 96e87d82, the head codex blocked. The cmd/gs line is unchanged; the head moved under it. Successor ded53f34 names 968dda71."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:398e03255230c1050ee457bff2640e1d02fc84f7"}
