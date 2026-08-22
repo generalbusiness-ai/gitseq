@@ -1610,11 +1610,16 @@ func (f *foldState) ratified(target string) bool {
 func (f *foldState) project() Projection {
 	succeeded := f.succeededRetirements()
 	stale, world := f.staleness(succeeded)
-	// Every artifact seen at a path, in order, not only the most recent.
-	// Tracking just the immediate predecessor let a retirement hide a live
-	// ancestor: with A, B and C at one path, retiring B cleared C's warning
-	// while A stayed live.
-	seenByPath := make(map[string][]string)
+	// How many artifacts seen at each path are still live. project() runs over
+	// a fully folded log, so retired() is final here and one running count per
+	// path answers both questions this projection asks about succession, at
+	// constant cost per artifact.
+	//
+	// It is not the shortcut an earlier head warned about, which kept only the
+	// immediate predecessor and so let a retirement hide a live ancestor: with
+	// A, B and C at one path, retiring B cleared C's warning while A stayed
+	// live. A count keeps every ancestor.
+	liveByPath := make(map[string]int)
 	// Review independence needs the author of the artifact for the head judged,
 	// and the commit each artifact stands at, so a verdict cannot be paired
 	// with an artifact for some other head. All three indexes are filled by the
@@ -1661,12 +1666,7 @@ func (f *foldState) project() Projection {
 		// artifact carrying whatever fields it did manage to fill.
 		if record.decision.Verdict == Effective && record.definition != nil && record.definition.Render == RenderArtifact {
 			path := state.Body["path"]
-			live := 0
-			for _, predecessor := range seenByPath[path] {
-				if !f.retired(predecessor) {
-					live++
-				}
-			}
+			live := liveByPath[path]
 			projection.Artifacts = append(projection.Artifacts, Artifact{
 				Event: record.record.ID, Path: path, Commit: state.Body["commit"],
 				Retired:                  f.retired(record.record.ID),
@@ -1677,7 +1677,9 @@ func (f *foldState) project() Projection {
 				SuccessionUnrecorded:     live > 0,
 				LivePredecessors:         live,
 			})
-			seenByPath[path] = append(seenByPath[path], record.record.ID)
+			if !f.retired(record.record.ID) {
+				liveByPath[path]++
+			}
 			if record.decision.Verdict == Effective {
 				implementers[record.record.ID] = record.record.Actor
 				if commit := state.Body["commit"]; commit != "" {
@@ -1707,20 +1709,14 @@ func (f *foldState) project() Projection {
 	// A live artifact owes its retirement only while a live artifact later at
 	// the same path stands in its place. A successor that was itself withdrawn
 	// asks for nothing: acting on that warning would retire the current
-	// artifact because of a replacement that no longer exists. Walking each
-	// path backwards, a live artifact is owed a supersession when a live one
-	// has already been passed. Counted here rather than summed from
-	// LivePredecessors, which counts a shared ancestor once per successor.
-	for _, events := range seenByPath {
-		successor := false
-		for i := len(events) - 1; i >= 0; i-- {
-			if f.retired(events[i]) {
-				continue
-			}
-			if successor {
-				projection.OmittedSupersessions++
-			}
-			successor = true
+	// artifact because of a replacement that no longer exists. So at each path
+	// every live artifact except the newest owes one, which is the live count
+	// less one, and nothing less than the count is needed to say it. This is
+	// not summed from LivePredecessors, which counts a shared ancestor once
+	// per successor and would multiply the same debt.
+	for _, live := range liveByPath {
+		if live > 1 {
+			projection.OmittedSupersessions += live - 1
 		}
 	}
 	for _, grant := range f.roleGrants {
