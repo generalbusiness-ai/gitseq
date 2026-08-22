@@ -72,15 +72,6 @@ export function ticketsOf(projection?: Projection): Map<string, number> {
   return map;
 }
 
-// Folded promise/report events belong to their request's thread; opening one
-// opens the thread it lives in.
-export function foldAnchor(event: string, projection?: Projection): string {
-  for (const commitment of projection?.commitments ?? []) {
-    if (commitment.promise === event || commitment.report === event) return commitment.request;
-  }
-  return event;
-}
-
 // "For you": durable effective acts addressed to me — a mention in
 // body.mentions or a request whose body.to is my fingerprint — newer than
 // the given watermark ticket, oldest first. My own acts are not news to me.

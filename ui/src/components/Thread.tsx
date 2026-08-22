@@ -11,6 +11,7 @@ import { mentionFingerprints } from "../lib/mentions";
 import { actorTint, clock, cn, firstLine, interpretationNotice, kindLabel } from "../lib/util";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
 import { RecordDetail } from "./RecordDetail";
+import { buildRecordIndex } from "../lib/records";
 
 export interface PendingSay {
   id: string;
@@ -51,6 +52,7 @@ export function Thread({
 }) {
   const projection = workroom.status?.durable.projection;
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
+  const index = useMemo(() => (projection ? buildRecordIndex(projection) : undefined), [projection]);
   const nameOf = useMemo(() => {
     const byFingerprint = new Map(workroom.actors.map((actor) => [actor.fingerprint, actor.name]));
     return (fingerprint: string) =>
@@ -106,7 +108,7 @@ export function Thread({
       return next;
     });
 
-  if (!projection || !request || !spine) {
+  if (!projection || !request || !spine || !index) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <ThreadHeader title="Gone" onBack={onBack} />
@@ -134,12 +136,12 @@ export function Thread({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-4 py-3 sm:px-6">
           <ol className="list-none" aria-label="Commitment spine">
-            {spine.stations.map((station, index) => (
+            {spine.stations.map((station, position) => (
               <SpineRow
                 key={station.id}
                 station={station}
-                first={index === 0}
-                last={index === spine.stations.length - 1}
+                first={position === 0}
+                last={position === spine.stations.length - 1}
                 nameOf={nameOf}
                 actions={actionsFor(projection.statements.find((s) => s.event === station.event))}
                 open={open.has(`detail:${station.id}`)}
@@ -148,7 +150,8 @@ export function Thread({
                   <RecordDetail
                     event={station.event}
                     commit={station.commit}
-                    projection={projection}
+                    index={index}
+                    actors={projection.actors}
                     tickets={tickets}
                     nameOf={nameOf}
                     onOpenThread={onOpenThread}
@@ -184,7 +187,9 @@ export function Thread({
                         onOpenThread={onOpenThread}
                         open={open.has(`detail:${event}`)}
                         onToggle={() => toggle(`detail:${event}`)}
-                        detail={<RecordDetail event={event} projection={projection} tickets={tickets} nameOf={nameOf} onOpenThread={onOpenThread} />}
+                        detail={
+                          <RecordDetail event={event} index={index} actors={projection.actors} tickets={tickets} nameOf={nameOf} onOpenThread={onOpenThread} />
+                        }
                       />
                     ))}
                     {expander.id === "talk" &&
@@ -238,9 +243,10 @@ function ThreadHeader({ title, onBack }: { title: string; onBack: () => void }) 
 // One rail node at this row's own vertical position, with the rail drawn
 // through the gutter. A branch — the blocker — leaves the rail sideways beside
 // the row it concerns, which is exactly where a reader is already looking.
-// Clicking the row opens the record's full detail beneath it; clicking again
-// closes it. The node and rail hang from the row's top, so the detail can
-// grow below without moving the node.
+// The row's text is a disclosure button: it opens the record's full detail
+// beneath the row and closes it again, by mouse or keyboard alike. The node
+// and rail hang from the row's top, so the detail can grow below without
+// moving the node.
 function SpineRow({
   station,
   first,
@@ -266,9 +272,7 @@ function SpineRow({
     <li
       data-station={station.id}
       data-present={station.present}
-      aria-expanded={detailed ? open : undefined}
-      onClick={detailed ? onToggle : undefined}
-      className={cn("group relative text-xs", station.branch && "ml-5", detailed && "cursor-pointer")}
+      className={cn("group relative text-xs", station.branch && "ml-5")}
     >
       {!station.branch && (
         <span
@@ -297,7 +301,10 @@ function SpineRow({
         <span className="font-mono text-[11px] text-faint">
           {station.ticket ? `#${station.ticket}` : station.commit ? station.commit.slice(0, 8) : ""}
         </span>
-        <span
+        <Disclosure
+          open={open}
+          onToggle={onToggle}
+          controls={detailed ? `detail-${station.id}` : undefined}
           className={cn(
             station.branch ? "font-semibold text-danger" : "truncate",
             dim && !station.branch && "italic text-faint",
@@ -306,7 +313,7 @@ function SpineRow({
         >
           {station.what}
           {station.actor && !station.branch && <span className="ml-1 text-faint">· {nameOf(station.actor)}</span>}
-        </span>
+        </Disclosure>
         <span className="font-mono text-[11px] text-faint">{station.timestamp ? age(station.timestamp) : ""}</span>
       </div>
       {actions.length > 0 && (
@@ -316,14 +323,18 @@ function SpineRow({
           ))}
         </RowToolbar>
       )}
-      {detailed && open && <div className="mb-2 ml-[1.6rem] cursor-auto">{detail}</div>}
+      {detailed && open && (
+        <div id={`detail-${station.id}`} className="mb-2 ml-[1.6rem]">
+          {detail}
+        </div>
+      )}
     </li>
   );
 }
 
 // A record behind an expander. Anything the fold ruled ineffective is marked
-// where it appears rather than given a bucket of its own. Clicking the line
-// opens the record's full detail beneath it; clicking again closes it.
+// where it appears rather than given a bucket of its own. The line's text is
+// a disclosure button for the record's full detail.
 function ElidedRecord({
   event,
   projection,
@@ -354,16 +365,12 @@ function ElidedRecord({
   const ineffective = decision && decision.verdict !== "effective";
   const text = statement?.text ?? act?.text ?? (act ? `${act.type}d` : "");
   const actor = statement?.actor ?? act?.actor ?? "";
-  const stop = (run: () => void) => (e: React.MouseEvent) => {
-    e.stopPropagation();
-    run();
-  };
   return (
-    <div data-record={event} aria-expanded={open} onClick={onToggle} className="cursor-pointer">
+    <div data-record={event}>
       <div className="flex items-baseline gap-2 text-xs">
         <button
           type="button"
-          onClick={stop(() => onOpenThread(event))}
+          onClick={() => onOpenThread(event)}
           title={event}
           className="shrink-0 font-mono text-[11px] text-faint hover:text-muted focus-visible:outline focus-visible:outline-accent"
         >
@@ -372,13 +379,18 @@ function ElidedRecord({
         <span className="shrink-0 text-[11px] uppercase tracking-wide text-faint">
           {kindLabel(statement?.kind ?? act?.type ?? "record")}
         </span>
-        <span className={cn("min-w-0 flex-1 truncate", statement?.retired ? "text-faint line-through" : "text-muted")}>
+        <Disclosure
+          open={open}
+          onToggle={onToggle}
+          controls={`detail-${event}`}
+          className={cn("min-w-0 flex-1 truncate", statement?.retired ? "text-faint line-through" : "text-muted")}
+        >
           {firstLine(text)}
-        </span>
+        </Disclosure>
         {linked && (
           <button
             type="button"
-            onClick={stop(() => onOpenThread(linked))}
+            onClick={() => onOpenThread(linked)}
             title={linked}
             className="shrink-0 text-[11px] text-faint hover:text-muted focus-visible:outline focus-visible:outline-accent"
           >
@@ -389,8 +401,44 @@ function ElidedRecord({
         {ineffective && <span className="shrink-0 text-[11px] text-danger" title={decision?.reason}>{gap ? gap.verdict : "ineffective"}</span>}
         {actor && <span className="shrink-0 text-faint">{nameOf(actor)}</span>}
       </div>
-      {open && <div className="mb-2 mt-1 cursor-auto">{detail}</div>}
+      {open && (
+        <div id={`detail-${event}`} className="mb-2 mt-1">
+          {detail}
+        </div>
+      )}
     </div>
+  );
+}
+
+// The one disclosure primitive for a record's detail: a native button, so
+// Enter and Space work without any handler of their own, with aria-expanded
+// and aria-controls saying what it opens. A row with nothing to open renders
+// the same text with no button.
+function Disclosure({
+  open,
+  onToggle,
+  controls,
+  className,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  controls?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  if (!controls) return <span className={className}>{children}</span>;
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={controls}
+      data-disclosure={controls}
+      onClick={onToggle}
+      className={cn("block w-full text-left focus-visible:outline focus-visible:outline-accent", className)}
+    >
+      {children}
+    </button>
   );
 }
 
