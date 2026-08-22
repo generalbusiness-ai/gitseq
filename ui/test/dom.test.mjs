@@ -29,6 +29,7 @@ const React = (await import("react")).default;
 const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { createServer } = await import("vite");
+const { buildRecordIndex } = await import("../src/lib/records.ts");
 
 const statement = (event, actor, kind, text) => ({ event, actor, kind, text, timestamp: 1_700_000_000 });
 const statements = [
@@ -615,10 +616,12 @@ test("the thread draws one rail of salient stations and keeps its history collap
   };
   try {
     const { Thread } = await vite.ssrLoadModule("/src/components/Thread.tsx");
+    const threadWorkroom = threadRoom();
     await act(async () => {
       root.render(
         React.createElement(Thread, {
-          workroom: threadRoom(),
+          index: buildRecordIndex(threadWorkroom.status.durable.projection),
+          workroom: threadWorkroom,
           session: { credential: "browser", actor: "codex", live: true, setActor() {}, activity: { status: "available", focus: [] }, setActivity() {} },
           frames: [],
           root: "req",
@@ -676,6 +679,7 @@ test("clicking a thread row opens its full detail, clicking again closes it, and
     await act(async () => {
       root.render(
         React.createElement(Thread, {
+          index: buildRecordIndex(projection),
           workroom,
           session: { credential: "browser", actor: "codex", live: true, setActor() {}, activity: { status: "available", focus: [] }, setActivity() {} },
           frames: [],

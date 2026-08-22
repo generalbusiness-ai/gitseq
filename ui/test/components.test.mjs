@@ -296,6 +296,7 @@ test("thread rows start closed and only rows naming something are expandable", a
   const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
   try {
     const { Thread } = await vite.ssrLoadModule("/src/components/Thread.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
     const request = "1111111111111111111111111111111111111111";
     const projection = {
       decisions: [{ event: request, sequence: 1, verdict: "effective", reason: "recorded" }],
@@ -309,6 +310,7 @@ test("thread rows start closed and only rows naming something are expandable", a
     };
     const markup = renderToStaticMarkup(
       React.createElement(Thread, {
+        index: buildRecordIndex(projection),
         workroom: workroom({}, projection),
         session,
         frames: [],
@@ -369,6 +371,47 @@ test("the request list renders the population and sort its caller holds", async 
     assert.doesNotMatch(stale.slice(stale.indexOf("<tbody>")), /Still open/);
     const live = render({ query: "", population: "live" });
     assert.match(live, /1 open request<\/h2>/);
+  } finally {
+    await vite.close();
+  }
+});
+
+// The reference bound is load-bearing: more references than the limit shows
+// the limit, says exactly how many are not shown, and opening shows the rest.
+test("a record with many references shows the first twelve and says how many more there are", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { RecordDetail, REFERENCE_LIMIT } = await vite.ssrLoadModule("/src/components/RecordDetail.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const base = "base0000000000000000000000000000000000000";
+    const dependents = Array.from({ length: 30 }, (_, i) => `dep${String(i).padStart(37, "0")}`);
+    const projection = {
+      decisions: [],
+      acts: [],
+      statements: [
+        { event: base, sequence: 1, actor: "hugh", kind: "propose", text: "Adopt X" },
+        ...dependents.map((event, i) => ({ event, sequence: i + 2, actor: "claude", kind: "assert", text: `Depends ${i}` })),
+      ],
+      commitments: [],
+      artifacts: [],
+      actors: {},
+      provenance: Object.fromEntries(dependents.map((event) => [event, [base]])),
+    };
+    const markup = renderToStaticMarkup(
+      React.createElement(RecordDetail, {
+        event: base,
+        index: buildRecordIndex(projection),
+        actors: projection.actors,
+        tickets: new Map(),
+        nameOf: (f) => f,
+        onOpenThread() {},
+      }),
+    );
+    assert.equal(REFERENCE_LIMIT, 12);
+    const shown = dependents.filter((event) => markup.includes(`data-ref="${event}"`));
+    assert.equal(shown.length, REFERENCE_LIMIT, "exactly the limit is rendered");
+    assert.deepEqual(shown, dependents.slice(0, REFERENCE_LIMIT), "the first ones, in order");
+    assert.match(markup, /18 more not shown — show all 30/);
   } finally {
     await vite.close();
   }

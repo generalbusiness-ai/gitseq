@@ -16,6 +16,8 @@ export interface RecordIndex {
   restedOnBy: (event: string) => string[];
   /** True when the projection has a statement or act with this id. */
   has: (event: string) => boolean;
+  /** The commitment a request, promise or report event belongs to. */
+  commitment: (event: string) => Projection["commitments"][number] | undefined;
   /**
    * The request whose thread this record belongs to: the record itself when
    * it is a request, else the nearest request up its first-basis chain, with
@@ -34,7 +36,17 @@ export function buildRecordIndex(projection: Projection): RecordIndex {
   const reviews = new Map((projection.reviews ?? []).map((r) => [r.report, r]));
   const restedOnBy = new Map<string, string[]>();
   for (const [dependent, bases] of Object.entries(projection.provenance)) {
-    for (const basis of bases) restedOnBy.set(basis, [...(restedOnBy.get(basis) ?? []), dependent]);
+    for (const basis of bases ?? []) {
+      const bucket = restedOnBy.get(basis);
+      if (bucket) bucket.push(dependent);
+      else restedOnBy.set(basis, [dependent]);
+    }
+  }
+  const commitments = new Map<string, Projection["commitments"][number]>();
+  for (const commitment of projection.commitments) {
+    for (const event of [commitment.request, commitment.promise, commitment.report]) {
+      if (event && !commitments.has(event)) commitments.set(event, commitment);
+    }
   }
   const threadRoot = (event: string): string => {
     const seen = new Set<string>();
@@ -59,6 +71,7 @@ export function buildRecordIndex(projection: Projection): RecordIndex {
     restsOn: (event) => projection.provenance[event] ?? [],
     restedOnBy: (event) => restedOnBy.get(event) ?? [],
     has: (event) => statements.has(event) || acts.has(event),
+    commitment: (event) => commitments.get(event),
     threadRoot,
   };
 }
