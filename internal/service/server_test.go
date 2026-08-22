@@ -1747,3 +1747,42 @@ func embeddedAssetPath(t *testing.T) string {
 	t.Fatal("the committed embed carries no asset to request")
 	return ""
 }
+
+// The composition that actually runs. cmd/gs wraps TrustedHostHandler OUTSIDE
+// Server.Handler, and that wrapper refuses a non-loopback mutation Host by
+// writing the whole response and returning without delegating. Testing
+// Server.Handler alone cannot see that path at all, which is how the first
+// version of this policy shipped a reachable API error with no protections.
+func TestTheRefusedNonLoopbackMutationCarriesBrowserProtections(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	workspace, _, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	handler := TrustedHostHandler(server.Handler())
+	request := httptest.NewRequest(http.MethodPost, "/v0/act", strings.NewReader("{}"))
+	request.Host = "example.invalid:7777"
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected the non-loopback mutation to be refused, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "loopback") {
+		t.Fatalf("expected the host refusal, got %s", response.Body.String())
+	}
+	for name, want := range browserProtections {
+		if got := response.Header().Get(name); got != want {
+			t.Errorf("the refused non-loopback mutation dropped %s = %q, want %q", name, got, want)
+		}
+	}
+}

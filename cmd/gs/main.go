@@ -2111,6 +2111,9 @@ func residentHTTPHandler(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v0/status" {
 			if err := http.NewResponseController(writer).SetWriteDeadline(time.Time{}); err != nil {
+				// Outside Server.Handler, so this refusal carries the browser
+				// policy itself; nothing downstream will add it.
+				service.SetBrowserProtections(writer.Header())
 				http.Error(writer, "status response deadline could not be cleared", http.StatusInternalServerError)
 				return
 			}

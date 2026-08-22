@@ -710,6 +710,9 @@ func (s *Server) liveSnapshot() nexus.Snapshot {
 func TrustedHostHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet && request.Method != http.MethodHead && !loopbackRequestHost(request.Host) {
+			// This refusal never reaches Server.Handler, so it writes the
+			// browser policy itself rather than inheriting it.
+			SetBrowserProtections(writer.Header())
 			writer.Header().Set("Content-Type", "application/json")
 			writer.Header().Set("Cache-Control", "no-store")
 			writer.WriteHeader(http.StatusBadRequest)

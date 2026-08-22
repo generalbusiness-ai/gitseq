@@ -34,13 +34,24 @@ var browserProtections = map[string]string{
 	"Referrer-Policy": "no-referrer",
 }
 
-// secureHeaders applies browserProtections to every response.
+// SetBrowserProtections writes the policy onto one response.
+//
+// Handlers composed OUTSIDE Server.Handler cannot rely on the wrapper below:
+// a wrapper that refuses a request and returns without delegating writes the
+// whole response itself. Those refusals are still responses this resident
+// sends, so they call this. It is exported for exactly that reason, and it is
+// the only way to obtain these values — one source of truth, several places
+// that may originate a response.
+func SetBrowserProtections(header http.Header) {
+	for name, value := range browserProtections {
+		header.Set(name, value)
+	}
+}
+
+// secureHeaders applies the policy to every response the routes produce.
 func secureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		header := writer.Header()
-		for name, value := range browserProtections {
-			header.Set(name, value)
-		}
+		SetBrowserProtections(writer.Header())
 		next.ServeHTTP(writer, request)
 	})
 }
