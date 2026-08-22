@@ -1017,3 +1017,29 @@ test("every record resolves to the request whose thread it belongs to", async ()
   assert.equal(index.sequence("retire"), 4);
   assert.deepEqual(index.restedOnBy("art"), ["retire"]);
 });
+
+// A proposal's thread ends at its ratification. Filing that act under
+// "Superseded claims" told the ratifier the opposite of what they had done.
+test("ratifying a proposal is the closing station of its thread, not a superseded claim", async () => {
+  const { buildSpine } = await import("../src/lib/spine.ts");
+  const projection = {
+    decisions: [
+      { event: "prop", sequence: 1, verdict: "effective", reason: "recorded" },
+      { event: "yes", sequence: 2, verdict: "effective", reason: "authorized ratification" },
+    ],
+    acts: [{ event: "yes", actor: "hugh", type: "ratify", target: "prop", verdict: "effective", reason: "authorized ratification", timestamp: 2 }],
+    statements: [{ event: "prop", sequence: 1, actor: "planner", kind: "propose", text: "Adopt X", timestamp: 1, ratified: true }],
+    commitments: [],
+    reviews: [],
+    artifacts: [],
+    actors: {},
+    provenance: { yes: ["prop"] },
+  };
+  const spine = buildSpine("prop", { projection, tickets: new Map([["prop", 1], ["yes", 2]]), nameOf: (f) => f });
+  const closed = spine.stations.find((station) => station.id === "closed");
+  assert.ok(closed, "the ratification is a station");
+  assert.equal(closed.event, "yes");
+  assert.match(closed.what, /hugh ratified it/);
+  assert.equal(spine.expanders.some((expander) => expander.id === "superseded"), false);
+  assert.equal(spine.expanders.some((expander) => expander.events.includes("yes")), false, "a station is not also behind an expander");
+});
