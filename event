@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cf672d09d6f2c78a702c6d87f9a32c8c2a6b9a9f","text":"Retire the duplicate Planner review request. Claude's exact-head request 1d79cfba was claimed first and completed with effective approval 71e878ef on the same head and artifact."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:71e878ef7d61b62e1d2e1acb556d0995fe177cd4"}
