@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at spike","body":{"commit":"b7f5b01516815963a7bdfbb6671bf06b47bbfa08","path":"spike"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b78567c9fdc10c79087ae72099fb8397715fb1a8","text":"Merge retired a covered predecessor; the successor is at spike."}
