@@ -191,7 +191,7 @@ so probes time out, `gs serve` will keep refusing. The refusal says what to
 do:
 
 ```sh
-git update-ref -d refs/gitseq/resident/<genesis>
+git -C "$REPO" update-ref -d "refs/gitseq/resident/$GENESIS"
 ```
 
 Check that no `gs serve` is actually running against the repository first.
