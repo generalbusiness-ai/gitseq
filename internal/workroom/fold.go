@@ -1105,7 +1105,19 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 	if implementation.Body["path"] == "" {
 		return nil
 	}
-	reviewed := f.reviewedPaths(approval, implementer, state.Body["merge_candidate"])
+	// The temporal world rule, enforced where authority actually lives. A
+	// receipt appended straight to the log never passes through `gs merge`, so
+	// a check that lives only in the CLI defends nothing: the same approval
+	// would mint cross-author retirement authority through the other door.
+	// A world the reviewer had already been shown refuses; one that moved after
+	// they signed does not, and a flagged artifact whose causes cannot be dated
+	// refuses too.
+	active := f.activeRetirements()
+	verdictAt := approval.sequence()
+	if f.worldFlagged(artifactID) && !f.worldMovedAfter(artifactID, verdictAt, active) {
+		return nil
+	}
+	reviewed := f.reviewedPathsWith(approval, implementer, state.Body["merge_candidate"], active)
 	if len(reviewed) == 0 {
 		return nil
 	}
@@ -1152,11 +1164,26 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 // An approval citing one artifact reaches one path, which is what every
 // approval written before this rule existed does.
 func (f *foldState) reviewedPaths(approval *parsedRecord, implementer, head string) []string {
+	return f.reviewedPathsWith(approval, implementer, head, f.activeRetirements())
+}
+
+// reviewedPathsWith takes the active-retirement index the caller already built.
+// Rebuilding it per call walked the whole supersession set again for every
+// receipt and every co-signed basis, which doubled the cost of a fold.
+func (f *foldState) reviewedPathsWith(approval *parsedRecord, implementer, head string, active map[string]int) []string {
+	// Co-signed members are held to the temporal rule the primary artifact is
+	// held to. A member the reviewer signed still widens the receipt's reach
+	// when the world moved after they signed; one that had already moved does
+	// not widen it at all, and neither does one whose causes cannot be dated.
+	verdictAt := approval.sequence()
 	var paths []string
 	seen := make(map[string]bool)
 	for _, basis := range approval.record.RestsOn {
 		cited := f.byID[basis]
 		if cited == nil || cited.decision.Verdict != Effective || f.retired(basis) {
+			continue
+		}
+		if f.worldFlagged(basis) && !f.worldMovedAfter(basis, verdictAt, active) {
 			continue
 		}
 		if cited.record.Actor != implementer || cited.definition == nil || cited.definition.Render != RenderArtifact {
@@ -1526,6 +1553,107 @@ func (f *foldState) staleness(successors map[string]string) (map[string]bool, ma
 	return stale, world, causedAt
 }
 
+// worldFlagged reports whether this artifact describes a superseded world as
+// the fold sees it so far: a retired artifact basis reached over
+// artifact-to-artifact edges, whenever that retirement landed.
+func (f *foldState) worldFlagged(event string) bool {
+	seen := map[string]bool{event: true}
+	queue := []string{event}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		record := f.byID[current]
+		if record == nil {
+			continue
+		}
+		for _, basis := range record.record.RestsOn {
+			if seen[basis] || !f.isArtifact(basis) {
+				continue
+			}
+			seen[basis] = true
+			if f.retired(basis) {
+				return true
+			}
+			queue = append(queue, basis)
+		}
+	}
+	return false
+}
+
+// worldMovedAfter is the admitting half: every cause that can account for the
+// moved world landed after the given position, and there was at least one to
+// find. An undated flag answers false, so the caller refuses.
+func (f *foldState) worldMovedAfter(event string, at int, active map[string]int) bool {
+	if f.worldCauseAtOrBefore(event, at, active) {
+		return false
+	}
+	found := false
+	seen := map[string]bool{event: true}
+	queue := []string{event}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		record := f.byID[current]
+		if record == nil {
+			continue
+		}
+		for _, basis := range record.record.RestsOn {
+			if seen[basis] || !f.isArtifact(basis) {
+				continue
+			}
+			seen[basis] = true
+			if _, retired := active[basis]; retired {
+				found = true
+				continue
+			}
+			queue = append(queue, basis)
+		}
+	}
+	return found
+}
+
+// worldCauseAtOrBefore reports whether a retirement that can account for this
+// artifact describing a superseded world was already in the log at the given
+// position. It is the one implementation of the world-staleness edge rule:
+// a direct retirement edge from an artifact basis, then artifact-to-artifact
+// edges only. The receipt boundary needs it during the fold, before staleness()
+// has run, so it cannot read the published date and must ask the same question
+// of the same graph.
+//
+// It fails closed by construction: it answers whether a cause old enough to
+// have been visible at the verdict exists, so an artifact whose causes cannot
+// be found answers false and the caller refuses on the flag instead.
+func (f *foldState) worldCauseAtOrBefore(event string, at int, active map[string]int) bool {
+	seen := map[string]bool{event: true}
+	queue := []string{event}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		record := f.byID[current]
+		if record == nil {
+			continue
+		}
+		for _, basis := range record.record.RestsOn {
+			if seen[basis] || !f.isArtifact(basis) {
+				continue
+			}
+			seen[basis] = true
+			if when, retired := active[basis]; retired && when <= at {
+				return true
+			}
+			// Descend past a retired basis. staleness() inherits causedAt
+			// through retired artifacts, so stopping here would make this walk
+			// a strict subset of the published rule: an old cause sitting under
+			// a newer retirement would be invisible, and the implementer can
+			// author and retire that interposing artifact themselves. This is
+			// the same defect, in a second place, that the break in staleness()
+			// was.
+			queue = append(queue, basis)
+		}
+	}
+	return false
+}
+
 // activeRetirements dates every retired event by the earliest supersession
 // still accounting for it. A supersession that has itself been superseded is
 // not a cause: the fold already withdrew its effect from the retirement
@@ -1537,8 +1665,11 @@ func (f *foldState) activeRetirements() map[string]int {
 		if f.retired(id) {
 			continue
 		}
+		// f.effectiveSup is only written for a record the fold ruled effective,
+		// so no verdict check belongs here: one would read as a guard while
+		// being unreachable, which is worse than its absence.
 		cause := f.byID[id]
-		if cause == nil || cause.decision.Verdict != Effective {
+		if cause == nil {
 			continue
 		}
 		at := cause.sequence()

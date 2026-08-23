@@ -890,7 +890,7 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 			return "", fmt.Errorf("approval already has durable merge receipt %s", statement.Event)
 		}
 	}
-	approval, err := liveStatement(projection, approvalEvent, workroom.KindReport)
+	approval, err := liveStatementAsOf(projection, approvalEvent, workroom.KindReport, verdictSequence(projection, approvalEvent))
 	if err != nil {
 		return "", fmt.Errorf("approval: %w", err)
 	}
@@ -1056,7 +1056,7 @@ func liveArtifactAsOf(projection workroom.Projection, event string, verdict int)
 // the verdict" would turn every projection this cannot date into a merge nobody
 // reviewed.
 func worldMovedAfterVerdict(artifact workroom.Artifact, verdict int) bool {
-	return artifact.WorldSupersededAt != 0 && artifact.WorldSupersededAt > verdict
+	return worldDatedAfter(artifact.WorldSupersededAt, verdict)
 }
 
 // verdictSequence is where a verdict sits in the log, or the end of the log if
@@ -1093,16 +1093,40 @@ func standingStatement(projection workroom.Projection, event string, kind workro
 }
 
 // liveStatement is merge-live: standing, and not describing a superseded
-// world. Ordinary reasoning staleness is recorded by the merge receipt.
+// world. Ordinary reasoning staleness is recorded by the merge receipt. It
+// judges the world as of now, which is what a caller with no verdict to date
+// against needs.
 func liveStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
+	return liveStatementAsOf(projection, event, kind, math.MaxInt)
+}
+
+// liveStatementAsOf dates an approval's own superseded world the way
+// liveArtifactAsOf dates the artifact's. An approval is a statement, so it
+// carries the same published date, and refusing it undated while the artifact
+// beside it is dated would refuse exactly the verdicts this change exists to
+// admit: the approval and its artifact move together when a basis under both
+// is retired after the verdict.
+//
+// A verdict cannot date itself, so the caller supplies the position. For the
+// approval that position is its own, which is what makes a world that moved
+// afterwards news rather than grounds for refusal.
+func liveStatementAsOf(projection workroom.Projection, event string, kind workroom.Kind, verdict int) (workroom.Statement, error) {
 	statement, err := standingStatement(projection, event, kind)
 	if err != nil {
 		return workroom.Statement{}, err
 	}
-	if statement.DescribesSupersededWorld {
+	if statement.DescribesSupersededWorld && !worldDatedAfter(statement.WorldSupersededAt, verdict) {
 		return workroom.Statement{}, errors.New("statement describes a superseded world")
 	}
 	return statement, nil
+}
+
+// worldDatedAfter reads the fold's date and fails closed on its absence. Zero
+// means the fold accounted for no active cause, and reading that as "after the
+// verdict" would turn every projection this cannot date into a merge nobody
+// reviewed.
+func worldDatedAfter(datedAt, verdict int) bool {
+	return datedAt != 0 && datedAt > verdict
 }
 
 func uniqueStandingBasis(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {

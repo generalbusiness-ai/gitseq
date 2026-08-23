@@ -93,9 +93,12 @@ predecessors at step 5 is what makes those pages flare when the world moves
 under them. Ordinary staleness says the reasoning moved, not that the immutable
 reviewed head changed, and `gs merge` records it in the receipt. The narrower
 `describes_superseded_world` fact crosses a direct retired-artifact edge and
-then follows artifact-to-artifact provenance only, and `gs merge` refuses it:
-publish an artifact on current implementation bases rather than repeat review
-on the old chain.
+then follows artifact-to-artifact provenance only. A merge judges it as of the
+verdict: one the reviewer had already been shown refuses, and one the world
+moved under after they signed is recorded, because their head has not changed
+and they had no chance to see the move. A flagged artifact the fold cannot date
+refuses. When it refuses, publish an artifact on current implementation bases
+rather than repeat review on the old chain.
 
 Artifacts recorded at `.` or at a comma-joined path before those rules existed
 are still live, and a document resting on one can never flare. Retiring them is

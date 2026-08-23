@@ -86,7 +86,15 @@ The date is the fold's. `world_superseded_at` is the earliest retirement still
 accounting for the moved world, taken across every basis rather than the first
 one that carries the flag, so the order a signer wrote its citations in cannot
 change it, and a supersession that has itself been superseded is not a cause.
-`merge` compares that one number against the verdict's position.
+`merge` compares that one number against the verdict's position, for the
+approval and for its artifact alike: they move together when a basis under both
+is retired, so dating one and not the other would refuse the very verdicts this
+admits.
+
+The same rule is enforced by the fold, not only here. A signed merge receipt
+appended straight to the log never passes through this command, so a check that
+lived only in the CLI would leave that door open; `gs merge` and the fold ask
+the same question of the same graph.
 
 When the fold reports no active cause the merge refuses. An undated superseded
 world is a projection this command cannot date, not a permission to land.
@@ -95,7 +103,7 @@ world is a projection this command cannot date, not a permission to land.
 
 | Situation | Why |
 |---|---|
-| The approval is ineffective, unratified, retired, or describes a superseded world | An approval that no longer stands approves nothing. Ordinary staleness is not on this list; see below. |
+| The approval is ineffective, unratified, retired, or already described a superseded world when it was signed | An approval that no longer stands approves nothing. Ordinary staleness is not on this list; see below, and a world that moved after the verdict is recorded rather than refused. |
 | The approved artifact is ineffective, retired, or already described a superseded world when the verdict was signed | Same, from the other side of the chain. A world that moved *after* the verdict is recorded, not refused; see below. |
 | The verdict is not `approved` | `changes-requested` is not a merge authorization. |
 | `--candidate` differs from the approved head | The reviewer looked at a different commit. |
