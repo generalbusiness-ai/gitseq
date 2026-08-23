@@ -68,11 +68,20 @@ type WaitResponse struct {
 	Reset       bool           `json:"reset,omitempty"`
 }
 
+// DefaultWaitConcurrency bounds how many long polls the resident holds open at
+// once across /v0/wait and /v0/actor-wait together. The two routes share one
+// budget because they consume the same resource: a goroutine ticking the
+// snapshot until something changes or the poll times out.
+const DefaultWaitConcurrency = 64
+
 type Server struct {
 	workspace *app.Workspace
 	hub       *nexus.Hub
 	mux       *http.ServeMux
 	observer  observe.Observer
+	// waitSlots is the shared long-poll budget. A handler acquires by sending
+	// and releases by receiving; capacity is the bound.
+	waitSlots chan struct{}
 }
 
 func New(workspace *app.Workspace) (*Server, error) {
@@ -87,7 +96,7 @@ func NewObserved(workspace *app.Workspace, observer observe.Observer) (*Server, 
 		return nil, err
 	}
 	workspace.SetObserver(observer)
-	server := &Server{workspace: workspace, hub: hub, mux: http.NewServeMux(), observer: observer}
+	server := &Server{workspace: workspace, hub: hub, mux: http.NewServeMux(), observer: observer, waitSlots: make(chan struct{}, DefaultWaitConcurrency)}
 	server.routes()
 	return server, nil
 }
@@ -310,6 +319,22 @@ func (s *Server) handleActorWait(writer http.ResponseWriter, request *http.Reque
 }
 
 func (s *Server) handleWaitResponse(writer http.ResponseWriter, request *http.Request, actorView bool) {
+	// Take a slot from the shared budget before reading anything. A full
+	// budget answers 429 at once rather than queueing: the caller is a long
+	// poller and will retry on its own schedule, and a queued refusal would
+	// hold the very resource the bound protects. The deferred release runs on
+	// every exit — completion, client cancellation, error, or panic — so no
+	// path can leak capacity.
+	select {
+	case s.waitSlots <- struct{}{}:
+	default:
+		writer.Header().Set("Content-Type", "application/json")
+		writer.Header().Set("Cache-Control", "no-store")
+		writer.WriteHeader(http.StatusTooManyRequests)
+		_ = json.NewEncoder(writer).Encode(map[string]string{"error": "too many concurrent waits; retry shortly"})
+		return
+	}
+	defer func() { <-s.waitSlots }()
 	started := time.Now()
 	var input WaitRequest
 	if err := decode(request, &input); err != nil {
