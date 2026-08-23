@@ -18,8 +18,10 @@ func testConfig() Config {
 }
 
 var (
-	errInjectedWrite = errors.New("injected write failure")
-	errInjectedClose = errors.New("injected close failure")
+	errInjectedWrite      = errors.New("injected write failure")
+	errInjectedClose      = errors.New("injected close failure")
+	errInjectedRetryClose = errors.New("injected retry-close failure")
+	errInjectedIdentity   = errors.New("injected identity-read failure")
 )
 
 // requireClosed proves CreateConfig closed the handle it opened: a leaked
@@ -151,6 +153,37 @@ func TestCreateConfigNeverTouchesPreexistingFile(t *testing.T) {
 	}
 }
 
+// When the first close fails without releasing the handle, the cleanup closes
+// it again, and that fallback close can itself fail. Both failures matter:
+// the original close failure is why nothing was stored, and the fallback
+// failure says the handle may still be held. Written the easy way — asserting
+// only the original — this test would pass even if the fallback close's error
+// were silently discarded, which is exactly the defect it exists to catch.
+func TestCreateConfigCarriesFallbackCloseFailureAlongsideOriginal(t *testing.T) {
+	metaDir := t.TempDir()
+	var captured *os.File
+	previousClose := createConfigClose
+	previousRetryClose := createConfigRetryClose
+	createConfigClose = func(file *os.File) error {
+		captured = file
+		return errInjectedClose
+	}
+	createConfigRetryClose = func(*os.File) error { return errInjectedRetryClose }
+	err := CreateConfig(metaDir, testConfig())
+	createConfigClose = previousClose
+	createConfigRetryClose = previousRetryClose
+	if captured == nil {
+		t.Fatal("the injected close failure was never reached")
+	}
+	captured.Close()
+	if !errors.Is(err, errInjectedClose) {
+		t.Fatalf("CreateConfig error = %v, want the original injected close failure preserved", err)
+	}
+	if !errors.Is(err, errInjectedRetryClose) {
+		t.Fatalf("CreateConfig error = %v, want the fallback close failure carried alongside the original", err)
+	}
+}
+
 // A write failure followed by a close failure loses information if either is
 // dropped: the write failure is why nothing was stored, and the close failure
 // says the storage may be in a worse state than the write error alone admits.
@@ -185,27 +218,34 @@ func TestCreateConfigCarriesCloseFailureAlongsideWriteFailure(t *testing.T) {
 // O_EXCL proved the path empty at creation, not at cleanup. If another
 // process removes the partial file and stores its own configuration in that
 // window, a cleanup that removes by pathname deletes that process's file and
-// reports it as this call's partial write. The injected write failure stages
-// that race deterministically: it replaces the created file before the
-// cleanup runs. Written the easy way — with nothing racing — this test would
-// pass even if the cleanup removed whatever stands at the path, which is
-// exactly the defect it exists to catch.
+// reports it as this call's partial write. The injected close stages that
+// race deterministically, after really closing the handle — the only order in
+// which the racing process could remove the file on Windows, where an open
+// handle blocks the removal. Written the easy way — with nothing racing —
+// this test would pass even if the cleanup removed whatever stands at the
+// path, which is exactly the defect it exists to catch.
 func TestCreateConfigLeavesAReplacementAtItsDestinationAlone(t *testing.T) {
 	metaDir := t.TempDir()
 	path := filepath.Join(metaDir, ConfigFile)
 	replacement := []byte("another process's configuration\n")
 	previousWrite := createConfigWrite
-	createConfigWrite = func(*os.File, []byte) (int, error) {
+	previousClose := createConfigClose
+	createConfigWrite = func(*os.File, []byte) (int, error) { return 0, errInjectedWrite }
+	createConfigClose = func(file *os.File) error {
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.Remove(path); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(path, replacement, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		return 0, errInjectedWrite
+		return nil
 	}
 	err := CreateConfig(metaDir, testConfig())
 	createConfigWrite = previousWrite
+	createConfigClose = previousClose
 	if !errors.Is(err, errInjectedWrite) {
 		t.Fatalf("CreateConfig error = %v, want the original injected write failure preserved", err)
 	}
@@ -218,5 +258,84 @@ func TestCreateConfigLeavesAReplacementAtItsDestinationAlone(t *testing.T) {
 	}
 	if string(content) != string(replacement) {
 		t.Fatalf("the replacement changed: got %q, want %q", content, replacement)
+	}
+}
+
+// A symbolic link planted at the destination that points back at this call's
+// file would pass an identity check that follows links: os.Stat would
+// describe the created file itself, os.SameFile would match, and the cleanup
+// would remove the link — an entry this call did not create. The identity
+// check must describe the destination entry itself. The injected close stages
+// the link after really closing the handle, the only order the racing process
+// could achieve on Windows.
+func TestCreateConfigLeavesASymlinkAtItsDestinationAlone(t *testing.T) {
+	metaDir := t.TempDir()
+	if err := os.Symlink("probe-target", filepath.Join(metaDir, "probe")); err != nil {
+		t.Skipf("symbolic links are unavailable here: %v", err)
+	}
+	path := filepath.Join(metaDir, ConfigFile)
+	moved := filepath.Join(metaDir, "moved-config.json")
+	previousWrite := createConfigWrite
+	previousClose := createConfigClose
+	createConfigWrite = func(*os.File, []byte) (int, error) { return 0, errInjectedWrite }
+	createConfigClose = func(file *os.File) error {
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(path, moved); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(moved, path); err != nil {
+			t.Fatal(err)
+		}
+		return nil
+	}
+	err := CreateConfig(metaDir, testConfig())
+	createConfigWrite = previousWrite
+	createConfigClose = previousClose
+	if !errors.Is(err, errInjectedWrite) {
+		t.Fatalf("CreateConfig error = %v, want the original injected write failure preserved", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "did not create") {
+		t.Fatalf("CreateConfig error = %v, want it to report the destination holds a file this call did not create", err)
+	}
+	info, lstatErr := os.Lstat(path)
+	if lstatErr != nil {
+		t.Fatalf("the link at the destination is gone: %v", lstatErr)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the destination entry is no longer a link: mode = %v", info.Mode())
+	}
+	if _, statErr := os.Stat(moved); statErr != nil {
+		t.Fatalf("this call's file was removed through the link: %v", statErr)
+	}
+}
+
+// When the identity read itself fails, the cleanup cannot know whose file
+// occupies the path, so it must remove nothing — and it must tell the caller
+// that specific cause, not a guess. Written the easy way — asserting only
+// that something failed — this test would pass even if the identity read's
+// error were silently discarded, which is exactly the defect it exists to
+// catch.
+func TestCreateConfigCarriesIdentityReadFailureAlongsideOriginal(t *testing.T) {
+	metaDir := t.TempDir()
+	previousWrite := createConfigWrite
+	previousIdentity := createConfigIdentity
+	createConfigWrite = func(*os.File, []byte) (int, error) { return 0, errInjectedWrite }
+	createConfigIdentity = func(string) (os.FileInfo, error) { return nil, errInjectedIdentity }
+	err := CreateConfig(metaDir, testConfig())
+	createConfigWrite = previousWrite
+	createConfigIdentity = previousIdentity
+	if !errors.Is(err, errInjectedWrite) {
+		t.Fatalf("CreateConfig error = %v, want the original injected write failure preserved", err)
+	}
+	if !errors.Is(err, errInjectedIdentity) {
+		t.Fatalf("CreateConfig error = %v, want the identity read's failure carried alongside the original", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "nothing was removed") {
+		t.Fatalf("CreateConfig error = %v, want it to report that nothing was removed", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(metaDir, ConfigFile)); statErr != nil {
+		t.Fatalf("identity was never confirmed, yet the file is gone: %v", statErr)
 	}
 }

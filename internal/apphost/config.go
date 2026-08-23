@@ -125,8 +125,10 @@ func SaveConfig(metaDir string, config Config) error {
 // and only that file. O_EXCL proved the path empty at creation, not at
 // cleanup, so before removing anything the cleanup confirms the file at the
 // destination is still the one this call created; a file someone else stored
-// there in the meantime is left in place. A pre-existing file is never
-// touched: it makes the open fail before anything is written or removed.
+// there in the meantime is left in place. That confirmation is a cooperative
+// safeguard, not an atomic guarantee — see abandonPartialConfig for the
+// residual window. A pre-existing file is never touched: it makes the open
+// fail before anything is written or removed.
 func CreateConfig(metaDir string, config Config) error {
 	content, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
@@ -166,6 +168,17 @@ func CreateConfig(metaDir string, config Config) error {
 // window since creation, and removing by pathname would delete that stranger's
 // file and report it as this call's partial write. When identity cannot be
 // confirmed, nothing is removed.
+//
+// The identity comparison reads the destination entry itself, without
+// following a symbolic link: created describes the regular file this call's
+// handle wrote, while os.Lstat describes whatever entry now occupies the
+// path, so a link planted at the destination — even one pointing back at this
+// call's file — is never the same file and is left in place. The comparison
+// does not make the removal atomic. The metadata directory is created 0700,
+// so custody within it is cooperative between processes of one account, and a
+// replacement landing in the instant between the identity check and the
+// removal would still be removed; the check narrows that window, it cannot
+// close it.
 func abandonPartialConfig(file *os.File, path string, created os.FileInfo, identityErr, writeErr, closeErr error) error {
 	err := writeErr
 	if err == nil {
@@ -174,14 +187,14 @@ func abandonPartialConfig(file *os.File, path string, created os.FileInfo, ident
 		err = errors.Join(err, fmt.Errorf("closing the partial configuration also failed: %w", closeErr))
 	}
 	if closeErr != nil {
-		if retryErr := file.Close(); retryErr != nil && !errors.Is(retryErr, os.ErrClosed) {
+		if retryErr := createConfigRetryClose(file); retryErr != nil && !errors.Is(retryErr, os.ErrClosed) {
 			err = errors.Join(err, fmt.Errorf("the file handle could not be closed: %w", retryErr))
 		}
 	}
 	if identityErr != nil {
 		return errors.Join(err, fmt.Errorf("cannot confirm the destination still holds this call's file, so nothing was removed: %w", identityErr))
 	}
-	current, statErr := os.Stat(path)
+	current, statErr := createConfigIdentity(path)
 	if statErr != nil {
 		return errors.Join(err, fmt.Errorf("cannot confirm the destination still holds this call's file, so nothing was removed: %w", statErr))
 	}
@@ -194,13 +207,15 @@ func abandonPartialConfig(file *os.File, path string, created os.FileInfo, ident
 	return err
 }
 
-// CreateConfig's write and close failures are storage conditions a test
-// cannot arrange on a healthy filesystem, so these two indirections exist for
-// tests in this package to force each failure branch. Production never
-// replaces them.
+// CreateConfig's write, close, retry-close, and identity-read failures are
+// storage conditions a test cannot arrange on a healthy filesystem, so these
+// indirections exist for tests in this package to force each failure branch.
+// Production never replaces them.
 var (
-	createConfigWrite = func(file *os.File, content []byte) (int, error) { return file.Write(content) }
-	createConfigClose = func(file *os.File) error { return file.Close() }
+	createConfigWrite      = func(file *os.File, content []byte) (int, error) { return file.Write(content) }
+	createConfigClose      = func(file *os.File) error { return file.Close() }
+	createConfigRetryClose = func(file *os.File) error { return file.Close() }
+	createConfigIdentity   = func(path string) (os.FileInfo, error) { return os.Lstat(path) }
 )
 
 // ValidateGenesis rejects an object id that cannot name a commit in the
