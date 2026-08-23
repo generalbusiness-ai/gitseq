@@ -166,7 +166,8 @@ func initCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	return printJSON(map[string]any{"genesis": workspace.Config.Genesis, "operator": workspace.Config.Actors[name], "seed": seed.ID})
+	view := workspace.View()
+	return printJSON(map[string]any{"genesis": view.Genesis, "operator": view.Actors[name], "seed": seed.ID})
 }
 
 func actorAddCommand(ctx context.Context, arguments []string) error {
@@ -465,7 +466,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	merger := workspace.Config.Actors[actor].Fingerprint
+	merger := workspace.View().Actors[actor].Fingerprint
 	if found {
 		if existing.Candidate != *candidate {
 			return fmt.Errorf("approval was already used for candidate %s", existing.Candidate)
@@ -1590,7 +1591,7 @@ func validateLoopbackServer(raw string) error {
 }
 
 func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (service.SummaryStatus, error) {
-	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
 	if err != nil {
 		return service.SummaryStatus{}, err
 	}
@@ -1614,7 +1615,7 @@ func fetchFullStatus(ctx context.Context, raw string) (service.Status, error) {
 }
 
 func validateRemoteFrontier(ctx context.Context, workspace *app.Workspace, genesis, head string) error {
-	current, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	current, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
 	if err != nil {
 		return err
 	}
@@ -1622,11 +1623,12 @@ func validateRemoteFrontier(ctx context.Context, workspace *app.Workspace, genes
 }
 
 func validateRemoteFrontierAt(ctx context.Context, workspace *app.Workspace, before, genesis, head string) error {
-	after, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	expected := workspace.View().Genesis
+	after, err := workspace.Store.Head(ctx, kernel.Ref(expected))
 	if err != nil {
 		return err
 	}
-	if genesis != workspace.Config.Genesis {
+	if genesis != expected {
 		return errors.New("resident summary genesis does not match the selected workroom")
 	}
 	if before != after {
@@ -1706,7 +1708,7 @@ func workCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	fingerprint := workspace.Config.Actors[actorName].Fingerprint
+	fingerprint := workspace.View().Actors[actorName].Fingerprint
 	if fingerprint == "" {
 		return fmt.Errorf("actor %q is not provisioned in this checkout", actorName)
 	}
@@ -2052,7 +2054,7 @@ func checkpointClearCommand(ctx context.Context, arguments []string) error {
 	if err := workspace.InvalidateCheckpoint(ctx); err != nil {
 		return err
 	}
-	return printJSON(map[string]any{"genesis": workspace.Config.Genesis, "checkpoint": "cleared"})
+	return printJSON(map[string]any{"genesis": workspace.View().Genesis, "checkpoint": "cleared"})
 }
 
 func serveCommand(ctx context.Context, arguments []string) error {
@@ -2070,7 +2072,7 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if workspace.Config.ReadOnly {
+	if workspace.View().ReadOnly {
 		return errors.New("cannot serve a read-only attachment")
 	}
 	telemetryRuntime, err := telemetry.NewOTLP(ctx, *otlpEndpoint)

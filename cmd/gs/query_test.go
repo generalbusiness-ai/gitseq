@@ -132,7 +132,7 @@ func TestWorkJSONIsTheSharedWorkPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	direct, err := statusview.BuildWorkPage(snapshot, statusview.WorkQuery{Actor: fixture.workspace.Config.Actors["worker"].Fingerprint}, false)
+	direct, err := statusview.BuildWorkPage(snapshot, statusview.WorkQuery{Actor: fixture.workspace.View().Actors["worker"].Fingerprint}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestWorkJSONIsTheSharedWorkPage(t *testing.T) {
 // answer looks selective and is not.
 func TestWorkSelectorsReachTheBuilder(t *testing.T) {
 	fixture := newQueryFixture(t)
-	worker := fixture.workspace.Config.Actors["worker"].Fingerprint
+	worker := fixture.workspace.View().Actors["worker"].Fingerprint
 
 	narrowed, _, err := fixture.run(workCommand, "--as", "worker", "--json", "--lane", "not_actionable")
 	if err != nil {

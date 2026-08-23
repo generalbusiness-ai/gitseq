@@ -106,14 +106,15 @@ func Prepare(ctx context.Context, directory string, plan FixturePlan) (Manifest,
 	if err != nil {
 		return Manifest{}, err
 	}
-	seedHead, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	view := workspace.View()
+	seedHead, err := workspace.Store.Head(ctx, kernel.Ref(view.Genesis))
 	if err != nil {
 		return Manifest{}, err
 	}
 	manifest := Manifest{
 		Schema: manifestSchema, GeneratorVersion: plan.GeneratorVersion, Seed: plan.Seed,
 		Shape: plan.Shape, Depth: plan.Depth, Repository: directory,
-		Genesis: workspace.Config.Genesis, SeedEvent: seed.ID, Actor: "operator", ActorCount: plan.ActorCount,
+		Genesis: view.Genesis, SeedEvent: seed.ID, Actor: "operator", ActorCount: plan.ActorCount,
 		Heads: map[string]string{"1": seedHead}, Checkpoints: make(map[string]string),
 	}
 	logical := sha256.New()
@@ -139,7 +140,7 @@ func Prepare(ctx context.Context, directory string, plan FixturePlan) (Manifest,
 	bulkBase := manifest.Heads[strconv.Itoa(depth)]
 	for depth++; depth <= plan.Depth; depth++ {
 		bucket := plan.PayloadBuckets[int(prng.Uint64n(uint64(len(plan.PayloadBuckets))))]
-		act := generatedAct(plan.Shape, depth, bucket, workspace.Config.Actors["operator"].Fingerprint, seed.ID, lastRequest, lastPromise, lastReport, lastArtifact)
+		act := generatedAct(plan.Shape, depth, bucket, view.Actors["operator"].Fingerprint, seed.ID, lastRequest, lastPromise, lastReport, lastArtifact)
 		commit, event, err := writer.append(ctx, manifest.Heads[strconv.Itoa(depth-1)], act.value)
 		if err != nil {
 			return Manifest{}, fmt.Errorf("generate depth %d (%s): %w", depth, act.label, err)
@@ -162,7 +163,7 @@ func Prepare(ctx context.Context, directory string, plan FixturePlan) (Manifest,
 	}
 	finalHead := manifest.Heads[strconv.Itoa(plan.Depth)]
 	if finalHead != bulkBase {
-		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), finalHead, bulkBase); err != nil {
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(view.Genesis), finalHead, bulkBase); err != nil {
 			return Manifest{}, fmt.Errorf("publish generated fixture head: %w", err)
 		}
 	}
@@ -172,7 +173,7 @@ func Prepare(ctx context.Context, directory string, plan FixturePlan) (Manifest,
 		if checkpointHead == "" {
 			return Manifest{}, fmt.Errorf("fixture has no head for checkpoint depth %d", checkpointDepth)
 		}
-		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), checkpointHead, currentHead); err != nil {
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(view.Genesis), checkpointHead, currentHead); err != nil {
 			return Manifest{}, fmt.Errorf("select checkpoint depth %d: %w", checkpointDepth, err)
 		}
 		currentHead = checkpointHead
@@ -191,14 +192,14 @@ func Prepare(ctx context.Context, directory string, plan FixturePlan) (Manifest,
 		if _, snapshotErr := reader.Snapshot(ctx); snapshotErr != nil {
 			return Manifest{}, fmt.Errorf("verify checkpoint depth %d: %w", checkpointDepth, snapshotErr)
 		}
-		checkpoint, checkpointErr := workspace.Store.Head(ctx, kernel.CheckpointRef(workspace.Config.Genesis))
+		checkpoint, checkpointErr := workspace.Store.Head(ctx, kernel.CheckpointRef(view.Genesis))
 		if checkpointErr != nil {
 			return Manifest{}, fmt.Errorf("checkpoint at depth %d was not written: %w", checkpointDepth, checkpointErr)
 		}
 		manifest.Checkpoints[strconv.Itoa(checkpointDepth)] = checkpoint
 	}
 	if currentHead != finalHead {
-		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), finalHead, currentHead); err != nil {
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(view.Genesis), finalHead, currentHead); err != nil {
 			return Manifest{}, fmt.Errorf("restore generated fixture head: %w", err)
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/connector/github"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
@@ -463,7 +464,7 @@ func TestDryRunProposalDoesNotRequireLocalConnectorCustody(t *testing.T) {
 	request := state(app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "fix issue",
 		Body: map[string]string{
-			"to": workspace.Config.Actors["human"].Fingerprint, "conditions": "exact head",
+			"to": workspace.View().Actors["human"].Fingerprint, "conditions": "exact head",
 		},
 		RestsOn: []string{seed.ID}, IdempotencyKey: "request",
 	})
@@ -496,9 +497,19 @@ func TestObservationIdentityRefusesConfiguredFingerprintMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	configured := workspace.Config.Actors["connector"]
-	configured.Fingerprint = strings.Repeat("0", len(configured.Fingerprint))
-	workspace.Config.Actors["connector"] = configured
+	// Corrupt the stored custody entry and reopen: the configuration field is
+	// unexported, so the only way to seed custody from outside internal/app is
+	// through the stored file and the same load path production takes.
+	corrupted := workspace.View()
+	connector := corrupted.Actors["connector"]
+	connector.Fingerprint = strings.Repeat("0", len(connector.Fingerprint))
+	corrupted.Actors["connector"] = connector
+	if err := apphost.SaveConfig(workspace.MetaDir, corrupted); err != nil {
+		t.Fatal(err)
+	}
+	if workspace, err = app.Open(ctx, repo); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := loadObservationIdentity(workspace, "connector"); err == nil || !strings.Contains(err.Error(), "does not match configured fingerprint") {
 		t.Fatalf("mismatched connector identity error = %v", err)
@@ -515,7 +526,7 @@ func TestObservationIdentityCanonicalizesActorAddresses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := workspace.Config.Actors["connector"]
+	want := workspace.View().Actors["connector"]
 	for _, address := range []string{"connector", "@connector", want.Fingerprint} {
 		identity, err := loadObservationIdentity(workspace, address)
 		if err != nil {

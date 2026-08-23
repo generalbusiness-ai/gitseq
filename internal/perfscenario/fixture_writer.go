@@ -53,13 +53,14 @@ func newFixtureWriter(workspace *app.Workspace, commits int) (*fixtureWriter, er
 	if err != nil {
 		return nil, err
 	}
-	sequencer, err := readOpenSSHEd25519(workspace.Config.SequencerKey)
+	view := workspace.View()
+	sequencer, err := readOpenSSHEd25519(view.SequencerKey)
 	if err != nil {
 		return nil, fmt.Errorf("read fixture sequencer key: %w", err)
 	}
 	w := &fixtureWriter{
-		objects: filepath.Join(workspace.CommonDir, "objects"), format: workspace.Config.ObjectFormat,
-		genesis: workspace.Config.Genesis, payloadLimit: workspace.Config.PayloadCeiling,
+		objects: filepath.Join(workspace.CommonDir, "objects"), format: view.ObjectFormat,
+		genesis: view.Genesis, payloadLimit: view.PayloadCeiling,
 		actor: actor, sequencer: sequencer, timestamp: time.Now().Unix(), gitDir: workspace.CommonDir,
 	}
 	if commits == 0 {

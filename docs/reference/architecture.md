@@ -314,6 +314,28 @@ than a verification — it authenticates the initializing actor's signature over
 an intent that names the genesis and the tree the commit carries, and leaves
 the sequencer chain to the audit that runs before any record is folded.
 
+That remembered state — the repository-private configuration holding the
+genesis, object format, payload ceiling, sequencer key path, local actor
+custody, and the last verified frontier — has its own custody contract, the
+same on every platform. The file is created exclusively: of two concurrent
+creators exactly one wins and the other is refused, so an attach that lost the
+creation race fails instead of silently answering for a genesis it never
+stored. Replacement writes a temporary file and renames it over the old one.
+No path takes a file lock, and no platform gets a different fallback: where
+exclusive creation or the rename is refused — as a non-Unix platform can
+refuse while another process holds the file — the writer reports the failure
+and the writable configuration does not proceed. The reader fails closed too:
+a missing or partially visible file never validates, so a reader refuses to
+open rather than acting on a configuration nobody stored. In memory, a
+configuration leaves an open workspace only as a copy sharing no mutable state
+with it, so a holder cannot alter the workspace's actor custody or verified
+frontier through the value it was handed; the live configuration is a private
+field of the workspace, so the compiler makes that copy the only read path out
+of the owning package. Inside the workspace, one
+configuration lock serializes the taking of that copy against every custody
+mutation together with its save and rollback, so a copy is a consistent
+observation and no reader sees an actor map or frontier mid-update.
+
 `internal/app` selects this build's interpreter from that vocabulary: it
 records the binding at init for an application an absent binding does not
 already name, and reads the binding in force as the workspace opens, before it

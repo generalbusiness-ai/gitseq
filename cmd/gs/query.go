@@ -39,7 +39,7 @@ const (
 // standard error and reported as not taken, which is what keeps a local
 // fallback from ever being presented as a resident answer.
 func askResident(ctx context.Context, workspace *app.Workspace, serverURL, route string, input any, target any, frontier func() statusview.Frontier) bool {
-	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
 	if err == nil {
 		err = residentclient.New(queryTimeout).PostJSON(ctx, serverURL, route, input, queryResponseLimit, target)
 	}

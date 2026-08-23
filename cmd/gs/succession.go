@@ -390,7 +390,7 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 	// Also on the resume path, which reaches here without validateMerge: a
 	// receipt the fold will refuse should never be appended at all.
 	if err := requireApprovedImplementer(snapshot.Projection, receipt.Approval,
-		workspace.Config.Actors[actor].Fingerprint); err != nil {
+		workspace.View().Actors[actor].Fingerprint); err != nil {
 		return err
 	}
 	plan, found, err := recordedSuccessionPlan(snapshot.Projection, receipt)
@@ -412,7 +412,7 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 		return err
 	}
 	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, receipt.Approval,
-		workspace.Config.Actors[actor].Fingerprint); err != nil {
+		workspace.View().Actors[actor].Fingerprint); err != nil {
 		return err
 	}
 	acts := successionActs(receipt.Approval, receipt.Candidate, receipt.TargetPreHead, receipt.MergeHead, receipt.Staleness, plan)

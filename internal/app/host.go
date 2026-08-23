@@ -66,7 +66,7 @@ type selection struct {
 // chosen. The choice is still made once and never revisited, so a binding
 // recorded afterwards cannot change what an open workspace means.
 func (w *Workspace) selectHost(ctx context.Context) (selection, error) {
-	recorded, err := apphost.BindingInForce(ctx, w.Store, w.Config.Genesis, kernel.Ref(w.Config.Genesis))
+	recorded, err := apphost.BindingInForce(ctx, w.Store, w.config.Genesis, kernel.Ref(w.config.Genesis))
 	if err != nil {
 		return selection{}, err
 	}
@@ -123,7 +123,7 @@ func (w *Workspace) buildBindingRequest(ctx context.Context, private ed25519.Pri
 	// a key over the binding's own bytes would silently swallow the rollback
 	// that re-records an earlier binding — reporting success while leaving the
 	// binding it replaced in force.
-	head, err := w.Store.Head(ctx, kernel.Ref(w.Config.Genesis))
+	head, err := w.Store.Head(ctx, kernel.Ref(w.config.Genesis))
 	if err != nil {
 		return kernel.Request{}, err
 	}

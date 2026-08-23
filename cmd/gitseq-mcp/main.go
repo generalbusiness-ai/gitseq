@@ -853,10 +853,13 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 // final bound even for a repository configured with an unusually large
 // payload.
 func laneResponseLimit(current *room, base int64, rows int) int64 {
-	if current == nil || rows <= 0 || current.workspace.Config.PayloadCeiling == 0 {
+	if current == nil || rows <= 0 {
 		return base
 	}
-	ceiling := current.workspace.Config.PayloadCeiling
+	ceiling := current.workspace.View().PayloadCeiling
+	if ceiling == 0 {
+		return base
+	}
 	maximum := uint64(residentResponseLimit)
 	if uint64(base) >= maximum || ceiling > (maximum-uint64(base))/uint64(rows) {
 		return residentResponseLimit
@@ -865,7 +868,8 @@ func laneResponseLimit(current *room, base int64, rows int) int64 {
 }
 
 func (s *mcpServer) whoami(ctx context.Context, current *room) (any, error) {
-	actor := current.workspace.Config.Actors[s.actor]
+	view := current.workspace.View()
+	actor := view.Actors[s.actor]
 	residentContext, cancel := context.WithTimeout(ctx, orientationTimeout)
 	defer cancel()
 	for attempt := 0; attempt < 2; attempt++ {
@@ -873,7 +877,7 @@ func (s *mcpServer) whoami(ctx context.Context, current *room) (any, error) {
 		if err == nil {
 			return map[string]any{
 				"actor": publicActor(actor), "durable": orientation.You, "protocol": protocolVersion,
-				"repo": current.workspace.CommonDir, "genesis": current.workspace.Config.Genesis,
+				"repo": current.workspace.CommonDir, "genesis": view.Genesis,
 				"frontier": orientation.Frontier, "source": residentOrientationSource, "degraded": false,
 			}, nil
 		}
@@ -892,13 +896,14 @@ func (s *mcpServer) whoami(ctx context.Context, current *room) (any, error) {
 	}
 	return map[string]any{
 		"actor": publicActor(actor), "durable": orientation.You, "protocol": protocolVersion,
-		"repo": current.workspace.CommonDir, "genesis": current.workspace.Config.Genesis,
+		"repo": current.workspace.CommonDir, "genesis": view.Genesis,
 		"frontier": orientation.Frontier, "source": string(local.Source), "degraded": true,
 	}, nil
 }
 
 func (s *mcpServer) currentResidentOrientation(ctx context.Context, current *room, fingerprint string) (service.Orientation, error) {
-	before, err := current.workspace.Store.Head(ctx, kernel.Ref(current.workspace.Config.Genesis))
+	genesis := current.workspace.View().Genesis
+	before, err := current.workspace.Store.Head(ctx, kernel.Ref(genesis))
 	if err != nil {
 		return service.Orientation{}, err
 	}
@@ -906,7 +911,7 @@ func (s *mcpServer) currentResidentOrientation(ctx context.Context, current *roo
 	if err := s.getBoundedJSON(ctx, current, "/v0/orientation/"+fingerprint, orientationResponseLimit, &orientation); err != nil {
 		return service.Orientation{}, err
 	}
-	after, err := current.workspace.Store.Head(ctx, kernel.Ref(current.workspace.Config.Genesis))
+	after, err := current.workspace.Store.Head(ctx, kernel.Ref(genesis))
 	if err != nil {
 		return service.Orientation{}, err
 	}
@@ -914,7 +919,7 @@ func (s *mcpServer) currentResidentOrientation(ctx context.Context, current *roo
 		return service.Orientation{}, errors.New("workroom head moved while resident orientation was read")
 	}
 	if orientation.ProjectionVersion != service.OrientationProjectionVersion ||
-		orientation.Frontier.Genesis != current.workspace.Config.Genesis || orientation.Frontier.Head != after ||
+		orientation.Frontier.Genesis != genesis || orientation.Frontier.Head != after ||
 		orientation.Frontier.Depth < 0 || orientation.You.Fingerprint != fingerprint ||
 		orientation.You.Name == "" || orientation.You.Kind == "" || orientation.You.MembershipEvent == "" ||
 		len(orientation.You.Roles) > statusview.ListCap || orientation.You.RolesSkipped < 0 ||
@@ -1159,7 +1164,7 @@ func reviewOf(projection workroom.Projection, event string) (workroom.Review, bo
 //
 // It is made once per workroom, before this session announces itself there.
 func (s *mcpServer) warnSharedIdentity(ctx context.Context, current *room) error {
-	actor := current.workspace.Config.Actors[s.actor]
+	actor := current.workspace.View().Actors[s.actor]
 	value, err := s.get(ctx, current, "/v0/presence-count?actor="+url.QueryEscape(s.actor))
 	if isTransportError(err) {
 		fmt.Fprintln(s.noticeWriter(), "gitseq-mcp: shared-identity check skipped; the resident service is unavailable:", err)

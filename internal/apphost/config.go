@@ -51,6 +51,27 @@ type Config struct {
 	VerifiedFrontier     *VerifiedFrontier `json:"verified_frontier,omitempty"`
 }
 
+// Clone returns a configuration sharing no mutable state with the receiver.
+// Config is a value type, but two of its fields are references — the actor map
+// and the frontier pointer — so a plain struct copy still aliases them, and a
+// holder of the "copy" could mutate live custody state. Every other field is a
+// scalar, and Actor holds only strings, so copying these two is a complete
+// deep copy.
+func (c Config) Clone() Config {
+	if c.Actors != nil {
+		actors := make(map[string]Actor, len(c.Actors))
+		for name, actor := range c.Actors {
+			actors[name] = actor
+		}
+		c.Actors = actors
+	}
+	if c.VerifiedFrontier != nil {
+		frontier := *c.VerifiedFrontier
+		c.VerifiedFrontier = &frontier
+	}
+	return c
+}
+
 // Validate rejects a configuration that cannot name one sequence exactly. A
 // writable repository without a sequencer key could not append, and a frontier
 // marker with no head would claim a verified position that names nothing.
@@ -91,6 +112,113 @@ func SaveConfig(metaDir string, config Config) error {
 	}
 	return WriteFileAtomically(filepath.Join(metaDir, ConfigFile), append(content, '\n'))
 }
+
+// CreateConfig stores a configuration only where none exists yet. Creation is
+// exclusive rather than replacing: when two creators race, exactly one wins
+// and the other sees os.ErrExist, so a stored genesis is never silently
+// overwritten by a concurrent creation. A reader can observe the file between
+// exclusive creation and the completed write, but the partial content never
+// validates, so such a reader fails rather than acting on a configuration
+// nobody stored.
+//
+// A failure after the exclusive create removes the file this call created —
+// and only that file. O_EXCL proved the path empty at creation, not at
+// cleanup, so before removing anything the cleanup confirms the file at the
+// destination is still the one this call created; a file someone else stored
+// there in the meantime is left in place. That confirmation is a cooperative
+// safeguard, not an atomic guarantee — see abandonPartialConfig for the
+// residual window. A pre-existing file is never touched: it makes the open
+// fail before anything is written or removed.
+func CreateConfig(metaDir string, config Config) error {
+	content, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(metaDir, ConfigFile)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	// The created file's identity is taken while the handle is certainly
+	// open — after a failed close the handle can no longer answer — so the
+	// cleanup can know which file this call created before removing anything.
+	created, identityErr := createConfigCreatedIdentity(file)
+	_, writeErr := createConfigWrite(file, append(content, '\n'))
+	closeErr := createConfigClose(file)
+	if writeErr == nil && closeErr == nil {
+		return nil
+	}
+	return abandonPartialConfig(file, path, created, identityErr, writeErr, closeErr)
+}
+
+// abandonPartialConfig cleans up after a failure between CreateConfig's
+// exclusive creation and its completed write, so the path is free for a retry
+// rather than permanently occupied by a partial configuration no reader will
+// ever validate and no later creation can replace. The write failure — or the
+// close failure when the write succeeded — is what the caller must see;
+// everything else the cleanup learns is reported alongside it, never in place
+// of it.
+//
+// The handle is released before the unlink, because an open handle blocks the
+// removal on Windows: a failed close may not have released it, so it is closed
+// again, and os.ErrClosed from that second attempt means the first close did
+// release the handle, which is not a new failure. The file is then removed
+// only if it is still the very file this call created — another process may
+// have removed the partial file and stored its own configuration in the
+// window since creation, and removing by pathname would delete that stranger's
+// file and report it as this call's partial write. When identity cannot be
+// confirmed, nothing is removed.
+//
+// The identity comparison reads the destination entry itself, without
+// following a symbolic link: created describes the regular file this call's
+// handle wrote, while os.Lstat describes whatever entry now occupies the
+// path, so a link planted at the destination — even one pointing back at this
+// call's file — is never the same file and is left in place. The comparison
+// does not make the removal atomic. The metadata directory is created 0700,
+// so custody within it is cooperative between processes of one account, and a
+// replacement landing in the instant between the identity check and the
+// removal would still be removed; the check narrows that window, it cannot
+// close it.
+func abandonPartialConfig(file *os.File, path string, created os.FileInfo, identityErr, writeErr, closeErr error) error {
+	err := writeErr
+	if err == nil {
+		err = closeErr
+	} else if closeErr != nil {
+		err = errors.Join(err, fmt.Errorf("closing the partial configuration also failed: %w", closeErr))
+	}
+	if closeErr != nil {
+		if retryErr := createConfigRetryClose(file); retryErr != nil && !errors.Is(retryErr, os.ErrClosed) {
+			err = errors.Join(err, fmt.Errorf("the file handle could not be closed: %w", retryErr))
+		}
+	}
+	if identityErr != nil {
+		return errors.Join(err, fmt.Errorf("cannot confirm the destination still holds this call's file, so nothing was removed: %w", identityErr))
+	}
+	current, statErr := createConfigIdentity(path)
+	if statErr != nil {
+		return errors.Join(err, fmt.Errorf("cannot confirm the destination still holds this call's file, so nothing was removed: %w", statErr))
+	}
+	if !os.SameFile(created, current) {
+		return errors.Join(err, errors.New("the destination now holds a file this call did not create, which was left in place"))
+	}
+	if removeErr := createConfigRemove(path); removeErr != nil {
+		return errors.Join(err, fmt.Errorf("the partial configuration could not be removed and still occupies its path: %w", removeErr))
+	}
+	return err
+}
+
+// CreateConfig's write, close, retry-close, identity-read, and removal
+// failures are storage conditions a test cannot arrange on a healthy
+// filesystem, so these indirections exist for tests in this package to force
+// each failure branch. Production never replaces them.
+var (
+	createConfigWrite           = func(file *os.File, content []byte) (int, error) { return file.Write(content) }
+	createConfigClose           = func(file *os.File) error { return file.Close() }
+	createConfigRetryClose      = func(file *os.File) error { return file.Close() }
+	createConfigCreatedIdentity = func(file *os.File) (os.FileInfo, error) { return file.Stat() }
+	createConfigIdentity        = func(path string) (os.FileInfo, error) { return os.Lstat(path) }
+	createConfigRemove          = func(path string) error { return os.Remove(path) }
+)
 
 // ValidateGenesis rejects an object id that cannot name a commit in the
 // declared format.

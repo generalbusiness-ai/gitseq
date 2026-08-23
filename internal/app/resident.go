@@ -34,7 +34,7 @@ const residentFile = "resident.json"
 // repository lives in the claim ref instead — see ClaimResident — and a serving
 // process advertises only after it holds one.
 func (w *Workspace) PublishResident(url string) (withdraw func(), err error) {
-	record := Resident{URL: strings.TrimRight(url, "/"), Genesis: w.Config.Genesis, PID: os.Getpid()}
+	record := Resident{URL: strings.TrimRight(url, "/"), Genesis: w.config.Genesis, PID: os.Getpid()}
 	content, err := json.Marshal(record)
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func (w *Workspace) PublishResident(url string) (withdraw func(), err error) {
 // it would append to another log.
 func (w *Workspace) ResidentURL() (string, bool) {
 	record, ok := readResident(filepath.Join(w.MetaDir, residentFile))
-	if !ok || record.URL == "" || record.Genesis != w.Config.Genesis {
+	if !ok || record.URL == "" || record.Genesis != w.config.Genesis {
 		return "", false
 	}
 	return record.URL, true
@@ -179,7 +179,7 @@ func (e *ResidentHeldError) Error() string {
 // costs one operator a message naming the recovery step; starting anyway costs
 // everybody a silently divided room.
 func (w *Workspace) ClaimResident(ctx context.Context, url string, probe Prober) (*ResidentOwnership, error) {
-	if w.Config.ReadOnly {
+	if w.config.ReadOnly {
 		return nil, errors.New("a read-only attachment cannot own a resident")
 	}
 	if probe == nil {
@@ -189,7 +189,7 @@ func (w *Workspace) ClaimResident(ctx context.Context, url string, probe Prober)
 	if address == "" {
 		return nil, errors.New("a resident claim needs the address it is serving")
 	}
-	ref := ResidentRef(w.Config.Genesis)
+	ref := ResidentRef(w.config.Genesis)
 	recovery := "if you are certain no service is running, remove the claim with `git update-ref -d " + ref + "`"
 	for attempt := 0; attempt < claimAttempts; attempt++ {
 		observed, present, err := w.Store.RefValue(ctx, ref)
@@ -261,7 +261,7 @@ func (w *Workspace) takeResident(ctx context.Context, ref, url, expected string)
 	if err != nil {
 		return nil, false, err
 	}
-	claim := ResidentClaim{Genesis: w.Config.Genesis, URL: url, Nonce: nonce, PID: os.Getpid()}
+	claim := ResidentClaim{Genesis: w.config.Genesis, URL: url, Nonce: nonce, PID: os.Getpid()}
 	content, err := json.Marshal(claim)
 	if err != nil {
 		return nil, false, err
@@ -293,8 +293,8 @@ func (w *Workspace) readResidentClaim(ctx context.Context, oid string) (Resident
 	if claim.Genesis == "" || claim.URL == "" || claim.Nonce == "" {
 		return ResidentClaim{}, errors.New("claim is missing its genesis, address, or nonce")
 	}
-	if claim.Genesis != w.Config.Genesis {
-		return ResidentClaim{}, fmt.Errorf("claim names workroom %s, not %s", claim.Genesis, w.Config.Genesis)
+	if claim.Genesis != w.config.Genesis {
+		return ResidentClaim{}, fmt.Errorf("claim names workroom %s, not %s", claim.Genesis, w.config.Genesis)
 	}
 	return claim, nil
 }
