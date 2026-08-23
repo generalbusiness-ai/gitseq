@@ -11,7 +11,7 @@ Blog:
 [Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
 
 Intro walkthrough:
-[![gitseq demo introduction](gitseq.png)](https://youtu.be/LwVhU3mNXnM)
+[![gitseq demo introduction](gitseq.png)](https://youtu.be/7IHN5djgnSM)
 
 ## Why
 
