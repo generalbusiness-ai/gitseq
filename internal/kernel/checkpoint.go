@@ -41,6 +41,11 @@ const (
 	// padding beneath these figures is the one layer not modelled.
 	checkpointTailEntryOverhead  = 256
 	checkpointAttachmentOverhead = 512
+	// checkpointChunkSlotOverhead is the flat charge for one entry in the
+	// chunk list itself: the [][]byte backing array grows with every stored
+	// chunk, so each slot is charged at twice the slice-header size to
+	// cover append's doubled growth.
+	checkpointChunkSlotOverhead = 64
 )
 
 var (
@@ -111,14 +116,19 @@ type checkpointEvent struct {
 // accumulates instead of after its memory is already spent.
 //
 // The accounting counts what is retained, erring toward over-counting:
-// stored chunk buffers at their full capacity, tail content at the cloned
-// slices' capacities plus flat container charges for the entry slots and
-// attachment maps. The entry being handed from tail to output during a
-// flush stays charged until its write completes, and the limit writer
-// keeps half of its live budget free as headroom for the old array a
-// growth copy briefly holds. One transient sits outside the accounting,
-// bounded by a constant that does not grow with history: the compressor's
-// fixed internal state.
+// stored chunk buffers at their full capacity plus a flat slot charge for
+// the growing chunk list, and tail content at the cloned slices'
+// capacities plus flat container charges for the entry slots and
+// attachment maps. Clones are taken into storage whose capacity is
+// exactly the measured source length, so the length preflight in append
+// bounds the allocation itself. The entry being handed from tail to
+// output during a flush stays charged until its write completes, and the
+// chunk writer keeps half of its live budget free as headroom for the old
+// array a growth copy briefly holds. A failed cache reserves its whole
+// budget, so nothing can be built against accounting that fail released
+// while the dropped storage may still be reachable. One transient sits
+// outside the accounting, bounded by a constant that does not grow with
+// history: the compressor's fixed internal state.
 type checkpointEventCache struct {
 	chunks     [][]byte
 	tail       []checkpointEvent
@@ -176,22 +186,33 @@ func (c *checkpointEventCache) appendEvents(events []Event) {
 
 // boundedWriter shares one byte budget across every path that builds a
 // chunk: whatever the output buffer holds, plus everything the cache still
-// retains — stored chunks and the charged tail — must fit the limit
-// together. The reservation is read live on every write, so a tail that
-// drains while its own flush encodes is credited as it drains.
-func (c *checkpointEventCache) boundedWriter(output *bytes.Buffer) *checkpointLimitWriter {
-	return &checkpointLimitWriter{
-		output:  output,
-		limit:   c.byteLimit(),
-		reserve: func() int { return c.chunkBytes + c.tailBytes },
+// retains — stored chunks, their slot charges, and the charged tail — must
+// fit the limit together. The reservation is read live on every write, so
+// a tail that drains while its own flush encodes is credited as it drains.
+// Once the cache has failed, the whole budget is reserved: fail releases
+// the storage accounting, and no compressor cleanup may grow a buffer
+// against that freshly freed budget while the dropped chunks, tail, and
+// in-hand material remain reachable until collection.
+func (c *checkpointEventCache) boundedWriter(output *bytes.Buffer) *checkpointChunkWriter {
+	return &checkpointChunkWriter{
+		output: output,
+		limit:  c.byteLimit(),
+		reserve: func() int {
+			if c.err != nil {
+				return c.byteLimit()
+			}
+			return c.chunkBytes + c.tailBytes
+		},
 	}
 }
 
 // checkpointEventContentBytes is the cloned content one owned tail entry
 // holds: the payload and every attachment body at the capacity their clones
-// actually retain — a clone's capacity can exceed its length — plus each
-// attachment name. It must only be applied to owned, cloned entries, so the
-// charge taken and the credit returned measure the same allocations.
+// actually retain, plus each attachment name. checkpointMaterial clones at
+// exactly the source length, so capacity and length agree; measuring
+// capacity keeps the charge honest if the cloning ever drifts. It must only
+// be applied to owned, cloned entries, so the charge taken and the credit
+// returned measure the same allocations.
 func checkpointEventContentBytes(event checkpointEvent) int {
 	size := cap(event.Payload)
 	for name, content := range event.Attachments {
@@ -209,14 +230,22 @@ func checkpointEventRetainedBytes(event checkpointEvent) int {
 
 func (c *checkpointEventCache) appendBorrowedChunk(events []Event) {
 	var output bytes.Buffer
+	// The chunk list itself grows with this chunk. Charge its slot before
+	// building, so the bounded writer's live reservation preflights the
+	// metadata the append will retain alongside the chunk's own bytes.
+	c.chunkBytes += checkpointChunkSlotOverhead
 	// The bounded writer limits the chunk while it is still being built, so
 	// an incompressible run cannot grow the buffer past the remaining budget
 	// before any completed-chunk check could see it.
 	compressed := gzip.NewWriter(c.boundedWriter(&output))
 	for _, event := range events {
 		if err := writeCompactCheckpointEvent(compressed, checkpointReference(event)); err != nil {
+			// Abandon the compressor without flushing: Close would write
+			// its buffered data after fail has released the reserve, and
+			// nothing may be built against that freed budget. Its fixed
+			// internal state is the accounted transient; collection takes
+			// it with the abandoned output.
 			c.fail(err)
-			_ = compressed.Close()
 			return
 		}
 	}
@@ -233,8 +262,10 @@ func (c *checkpointEventCache) append(event Event) {
 	if c.err != nil {
 		return
 	}
-	// A length-based check refuses a hopeless event before cloning it, so
-	// the clone transient always fits inside the remaining budget.
+	// Refuse a hopeless event before anything is allocated for it. The
+	// clone is taken into storage whose capacity is exactly the lengths
+	// this check measured, so the preflight bounds the allocation itself:
+	// no clone can retain more than the budget it was admitted against.
 	source := len(event.Payload)
 	for name, content := range event.Attachments {
 		source += len(name) + len(content)
@@ -244,14 +275,8 @@ func (c *checkpointEventCache) append(event Event) {
 		c.fail(fmt.Errorf("%w: cached events exceed limit %d", errCheckpointTooLarge, c.byteLimit()))
 		return
 	}
-	// Charge what the clone actually retains: its slices' capacities can
-	// exceed the source lengths the check above measured.
 	material := checkpointMaterial(event)
 	size := checkpointEventRetainedBytes(material)
-	if size > c.byteLimit()-c.chunkBytes-c.tailBytes {
-		c.fail(fmt.Errorf("%w: cached events exceed limit %d", errCheckpointTooLarge, c.byteLimit()))
-		return
-	}
 	c.tail = append(c.tail, material)
 	c.tailBytes += size
 	c.count++
@@ -269,13 +294,17 @@ func (c *checkpointEventCache) append(event Event) {
 // reserved until the backing array itself is released at the end.
 func (c *checkpointEventCache) flushTail() {
 	var output bytes.Buffer
+	// The stored chunk's slot in the growing chunk list is charged before
+	// the flush builds it, so the writer's reservation preflights it.
+	c.chunkBytes += checkpointChunkSlotOverhead
 	compressed := gzip.NewWriter(c.boundedWriter(&output))
 	for index := range c.tail {
 		material := c.tail[index]
 		c.tail[index] = checkpointEvent{}
 		if err := writeCompactCheckpointEvent(compressed, material); err != nil {
+			// Abandon the compressor without flushing; see
+			// appendBorrowedChunk.
 			c.fail(err)
-			_ = compressed.Close()
 			return
 		}
 		c.tailBytes -= checkpointEventContentBytes(material)
@@ -887,9 +916,11 @@ func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
 	if len(encodedManifest) > maxCheckpointManifest {
 		return nil, fmt.Errorf("%w: manifest exceeds limit", errCheckpointTooLarge)
 	}
-	// Every write goes through the bounded writer, header included, so the
-	// buffer never uses nor retains more than the limit at any point while
-	// the checkpoint is being built.
+	// Every write goes through the size-bounded writer, header included, so
+	// an oversized checkpoint is refused at the write that crosses the
+	// limit instead of after the whole blob is buffered. The bound is the
+	// documented size of the finished artifact; peak construction memory
+	// is the cache's separate concern, bounded while material accumulates.
 	var output bytes.Buffer
 	bounded := &checkpointLimitWriter{output: &output, limit: limit}
 	if _, err := io.WriteString(bounded, checkpointContainer); err != nil {
@@ -944,34 +975,47 @@ func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
 	return output.Bytes(), nil
 }
 
-// checkpointLimitWriter bounds the true peak of buffer memory against its
-// budget, counting the buffer's full capacity rather than only its content.
-// Growing a contiguous buffer briefly holds the old and the new array
-// together, so only half the live budget is admissible as content: the old
-// array, never larger than the new one, always fits in the reserved other
-// half, and the peak — reserve plus both arrays — stays within the limit.
-// The cost is stated rather than hidden: content can reach at most half of
-// whatever budget remains. reserve, when set, reports bytes the same budget
-// already retains elsewhere; it is read on every write, so a reservation
-// that shrinks while encoding — the owned tail draining — is credited as it
-// shrinks.
+// checkpointLimitWriter bounds the size of the finished serialized
+// checkpoint: a write that would take the content past the limit is
+// refused. This is the documented artifact bound — a serialized blob may
+// use the whole limit — and it says nothing about construction
+// transients. The cache's checkpointChunkWriter carries that separate
+// guarantee; conflating the two silently halves the largest writable
+// checkpoint.
 type checkpointLimitWriter struct {
+	output *bytes.Buffer
+	limit  int
+}
+
+func (w *checkpointLimitWriter) Write(data []byte) (int, error) {
+	if len(data) > w.limit-w.output.Len() {
+		return 0, fmt.Errorf("%w: limit %d", errCheckpointTooLarge, w.limit)
+	}
+	return w.output.Write(data)
+}
+
+// checkpointChunkWriter bounds the true peak of buffer memory while the
+// cache builds one compressed chunk, counting the buffer's full capacity
+// rather than only its content. Growing a contiguous buffer briefly holds
+// the old and the new array together, so only half the live budget is
+// admissible as content: the old array, never larger than the new one,
+// always fits in the reserved other half, and the peak — reserve plus
+// both arrays — stays within the limit. The cost is stated rather than
+// hidden: content can reach at most half of whatever budget remains.
+// reserve reports bytes the same budget already retains elsewhere; it is
+// read on every write, so a reservation that shrinks while encoding — the
+// owned tail draining — is credited as it shrinks, and one that grows to
+// the whole limit — a failed cache — refuses everything.
+type checkpointChunkWriter struct {
 	output  *bytes.Buffer
 	limit   int
 	reserve func() int
 }
 
-func (w *checkpointLimitWriter) budget() int {
-	if w.reserve == nil {
-		return w.limit
-	}
-	return w.limit - w.reserve()
-}
-
-func (w *checkpointLimitWriter) Write(data []byte) (int, error) {
+func (w *checkpointChunkWriter) Write(data []byte) (int, error) {
 	// Half the live budget is admissible content; the other half is
 	// headroom for the growth copy's old array.
-	content := w.budget() / 2
+	content := (w.limit - w.reserve()) / 2
 	if len(data) > content-w.output.Len() {
 		return 0, fmt.Errorf("%w: limit %d", errCheckpointTooLarge, w.limit)
 	}
@@ -1292,10 +1336,31 @@ func cloneByteMap(input map[string][]byte) map[string][]byte {
 	return output
 }
 
-func checkpointMaterial(event Event) checkpointEvent {
-	return checkpointEvent{
-		Payload: bytes.Clone(event.Payload), Attachments: cloneByteMap(event.Attachments),
+// cloneExact copies content into storage whose capacity is exactly its
+// length. bytes.Clone appends into an allocator size class and can retain
+// more than the source length; the cache preflights source lengths before
+// cloning, so its clones must not be able to exceed what was admitted.
+func cloneExact(content []byte) []byte {
+	if content == nil {
+		return nil
 	}
+	cloned := make([]byte, len(content))
+	copy(cloned, content)
+	return cloned
+}
+
+// checkpointMaterial takes ownership of one event's checkpoint bytes with
+// exactly-sized clones, so the capacities the cache charges equal the
+// lengths its budget preflight measured.
+func checkpointMaterial(event Event) checkpointEvent {
+	material := checkpointEvent{Payload: cloneExact(event.Payload)}
+	if len(event.Attachments) > 0 {
+		material.Attachments = make(map[string][]byte, len(event.Attachments))
+		for name, content := range event.Attachments {
+			material.Attachments[name] = cloneExact(content)
+		}
+	}
+	return material
 }
 
 func checkpointReference(event Event) checkpointEvent {

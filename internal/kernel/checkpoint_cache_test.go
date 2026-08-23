@@ -78,9 +78,10 @@ func TestCheckpointTailEntryOverheadCoversEntrySlot(t *testing.T) {
 // invariant: the growing output, its growth-copy headroom, and everything
 // the cache still retains must fit the limit together at every instant. The
 // encoded size is measured first; an honestly budgeted flush needs the
-// container charges plus twice the encoded output — content and equal
-// headroom for the old array a growth copy briefly holds — so the two
-// limits sit exactly at and one byte below that bound.
+// container charges, the stored chunk's slot in the growing chunk list,
+// plus twice the encoded output — content and equal headroom for the old
+// array a growth copy briefly holds — so the two limits sit exactly at
+// and one byte below that bound.
 func TestCheckpointCacheOwnedTailFlushPeakBudget(t *testing.T) {
 	events := make([]Event, checkpointChunkEvents)
 	for index := range events {
@@ -98,12 +99,12 @@ func TestCheckpointCacheOwnedTailFlushPeakBudget(t *testing.T) {
 	}
 	container := checkpointChunkEvents * checkpointTailEntryOverhead
 
-	// With exactly the container charge plus twice the encoded output
-	// available, the flush fits only because each entry's content is
-	// credited back as its write completes. It must succeed, release the
-	// tail and its backing array, and retain no more output capacity than
-	// the content needs.
-	cache := checkpointEventCache{limit: container + 2*encoded.Len()}
+	// With exactly the container charge, the chunk slot, and twice the
+	// encoded output available, the flush fits only because each entry's
+	// content is credited back as its write completes. It must succeed,
+	// release the tail and its backing array, and retain no more output
+	// capacity than the content needs.
+	cache := checkpointEventCache{limit: container + checkpointChunkSlotOverhead + 2*encoded.Len()}
 	for _, event := range events {
 		cache.append(event)
 	}
@@ -116,18 +117,20 @@ func TestCheckpointCacheOwnedTailFlushPeakBudget(t *testing.T) {
 	if cache.tail != nil || cache.tailBytes != 0 {
 		t.Fatalf("flushed tail still retained: tail=%d tailBytes=%d", len(cache.tail), cache.tailBytes)
 	}
-	if cache.chunkBytes != cap(cache.chunks[0]) {
-		t.Fatalf("chunkBytes = %d, want retained capacity %d", cache.chunkBytes, cap(cache.chunks[0]))
+	if cache.chunkBytes != checkpointChunkSlotOverhead+cap(cache.chunks[0]) {
+		t.Fatalf("chunkBytes = %d, want retained capacity %d plus the %d chunk slot",
+			cache.chunkBytes, cap(cache.chunks[0]), checkpointChunkSlotOverhead)
 	}
-	if cache.chunkBytes != encoded.Len() {
-		t.Fatalf("flush retained %d bytes of capacity while the tail's container charge held %d of the %d limit; %d was the most the budget admitted",
+	if cache.chunkBytes != checkpointChunkSlotOverhead+encoded.Len() {
+		t.Fatalf("flush retained %d bytes while the tail's container charge held %d of the %d limit; slot plus %d was the most the budget admitted",
 			cache.chunkBytes, container, cache.byteLimit(), encoded.Len())
 	}
 
 	// One byte short, the output and its growth headroom can never fit
-	// alongside the container storage that is still held, so the flush must
-	// refuse and release rather than let the true peak exceed the limit.
-	short := checkpointEventCache{limit: container + 2*encoded.Len() - 1}
+	// alongside the container storage and chunk slot that are still held,
+	// so the flush must refuse and release rather than let the true peak
+	// exceed the limit.
+	short := checkpointEventCache{limit: container + checkpointChunkSlotOverhead + 2*encoded.Len() - 1}
 	for _, event := range events {
 		short.append(event)
 	}
@@ -152,19 +155,20 @@ func TestCheckpointCacheCountsChunkCapacityNotLength(t *testing.T) {
 	if retained <= len(cache.chunks[0]) {
 		t.Fatalf("fixture kept capacity %d equal to content %d and proves nothing; grow the fixture", retained, len(cache.chunks[0]))
 	}
-	if cache.chunkBytes != retained {
-		t.Fatalf("chunkBytes = %d, want retained capacity %d (content is %d)", cache.chunkBytes, retained, len(cache.chunks[0]))
+	if cache.chunkBytes != checkpointChunkSlotOverhead+retained {
+		t.Fatalf("chunkBytes = %d, want retained capacity %d plus the %d chunk slot (content is %d)",
+			cache.chunkBytes, retained, checkpointChunkSlotOverhead, len(cache.chunks[0]))
 	}
 }
 
-// TestCheckpointLimitWriterBoundsRetainedCapacity pins the writer's peak
-// contract: content may fill only half the live budget, the other half is
-// headroom for the old array a growth copy briefly holds, and the buffer
+// TestCheckpointChunkWriterBoundsRetainedCapacity pins the cache writer's
+// peak contract: content may fill only half the live budget, the other half
+// is headroom for the old array a growth copy briefly holds, and the buffer
 // never retains capacity past the content ceiling. The true peak — reserve,
 // old array, new array — therefore never exceeds the limit.
-func TestCheckpointLimitWriterBoundsRetainedCapacity(t *testing.T) {
+func TestCheckpointChunkWriterBoundsRetainedCapacity(t *testing.T) {
 	var output bytes.Buffer
-	writer := &checkpointLimitWriter{output: &output, limit: 1000}
+	writer := &checkpointChunkWriter{output: &output, limit: 1000, reserve: func() int { return 0 }}
 	for index := 0; index < 500; index++ {
 		if _, err := writer.Write([]byte{byte(index)}); err != nil {
 			t.Fatal(err)
@@ -184,7 +188,7 @@ func TestCheckpointLimitWriterBoundsRetainedCapacity(t *testing.T) {
 	// budget admit writes that were refused a moment earlier.
 	reserved := 60
 	var shared bytes.Buffer
-	live := &checkpointLimitWriter{output: &shared, limit: 100, reserve: func() int { return reserved }}
+	live := &checkpointChunkWriter{output: &shared, limit: 100, reserve: func() int { return reserved }}
 	if _, err := live.Write(make([]byte, 20)); err != nil {
 		t.Fatal(err)
 	}
@@ -375,9 +379,10 @@ func TestCheckpointCacheOwnedTailFlushRefusesSkewedTailBeyondBudget(t *testing.T
 	}
 	assertCacheReleased(t, &cache)
 
-	// The honest budget for this tail: its charges, plus the encoded output
-	// and equal growth headroom in place of the drained content. The large
-	// entry's own encoding then fits beside its still-charged clone.
+	// The honest budget for this tail: its charges, the stored chunk's
+	// slot, plus the encoded output and equal growth headroom in place of
+	// the drained content. The large entry's own encoding then fits beside
+	// its still-charged clone.
 	var encoded bytes.Buffer
 	compressed := gzip.NewWriter(&encoded)
 	for _, event := range events {
@@ -388,7 +393,7 @@ func TestCheckpointCacheOwnedTailFlushRefusesSkewedTailBeyondBudget(t *testing.T
 	if err := compressed.Close(); err != nil {
 		t.Fatal(err)
 	}
-	generous := checkpointEventCache{limit: charge + 2*encoded.Len()}
+	generous := checkpointEventCache{limit: charge + checkpointChunkSlotOverhead + 2*encoded.Len()}
 	for _, event := range events {
 		generous.append(event)
 	}
@@ -426,28 +431,113 @@ func TestCheckpointCacheFlushKeepsInHandEntryCharged(t *testing.T) {
 	assertCacheReleased(t, &cache)
 }
 
-// TestCheckpointCacheChargesClonedCapacityNotSourceLength appends an event
-// whose cloned slices keep more capacity than their source length, and
-// requires the charge to cover the capacities the cache actually retains,
-// with the flat container charges on top.
-func TestCheckpointCacheChargesClonedCapacityNotSourceLength(t *testing.T) {
+// TestCheckpointCacheClonesAtExactSourceLength pins the fix for the
+// preflight-then-clone gap: the cache clones into storage whose capacity is
+// exactly the source length, so the length preflight in append bounds the
+// clone allocation itself and the charge equals what was admitted. 300
+// bytes sits off the allocator's size classes, so an append-based clone
+// here would retain more capacity than length and fail this test.
+func TestCheckpointCacheClonesAtExactSourceLength(t *testing.T) {
 	cache := checkpointEventCache{limit: 1 << 20}
-	cache.append(Event{
+	event := Event{
 		Payload:     incompressiblePayload(t, 300, 1),
 		Attachments: map[string][]byte{"name": incompressiblePayload(t, 300, 2)},
-	})
+	}
+	cache.append(event)
 	if cache.err != nil || len(cache.tail) != 1 {
 		t.Fatalf("append failed: err=%v tail=%d", cache.err, len(cache.tail))
 	}
 	entry := cache.tail[0]
-	if cap(entry.Payload) == len(entry.Payload) && cap(entry.Attachments["name"]) == len(entry.Attachments["name"]) {
-		t.Fatalf("fixture cloned at exact capacity and proves nothing; pick a length off the allocator's size classes")
+	if cap(entry.Payload) != len(entry.Payload) {
+		t.Fatalf("cloned payload retains %d bytes of capacity for %d of content", cap(entry.Payload), len(entry.Payload))
 	}
-	want := cap(entry.Payload) + checkpointTailEntryOverhead + checkpointAttachmentOverhead
 	for name, content := range entry.Attachments {
-		want += len(name) + cap(content)
+		if cap(content) != len(content) {
+			t.Fatalf("cloned attachment %q retains %d bytes of capacity for %d of content", name, cap(content), len(content))
+		}
 	}
+	want := len(event.Payload) + len("name") + len(event.Attachments["name"]) +
+		checkpointTailEntryOverhead + checkpointAttachmentOverhead
 	if cache.tailBytes != want {
-		t.Fatalf("tailBytes = %d, want %d: the charge must cover cloned capacity, not source length", cache.tailBytes, want)
+		t.Fatalf("tailBytes = %d, want the preflighted %d: charge and preflight must measure the same bytes", cache.tailBytes, want)
+	}
+}
+
+// TestCheckpointCacheRefusesOversizedEventBeforeCloning measures the
+// refusal path's allocations: an event the preflight refuses must never be
+// cloned, or the clone transient would stand beside the retained bytes
+// while the budget is already exceeded. A refusal allocates only its
+// error; cloning first would add the payload, the attachment map, and
+// every attachment body.
+func TestCheckpointCacheRefusesOversizedEventBeforeCloning(t *testing.T) {
+	attachments := make(map[string][]byte, 16)
+	for index := 0; index < 16; index++ {
+		attachments["attachment-"+strconv.Itoa(index)] = incompressiblePayload(t, 4096, int64(index))
+	}
+	event := Event{Payload: incompressiblePayload(t, 1<<20, 99), Attachments: attachments}
+	allocs := testing.AllocsPerRun(10, func() {
+		cache := checkpointEventCache{limit: 1024}
+		cache.append(event)
+		if !errors.Is(cache.err, errCheckpointTooLarge) {
+			t.Fatalf("oversized append was admitted: %v", cache.err)
+		}
+	})
+	if allocs > 8 {
+		t.Fatalf("refused append allocated %.0f times; the event must not be cloned before the preflight admits it", allocs)
+	}
+}
+
+// TestCheckpointCacheWriterRefusesAfterFail pins the failure-ordering
+// invariant: fail releases the storage accounting, so nothing — including
+// a compressor cleanup that runs after the failure — may build against
+// that freed budget while the dropped material is still reachable. A
+// failed cache reserves its entire budget.
+func TestCheckpointCacheWriterRefusesAfterFail(t *testing.T) {
+	cache := checkpointEventCache{limit: 4096}
+	var output bytes.Buffer
+	writer := cache.boundedWriter(&output)
+	if _, err := writer.Write([]byte("before")); err != nil {
+		t.Fatal(err)
+	}
+	cache.fail(errors.New("mid-build failure"))
+	if _, err := writer.Write([]byte{0}); !errors.Is(err, errCheckpointTooLarge) {
+		t.Fatalf("write against a failed cache's budget = %v, want %v", err, errCheckpointTooLarge)
+	}
+	if output.Len() != len("before") {
+		t.Fatalf("failed cache's writer grew its output to %d bytes", output.Len())
+	}
+}
+
+func TestCheckpointChunkSlotOverheadCoversSliceHeader(t *testing.T) {
+	if header := int(unsafe.Sizeof([]byte(nil))); 2*header > checkpointChunkSlotOverhead {
+		t.Fatalf("chunk slice header is %d bytes; the %d-byte slot charge no longer covers doubled growth", header, checkpointChunkSlotOverhead)
+	}
+}
+
+// TestCheckpointMarshalUsesFullSizeLimit pins the published contract from
+// docs/reference/limits.md: a serialized compact checkpoint may use its
+// whole byte limit. A construction-memory policy leaking into the marshal
+// path silently halves the largest writable checkpoint; marshalling at
+// exactly the blob's own size proves the blob — necessarily larger than
+// half that limit — is admitted, and one byte less refuses.
+func TestCheckpointMarshalUsesFullSizeLimit(t *testing.T) {
+	stored := checkpoint{
+		Schema: checkpointSchema, ObjectFormat: "sha1", Genesis: "genesis", Head: "head",
+		Depth: 1, EventCount: 1,
+		Events: []checkpointEvent{{Payload: incompressiblePayload(t, 64<<10, 5)}},
+	}
+	data, err := marshalCheckpoint(stored, maxCheckpointBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exact, err := marshalCheckpoint(stored, len(data))
+	if err != nil {
+		t.Fatalf("checkpoint filling its whole size limit was refused: %v", err)
+	}
+	if !bytes.Equal(exact, data) {
+		t.Fatal("marshalling at the exact limit changed the blob")
+	}
+	if _, err := marshalCheckpoint(stored, len(data)-1); !errors.Is(err, errCheckpointTooLarge) {
+		t.Fatalf("checkpoint one byte over the size limit = %v, want %v", err, errCheckpointTooLarge)
 	}
 }
