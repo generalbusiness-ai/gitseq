@@ -296,13 +296,21 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	}
 }
 
-func TestReportWithoutPromiseIsRefusedBeforeAppend(t *testing.T) {
+// What this holds is refusal *before* append: a report the boundary rejects
+// must leave the workroom exactly as it found it, with nothing signed and no
+// depth spent. It used to make that point with a report that had no promise,
+// which is now a legitimate shape -- the addressee may answer directly. The
+// point survives with a reporter who was never asked, which no shape admits.
+func TestReportFromAStrangerIsRefusedBeforeAppend(t *testing.T) {
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := workspace.AddActor(ctx, "human", "agent", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "stranger", "agent"); err != nil {
 		t.Fatal(err)
 	}
 	request := actRecord(t, ctx, workspace, "human", Act{
@@ -314,12 +322,12 @@ func TestReportWithoutPromiseIsRefusedBeforeAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = workspace.Act(ctx, "agent", Act{
+	_, err = workspace.Act(ctx, "stranger", Act{
 		Verb: VerbState, Kind: workroom.KindReport, Text: "done",
 		RestsOn: []string{request.ID}, IdempotencyKey: "report-without-promise",
 	})
-	if err == nil || !strings.Contains(err.Error(), "exactly one effective promise-lifecycle basis") {
-		t.Fatalf("report without promise error = %v", err)
+	if err == nil || !strings.Contains(err.Error(), "only the requested performer may report directly on a request") {
+		t.Fatalf("stranger's report error = %v", err)
 	}
 	after, err := workspace.Snapshot(ctx)
 	if err != nil {
@@ -1888,5 +1896,325 @@ func TestBuildActRequestRefusesRetiringACitedRecord(t *testing.T) {
 	quiet := Act{Verb: VerbSupersede, Target: seed.ID + "-unnamed", Text: "retire it"}
 	if _, err := workspace.BuildActRequest(ctx, private, "human", quiet); err != nil {
 		t.Errorf("an uncited target must build normally, got %v", err)
+	}
+}
+
+// The write boundary has to admit what the fold admits. A report may rest on
+// the request it answers, and this is where that record is built and signed:
+// if the validator still demands a promise, the rule is widened in the log and
+// unusable by any actor, which is worse than not widening it.
+//
+// This builds and submits the record rather than asking the validator its
+// opinion of one, because the question is whether a direct report can be
+// written at all.
+func TestADirectReportCanActuallyBeBuilt(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "Do the thing",
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "it is done"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "direct-request",
+	})
+
+	// The addressee reports directly, having made no promise. The fold admits
+	// this, so the builder must too.
+	if _, err := workspace.Act(ctx, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindReport, Text: "done",
+		RestsOn: []string{request.ID}, IdempotencyKey: "direct-report",
+	}); err != nil {
+		t.Fatalf("a direct report could not be written: %v", err)
+	}
+
+	// And widening the shape must not widen who may use it: somebody who was
+	// not asked is still refused here, as at the fold.
+	if _, err := workspace.Act(ctx, "human", Act{
+		Verb: VerbState, Kind: workroom.KindReport, Text: "not mine to report",
+		RestsOn: []string{request.ID}, IdempotencyKey: "stranger-report",
+	}); err == nil {
+		t.Fatal("a stranger's direct report was accepted at the write boundary")
+	}
+}
+
+// The three cases codex named in verdict d7d8d952. All of them are the same
+// question: does the pre-signing boundary ask what the fold asks, or a second
+// narrower question of its own? A boundary that answers differently either
+// refuses work the fold would accept, or signs and appends a record the fold
+// will rule ineffective — spending depth to record a refusal.
+func TestTheWriteBoundaryAsksWhatTheFoldAsks(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	declare := func(name workroom.Kind, lifecycle workroom.Lifecycle, basis []workroom.BasisConstraint) {
+		t.Helper()
+		fields, err := json.Marshal([]workroom.FieldConstraint{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		bases, err := json.Marshal(basis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		definition := actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindKindDef, Text: "define " + string(name),
+			Body: map[string]string{
+				"name": string(name), "fields": string(fields), "basis": string(bases),
+				"satisfier": workroom.SatisfierNone, "render": string(workroom.RenderCommitment),
+				"staleness": string(workroom.StalenessPropagates), "lifecycle": string(lifecycle),
+				"guidance": "test lifecycle",
+			},
+			RestsOn: []string{seed.ID}, IdempotencyKey: "declare-" + string(name),
+		})
+		actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbRatify, Target: definition.ID, IdempotencyKey: "ratify-" + string(name),
+		})
+	}
+	declare("undertaking", workroom.LifecyclePromise, []workroom.BasisConstraint{{Kinds: []workroom.Kind{workroom.KindRequest}, Min: 1, Max: 1}})
+
+	newRequest := func(key string) workroom.Record {
+		t.Helper()
+		return actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindRequest, Text: "build " + key,
+			Body:    map[string]string{"to": agent.Fingerprint, "conditions": "tests pass"},
+			RestsOn: []string{seed.ID}, IdempotencyKey: "request-" + key,
+		})
+	}
+
+	t.Run("an ineffective promise does not block direct completion", func(t *testing.T) {
+		one, two := newRequest("ineffective-a"), newRequest("ineffective-b")
+		// Resting on two requests makes this promise ineffective, while its
+		// provenance still names the request below. A refused record is not a
+		// commitment, so it must not stand in the way of one.
+		refused := actRecord(t, ctx, workspace, "agent", Act{
+			Verb: VerbState, Kind: workroom.KindPromise, Text: "I will, ambiguously",
+			RestsOn: []string{one.ID, two.ID}, IdempotencyKey: "ambiguous-promise",
+		})
+		snapshot, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decision := range snapshot.Projection.Decisions {
+			if decision.Event == refused.ID && decision.Verdict == workroom.Effective {
+				t.Fatalf("the fixture promise was effective; this case proves nothing")
+			}
+		}
+		if _, err := workspace.Act(ctx, "agent", Act{
+			Verb: VerbState, Kind: workroom.KindReport, Text: "done anyway",
+			RestsOn: []string{one.ID}, IdempotencyKey: "direct-past-ineffective",
+		}); err != nil {
+			t.Fatalf("an ineffective promise blocked a direct report: %v", err)
+		}
+	})
+
+	t.Run("a declared active promise kind does block it", func(t *testing.T) {
+		request := newRequest("declared")
+		actRecord(t, ctx, workspace, "agent", Act{
+			Verb: VerbState, Kind: "undertaking", Text: "I will",
+			RestsOn: []string{request.ID}, IdempotencyKey: "declared-promise",
+		})
+		_, err := workspace.Act(ctx, "agent", Act{
+			Verb: VerbState, Kind: workroom.KindReport, Text: "done",
+			RestsOn: []string{request.ID}, IdempotencyKey: "direct-past-declared",
+		})
+		if err == nil || !strings.Contains(err.Error(), "report on the promise") {
+			t.Fatalf("a declared promise-lifecycle claim did not redirect the report: %v", err)
+		}
+	})
+
+	t.Run("a promised report citing an unrelated request is refused before append", func(t *testing.T) {
+		mine, unrelated := newRequest("promised"), newRequest("unrelated")
+		promise := actRecord(t, ctx, workspace, "agent", Act{
+			Verb: VerbState, Kind: workroom.KindPromise, Text: "I will",
+			RestsOn: []string{mine.ID}, IdempotencyKey: "promise-for-unrelated-case",
+		})
+		before, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = workspace.Act(ctx, "agent", Act{
+			Verb: VerbState, Kind: workroom.KindReport, Text: "done",
+			RestsOn: []string{promise.ID, unrelated.ID}, IdempotencyKey: "false-provenance",
+		})
+		if err == nil || !strings.Contains(err.Error(), "cites a request other than the one its promise answers") {
+			t.Fatalf("false provenance was accepted: %v", err)
+		}
+		after, err := workspace.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Head != before.Head || after.Depth != before.Depth {
+			t.Fatalf("refused report changed the workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+		}
+	})
+}
+
+// Codex's fourth mismatch, and the subtlest: the boundary classified every
+// historical statement with the vocabulary as it stands now, while the fold
+// classifies each record with the definition that was in force where it sits.
+// Redefine a promise-lifecycle kind and the two answers diverge, so the
+// boundary signs and appends a record the fold then rules ineffective —
+// spending depth to record a refusal, from a mismatch that was locally known.
+func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	define := func(lifecycle workroom.Lifecycle, key string) workroom.Record {
+		t.Helper()
+		fields, err := json.Marshal([]workroom.FieldConstraint{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		bases, err := json.Marshal([]workroom.BasisConstraint{{Kinds: []workroom.Kind{workroom.KindRequest}, Min: 1, Max: 1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		definition := actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindKindDef, Text: "define undertaking " + key,
+			Body: map[string]string{
+				"name": "undertaking", "fields": string(fields), "basis": string(bases),
+				"satisfier": workroom.SatisfierNone, "render": string(workroom.RenderCommitment),
+				"staleness": string(workroom.StalenessPropagates), "lifecycle": string(lifecycle),
+				"guidance": "test lifecycle",
+			},
+			RestsOn: []string{seed.ID}, IdempotencyKey: "define-" + key,
+		})
+		actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbRatify, Target: definition.ID, IdempotencyKey: "ratify-" + key,
+		})
+		return definition
+	}
+
+	asPromise := define(workroom.LifecyclePromise, "as-promise")
+	request := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "build",
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "tests pass"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "redefinition-request",
+	})
+	// A live claim, recorded while undertaking was a promise.
+	actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: "undertaking", Text: "I will",
+		RestsOn: []string{request.ID}, IdempotencyKey: "claim-under-old-vocabulary",
+	})
+	// Now the kind is redefined to carry no lifecycle at all. The claim keeps
+	// the meaning it had where it stands; only later records see the new one.
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbSupersede, Target: asPromise.ID, Text: "redefining", IdempotencyKey: "retire-as-promise",
+	})
+	define(workroom.LifecycleNone, "as-none")
+
+	before, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = workspace.Act(ctx, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindReport, Text: "done",
+		RestsOn: []string{request.ID}, IdempotencyKey: "report-past-redefined-claim",
+	})
+	// The reason matters as much as the refusal. Asserting only that some error
+	// came back would let this pass through any unrelated fail-closed path and
+	// still read as proof that the claim was seen.
+	if err == nil {
+		t.Fatal("the boundary accepted a direct report the fold refuses, because it read the current vocabulary rather than the claim's own")
+	}
+	if !strings.Contains(err.Error(), "report on the promise") {
+		t.Fatalf("refused, but not because the redefined claim was still seen: %v", err)
+	}
+	after, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("refused report changed the workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+	}
+}
+
+// The other half of the profile contract.
+// TestProjectionProfileChangeRebuildsFromTheSameKernelCheckpoint proves a cache
+// is dropped when the profile string changes and that a rebuild with the same
+// rules gives the same answer. It cannot prove the case the profile exists for:
+// rules that actually changed, where serving the cache would answer with the
+// old world. workroom-fold@9 adds Statement.lifecycle, so an @8 cache holds
+// statements that carry none, and rebuilding must produce them.
+//
+// The cache is keyed on the whole stored identity, the application and the fold
+// version together, so this seeds and asserts that exact composite. A bare fold
+// version would never match whatever the build holds, and the cache would be
+// dropped for the wrong reason: the witness would pass with @9 reverted to @8.
+// The seeded cache stands at the current head, so the profile is the only thing
+// that can cause a replay. Revert ProfileVersion to @8 and the first branch of
+// snapshotWithSource returns the lifecycle-free projection verbatim.
+func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "build",
+		Body:    map[string]string{"to": "human", "conditions": "tests pass"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-rebuild-request",
+	})
+	current, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lifecycles := 0
+	for _, statement := range current.Projection.Statements {
+		if statement.Lifecycle != "" {
+			lifecycles++
+		}
+	}
+	if lifecycles == 0 {
+		t.Fatal("no statement carries a lifecycle, so this test cannot tell a rebuild from a stale cache")
+	}
+
+	// What an @8 cache holds: the same projection at the same head with the
+	// field absent.
+	stale := current
+	stale.Projection.Statements = append([]workroom.Statement(nil), current.Projection.Statements...)
+	for i := range stale.Projection.Statements {
+		stale.Projection.Statements[i].Lifecycle = ""
+	}
+	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@8"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@9"
+	workspace.snapshotMu.Lock()
+	workspace.snapshotCache = &stale
+	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
+	workspace.snapshotProfile = oldProfile
+	workspace.snapshotMu.Unlock()
+
+	rebuilt, err := workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rebuiltLifecycles := 0
+	for _, statement := range rebuilt.Snapshot.Projection.Statements {
+		if statement.Lifecycle != "" {
+			rebuiltLifecycles++
+		}
+	}
+	if rebuiltLifecycles != lifecycles {
+		t.Fatalf("rebuilt projection carries %d lifecycles, want %d: the %q cache was served instead of replayed", rebuiltLifecycles, lifecycles, oldProfile)
+	}
+	if workspace.snapshotProfile != wantProfile {
+		t.Fatalf("cache profile = %q, want %q: the older profile was not replaced", workspace.snapshotProfile, wantProfile)
 	}
 }

@@ -102,6 +102,7 @@
       "sequence": 1,
       "actor": "actor:operator",
       "kind": "roster",
+      "lifecycle": "none",
       "text": "Operator begins the workroom",
       "body": {
         "actor": "actor:operator",
@@ -114,6 +115,7 @@
       "sequence": 2,
       "actor": "actor:operator",
       "kind": "roster",
+      "lifecycle": "none",
       "text": "Agent joins",
       "body": {
         "actor": "actor:agent",
@@ -128,6 +130,7 @@
       "sequence": 4,
       "actor": "actor:operator",
       "kind": "request",
+      "lifecycle": "request",
       "text": "Build the projector",
       "body": {
         "conditions": "golden projection is byte-stable",
@@ -140,6 +143,7 @@
       "sequence": 5,
       "actor": "actor:agent",
       "kind": "promise",
+      "lifecycle": "promise",
       "text": "I will build it",
       "stale": true
     },
@@ -148,6 +152,7 @@
       "sequence": 6,
       "actor": "actor:agent",
       "kind": "report",
+      "lifecycle": "report",
       "text": "Projection passes",
       "body": {
         "result": "go test ./..."
@@ -161,6 +166,7 @@
       "sequence": 9,
       "actor": "actor:agent",
       "kind": "artifact",
+      "lifecycle": "none",
       "text": "Projector implementation",
       "body": {
         "commit": "abc123",

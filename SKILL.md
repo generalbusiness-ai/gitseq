@@ -121,12 +121,18 @@ them, because reading is not acknowledging. See
 **The work loop**: a `request` names whom it is to and its
 conditions of satisfaction; a `promise` rests on a request — a
 free-standing promise projects dangling, because no one is
-positioned to declare it satisfied. For implementing work, your exact-head
-artifact rests on that promise and acts as the implementation report; an
+positioned to declare it satisfied. A promise is optional: file one to show
+work in flight, or, if it is already done, report straight against the
+request. Only the addressee may do that, and not while their own promise on
+that request is live — one commitment takes one closure, so a claim you have
+already made is the thing to report on. For implementing work, your exact-head
+artifact rests on that promise, or on the request when you made none, and acts
+as the implementation report; an
 independently approved merge closes the commitment, with no duplicate report
 or post-merge ratification. The review approval remains separate and must be
 explicitly ratified before merge. Work that resolves without a merge uses an
-explicit `report` against the promise, which the *requester* ratifies. A live
+explicit `report` against the promise, or against the request when there is no
+promise, which the *requester* ratifies either way. A live
 artifact or unratified report is honest status ("reported, awaiting
 satisfaction"), not a nag-worthy gap and not failure. Superseding your own
 promise is **reneging**, visible

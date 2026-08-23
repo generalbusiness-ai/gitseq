@@ -1083,3 +1083,35 @@ test("a proposal's closing station follows a withdrawn and replaced ratification
   assert.equal(closedFirst.event, "ratify-a", "and when the earlier one survives, it is the one shown");
   assert.equal(closedFirst.actor, "alice");
 });
+
+// A report may rest on the request it answers, so a commitment can carry a
+// report and no promise. The promise station stays hollow, because no promise
+// happened — but it must not read as owed. Asking the performer to claim work
+// they have already reported is exactly what dropping the mandatory promise
+// exists to stop.
+test("a request reported without a claim shows the promise station as skipped, not owed", () => {
+  const projection = {
+    decisions: [
+      { event: "req", sequence: 1, verdict: "effective", reason: "recorded" },
+      { event: "rep", sequence: 2, verdict: "effective", reason: "recorded" },
+    ],
+    acts: [],
+    statements: [
+      { event: "req", sequence: 1, actor: "alice", kind: "request", text: "Do it", body: { to: "bob" }, timestamp: 1 },
+      { event: "rep", sequence: 2, actor: "bob", kind: "report", text: "Done", timestamp: 2 },
+    ],
+    commitments: [{ request: "req", requester: "alice", addressed_to: "bob", performer: "bob", report: "rep", status: "reported", waiting_on: "alice" }],
+    artifacts: [],
+    actors: {},
+    provenance: { rep: ["req"] },
+    reviews: [],
+  };
+  const spine = buildSpine("req", spineContext(projection));
+  const promise = spine.stations.find((station) => station.id === "promise");
+  assert.equal(promise.present, false, "no promise happened, so the station is hollow");
+  assert.equal(promise.what, "reported without a claim");
+  assert.doesNotMatch(promise.what, /unclaimed|addressed to|owed/, "and it is not owed by anybody");
+  const report = spine.stations.find((station) => station.id === "report");
+  assert.equal(report.present, true, "the report itself is a station");
+  assert.equal(report.event, "rep");
+});
