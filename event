@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccc9cf85b028bc7bf826ac267d6d1036be158c2e","text":"Retire this stale rejected security-gates request; current-world successor c3e5e7e6 carries the remaining work under promise ce7c1752."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a075b03f9c3ab53e7c7ca6a550ac7b4de8252c7c","text":"Retire this stale rejected browser-header request. Its old head must not be revived; refile the current-world header lane after security-gates successor c3e5e7e6 closes."}
