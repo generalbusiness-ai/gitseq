@@ -23,6 +23,7 @@ var (
 	errInjectedRetryClose      = errors.New("injected retry-close failure")
 	errInjectedIdentity        = errors.New("injected identity-read failure")
 	errInjectedCreatedIdentity = errors.New("injected created-identity read failure")
+	errInjectedRemove          = errors.New("injected removal failure")
 )
 
 // requireClosed proves CreateConfig closed the handle it opened: a leaked
@@ -98,34 +99,29 @@ func TestCreateConfigCloseFailureLeavesPathFreeForRetry(t *testing.T) {
 }
 
 // When the cleanup itself fails, the caller must still see the original
-// failure — the reason nothing was stored — and must also see that the
-// partial file still occupies the path, because that occupation poisons every
-// retry. Swallowing either half misreports what happened. The removal is made
-// to fail by revoking write permission on the directory between the injected
-// write failure and the cleanup.
+// failure — the reason nothing was stored — and must also see the removal
+// failure, because the partial file still occupies the path and that
+// occupation poisons every retry. Swallowing either half misreports what
+// happened. Written the easy way — asserting only the original failure —
+// this test would pass even if the removal's error were silently discarded,
+// which is exactly the defect it exists to catch.
 func TestCreateConfigSurfacesCleanupFailureAlongsideOriginal(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions, so the cleanup cannot be made to fail")
-	}
 	metaDir := t.TempDir()
 	previousWrite := createConfigWrite
-	createConfigWrite = func(*os.File, []byte) (int, error) {
-		if err := os.Chmod(metaDir, 0o500); err != nil {
-			t.Fatal(err)
-		}
-		return 0, errInjectedWrite
-	}
-	t.Cleanup(func() { os.Chmod(metaDir, 0o700) })
+	previousRemove := createConfigRemove
+	createConfigWrite = func(*os.File, []byte) (int, error) { return 0, errInjectedWrite }
+	createConfigRemove = func(string) error { return errInjectedRemove }
 	err := CreateConfig(metaDir, testConfig())
 	createConfigWrite = previousWrite
+	createConfigRemove = previousRemove
 	if !errors.Is(err, errInjectedWrite) {
 		t.Fatalf("CreateConfig error = %v, want it to preserve the original injected write failure", err)
 	}
-	if err == nil || !strings.Contains(err.Error(), "still occupies its path") {
-		t.Fatalf("CreateConfig error = %v, want the failed cleanup surfaced alongside the original failure", err)
+	if !errors.Is(err, errInjectedRemove) {
+		t.Fatalf("CreateConfig error = %v, want the removal failure carried alongside the original", err)
 	}
-	if err := os.Chmod(metaDir, 0o700); err != nil {
-		t.Fatal(err)
+	if err == nil || !strings.Contains(err.Error(), "still occupies its path") {
+		t.Fatalf("CreateConfig error = %v, want it to report the path still occupied", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(metaDir, ConfigFile)); statErr != nil {
 		t.Fatalf("the error reports the path still occupied, but stat = %v", statErr)

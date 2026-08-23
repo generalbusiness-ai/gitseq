@@ -201,22 +201,23 @@ func abandonPartialConfig(file *os.File, path string, created os.FileInfo, ident
 	if !os.SameFile(created, current) {
 		return errors.Join(err, errors.New("the destination now holds a file this call did not create, which was left in place"))
 	}
-	if removeErr := os.Remove(path); removeErr != nil {
+	if removeErr := createConfigRemove(path); removeErr != nil {
 		return errors.Join(err, fmt.Errorf("the partial configuration could not be removed and still occupies its path: %w", removeErr))
 	}
 	return err
 }
 
-// CreateConfig's write, close, retry-close, and identity-read failures are
-// storage conditions a test cannot arrange on a healthy filesystem, so these
-// indirections exist for tests in this package to force each failure branch.
-// Production never replaces them.
+// CreateConfig's write, close, retry-close, identity-read, and removal
+// failures are storage conditions a test cannot arrange on a healthy
+// filesystem, so these indirections exist for tests in this package to force
+// each failure branch. Production never replaces them.
 var (
 	createConfigWrite           = func(file *os.File, content []byte) (int, error) { return file.Write(content) }
 	createConfigClose           = func(file *os.File) error { return file.Close() }
 	createConfigRetryClose      = func(file *os.File) error { return file.Close() }
 	createConfigCreatedIdentity = func(file *os.File) (os.FileInfo, error) { return file.Stat() }
 	createConfigIdentity        = func(path string) (os.FileInfo, error) { return os.Lstat(path) }
+	createConfigRemove          = func(path string) error { return os.Remove(path) }
 )
 
 // ValidateGenesis rejects an object id that cannot name a commit in the
