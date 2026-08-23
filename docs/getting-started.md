@@ -24,10 +24,18 @@ make vet
 make build
 ```
 
-`make build` puts `gs` and `gitseq-mcp` in `bin/`. Put them on your path:
+`make test` runs the full gates, including documentation gates that
+build scratch workrooms and execute every example in these pages. Expect
+about ten minutes with little visible progress, even on a fast machine —
+it is working, not hung.
+
+`make build` puts `gs` and `gitseq-mcp` in `bin/`. Still in the gitseq
+checkout, put them on your path and keep the checkout's location — later
+steps use `$GITSEQ` to find the binaries and the skill file:
 
 ```text
 export PATH="$PWD/bin:$PATH"
+export GITSEQ="$PWD"
 ```
 
 ## Create a workroom
@@ -117,14 +125,44 @@ The roster now shows you and the three agents, each with its own key:
 
 ```text
 [
-  {"name": "alice",   "fingerprint": "e210dd78…", "kind": "human",
-   "roles": ["operator", "participant", "ratifier"], "custody": true},
-  {"name": "builder", "fingerprint": "293072f8…", "kind": "agent",
-   "roles": ["participant"], "custody": true},
-  {"name": "checker", "fingerprint": "fdae2c63…", "kind": "agent",
-   "roles": ["participant"], "custody": true},
-  {"name": "planner", "fingerprint": "2ad3b395…", "kind": "agent",
-   "roles": ["participant"], "custody": true}
+  {
+    "name": "alice",
+    "fingerprint": "e210dd78…",
+    "kind": "human",
+    "roles": [
+      "operator",
+      "participant",
+      "ratifier"
+    ],
+    "custody": true
+  },
+  {
+    "name": "builder",
+    "fingerprint": "293072f8…",
+    "kind": "agent",
+    "roles": [
+      "participant"
+    ],
+    "custody": true
+  },
+  {
+    "name": "checker",
+    "fingerprint": "fdae2c63…",
+    "kind": "agent",
+    "roles": [
+      "participant"
+    ],
+    "custody": true
+  },
+  {
+    "name": "planner",
+    "fingerprint": "2ad3b395…",
+    "kind": "agent",
+    "roles": [
+      "participant"
+    ],
+    "custody": true
+  }
 ]
 ```
 
@@ -144,13 +182,33 @@ PORT="${PORT:-7777}"
 gs serve --repo "$REPO" --listen "127.0.0.1:$PORT" &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null || true' EXIT
+ready=""
 for _ in $(seq 40); do
-  if gs status --repo "$REPO" --server "http://127.0.0.1:$PORT" >/dev/null 2>&1; then
+  kill -0 "$SERVER" 2>/dev/null || break
+  if gs status --repo "$REPO" --server "http://127.0.0.1:$PORT" 2>&1 >/dev/null \
+      | grep -q 'performing verified local fallback'; then
+    sleep 0.25
+  else
+    ready="yes"
     break
   fi
-  sleep 0.25
 done
+[ -n "$ready" ] || { echo "no resident for this workroom on port $PORT — is the port in use?" >&2; exit 1; }
 ```
+
+The loop proves that **this** resident answered for **this** workroom. If
+the port is already taken — by anything, including a resident serving a
+different workroom — `gs serve` exits, the loop stops with the error
+above, and nothing later pretends the resident is up. `gs status` alone
+cannot tell you this: pointed at a missing or mismatched resident it
+falls back to a slower local read and still exits 0. If port 7777 is
+busy on your machine, set `PORT` to a free one and rerun the block.
+
+The `trap` ties the resident to this shell, so keep this terminal open
+for the rest of the walkthrough. If it closes, the resident dies with
+it, and every session quietly degrades to that local fallback — no
+error, no live view. To run a resident that outlives a shell, see
+[Deploy a resident](how-to/deploy-a-resident.md).
 
 Open `http://127.0.0.1:$PORT` to watch the workroom. Starting a resident
 accepts its boundary: trusted processes only — every process inside this
@@ -170,7 +228,8 @@ cannot rely on the `PATH` you exported above.
 ### claude-code
 
 Run these in the project directory (the default scope records them for
-this directory only), with `$GITSEQ` pointing at your gitseq checkout:
+this directory only). `$GITSEQ` is the checkout path you exported after
+`make build`; in a fresh shell, set it again first:
 
 ```text
 cd "$REPO"
@@ -273,7 +332,7 @@ claude
 ```
 
 ```text
-Using the gitseq workroom skill and 'builder' MCP, check for work items and
+Using the gitseq workroom skill and the 'builder' MCP tools, check for work items and
 prioritize appropriately to keep progressing. Dispatch tasks to subagents.
 Continue checking every 10 minutes indefinitely.
 ```
@@ -286,7 +345,7 @@ codex
 ```
 
 ```text
-Using the gitseq workroom skill and 'planner' MCP, check for work items and
+Using the gitseq workroom skill and the 'planner' MCP tools, check for work items and
 prioritize appropriately to keep progressing. Dispatch tasks to subagents.
 Continue checking every 10 minutes indefinitely.
 ```
