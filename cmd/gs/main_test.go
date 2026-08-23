@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1929,6 +1930,84 @@ func TestStateWithAnUndefinedKindWarnsTheAuthorOnStandardError(t *testing.T) {
 	}
 }
 
+// A fixture template is one finished fixture repository, built once for the
+// whole package run. Building a workroom costs dozens of git subprocesses,
+// so every test that needs one copies the finished template instead of
+// rebuilding it from scratch. TestMain removes the template roots when the
+// package finishes.
+type fixtureTemplate struct {
+	build func(root string) error
+	once  sync.Once
+	root  string
+	err   error
+}
+
+// repo builds the template on first use and returns its repository path.
+func (template *fixtureTemplate) repo(t *testing.T) string {
+	t.Helper()
+	template.once.Do(func() {
+		template.root, template.err = os.MkdirTemp("", "gitseq-gs-template-")
+		if template.err == nil {
+			template.err = template.build(template.root)
+		}
+	})
+	if template.err != nil {
+		t.Fatal(template.err)
+	}
+	return filepath.Join(template.root, "repo")
+}
+
+// copyRepo copies the template repository to destination and points the
+// absolute key paths its configuration holds (all under .git/gitseq) at the
+// new location.
+func (template *fixtureTemplate) copyRepo(t *testing.T, destination string) {
+	t.Helper()
+	source := template.repo(t)
+	if err := os.MkdirAll(destination, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("cp", "-R", source+"/.", destination).CombinedOutput(); err != nil {
+		t.Fatalf("copy fixture template: %v: %s", err, output)
+	}
+	configPath := filepath.Join(destination, ".git", "gitseq", "config.json")
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config = bytes.ReplaceAll(config, []byte(source), []byte(destination))
+	if err := os.WriteFile(configPath, config, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+var batchTemplate = fixtureTemplate{build: buildBatchTemplate}
+
+func buildBatchTemplate(root string) error {
+	ctx := context.Background()
+	repo := filepath.Join(root, "repo")
+	if _, err := gitCommand("", "init", "-b", "main", repo); err != nil {
+		return err
+	}
+	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	if err != nil {
+		return err
+	}
+	_, _, err = workspace.AddActor(ctx, "operator", "worker", "agent")
+	return err
+}
+
+// TestMain removes the shared fixture templates once every test is done with
+// them.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	for _, template := range []*fixtureTemplate{&batchTemplate, &workflowTemplates[0].fixtureTemplate, &workflowTemplates[1].fixtureTemplate} {
+		if template.root != "" {
+			os.RemoveAll(template.root)
+		}
+	}
+	os.Exit(code)
+}
+
 type batchFixture struct {
 	t         *testing.T
 	ctx       context.Context
@@ -1941,12 +2020,9 @@ func newBatchFixture(t *testing.T) batchFixture {
 	t.Helper()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
-	testGit(t, "", "init", "-b", "main", repo)
-	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	batchTemplate.copyRepo(t, repo)
+	workspace, err := app.Open(ctx, repo)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := workspace.AddActor(ctx, "operator", "worker", "agent"); err != nil {
 		t.Fatal(err)
 	}
 	return batchFixture{t: t, ctx: ctx, repo: repo, workspace: workspace, genesis: workspace.EventID(workspace.View().Genesis)}
@@ -2139,41 +2215,111 @@ func newWorkflowFixtureRemoving(t *testing.T, removeBase bool) workflowFixture {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
 	feature := filepath.Join(root, "feature")
-	testGit(t, "", "init", "-b", "main", repo)
-	testGit(t, repo, "config", "user.name", "Test")
-	testGit(t, repo, "config", "user.email", "test@example.invalid")
-	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	testGit(t, repo, "add", "base.txt")
-	testGit(t, repo, "commit", "-m", "base")
-	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	template := workflowTemplateRemoving(removeBase)
+	template.copyRepo(t, repo)
+	workspace, err := app.Open(ctx, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := workspace.AddActor(ctx, "operator", "reviewer", "agent"); err != nil {
-		t.Fatal(err)
+	testGit(t, repo, "worktree", "add", feature, "feature")
+	return workflowFixture{
+		t: t, ctx: ctx, repo: repo, feature: feature, workspace: workspace,
+		candidate: template.candidate, artifact: template.artifact, ground: template.ground,
+		request: template.request, promise: template.promise,
 	}
-	testGit(t, repo, "worktree", "add", "-b", "feature", feature)
-	if err := os.WriteFile(filepath.Join(feature, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	testGit(t, feature, "add", "feature.txt")
+}
+
+// A workflow template also remembers the durable event ids its workroom
+// holds. Every copy shares the template's log byte for byte, so the ids are
+// the same in every copy.
+type workflowTemplate struct {
+	fixtureTemplate
+	candidate string
+	ground    string
+	artifact  string
+	request   string
+	promise   string
+}
+
+var workflowTemplates = [2]*workflowTemplate{newWorkflowTemplate(false), newWorkflowTemplate(true)}
+
+func newWorkflowTemplate(removeBase bool) *workflowTemplate {
+	template := &workflowTemplate{}
+	template.build = func(root string) error { return template.buildWorkflow(root, removeBase) }
+	return template
+}
+
+func workflowTemplateRemoving(removeBase bool) *workflowTemplate {
 	if removeBase {
-		testGit(t, feature, "rm", "-q", "base.txt")
+		return workflowTemplates[1]
 	}
-	testGit(t, feature, "commit", "-m", "feature")
-	candidate := testGit(t, feature, "rev-parse", "HEAD")
+	return workflowTemplates[0]
+}
+
+func (template *workflowTemplate) buildWorkflow(root string, removeBase bool) error {
+	ctx := context.Background()
+	repo := filepath.Join(root, "repo")
+	feature := filepath.Join(root, "feature")
+	if _, err := gitCommand("", "init", "-b", "main", repo); err != nil {
+		return err
+	}
+	if _, err := gitCommand(repo, "config", "user.name", "Test"); err != nil {
+		return err
+	}
+	if _, err := gitCommand(repo, "config", "user.email", "test@example.invalid"); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
+		return err
+	}
+	if _, err := gitCommand(repo, "add", "base.txt"); err != nil {
+		return err
+	}
+	if _, err := gitCommand(repo, "commit", "-m", "base"); err != nil {
+		return err
+	}
+	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	if err != nil {
+		return err
+	}
+	if _, _, err := workspace.AddActor(ctx, "operator", "reviewer", "agent"); err != nil {
+		return err
+	}
+	if _, err := gitCommand(repo, "worktree", "add", "-b", "feature", feature); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(feature, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
+		return err
+	}
+	if _, err := gitCommand(feature, "add", "feature.txt"); err != nil {
+		return err
+	}
+	if removeBase {
+		if _, err := gitCommand(feature, "rm", "-q", "base.txt"); err != nil {
+			return err
+		}
+	}
+	if _, err := gitCommand(feature, "commit", "-m", "feature"); err != nil {
+		return err
+	}
+	candidate, err := gitCommand(feature, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	base, err := gitCommand(repo, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
 	// The feature stands on the base of the repository, exactly as ordinary
 	// work stands on whatever main was when it started. Retiring this is how a
 	// test moves the world without touching the feature commit.
 	groundSubmission, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "repository base",
-		Body:    map[string]string{"path": "base.txt", "commit": testGit(t, repo, "rev-parse", "HEAD")},
+		Body:    map[string]string{"path": "base.txt", "commit": base},
 		RestsOn: []string{workspace.EventID(workspace.View().Genesis)}, IdempotencyKey: "ground",
 	})
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	artifactSubmission, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "feature artifact",
@@ -2181,7 +2327,7 @@ func newWorkflowFixtureRemoving(t *testing.T, removeBase bool) workflowFixture {
 		RestsOn: []string{groundSubmission.Record.ID}, IdempotencyKey: "artifact",
 	})
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	requestSubmission, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
@@ -2189,20 +2335,22 @@ func newWorkflowFixtureRemoving(t *testing.T, removeBase bool) workflowFixture {
 		RestsOn: []string{artifactSubmission.Record.ID}, IdempotencyKey: "review-request",
 	})
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	promiseSubmission, err := workspace.Act(ctx, "reviewer", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "review exact head",
 		RestsOn: []string{requestSubmission.Record.ID}, IdempotencyKey: "review-promise",
 	})
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
-	return workflowFixture{
-		t: t, ctx: ctx, repo: repo, feature: feature, workspace: workspace,
-		candidate: candidate, artifact: artifactSubmission.Record.ID, ground: groundSubmission.Record.ID,
-		request: requestSubmission.Record.ID, promise: promiseSubmission.Record.ID,
-	}
+	template.candidate = candidate
+	template.ground = groundSubmission.Record.ID
+	template.artifact = artifactSubmission.Record.ID
+	template.request = requestSubmission.Record.ID
+	template.promise = promiseSubmission.Record.ID
+	_, err = gitCommand(repo, "worktree", "remove", feature)
+	return err
 }
 
 // moveTheWorld retires the base everything under review rests on, leaving the
@@ -2297,14 +2445,24 @@ func statementByEvent(t *testing.T, projection workroom.Projection, event string
 
 func testGit(t *testing.T, repo string, arguments ...string) string {
 	t.Helper()
+	output, err := gitCommand(repo, arguments...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return output
+}
+
+// gitCommand is testGit for callers that must report failure rather than end
+// the test, such as the template builders that run once for many tests.
+func gitCommand(repo string, arguments ...string) (string, error) {
 	if repo != "" {
 		arguments = append([]string{"-C", repo}, arguments...)
 	}
 	output, err := exec.Command("git", arguments...).CombinedOutput()
 	if err != nil {
-		t.Fatalf("git %s: %v: %s", strings.Join(arguments, " "), err, output)
+		return "", fmt.Errorf("git %s: %v: %s", strings.Join(arguments, " "), err, output)
 	}
-	return strings.TrimSpace(string(output))
+	return strings.TrimSpace(string(output)), nil
 }
 
 func TestStatusVerifyAndStateShareWorkroomAcrossLinkedCheckouts(t *testing.T) {
