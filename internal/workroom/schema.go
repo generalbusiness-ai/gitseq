@@ -13,7 +13,7 @@ const (
 	// ProfileVersion identifies the exact deterministic application projection
 	// contract. Kernel checkpoints are profile-independent verified event
 	// material; application projection caches use this value as their gate.
-	ProfileVersion     = "workroom-fold@9"
+	ProfileVersion     = "workroom-fold@10"
 	SchemaStateLegacy  = "workroom/state@0"
 	SchemaStateV1      = "workroom/state@1"
 	SchemaState        = "workroom/state@2"

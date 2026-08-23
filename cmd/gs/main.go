@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -906,7 +907,7 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	if artifactEvent == "" || !slices.Contains(projection.Provenance[approvalEvent], artifactEvent) {
 		return "", errors.New("approval does not rest on its named artifact")
 	}
-	artifact, err := liveArtifact(projection, artifactEvent)
+	artifact, err := liveArtifactAsOf(projection, artifactEvent, approval.Sequence)
 	if err != nil {
 		return "", fmt.Errorf("approval artifact: %w", err)
 	}
@@ -1024,16 +1025,51 @@ func standingArtifact(projection workroom.Projection, event string) (workroom.Ar
 }
 
 // liveArtifact is merge-live: standing, and not describing a superseded world.
-// Ordinary reasoning staleness is recorded by the merge receipt.
+// Ordinary reasoning staleness is recorded by the merge receipt. It judges the
+// world as of now, which is what a reviewer signing an artifact needs.
 func liveArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
+	return liveArtifactAsOf(projection, event, math.MaxInt)
+}
+
+// liveArtifactAsOf is liveArtifact with the verdict's position in the log. A
+// reviewer can only answer for the world they were shown: an artifact that
+// already described a superseded world when they looked is a judgement that
+// cannot be repaired by repeating it, and still refuses. A retirement landing
+// afterwards is news, and news belongs in the receipt beside ordinary
+// staleness, not in a refusal of a verdict that was sound when it was made.
+//
+// The date is the fold's, taken across every basis. Deriving it here would be a
+// second copy of a rule the fold already owns, and the copy is what drifts.
+func liveArtifactAsOf(projection workroom.Projection, event string, verdict int) (workroom.Artifact, error) {
 	artifact, err := standingArtifact(projection, event)
 	if err != nil {
 		return workroom.Artifact{}, err
 	}
-	if artifact.DescribesSupersededWorld {
+	if artifact.DescribesSupersededWorld && !worldMovedAfterVerdict(artifact, verdict) {
 		return workroom.Artifact{}, errors.New("artifact describes a superseded world")
 	}
 	return artifact, nil
+}
+
+// worldMovedAfterVerdict reads the fold's date and fails closed on its absence.
+// Zero means the fold accounted for no active cause, and reading that as "after
+// the verdict" would turn every projection this cannot date into a merge nobody
+// reviewed.
+func worldMovedAfterVerdict(artifact workroom.Artifact, verdict int) bool {
+	return artifact.WorldSupersededAt != 0 && artifact.WorldSupersededAt > verdict
+}
+
+// verdictSequence is where a verdict sits in the log, or the end of the log if
+// the projection cannot place it. An unplaceable verdict dates nothing, so it
+// is treated as later than every retirement and the world staleness it was
+// shown keeps refusing.
+func verdictSequence(projection workroom.Projection, approval string) int {
+	for _, decision := range projection.Decisions {
+		if decision.Event == approval {
+			return decision.Sequence
+		}
+	}
+	return math.MaxInt
 }
 
 // standingStatement is the same judgement for a statement: refuse what was

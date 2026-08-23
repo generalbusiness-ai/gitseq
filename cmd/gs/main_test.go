@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1423,6 +1424,80 @@ func TestMergeGuardRecordsAndMergesAReasoningStaleApproval(t *testing.T) {
 	}
 	if durable.Body["stale"] != "true" || durable.Body["staleness"] != receipt.Staleness {
 		t.Fatalf("durable merge receipt did not preserve staleness: %+v", durable)
+	}
+}
+
+// A world that moves after the verdict is news the reviewer had no chance to
+// see. The head they approved is immutable and the artifact still points at it,
+// so the merge records what moved rather than refusing a judgement that was
+// sound when it was made.
+func TestMergeGuardRecordsAWorldThatMovedAfterTheVerdict(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	fixture.moveTheWorld(t)
+	artifact := artifactByEvent(t, fixture.snapshot(t).Projection, fixture.artifact)
+	if !artifact.DescribesSupersededWorld || artifact.WorldSupersededAt == 0 {
+		t.Fatalf("artifact world=%v at=%d: this test cannot tell the dated rule from no rule at all", artifact.DescribesSupersededWorld, artifact.WorldSupersededAt)
+	}
+	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Merge the exact approved head and record the world that moved after the verdict.",
+	}); err != nil {
+		t.Fatalf("a retirement after the verdict blocked the merge: %v", err)
+	}
+	mergeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	if mergeHead == base {
+		t.Fatal("the merge did not move HEAD")
+	}
+	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, mergeHead)
+	if err != nil || !ok {
+		t.Fatalf("read merge receipt: ok=%v err=%v", ok, err)
+	}
+	if !strings.Contains(receipt.Staleness, "describes a superseded world") {
+		t.Fatalf("merge receipt staleness %q does not record the moved world", receipt.Staleness)
+	}
+}
+
+// The consumer half of the ordering defect. A date older than the verdict
+// refuses whatever produced it, and a later one does not, so the guard cannot
+// pass by refusing everything.
+func TestReviewWorldMovedAfterDoesNotHideOlderNestedRetirement(t *testing.T) {
+	projection := workroom.Projection{
+		Decisions: []workroom.Decision{
+			{Event: "candidate", Sequence: 40, Verdict: workroom.Effective},
+			{Event: "approval", Sequence: 50, Verdict: workroom.Effective},
+		},
+		Artifacts: []workroom.Artifact{
+			{Event: "candidate", Path: "candidate", Commit: "head", Stale: true,
+				DescribesSupersededWorld: true, WorldSupersededAt: 10},
+		},
+		Statements: []workroom.Statement{
+			{Event: "candidate", Kind: workroom.KindArtifact, Actor: "implementer", Stale: true,
+				DescribesSupersededWorld: true, WorldSupersededAt: 10},
+		},
+	}
+	if _, err := liveArtifactAsOf(projection, "candidate", 50); err == nil {
+		t.Fatal("a cause older than the verdict was admitted")
+	}
+	projection.Artifacts[0].WorldSupersededAt = 60
+	if _, err := liveArtifactAsOf(projection, "candidate", 50); err != nil {
+		t.Fatalf("a cause later than the verdict refused the merge: %v", err)
+	}
+}
+
+// An undated superseded world is not permission. The fold reports zero when no
+// active cause accounts for it, and the guard must read that as refuse.
+func TestReviewRefusesAnUndatedSupersededWorld(t *testing.T) {
+	projection := workroom.Projection{
+		Decisions:  []workroom.Decision{{Event: "candidate", Sequence: 40, Verdict: workroom.Effective}},
+		Artifacts:  []workroom.Artifact{{Event: "candidate", Path: "candidate", Commit: "head", Stale: true, DescribesSupersededWorld: true}},
+		Statements: []workroom.Statement{{Event: "candidate", Kind: workroom.KindArtifact, Actor: "implementer", Stale: true, DescribesSupersededWorld: true}},
+	}
+	if _, err := liveArtifactAsOf(projection, "candidate", math.MaxInt); err == nil {
+		t.Fatal("an undated superseded world was admitted")
 	}
 }
 

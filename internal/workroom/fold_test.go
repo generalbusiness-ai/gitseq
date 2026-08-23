@@ -3377,3 +3377,98 @@ func TestADepartedActorMayStillSupersedeItsOwnAct(t *testing.T) {
 		t.Fatalf("departed actor retracting its own act = %s (%s), want effective", decision.Verdict, decision.Reason)
 	}
 }
+
+// datedWorld folds a chain in which a page rests on two artifact bases, each
+// retired at a different point, and returns the date the fold gives the page.
+// The bases are cited in the order given, so one call with each order shows
+// whether citation order can change the answer. Nothing here supplies the
+// number the test checks: the fold derives it from the retirements.
+func datedWorld(t *testing.T, first, second string) Artifact {
+	t.Helper()
+	records := reviewRecords(t,
+		event(t, "old-base", agent, SchemaState, State{Kind: KindArtifact, Text: "old base", Body: map[string]string{"path": "old", "commit": "head1"}}, "r0"),
+		event(t, "new-base", agent, SchemaState, State{Kind: KindArtifact, Text: "new base", Body: map[string]string{"path": "new", "commit": "head1"}}, "r0"),
+		event(t, "old-successor", agent, SchemaState, State{Kind: KindArtifact, Text: "old base moved", Body: map[string]string{"path": "old", "commit": "head2"}}, "r0"),
+		event(t, "retire-old", agent, SchemaSupersede, Supersede{Target: "old-base", Text: "the old base moved"}, "old-base", "old-successor"),
+		event(t, "new-successor", agent, SchemaState, State{Kind: KindArtifact, Text: "new base moved", Body: map[string]string{"path": "new", "commit": "head2"}}, "r0"),
+		event(t, "retire-new", agent, SchemaSupersede, Supersede{Target: "new-base", Text: "the new base moved"}, "new-base", "new-successor"),
+		event(t, "page", agent, SchemaState, State{Kind: KindArtifact, Text: "page", Body: map[string]string{"path": "page", "commit": "head1"}}, first, second),
+	)
+	return artifactByEvent(t, Fold(records), "page")
+}
+
+// Citation order must not decide the date. The fold examines every basis and
+// keeps the earliest active cause, so an older retirement cannot be hidden
+// behind a newer one by writing the newer basis first.
+func TestWorldDateIsTheEarliestCauseWhicheverOrderTheBasesAreCitedIn(t *testing.T) {
+	oldFirst := datedWorld(t, "old-base", "new-base")
+	newFirst := datedWorld(t, "new-base", "old-base")
+	for _, page := range []Artifact{oldFirst, newFirst} {
+		if !page.DescribesSupersededWorld {
+			t.Fatal("the page does not describe a superseded world, so this test proves nothing")
+		}
+		if page.WorldSupersededAt == 0 {
+			t.Fatal("the fold dated nothing, so the orders cannot be compared")
+		}
+	}
+	if oldFirst.WorldSupersededAt != newFirst.WorldSupersededAt {
+		t.Fatalf("citation order changed the date: old-first=%d new-first=%d — a signer can hide an older cause behind a newer one",
+			oldFirst.WorldSupersededAt, newFirst.WorldSupersededAt)
+	}
+}
+
+// A supersession that has itself been superseded is not a cause. Two
+// retirements account for one moved world here; withdrawing the earlier leaves
+// the world moved and the date must advance to the one still accounting for it.
+func TestWithdrawingOneRetirementLeavesTheDateOfTheOneThatRemains(t *testing.T) {
+	base := []Record{
+		event(t, "ground", agent, SchemaState, State{Kind: KindArtifact, Text: "ground", Body: map[string]string{"path": "ground", "commit": "head1"}}, "r0"),
+		event(t, "early-successor", agent, SchemaState, State{Kind: KindArtifact, Text: "ground moved", Body: map[string]string{"path": "ground", "commit": "head2"}}, "r0"),
+		event(t, "retire-early", agent, SchemaSupersede, Supersede{Target: "ground", Text: "first retirement"}, "ground", "early-successor"),
+		event(t, "page", agent, SchemaState, State{Kind: KindArtifact, Text: "page", Body: map[string]string{"path": "page", "commit": "head1"}}, "ground"),
+		event(t, "late-successor", agent, SchemaState, State{Kind: KindArtifact, Text: "ground moved again", Body: map[string]string{"path": "ground", "commit": "head3"}}, "r0"),
+		event(t, "retire-late", agent, SchemaSupersede, Supersede{Target: "ground", Text: "second retirement"}, "ground", "late-successor"),
+	}
+	before := artifactByEvent(t, Fold(reviewRecords(t, base...)), "page")
+	if !before.DescribesSupersededWorld || before.WorldSupersededAt == 0 {
+		t.Fatalf("page before withdrawal: world=%v at=%d", before.DescribesSupersededWorld, before.WorldSupersededAt)
+	}
+	withdrawn := append(append([]Record(nil), base...),
+		event(t, "withdraw-early", agent, SchemaSupersede, Supersede{Target: "retire-early", Text: "the first retirement is withdrawn"}, "retire-early"))
+	after := artifactByEvent(t, Fold(reviewRecords(t, withdrawn...)), "page")
+	if !after.DescribesSupersededWorld {
+		t.Fatal("withdrawing one of two retirements un-moved the world, so the remaining cause is not counted")
+	}
+	if after.WorldSupersededAt <= before.WorldSupersededAt {
+		t.Fatalf("date stayed at %d after withdrawing the earlier retirement, was %d: the withdrawn cause is still counted",
+			after.WorldSupersededAt, before.WorldSupersededAt)
+	}
+}
+
+// World staleness crosses a direct retirement edge from an artifact and then
+// only artifact-to-artifact edges. A reasoning statement standing on a
+// world-stale artifact records that its argument moved without claiming to
+// describe the old world, so it must carry neither the flag nor a date.
+func TestAReasoningEdgeDoesNotInheritTheWorldDate(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "ground", agent, SchemaState, State{Kind: KindArtifact, Text: "ground", Body: map[string]string{"path": "ground", "commit": "head1"}}, "r0"),
+		// Bare, with no successor. A succeeded retirement is answered rather
+		// than news, so it deliberately does not flare the reasoning that
+		// stood on it, and would leave this test asserting nothing.
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "ground", Text: "the ground was condemned"}, "ground"),
+		event(t, "page", agent, SchemaState, State{Kind: KindArtifact, Text: "page describing the ground", Body: map[string]string{"path": "page", "commit": "head1"}}, "ground"),
+		event(t, "note", agent, SchemaState, State{Kind: KindAssert, Text: "an assert resting on the page"}, "page"),
+	)
+	projection := Fold(records)
+	page := artifactByEvent(t, projection, "page")
+	if !page.DescribesSupersededWorld || page.WorldSupersededAt == 0 {
+		t.Fatalf("page: world=%v at=%d — the artifact edge did not carry a dated world, so the reasoning edge proves nothing", page.DescribesSupersededWorld, page.WorldSupersededAt)
+	}
+	note := statementByEvent(t, projection, "note")
+	if !note.Stale {
+		t.Fatal("the assert is not stale, so it is not standing on the moved argument at all")
+	}
+	if note.DescribesSupersededWorld || note.WorldSupersededAt != 0 {
+		t.Fatalf("a reasoning edge inherited the world flag or its date: world=%v at=%d", note.DescribesSupersededWorld, note.WorldSupersededAt)
+	}
+}

@@ -328,11 +328,20 @@ func reviewedPaths(projection workroom.Projection, approval string) []string {
 	for _, artifact := range projection.Artifacts {
 		standing[artifact.Event] = artifact
 	}
+	// The same temporal rule the merge guard applies to the approval's primary
+	// artifact, read from the same fold-published date. A pointer the reviewer
+	// signed still bounds what their approval reaches when the world moved after
+	// they signed it; one that already described a superseded world when they
+	// looked does not, and an undated one fails closed.
+	verdict := verdictSequence(projection, approval)
 	var paths []string
 	seen := make(map[string]bool)
 	for _, basis := range projection.Provenance[approval] {
 		artifact, isArtifact := standing[basis]
-		if !isArtifact || artifact.Retired || artifact.DescribesSupersededWorld || artifact.Path == "" {
+		if !isArtifact || artifact.Retired || artifact.Path == "" {
+			continue
+		}
+		if artifact.DescribesSupersededWorld && !worldMovedAfterVerdict(artifact, verdict) {
 			continue
 		}
 		if artifact.Commit != review.Head || authors[basis] != review.Implementer {

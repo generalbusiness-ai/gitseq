@@ -2151,13 +2151,19 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 // is dropped when the profile string changes and that a rebuild with the same
 // rules gives the same answer. It cannot prove the case the profile exists for:
 // rules that actually changed, where serving the cache would answer with the
-// old world. workroom-fold@9 adds Statement.lifecycle, so an @8 cache holds
-// statements that carry none, and rebuilding must produce them.
+// old world. Statement.lifecycle is the observable: a cache seeded without it
+// answers with the old shape, so if the older profile were served instead of
+// replayed the rebuilt projection would carry none.
+//
+// The transition under test is whichever one the build is making -- @9 to @10
+// as this stands, for world_superseded_at. Re-anchor both constants when the
+// profile moves again; that edit is the point, because it makes whoever bumps
+// the profile look at the cache.
 //
 // The cache is keyed on the whole stored identity, the application and the fold
 // version together, so this seeds and asserts that exact composite. A bare fold
 // version would never match whatever the build holds, and the cache would be
-// dropped for the wrong reason: the witness would pass with @9 reverted to @8.
+// dropped for the wrong reason: the witness would pass with the bump reverted.
 // The seeded cache stands at the current head, so the profile is the only thing
 // that can cause a replay. Revert ProfileVersion to @8 and the first branch of
 // snapshotWithSource returns the lifecycle-free projection verbatim.
@@ -2193,8 +2199,11 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	for i := range stale.Projection.Statements {
 		stale.Projection.Statements[i].Lifecycle = ""
 	}
-	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@8"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@9"
+	// Re-anchored to the current transition. Hard-coded identities are the
+	// point: they make whoever moves the profile look at the cache, which is
+	// what happened here when world_superseded_at took it to @10.
+	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@9"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@10"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &stale
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail

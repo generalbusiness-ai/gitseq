@@ -81,6 +81,8 @@ type Statement struct {
 	// the statement describes rather than the argument it stands on. Both are
 	// staleness; only this one means go and re-read the code.
 	DescribesSupersededWorld bool `json:"describes_superseded_world,omitempty"`
+	// WorldSupersededAt carries the same dating as on Artifact.
+	WorldSupersededAt int `json:"world_superseded_at,omitempty"`
 }
 
 type Commitment struct {
@@ -116,6 +118,13 @@ type Artifact struct {
 	Stale bool `json:"stale"`
 	// DescribesSupersededWorld carries the same narrowing as on Statement.
 	DescribesSupersededWorld bool `json:"describes_superseded_world,omitempty"`
+	// WorldSupersededAt dates DescribesSupersededWorld: the log position of the
+	// earliest retirement still accounting for it, taken across every basis
+	// rather than the first one that carries the flag, so the order a signer
+	// wrote its citations in cannot decide the date. Zero means the fold found
+	// no active cause, which for a record that describes a superseded world is
+	// a fact to fail closed on rather than read as permission.
+	WorldSupersededAt int `json:"world_superseded_at,omitempty"`
 	// UnableToFlare records that this artifact has no basis that any act could
 	// ever retire, so no supersession anywhere can make it stale. Its silence
 	// is not currency and the projection must not let it read as currency.
@@ -1435,9 +1444,17 @@ func (f *foldState) retired(event string) bool {
 // staleness at all is the governing definition's business: an exempt kind
 // neither catches staleness nor passes it on, and a terminal one catches it
 // without passing it on.
-func (f *foldState) staleness(successors map[string]string) (map[string]bool, map[string]bool) {
+func (f *foldState) staleness(successors map[string]string) (map[string]bool, map[string]bool, map[string]int) {
 	stale := make(map[string]bool)
 	world := make(map[string]bool)
+	// causedAt dates each world-stale record by the earliest retirement still
+	// accounting for it. A reader deciding whether a judgement predates the move
+	// needs that position, and cannot recover it from the acts, which say a
+	// supersession happened but not whether its own supersession withdrew it.
+	causedAt := make(map[string]int)
+	// activeRetirement is built once for the whole fold. Rescanning per edge
+	// would be quadratic, and the answer cannot change inside one pass.
+	activeRetirement := f.activeRetirements()
 	for _, record := range f.records {
 		if record.decision.Verdict != Effective {
 			continue
@@ -1492,11 +1509,44 @@ func (f *foldState) staleness(successors map[string]string) (map[string]bool, ma
 			stale[record.record.ID] = true
 			if (world[basis] && artifactProvenance) || (retiredBasis && f.isArtifact(basis)) {
 				world[record.record.ID] = true
-				break
+				// Every basis is examined. Stopping at the first world-bearing
+				// one would let the order a signer wrote its Rests-On in decide
+				// the date, hiding an older cause behind a newer one, and the
+				// date gates an irreversible merge.
+				at := activeRetirement[basis]
+				if inherited, ok := causedAt[basis]; ok && artifactProvenance && (at == 0 || (inherited != 0 && inherited < at)) {
+					at = inherited
+				}
+				if at != 0 && (causedAt[record.record.ID] == 0 || at < causedAt[record.record.ID]) {
+					causedAt[record.record.ID] = at
+				}
 			}
 		}
 	}
-	return stale, world
+	return stale, world, causedAt
+}
+
+// activeRetirements dates every retired event by the earliest supersession
+// still accounting for it. A supersession that has itself been superseded is
+// not a cause: the fold already withdrew its effect from the retirement
+// counter, and a date taken from the bare act would outlive that withdrawal and
+// describe a world that had come back. Built once per fold, in one pass.
+func (f *foldState) activeRetirements() map[string]int {
+	earliest := make(map[string]int)
+	for id, target := range f.effectiveSup {
+		if f.retired(id) {
+			continue
+		}
+		cause := f.byID[id]
+		if cause == nil || cause.decision.Verdict != Effective {
+			continue
+		}
+		at := cause.sequence()
+		if known, seen := earliest[target]; !seen || at < known {
+			earliest[target] = at
+		}
+	}
+	return earliest
 }
 
 // stalenessCoveredByMergePlan reports whether every live cause below event is
@@ -1734,7 +1784,7 @@ func lifecycleOf(record *parsedRecord) Lifecycle {
 
 func (f *foldState) project() Projection {
 	succeeded := f.succeededRetirements()
-	stale, world := f.staleness(succeeded)
+	stale, world, causedAt := f.staleness(succeeded)
 	// How many artifacts seen at each path are still live. project() runs over
 	// a fully folded log, so retired() is final here and one running count per
 	// path answers both questions this projection asks about succession, at
@@ -1788,6 +1838,7 @@ func (f *foldState) project() Projection {
 			Ratified: ratification != "", RatifiedBy: ratification,
 			Retired: f.retired(record.record.ID), Stale: stale[record.record.ID],
 			DescribesSupersededWorld: world[record.record.ID],
+			WorldSupersededAt:        causedAt[record.record.ID],
 		})
 		if record.decision.Verdict == UndefinedKind {
 			projection.OpaqueKinds[string(state.Kind)] = append(projection.OpaqueKinds[string(state.Kind)], record.record.ID)
@@ -1804,6 +1855,7 @@ func (f *foldState) project() Projection {
 				Succeeded:                f.retired(record.record.ID) && succeeded[record.record.ID] != "",
 				Stale:                    stale[record.record.ID],
 				DescribesSupersededWorld: world[record.record.ID],
+				WorldSupersededAt:        causedAt[record.record.ID],
 				UnableToFlare:            f.unableToFlare(record.record.RestsOn),
 				SuccessionUnrecorded:     live > 0,
 				LivePredecessors:         live,

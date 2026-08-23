@@ -70,12 +70,33 @@ gs merge --repo "$REPO" --as bot --checkout "$REPO" \
 
 It prints the resulting merge commit.
 
+## When the world moved
+
+A superseded world is judged as of the verdict, not as of now.
+
+A reviewer answers for the world they were shown. An artifact that already
+described a superseded world when they signed it carries a judgement that
+repeating cannot repair, and it still stops the merge. A retirement landing
+*after* the verdict is different: the head is immutable, the artifact still
+points at it, and the reviewer had no chance to see the move. That is news, and
+news belongs in the merge receipt beside ordinary staleness. The same rule
+bounds what a co-signed artifact can reach.
+
+The date is the fold's. `world_superseded_at` is the earliest retirement still
+accounting for the moved world, taken across every basis rather than the first
+one that carries the flag, so the order a signer wrote its citations in cannot
+change it, and a supersession that has itself been superseded is not a cause.
+`merge` compares that one number against the verdict's position.
+
+When the fold reports no active cause the merge refuses. An undated superseded
+world is a projection this command cannot date, not a permission to land.
+
 ## What it refuses
 
 | Situation | Why |
 |---|---|
 | The approval is ineffective, unratified, retired, or describes a superseded world | An approval that no longer stands approves nothing. Ordinary staleness is not on this list; see below. |
-| The approved artifact is ineffective, retired, or describes a superseded world | Same, from the other side of the chain. |
+| The approved artifact is ineffective, retired, or already described a superseded world when the verdict was signed | Same, from the other side of the chain. A world that moved *after* the verdict is recorded, not refused; see below. |
 | The verdict is not `approved` | `changes-requested` is not a merge authorization. |
 | `--candidate` differs from the approved head | The reviewer looked at a different commit. |
 | The approval does not rest on the artifact it names | The chain from verdict to code is broken. |
@@ -253,8 +274,8 @@ Each member is still checked on its own: effective, not withdrawn, standing at
 the exact head the verdict names, and the implementer's own, so a citation
 cannot smuggle in a pointer belonging to someone else or describing another
 commit. `merge` holds every member to the same staleness rule it holds the
-primary to: ordinary staleness passes and is recorded, while a member
-describing a superseded world stops the merge.
+primary to: ordinary staleness passes and is recorded, while a member that
+already described a superseded world at the verdict stops the merge.
 
 What none of this establishes is worth saying. Holding no repository, the fold
 cannot open the approved commit or read its diff, so it does not know that the
