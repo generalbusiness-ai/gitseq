@@ -1137,7 +1137,8 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 	// staleness modes and the merge-plan exemption included. A second walker
 	// with its own edge rules diverged three reviews running, and a divergence
 	// here either refuses a sound verdict or admits an unsound one.
-	_, world, _ := f.stalenessAsOf(approval.sequence()).stalenessOf(approval.record.RestsOn, f.succeededRetirements())
+	scope := f.stalenessAsOf(approval.sequence())
+	_, world, _ := scope.stalenessOf(approval.record.RestsOn, scope.succeededRetirements())
 	if world[artifactID] {
 		return nil
 	}
@@ -1513,6 +1514,38 @@ func (f *foldState) stalenessAsOf(asOf int) *stalenessScope {
 	return &stalenessScope{f: f, asOf: asOf, active: f.activeRetirements()}
 }
 
+// succeededRetirements is the scope's own successor topology. A supersession
+// that landed after the scope's position did not exist for the question being
+// asked, so the successor edge it declares must not reach back and change
+// whether an earlier retirement condemned or merely moved a pointer. Taking
+// this from the fold instead let a post-verdict edge decide plan condemnation
+// and receipt authority at a verdict that could not have seen it -- the same
+// end-of-log fact leaking into a positioned computation that every other defect
+// in this area has been.
+func (s *stalenessScope) succeededRetirements() map[string]string {
+	succeeded := make(map[string]string)
+	for _, record := range s.f.supersessions {
+		if record.sequence() > s.asOf {
+			continue
+		}
+		supersede := record.body.(*Supersede)
+		retiredPath, targetIsArtifact := s.f.artifactPath(supersede.Target)
+		if _, already := succeeded[supersede.Target]; !targetIsArtifact || !s.f.isArtifact(supersede.Target) || already {
+			continue
+		}
+		for _, basis := range record.record.RestsOn {
+			if basis == supersede.Target || !s.f.isArtifact(basis) {
+				continue
+			}
+			if successorPath, ok := s.f.artifactPath(basis); ok && pathCovers(successorPath, retiredPath) {
+				succeeded[supersede.Target] = basis
+				break
+			}
+		}
+	}
+	return succeeded
+}
+
 // retired reports whether an event counts as retired for this scope: retired
 // with everything the fold now knows, by a cause that had landed at or before
 // asOf. An active retirement the scope cannot date fails closed and counts at
@@ -1625,7 +1658,14 @@ func (s *stalenessScope) stalenessOf(targets []string, successors map[string]str
 				// the date, hiding an older cause behind a newer one, and the
 				// date gates an irreversible merge.
 				at := s.active[basis]
-				if inherited, ok := causedAt[basis]; ok && artifactProvenance && (at == 0 || (inherited != 0 && inherited < at)) {
+				// A Terminal basis catches staleness without passing it on,
+				// and that has to govern the date as well as the flag. Its own
+				// causedAt records a cause it stopped; inheriting that here
+				// would date this record by something the vocabulary says never
+				// reached it, and the date could then predate a verdict the
+				// scope holds was not looking at a moved world at all.
+				if inherited, ok := causedAt[basis]; ok && artifactProvenance && mode != StalenessTerminal &&
+					(at == 0 || (inherited != 0 && inherited < at)) {
 					at = inherited
 				}
 				if at != 0 && (causedAt[record.record.ID] == 0 || at < causedAt[record.record.ID]) {

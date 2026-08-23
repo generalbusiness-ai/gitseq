@@ -3858,12 +3858,22 @@ func TestAReceiptOverAMergeSuccessorRestingOnItsRetiredPredecessorIsAdmitted(t *
 		event(t, "retire-foreign", agent, SchemaSupersede, Supersede{Target: "foreign", Text: "merge succession"}, "foreign", "merge2", "successor2"),
 	)
 	projection := Fold(records)
+	// A successor over a live predecessor is clean with the exemption deleted,
+	// so first prove the merge's own retirement actually took: without it this
+	// fixture admits the receipt while exercising nothing.
+	if predecessor := artifactByEvent(t, projection, "predecessor"); !predecessor.Retired {
+		t.Fatal("the predecessor was never retired, so the merge-plan exemption is not what admits this receipt")
+	}
 	successor := artifactByEvent(t, projection, "successor")
 	if successor.DescribesSupersededWorld || successor.Stale {
 		t.Fatalf("the projection flags the merge's own successor (world=%v stale=%v), so this test cannot isolate the receipt boundary",
 			successor.DescribesSupersededWorld, successor.Stale)
 	}
-	if decision, _ := projection.Decision("retire-foreign"); decision.Verdict != Effective {
+	decision, found := projection.Decision("retire-foreign")
+	if !found {
+		t.Fatal("the cross-author supersession was never decided, so nothing here reached the receipt boundary at all")
+	}
+	if decision.Verdict != Effective {
 		t.Fatalf("a receipt over a successor whose predecessor its own merge retired was refused: %+v — the receipt boundary disagrees with the projection about the merge-plan exemption", decision)
 	}
 }
@@ -3907,12 +3917,22 @@ func TestAReceiptHonoursAnExemptGroundRetiredBeforeTheVerdict(t *testing.T) {
 		event(t, "retire-predecessor", agent, SchemaSupersede, Supersede{Target: "predecessor", Text: "merge succession"}, "predecessor", "merge", "successor"),
 	)
 	projection := Fold(records)
+	// A candidate over a live ground is clean whatever the mode says, so first
+	// prove the ground was actually retired: a fixture whose retirement quietly
+	// failed admits this receipt while exercising nothing about exemption.
+	if ground := artifactByEvent(t, projection, "ground"); !ground.Retired {
+		t.Fatal("the exempt ground was never retired, so a receipt admitted here says nothing about the exempt mode")
+	}
 	candidate := artifactByEvent(t, projection, "candidate")
 	if candidate.DescribesSupersededWorld || candidate.Stale {
 		t.Fatalf("the projection flags the candidate over an exempt ground (world=%v stale=%v), so the fixture does not isolate the exempt mode",
 			candidate.DescribesSupersededWorld, candidate.Stale)
 	}
-	if decision, _ := projection.Decision("retire-predecessor"); decision.Verdict != Effective {
+	decision, found := projection.Decision("retire-predecessor")
+	if !found {
+		t.Fatal("the cross-author supersession was never decided, so nothing here reached the receipt boundary at all")
+	}
+	if decision.Verdict != Effective {
 		t.Fatalf("a receipt was refused over an exempt ground the projection says cannot flare the candidate: %+v", decision)
 	}
 }
@@ -3949,7 +3969,11 @@ func TestAReceiptHonoursATerminalPageThatCaughtTheMovedWorld(t *testing.T) {
 		t.Fatalf("fixture wrong: mid world=%v candidate world=%v — terminal must catch the moved world without passing it on",
 			mid.DescribesSupersededWorld, candidate.DescribesSupersededWorld)
 	}
-	if decision, _ := projection.Decision("retire-predecessor"); decision.Verdict != Effective {
+	decision, found := projection.Decision("retire-predecessor")
+	if !found {
+		t.Fatal("the cross-author supersession was never decided, so nothing here reached the receipt boundary at all")
+	}
+	if decision.Verdict != Effective {
 		t.Fatalf("a receipt was refused over a terminal page the projection says stopped the moved world: %+v", decision)
 	}
 }
@@ -3989,10 +4013,137 @@ func TestTwoReceiptsInOneLogAreEachJudgedAtTheirOwnVerdict(t *testing.T) {
 		event(t, "retire-pred-b", agent, SchemaSupersede, Supersede{Target: "pred-b", Text: "merge succession"}, "pred-b", "merge-b", "succ-b"),
 	)
 	projection := Fold(records)
-	if decision, _ := projection.Decision("retire-pred-a"); decision.Verdict != Effective {
-		t.Fatalf("lane A's receipt was refused although the world moved only after its verdict: %+v", decision)
+	// Both verdicts are judged against the one cause between them, so first
+	// prove that cause actually landed: with the ground never retired, lane A
+	// passes for the wrong reason and lane B's refusal asserts nothing.
+	if ground := artifactByEvent(t, projection, "ground"); !ground.Retired {
+		t.Fatal("the ground was never retired, so neither verdict has a moved world to be judged against")
 	}
-	if decision, _ := projection.Decision("retire-pred-b"); decision.Verdict == Effective {
+	admitted, foundA := projection.Decision("retire-pred-a")
+	if !foundA {
+		t.Fatal("lane A's supersession was never decided, so nothing here reached the receipt boundary at all")
+	}
+	if admitted.Verdict != Effective {
+		t.Fatalf("lane A's receipt was refused although the world moved only after its verdict: %+v", admitted)
+	}
+	refused, foundB := projection.Decision("retire-pred-b")
+	if !foundB {
+		t.Fatal("lane B's supersession was never decided, and a missing decision reads as refused: the assertion below would pass on an empty projection")
+	}
+	if refused.Verdict == Effective {
 		t.Fatal("lane B's receipt was admitted although its reviewer had already been shown the moved world")
+	}
+}
+
+// A Terminal basis catches a moved world without passing it on, and can later
+// be directly retired itself. Its own date then records the cause it stopped,
+// and inheriting that date across the Terminal edge would date everything
+// above it by a cause the vocabulary says never reached it. Concretely: the
+// ground is condemned, the terminal page catches it, a reviewer signs over the
+// candidate while stalenessAsOf holds it not world-stale, and only then is the
+// page itself retired. The candidate's published date must be the page's own
+// retirement — after the verdict — not the stopped cause from before it, or
+// the published date and the admitted verdict contradict each other. Found by
+// randomized differential; this pins the counterexample deterministically.
+func TestADirectlyRetiredTerminalBasisDoesNotDateByTheCauseItStopped(t *testing.T) {
+	definition := stalenessModeDefinition("terminal-page", StalenessTerminal)
+	records := reviewRecords(t,
+		event(t, "def", operator, SchemaState, kindDefinitionState(t, definition), "r0"),
+		event(t, "def-ratified", operator, SchemaRatify, Ratify{Target: "def"}, "def"),
+		event(t, "ground", agent, SchemaState, State{Kind: KindArtifact, Text: "the base", Body: map[string]string{"path": "ground", "commit": "head0"}}, "r0"),
+		event(t, "mid", agent, SchemaState, State{Kind: "terminal-page", Text: "terminal page over the base", Body: map[string]string{"path": "mid", "commit": "head0"}}, "ground"),
+		event(t, "candidate", agent, SchemaState, State{Kind: KindArtifact, Text: "implementation", Body: map[string]string{"path": "impl", "commit": "head1"}}, "mid"),
+		// The stopped cause, before the verdict, and bare.
+		event(t, "retire-ground", agent, SchemaSupersede, Supersede{Target: "ground", Text: "the base was condemned"}, "ground"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "candidate"}}, "reviewer-promise", "candidate"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		// The terminal page itself, directly retired after the verdict.
+		event(t, "retire-mid", agent, SchemaSupersede, Supersede{Target: "mid", Text: "the page was condemned"}, "mid"),
+	)
+	projection := Fold(records)
+	stopped, foundStopped := projection.Decision("retire-ground")
+	direct, foundDirect := projection.Decision("retire-mid")
+	if !foundStopped || stopped.Verdict != Effective || !foundDirect || direct.Verdict != Effective {
+		t.Fatalf("fixture wrong: retire-ground found=%v %+v, retire-mid found=%v %+v — without both retirements there is no stopped cause and no direct one",
+			foundStopped, stopped, foundDirect, direct)
+	}
+	mid := artifactByEvent(t, projection, "mid")
+	if !mid.DescribesSupersededWorld || mid.WorldSupersededAt != stopped.Sequence {
+		t.Fatalf("mid world=%v at=%d, want the stopped cause at %d: the terminal page never caught the older cause, so there is nothing here to inherit wrongly",
+			mid.DescribesSupersededWorld, mid.WorldSupersededAt, stopped.Sequence)
+	}
+	verdict := statementByEvent(t, projection, "approval")
+	if !(stopped.Sequence < verdict.Sequence && verdict.Sequence < direct.Sequence) {
+		t.Fatalf("fixture wrong: stopped=%d verdict=%d direct=%d — the verdict must sit between the two causes for the date to be able to contradict it",
+			stopped.Sequence, verdict.Sequence, direct.Sequence)
+	}
+	candidate := artifactByEvent(t, projection, "candidate")
+	if !candidate.DescribesSupersededWorld {
+		t.Fatal("the candidate does not describe a superseded world after its terminal basis was directly retired, so there is no date to check")
+	}
+	if candidate.WorldSupersededAt != direct.Sequence {
+		t.Fatalf("candidate dated %d, want %d, the terminal basis's own retirement: inheriting the stopped cause dates the candidate before the verdict at %d, which stalenessAsOf holds was signed over an unmoved world",
+			candidate.WorldSupersededAt, direct.Sequence, verdict.Sequence)
+	}
+}
+
+// A succession declared after the verdict must not reach back into it. The
+// first merge's plan retires the predecessor, which is then condemned bare —
+// the plan exemption keeps the merge's successor current, so a reviewer
+// approving that successor signs over a world that has not moved for them.
+// Only after the verdict does a late supersession declare a pointer as the
+// predecessor's successor — a pointer that was itself condemned before the
+// verdict, so the edge completes a condemned chain. Taken from end-of-log
+// topology, that edge condemns the plan retroactively and revokes receipt
+// authority the reviewer's signature had already earned; the scope must build
+// its successor topology from supersessions at or before its own position.
+// Found by randomized differential; this pins it deterministically.
+func TestASuccessionDeclaredAfterTheVerdictDoesNotCondemnThePlanAtIt(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "the pointer the first merge replaces", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged1",
+			"merge_retirements": `{"predecessor":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged1"}}, "merge", "predecessor"),
+		// Condemned bare by its own author: no successor declared here.
+		event(t, "condemn-predecessor", operator, SchemaSupersede, Supersede{Target: "predecessor", Text: "condemned with no successor"}, "predecessor"),
+		// A pointer at the same path, itself condemned before the verdict.
+		event(t, "stray", operator, SchemaState, State{Kind: KindArtifact, Text: "a pointer that did not survive", Body: map[string]string{"path": "spike", "commit": "stray"}}, "r0"),
+		event(t, "condemn-stray", operator, SchemaSupersede, Supersede{Target: "stray", Text: "condemned"}, "stray"),
+		// The second review, of the first merge's successor.
+		event(t, "request2", operator, SchemaState, State{Kind: KindRequest, Text: "review the successor", Body: map[string]string{"to": other, "conditions": "exact head"}}, "successor"),
+		event(t, "promise2", other, SchemaState, State{Kind: KindPromise, Text: "will review"}, "request2"),
+		event(t, "foreign", operator, SchemaState, State{Kind: KindArtifact, Text: "someone else's pointer", Body: map[string]string{"path": "spike", "commit": "other-base"}}, "r0"),
+		event(t, "approval2", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "merged1", "artifact": "successor"}}, "promise2", "successor"),
+		event(t, "approval2-ratified", operator, SchemaRatify, Ratify{Target: "approval2"}, "approval2"),
+		// After the verdict: the late succession names the condemned stray as
+		// where the predecessor's behaviour went.
+		event(t, "late-succession", operator, SchemaSupersede, Supersede{Target: "predecessor", Text: "a successor declared late"}, "predecessor", "stray"),
+		event(t, "merge2", agent, SchemaState, State{Kind: KindAssert, Text: "second merge", Body: map[string]string{
+			"merge_approval": "approval2", "merge_candidate": "merged1", "merge_target_pre_head": "merged1", "merge_head": "merged2",
+			"merge_retirements": `{"foreign":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval2"),
+		event(t, "successor2", agent, SchemaState, State{Kind: KindArtifact, Text: "second successor", Body: map[string]string{"path": "spike", "commit": "merged2"}}, "merge2"),
+		event(t, "retire-foreign", agent, SchemaSupersede, Supersede{Target: "foreign", Text: "merge succession"}, "foreign", "merge2", "successor2"),
+	)
+	projection := Fold(records)
+	// With end-of-log topology the late edge does condemn the plan: the
+	// successor is world-stale now. That is the fixture's proof that position
+	// is the only thing separating the projection's answer from the verdict's,
+	// so an admitted receipt below is evidence of the temporal rule and not of
+	// a chain that condemns nothing.
+	successor := artifactByEvent(t, projection, "successor")
+	if !successor.DescribesSupersededWorld {
+		t.Fatal("the late succession does not condemn the plan even with end-of-log topology, so this fixture cannot show a post-verdict edge reaching back")
+	}
+	decision, found := projection.Decision("retire-foreign")
+	if !found {
+		t.Fatal("the cross-author supersession was never decided, so nothing here reached the receipt boundary at all")
+	}
+	if decision.Verdict != Effective {
+		t.Fatalf("a successor edge declared after the verdict reached back, condemned the plan at it, and revoked receipt authority the reviewer's signature had earned: %+v", decision)
 	}
 }

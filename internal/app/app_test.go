@@ -2165,39 +2165,51 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 // version would never match whatever the build holds, and the cache would be
 // dropped for the wrong reason: the witness would pass with the bump reverted.
 // The seeded cache stands at the current head, so the profile is the only thing
-// that can cause a replay. Revert ProfileVersion to @8 and the first branch of
-// snapshotWithSource returns the lifecycle-free projection verbatim.
+// that can cause a replay. Revert ProfileVersion to @9 and the first branch of
+// snapshotWithSource returns the undated projection verbatim.
 func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A moved world, so the observable @10 adds actually has a value here.
+	ground := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindArtifact, Text: "the base",
+		Body:    map[string]string{"path": "ground", "commit": "head0"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-rebuild-ground",
+	})
 	actRecord(t, ctx, workspace, "human", Act{
-		Verb: VerbState, Kind: workroom.KindRequest, Text: "build",
-		Body:    map[string]string{"to": "human", "conditions": "tests pass"},
-		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-rebuild-request",
+		Verb: VerbState, Kind: workroom.KindArtifact, Text: "page describing the base",
+		Body:    map[string]string{"path": "page", "commit": "head1"},
+		RestsOn: []string{ground.ID}, IdempotencyKey: "profile-rebuild-page",
+	})
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbSupersede, Target: ground.ID, Text: "the base moved on",
+		IdempotencyKey: "profile-rebuild-retire",
 	})
 	current, err := workspace.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	lifecycles := 0
+	dated := 0
 	for _, statement := range current.Projection.Statements {
-		if statement.Lifecycle != "" {
-			lifecycles++
+		if statement.WorldSupersededAt != 0 {
+			dated++
 		}
 	}
-	if lifecycles == 0 {
-		t.Fatal("no statement carries a lifecycle, so this test cannot tell a rebuild from a stale cache")
+	if dated == 0 {
+		t.Fatal("no statement carries a world date, so this test cannot tell a rebuild from a stale cache under the @10 rules")
 	}
 
-	// What an @8 cache holds: the same projection at the same head with the
-	// field absent.
+	// What an @9 cache holds: the same projection at the same head, with the
+	// field @10 adds absent. Lifecycle is left populated deliberately — an @9
+	// cache has it, so using lifecycle as the observable would prove only the
+	// @8-to-@9 transition while claiming to prove this one.
 	stale := current
 	stale.Projection.Statements = append([]workroom.Statement(nil), current.Projection.Statements...)
 	for i := range stale.Projection.Statements {
-		stale.Projection.Statements[i].Lifecycle = ""
+		stale.Projection.Statements[i].WorldSupersededAt = 0
 	}
 	// Re-anchored to the current transition. Hard-coded identities are the
 	// point: they make whoever moves the profile look at the cache, which is
@@ -2214,14 +2226,14 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rebuiltLifecycles := 0
+	rebuiltDated := 0
 	for _, statement := range rebuilt.Snapshot.Projection.Statements {
-		if statement.Lifecycle != "" {
-			rebuiltLifecycles++
+		if statement.WorldSupersededAt != 0 {
+			rebuiltDated++
 		}
 	}
-	if rebuiltLifecycles != lifecycles {
-		t.Fatalf("rebuilt projection carries %d lifecycles, want %d: the %q cache was served instead of replayed", rebuiltLifecycles, lifecycles, oldProfile)
+	if rebuiltDated != dated {
+		t.Fatalf("rebuilt projection dates %d statements, want %d: the %q cache was served instead of replayed", rebuiltDated, dated, oldProfile)
 	}
 	if workspace.snapshotProfile != wantProfile {
 		t.Fatalf("cache profile = %q, want %q: the older profile was not replaced", workspace.snapshotProfile, wantProfile)
