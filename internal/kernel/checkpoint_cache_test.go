@@ -1,10 +1,13 @@
 package kernel
 
 import (
+	"bytes"
+	"compress/gzip"
 	"errors"
 	mathrand "math/rand"
 	"strconv"
 	"testing"
+	"unsafe"
 )
 
 // incompressiblePayload returns deterministic pseudo-random bytes that gzip
@@ -39,18 +42,141 @@ func TestCheckpointCacheDefaultLimitIsMarshalLimit(t *testing.T) {
 }
 
 func TestCheckpointCacheBoundsTailAccumulation(t *testing.T) {
-	cache := checkpointEventCache{limit: 1024}
+	cache := checkpointEventCache{limit: 2048}
+	charged := 3 * (300 + checkpointTailEntryOverhead)
 	for index := 0; index < 3; index++ {
 		cache.append(Event{Payload: incompressiblePayload(t, 300, int64(index))})
 	}
-	if cache.err != nil || cache.count != 3 || cache.tailBytes != 900 {
-		t.Fatalf("cache under limit failed: err=%v count=%d tailBytes=%d", cache.err, cache.count, cache.tailBytes)
+	if cache.err != nil || cache.count != 3 || cache.tailBytes != charged {
+		t.Fatalf("cache under limit failed: err=%v count=%d tailBytes=%d want %d", cache.err, cache.count, cache.tailBytes, charged)
 	}
 	cache.append(Event{Payload: incompressiblePayload(t, 300, 99)})
 	assertCacheReleased(t, &cache)
 	cache.append(Event{Payload: []byte("after")})
 	if cache.count != 3 || cache.tail != nil {
 		t.Fatalf("failed cache accepted an append: count=%d tail=%d", cache.count, len(cache.tail))
+	}
+}
+
+func TestCheckpointTailEntryOverheadCoversEntrySlot(t *testing.T) {
+	if slot := int(unsafe.Sizeof(checkpointEvent{})); 2*slot > checkpointTailEntryOverhead {
+		t.Fatalf("tail entry slot is %d bytes; the %d-byte container charge no longer covers doubled growth", slot, checkpointTailEntryOverhead)
+	}
+}
+
+// TestCheckpointCacheOwnedTailFlushPeakBudget drives a full 4096-event owned
+// tail of incompressible payloads through its flush and pins the peak-budget
+// invariant: the growing output and everything the cache still retains must
+// fit the limit together at every instant. The encoded size is measured
+// first, so the two limits sit exactly at and one byte below what an
+// honestly budgeted flush needs.
+func TestCheckpointCacheOwnedTailFlushPeakBudget(t *testing.T) {
+	events := make([]Event, checkpointChunkEvents)
+	for index := range events {
+		events[index] = Event{Payload: incompressiblePayload(t, 48, int64(index))}
+	}
+	var encoded bytes.Buffer
+	compressed := gzip.NewWriter(&encoded)
+	for _, event := range events {
+		if err := writeCompactCheckpointEvent(compressed, checkpointReference(event)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := compressed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	container := checkpointChunkEvents * checkpointTailEntryOverhead
+
+	// With exactly the encoded output plus the container charge available,
+	// the flush fits only because each entry's content is credited back as
+	// it is encoded. It must succeed, release the tail and its backing
+	// array, and retain no more output capacity than the content needs.
+	cache := checkpointEventCache{limit: container + encoded.Len()}
+	for _, event := range events {
+		cache.append(event)
+	}
+	if cache.err != nil {
+		t.Fatalf("flush within an exact budget failed: %v", cache.err)
+	}
+	if len(cache.chunks) != 1 || cache.count != checkpointChunkEvents {
+		t.Fatalf("flush stored %d chunks for %d events", len(cache.chunks), cache.count)
+	}
+	if cache.tail != nil || cache.tailBytes != 0 {
+		t.Fatalf("flushed tail still retained: tail=%d tailBytes=%d", len(cache.tail), cache.tailBytes)
+	}
+	if cache.chunkBytes != cap(cache.chunks[0]) {
+		t.Fatalf("chunkBytes = %d, want retained capacity %d", cache.chunkBytes, cap(cache.chunks[0]))
+	}
+	if cache.chunkBytes != encoded.Len() {
+		t.Fatalf("flush retained %d bytes of capacity while the tail's container charge held %d of the %d limit; %d was the most the budget admitted",
+			cache.chunkBytes, container, cache.byteLimit(), encoded.Len())
+	}
+
+	// One byte short, the output can never fit alongside the container
+	// storage that is still held, so the flush must refuse and release
+	// rather than let the retained peak exceed the limit.
+	short := checkpointEventCache{limit: container + encoded.Len() - 1}
+	for _, event := range events {
+		short.append(event)
+	}
+	assertCacheReleased(t, &short)
+}
+
+// TestCheckpointCacheCountsChunkCapacityNotLength gives a borrowed chunk a
+// budget with room beyond its encoded size: the writer's doubling then
+// legitimately retains more capacity than content, and the accounting must
+// charge what is retained, not what is used.
+func TestCheckpointCacheCountsChunkCapacityNotLength(t *testing.T) {
+	cache := checkpointEventCache{limit: 1 << 20}
+	events := make([]Event, checkpointChunkEvents)
+	for index := range events {
+		events[index] = Event{Payload: incompressiblePayload(t, 48, int64(index))}
+	}
+	cache.appendEvents(events)
+	if cache.err != nil || len(cache.chunks) != 1 || cache.count != checkpointChunkEvents {
+		t.Fatalf("borrowed chunk failed: err=%v chunks=%d count=%d", cache.err, len(cache.chunks), cache.count)
+	}
+	retained := cap(cache.chunks[0])
+	if retained <= len(cache.chunks[0]) {
+		t.Fatalf("fixture kept capacity %d equal to content %d and proves nothing; grow the fixture", retained, len(cache.chunks[0]))
+	}
+	if cache.chunkBytes != retained {
+		t.Fatalf("chunkBytes = %d, want retained capacity %d (content is %d)", cache.chunkBytes, retained, len(cache.chunks[0]))
+	}
+}
+
+func TestCheckpointLimitWriterBoundsRetainedCapacity(t *testing.T) {
+	var output bytes.Buffer
+	writer := &checkpointLimitWriter{output: &output, limit: 1000}
+	for index := 0; index < 1000; index++ {
+		if _, err := writer.Write([]byte{byte(index)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if output.Len() != 1000 || output.Cap() > 1000 {
+		t.Fatalf("writer retained %d bytes of capacity for %d bytes of content against limit 1000", output.Cap(), output.Len())
+	}
+	if _, err := writer.Write([]byte{0}); !errors.Is(err, errCheckpointTooLarge) {
+		t.Fatalf("write past the limit = %v, want %v", err, errCheckpointTooLarge)
+	}
+
+	// The reservation is read live: bytes freed elsewhere against the same
+	// budget admit writes that were refused a moment earlier.
+	reserved := 60
+	var shared bytes.Buffer
+	live := &checkpointLimitWriter{output: &shared, limit: 100, reserve: func() int { return reserved }}
+	if _, err := live.Write(make([]byte, 40)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := live.Write([]byte{0}); !errors.Is(err, errCheckpointTooLarge) {
+		t.Fatalf("write past the reserved budget = %v, want %v", err, errCheckpointTooLarge)
+	}
+	reserved = 30
+	if _, err := live.Write(make([]byte, 30)); err != nil {
+		t.Fatalf("write after the reservation drained = %v, want success", err)
+	}
+	if shared.Cap() > 70 {
+		t.Fatalf("writer retained %d bytes of capacity against a 100-byte limit with 30 still reserved", shared.Cap())
 	}
 }
 

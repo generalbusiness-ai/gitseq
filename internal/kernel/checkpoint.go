@@ -31,6 +31,16 @@ const (
 	checkpointChunkEvents           = 4096
 	maxCheckpointBytes              = 256 << 20
 	maxCheckpointManifest           = 1 << 20
+	// Container charges for owned tail entries. The accounting must cover
+	// what the cache actually retains, not only the content it copies:
+	// checkpointTailEntryOverhead is twice the checkpointEvent struct size,
+	// covering the entry's slot in the tail's backing array including
+	// append's growth slack, and checkpointAttachmentOverhead covers the
+	// hash-map buckets and headers one attachment costs even in a one-entry
+	// map. Both err toward over-counting; the runtime allocator's size-class
+	// padding beneath these figures is the one layer not modelled.
+	checkpointTailEntryOverhead  = 256
+	checkpointAttachmentOverhead = 512
 )
 
 var (
@@ -99,6 +109,13 @@ type checkpointEvent struct {
 // sequence depth, and total retained bytes are bounded by the same limit the
 // later marshal enforces, so an oversized history fails closed while it
 // accumulates instead of after its memory is already spent.
+//
+// The accounting counts what is retained, erring toward over-counting:
+// stored chunk buffers at their full capacity, tail content at cloned
+// length plus flat container charges for the entry slots and attachment
+// maps. Two transients sit outside it, each bounded by a constant that does
+// not grow with history: the single entry being handed from tail to output
+// during a flush, and the compressor's fixed internal state.
 type checkpointEventCache struct {
 	chunks     [][]byte
 	tail       []checkpointEvent
@@ -154,13 +171,42 @@ func (c *checkpointEventCache) appendEvents(events []Event) {
 	}
 }
 
+// boundedWriter shares one byte budget across every path that builds a
+// chunk: whatever the output buffer holds, plus everything the cache still
+// retains — stored chunks and the charged tail — must fit the limit
+// together. The reservation is read live on every write, so a tail that
+// drains while its own flush encodes is credited as it drains.
+func (c *checkpointEventCache) boundedWriter(output *bytes.Buffer) *checkpointLimitWriter {
+	return &checkpointLimitWriter{
+		output:  output,
+		limit:   c.byteLimit(),
+		reserve: func() int { return c.chunkBytes + c.tailBytes },
+	}
+}
+
+// checkpointEventContentBytes is the cloned content one owned tail entry
+// holds: the payload plus every attachment name and body.
+func checkpointEventContentBytes(event checkpointEvent) int {
+	size := len(event.Payload)
+	for name, content := range event.Attachments {
+		size += len(name) + len(content)
+	}
+	return size
+}
+
+// checkpointEventRetainedBytes is what the cache charges for holding one
+// event in the owned tail: its content plus the flat container charges.
+func checkpointEventRetainedBytes(event checkpointEvent) int {
+	return checkpointEventContentBytes(event) + checkpointTailEntryOverhead +
+		len(event.Attachments)*checkpointAttachmentOverhead
+}
+
 func (c *checkpointEventCache) appendBorrowedChunk(events []Event) {
 	var output bytes.Buffer
-	// The limit writer bounds the chunk while it is still being built, so an
-	// incompressible run cannot grow the buffer past the remaining budget
+	// The bounded writer limits the chunk while it is still being built, so
+	// an incompressible run cannot grow the buffer past the remaining budget
 	// before any completed-chunk check could see it.
-	bounded := &checkpointLimitWriter{output: &output, limit: c.byteLimit() - c.chunkBytes - c.tailBytes}
-	compressed := gzip.NewWriter(bounded)
+	compressed := gzip.NewWriter(c.boundedWriter(&output))
 	for _, event := range events {
 		if err := writeCompactCheckpointEvent(compressed, checkpointReference(event)); err != nil {
 			c.fail(err)
@@ -173,7 +219,7 @@ func (c *checkpointEventCache) appendBorrowedChunk(events []Event) {
 		return
 	}
 	c.chunks = append(c.chunks, output.Bytes())
-	c.chunkBytes += output.Len()
+	c.chunkBytes += output.Cap()
 	c.count += len(events)
 }
 
@@ -181,10 +227,7 @@ func (c *checkpointEventCache) append(event Event) {
 	if c.err != nil {
 		return
 	}
-	size := len(event.Payload)
-	for name, content := range event.Attachments {
-		size += len(name) + len(content)
-	}
+	size := checkpointEventRetainedBytes(checkpointReference(event))
 	if size > c.byteLimit()-c.chunkBytes-c.tailBytes {
 		c.fail(fmt.Errorf("%w: cached events exceed limit %d", errCheckpointTooLarge, c.byteLimit()))
 		return
@@ -192,13 +235,24 @@ func (c *checkpointEventCache) append(event Event) {
 	c.tail = append(c.tail, checkpointMaterial(event))
 	c.tailBytes += size
 	c.count++
-	if len(c.tail) < checkpointChunkEvents {
-		return
+	if len(c.tail) >= checkpointChunkEvents {
+		c.flushTail()
 	}
+}
+
+// flushTail compresses the owned tail into one stored chunk. Each entry's
+// content is credited back just before it is encoded, so the writer's live
+// budget grows as the tail drains and the retained peak stays within the
+// limit instead of holding the whole tail against a near-complete output.
+// The container charges stay reserved until the backing array itself is
+// released at the end.
+func (c *checkpointEventCache) flushTail() {
 	var output bytes.Buffer
-	bounded := &checkpointLimitWriter{output: &output, limit: c.byteLimit() - c.chunkBytes}
-	compressed := gzip.NewWriter(bounded)
-	for _, material := range c.tail {
+	compressed := gzip.NewWriter(c.boundedWriter(&output))
+	for index := range c.tail {
+		material := c.tail[index]
+		c.tail[index] = checkpointEvent{}
+		c.tailBytes -= checkpointEventContentBytes(material)
 		if err := writeCompactCheckpointEvent(compressed, material); err != nil {
 			c.fail(err)
 			_ = compressed.Close()
@@ -210,9 +264,11 @@ func (c *checkpointEventCache) append(event Event) {
 		return
 	}
 	c.chunks = append(c.chunks, output.Bytes())
-	c.chunkBytes += output.Len()
-	clear(c.tail)
-	c.tail = c.tail[:0]
+	c.chunkBytes += output.Cap()
+	// Release the backing array rather than truncating it: a kept array
+	// would survive with its container charge zeroed, retained but no
+	// longer accounted.
+	c.tail = nil
 	c.tailBytes = 0
 }
 
@@ -810,16 +866,20 @@ func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
 	if len(encodedManifest) > maxCheckpointManifest {
 		return nil, fmt.Errorf("%w: manifest exceeds limit", errCheckpointTooLarge)
 	}
+	// Every write goes through the bounded writer, header included, so the
+	// buffer never uses nor retains more than the limit at any point while
+	// the checkpoint is being built.
 	var output bytes.Buffer
-	output.WriteString(checkpointContainer)
-	if err := binary.Write(&output, binary.BigEndian, uint32(len(encodedManifest))); err != nil {
+	bounded := &checkpointLimitWriter{output: &output, limit: limit}
+	if _, err := io.WriteString(bounded, checkpointContainer); err != nil {
 		return nil, err
 	}
-	output.Write(encodedManifest)
-	if output.Len() > limit {
-		return nil, fmt.Errorf("%w: size %d exceeds limit %d", errCheckpointTooLarge, output.Len(), limit)
+	if err := binary.Write(bounded, binary.BigEndian, uint32(len(encodedManifest))); err != nil {
+		return nil, err
 	}
-	bounded := &checkpointLimitWriter{output: &output, limit: limit}
+	if _, err := bounded.Write(encodedManifest); err != nil {
+		return nil, err
+	}
 	compressed, err := gzip.NewWriterLevel(bounded, gzip.DefaultCompression)
 	if err != nil {
 		return nil, err
@@ -860,20 +920,45 @@ func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
 	if err := compressed.Close(); err != nil {
 		return nil, err
 	}
-	if output.Len() > limit {
-		return nil, fmt.Errorf("%w: size %d exceeds limit %d", errCheckpointTooLarge, output.Len(), limit)
-	}
 	return output.Bytes(), nil
 }
 
+// checkpointLimitWriter bounds what its output buffer may retain, counting
+// the buffer's full capacity rather than only its content: growth happens
+// here in bounded doubling steps, so bytes.Buffer's own doubling can never
+// hold more memory than the budget admits. reserve, when set, reports bytes
+// the same budget already retains elsewhere; it is read on every write, so
+// a reservation that shrinks while encoding — the owned tail draining — is
+// credited as it shrinks.
 type checkpointLimitWriter struct {
-	output *bytes.Buffer
-	limit  int
+	output  *bytes.Buffer
+	limit   int
+	reserve func() int
+}
+
+func (w *checkpointLimitWriter) budget() int {
+	if w.reserve == nil {
+		return w.limit
+	}
+	return w.limit - w.reserve()
 }
 
 func (w *checkpointLimitWriter) Write(data []byte) (int, error) {
-	if len(data) > w.limit-w.output.Len() {
+	budget := w.budget()
+	if len(data) > budget-w.output.Len() {
 		return 0, fmt.Errorf("%w: limit %d", errCheckpointTooLarge, w.limit)
+	}
+	if needed := w.output.Len() + len(data); needed > w.output.Cap() {
+		target := 2 * w.output.Cap()
+		if target < needed {
+			target = needed
+		}
+		if target > budget {
+			target = budget
+		}
+		grown := make([]byte, w.output.Len(), target)
+		copy(grown, w.output.Bytes())
+		*w.output = *bytes.NewBuffer(grown)
 	}
 	return w.output.Write(data)
 }
