@@ -142,7 +142,7 @@ func CreateConfig(metaDir string, config Config) error {
 	// The created file's identity is taken while the handle is certainly
 	// open — after a failed close the handle can no longer answer — so the
 	// cleanup can know which file this call created before removing anything.
-	created, identityErr := file.Stat()
+	created, identityErr := createConfigCreatedIdentity(file)
 	_, writeErr := createConfigWrite(file, append(content, '\n'))
 	closeErr := createConfigClose(file)
 	if writeErr == nil && closeErr == nil {
@@ -212,10 +212,11 @@ func abandonPartialConfig(file *os.File, path string, created os.FileInfo, ident
 // indirections exist for tests in this package to force each failure branch.
 // Production never replaces them.
 var (
-	createConfigWrite      = func(file *os.File, content []byte) (int, error) { return file.Write(content) }
-	createConfigClose      = func(file *os.File) error { return file.Close() }
-	createConfigRetryClose = func(file *os.File) error { return file.Close() }
-	createConfigIdentity   = func(path string) (os.FileInfo, error) { return os.Lstat(path) }
+	createConfigWrite           = func(file *os.File, content []byte) (int, error) { return file.Write(content) }
+	createConfigClose           = func(file *os.File) error { return file.Close() }
+	createConfigRetryClose      = func(file *os.File) error { return file.Close() }
+	createConfigCreatedIdentity = func(file *os.File) (os.FileInfo, error) { return file.Stat() }
+	createConfigIdentity        = func(path string) (os.FileInfo, error) { return os.Lstat(path) }
 )
 
 // ValidateGenesis rejects an object id that cannot name a commit in the

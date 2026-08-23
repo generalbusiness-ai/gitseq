@@ -18,10 +18,11 @@ func testConfig() Config {
 }
 
 var (
-	errInjectedWrite      = errors.New("injected write failure")
-	errInjectedClose      = errors.New("injected close failure")
-	errInjectedRetryClose = errors.New("injected retry-close failure")
-	errInjectedIdentity   = errors.New("injected identity-read failure")
+	errInjectedWrite           = errors.New("injected write failure")
+	errInjectedClose           = errors.New("injected close failure")
+	errInjectedRetryClose      = errors.New("injected retry-close failure")
+	errInjectedIdentity        = errors.New("injected identity-read failure")
+	errInjectedCreatedIdentity = errors.New("injected created-identity read failure")
 )
 
 // requireClosed proves CreateConfig closed the handle it opened: a leaked
@@ -308,6 +309,35 @@ func TestCreateConfigLeavesASymlinkAtItsDestinationAlone(t *testing.T) {
 	}
 	if _, statErr := os.Stat(moved); statErr != nil {
 		t.Fatalf("this call's file was removed through the link: %v", statErr)
+	}
+}
+
+// The created file's identity is read from its still-open handle, and that
+// read can fail too. When it does, the cleanup cannot know which file this
+// call created, so it must remove nothing — and it must tell the caller that
+// specific cause. Written the easy way — asserting only the original failure —
+// this test would pass even if the handle read's error were silently
+// discarded, which is exactly the defect it exists to catch.
+func TestCreateConfigCarriesCreatedIdentityReadFailureAlongsideOriginal(t *testing.T) {
+	metaDir := t.TempDir()
+	previousWrite := createConfigWrite
+	previousCreated := createConfigCreatedIdentity
+	createConfigWrite = func(*os.File, []byte) (int, error) { return 0, errInjectedWrite }
+	createConfigCreatedIdentity = func(*os.File) (os.FileInfo, error) { return nil, errInjectedCreatedIdentity }
+	err := CreateConfig(metaDir, testConfig())
+	createConfigWrite = previousWrite
+	createConfigCreatedIdentity = previousCreated
+	if !errors.Is(err, errInjectedWrite) {
+		t.Fatalf("CreateConfig error = %v, want the original injected write failure preserved", err)
+	}
+	if !errors.Is(err, errInjectedCreatedIdentity) {
+		t.Fatalf("CreateConfig error = %v, want the handle identity read's failure carried alongside the original", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "nothing was removed") {
+		t.Fatalf("CreateConfig error = %v, want it to report that nothing was removed", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(metaDir, ConfigFile)); statErr != nil {
+		t.Fatalf("identity was never confirmed, yet the file is gone: %v", statErr)
 	}
 }
 
