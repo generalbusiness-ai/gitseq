@@ -40,8 +40,8 @@ func TestCheckpointEventCacheCompressesDepthAndRoundTrips(t *testing.T) {
 	}
 	var cache checkpointEventCache
 	cache.reset(events)
-	if cache.err != nil || cache.count != len(events) || len(cache.chunks) != 1 || len(cache.tail) != 3 {
-		t.Fatalf("checkpoint cache = count %d chunks %d tail %d err %v", cache.count, len(cache.chunks), len(cache.tail), cache.err)
+	if cache.err != nil || cache.count != len(events) || cache.chunks.count != 1 || len(cache.tail) != 3 {
+		t.Fatalf("checkpoint cache = count %d chunks %d tail %d err %v", cache.count, cache.chunks.count, len(cache.tail), cache.err)
 	}
 	want := make([]checkpointEvent, len(events))
 	for index, event := range events {
@@ -98,8 +98,8 @@ func TestCheckpointEventCacheOwnsTailAcrossBorrowedChunkBoundary(t *testing.T) {
 	var cache checkpointEventCache
 	cache.appendEvents(first)
 	cache.appendEvents(second)
-	if cache.err != nil || cache.count != len(all) || len(cache.chunks) != 2 || len(cache.tail) != 2 {
-		t.Fatalf("checkpoint cache = count %d chunks %d tail %d err %v", cache.count, len(cache.chunks), len(cache.tail), cache.err)
+	if cache.err != nil || cache.count != len(all) || cache.chunks.count != 2 || len(cache.tail) != 2 {
+		t.Fatalf("checkpoint cache = count %d chunks %d tail %d err %v", cache.count, cache.chunks.count, len(cache.tail), cache.err)
 	}
 
 	// The first call's partial tail, the second call's borrowed complete chunk,
@@ -2846,7 +2846,7 @@ func TestOversizedCheckpointDoesNotRetryOnEveryAppend(t *testing.T) {
 	if submitter.cache.checkpointFailures != failures || submitter.cache.checkpointWrites != writes {
 		t.Fatalf("terminal checkpoint failure retried: failures=%d->%d writes=%d->%d", failures, submitter.cache.checkpointFailures, writes, submitter.cache.checkpointWrites)
 	}
-	if submitter.cache.checkpointEvents.count != 0 || len(submitter.cache.checkpointEvents.tail) != 0 || len(submitter.cache.checkpointEvents.chunks) != 0 {
+	if submitter.cache.checkpointEvents.count != 0 || len(submitter.cache.checkpointEvents.tail) != 0 || submitter.cache.checkpointEvents.chunks.count != 0 {
 		t.Fatalf("terminal checkpoint retained write material: %+v", submitter.cache.checkpointEvents)
 	}
 }
