@@ -286,13 +286,25 @@ func (c *checkpointEventCache) boundedWriter(output *bytes.Buffer) *checkpointCh
 // documented as map internals only, and the borrowed path carries no
 // per-attachment charge at all — so the reservation here is the only
 // account of it.
-func (c *checkpointEventCache) writeEventReservingScratch(writer io.Writer, event checkpointEvent) error {
+//
+// The preflight takes the concrete bounded writer, not just the encoder,
+// because it must see the output buffer the chunk has already retained.
+// The bounded writer keeps one invariant — reservation plus twice the
+// output capacity fits the limit, the doubling being headroom for the
+// old array a growth copy briefly holds — but it can only enforce that
+// invariant on its own writes. The compressor buffers, so raising the
+// scratch reservation here can happen with no underlying write to
+// re-check it. This preflight therefore requires the same invariant to
+// hold with the new scratch included before the scratch may exist:
+// earlier writes may have grown the output, and that retained capacity
+// is not budget this event's scratch is free to spend.
+func (c *checkpointEventCache) writeEventReservingScratch(bounded *checkpointChunkWriter, compressed io.Writer, event checkpointEvent) error {
 	scratch := len(event.Attachments) * checkpointNameSlotBytes
-	if scratch > c.byteLimit()-c.chunkBytes-c.tailBytes-c.scratchBytes {
+	if scratch > c.byteLimit()-c.chunkBytes-c.tailBytes-c.scratchBytes-2*bounded.output.Cap() {
 		return fmt.Errorf("%w: cached events exceed limit %d", errCheckpointTooLarge, c.byteLimit())
 	}
 	c.scratchBytes += scratch
-	err := writeCompactCheckpointEvent(writer, event)
+	err := writeCompactCheckpointEvent(compressed, event)
 	c.scratchBytes -= scratch
 	return err
 }
@@ -329,9 +341,10 @@ func (c *checkpointEventCache) appendBorrowedChunk(events []Event) {
 	// The bounded writer limits the chunk while it is still being built, so
 	// an incompressible run cannot grow the buffer past the remaining budget
 	// before any completed-chunk check could see it.
-	compressed := gzip.NewWriter(c.boundedWriter(&output))
+	bounded := c.boundedWriter(&output)
+	compressed := gzip.NewWriter(bounded)
 	for _, event := range events {
-		if err := c.writeEventReservingScratch(compressed, checkpointReference(event)); err != nil {
+		if err := c.writeEventReservingScratch(bounded, compressed, checkpointReference(event)); err != nil {
 			// Abandon the compressor without flushing: Close would write
 			// its buffered data after fail has released the reserve, and
 			// nothing may be built against that freed budget. Its fixed
@@ -416,11 +429,12 @@ func (c *checkpointEventCache) flushTail() {
 	// The stored chunk's list node is charged at its measured size before
 	// the flush builds it, so the writer's reservation preflights it.
 	c.chunkBytes += checkpointChunkNodeBytes
-	compressed := gzip.NewWriter(c.boundedWriter(&output))
+	bounded := c.boundedWriter(&output)
+	compressed := gzip.NewWriter(bounded)
 	for index := range c.tail {
 		material := c.tail[index]
 		c.tail[index] = checkpointEvent{}
-		if err := c.writeEventReservingScratch(compressed, material); err != nil {
+		if err := c.writeEventReservingScratch(bounded, compressed, material); err != nil {
 			// Abandon the compressor without flushing; see
 			// appendBorrowedChunk.
 			c.fail(err)

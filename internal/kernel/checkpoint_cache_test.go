@@ -3,7 +3,6 @@ package kernel
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/hex"
 	"errors"
 	"io"
 	mathrand "math/rand"
@@ -682,95 +681,114 @@ func TestCheckpointMarshalRefusesChunkCountDivergence(t *testing.T) {
 	}
 }
 
-// scratchModelWriter records, for each underlying write of a chunk build,
-// the budget the cache's bounded writer demands to admit it: twice the
-// output the write ends with — content plus equal growth headroom — plus
-// whatever name-sorting scratch is live while it happens. The maximum
-// demand over the build is the complete modeled budget of the chunk
-// beyond its list node. neededWithoutScratch carries the same maximum
-// with the scratch term dropped, so a fixture can prove its tightest
-// write is actually tightened by the scratch.
-type scratchModelWriter struct {
-	length               int
-	scratch              *int
-	needed               int
-	neededWithoutScratch int
-}
-
-func (w *scratchModelWriter) Write(data []byte) (int, error) {
-	w.length += len(data)
-	if demand := 2*w.length + *w.scratch; demand > w.needed {
-		w.needed = demand
+// TestCheckpointCacheScratchPreflightCountsRetainedOutput pins the one
+// blind spot the bounded writer cannot cover itself. The writer's
+// invariant is that the reservation plus twice the output capacity fits
+// the limit, but it can only check that on an underlying write, and the
+// compressor buffers: a scratch-heavy event can raise the reservation
+// while causing no underlying write at all. The scratch preflight must
+// therefore hold the same invariant against the output capacity earlier
+// writes have already grown. The regression replays the borrowed-chunk
+// construction on the production components: ordinary no-scratch events
+// grow the real output buffer first, then one all-attachment event
+// raises scratch without reaching the buffer — the run asserts that
+// non-reach directly. The limit is set from the capacity and reservation
+// read out of the production objects, never from a parallel model: the
+// exact budget — reservation, scratch, twice the retained capacity —
+// must admit, and one byte short must refuse.
+func TestCheckpointCacheScratchPreflightCountsRetainedOutput(t *testing.T) {
+	// Incompressible payloads force the compressor to emit blocks into
+	// the bounded writer, growing the production output buffer before any
+	// scratch exists.
+	growth := make([]Event, 3)
+	for index := range growth {
+		growth[index] = Event{Payload: incompressiblePayload(t, 16384, int64(index+1))}
 	}
-	if demand := 2 * w.length; demand > w.neededWithoutScratch {
-		w.neededWithoutScratch = demand
-	}
-	return len(data), nil
-}
-
-// TestCheckpointCacheBorrowedChunkBudgetsSortingScratch pins the encoder's
-// name-sorting scratch inside the borrowed-chunk budget. A full borrowed
-// chunk ends with an event carrying many empty attachments: while that
-// event is encoded, one string header per attachment is live beside the
-// borrowed source, the compressor, and the bounded output. The complete
-// budget is derived here from the bounded writer's stated contract —
-// content plus equal growth headroom must fit what the limit leaves after
-// the chunk node and the live scratch — by replaying the chunk's exact
-// deterministic write sequence and taking the tightest write, with the
-// scratch slot measured independently of the production constant. One
-// byte below that budget must refuse and release; the exact budget must
-// admit. Deleting the scratch reservation drops the code's refusal
-// boundary below this model's, so the one-byte-short case then admits
-// and this test fails.
-func TestCheckpointCacheBorrowedChunkBudgetsSortingScratch(t *testing.T) {
-	events := make([]Event, checkpointChunkEvents)
-	for index := 0; index < len(events)-1; index++ {
-		events[index] = Event{Payload: incompressiblePayload(t, 48, int64(index))}
-	}
-	const attachmentCount = 4096
-	rng := mathrand.New(mathrand.NewSource(4242))
+	// Empty attachments with short repetitive names: the scratch charge
+	// is real, but the few compressible encoded bytes stay inside the
+	// compressor, so no underlying write can run the writer's own check.
+	const attachmentCount = 512
 	attachments := make(map[string][]byte, attachmentCount)
 	for index := 0; index < attachmentCount; index++ {
-		prefix := make([]byte, 10)
-		if _, err := rng.Read(prefix); err != nil {
-			t.Fatal(err)
+		attachments["n-"+strconv.Itoa(index)] = nil
+	}
+	scratchEvent := Event{Attachments: attachments}
+
+	// build replays appendBorrowedChunk's construction sequence up to the
+	// scratch event and reports what the production objects held at the
+	// moment its preflight ran, plus that preflight's outcome.
+	type moment struct {
+		capacity int
+		length   int
+		reserve  int
+		err      error
+	}
+	build := func(limit int) moment {
+		t.Helper()
+		cache := checkpointEventCache{limit: limit}
+		var output bytes.Buffer
+		cache.chunkBytes += checkpointChunkNodeBytes
+		bounded := cache.boundedWriter(&output)
+		compressed := gzip.NewWriter(bounded)
+		for _, event := range growth {
+			if err := cache.writeEventReservingScratch(bounded, compressed, checkpointReference(event)); err != nil {
+				t.Fatalf("growth event failed: %v", err)
+			}
 		}
-		attachments[hex.EncodeToString(prefix)+"-"+strconv.Itoa(index)] = nil
-	}
-	events[len(events)-1] = Event{Attachments: attachments}
-
-	slot := int(unsafe.Sizeof(""))
-	scratchLive := 0
-	model := &scratchModelWriter{scratch: &scratchLive}
-	compressed := gzip.NewWriter(model)
-	for _, event := range events {
-		scratchLive = len(event.Attachments) * slot
-		if err := writeCompactCheckpointEvent(compressed, checkpointReference(event)); err != nil {
-			t.Fatal(err)
+		// Drain the compressor's pending block through the bounded writer.
+		// These are real writes that grow the real buffer; afterwards the
+		// compressor holds nothing, so the small scratch event below
+		// cannot tip a pending block into an underlying write.
+		if err := compressed.Flush(); err != nil {
+			t.Fatalf("flush after growth failed: %v", err)
 		}
-		scratchLive = 0
-	}
-	if err := compressed.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if model.needed <= model.neededWithoutScratch {
-		t.Fatalf("fixture proves nothing about the scratch: tightest write demands %d with scratch, %d without; give the attachment event more attachments",
-			model.needed, model.neededWithoutScratch)
+		at := moment{
+			capacity: output.Cap(),
+			length:   output.Len(),
+			reserve:  cache.chunkBytes + cache.tailBytes + cache.scratchBytes,
+		}
+		at.err = cache.writeEventReservingScratch(bounded, compressed, checkpointReference(scratchEvent))
+		if output.Cap() != at.capacity || output.Len() != at.length {
+			t.Fatalf("scratch event reached the underlying buffer (cap %d->%d, len %d->%d); shrink it so only the preflight can refuse",
+				at.capacity, output.Cap(), at.length, output.Len())
+		}
+		return at
 	}
 
-	limit := int(unsafe.Sizeof(checkpointChunkNode{})) + model.needed
-	short := checkpointEventCache{limit: limit - 1}
-	short.appendEvents(events)
-	assertCacheReleased(t, &short)
+	// Probe under a roomy limit to read the grown production capacity.
+	probe := build(1 << 20)
+	if probe.err != nil {
+		t.Fatalf("probe scratch event failed: %v", probe.err)
+	}
+	if probe.length == 0 || probe.capacity == 0 {
+		t.Fatalf("fixture proves nothing: the compressor never wrote, so no output capacity was retained")
+	}
+	if probe.capacity <= probe.length {
+		t.Fatalf("fixture proves nothing about capacity: retained capacity %d does not exceed content %d, so length could impersonate it",
+			probe.capacity, probe.length)
+	}
+	scratch := attachmentCount * int(unsafe.Sizeof(""))
 
-	exact := checkpointEventCache{limit: limit}
-	exact.appendEvents(events)
+	// The exact budget: what the cache still reserves, the new scratch,
+	// and twice the capacity the production buffer actually retains.
+	limit := probe.reserve + scratch + 2*probe.capacity
+	exact := build(limit)
+	if exact.capacity != probe.capacity || exact.reserve != probe.reserve {
+		t.Fatalf("construction diverged under the exact limit: cap %d reserve %d, probe saw cap %d reserve %d",
+			exact.capacity, exact.reserve, probe.capacity, probe.reserve)
+	}
 	if exact.err != nil {
-		t.Fatalf("borrowed chunk within the complete modeled budget failed: %v", exact.err)
+		t.Fatalf("scratch %d within reserve %d plus twice retained capacity %d was refused: %v",
+			scratch, exact.reserve, exact.capacity, exact.err)
 	}
-	if exact.chunks.count != 1 || exact.count != checkpointChunkEvents || exact.tail != nil || exact.scratchBytes != 0 {
-		t.Fatalf("borrowed chunk = chunks %d count %d tail %d scratchBytes %d, want one stored chunk and released scratch",
-			exact.chunks.count, exact.count, len(exact.tail), exact.scratchBytes)
+
+	short := build(limit - 1)
+	if short.capacity != probe.capacity || short.reserve != probe.reserve {
+		t.Fatalf("construction diverged one byte short: cap %d reserve %d, probe saw cap %d reserve %d",
+			short.capacity, short.reserve, probe.capacity, probe.reserve)
+	}
+	if !errors.Is(short.err, errCheckpointTooLarge) {
+		t.Fatalf("scratch one byte past the retained-output budget was admitted: %v", short.err)
 	}
 }
 
