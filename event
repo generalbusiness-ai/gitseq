@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review exact pushed head 04558f53507f57190001dbd712a40b9665611e0c for the custody-basis chain, including Architecture, Security, Simplification, explicit-basis fail-closed behavior, double-spend disputes, and mutation evidence despite ordinary chain staleness."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:244d3e92f491a3d85c0720b2079b13e6602a4e57"}
