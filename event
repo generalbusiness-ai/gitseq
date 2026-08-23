@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9c4bf95a1e3bcc1725dcaadfca595d0491e1cac"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:657d8603a2ea9e828adb574d2f096806f7611b65","text":"The gs server default moved to exact head 93470ff903bc9b87eb0b5067005870f746a46c4e on request/cli-defaults-to-advertised-resident."}
