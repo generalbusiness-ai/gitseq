@@ -1,0 +1,30 @@
+# Bounded cadence deliberately. Weekly is frequent enough that an advisory does
+# not sit unseen for long, and infrequent enough that the pull-request stream
+# stays readable; a repository whose dependency updates nobody reads is no
+# better protected than one with no updates at all. The open-pull-requests
+# limit is the same argument in the other direction.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # The UI has its own lockfile under ui/, so it needs its own entry: a single
+  # root entry would not see it.
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # Actions are pinned by commit SHA throughout this repository, which is what
+  # makes them trustworthy and also what makes them invisible to a human
+  # reading for staleness. Dependabot is the only thing that will notice a
+  # pinned action has moved.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
