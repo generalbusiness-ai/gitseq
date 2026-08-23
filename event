@@ -1,1 +1,1 @@
-{"kind":"assert","text":"Review ae51 is not an approval basis: View returns a shallow Config sharing Actors and VerifiedFrontier; its test is internal-only; attach winners are never compared with final stored.Genesis; and the public non-Unix fail-closed contract and architecture are undocumented. Head b7 is also unpushed and its six artifacts have live predecessors."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ae51e49981a099b54588d4db15fe444fbc32b272"}
