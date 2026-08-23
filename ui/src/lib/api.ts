@@ -38,6 +38,7 @@ export interface Statement {
   stale?: boolean;
   // Narrows stale: what moved was the world this statement describes.
   describes_superseded_world?: boolean;
+  world_superseded_at?: number;
 }
 
 export interface Commitment {
@@ -71,6 +72,7 @@ export interface Artifact {
   // Narrows stale: the retired basis underneath is itself an artifact, so the
   // world moved rather than a pointer being withdrawn.
   describes_superseded_world?: boolean;
+  world_superseded_at?: number;
   // No basis under this artifact can ever be retired, so no supersession can
   // make it stale. Its silence is not evidence that it is current.
   unable_to_flare?: boolean;

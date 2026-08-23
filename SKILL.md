@@ -198,8 +198,14 @@ on the artifact it names.
    requests, promises, reports and other reasoning edges carry ordinary
    staleness but do not pass that flag onward. `gs merge` records ordinary
    reasoning staleness in its receipt and may land the exact approved head.
-   It refuses a world-stale artifact or approval: re-anchor the artifact on
-   current behaviour rather than asking for another review of the same chain.
+   A superseded world it judges as of the verdict, from the fold's
+   `world_superseded_at`: an artifact that already described one when the
+   reviewer signed still refuses, and re-anchoring it on current behaviour
+   beats asking for another review of the same chain. One the world moved
+   under *after* the verdict is recorded instead, because the reviewer had no
+   chance to see the move and the head they approved has not changed. An
+   undated superseded world refuses, since a world the fold cannot date is not
+   one a merge may land on.
 9. **Publish live activity honestly.** Start work with `busy` and its relevant
    focus EventIDs. Publish `waiting` or `blocked` immediately; return to
    `available` and clear focus when leaving. Keep routine failed tests and

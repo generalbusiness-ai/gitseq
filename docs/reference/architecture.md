@@ -497,8 +497,10 @@ fold, or UI expectations.
   the path lineages of the artifacts that approval itself cites, each standing
   at the approved head and owned by the implementer, since the fold is pure over
   records and can verify no merge head, diff, or tree; merge receipts record
-  ordinary reasoning staleness, while a world-stale approval or artifact must
-  be re-anchored before merge; the explicitly ratified review approval remains
+  ordinary reasoning staleness, while an approval or artifact that already
+  described a superseded world when the verdict was signed must be re-anchored
+  before merge, and one the world moved under afterwards is recorded instead;
+  the explicitly ratified review approval remains
   a pre-merge requirement, and the same sealed receipt closes the implementation
   commitment whose reporting artifact it merges;
 - Workroom MCP tools and their application meanings;
@@ -622,6 +624,29 @@ superseded world remain individually visible wherever they occur and are
 counted apart from ordinary staleness in `retired_artifacts` and
 `world_stale_artifacts`, both always present, because one figure covering
 every non-current artifact answers nothing in a workroom of any age.
+
+A superseded world also carries its date. `world_superseded_at` on a statement
+and on an artifact is the log position of the earliest retirement **still
+accounting for** that moved world, and the fold is the only layer that computes
+it. A reader deciding whether a judgement was made before or after the world
+moved needs that position, and cannot recover it from the acts alone: the acts
+say a supersession happened, not whether its own supersession has since
+withdrawn it. Two retirements can account for one moved world, and withdrawing
+the earlier leaves the later as the only live cause, which moves the date
+forward.
+
+The date is taken across **every** basis a record cites, not the first one
+carrying the flag. Stopping at the first would let the order a signer wrote its
+citations in decide the date, hiding an older cause behind a newer one, and that
+date gates an irreversible merge. Deriving the same rule a second time outside
+the fold means a second copy of it, and the copy is what drifts.
+
+The field is zero when the fold finds no active cause. For a record that
+describes a superseded world that is a fact to fail closed on, never permission:
+`gs merge` refuses an undated superseded world rather than reading the absence
+as "after the verdict", because a projection it cannot date is not a projection
+it may merge on. This carries the fold profile to `workroom-fold@10`, since the
+published projection bytes change.
 
 ### 7. CLI, MCP, skills, connectors, and UI
 
