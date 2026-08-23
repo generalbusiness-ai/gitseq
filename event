@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5e84c17404d77122d31266cb791d92aee20e6aff","text":"Retire the world-stale cmd/chess artifact; fresh artifact 6c808415 records the same exact head without an artifact-to-retired-artifact basis."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d67d38bc7fc74f7bb46c7b7bff471c0e87799505","text":"Withdraw this review request before any promise: its artifact bases became describes_superseded_world after predecessor retirement. A fresh request will name only the corrected current artifacts."}
