@@ -3,7 +3,9 @@ package kernel
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/hex"
 	"errors"
+	"io"
 	mathrand "math/rand"
 	"strconv"
 	"strings"
@@ -27,9 +29,9 @@ func assertCacheReleased(t *testing.T, cache *checkpointEventCache) {
 	if !errors.Is(cache.err, errCheckpointTooLarge) {
 		t.Fatalf("cache error = %v, want %v", cache.err, errCheckpointTooLarge)
 	}
-	if cache.chunks.head != nil || cache.chunks.count != 0 || cache.tail != nil || cache.chunkBytes != 0 || cache.tailBytes != 0 {
-		t.Fatalf("overflowed cache retained memory: chunks=%d tail=%d chunkBytes=%d tailBytes=%d",
-			cache.chunks.count, len(cache.tail), cache.chunkBytes, cache.tailBytes)
+	if cache.chunks.head != nil || cache.chunks.count != 0 || cache.tail != nil || cache.chunkBytes != 0 || cache.tailBytes != 0 || cache.scratchBytes != 0 {
+		t.Fatalf("overflowed cache retained memory: chunks=%d tail=%d chunkBytes=%d tailBytes=%d scratchBytes=%d",
+			cache.chunks.count, len(cache.tail), cache.chunkBytes, cache.tailBytes, cache.scratchBytes)
 	}
 }
 
@@ -677,5 +679,189 @@ func TestCheckpointMarshalRefusesChunkCountDivergence(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "chunk count mismatch") {
 			t.Fatalf("count %d over a one-node chain = %v, want chunk count mismatch", count, err)
 		}
+	}
+}
+
+// scratchModelWriter records, for each underlying write of a chunk build,
+// the budget the cache's bounded writer demands to admit it: twice the
+// output the write ends with — content plus equal growth headroom — plus
+// whatever name-sorting scratch is live while it happens. The maximum
+// demand over the build is the complete modeled budget of the chunk
+// beyond its list node. neededWithoutScratch carries the same maximum
+// with the scratch term dropped, so a fixture can prove its tightest
+// write is actually tightened by the scratch.
+type scratchModelWriter struct {
+	length               int
+	scratch              *int
+	needed               int
+	neededWithoutScratch int
+}
+
+func (w *scratchModelWriter) Write(data []byte) (int, error) {
+	w.length += len(data)
+	if demand := 2*w.length + *w.scratch; demand > w.needed {
+		w.needed = demand
+	}
+	if demand := 2 * w.length; demand > w.neededWithoutScratch {
+		w.neededWithoutScratch = demand
+	}
+	return len(data), nil
+}
+
+// TestCheckpointCacheBorrowedChunkBudgetsSortingScratch pins the encoder's
+// name-sorting scratch inside the borrowed-chunk budget. A full borrowed
+// chunk ends with an event carrying many empty attachments: while that
+// event is encoded, one string header per attachment is live beside the
+// borrowed source, the compressor, and the bounded output. The complete
+// budget is derived here from the bounded writer's stated contract —
+// content plus equal growth headroom must fit what the limit leaves after
+// the chunk node and the live scratch — by replaying the chunk's exact
+// deterministic write sequence and taking the tightest write, with the
+// scratch slot measured independently of the production constant. One
+// byte below that budget must refuse and release; the exact budget must
+// admit. Deleting the scratch reservation drops the code's refusal
+// boundary below this model's, so the one-byte-short case then admits
+// and this test fails.
+func TestCheckpointCacheBorrowedChunkBudgetsSortingScratch(t *testing.T) {
+	events := make([]Event, checkpointChunkEvents)
+	for index := 0; index < len(events)-1; index++ {
+		events[index] = Event{Payload: incompressiblePayload(t, 48, int64(index))}
+	}
+	const attachmentCount = 4096
+	rng := mathrand.New(mathrand.NewSource(4242))
+	attachments := make(map[string][]byte, attachmentCount)
+	for index := 0; index < attachmentCount; index++ {
+		prefix := make([]byte, 10)
+		if _, err := rng.Read(prefix); err != nil {
+			t.Fatal(err)
+		}
+		attachments[hex.EncodeToString(prefix)+"-"+strconv.Itoa(index)] = nil
+	}
+	events[len(events)-1] = Event{Attachments: attachments}
+
+	slot := int(unsafe.Sizeof(""))
+	scratchLive := 0
+	model := &scratchModelWriter{scratch: &scratchLive}
+	compressed := gzip.NewWriter(model)
+	for _, event := range events {
+		scratchLive = len(event.Attachments) * slot
+		if err := writeCompactCheckpointEvent(compressed, checkpointReference(event)); err != nil {
+			t.Fatal(err)
+		}
+		scratchLive = 0
+	}
+	if err := compressed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if model.needed <= model.neededWithoutScratch {
+		t.Fatalf("fixture proves nothing about the scratch: tightest write demands %d with scratch, %d without; give the attachment event more attachments",
+			model.needed, model.neededWithoutScratch)
+	}
+
+	limit := int(unsafe.Sizeof(checkpointChunkNode{})) + model.needed
+	short := checkpointEventCache{limit: limit - 1}
+	short.appendEvents(events)
+	assertCacheReleased(t, &short)
+
+	exact := checkpointEventCache{limit: limit}
+	exact.appendEvents(events)
+	if exact.err != nil {
+		t.Fatalf("borrowed chunk within the complete modeled budget failed: %v", exact.err)
+	}
+	if exact.chunks.count != 1 || exact.count != checkpointChunkEvents || exact.tail != nil || exact.scratchBytes != 0 {
+		t.Fatalf("borrowed chunk = chunks %d count %d tail %d scratchBytes %d, want one stored chunk and released scratch",
+			exact.chunks.count, exact.count, len(exact.tail), exact.scratchBytes)
+	}
+}
+
+// TestCheckpointCacheScratchPreflightRefusesBeforeAllocation gives a
+// borrowed chunk a budget one byte too small for its first event's
+// sorting scratch alone, so the scratch preflight is what refuses. The
+// refusal must release everything and must happen before the scratch is
+// allocated: a preflight refusal allocates only the writer plumbing and
+// its error — eight allocations measured — while checking after the fact
+// would allocate the names slice first. The ceiling is the measured
+// preflight count, so even that one extra allocation fails.
+func TestCheckpointCacheScratchPreflightRefusesBeforeAllocation(t *testing.T) {
+	const attachmentCount = 4096
+	attachments := make(map[string][]byte, attachmentCount)
+	for index := 0; index < attachmentCount; index++ {
+		attachments["name-"+strconv.Itoa(index)] = nil
+	}
+	event := Event{Attachments: attachments}
+	limit := int(unsafe.Sizeof(checkpointChunkNode{})) + attachmentCount*int(unsafe.Sizeof("")) - 1
+
+	cache := checkpointEventCache{limit: limit}
+	cache.appendBorrowedChunk([]Event{event})
+	assertCacheReleased(t, &cache)
+
+	allocs := testing.AllocsPerRun(10, func() {
+		refused := checkpointEventCache{limit: limit}
+		refused.appendBorrowedChunk([]Event{event})
+		if !errors.Is(refused.err, errCheckpointTooLarge) {
+			t.Fatalf("scratch past the budget was admitted: %v", refused.err)
+		}
+	})
+	if allocs > 8 {
+		t.Fatalf("preflight refusal allocated %.0f times; the names slice must not be allocated for scratch the budget refuses", allocs)
+	}
+}
+
+// TestCompactCheckpointWriterRefusesAboveDecoderCeiling pins the
+// encoder/decoder agreement on the attachment-count ceiling. The decoder's
+// published ceiling is 1<<20, written here as a literal so a moved
+// constant cannot move the expectation. An event one past it must be
+// refused by the writer before a single byte is encoded — a checkpoint
+// carrying it could never be read back — and before the names slice is
+// allocated, so the refusal costs only its error. The decoder must refuse
+// the same count and still admit the count one below it, so the two sides
+// share one boundary rather than merely ordered ones.
+func TestCompactCheckpointWriterRefusesAboveDecoderCeiling(t *testing.T) {
+	const decoderCeiling = 1 << 20
+	attachments := make(map[string][]byte, decoderCeiling+1)
+	for index := 0; index <= decoderCeiling; index++ {
+		attachments[strconv.Itoa(index)] = nil
+	}
+	event := checkpointEvent{Payload: []byte("payload"), Attachments: attachments}
+	var output bytes.Buffer
+	err := writeCompactCheckpointEvent(&output, event)
+	if err == nil || !strings.Contains(err.Error(), "attachment count") {
+		t.Fatalf("writer admitted %d attachments the decoder refuses: %v", len(attachments), err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("writer emitted %d bytes before refusing an undecodable event", output.Len())
+	}
+	allocs := testing.AllocsPerRun(10, func() {
+		if err := writeCompactCheckpointEvent(io.Discard, event); err == nil {
+			t.Fatal("writer admitted an undecodable event")
+		}
+	})
+	if allocs > 1 {
+		t.Fatalf("refusal allocated %.0f times, want only the error: the names slice must not be allocated first", allocs)
+	}
+
+	// The decoder's side of the shared boundary: a stream declaring one
+	// attachment past the ceiling refuses on the count itself, and one
+	// declaring exactly the ceiling gets past the count check — it fails
+	// later, on the truncated stream, not on the count.
+	var over bytes.Buffer
+	if err := writeCheckpointUint64(&over, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCheckpointUint32(&over, decoderCeiling+1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readCompactCheckpointEvent(&over, ^uint64(0)); err == nil || !strings.Contains(err.Error(), "attachment count") {
+		t.Fatalf("decoder ceiling moved without the writer: %v", err)
+	}
+	var at bytes.Buffer
+	if err := writeCheckpointUint64(&at, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCheckpointUint32(&at, decoderCeiling); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readCompactCheckpointEvent(&at, ^uint64(0)); err == nil || strings.Contains(err.Error(), "attachment count") {
+		t.Fatalf("decoder refused the count at its own ceiling: %v", err)
 	}
 }

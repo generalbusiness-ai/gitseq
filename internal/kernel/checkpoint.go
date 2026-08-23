@@ -35,6 +35,12 @@ const (
 	checkpointChunkEvents           = 4096
 	maxCheckpointBytes              = 256 << 20
 	maxCheckpointManifest           = 1 << 20
+	// maxCheckpointAttachments is the one attachment-count ceiling the
+	// compact encoding has. writeCompactCheckpointEvent refuses a larger
+	// count before encoding anything, and readCompactCheckpointEvent
+	// refuses it on decode; sharing the constant is what guarantees the
+	// writer can never emit a checkpoint its own decoder rejects.
+	maxCheckpointAttachments = 1 << 20
 	// Container charges for owned tail entries. The accounting must cover
 	// what the cache actually retains, not only the content it copies.
 	//
@@ -49,10 +55,21 @@ const (
 	// checkpointAttachmentOverhead covers the hash-map buckets and headers
 	// one attachment costs even in a one-entry map. It is the one figure
 	// here that remains an estimate, because the runtime does not expose
-	// a map's footprint; it errs toward over-counting.
+	// a map's footprint; it errs toward over-counting. It covers map
+	// internals only: the encoder's name-sorting scratch is not part of
+	// this figure and carries its own live reservation in
+	// writeEventReservingScratch.
+	//
+	// checkpointNameSlotBytes is the measured size of one string header
+	// in the names slice writeCompactCheckpointEvent sorts. That slice is
+	// one slot per attachment — the make below it uses exactly that
+	// capacity — so slots times the attachment count is the whole backing
+	// array; the name bytes themselves are shared with the map keys, not
+	// copied.
 	checkpointEventSlotBytes     = int(unsafe.Sizeof(checkpointEvent{}))
 	checkpointTailEntryOverhead  = 2 * checkpointEventSlotBytes
 	checkpointAttachmentOverhead = 512
+	checkpointNameSlotBytes      = int(unsafe.Sizeof(""))
 	// checkpointChunkNodeBytes is the measured size of one node in the
 	// chunk list. Storing a chunk allocates exactly one node and nothing
 	// else, so this measured figure is the entire metadata cost of a
@@ -130,22 +147,32 @@ type checkpointEvent struct {
 // The bound is a model of what the cache retains, not a measurement of
 // physical process memory. Measured exactly: stored chunk buffers at
 // capacity, one list node of measured size per chunk, cloned tail
-// content at the clones' capacities, and the old backing array a tail
-// growth copy briefly holds, preflighted from its actual capacity.
+// content at the clones' capacities, the old backing array a tail
+// growth copy briefly holds, preflighted from its actual capacity, and
+// the encoder's name-sorting scratch at one measured string slot per
+// attachment, reserved while its event is being written into a chunk.
 // Charged as a conservative cover: two measured slots per tail entry,
 // which bounds the tail's whole backing array because explicit doubling
 // keeps capacity within twice the length. Charged as an estimate: a
 // flat figure per attachment for map internals the runtime does not
 // expose. Excluded: the allocator's rounding of each accounted
-// allocation, and constant-size machinery that does not grow with
-// history — the compressor's fixed internal state and the cache's own
-// fields.
+// allocation, constant-size machinery that does not grow with history —
+// the compressor's fixed internal state and the cache's own fields —
+// and the borrowed event bytes a borrowed chunk encodes, which the
+// verified reader owns and holds for the duration of the call whether
+// or not the cache exists.
 type checkpointEventCache struct {
 	chunks     checkpointChunkList
 	tail       []checkpointEvent
 	count      int
 	chunkBytes int
 	tailBytes  int
+	// scratchBytes reserves the encoder's name-sorting scratch while one
+	// event is being written into a chunk. writeEventReservingScratch is
+	// its only writer: the charge is taken before the names slice can be
+	// allocated and released when the event write returns, so the
+	// reservation is live exactly while the allocation is.
+	scratchBytes int
 	// limit overrides maxCheckpointBytes when positive. Only tests set it, so
 	// overflow behaviour is exercisable without allocating the production bound.
 	limit int
@@ -226,7 +253,8 @@ func (c *checkpointEventCache) appendEvents(events []Event) {
 
 // boundedWriter shares one byte budget across every path that builds a
 // chunk: whatever the output buffer holds, plus everything the cache still
-// retains — stored chunks, their list nodes, and the charged tail — must
+// retains — stored chunks, their list nodes, the charged tail, and the
+// name-sorting scratch of the event currently being encoded — must
 // fit the limit together. The reservation is read live on every write, so
 // a tail that drains while its own flush encodes is credited as it drains.
 // Once the cache has failed, the whole budget is reserved: fail releases
@@ -241,9 +269,32 @@ func (c *checkpointEventCache) boundedWriter(output *bytes.Buffer) *checkpointCh
 			if c.err != nil {
 				return c.byteLimit()
 			}
-			return c.chunkBytes + c.tailBytes
+			return c.chunkBytes + c.tailBytes + c.scratchBytes
 		},
 	}
+}
+
+// writeEventReservingScratch writes one event into a chunk with its
+// name-sorting scratch reserved for the duration of the write.
+// writeCompactCheckpointEvent allocates one string slot per attachment to
+// sort the names; that array is live beside the event's source, the
+// compressor, and the bounded output until the write returns. The
+// preflight refuses before the allocation can happen, the charge sits in
+// the same live reservation the bounded writer reads for both borrowed
+// chunks and owned-tail flushes, and the release follows the write. The
+// per-attachment map estimate does not cover this scratch — it is
+// documented as map internals only, and the borrowed path carries no
+// per-attachment charge at all — so the reservation here is the only
+// account of it.
+func (c *checkpointEventCache) writeEventReservingScratch(writer io.Writer, event checkpointEvent) error {
+	scratch := len(event.Attachments) * checkpointNameSlotBytes
+	if scratch > c.byteLimit()-c.chunkBytes-c.tailBytes-c.scratchBytes {
+		return fmt.Errorf("%w: cached events exceed limit %d", errCheckpointTooLarge, c.byteLimit())
+	}
+	c.scratchBytes += scratch
+	err := writeCompactCheckpointEvent(writer, event)
+	c.scratchBytes -= scratch
+	return err
 }
 
 // checkpointEventContentBytes is the cloned content one owned tail entry
@@ -280,7 +331,7 @@ func (c *checkpointEventCache) appendBorrowedChunk(events []Event) {
 	// before any completed-chunk check could see it.
 	compressed := gzip.NewWriter(c.boundedWriter(&output))
 	for _, event := range events {
-		if err := writeCompactCheckpointEvent(compressed, checkpointReference(event)); err != nil {
+		if err := c.writeEventReservingScratch(compressed, checkpointReference(event)); err != nil {
 			// Abandon the compressor without flushing: Close would write
 			// its buffered data after fail has released the reserve, and
 			// nothing may be built against that freed budget. Its fixed
@@ -369,7 +420,7 @@ func (c *checkpointEventCache) flushTail() {
 	for index := range c.tail {
 		material := c.tail[index]
 		c.tail[index] = checkpointEvent{}
-		if err := writeCompactCheckpointEvent(compressed, material); err != nil {
+		if err := c.writeEventReservingScratch(compressed, material); err != nil {
 			// Abandon the compressor without flushing; see
 			// appendBorrowedChunk.
 			c.fail(err)
@@ -1059,9 +1110,11 @@ func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
 // checkpoint: a write that would take the content past the limit is
 // refused. This is the documented artifact bound — a serialized blob may
 // use the whole limit — and it says nothing about construction
-// transients. The cache's checkpointChunkWriter carries that separate
-// guarantee; conflating the two silently halves the largest writable
-// checkpoint.
+// transients, including the name-sorting scratch each marshal-time
+// writeCompactCheckpointEvent call allocates, which only the shared
+// attachment-count ceiling bounds here. The cache's
+// checkpointChunkWriter carries the construction-peak guarantee;
+// conflating the two silently halves the largest writable checkpoint.
 type checkpointLimitWriter struct {
 	output *bytes.Buffer
 	limit  int
@@ -1115,14 +1168,19 @@ func (w *checkpointChunkWriter) Write(data []byte) (int, error) {
 }
 
 func writeCompactCheckpointEvent(writer io.Writer, event checkpointEvent) error {
+	// Refuse an over-limit attachment count before a single byte is
+	// encoded and before the names slice below is allocated. The ceiling
+	// is the same constant readCompactCheckpointEvent enforces, so this
+	// writer cannot emit an event its own decoder refuses, and the
+	// refused event costs neither output nor sorting scratch.
+	if len(event.Attachments) > maxCheckpointAttachments {
+		return errors.New("checkpoint attachment count exceeds limit")
+	}
 	if err := writeCheckpointUint64(writer, uint64(len(event.Payload))); err != nil {
 		return err
 	}
 	if _, err := writer.Write(event.Payload); err != nil {
 		return err
-	}
-	if uint64(len(event.Attachments)) > uint64(^uint32(0)) {
-		return errors.New("too many checkpoint attachments")
 	}
 	if err := writeCheckpointUint32(writer, uint32(len(event.Attachments))); err != nil {
 		return err
@@ -1309,7 +1367,7 @@ func readCompactCheckpointEvent(reader io.Reader, ceiling uint64) (checkpointEve
 	if err != nil {
 		return checkpointEvent{}, err
 	}
-	if attachmentCount > 1<<20 {
+	if attachmentCount > maxCheckpointAttachments {
 		return checkpointEvent{}, errors.New("checkpoint attachment count exceeds limit")
 	}
 	var attachments map[string][]byte
