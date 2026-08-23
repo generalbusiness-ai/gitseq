@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:38302979e577f859acffb257094ef0b9edad7222","text":"Merge retired a covered predecessor; the successor is at .github/scripts."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:755d45d87b26515fac3f1f8f13031bd2e37b501c","text":"Merge retired a covered predecessor; the successor is at .github/dependabot.yml."}
