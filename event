@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:33abe21c4f55a92e934427cf8bb051754d23f80a","text":"Retire the interim chess_test.go artifact; 3ef4e48d is the same exact head with the correct opposing-seat child-request reporting basis."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2db45f073be908f3cfe242a93988a75d29e78961","text":"Retire the prior item-4 cmd/chess artifact at head 73a5ffb6; 5e84c174 records current repaired head 842d0f40."}
