@@ -1,1 +1,1 @@
-{"kind":"promise","text":"Claiming 5e217e63. I will judge the README job statement at b3b094d0 against current main, check the quoted prompt verbatim, and report revive or close with reasons."}
+{"kind":"promise","text":"Claiming cb3debcf. I will confirm the successor-staleness regression at 6da91f70 still pins the fold's behaviour and fails when that behaviour is broken, then revive it or close it with reasons."}
