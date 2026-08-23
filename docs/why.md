@@ -64,7 +64,7 @@ The record answers ordinary questions mechanically:
 - Who is waiting on whom?
 - What evidence supports this claim?
 - Was this adopted, disputed, withdrawn, replaced?
-- Is this document still current, and if not, what made it stale?
+- Which tracked artifacts need re-checking, and what moved underneath them?
 
 The answers are projections, not decrees. Every reader replays the same
 deterministic fold over the same signed events and reaches the same
