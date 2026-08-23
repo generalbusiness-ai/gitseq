@@ -257,7 +257,7 @@ make build
 pages for how it behaves, recipes for common tasks, and a reference page for
 every `gs` subcommand and every MCP tool.
 
-* [architecture] in more details,
+* [architecture](docs/reference/architecture.md) in more details,
 * [one path end to end](docs/how-to/end-to-end.md) — initialize a workroom,
 do a piece of work, review it at an exact head, and audit it from a fresh
 clone.

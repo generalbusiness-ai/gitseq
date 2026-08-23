@@ -10,11 +10,11 @@ rests_on:
 
 ## The problem
 
-Every document your team keeps is a cache of a conversation, and nothing
-invalidates it. The design note, the runbook, the quote, the dashboard,
-the onboarding page: each was rendered from some state of the discussion
-and then kept serving reads after the discussion moved on. The usual
-repair is a human asking in a channel whether the page is still current,
+Many documents your team keeps are caches of earlier decisions, and nothing
+normally invalidates them. The design note, the runbook, the quote, the
+dashboard, the onboarding page: each was rendered from some state of the
+discussion and then kept serving reads after the discussion moved on. The
+usual repair is a human asking in a channel whether the page is still current,
 which works about as well as it sounds.
 
 Agents make this sharper rather than different. More gets said, more gets
@@ -50,10 +50,11 @@ answers, the decision it implements, the claim it disputes. The result is
 a dependency graph pinned to a clock, rather than a wiki full of links
 with no before and after.
 
-**Documents name the acts they describe.** Once a page says which acts
-govern it, *is this still current?* stops being a question you ask a
-person. Retire one of those acts and the page is marked stale, along with
-the reason and the event that caused it.
+**Tracked artifacts name the acts they describe.** Once an artifact statement
+names a page at an exact commit and the acts governing it, *does this need
+another look?* becomes a deterministic question. Retire one of those acts and
+the artifact is marked stale. That means re-check it; it does not mean the page
+is wrong.
 
 ## What that buys
 
@@ -81,6 +82,10 @@ same machinery.
 It does **not interpret on your behalf**. The fold is a library that
 readers and applications run; there is no server whose reading is
 authoritative.
+
+It does **not discover causal edges from files, imports, or prose**. Someone
+has to register the artifact and the premises it rests on. Unanchored work is
+invisible, and gitseq does not decide whether revised prose is correct.
 
 It does **not hold your work hostage**. Artifacts stay where they always
 were — files, commits, branches. Delete `.git/gitseq` and the extra fetch
