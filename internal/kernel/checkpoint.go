@@ -127,31 +127,19 @@ type checkpointEvent struct {
 // later marshal enforces, so an oversized history fails closed while it
 // accumulates instead of after its memory is already spent.
 //
-// The bound is on logical retained capacity, not physical allocator
-// memory: it covers the lengths and capacities of the structures the
-// cache itself retains, measured by this code. The runtime allocator
-// still rounds every one of those allocations up to a size class or
-// page; that padding is deliberately out of scope, so physical process
-// memory can exceed the limit by the allocator's rounding and by
-// nothing else the cache controls.
-//
-// The accounting counts what is retained: stored chunk buffers at their
-// full capacity plus one measured list node per chunk, and tail content
-// at the cloned slices' capacities plus container charges for the entry
-// slots and attachment maps. Clones are taken into storage whose
-// capacity is exactly the measured source length, so the length
-// preflight in append bounds the allocation itself. The tail grows only
-// by explicit doubling, so its per-entry slot charge covers the whole
-// backing array, and the old array a growth copy briefly holds is
-// preflighted from the actual capacity at the boundary. The entry being
-// handed from tail to output during a flush stays charged until its
-// write completes, and the chunk writer keeps half of its live budget
-// free as headroom for the old array a growth copy briefly holds. A
-// failed cache reserves its whole budget, so nothing can be built
-// against accounting that fail released while the dropped storage may
-// still be reachable. One transient sits outside the accounting, bounded
-// by a constant that does not grow with history: the compressor's fixed
-// internal state.
+// The bound is a model of what the cache retains, not a measurement of
+// physical process memory. Measured exactly: stored chunk buffers at
+// capacity, one list node of measured size per chunk, cloned tail
+// content at the clones' capacities, and the old backing array a tail
+// growth copy briefly holds, preflighted from its actual capacity.
+// Charged as a conservative cover: two measured slots per tail entry,
+// which bounds the tail's whole backing array because explicit doubling
+// keeps capacity within twice the length. Charged as an estimate: a
+// flat figure per attachment for map internals the runtime does not
+// expose. Excluded: the allocator's rounding of each accounted
+// allocation, and constant-size machinery that does not grow with
+// history — the compressor's fixed internal state and the cache's own
+// fields.
 type checkpointEventCache struct {
 	chunks     checkpointChunkList
 	tail       []checkpointEvent
@@ -980,6 +968,18 @@ func decodeLegacyCheckpoint(data []byte) (checkpoint, error) {
 }
 
 func marshalCompactCheckpoint(stored checkpoint, limit int) ([]byte, error) {
+	if stored.Cached {
+		// The event-count identity below trusts the list's explicit count.
+		// Verify it against the chain the encoder actually traverses, so
+		// the two cannot silently diverge.
+		nodes := 0
+		for node := stored.CachedChunks.head; node != nil; node = node.next {
+			nodes++
+		}
+		if nodes != stored.CachedChunks.count {
+			return nil, errors.New("compact checkpoint chunk count mismatch")
+		}
+	}
 	if stored.EventCount < 0 ||
 		(!stored.Cached && stored.EventCount != len(stored.Events)) ||
 		(stored.Cached && stored.EventCount != stored.CachedChunks.count*checkpointChunkEvents+len(stored.CachedTail)) {

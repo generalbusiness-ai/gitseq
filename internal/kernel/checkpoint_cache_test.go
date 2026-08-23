@@ -6,6 +6,7 @@ import (
 	"errors"
 	mathrand "math/rand"
 	"strconv"
+	"strings"
 	"testing"
 	"unsafe"
 )
@@ -68,36 +69,31 @@ func TestCheckpointCacheBoundsTailAccumulation(t *testing.T) {
 }
 
 // TestCheckpointCacheTailGrowthChargesOldArray forces a real tail capacity
-// expansion at the edge of the budget. The previous head charged a flat
-// per-entry constant and asserted in a test that the constant covered two
-// slice headers — an inequality between two numbers, which never forced or
-// measured an actual growth boundary. This test does: it fills the tail to
-// len == cap, computes the exact budget the next append needs — its own
-// content and container charges plus the old backing array that stays live
-// beside the new one during the growth copy — and pins both sides of that
-// boundary. One byte short must refuse and release; the exact budget must
-// admit, and the tail's capacity must be seen to actually double. Dropping
-// or shrinking the growth term in append's preflight admits the short
-// cache and turns this test red.
+// expansion at the edge of the budget. It fills the tail to len == cap and
+// pins both sides of the boundary the next append must budget: one byte
+// short must refuse and release, the exact budget must admit, and the
+// tail's capacity must be seen to actually double. The whole expected
+// budget is derived below from unsafe.Sizeof and the payload lengths this
+// test controls — no production accounting helper or constant is called —
+// so a mutation that moves the code's boundary, even one that changes the
+// production charges coherently in every place at once, cannot move this
+// expectation with it.
 func TestCheckpointCacheTailGrowthChargesOldArray(t *testing.T) {
 	const entries = 8
+	const payloadBytes = 16
 	events := make([]Event, entries)
 	for index := range events {
-		events[index] = Event{Payload: incompressiblePayload(t, 16, int64(index))}
+		events[index] = Event{Payload: incompressiblePayload(t, payloadBytes, int64(index))}
 	}
-	charge := 0
-	for _, event := range events {
-		charge += checkpointEventRetainedBytes(checkpointMaterial(event))
-	}
-	// The boundary arithmetic is measured here, independently of the
-	// production constants, so a mutation that shrinks the charged slot
-	// size or the growth term moves the code's boundary away from this
-	// test's and turns it red: the next entry needs its content, two
-	// measured slots of container charge, and the full old backing array
-	// that coexists with the new one during the growth copy.
+	// Each held entry is a clone at exactly its payload length (no
+	// attachments) plus two independently measured slots of container
+	// charge for the doubling backing array. The next append needs its
+	// own such charge plus the full old backing array — entries slots —
+	// that stays live beside the new one during the growth copy.
 	slot := int(unsafe.Sizeof(checkpointEvent{}))
-	next := Event{Payload: incompressiblePayload(t, 16, 99)}
-	needed := charge + len(next.Payload) + 2*slot + entries*slot
+	charge := entries * (payloadBytes + 2*slot)
+	next := Event{Payload: incompressiblePayload(t, payloadBytes, 99)}
+	needed := charge + payloadBytes + 2*slot + entries*slot
 
 	short := checkpointEventCache{limit: needed - 1}
 	for _, event := range events {
@@ -642,5 +638,44 @@ func TestCheckpointMarshalUsesFullSizeLimit(t *testing.T) {
 	}
 	if _, err := marshalCheckpoint(stored, len(data)-1); !errors.Is(err, errCheckpointTooLarge) {
 		t.Fatalf("checkpoint one byte over the size limit = %v, want %v", err, errCheckpointTooLarge)
+	}
+}
+
+// TestCheckpointMarshalRefusesChunkCountDivergence pins the marshal-path
+// check that the chunk list's explicit count matches the payload chain the
+// encoder traverses. The event-count identity trusts that count, so a
+// divergent count would otherwise serialize a manifest promising events the
+// chunks do not carry, or omitting events they do. Both divergence
+// directions must refuse before anything is encoded, and the agreeing list
+// must still marshal.
+func TestCheckpointMarshalRefusesChunkCountDivergence(t *testing.T) {
+	events := make([]Event, checkpointChunkEvents)
+	for index := range events {
+		events[index] = Event{Payload: []byte{byte(index)}}
+	}
+	var cache checkpointEventCache
+	cache.appendBorrowedChunk(events)
+	if cache.err != nil || cache.chunks.count != 1 {
+		t.Fatalf("fixture cache = err %v chunks %d, want one stored chunk", cache.err, cache.chunks.count)
+	}
+	stored := checkpoint{
+		Schema: checkpointSchema, ObjectFormat: "sha1", Genesis: "genesis", Head: "head",
+		Depth: checkpointChunkEvents, EventCount: checkpointChunkEvents,
+		Cached: true, CachedChunks: cache.chunks,
+	}
+	if _, err := marshalCheckpoint(stored, maxCheckpointBytes); err != nil {
+		t.Fatalf("agreeing chunk count was refused: %v", err)
+	}
+	for _, count := range []int{0, 2} {
+		divergent := stored
+		divergent.CachedChunks.count = count
+		// Keep the event count consistent with the claimed chunk count, so
+		// only the chain check can be the reason for refusal.
+		divergent.EventCount = count * checkpointChunkEvents
+		divergent.Depth = divergent.EventCount
+		_, err := marshalCheckpoint(divergent, maxCheckpointBytes)
+		if err == nil || !strings.Contains(err.Error(), "chunk count mismatch") {
+			t.Fatalf("count %d over a one-node chain = %v, want chunk count mismatch", count, err)
+		}
 	}
 }
