@@ -1,1 +1,1 @@
-{"kind":"ratification","text":"Verified exact head 199317391: the requested deterministic removal seam and all-platform cleanup-failure assertions are present, earlier guards remain intact, and independent unit, race, vet, full-suite, Windows cross-compile, and diff checks pass. I accept the child repair report."}
+{"kind":"promise","text":"I will independently re-review exact head 199317391 across all nine reported paths, record Architecture, Security, and Simplification conclusions, and file the exact-head verdict."}
