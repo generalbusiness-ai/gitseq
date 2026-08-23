@@ -75,7 +75,7 @@ func TestWithdrawalLeavesALaterServiceAdvertised(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	successor, err := json.Marshal(Resident{URL: "http://127.0.0.1:7799", Genesis: workspace.Config.Genesis, PID: os.Getpid() + 1})
+	successor, err := json.Marshal(Resident{URL: "http://127.0.0.1:7799", Genesis: workspace.config.Genesis, PID: os.Getpid() + 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func probeDeadOnly(nonce string) Prober {
 
 func claimRef(t *testing.T, workspace *Workspace) (string, bool) {
 	t.Helper()
-	value, present, err := workspace.Store.RefValue(context.Background(), ResidentRef(workspace.Config.Genesis))
+	value, present, err := workspace.Store.RefValue(context.Background(), ResidentRef(workspace.config.Genesis))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestAnUnreadableClaimIsRefusedRatherThanTreatedAsVacant(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			workspace := residentWorkspace(t)
-			ref := ResidentRef(workspace.Config.Genesis)
+			ref := ResidentRef(workspace.config.Genesis)
 			blob, err := workspace.Store.WriteBlob(ctx, content)
 			if err != nil {
 				t.Fatal(err)

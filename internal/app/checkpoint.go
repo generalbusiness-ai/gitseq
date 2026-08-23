@@ -86,7 +86,7 @@ func (p fileCheckpointPointer) Store(commit string) error {
 }
 
 func (w *Workspace) checkpointPointerPath() string {
-	return filepath.Join(w.MetaDir, "checkpoints", w.Config.Genesis+".json")
+	return filepath.Join(w.MetaDir, "checkpoints", w.config.Genesis+".json")
 }
 
 func (w *Workspace) checkpointOptions() kernel.CheckpointOptions {
@@ -94,7 +94,7 @@ func (w *Workspace) checkpointOptions() kernel.CheckpointOptions {
 		return kernel.CheckpointOptions{}
 	}
 	return kernel.CheckpointOptions{
-		Enabled: true, SigningKey: w.Config.SequencerKey,
+		Enabled: true, SigningKey: w.config.SequencerKey,
 		Pointer: fileCheckpointPointer{path: w.checkpointPointerPath()},
 	}
 }
@@ -107,10 +107,10 @@ func (w *Workspace) InvalidateCheckpoint(ctx context.Context) error {
 	if pointerErr != nil && !errors.Is(pointerErr, os.ErrNotExist) {
 		return pointerErr
 	}
-	ref := kernel.CheckpointRef(w.Config.Genesis)
+	ref := kernel.CheckpointRef(w.config.Genesis)
 	old, err := w.Store.Head(ctx, ref)
 	if err != nil {
 		return nil
 	}
-	return w.Store.UpdateRef(ctx, ref, w.Config.Genesis, old)
+	return w.Store.UpdateRef(ctx, ref, w.config.Genesis, old)
 }

@@ -400,7 +400,7 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page := worked.(statusview.WorkPage); !page.Degraded || page.Frontier.Depth != 2 || page.Actor.Fingerprint != workspace.Config.Actors["human"].Fingerprint {
+	if page := worked.(statusview.WorkPage); !page.Degraded || page.Frontier.Depth != 2 || page.Actor.Fingerprint != workspace.View().Actors["human"].Fingerprint {
 		t.Fatalf("unexpected degraded work page: %+v", page)
 	}
 	inspected, _, err := server.call(context.Background(), toolCall{Name: "inspect", Arguments: map[string]any{"event": genesis.ID}})
@@ -432,7 +432,7 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seed := snapshot.Projection.Actors[workspace.Config.Actors["human"].Fingerprint].MembershipEvent
+	seed := snapshot.Projection.Actors[workspace.View().Actors["human"].Fingerprint].MembershipEvent
 	if _, err := workspace.Act(context.Background(), "human", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "live UI artifact",
 		Body: map[string]string{"path": "ui", "commit": "candidate"}, RestsOn: []string{seed},
@@ -470,7 +470,7 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	page, ok := value.(statusview.WorkPage)
-	if !ok || page.Frontier.Head == "" || page.Actor.Fingerprint != workspace.Config.Actors["human"].Fingerprint {
+	if !ok || page.Frontier.Head == "" || page.Actor.Fingerprint != workspace.View().Actors["human"].Fingerprint {
 		t.Fatalf("unexpected selective work response: %#v", value)
 	}
 	value, _, err = server.call(context.Background(), toolCall{Name: "artifacts", Arguments: map[string]any{"paths": []any{"ui"}}})
@@ -504,7 +504,7 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	event := snapshot.Projection.Actors[workspace.Config.Actors["human"].Fingerprint].MembershipEvent
+	event := snapshot.Projection.Actors[workspace.View().Actors["human"].Fingerprint].MembershipEvent
 	value, _, err = server.call(context.Background(), toolCall{Name: "inspect", Arguments: map[string]any{"event": event}})
 	if err != nil {
 		t.Fatal(err)
@@ -551,7 +551,7 @@ func TestStatusAndWaitUseBoundedResidentViews(t *testing.T) {
 	defer httpServer.Close()
 
 	server, attached := attachedServer(t, workspace, "human", httpServer.URL, httpServer.Client())
-	if got, want := laneResponseLimit(attached, actorStatusResponseLimit, statusview.ListCap), int64(actorStatusResponseLimit)+int64(statusview.ListCap)*int64(workspace.Config.PayloadCeiling); got != want {
+	if got, want := laneResponseLimit(attached, actorStatusResponseLimit, statusview.ListCap), int64(actorStatusResponseLimit)+int64(statusview.ListCap)*int64(workspace.View().PayloadCeiling); got != want {
 		t.Fatalf("lane response limit = %d, want structurally bounded %d", got, want)
 	}
 	attached.identityNoticeChecked = true
@@ -568,7 +568,7 @@ func TestStatusAndWaitUseBoundedResidentViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	status := value.(actorStatus)
-	if status.Frontier[0].Depth != 1 || status.You.Fingerprint != workspace.Config.Actors["human"].Fingerprint {
+	if status.Frontier[0].Depth != 1 || status.You.Fingerprint != workspace.View().Actors["human"].Fingerprint {
 		t.Fatalf("unexpected bounded status: %+v", status)
 	}
 	value, _, err = server.call(context.Background(), toolCall{Name: "wait", Arguments: map[string]any{
@@ -699,7 +699,7 @@ func TestResidentWaitKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {
 				t.Fatal(err)
 			}
 			delta := value.(waitDelta)
-			if len(delta.Cursor.Frontier) != 1 || delta.Cursor.Frontier[0].Genesis != testCase.workspace.Config.Genesis {
+			if len(delta.Cursor.Frontier) != 1 || delta.Cursor.Frontier[0].Genesis != testCase.workspace.View().Genesis {
 				t.Fatalf("wait answered from the wrong repository: %+v", delta.Cursor.Frontier)
 			}
 			if delta.Cursor.Live.Generation == "degraded" {
@@ -977,7 +977,7 @@ func TestFallbackWaitPreservesDefaultAndNamedRepositorySelection(t *testing.T) {
 				t.Fatal(err)
 			}
 			delta := value.(waitDelta)
-			if len(delta.Cursor.Frontier) != 1 || delta.Cursor.Frontier[0].Genesis != testCase.workspace.Config.Genesis {
+			if len(delta.Cursor.Frontier) != 1 || delta.Cursor.Frontier[0].Genesis != testCase.workspace.View().Genesis {
 				t.Fatalf("fallback wait answered from the wrong repository: %+v", delta.Cursor.Frontier)
 			}
 			if delta.Cursor.Live.Generation != "degraded" {
@@ -1440,7 +1440,7 @@ func TestStateToolCarriesTheUndefinedKindWarningInItsResult(t *testing.T) {
 				dead.Close()
 			}
 			server, _ := attachedServer(t, workspace, "human", baseURL, client)
-			genesis := workspace.EventID(workspace.Config.Genesis)
+			genesis := workspace.EventID(workspace.View().Genesis)
 
 			value, _, err := server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
 				"kind": "commit", "text": "I will re-review task/x at exact head y",
@@ -1569,9 +1569,20 @@ func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
 	if _, _, err := workspace.AddActor(context.Background(), "human", "claude.2", "agent"); err != nil {
 		t.Fatal(err)
 	}
-	alias := workspace.Config.Actors["human"]
+	// Seed the alias through the stored configuration and reopen: the
+	// configuration field is unexported, so custody is seeded from outside
+	// internal/app by editing the file and taking the production load path.
+	seeded := workspace.View()
+	alias := seeded.Actors["human"]
 	alias.Name = "human-alias"
-	workspace.Config.Actors[alias.Name] = alias
+	seeded.Actors[alias.Name] = alias
+	if err := apphost.SaveConfig(workspace.MetaDir, seeded); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := app.Open(context.Background(), workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	workroomServer, err := service.New(workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -1615,7 +1626,7 @@ func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&live); err != nil {
 		t.Fatal(err)
 	}
-	label := "human-alias (" + workspace.Config.Actors["human"].Fingerprint[:12] + ")"
+	label := "human-alias (" + workspace.View().Actors["human"].Fingerprint[:12] + ")"
 	held := 0
 	for _, present := range live.Presence {
 		if present == label {
@@ -1740,14 +1751,14 @@ func TestWhoamiUsesBoundedEffectiveResidentOrientationWithoutLocalReplay(t *test
 		t.Fatalf("resident frontier differs: %+v", frontier)
 	}
 	durable := result["durable"].(statusview.ActorView)
-	if durable.Fingerprint != workspace.Config.Actors["human"].Fingerprint || durable.Kind != "human" || durable.MembershipEvent == "" || !containsString(durable.Roles, "participant") {
+	if durable.Fingerprint != workspace.View().Actors["human"].Fingerprint || durable.Kind != "human" || durable.MembershipEvent == "" || !containsString(durable.Roles, "participant") {
 		t.Fatalf("resident lost effective identity: %+v", durable)
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(encoded, []byte("key_file")) || bytes.Contains(encoded, []byte(workspace.Config.Actors["human"].KeyFile)) || genesis.ID == "" {
+	if bytes.Contains(encoded, []byte("key_file")) || bytes.Contains(encoded, []byte(workspace.View().Actors["human"].KeyFile)) || genesis.ID == "" {
 		t.Fatalf("whoami leaked local custody or lost signed basis: %s", encoded)
 	}
 }
@@ -1800,7 +1811,7 @@ func TestWhoamiRejectsUntrustedOrUnboundedResidentAnswers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	orientation, ok := statusview.BuildOrientation(snapshot, workspace.Config.Actors["human"].Fingerprint, "human")
+	orientation, ok := statusview.BuildOrientation(snapshot, workspace.View().Actors["human"].Fingerprint, "human")
 	if !ok {
 		t.Fatal("missing effective actor")
 	}
@@ -1875,7 +1886,7 @@ func TestWhoamiRetriesOneConcurrentFrontierMove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fingerprint := workspace.Config.Actors["human"].Fingerprint
+	fingerprint := workspace.View().Actors["human"].Fingerprint
 	var calls atomic.Int32
 	resident := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		number := calls.Add(1)

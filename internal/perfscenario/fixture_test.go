@@ -113,8 +113,8 @@ func TestSmallExactFixtureAndCompleteOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if workspace.Config.VerifiedFrontier != nil {
-		t.Fatalf("sample inherited source verified frontier: %+v", workspace.Config.VerifiedFrontier)
+	if workspace.View().VerifiedFrontier != nil {
+		t.Fatalf("sample inherited source verified frontier: %+v", workspace.View().VerifiedFrontier)
 	}
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
@@ -151,8 +151,8 @@ func TestCheckpointSelectionAndColdMaterializationAreExact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cold.Config.VerifiedFrontier != nil {
-		t.Fatalf("cold sample inherited source verified frontier: %+v", cold.Config.VerifiedFrontier)
+	if cold.View().VerifiedFrontier != nil {
+		t.Fatalf("cold sample inherited source verified frontier: %+v", cold.View().VerifiedFrontier)
 	}
 	coldSnapshot, err := cold.SnapshotWithSource(ctx)
 	if err != nil {

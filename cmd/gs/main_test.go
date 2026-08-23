@@ -300,7 +300,7 @@ func TestFetchSummaryRejectsSlowAndMovingResident(t *testing.T) {
 	}
 
 	moving := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		basis := workspace.EventID(workspace.Config.Genesis)
+		basis := workspace.EventID(workspace.View().Genesis)
 		if _, err := workspace.Act(ctx, "operator", app.Act{
 			Verb: app.VerbState, Kind: workroom.KindAssert, Text: "advance while status is in flight",
 			RestsOn: []string{basis}, IdempotencyKey: "moving-status-head",
@@ -323,7 +323,7 @@ func TestFetchSummaryRejectsSlowAndMovingResident(t *testing.T) {
 	if _, err := fetchSummary(ctx, workspace, moving.URL); err == nil || !strings.Contains(err.Error(), "moved") {
 		t.Fatalf("moving-head error = %v", err)
 	}
-	current := testGit(t, workspace.Repo, "rev-parse", kernel.Ref(workspace.Config.Genesis))
+	current := testGit(t, workspace.Repo, "rev-parse", kernel.Ref(workspace.View().Genesis))
 	if current == summary.Durable.Head {
 		t.Fatal("moving-head fixture did not move the durable ref")
 	}
@@ -361,7 +361,7 @@ func TestCheckpointClearRemovesBothPersistentSelectors(t *testing.T) {
 	if _, err := workspace.Snapshot(ctx); err != nil {
 		t.Fatal(err)
 	}
-	pointer := filepath.Join(workspace.MetaDir, "checkpoints", workspace.Config.Genesis+".json")
+	pointer := filepath.Join(workspace.MetaDir, "checkpoints", workspace.View().Genesis+".json")
 	if _, err := os.Stat(pointer); err != nil {
 		t.Fatalf("checkpoint pointer was not created: %v", err)
 	}
@@ -382,11 +382,11 @@ func TestCheckpointClearRemovesBothPersistentSelectors(t *testing.T) {
 	if _, err := os.Stat(pointer); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("checkpoint pointer remains: %v", err)
 	}
-	if head := testGit(t, repo, "rev-parse", kernel.CheckpointRef(workspace.Config.Genesis)); head != workspace.Config.Genesis {
-		t.Fatalf("checkpoint ref = %s, want genesis %s", head, workspace.Config.Genesis)
+	if head := testGit(t, repo, "rev-parse", kernel.CheckpointRef(workspace.View().Genesis)); head != workspace.View().Genesis {
+		t.Fatalf("checkpoint ref = %s, want genesis %s", head, workspace.View().Genesis)
 	}
 	var result map[string]string
-	if err := json.Unmarshal(printed, &result); err != nil || result["checkpoint"] != "cleared" || result["genesis"] != workspace.Config.Genesis {
+	if err := json.Unmarshal(printed, &result); err != nil || result["checkpoint"] != "cleared" || result["genesis"] != workspace.View().Genesis {
 		t.Fatalf("checkpoint-clear output = %q, result=%#v err=%v", printed, result, err)
 	}
 	fresh, err := app.Open(ctx, repo)
@@ -414,7 +414,7 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := "refs/seq/" + workspace.Config.Genesis
+	ref := "refs/seq/" + workspace.View().Genesis
 	first := testGit(t, source, "rev-parse", ref)
 	testGit(t, "", "init", "--bare", remote)
 	testGit(t, source, "remote", "add", "origin", remote)
@@ -422,7 +422,7 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 
 	testGit(t, "", "clone", remote, auditor)
 	testGit(t, auditor, "config", "--add", "remote.origin.fetch", forcedSequenceFetchRefspec)
-	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.Config.Genesis}); err != nil {
+	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.View().Genesis}); err != nil {
 		t.Fatalf("initial attach: %v", err)
 	}
 	if got := testGit(t, auditor, "rev-parse", ref); got != first {
@@ -432,8 +432,8 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if attached.Config.VerifiedFrontier == nil || attached.Config.VerifiedFrontier.Head != first {
-		t.Fatalf("initial verified frontier = %+v, want head %s", attached.Config.VerifiedFrontier, first)
+	if attached.View().VerifiedFrontier == nil || attached.View().VerifiedFrontier.Head != first {
+		t.Fatalf("initial verified frontier = %+v, want head %s", attached.View().VerifiedFrontier, first)
 	}
 	fetchRules := strings.Fields(testGit(t, auditor, "config", "--get-all", "remote.origin.fetch"))
 	if contains(fetchRules, forcedSequenceFetchRefspec) || !contains(fetchRules, sequenceFetchRefspec) {
@@ -442,13 +442,13 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 
 	if _, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "advance",
-		RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "advance",
+		RestsOn: []string{workspace.EventID(workspace.View().Genesis)}, IdempotencyKey: "advance",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	second := testGit(t, source, "rev-parse", ref)
 	testGit(t, source, "push", "origin", "refs/seq/*:refs/seq/*")
-	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.Config.Genesis}); err != nil {
+	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.View().Genesis}); err != nil {
 		t.Fatalf("forward attach: %v", err)
 	}
 	if got := testGit(t, auditor, "rev-parse", ref); got != second {
@@ -458,12 +458,12 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if attached.Config.VerifiedFrontier == nil || attached.Config.VerifiedFrontier.Head != second {
-		t.Fatalf("forward verified frontier = %+v, want head %s", attached.Config.VerifiedFrontier, second)
+	if attached.View().VerifiedFrontier == nil || attached.View().VerifiedFrontier.Head != second {
+		t.Fatalf("forward verified frontier = %+v, want head %s", attached.View().VerifiedFrontier, second)
 	}
 
 	testGit(t, "", "--git-dir", remote, "update-ref", ref, first, second)
-	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.Config.Genesis}); err == nil {
+	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.View().Genesis}); err == nil {
 		t.Fatal("attach to rewound remote sequence succeeded")
 	}
 	if got := testGit(t, auditor, "rev-parse", ref); got != second {
@@ -537,7 +537,7 @@ func TestAttachRejectsSpentIdempotencyReplayAfterLocalFrontierLoss(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := "refs/seq/" + workspace.Config.Genesis
+	ref := "refs/seq/" + workspace.View().Genesis
 	base := testGit(t, source, "rev-parse", ref)
 	_, private, err := workspace.Actor("operator")
 	if err != nil {
@@ -562,14 +562,14 @@ func TestAttachRejectsSpentIdempotencyReplayAfterLocalFrontierLoss(t *testing.T)
 	testGit(t, source, "remote", "add", "origin", remote)
 	testGit(t, source, "push", "origin", "refs/seq/*:refs/seq/*")
 	testGit(t, "", "clone", remote, auditor)
-	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.Config.Genesis}); err != nil {
+	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.View().Genesis}); err != nil {
 		t.Fatalf("initial attach: %v", err)
 	}
 
 	if err := workspace.Store.UpdateRef(ctx, ref, base, trusted); err != nil {
 		t.Fatal(err)
 	}
-	attack, err := kernel.Submit(ctx, workspace.Store, replayed, kernel.Options{SigningKey: workspace.Config.SequencerKey})
+	attack, err := kernel.Submit(ctx, workspace.Store, replayed, kernel.Options{SigningKey: workspace.View().SequencerKey})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,30 +578,30 @@ func TestAttachRejectsSpentIdempotencyReplayAfterLocalFrontierLoss(t *testing.T)
 	// branch is internally signed and must remain attachable; detecting that it
 	// omitted prior history needs a witness or trusted checkpoint.
 	testGit(t, "", "clone", remote, freshAuditor)
-	if err := attachCommand(ctx, []string{"--repo", freshAuditor, "--remote", "origin", "--genesis", workspace.Config.Genesis}); err != nil {
+	if err := attachCommand(ctx, []string{"--repo", freshAuditor, "--remote", "origin", "--genesis", workspace.View().Genesis}); err != nil {
 		t.Fatalf("fresh auditor rejected internally valid truncated branch: %v", err)
 	}
 	fresh, err := app.Open(ctx, freshAuditor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fresh.Config.VerifiedFrontier == nil || fresh.Config.VerifiedFrontier.Head != attack.Head {
-		t.Fatalf("fresh auditor frontier = %+v, want attack head %s", fresh.Config.VerifiedFrontier, attack.Head)
+	if fresh.View().VerifiedFrontier == nil || fresh.View().VerifiedFrontier.Head != attack.Head {
+		t.Fatalf("fresh auditor frontier = %+v, want attack head %s", fresh.View().VerifiedFrontier, attack.Head)
 	}
 	// Losing the tracking ref defeats Git's non-force comparison, but it must
 	// not erase the separately persisted verified frontier.
 	testGit(t, auditor, "update-ref", "-d", ref)
-	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.Config.Genesis}); err == nil || !strings.Contains(err.Error(), "non-descendant verified frontier") {
+	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.View().Genesis}); err == nil || !strings.Contains(err.Error(), "non-descendant verified frontier") {
 		t.Fatalf("attach accepted replay branch %s after losing its ref: %v", attack.Head, err)
 	}
 	attached, err := app.Open(ctx, auditor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if attached.Config.VerifiedFrontier == nil || attached.Config.VerifiedFrontier.Head != trusted {
-		t.Fatalf("rejected replay replaced trusted frontier: %+v, want %s", attached.Config.VerifiedFrontier, trusted)
+	if attached.View().VerifiedFrontier == nil || attached.View().VerifiedFrontier.Head != trusted {
+		t.Fatalf("rejected replay replaced trusted frontier: %+v, want %s", attached.View().VerifiedFrontier, trusted)
 	}
-	if verification, err := kernel.Verify(ctx, attached.Store, workspace.Config.Genesis); err != nil || verification.Head != attack.Head {
+	if verification, err := kernel.Verify(ctx, attached.Store, workspace.View().Genesis); err != nil || verification.Head != attack.Head {
 		t.Fatalf("attack branch was not independently valid, verification=%+v err=%v", verification, err)
 	}
 }
@@ -728,7 +728,7 @@ func TestReviewGuardRefusesAnotherActorsPromise(t *testing.T) {
 	foreignRequest, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review assigned to someone else",
 		Body: map[string]string{
-			"to": fixture.workspace.Config.Actors["other-reviewer"].Fingerprint, "conditions": "exact head",
+			"to": fixture.workspace.View().Actors["other-reviewer"].Fingerprint, "conditions": "exact head",
 		},
 		RestsOn: []string{fixture.artifact}, IdempotencyKey: "foreign-review-request",
 	})
@@ -908,7 +908,7 @@ func TestMergeLeavesAnUnrelatedCandidateArtifactLive(t *testing.T) {
 	unrelated, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "unrelated candidate still under review",
 		Body:    map[string]string{"path": "feature.txt", "commit": otherHead},
-		RestsOn: []string{fixture.workspace.EventID(fixture.workspace.Config.Genesis)}, IdempotencyKey: "unrelated-candidate",
+		RestsOn: []string{fixture.workspace.EventID(fixture.workspace.View().Genesis)}, IdempotencyKey: "unrelated-candidate",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1039,7 +1039,7 @@ func TestMergeUnreachableRetirementLeavesEverythingUnchanged(t *testing.T) {
 	stranger, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "another actor's pointer elsewhere",
 		Body:    map[string]string{"path": "elsewhere.txt", "commit": testGit(t, fixture.repo, "rev-parse", "HEAD")},
-		RestsOn: []string{fixture.workspace.EventID(fixture.workspace.Config.Genesis)}, IdempotencyKey: "stranger-elsewhere",
+		RestsOn: []string{fixture.workspace.EventID(fixture.workspace.View().Genesis)}, IdempotencyKey: "stranger-elsewhere",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1050,7 +1050,7 @@ func TestMergeUnreachableRetirementLeavesEverythingUnchanged(t *testing.T) {
 	plan := successionPlan{publish: []string{"elsewhere.txt"},
 		retire: map[string]string{stranger.Record.ID: "elsewhere.txt"}}
 	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, approval,
-		fixture.workspace.Config.Actors["operator"].Fingerprint); err == nil ||
+		fixture.workspace.View().Actors["operator"].Fingerprint); err == nil ||
 		!strings.Contains(err.Error(), "outside the reviewed paths") {
 		t.Fatalf("unreachable retirement error = %v", err)
 	}
@@ -1613,10 +1613,10 @@ func TestMergeGuardRefusesApprovalNotRestingOnNamedArtifact(t *testing.T) {
 	}
 	signed, err := intent.Sign(intent.Intent{
 		Version: intent.Version,
-		Target:  "git:" + fixture.workspace.Config.ObjectFormat + ":" + fixture.workspace.Config.Genesis,
-		Schema:  workroom.SchemaState, PayloadTree: "git:" + fixture.workspace.Config.ObjectFormat + ":" + tree,
+		Target:  "git:" + fixture.workspace.View().ObjectFormat + ":" + fixture.workspace.View().Genesis,
+		Schema:  workroom.SchemaState, PayloadTree: "git:" + fixture.workspace.View().ObjectFormat + ":" + tree,
 		RestsOn:        []string{fixture.promise, fixture.request},
-		IdempotencyNS:  fixture.workspace.Config.IdempotencyNamespace,
+		IdempotencyNS:  fixture.workspace.View().IdempotencyNamespace,
 		IdempotencyKey: "ungrounded-artifact-approval",
 	}, private)
 	if err != nil {
@@ -1949,7 +1949,7 @@ func newBatchFixture(t *testing.T) batchFixture {
 	if _, _, err := workspace.AddActor(ctx, "operator", "worker", "agent"); err != nil {
 		t.Fatal(err)
 	}
-	return batchFixture{t: t, ctx: ctx, repo: repo, workspace: workspace, genesis: workspace.EventID(workspace.Config.Genesis)}
+	return batchFixture{t: t, ctx: ctx, repo: repo, workspace: workspace, genesis: workspace.EventID(workspace.View().Genesis)}
 }
 
 func (f batchFixture) snapshot() app.Snapshot {
@@ -2170,7 +2170,7 @@ func newWorkflowFixtureRemoving(t *testing.T, removeBase bool) workflowFixture {
 	groundSubmission, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "repository base",
 		Body:    map[string]string{"path": "base.txt", "commit": testGit(t, repo, "rev-parse", "HEAD")},
-		RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "ground",
+		RestsOn: []string{workspace.EventID(workspace.View().Genesis)}, IdempotencyKey: "ground",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2185,7 +2185,7 @@ func newWorkflowFixtureRemoving(t *testing.T, removeBase bool) workflowFixture {
 	}
 	requestSubmission, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
-		Body:    map[string]string{"to": workspace.Config.Actors["reviewer"].Fingerprint, "conditions": "exact head"},
+		Body:    map[string]string{"to": workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head"},
 		RestsOn: []string{artifactSubmission.Record.ID}, IdempotencyKey: "review-request",
 	})
 	if err != nil {
@@ -2460,7 +2460,7 @@ func TestASecondServeProcessRefusesAndLeavesTheIncumbentUntouched(t *testing.T) 
 	ctx := context.Background()
 	binary := buildGS(t)
 	repo, workspace := servableRepository(t)
-	ref := app.ResidentRef(workspace.Config.Genesis)
+	ref := app.ResidentRef(workspace.View().Genesis)
 
 	serving := startServing(t, binary, repo)
 	url := awaitPublication(t, workspace, "")
@@ -2524,7 +2524,7 @@ func TestBatchProcessReadsItsFileAndReportsFailures(t *testing.T) {
 
 	t.Run("positional file", func(t *testing.T) {
 		repo, workspace := servableRepository(t)
-		seed := workspace.EventID(workspace.Config.Genesis)
+		seed := workspace.EventID(workspace.View().Genesis)
 		path := filepath.Join(t.TempDir(), "batch.json")
 		acts := fmt.Sprintf(`[{"verb":"state","kind":"assert","text":"the positional file was read","rests_on":[%q],"idempotency_key":"positional-file"}]`, seed)
 		if err := os.WriteFile(path, []byte(acts), 0o600); err != nil {
@@ -2716,7 +2716,7 @@ func TestStateCommandSignsAsTheEnvironmentIdentity(t *testing.T) {
 	}
 	projection := fixture.snapshot(t).Projection
 	last := projection.Statements[len(projection.Statements)-1]
-	if last.Actor != fixture.workspace.Config.Actors["reviewer"].Fingerprint {
+	if last.Actor != fixture.workspace.View().Actors["reviewer"].Fingerprint {
 		t.Fatalf("environment identity signed as %s", last.Actor)
 	}
 }
@@ -2750,10 +2750,10 @@ func TestInitRefusesToSeedAnOperatorNobodyChose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, exists := workspace.Config.Actors["alice"]; !exists {
-		t.Fatalf("the operator was not seeded as alice: %v", workspace.Config.Actors)
+	if _, exists := workspace.View().Actors["alice"]; !exists {
+		t.Fatalf("the operator was not seeded as alice: %v", workspace.View().Actors)
 	}
-	if _, exists := workspace.Config.Actors["operator"]; exists {
+	if _, exists := workspace.View().Actors["operator"]; exists {
 		t.Fatal("init seeded a default operator beside the chosen one")
 	}
 }
@@ -2843,7 +2843,7 @@ func TestASecondServeRefusesWhileTheFirstHoldsTheRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := app.ResidentRef(workspace.Config.Genesis)
+	ref := app.ResidentRef(workspace.View().Genesis)
 
 	ctx, stop := context.WithCancel(context.Background())
 	served := make(chan error, 1)
@@ -2934,7 +2934,7 @@ func TestServeRecoversAClaimLeftByADeadOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := app.ResidentRef(workspace.Config.Genesis)
+	ref := app.ResidentRef(workspace.View().Genesis)
 
 	// An address nothing is listening on, which is what a crashed owner leaves.
 	dead, err := net.Listen("tcp", "127.0.0.1:0")
@@ -2946,7 +2946,7 @@ func TestServeRecoversAClaimLeftByADeadOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	abandoned, err := json.Marshal(app.ResidentClaim{
-		Genesis: workspace.Config.Genesis,
+		Genesis: workspace.View().Genesis,
 		URL:     "http://" + address,
 		Nonce:   "00000000000000000000000000000000",
 		PID:     os.Getpid(),

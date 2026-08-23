@@ -142,8 +142,8 @@ func TestBuildActRequestHashesPayloadTreeUntilAdmissionWritesIt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if format != workspace.Config.ObjectFormat {
-			t.Fatalf("payload tree format = %q, want %q", format, workspace.Config.ObjectFormat)
+		if format != workspace.config.ObjectFormat {
+			t.Fatalf("payload tree format = %q, want %q", format, workspace.config.ObjectFormat)
 		}
 		if tree == "" {
 			tree = builtTree
@@ -201,7 +201,7 @@ func BenchmarkColdVersusResidentDeltaAtRealDepth(b *testing.B) {
 		b.Fatal(err)
 	}
 	heads := map[int]string{}
-	head, err := workspace.Store.Head(ctx, kernel.Ref(workspace.Config.Genesis))
+	head, err := workspace.Store.Head(ctx, kernel.Ref(workspace.config.Genesis))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func BenchmarkColdVersusResidentDeltaAtRealDepth(b *testing.B) {
 	}
 	current := heads[351]
 	for _, depth := range []int{25, 100, 350} {
-		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), heads[depth], current); err != nil {
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.config.Genesis), heads[depth], current); err != nil {
 			b.Fatal(err)
 		}
 		current = heads[depth]
@@ -229,7 +229,7 @@ func BenchmarkColdVersusResidentDeltaAtRealDepth(b *testing.B) {
 		if _, err := warm.Snapshot(ctx); err != nil {
 			b.Fatal(err)
 		}
-		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), heads[depth+1], current); err != nil {
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.config.Genesis), heads[depth+1], current); err != nil {
 			b.Fatal(err)
 		}
 		current = heads[depth+1]
@@ -812,7 +812,7 @@ func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {
 	for index, address := range []string{"agent", "@agent", agent.Fingerprint} {
 		record := actRecord(t, ctx, workspace, "human", Act{
 			Verb: VerbState, Kind: workroom.KindRequest, Text: "address", Body: map[string]string{"to": address, "conditions": "canonical"},
-			RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "address-" + string(rune('a'+index)),
+			RestsOn: []string{workspace.EventID(workspace.config.Genesis)}, IdempotencyKey: "address-" + string(rune('a'+index)),
 		})
 		decoded, err := workroom.Decode(record.Schema, record.Payload)
 		if err != nil {
@@ -824,7 +824,7 @@ func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {
 	}
 	if _, err := workspace.Act(ctx, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "bad", Body: map[string]string{"to": "missing", "conditions": "never"},
-		RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "bad-address",
+		RestsOn: []string{workspace.EventID(workspace.config.Genesis)}, IdempotencyKey: "bad-address",
 	}); err == nil || !strings.Contains(err.Error(), "request body.to") {
 		t.Fatalf("unknown request performer error = %v, want body.to", err)
 	}
@@ -934,7 +934,7 @@ func TestIdempotencyNamespaceIsStableAndLegacySafe(t *testing.T) {
 	build := func(key string) string {
 		request, err := workspace.BuildActRequest(ctx, private, "human", Act{
 			Verb: VerbState, Kind: workroom.KindAssert, Text: key,
-			RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: key,
+			RestsOn: []string{workspace.EventID(workspace.config.Genesis)}, IdempotencyKey: key,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -948,7 +948,7 @@ func TestIdempotencyNamespaceIsStableAndLegacySafe(t *testing.T) {
 	if got := build("stable"); got != "workroom/v0" {
 		t.Fatalf("new namespace = %q", got)
 	}
-	workspace.Config.IdempotencyNamespace = ""
+	workspace.config.IdempotencyNamespace = ""
 	if got := build("legacy"); got != "gs/human" {
 		t.Fatalf("legacy namespace = %q", got)
 	}
@@ -1095,7 +1095,7 @@ func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
 	}
 	attached := &Workspace{
 		Repo: workspace.Repo, GitDir: workspace.GitDir, CommonDir: workspace.CommonDir, MetaDir: t.TempDir(), Store: workspace.Store,
-		Config: apphost.Config{Version: 0, Genesis: workspace.Config.Genesis, ObjectFormat: workspace.Config.ObjectFormat, ReadOnly: true},
+		config: apphost.Config{Version: 0, Genesis: workspace.config.Genesis, ObjectFormat: workspace.config.ObjectFormat, ReadOnly: true},
 	}
 	// An attached view reads the binding for itself, as opening it would: a
 	// workspace that never selected an interpreter has none to fold with.
@@ -1135,7 +1135,7 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 	if workspace.snapshotCache != cached || first.Head != second.Head {
 		t.Fatal("unchanged head did not reuse the verified snapshot")
 	}
-	actRecord(t, ctx, workspace, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "advance", RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "advance"})
+	actRecord(t, ctx, workspace, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "advance", RestsOn: []string{workspace.EventID(workspace.config.Genesis)}, IdempotencyKey: "advance"})
 	thirdResult, err := workspace.SnapshotWithSource(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -1152,7 +1152,7 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	actRecord(t, ctx, external, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "external advance", RestsOn: []string{workspace.EventID(workspace.Config.Genesis)}, IdempotencyKey: "external-advance"})
+	actRecord(t, ctx, external, "human", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "external advance", RestsOn: []string{workspace.EventID(workspace.config.Genesis)}, IdempotencyKey: "external-advance"})
 	fourthResult, err := workspace.SnapshotWithSource(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -1328,7 +1328,7 @@ func TestVerifiedFrontierPersistenceIsPassiveWhenUnchangedAndFailClosedWhenAdvan
 		t.Fatal(err)
 	}
 	workspace.MetaDir = blockedMeta
-	workspace.Config.ReadOnly = true
+	workspace.config.ReadOnly = true
 
 	unchanged, err := workspace.Snapshot(ctx)
 	if err != nil {
@@ -1353,8 +1353,8 @@ func TestVerifiedFrontierPersistenceIsPassiveWhenUnchangedAndFailClosedWhenAdvan
 	if _, err := workspace.Verify(ctx); err == nil || !strings.Contains(err.Error(), "local rollback witness could not advance") {
 		t.Fatalf("advanced full audit without durable witness error = %v", err)
 	}
-	if workspace.Config.VerifiedFrontier == nil || workspace.Config.VerifiedFrontier.Head != trusted.Head || workspace.Config.VerifiedFrontier.Depth != trusted.Depth {
-		t.Fatalf("failed persistence moved trusted frontier to %+v, want %+v", workspace.Config.VerifiedFrontier, trusted)
+	if workspace.config.VerifiedFrontier == nil || workspace.config.VerifiedFrontier.Head != trusted.Head || workspace.config.VerifiedFrontier.Depth != trusted.Depth {
+		t.Fatalf("failed persistence moved trusted frontier to %+v, want %+v", workspace.config.VerifiedFrontier, trusted)
 	}
 
 	// A failed read must not leave the reusable reader ahead of the projection.
@@ -1392,12 +1392,12 @@ func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		firstCommit := eventCommit(t, workspace.Config.ObjectFormat, first.ID)
-		secondCommit := eventCommit(t, workspace.Config.ObjectFormat, second.ID)
-		if trusted.Head != secondCommit || workspace.Config.VerifiedFrontier == nil || workspace.Config.VerifiedFrontier.Head != secondCommit {
-			t.Fatalf("trusted frontier = snapshot %+v config %+v, want %s", trusted, workspace.Config.VerifiedFrontier, secondCommit)
+		firstCommit := eventCommit(t, workspace.config.ObjectFormat, first.ID)
+		secondCommit := eventCommit(t, workspace.config.ObjectFormat, second.ID)
+		if trusted.Head != secondCommit || workspace.config.VerifiedFrontier == nil || workspace.config.VerifiedFrontier.Head != secondCommit {
+			t.Fatalf("trusted frontier = snapshot %+v config %+v, want %s", trusted, workspace.config.VerifiedFrontier, secondCommit)
 		}
-		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.Config.Genesis), firstCommit, secondCommit); err != nil {
+		if err := workspace.Store.UpdateRef(ctx, kernel.Ref(workspace.config.Genesis), firstCommit, secondCommit); err != nil {
 			t.Fatal(err)
 		}
 		shorter, err := Open(ctx, workspace.Repo)
@@ -1425,8 +1425,8 @@ func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
 		if _, err := restarted.Snapshot(ctx); err == nil || !strings.Contains(err.Error(), "non-descendant verified frontier") {
 			t.Fatalf("restarted workspace accepted sibling after verified rewind: %v", err)
 		}
-		if restarted.Config.VerifiedFrontier == nil || restarted.Config.VerifiedFrontier.Head != secondCommit {
-			t.Fatalf("rejected sibling replaced trusted frontier: %+v", restarted.Config.VerifiedFrontier)
+		if restarted.config.VerifiedFrontier == nil || restarted.config.VerifiedFrontier.Head != secondCommit {
+			t.Fatalf("rejected sibling replaced trusted frontier: %+v", restarted.config.VerifiedFrontier)
 		}
 	})
 
@@ -1514,12 +1514,12 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkpointRef := kernel.CheckpointRef(workspace.Config.Genesis)
+	checkpointRef := kernel.CheckpointRef(workspace.config.Genesis)
 	checkpointHead, err := workspace.Store.Head(ctx, checkpointRef)
 	if err != nil {
 		t.Fatalf("checkpoint ref: %v", err)
 	}
-	pointer := filepath.Join(workspace.MetaDir, "checkpoints", workspace.Config.Genesis+".json")
+	pointer := filepath.Join(workspace.MetaDir, "checkpoints", workspace.config.Genesis+".json")
 	if info, err := os.Stat(pointer); err != nil || !info.Mode().IsRegular() {
 		t.Fatalf("local checkpoint pointer was not persisted at %s: info=%v err=%v", pointer, info, err)
 	}
@@ -1543,7 +1543,7 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 		t.Fatalf("exact restart rewrote checkpoint: before=%s after=%s err=%v", checkpointHead, unchanged, err)
 	}
 
-	if err := workspace.Store.UpdateRef(ctx, checkpointRef, workspace.Config.Genesis, checkpointHead); err != nil {
+	if err := workspace.Store.UpdateRef(ctx, checkpointRef, workspace.config.Genesis, checkpointHead); err != nil {
 		t.Fatal(err)
 	}
 	fromLocal, err := Open(ctx, workspace.Repo)
@@ -1583,7 +1583,7 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	if err := fromLocal.InvalidateCheckpoint(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(pointer, []byte(`{"schema":"gitseq-checkpoint-pointer@1","commit":"`+workspace.Config.Genesis+`"}`), 0o600); err != nil {
+	if err := os.WriteFile(pointer, []byte(`{"schema":"gitseq-checkpoint-pointer@1","commit":"`+workspace.config.Genesis+`"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	repairing, err := Open(ctx, workspace.Repo)
@@ -1601,7 +1601,7 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	if repairedResult.Source != SnapshotSourceColdFullAudit {
 		t.Fatalf("corrupt checkpoint fallback reported %q", repairedResult.Source)
 	}
-	if repairedHead, err := workspace.Store.Head(ctx, checkpointRef); err != nil || repairedHead == workspace.Config.Genesis {
+	if repairedHead, err := workspace.Store.Head(ctx, checkpointRef); err != nil || repairedHead == workspace.config.Genesis {
 		t.Fatalf("full audit did not repair checkpoint ref: head=%s err=%v", repairedHead, err)
 	}
 }
@@ -1620,7 +1620,7 @@ func TestCheckpointOffForcesColdAuditWithoutChangingPersistentSelectors(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := kernel.CheckpointRef(workspace.Config.Genesis)
+	ref := kernel.CheckpointRef(workspace.config.Genesis)
 	refBefore, err := workspace.Store.Head(ctx, ref)
 	if err != nil {
 		t.Fatal(err)
@@ -1653,7 +1653,7 @@ func TestGenesisIsValidatedBeforeCheckpointPathSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(workspace.MetaDir, "config.json")
-	config := workspace.Config
+	config := workspace.config
 	config.Genesis = "../outside"
 	content, err := json.Marshal(config)
 	if err != nil {
@@ -1704,7 +1704,7 @@ func TestRetireActorEndsMembershipAndCustodyWhileKeepingThePrincipalVisible(t *t
 	if statement := statementActor(t, workspace, ctx, spoken.ID); statement != instance.Fingerprint {
 		t.Fatalf("the retired principal's event lost its author: %s", statement)
 	}
-	if _, exists := workspace.Config.Actors["claude.2"]; exists {
+	if _, exists := workspace.config.Actors["claude.2"]; exists {
 		t.Fatal("retired instance kept local custody")
 	}
 	if _, err := os.Stat(instance.KeyFile); !os.IsNotExist(err) {
@@ -1746,7 +1746,7 @@ func TestIneffectiveRetirementLeavesMembershipAndCustodyAlone(t *testing.T) {
 	if state.Retired || len(state.Roles) == 0 {
 		t.Fatalf("an ineffective supersession retired the target: %+v", state)
 	}
-	if _, exists := workspace.Config.Actors["claude.3"]; !exists {
+	if _, exists := workspace.config.Actors["claude.3"]; !exists {
 		t.Fatal("an ineffective retirement deleted the target's custody")
 	}
 	if _, err := os.Stat(target.KeyFile); err != nil {

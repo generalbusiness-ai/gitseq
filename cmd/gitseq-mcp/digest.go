@@ -63,7 +63,7 @@ func liveLabel(live liveView) string   { return statusview.LiveLabel(live) }
 // yields the empty string, which simply matches nothing rather than matching
 // everyone.
 func (s *mcpServer) fingerprint(current *room) string {
-	return current.workspace.Config.Actors[s.actor].Fingerprint
+	return current.workspace.View().Actors[s.actor].Fingerprint
 }
 
 func (s *mcpServer) digest(current *room, status service.Status, degraded bool) actorStatus {

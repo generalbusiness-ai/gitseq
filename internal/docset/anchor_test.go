@@ -43,8 +43,8 @@ func TestGateEveryNamedActResolvesToALiveRecord(t *testing.T) {
 		t.Skipf("no workroom in this checkout, so the named acts cannot be resolved here: %v", err)
 	}
 	genesis, _, _ := strings.Cut(acts[0], "#")
-	if genesis != "git:sha1:"+workspace.Config.Genesis && genesis != "git:sha256:"+workspace.Config.Genesis {
-		t.Skipf("the set names workroom %s and this checkout holds %s", genesis, workspace.Config.Genesis)
+	if genesis != "git:sha1:"+workspace.View().Genesis && genesis != "git:sha256:"+workspace.View().Genesis {
+		t.Skipf("the set names workroom %s and this checkout holds %s", genesis, workspace.View().Genesis)
 	}
 	snapshot, err := workspace.Snapshot(context.Background())
 	if err != nil {

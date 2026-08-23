@@ -249,7 +249,7 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	if err := json.Unmarshal(actorBody, &actorStatus); err != nil {
 		t.Fatal(err)
 	}
-	if actorStatus.You.Fingerprint != workspace.Config.Actors["human"].Fingerprint || actorStatus.Totals.Depth != status.Durable.Depth ||
+	if actorStatus.You.Fingerprint != workspace.View().Actors["human"].Fingerprint || actorStatus.Totals.Depth != status.Durable.Depth ||
 		actorStatus.Totals.FullProjectionAt == "" {
 		t.Fatalf("bounded actor status lost identity, frontier, or full-projection route: %+v", actorStatus)
 	}
@@ -269,7 +269,7 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 		summary.TrustBoundary != TrustedProcessPosture {
 		t.Fatalf("summary frontier differs from full status: summary=%+v full=%+v", summary, status)
 	}
-	fingerprint := workspace.Config.Actors["human"].Fingerprint
+	fingerprint := workspace.View().Actors["human"].Fingerprint
 	response, err = http.Get(httpServer.URL + "/v0/orientation/" + fingerprint)
 	if err != nil {
 		t.Fatal(err)
@@ -344,7 +344,7 @@ func TestSelectiveWorkAndInspectionEndpoints(t *testing.T) {
 	httpServer := httptest.NewServer(server.Handler())
 	defer httpServer.Close()
 
-	actor := workspace.Config.Actors["human"]
+	actor := workspace.View().Actors["human"]
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -1077,9 +1077,9 @@ func TestCheckpointProjectionRebuildIsSingleFlightAndPublishesAtomically(t *test
 		t.Fatal(err)
 	}
 	checkpointWriter := kernel.NewReader(workspace.Store, kernel.CheckpointOptions{
-		Enabled: true, SigningKey: workspace.Config.SequencerKey,
+		Enabled: true, SigningKey: workspace.View().SequencerKey,
 	})
-	if _, err := checkpointWriter.Load(ctx, workspace.Config.Genesis); err != nil {
+	if _, err := checkpointWriter.Load(ctx, workspace.View().Genesis); err != nil {
 		t.Fatal(err)
 	}
 	cold, err := app.Open(ctx, repo)
@@ -1490,7 +1490,7 @@ func TestIdentitySaysWhichWorkroomAnswersAndNothingElse(t *testing.T) {
 	if err := json.Unmarshal(body, &identity); err != nil {
 		t.Fatalf("identity body %q: %v", body, err)
 	}
-	if len(identity) != 1 || identity["genesis"] != workspace.Config.Genesis {
+	if len(identity) != 1 || identity["genesis"] != workspace.View().Genesis {
 		t.Fatalf("identity answered %v; it must carry the genesis and nothing else", identity)
 	}
 

@@ -134,7 +134,7 @@ func (s *Server) routes() {
 // snapshot, because a probe that queued behind a cold audit would make a
 // healthy incumbent look hung and invite a takeover.
 func (s *Server) handleIdentity(writer http.ResponseWriter, request *http.Request) {
-	write(writer, map[string]string{"genesis": s.workspace.Config.Genesis}, nil)
+	write(writer, map[string]string{"genesis": s.workspace.View().Genesis}, nil)
 }
 
 func (s *Server) handleOrientation(writer http.ResponseWriter, request *http.Request) {

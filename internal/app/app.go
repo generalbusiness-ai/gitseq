@@ -52,8 +52,33 @@ type Workspace struct {
 	CommonDir string
 	MetaDir   string
 	Store     gitstore.Store
-	Config    apphost.Config
-	observer  observe.Observer
+	// config is the workspace's live configuration state: its actor map and
+	// frontier pointer are the memory this workspace mutates. It is
+	// unexported so the compiler makes View the only way a configuration
+	// leaves this package — as a copy sharing no mutable state with the
+	// workspace. Tests outside this package that need to seed custody edit
+	// the stored file through apphost.SaveConfig and reopen the workspace,
+	// going through the same load path production does.
+	config   apphost.Config
+	observer observe.Observer
+
+	// configMu guards Config's mutable state — the actor map and the
+	// verified-frontier pointer — together with the save that persists it and
+	// the rollback that undoes it, so a View never observes a half-applied
+	// mutation and memory never silently diverges from disk. The scalar
+	// fields (Genesis, ObjectFormat, ReadOnly, SequencerKey, PayloadCeiling,
+	// IdempotencyNamespace, Version) are written once before the workspace is
+	// shared and never again, so reading them takes no lock.
+	//
+	// Lock order: configMu is the innermost lock. snapshotWithSource and
+	// Verify hold snapshotMu when they call rememberVerifiedFrontier, which
+	// acquires configMu, so the established order is snapshotMu before
+	// configMu. Nothing holding configMu may therefore call into a path that
+	// acquires snapshotMu — Act, Snapshot, AcceptSubmission, Verify — which
+	// is why AddActor and RetireActor take configMu only around their
+	// config read-modify-save sections and release it across their durable
+	// appends.
+	configMu sync.Mutex
 
 	// selected is the interpreter this repository is bound to. It is resolved
 	// when the workspace is made and never again, so nothing appended
@@ -312,7 +337,7 @@ func OpenObserved(ctx context.Context, repo string, observer observe.Observer) (
 	if err != nil {
 		return nil, err
 	}
-	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir, Observer: observer}, Config: config, observer: observer}
+	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir, Observer: observer}, config: config, observer: observer}
 	// Which application interprets this log is settled here, once, before the
 	// workspace can fold or append anything. Reading the binding later would
 	// make the answer depend on what happened after the open: a replacement
@@ -379,7 +404,7 @@ func initHosted(ctx context.Context, repo, operatorName string, ceiling uint64, 
 	if err != nil {
 		return nil, workroom.Record{}, err
 	}
-	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: store, Config: apphost.Config{
+	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: store, config: apphost.Config{
 		Version: 0, Genesis: genesis, ObjectFormat: format, PayloadCeiling: ceiling, IdempotencyNamespace: "workroom/v0",
 		SequencerKey: sequencerKey, Actors: map[string]apphost.Actor{operatorName: {Name: operatorName, Fingerprint: fingerprint, KeyFile: actorPath}},
 	}}
@@ -405,7 +430,10 @@ func initHosted(ctx context.Context, repo, operatorName string, ceiling uint64, 
 			return nil, workroom.Record{}, err
 		}
 	}
-	if err := workspace.save(); err != nil {
+	workspace.configMu.Lock()
+	err = workspace.save()
+	workspace.configMu.Unlock()
+	if err != nil {
 		return nil, workroom.Record{}, err
 	}
 	return workspace, submission.Record, nil
@@ -444,53 +472,82 @@ func readActor(path string) (ed25519.PrivateKey, error) {
 	return ed25519.PrivateKey(decoded), nil
 }
 
+// save persists Config. Callers hold configMu: the serialization reads the
+// actor map and frontier pointer, so an unlocked save would race the very
+// mutations it is persisting.
 func (w *Workspace) save() error {
-	return apphost.SaveConfig(w.MetaDir, w.Config)
+	return apphost.SaveConfig(w.MetaDir, w.config)
 }
+
+// View is how a configuration leaves this workspace: as a value sharing no
+// mutable state with it. Handing out the config field itself would alias the
+// live actor map and frontier pointer, so a holder could mutate custody state
+// it was never handed, and two goroutines could race on it. Cloning at the
+// boundary makes the returned value the caller's alone, and cloning under
+// configMu makes the copy a consistent point-in-time observation rather than
+// a read racing a concurrent mutation.
+func (w *Workspace) View() apphost.Config {
+	w.configMu.Lock()
+	defer w.configMu.Unlock()
+	return w.config.Clone()
+}
+
+// attachAbsenceGate runs on the attach path that has observed no stored
+// configuration and not yet created one. It exists so a test can pin a
+// concurrent creator into exactly that window; production leaves it empty.
+var attachAbsenceGate = func() {}
 
 func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Workspace, error) {
 	if err := apphost.ValidateGenesis(objectFormat, genesis); err != nil {
 		return nil, fmt.Errorf("invalid attachment genesis: %w", err)
 	}
-	gitDir, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
 	if err != nil {
 		return nil, err
 	}
 	metaDir := apphost.MetaDir(commonDir)
-	configPath := filepath.Join(metaDir, apphost.ConfigFile)
-	if _, err := os.Stat(configPath); err == nil {
-		workspace, err := Open(ctx, repo)
-		if err != nil {
+	if _, err := os.Stat(filepath.Join(metaDir, apphost.ConfigFile)); errors.Is(err, os.ErrNotExist) {
+		attachAbsenceGate()
+		if err := os.MkdirAll(metaDir, 0o700); err != nil {
 			return nil, err
 		}
-		if !workspace.Config.ReadOnly {
-			return nil, errors.New("cannot attach over a writable workroom")
+		created := apphost.Config{Version: 0, Genesis: genesis, ObjectFormat: objectFormat, ReadOnly: true}
+		if err := apphost.CreateConfig(metaDir, created); err != nil && !errors.Is(err, os.ErrExist) {
+			return nil, err
 		}
-		if workspace.Config.Genesis != genesis {
-			return nil, errors.New("attached workroom genesis does not match --genesis")
-		}
-		if workspace.Config.ObjectFormat != objectFormat {
-			return nil, errors.New("attached workroom object format changed")
-		}
-		return workspace, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
+		// os.ErrExist means a concurrent attach created the configuration
+		// after the absence check. The stored one, not this call's argument,
+		// is now the one to answer for, and the comparison below judges it.
+	} else if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(metaDir, 0o700); err != nil {
+	// The configuration exists, so opening it is what selects the interpreter.
+	// Attaching and opening then reach the same answer by the same path, and no
+	// workspace leaves this package without one. Comparing after the open — on
+	// the creating path too — makes a reported success an observation of the
+	// stored genesis rather than an echo of the argument: an attach whose
+	// creation lost the race fails here instead of silently answering for a
+	// sequence it never stored.
+	workspace, err := Open(ctx, repo)
+	if err != nil {
 		return nil, err
 	}
-	workspace := &Workspace{Repo: repo, GitDir: gitDir, CommonDir: commonDir, MetaDir: metaDir, Store: gitstore.Store{Repo: commonDir}, Config: apphost.Config{Version: 0, Genesis: genesis, ObjectFormat: objectFormat, ReadOnly: true}}
-	if err := workspace.save(); err != nil {
-		return nil, err
+	if !workspace.config.ReadOnly {
+		return nil, errors.New("cannot attach over a writable workroom")
 	}
-	// The configuration is written, so opening it is what selects the
-	// interpreter. Attaching and opening then reach the same answer by the same
-	// path, and no workspace leaves this package without one.
-	return Open(ctx, repo)
+	if workspace.config.Genesis != genesis {
+		return nil, errors.New("attached workroom genesis does not match --genesis")
+	}
+	if workspace.config.ObjectFormat != objectFormat {
+		return nil, errors.New("attached workroom object format changed")
+	}
+	return workspace, nil
 }
 
 func (w *Workspace) Actor(name string) (apphost.Actor, ed25519.PrivateKey, error) {
-	actor, ok := w.Config.Actors[name]
+	w.configMu.Lock()
+	actor, ok := w.config.Actors[name]
+	w.configMu.Unlock()
 	if !ok {
 		return apphost.Actor{}, nil, fmt.Errorf("unknown actor %q", name)
 	}
@@ -499,7 +556,10 @@ func (w *Workspace) Actor(name string) (apphost.Actor, ed25519.PrivateKey, error
 }
 
 func (w *Workspace) AddActor(ctx context.Context, operatorName, name, kind string) (apphost.Actor, []workroom.Record, error) {
-	if _, exists := w.Config.Actors[name]; exists {
+	w.configMu.Lock()
+	_, exists := w.config.Actors[name]
+	w.configMu.Unlock()
+	if exists {
 		return apphost.Actor{}, nil, fmt.Errorf("actor %q already exists", name)
 	}
 	if kind == "" {
@@ -514,7 +574,7 @@ func (w *Workspace) AddActor(ctx context.Context, operatorName, name, kind strin
 	}
 	_ = private
 	actor := apphost.Actor{Name: name, Fingerprint: fingerprint, KeyFile: path}
-	stateSubmission, err := w.Act(ctx, operatorName, Act{Verb: VerbState, Kind: workroom.KindRoster, Text: name + " joins as " + kind, Body: map[string]string{"actor": fingerprint, "kind": kind, "name": name, "role": "participant"}, RestsOn: []string{w.EventID(w.Config.Genesis)}, IdempotencyKey: "actor-" + name})
+	stateSubmission, err := w.Act(ctx, operatorName, Act{Verb: VerbState, Kind: workroom.KindRoster, Text: name + " joins as " + kind, Body: map[string]string{"actor": fingerprint, "kind": kind, "name": name, "role": "participant"}, RestsOn: []string{w.EventID(w.config.Genesis)}, IdempotencyKey: "actor-" + name})
 	if err != nil {
 		return apphost.Actor{}, nil, err
 	}
@@ -524,8 +584,19 @@ func (w *Workspace) AddActor(ctx context.Context, operatorName, name, kind strin
 		return apphost.Actor{}, nil, err
 	}
 	ratification := ratificationSubmission.Record
-	w.Config.Actors[name] = actor
+	// The durable appends above take snapshotMu, so configMu was released
+	// across them; custody is granted in one locked read-modify-save so a
+	// concurrent View never observes the map with the entry but the file
+	// without it, and a failed save rolls the map back rather than leaving
+	// memory claiming custody the disk never recorded.
+	w.configMu.Lock()
+	defer w.configMu.Unlock()
+	if _, exists := w.config.Actors[name]; exists {
+		return apphost.Actor{}, nil, fmt.Errorf("actor %q already exists", name)
+	}
+	w.config.Actors[name] = actor
 	if err := w.save(); err != nil {
+		delete(w.config.Actors, name)
 		return apphost.Actor{}, nil, err
 	}
 	return actor, []workroom.Record{state, ratification}, nil
@@ -626,10 +697,23 @@ func (w *Workspace) RetireActor(ctx context.Context, retirerName, actorAddress s
 		}
 		return nil, fmt.Errorf("retiring %s was ineffective (%s); its membership and its key are unchanged", actor.Name, reason)
 	}
-	delete(w.Config.Actors, actor.Name)
+	// Custody ends in one locked read-modify-save: a concurrent View never
+	// observes the entry gone from the map while the file still grants it,
+	// and a failed save restores the entry so memory keeps agreeing with
+	// disk. The lock is taken only now — the durable supersession and the
+	// snapshots above acquire snapshotMu, which must never be waited on
+	// while holding configMu.
+	w.configMu.Lock()
+	held, wasHeld := w.config.Actors[actor.Name]
+	delete(w.config.Actors, actor.Name)
 	if err := w.save(); err != nil {
+		if wasHeld {
+			w.config.Actors[actor.Name] = held
+		}
+		w.configMu.Unlock()
 		return nil, err
 	}
+	w.configMu.Unlock()
 	if actor.KeyFile != "" {
 		if err := os.Remove(actor.KeyFile); err != nil && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("retired %s durably, but its key file remains: %w", actor.Name, err)
@@ -982,7 +1066,7 @@ func (w *Workspace) signRequest(ctx context.Context, private ed25519.PrivateKey,
 	// blobs and trees twice, and leaves a request rejected during construction
 	// with no objects written. The kernel reconstructs this tree, checks the
 	// exact identity, and only then sequences the event.
-	tree, err := gitstore.HashPayloadTree(w.Config.ObjectFormat, encoded, attachments)
+	tree, err := gitstore.HashPayloadTree(w.config.ObjectFormat, encoded, attachments)
 	if err != nil {
 		return kernel.Request{}, err
 	}
@@ -992,15 +1076,15 @@ func (w *Workspace) signRequest(ctx context.Context, private ed25519.PrivateKey,
 			return kernel.Request{}, err
 		}
 	}
-	namespace := w.Config.IdempotencyNamespace
+	namespace := w.config.IdempotencyNamespace
 	if namespace == "" {
 		// Workrooms created before the stable namespace field keep their original
 		// retry identity. Changing it in place could replay an outstanding act.
 		namespace = "gs/" + actorName
 	}
 	signed, err := intent.Sign(intent.Intent{
-		Version: intent.Version, Target: "git:" + w.Config.ObjectFormat + ":" + w.Config.Genesis,
-		Schema: schema, PayloadTree: "git:" + w.Config.ObjectFormat + ":" + tree,
+		Version: intent.Version, Target: "git:" + w.config.ObjectFormat + ":" + w.config.Genesis,
+		Schema: schema, PayloadTree: "git:" + w.config.ObjectFormat + ":" + tree,
 		RestsOn: rests, IdempotencyNS: namespace, IdempotencyKey: key,
 	}, private)
 	if err != nil {
@@ -1057,11 +1141,13 @@ func cloneBody(input map[string]string) map[string]string {
 // ResolveActorAddress accepts the human-facing forms used at application
 // edges. Durable request payloads always carry the actor fingerprint.
 func (w *Workspace) ResolveActorAddress(address string) (apphost.Actor, error) {
+	w.configMu.Lock()
+	defer w.configMu.Unlock()
 	name := strings.TrimPrefix(address, "@")
-	if actor, ok := w.Config.Actors[name]; ok {
+	if actor, ok := w.config.Actors[name]; ok {
 		return actor, nil
 	}
-	for _, actor := range w.Config.Actors {
+	for _, actor := range w.config.Actors {
 		if actor.Fingerprint == address {
 			return actor, nil
 		}
@@ -1077,7 +1163,7 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 			done(resultErr)
 		}
 	}()
-	if w.Config.ReadOnly {
+	if w.config.ReadOnly {
 		resultErr = errors.New("attached workroom is read-only; configure local custody and a sequencer endpoint to submit")
 		return Submission{}, resultErr
 	}
@@ -1152,7 +1238,7 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 	w.submitterOnce.Do(func() {
 		checkpoint := w.checkpointOptions()
 		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{
-			SigningKey: w.Config.SequencerKey, CheckpointEnabled: checkpoint.Enabled, CheckpointPointer: checkpoint.Pointer, PreAppend: w.allowlist,
+			SigningKey: w.config.SequencerKey, CheckpointEnabled: checkpoint.Enabled, CheckpointPointer: checkpoint.Pointer, PreAppend: w.allowlist,
 			MaxQueueDepth: ResidentQueueDepth,
 		})
 	})
@@ -1210,7 +1296,9 @@ func cloneAttachments(input map[string][]byte) map[string][]byte {
 
 func (w *Workspace) allowlist(_ context.Context, admission kernel.Admission) error {
 	fingerprint := intent.ActorFingerprint(admission.ActorKey)
-	for _, actor := range w.Config.Actors {
+	w.configMu.Lock()
+	defer w.configMu.Unlock()
+	for _, actor := range w.config.Actors {
 		if actor.Fingerprint == fingerprint {
 			return nil
 		}
@@ -1227,7 +1315,7 @@ func randomKey() (string, error) {
 }
 
 func (w *Workspace) EventID(commit string) string {
-	return "git:" + w.Config.ObjectFormat + ":" + w.Config.Genesis + "#git:" + w.Config.ObjectFormat + ":" + commit
+	return "git:" + w.config.ObjectFormat + ":" + w.config.Genesis + "#git:" + w.config.ObjectFormat + ":" + commit
 }
 
 // RebuildProgress reports how far a cold verified rebuild has got, and whether
@@ -1331,7 +1419,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 	defer w.snapshotMu.Unlock()
 	selected, refusal := w.interpreter()
 	profile := selected.projectionProfile()
-	head, err := w.Store.Head(ctx, kernel.Ref(w.Config.Genesis))
+	head, err := w.Store.Head(ctx, kernel.Ref(w.config.Genesis))
 	if err != nil {
 		return SourcedSnapshot{}, err
 	}
@@ -1357,10 +1445,10 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		streamedEvents = 0
 		streamedFoldDuration = 0
 		if refusal != nil {
-			return reader.LoadWithProgress(ctx, w.Config.Genesis, progress)
+			return reader.LoadWithProgress(ctx, w.config.Genesis, progress)
 		}
 		streamedFolder = selected.newFolder(nil)
-		return reader.LoadWithProgressStream(ctx, w.Config.Genesis, progress, func(event kernel.Event) error {
+		return reader.LoadWithProgressStream(ctx, w.config.Genesis, progress, func(event kernel.Event) error {
 			started := time.Time{}
 			if w.observer != nil {
 				started = time.Now()
@@ -1488,7 +1576,7 @@ func (w *Workspace) record(event kernel.Event) workroom.Record {
 func (w *Workspace) Verify(ctx context.Context) (kernel.Verification, error) {
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
-	verification, err := kernel.Verify(ctx, w.Store, w.Config.Genesis)
+	verification, err := kernel.Verify(ctx, w.Store, w.config.Genesis)
 	if err != nil {
 		return kernel.Verification{}, err
 	}
@@ -1498,8 +1586,16 @@ func (w *Workspace) Verify(ctx context.Context) (kernel.Verification, error) {
 	return verification, nil
 }
 
+// rememberVerifiedFrontier advances the persisted frontier marker. Every
+// caller holds snapshotMu, which serializes frontier writers; configMu is
+// additionally held for the whole read-validate-write-save-rollback so a
+// concurrent View never observes the pointer mid-update or a memory state the
+// save rolled back. Lock order is therefore snapshotMu then configMu, and the
+// store reads below acquire nothing further.
 func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification kernel.Verification) error {
-	previous := w.Config.VerifiedFrontier
+	w.configMu.Lock()
+	defer w.configMu.Unlock()
+	previous := w.config.VerifiedFrontier
 	if previous != nil {
 		if verification.Depth < previous.Depth {
 			return fmt.Errorf("refuse verified frontier rollback: depth %d is shorter than previously verified depth %d", verification.Depth, previous.Depth)
@@ -1525,9 +1621,9 @@ func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification k
 			return fmt.Errorf("refuse non-descendant verified frontier: %s does not continue previously verified head %s", verification.Head, previous.Head)
 		}
 	}
-	w.Config.VerifiedFrontier = &apphost.VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
+	w.config.VerifiedFrontier = &apphost.VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
 	if err := w.save(); err != nil {
-		w.Config.VerifiedFrontier = previous
+		w.config.VerifiedFrontier = previous
 		return fmt.Errorf("persist verified frontier before returning data: local rollback witness could not advance: %w", err)
 	}
 	return nil
@@ -1538,10 +1634,12 @@ func (w *Workspace) ActorViews(ctx context.Context) ([]ActorView, error) {
 	if err != nil {
 		return nil, err
 	}
-	custody := make(map[string]apphost.Actor, len(w.Config.Actors))
-	for _, actor := range w.Config.Actors {
+	w.configMu.Lock()
+	custody := make(map[string]apphost.Actor, len(w.config.Actors))
+	for _, actor := range w.config.Actors {
 		custody[actor.Fingerprint] = actor
 	}
+	w.configMu.Unlock()
 	views := make([]ActorView, 0, len(snapshot.Projection.Actors))
 	for fingerprint, state := range snapshot.Projection.Actors {
 		local, held := custody[fingerprint]

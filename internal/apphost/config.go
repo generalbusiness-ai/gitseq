@@ -51,6 +51,27 @@ type Config struct {
 	VerifiedFrontier     *VerifiedFrontier `json:"verified_frontier,omitempty"`
 }
 
+// Clone returns a configuration sharing no mutable state with the receiver.
+// Config is a value type, but two of its fields are references — the actor map
+// and the frontier pointer — so a plain struct copy still aliases them, and a
+// holder of the "copy" could mutate live custody state. Every other field is a
+// scalar, and Actor holds only strings, so copying these two is a complete
+// deep copy.
+func (c Config) Clone() Config {
+	if c.Actors != nil {
+		actors := make(map[string]Actor, len(c.Actors))
+		for name, actor := range c.Actors {
+			actors[name] = actor
+		}
+		c.Actors = actors
+	}
+	if c.VerifiedFrontier != nil {
+		frontier := *c.VerifiedFrontier
+		c.VerifiedFrontier = &frontier
+	}
+	return c
+}
+
 // Validate rejects a configuration that cannot name one sequence exactly. A
 // writable repository without a sequencer key could not append, and a frontier
 // marker with no head would claim a verified position that names nothing.
@@ -91,6 +112,61 @@ func SaveConfig(metaDir string, config Config) error {
 	}
 	return WriteFileAtomically(filepath.Join(metaDir, ConfigFile), append(content, '\n'))
 }
+
+// CreateConfig stores a configuration only where none exists yet. Creation is
+// exclusive rather than replacing: when two creators race, exactly one wins
+// and the other sees os.ErrExist, so a stored genesis is never silently
+// overwritten by a concurrent creation. A reader can observe the file between
+// exclusive creation and the completed write, but the partial content never
+// validates, so such a reader fails rather than acting on a configuration
+// nobody stored.
+//
+// A failure after the exclusive create removes the file this call created —
+// and only that file, since O_EXCL proved the path was empty a moment before
+// — so the path is free for a retry rather than permanently occupied by a
+// partial configuration no reader will ever validate and no later creation
+// can replace. A pre-existing file is never touched: it makes the open fail
+// before anything is written or removed.
+func CreateConfig(metaDir string, config Config) error {
+	content, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(metaDir, ConfigFile)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = createConfigWrite(file, append(content, '\n'))
+	if err == nil {
+		err = createConfigClose(file)
+	}
+	if err == nil {
+		return nil
+	}
+	// The exclusive open proved the path empty a moment ago, so the file now
+	// at the destination is this call's partial write and nobody else's.
+	// Close the handle first — a failed close can leave it open, and an open
+	// handle blocks the removal on Windows — then remove the file so a retry
+	// finds the path free. The original failure is what the caller must see;
+	// a failed cleanup is reported alongside it, never in place of it,
+	// because a destination still occupied by a partial file poisons every
+	// retry with os.ErrExist.
+	file.Close()
+	if removeErr := os.Remove(path); removeErr != nil {
+		return errors.Join(err, fmt.Errorf("the partial configuration could not be removed and still occupies its path: %w", removeErr))
+	}
+	return err
+}
+
+// CreateConfig's write and close failures are storage conditions a test
+// cannot arrange on a healthy filesystem, so these two indirections exist for
+// tests in this package to force each failure branch. Production never
+// replaces them.
+var (
+	createConfigWrite = func(file *os.File, content []byte) (int, error) { return file.Write(content) }
+	createConfigClose = func(file *os.File) error { return file.Close() }
+)
 
 // ValidateGenesis rejects an object id that cannot name a commit in the
 // declared format.
