@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/ciguard","body":{"commit":"aa4f875662172364d1252c05beff98529c34a9a2","path":"internal/ciguard"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:11628c9cbe35a3a255640298e0cfdf8cb5c609dc","text":"Merge retired a covered predecessor; the successor is at go.sum."}
