@@ -12,8 +12,8 @@ rests_on:
 
 gitseq is an overlay on an ordinary git repository. It gives every
 deliberate act a final position in one sequence, signed by whoever made
-it, so that a document can find out when the thing it describes has
-moved.
+it. A tracked artifact can name the acts it rests on, so the projection
+marks it for re-checking when one of those premises moves.
 
 Read in this order if you are new:
 
