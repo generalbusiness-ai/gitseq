@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d5b33bd417b400d5a50bd93d4bf5caa79eec2662"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:10fe127d96d94b8f42bedf1a0ac6619163aee857","text":"Retiring my internal/apphost artifact for 3fbc7876. It was never succeeded when that head was replaced, and it stands at a path the merge of 19931739 changes. The successor at this path describes 19931739."}
