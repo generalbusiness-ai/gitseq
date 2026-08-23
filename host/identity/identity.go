@@ -18,11 +18,9 @@
 // both are reported, because collapsing them into one number would hide which
 // assumption a reader is actually making:
 //
-//   - [Vouching] says who stands behind the endorsement. This package
-//     implements one rung of it, [Witnessed] — the deployment's key says a
-//     provider said so. A self-signed rung, where the identity's own key
-//     signs, would be the stronger value on this axis; it is deferred, and no
-//     value here claims it.
+//   - [Vouching] says who stands behind the endorsement. [SelfSigned] means
+//     the identity's own Nostr key signed the anchor; [Witnessed] means the
+//     deployment's key says a provider said so.
 //   - [Verification] says what a reader must trust to check it. [InLog] — a
 //     signature carried in the log — verifies offline, forever. [LiveLookup] —
 //     a claim needing a third party to answer again — verifies only while that
@@ -41,13 +39,16 @@
 //	rec, err := identity.Revoke(ctx, ws, endorser, anchorRecordID)
 //	res := identity.Resolve(log)
 //	who := res.LookupAt(recordID)
+//	label := who.Display(actorFingerprint)
 //
-// [Endorse] is one act for both rungs. A deployment holding the witness key
+// [Endorse] is one act for every rung. A deployment holding the witness key
 // endorses a newcomer's session key and names the identity a provider
-// reported; a person already anchored endorses another key — a new device, or
-// an agent — and names no identity, because the identity is inherited from the
-// endorser and an endorser cannot mint one it does not have. Which rung a
-// record occupies is decided at resolution, from who signed it.
+// reported. A Nostr user carries a [NostrProof] from their root key, and the
+// session key also signs the record. A person already anchored endorses
+// another key — a new device, or an agent — and names no identity, because the
+// identity is inherited from the endorser and an endorser cannot mint one it
+// does not have. Resolution derives the rung from signatures that actually
+// verify; a payload cannot promote itself.
 //
 // # Resolution is the authority
 //
@@ -60,6 +61,11 @@
 // out.
 //
 // # Where the trust actually sits
+//
+// A self-signed Nostr anchor carries the NIP-01 event returned by a NIP-07
+// signEvent call. [NostrDelegation] constructs its deterministic,
+// repository-bound content. NIP-01 event-id and secp256k1 verification belong
+// here in the host identity interpreter and never enter the Ed25519 kernel.
 //
 // A witnessed anchor is the deployment's word. Whoever holds the witness key
 // can mint an anchor for any identity in the schemes that key was declared
@@ -104,8 +110,12 @@ const (
 	RevokeSchema = "gitseq/identity-revoke@0"
 )
 
-// GitHubScheme is the identity scheme the GitHub login rung produces.
-const GitHubScheme = "github"
+const (
+	// GitHubScheme is the identity scheme the GitHub login rung produces.
+	GitHubScheme = "github"
+	// NostrScheme is the identity scheme a self-signed Nostr anchor produces.
+	NostrScheme = "nostr"
+)
 
 // Bounds on the untrusted strings that reach this vocabulary. A provider's
 // answer, a caller's scope, and a witness's scheme list all arrive from
@@ -122,13 +132,6 @@ const (
 
 // Vouching says who stands behind an endorsement. Larger is stronger, so the
 // weaker of two is their minimum, which is what a delegation inherits.
-//
-// One rung is implemented, [Witnessed]. A self-signed rung — the identity's
-// own key signing, so that nobody beyond the identity has to be trusted — is
-// where a provider such as Nostr or a published forge signing key would sit,
-// and it is deferred. It is deliberately absent rather than declared and
-// unreachable: a named value that nothing can ever produce reads to a caller
-// as a state to handle, and to a reviewer as a rung that was built.
 type Vouching uint8
 
 const (
@@ -138,11 +141,17 @@ const (
 	// saying a provider vouched for the identity. Readers weigh it exactly as
 	// they weigh that deployment.
 	Witnessed
+	// SelfSigned means the identity's own root key signed the endorsement.
+	// Nostr anchors produce this rung after their BIP-340 proof verifies.
+	SelfSigned
 )
 
 func (v Vouching) String() string {
-	if v == Witnessed {
+	switch v {
+	case Witnessed:
 		return "witnessed"
+	case SelfSigned:
+		return "self-signed"
 	}
 	return "unvouched"
 }
@@ -211,8 +220,8 @@ type Identity struct {
 	// history.
 	Subject string `json:"subject"`
 	// Handle is the human-readable name the provider reported when the
-	// endorsement was made. It is a convenience for a display that has not
-	// been built yet, it may be stale, and it is never authority: two
+	// endorsement was made. [Resolved.Display] may show it, but it may be stale
+	// and it is never authority: two
 	// identities are the same one when Scheme and Subject match, whatever
 	// their handles say.
 	Handle string `json:"handle,omitempty"`
@@ -234,7 +243,7 @@ func (i Identity) validate() error {
 // Anchor is one endorsement of a signing key, as it is recorded.
 //
 // Which rung it occupies is not in here, because a record cannot be trusted to
-// say. [Resolve] decides it from the key that signed the record.
+// say. [Resolve] decides it from signatures that actually verify.
 type Anchor struct {
 	// Genesis is the repository this endorsement is good for. [Endorse] fills
 	// it in; the repository is not the caller's to choose. It is what stops an
@@ -260,6 +269,11 @@ type Anchor struct {
 	// is [InLog] unless a witness says its provider check needs that provider
 	// to answer again. Empty means in-log.
 	Verification string `json:"verification,omitempty"`
+	// Nostr carries a self-signed NIP-01 event proof. Its public key becomes
+	// the persistent identity, and its event content covers this anchor's
+	// repository, subject, scope and expiry. It is mutually exclusive with
+	// Identity, which is stated only by a declared deployment witness.
+	Nostr *NostrProof `json:"nostr,omitempty"`
 }
 
 func (a Anchor) validate() error {
@@ -283,8 +297,26 @@ func (a Anchor) validate() error {
 	if a.NotAfter < 0 {
 		return errors.New("anchor expiry cannot be negative")
 	}
-	_, err := verificationFromWire(a.Verification)
-	return err
+	verification, err := verificationFromWire(a.Verification)
+	if err != nil {
+		return err
+	}
+	if a.Nostr == nil {
+		return nil
+	}
+	if a.Identity != nil {
+		return errors.New("nostr anchor must not state a second identity")
+	}
+	if verification != InLog {
+		return errors.New("nostr anchor verification must be in-log")
+	}
+	if err := a.Nostr.validate(); err != nil {
+		return err
+	}
+	if !validNostrProof(a) {
+		return errors.New("nostr anchor signature is invalid")
+	}
+	return nil
 }
 
 // WitnessDeclaration records the public half of a deployment's witnessing key,
@@ -343,6 +375,10 @@ type Revocation struct {
 	Genesis string `json:"genesis"`
 	// Anchor is the record identifier of the endorsement being withdrawn.
 	Anchor string `json:"anchor"`
+	// Nostr carries the root key's withdrawal proof for a self-signed Nostr
+	// anchor. Ordinary witnessed and delegated anchors leave it empty and are
+	// withdrawn by the Ed25519 key that endorsed them.
+	Nostr *NostrProof `json:"nostr,omitempty"`
 }
 
 func (r Revocation) validate() error {
@@ -352,7 +388,19 @@ func (r Revocation) validate() error {
 	if r.Anchor == "" {
 		return errors.New("revocation names no anchor")
 	}
-	return boundedText("revoked anchor", r.Anchor, maxAnchorRefLen)
+	if err := boundedText("revoked anchor", r.Anchor, maxAnchorRefLen); err != nil {
+		return err
+	}
+	if r.Nostr == nil {
+		return nil
+	}
+	if err := r.Nostr.validate(); err != nil {
+		return err
+	}
+	if !validNostrWithdrawal(r) {
+		return errors.New("nostr withdrawal signature is invalid")
+	}
+	return nil
 }
 
 // maxAnchorRefLen bounds a record identifier: two format-qualified object IDs
