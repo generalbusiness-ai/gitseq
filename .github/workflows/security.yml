@@ -1,0 +1,72 @@
+# Advisory and secret scanning, kept separate from CI so a scanner outage or a
+# newly published advisory does not block an unrelated pull request from
+# merging, and so its schedule can run against main without a push.
+name: Security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    # A new advisory can land against code that has not changed, so this has to
+    # run on a clock and not only on a diff. Weekly, matching Dependabot.
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  advisories:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out the candidate without stored credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the Go version declared by the module
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # govulncheck rather than a third-party scanning action: it is the Go
+      # team's own tool, it is pinned here by module version, and it reports
+      # only advisories whose vulnerable symbols this build actually reaches,
+      # so it does not train anyone to ignore it.
+      - name: Scan Go dependencies for known advisories
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # A shallow checkout is enough, and saying so keeps one scope claim
+      # rather than two. The scanner inspects the tracked current tree; an
+      # earlier revision fetched full history, which promised a search this
+      # gate does not perform.
+      - name: Check out the candidate without stored credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Repository-owned rather than a third-party scanner. This history is
+      # full of hex event identifiers, commit object IDs and signature
+      # material, which generic secret scanners flag by the hundred; a gate
+      # that cries wolf on every commit is one people learn to click past. The
+      # script looks for the shapes that are actually secret and is tested.
+      # The scanner's own cases run first. A scanner that has quietly stopped
+      # matching anything passes every repository, so proving it still detects
+      # is part of running it.
+      - name: Prove the scanner still detects and still ignores
+        run: .github/scripts/scan-secrets_test.sh
+
+      - name: Scan tracked content for committed secrets
+        run: .github/scripts/scan-secrets.sh
