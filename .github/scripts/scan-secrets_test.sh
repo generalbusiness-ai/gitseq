@@ -7,6 +7,11 @@
 # scanner would then flag its own evidence and fail the repository it is meant
 # to protect - which is exactly what happened to an earlier revision of this
 # file, caught in review rather than by me.
+#
+# Detection alone is not enough to assert. The scanner reports into public CI
+# logs, so every detect case also asserts that the planted content never
+# appears in the scanner's output: a scanner that echoes what it found has
+# leaked the secret it was built to contain.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -58,9 +63,23 @@ expect() {
 	if [ "$got" != "$want" ]; then
 		printf 'FAIL %-28s want=%s got=%s\n' "$name" "$want" "$got" >&2
 		failures=$((failures + 1))
-	else
-		printf 'ok   %-28s %s\n' "$name" "$got"
+		return
 	fi
+	# A detection must name the file so a maintainer can act on it, and must
+	# not echo the planted content: this output lands in public CI logs.
+	if [ "$got" = detect ]; then
+		if printf '%s' "$output" | grep -qF -- "$content"; then
+			printf 'FAIL %-28s scanner output echoes the planted content\n' "$name" >&2
+			failures=$((failures + 1))
+			return
+		fi
+		if ! printf '%s' "$output" | grep -qF -- 'planted'; then
+			printf 'FAIL %-28s scanner output does not name the file\n' "$name" >&2
+			failures=$((failures + 1))
+			return
+		fi
+	fi
+	printf 'ok   %-28s %s\n' "$name" "$got"
 }
 
 expect "github token"        detect "token: $github_token"
@@ -77,6 +96,56 @@ expect "event identifier"    pass   "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a3
 expect "commit object id"    pass   "b7f5b01516815963a7bdfbb6671bf06b47bbfa08"
 expect "ssh public key"      pass   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleExampleExampleExampleExampleExa user@host"
 
+# A credential inside a file git classifies as binary. `git grep -I` skips
+# such files silently, and a scanner built on it reports a clean tree it
+# never looked at - which is worse than no scan, because the green result is
+# reassuring. The NUL byte before the token is what flips git's classifier.
+nulcase="$workspace/nulcase"
+mkdir -p "$nulcase"
+git -C "$nulcase" init -q .
+printf 'blob\0data token: %s\n' "$github_token" > "$nulcase/planted"
+git -C "$nulcase" add -A
+nul_output="$(cd "$nulcase" && "$scanner" 2>&1)" && nul_status=0 || nul_status=$?
+if [ "$nul_status" -eq 1 ] && printf '%s' "$nul_output" | grep -q 'committed secret candidate:'; then
+	printf 'ok   %-28s %s\n' "binary-classified file" "detect"
+else
+	printf 'FAIL %-28s a credential in a NUL-containing tracked file was missed (status %s)\n' "binary-classified file" "$nul_status" >&2
+	failures=$((failures + 1))
+fi
+
+# The report must never contain the credential it detected, on stdout or
+# stderr. Plant every credential shape at once and require that none of them
+# appears anywhere in the combined output.
+redact="$workspace/redact"
+mkdir -p "$redact"
+git -C "$redact" init -q .
+{
+	printf 'token: %s\n' "$github_token"
+	printf 'pat: %s\n' "$github_pat"
+	printf 'id: %s\n' "$aws_key"
+	printf 'key: %s\n' "$api_secret"
+	printf 'slack: %s\n' "$slack_token"
+	printf '%s\n' "$openssh_key"
+} > "$redact/planted"
+git -C "$redact" add -A
+redact_output="$(cd "$redact" && "$scanner" 2>&1)" && redact_status=0 || redact_status=$?
+redact_ok=1
+if [ "$redact_status" -ne 1 ] || ! printf '%s' "$redact_output" | grep -q 'committed secret candidate:'; then
+	printf 'FAIL %-28s expected every planted credential to be detected (status %s)\n' "output is redacted" "$redact_status" >&2
+	redact_ok=0
+fi
+for secret in "$github_token" "$github_pat" "$aws_key" "$api_secret" "$slack_token" "$openssh_key"; do
+	if printf '%s' "$redact_output" | grep -qF -- "$secret"; then
+		printf 'FAIL %-28s a planted credential appears in scanner output\n' "output is redacted" >&2
+		redact_ok=0
+	fi
+done
+if [ "$redact_ok" -eq 1 ]; then
+	printf 'ok   %-28s %s\n' "output is redacted" "detect"
+else
+	failures=$((failures + 1))
+fi
+
 # Scope, pinned rather than described. The scanner inspects the tracked current
 # tree, not history and not the working directory. Both halves matter: a secret
 # that is merely lying in a checkout is not what a public repository leaks, and
@@ -92,19 +161,23 @@ else
 	failures=$((failures + 1))
 fi
 git -C "$scope" add -A
-if (cd "$scope" && "$scanner" >/dev/null 2>&1); then
-	printf 'FAIL %-28s a tracked secret was missed\n' "tracked is scanned" >&2
-	failures=$((failures + 1))
-else
+scope_output="$(cd "$scope" && "$scanner" 2>&1)" && scope_status=0 || scope_status=$?
+if [ "$scope_status" -eq 1 ] && printf '%s' "$scope_output" | grep -q 'committed secret candidate:' \
+	&& ! printf '%s' "$scope_output" | grep -qF -- "$github_token"; then
 	printf 'ok   %-28s %s\n' "tracked is scanned" "detect"
+else
+	printf 'FAIL %-28s a tracked secret was missed or echoed (status %s)\n' "tracked is scanned" "$scope_status" >&2
+	failures=$((failures + 1))
 fi
 
 # And the case that matters most: this repository, with this file tracked,
-# must pass its own gate. An earlier revision did not.
-if "$scanner" >/dev/null 2>&1; then
+# must pass its own gate - and say so, rather than exiting quietly. An
+# earlier revision did not pass.
+self_output="$("$scanner" 2>&1)" && self_status=0 || self_status=$?
+if [ "$self_status" -eq 0 ] && printf '%s' "$self_output" | grep -q 'No committed-secret candidates'; then
 	printf 'ok   %-28s %s\n' "this repository" "pass"
 else
-	printf 'FAIL %-28s the scanner flags its own repository\n' "this repository" >&2
+	printf 'FAIL %-28s the scanner flags its own repository (status %s)\n' "this repository" "$self_status" >&2
 	failures=$((failures + 1))
 fi
 
