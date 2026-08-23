@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2db45f073be908f3cfe242a93988a75d29e78961","text":"Retire the prior item-4 cmd/chess artifact at head 73a5ffb6; 5e84c174 records current repaired head 842d0f40."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1c052a75b7ebb945eeea9052458c289b9178d03e","text":"Retire the earlier duplicate cmd/chess artifact; the surviving path artifact is 5e84c174 at current repaired head 842d0f40."}
