@@ -827,13 +827,15 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 	var log scannedLog
 	fromCheckpoint := false
 	checkpointAdvanced := false
-	var streamedCheckpoint checkpointEventCache
+	streamedCheckpoint := checkpointEventCache{limit: c.checkpointEvents.limit}
 	streamSink := fullSink
 	if streamSink != nil && c.checkpointWritable() {
 		applicationSink := streamSink
 		streamSink = func(event Event) error {
 			streamedCheckpoint.append(event)
-			if streamedCheckpoint.err != nil {
+			// A byte-bound overflow fails only the checkpoint: the cache has
+			// already released its memory, and the verified read continues.
+			if streamedCheckpoint.err != nil && !errors.Is(streamedCheckpoint.err, errCheckpointTooLarge) {
 				return streamedCheckpoint.err
 			}
 			return applicationSink(event)

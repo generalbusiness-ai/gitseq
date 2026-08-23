@@ -95,17 +95,43 @@ type checkpointEvent struct {
 }
 
 // checkpointEventCache retains only the material a future compact checkpoint
-// writes. Full chunks are compressed; the raw tail is bounded independently
-// of sequence depth.
+// writes. Full chunks are compressed, the raw tail is bounded independently of
+// sequence depth, and total retained bytes are bounded by the same limit the
+// later marshal enforces, so an oversized history fails closed while it
+// accumulates instead of after its memory is already spent.
 type checkpointEventCache struct {
-	chunks [][]byte
-	tail   []checkpointEvent
-	count  int
-	err    error
+	chunks     [][]byte
+	tail       []checkpointEvent
+	count      int
+	chunkBytes int
+	tailBytes  int
+	// limit overrides maxCheckpointBytes when positive. Only tests set it, so
+	// overflow behaviour is exercisable without allocating the production bound.
+	limit int
+	err   error
+}
+
+func (c *checkpointEventCache) byteLimit() int {
+	if c.limit > 0 {
+		return c.limit
+	}
+	return maxCheckpointBytes
+}
+
+// fail records the first cache error and releases every retained byte. A cache
+// that can never publish must not keep holding checkpoint material.
+func (c *checkpointEventCache) fail(err error) {
+	if c.err == nil {
+		c.err = err
+	}
+	c.chunks = nil
+	c.tail = nil
+	c.chunkBytes = 0
+	c.tailBytes = 0
 }
 
 func (c *checkpointEventCache) reset(events []Event) {
-	*c = checkpointEventCache{}
+	*c = checkpointEventCache{limit: c.limit}
 	c.appendEvents(events)
 }
 
@@ -130,19 +156,24 @@ func (c *checkpointEventCache) appendEvents(events []Event) {
 
 func (c *checkpointEventCache) appendBorrowedChunk(events []Event) {
 	var output bytes.Buffer
-	compressed := gzip.NewWriter(&output)
+	// The limit writer bounds the chunk while it is still being built, so an
+	// incompressible run cannot grow the buffer past the remaining budget
+	// before any completed-chunk check could see it.
+	bounded := &checkpointLimitWriter{output: &output, limit: c.byteLimit() - c.chunkBytes - c.tailBytes}
+	compressed := gzip.NewWriter(bounded)
 	for _, event := range events {
 		if err := writeCompactCheckpointEvent(compressed, checkpointReference(event)); err != nil {
-			c.err = err
+			c.fail(err)
 			_ = compressed.Close()
 			return
 		}
 	}
 	if err := compressed.Close(); err != nil {
-		c.err = err
+		c.fail(err)
 		return
 	}
 	c.chunks = append(c.chunks, output.Bytes())
+	c.chunkBytes += output.Len()
 	c.count += len(events)
 }
 
@@ -150,27 +181,39 @@ func (c *checkpointEventCache) append(event Event) {
 	if c.err != nil {
 		return
 	}
+	size := len(event.Payload)
+	for name, content := range event.Attachments {
+		size += len(name) + len(content)
+	}
+	if size > c.byteLimit()-c.chunkBytes-c.tailBytes {
+		c.fail(fmt.Errorf("%w: cached events exceed limit %d", errCheckpointTooLarge, c.byteLimit()))
+		return
+	}
 	c.tail = append(c.tail, checkpointMaterial(event))
+	c.tailBytes += size
 	c.count++
 	if len(c.tail) < checkpointChunkEvents {
 		return
 	}
 	var output bytes.Buffer
-	compressed := gzip.NewWriter(&output)
+	bounded := &checkpointLimitWriter{output: &output, limit: c.byteLimit() - c.chunkBytes}
+	compressed := gzip.NewWriter(bounded)
 	for _, material := range c.tail {
 		if err := writeCompactCheckpointEvent(compressed, material); err != nil {
-			c.err = err
+			c.fail(err)
 			_ = compressed.Close()
 			return
 		}
 	}
 	if err := compressed.Close(); err != nil {
-		c.err = err
+		c.fail(err)
 		return
 	}
 	c.chunks = append(c.chunks, output.Bytes())
+	c.chunkBytes += output.Len()
 	clear(c.tail)
 	c.tail = c.tail[:0]
+	c.tailBytes = 0
 }
 
 type compactCheckpointManifest struct {
@@ -649,7 +692,15 @@ func writeCheckpointEvents(ctx context.Context, store gitstore.Store, log scanne
 }
 
 func writeCheckpointCache(ctx context.Context, store gitstore.Store, log scannedLog, cache checkpointEventCache, options CheckpointOptions) error {
-	if !options.enabled() || options.SigningKey == "" || cache.err != nil || cache.count != log.Verification.Events {
+	if !options.enabled() || options.SigningKey == "" {
+		return ErrNoUsableCheckpoint
+	}
+	// Surface the cache's own failure so a byte-bound overflow reaches the
+	// same terminal oversized handling as a marshal-time overflow.
+	if cache.err != nil {
+		return cache.err
+	}
+	if cache.count != log.Verification.Events {
 		return ErrNoUsableCheckpoint
 	}
 	format, err := store.ObjectFormat(ctx)
