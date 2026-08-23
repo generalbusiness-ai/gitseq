@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1185219e53ac438b560f3898507633072c251b85"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ddf3443317e4f7f6bbc28748bb239810d178fd4","text":"Retire the prior live internal/kernel artifact at c086ee1e. Exact checkpoint-cache head 53bfe4d5 contains that behavior and current successor acb00817 covers the package after the bounded-cache repair."}
