@@ -3,9 +3,9 @@ title: Getting started
 summary: Build the binaries, create a workroom with three agent actors, bind a signing MCP identity to each, and start a coding session per actor polling for work.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6c760162df2d42d89a795276ec4121b85f06b834
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd60d9547e434e310ed0ddf10b1bebec36c967b2
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:80984e0b07c1e3ae5f1f76b0ddd5e12a274c882e
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0bb92c63634b6b137d4376e242163c107f4292c4
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:926644bd9ec30efe540af5d6cc4ba7f22ab5a75e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e8b63808aa799a06985f98bffcc23306d6fff882
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aae95c638b523c978f7e3ffe3ba7c0c10b8eee40
 ---
 
 # Getting started
