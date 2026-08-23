@@ -26,9 +26,9 @@ func assertCacheReleased(t *testing.T, cache *checkpointEventCache) {
 	if !errors.Is(cache.err, errCheckpointTooLarge) {
 		t.Fatalf("cache error = %v, want %v", cache.err, errCheckpointTooLarge)
 	}
-	if cache.chunks != nil || cache.tail != nil || cache.chunkBytes != 0 || cache.tailBytes != 0 {
+	if cache.chunks.head != nil || cache.chunks.count != 0 || cache.tail != nil || cache.chunkBytes != 0 || cache.tailBytes != 0 {
 		t.Fatalf("overflowed cache retained memory: chunks=%d tail=%d chunkBytes=%d tailBytes=%d",
-			len(cache.chunks), len(cache.tail), cache.chunkBytes, cache.tailBytes)
+			cache.chunks.count, len(cache.tail), cache.chunkBytes, cache.tailBytes)
 	}
 }
 
@@ -67,9 +67,62 @@ func TestCheckpointCacheBoundsTailAccumulation(t *testing.T) {
 	}
 }
 
-func TestCheckpointTailEntryOverheadCoversEntrySlot(t *testing.T) {
-	if slot := int(unsafe.Sizeof(checkpointEvent{})); 2*slot > checkpointTailEntryOverhead {
-		t.Fatalf("tail entry slot is %d bytes; the %d-byte container charge no longer covers doubled growth", slot, checkpointTailEntryOverhead)
+// TestCheckpointCacheTailGrowthChargesOldArray forces a real tail capacity
+// expansion at the edge of the budget. The previous head charged a flat
+// per-entry constant and asserted in a test that the constant covered two
+// slice headers — an inequality between two numbers, which never forced or
+// measured an actual growth boundary. This test does: it fills the tail to
+// len == cap, computes the exact budget the next append needs — its own
+// content and container charges plus the old backing array that stays live
+// beside the new one during the growth copy — and pins both sides of that
+// boundary. One byte short must refuse and release; the exact budget must
+// admit, and the tail's capacity must be seen to actually double. Dropping
+// or shrinking the growth term in append's preflight admits the short
+// cache and turns this test red.
+func TestCheckpointCacheTailGrowthChargesOldArray(t *testing.T) {
+	const entries = 8
+	events := make([]Event, entries)
+	for index := range events {
+		events[index] = Event{Payload: incompressiblePayload(t, 16, int64(index))}
+	}
+	charge := 0
+	for _, event := range events {
+		charge += checkpointEventRetainedBytes(checkpointMaterial(event))
+	}
+	// The boundary arithmetic is measured here, independently of the
+	// production constants, so a mutation that shrinks the charged slot
+	// size or the growth term moves the code's boundary away from this
+	// test's and turns it red: the next entry needs its content, two
+	// measured slots of container charge, and the full old backing array
+	// that coexists with the new one during the growth copy.
+	slot := int(unsafe.Sizeof(checkpointEvent{}))
+	next := Event{Payload: incompressiblePayload(t, 16, 99)}
+	needed := charge + len(next.Payload) + 2*slot + entries*slot
+
+	short := checkpointEventCache{limit: needed - 1}
+	for _, event := range events {
+		short.append(event)
+	}
+	if short.err != nil || len(short.tail) != entries || cap(short.tail) != entries {
+		t.Fatalf("fixture did not reach len == cap: err=%v len=%d cap=%d", short.err, len(short.tail), cap(short.tail))
+	}
+	short.append(next)
+	assertCacheReleased(t, &short)
+
+	exact := checkpointEventCache{limit: needed}
+	for _, event := range events {
+		exact.append(event)
+	}
+	if exact.err != nil || cap(exact.tail) != entries {
+		t.Fatalf("fixture cap = %d err = %v, want cap %d", cap(exact.tail), exact.err, entries)
+	}
+	exact.append(next)
+	if exact.err != nil {
+		t.Fatalf("append with the growth transient exactly budgeted failed: %v", exact.err)
+	}
+	if len(exact.tail) != entries+1 || cap(exact.tail) != 2*entries {
+		t.Fatalf("tail did not cross a real growth boundary: len=%d cap=%d, want len %d cap %d",
+			len(exact.tail), cap(exact.tail), entries+1, 2*entries)
 	}
 }
 
@@ -78,7 +131,7 @@ func TestCheckpointTailEntryOverheadCoversEntrySlot(t *testing.T) {
 // invariant: the growing output, its growth-copy headroom, and everything
 // the cache still retains must fit the limit together at every instant. The
 // encoded size is measured first; an honestly budgeted flush needs the
-// container charges, the stored chunk's slot in the growing chunk list,
+// container charges, the stored chunk's list node,
 // plus twice the encoded output — content and equal headroom for the old
 // array a growth copy briefly holds — so the two limits sit exactly at
 // and one byte below that bound.
@@ -99,38 +152,38 @@ func TestCheckpointCacheOwnedTailFlushPeakBudget(t *testing.T) {
 	}
 	container := checkpointChunkEvents * checkpointTailEntryOverhead
 
-	// With exactly the container charge, the chunk slot, and twice the
+	// With exactly the container charge, the chunk's list node, and twice the
 	// encoded output available, the flush fits only because each entry's
 	// content is credited back as its write completes. It must succeed,
 	// release the tail and its backing array, and retain no more output
 	// capacity than the content needs.
-	cache := checkpointEventCache{limit: container + checkpointChunkSlotOverhead + 2*encoded.Len()}
+	cache := checkpointEventCache{limit: container + checkpointChunkNodeBytes + 2*encoded.Len()}
 	for _, event := range events {
 		cache.append(event)
 	}
 	if cache.err != nil {
 		t.Fatalf("flush within an exact budget failed: %v", cache.err)
 	}
-	if len(cache.chunks) != 1 || cache.count != checkpointChunkEvents {
-		t.Fatalf("flush stored %d chunks for %d events", len(cache.chunks), cache.count)
+	if cache.chunks.count != 1 || cache.count != checkpointChunkEvents {
+		t.Fatalf("flush stored %d chunks for %d events", cache.chunks.count, cache.count)
 	}
 	if cache.tail != nil || cache.tailBytes != 0 {
 		t.Fatalf("flushed tail still retained: tail=%d tailBytes=%d", len(cache.tail), cache.tailBytes)
 	}
-	if cache.chunkBytes != checkpointChunkSlotOverhead+cap(cache.chunks[0]) {
-		t.Fatalf("chunkBytes = %d, want retained capacity %d plus the %d chunk slot",
-			cache.chunkBytes, cap(cache.chunks[0]), checkpointChunkSlotOverhead)
+	if cache.chunkBytes != checkpointChunkNodeBytes+cap(cache.chunks.head.chunk) {
+		t.Fatalf("chunkBytes = %d, want retained capacity %d plus the %d-byte chunk node",
+			cache.chunkBytes, cap(cache.chunks.head.chunk), checkpointChunkNodeBytes)
 	}
-	if cache.chunkBytes != checkpointChunkSlotOverhead+encoded.Len() {
-		t.Fatalf("flush retained %d bytes while the tail's container charge held %d of the %d limit; slot plus %d was the most the budget admitted",
+	if cache.chunkBytes != checkpointChunkNodeBytes+encoded.Len() {
+		t.Fatalf("flush retained %d bytes while the tail's container charge held %d of the %d limit; the node plus %d was the most the budget admitted",
 			cache.chunkBytes, container, cache.byteLimit(), encoded.Len())
 	}
 
 	// One byte short, the output and its growth headroom can never fit
-	// alongside the container storage and chunk slot that are still held,
+	// alongside the container storage and chunk node that are still held,
 	// so the flush must refuse and release rather than let the true peak
 	// exceed the limit.
-	short := checkpointEventCache{limit: container + checkpointChunkSlotOverhead + 2*encoded.Len() - 1}
+	short := checkpointEventCache{limit: container + checkpointChunkNodeBytes + 2*encoded.Len() - 1}
 	for _, event := range events {
 		short.append(event)
 	}
@@ -148,16 +201,16 @@ func TestCheckpointCacheCountsChunkCapacityNotLength(t *testing.T) {
 		events[index] = Event{Payload: incompressiblePayload(t, 48, int64(index))}
 	}
 	cache.appendEvents(events)
-	if cache.err != nil || len(cache.chunks) != 1 || cache.count != checkpointChunkEvents {
-		t.Fatalf("borrowed chunk failed: err=%v chunks=%d count=%d", cache.err, len(cache.chunks), cache.count)
+	if cache.err != nil || cache.chunks.count != 1 || cache.count != checkpointChunkEvents {
+		t.Fatalf("borrowed chunk failed: err=%v chunks=%d count=%d", cache.err, cache.chunks.count, cache.count)
 	}
-	retained := cap(cache.chunks[0])
-	if retained <= len(cache.chunks[0]) {
-		t.Fatalf("fixture kept capacity %d equal to content %d and proves nothing; grow the fixture", retained, len(cache.chunks[0]))
+	retained := cap(cache.chunks.head.chunk)
+	if retained <= len(cache.chunks.head.chunk) {
+		t.Fatalf("fixture kept capacity %d equal to content %d and proves nothing; grow the fixture", retained, len(cache.chunks.head.chunk))
 	}
-	if cache.chunkBytes != checkpointChunkSlotOverhead+retained {
-		t.Fatalf("chunkBytes = %d, want retained capacity %d plus the %d chunk slot (content is %d)",
-			cache.chunkBytes, retained, checkpointChunkSlotOverhead, len(cache.chunks[0]))
+	if cache.chunkBytes != checkpointChunkNodeBytes+retained {
+		t.Fatalf("chunkBytes = %d, want retained capacity %d plus the %d-byte chunk node (content is %d)",
+			cache.chunkBytes, retained, checkpointChunkNodeBytes, len(cache.chunks.head.chunk))
 	}
 }
 
@@ -216,6 +269,12 @@ func TestCheckpointCacheBoundsSingleOversizedEvent(t *testing.T) {
 	}
 }
 
+// TestCheckpointCacheBoundsBorrowedChunkWhileBuilding overflows a borrowed
+// chunk mid-build and requires the cache to fail released. The failure path
+// it drives abandons the compressor without Close — that abandonment is
+// belt-and-braces, not the enforced guard: even a cleanup that did write
+// would be refused by the post-failure whole-limit reservation, which
+// TestCheckpointCacheWriterRefusesAfterFail pins as the load-bearing guard.
 func TestCheckpointCacheBoundsBorrowedChunkWhileBuilding(t *testing.T) {
 	cache := checkpointEventCache{limit: 4096}
 	events := make([]Event, checkpointChunkEvents)
@@ -276,7 +335,7 @@ func TestCheckpointCacheOverflowIsTerminalUntilVerifiedFullRebuild(t *testing.T)
 	if !submitter.cache.checkpointOversized || submitter.cache.checkpointFailures != failures+1 || submitter.cache.checkpointWrites != writes {
 		t.Fatalf("overflow did not latch terminal oversized state: %+v", submitter.cache)
 	}
-	if submitter.cache.checkpointEvents.count != 0 || submitter.cache.checkpointEvents.tail != nil || submitter.cache.checkpointEvents.chunks != nil {
+	if submitter.cache.checkpointEvents.count != 0 || submitter.cache.checkpointEvents.tail != nil || submitter.cache.checkpointEvents.chunks.count != 0 {
 		t.Fatalf("terminal checkpoint retained write material: %+v", submitter.cache.checkpointEvents)
 	}
 	for index := 0; index < 2; index++ {
@@ -346,7 +405,7 @@ func TestStreamedFullRebuildCheckpointCacheIsBounded(t *testing.T) {
 	if !reader.logCache.checkpointOversized || reader.logCache.checkpointFailures != 1 || reader.logCache.checkpointWrites != 0 {
 		t.Fatalf("streamed overflow did not fail the checkpoint closed: %+v", reader.logCache)
 	}
-	if reader.logCache.checkpointEvents.count != 0 || reader.logCache.checkpointEvents.tail != nil || reader.logCache.checkpointEvents.chunks != nil {
+	if reader.logCache.checkpointEvents.count != 0 || reader.logCache.checkpointEvents.tail != nil || reader.logCache.checkpointEvents.chunks.count != 0 {
 		t.Fatalf("streamed overflow retained cache memory: %+v", reader.logCache.checkpointEvents)
 	}
 	if _, err := f.store.Head(f.ctx, CheckpointRef(f.genesis)); err == nil {
@@ -380,7 +439,7 @@ func TestCheckpointCacheOwnedTailFlushRefusesSkewedTailBeyondBudget(t *testing.T
 	assertCacheReleased(t, &cache)
 
 	// The honest budget for this tail: its charges, the stored chunk's
-	// slot, plus the encoded output and equal growth headroom in place of
+	// node, plus the encoded output and equal growth headroom in place of
 	// the drained content. The large entry's own encoding then fits beside
 	// its still-charged clone.
 	var encoded bytes.Buffer
@@ -393,15 +452,15 @@ func TestCheckpointCacheOwnedTailFlushRefusesSkewedTailBeyondBudget(t *testing.T
 	if err := compressed.Close(); err != nil {
 		t.Fatal(err)
 	}
-	generous := checkpointEventCache{limit: charge + checkpointChunkSlotOverhead + 2*encoded.Len()}
+	generous := checkpointEventCache{limit: charge + checkpointChunkNodeBytes + 2*encoded.Len()}
 	for _, event := range events {
 		generous.append(event)
 	}
 	if generous.err != nil {
 		t.Fatalf("skewed flush within an honest budget failed: %v", generous.err)
 	}
-	if len(generous.chunks) != 1 || generous.count != checkpointChunkEvents || generous.tail != nil {
-		t.Fatalf("skewed flush stored %d chunks for %d events, tail=%d", len(generous.chunks), generous.count, len(generous.tail))
+	if generous.chunks.count != 1 || generous.count != checkpointChunkEvents || generous.tail != nil {
+		t.Fatalf("skewed flush stored %d chunks for %d events, tail=%d", generous.chunks.count, generous.count, len(generous.tail))
 	}
 }
 
@@ -487,7 +546,16 @@ func TestCheckpointCacheRefusesOversizedEventBeforeCloning(t *testing.T) {
 	}
 }
 
-// TestCheckpointCacheWriterRefusesAfterFail pins the failure-ordering
+// TestCheckpointCacheWriterRefusesAfterFail pins the load-bearing guard of
+// the post-failure cleanup invariant: the write-boundary reservation. Two
+// mechanisms defend the same invariant — the abandoned, never-Closed
+// compressor on the failure paths, and this whole-limit reservation that
+// refuses any write against a failed cache's budget. The reservation is the
+// enforced one: it holds even if some cleanup does attempt to write, so the
+// abandonment is defence in depth on top of it, kept because it avoids
+// exercising this refusal at all.
+//
+// It also pins the failure-ordering
 // invariant: fail releases the storage accounting, so nothing — including
 // a compressor cleanup that runs after the failure — may build against
 // that freed budget while the dropped material is still reachable. A
@@ -508,9 +576,44 @@ func TestCheckpointCacheWriterRefusesAfterFail(t *testing.T) {
 	}
 }
 
-func TestCheckpointChunkSlotOverheadCoversSliceHeader(t *testing.T) {
-	if header := int(unsafe.Sizeof([]byte(nil))); 2*header > checkpointChunkSlotOverhead {
-		t.Fatalf("chunk slice header is %d bytes; the %d-byte slot charge no longer covers doubled growth", header, checkpointChunkSlotOverhead)
+// TestCheckpointCacheChunkListChargesEachNode pins the metadata cost of the
+// stored-chunk list. The list never reallocates — each stored chunk
+// occupies exactly one node, so no backing-array growth boundary exists to
+// charge, and the type itself guards against one reappearing: a slice
+// representation cannot satisfy this test's node walk. What remains to
+// verify is the accounting identity: after chunks land through both storing
+// paths — borrowed chunks and a tail flush — chunkBytes must equal the
+// retained chunk capacities plus one measured node per stored chunk.
+// Dropping either node precharge, or shrinking the measured node size,
+// breaks the equality.
+func TestCheckpointCacheChunkListChargesEachNode(t *testing.T) {
+	cache := checkpointEventCache{limit: 4 << 20}
+	borrowed := make([]Event, 2*checkpointChunkEvents)
+	for index := range borrowed {
+		borrowed[index] = Event{Payload: bytes.Repeat([]byte{byte(index)}, 32)}
+	}
+	cache.appendEvents(borrowed)
+	for index := 0; index < checkpointChunkEvents; index++ {
+		cache.append(Event{Payload: bytes.Repeat([]byte{byte(index)}, 24)})
+	}
+	if cache.err != nil || cache.chunks.count != 3 || cache.tail != nil {
+		t.Fatalf("cache = err %v chunks %d tail %d, want 3 stored chunks and no tail",
+			cache.err, cache.chunks.count, len(cache.tail))
+	}
+	nodes, retained := 0, 0
+	for node := cache.chunks.head; node != nil; node = node.next {
+		nodes++
+		retained += cap(node.chunk)
+	}
+	if nodes != cache.chunks.count {
+		t.Fatalf("list holds %d nodes but counts %d", nodes, cache.chunks.count)
+	}
+	// The node size is measured here, independently of the production
+	// constant, so shrinking that constant cannot shrink this expectation.
+	nodeBytes := int(unsafe.Sizeof(checkpointChunkNode{}))
+	if want := retained + nodes*nodeBytes; cache.chunkBytes != want {
+		t.Fatalf("chunkBytes = %d, want %d: capacities %d plus %d nodes at the measured %d bytes",
+			cache.chunkBytes, want, retained, nodes, nodeBytes)
 	}
 }
 
