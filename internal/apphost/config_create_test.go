@@ -150,3 +150,73 @@ func TestCreateConfigNeverTouchesPreexistingFile(t *testing.T) {
 		t.Fatalf("pre-existing file changed: got %q, want %q", content, stored)
 	}
 }
+
+// A write failure followed by a close failure loses information if either is
+// dropped: the write failure is why nothing was stored, and the close failure
+// says the storage may be in a worse state than the write error alone admits.
+// Written the easy way — asserting only the write failure — this test would
+// pass even if the close failure were silently discarded, which is exactly
+// the defect it exists to catch.
+func TestCreateConfigCarriesCloseFailureAlongsideWriteFailure(t *testing.T) {
+	metaDir := t.TempDir()
+	var captured *os.File
+	previousWrite := createConfigWrite
+	previousClose := createConfigClose
+	createConfigWrite = func(file *os.File, _ []byte) (int, error) {
+		captured = file
+		return 0, errInjectedWrite
+	}
+	createConfigClose = func(*os.File) error { return errInjectedClose }
+	err := CreateConfig(metaDir, testConfig())
+	createConfigWrite = previousWrite
+	createConfigClose = previousClose
+	if !errors.Is(err, errInjectedWrite) {
+		t.Fatalf("CreateConfig error = %v, want the original injected write failure preserved", err)
+	}
+	if !errors.Is(err, errInjectedClose) {
+		t.Fatalf("CreateConfig error = %v, want the close failure carried alongside the original", err)
+	}
+	requireClosed(t, captured)
+	if _, statErr := os.Stat(filepath.Join(metaDir, ConfigFile)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("failed creation left a file at its destination: stat = %v", statErr)
+	}
+}
+
+// O_EXCL proved the path empty at creation, not at cleanup. If another
+// process removes the partial file and stores its own configuration in that
+// window, a cleanup that removes by pathname deletes that process's file and
+// reports it as this call's partial write. The injected write failure stages
+// that race deterministically: it replaces the created file before the
+// cleanup runs. Written the easy way — with nothing racing — this test would
+// pass even if the cleanup removed whatever stands at the path, which is
+// exactly the defect it exists to catch.
+func TestCreateConfigLeavesAReplacementAtItsDestinationAlone(t *testing.T) {
+	metaDir := t.TempDir()
+	path := filepath.Join(metaDir, ConfigFile)
+	replacement := []byte("another process's configuration\n")
+	previousWrite := createConfigWrite
+	createConfigWrite = func(*os.File, []byte) (int, error) {
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, replacement, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return 0, errInjectedWrite
+	}
+	err := CreateConfig(metaDir, testConfig())
+	createConfigWrite = previousWrite
+	if !errors.Is(err, errInjectedWrite) {
+		t.Fatalf("CreateConfig error = %v, want the original injected write failure preserved", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "did not create") {
+		t.Fatalf("CreateConfig error = %v, want it to report the destination holds a file this call did not create", err)
+	}
+	content, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("the replacement is no longer readable: %v", readErr)
+	}
+	if string(content) != string(replacement) {
+		t.Fatalf("the replacement changed: got %q, want %q", content, replacement)
+	}
+}

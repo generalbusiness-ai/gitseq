@@ -122,11 +122,11 @@ func SaveConfig(metaDir string, config Config) error {
 // nobody stored.
 //
 // A failure after the exclusive create removes the file this call created —
-// and only that file, since O_EXCL proved the path was empty a moment before
-// — so the path is free for a retry rather than permanently occupied by a
-// partial configuration no reader will ever validate and no later creation
-// can replace. A pre-existing file is never touched: it makes the open fail
-// before anything is written or removed.
+// and only that file. O_EXCL proved the path empty at creation, not at
+// cleanup, so before removing anything the cleanup confirms the file at the
+// destination is still the one this call created; a file someone else stored
+// there in the meantime is left in place. A pre-existing file is never
+// touched: it makes the open fail before anything is written or removed.
 func CreateConfig(metaDir string, config Config) error {
 	content, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
@@ -137,22 +137,57 @@ func CreateConfig(metaDir string, config Config) error {
 	if err != nil {
 		return err
 	}
-	_, err = createConfigWrite(file, append(content, '\n'))
-	if err == nil {
-		err = createConfigClose(file)
-	}
-	if err == nil {
+	// The created file's identity is taken while the handle is certainly
+	// open — after a failed close the handle can no longer answer — so the
+	// cleanup can know which file this call created before removing anything.
+	created, identityErr := file.Stat()
+	_, writeErr := createConfigWrite(file, append(content, '\n'))
+	closeErr := createConfigClose(file)
+	if writeErr == nil && closeErr == nil {
 		return nil
 	}
-	// The exclusive open proved the path empty a moment ago, so the file now
-	// at the destination is this call's partial write and nobody else's.
-	// Close the handle first — a failed close can leave it open, and an open
-	// handle blocks the removal on Windows — then remove the file so a retry
-	// finds the path free. The original failure is what the caller must see;
-	// a failed cleanup is reported alongside it, never in place of it,
-	// because a destination still occupied by a partial file poisons every
-	// retry with os.ErrExist.
-	file.Close()
+	return abandonPartialConfig(file, path, created, identityErr, writeErr, closeErr)
+}
+
+// abandonPartialConfig cleans up after a failure between CreateConfig's
+// exclusive creation and its completed write, so the path is free for a retry
+// rather than permanently occupied by a partial configuration no reader will
+// ever validate and no later creation can replace. The write failure — or the
+// close failure when the write succeeded — is what the caller must see;
+// everything else the cleanup learns is reported alongside it, never in place
+// of it.
+//
+// The handle is released before the unlink, because an open handle blocks the
+// removal on Windows: a failed close may not have released it, so it is closed
+// again, and os.ErrClosed from that second attempt means the first close did
+// release the handle, which is not a new failure. The file is then removed
+// only if it is still the very file this call created — another process may
+// have removed the partial file and stored its own configuration in the
+// window since creation, and removing by pathname would delete that stranger's
+// file and report it as this call's partial write. When identity cannot be
+// confirmed, nothing is removed.
+func abandonPartialConfig(file *os.File, path string, created os.FileInfo, identityErr, writeErr, closeErr error) error {
+	err := writeErr
+	if err == nil {
+		err = closeErr
+	} else if closeErr != nil {
+		err = errors.Join(err, fmt.Errorf("closing the partial configuration also failed: %w", closeErr))
+	}
+	if closeErr != nil {
+		if retryErr := file.Close(); retryErr != nil && !errors.Is(retryErr, os.ErrClosed) {
+			err = errors.Join(err, fmt.Errorf("the file handle could not be closed: %w", retryErr))
+		}
+	}
+	if identityErr != nil {
+		return errors.Join(err, fmt.Errorf("cannot confirm the destination still holds this call's file, so nothing was removed: %w", identityErr))
+	}
+	current, statErr := os.Stat(path)
+	if statErr != nil {
+		return errors.Join(err, fmt.Errorf("cannot confirm the destination still holds this call's file, so nothing was removed: %w", statErr))
+	}
+	if !os.SameFile(created, current) {
+		return errors.Join(err, errors.New("the destination now holds a file this call did not create, which was left in place"))
+	}
 	if removeErr := os.Remove(path); removeErr != nil {
 		return errors.Join(err, fmt.Errorf("the partial configuration could not be removed and still occupies its path: %w", removeErr))
 	}
