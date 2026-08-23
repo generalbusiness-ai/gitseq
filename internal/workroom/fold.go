@@ -1521,7 +1521,9 @@ func (f *foldState) stalenessAsOf(asOf int) *stalenessScope {
 // this from the fold instead let a post-verdict edge decide plan condemnation
 // and receipt authority at a verdict that could not have seen it -- the same
 // end-of-log fact leaking into a positioned computation that every other defect
-// in this area has been.
+// in this area has been. The basis is held to the same position as the record:
+// filtering one half of the fact and resolving the other with end-of-log
+// knowledge filters nothing.
 func (s *stalenessScope) succeededRetirements() map[string]string {
 	succeeded := make(map[string]string)
 	for _, record := range s.f.supersessions {
@@ -1535,6 +1537,17 @@ func (s *stalenessScope) succeededRetirements() map[string]string {
 		}
 		for _, basis := range record.record.RestsOn {
 			if basis == supersede.Target || !s.f.isArtifact(basis) {
+				continue
+			}
+			// The supersession's own position is only half the fact. Its basis
+			// is an ID the signer chose, and an ID can be pre-signed: a
+			// supersession filed before the scope's position can name an
+			// artifact that materialises only after it. Resolving that basis
+			// with end-of-log knowledge would add the successor edge
+			// retroactively — the same leak as a late supersession, through
+			// the other field — so the basis record must itself have landed at
+			// or before the position to serve as a successor here.
+			if successor := s.f.byID[basis]; successor == nil || successor.sequence() > s.asOf {
 				continue
 			}
 			if successorPath, ok := s.f.artifactPath(basis); ok && pathCovers(successorPath, retiredPath) {

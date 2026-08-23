@@ -4147,3 +4147,80 @@ func TestASuccessionDeclaredAfterTheVerdictDoesNotCondemnThePlanAtIt(t *testing.
 		t.Fatalf("a successor edge declared after the verdict reached back, condemned the plan at it, and revoked receipt authority the reviewer's signature had earned: %+v", decision)
 	}
 }
+
+// A successor artifact filed after the verdict must not complete a chain at
+// it. Record IDs can be pre-signed, so a supersession filed before the verdict
+// can rest on an ID the log does not yet contain: at the verdict the chain
+// from the plan's predecessor ends at the interim pointer, condemned, so the
+// reviewed successor flares and the receipt boundary must refuse. Resolving
+// that basis with end-of-log knowledge instead adds the successor edge
+// retroactively — the supersession is positioned but the thing it points at
+// is not — and the condemned chain is quietly rescued by an artifact the
+// reviewer could not have seen, minting receipt authority from a post-verdict
+// fact. The companion test above moves the supersession past the verdict;
+// this one moves the basis, the half a record-only cutoff does not filter.
+func TestABasisMaterialisedAfterTheVerdictDoesNotServeAsASuccessorAtIt(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "the pointer the first merge replaces", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged1",
+			"merge_retirements": `{"predecessor":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged1"}}, "merge", "predecessor"),
+		// The predecessor's behaviour moves to an interim pointer at the same
+		// path, which is then condemned resting on a pre-signed ID that
+		// resolves to nothing the log yet contains. At the verdict below the
+		// chain ends here, condemned.
+		event(t, "interim", operator, SchemaState, State{Kind: KindArtifact, Text: "an interim pointer", Body: map[string]string{"path": "spike", "commit": "interim"}}, "r0"),
+		event(t, "move-predecessor", operator, SchemaSupersede, Supersede{Target: "predecessor", Text: "moved to the interim pointer"}, "predecessor", "interim"),
+		event(t, "condemn-interim", operator, SchemaSupersede, Supersede{Target: "interim", Text: "condemned, naming a successor not yet filed"}, "interim", "condemned-late"),
+		// The second review, of the first merge's successor.
+		event(t, "request2", operator, SchemaState, State{Kind: KindRequest, Text: "review the successor", Body: map[string]string{"to": other, "conditions": "exact head"}}, "successor"),
+		event(t, "promise2", other, SchemaState, State{Kind: KindPromise, Text: "will review"}, "request2"),
+		event(t, "foreign", operator, SchemaState, State{Kind: KindArtifact, Text: "someone else's pointer", Body: map[string]string{"path": "spike", "commit": "other-base"}}, "r0"),
+		event(t, "approval2", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "merged1", "artifact": "successor"}}, "promise2", "successor"),
+		event(t, "approval2-ratified", operator, SchemaRatify, Ratify{Target: "approval2"}, "approval2"),
+		// After the verdict: the pre-signed ID materialises as an artifact at
+		// the same path, completing the chain with end-of-log knowledge.
+		event(t, "condemned-late", operator, SchemaState, State{Kind: KindArtifact, Text: "the pre-signed successor, filed late", Body: map[string]string{"path": "spike", "commit": "late"}}, "r0"),
+		event(t, "merge2", agent, SchemaState, State{Kind: KindAssert, Text: "second merge", Body: map[string]string{
+			"merge_approval": "approval2", "merge_candidate": "merged1", "merge_target_pre_head": "merged1", "merge_head": "merged2",
+			"merge_retirements": `{"foreign":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval2"),
+		event(t, "successor2", agent, SchemaState, State{Kind: KindArtifact, Text: "second successor", Body: map[string]string{"path": "spike", "commit": "merged2"}}, "merge2"),
+		event(t, "retire-foreign", agent, SchemaSupersede, Supersede{Target: "foreign", Text: "merge succession"}, "foreign", "merge2", "successor2"),
+	)
+	projection := Fold(records)
+	moved, foundMoved := projection.Decision("move-predecessor")
+	condemned, foundCondemned := projection.Decision("condemn-interim")
+	if !foundMoved || moved.Verdict != Effective || !foundCondemned || condemned.Verdict != Effective {
+		t.Fatalf("fixture wrong: move-predecessor found=%v %+v, condemn-interim found=%v %+v — without both supersessions there is no chain to complete",
+			foundMoved, moved, foundCondemned, condemned)
+	}
+	verdict := statementByEvent(t, projection, "approval2")
+	late := statementByEvent(t, projection, "condemned-late")
+	if !(condemned.Sequence < verdict.Sequence && verdict.Sequence < late.Sequence) {
+		t.Fatalf("fixture wrong: condemnation=%d verdict=%d basis=%d — the supersession must precede the verdict and its basis must follow it, or there is no forward reference here",
+			condemned.Sequence, verdict.Sequence, late.Sequence)
+	}
+	// With end-of-log knowledge the materialised basis genuinely serves as
+	// the interim pointer's successor and the completed chain rescues the
+	// plan: the first merge's successor is not world-stale now. That is the
+	// fixture's proof that the edge is real and position is the only thing
+	// separating the projection's answer from the verdict's.
+	if !artifactByEvent(t, projection, "interim").Succeeded {
+		t.Fatal("the materialised basis never became a successor even with end-of-log knowledge, so this fixture cannot show a forward reference reaching back")
+	}
+	if artifactByEvent(t, projection, "successor").DescribesSupersededWorld {
+		t.Fatal("the completed chain does not rescue the plan even with end-of-log knowledge, so a refused receipt below would prove nothing about position")
+	}
+	decision, found := projection.Decision("retire-foreign")
+	if !found {
+		t.Fatal("the cross-author supersession was never decided, so nothing here reached the receipt boundary at all")
+	}
+	if decision.Verdict == Effective {
+		t.Fatalf("a basis filed after the verdict completed the chain at it, rescued the condemned plan, and minted receipt authority from a fact the reviewer could not have seen: %+v", decision)
+	}
+}
