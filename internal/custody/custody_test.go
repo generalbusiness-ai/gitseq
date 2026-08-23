@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
@@ -165,5 +167,294 @@ func TestMultipleCompletedSettlementsBecomeDisputed(t *testing.T) {
 		if decision.Status != Disputed {
 			t.Fatalf("event %s = %s, want disputed", decision.ID, decision.Status)
 		}
+	}
+}
+
+// decisionsByID indexes a folded state so a test can name the event it means
+// rather than counting positions.
+func decisionsByID(t *testing.T, state State) map[string]Decision {
+	t.Helper()
+	byID := make(map[string]Decision, len(state.Decisions))
+	for _, decision := range state.Decisions {
+		byID[decision.ID] = decision
+	}
+	return byID
+}
+
+// saga builds the three records of one complete custody saga. basis is the
+// settlement that gave this offeror custody; empty claims the initial owner's.
+func saga(suffix, asset, from, to string, basis ...string) []Record {
+	offer, accept, settle := "offer-"+suffix, "accept-"+suffix, "settle-"+suffix
+	var restsOn []string
+	if len(basis) == 1 && basis[0] != "" {
+		restsOn = []string{basis[0]}
+	}
+	return []Record{
+		{ID: offer, Log: from, RestsOn: restsOn, Body: Body{Type: Offer, Asset: asset, From: from, To: to}},
+		{ID: accept, Log: to, RestsOn: []string{offer}, Body: Body{Type: Accept, Asset: asset, From: from, To: to}},
+		{ID: settle, Log: from, RestsOn: []string{accept}, Body: Body{Type: Settle, Asset: asset, From: from, To: to}},
+	}
+}
+
+func TestNonOwnerSagaDoesNotDisputeTheOwnersTransfer(t *testing.T) {
+	asset, a, b, c, d := "asset", "a", "b", "c", "d"
+	records := append(saga("owner", asset, a, b), saga("stranger", asset, c, d)...)
+
+	state, err := Fold(asset, a, records)
+	if err != nil {
+		t.Fatalf("fold: %v", err)
+	}
+	if state.Status != Resolved {
+		t.Fatalf("status = %s, want resolved: a saga from a non-owner is not a competitor", state.Status)
+	}
+	if state.Owner != b {
+		t.Fatalf("owner = %s, want %s: the owner-authorized transfer must still take effect", state.Owner, b)
+	}
+	byID := decisionsByID(t, state)
+	for _, id := range []string{"offer-owner", "accept-owner", "settle-owner"} {
+		if byID[id].Status != Settled {
+			t.Fatalf("%s = %s, want settled", id, byID[id].Status)
+		}
+	}
+	if got := byID["settle-stranger"]; got.Status != Ineffective || got.Reason != "offeror did not hold custody" {
+		t.Fatalf("settle-stranger = %#v, want ineffective for want of custody", got)
+	}
+}
+
+func TestCompetingOwnerAuthorizedSettlementsStayDisputed(t *testing.T) {
+	asset, a, b, c, x, y := "asset", "a", "b", "c", "x", "y"
+	records := append(saga("one", asset, a, b), saga("two", asset, a, c)...)
+	records = append(records, saga("stranger", asset, x, y)...)
+
+	state, err := Fold(asset, a, records)
+	if err != nil {
+		t.Fatalf("ambiguity must be a projection, not an error: %v", err)
+	}
+	if state.Status != Disputed || state.Owner != a {
+		t.Fatalf("state = %#v, want disputed at the last resolved owner", state)
+	}
+	byID := decisionsByID(t, state)
+	for _, id := range []string{"offer-one", "accept-one", "settle-one", "offer-two", "accept-two", "settle-two"} {
+		if byID[id].Status != Disputed {
+			t.Fatalf("%s = %s, want disputed: both were authorized by the owner", id, byID[id].Status)
+		}
+	}
+	if got := byID["settle-stranger"]; got.Status == Disputed {
+		t.Fatalf("settle-stranger = %#v, want not disputed: it was never the owner's to offer", got)
+	}
+	if len(state.Decisions) != len(records) {
+		t.Fatalf("fold omitted decisions: got %d want %d", len(state.Decisions), len(records))
+	}
+}
+
+func TestSequentialTransfersEachTakeEffect(t *testing.T) {
+	asset, a, b, c := "asset", "a", "b", "c"
+	records := append(saga("first", asset, a, b), saga("second", asset, b, c, "settle-first")...)
+
+	state, err := Fold(asset, a, records)
+	if err != nil {
+		t.Fatalf("fold: %v", err)
+	}
+	if state.Status != Resolved {
+		t.Fatalf("status = %s, want resolved: sequential transfers do not compete", state.Status)
+	}
+	if state.Owner != c {
+		t.Fatalf("owner = %s, want %s: custody must follow the whole chain", state.Owner, c)
+	}
+	byID := decisionsByID(t, state)
+	for id, decision := range byID {
+		if decision.Status != Settled {
+			t.Fatalf("%s = %s, want settled", id, decision.Status)
+		}
+	}
+}
+
+func TestCustodyIsNotGrantedRetroactively(t *testing.T) {
+	asset, a, b, c := "asset", "a", "b", "c"
+	// b settles the asset onward before it ever holds it, then a transfers to b.
+	records := append(saga("early", asset, b, c), saga("actual", asset, a, b)...)
+
+	state, err := Fold(asset, a, records)
+	if err != nil {
+		t.Fatalf("fold: %v", err)
+	}
+	if state.Owner != b {
+		t.Fatalf("owner = %s, want %s: a settlement signed before custody must not fire on acquisition", state.Owner, b)
+	}
+	byID := decisionsByID(t, state)
+	if got := byID["settle-early"]; got.Status != Ineffective || got.Reason != "offeror did not hold custody" {
+		t.Fatalf("settle-early = %#v, want ineffective for want of custody at the time it was folded", got)
+	}
+}
+
+func TestOfferNamingSeveralBasesIsRefused(t *testing.T) {
+	asset, a, b, c := "asset", "a", "b", "c"
+	records := append(saga("first", asset, a, b), saga("second", asset, b, c, "settle-first")...)
+	// An offer that names two grants names none in particular. Taking the
+	// first would let an offeror bury a second claim behind a valid one.
+	ambiguous := saga("greedy", asset, b, "d", "settle-first")
+	ambiguous[0].RestsOn = []string{"settle-first", "settle-second"}
+	records = append(records, ambiguous...)
+
+	state, err := Fold(asset, a, records)
+	if err != nil {
+		t.Fatalf("fold: %v", err)
+	}
+	byID := decisionsByID(t, state)
+	if got := byID["settle-greedy"]; got.Status != Ineffective || got.Reason != "offer does not name one custody basis" {
+		t.Fatalf("settle-greedy = %#v, want refused for naming several bases", got)
+	}
+	if state.Status != Resolved || state.Owner != c {
+		t.Fatalf("state = %#v, want the honest chain to resolve at %s", state, c)
+	}
+}
+
+func TestOfferNamingAnUnknownBasisIsRefused(t *testing.T) {
+	asset, a, b, c := "asset", "a", "b", "c"
+	records := append(saga("first", asset, a, b), saga("phantom", asset, b, c, "settle-never-happened")...)
+
+	state, err := Fold(asset, a, records)
+	if err != nil {
+		t.Fatalf("fold: %v", err)
+	}
+	byID := decisionsByID(t, state)
+	// b really does hold the asset here, so "did not hold custody" would be a
+	// false account of why this saga fails. It fails because the grant it
+	// claims is not in the log at all.
+	if got := byID["settle-phantom"]; got.Status != Ineffective || got.Reason != "offer names an unknown custody basis" {
+		t.Fatalf("settle-phantom = %#v, want refused for naming a basis this log does not carry", got)
+	}
+	if state.Status != Resolved || state.Owner != b {
+		t.Fatalf("state = %#v, want the honest transfer to resolve at %s", state, b)
+	}
+}
+
+func TestBasisMustHaveGrantedCustodyToTheOfferor(t *testing.T) {
+	asset, a, b, c, d := "asset", "a", "b", "c", "d"
+	records := append(saga("first", asset, a, b), saga("second", asset, b, c, "settle-first")...)
+	// d names a real settlement, but that settlement granted custody to b.
+	records = append(records, saga("borrowed", asset, d, "e", "settle-first")...)
+
+	state, err := Fold(asset, a, records)
+	if err != nil {
+		t.Fatalf("fold: %v", err)
+	}
+	byID := decisionsByID(t, state)
+	if got := byID["settle-borrowed"]; got.Status != Ineffective || got.Reason != "offeror did not hold custody" {
+		t.Fatalf("settle-borrowed = %#v, want ineffective: the grant it names was not its own", got)
+	}
+	if state.Status != Resolved || state.Owner != c {
+		t.Fatalf("state = %#v, want the real chain to resolve at %s", state, c)
+	}
+}
+
+func TestReacquiredCustodyCanBeTransferredOnward(t *testing.T) {
+	asset, a, b, c := "asset", "a", "b", "c"
+	records := append(saga("out", asset, a, b), saga("back", asset, b, a, "settle-out")...)
+	records = append(records, saga("onward", asset, a, c, "settle-back")...)
+
+	state, err := Fold(asset, a, records)
+	if err != nil {
+		t.Fatalf("fold: %v", err)
+	}
+	if state.Status != Resolved || state.Owner != c {
+		t.Fatalf("state = %#v, want %s to hold after a to b to a to c", state, c)
+	}
+	byID := decisionsByID(t, state)
+	// The reacquisition must be spent by name. a's second transfer rests on
+	// settle-back, not on the initial grant it already used for settle-out.
+	for _, id := range []string{"settle-out", "settle-back", "settle-onward"} {
+		if byID[id].Status != Settled {
+			t.Fatalf("%s = %s, want settled", id, byID[id].Status)
+		}
+	}
+}
+
+// foldEveryOrder folds records in 2n deterministic orders -- every rotation and
+// every reversed rotation -- and returns the projection, failing if any order
+// disagrees with any other. Ordering authority is exactly what this package
+// gave up, so a disagreement here is the defect it was built to remove.
+func foldEveryOrder(t *testing.T, asset, initialOwner string, records []Record) State {
+	t.Helper()
+	var want State
+	for offset := 0; offset < len(records); offset++ {
+		rotated := append(append([]Record{}, records[offset:]...), records[:offset]...)
+		reversed := make([]Record, 0, len(rotated))
+		for index := len(rotated) - 1; index >= 0; index-- {
+			reversed = append(reversed, rotated[index])
+		}
+		for _, order := range [][]Record{rotated, reversed} {
+			state, err := Fold(asset, initialOwner, order)
+			if err != nil {
+				t.Fatalf("fold at offset %d: %v", offset, err)
+			}
+			normalized := State{Asset: state.Asset, Owner: state.Owner, Status: state.Status, Decisions: decisionsInIDOrder(state)}
+			if offset == 0 && len(want.Decisions) == 0 {
+				want = normalized
+				continue
+			}
+			if !reflect.DeepEqual(normalized, want) {
+				t.Fatalf("order at offset %d projected %#v, want %#v", offset, normalized, want)
+			}
+		}
+	}
+	return want
+}
+
+func decisionsInIDOrder(state State) []Decision {
+	ordered := append([]Decision{}, state.Decisions...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID < ordered[j].ID })
+	return ordered
+}
+
+func TestChainProjectsTheSameInEveryOrder(t *testing.T) {
+	asset, a, b, c := "asset", "a", "b", "c"
+	records := append(saga("first", asset, a, b), saga("second", asset, b, c, "settle-first")...)
+
+	state := foldEveryOrder(t, asset, a, records)
+	if state.Status != Resolved || state.Owner != c {
+		t.Fatalf("state = %#v, want a to b to c to resolve at %s in every order", state, c)
+	}
+}
+
+func TestLateCompetingTransferDisputesInEveryOrder(t *testing.T) {
+	asset, a, b, c, d := "asset", "a", "b", "c", "d"
+	records := append(saga("first", asset, a, b), saga("second", asset, b, c, "settle-first")...)
+	// a to d names no basis, so it claims the same initial grant a to b claims.
+	// Two settlements spending one basis are disputed however late it arrives.
+	records = append(records, saga("late", asset, a, d)...)
+
+	state := foldEveryOrder(t, asset, a, records)
+	if state.Status != Disputed || state.Owner != a {
+		t.Fatalf("state = %#v, want disputed at %s: two transfers spend the initial grant", state, a)
+	}
+	byID := make(map[string]Decision, len(state.Decisions))
+	for _, decision := range state.Decisions {
+		byID[decision.ID] = decision
+	}
+	for _, id := range []string{"settle-first", "settle-late"} {
+		if byID[id].Status != Disputed {
+			t.Fatalf("%s = %s, want disputed", id, byID[id].Status)
+		}
+	}
+}
+
+func TestBasisNamingSomethingOtherThanASettlementIsRefused(t *testing.T) {
+	asset, a, b, c := "asset", "a", "b", "c"
+	// b names the offer it accepted rather than the settlement that completed
+	// it. An offer is not a grant of custody, so this must fail closed for the
+	// same reason a basis absent from the log does.
+	records := append(saga("first", asset, a, b), saga("premature", asset, b, c, "offer-first")...)
+
+	state, err := Fold(asset, a, records)
+	if err != nil {
+		t.Fatalf("fold: %v", err)
+	}
+	byID := decisionsByID(t, state)
+	if got := byID["settle-premature"]; got.Status != Ineffective || got.Reason != "offer names an unknown custody basis" {
+		t.Fatalf("settle-premature = %#v, want refused: only a settlement grants custody", got)
+	}
+	if state.Status != Resolved || state.Owner != b {
+		t.Fatalf("state = %#v, want the honest transfer to resolve at %s", state, b)
 	}
 }
