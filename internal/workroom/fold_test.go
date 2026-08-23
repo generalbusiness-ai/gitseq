@@ -174,6 +174,97 @@ func BenchmarkFolderAppendToProjectionRequestHeavy(b *testing.B) {
 	}
 }
 
+// mergeReceiptHeavyHistory models the workroom's real proportions: a log of
+// the given depth carrying the given number of complete merge-receipt lanes —
+// request, promise, predecessor, candidate, approval, ratification, receipt,
+// successor, and the cross-author supersession the receipt authorizes — spread
+// evenly through ordinary filler records. Receipt admission runs a
+// world-staleness pass over the folded prefix, so the cost being measured
+// depends on both the depth and the receipt count, which is why the fixture
+// pins both to the measured repository rather than to a convenient shape.
+// When chained, each lane's candidate rests on the previous lane's successor,
+// the way real work stands on the work before it, so a receipt's ancestor
+// closure spans every earlier lane instead of one hop — the shape that costs
+// the closure-restricted staleness pass the most.
+func mergeReceiptHeavyHistory(tb testing.TB, depth, receipts int, chained bool) []Record {
+	tb.Helper()
+	records := []Record{
+		event(tb, "r0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Human", "role": "operator"}}),
+		event(tb, "r1", operator, SchemaState, State{Kind: KindRoster, Text: "implementer joins", Body: map[string]string{"actor": agent, "kind": "agent", "name": "Implementer", "role": "participant"}}, "r0"),
+		event(tb, "r2", operator, SchemaRatify, Ratify{Target: "r1"}, "r1"),
+		event(tb, "r3", operator, SchemaState, State{Kind: KindRoster, Text: "reviewer joins", Body: map[string]string{"actor": other, "kind": "agent", "name": "Reviewer", "role": "participant"}}, "r0"),
+		event(tb, "r4", operator, SchemaRatify, Ratify{Target: "r3"}, "r3"),
+	}
+	lane := func(index int) []Record {
+		id := func(name string) string { return fmt.Sprintf("%s-%d", name, index) }
+		path := fmt.Sprintf("lane/%d", index)
+		head := fmt.Sprintf("head-%d", index)
+		merged := fmt.Sprintf("merged-%d", index)
+		ground := "r0"
+		if chained && index > 0 {
+			ground = fmt.Sprintf("successor-%d", index-1)
+		}
+		return []Record{
+			event(tb, id("request"), operator, SchemaState, State{Kind: KindRequest, Text: "review it", Body: map[string]string{"to": other, "conditions": "exact head"}}, "r0"),
+			event(tb, id("promise"), other, SchemaState, State{Kind: KindPromise, Text: "will review"}, id("request")),
+			event(tb, id("predecessor"), operator, SchemaState, State{Kind: KindArtifact, Text: "older implementation", Body: map[string]string{"path": path, "commit": "base"}}, "r0"),
+			event(tb, id("candidate"), agent, SchemaState, State{Kind: KindArtifact, Text: "implementation", Body: map[string]string{"path": path, "commit": head}}, ground),
+			event(tb, id("approval"), other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": head, "artifact": id("candidate")}}, id("promise"), id("candidate")),
+			event(tb, id("ratify"), operator, SchemaRatify, Ratify{Target: id("approval")}, id("approval")),
+			event(tb, id("merge"), agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+				"merge_approval": id("approval"), "merge_candidate": head, "merge_target_pre_head": "base", "merge_head": merged,
+				"merge_retirements": fmt.Sprintf(`{"%s":"%s"}`, id("predecessor"), path), "merge_successors": fmt.Sprintf(`["%s"]`, path),
+			}}, id("approval")),
+			event(tb, id("successor"), agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": path, "commit": merged}}, id("merge")),
+			event(tb, id("retire"), agent, SchemaSupersede, Supersede{Target: id("predecessor"), Text: "merge succession"}, id("predecessor"), id("merge"), id("successor")),
+		}
+	}
+	filler := depth - len(records) - receipts*len(lane(0))
+	if filler < 0 {
+		tb.Fatalf("depth %d cannot hold %d receipt lanes", depth, receipts)
+	}
+	perLane := filler / receipts
+	next := 0
+	for index := 0; index < receipts; index++ {
+		for count := 0; count < perLane; count++ {
+			records = append(records, event(tb, fmt.Sprintf("note-%d", next), agent, SchemaState, State{Kind: KindAssert, Text: "routine progress"}, "r0"))
+			next++
+		}
+		records = append(records, lane(index)...)
+	}
+	for len(records) < depth {
+		records = append(records, event(tb, fmt.Sprintf("note-%d", next), agent, SchemaState, State{Kind: KindAssert, Text: "routine progress"}, "r0"))
+		next++
+	}
+	return records
+}
+
+// BenchmarkFoldMergeReceiptHeavy measures a whole fold at the measured
+// repository's proportions — 8,900 records, 132 merge receipts — because
+// receipt admission is the one judgement that reads a staleness pass over the
+// prefix, and its cost only shows at depth.
+func BenchmarkFoldMergeReceiptHeavy(b *testing.B) {
+	for _, shape := range []struct {
+		name    string
+		chained bool
+	}{{"independent", false}, {"chained", true}} {
+		records := mergeReceiptHeavyHistory(b, 8900, 132, shape.chained)
+		projection := Fold(records)
+		for _, lane := range []int{0, 65, 131} {
+			decision, _ := projection.Decision(fmt.Sprintf("retire-%d", lane))
+			if decision.Verdict != Effective {
+				b.Fatalf("%s lane %d cross-author supersession = %+v; the benchmark would measure refused receipts", shape.name, lane, decision)
+			}
+		}
+		b.Run(shape.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				Fold(records)
+			}
+		})
+	}
+}
+
 func TestFolderDoesNotRetainTransportPayloads(t *testing.T) {
 	payload, err := Encode(State{Kind: KindAssert, Text: "decoded"})
 	if err != nil {
@@ -3729,5 +3820,179 @@ func TestAnInterposedRetirementDoesNotHideAnOlderCauseFromTheReceipt(t *testing.
 	}
 	if decision, _ := projection.Decision("retire-predecessor"); decision.Verdict == Effective {
 		t.Fatal("an interposed post-verdict retirement hid an older pre-verdict cause, and the receipt took cross-author retirement authority")
+	}
+}
+
+// A receipt over a successor whose predecessor the merge itself retired. The
+// projection keeps such a successor current — the retirement is the merge's
+// own signed act, not news — so a reviewer approving that successor signs
+// over a world that never moved for them, and the receipt spending that
+// approval must be admitted. A receipt boundary that walks the artifact graph
+// without honouring the merge-plan exemption sees the retired predecessor
+// under the successor and refuses a verdict that was sound when made: the
+// exact divergence between the projection's rule and a second walker.
+func TestAReceiptOverAMergeSuccessorRestingOnItsRetiredPredecessorIsAdmitted(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "the pointer the first merge replaces", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged1",
+			"merge_retirements": `{"predecessor":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		// The successor cites the predecessor as its causal basis, and the
+		// same merge withdraws that predecessor.
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged1"}}, "merge", "predecessor"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "predecessor", Text: "merge succession"}, "predecessor", "merge", "successor"),
+		// The second round reviews the successor itself.
+		event(t, "request2", operator, SchemaState, State{Kind: KindRequest, Text: "review the successor", Body: map[string]string{"to": other, "conditions": "exact head"}}, "successor"),
+		event(t, "promise2", other, SchemaState, State{Kind: KindPromise, Text: "will review"}, "request2"),
+		event(t, "foreign", operator, SchemaState, State{Kind: KindArtifact, Text: "someone else's pointer", Body: map[string]string{"path": "spike", "commit": "other-base"}}, "r0"),
+		event(t, "approval2", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "merged1", "artifact": "successor"}}, "promise2", "successor"),
+		event(t, "approval2-ratified", operator, SchemaRatify, Ratify{Target: "approval2"}, "approval2"),
+		event(t, "merge2", agent, SchemaState, State{Kind: KindAssert, Text: "second merge", Body: map[string]string{
+			"merge_approval": "approval2", "merge_candidate": "merged1", "merge_target_pre_head": "merged1", "merge_head": "merged2",
+			"merge_retirements": `{"foreign":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval2"),
+		event(t, "successor2", agent, SchemaState, State{Kind: KindArtifact, Text: "second successor", Body: map[string]string{"path": "spike", "commit": "merged2"}}, "merge2"),
+		event(t, "retire-foreign", agent, SchemaSupersede, Supersede{Target: "foreign", Text: "merge succession"}, "foreign", "merge2", "successor2"),
+	)
+	projection := Fold(records)
+	successor := artifactByEvent(t, projection, "successor")
+	if successor.DescribesSupersededWorld || successor.Stale {
+		t.Fatalf("the projection flags the merge's own successor (world=%v stale=%v), so this test cannot isolate the receipt boundary",
+			successor.DescribesSupersededWorld, successor.Stale)
+	}
+	if decision, _ := projection.Decision("retire-foreign"); decision.Verdict != Effective {
+		t.Fatalf("a receipt over a successor whose predecessor its own merge retired was refused: %+v — the receipt boundary disagrees with the projection about the merge-plan exemption", decision)
+	}
+}
+
+// stalenessModeDefinition declares an artifact-rendered kind whose governed
+// staleness mode is the one under test, so a receipt fixture can stand a
+// candidate on a ground the vocabulary says cannot flare it.
+func stalenessModeDefinition(name string, mode StalenessMode) KindDefinition {
+	return KindDefinition{
+		Name:   Kind(name),
+		Fields: []FieldConstraint{{Operator: FieldPresent, Name: "path"}, {Operator: FieldPresent, Name: "commit"}},
+		Basis:  []BasisConstraint{}, Satisfier: "role:ratifier", Render: RenderArtifact,
+		Staleness: mode, Lifecycle: LifecycleNone,
+		Guidance: "Fixture kind for the receipt boundary's staleness-mode tests.",
+	}
+}
+
+// A ground whose governing definition is StalenessExempt cannot flare what
+// stands on it: the projection keeps the candidate current however the ground
+// moves. The receipt boundary must honour the same governed mode — a walker
+// with its own edge rules sees a retired artifact basis, calls the candidate
+// world-stale, and refuses an approval the projection says was signed over a
+// world that never moved.
+func TestAReceiptHonoursAnExemptGroundRetiredBeforeTheVerdict(t *testing.T) {
+	definition := stalenessModeDefinition("exempt-ground", StalenessExempt)
+	records := reviewRecords(t,
+		event(t, "def", operator, SchemaState, kindDefinitionState(t, definition), "r0"),
+		event(t, "def-ratified", operator, SchemaRatify, Ratify{Target: "def"}, "def"),
+		event(t, "ground", agent, SchemaState, State{Kind: "exempt-ground", Text: "exempt ground", Body: map[string]string{"path": "ground", "commit": "head0"}}, "r0"),
+		event(t, "candidate", agent, SchemaState, State{Kind: KindArtifact, Text: "implementation", Body: map[string]string{"path": "impl", "commit": "head1"}}, "ground"),
+		// Before the verdict, and bare: a condemnation, not a succession.
+		event(t, "retire-ground", agent, SchemaSupersede, Supersede{Target: "ground", Text: "the exempt ground moved"}, "ground"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "candidate"}}, "reviewer-promise", "candidate"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "someone else's pointer", Body: map[string]string{"path": "impl", "commit": "base"}}, "r0"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"predecessor":"impl"}`, "merge_successors": `["impl"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged", Body: map[string]string{"path": "impl", "commit": "merged"}}, "merge"),
+		event(t, "retire-predecessor", agent, SchemaSupersede, Supersede{Target: "predecessor", Text: "merge succession"}, "predecessor", "merge", "successor"),
+	)
+	projection := Fold(records)
+	candidate := artifactByEvent(t, projection, "candidate")
+	if candidate.DescribesSupersededWorld || candidate.Stale {
+		t.Fatalf("the projection flags the candidate over an exempt ground (world=%v stale=%v), so the fixture does not isolate the exempt mode",
+			candidate.DescribesSupersededWorld, candidate.Stale)
+	}
+	if decision, _ := projection.Decision("retire-predecessor"); decision.Verdict != Effective {
+		t.Fatalf("a receipt was refused over an exempt ground the projection says cannot flare the candidate: %+v", decision)
+	}
+}
+
+// A terminal page catches the moved world and does not pass it on. The
+// candidate standing on it stays current in the projection, so the approval
+// over that candidate is signed over an unmoved world and the receipt must be
+// admitted. A walker that ignores the governed mode crosses the terminal page
+// to the retired ground beneath it and refuses.
+func TestAReceiptHonoursATerminalPageThatCaughtTheMovedWorld(t *testing.T) {
+	definition := stalenessModeDefinition("terminal-page", StalenessTerminal)
+	records := reviewRecords(t,
+		event(t, "def", operator, SchemaState, kindDefinitionState(t, definition), "r0"),
+		event(t, "def-ratified", operator, SchemaRatify, Ratify{Target: "def"}, "def"),
+		event(t, "ground", agent, SchemaState, State{Kind: KindArtifact, Text: "the base", Body: map[string]string{"path": "ground", "commit": "head0"}}, "r0"),
+		event(t, "mid", agent, SchemaState, State{Kind: "terminal-page", Text: "terminal page over the base", Body: map[string]string{"path": "mid", "commit": "head0"}}, "ground"),
+		event(t, "candidate", agent, SchemaState, State{Kind: KindArtifact, Text: "implementation", Body: map[string]string{"path": "impl", "commit": "head1"}}, "mid"),
+		// Before the verdict, and bare.
+		event(t, "retire-ground", agent, SchemaSupersede, Supersede{Target: "ground", Text: "the base was condemned"}, "ground"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "candidate"}}, "reviewer-promise", "candidate"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "someone else's pointer", Body: map[string]string{"path": "impl", "commit": "base"}}, "r0"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"predecessor":"impl"}`, "merge_successors": `["impl"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged", Body: map[string]string{"path": "impl", "commit": "merged"}}, "merge"),
+		event(t, "retire-predecessor", agent, SchemaSupersede, Supersede{Target: "predecessor", Text: "merge succession"}, "predecessor", "merge", "successor"),
+	)
+	projection := Fold(records)
+	mid := artifactByEvent(t, projection, "mid")
+	candidate := artifactByEvent(t, projection, "candidate")
+	if !mid.DescribesSupersededWorld || candidate.DescribesSupersededWorld {
+		t.Fatalf("fixture wrong: mid world=%v candidate world=%v — terminal must catch the moved world without passing it on",
+			mid.DescribesSupersededWorld, candidate.DescribesSupersededWorld)
+	}
+	if decision, _ := projection.Decision("retire-predecessor"); decision.Verdict != Effective {
+		t.Fatalf("a receipt was refused over a terminal page the projection says stopped the moved world: %+v", decision)
+	}
+}
+
+// Two receipts in one log, one cause between their verdicts. The first
+// approval was signed before the ground moved and its receipt is admitted;
+// the second was signed after and its receipt is refused. Each receipt must be
+// judged at its own verdict's position — a boundary that reuses one cutoff for
+// both, or dates against the receipt instead of the verdict, answers at least
+// one of them wrongly.
+func TestTwoReceiptsInOneLogAreEachJudgedAtTheirOwnVerdict(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "ground", agent, SchemaState, State{Kind: KindArtifact, Text: "the base", Body: map[string]string{"path": "ground", "commit": "head0"}}, "r0"),
+		event(t, "cand-a", agent, SchemaState, State{Kind: KindArtifact, Text: "lane A implementation", Body: map[string]string{"path": "lane-a", "commit": "head-a"}}, "ground"),
+		event(t, "cand-b", agent, SchemaState, State{Kind: KindArtifact, Text: "lane B implementation", Body: map[string]string{"path": "lane-b", "commit": "head-b"}}, "ground"),
+		event(t, "approval-a", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head-a", "artifact": "cand-a"}}, "reviewer-promise", "cand-a"),
+		event(t, "approval-a-ratified", operator, SchemaRatify, Ratify{Target: "approval-a"}, "approval-a"),
+		// After verdict A, before verdict B.
+		event(t, "retire-ground", agent, SchemaSupersede, Supersede{Target: "ground", Text: "the base was condemned"}, "ground"),
+		event(t, "request-b", operator, SchemaState, State{Kind: KindRequest, Text: "review lane B", Body: map[string]string{"to": other, "conditions": "exact head"}}, "cand-b"),
+		event(t, "promise-b", other, SchemaState, State{Kind: KindPromise, Text: "will review"}, "request-b"),
+		event(t, "approval-b", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head-b", "artifact": "cand-b"}}, "promise-b", "cand-b"),
+		event(t, "approval-b-ratified", operator, SchemaRatify, Ratify{Target: "approval-b"}, "approval-b"),
+		event(t, "pred-a", operator, SchemaState, State{Kind: KindArtifact, Text: "lane A pointer", Body: map[string]string{"path": "lane-a", "commit": "base"}}, "r0"),
+		event(t, "pred-b", operator, SchemaState, State{Kind: KindArtifact, Text: "lane B pointer", Body: map[string]string{"path": "lane-b", "commit": "base"}}, "r0"),
+		event(t, "merge-a", agent, SchemaState, State{Kind: KindAssert, Text: "lane A merged", Body: map[string]string{
+			"merge_approval": "approval-a", "merge_candidate": "head-a", "merge_target_pre_head": "base", "merge_head": "merged-a",
+			"merge_retirements": `{"pred-a":"lane-a"}`, "merge_successors": `["lane-a"]`,
+		}}, "approval-a"),
+		event(t, "succ-a", agent, SchemaState, State{Kind: KindArtifact, Text: "lane A successor", Body: map[string]string{"path": "lane-a", "commit": "merged-a"}}, "merge-a"),
+		event(t, "retire-pred-a", agent, SchemaSupersede, Supersede{Target: "pred-a", Text: "merge succession"}, "pred-a", "merge-a", "succ-a"),
+		event(t, "merge-b", agent, SchemaState, State{Kind: KindAssert, Text: "lane B merged", Body: map[string]string{
+			"merge_approval": "approval-b", "merge_candidate": "head-b", "merge_target_pre_head": "base", "merge_head": "merged-b",
+			"merge_retirements": `{"pred-b":"lane-b"}`, "merge_successors": `["lane-b"]`,
+		}}, "approval-b"),
+		event(t, "succ-b", agent, SchemaState, State{Kind: KindArtifact, Text: "lane B successor", Body: map[string]string{"path": "lane-b", "commit": "merged-b"}}, "merge-b"),
+		event(t, "retire-pred-b", agent, SchemaSupersede, Supersede{Target: "pred-b", Text: "merge succession"}, "pred-b", "merge-b", "succ-b"),
+	)
+	projection := Fold(records)
+	if decision, _ := projection.Decision("retire-pred-a"); decision.Verdict != Effective {
+		t.Fatalf("lane A's receipt was refused although the world moved only after its verdict: %+v", decision)
+	}
+	if decision, _ := projection.Decision("retire-pred-b"); decision.Verdict == Effective {
+		t.Fatal("lane B's receipt was admitted although its reviewer had already been shown the moved world")
 	}
 }
