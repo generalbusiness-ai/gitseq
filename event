@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c9112dc31c09cbb86f600a58911a5fe95c2d6590","text":"The corrected child report d11b7f11 resolves this boundary analysis. It records the separate chess workroom sequence and author-correct root closures; the earlier report 6ab9b6f2 is retired."}
+{"kind":"promise","text":"I will verify the four proposal dispositions against current main, retire each Codex-authored dead proposal that the evidence supports, and report the exact closures without changing repository files."}
