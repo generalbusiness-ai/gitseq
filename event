@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3ef4e48d88f186960788f7a7e395ebfe19c41445","text":"Retire the world-stale chess_test.go artifact; fresh artifact 80c01f79 records the same exact head without an artifact-to-retired-artifact basis."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5e84c17404d77122d31266cb791d92aee20e6aff","text":"Retire the world-stale cmd/chess artifact; fresh artifact 6c808415 records the same exact head without an artifact-to-retired-artifact basis."}
