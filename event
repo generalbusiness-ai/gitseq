@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at go.sum","body":{"commit":"aa4f875662172364d1252c05beff98529c34a9a2","path":"go.sum"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/ciguard","body":{"commit":"aa4f875662172364d1252c05beff98529c34a9a2","path":"internal/ciguard"}}
