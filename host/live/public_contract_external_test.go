@@ -1,6 +1,7 @@
 package live_test
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -20,7 +21,7 @@ func deterministicKey(index int) ed25519.PrivateKey {
 
 func openPublicSession(t *testing.T, runtime *live.Hub, name string, key ed25519.PrivateKey, update live.ActivityUpdate) string {
 	t.Helper()
-	credential, _, err := runtime.OpenSession(name, key.Public().(ed25519.PublicKey), name, time.Minute, update)
+	credential, _, err := runtime.OpenTrustedSession(name, key.Public().(ed25519.PublicKey), name, time.Minute, update)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,13 +109,161 @@ func TestPublicLeaseLifecycleAndGenerationReset(t *testing.T) {
 	}
 
 	expiring, _ := live.New(8)
-	expiringCredential, _, err := expiring.OpenSession("actor", actor.Public().(ed25519.PublicKey), "actor", time.Nanosecond, live.ActivityUpdate{})
+	expiringCredential, _, err := expiring.OpenTrustedSession("actor", actor.Public().(ed25519.PublicKey), "actor", time.Nanosecond, live.ActivityUpdate{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(time.Millisecond)
 	if _, err := expiring.RenewSession(expiringCredential, "actor", actor.Public().(ed25519.PublicKey), "actor", time.Minute, live.ActivityUpdate{}); err == nil {
 		t.Fatal("expired credential renewed")
+	}
+}
+
+func TestPublicLeaseInputsAreBoundedAtOpenPrepareAndRenew(t *testing.T) {
+	runtime, _ := live.New(32)
+	key := deterministicKey(5000)
+	public := key.Public().(ed25519.PublicKey)
+	tooLongActor := strings.Repeat("a", live.MaxActorNameBytes+1)
+	tooLongValue := strings.Repeat("v", live.MaxPresenceValueBytes+1)
+	invalidUTF8 := string([]byte{0xff})
+	for _, input := range []struct {
+		actor string
+		value string
+		ttl   time.Duration
+	}{
+		{actor: tooLongActor, value: "ok", ttl: time.Minute},
+		{actor: invalidUTF8, value: "ok", ttl: time.Minute},
+		{actor: "ok", value: tooLongValue, ttl: time.Minute},
+		{actor: "ok", value: invalidUTF8, ttl: time.Minute},
+		{actor: "ok", value: "ok", ttl: live.MaxSessionTTL + time.Nanosecond},
+	} {
+		if _, _, err := runtime.OpenTrustedSession(input.actor, public, input.value, input.ttl, live.ActivityUpdate{}); err == nil {
+			t.Fatal("trusted open accepted an out-of-bounds lease")
+		}
+		if _, err := runtime.PrepareSession(input.actor, public, input.value, input.ttl, live.ActivityUpdate{}); err == nil {
+			t.Fatal("proved open preparation accepted an out-of-bounds lease")
+		}
+	}
+	boundary, _ := live.New(8)
+	maxActor := strings.Repeat("a", live.MaxActorNameBytes)
+	maxValue := strings.Repeat("v", live.MaxPresenceValueBytes)
+	challenge, err := boundary.PrepareSession(maxActor, public, maxValue, live.MaxSessionTTL, live.ActivityUpdate{})
+	if err != nil {
+		t.Fatalf("exact public lease bounds were refused: %v", err)
+	}
+	toSign, err := live.SessionSigningBytes(challenge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundaryCredential, _, err := boundary.OpenSession(challenge, ed25519.Sign(key, toSign))
+	if err != nil {
+		t.Fatalf("exact public lease bounds did not open: %v", err)
+	}
+	if _, err := boundary.RenewSession(boundaryCredential, maxActor, public, maxValue, live.MaxSessionTTL, live.ActivityUpdate{}); err != nil {
+		t.Fatalf("exact public lease bounds did not renew: %v", err)
+	}
+
+	credential := openPublicSession(t, runtime, "bounded", key, live.ActivityUpdate{})
+	baseline := runtime.Snapshot().Cursor
+	for _, input := range []struct {
+		actor string
+		value string
+		ttl   time.Duration
+	}{
+		{actor: tooLongActor, value: "ok", ttl: time.Minute},
+		{actor: "bounded", value: tooLongValue, ttl: time.Minute},
+		{actor: "bounded", value: "ok", ttl: live.MaxSessionTTL + time.Nanosecond},
+	} {
+		if _, err := runtime.RenewSession(credential, input.actor, public, input.value, input.ttl, live.ActivityUpdate{}); err == nil {
+			t.Fatal("renew accepted an out-of-bounds lease")
+		}
+		if runtime.Snapshot().Cursor != baseline {
+			t.Fatal("refused renewal moved the live cursor")
+		}
+	}
+}
+
+func TestPendingSessionChallengesAreBounded(t *testing.T) {
+	runtime, _ := live.New(8)
+	key := deterministicKey(5001)
+	public := key.Public().(ed25519.PublicKey)
+	for index := 0; index < live.MaxPendingSessionChallenges; index++ {
+		if _, err := runtime.PrepareSession("browser", public, "Browser", time.Minute, live.ActivityUpdate{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := runtime.PrepareSession("browser", public, "Browser", time.Minute, live.ActivityUpdate{}); err == nil {
+		t.Fatal("pending session challenge overflow was accepted")
+	}
+	if len(runtime.Snapshot().Presence) != 0 {
+		t.Fatal("pending challenges became visible presence")
+	}
+	fingerprint, err := live.ActorFingerprint(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sessions := runtime.LiveSessionsForActor(fingerprint); sessions != 0 {
+		t.Fatalf("pending challenges consumed %d actor session slots", sessions)
+	}
+}
+
+func TestProofOpenCannotBypassActorSessionQuota(t *testing.T) {
+	runtime, _ := live.New(8)
+	key := deterministicKey(5003)
+	for index := 0; index < live.MaxSessionsPerActor; index++ {
+		openProvedSession(t, runtime, fmt.Sprintf("browser-%d", index), key)
+	}
+	challenge, err := runtime.PrepareSession("overflow", key.Public().(ed25519.PublicKey), "Browser", time.Minute, live.ActivityUpdate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	toSign, err := live.SessionSigningBytes(challenge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runtime.OpenSession(challenge, ed25519.Sign(key, toSign)); err == nil {
+		t.Fatal("proved opening bypassed the per-actor live-session quota")
+	}
+}
+
+func TestCompositeWaitKeepsDurableAndLiveCursorsDistinct(t *testing.T) {
+	runtime, _ := live.New(16)
+	baseline := live.CompositeCursor{
+		Durable: live.DurableFrontier{Genesis: "durable:g", Head: "h1", Depth: 1},
+		Live:    runtime.Snapshot().Cursor,
+	}
+	calls := 0
+	read := func(context.Context) (string, live.DurableFrontier, error) {
+		calls++
+		frontier := baseline.Durable
+		if calls > 1 {
+			frontier.Head, frontier.Depth = "h2", 2
+		}
+		return "folded at " + frontier.Head, frontier, nil
+	}
+	observed, changed, err := live.WaitComposite(context.Background(), runtime, "", baseline, time.Second, read)
+	if err != nil || !changed {
+		t.Fatalf("durable wait = changed %v err %v", changed, err)
+	}
+	if observed.Cursor.Durable.Head != "h2" || observed.Cursor.Durable.Depth != 2 || observed.Cursor.Live != baseline.Live || observed.Durable != "folded at h2" {
+		t.Fatalf("composite durable result conflated cursors: %+v", observed)
+	}
+
+	liveBase := observed.Cursor
+	key := deterministicKey(5002)
+	openPublicSession(t, runtime, "watcher", key, live.ActivityUpdate{})
+	liveObserved, changed, err := live.WaitComposite(context.Background(), runtime, "", liveBase, time.Second, func(context.Context) (string, live.DurableFrontier, error) {
+		return "folded at h2", liveBase.Durable, nil
+	})
+	if err != nil || !changed || liveObserved.Cursor.Durable != liveBase.Durable || liveObserved.Cursor.Live == liveBase.Live || len(liveObserved.Live.Changes) == 0 {
+		t.Fatalf("composite live result = %+v changed %v err %v", liveObserved, changed, err)
+	}
+
+	_, changed, err = live.WaitComposite(context.Background(), runtime, "", liveObserved.Cursor, time.Millisecond, func(context.Context) (string, live.DurableFrontier, error) {
+		return "unchanged", liveObserved.Cursor.Durable, nil
+	})
+	if err != nil || changed {
+		t.Fatalf("ordinary composite timeout = changed %v err %v", changed, err)
 	}
 }
 
@@ -154,7 +303,7 @@ func TestPublicActivityAndAttentionBounds(t *testing.T) {
 	tooLongFocus := []string{strings.Repeat("x", live.MaxFocusEventBytes+1)}
 	tooLongNote := strings.Repeat("n", live.MaxActivityNoteBytes+1)
 	for _, update := range []live.ActivityUpdate{{Focus: &tooMany}, {Focus: &tooLongFocus}, {Note: &tooLongNote}} {
-		if _, _, err := runtime.OpenSession("invalid", key.Public().(ed25519.PublicKey), "invalid", time.Minute, update); err == nil {
+		if _, _, err := runtime.OpenTrustedSession("invalid", key.Public().(ed25519.PublicKey), "invalid", time.Minute, update); err == nil {
 			t.Fatal("activity above a public bound was accepted")
 		}
 	}
@@ -177,7 +326,7 @@ func TestPublicSessionBounds(t *testing.T) {
 		for index := 0; index < live.MaxSessionsPerActor; index++ {
 			openPublicSession(t, runtime, fmt.Sprintf("actor-%d", index), key, live.ActivityUpdate{})
 		}
-		if _, _, err := runtime.OpenSession("overflow", key.Public().(ed25519.PublicKey), "overflow", time.Minute, live.ActivityUpdate{}); err == nil {
+		if _, _, err := runtime.OpenTrustedSession("overflow", key.Public().(ed25519.PublicKey), "overflow", time.Minute, live.ActivityUpdate{}); err == nil {
 			t.Fatal("per-actor session overflow was accepted")
 		}
 	})
@@ -187,7 +336,7 @@ func TestPublicSessionBounds(t *testing.T) {
 			openPublicSession(t, runtime, fmt.Sprintf("actor-%d", index), deterministicKey(1000+index), live.ActivityUpdate{})
 		}
 		overflow := deterministicKey(2000)
-		if _, _, err := runtime.OpenSession("overflow", overflow.Public().(ed25519.PublicKey), "overflow", time.Minute, live.ActivityUpdate{}); err == nil {
+		if _, _, err := runtime.OpenTrustedSession("overflow", overflow.Public().(ed25519.PublicKey), "overflow", time.Minute, live.ActivityUpdate{}); err == nil {
 			t.Fatal("global session overflow was accepted")
 		}
 	})

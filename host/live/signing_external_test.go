@@ -23,6 +23,95 @@ func testKey(t *testing.T) ed25519.PrivateKey {
 	return ed25519.NewKeyFromSeed(seed)
 }
 
+func openProvedSession(t *testing.T, runtime *live.Hub, actor string, private ed25519.PrivateKey) string {
+	t.Helper()
+	challenge, err := runtime.PrepareSession(actor, private.Public().(ed25519.PublicKey), actor, time.Minute, live.ActivityUpdate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	toSign, err := live.SessionSigningBytes(challenge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, _, err := runtime.OpenSession(challenge, ed25519.Sign(private, toSign))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return credential
+}
+
+func TestBrowserProvesPossessionBeforePresenceBecomesVisible(t *testing.T) {
+	runtime, err := live.New(32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := testKey(t)
+	public := private.Public().(ed25519.PublicKey)
+	fingerprint, _ := live.ActorFingerprint(public)
+	before := runtime.Snapshot()
+	challenge, err := runtime.PrepareSession("browser", public, "Browser", time.Minute, live.ActivityUpdate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterPrepare := runtime.Snapshot(); afterPrepare.Cursor != before.Cursor || len(afterPrepare.Presence) != 0 || runtime.LiveSessionsForActor(fingerprint) != 0 {
+		t.Fatalf("unproved challenge published or consumed quota: before=%+v after=%+v", before, afterPrepare)
+	}
+	toSign, err := live.SessionSigningBytes(challenge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, _, err := runtime.OpenSession(challenge, ed25519.Sign(private, toSign))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credential == "" || runtime.LiveSessionsForActor(fingerprint) != 1 || len(runtime.Snapshot().Presence) != 1 {
+		t.Fatal("proved session did not become the one visible lease")
+	}
+	if _, _, err := runtime.OpenSession(challenge, ed25519.Sign(private, toSign)); err == nil {
+		t.Fatal("single-use session challenge replayed")
+	}
+}
+
+func TestBadSessionProofConsumesNoQuotaAndCannotBeRetried(t *testing.T) {
+	runtime, _ := live.New(32)
+	private := testKey(t)
+	public := private.Public().(ed25519.PublicKey)
+	challenge, err := runtime.PrepareSession("browser", public, "Browser", time.Minute, live.ActivityUpdate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, wrong, _ := ed25519.GenerateKey(nil)
+	toSign, _ := live.SessionSigningBytes(challenge)
+	if _, _, err := runtime.OpenSession(challenge, ed25519.Sign(wrong, toSign)); err == nil {
+		t.Fatal("wrong key opened a lease")
+	}
+	if _, _, err := runtime.OpenSession(challenge, ed25519.Sign(private, toSign)); err == nil {
+		t.Fatal("failed proof left a reusable challenge")
+	}
+	fingerprint, _ := live.ActorFingerprint(public)
+	if runtime.LiveSessionsForActor(fingerprint) != 0 || len(runtime.Snapshot().Presence) != 0 {
+		t.Fatal("failed proof consumed quota or published presence")
+	}
+}
+
+func TestSessionSigningBytesPinnedForBrowserParity(t *testing.T) {
+	private := testKey(t)
+	challenge := live.SessionChallenge{
+		Version:    0,
+		Generation: "generation:000102030405060708090a0b0c0d0e0f",
+		Nonce:      []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31},
+		ActorKey:   private.Public().(ed25519.PublicKey),
+	}
+	got, err := live.SessionSigningBytes(challenge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := hex.DecodeString("6769747365712e6c6976652e73657373696f6e2d70726f6f662e7630008400782b67656e65726174696f6e3a30303031303230333034303530363037303830393061306230633064306530665820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f5820d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("session signing bytes = %x, want %x", got, want)
+	}
+}
+
 func TestActorSigningBytesPinnedForBrowserParity(t *testing.T) {
 	draft := live.Draft{
 		Generation: "g", Conversation: "c", Sequence: 2,
@@ -50,10 +139,7 @@ func TestBrowserHeldKeyPreparesSignsAndSubmitsWithoutRuntimeCustody(t *testing.T
 	}
 	private := testKey(t)
 	public := private.Public().(ed25519.PublicKey)
-	credential, _, err := runtime.OpenSession("browser", public, "Browser", time.Minute, live.ActivityUpdate{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	credential := openProvedSession(t, runtime, "browser", private)
 
 	before := runtime.Snapshot()
 	draft, err := runtime.PrepareFrameForSession(credential, "game:42", "", []byte(`{"move":"e4"}`), public)
@@ -102,10 +188,7 @@ func TestExternallySignedSubmissionRejectsKeyScopeAndPayloadTamperingAtomically(
 	}
 	private := testKey(t)
 	public := private.Public().(ed25519.PublicKey)
-	credential, _, err := runtime.OpenSession("browser", public, "Browser", time.Minute, live.ActivityUpdate{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	credential := openProvedSession(t, runtime, "browser", private)
 	draft, err := runtime.PrepareFrameForSession(credential, "game:42", "", []byte("e4"), public)
 	if err != nil {
 		t.Fatal(err)
@@ -145,10 +228,7 @@ func TestSignedMessageRejectsNoncanonicalJSONBeforePublishing(t *testing.T) {
 	}
 	private := testKey(t)
 	public := private.Public().(ed25519.PublicKey)
-	credential, _, err := runtime.OpenSession("browser", public, "Browser", time.Minute, live.ActivityUpdate{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	credential := openProvedSession(t, runtime, "browser", private)
 	// This decodes to a valid Message, but carries an ignored field and a
 	// different member order from the one canonical representation delivered
 	// by the runtime.
@@ -176,10 +256,7 @@ func TestTypedMessageAuthenticationPrecedesConversationAndPayloadInspection(t *t
 	}
 	private := testKey(t)
 	public := private.Public().(ed25519.PublicKey)
-	credential, _, err := runtime.OpenSession("browser", public, "Browser", time.Minute, live.ActivityUpdate{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	credential := openProvedSession(t, runtime, "browser", private)
 	draft, err := runtime.PrepareMessageForSession(credential, "", live.Message{About: "known", Text: "hello"}, public)
 	if err != nil {
 		t.Fatal(err)
@@ -235,10 +312,7 @@ func TestConversationGenesisBoundsAndCanonicalEncodingRejectAtomically(t *testin
 	}
 	private := testKey(t)
 	public := private.Public().(ed25519.PublicKey)
-	credential, _, err := runtime.OpenSession("browser", public, "Browser", time.Minute, live.ActivityUpdate{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	credential := openProvedSession(t, runtime, "browser", private)
 	prepared, err := runtime.PrepareFrameForSession(credential, "scope", "", []byte("payload"), public)
 	if err != nil {
 		t.Fatal(err)

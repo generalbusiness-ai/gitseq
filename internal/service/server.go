@@ -532,7 +532,7 @@ func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Reques
 	}
 	update := nexus.ActivityUpdate{Status: input.Status, Focus: input.Focus, Note: input.Note}
 	if input.Session == "" {
-		credential, change, err := s.hub.OpenSession(input.Actor, private.Public().(ed25519.PublicKey), actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, update)
+		credential, change, err := s.hub.OpenTrustedSession(input.Actor, private.Public().(ed25519.PublicKey), actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, update)
 		write(writer, presenceResponse{Credential: credential, Change: change}, err)
 		return
 	}

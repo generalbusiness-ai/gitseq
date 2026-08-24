@@ -6,6 +6,7 @@ package live
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -24,10 +25,11 @@ import (
 )
 
 const (
-	actorFrameDomain = "gitseq.nexus.actor-frame.v0\x00"
-	nexusFrameDomain = "gitseq.nexus.order-frame.v0\x00"
-	credentialPrefix = "credential:"
-	credentialBytes  = 32
+	actorFrameDomain   = "gitseq.nexus.actor-frame.v0\x00"
+	nexusFrameDomain   = "gitseq.nexus.order-frame.v0\x00"
+	sessionProofDomain = "gitseq.live.session-proof.v0\x00"
+	credentialPrefix   = "credential:"
+	credentialBytes    = 32
 )
 
 var ErrReset = errors.New("nexus cursor is no longer available; take a new snapshot")
@@ -58,6 +60,16 @@ const (
 	MaxSessionsPerActor         = 16
 	MaxRetainedFrames           = 4096
 	MaxRetainedBytes            = 8 << 20
+	MaxActorNameBytes           = 256
+	MaxPresenceValueBytes       = 512
+	MaxPendingSessionChallenges = 256
+
+	DefaultSessionTTL     = 30 * time.Second
+	MaxSessionTTL         = 2 * time.Minute
+	SessionChallengeTTL   = 30 * time.Second
+	MaxCompositeWait      = 30 * time.Second
+	DefaultCompositeWait  = 25 * time.Second
+	compositePollInterval = 250 * time.Millisecond
 )
 
 // Activity is advisory, leased attention. It has no durable workflow force.
@@ -184,6 +196,48 @@ type Submission struct {
 	ActorSignature []byte            `json:"actor_signature"`
 }
 
+// SessionChallenge is an expiring, single-use proof-of-possession challenge.
+// Preparing one publishes no presence and consumes no actor session quota.
+// The private key corresponding to ActorKey signs SessionSigningBytes before
+// OpenSession makes the lease visible.
+type SessionChallenge struct {
+	Version    uint64            `json:"version"`
+	Generation string            `json:"generation"`
+	Nonce      []byte            `json:"nonce"`
+	ActorKey   ed25519.PublicKey `json:"actor_key"`
+}
+
+// DurableFrontier is the application-neutral identity of one verified
+// durable read. The live runtime neither obtains nor interprets it.
+type DurableFrontier struct {
+	Genesis string `json:"genesis"`
+	Head    string `json:"head"`
+	Depth   int    `json:"depth"`
+}
+
+// CompositeCursor keeps durable and live progress distinct. Neither cursor
+// is embedded in or inferred from the other.
+type CompositeCursor struct {
+	Durable DurableFrontier `json:"durable"`
+	Live    Cursor          `json:"live"`
+}
+
+// CompositeObservation joins an application-owned durable value to one live
+// observation without assigning meaning to either one.
+type CompositeObservation[T any] struct {
+	Durable T               `json:"durable"`
+	Live    Observation     `json:"live"`
+	Cursor  CompositeCursor `json:"cursor"`
+}
+
+type sessionChallengeBody struct {
+	_          struct{} `cbor:",toarray"`
+	Version    uint64
+	Generation string
+	Nonce      []byte
+	ActorKey   []byte
+}
+
 // Message is the signed, application-neutral chat payload. Recipients are
 // durable actor fingerprints resolved by the service before publication. A
 // reply's exact parent author is added by the nexus under the same lock that
@@ -290,23 +344,33 @@ type presenceEntry struct {
 	activityChangedAt time.Time
 }
 
+type pendingSession struct {
+	actor       string
+	fingerprint string
+	value       string
+	ttl         time.Duration
+	activity    Activity
+	expiresAt   time.Time
+}
+
 type Hub struct {
-	mu             sync.Mutex
-	generation     string
-	position       uint64
-	base           uint64
-	historyCap     int
-	history        []Change
-	presence       map[string]presenceEntry
-	convs          map[string]*conversation
-	about          map[string]string
-	participants   map[string]map[string]bool
-	inboxes        map[string]*inboxState
-	publicKey      ed25519.PublicKey
-	privateKey     ed25519.PrivateKey
-	retainedFrames int
-	retainedBytes  int
-	now            func() time.Time
+	mu              sync.Mutex
+	generation      string
+	position        uint64
+	base            uint64
+	historyCap      int
+	history         []Change
+	presence        map[string]presenceEntry
+	convs           map[string]*conversation
+	about           map[string]string
+	participants    map[string]map[string]bool
+	inboxes         map[string]*inboxState
+	pendingSessions map[string]pendingSession
+	publicKey       ed25519.PublicKey
+	privateKey      ed25519.PrivateKey
+	retainedFrames  int
+	retainedBytes   int
+	now             func() time.Time
 }
 
 func New(historyCap int) (*Hub, error) {
@@ -332,16 +396,17 @@ func NewWithSigningKey(historyCap int, privateKey ed25519.PrivateKey) (*Hub, err
 	}
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	return &Hub{
-		generation:   "generation:" + hex.EncodeToString(generationBytes),
-		historyCap:   historyCap,
-		presence:     make(map[string]presenceEntry),
-		convs:        make(map[string]*conversation),
-		about:        make(map[string]string),
-		participants: make(map[string]map[string]bool),
-		inboxes:      make(map[string]*inboxState),
-		publicKey:    bytes.Clone(publicKey),
-		privateKey:   bytes.Clone(privateKey),
-		now:          time.Now,
+		generation:      "generation:" + hex.EncodeToString(generationBytes),
+		historyCap:      historyCap,
+		presence:        make(map[string]presenceEntry),
+		convs:           make(map[string]*conversation),
+		about:           make(map[string]string),
+		participants:    make(map[string]map[string]bool),
+		inboxes:         make(map[string]*inboxState),
+		pendingSessions: make(map[string]pendingSession),
+		publicKey:       bytes.Clone(publicKey),
+		privateKey:      bytes.Clone(privateKey),
+		now:             time.Now,
 	}, nil
 }
 
@@ -389,6 +454,11 @@ func (h *Hub) announceSessionIdentity(id, actor, fingerprint, value string, ttl 
 	if id == "" || actor == "" {
 		return Change{}, errors.New("session and actor are required")
 	}
+	// Historical white-box tests use long leases so expiry is not their
+	// concern. Production entry points reject, rather than cap, this bound.
+	if ttl > MaxSessionTTL {
+		ttl = MaxSessionTTL
+	}
 	h.expire(h.now())
 	if existing, exists := h.presence[id]; exists && (existing.actor != actor || existing.fingerprint != fingerprint) {
 		return Change{}, errors.New("session is already bound to another actor")
@@ -396,16 +466,7 @@ func (h *Hub) announceSessionIdentity(id, actor, fingerprint, value string, ttl 
 	return h.announceFor(id, actor, fingerprint, value, ttl, update)
 }
 
-// openSessionIdentity is the common implementation after the public key has
-// been reduced to its exact fingerprint. The returned credential authorizes
-// only that exact binding in this Hub and disappears with this process.
-func (h *Hub) openSessionIdentity(actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (string, Change, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if actor == "" {
-		return "", Change{}, errors.New("actor is required")
-	}
-	h.expire(h.now())
+func (h *Hub) openSessionIdentityLocked(actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (string, Change, error) {
 	for {
 		credential, err := mintCredential()
 		if err != nil {
@@ -419,14 +480,105 @@ func (h *Hub) openSessionIdentity(actor, fingerprint, value string, ttl time.Dur
 	}
 }
 
-// OpenSession mints one resident-scoped bearer credential and binds it to the
-// supplied actor public key. The fingerprint is derived inside the runtime.
-func (h *Hub) OpenSession(actor string, actorKey ed25519.PublicKey, value string, ttl time.Duration, update ActivityUpdate) (string, Change, error) {
+// openSessionIdentity is retained for white-box compatibility tests whose
+// deliberately synthetic fingerprints cannot be derived from a public key.
+func (h *Hub) openSessionIdentity(actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (string, Change, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(h.now())
+	return h.openSessionIdentityLocked(actor, fingerprint, value, ttl, update)
+}
+
+// OpenTrustedSession mints a lease for an in-process custodial adapter that has
+// already authenticated the actor or holds custody of actorKey. It has no
+// proof challenge and therefore must not be routed from public or browser
+// input. Such transports must use PrepareSession and OpenSession; merely
+// knowing a public key proves no authority to publish presence under it.
+func (h *Hub) OpenTrustedSession(actor string, actorKey ed25519.PublicKey, value string, ttl time.Duration, update ActivityUpdate) (string, Change, error) {
 	fingerprint, err := ActorFingerprint(actorKey)
 	if err != nil {
 		return "", Change{}, err
 	}
-	return h.openSessionIdentity(actor, fingerprint, value, ttl, update)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(h.now())
+	return h.openSessionIdentityLocked(actor, fingerprint, value, ttl, update)
+}
+
+// PrepareSession creates a bounded, expiring proof-of-possession challenge.
+// It retains the requested lease privately but publishes no presence and uses
+// no actor session quota. OpenSession consumes the challenge exactly once.
+func (h *Hub) PrepareSession(actor string, actorKey ed25519.PublicKey, value string, ttl time.Duration, update ActivityUpdate) (SessionChallenge, error) {
+	fingerprint, err := ActorFingerprint(actorKey)
+	if err != nil {
+		return SessionChallenge{}, err
+	}
+	ttl, err = normalizeLease(actor, value, ttl)
+	if err != nil {
+		return SessionChallenge{}, err
+	}
+	activity, err := normalizeActivity(Activity{}, update, false)
+	if err != nil {
+		return SessionChallenge{}, err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := h.now()
+	h.expire(now)
+	if len(h.pendingSessions) >= MaxPendingSessionChallenges {
+		return SessionChallenge{}, fmt.Errorf("pending session challenge limit of %d reached", MaxPendingSessionChallenges)
+	}
+	for {
+		nonce := make([]byte, 32)
+		if _, err := rand.Read(nonce); err != nil {
+			return SessionChallenge{}, err
+		}
+		challenge := SessionChallenge{
+			Version: 0, Generation: h.generation, Nonce: nonce,
+			ActorKey: bytes.Clone(actorKey),
+		}
+		key, err := sessionChallengeKey(challenge)
+		if err != nil {
+			return SessionChallenge{}, err
+		}
+		if _, exists := h.pendingSessions[key]; exists {
+			continue
+		}
+		h.pendingSessions[key] = pendingSession{
+			actor: actor, fingerprint: fingerprint, value: value, ttl: ttl,
+			activity: cloneActivity(activity), expiresAt: now.Add(SessionChallengeTTL),
+		}
+		return cloneSessionChallenge(challenge), nil
+	}
+}
+
+// OpenSession verifies private-key possession and atomically makes the
+// prepared lease visible. A failed or replayed submission cannot reuse the
+// challenge; prepare a new one after any failure.
+func (h *Hub) OpenSession(challenge SessionChallenge, actorSignature []byte) (string, Change, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(h.now())
+	key, err := sessionChallengeKey(challenge)
+	if err != nil {
+		return "", Change{}, errors.New("session challenge is not valid")
+	}
+	pending, exists := h.pendingSessions[key]
+	if !exists {
+		return "", Change{}, errors.New("session challenge is not valid")
+	}
+	delete(h.pendingSessions, key)
+	if len(actorSignature) != ed25519.SignatureSize {
+		return "", Change{}, errors.New("invalid actor signature")
+	}
+	signingBytes, err := SessionSigningBytes(challenge)
+	if err != nil || !ed25519.Verify(challenge.ActorKey, signingBytes, actorSignature) {
+		return "", Change{}, errors.New("invalid actor signature")
+	}
+	return h.openSessionIdentityLocked(
+		pending.actor, pending.fingerprint, pending.value, pending.ttl,
+		activityUpdateFrom(pending.activity),
+	)
 }
 
 // renewSessionIdentity extends one exact live binding. A malformed, expired,
@@ -478,9 +630,27 @@ func (h *Hub) RevokeSession(credential string) (Change, error) {
 	return change, nil
 }
 
-func (h *Hub) announceFor(id, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
+func normalizeLease(actor, value string, ttl time.Duration) (time.Duration, error) {
+	if actor == "" || len(actor) > MaxActorNameBytes || !utf8.ValidString(actor) {
+		return 0, fmt.Errorf("actor must be non-empty UTF-8 of at most %d bytes", MaxActorNameBytes)
+	}
+	if len(value) > MaxPresenceValueBytes || !utf8.ValidString(value) {
+		return 0, fmt.Errorf("presence value must be UTF-8 of at most %d bytes", MaxPresenceValueBytes)
+	}
 	if ttl <= 0 {
-		ttl = 30 * time.Second
+		ttl = DefaultSessionTTL
+	}
+	if ttl > MaxSessionTTL {
+		return 0, fmt.Errorf("session TTL must not exceed %s", MaxSessionTTL)
+	}
+	return ttl, nil
+}
+
+func (h *Hub) announceFor(id, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
+	var err error
+	ttl, err = normalizeLease(actor, value, ttl)
+	if err != nil {
+		return Change{}, err
 	}
 	existing, exists := h.presence[id]
 	if !exists {
@@ -579,6 +749,13 @@ func normalizeActivity(current Activity, update ActivityUpdate, exists bool) (Ac
 	return current, nil
 }
 
+func activityUpdateFrom(activity Activity) ActivityUpdate {
+	status := activity.Status
+	focus := append([]string(nil), activity.Focus...)
+	note := activity.Note
+	return ActivityUpdate{Status: &status, Focus: &focus, Note: &note}
+}
+
 func cloneActivity(activity Activity) Activity {
 	activity.Focus = append([]string(nil), activity.Focus...)
 	if activity.Focus == nil {
@@ -656,6 +833,11 @@ func (h *Hub) depart(id string) Change {
 }
 
 func (h *Hub) expire(now time.Time) {
+	for key, pending := range h.pendingSessions {
+		if !pending.expiresAt.After(now) {
+			delete(h.pendingSessions, key)
+		}
+	}
 	for id, entry := range h.presence {
 		if !entry.expiresAt.After(now) {
 			delete(h.presence, id)
@@ -932,6 +1114,60 @@ func (h *Hub) ChangesSinceForSession(cursor Cursor, session string) ([]Change, C
 	return h.changesSinceLocked(cursor, session)
 }
 
+// WaitComposite joins a caller-supplied durable read with this Hub's live
+// observation. The callback owns all durable interpretation; host/live sees
+// only its opaque value and verified frontier. The returned cursor preserves
+// the two namespaces separately. Polling is bounded because another process
+// may advance ordinary Git storage without notifying this process.
+func WaitComposite[T any](ctx context.Context, hub *Hub, session string, cursor CompositeCursor, timeout time.Duration, read func(context.Context) (T, DurableFrontier, error)) (CompositeObservation[T], bool, error) {
+	var latest CompositeObservation[T]
+	if hub == nil || read == nil {
+		return latest, false, errors.New("live runtime and durable reader are required")
+	}
+	if timeout <= 0 || timeout > MaxCompositeWait {
+		timeout = DefaultCompositeWait
+	}
+	check := func() (CompositeObservation[T], bool, error) {
+		observed, err := hub.Observe(session, &cursor.Live)
+		if err != nil {
+			return CompositeObservation[T]{}, false, err
+		}
+		durable, frontier, err := read(ctx)
+		if err != nil {
+			return CompositeObservation[T]{}, false, err
+		}
+		result := CompositeObservation[T]{
+			Durable: durable, Live: observed,
+			Cursor: CompositeCursor{Durable: frontier, Live: observed.Snapshot.Cursor},
+		}
+		pending := len(observed.Inbox.Frames) != 0
+		changed := observed.Reset || len(observed.Changes) != 0 || pending || frontier != cursor.Durable
+		return result, changed, nil
+	}
+
+	var changed bool
+	var err error
+	if latest, changed, err = check(); err != nil || changed {
+		return latest, changed, err
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	ticker := time.NewTicker(compositePollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return latest, false, ctx.Err()
+		case <-timer.C:
+			return latest, false, nil
+		case <-ticker.C:
+			if latest, changed, err = check(); err != nil || changed {
+				return latest, changed, err
+			}
+		}
+	}
+}
+
 func (h *Hub) changesSinceLocked(cursor Cursor, session string) ([]Change, Cursor, error) {
 	current := Cursor{Generation: h.generation, Position: h.position}
 	if cursor.Generation != h.generation || cursor.Position < h.base || cursor.Position > h.position {
@@ -964,6 +1200,37 @@ func (h *Hub) changesSinceLocked(cursor Cursor, session string) ([]Change, Curso
 
 func actorBody(generation, conversationID string, sequence uint64, previousHash, payload []byte) frameActorBody {
 	return frameActorBody{Version: 0, Generation: generation, Conversation: conversationID, Sequence: sequence, PreviousHash: previousHash, Payload: payload}
+}
+
+func sessionBody(challenge SessionChallenge) sessionChallengeBody {
+	return sessionChallengeBody{
+		Version: challenge.Version, Generation: challenge.Generation,
+		Nonce: challenge.Nonce, ActorKey: challenge.ActorKey,
+	}
+}
+
+// SessionSigningBytes returns the deterministic bytes that prove possession
+// of the key named by an expiring session challenge. A transport can return
+// these bytes directly to a browser, which needs only WebCrypto Ed25519 and no
+// CBOR encoder.
+func SessionSigningBytes(challenge SessionChallenge) ([]byte, error) {
+	if challenge.Version != 0 || !validPrefixedHex(challenge.Generation, "generation:", 16) || len(challenge.Nonce) != 32 || len(challenge.ActorKey) != ed25519.PublicKeySize {
+		return nil, errors.New("session challenge is not valid")
+	}
+	encoded, err := encode(sessionBody(challenge))
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(sessionProofDomain), encoded...), nil
+}
+
+func sessionChallengeKey(challenge SessionChallenge) (string, error) {
+	signingBytes, err := SessionSigningBytes(challenge)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(signingBytes)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 // ActorSigningBytes returns the public deterministic bytes covered by an
@@ -1011,6 +1278,12 @@ func cloneDraft(draft Draft) Draft {
 	draft.PreviousHash = bytes.Clone(draft.PreviousHash)
 	draft.Payload = bytes.Clone(draft.Payload)
 	return draft
+}
+
+func cloneSessionChallenge(challenge SessionChallenge) SessionChallenge {
+	challenge.Nonce = bytes.Clone(challenge.Nonce)
+	challenge.ActorKey = bytes.Clone(challenge.ActorKey)
+	return challenge
 }
 
 func cloneFrame(frame Frame) Frame {

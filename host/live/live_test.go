@@ -82,6 +82,34 @@ func announceIdentity(t *testing.T, hub *Hub, session, name string, key ed25519.
 	return fingerprint
 }
 
+func TestSessionChallengeExpiresBeforeOpening(t *testing.T) {
+	hub := newHub(t, 8)
+	now := time.Unix(1_700_000_000, 0)
+	hub.now = func() time.Time { return now }
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	challenge, err := hub.PrepareSession("browser", key.Public().(ed25519.PublicKey), "Browser", time.Minute, ActivityUpdate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signingBytes, err := SessionSigningBytes(challenge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(SessionChallengeTTL)
+	if _, _, err := hub.OpenSession(challenge, ed25519.Sign(key, signingBytes)); err == nil {
+		t.Fatal("expired session challenge opened a lease")
+	}
+	hub.mu.Lock()
+	pending := len(hub.pendingSessions)
+	hub.mu.Unlock()
+	if pending != 0 || len(hub.Snapshot().Presence) != 0 {
+		t.Fatalf("expired challenge retained pending=%d or published presence", pending)
+	}
+}
+
 func TestSnapshotWatchBarrierCannotMissTransition(t *testing.T) {
 	hub := newHub(t, 16)
 	if _, err := hub.announceSession("alice", "alice", "ready", time.Hour); err != nil {

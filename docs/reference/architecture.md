@@ -183,6 +183,25 @@ conversation, the conversation identifier hashes a genesis envelope that
 binds the exact scope, runtime generation, and runtime signing key before the
 actor signs that identifier.
 
+Public-key sessions follow the same custody rule. Preparing a session returns
+a bounded, expiring challenge and publishes no presence. The client signs the
+challenge bytes with the named actor key; only a valid proof opens the lease.
+A challenge is consumed by its first opening attempt and cannot be replayed,
+even after a failed signature. Actor names, presence values, lease duration,
+pending challenges, total sessions, and sessions per actor all have exported
+limits enforced before open and again on renewal. The separate
+`OpenTrustedSession` entry point is only for an in-process custodial adapter
+which already authenticated the actor or holds its private key. A public or
+browser transport must never route to that entry point.
+
+Composition with durable state also remains explicit. `host/live` can wait on
+a caller-supplied durable reader and its own live observation, but it treats
+the durable value as opaque and retains a `DurableFrontier` separately from
+the process-local live cursor. Bounded polling notices ordinary Git progress
+written by another process without suggesting that a live cursor orders,
+authenticates, or survives with the durable sequence. The application host,
+not the live runtime, chooses and interprets the durable frontier.
+
 The resident in `internal/service` hosts the same runtime alongside the
 durable application and supplies Workroom message policy at that composition
 boundary. Co-location is operational convenience, not a claim that live data
@@ -762,7 +781,7 @@ the same result.
 | `internal/intent` | Kernel | Owns canonical signed intents and actor-key fingerprints. Schema and `rests_on` are bounded opaque strings. |
 | `internal/kernel` | Kernel | Uses only Git storage, intents, and an optional host interface that loads or stores an opaque checkpoint object ID. It performs no local checkpoint filesystem I/O. Its application admission callback receives envelope facts, not payload meaning. A checkpoint caches only kernel-verified events and kernel identity (schema, object format, genesis, and authenticated sequencer-key lineage), never projection state or an application profile; every candidate is verified from those kernel facts. |
 | `internal/custody` | Example application interpreter | Folds opaque offer, acceptance and settlement records into asset-custody state. It manages no local signing keys and defines no kernel policy. |
-| `host/live` | Live runtime, public surface | Owns the single process-local coordination runtime. It mints bounded leases, prepares deterministic application-neutral frame drafts, verifies actor signatures made outside the runtime, binds conversations to exact scopes, supplies runtime ordering, and retains bounded live state. It imports no application profile and is independent of the durable Workroom fold. |
+| `host/live` | Live runtime, public surface | Owns the single process-local coordination runtime. It opens public-key leases only after an expiring single-use possession proof, exposes a separate trusted-only custodial entry point, prepares deterministic application-neutral frame drafts, verifies actor signatures made outside the runtime, binds conversations to exact scopes, supplies runtime ordering, and retains bounded live state. Its optional composition helper keeps caller-owned durable frontiers separate from live cursors. It imports no application profile and is independent of the durable Workroom fold. |
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
 | `internal/apphost` | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and the binding in force shared by every host, together with the repository configuration a checkout needs to reopen its own log. It imports no application profile and has no application ontology. |
 | `host` | Durable application host, public surface | Exports binding at init, opening against a declared application, appending a signed act, and reading the verified record stream — and no projection, because the outside application owns its fold. It depends on the kernel and `internal/apphost`, never on an application profile. |

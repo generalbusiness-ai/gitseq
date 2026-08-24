@@ -41,7 +41,10 @@ Alongside the durable sequence, the resident service hosts the _nexus_
 for live, ephemeral coordination: presence, activity and focus, and signed
 conversation. Its application-neutral implementation is the public
 `host/live` package. Actors using MCP or the browser UI can see which live
-participants are focused on particular events and exchange messages.
+participants are focused on particular events and exchange messages. A
+client-held key proves possession with an expiring, single-use challenge
+before its presence becomes visible; composition keeps the durable Git
+frontier separate from the process-local live cursor.
 
 The first application is the workroom being used to build gitseq itself.
 It uses the _language-action perspective_ to describe acts such as requests,
