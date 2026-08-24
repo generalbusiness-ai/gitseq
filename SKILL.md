@@ -327,6 +327,53 @@ not change; the workroom carries the why.
 - Design documents evolve by ordinary commits resting on the
   decisions that motivated them.
 
+## Notes and decisions
+
+Notes — feature discussions, position papers, decisions — are ordinary
+Markdown files in git, and the workroom records only the relationships
+around them. A published revision is an artifact statement at
+`path@commit`, like any other. A decision is a note whose adoption
+somebody ratified, and the thing ratified is a proposal, never the
+artifact: nothing satisfies an artifact, so adopt by filing a
+`propose` — one or two sentences, "adopt the decision recorded at
+`notes/…` at commit `…`" — resting on the artifact, which an actor
+holding `ratifier` then ratifies.
+
+Order matters, because provenance is what the record is for. Propose
+and ratify **before** requesting review, and rest the review request
+on the ratified proposal as well as the artifact. The verdict rests on
+the request, the merge consumes the verdict, and the receipt and
+successor artifact continue the chain — so all of them reach the
+adoption through that one edge. Adoption filed beside the review
+connects to nothing: a reader at the live artifact can never get from
+there to the proposal, and the decision cannot prove it was adopted.
+The verdict itself is ratified by the review requester, and only by
+them, before the merge — as in any review.
+
+The merge message is the one place the action log reaches readers
+without keys. Write `gs merge --text` in plain English from the action
+log — who proposed, who ratified, who reviewed, what was raised and
+how it was resolved — for a reader who will never see an event id. The
+log stays the authority; the message is a render, and a wrong render
+corrupts nothing. Implementation then reaches the decision by ordinary
+provenance: assigned work through a request authorized on the merged
+decision artifact, with the implementing commit resting on that
+request; self-initiated work resting directly on the ratified proposal
+(discipline 8). Neither rests on the merged artifact alone.
+
+Revising and replacing are different facts, and one sentence separates
+them: amend in place while it is the same decision; when the decision
+changes, write a new file and stamp the old one. A revision edits the
+file at the same path, and the artifact chain at that path is the
+published-revision history — keep the revision narrative out of the
+front matter, because the chain already tells it. A replacement is a
+new file whose front matter names its predecessor by path, plus a
+one-line stamp in the old file saying what superseded it, in one
+commit, so a git reader with no keys sees both directions. The old
+artifact's retirement stays merge-sealed like any other retirement
+(discipline 10); front matter is branch-controlled input and retires
+nothing by itself.
+
 ## The loop
 
 Talk until something crystallizes; `state` a proposal embedding the
