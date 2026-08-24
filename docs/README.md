@@ -46,6 +46,7 @@ Read in this order if you are new:
 |---|---|
 | [End to end](how-to/end-to-end.md) | One complete path, from nothing to an audited record. |
 | [Run a work loop](how-to/run-a-work-loop.md) | Request through review, merge, and ratification. |
+| [Keep decision records](how-to/keep-decision-records.md) | Adopt a decision file, review and merge it, then revise or replace it. |
 | [Publish and audit](how-to/publish-and-audit.md) | Share the sequence; verify it from a clone you did not create. |
 | [Deploy a resident](how-to/deploy-a-resident.md) | Run the local service, and what it trusts. |
 | [Configure an agent](how-to/configure-an-agent.md) | Attach an MCP client and check that it can act. |
