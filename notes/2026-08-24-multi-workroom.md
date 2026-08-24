@@ -2,15 +2,16 @@
 date: 2026-08-24
 status: draft/discussion — design note for running more than one workroom
   (independent genesis log) in one repository. Nothing here is built.
-  Every file:line citation is against main at
-  2ea4156a7ee0f0e951f74a61f62c1bd2d3a3e0a5.
+  Every file:line citation is verified against main at
+  20722c1be8ed769bac86ae09b69baf228623a042.
 ---
 
 # Multiple workrooms in one repository
 
 One Git repository holds one workroom today. This note establishes where
 that constraint actually lives, what would have to change to lift it, how
-a command would pick a workroom, what happens to the resident, and — most
+a command would pick a workroom, what happens to the resident, what the
+application binding demands of the binary opening each log, and — most
 importantly — what does *not* become possible: the fold's staleness
 machinery stops at the log boundary, and no wiring inside one repository
 changes that.
@@ -34,7 +35,8 @@ repository. Every durable structure is namespaced by genesis:
   sibling log in the same repository;
 - the interpreter binding is read from each log itself
   (`internal/app/host.go:68-70`), so two logs could be bound to two
-  different applications.
+  different applications — section 7 states what that demands of the
+  binary that opens them.
 
 The single-workroom rule is one application-layer fact: a repository has
 exactly one metadata directory, `<commonDir>/gitseq`
@@ -45,7 +47,7 @@ exactly one metadata directory, `<commonDir>/gitseq`
 
 > `workroom already initialized` (`internal/app/app.go:383-384`)
 
-and `AttachConfig` (`internal/app/app.go:500-543`) refuses to attach a
+and `AttachConfig` (`internal/app/app.go:500-545`) refuses to attach a
 second log over it:
 
 > `cannot attach over a writable workroom` (`internal/app/app.go:536`)
@@ -293,7 +295,99 @@ reachability from any branch, and not presence in anyone else's clone.
 It proves the author's sequencer could see the commit at filing time,
 nothing more. Review at a named checkout remains the real verification.
 
-## 7. Affected layers
+## 7. The application binding, and what it demands of the binary
+
+Section 1 counted the binding as already per-log: each log declares its
+own, so two logs in one repository could be bound to two different
+applications. This section states what that costs, because the first
+draft of this note got part of it wrong.
+
+**The binary opening a log must hold that log's application at its
+exact fold version.** `selectHost` (`internal/app/host.go:68-84`)
+refuses on two distinct grounds. A build that does not hold the
+application at all:
+
+> `repository is verifiable but uninterpretable: it is bound to
+> application %q, which this build does not hold`
+> (`internal/app/host.go:78`)
+
+and a build that holds the application, but at a different fold
+version:
+
+> `repository is verifiable but uninterpretable: it is bound to %s fold
+> %q, and this build holds %q` (`internal/app/host.go:81`)
+
+A build holds the applications it was compiled with, and nothing
+installs one at runtime (`internal/app/host.go:30-31`); today the
+registry is a single entry (`heldHost`, `internal/app/host.go:44-49`).
+So a chess-application log and a workroom-application log in one
+repository leave exactly two shapes: one binary compiled to hold both
+folds, or two binaries, each opening only its own log and refusing the
+other's. This note states the constraint and stops. Which shape this
+project ships is a decision for the repository owner, not for this
+note, and nothing in the mechanics prefers either.
+
+**The binding a log declares is mutable after the fact.**
+`BindingInForce` (`internal/apphost/binding.go:134-198`) walks the log
+forward — `WalkRevListMetadata` runs `git log --reverse`
+(`internal/gitstore/gitstore.go:468`) — and overwrites the in-force
+answer with each later qualifying binding record
+(`internal/apphost/binding.go:188`): the bootstrap binding and a later
+replacement are one rule, scan the log in order and keep the last
+record that qualifies (`internal/apphost/binding.go:115-119`). So a
+later binding governs every open that follows, and any build that does
+not hold its application at its exact fold version refuses from that
+moment — the refusal above, hard, not a degradation. Not every re-bind
+strands someone: a record naming the same application and fold changes
+only provenance, and a rollback to a fold an older build still holds
+restores that build rather than excluding it
+(`internal/app/host_test.go:315`, `:338`). What decides is whether a
+reader holds what the new binding names. It binds pure readers too:
+`selectHost` runs at every workspace open, so an actor who never
+contends for the sequencer is refused the same way.
+
+Here is where the first draft misread the code. Row 4 of the layers
+table said the binding "does not move". That is true of where the
+binding is read from — each log's own history — and false of what it
+says. The comment the draft leaned on — "The answer is immutable, so
+every operation on one workspace means the same thing however the log
+moves under it" (`internal/app/host.go:87-88`) — is a statement about
+the *workspace*: the selection is made once at open and never revisited
+for that workspace, so a binding recorded afterwards cannot change what
+an open workspace means (`internal/app/host.go:66-67`). It is not a
+statement about the *log*, whose in-force binding moves whenever a new
+record qualifies. The draft read the first as the second.
+
+Initial agreement is a different problem, and it is not one. The code
+enforces it and no convention is needed: a build that mismatches the
+recorded binding cannot open the log at all. (One edge: `gs init`
+records a binding only for a non-default application
+(`internal/app/app.go:424-432`). A plain workroom log carries none,
+and an absent binding permanently means workroom at whatever fold
+version the reader ships (`internal/apphost/binding.go:32-34`,
+`internal/app/host.go:73-74`) — only an explicit binding pins a
+version.) **The coordination problem is upgrade, not initial
+agreement:** re-binding a log to a new fold version strands every
+not-yet-rebuilt binary at its next open, with no degraded mode to limp
+along in.
+
+**Who may re-bind: the initializing actor key alone.** The binding in
+force is the last binding record signed by the actor key on the log's
+first record (`internal/apphost/binding.go:115-116`; the key is
+captured at `:158`), and a binding-shaped record signed by any other
+key has no force (`bytes.Equal(signed.ActorKey, initializing)`,
+`internal/apphost/binding.go:165`). Not the `ratifier` role, not
+operator standing: binding authority sits below application roles,
+because another application has no roster to consult
+(`internal/apphost/binding.go:118-120`).
+
+**What this note does not cover.** Designing an upgrade sequence — in
+what order to advance builds' folds and record the re-binding, and how
+to know beforehand which builds would be stranded at their next open —
+is a separate piece of work, and it has not been done. Nothing here
+designs it.
+
+## 8. Affected layers
 
 Against `docs/reference/architecture.md`:
 
@@ -302,7 +396,7 @@ Against `docs/reference/architecture.md`:
 | 1. Ordinary Git storage | No change. Refs are already per-genesis. |
 | 2. Kernel | No change. It already hosts many sequences, routes by signed target, and carries foreign references unchanged. |
 | 3. Nexus and live runtime | No contract change. Each resident carries its own hub; per-workroom residents multiply instances, not meanings. |
-| 4. Application host binding | Contract change, confined to `internal/apphost`'s repository-configuration duty: the config shape ("the repository configuration a checkout needs to reopen its own log", per the package-boundary table) goes from one log to a set with selection. The binding itself is per-log already (`internal/app/host.go:68-70`) and does not move. |
+| 4. Application host binding | Contract change, confined to `internal/apphost`'s repository-configuration duty: the config shape ("the repository configuration a checkout needs to reopen its own log", per the package-boundary table) goes from one log to a set with selection. Where the binding is read from is per-log already (`internal/app/host.go:68-70`) and does not move; what it says can move after the fact — section 7 says who moves it and what a move refuses. |
 | 5. Application profile (Workroom) | No change to the fold or vocabulary — unless the section-6 artifact check is adopted, which adds an application admission-side check at the `internal/app` boundary, not in the fold. |
 | 6. Projections and queries | No change. Projections are per-workspace. |
 | 7. CLI, MCP, connectors, UI | Surface change: `--genesis` selection on every workspace-opening command, per-genesis resident advertisement, `gs serve --genesis`. The MCP adapter binds one workspace at startup and needs the same selection. |
