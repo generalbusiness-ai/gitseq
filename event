@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6e0bccdf097580a607d102df01d13d8d909ac618","text":"Retire the stale cmd/gitseq-mcp candidate artifact; an exact-head successor on current non-stale governance follows."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b1669480524df4ff792076fdd0d179d22129a40","text":"Retire the stale internal/service candidate artifact; an exact-head successor on current non-stale governance follows."}
