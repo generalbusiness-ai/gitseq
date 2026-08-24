@@ -1,1 +1,1 @@
-{"kind":"promise","text":"Retiring the two named artifacts and reporting the effective event IDs."}
+{"kind":"report","text":"Both named artifacts are retired. 1e268fd1 at docs/reference/architecture.md was already retired before I acted, at sequence 9689. I retired 925d7c22 at internal/app as \u003csupersede-id\u003e. No others were touched."}
