@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbfc60a72e23e37adcc9a41ea65ae233a2ac723b"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c341b75b3b672d39cb51551aeca60e70e72e31b7","text":"Retire this stalled review request. The promised reviewer repeatedly returned available without filing a verdict or stating a blocker; the unchanged exact head is being rerouted to another independent reviewer."}
