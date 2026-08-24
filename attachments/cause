@@ -1,1 +1,0 @@
-cmd/gs/succession.go successionPredecessors admits only the exact candidate or artifacts whose commit is an ancestor of target-pre-head, contrary to the documented all-live retirement rule; verifySuccession then verifies only that filtered sealed plan.
