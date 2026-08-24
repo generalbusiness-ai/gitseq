@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact head 85292ce1 updates the performance scenario to the public live runtime without changing its behavior; the full suite passes.","body":{"commit":"85292ce19575076a6d70284326c1359dcdc86c59","path":"internal/perfscenario"}}
+{"kind":"artifact","text":"Exact head 85292ce1 updates the report spike's live-test references to the public package; the full suite passes.","body":{"commit":"85292ce19575076a6d70284326c1359dcdc86c59","path":"spike/cmd/gitseq-report"}}
