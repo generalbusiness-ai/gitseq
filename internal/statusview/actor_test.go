@@ -84,10 +84,11 @@ func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *te
 }
 
 func TestActorStatusAndWaitExposeStaleUnclaimedAddressedWork(t *testing.T) {
+	conditions := strings.Repeat("still required ", 40)
 	projection := workroom.Projection{
 		Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},
 		Statements: []workroom.Statement{
-			{Event: "request:unclaimed", Actor: them, Kind: workroom.KindRequest, Text: "still owed"},
+			{Event: "request:unclaimed", Actor: them, Kind: workroom.KindRequest, Text: "still owed", Body: map[string]string{"conditions": conditions}},
 			{Event: "request:claimed", Actor: them, Kind: workroom.KindRequest, Text: "already claimed"},
 			{Event: "request:closed", Actor: them, Kind: workroom.KindRequest, Text: "already done"},
 		},
@@ -105,7 +106,8 @@ func TestActorStatusAndWaitExposeStaleUnclaimedAddressedWork(t *testing.T) {
 	}
 	available := digest.AvailableToYou[0]
 	if available.Request != "request:unclaimed" || available.Status != "stale" || !available.Stale ||
-		available.AddressedTo != "me" || available.Performer != "" || available.Promise != "" {
+		available.AddressedTo != "me" || available.Performer != "" || available.Promise != "" ||
+		available.Conditions != conditions || len(available.Conditions) <= TextCap {
 		t.Fatalf("stale unclaimed request lost its responsibility or qualifier: %#v", available)
 	}
 	if findCommitmentView(digest.NotActionable, "request:claimed") == nil {

@@ -355,7 +355,7 @@ func enrichWorkRows(projection workroom.Projection, targets []workRowTarget) {
 			if targets[index].Text != nil {
 				*targets[index].Text = Text(statement.Text)
 			}
-			if targets[index].Status == "open" && targets[index].Details != nil {
+			if (targets[index].Status == "open" || targets[index].Status == "stale") && targets[index].Details != nil {
 				targets[index].Details.Conditions = Safe(statement.Body["conditions"])
 			}
 		}
