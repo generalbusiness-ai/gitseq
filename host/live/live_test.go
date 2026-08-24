@@ -1,4 +1,4 @@
-package nexus
+package live
 
 import (
 	"context"
@@ -27,6 +27,45 @@ func newHub(t *testing.T, historyCap int) *Hub {
 	return hub
 }
 
+// bindLegacyTestSession keeps historical white-box cases focused on their
+// original concern. Production sessions derive this binding in OpenSession.
+func bindLegacyTestSession(hub *Hub, session string, key ed25519.PublicKey) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	entry, exists := hub.presence[session]
+	if exists && entry.fingerprint == "" {
+		entry.fingerprint = actorFingerprint(key)
+		hub.presence[session] = entry
+	}
+}
+
+func publishForSession(hub *Hub, session, scope, conversation string, payload []byte, key ed25519.PrivateKey) (Frame, error) {
+	public := key.Public().(ed25519.PublicKey)
+	bindLegacyTestSession(hub, session, public)
+	draft, err := hub.PrepareFrameForSession(session, scope, conversation, payload, public)
+	if err != nil {
+		return Frame{}, err
+	}
+	signingBytes, err := ActorSigningBytes(draft)
+	if err != nil {
+		return Frame{}, err
+	}
+	return hub.SubmitFrameForSession(session, Submission{Draft: draft, ActorKey: public, ActorSignature: ed25519.Sign(key, signingBytes)})
+}
+
+func publishMessageForSession(hub *Hub, session, conversation string, message Message, key ed25519.PrivateKey) (Frame, error) {
+	public := key.Public().(ed25519.PublicKey)
+	draft, err := hub.PrepareMessageForSession(session, conversation, message, public)
+	if err != nil {
+		return Frame{}, err
+	}
+	signingBytes, err := ActorSigningBytes(draft)
+	if err != nil {
+		return Frame{}, err
+	}
+	return hub.SubmitMessageForSession(session, Submission{Draft: draft, ActorKey: public, ActorSignature: ed25519.Sign(key, signingBytes)})
+}
+
 func setHubNow(hub *Hub, now time.Time) {
 	hub.now = func() time.Time { return now }
 }
@@ -34,7 +73,7 @@ func setHubNow(hub *Hub, now time.Time) {
 func announceIdentity(t *testing.T, hub *Hub, session, name string, key ed25519.PrivateKey) string {
 	t.Helper()
 	fingerprint := actorFingerprint(key.Public().(ed25519.PublicKey))
-	if _, err := hub.AnnounceSessionIdentity(session, name, fingerprint, name, time.Hour, ActivityUpdate{}); err != nil {
+	if _, err := hub.announceSessionIdentity(session, name, fingerprint, name, time.Hour, ActivityUpdate{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := hub.EnableInbox(session); err != nil {
@@ -45,11 +84,11 @@ func announceIdentity(t *testing.T, hub *Hub, session, name string, key ed25519.
 
 func TestSnapshotWatchBarrierCannotMissTransition(t *testing.T) {
 	hub := newHub(t, 16)
-	if _, err := hub.AnnounceSession("alice", "alice", "ready", time.Hour); err != nil {
+	if _, err := hub.announceSession("alice", "alice", "ready", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	snapshot := hub.Snapshot()
-	if _, err := hub.AnnounceSession("bob", "bob", "ready", time.Hour); err != nil {
+	if _, err := hub.announceSession("bob", "bob", "ready", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	changes, current, err := hub.ChangesSince(snapshot.Cursor)
@@ -74,11 +113,11 @@ func TestCrashChangesGenerationAndOldCursorResets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := before.AnnounceSession("session", "actor", "actor", time.Hour); err != nil {
+	if _, err := before.announceSession("session", "actor", "actor", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	_, actorKey, _ := ed25519.GenerateKey(rand.Reader)
-	if _, err := before.PublishForSession("session", "topic", "", []byte("live"), actorKey); err != nil {
+	if _, err := publishForSession(before, "session", "topic", "", []byte("live"), actorKey); err != nil {
 		t.Fatal(err)
 	}
 	cursor := before.Snapshot().Cursor
@@ -101,7 +140,7 @@ func TestCrashChangesGenerationAndOldCursorResets(t *testing.T) {
 
 	initial := after.Snapshot().Cursor
 	for _, id := range []string{"a", "b", "c"} {
-		if _, err := after.AnnounceSession(id, id, id, time.Hour); err != nil {
+		if _, err := after.announceSession(id, id, id, time.Hour); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -112,18 +151,18 @@ func TestCrashChangesGenerationAndOldCursorResets(t *testing.T) {
 
 func TestRetainedFramesVerifyWithoutHub(t *testing.T) {
 	hub := newHub(t, 16)
-	if _, err := hub.AnnounceSession("session", "actor", "actor", time.Hour); err != nil {
+	if _, err := hub.announceSession("session", "actor", "actor", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	_, actorPrivateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := hub.PublishForSession("session", "topic", "", []byte("offer"), actorPrivateKey)
+	first, err := publishForSession(hub, "session", "topic", "", []byte("offer"), actorPrivateKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := hub.PublishForSession("session", "topic", first.Conversation, []byte("accept"), actorPrivateKey)
+	second, err := publishForSession(hub, "session", "topic", first.Conversation, []byte("accept"), actorPrivateKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,14 +181,14 @@ func TestRetainedFramesVerifyWithoutHub(t *testing.T) {
 func TestSelfAssertedNexusKeyIsNotTrust(t *testing.T) {
 	trusted := newHub(t, 4)
 	attacker := newHub(t, 4)
-	if _, err := attacker.AnnounceSession("session", "attacker", "attacker", time.Hour); err != nil {
+	if _, err := attacker.announceSession("session", "attacker", "attacker", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	_, actorKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame, err := attacker.PublishForSession("session", "topic", "", []byte("forged"), actorKey)
+	frame, err := publishForSession(attacker, "session", "topic", "", []byte("forged"), actorKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,11 +220,11 @@ func TestNexusDoesNotTouchGit(t *testing.T) {
 	}
 	before := gitState()
 	hub := newHub(t, 8)
-	if _, err := hub.AnnounceSession("alice", "alice", "online", time.Hour); err != nil {
+	if _, err := hub.announceSession("alice", "alice", "online", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	_, actorKey, _ := ed25519.GenerateKey(rand.Reader)
-	if _, err := hub.PublishForSession("alice", "topic", "", []byte("live"), actorKey); err != nil {
+	if _, err := publishForSession(hub, "alice", "topic", "", []byte("live"), actorKey); err != nil {
 		t.Fatal(err)
 	}
 	if after := gitState(); before != after {
@@ -195,11 +234,11 @@ func TestNexusDoesNotTouchGit(t *testing.T) {
 
 func TestPresenceLeaseExpiresAndForgetsConversations(t *testing.T) {
 	hub := newHub(t, 16)
-	if _, err := hub.AnnounceSession("session", "actor", "actor", time.Hour); err != nil {
+	if _, err := hub.announceSession("session", "actor", "actor", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	_, actorKey, _ := ed25519.GenerateKey(rand.Reader)
-	frame, err := hub.PublishForSession("session", "topic", "", []byte("live"), actorKey)
+	frame, err := publishForSession(hub, "session", "topic", "", []byte("live"), actorKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +254,7 @@ func TestPresenceLeaseExpiresAndForgetsConversations(t *testing.T) {
 
 func TestLeasedActivityIsBoundedOwnedAndPropagatesThroughTheCursor(t *testing.T) {
 	hub := newHub(t, 32)
-	announced, err := hub.AnnounceSession("mine", "actor:me", "me", time.Hour)
+	announced, err := hub.announceSession("mine", "actor:me", "me", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +262,7 @@ func TestLeasedActivityIsBoundedOwnedAndPropagatesThroughTheCursor(t *testing.T)
 	status := ActivityBlocked
 	focus := []string{"event:z", "event:a", "event:a"}
 	note := "  waiting on review  "
-	changed, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{
+	changed, err := hub.announceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{
 		Status: &status, Focus: &focus, Note: &note,
 	})
 	if err != nil {
@@ -251,7 +290,7 @@ func TestLeasedActivityIsBoundedOwnedAndPropagatesThroughTheCursor(t *testing.T)
 
 	// A heartbeat with no activity fields preserves the state and does not
 	// advance the live cursor.
-	renewed, err := hub.AnnounceSession("mine", "actor:me", "me", time.Hour)
+	renewed, err := hub.announceSession("mine", "actor:me", "me", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,14 +301,14 @@ func TestLeasedActivityIsBoundedOwnedAndPropagatesThroughTheCursor(t *testing.T)
 	// The public handle is not a session credential, and a live private
 	// session cannot be rebound to update another actor's activity.
 	busy := ActivityBusy
-	separate, err := hub.AnnounceSessionActivity(handle, "actor:me", "me", time.Hour, ActivityUpdate{Status: &busy})
+	separate, err := hub.announceSessionActivity(handle, "actor:me", "me", time.Hour, ActivityUpdate{Status: &busy})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if separate.ID == handle || hub.HandleFor("mine") != handle || hub.Snapshot().Activity[handle].Status != ActivityBlocked {
 		t.Fatal("a separately announced lease mutated the original private session")
 	}
-	if _, err := hub.AnnounceSessionActivity("mine", "actor:them", "them", time.Hour, ActivityUpdate{Status: &busy}); err == nil {
+	if _, err := hub.announceSessionActivity("mine", "actor:them", "them", time.Hour, ActivityUpdate{Status: &busy}); err == nil {
 		t.Fatal("another actor rebound a live session to update activity")
 	}
 
@@ -300,63 +339,63 @@ func TestLeasedActivityRejectsUnboundedOrInvalidInput(t *testing.T) {
 		t.Fatalf("MaxActivityNoteBytes = %d, want 160", MaxActivityNoteBytes)
 	}
 	hub := newHub(t, 8)
-	if _, err := hub.AnnounceSession("mine", "actor:me", "me", time.Hour); err != nil {
+	if _, err := hub.announceSession("mine", "actor:me", "me", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	tooMany := make([]string, MaxFocusEvents+1)
 	for index := range tooMany {
 		tooMany[index] = fmt.Sprintf("event:%d", index)
 	}
-	if _, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Focus: &tooMany}); err == nil {
+	if _, err := hub.announceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Focus: &tooMany}); err == nil {
 		t.Fatal("unbounded focus was accepted")
 	}
 	invalid := ActivityStatus("finished")
-	if _, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Status: &invalid}); err == nil {
+	if _, err := hub.announceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Status: &invalid}); err == nil {
 		t.Fatal("unknown status was accepted")
 	}
 	note := strings.Repeat("x", MaxActivityNoteBytes+1)
-	if _, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Note: &note}); err == nil {
+	if _, err := hub.announceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Note: &note}); err == nil {
 		t.Fatal("unbounded note was accepted")
 	}
 	oversizedEvent := []string{strings.Repeat("x", 257)}
-	if _, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Focus: &oversizedEvent}); err == nil {
+	if _, err := hub.announceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Focus: &oversizedEvent}); err == nil {
 		t.Fatal("257-byte focus event was accepted")
 	}
 	invalidUTF8 := []string{string([]byte{0xff})}
-	if _, err := hub.AnnounceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Focus: &invalidUTF8}); err == nil {
+	if _, err := hub.announceSessionActivity("mine", "actor:me", "me", time.Hour, ActivityUpdate{Focus: &invalidUTF8}); err == nil {
 		t.Fatal("invalid UTF-8 focus event was accepted")
 	}
 }
 
 func TestSessionBindingAndConversationRetentionHaveOneOwner(t *testing.T) {
 	hub := newHub(t, 32)
-	if _, err := hub.AnnounceSession("one", "alice", "Alice", time.Hour); err != nil {
+	if _, err := hub.announceSession("one", "alice", "Alice", time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := hub.AnnounceSession("one", "mallory", "Mallory", time.Hour); err == nil {
+	if _, err := hub.announceSession("one", "mallory", "Mallory", time.Hour); err == nil {
 		t.Fatal("live session rebound to another actor")
 	}
-	if _, err := hub.AnnounceSession("two", "bob", "Bob", time.Hour); err != nil {
+	if _, err := hub.announceSession("two", "bob", "Bob", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	_, aliceKey, _ := ed25519.GenerateKey(rand.Reader)
 	_, bobKey, _ := ed25519.GenerateKey(rand.Reader)
-	first, err := hub.PublishForSession("one", "topic", "", []byte("one"), aliceKey)
+	first, err := publishForSession(hub, "one", "topic", "", []byte("one"), aliceKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := hub.PublishForSession("two", "topic", "", []byte("two"), bobKey)
+	second, err := publishForSession(hub, "two", "topic", "", []byte("two"), bobKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first.Conversation != second.Conversation {
 		t.Fatal("about anchor opened two conversations")
 	}
-	hub.Depart("one")
+	hub.depart("one")
 	if frames, err := hub.Frames(first.Conversation); err != nil || len(frames) != 2 {
 		t.Fatalf("conversation forgot while a participant remained: frames=%d err=%v", len(frames), err)
 	}
-	hub.Depart("two")
+	hub.depart("two")
 	if _, err := hub.Frames(first.Conversation); err == nil {
 		t.Fatal("conversation survived its last participant")
 	}
@@ -372,7 +411,7 @@ func TestAddressedMessagesAreSignedDeliveredRepeatedAndAcknowledgedPerSession(t 
 	announceIdentity(t, hub, "bob-two", "Bob", bobKey)
 	baseline := hub.Snapshot().Cursor
 
-	delivery, err := hub.PublishMessageForSession("alice-web", "", Message{
+	delivery, err := publishMessageForSession(hub, "alice-web", "", Message{
 		About: "event:one", Text: "please review", Recipients: []string{bob, bob},
 	}, aliceKey)
 	if err != nil {
@@ -409,7 +448,7 @@ func TestAddressedMessagesAreSignedDeliveredRepeatedAndAcknowledgedPerSession(t 
 	if _, inbox, err := hub.SnapshotForSession("alice-cli"); err != nil || len(inbox.Frames) != 0 {
 		t.Fatalf("unaddressed sibling received a delivery: %+v err=%v", inbox, err)
 	}
-	hub.Depart("alice-web")
+	hub.depart("alice-web")
 	if frames, err := hub.Frames(delivery.Conversation); err != nil || len(frames) != 1 {
 		t.Fatalf("sender departure discarded a recipient-retained conversation: frames=%d err=%v", len(frames), err)
 	}
@@ -430,21 +469,21 @@ func TestAddressedConversationSurvivesForLiveRecipientWithoutInboxCapability(t *
 	_, bobKey, _ := ed25519.GenerateKey(rand.Reader)
 	announceIdentity(t, hub, "alice", "Alice", aliceKey)
 	bob := actorFingerprint(bobKey.Public().(ed25519.PublicKey))
-	if _, err := hub.AnnounceSessionIdentity("bob-browser", "Bob", bob, "Bob", time.Hour, ActivityUpdate{}); err != nil {
+	if _, err := hub.announceSessionIdentity("bob-browser", "Bob", bob, "Bob", time.Hour, ActivityUpdate{}); err != nil {
 		t.Fatal(err)
 	}
 
-	frame, err := hub.PublishMessageForSession("alice", "", Message{
+	frame, err := publishMessageForSession(hub, "alice", "", Message{
 		About: "event:browser-retention", Text: "please review", Recipients: []string{bob},
 	}, aliceKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	hub.Depart("alice")
+	hub.depart("alice")
 	if frames, err := hub.Frames(frame.Conversation); err != nil || len(frames) != 1 {
 		t.Fatalf("sender departure discarded a live legacy recipient's conversation: frames=%d err=%v", len(frames), err)
 	}
-	hub.Depart("bob-browser")
+	hub.depart("bob-browser")
 	if _, err := hub.Frames(frame.Conversation); err == nil {
 		t.Fatal("conversation survived its final live recipient")
 	}
@@ -455,7 +494,7 @@ func TestSelfAddressDeliversOnlyToSiblingSessionAndOpaqueFramesDoNotAddress(t *t
 	_, aliceKey, _ := ed25519.GenerateKey(rand.Reader)
 	alice := announceIdentity(t, hub, "alice-one", "Alice", aliceKey)
 	announceIdentity(t, hub, "alice-two", "Alice", aliceKey)
-	frame, err := hub.PublishMessageForSession("alice-one", "", Message{About: "topic", Text: "note to self", Recipients: []string{alice}}, aliceKey)
+	frame, err := publishMessageForSession(hub, "alice-one", "", Message{About: "topic", Text: "note to self", Recipients: []string{alice}}, aliceKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +505,7 @@ func TestSelfAddressDeliversOnlyToSiblingSessionAndOpaqueFramesDoNotAddress(t *t
 	if _, inbox, _ := hub.SnapshotForSession("alice-two"); len(inbox.Frames) != 1 || inbox.Frames[0].Thread != thread {
 		t.Fatalf("sibling session missed self-address: %+v", inbox)
 	}
-	if _, err := hub.PublishForSession("alice-one", "opaque", "", []byte(`{"recipients":["`+alice+`"]}`), aliceKey); err != nil {
+	if _, err := publishForSession(hub, "alice-one", "opaque", "", []byte(`{"recipients":["`+alice+`"]}`), aliceKey); err != nil {
 		t.Fatal(err)
 	}
 	if _, inbox, _ := hub.SnapshotForSession("alice-two"); len(inbox.Frames) != 1 {
@@ -480,10 +519,10 @@ func TestPresenceWithoutInboxCapabilityIsNeverEnqueued(t *testing.T) {
 	_, browserKey, _ := ed25519.GenerateKey(rand.Reader)
 	announceIdentity(t, hub, "alice", "Alice", aliceKey)
 	browserFingerprint := actorFingerprint(browserKey.Public().(ed25519.PublicKey))
-	if _, err := hub.AnnounceSessionIdentity("browser", "Browser", browserFingerprint, "Browser", time.Hour, ActivityUpdate{}); err != nil {
+	if _, err := hub.announceSessionIdentity("browser", "Browser", browserFingerprint, "Browser", time.Hour, ActivityUpdate{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := hub.PublishMessageForSession("alice", "", Message{About: "topic", Text: "first", Recipients: []string{browserFingerprint}}, aliceKey); err != nil {
+	if _, err := publishMessageForSession(hub, "alice", "", Message{About: "topic", Text: "first", Recipients: []string{browserFingerprint}}, aliceKey); err != nil {
 		t.Fatal(err)
 	}
 	if _, inbox, err := hub.SnapshotForSession("browser"); err != nil || len(inbox.Frames) != 0 {
@@ -492,7 +531,7 @@ func TestPresenceWithoutInboxCapabilityIsNeverEnqueued(t *testing.T) {
 	if err := hub.EnableInbox("browser"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := hub.PublishMessageForSession("alice", "", Message{About: "topic", Text: "second", Recipients: []string{browserFingerprint}}, aliceKey); err != nil {
+	if _, err := publishMessageForSession(hub, "alice", "", Message{About: "topic", Text: "second", Recipients: []string{browserFingerprint}}, aliceKey); err != nil {
 		t.Fatal(err)
 	}
 	if _, inbox, err := hub.SnapshotForSession("browser"); err != nil || len(inbox.Frames) != 1 || inbox.Frames[0].Text != "second" {
@@ -506,12 +545,12 @@ func TestReplyAddsExactParentAuthorAndRejectsWrongThread(t *testing.T) {
 	_, bobKey, _ := ed25519.GenerateKey(rand.Reader)
 	alice := announceIdentity(t, hub, "alice", "Alice", aliceKey)
 	announceIdentity(t, hub, "bob", "Bob", bobKey)
-	first, err := hub.PublishMessageForSession("alice", "", Message{About: "topic", Text: "question"}, aliceKey)
+	first, err := publishMessageForSession(hub, "alice", "", Message{About: "topic", Text: "question"}, aliceKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	firstThread := first.Conversation + ":" + strconv.FormatUint(first.Sequence, 10)
-	reply, err := hub.PublishMessageForSession("bob", first.Conversation, Message{About: "topic", Text: "answer", Re: firstThread}, bobKey)
+	reply, err := publishMessageForSession(hub, "bob", first.Conversation, Message{About: "topic", Text: "answer", Re: firstThread}, bobKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -523,27 +562,30 @@ func TestReplyAddsExactParentAuthorAndRejectsWrongThread(t *testing.T) {
 	if _, inbox, _ := hub.SnapshotForSession("alice"); len(inbox.Frames) != 1 || inbox.Frames[0].Thread != replyThread {
 		t.Fatalf("reply did not reach parent author: %+v", inbox)
 	}
-	if _, err := hub.PublishMessageForSession("bob", first.Conversation, Message{About: "topic", Text: "bad", Re: first.Conversation + ":99"}, bobKey); err == nil {
+	if _, err := publishMessageForSession(hub, "bob", first.Conversation, Message{About: "topic", Text: "bad", Re: first.Conversation + ":99"}, bobKey); err == nil {
 		t.Fatal("missing reply target was accepted")
 	}
-	if _, err := hub.PublishMessageForSession("bob", first.Conversation, Message{About: "other", Text: "bad", Re: firstThread}, bobKey); err == nil {
+	if _, err := publishMessageForSession(hub, "bob", first.Conversation, Message{About: "other", Text: "bad", Re: firstThread}, bobKey); err == nil {
 		t.Fatal("reply crossed an about anchor")
 	}
 }
 
-func TestReplyToCompatibilityFrameUsesItsSignedActorKey(t *testing.T) {
+func TestOpaqueFrameRequiresTheLeaseKeyAndRepliesUseItsSignedActor(t *testing.T) {
 	hub := newHub(t, 16)
 	_, leasedKey, _ := ed25519.GenerateKey(rand.Reader)
 	_, actualKey, _ := ed25519.GenerateKey(rand.Reader)
 	_, replierKey, _ := ed25519.GenerateKey(rand.Reader)
 	announceIdentity(t, hub, "lease", "Leased", leasedKey)
 	announceIdentity(t, hub, "replier", "Replier", replierKey)
-	parent, err := hub.PublishForSession("lease", "topic", "", []byte("opaque"), actualKey)
+	if _, err := publishForSession(hub, "lease", "topic", "", []byte("forged"), actualKey); err == nil {
+		t.Fatal("lease accepted an unrelated actor key")
+	}
+	parent, err := publishForSession(hub, "lease", "topic", "", []byte("opaque"), leasedKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	thread := parent.Conversation + ":" + strconv.FormatUint(parent.Sequence, 10)
-	reply, err := hub.PublishMessageForSession("replier", parent.Conversation, Message{About: "topic", Text: "reply", Re: thread}, replierKey)
+	reply, err := publishMessageForSession(hub, "replier", parent.Conversation, Message{About: "topic", Text: "reply", Re: thread}, replierKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -551,7 +593,7 @@ func TestReplyToCompatibilityFrameUsesItsSignedActorKey(t *testing.T) {
 	if err := json.Unmarshal(reply.Payload, &signed); err != nil {
 		t.Fatal(err)
 	}
-	want := actorFingerprint(actualKey.Public().(ed25519.PublicKey))
+	want := actorFingerprint(leasedKey.Public().(ed25519.PublicKey))
 	if !reflect.DeepEqual(signed.Recipients, []string{want}) {
 		t.Fatalf("reply recipients = %#v, want signed parent actor %s", signed.Recipients, want)
 	}
@@ -564,7 +606,7 @@ func TestAddressedInboxIsBoundedAndExpiresWithItsLease(t *testing.T) {
 	bob := announceIdentity(t, hub, "bob", "Bob", bobKey)
 	announceIdentity(t, hub, "alice", "Alice", aliceKey)
 	for index := 0; index < MaxInboxFrames+3; index++ {
-		if _, err := hub.PublishMessageForSession("alice", "", Message{
+		if _, err := publishMessageForSession(hub, "alice", "", Message{
 			About: "topic", Text: fmt.Sprintf("message %d", index), Recipients: []string{bob},
 		}, aliceKey); err != nil {
 			t.Fatal(err)
@@ -600,7 +642,7 @@ func TestObserveResetStillReturnsCurrentPrivateInbox(t *testing.T) {
 	_, bobKey, _ := ed25519.GenerateKey(rand.Reader)
 	bob := announceIdentity(t, hub, "bob", "Bob", bobKey)
 	announceIdentity(t, hub, "alice", "Alice", aliceKey)
-	if _, err := hub.PublishMessageForSession("alice", "", Message{About: "topic", Text: "hello", Recipients: []string{bob}}, aliceKey); err != nil {
+	if _, err := publishMessageForSession(hub, "alice", "", Message{About: "topic", Text: "hello", Recipients: []string{bob}}, aliceKey); err != nil {
 		t.Fatal(err)
 	}
 	old := Cursor{Generation: "generation:gone", Position: 99}
@@ -616,10 +658,10 @@ func TestPublishBoundsFailBeforeOpeningOrIndexingConversation(t *testing.T) {
 	announceIdentity(t, hub, "actor", "Actor", actorKey)
 	hub.retainedFrames = MaxRetainedFrames
 	before := hub.Snapshot()
-	if _, err := hub.PublishMessageForSession("actor", "", Message{About: "new-topic", Text: "blocked"}, actorKey); err == nil {
+	if _, err := publishMessageForSession(hub, "actor", "", Message{About: "new-topic", Text: "blocked"}, actorKey); err == nil {
 		t.Fatal("full room accepted a typed message")
 	}
-	if _, err := hub.PublishForSession("actor", "raw-topic", "", []byte("blocked"), actorKey); err == nil {
+	if _, err := publishForSession(hub, "actor", "raw-topic", "", []byte("blocked"), actorKey); err == nil {
 		t.Fatal("full room accepted an opaque message")
 	}
 	after := hub.Snapshot()
@@ -656,7 +698,7 @@ func TestMessageAndFrameBoundsFailClosed(t *testing.T) {
 	_, actorKey, _ := ed25519.GenerateKey(rand.Reader)
 	announceIdentity(t, hub, "actor", "Actor", actorKey)
 	before := hub.Snapshot()
-	if _, err := hub.PublishForSession("actor", "topic", "", make([]byte, MaxFramePayloadBytes+1), actorKey); err == nil {
+	if _, err := publishForSession(hub, "actor", "topic", "", make([]byte, MaxFramePayloadBytes+1), actorKey); err == nil {
 		t.Fatal("oversize opaque frame was accepted")
 	}
 	if after := hub.Snapshot(); !reflect.DeepEqual(before, after) {
@@ -669,11 +711,11 @@ func TestLiveSessionCountsAreBoundedPerActor(t *testing.T) {
 	_, actorKey, _ := ed25519.GenerateKey(rand.Reader)
 	fingerprint := actorFingerprint(actorKey.Public().(ed25519.PublicKey))
 	for index := 0; index < MaxSessionsPerActor; index++ {
-		if _, err := hub.AnnounceSessionIdentity(fmt.Sprintf("session-%d", index), "Actor", fingerprint, "Actor", time.Hour, ActivityUpdate{}); err != nil {
+		if _, err := hub.announceSessionIdentity(fmt.Sprintf("session-%d", index), "Actor", fingerprint, "Actor", time.Hour, ActivityUpdate{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := hub.AnnounceSessionIdentity("one-too-many", "Actor", fingerprint, "Actor", time.Hour, ActivityUpdate{}); err == nil {
+	if _, err := hub.announceSessionIdentity("one-too-many", "Actor", fingerprint, "Actor", time.Hour, ActivityUpdate{}); err == nil {
 		t.Fatal("per-actor live session cap was not enforced")
 	}
 }
@@ -682,11 +724,11 @@ func TestGlobalLiveSessionLimitIsEnforced(t *testing.T) {
 	hub := newHub(t, MaxLiveSessions+2)
 	for index := 0; index < MaxLiveSessions; index++ {
 		name := fmt.Sprintf("actor-%d", index)
-		if _, err := hub.AnnounceSessionIdentity(name, name, name, name, time.Hour, ActivityUpdate{}); err != nil {
+		if _, err := hub.announceSessionIdentity(name, name, name, name, time.Hour, ActivityUpdate{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := hub.AnnounceSessionIdentity("overflow", "overflow", "overflow", "overflow", time.Hour, ActivityUpdate{}); err == nil {
+	if _, err := hub.announceSessionIdentity("overflow", "overflow", "overflow", "overflow", time.Hour, ActivityUpdate{}); err == nil {
 		t.Fatal("global live session cap was not enforced")
 	}
 }
@@ -698,12 +740,12 @@ func TestRecipientInboxCapacityRefusesWithoutPublishing(t *testing.T) {
 	bob := announceIdentity(t, hub, "bob", "Bob", bobKey)
 	announceIdentity(t, hub, "alice", "Alice", aliceKey)
 	for index := 0; index < MaxPendingInboxFrames; index++ {
-		if _, err := hub.PublishMessageForSession("alice", "", Message{About: "topic", Text: fmt.Sprintf("message %d", index), Recipients: []string{bob}}, aliceKey); err != nil {
+		if _, err := publishMessageForSession(hub, "alice", "", Message{About: "topic", Text: fmt.Sprintf("message %d", index), Recipients: []string{bob}}, aliceKey); err != nil {
 			t.Fatal(err)
 		}
 	}
 	before := hub.Snapshot()
-	if _, err := hub.PublishMessageForSession("alice", "", Message{About: "new-topic", Text: "overflow", Recipients: []string{bob}}, aliceKey); err == nil {
+	if _, err := publishMessageForSession(hub, "alice", "", Message{About: "new-topic", Text: "overflow", Recipients: []string{bob}}, aliceKey); err == nil {
 		t.Fatal("full recipient inbox accepted another frame")
 	}
 	after := hub.Snapshot()
@@ -723,7 +765,7 @@ func TestActivityChangedAtIgnoresHeartbeatRenewal(t *testing.T) {
 	}
 	busy := ActivityBusy
 	focus := []string{"event:one"}
-	if _, err := hub.AnnounceSessionActivity("s1", "alice", "alice-value", time.Minute, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+	if _, err := hub.announceSessionActivity("s1", "alice", "alice-value", time.Minute, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
 		t.Fatal(err)
 	}
 	actors, _ := hub.FocusedOn("", []string{"event:one"})
@@ -736,7 +778,7 @@ func TestActivityChangedAtIgnoresHeartbeatRenewal(t *testing.T) {
 	}
 
 	// A renewal that changes nothing must carry the same instant forward.
-	if _, err := hub.AnnounceSession("s1", "alice", "alice-value", time.Minute); err != nil {
+	if _, err := hub.announceSession("s1", "alice", "alice-value", time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	actors, _ = hub.FocusedOn("", []string{"event:one"})
@@ -746,7 +788,7 @@ func TestActivityChangedAtIgnoresHeartbeatRenewal(t *testing.T) {
 
 	// An actual change must move it.
 	waiting := ActivityWaiting
-	if _, err := hub.AnnounceSessionActivity("s1", "alice", "alice-value", time.Minute, ActivityUpdate{Status: &waiting}); err != nil {
+	if _, err := hub.announceSessionActivity("s1", "alice", "alice-value", time.Minute, ActivityUpdate{Status: &waiting}); err != nil {
 		t.Fatal(err)
 	}
 	actors, _ = hub.FocusedOn("", []string{"event:one"})
@@ -780,7 +822,7 @@ func TestFocusedOnAggregatesSessionsAndExcludesTheCaller(t *testing.T) {
 		{"c1", "carol", "fp-carol", []string{"event:elsewhere"}},
 	} {
 		focus := session.focus
-		if _, err := hub.AnnounceSessionIdentity(session.id, session.actor, session.fingerprint, session.id+"-value", time.Minute, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+		if _, err := hub.announceSessionIdentity(session.id, session.actor, session.fingerprint, session.id+"-value", time.Minute, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -826,7 +868,7 @@ func TestFocusedOnMatchesExactlyAndBoundsItsResult(t *testing.T) {
 	}
 	busy := ActivityBusy
 	exact := []string{"git:sha1:abc#git:sha1:def"}
-	if _, err := hub.AnnounceSessionIdentity("s1", "alice", "fp-alice", "v", time.Minute, ActivityUpdate{Status: &busy, Focus: &exact}); err != nil {
+	if _, err := hub.announceSessionIdentity("s1", "alice", "fp-alice", "v", time.Minute, ActivityUpdate{Status: &busy, Focus: &exact}); err != nil {
 		t.Fatal(err)
 	}
 	for _, near := range []string{"git:sha1:abc#git:sha1:de", "git:sha1:abc#git:sha1:defg", "GIT:SHA1:ABC#GIT:SHA1:DEF", "def", ""} {
@@ -845,7 +887,7 @@ func TestFocusedOnMatchesExactlyAndBoundsItsResult(t *testing.T) {
 	for index := 0; index < MaxAttentionActors+3; index++ {
 		name := fmt.Sprintf("actor-%02d", index)
 		focus := []string{"crowded"}
-		if _, err := hub.AnnounceSessionIdentity("crowd-"+name, name, "fp-"+name, "v", time.Minute, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+		if _, err := hub.announceSessionIdentity("crowd-"+name, name, "fp-"+name, "v", time.Minute, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -867,7 +909,7 @@ func TestFocusedOnDropsExpiredSessions(t *testing.T) {
 	}
 	busy := ActivityBusy
 	focus := []string{"event:one"}
-	if _, err := hub.AnnounceSessionIdentity("s1", "alice", "fp-alice", "v", time.Millisecond, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+	if _, err := hub.announceSessionIdentity("s1", "alice", "fp-alice", "v", time.Millisecond, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
 		t.Fatal(err)
 	}
 	setHubNow(hub, time.Now().Add(time.Hour))
@@ -898,7 +940,7 @@ func TestAddressedFramesRepeatUntilAcknowledged(t *testing.T) {
 	}
 	bob := announceIdentity(t, hub, "bob", "bob", bobKey)
 
-	frame, err := hub.PublishMessageForSession("alice", "", Message{About: "topic", Text: "look at this", Recipients: []string{bob}}, aliceKey)
+	frame, err := publishMessageForSession(hub, "alice", "", Message{About: "topic", Text: "look at this", Recipients: []string{bob}}, aliceKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -944,7 +986,7 @@ func TestAddressedFramesRepeatUntilAcknowledged(t *testing.T) {
 		t.Fatal(err)
 	}
 	carol := announceIdentity(t, hub, "carol", "carol", carolKey)
-	if _, err := hub.PublishMessageForSession("alice", "", Message{About: "topic", Text: "and this", Recipients: []string{carol}}, aliceKey); err != nil {
+	if _, err := publishMessageForSession(hub, "alice", "", Message{About: "topic", Text: "and this", Recipients: []string{carol}}, aliceKey); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := hub.Acknowledge("bob", []string{handle}); err != nil {
@@ -974,10 +1016,10 @@ func TestAttentionCannotBeUsedToImpersonate(t *testing.T) {
 	focus := []string{"event:one"}
 
 	// Two different actors that have chosen the same display name.
-	if _, err := hub.AnnounceSessionIdentity("s1", "codex", "fingerprint-real", "v", time.Hour, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+	if _, err := hub.announceSessionIdentity("s1", "codex", "fingerprint-real", "v", time.Hour, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := hub.AnnounceSessionIdentity("s2", "codex", "fingerprint-impostor", "v", time.Hour, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
+	if _, err := hub.announceSessionIdentity("s2", "codex", "fingerprint-impostor", "v", time.Hour, ActivityUpdate{Status: &busy, Focus: &focus}); err != nil {
 		t.Fatal(err)
 	}
 	actors, _ := hub.FocusedOn("", []string{"event:one"})
@@ -1007,7 +1049,7 @@ func TestAttentionCannotBeUsedToImpersonate(t *testing.T) {
 	// alters what another session is reported as focusing on, so there is no
 	// call shape that makes somebody else appear to be watching an event.
 	elsewhere := []string{"event:two"}
-	if _, err := hub.AnnounceSessionIdentity("s2", "codex", "fingerprint-impostor", "v", time.Hour, ActivityUpdate{Focus: &elsewhere}); err != nil {
+	if _, err := hub.announceSessionIdentity("s2", "codex", "fingerprint-impostor", "v", time.Hour, ActivityUpdate{Focus: &elsewhere}); err != nil {
 		t.Fatal(err)
 	}
 	actors, _ = hub.FocusedOn("", []string{"event:one"})

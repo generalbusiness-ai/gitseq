@@ -38,7 +38,8 @@ branches, exactly as always; the workroom carries the why.
 | Path | Contents |
 |---|---|
 | `cmd/` | The shipping `gs` and `gitseq-mcp` commands. |
-| `internal/` | The kernel, the workroom profile, the nexus, and the service. |
+| `host/live/` | The public, application-neutral live runtime. |
+| `internal/` | The kernel, the workroom profile, and the service composition. |
 | `docs/` | This documentation set. |
 | `SKILL.md` | The normative contract for an agent in a workroom. |
 | `notes/` | Dated design notes, not maintained. |
@@ -70,10 +71,11 @@ See [the `gs` reference](../reference/gs/).
   on the git ref and retry, so several actors can write at once.
 - **Presence and ephemeral conversation** — the amnesiac nexus. This
   includes bounded per-session addressed inboxes and acknowledgements. The
-  service resolves Workroom names to fingerprints before the nexus signs and
-  retains the conversation for every current matching lease. Only leases that
-  registered the inbox protocol receive pending inbox references. This state
-  is per-process and does not survive.
+  service resolves Workroom names to fingerprints before preparing the exact
+  message bytes. The actor signs outside `host/live`; the runtime verifies the
+  signature, orders the frame, and retains the conversation for every current
+  matching lease. Only leases that registered the inbox protocol receive
+  pending inbox references. This state is per-process and does not survive.
 - **Change notification.** Long-poll `wait` returns when something moves,
   rather than making every reader poll.
 

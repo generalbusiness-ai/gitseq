@@ -129,16 +129,16 @@ var definitions = []caseDefinition{
 		"github.com/generalbusiness-ai/gitseq/internal/kernel.TestSizeCeilingAndEnvelopeOnlyAdmissionHook",
 	}, "Actor intent binds target, payload tree, causal trailers and idempotency identity."},
 	{3, "Nexus crash with live ephemera", []string{
-		"github.com/generalbusiness-ai/gitseq/internal/nexus.TestCrashChangesGenerationAndOldCursorResets",
-		"github.com/generalbusiness-ai/gitseq/internal/nexus.TestRetainedFramesVerifyWithoutHub",
-		"github.com/generalbusiness-ai/gitseq/internal/nexus.TestSelfAssertedNexusKeyIsNotTrust",
-		"github.com/generalbusiness-ai/gitseq/internal/nexus.TestNexusDoesNotTouchGit",
+		"github.com/generalbusiness-ai/gitseq/host/live.TestCrashChangesGenerationAndOldCursorResets",
+		"github.com/generalbusiness-ai/gitseq/host/live.TestRetainedFramesVerifyWithoutHub",
+		"github.com/generalbusiness-ai/gitseq/host/live.TestSelfAssertedNexusKeyIsNotTrust",
+		"github.com/generalbusiness-ai/gitseq/host/live.TestNexusDoesNotTouchGit",
 	}, "A new nexus generation resets live state; retained participant copies remain independently attestable."},
 	{4, "Unauthorized fetch across a domain", []string{
 		"github.com/generalbusiness-ai/gitseq/internal/domain.TestRepositoryIsTheHTTPReadBoundaryEvenForKnownOID",
 	}, "Repository-scoped smart-HTTP authorization denies fetch-by-known-hash across domains."},
 	{5, "Snapshot/watch race", []string{
-		"github.com/generalbusiness-ai/gitseq/internal/nexus.TestSnapshotWatchBarrierCannotMissTransition",
+		"github.com/generalbusiness-ai/gitseq/host/live.TestSnapshotWatchBarrierCannotMissTransition",
 	}, "The snapshot cursor and state share one barrier; the next transition appears strictly after that cursor."},
 	{6, "Conflicting multi-log custody transition", []string{
 		"github.com/generalbusiness-ai/gitseq/internal/custody.TestThreeStepSagaAcrossSecurityDomains",

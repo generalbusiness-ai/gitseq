@@ -1,4 +1,4 @@
-package nexus
+package live
 
 import (
 	"crypto/ed25519"
@@ -33,7 +33,7 @@ func hub(t *testing.T) *Hub {
 func TestSessionIdentifiersAreNeverPublished(t *testing.T) {
 	h := hub(t)
 	const secret = "mcp:0123456789abcdef-secret"
-	if _, err := h.AnnounceSession(secret, "actor:me", "me (fingerprint)", time.Minute); err != nil {
+	if _, err := h.announceSession(secret, "actor:me", "me (fingerprint)", time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	snapshot := h.Snapshot()
@@ -57,7 +57,7 @@ func TestSessionIdentifiersAreNeverPublished(t *testing.T) {
 			t.Fatalf("change stream discloses the session identifier: %+v", change)
 		}
 	}
-	h.Depart(secret)
+	h.depart(secret)
 	departures, _, err := h.ChangesSince(Cursor{Generation: h.Generation()})
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +77,7 @@ func TestSessionIdentifiersAreNeverPublished(t *testing.T) {
 func TestHandleIsNotDerivableFromTheSessionIdentifier(t *testing.T) {
 	h := hub(t)
 	const guessable = "alice"
-	if _, err := h.AnnounceSession(guessable, "actor:me", "me", time.Minute); err != nil {
+	if _, err := h.announceSession(guessable, "actor:me", "me", time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	handle := h.HandleFor(guessable)
@@ -97,7 +97,7 @@ func TestHandleIsNotDerivableFromTheSessionIdentifier(t *testing.T) {
 	// Two sessions with the same identifier text in different hubs must differ,
 	// which a derivation could never provide.
 	other := hub(t)
-	if _, err := other.AnnounceSession(guessable, "actor:me", "me", time.Minute); err != nil {
+	if _, err := other.announceSession(guessable, "actor:me", "me", time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	if other.HandleFor(guessable) == handle {
@@ -109,11 +109,11 @@ func TestHandleIsNotDerivableFromTheSessionIdentifier(t *testing.T) {
 // renewal.
 func TestHandleIsStableAcrossRenewals(t *testing.T) {
 	h := hub(t)
-	if _, err := h.AnnounceSession("mcp:one", "actor:me", "me", time.Minute); err != nil {
+	if _, err := h.announceSession("mcp:one", "actor:me", "me", time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	first := h.HandleFor("mcp:one")
-	if _, err := h.AnnounceSession("mcp:one", "actor:me", "me", time.Minute); err != nil {
+	if _, err := h.announceSession("mcp:one", "actor:me", "me", time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	if h.HandleFor("mcp:one") != first {
@@ -125,14 +125,14 @@ func TestHandleIsStableAcrossRenewals(t *testing.T) {
 func TestAHandleCannotBeUsedWhereAnIdentifierIsRequired(t *testing.T) {
 	h := hub(t)
 	const session = "mcp:private"
-	if _, err := h.AnnounceSession(session, "actor:me", "me", time.Minute); err != nil {
+	if _, err := h.announceSession(session, "actor:me", "me", time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	handle := h.HandleFor(session)
 	if _, ok := h.SessionActor(handle); ok {
 		t.Fatal("a handle resolved to an actor; it would authorize speech and durable acts")
 	}
-	if _, err := h.PublishForSession(handle, "about", "", []byte(`{"text":"x"}`), privateKey(t)); err == nil {
+	if _, err := publishForSession(h, handle, "about", "", []byte(`{"text":"x"}`), privateKey(t)); err == nil {
 		t.Fatal("a handle was accepted as a session and produced a signed frame")
 	}
 	if actor, ok := h.SessionActor(session); !ok || actor != "actor:me" {
@@ -142,28 +142,28 @@ func TestAHandleCannotBeUsedWhereAnIdentifierIsRequired(t *testing.T) {
 
 func TestOneSessionCannotEvictOrSpeakForAnother(t *testing.T) {
 	h := hub(t)
-	if _, err := h.AnnounceSession("mcp:mine", "actor:me", "me", time.Minute); err != nil {
+	if _, err := h.announceSession("mcp:mine", "actor:me", "me", time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.AnnounceSession("mcp:theirs", "actor:them", "them", time.Minute); err != nil {
+	if _, err := h.announceSession("mcp:theirs", "actor:them", "them", time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	theirs := h.HandleFor("mcp:theirs")
-	h.Depart(theirs)
+	h.depart(theirs)
 	if actor, ok := h.SessionActor("mcp:theirs"); !ok || actor != "actor:them" {
 		t.Fatal("a handle was sufficient to evict another session's lease")
 	}
-	if _, err := h.PublishForSession(theirs, "about", "", []byte(`{"text":"x"}`), privateKey(t)); err == nil {
+	if _, err := publishForSession(h, theirs, "about", "", []byte(`{"text":"x"}`), privateKey(t)); err == nil {
 		t.Fatal("a handle was sufficient to speak in another session's name")
 	}
 }
 
 func TestALiveSessionCannotBeReboundToAnotherActor(t *testing.T) {
 	h := hub(t)
-	if _, err := h.AnnounceSession("mcp:one", "actor:me", "me", time.Minute); err != nil {
+	if _, err := h.announceSession("mcp:one", "actor:me", "me", time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.AnnounceSession("mcp:one", "actor:them", "them", time.Minute); err == nil {
+	if _, err := h.announceSession("mcp:one", "actor:them", "them", time.Minute); err == nil {
 		t.Fatal("a live session was rebound to a different actor")
 	}
 	if actor, _ := h.SessionActor("mcp:one"); actor != "actor:me" {
@@ -174,10 +174,10 @@ func TestALiveSessionCannotBeReboundToAnotherActor(t *testing.T) {
 func TestLiveSessionCountUsesTheFullFingerprint(t *testing.T) {
 	h := hub(t)
 	sharedPrefix := strings.Repeat("a", 12)
-	if _, err := h.AnnounceSessionIdentity("mcp:one", "alias-one", sharedPrefix+"1", "one", time.Minute, ActivityUpdate{}); err != nil {
+	if _, err := h.announceSessionIdentity("mcp:one", "alias-one", sharedPrefix+"1", "one", time.Minute, ActivityUpdate{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.AnnounceSessionIdentity("mcp:two", "alias-two", sharedPrefix+"2", "two", time.Minute, ActivityUpdate{}); err != nil {
+	if _, err := h.announceSessionIdentity("mcp:two", "alias-two", sharedPrefix+"2", "two", time.Minute, ActivityUpdate{}); err != nil {
 		t.Fatal(err)
 	}
 	if got := h.LiveSessionsForActor(sharedPrefix + "1"); got != 1 {
