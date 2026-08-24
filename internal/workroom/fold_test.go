@@ -2210,6 +2210,42 @@ func TestMergeSuccessorRestingOnThePredecessorItRetiresStaysCurrent(t *testing.T
 	}
 }
 
+// Assigned work commonly reaches the behavior it replaces through an
+// intermediate pointer rather than citing the predecessor directly. The
+// merge's successor still owns the retirement news in that shape: the
+// intermediate flares, while the successor published by the merge stays
+// current because every cause below the intermediate is named in its plan.
+func TestMergeSuccessorThroughIntermediateProvenanceStaysCurrent(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "the basis the work was built on", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "intermediate", agent, SchemaState, State{Kind: KindArtifact, Text: "a pointer standing on the replaced behavior", Body: map[string]string{"path": "notes/design.md", "commit": "head1"}}, "predecessor"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"predecessor":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		// The successor never cites the predecessor directly. Its only route to
+		// that retired artifact is through the now-stale intermediate pointer.
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge", "intermediate"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "predecessor", Text: "merge succession"}, "predecessor", "merge", "successor"),
+	)
+	projection := Fold(records)
+	decision, _ := projection.Decision("retire")
+	if decision.Verdict != Effective {
+		t.Fatalf("intermediate-provenance retirement = %+v", decision)
+	}
+	intermediate := artifactByEvent(t, projection, "intermediate")
+	if !intermediate.Stale {
+		t.Fatal("the intermediate pointer did not inherit the predecessor retirement")
+	}
+	successor := artifactByEvent(t, projection, "successor")
+	if successor.Retired || successor.Stale || successor.DescribesSupersededWorld {
+		t.Fatalf("successor resting on intermediate provenance: retired=%v stale=%v world=%v",
+			successor.Retired, successor.Stale, successor.DescribesSupersededWorld)
+	}
+}
+
 // The exception belongs to the merge's own successor and to nobody else. The
 // signed plan says which retirement is hidden; it says nothing about who may
 // hide it, so citing a receipt and one of its planned predecessors must not buy
