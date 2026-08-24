@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eb8fa3719539e86ccadc9d781a9056bc33728d2","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-24-multi-workroom.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:632412ee6788bce762855370db49286b9096d383","text":"Repair request 44c5946a supersedes this review-only correction: independent pre-review found implementation defects, so c08 and its artifacts must be replaced before a fresh complete review."}
