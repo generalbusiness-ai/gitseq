@@ -139,7 +139,34 @@ promise is **reneging**, visible
 forever: do it as early as you know you cannot keep it — early
 reneging is honorable, late reneging is not. If the requester
 supersedes their request after your promise, you are released; the
-promise stays in history as kept faith, not fault.
+promise stays in history as kept faith, not fault. A requester
+withdrawing a request under a live promise in order to reassign the
+work should ask the promisor to supersede their promise first: one
+extra act, and the commitment closes reneged and readable instead of
+being cancelled out from under work in flight.
+
+**Intake**: the loop above says how to keep a commitment, not how to
+take or refuse one. Each working cycle, every request addressed to you
+in the `available_to_you` lane gets an answer: a promise, an explicit
+decline, or an `assert` resting on the request saying why it is not
+yet actionable. Reading a row and moving on is none of these. The
+reassurance above covers rows you have answered — a live artifact or
+unratified report speaks for you; an unclaimed row has nothing
+speaking for it, and until you speak, your attention and your absence
+look the same to everyone else. Declining takes two actors: the fold
+admits a request's supersession only from its author or an actor
+holding `ratifier`, never from the addressee. So decline by filing an
+`assert` resting on the request that says plainly you decline and why,
+and ask the author or a ratifier to retire the request. The request
+stays `open` until they do; a declined row still in the lane is their
+pending retirement, not your neglect. A stale request addressed to you
+is also yours to answer, and not yours to repair: staleness does not
+gate admission, and ordinary staleness is recorded in the merge
+receipt, not refused. What it says is that the reasoning under the
+request moved, so its conditions, the addressee's availability, and
+the governing decisions deserve re-confirming before work proceeds.
+Say so, and name the repair — the request's author, not the
+addressee, replaces it on current bases (discipline 11).
 
 That loop governs work **assigned between actors**. Work you begin
 yourself, where you would be both requester and performer, carries no
