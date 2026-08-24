@@ -335,11 +335,16 @@ answer with each later qualifying binding record
 (`internal/apphost/binding.go:188`): the bootstrap binding and a later
 replacement are one rule, scan the log in order and keep the last
 record that qualifies (`internal/apphost/binding.go:115-119`). So a
-later binding takes effect for every open that follows, and at that
-moment every build predating it stops being able to open the log — the
-fold-version refusal above, a hard refusal, not a degradation. It binds
-pure readers too: `selectHost` runs at every workspace open, so an
-actor who never contends for the sequencer is refused the same way.
+later binding governs every open that follows, and any build that does
+not hold its application at its exact fold version refuses from that
+moment — the refusal above, hard, not a degradation. Not every re-bind
+strands someone: a record naming the same application and fold changes
+only provenance, and a rollback to a fold an older build still holds
+restores that build rather than excluding it
+(`internal/app/host_test.go:315`, `:338`). What decides is whether a
+reader holds what the new binding names. It binds pure readers too:
+`selectHost` runs at every workspace open, so an actor who never
+contends for the sequencer is refused the same way.
 
 Here is where the first draft misread the code. Row 4 of the layers
 table said the binding "does not move". That is true of where the
