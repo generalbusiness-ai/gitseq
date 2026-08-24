@@ -7,7 +7,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94cadf30855bd467e8b29a4529297c63eac4cb7b
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a10248caeced0322a444a86ff03d019da06dd754
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:baf0fe4b855ba94003b7c663c343a8ac9089ea84
@@ -38,7 +38,8 @@ branches, exactly as always; the workroom carries the why.
 | Path | Contents |
 |---|---|
 | `cmd/` | The shipping `gs` and `gitseq-mcp` commands. |
-| `internal/` | The kernel, the workroom profile, the nexus, and the service. |
+| `host/live/` | The public, application-neutral live runtime. |
+| `internal/` | The kernel, the workroom profile, and the service composition. |
 | `docs/` | This documentation set. |
 | `SKILL.md` | The normative contract for an agent in a workroom. |
 | `notes/` | Dated design notes, not maintained. |
@@ -70,10 +71,11 @@ See [the `gs` reference](../reference/gs/).
   on the git ref and retry, so several actors can write at once.
 - **Presence and ephemeral conversation** — the amnesiac nexus. This
   includes bounded per-session addressed inboxes and acknowledgements. The
-  service resolves Workroom names to fingerprints before the nexus signs and
-  retains the conversation for every current matching lease. Only leases that
-  registered the inbox protocol receive pending inbox references. This state
-  is per-process and does not survive.
+  service resolves Workroom names to fingerprints before preparing the exact
+  message bytes. The actor signs outside `host/live`; the runtime verifies the
+  signature, orders the frame, and retains the conversation for every current
+  matching lease. Only leases that registered the inbox protocol receive
+  pending inbox references. This state is per-process and does not survive.
 - **Change notification.** Long-poll `wait` returns when something moves,
   rather than making every reader poll.
 

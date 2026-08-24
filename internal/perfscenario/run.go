@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
+	nexus "github.com/generalbusiness-ai/gitseq/host/live"
 	"github.com/generalbusiness-ai/gitseq/internal/app"
-	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/observe"
 	"github.com/generalbusiness-ai/gitseq/internal/perflane"
 	"github.com/generalbusiness-ai/gitseq/internal/service"

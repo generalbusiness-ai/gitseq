@@ -1,10 +1,12 @@
-// Package nexus is an intentionally amnesiac collaboration rendezvous.
+// Package live is an intentionally amnesiac collaboration rendezvous for an
+// application hosted by Gitseq.
 // Its cursor namespace dies with the process; clients must retain any frames
 // they care about.
-package nexus
+package live
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -23,13 +25,18 @@ import (
 )
 
 const (
-	actorFrameDomain = "gitseq.nexus.actor-frame.v0\x00"
-	nexusFrameDomain = "gitseq.nexus.order-frame.v0\x00"
-	credentialPrefix = "credential:"
-	credentialBytes  = 32
+	actorFrameDomain   = "gitseq.nexus.actor-frame.v0\x00"
+	nexusFrameDomain   = "gitseq.nexus.order-frame.v0\x00"
+	sessionProofDomain = "gitseq.live.session-proof.v0\x00"
+	credentialPrefix   = "credential:"
+	credentialBytes    = 32
 )
 
 var ErrReset = errors.New("nexus cursor is no longer available; take a new snapshot")
+
+// ErrStaleDraft reports a frame prepared against live state that moved before
+// submission. The caller should prepare and sign a new draft.
+var ErrStaleDraft = errors.New("live frame draft is stale; prepare it again")
 
 type ActivityStatus string
 
@@ -39,19 +46,30 @@ const (
 	ActivityWaiting   ActivityStatus = "waiting"
 	ActivityBlocked   ActivityStatus = "blocked"
 
-	MaxFocusEvents        = 8
-	MaxFocusEventBytes    = 256
-	MaxActivityNoteBytes  = 160
-	MaxInboxFrames        = 20
-	MaxPendingInboxFrames = 256
-	MaxMessageTextBytes   = 16 << 10
-	MaxMessageIDBytes     = 256
-	MaxMessageRecipients  = 32
-	MaxFramePayloadBytes  = 20 << 10
-	MaxLiveSessions       = 256
-	MaxSessionsPerActor   = 16
-	MaxRetainedFrames     = 4096
-	MaxRetainedBytes      = 8 << 20
+	MaxFocusEvents              = 8
+	MaxFocusEventBytes          = 256
+	MaxActivityNoteBytes        = 160
+	MaxInboxFrames              = 20
+	MaxPendingInboxFrames       = 256
+	MaxMessageTextBytes         = 16 << 10
+	MaxMessageIDBytes           = 256
+	MaxMessageRecipients        = 32
+	MaxFramePayloadBytes        = 20 << 10
+	MaxConversationGenesisBytes = 512
+	MaxLiveSessions             = 256
+	MaxSessionsPerActor         = 16
+	MaxRetainedFrames           = 4096
+	MaxRetainedBytes            = 8 << 20
+	MaxActorNameBytes           = 256
+	MaxPresenceValueBytes       = 512
+	MaxPendingSessionChallenges = 256
+
+	DefaultSessionTTL     = 30 * time.Second
+	MaxSessionTTL         = 2 * time.Minute
+	SessionChallengeTTL   = 30 * time.Second
+	MaxCompositeWait      = 30 * time.Second
+	DefaultCompositeWait  = 25 * time.Second
+	compositePollInterval = 250 * time.Millisecond
 )
 
 // Activity is advisory, leased attention. It has no durable workflow force.
@@ -154,6 +172,72 @@ type Frame struct {
 	NexusSignature      []byte
 }
 
+// Draft is the exact application-neutral frame body an actor signs. Scope and
+// ConversationGenesis are carried alongside the signed body; Conversation is
+// the digest of that genesis, which commits the signature to the exact scope.
+// A draft is optimistic and retained nowhere: concurrent publication can make
+// it stale before submission.
+type Draft struct {
+	Scope               string `json:"scope"`
+	Version             uint64 `json:"version"`
+	Generation          string `json:"generation"`
+	ConversationGenesis []byte `json:"conversation_genesis"`
+	Conversation        string `json:"conversation"`
+	Sequence            uint64 `json:"sequence"`
+	PreviousHash        []byte `json:"previous_hash"`
+	Payload             []byte `json:"payload"`
+}
+
+// Submission carries a draft signed outside the runtime. In particular, a
+// browser can retain its private key and send only this public material.
+type Submission struct {
+	Draft          Draft             `json:"draft"`
+	ActorKey       ed25519.PublicKey `json:"actor_key"`
+	ActorSignature []byte            `json:"actor_signature"`
+}
+
+// SessionChallenge is an expiring, single-use proof-of-possession challenge.
+// Preparing one publishes no presence and consumes no actor session quota.
+// The private key corresponding to ActorKey signs SessionSigningBytes before
+// OpenSession makes the lease visible.
+type SessionChallenge struct {
+	Version    uint64            `json:"version"`
+	Generation string            `json:"generation"`
+	Nonce      []byte            `json:"nonce"`
+	ActorKey   ed25519.PublicKey `json:"actor_key"`
+}
+
+// DurableFrontier is the application-neutral identity of one verified
+// durable read. The live runtime neither obtains nor interprets it.
+type DurableFrontier struct {
+	Genesis string `json:"genesis"`
+	Head    string `json:"head"`
+	Depth   int    `json:"depth"`
+}
+
+// CompositeCursor keeps durable and live progress distinct. Neither cursor
+// is embedded in or inferred from the other.
+type CompositeCursor struct {
+	Durable DurableFrontier `json:"durable"`
+	Live    Cursor          `json:"live"`
+}
+
+// CompositeObservation joins an application-owned durable value to one live
+// observation without assigning meaning to either one.
+type CompositeObservation[T any] struct {
+	Durable T               `json:"durable"`
+	Live    Observation     `json:"live"`
+	Cursor  CompositeCursor `json:"cursor"`
+}
+
+type sessionChallengeBody struct {
+	_          struct{} `cbor:",toarray"`
+	Version    uint64
+	Generation string
+	Nonce      []byte
+	ActorKey   []byte
+}
+
 // Message is the signed, application-neutral chat payload. Recipients are
 // durable actor fingerprints resolved by the service before publication. A
 // reply's exact parent author is added by the nexus under the same lock that
@@ -217,6 +301,15 @@ type frameNexusBody struct {
 	ActorSignature []byte
 }
 
+type conversationGenesis struct {
+	_          struct{} `cbor:",toarray"`
+	Version    uint64
+	Generation string
+	NexusKey   []byte
+	Scope      string
+	Nonce      []byte
+}
+
 type conversation struct {
 	next    uint64
 	last    []byte
@@ -251,23 +344,33 @@ type presenceEntry struct {
 	activityChangedAt time.Time
 }
 
+type pendingSession struct {
+	actor       string
+	fingerprint string
+	value       string
+	ttl         time.Duration
+	activity    Activity
+	expiresAt   time.Time
+}
+
 type Hub struct {
-	mu             sync.Mutex
-	generation     string
-	position       uint64
-	base           uint64
-	historyCap     int
-	history        []Change
-	presence       map[string]presenceEntry
-	convs          map[string]*conversation
-	about          map[string]string
-	participants   map[string]map[string]bool
-	inboxes        map[string]*inboxState
-	publicKey      ed25519.PublicKey
-	privateKey     ed25519.PrivateKey
-	retainedFrames int
-	retainedBytes  int
-	now            func() time.Time
+	mu              sync.Mutex
+	generation      string
+	position        uint64
+	base            uint64
+	historyCap      int
+	history         []Change
+	presence        map[string]presenceEntry
+	convs           map[string]*conversation
+	about           map[string]string
+	participants    map[string]map[string]bool
+	inboxes         map[string]*inboxState
+	pendingSessions map[string]pendingSession
+	publicKey       ed25519.PublicKey
+	privateKey      ed25519.PrivateKey
+	retainedFrames  int
+	retainedBytes   int
+	now             func() time.Time
 }
 
 func New(historyCap int) (*Hub, error) {
@@ -293,16 +396,17 @@ func NewWithSigningKey(historyCap int, privateKey ed25519.PrivateKey) (*Hub, err
 	}
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	return &Hub{
-		generation:   "generation:" + hex.EncodeToString(generationBytes),
-		historyCap:   historyCap,
-		presence:     make(map[string]presenceEntry),
-		convs:        make(map[string]*conversation),
-		about:        make(map[string]string),
-		participants: make(map[string]map[string]bool),
-		inboxes:      make(map[string]*inboxState),
-		publicKey:    bytes.Clone(publicKey),
-		privateKey:   bytes.Clone(privateKey),
-		now:          time.Now,
+		generation:      "generation:" + hex.EncodeToString(generationBytes),
+		historyCap:      historyCap,
+		presence:        make(map[string]presenceEntry),
+		convs:           make(map[string]*conversation),
+		about:           make(map[string]string),
+		participants:    make(map[string]map[string]bool),
+		inboxes:         make(map[string]*inboxState),
+		pendingSessions: make(map[string]pendingSession),
+		publicKey:       bytes.Clone(publicKey),
+		privateKey:      bytes.Clone(privateKey),
+		now:             time.Now,
 	}, nil
 }
 
@@ -329,27 +433,31 @@ func (h *Hub) append(kind, id, value string) Change {
 	return change
 }
 
-// AnnounceSession leases a session to exactly one custodial actor. Presence,
-// binding and expiry are updated under the same lock as conversation retention.
-func (h *Hub) AnnounceSession(id, actor, value string, ttl time.Duration) (Change, error) {
-	return h.AnnounceSessionActivity(id, actor, value, ttl, ActivityUpdate{})
+// announceSession is a white-box compatibility helper for legacy tests.
+func (h *Hub) announceSession(id, actor, value string, ttl time.Duration) (Change, error) {
+	return h.announceSessionActivity(id, actor, value, ttl, ActivityUpdate{})
 }
 
-// AnnounceSessionActivity renews one session and optionally changes only that
+// announceSessionActivity renews one test session and optionally changes only that
 // session's advisory activity. The private session identifier remains the
 // authority boundary; callers cannot address another lease by public handle.
-func (h *Hub) AnnounceSessionActivity(id, actor, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
-	return h.AnnounceSessionIdentity(id, actor, "", value, ttl, update)
+func (h *Hub) announceSessionActivity(id, actor, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
+	return h.announceSessionIdentity(id, actor, "", value, ttl, update)
 }
 
-// AnnounceSessionIdentity binds a live lease to both its custodial actor name
+// announceSessionIdentity binds a test lease to both its custodial actor name
 // and its durable actor fingerprint. The name remains private service routing;
 // addressed delivery uses only the fingerprint.
-func (h *Hub) AnnounceSessionIdentity(id, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
+func (h *Hub) announceSessionIdentity(id, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if id == "" || actor == "" {
 		return Change{}, errors.New("session and actor are required")
+	}
+	// Historical white-box tests use long leases so expiry is not their
+	// concern. Production entry points reject, rather than cap, this bound.
+	if ttl > MaxSessionTTL {
+		ttl = MaxSessionTTL
 	}
 	h.expire(h.now())
 	if existing, exists := h.presence[id]; exists && (existing.actor != actor || existing.fingerprint != fingerprint) {
@@ -358,17 +466,7 @@ func (h *Hub) AnnounceSessionIdentity(id, actor, fingerprint, value string, ttl 
 	return h.announceFor(id, actor, fingerprint, value, ttl, update)
 }
 
-// OpenSessionIdentity mints and binds one new private credential. The actor is
-// selected inside the resident's trusted-process boundary; the credential
-// returned here authorizes only that exact binding in this Hub and disappears
-// with this process.
-func (h *Hub) OpenSessionIdentity(actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (string, Change, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if actor == "" {
-		return "", Change{}, errors.New("actor is required")
-	}
-	h.expire(h.now())
+func (h *Hub) openSessionIdentityLocked(actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (string, Change, error) {
 	for {
 		credential, err := mintCredential()
 		if err != nil {
@@ -382,10 +480,111 @@ func (h *Hub) OpenSessionIdentity(actor, fingerprint, value string, ttl time.Dur
 	}
 }
 
-// RenewSessionIdentity extends one exact live binding. A malformed, expired,
+// openSessionIdentity is retained for white-box compatibility tests whose
+// deliberately synthetic fingerprints cannot be derived from a public key.
+func (h *Hub) openSessionIdentity(actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (string, Change, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(h.now())
+	return h.openSessionIdentityLocked(actor, fingerprint, value, ttl, update)
+}
+
+// OpenTrustedSession mints a lease for an in-process custodial adapter that has
+// already authenticated the actor or holds custody of actorKey. It has no
+// proof challenge and therefore must not be routed from public or browser
+// input. Such transports must use PrepareSession and OpenSession; merely
+// knowing a public key proves no authority to publish presence under it.
+func (h *Hub) OpenTrustedSession(actor string, actorKey ed25519.PublicKey, value string, ttl time.Duration, update ActivityUpdate) (string, Change, error) {
+	fingerprint, err := ActorFingerprint(actorKey)
+	if err != nil {
+		return "", Change{}, err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(h.now())
+	return h.openSessionIdentityLocked(actor, fingerprint, value, ttl, update)
+}
+
+// PrepareSession creates a bounded, expiring proof-of-possession challenge.
+// It retains the requested lease privately but publishes no presence and uses
+// no actor session quota. OpenSession consumes the challenge exactly once.
+func (h *Hub) PrepareSession(actor string, actorKey ed25519.PublicKey, value string, ttl time.Duration, update ActivityUpdate) (SessionChallenge, error) {
+	fingerprint, err := ActorFingerprint(actorKey)
+	if err != nil {
+		return SessionChallenge{}, err
+	}
+	ttl, err = normalizeLease(actor, value, ttl)
+	if err != nil {
+		return SessionChallenge{}, err
+	}
+	activity, err := normalizeActivity(Activity{}, update, false)
+	if err != nil {
+		return SessionChallenge{}, err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := h.now()
+	h.expire(now)
+	if len(h.pendingSessions) >= MaxPendingSessionChallenges {
+		return SessionChallenge{}, fmt.Errorf("pending session challenge limit of %d reached", MaxPendingSessionChallenges)
+	}
+	for {
+		nonce := make([]byte, 32)
+		if _, err := rand.Read(nonce); err != nil {
+			return SessionChallenge{}, err
+		}
+		challenge := SessionChallenge{
+			Version: 0, Generation: h.generation, Nonce: nonce,
+			ActorKey: bytes.Clone(actorKey),
+		}
+		key, err := sessionChallengeKey(challenge)
+		if err != nil {
+			return SessionChallenge{}, err
+		}
+		if _, exists := h.pendingSessions[key]; exists {
+			continue
+		}
+		h.pendingSessions[key] = pendingSession{
+			actor: actor, fingerprint: fingerprint, value: value, ttl: ttl,
+			activity: cloneActivity(activity), expiresAt: now.Add(SessionChallengeTTL),
+		}
+		return cloneSessionChallenge(challenge), nil
+	}
+}
+
+// OpenSession verifies private-key possession and atomically makes the
+// prepared lease visible. A failed or replayed submission cannot reuse the
+// challenge; prepare a new one after any failure.
+func (h *Hub) OpenSession(challenge SessionChallenge, actorSignature []byte) (string, Change, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(h.now())
+	key, err := sessionChallengeKey(challenge)
+	if err != nil {
+		return "", Change{}, errors.New("session challenge is not valid")
+	}
+	pending, exists := h.pendingSessions[key]
+	if !exists {
+		return "", Change{}, errors.New("session challenge is not valid")
+	}
+	delete(h.pendingSessions, key)
+	if len(actorSignature) != ed25519.SignatureSize {
+		return "", Change{}, errors.New("invalid actor signature")
+	}
+	signingBytes, err := SessionSigningBytes(challenge)
+	if err != nil || !ed25519.Verify(challenge.ActorKey, signingBytes, actorSignature) {
+		return "", Change{}, errors.New("invalid actor signature")
+	}
+	return h.openSessionIdentityLocked(
+		pending.actor, pending.fingerprint, pending.value, pending.ttl,
+		activityUpdateFrom(pending.activity),
+	)
+}
+
+// renewSessionIdentity extends one exact live binding. A malformed, expired,
 // revoked, cross-actor or cross-resident credential receives the same fixed
 // refusal, so errors cannot be used as a credential oracle.
-func (h *Hub) RenewSessionIdentity(credential, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
+func (h *Hub) renewSessionIdentity(credential, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.expire(h.now())
@@ -397,6 +596,16 @@ func (h *Hub) RenewSessionIdentity(credential, actor, fingerprint, value string,
 		return Change{}, errors.New("credential is not valid")
 	}
 	return h.announceFor(credential, actor, fingerprint, value, ttl, update)
+}
+
+// RenewSession extends one exact credential without allowing either its actor
+// name or public key binding to move.
+func (h *Hub) RenewSession(credential, actor string, actorKey ed25519.PublicKey, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
+	fingerprint, err := ActorFingerprint(actorKey)
+	if err != nil {
+		return Change{}, errors.New("credential is not valid")
+	}
+	return h.renewSessionIdentity(credential, actor, fingerprint, value, ttl, update)
 }
 
 // RevokeSession ends one exact lease and its inbox immediately. Departure is
@@ -421,9 +630,27 @@ func (h *Hub) RevokeSession(credential string) (Change, error) {
 	return change, nil
 }
 
-func (h *Hub) announceFor(id, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
+func normalizeLease(actor, value string, ttl time.Duration) (time.Duration, error) {
+	if actor == "" || len(actor) > MaxActorNameBytes || !utf8.ValidString(actor) {
+		return 0, fmt.Errorf("actor must be non-empty UTF-8 of at most %d bytes", MaxActorNameBytes)
+	}
+	if len(value) > MaxPresenceValueBytes || !utf8.ValidString(value) {
+		return 0, fmt.Errorf("presence value must be UTF-8 of at most %d bytes", MaxPresenceValueBytes)
+	}
 	if ttl <= 0 {
-		ttl = 30 * time.Second
+		ttl = DefaultSessionTTL
+	}
+	if ttl > MaxSessionTTL {
+		return 0, fmt.Errorf("session TTL must not exceed %s", MaxSessionTTL)
+	}
+	return ttl, nil
+}
+
+func (h *Hub) announceFor(id, actor, fingerprint, value string, ttl time.Duration, update ActivityUpdate) (Change, error) {
+	var err error
+	ttl, err = normalizeLease(actor, value, ttl)
+	if err != nil {
+		return Change{}, err
 	}
 	existing, exists := h.presence[id]
 	if !exists {
@@ -522,6 +749,13 @@ func normalizeActivity(current Activity, update ActivityUpdate, exists bool) (Ac
 	return current, nil
 }
 
+func activityUpdateFrom(activity Activity) ActivityUpdate {
+	status := activity.Status
+	focus := append([]string(nil), activity.Focus...)
+	note := activity.Note
+	return ActivityUpdate{Status: &status, Focus: &focus, Note: &note}
+}
+
 func cloneActivity(activity Activity) Activity {
 	activity.Focus = append([]string(nil), activity.Focus...)
 	if activity.Focus == nil {
@@ -586,7 +820,7 @@ func activityEqual(left, right Activity) bool {
 	return true
 }
 
-func (h *Hub) Depart(id string) Change {
+func (h *Hub) depart(id string) Change {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	handle := h.presence[id].handle
@@ -599,6 +833,11 @@ func (h *Hub) Depart(id string) Change {
 }
 
 func (h *Hub) expire(now time.Time) {
+	for key, pending := range h.pendingSessions {
+		if !pending.expiresAt.After(now) {
+			delete(h.pendingSessions, key)
+		}
+	}
 	for id, entry := range h.presence {
 		if !entry.expiresAt.After(now) {
 			delete(h.presence, id)
@@ -711,21 +950,17 @@ func (h *Hub) removeParticipant(session string) {
 	}
 }
 
-func (h *Hub) openConversation(nonce []byte) (string, Change, error) {
-	genesis, err := encode(struct {
-		_          struct{} `cbor:",toarray"`
-		Version    uint64
-		Generation string
-		NexusKey   []byte
-		Nonce      []byte
-	}{Version: 0, Generation: h.generation, NexusKey: h.publicKey, Nonce: nonce})
+func (h *Hub) conversationGenesis(scope string, nonce []byte) ([]byte, string, error) {
+	genesis, err := encode(conversationGenesis{
+		Version: 1, Generation: h.generation, NexusKey: h.publicKey,
+		Scope: scope, Nonce: nonce,
+	})
 	if err != nil {
-		return "", Change{}, err
+		return nil, "", err
 	}
 	digest := sha256.Sum256(genesis)
 	id := "eph:sha256:" + hex.EncodeToString(digest[:])
-	h.convs[id] = &conversation{genesis: genesis}
-	return id, h.append("conversation", id, ""), nil
+	return genesis, id, nil
 }
 
 // Snapshot and ChangesSince form the barrier: the returned cursor is captured
@@ -879,6 +1114,60 @@ func (h *Hub) ChangesSinceForSession(cursor Cursor, session string) ([]Change, C
 	return h.changesSinceLocked(cursor, session)
 }
 
+// WaitComposite joins a caller-supplied durable read with this Hub's live
+// observation. The callback owns all durable interpretation; host/live sees
+// only its opaque value and verified frontier. The returned cursor preserves
+// the two namespaces separately. Polling is bounded because another process
+// may advance ordinary Git storage without notifying this process.
+func WaitComposite[T any](ctx context.Context, hub *Hub, session string, cursor CompositeCursor, timeout time.Duration, read func(context.Context) (T, DurableFrontier, error)) (CompositeObservation[T], bool, error) {
+	var latest CompositeObservation[T]
+	if hub == nil || read == nil {
+		return latest, false, errors.New("live runtime and durable reader are required")
+	}
+	if timeout <= 0 || timeout > MaxCompositeWait {
+		timeout = DefaultCompositeWait
+	}
+	check := func() (CompositeObservation[T], bool, error) {
+		observed, err := hub.Observe(session, &cursor.Live)
+		if err != nil {
+			return CompositeObservation[T]{}, false, err
+		}
+		durable, frontier, err := read(ctx)
+		if err != nil {
+			return CompositeObservation[T]{}, false, err
+		}
+		result := CompositeObservation[T]{
+			Durable: durable, Live: observed,
+			Cursor: CompositeCursor{Durable: frontier, Live: observed.Snapshot.Cursor},
+		}
+		pending := len(observed.Inbox.Frames) != 0
+		changed := observed.Reset || len(observed.Changes) != 0 || pending || frontier != cursor.Durable
+		return result, changed, nil
+	}
+
+	var changed bool
+	var err error
+	if latest, changed, err = check(); err != nil || changed {
+		return latest, changed, err
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	ticker := time.NewTicker(compositePollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return latest, false, ctx.Err()
+		case <-timer.C:
+			return latest, false, nil
+		case <-ticker.C:
+			if latest, changed, err = check(); err != nil || changed {
+				return latest, changed, err
+			}
+		}
+	}
+}
+
 func (h *Hub) changesSinceLocked(cursor Cursor, session string) ([]Change, Cursor, error) {
 	current := Cursor{Generation: h.generation, Position: h.position}
 	if cursor.Generation != h.generation || cursor.Position < h.base || cursor.Position > h.position {
@@ -913,6 +1202,56 @@ func actorBody(generation, conversationID string, sequence uint64, previousHash,
 	return frameActorBody{Version: 0, Generation: generation, Conversation: conversationID, Sequence: sequence, PreviousHash: previousHash, Payload: payload}
 }
 
+func sessionBody(challenge SessionChallenge) sessionChallengeBody {
+	return sessionChallengeBody{
+		Version: challenge.Version, Generation: challenge.Generation,
+		Nonce: challenge.Nonce, ActorKey: challenge.ActorKey,
+	}
+}
+
+// SessionSigningBytes returns the deterministic bytes that prove possession
+// of the key named by an expiring session challenge. A transport can return
+// these bytes directly to a browser, which needs only WebCrypto Ed25519 and no
+// CBOR encoder.
+func SessionSigningBytes(challenge SessionChallenge) ([]byte, error) {
+	if challenge.Version != 0 || !validPrefixedHex(challenge.Generation, "generation:", 16) || len(challenge.Nonce) != 32 || len(challenge.ActorKey) != ed25519.PublicKeySize {
+		return nil, errors.New("session challenge is not valid")
+	}
+	encoded, err := encode(sessionBody(challenge))
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(sessionProofDomain), encoded...), nil
+}
+
+func sessionChallengeKey(challenge SessionChallenge) (string, error) {
+	signingBytes, err := SessionSigningBytes(challenge)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(signingBytes)
+	return hex.EncodeToString(digest[:]), nil
+}
+
+// ActorSigningBytes returns the public deterministic bytes covered by an
+// actor signature. The encoding is the v0 domain followed by RFC 8949 core
+// deterministic CBOR of the six-field actor-frame tuple.
+func ActorSigningBytes(draft Draft) ([]byte, error) {
+	encoded, err := encode(actorBody(draft.Generation, draft.Conversation, draft.Sequence, draft.PreviousHash, draft.Payload))
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(actorFrameDomain), encoded...), nil
+}
+
+// ActorFingerprint returns the full lowercase fingerprint bound to a session.
+func ActorFingerprint(key ed25519.PublicKey) (string, error) {
+	if len(key) != ed25519.PublicKeySize {
+		return "", errors.New("invalid actor public key")
+	}
+	return actorFingerprint(key), nil
+}
+
 func encode(value any) ([]byte, error) {
 	mode, err := cbor.CoreDetEncOptions().EncMode()
 	if err != nil {
@@ -921,7 +1260,7 @@ func encode(value any) ([]byte, error) {
 	return mode.Marshal(value)
 }
 
-func signBytes(domain string, key ed25519.PrivateKey, value any) ([]byte, error) {
+func signIssuerBytes(domain string, key ed25519.PrivateKey, value any) ([]byte, error) {
 	encoded, err := encode(value)
 	if err != nil {
 		return nil, err
@@ -934,89 +1273,269 @@ func verifyBytes(domain string, key ed25519.PublicKey, value any, signature []by
 	return err == nil && ed25519.Verify(key, append([]byte(domain), encoded...), signature)
 }
 
-// PublishForSession is the compatibility path for opaque live frames. New
-// application chat uses PublishMessageForSession so addressing is signed.
-func (h *Hub) PublishForSession(session, about, conversationID string, payload []byte, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
+func cloneDraft(draft Draft) Draft {
+	draft.ConversationGenesis = bytes.Clone(draft.ConversationGenesis)
+	draft.PreviousHash = bytes.Clone(draft.PreviousHash)
+	draft.Payload = bytes.Clone(draft.Payload)
+	return draft
+}
+
+func cloneSessionChallenge(challenge SessionChallenge) SessionChallenge {
+	challenge.Nonce = bytes.Clone(challenge.Nonce)
+	challenge.ActorKey = bytes.Clone(challenge.ActorKey)
+	return challenge
+}
+
+func cloneFrame(frame Frame) Frame {
+	frame.ConversationGenesis = bytes.Clone(frame.ConversationGenesis)
+	frame.PreviousHash = bytes.Clone(frame.PreviousHash)
+	frame.Payload = bytes.Clone(frame.Payload)
+	frame.ActorKey = bytes.Clone(frame.ActorKey)
+	frame.ActorSignature = bytes.Clone(frame.ActorSignature)
+	frame.NexusKey = bytes.Clone(frame.NexusKey)
+	frame.NexusSignature = bytes.Clone(frame.NexusSignature)
+	return frame
+}
+
+func validScope(scope string) bool {
+	return scope != "" && len(scope) <= MaxMessageIDBytes && utf8.ValidString(scope)
+}
+
+func decodeConversationGenesis(raw []byte) (conversationGenesis, error) {
+	if len(raw) == 0 || len(raw) > MaxConversationGenesisBytes {
+		return conversationGenesis{}, fmt.Errorf("conversation genesis must be between 1 and %d bytes", MaxConversationGenesisBytes)
+	}
+	var genesis conversationGenesis
+	if err := cbor.Unmarshal(raw, &genesis); err != nil {
+		return conversationGenesis{}, errors.New("conversation genesis is invalid")
+	}
+	canonical, err := encode(genesis)
+	if err != nil || !bytes.Equal(canonical, raw) {
+		return conversationGenesis{}, errors.New("conversation genesis is not canonical")
+	}
+	return genesis, nil
+}
+
+func (h *Hub) validateSessionActorLocked(session string, actorKey ed25519.PublicKey) (presenceEntry, error) {
+	entry, exists := h.presence[session]
+	fingerprint, err := ActorFingerprint(actorKey)
+	if !exists || err != nil || entry.fingerprint == "" || entry.fingerprint != fingerprint {
+		return presenceEntry{}, errors.New("credential is not valid")
+	}
+	return entry, nil
+}
+
+// PrepareFrameForSession snapshots the exact live chain position an actor must
+// sign. It can expire old leases as every live read does, but it does not open
+// or reserve a conversation; only submission can publish draft state.
+func (h *Hub) PrepareFrameForSession(session, scope, conversationID string, payload []byte, actorKey ed25519.PublicKey) (Draft, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.expire(h.now())
-	_, exists := h.presence[session]
-	if !exists {
-		return Frame{}, errors.New("credential is not valid")
+	return h.prepareFrameLocked(session, scope, conversationID, payload, actorKey)
+}
+
+func (h *Hub) prepareFrameLocked(session, scope, conversationID string, payload []byte, actorKey ed25519.PublicKey) (Draft, error) {
+	if _, err := h.validateSessionActorLocked(session, actorKey); err != nil {
+		return Draft{}, err
+	}
+	if !validScope(scope) {
+		return Draft{}, fmt.Errorf("scope must be non-empty UTF-8 of at most %d bytes", MaxMessageIDBytes)
 	}
 	if err := h.canPublish(len(payload)); err != nil {
+		return Draft{}, err
+	}
+
+	resolved, existing, err := h.findConversation(scope, conversationID)
+	if err != nil {
+		return Draft{}, err
+	}
+	var genesis, previous []byte
+	var sequence uint64
+	if existing == nil {
+		nonce := make([]byte, 32)
+		if _, err := rand.Read(nonce); err != nil {
+			return Draft{}, err
+		}
+		genesis, resolved, err = h.conversationGenesis(scope, nonce)
+		if err != nil {
+			return Draft{}, err
+		}
+	} else {
+		genesis = existing.genesis
+		sequence = existing.next
+		previous = existing.last
+	}
+	return cloneDraft(Draft{
+		Scope: scope, Version: 0, Generation: h.generation,
+		ConversationGenesis: genesis, Conversation: resolved,
+		Sequence: sequence, PreviousHash: previous, Payload: payload,
+	}), nil
+}
+
+func (h *Hub) validateDraft(draft Draft) (*conversation, bool, error) {
+	if draft.Version != 0 || draft.Generation != h.generation || !validScope(draft.Scope) {
+		return nil, false, ErrStaleDraft
+	}
+	genesis, err := decodeConversationGenesis(draft.ConversationGenesis)
+	if err != nil {
+		return nil, false, err
+	}
+	if genesis.Version != 1 || genesis.Generation != h.generation || genesis.Scope != draft.Scope || len(genesis.Nonce) != 32 || !bytes.Equal(genesis.NexusKey, h.publicKey) {
+		return nil, false, errors.New("draft conversation genesis is invalid")
+	}
+	digest := sha256.Sum256(draft.ConversationGenesis)
+	if draft.Conversation != "eph:sha256:"+hex.EncodeToString(digest[:]) {
+		return nil, false, errors.New("draft conversation does not match its genesis")
+	}
+	anchored := h.about[draft.Scope]
+	existing := h.convs[draft.Conversation]
+	if existing == nil {
+		if anchored != "" || draft.Sequence != 0 || len(draft.PreviousHash) != 0 {
+			return nil, false, ErrStaleDraft
+		}
+		return nil, true, nil
+	}
+	if anchored != draft.Conversation || existing.about != draft.Scope || !bytes.Equal(existing.genesis, draft.ConversationGenesis) || existing.next != draft.Sequence || !bytes.Equal(existing.last, draft.PreviousHash) {
+		return nil, false, ErrStaleDraft
+	}
+	return existing, false, nil
+}
+
+// SubmitFrameForSession verifies and sequences a frame signed outside the
+// runtime. Replays and drafts invalidated by another publication fail closed.
+func (h *Hub) SubmitFrameForSession(session string, submission Submission) (Frame, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(h.now())
+	return h.submitFrameLocked(session, submission)
+}
+
+func (h *Hub) submitFrameLocked(session string, submission Submission) (Frame, error) {
+	if _, err := h.validateSessionActorLocked(session, submission.ActorKey); err != nil {
 		return Frame{}, err
 	}
-	conversationID, err := h.resolveConversation(about, conversationID)
+	if len(submission.ActorSignature) != ed25519.SignatureSize {
+		return Frame{}, errors.New("invalid actor signature")
+	}
+	if err := h.canPublish(len(submission.Draft.Payload)); err != nil {
+		return Frame{}, err
+	}
+	current, install, err := h.validateDraft(submission.Draft)
 	if err != nil {
 		return Frame{}, err
 	}
-	frame, err := h.publish(conversationID, payload, actorPrivateKey)
+	body := actorBody(submission.Draft.Generation, submission.Draft.Conversation, submission.Draft.Sequence, submission.Draft.PreviousHash, submission.Draft.Payload)
+	if !verifyBytes(actorFrameDomain, submission.ActorKey, body, submission.ActorSignature) {
+		return Frame{}, errors.New("invalid actor signature")
+	}
+	if install {
+		current = &conversation{
+			genesis: bytes.Clone(submission.Draft.ConversationGenesis), about: submission.Draft.Scope,
+		}
+	}
+	frame, digest, err := h.buildSignedFrame(current, body, submission.ActorKey, submission.ActorSignature)
 	if err != nil {
 		return Frame{}, err
 	}
-	if h.participants[conversationID] == nil {
-		h.participants[conversationID] = make(map[string]bool)
+	// From here onward the operation is a no-fail commit. A first conversation
+	// becomes visible only after both signatures and the frame hash exist.
+	if install {
+		h.convs[submission.Draft.Conversation] = current
+		h.about[submission.Draft.Scope] = submission.Draft.Conversation
+		h.append("conversation", submission.Draft.Conversation, "")
 	}
-	h.participants[conversationID][session] = true
+	h.commitSignedFrame(current, frame, digest)
+	if h.participants[submission.Draft.Conversation] == nil {
+		h.participants[submission.Draft.Conversation] = make(map[string]bool)
+	}
+	h.participants[submission.Draft.Conversation][session] = true
 	return frame, nil
 }
 
-// PublishMessageForSession validates and signs the final recipient list, adds
-// an exact reply parent's author, and enrolls only currently leased recipient
-// sessions in the conversation and their private inboxes.
-func (h *Hub) PublishMessageForSession(session, conversationID string, message Message, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
+// PrepareMessageForSession resolves the final recipient list, including an
+// exact reply parent's author, before returning the bytes the actor signs.
+func (h *Hub) PrepareMessageForSession(session, conversationID string, message Message, actorKey ed25519.PublicKey) (Draft, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.expire(h.now())
-	entry, exists := h.presence[session]
-	if !exists {
-		return Frame{}, errors.New("credential is not valid")
-	}
-	actorKey := actorPrivateKey.Public().(ed25519.PublicKey)
-	author := actorFingerprint(actorKey)
-	if entry.fingerprint == "" || entry.fingerprint != author {
-		return Frame{}, errors.New("session actor does not match the signing key")
+	if _, err := h.validateSessionActorLocked(session, actorKey); err != nil {
+		return Draft{}, err
 	}
 	if err := validateMessage(message); err != nil {
-		return Frame{}, err
+		return Draft{}, err
 	}
 	recipients, err := normalizeRecipients(message.Recipients)
 	if err != nil {
-		return Frame{}, err
+		return Draft{}, err
 	}
 	message.Recipients = recipients
 	if message.Re != "" && conversationID == "" {
 		conversationID, _, err = parseThreadHandle(message.Re)
 		if err != nil {
-			return Frame{}, err
+			return Draft{}, err
 		}
 	}
 	resolvedConversationID, existingConversation, err := h.findConversation(message.About, conversationID)
 	if err != nil {
-		return Frame{}, err
+		return Draft{}, err
 	}
 	recipients = append([]string(nil), message.Recipients...)
 	if message.Re != "" {
 		parentConversation, parentSequence, err := parseThreadHandle(message.Re)
 		if err != nil {
-			return Frame{}, err
+			return Draft{}, err
 		}
 		if existingConversation == nil || parentConversation != resolvedConversationID || parentSequence >= uint64(len(existingConversation.frames)) {
-			return Frame{}, errors.New("reply target is not an existing frame in this conversation")
+			return Draft{}, errors.New("reply target is not an existing frame in this conversation")
 		}
 		recipients = append(recipients, actorFingerprint(existingConversation.frames[parentSequence].ActorKey))
 	}
 	message.Recipients, err = normalizeRecipients(recipients)
 	if err != nil {
-		return Frame{}, err
+		return Draft{}, err
 	}
 	payload, err := json.Marshal(message)
 	if err != nil {
+		return Draft{}, err
+	}
+	return h.prepareFrameLocked(session, message.About, resolvedConversationID, payload, actorKey)
+}
+
+// SubmitMessageForSession verifies an externally signed message and then
+// publishes its bounded addressed delivery atomically with the frame.
+func (h *Hub) SubmitMessageForSession(session string, submission Submission) (Frame, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expire(h.now())
+	if _, err := h.validateSessionActorLocked(session, submission.ActorKey); err != nil {
 		return Frame{}, err
 	}
-	if err := h.canPublish(len(payload)); err != nil {
-		return Frame{}, err
+	var message Message
+	if err := json.Unmarshal(submission.Draft.Payload, &message); err != nil {
+		return Frame{}, errors.New("signed message payload is invalid")
+	}
+	if err := validateMessage(message); err != nil || message.About != submission.Draft.Scope {
+		return Frame{}, errors.New("signed message does not match its scope")
+	}
+	normalized, err := normalizeRecipients(message.Recipients)
+	if err != nil || !equalStrings(normalized, message.Recipients) {
+		return Frame{}, errors.New("signed message recipients are not canonical")
+	}
+	canonicalPayload, err := json.Marshal(message)
+	if err != nil || !bytes.Equal(canonicalPayload, submission.Draft.Payload) {
+		return Frame{}, errors.New("signed message payload is not canonical")
+	}
+	if message.Re != "" {
+		parentConversation, parentSequence, err := parseThreadHandle(message.Re)
+		existing := h.convs[submission.Draft.Conversation]
+		if err != nil || existing == nil || parentConversation != submission.Draft.Conversation || parentSequence >= uint64(len(existing.frames)) {
+			return Frame{}, errors.New("reply target is not an existing frame in this conversation")
+		}
+		parentAuthor := actorFingerprint(existing.frames[parentSequence].ActorKey)
+		if !containsExact(message.Recipients, parentAuthor) {
+			return Frame{}, errors.New("signed reply omits its exact parent author")
+		}
 	}
 	recipientSet := make(map[string]bool, len(message.Recipients))
 	for _, recipient := range message.Recipients {
@@ -1036,34 +1555,48 @@ func (h *Hub) PublishMessageForSession(session, conversationID string, message M
 	if err := h.canEnqueue(recipientSessions); err != nil {
 		return Frame{}, err
 	}
-	conversationID, err = h.resolveConversation(message.About, resolvedConversationID)
+	frame, err := h.submitFrameLocked(session, submission)
 	if err != nil {
 		return Frame{}, err
 	}
-	frame, err := h.publish(conversationID, payload, actorPrivateKey)
-	if err != nil {
-		return Frame{}, err
-	}
+	author := actorFingerprint(submission.ActorKey)
 	delivery := InboxFrame{
 		Actor: author, Text: message.Text, About: message.About,
-		Conversation: conversationID, Sequence: frame.Sequence, Re: message.Re,
+		Conversation: frame.Conversation, Sequence: frame.Sequence, Re: message.Re,
 		Recipients: append([]string(nil), message.Recipients...),
-		Thread:     conversationID + ":" + strconv.FormatUint(frame.Sequence, 10),
+		Thread:     frame.Conversation + ":" + strconv.FormatUint(frame.Sequence, 10),
 	}
 	last := len(h.history) - 1
 	h.history[last].Frame = &delivery
-	if h.participants[conversationID] == nil {
-		h.participants[conversationID] = make(map[string]bool)
-	}
-	h.participants[conversationID][session] = true
-	ref := frameRef{conversation: conversationID, sequence: frame.Sequence}
+	ref := frameRef{conversation: frame.Conversation, sequence: frame.Sequence}
 	for _, recipientSession := range recipientParticipants {
-		h.participants[conversationID][recipientSession] = true
+		h.participants[frame.Conversation][recipientSession] = true
 	}
 	for _, recipientSession := range recipientSessions {
 		h.addInbox(recipientSession, ref)
 	}
 	return frame, nil
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func containsExact(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func actorFingerprint(key []byte) string {
@@ -1160,41 +1693,6 @@ func (h *Hub) findConversation(about, conversationID string) (string, *conversat
 	return conversationID, conversation, nil
 }
 
-func (h *Hub) resolveConversation(about, conversationID string) (string, error) {
-	anchored := h.about[about]
-	if conversationID == "" {
-		conversationID = anchored
-	}
-	if conversationID != "" {
-		conversation, exists := h.convs[conversationID]
-		if !exists {
-			return "", errors.New("unknown conversation")
-		}
-		if conversation.about != "" && conversation.about != about {
-			return "", errors.New("conversation does not match the about anchor")
-		}
-		if anchored != "" && anchored != conversationID {
-			return "", errors.New("conversation does not match the about anchor")
-		}
-		if anchored == "" {
-			h.about[about] = conversationID
-		}
-		conversation.about = about
-		return conversationID, nil
-	}
-	nonce := make([]byte, 32)
-	if _, err := rand.Read(nonce); err != nil {
-		return "", err
-	}
-	opened, _, err := h.openConversation(nonce)
-	if err != nil {
-		return "", err
-	}
-	h.about[about] = opened
-	h.convs[opened].about = about
-	return opened, nil
-}
-
 func (h *Hub) canPublish(payloadBytes int) error {
 	if payloadBytes > MaxFramePayloadBytes {
 		return fmt.Errorf("frame payload exceeds %d bytes", MaxFramePayloadBytes)
@@ -1205,43 +1703,39 @@ func (h *Hub) canPublish(payloadBytes int) error {
 	return nil
 }
 
-func (h *Hub) publish(conversationID string, payload []byte, actorPrivateKey ed25519.PrivateKey) (Frame, error) {
-	conversation, ok := h.convs[conversationID]
-	if !ok {
-		return Frame{}, errors.New("unknown conversation")
+func (h *Hub) buildSignedFrame(conversation *conversation, body frameActorBody, actorKey ed25519.PublicKey, actorSignature []byte) (Frame, []byte, error) {
+	if conversation == nil || body.Generation != h.generation || body.Sequence != conversation.next || !bytes.Equal(body.PreviousHash, conversation.last) {
+		return Frame{}, nil, ErrStaleDraft
 	}
-	if err := h.canPublish(len(payload)); err != nil {
-		return Frame{}, err
+	if err := h.canPublish(len(body.Payload)); err != nil {
+		return Frame{}, nil, err
 	}
-	body := actorBody(h.generation, conversationID, conversation.next, conversation.last, payload)
-	actorSignature, err := signBytes(actorFrameDomain, actorPrivateKey, body)
-	if err != nil {
-		return Frame{}, err
-	}
-	actorKey := actorPrivateKey.Public().(ed25519.PublicKey)
 	nexusBody := frameNexusBody{ActorBody: body, ActorKey: actorKey, ActorSignature: actorSignature}
-	nexusSignature, err := signBytes(nexusFrameDomain, h.privateKey, nexusBody)
+	nexusSignature, err := signIssuerBytes(nexusFrameDomain, h.privateKey, nexusBody)
 	if err != nil {
-		return Frame{}, err
+		return Frame{}, nil, err
 	}
 	frame := Frame{
-		Version: 0, Generation: h.generation, Conversation: conversationID,
+		Version: 0, Generation: h.generation, Conversation: body.Conversation,
 		ConversationGenesis: bytes.Clone(conversation.genesis),
-		Sequence:            conversation.next, PreviousHash: bytes.Clone(conversation.last), Payload: bytes.Clone(payload),
-		ActorKey: bytes.Clone(actorKey), ActorSignature: actorSignature,
+		Sequence:            conversation.next, PreviousHash: bytes.Clone(conversation.last), Payload: bytes.Clone(body.Payload),
+		ActorKey: bytes.Clone(actorKey), ActorSignature: bytes.Clone(actorSignature),
 		NexusKey: bytes.Clone(h.publicKey), NexusSignature: nexusSignature,
 	}
 	digest, err := FrameHash(frame)
 	if err != nil {
-		return Frame{}, err
+		return Frame{}, nil, err
 	}
-	conversation.last = digest
+	return cloneFrame(frame), digest, nil
+}
+
+func (h *Hub) commitSignedFrame(conversation *conversation, frame Frame, digest []byte) {
+	conversation.last = bytes.Clone(digest)
 	conversation.next++
-	conversation.frames = append(conversation.frames, frame)
+	conversation.frames = append(conversation.frames, cloneFrame(frame))
 	h.retainedFrames++
-	h.retainedBytes += len(payload)
-	h.append("frame", conversationID, fmt.Sprint(frame.Sequence))
-	return frame, nil
+	h.retainedBytes += len(frame.Payload)
+	h.append("frame", frame.Conversation, fmt.Sprint(frame.Sequence))
 }
 
 func (h *Hub) Frames(conversationID string) ([]Frame, error) {
@@ -1253,7 +1747,9 @@ func (h *Hub) Frames(conversationID string) ([]Frame, error) {
 		return nil, errors.New("unknown conversation")
 	}
 	frames := make([]Frame, len(conversation.frames))
-	copy(frames, conversation.frames)
+	for index := range conversation.frames {
+		frames[index] = cloneFrame(conversation.frames[index])
+	}
 	return frames, nil
 }
 
@@ -1266,12 +1762,27 @@ func FrameHash(frame Frame) ([]byte, error) {
 	return digest[:], nil
 }
 
+func validPrefixedHex(value, prefix string, bytesCount int) bool {
+	if len(value) != len(prefix)+(bytesCount*2) || !strings.HasPrefix(value, prefix) {
+		return false
+	}
+	decoded, err := hex.DecodeString(value[len(prefix):])
+	return err == nil && hex.EncodeToString(decoded) == value[len(prefix):]
+}
+
 func VerifyFrame(frame Frame, trustedNexusKey ed25519.PublicKey) error {
-	if frame.Version != 0 || frame.Generation == "" || frame.Conversation == "" || len(frame.ActorKey) != ed25519.PublicKeySize || len(frame.NexusKey) != ed25519.PublicKeySize {
+	validPrevious := (frame.Sequence == 0 && len(frame.PreviousHash) == 0) || (frame.Sequence > 0 && len(frame.PreviousHash) == sha256.Size)
+	if frame.Version != 0 || !validPrefixedHex(frame.Generation, "generation:", 16) || !validPrefixedHex(frame.Conversation, "eph:sha256:", sha256.Size) ||
+		len(frame.Payload) > MaxFramePayloadBytes || len(frame.ConversationGenesis) == 0 || len(frame.ConversationGenesis) > MaxConversationGenesisBytes || !validPrevious ||
+		len(frame.ActorKey) != ed25519.PublicKeySize || len(frame.ActorSignature) != ed25519.SignatureSize || len(frame.NexusKey) != ed25519.PublicKeySize || len(frame.NexusSignature) != ed25519.SignatureSize || len(trustedNexusKey) != ed25519.PublicKeySize {
 		return errors.New("invalid frame shape")
 	}
 	if !bytes.Equal(frame.NexusKey, trustedNexusKey) {
 		return errors.New("frame is not signed by the trusted nexus")
+	}
+	genesis, err := decodeConversationGenesis(frame.ConversationGenesis)
+	if err != nil || genesis.Version != 1 || genesis.Generation != frame.Generation || len(genesis.Nonce) != 32 || !bytes.Equal(genesis.NexusKey, frame.NexusKey) || !validScope(genesis.Scope) {
+		return errors.New("invalid conversation genesis envelope")
 	}
 	genesisHash := sha256.Sum256(frame.ConversationGenesis)
 	if frame.Conversation != "eph:sha256:"+hex.EncodeToString(genesisHash[:]) {

@@ -253,7 +253,7 @@ func TestPublicSurfaceDependsOnNoApplicationProfile(t *testing.T) {
 		"github.com/generalbusiness-ai/gitseq/internal/workroom": "the Workroom application profile",
 		"github.com/generalbusiness-ai/gitseq/internal/app":      "the Workroom-coupled host adapter",
 	}
-	for _, pkg := range []string{"./host", "./internal/apphost"} {
+	for _, pkg := range []string{"./host", "./host/live", "./internal/apphost"} {
 		command := exec.Command("go", "list", "-deps", pkg)
 		command.Dir = repoRoot(t)
 		output, err := command.CombinedOutput()

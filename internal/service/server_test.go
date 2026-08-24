@@ -19,10 +19,10 @@ import (
 	"testing"
 	"time"
 
+	nexus "github.com/generalbusiness-ai/gitseq/host/live"
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
-	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 

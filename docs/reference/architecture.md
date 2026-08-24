@@ -173,9 +173,39 @@ browser or older adapter into an inbox it cannot consume. Per-session inboxes
 and acknowledgements are live attention state, not Workroom authority or
 durable records. Acknowledgement changes no nexus cursor.
 
-`internal/nexus` implements this layer. The resident in `internal/service`
-hosts it alongside the durable application, but co-location is operational
-convenience, not a claim that nexus data has kernel durability.
+`host/live` implements this layer as a public, application-neutral runtime.
+An application prepares an optimistic frame draft, signs the canonical bytes
+outside the runtime, and submits the public key and signature. The runtime
+never receives an actor private key. A draft retains no reservation: its
+generation, scope, conversation, sequence, or previous hash moving before
+submission makes it stale, so the application prepares again. For a new
+conversation, the conversation identifier hashes a genesis envelope that
+binds the exact scope, runtime generation, and runtime signing key before the
+actor signs that identifier.
+
+Public-key sessions follow the same custody rule. Preparing a session returns
+a bounded, expiring challenge and publishes no presence. The client signs the
+challenge bytes with the named actor key; only a valid proof opens the lease.
+A challenge is consumed by its first opening attempt and cannot be replayed,
+even after a failed signature. Actor names, presence values, lease duration,
+pending challenges, total sessions, and sessions per actor all have exported
+limits enforced before open and again on renewal. The separate
+`OpenTrustedSession` entry point is only for an in-process custodial adapter
+which already authenticated the actor or holds its private key. A public or
+browser transport must never route to that entry point.
+
+Composition with durable state also remains explicit. `host/live` can wait on
+a caller-supplied durable reader and its own live observation, but it treats
+the durable value as opaque and retains a `DurableFrontier` separately from
+the process-local live cursor. Bounded polling notices ordinary Git progress
+written by another process without suggesting that a live cursor orders,
+authenticates, or survives with the durable sequence. The application host,
+not the live runtime, chooses and interprets the durable frontier.
+
+The resident in `internal/service` hosts the same runtime alongside the
+durable application and supplies Workroom message policy at that composition
+boundary. Co-location is operational convenience, not a claim that live data
+has kernel durability.
 
 The supported host posture is one trusted operator account, not a partial
 shared-host authentication system. `gs serve` discloses that posture on every
@@ -187,12 +217,13 @@ trusted to ask it to act as any of them. Direct local
 resident's protection.
 
 Live credentials belong to this layer. The resident mints each from 256 bits
-of system randomness, binds it to one repository and actor, and revokes it on
-departure, expiry or restart. Browser and MCP clients keep it in process
-memory and never choose it. Ordinary status, presence, tool results, logs,
-diagnostics, durable events and URLs expose only a separate display handle,
-not the credential. These controls protect the live transport boundary; they
-do not change kernel verification or Workroom fold semantics.
+of system randomness, binds it to one repository and an actor fingerprint
+derived from that actor's public key, and revokes it on departure, expiry or
+restart. Browser and MCP clients keep it in process memory and never choose
+it. Ordinary status, presence, tool results, logs, diagnostics, durable events
+and URLs expose only a separate display handle, not the credential. These
+controls protect the live transport boundary; they do not change kernel
+verification or Workroom fold semantics.
 
 Because this layer is per-process, one repository must have one resident.
 Two would leave the durable sequence correct and still split presence and
@@ -750,10 +781,10 @@ the same result.
 | `internal/intent` | Kernel | Owns canonical signed intents and actor-key fingerprints. Schema and `rests_on` are bounded opaque strings. |
 | `internal/kernel` | Kernel | Uses only Git storage, intents, and an optional host interface that loads or stores an opaque checkpoint object ID. It performs no local checkpoint filesystem I/O. Its application admission callback receives envelope facts, not payload meaning. A checkpoint caches only kernel-verified events and kernel identity (schema, object format, genesis, and authenticated sequencer-key lineage), never projection state or an application profile; every candidate is verified from those kernel facts. |
 | `internal/custody` | Example application interpreter | Folds opaque offer, acceptance and settlement records into asset-custody state. It manages no local signing keys and defines no kernel policy. |
-| `internal/nexus` | Live runtime | Owns process-local coordination. It is independent of the durable Workroom fold. |
+| `host/live` | Live runtime, public surface | Owns the single process-local coordination runtime. It opens public-key leases only after an expiring single-use possession proof, exposes a separate trusted-only custodial entry point, prepares deterministic application-neutral frame drafts, verifies actor signatures made outside the runtime, binds conversations to exact scopes, supplies runtime ordering, and retains bounded live state. Its optional composition helper keeps caller-owned durable frontiers separate from live cursors. It imports no application profile and is independent of the durable Workroom fold. |
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
 | `internal/apphost` | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and the binding in force shared by every host, together with the repository configuration a checkout needs to reopen its own log. It imports no application profile and has no application ontology. |
-| `host` | Application host, public surface | The only package a module outside this one can import. It exports binding at init, opening against a declared application, appending a signed act, and reading the verified record stream — and no projection, because the outside application owns its fold. It depends on the kernel and `internal/apphost`, never on an application profile. |
+| `host` | Durable application host, public surface | Exports binding at init, opening against a declared application, appending a signed act, and reading the verified record stream — and no projection, because the outside application owns its fold. It depends on the kernel and `internal/apphost`, never on an application profile. |
 | `host/identity` | Application host, public surface | Holds the host identity vocabulary an application inherits rather than reinvents: witness declarations, witnessed GitHub and self-signed Nostr anchors, withdrawal, and two-axis resolution with a plain display at an exact verified record position. It imports `host` and no application profile, gates no append, and reads no clock. Nostr BIP-340 verification stays in this host interpreter, outside the Ed25519 kernel. The provider check that turns a GitHub login into an identity runs outside the fold, and only its result is recorded. |
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it opens the repository's configured actor and sequencer key custody, builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. The trusted resident may invoke this local custody for several actors; the nexus credential does not alter key files, kernel verification or fold authority. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
@@ -769,8 +800,8 @@ The important existing dependency direction is real: `internal/kernel` does
 not import `internal/workroom`; `internal/workroom` does not import Git, HTTP,
 or MCP; and `internal/app` joins them. The host binding belongs at that seam,
 not in either lower package or inside a particular application. New code
-should keep application meaning above it. `host`, `host/identity` and
-`internal/apphost` sit at
+should keep application meaning above it. `host`, `host/identity`,
+`host/live` and `internal/apphost` sit at
 that seam and must stay free of any application profile: a public surface that
 imported the Workroom-coupled adapter would put layer 4 on top of layer 5, and
 an outside application would inherit meanings it never asked for. Where `cmd/gs` and

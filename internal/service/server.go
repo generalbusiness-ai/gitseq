@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"net"
@@ -14,9 +15,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	nexus "github.com/generalbusiness-ai/gitseq/host/live"
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
-	"github.com/generalbusiness-ai/gitseq/internal/nexus"
 	"github.com/generalbusiness-ai/gitseq/internal/observe"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 )
@@ -499,7 +500,7 @@ func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Reques
 		write(writer, nil, err)
 		return
 	}
-	actor, _, err := s.workspace.Actor(input.Actor)
+	actor, private, err := s.workspace.Actor(input.Actor)
 	if err != nil {
 		write(writer, nil, err)
 		return
@@ -531,11 +532,11 @@ func (s *Server) handleAnnounce(writer http.ResponseWriter, request *http.Reques
 	}
 	update := nexus.ActivityUpdate{Status: input.Status, Focus: input.Focus, Note: input.Note}
 	if input.Session == "" {
-		credential, change, err := s.hub.OpenSessionIdentity(input.Actor, actor.Fingerprint, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, update)
+		credential, change, err := s.hub.OpenTrustedSession(input.Actor, private.Public().(ed25519.PublicKey), actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, update)
 		write(writer, presenceResponse{Credential: credential, Change: change}, err)
 		return
 	}
-	change, err := s.hub.RenewSessionIdentity(input.Session, input.Actor, actor.Fingerprint, actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, update)
+	change, err := s.hub.RenewSession(input.Session, input.Actor, private.Public().(ed25519.PublicKey), actor.Name+" ("+actor.Fingerprint[:12]+")", ttl, update)
 	write(writer, presenceResponse{Change: change}, err)
 }
 
@@ -663,10 +664,23 @@ func (s *Server) handleSay(writer http.ResponseWriter, request *http.Request) {
 		write(writer, nil, err)
 		return
 	}
-	frame, err := s.hub.PublishMessageForSession(input.Session, input.Conversation, nexus.Message{
+	draft, err := s.hub.PrepareMessageForSession(input.Session, input.Conversation, nexus.Message{
 		About: input.About, Text: input.Text, Re: input.Re,
 		Recipients: addressedRecipients(input.Text, snapshot),
-	}, private)
+	}, private.Public().(ed25519.PublicKey))
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	signingBytes, err := nexus.ActorSigningBytes(draft)
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	frame, err := s.hub.SubmitMessageForSession(input.Session, nexus.Submission{
+		Draft: draft, ActorKey: private.Public().(ed25519.PublicKey),
+		ActorSignature: ed25519.Sign(private, signingBytes),
+	})
 	write(writer, frame, err)
 }
 
