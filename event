@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c74cb965b585d3f2ca774546f7d21909209a2a09","text":"superseded by the MCP review-tool head c08aa0ff3d0d, which changed cmd/gitseq-mcp; successor published at the same path"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:26f9acea37dd11e5e69be8ea2022625eebcdfe53","text":"superseded by the MCP review-tool head c08aa0ff3d0d, which changed cmd/gitseq-mcp; successor published at the same path"}
