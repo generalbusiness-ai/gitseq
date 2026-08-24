@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:994ff3c9ec63e30e3bf69f51b52b4bc2f470aff3"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:764b140bea6ae34c829112673c36e93329af6e2c","text":"Resolve this unclaimed replacement without a merge. Ox-checker already retired unsafe approval 0043e239 in effective act 2889368c, filed effective changes-requested verdict 8b176613 on exact head 18d419d2, and Codex ratified that verdict at 610314bf. No duplicate promise or report is needed."}
