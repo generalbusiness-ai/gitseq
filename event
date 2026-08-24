@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a6629f6e210a3baa8bee67627696e111fb9aaa","text":"Retiring my mislabelled probe promise; replaced immediately by a proper one."}
+{"kind":"promise","text":"I will independently review exact head e02ea44f5e83c78a3b3d269b0b4dd580edf21f07 on request/public-live-runtime-current against request #10094: architecture, security and simplification conclusions, clean pushed branch confirmed, gates run as proportionate, verdict naming the exact head and all eight exact-head artifacts."}
