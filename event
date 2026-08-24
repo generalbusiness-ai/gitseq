@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact head 85292ce1 moves gitseq-mcp to the public live runtime without changing its adapter contract; command tests and the full suite pass.","body":{"commit":"85292ce19575076a6d70284326c1359dcdc86c59","path":"cmd/gitseq-mcp"}}
+{"kind":"artifact","text":"Exact head 85292ce1 keeps status projection on the same amnesiac runtime through its public package; focused and full tests pass.","body":{"commit":"85292ce19575076a6d70284326c1359dcdc86c59","path":"internal/statusview"}}
