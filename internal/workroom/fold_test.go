@@ -2280,6 +2280,62 @@ func TestMergePlanIsNotLentToARecordTheMergeDidNotPublish(t *testing.T) {
 	}
 }
 
+// The transitive arm of the exemption, reached by a merge that deletes a
+// maintained path. The direct arm above handles a receipt or successor resting
+// straight on a plan-named predecessor; here the retirement reaches the receipt
+// only through the approval chain. The plan retires the approved candidate
+// itself, `merge_successors` is the empty list `gs merge` writes for a
+// deletion, and a no-successor retirement takes no authority from a merge, so
+// the implementer withdraws their own artifact. Nothing answers the move: the
+// approval that cited the candidate goes stale, and so does any later record
+// over the same basis. The receipt must not — every live cause below its stale
+// basis is the one retirement its own signed plan names, which is its own act
+// and not news to it. Without this arm the fold would flare every
+// deletion-style receipt at birth, the merge refusing its own result.
+func TestDeletionMergeReceiptOutlivesTheStalenessItsOwnPlanCauses(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"r5":""}`, "merge_successors": `[]`,
+		}}, "approval"),
+		// The retirement rests on the target and the receipt and cites no
+		// successor, the shape the merge's own retirement act takes for a
+		// deleted path.
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "r5", Text: "path deleted by merge"}, "r5", "merge"),
+		// A later record over the same basis, holding no plan of its own.
+		event(t, "follow-up", operator, SchemaState, State{Kind: KindAssert, Text: "noting the approval"}, "approval"),
+	)
+	projection := Fold(records)
+	// The fold admitting the whole sequence is the point: this construction is
+	// available to any real actor, so the arm it exercises is not dead code.
+	for _, act := range []string{"approval", "approval-ratified", "merge", "retire", "follow-up"} {
+		decision, _ := projection.Decision(act)
+		if decision.Verdict != Effective {
+			t.Fatalf("%s = %+v", act, decision)
+		}
+	}
+	decision, _ := projection.Decision("retire")
+	if decision.Reason != "authorized supersession" {
+		t.Fatalf("deletion-style retirement took authority it should not hold: %+v", decision)
+	}
+	if !artifactByEvent(t, projection, "r5").Retired {
+		t.Fatal("the candidate stayed live")
+	}
+	approval := statementByEvent(t, projection, "approval")
+	if !approval.Stale || !approval.DescribesSupersededWorld {
+		t.Fatalf("approval with its cited candidate deleted and nothing answering: stale=%v world=%v",
+			approval.Stale, approval.DescribesSupersededWorld)
+	}
+	if followUp := statementByEvent(t, projection, "follow-up"); !followUp.Stale {
+		t.Fatal("a planless record over the stale approval did not flare")
+	}
+	if receipt := statementByEvent(t, projection, "merge"); receipt.Stale {
+		t.Fatal("the receipt flared over the retirement its own plan names")
+	}
+}
+
 func TestMergeReceiptDoesNotAuthorizeAnUnrelatedCrossAuthorRetirement(t *testing.T) {
 	records := reviewRecords(t,
 		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "planned predecessor", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
