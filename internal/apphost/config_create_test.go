@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -18,12 +20,10 @@ func testConfig() Config {
 }
 
 var (
-	errInjectedWrite           = errors.New("injected write failure")
-	errInjectedClose           = errors.New("injected close failure")
-	errInjectedRetryClose      = errors.New("injected retry-close failure")
-	errInjectedIdentity        = errors.New("injected identity-read failure")
-	errInjectedCreatedIdentity = errors.New("injected created-identity read failure")
-	errInjectedRemove          = errors.New("injected removal failure")
+	errInjectedWrite      = errors.New("injected write failure")
+	errInjectedClose      = errors.New("injected close failure")
+	errInjectedRetryClose = errors.New("injected retry-close failure")
+	errInjectedRemove     = errors.New("injected removal failure")
 )
 
 // requireClosed proves CreateConfig closed the handle it opened: a leaked
@@ -39,11 +39,27 @@ func requireClosed(t *testing.T, file *os.File) {
 	}
 }
 
+// metaDirEntries lists what the metadata directory holds, in name order, so a
+// test can prove a creation left nothing behind beyond what it claims.
+func metaDirEntries(t *testing.T, metaDir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(metaDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	return names
+}
+
 // A CreateConfig that fails mid-write must not poison its destination: the
-// partial file it created never validates, so leaving it behind would make
+// partial content it wrote never validates, so leaving it behind would make
 // every later creation fail with os.ErrExist for a configuration nobody
 // stored. The failure branch must close the handle it opened, remove the file
-// it just created, and hand back the original failure, so a retry succeeds.
+// it wrote, leave nothing else behind, and hand back the original failure, so
+// a retry succeeds.
 func TestCreateConfigWriteFailureLeavesPathFreeForRetry(t *testing.T) {
 	metaDir := t.TempDir()
 	var captured *os.File
@@ -60,6 +76,9 @@ func TestCreateConfigWriteFailureLeavesPathFreeForRetry(t *testing.T) {
 	requireClosed(t, captured)
 	if _, statErr := os.Stat(filepath.Join(metaDir, ConfigFile)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("failed creation left a file at its destination: stat = %v", statErr)
+	}
+	if names := metaDirEntries(t, metaDir); len(names) != 0 {
+		t.Fatalf("failed creation left files behind: %v", names)
 	}
 	if retryErr := CreateConfig(metaDir, testConfig()); retryErr != nil {
 		t.Fatalf("retry after failed creation: %v", retryErr)
@@ -90,6 +109,9 @@ func TestCreateConfigCloseFailureLeavesPathFreeForRetry(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(metaDir, ConfigFile)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("failed creation left a file at its destination: stat = %v", statErr)
 	}
+	if names := metaDirEntries(t, metaDir); len(names) != 0 {
+		t.Fatalf("failed creation left files behind: %v", names)
+	}
 	if retryErr := CreateConfig(metaDir, testConfig()); retryErr != nil {
 		t.Fatalf("retry after failed creation: %v", retryErr)
 	}
@@ -100,11 +122,12 @@ func TestCreateConfigCloseFailureLeavesPathFreeForRetry(t *testing.T) {
 
 // When the cleanup itself fails, the caller must still see the original
 // failure — the reason nothing was stored — and must also see the removal
-// failure, because the partial file still occupies the path and that
-// occupation poisons every retry. Swallowing either half misreports what
-// happened. Written the easy way — asserting only the original failure —
-// this test would pass even if the removal's error were silently discarded,
-// which is exactly the defect it exists to catch.
+// failure, because a file this call created is still on disk. The file that
+// remains is this call's own staging file at its private name, never the
+// destination, so the destination stays free and a retry still succeeds.
+// Written the easy way — asserting only the original failure — this test
+// would pass even if the removal's error were silently discarded, which is
+// exactly the defect it exists to catch.
 func TestCreateConfigSurfacesCleanupFailureAlongsideOriginal(t *testing.T) {
 	metaDir := t.TempDir()
 	previousWrite := createConfigWrite
@@ -120,16 +143,26 @@ func TestCreateConfigSurfacesCleanupFailureAlongsideOriginal(t *testing.T) {
 	if !errors.Is(err, errInjectedRemove) {
 		t.Fatalf("CreateConfig error = %v, want the removal failure carried alongside the original", err)
 	}
-	if err == nil || !strings.Contains(err.Error(), "still occupies its path") {
-		t.Fatalf("CreateConfig error = %v, want it to report the path still occupied", err)
+	if err == nil || !strings.Contains(err.Error(), "could not be removed") {
+		t.Fatalf("CreateConfig error = %v, want it to report the file that could not be removed", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(metaDir, ConfigFile)); statErr != nil {
-		t.Fatalf("the error reports the path still occupied, but stat = %v", statErr)
+	if _, statErr := os.Stat(filepath.Join(metaDir, ConfigFile)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("the failure happened before the destination existed, yet the destination holds a file: stat = %v", statErr)
+	}
+	names := metaDirEntries(t, metaDir)
+	if len(names) != 1 || !strings.HasPrefix(names[0], "."+ConfigFile+".create-") {
+		t.Fatalf("metadata directory holds %v, want only this call's staging file at its private name", names)
+	}
+	if retryErr := CreateConfig(metaDir, testConfig()); retryErr != nil {
+		t.Fatalf("a staging file that could not be removed must not poison the destination for retry: %v", retryErr)
+	}
+	if _, loadErr := LoadConfig(metaDir); loadErr != nil {
+		t.Fatalf("retried creation stored no valid configuration: %v", loadErr)
 	}
 }
 
-// A pre-existing file makes the exclusive open fail before anything is
-// written, and the failure handling must never remove or alter it: it is
+// A pre-existing file makes the creation fail before the destination is
+// changed, and the failure handling must never remove or alter it: it is
 // someone else's stored configuration, not this call's creation.
 func TestCreateConfigNeverTouchesPreexistingFile(t *testing.T) {
 	metaDir := t.TempDir()
@@ -147,6 +180,9 @@ func TestCreateConfigNeverTouchesPreexistingFile(t *testing.T) {
 	}
 	if string(content) != string(stored) {
 		t.Fatalf("pre-existing file changed: got %q, want %q", content, stored)
+	}
+	if names := metaDirEntries(t, metaDir); !slices.Equal(names, []string{ConfigFile}) {
+		t.Fatalf("refused creation left files behind: %v", names)
 	}
 }
 
@@ -181,6 +217,36 @@ func TestCreateConfigCarriesFallbackCloseFailureAlongsideOriginal(t *testing.T) 
 	}
 }
 
+// POSIX close(2) releases the descriptor even when it reports a failure such
+// as EIO, so the fallback close then finds the handle already closed and
+// os.File.Close reports os.ErrClosed. That is confirmation the handle was
+// released, not a new failure: the caller must see the genuine close failure
+// alone, with no fabricated "could not be closed" alongside it. The injected
+// close here closes for real before reporting failure, exactly the EIO shape,
+// and the fallback close stays at its production default so its os.ErrClosed
+// is the real one.
+func TestCreateConfigTreatsAnAlreadyClosedFallbackAsReleased(t *testing.T) {
+	metaDir := t.TempDir()
+	previousClose := createConfigClose
+	createConfigClose = func(file *os.File) error {
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return errInjectedClose
+	}
+	err := CreateConfig(metaDir, testConfig())
+	createConfigClose = previousClose
+	if !errors.Is(err, errInjectedClose) {
+		t.Fatalf("CreateConfig error = %v, want the original injected close failure", err)
+	}
+	if errors.Is(err, os.ErrClosed) {
+		t.Fatalf("CreateConfig error = %v, want no fabricated failure from the fallback close finding the handle already released", err)
+	}
+	if names := metaDirEntries(t, metaDir); len(names) != 0 {
+		t.Fatalf("failed creation left files behind: %v", names)
+	}
+}
+
 // A write failure followed by a close failure loses information if either is
 // dropped: the write failure is why nothing was stored, and the close failure
 // says the storage may be in a worse state than the write error alone admits.
@@ -212,15 +278,26 @@ func TestCreateConfigCarriesCloseFailureAlongsideWriteFailure(t *testing.T) {
 	}
 }
 
-// O_EXCL proved the path empty at creation, not at cleanup. If another
-// process removes the partial file and stores its own configuration in that
-// window, a cleanup that removes by pathname deletes that process's file and
-// reports it as this call's partial write. The injected close stages that
-// race deterministically, after really closing the handle — the only order in
-// which the racing process could remove the file on Windows, where an open
-// handle blocks the removal. Written the easy way — with nothing racing —
-// this test would pass even if the cleanup removed whatever stands at the
-// path, which is exactly the defect it exists to catch.
+// GitHub run 32670745698: a cleanup that removes by destination pathname can
+// delete a file another process stored there. An identity check over device
+// and inode numbers cannot repair that, because an inode number is not a
+// durable identity — Linux reuses a freed inode eagerly, so a replacement
+// stored where a file was just unlinked can answer os.SameFile as the file
+// this call created. This test stages that scenario: during the failure,
+// another process's configuration lands at the destination — which under the
+// current code held nothing, since this call's partial content sits only at
+// its private staging name, so the removal before the store is a no-op kept
+// from the pre-fix window it re-enacts. Whatever identity the replacement
+// carries, cleanup must leave it in place, because the destination is not
+// cleanup's to remove.
+//
+// This test pins the pre-fix defect only where the kernel reuses a freed
+// inode number eagerly (Linux/ext4): on macOS/APFS the replacement gets a
+// fresh inode, the pre-fix os.SameFile guard refuses the removal, and the
+// pre-fix code passes here. TestCreateConfigCleanupRemovesOnlyWhatItCreated
+// is the platform-independent guard for that defect. This test still earns
+// its place on every platform, as the only one that catches a cleanup
+// removing the destination directly, bypassing the createConfigRemove seam.
 func TestCreateConfigLeavesAReplacementAtItsDestinationAlone(t *testing.T) {
 	metaDir := t.TempDir()
 	path := filepath.Join(metaDir, ConfigFile)
@@ -232,7 +309,7 @@ func TestCreateConfigLeavesAReplacementAtItsDestinationAlone(t *testing.T) {
 		if err := file.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Remove(path); err != nil {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(path, replacement, 0o600); err != nil {
@@ -246,55 +323,131 @@ func TestCreateConfigLeavesAReplacementAtItsDestinationAlone(t *testing.T) {
 	if !errors.Is(err, errInjectedWrite) {
 		t.Fatalf("CreateConfig error = %v, want the original injected write failure preserved", err)
 	}
-	if err == nil || !strings.Contains(err.Error(), "did not create") {
-		t.Fatalf("CreateConfig error = %v, want it to report the destination holds a file this call did not create", err)
-	}
 	content, readErr := os.ReadFile(path)
 	if readErr != nil {
-		t.Fatalf("the replacement is no longer readable: %v", readErr)
+		t.Fatalf("the replacement was removed by cleanup: %v", readErr)
 	}
 	if string(content) != string(replacement) {
 		t.Fatalf("the replacement changed: got %q, want %q", content, replacement)
 	}
+	if names := metaDirEntries(t, metaDir); !slices.Equal(names, []string{ConfigFile}) {
+		t.Fatalf("cleanup left more than the replacement behind: %v", names)
+	}
 }
 
-// A symbolic link planted at the destination that points back at this call's
-// file would pass an identity check that follows links: os.Stat would
-// describe the created file itself, os.SameFile would match, and the cleanup
-// would remove the link — an entry this call did not create. The identity
-// check must describe the destination entry itself. The injected close stages
-// the link after really closing the handle, the only order the racing process
-// could achieve on Windows.
-func TestCreateConfigLeavesASymlinkAtItsDestinationAlone(t *testing.T) {
+// The pathname is the only name a cleanup shares with other processes, so
+// removing by the destination pathname is what made run 32670745698 possible:
+// after the partial file was unlinked and replaced, the removal deleted a
+// file this call never created. The only file cleanup may remove is the one
+// this call created, at a private name no other process holds. This test
+// records every path the cleanup removes and refuses any removal that names
+// the shared destination — deterministically, on every platform, without
+// needing the kernel to reuse an inode number.
+func TestCreateConfigCleanupRemovesOnlyWhatItCreated(t *testing.T) {
 	metaDir := t.TempDir()
-	if err := os.Symlink("probe-target", filepath.Join(metaDir, "probe")); err != nil {
-		t.Skipf("symbolic links are unavailable here: %v", err)
-	}
 	path := filepath.Join(metaDir, ConfigFile)
-	moved := filepath.Join(metaDir, "moved-config.json")
+	var removed []string
 	previousWrite := createConfigWrite
-	previousClose := createConfigClose
+	previousRemove := createConfigRemove
 	createConfigWrite = func(*os.File, []byte) (int, error) { return 0, errInjectedWrite }
+	createConfigRemove = func(p string) error {
+		removed = append(removed, p)
+		return os.Remove(p)
+	}
+	err := CreateConfig(metaDir, testConfig())
+	createConfigWrite = previousWrite
+	createConfigRemove = previousRemove
+	if !errors.Is(err, errInjectedWrite) {
+		t.Fatalf("CreateConfig error = %v, want the original injected write failure preserved", err)
+	}
+	for _, p := range removed {
+		if p == path {
+			t.Fatalf("cleanup removed the shared destination path %q; it may remove only the file this call created", p)
+		}
+	}
+	if len(removed) == 0 {
+		t.Fatal("cleanup removed nothing, so the file this call created was left behind")
+	}
+	if names := metaDirEntries(t, metaDir); len(names) != 0 {
+		t.Fatalf("failed creation left files behind: %v", names)
+	}
+}
+
+// Exclusivity must hold over the whole creation, not only at its first step:
+// when another creator claims the destination between this call's start and
+// its completion, exactly one configuration may win. The winner is the one at
+// the destination; this call must be refused with os.ErrExist — not report a
+// success for content the destination does not hold — and must leave the
+// winner's file untouched and no staging file behind.
+func TestCreateConfigRefusesADestinationClaimedDuringItsWindow(t *testing.T) {
+	metaDir := t.TempDir()
+	path := filepath.Join(metaDir, ConfigFile)
+	winner := []byte("the concurrent creator's configuration\n")
+	previousClose := createConfigClose
 	createConfigClose = func(file *os.File) error {
 		if err := file.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Rename(path, moved); err != nil {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			t.Fatal(err)
 		}
-		if err := os.Symlink(moved, path); err != nil {
+		if err := os.WriteFile(path, winner, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		return nil
 	}
 	err := CreateConfig(metaDir, testConfig())
-	createConfigWrite = previousWrite
 	createConfigClose = previousClose
-	if !errors.Is(err, errInjectedWrite) {
-		t.Fatalf("CreateConfig error = %v, want the original injected write failure preserved", err)
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("CreateConfig against a destination claimed during its window = %v, want os.ErrExist", err)
 	}
-	if err == nil || !strings.Contains(err.Error(), "did not create") {
-		t.Fatalf("CreateConfig error = %v, want it to report the destination holds a file this call did not create", err)
+	content, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("the winner's file is no longer readable: %v", readErr)
+	}
+	if string(content) != string(winner) {
+		t.Fatalf("the winner's file changed: got %q, want %q", content, winner)
+	}
+	if names := metaDirEntries(t, metaDir); !slices.Equal(names, []string{ConfigFile}) {
+		t.Fatalf("refused creation left files behind: %v", names)
+	}
+}
+
+// A symbolic link planted at the destination during the window is an entry
+// this call did not create: the creation must be refused, and neither the
+// link nor the file it points at may be removed or altered.
+func TestCreateConfigLeavesASymlinkAtItsDestinationAlone(t *testing.T) {
+	metaDir := t.TempDir()
+	probe := filepath.Join(metaDir, "probe")
+	if err := os.Symlink("probe-target", probe); err != nil {
+		t.Skipf("symbolic links are unavailable here: %v", err)
+	}
+	if err := os.Remove(probe); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(metaDir, ConfigFile)
+	decoy := filepath.Join(metaDir, "decoy")
+	decoyContent := []byte("the decoy's content\n")
+	if err := os.WriteFile(decoy, decoyContent, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previousClose := createConfigClose
+	createConfigClose = func(file *os.File) error {
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(decoy, path); err != nil {
+			t.Fatal(err)
+		}
+		return nil
+	}
+	err := CreateConfig(metaDir, testConfig())
+	createConfigClose = previousClose
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("CreateConfig with a link planted at its destination = %v, want os.ErrExist", err)
 	}
 	info, lstatErr := os.Lstat(path)
 	if lstatErr != nil {
@@ -303,65 +456,62 @@ func TestCreateConfigLeavesASymlinkAtItsDestinationAlone(t *testing.T) {
 	if info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("the destination entry is no longer a link: mode = %v", info.Mode())
 	}
-	if _, statErr := os.Stat(moved); statErr != nil {
-		t.Fatalf("this call's file was removed through the link: %v", statErr)
+	content, readErr := os.ReadFile(decoy)
+	if readErr != nil {
+		t.Fatalf("the linked file was removed: %v", readErr)
+	}
+	if string(content) != string(decoyContent) {
+		t.Fatalf("the linked file changed: got %q, want %q", content, decoyContent)
+	}
+	if names := metaDirEntries(t, metaDir); !slices.Equal(names, []string{ConfigFile, "decoy"}) {
+		t.Fatalf("refused creation left files behind: %v", names)
 	}
 }
 
-// The created file's identity is read from its still-open handle, and that
-// read can fail too. When it does, the cleanup cannot know which file this
-// call created, so it must remove nothing — and it must tell the caller that
-// specific cause. Written the easy way — asserting only the original failure —
-// this test would pass even if the handle read's error were silently
+// A successful creation must leave exactly the configuration — a staging file
+// left beside it would sit in the metadata directory forever, unexplained —
+// and what it stored must be the configuration it was given, not merely
+// something that validates.
+func TestCreateConfigSuccessLeavesOnlyTheConfiguration(t *testing.T) {
+	metaDir := t.TempDir()
+	if err := CreateConfig(metaDir, testConfig()); err != nil {
+		t.Fatalf("CreateConfig: %v", err)
+	}
+	loaded, err := LoadConfig(metaDir)
+	if err != nil {
+		t.Fatalf("created configuration does not load: %v", err)
+	}
+	if !reflect.DeepEqual(loaded, testConfig()) {
+		t.Fatalf("stored configuration = %+v, want the configuration CreateConfig was given: %+v", loaded, testConfig())
+	}
+	if names := metaDirEntries(t, metaDir); !slices.Equal(names, []string{ConfigFile}) {
+		t.Fatalf("successful creation left files behind: %v", names)
+	}
+}
+
+// When the configuration is stored but the staging file cannot be removed,
+// both facts matter: the caller must learn about the file left on disk, and
+// must be able to tell this outcome from a failed creation — the stored
+// configuration is valid and stays. Written the easy way — asserting only
+// success — this test would pass even if the removal's error were silently
 // discarded, which is exactly the defect it exists to catch.
-func TestCreateConfigCarriesCreatedIdentityReadFailureAlongsideOriginal(t *testing.T) {
+func TestCreateConfigReportsAStagingFileItCouldNotRemoveAfterStoring(t *testing.T) {
 	metaDir := t.TempDir()
-	previousWrite := createConfigWrite
-	previousCreated := createConfigCreatedIdentity
-	createConfigWrite = func(*os.File, []byte) (int, error) { return 0, errInjectedWrite }
-	createConfigCreatedIdentity = func(*os.File) (os.FileInfo, error) { return nil, errInjectedCreatedIdentity }
+	previousRemove := createConfigRemove
+	createConfigRemove = func(string) error { return errInjectedRemove }
 	err := CreateConfig(metaDir, testConfig())
-	createConfigWrite = previousWrite
-	createConfigCreatedIdentity = previousCreated
-	if !errors.Is(err, errInjectedWrite) {
-		t.Fatalf("CreateConfig error = %v, want the original injected write failure preserved", err)
+	createConfigRemove = previousRemove
+	if !errors.Is(err, errInjectedRemove) {
+		t.Fatalf("CreateConfig error = %v, want the staging file's removal failure reported", err)
 	}
-	if !errors.Is(err, errInjectedCreatedIdentity) {
-		t.Fatalf("CreateConfig error = %v, want the handle identity read's failure carried alongside the original", err)
+	if err == nil || !strings.Contains(err.Error(), "was stored") {
+		t.Fatalf("CreateConfig error = %v, want it to say the configuration was stored", err)
 	}
-	if err == nil || !strings.Contains(err.Error(), "nothing was removed") {
-		t.Fatalf("CreateConfig error = %v, want it to report that nothing was removed", err)
+	if _, loadErr := LoadConfig(metaDir); loadErr != nil {
+		t.Fatalf("the error reports the configuration stored, but loading it failed: %v", loadErr)
 	}
-	if _, statErr := os.Stat(filepath.Join(metaDir, ConfigFile)); statErr != nil {
-		t.Fatalf("identity was never confirmed, yet the file is gone: %v", statErr)
-	}
-}
-
-// When the identity read itself fails, the cleanup cannot know whose file
-// occupies the path, so it must remove nothing — and it must tell the caller
-// that specific cause, not a guess. Written the easy way — asserting only
-// that something failed — this test would pass even if the identity read's
-// error were silently discarded, which is exactly the defect it exists to
-// catch.
-func TestCreateConfigCarriesIdentityReadFailureAlongsideOriginal(t *testing.T) {
-	metaDir := t.TempDir()
-	previousWrite := createConfigWrite
-	previousIdentity := createConfigIdentity
-	createConfigWrite = func(*os.File, []byte) (int, error) { return 0, errInjectedWrite }
-	createConfigIdentity = func(string) (os.FileInfo, error) { return nil, errInjectedIdentity }
-	err := CreateConfig(metaDir, testConfig())
-	createConfigWrite = previousWrite
-	createConfigIdentity = previousIdentity
-	if !errors.Is(err, errInjectedWrite) {
-		t.Fatalf("CreateConfig error = %v, want the original injected write failure preserved", err)
-	}
-	if !errors.Is(err, errInjectedIdentity) {
-		t.Fatalf("CreateConfig error = %v, want the identity read's failure carried alongside the original", err)
-	}
-	if err == nil || !strings.Contains(err.Error(), "nothing was removed") {
-		t.Fatalf("CreateConfig error = %v, want it to report that nothing was removed", err)
-	}
-	if _, statErr := os.Stat(filepath.Join(metaDir, ConfigFile)); statErr != nil {
-		t.Fatalf("identity was never confirmed, yet the file is gone: %v", statErr)
+	names := metaDirEntries(t, metaDir)
+	if len(names) != 2 || !slices.Contains(names, ConfigFile) {
+		t.Fatalf("metadata directory holds %v, want the configuration and the one staging file the error reports", names)
 	}
 }

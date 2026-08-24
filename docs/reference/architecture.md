@@ -316,17 +316,29 @@ the sequencer chain to the audit that runs before any record is folded.
 
 That remembered state — the repository-private configuration holding the
 genesis, object format, payload ceiling, sequencer key path, local actor
-custody, and the last verified frontier — has its own custody contract, the
-same on every platform. The file is created exclusively: of two concurrent
-creators exactly one wins and the other is refused, so an attach that lost the
-creation race fails instead of silently answering for a genesis it never
-stored. Replacement writes a temporary file and renames it over the old one.
-No path takes a file lock, and no platform gets a different fallback: where
-exclusive creation or the rename is refused — as a non-Unix platform can
-refuse while another process holds the file — the writer reports the failure
-and the writable configuration does not proceed. The reader fails closed too:
-a missing or partially visible file never validates, so a reader refuses to
-open rather than acting on a configuration nobody stored. In memory, a
+custody, and the last verified frontier — has its own custody contract. The
+file is created exclusively: the content is written and closed at a privately
+named staging file in the same directory, and only the completed file is then
+hard-linked to the destination, so of two concurrent creators exactly one wins
+and the other is refused, and an attach that lost the creation race fails
+instead of silently answering for a genesis it never stored. Because the link
+publishes a file that is already whole, a concurrent reader sees the
+destination as either absent or complete while the system stays up; a crash
+keeps no such promise, since nothing syncs the staging file or its directory
+before the link, so a power loss can persist the directory entry ahead of the
+data. Replacement is a different path and is unchanged: it writes a temporary
+file and renames it over the destination, and it is how an initialization and
+every later save store the file. The two paths do not accept the same
+filesystems: creation requires hard links within the metadata directory — a
+refused link is reported as the creation's failure, with no rename fallback —
+while replacement needs none, so an attach can be refused on a filesystem where
+an initialization succeeds. No path takes a file lock, and no platform gets a
+different fallback: where exclusive creation or the rename is refused — as a
+non-Unix platform can refuse the rename while another process holds the file —
+the writer reports the failure and the writable configuration does not proceed.
+The reader fails closed too: a missing or partially visible file never
+validates, so a reader refuses to open rather than acting on a configuration
+nobody stored. In memory, a
 configuration leaves an open workspace only as a copy sharing no mutable state
 with it, so a holder cannot alter the workspace's actor custody or verified
 frontier through the value it was handed; the live configuration is a private
