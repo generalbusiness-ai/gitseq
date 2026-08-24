@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a44fad3f6bd9e96725d20821133375af37ea7e7a","text":"Retire the superseded exact-a1ef review assignment: Claude's effective changes-requested verdict is ratified and the candidate has moved to a corrected head."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:123e4572bf7e11c14a28e2d39215e43029680a64","text":"Superseded by the corrected internal/statusview artifact at exact pushed head f379517e, which preserves conditions on stale unclaimed rows."}
