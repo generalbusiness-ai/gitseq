@@ -1,13 +1,18 @@
 import type { Act, Landing, Projection, Review, Statement } from "./api.ts";
 import { activeRatification } from "./ratification.ts";
 import { buildThreadIndex } from "./threads.ts";
-import { firstLine } from "./util.ts";
+import { firstLine, kindLabel } from "./util.ts";
 
 // One station on the rail. A station that has not happened is still a row:
 // hollow, dim, and naming what would fill it and who owes it.
 export interface Station {
   id: string;
-  kind: "request" | "promise" | "report" | "verdict" | "merge" | "closed" | "open";
+  /**
+   * The label the rail prints. Commitment stations use the fold's words
+   * (request, promise, report…); a root that is itself a proposal or note
+   * prints what it is instead of pretending to be a request.
+   */
+  kind: string;
   /** The durable event this station is, when it has happened. */
   event?: string;
   ticket?: number;
@@ -77,14 +82,20 @@ export function buildSpine(root: string, context: SpineContext): Spine {
   };
 
   if (request) {
+    // The opening station says what the root is. A proposal or note that
+    // opens as its own thread must not be announced as a request.
+    const opening =
+      request.kind === "request"
+        ? `${nameOf(request.actor)} asked ${request.body?.to ? nameOf(request.body.to) : "the room"} — ${firstLine(request.text, 160)}`
+        : `${nameOf(request.actor)} ${kindLabel(request.kind)} — ${firstLine(request.text, 160)}`;
     station({
-      id: "request",
-      kind: "request",
+      id: "root",
+      kind: kindLabel(request.kind),
       event: root,
       ticket: tickets.get(root),
       actor: request.actor,
       timestamp: request.timestamp,
-      what: `${nameOf(request.actor)} asked ${request.body?.to ? nameOf(request.body.to) : "the room"} — ${firstLine(request.text, 160)}`,
+      what: opening,
       present: true,
     });
   }
@@ -113,7 +124,7 @@ export function buildSpine(root: string, context: SpineContext): Spine {
       what: "reported without a claim",
       present: false,
     });
-  } else {
+  } else if (commitment || request?.kind === "request") {
     const owed = commitment?.addressed_to ?? request?.body?.to;
     station({
       id: "promise",
@@ -122,6 +133,8 @@ export function buildSpine(root: string, context: SpineContext): Spine {
       present: false,
     });
   }
+  // A root that is no commitment of anybody — a proposal, a note — owes
+  // nobody a claim, so the rail does not invent an unclaimed row under it.
 
   const report = commitment?.report ? statements.get(commitment.report) : undefined;
   if (report) {
@@ -332,6 +345,7 @@ function buildExpanders(input: {
   const rounds: string[] = [];
   const superseded: string[] = [];
   const ratifications: string[] = [];
+  const proposals: string[] = [];
   const chatter: string[] = [];
 
   for (const event of thread.events) {
@@ -354,8 +368,14 @@ function buildExpanders(input: {
       ratifications.push(event);
       continue;
     }
-    if (statement?.retired && ["request", "promise", "report"].includes(statement.kind)) {
+    if (statement?.retired && ["request", "promise", "report", "propose"].includes(statement.kind)) {
       superseded.push(event);
+      continue;
+    }
+    // A proposal is an adoptable decision, not chatter; it earns its own
+    // place instead of hiding behind a label that denies it exists.
+    if (statement?.kind === "propose") {
+      proposals.push(event);
       continue;
     }
     chatter.push(event);
@@ -364,7 +384,8 @@ function buildExpanders(input: {
   const expanders: Expander[] = [
     { id: "repair", label: "Repair chain", hint: "retired predecessor artifacts and the supersessions that retired them", events: repair },
     { id: "rounds", label: "Earlier rounds", hint: "superseded review verdicts", events: rounds },
-    { id: "superseded", label: "Superseded claims", hint: "refiled requests, replaced promises and reports", events: superseded },
+    { id: "superseded", label: "Superseded claims", hint: "refiled requests, replaced promises, reports and proposals", events: superseded },
+    { id: "proposals", label: "Proposals", hint: "adoptable decisions awaiting a ratifier", events: proposals },
     { id: "ratifications", label: "Ratifications", hint: "records in this thread adopted by a ratifier", events: ratifications },
     { id: "talk", label: "Talk", hint: talk > 0 ? `notes, asserts and ${talk} temporary ${talk === 1 ? "message" : "messages"}` : "notes and asserts", events: chatter },
   ];

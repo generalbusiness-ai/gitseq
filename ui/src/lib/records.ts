@@ -19,11 +19,11 @@ export interface RecordIndex {
   /** The commitment a request, promise or report event belongs to. */
   commitment: (event: string) => Projection["commitments"][number] | undefined;
   /**
-   * The request whose thread this record belongs to: the record itself when
-   * it is a request, else the nearest request up its first-basis chain, with
-   * an act resolved through its target. A record with no request above it
-   * returns itself, which the thread screen reports as not a thread rather
-   * than inventing one.
+   * The thread a record opens into: a promise or report opens the request it
+   * answers, an act opens where its target lives, and everything else — a
+   * proposal, a free-standing assert — opens as itself. Walking further up
+   * the citation chain filed a proposal under whatever request its cited
+   * artifact happened to answer, however unrelated.
    */
   threadRoot: (event: string) => string;
 }
@@ -49,17 +49,11 @@ export function buildRecordIndex(projection: Projection): RecordIndex {
     }
   }
   const threadRoot = (event: string): string => {
-    const seen = new Set<string>();
     let cursor = event;
-    while (!seen.has(cursor)) {
-      seen.add(cursor);
-      if (statements.get(cursor)?.kind === "request") return cursor;
-      const act = acts.get(cursor);
-      const next = act ? act.target : (projection.provenance[cursor] ?? [])[0];
-      if (!next) break;
-      cursor = next;
-    }
-    return event;
+    const act = acts.get(cursor);
+    if (act) cursor = act.target;
+    const commitment = commitments.get(cursor);
+    return commitment ? commitment.request : cursor;
   };
   return {
     statement: (event) => statements.get(event),
