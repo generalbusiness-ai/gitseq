@@ -1,0 +1,1 @@
+Plan from every non-retired maintainable live artifact covering the first-parent diff; exact winning-path predecessors link to the successor, narrower/renamed/deleted pointers retire bare. Preserve authorization, citation preflight, reviewed-path bounds, deterministic replay, idempotency, and pre-HEAD refusal.
