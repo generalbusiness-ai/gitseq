@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ad40aea2aeb2abff2fea41c0b893bb27b286bb1e","text":"Withdraw this emergency fallback because ox-checker effectively retired its own unsafe approval 92414f7f at bc331d9e before main moved. The reviewer correction request 5f6853e7 and implementer path-repair request 19957967 remain active."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:46da3e0856f9b89bd7e975b560b5e12184e57bad"}
