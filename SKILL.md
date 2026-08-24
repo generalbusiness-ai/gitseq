@@ -126,8 +126,9 @@ work in flight, or, if it is already done, report straight against the
 request. Only the addressee may do that, and not while their own promise on
 that request is live — one commitment takes one closure, so a claim you have
 already made is the thing to report on. For implementing work, your exact-head
-artifact rests on that promise, or on the request when you made none, and acts
-as the implementation report; an
+candidate artifacts rest on that promise, or on the request when you made none,
+and act together as the implementation report. Publish them before review, but
+do not retire live main predecessors; that belongs to the approved merge. An
 independently approved merge closes the commitment, with no duplicate report
 or post-merge ratification. The review approval remains separate and must be
 explicitly ratified before merge. Work that resolves without a merge uses an
@@ -202,18 +203,20 @@ on the artifact it names.
 8. **Bridge real work.** An implementing source commit carries
    `Rests-On:` naming what governs it — the assigned request for work
    another actor asked for, the motivating ratified decision for work
-   you began yourself; then `state {kind: artifact}` cites the commit and its
-   governing decisions. For assigned implementation, it also rests on the
-   promise it fulfils and serves as the implementation report. Unbridged work is
+   you began yourself; then candidate `state {kind: artifact}` records cite the
+   commit and its governing decisions. For assigned implementation, each also
+   rests on the promise it fulfils and they serve together as the implementation
+   report. Unbridged work is
    invisible to staleness tracking — the workroom then lies by
    omission, the one failure this system exists to prevent.
    Two rules follow, one on each side of a document. **Describing
    behaviour**, rest on the artifacts for the implementation you
    describe, not only on the request that produced the document: ask
    whether retiring a basis would mean the prose needs re-checking,
-   and a request alone never does. **Changing behaviour**, publish each added,
-   modified, or renamed destination at its exact changed path and supersede
-   every live artifact at that exact string as part of stating the new one —
+   and a request alone never does. **Changing behaviour**, at merge publish each
+   added, modified, or renamed destination at its exact changed path and
+   supersede every live artifact at that exact string as part of stating the
+   new one —
    that supersession is what makes the prose flare, and it is yours to make
    because you are the one who moved the world. A wider covering pointer is a
    separate wire and stays live until its own retirement is decided. More than

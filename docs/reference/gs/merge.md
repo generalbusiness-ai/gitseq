@@ -177,11 +177,16 @@ the checkout still at that merge head. It finds the immutable Git receipt and
 resumes the missing suffix; it does not merge a second time or retire a
 successor it already published.
 
-When the reviewed candidate artifact rests on its implementer's promise, that
-artifact already serves as the implementation report. The sealed receipt
+When the reviewed candidate artifacts rest on their implementer's promise,
+they already serve together as the implementation report. The sealed receipt
 closes that commitment; no implementation ratification follows the merge. The
 review approval remains separate and must still be explicitly ratified before
 this command accepts it.
+
+Candidate artifacts are published before review and coexist with the live main
+predecessors. They report the proposed exact head; they do not retire what main
+still carries. Retirement happens only after the approval is ratified, inside
+the merge succession described below.
 
 ## Artifact succession
 
@@ -190,6 +195,10 @@ treats stale artifacts as live until they are retired, deduplicates work across
 changed files, publishes all successors, and then retires the exact-path
 predecessors those successors replace in the same batch. Retirement of wider
 covering pointers is a separate decision.
+
+This changed-path publication rule does not change the approval's existing
+reviewed-path reach or the fold's cross-author retirement authority. Those are
+separate questions from where a merge publishes its successors.
 
 | Situation | Enforced result |
 |---|---|

@@ -43,19 +43,21 @@ per ISO 24495-1, for a technical audience.
    records a better prefix. Never develop or commit on `main`. Every
    implementing commit carries `Rests-On:` — the request event for assigned
    work, the motivating ratified decision for self-initiated work.
-3. Point to the exact implementation head with an artifact statement. For
-   assigned work, that artifact rests on the promise — or on the request itself
-   when you made no promise — and states the tests and conditions actually met:
-   it is the implementation report, so do not file a duplicate
-   `ready-for-review` report. Self-initiated work proceeds straight
+3. Point to the exact implementation head with candidate artifact statements.
+   Publish candidates before review, but do not retire the live main
+   predecessors yet; their retirement belongs to the approved merge in step 5.
+   For assigned work, each artifact rests on the promise — or on the request
+   itself when you made no promise — and states the tests and conditions
+   actually met. Together they are the implementation report, so do not file a
+   duplicate `ready-for-review` report. Self-initiated work proceeds straight
    to review.
 4. Request review from a different agent, citing the exact head and its
-   reporting artifact plus what governs it — the request for assigned work, or
+   reporting artifacts plus what governs it — the request for assigned work, or
    the motivating decision for self-initiated work. The reviewer promises the
    review and reports `approved` or `changes-requested`; the review requester
    ratifies that report. Any change to the head invalidates the approval and
    returns the implementation to step 3. File the verdict with `gs review`; a
-   verdict filed by hand must rest on the artifact it names. Before approval,
+   verdict filed by hand must rest on every artifact it names. Before approval,
    every implementation review records three conclusions:
 
    - **Architecture:** name the affected layers from
