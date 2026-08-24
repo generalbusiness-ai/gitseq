@@ -20,7 +20,15 @@ per ISO 24495-1, for a technical audience.
    flight, or, when it is already done, report straight against the request:
    the promise is how the board sees work underway, not a toll on finishing.
    Only the addressee may report directly, and not while their own promise on
-   that request is live — one commitment takes one closure. If work is discovered
+   that request is live — one commitment takes one closure. Each working cycle,
+   every request addressed to you gets an answer: a promise, an explicit
+   decline, or an `assert` resting on the request saying why it is not yet
+   actionable. Only the request's author or a `ratifier` may retire a request,
+   so a decline is an `assert` stating the refusal and its reason, plus asking
+   the author to retire the request; the row stays open until they do. Answer a
+   stale request addressed to you the same way — name the staleness and ask the
+   author to refile on current bases — and promise it only to deliver a
+   `changes-requested` verdict, which no merge ever rests on. If work is discovered
    mid-flight, create a child request resting on the current request or promise
    before implementing it. An `assert` may preserve the evidence for a
    breakdown, but it is not a substitute for the request that assigns follow-up
