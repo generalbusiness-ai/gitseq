@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"x"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dfe4d429130405bbb11ad47f0470eeafd3d30cea","text":"Retire my own malformed act filed moments ago by mistake: a probe of gs state flag handling that appended kind=artifact, text 'x', with no basis content. It is not an implementation report; no head, path or tests are named because none were intended. The real report for the resident-default recut follows separately."}
