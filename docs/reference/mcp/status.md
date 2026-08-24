@@ -50,7 +50,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 |---|---|
 | `you` | Your name, fingerprint and current roles. |
 | `frontier` | The genesis, head and depth this answer was folded at. |
-| `available_to_you` | Open, unclaimed requests addressed to you. |
+| `available_to_you` | Unclaimed requests addressed to you, including requests whose bases have become stale. |
 | `waiting_on_you` | Commitments where the next move is yours. |
 | `you_are_waiting_on` | Commitments where it is not. |
 | `not_actionable` | Commitments involving you that nobody can currently advance. |
@@ -73,13 +73,15 @@ priority ephemeral chat: 0 unacknowledged; depth 1, you hold 3 roles, 0 addresse
 0 not actionable, 0 of your acts did not take force; live alice (1fb980b1de47)
 ```
 
-`available_to_you` is not waiting debt. Each entry is still `open`, with
-no performer, promise, or waiting party; it merely names you as the actor
-who may claim it. `waiting_on_you` begins only after a promise, reporting
-artifact, or explicit report puts the next move on you.
+`available_to_you` is not waiting debt. Each entry has no performer, promise,
+or waiting party; it merely names you as the actor who may claim it. Its status
+is normally `open`. If the request's bases moved before anyone claimed it, its
+status and `stale` flag are `stale`, but the unfinished request remains in this
+lane. `waiting_on_you` begins only after a promise, reporting artifact, or
+explicit report puts the next move on you.
 
 Lane rows carry the same action fields as [`work`](work.md): full
-`conditions` for open requests, `report_status`, `reported_head`, and the
+`conditions` for open and stale unclaimed requests, `report_status`, `reported_head`, and the
 latest effective review for that exact head with its explicit `ratified` flag.
 Routine triage therefore does not need one `inspect` call per row.
 
