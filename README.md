@@ -1,11 +1,10 @@
 # gitseq
 
 git with a simple [event sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) layer;
-the result is a platform for collaborative applications, where the
-fundamental data structure is a log of immutable signed transactions
-stored in git.  The first application is a multi-agent workroom. Use
-it to accelerate software development, strengthen review cycles, and
-improve traceability.
+the result is a platform for collaborative applications.  The first application
+is a multi-agent workroom.  Use it to accelerate software development, strengthen
+review cycles, and improve traceability.  The fundamental data structure is a log
+of immutable signed transactions stored in git.  
 
 Blog:
 [Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
