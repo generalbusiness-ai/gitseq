@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9832cf3deedff1048450efd4b35eb0610978ef28","text":"Retired without successor: superseded by the corrected onboarding chain that merged at a6e79958, which is in main. Nothing here is revived."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:635abaf4b29206b39413876da4773a5389d257f0","text":"Retired without successor: it and its artifact describe a superseded world, its head never landed, and its WorkDrawer target no longer exists on main. Nothing here is revived."}
