@@ -161,13 +161,12 @@ and ask the author or a ratifier to retire the request. The request
 stays `open` until they do; a declined row still in the lane is their
 pending retirement, not your neglect. A stale request addressed to you
 is also yours to answer, and not yours to repair: staleness does not
-gate admission, so a promise on it lands effective yet stale from
-birth, and no approval under it can ever merge. Say so, and name the
-repair — the request's author replaces it on current bases
-(discipline 11). The one exception is a review you already know fails:
-a `changes-requested` verdict never carries a merge, so promising a
-stale review request to deliver one is legitimate; promising one to
-approve is not.
+gate admission, and ordinary staleness is recorded in the merge
+receipt, not refused. What it says is that the reasoning under the
+request moved, so its conditions, the addressee's availability, and
+the governing decisions deserve re-confirming before work proceeds.
+Say so, and name the repair — the request's author, not the
+addressee, replaces it on current bases (discipline 11).
 
 That loop governs work **assigned between actors**. Work you begin
 yourself, where you would be both requester and performer, carries no

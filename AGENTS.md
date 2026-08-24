@@ -27,8 +27,8 @@ per ISO 24495-1, for a technical audience.
    so a decline is an `assert` stating the refusal and its reason, plus asking
    the author to retire the request; the row stays open until they do. Answer a
    stale request addressed to you the same way — name the staleness and ask the
-   author to refile on current bases — and promise it only to deliver a
-   `changes-requested` verdict, which no merge ever rests on. If work is discovered
+   author to refile on current bases, confirming its conditions, the addressee's
+   availability, and the governing decisions are unchanged. If work is discovered
    mid-flight, create a child request resting on the current request or promise
    before implementing it. An `assert` may preserve the evidence for a
    breakdown, but it is not a substitute for the request that assigns follow-up
