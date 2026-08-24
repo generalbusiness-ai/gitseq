@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:61b27e879f83aaeb1667d1247e2ba65cf7019af1","text":"Retired without successor: overtaken by planner request a622aba7, which replaced this citation-bridge request on current bases and is satisfied. Nothing here is revived."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1aa18e60e3f5c27ad57a482f1b0f866d9f58f9a9","text":"Retired without successor: already satisfied, and the ambient-live work it asked for merged at d93379c2, which is in main. Nothing here is revived."}
