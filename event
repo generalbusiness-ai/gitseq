@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a8001c644f1ee2a148a24cd2e221c3269378588e","text":"Retire the stale internal/perfscenario candidate artifact; an exact-head successor on current non-stale governance follows."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9d86da09771cbcbd621659f38fa87706e1c28b6","text":"Retire the stale spike/cmd/gitseq-report candidate artifact; an exact-head successor on current non-stale governance follows."}
