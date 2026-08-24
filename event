@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:674f030b72be10f659b6e47436be027b58c3b7a4","text":"Succeeded by the recut exact-head docs artifact at head 85bb57b0c396c81f488a7acb457467cad6d1d887, which carries the current architecture prose at stable wider path docs."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f61ea95820021f076bd6f450ad7aab8c484b19da","text":"The area settles on stable wider path docs per request #10431 conditions; nothing further is published at narrow docs/reference/architecture.md."}
