@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5182df22078b4e22118dafa5f7d40644a114f363","text":"Retire this hidden stale review request; current-basis exact-head artifacts and a board-visible replacement review request follow."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c38fedf1d961670005162f4bb0834ccd494dfc44","text":"Retire the stale host candidate artifact; an exact-head successor on current non-stale governance follows."}
