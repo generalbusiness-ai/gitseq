@@ -1,6 +1,6 @@
 module github.com/generalbusiness-ai/gitseq
 
-go 1.26.0
+go 1.26.7
 
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.5.0
