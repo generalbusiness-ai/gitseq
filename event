@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will re-derive and repoint every current documentation citation from host artifact a10248ca to surviving host artifact cadb3875 in one exact reviewed head, run the full docset gate, merge the approved head, then retire a102 without --cited-ok and verify exactly one live host artifact remains.","body":{"branch":"request/host-doc-reanchor"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b99be067e76dab9fc15d6c32264824bb643aa01e"}
