@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d23baa12e93f15ea6808bcd73f1046d2d6cbf0a0","text":"Retire the stale internal/statusview candidate artifact; an exact-head successor on current non-stale governance follows."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a8001c644f1ee2a148a24cd2e221c3269378588e","text":"Retire the stale internal/perfscenario candidate artifact; an exact-head successor on current non-stale governance follows."}
