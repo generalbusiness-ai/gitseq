@@ -119,8 +119,12 @@ func SaveConfig(metaDir string, config Config) error {
 // completed file is then hard-linked to the destination. Linking fails with
 // os.ErrExist whenever the destination holds any entry — of two concurrent
 // creators exactly one wins and the other is refused — so a stored genesis is
-// never silently overwritten, and a reader never observes partial content at
-// the destination: the destination is either absent or complete. A filesystem
+// never silently overwritten, and a concurrent reader never observes partial
+// content at the destination: while the system stays up, the destination is
+// either absent or complete. That guarantee covers concurrent readers only,
+// not a crash: nothing here syncs the staging file or its directory before
+// the link, so a power loss can persist the directory entry ahead of the
+// data. A filesystem
 // that cannot hard-link refuses the creation and the refusal is reported;
 // there is no fallback, per the custody contract in
 // docs/reference/architecture.md.
@@ -145,51 +149,47 @@ func CreateConfig(metaDir string, config Config) error {
 		return err
 	}
 	staging := file.Name()
-	_, writeErr := createConfigWrite(file, append(content, '\n'))
-	closeErr := createConfigClose(file)
-	if writeErr != nil || closeErr != nil {
-		return abandonStagedConfig(file, staging, writeErr, closeErr)
-	}
-	if linkErr := os.Link(staging, filepath.Join(metaDir, ConfigFile)); linkErr != nil {
-		return removeStagedConfig(staging, linkErr)
-	}
-	if removeErr := createConfigRemove(staging); removeErr != nil {
-		return fmt.Errorf("the configuration was stored, but its staging file could not be removed and remains beside it: %w", removeErr)
-	}
-	return nil
-}
-
-// abandonStagedConfig cleans up after a failure between the staging file's
-// creation and its completed write. The write failure — or the close failure
-// when the write succeeded — is what the caller must see; everything else the
-// cleanup learns is reported alongside it, never in place of it.
-//
-// The handle is released before the removal, because an open handle blocks
-// the removal on Windows: a failed close may not have released it, so it is
-// closed again, and os.ErrClosed from that second attempt means the first
-// close did release the handle, which is not a new failure.
-func abandonStagedConfig(file *os.File, staging string, writeErr, closeErr error) error {
-	err := writeErr
+	err = writeAndCloseStagedConfig(file, append(content, '\n'))
 	if err == nil {
-		err = closeErr
-	} else if closeErr != nil {
-		err = errors.Join(err, fmt.Errorf("closing the partial configuration also failed: %w", closeErr))
+		err = os.Link(staging, filepath.Join(metaDir, ConfigFile))
 	}
-	if closeErr != nil {
-		if retryErr := createConfigRetryClose(file); retryErr != nil && !errors.Is(retryErr, os.ErrClosed) {
-			err = errors.Join(err, fmt.Errorf("the file handle could not be closed: %w", retryErr))
+	// Every path — success, write or close failure, link refusal — removes
+	// exactly the staging file, so the removal happens once, here. Its
+	// private name is not the destination, so a file that could not be
+	// removed does not occupy the destination and a retry can still succeed;
+	// the caller learns which of the two states the leftover sits beside.
+	if removeErr := createConfigRemove(staging); removeErr != nil {
+		if err == nil {
+			err = fmt.Errorf("the configuration was stored, but its staging file could not be removed and remains beside it: %w", removeErr)
+		} else {
+			err = errors.Join(err, fmt.Errorf("the abandoned staging file could not be removed and remains at its private name: %w", removeErr))
 		}
 	}
-	return removeStagedConfig(staging, err)
+	return err
 }
 
-// removeStagedConfig removes the abandoned staging file and reports a removal
-// failure alongside the failure that abandoned it. The staging file's private
-// name is not the destination, so a file that could not be removed does not
-// occupy the destination and a retry can still succeed.
-func removeStagedConfig(staging string, err error) error {
-	if removeErr := createConfigRemove(staging); removeErr != nil {
-		return errors.Join(err, fmt.Errorf("the abandoned staging file could not be removed and remains at its private name: %w", removeErr))
+// writeAndCloseStagedConfig writes the content to the staging file and closes
+// the handle, reporting every failure it saw. The write failure — or the
+// close failure when the write succeeded — is what the caller must see;
+// everything else is reported alongside it, never in place of it.
+//
+// The handle must be released before the caller removes the staging file,
+// because an open handle blocks the removal on Windows: a failed close may
+// not have released it, so it is closed again, and os.ErrClosed from that
+// second attempt means the first close did release the handle — as POSIX
+// close(2) does even when it reports an error — which is not a new failure.
+func writeAndCloseStagedConfig(file *os.File, content []byte) error {
+	_, writeErr := createConfigWrite(file, content)
+	closeErr := createConfigClose(file)
+	if closeErr == nil {
+		return writeErr
+	}
+	err := closeErr
+	if writeErr != nil {
+		err = errors.Join(writeErr, fmt.Errorf("closing the partial configuration also failed: %w", closeErr))
+	}
+	if retryErr := createConfigRetryClose(file); retryErr != nil && !errors.Is(retryErr, os.ErrClosed) {
+		err = errors.Join(err, fmt.Errorf("the file handle could not be closed: %w", retryErr))
 	}
 	return err
 }

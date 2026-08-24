@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -148,6 +149,10 @@ func TestCreateConfigSurfacesCleanupFailureAlongsideOriginal(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(metaDir, ConfigFile)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("the failure happened before the destination existed, yet the destination holds a file: stat = %v", statErr)
 	}
+	names := metaDirEntries(t, metaDir)
+	if len(names) != 1 || !strings.HasPrefix(names[0], "."+ConfigFile+".create-") {
+		t.Fatalf("metadata directory holds %v, want only this call's staging file at its private name", names)
+	}
 	if retryErr := CreateConfig(metaDir, testConfig()); retryErr != nil {
 		t.Fatalf("a staging file that could not be removed must not poison the destination for retry: %v", retryErr)
 	}
@@ -212,6 +217,36 @@ func TestCreateConfigCarriesFallbackCloseFailureAlongsideOriginal(t *testing.T) 
 	}
 }
 
+// POSIX close(2) releases the descriptor even when it reports a failure such
+// as EIO, so the fallback close then finds the handle already closed and
+// os.File.Close reports os.ErrClosed. That is confirmation the handle was
+// released, not a new failure: the caller must see the genuine close failure
+// alone, with no fabricated "could not be closed" alongside it. The injected
+// close here closes for real before reporting failure, exactly the EIO shape,
+// and the fallback close stays at its production default so its os.ErrClosed
+// is the real one.
+func TestCreateConfigTreatsAnAlreadyClosedFallbackAsReleased(t *testing.T) {
+	metaDir := t.TempDir()
+	previousClose := createConfigClose
+	createConfigClose = func(file *os.File) error {
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return errInjectedClose
+	}
+	err := CreateConfig(metaDir, testConfig())
+	createConfigClose = previousClose
+	if !errors.Is(err, errInjectedClose) {
+		t.Fatalf("CreateConfig error = %v, want the original injected close failure", err)
+	}
+	if errors.Is(err, os.ErrClosed) {
+		t.Fatalf("CreateConfig error = %v, want no fabricated failure from the fallback close finding the handle already released", err)
+	}
+	if names := metaDirEntries(t, metaDir); len(names) != 0 {
+		t.Fatalf("failed creation left files behind: %v", names)
+	}
+}
+
 // A write failure followed by a close failure loses information if either is
 // dropped: the write failure is why nothing was stored, and the close failure
 // says the storage may be in a worse state than the write error alone admits.
@@ -246,13 +281,23 @@ func TestCreateConfigCarriesCloseFailureAlongsideWriteFailure(t *testing.T) {
 // GitHub run 32670745698: a cleanup that removes by destination pathname can
 // delete a file another process stored there. An identity check over device
 // and inode numbers cannot repair that, because an inode number is not a
-// durable identity — Linux reuses a freed inode eagerly, so the replacement
-// stored after this call's partial file was unlinked can answer os.SameFile
-// as the file this call created. This test stages that window: during the
-// failure, the partial file is unlinked and another process's configuration
-// lands at the destination, where the kernel is free to hand it the freed
-// inode number. Whatever identity the replacement carries, cleanup must leave
-// it in place, because the destination is not cleanup's to remove.
+// durable identity — Linux reuses a freed inode eagerly, so a replacement
+// stored where a file was just unlinked can answer os.SameFile as the file
+// this call created. This test stages that scenario: during the failure,
+// another process's configuration lands at the destination — which under the
+// current code held nothing, since this call's partial content sits only at
+// its private staging name, so the removal before the store is a no-op kept
+// from the pre-fix window it re-enacts. Whatever identity the replacement
+// carries, cleanup must leave it in place, because the destination is not
+// cleanup's to remove.
+//
+// This test pins the pre-fix defect only where the kernel reuses a freed
+// inode number eagerly (Linux/ext4): on macOS/APFS the replacement gets a
+// fresh inode, the pre-fix os.SameFile guard refuses the removal, and the
+// pre-fix code passes here. TestCreateConfigCleanupRemovesOnlyWhatItCreated
+// is the platform-independent guard for that defect. This test still earns
+// its place on every platform, as the only one that catches a cleanup
+// removing the destination directly, bypassing the createConfigRemove seam.
 func TestCreateConfigLeavesAReplacementAtItsDestinationAlone(t *testing.T) {
 	metaDir := t.TempDir()
 	path := filepath.Join(metaDir, ConfigFile)
@@ -423,15 +468,21 @@ func TestCreateConfigLeavesASymlinkAtItsDestinationAlone(t *testing.T) {
 	}
 }
 
-// A successful creation must leave exactly the configuration: a staging file
-// left beside it would sit in the metadata directory forever, unexplained.
+// A successful creation must leave exactly the configuration — a staging file
+// left beside it would sit in the metadata directory forever, unexplained —
+// and what it stored must be the configuration it was given, not merely
+// something that validates.
 func TestCreateConfigSuccessLeavesOnlyTheConfiguration(t *testing.T) {
 	metaDir := t.TempDir()
 	if err := CreateConfig(metaDir, testConfig()); err != nil {
 		t.Fatalf("CreateConfig: %v", err)
 	}
-	if _, err := LoadConfig(metaDir); err != nil {
+	loaded, err := LoadConfig(metaDir)
+	if err != nil {
 		t.Fatalf("created configuration does not load: %v", err)
+	}
+	if !reflect.DeepEqual(loaded, testConfig()) {
+		t.Fatalf("stored configuration = %+v, want the configuration CreateConfig was given: %+v", loaded, testConfig())
 	}
 	if names := metaDirEntries(t, metaDir); !slices.Equal(names, []string{ConfigFile}) {
 		t.Fatalf("successful creation left files behind: %v", names)
