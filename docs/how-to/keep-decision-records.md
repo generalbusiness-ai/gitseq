@@ -25,6 +25,42 @@ record, then revise its wording, then replace it with a new decision.
 Every command on this page runs; they are executed against a scratch
 repository by `make test`.
 
+The whole loop at a glance — the steps below walk through it once,
+then revise and replace the result:
+
+```mermaid
+flowchart TB
+  File["Decision file<br/>an ordinary Markdown file, on a branch<br/>author"]
+
+  Artifact["Artifact<br/>signed pointer: exact path and commit<br/>author"]
+
+  Proposal["Proposal<br/>'adopt the decision at this commit'<br/>rests on the artifact · author"]
+
+  Adopted["Adoption<br/>the ratifier ratifies the proposal —<br/>never the artifact"]
+
+  Request["Review request — after adoption<br/>rests on the artifact and the ratified proposal<br/>author asks · reviewer promises"]
+
+  Verdict["Verdict<br/>signed at the artifact's exact commit<br/>reviewer signs · author ratifies"]
+
+  Merge["Merged record<br/>consumes the ratified verdict; lands the commit,<br/>retires the draft artifact, publishes its successor"]
+
+  subgraph Later["The two later shapes"]
+    Revise["Revise in place<br/>same decision, same file<br/>new artifact and review; adoption stands"]
+    Replace["Replace<br/>new decision: a new file names its predecessor<br/>and the old file is stamped · fresh adoption"]
+  end
+
+  File --> Artifact
+  Artifact --> Proposal
+  Proposal --> Adopted
+  Adopted --> Request
+  Artifact --> Request
+  Artifact --> Verdict
+  Request --> Verdict
+  Verdict --> Merge
+  Merge --> Revise
+  Merge --> Replace
+```
+
 ## Setup used below
 
 A **workroom** is gitseq's overlay on a repository. `gs init` creates
