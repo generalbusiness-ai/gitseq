@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9d86da09771cbcbd621659f38fa87706e1c28b6","text":"Retire the stale spike/cmd/gitseq-report candidate artifact; an exact-head successor on current non-stale governance follows."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4734a3a027b3fdcdf95628ffaf10b1d8be845e36","text":"Retire the stale docs candidate artifact; an exact-head successor on current non-stale governance follows."}
