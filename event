@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:be7408a0b9a784e9f3625d8ae221eed6c85360b5","text":"Retiring this live artifact at internal/app: the custody fix at head 6b415ccf changes internal/app/app.go, so its successor at the same path supersedes it."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:391829f993ae147fd02f010ea27c35542c0ede04","text":"Retiring this live artifact at internal/app: the custody fix at head 6b415ccf changes internal/app/app.go, so its successor at the same path supersedes it."}
