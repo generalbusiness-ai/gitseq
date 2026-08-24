@@ -2210,6 +2210,42 @@ func TestMergeSuccessorRestingOnThePredecessorItRetiresStaysCurrent(t *testing.T
 	}
 }
 
+// Assigned work commonly reaches the behavior it replaces through an
+// intermediate pointer rather than citing the predecessor directly. The
+// merge's successor still owns the retirement news in that shape: the
+// intermediate flares, while the successor published by the merge stays
+// current because every cause below the intermediate is named in its plan.
+func TestMergeSuccessorThroughIntermediateProvenanceStaysCurrent(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "the basis the work was built on", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "intermediate", agent, SchemaState, State{Kind: KindArtifact, Text: "a pointer standing on the replaced behavior", Body: map[string]string{"path": "notes/design.md", "commit": "head1"}}, "predecessor"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"predecessor":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		// The successor never cites the predecessor directly. Its only route to
+		// that retired artifact is through the now-stale intermediate pointer.
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge", "intermediate"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "predecessor", Text: "merge succession"}, "predecessor", "merge", "successor"),
+	)
+	projection := Fold(records)
+	decision, _ := projection.Decision("retire")
+	if decision.Verdict != Effective {
+		t.Fatalf("intermediate-provenance retirement = %+v", decision)
+	}
+	intermediate := artifactByEvent(t, projection, "intermediate")
+	if !intermediate.Stale {
+		t.Fatal("the intermediate pointer did not inherit the predecessor retirement")
+	}
+	successor := artifactByEvent(t, projection, "successor")
+	if successor.Retired || successor.Stale || successor.DescribesSupersededWorld {
+		t.Fatalf("successor resting on intermediate provenance: retired=%v stale=%v world=%v",
+			successor.Retired, successor.Stale, successor.DescribesSupersededWorld)
+	}
+}
+
 // The exception belongs to the merge's own successor and to nobody else. The
 // signed plan says which retirement is hidden; it says nothing about who may
 // hide it, so citing a receipt and one of its planned predecessors must not buy
@@ -2241,6 +2277,62 @@ func TestMergePlanIsNotLentToARecordTheMergeDidNotPublish(t *testing.T) {
 	}
 	if !borrower.DescribesSupersededWorld {
 		t.Fatal("the borrower rests on a retired artifact and does not say so")
+	}
+}
+
+// The transitive arm of the exemption, reached by a merge that deletes a
+// maintained path. The direct arm above handles a receipt or successor resting
+// straight on a plan-named predecessor; here the retirement reaches the receipt
+// only through the approval chain. The plan retires the approved candidate
+// itself, `merge_successors` is the empty list `gs merge` writes for a
+// deletion, and a no-successor retirement takes no authority from a merge, so
+// the implementer withdraws their own artifact. Nothing answers the move: the
+// approval that cited the candidate goes stale, and so does any later record
+// over the same basis. The receipt must not — every live cause below its stale
+// basis is the one retirement its own signed plan names, which is its own act
+// and not news to it. Without this arm the fold would flare every
+// deletion-style receipt at birth, the merge refusing its own result.
+func TestDeletionMergeReceiptOutlivesTheStalenessItsOwnPlanCauses(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"r5":""}`, "merge_successors": `[]`,
+		}}, "approval"),
+		// The retirement rests on the target and the receipt and cites no
+		// successor, the shape the merge's own retirement act takes for a
+		// deleted path.
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "r5", Text: "path deleted by merge"}, "r5", "merge"),
+		// A later record over the same basis, holding no plan of its own.
+		event(t, "follow-up", operator, SchemaState, State{Kind: KindAssert, Text: "noting the approval"}, "approval"),
+	)
+	projection := Fold(records)
+	// The fold admitting the whole sequence is the point: this construction is
+	// available to any real actor, so the arm it exercises is not dead code.
+	for _, act := range []string{"approval", "approval-ratified", "merge", "retire", "follow-up"} {
+		decision, _ := projection.Decision(act)
+		if decision.Verdict != Effective {
+			t.Fatalf("%s = %+v", act, decision)
+		}
+	}
+	decision, _ := projection.Decision("retire")
+	if decision.Reason != "authorized supersession" {
+		t.Fatalf("deletion-style retirement took authority it should not hold: %+v", decision)
+	}
+	if !artifactByEvent(t, projection, "r5").Retired {
+		t.Fatal("the candidate stayed live")
+	}
+	approval := statementByEvent(t, projection, "approval")
+	if !approval.Stale || !approval.DescribesSupersededWorld {
+		t.Fatalf("approval with its cited candidate deleted and nothing answering: stale=%v world=%v",
+			approval.Stale, approval.DescribesSupersededWorld)
+	}
+	if followUp := statementByEvent(t, projection, "follow-up"); !followUp.Stale {
+		t.Fatal("a planless record over the stale approval did not flare")
+	}
+	if receipt := statementByEvent(t, projection, "merge"); receipt.Stale {
+		t.Fatal("the receipt flared over the retirement its own plan names")
 	}
 }
 
