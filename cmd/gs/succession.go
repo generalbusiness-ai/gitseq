@@ -140,9 +140,9 @@ func planSuccession(projection workroom.Projection, changes []mergeChange, prede
 		// A landed file is the fact this merge can prove from Git. Publish that
 		// exact path instead of allowing an existing covering directory to
 		// choose where the new pointer goes. A covering pointer is a separate
-		// wire: a successor at this narrower path cannot legally retire it, so
-		// it remains live until a separate retirement-reach decision says what
-		// should happen to it.
+		// wire, so this plan does not select it for retirement. The unchanged
+		// reviewed-lineage authority still applies if another valid plan also
+		// publishes a covering successor.
 		published[path] = true
 		for _, artifact := range covering(path, true) {
 			if artifact.Path == path {

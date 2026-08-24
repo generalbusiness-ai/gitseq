@@ -533,9 +533,11 @@ fold, or UI expectations.
   records and can verify no merge head, diff, or tree; for added and modified
   files and rename destinations, the CLI publishes successors at the exact
   changed paths and retires only predecessors already at those exact strings,
-  leaving wider covering pointers live because a narrower successor cannot
-  cover or authorize their retirement; this changes publication only and
-  leaves reviewed-path reach and cross-author retirement authority unchanged;
+  leaving wider covering pointers live because the exact-path plan does not
+  select them; this changes plan selection only and leaves the symmetric
+  reviewed-path lineage and cross-author retirement authority unchanged, so a
+  separate valid plan that publishes a covering successor may still retire a
+  covering pointer;
   merge receipts record
   ordinary reasoning staleness, while an approval or artifact that already
   described a superseded world when the verdict was signed must be re-anchored

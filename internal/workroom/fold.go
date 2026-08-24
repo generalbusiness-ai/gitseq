@@ -1237,9 +1237,10 @@ func (f *foldState) artifactPath(event string) (string, bool) {
 }
 
 // sameTreeLineage reports whether two artifact paths name one tree: the same
-// string, or one containing the other. The wider direction is deliberate — the
-// documented rule is that a directory artifact wins over one inside it, so a
-// merge must be able to retire the covering pointer as well as the covered one.
+// string, or one containing the other. Both directions are deliberate: review
+// bounds retirement authority to a named lineage, independently of which paths
+// a particular merge plan selects. A valid plan that publishes a covering
+// successor may therefore retire both the covering and covered pointers.
 func sameTreeLineage(one, other string) bool {
 	return pathCovers(one, other) || pathCovers(other, one)
 }

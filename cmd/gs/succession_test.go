@@ -15,16 +15,22 @@ import (
 // narrower successor cannot cover them. Both orders run so projection order
 // cannot choose the result.
 func TestMergePublishesTheChangedPathInsteadOfACoveringDirectory(t *testing.T) {
-	exact := workroom.Artifact{Event: "exact", Path: "internal/workroom/fold.go", Commit: "old"}
+	main := workroom.Artifact{Event: "main", Path: "internal/workroom/fold.go", Commit: "old"}
+	candidate := workroom.Artifact{Event: "candidate", Path: "internal/workroom/fold.go", Commit: "head"}
 	narrow := workroom.Artifact{Event: "narrow", Path: "internal/workroom", Commit: "old"}
 	wide := workroom.Artifact{Event: "wide", Path: "internal", Commit: "old"}
-	for _, order := range [][]workroom.Artifact{{exact, narrow, wide}, {wide, narrow, exact}} {
+	for _, order := range [][]workroom.Artifact{{main, candidate, narrow, wide}, {wide, narrow, candidate, main}} {
 		plan := planSuccession(workroom.Projection{Artifacts: order},
-			[]mergeChange{{status: "M", new: "internal/workroom/fold.go"}}, nil)
+			[]mergeChange{{status: "M", new: "internal/workroom/fold.go"}},
+			map[string]bool{"main": true, "candidate": true, "narrow": true, "wide": true})
 		if !reflect.DeepEqual(plan.publish, []string{"internal/workroom/fold.go"}) {
 			t.Fatalf("published paths = %#v for %s first", plan.publish, order[0].Path)
 		}
-		if !reflect.DeepEqual(plan.retire, map[string]string{"exact": "internal/workroom/fold.go"}) {
+		want := map[string]string{
+			"main":      "internal/workroom/fold.go",
+			"candidate": "internal/workroom/fold.go",
+		}
+		if !reflect.DeepEqual(plan.retire, want) {
 			t.Fatalf("retirements = %#v for %s first", plan.retire, order[0].Path)
 		}
 	}
