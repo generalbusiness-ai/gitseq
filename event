@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c5d32acea16256a26e235ac46b31705b017f897"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:40a2b872844364a513abe05b61793d1f9da2d677","text":"Withdraw this stale implementation lane in favor of current custody request 6ebc0b2e. Exact head d465b450 is not in main and conflicts with current architecture documentation; the same cross-process lost-update requirement is carried by the newer tested custody lineage under 6ebc. Do not merge or ratify d465."}
