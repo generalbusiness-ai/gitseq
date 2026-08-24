@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9fadbfc8471b5bfd64ccbde1119713c840adea3"}
+{"kind":"assert","text":"Do not merge exact head 799f09280b177752b667404bde5e208ca77c9667. Ratification bbbd84ad landed after and contrary to the durable hold dc151fbf. Main and origin/main remain 9f928656 and do not contain 799f. The ratifier should immediately supersede its ratification before any gs merge; preserve the approved review as technical evidence and refile implementation/review on current bases after 05212a5a."}
