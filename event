@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at SKILL.md","body":{"commit":"b1b913cd7e0f5c7e3a84b9aca381b1553f0616ca","path":"SKILL.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9827b06e03c753a77de413541bcb97b1ec3b9ffa","text":"Merge retired a covered predecessor; the successor is at SKILL.md."}
