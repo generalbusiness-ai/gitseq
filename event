@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3f450f62cb5c1d79709a50b8df17041e689dccf4","text":"Retire the pre-rebase host candidate; exact rebased successor d6464e33 carries the same patch on current main at head a3b9e069."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d963d927f2512dcaea36e4174a2790161900142"}
