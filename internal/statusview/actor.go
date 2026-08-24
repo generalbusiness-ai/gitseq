@@ -284,8 +284,11 @@ func involves(commitment workroom.Commitment, fingerprint string) bool {
 // addressedTo identifies the request-shaped work an actor may claim. The fold
 // deliberately leaves Performer and WaitingOn empty until a promise takes
 // force; putting these requests in WaitingOnYou would invent a commitment.
+// An unclaimed request whose basis moved has status stale rather than open,
+// but it is still owed to the same actor and remains claimable.
 func addressedTo(commitment workroom.Commitment, fingerprint string) bool {
-	return commitment.Status == "open" && commitment.AddressedTo == fingerprint && commitment.Promise == "" && commitment.Performer == "" && commitment.WaitingOn == ""
+	return (commitment.Status == "open" || commitment.Status == "stale") && commitment.AddressedTo == fingerprint &&
+		commitment.Promise == "" && commitment.Performer == "" && commitment.WaitingOn == ""
 }
 
 func inboxView(projection workroom.Projection, inbox *nexus.Inbox, degraded bool) InboxView {
@@ -358,10 +361,10 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 			continue
 		}
 		view := viewCommitment(projection, commitment)
-		if !actionable[commitment.Status] {
-			digest.NotActionable = append(digest.NotActionable, view)
-		} else if addressedTo(commitment, fingerprint) {
+		if addressedTo(commitment, fingerprint) {
 			digest.AvailableToYou = append(digest.AvailableToYou, view)
+		} else if !actionable[commitment.Status] {
+			digest.NotActionable = append(digest.NotActionable, view)
 		} else if commitment.WaitingOn == fingerprint {
 			digest.WaitingOnYou = append(digest.WaitingOnYou, view)
 		} else if commitment.WaitingOn != "" {
@@ -446,10 +449,10 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 			continue
 		}
 		view := viewCommitment(projection, commitment)
-		if !actionable[commitment.Status] {
-			delta.CurrentNotActionable = append(delta.CurrentNotActionable, view)
-		} else if addressedTo(commitment, fingerprint) {
+		if addressedTo(commitment, fingerprint) {
 			delta.CurrentAvailableToYou = append(delta.CurrentAvailableToYou, view)
+		} else if !actionable[commitment.Status] {
+			delta.CurrentNotActionable = append(delta.CurrentNotActionable, view)
 		} else if commitment.WaitingOn == fingerprint {
 			delta.CurrentWaitingOnYou = append(delta.CurrentWaitingOnYou, view)
 		}

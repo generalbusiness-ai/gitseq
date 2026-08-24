@@ -83,6 +83,50 @@ func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *te
 	}
 }
 
+func TestActorStatusAndWaitExposeStaleUnclaimedAddressedWork(t *testing.T) {
+	projection := workroom.Projection{
+		Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},
+		Statements: []workroom.Statement{
+			{Event: "request:unclaimed", Actor: them, Kind: workroom.KindRequest, Text: "still owed"},
+			{Event: "request:claimed", Actor: them, Kind: workroom.KindRequest, Text: "already claimed"},
+			{Event: "request:closed", Actor: them, Kind: workroom.KindRequest, Text: "already done"},
+		},
+		Commitments: []workroom.Commitment{
+			{Request: "request:unclaimed", Requester: them, AddressedTo: me, Status: "stale", Stale: true},
+			{Request: "request:claimed", Requester: them, AddressedTo: me, Performer: me, Promise: "promise:claimed", Status: "stale", Stale: true},
+			{Request: "request:closed", Requester: them, AddressedTo: me, Performer: me, Status: "satisfied", Stale: true},
+		},
+	}
+	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 3, Projection: projection}
+
+	digest := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
+	if len(digest.AvailableToYou) != 1 {
+		t.Fatalf("available_to_you = %#v", digest.AvailableToYou)
+	}
+	available := digest.AvailableToYou[0]
+	if available.Request != "request:unclaimed" || available.Status != "stale" || !available.Stale ||
+		available.AddressedTo != "me" || available.Performer != "" || available.Promise != "" {
+		t.Fatalf("stale unclaimed request lost its responsibility or qualifier: %#v", available)
+	}
+	if findCommitmentView(digest.NotActionable, "request:claimed") == nil {
+		t.Fatalf("claimed stale request changed lanes: %#v", digest.NotActionable)
+	}
+	if findCommitmentView(digest.NotActionable, "request:closed") != nil {
+		t.Fatalf("closed stale request returned to a live lane: %#v", digest.NotActionable)
+	}
+
+	delta := BuildWait(snapshot, Cursor{}, nil, false, Cursor{}, nil, me, "me", true)
+	if len(delta.CurrentAvailableToYou) != 1 || delta.CurrentAvailableToYou[0] != available {
+		t.Fatalf("wait does not preserve the stale available lane: %#v", delta.CurrentAvailableToYou)
+	}
+	if findCommitmentView(delta.CurrentNotActionable, "request:claimed") == nil {
+		t.Fatalf("wait changed the claimed stale request's lane: %#v", delta.CurrentNotActionable)
+	}
+	if findCommitmentView(delta.CurrentNotActionable, "request:closed") != nil {
+		t.Fatalf("wait returned closed stale work to a live lane: %#v", delta.CurrentNotActionable)
+	}
+}
+
 func TestActorStatusCarriesStaleQualifierWithoutChangingLanes(t *testing.T) {
 	digest := BuildActorStatus(actorQualifierSnapshot(), nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
 	stale := findCommitmentView(digest.WaitingOnYou, "request:reported-stale")
