@@ -1,1 +1,1 @@
-{"kind":"ratify","text":"Ratified: the exact-head review correctly identifies the missing condition enrichment for stale unclaimed rows; repair that candidate before re-review."}
+{"target":"git:sha1:20682234e5ca3e8f0c861780cd43187f29038048"}
