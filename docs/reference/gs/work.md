@@ -66,7 +66,10 @@ shortened list never reads as a complete one.
 Each row carries its lifecycle status, its lane, the request event, the
 request text, who the work waits on, and the latest effective review for
 the reported head. Those are the facts needed to act on a row without a
-second call.
+second call. An unclaimed request addressed to the selected actor stays in
+`available_to_you` if its bases move: its status becomes `stale`, its `stale`
+flag is `true`, and its full conditions remain present. Claimed and closed
+stale commitments keep their existing lanes.
 
 `--stale summary`, which is what a call naming no policy receives, answers
 *what is still owed*. A satisfied or withdrawn commitment carrying only

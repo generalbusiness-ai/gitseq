@@ -59,6 +59,7 @@ type CommitmentView struct {
 	Promise   string `json:"promise,omitempty"`
 	Report    string `json:"report,omitempty"`
 	WorkDetails
+	unclaimedRequest bool
 }
 
 type EventView struct {
@@ -208,6 +209,7 @@ func viewCommitment(projection workroom.Projection, commitment workroom.Commitme
 		AddressedTo: Text(ActorName(projection, commitment.AddressedTo)),
 		Requester:   Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
 		Promise: commitment.Promise, Report: commitment.Report,
+		unclaimedRequest: isUnclaimedRequest(commitment),
 	}
 }
 
@@ -219,8 +221,8 @@ func fillCommitmentDetails(projection workroom.Projection, groups ...[]Commitmen
 	for _, group := range groups {
 		for index := range group {
 			view := &group[index]
-			targets = append(targets, workRowTarget{Request: view.Request, Report: view.Report, Status: view.Status,
-				Text: &view.Text, Details: &view.WorkDetails})
+			targets = append(targets, workRowTarget{Request: view.Request, Report: view.Report,
+				IncludeConditions: view.unclaimedRequest, Text: &view.Text, Details: &view.WorkDetails})
 		}
 	}
 	enrichWorkRows(projection, targets)
@@ -281,14 +283,19 @@ func involves(commitment workroom.Commitment, fingerprint string) bool {
 	return commitment.Requester == fingerprint || commitment.AddressedTo == fingerprint || commitment.Performer == fingerprint || commitment.WaitingOn == fingerprint
 }
 
+// isUnclaimedRequest identifies request-shaped work that is still available to
+// claim. Ordinary staleness replaces the open lifecycle word, but does not add
+// a promise, performer, or waiting party and therefore does not close intake.
+func isUnclaimedRequest(commitment workroom.Commitment) bool {
+	return (commitment.Status == "open" || commitment.Status == "stale") && commitment.Promise == "" &&
+		commitment.Performer == "" && commitment.WaitingOn == ""
+}
+
 // addressedTo identifies the request-shaped work an actor may claim. The fold
 // deliberately leaves Performer and WaitingOn empty until a promise takes
 // force; putting these requests in WaitingOnYou would invent a commitment.
-// An unclaimed request whose basis moved has status stale rather than open,
-// but it is still owed to the same actor and remains claimable.
 func addressedTo(commitment workroom.Commitment, fingerprint string) bool {
-	return (commitment.Status == "open" || commitment.Status == "stale") && commitment.AddressedTo == fingerprint &&
-		commitment.Promise == "" && commitment.Performer == "" && commitment.WaitingOn == ""
+	return isUnclaimedRequest(commitment) && commitment.AddressedTo == fingerprint
 }
 
 func inboxView(projection workroom.Projection, inbox *nexus.Inbox, degraded bool) InboxView {

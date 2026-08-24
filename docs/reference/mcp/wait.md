@@ -68,8 +68,8 @@ explicit [`gs status --json`](../gs/status.md) read.
 `current_available_to_you` repeats the current lane even when no new
 durable event arrived, so polling cannot lose work that predates the
 cursor. These unfinished requests are available to claim, even if an unclaimed
-request's bases moved and its status and `stale` flag are now `stale`; they do
-not invent a performer or a waiting party.
+request's bases moved, its status is now `stale`, and its `stale` flag is
+`true`; they do not invent a performer or a waiting party.
 
 Priority ephemeral chat follows the same no-loss rule but is independent of
 the cursor: a pending frame makes `wait` return immediately and keeps returning

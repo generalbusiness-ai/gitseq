@@ -76,9 +76,9 @@ priority ephemeral chat: 0 unacknowledged; depth 1, you hold 3 roles, 0 addresse
 `available_to_you` is not waiting debt. Each entry has no performer, promise,
 or waiting party; it merely names you as the actor who may claim it. Its status
 is normally `open`. If the request's bases moved before anyone claimed it, its
-status and `stale` flag are `stale`, but the unfinished request remains in this
-lane. `waiting_on_you` begins only after a promise, reporting artifact, or
-explicit report puts the next move on you.
+status is `stale` and its `stale` flag is `true`, but the unfinished request
+remains in this lane. `waiting_on_you` begins only after a promise, reporting
+artifact, or explicit report puts the next move on you.
 
 Lane rows carry the same action fields as [`work`](work.md): full
 `conditions` for open and stale unclaimed requests, `report_status`, `reported_head`, and the

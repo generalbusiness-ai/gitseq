@@ -85,11 +85,12 @@ func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *te
 
 func TestActorStatusAndWaitExposeStaleUnclaimedAddressedWork(t *testing.T) {
 	conditions := strings.Repeat("still required ", 40)
+	claimedConditions := strings.Repeat("already accepted ", 40)
 	projection := workroom.Projection{
 		Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},
 		Statements: []workroom.Statement{
 			{Event: "request:unclaimed", Actor: them, Kind: workroom.KindRequest, Text: "still owed", Body: map[string]string{"conditions": conditions}},
-			{Event: "request:claimed", Actor: them, Kind: workroom.KindRequest, Text: "already claimed"},
+			{Event: "request:claimed", Actor: them, Kind: workroom.KindRequest, Text: "already claimed", Body: map[string]string{"conditions": claimedConditions}},
 			{Event: "request:closed", Actor: them, Kind: workroom.KindRequest, Text: "already done"},
 		},
 		Commitments: []workroom.Commitment{
@@ -110,8 +111,12 @@ func TestActorStatusAndWaitExposeStaleUnclaimedAddressedWork(t *testing.T) {
 		available.Conditions != conditions || len(available.Conditions) <= TextCap {
 		t.Fatalf("stale unclaimed request lost its responsibility or qualifier: %#v", available)
 	}
-	if findCommitmentView(digest.NotActionable, "request:claimed") == nil {
+	claimed := findCommitmentView(digest.NotActionable, "request:claimed")
+	if claimed == nil {
 		t.Fatalf("claimed stale request changed lanes: %#v", digest.NotActionable)
+	}
+	if claimed.Conditions != "" {
+		t.Fatalf("claimed stale request was enriched as unclaimed: %#v", *claimed)
 	}
 	if findCommitmentView(digest.NotActionable, "request:closed") != nil {
 		t.Fatalf("closed stale request returned to a live lane: %#v", digest.NotActionable)
@@ -126,6 +131,22 @@ func TestActorStatusAndWaitExposeStaleUnclaimedAddressedWork(t *testing.T) {
 	}
 	if findCommitmentView(delta.CurrentNotActionable, "request:closed") != nil {
 		t.Fatalf("wait returned closed stale work to a live lane: %#v", delta.CurrentNotActionable)
+	}
+
+	page, err := BuildWorkPage(snapshot, WorkQuery{Actor: me, Lanes: []WorkLane{LaneAvailable}, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Request != "request:unclaimed" || page.Items[0].Lane != LaneAvailable ||
+		page.Items[0].Status != "stale" || !page.Items[0].Stale || page.Items[0].Conditions != conditions {
+		t.Fatalf("work disagrees with status and wait about stale unclaimed intake: %#v", page.Items)
+	}
+	claimedPage, err := BuildWorkPage(snapshot, WorkQuery{Actor: me, Lanes: []WorkLane{LaneNotActionable}, Statuses: []string{"stale"}, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(claimedPage.Items) != 1 || claimedPage.Items[0].Request != "request:claimed" || claimedPage.Items[0].Conditions != "" {
+		t.Fatalf("work changed or enriched claimed stale intake: %#v", claimedPage.Items)
 	}
 }
 
