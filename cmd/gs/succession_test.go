@@ -9,23 +9,22 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
-// Both covering artifacts sit above the changed file, so neither path is the
-// fallback and the comparison is the only thing that can pick a winner. An
-// earlier fixture put the narrow artifact at exactly the changed path, which
-// left the fallback arm answering for it: replacing widerPath with `return
-// false` changed no result in the whole package. Both orders run, because a
-// comparison that is never reached still passes whichever order happens to be
-// right.
-func TestMergeWiderPathWinsOverNestedArtifact(t *testing.T) {
+// An existing covering directory must not pull a changed file's successor up
+// to itself. The merge publishes the exact changed path, retires predecessors
+// already at that exact string, and leaves wider wires alone because the
+// narrower successor cannot cover them. Both orders run so projection order
+// cannot choose the result.
+func TestMergePublishesTheChangedPathInsteadOfACoveringDirectory(t *testing.T) {
+	exact := workroom.Artifact{Event: "exact", Path: "internal/workroom/fold.go", Commit: "old"}
 	narrow := workroom.Artifact{Event: "narrow", Path: "internal/workroom", Commit: "old"}
 	wide := workroom.Artifact{Event: "wide", Path: "internal", Commit: "old"}
-	for _, order := range [][]workroom.Artifact{{narrow, wide}, {wide, narrow}} {
+	for _, order := range [][]workroom.Artifact{{exact, narrow, wide}, {wide, narrow, exact}} {
 		plan := planSuccession(workroom.Projection{Artifacts: order},
 			[]mergeChange{{status: "M", new: "internal/workroom/fold.go"}}, nil)
-		if !reflect.DeepEqual(plan.publish, []string{"internal"}) {
+		if !reflect.DeepEqual(plan.publish, []string{"internal/workroom/fold.go"}) {
 			t.Fatalf("published paths = %#v for %s first", plan.publish, order[0].Path)
 		}
-		if plan.retire["wide"] != "internal" || plan.retire["narrow"] != "internal" {
+		if !reflect.DeepEqual(plan.retire, map[string]string{"exact": "internal/workroom/fold.go"}) {
 			t.Fatalf("retirements = %#v for %s first", plan.retire, order[0].Path)
 		}
 	}
@@ -67,6 +66,26 @@ func TestMergeDeleteRetiresOldPathWithoutSuccessor(t *testing.T) {
 	}
 	if successor, exists := plan.retire["deleted"]; !exists || successor != "" {
 		t.Fatalf("deleted-path retirement = %q, exists %v", successor, exists)
+	}
+}
+
+// A removed file has no path at which a current file artifact can stand. This
+// is the remaining case where a covering directory receives succession: its
+// contents changed, and the widest covering directory keeps the existing
+// retirement relationship well-formed.
+func TestMergeDeleteRepublishesTheWidestCoveringDirectory(t *testing.T) {
+	projection := workroom.Projection{Artifacts: []workroom.Artifact{
+		{Event: "file", Path: "internal/workroom/gone.go", Commit: "old"},
+		{Event: "narrow", Path: "internal/workroom", Commit: "old"},
+		{Event: "wide", Path: "internal", Commit: "old"},
+	}}
+	plan := planSuccession(projection, []mergeChange{{status: "D", old: "internal/workroom/gone.go"}}, nil)
+	if !reflect.DeepEqual(plan.publish, []string{"internal"}) {
+		t.Fatalf("published paths = %#v", plan.publish)
+	}
+	want := map[string]string{"file": "", "narrow": "internal", "wide": "internal"}
+	if !reflect.DeepEqual(plan.retire, want) {
+		t.Fatalf("retirements = %#v, want %#v", plan.retire, want)
 	}
 }
 

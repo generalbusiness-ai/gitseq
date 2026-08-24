@@ -211,11 +211,13 @@ on the artifact it names.
    behaviour**, rest on the artifacts for the implementation you
    describe, not only on the request that produced the document: ask
    whether retiring a basis would mean the prose needs re-checking,
-   and a request alone never does. **Changing behaviour**, supersede
-   every live artifact that covers what you changed as part of stating
-   the new one — that supersession is what makes the prose flare, and
-   it is yours to make because you are the one who moved the world.
-   More than one can be live at a path; retire all of them. A first
+   and a request alone never does. **Changing behaviour**, publish each added,
+   modified, or renamed destination at its exact changed path and supersede
+   every live artifact at that exact string as part of stating the new one —
+   that supersession is what makes the prose flare, and it is yours to make
+   because you are the one who moved the world. A wider covering pointer is a
+   separate wire and stays live until its own retirement is decided. More than
+   one can be live at an exact path; retire all of them. A first
    artifact at a path has no predecessor and needs none retired. The
    projection marks what you skip: an artifact citing nothing reads
    *unable to flare*, and one whose predecessor at the same path is
@@ -246,20 +248,18 @@ on the artifact it names.
     `internal/workroom/fold.go`, so reuse the exact string the area
     already uses rather than renaming it, and never join paths into
     one — `AGENTS.md,SKILL.md` is a string no predecessor can equal.
-    Retiring and publishing are separate decisions. Retire every live
-    artifact covering the change; publish a successor only at the path
-    the area keeps. Where no live artifact covers the change there is
-    no predecessor to retire and the successor rule cannot choose: this
-    is a first artifact, so pick the granularity a reader would cite, a
-    package directory or a document, and keep that string stable,
-    because the next merge in that area must match it. Where a directory
-    and something inside it are both live over one changed file, the
-    wider path wins: the successor goes there and the narrower artifact
-    is retired by a bare `supersede` naming the surviving path, so the
-    area settles on one granularity.
+    Retiring and publishing are separate decisions. For an added or modified
+    file, and for a rename destination, merge publishes the successor at the
+    exact changed path. It retires every live predecessor already at that
+    exact string. A live directory covering the file is a separate wire and
+    stays live: the file successor cannot cover it, and the rules for retiring
+    that wider pointer are a separate decision. Where no live artifact exists
+    at the changed path, this is a first artifact there.
     A renamed or deleted file's old path is retired the same way and
     never published at again; a rename opens a first artifact at the
-    new path, a deletion opens nothing. A bare `supersede` is admitted
+    new path, a deletion opens nothing at the removed path. A live directory
+    covering a removed path still receives its own successor, because that
+    directory changed and no file remains to publish. A bare `supersede` is admitted
     only from the target's own author or an actor holding `ratifier`,
     so ask that actor when the artifact to retire is not yours.
     One artifact at `.` claims the whole repository: the next change

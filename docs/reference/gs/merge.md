@@ -187,15 +187,16 @@ this command accepts it.
 
 The command reads the first-parent diff of the merge that actually lands. It
 treats stale artifacts as live until they are retired, deduplicates work across
-changed files, publishes all successors, and then retires every covered
-predecessor in the same batch.
+changed files, publishes all successors, and then retires the exact-path
+predecessors those successors replace in the same batch. Retirement of wider
+covering pointers is a separate decision.
 
 | Situation | Enforced result |
 |---|---|
-| One live path covers the change | One successor is published at that exact string and every live predecessor there is retired. |
-| A directory and something inside it both cover one changed file | The wider directory wins. One successor is published there; every wider and narrower predecessor is retired. |
-| No live artifact covers an added or modified file | A first artifact is published at the changed file path. |
-| A file is renamed | Its exact old path is retired without a successor there. The destination receives a first artifact or the successor for the live path already covering it. |
+| A file is added or modified | One successor is published at the exact changed path. Every live predecessor at that exact string is retired. |
+| A live directory covers an added or modified file | The file successor is still published at the exact changed path. The directory artifact stays live; a narrower successor cannot cover or retire it. |
+| No live artifact exists at an added or modified file's exact path | A first artifact is published at the changed file path. |
+| A file is renamed | Its exact old path is retired without a successor there. The destination receives a first artifact or an exact-path successor; a wider covering pointer stays live. |
 | A file is deleted | Its exact old path is retired with no successor. A live covering directory still receives its successor because the directory changed. |
 | A successor rests on the predecessor the same merge retires | The successor stays current. The work stood on what it replaces, and the merge that publishes one withdraws the other in the same act, so that withdrawal is not news arriving underneath it. Only artifacts that merge actually published — at its merge head, at a path it declared — read it that way; any other record citing the receipt goes stale as usual. |
 

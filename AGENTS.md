@@ -69,9 +69,11 @@ per ISO 24495-1, for a technical audience.
    - **Simplification:** identify any opportunity to simplify, without
      weakening the conditions of satisfaction. Request changes to cut the
      fluff.
-5. Merge only an approved exact head. In the same step, retire every live
-   artifact that covers what the merge changed and publish a successor at the
-   path each area keeps using. `SKILL.md` states those succession rules in full
+5. Merge only an approved exact head. In the same step, publish each added,
+   modified, or renamed destination at its exact changed path and retire the
+   live predecessors at that exact string. A wider covering pointer is a
+   separate wire and stays live until its own retirement is decided.
+   `SKILL.md` states those succession rules in full
    and [`docs/reference/gs/merge.md`](docs/reference/gs/merge.md) tabulates
    what `gs merge` enforces. Three of them bite hardest. Paths match as exact
    strings, with no normalising, prefixes or globs, so the paths are not free

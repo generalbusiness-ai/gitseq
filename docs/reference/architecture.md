@@ -530,7 +530,11 @@ fold, or UI expectations.
   implementer of an approved head retire another actor's predecessors only on
   the path lineages of the artifacts that approval itself cites, each standing
   at the approved head and owned by the implementer, since the fold is pure over
-  records and can verify no merge head, diff, or tree; merge receipts record
+  records and can verify no merge head, diff, or tree; for added and modified
+  files and rename destinations, the CLI publishes successors at the exact
+  changed paths and retires only predecessors already at those exact strings,
+  leaving wider covering pointers live because a narrower successor cannot
+  cover or authorize their retirement; merge receipts record
   ordinary reasoning staleness, while an approval or artifact that already
   described a superseded world when the verdict was signed must be re-anchored
   before merge, and one the world moved under afterwards is recorded instead;
