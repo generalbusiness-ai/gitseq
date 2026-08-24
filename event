@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a1d8509a9edf46c2f2872d66b2d5f0b8ebe6958"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d1e7d8cb0738bd5243277e5c2aee201fe8696a9c","text":"Retire the unclaimed review assignment; the reviewer left without promising, so the same exact-head review is rerouted to a live independent agent."}
