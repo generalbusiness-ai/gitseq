@@ -103,8 +103,13 @@ func LoadConfig(metaDir string) (Config, error) {
 }
 
 // SaveConfig replaces the configuration atomically, so a reader never observes
-// a half-written file naming no sequence at all, and concurrent writers do not
-// share a temporary path.
+// a half-written file naming no sequence at all. Atomic replacement prevents
+// torn reads and nothing else: a writer saving a Config it loaded earlier
+// writes back its whole stale view and silently erases whatever other
+// processes persisted in between, which is exactly how recorded actor custody
+// was lost. SaveConfig is for creating the first configuration in a metadata
+// directory; every change to an existing one belongs in UpdateConfig, which
+// reloads and merges under a lock instead of trusting process memory.
 func SaveConfig(metaDir string, config Config) error {
 	content, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
@@ -204,6 +209,46 @@ var (
 	createConfigRetryClose = func(file *os.File) error { return file.Close() }
 	createConfigRemove     = func(path string) error { return os.Remove(path) }
 )
+
+// UpdateConfig applies mutate to the configuration currently on disk and
+// stores the result atomically, holding an exclusive lock across the whole
+// read-modify-write. A process may hold a Config it loaded at open, long
+// before other processes changed anything; reloading inside the lock means
+// only what mutate changes can differ from what anyone else wrote, and
+// everything mutate leaves alone carries forward unchanged. Merge rules are
+// therefore the caller's declared intent, field by field, rather than
+// last-writer-wins over the file. mutate reports whether it changed anything:
+// an update that changes nothing rewrites no file, and the reloaded
+// configuration is returned either way so a caller may refresh its own memory
+// with custody other processes recorded meanwhile. When no configuration file
+// exists yet, base is what mutate starts from instead — some workspace must
+// write the first one — and because that choice is made under the same lock,
+// a second creator serialises behind the first and merges onto its file
+// rather than overwriting it. SaveConfig remains for creating a first
+// configuration outside this contract.
+func UpdateConfig(metaDir string, base Config, mutate func(*Config) (bool, error)) (Config, error) {
+	return withConfigLock(metaDir, func() (Config, error) {
+		current, err := LoadConfig(metaDir)
+		if errors.Is(err, os.ErrNotExist) {
+			current = base
+		} else if err != nil {
+			return Config{}, err
+		}
+		changed, err := mutate(&current)
+		if err != nil {
+			return Config{}, err
+		}
+		if changed {
+			if err := current.Validate(); err != nil {
+				return Config{}, err
+			}
+			if err := SaveConfig(metaDir, current); err != nil {
+				return Config{}, err
+			}
+		}
+		return current, nil
+	})
+}
 
 // ValidateGenesis rejects an object id that cannot name a commit in the
 // declared format.

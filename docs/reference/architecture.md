@@ -357,16 +357,23 @@ publishes a file that is already whole, a concurrent reader sees the
 destination as either absent or complete while the system stays up; a crash
 keeps no such promise, since nothing syncs the staging file or its directory
 before the link, so a power loss can persist the directory entry ahead of the
-data. Replacement is a different path and is unchanged: it writes a temporary
-file and renames it over the destination, and it is how an initialization and
-every later save store the file. The two paths do not accept the same
+data. Replacement is a different path: it writes a temporary file and renames it
+over the destination, which is how an initialization stores the file and how
+every later save publishes its result. Updating an existing configuration does
+more than replace: it holds an exclusive advisory lock across one whole
+load-modify-store, reloading the file inside the lock and merging only what
+the caller declares, so a process holding stale memory cannot erase custody
+another process recorded meanwhile — rename-over alone prevents torn reads,
+not lost updates. The lock lives in a dedicated `.config.lock` beside the
+protected file and is never renamed, so a crash cannot leave a lock dangling:
+the kernel drops it when the process dies. Where no advisory locking exists,
+updates refuse loudly rather than lose updates silently, while creating a
+first configuration stays available. The two paths do not accept the same
 filesystems: creation requires hard links within the metadata directory — a
 refused link is reported as the creation's failure, with no rename fallback —
-while replacement needs none, so an attach can be refused on a filesystem where
-an initialization succeeds. No path takes a file lock, and no platform gets a
-different fallback: where exclusive creation or the rename is refused — as a
-non-Unix platform can refuse the rename while another process holds the file —
-the writer reports the failure and the writable configuration does not proceed.
+so an attach can be refused on a filesystem where an initialization succeeds.
+Where exclusive creation, the update lock, or the rename is refused, the
+writer reports the failure and the writable configuration does not proceed.
 The reader fails closed too: a missing or partially visible file never
 validates, so a reader refuses to open rather than acting on a configuration
 nobody stored. In memory, a
@@ -374,10 +381,11 @@ configuration leaves an open workspace only as a copy sharing no mutable state
 with it, so a holder cannot alter the workspace's actor custody or verified
 frontier through the value it was handed; the live configuration is a private
 field of the workspace, so the compiler makes that copy the only read path out
-of the owning package. Inside the workspace, one
-configuration lock serializes the taking of that copy against every custody
+of the owning package. Inside the workspace, one in-memory configuration
+lock serializes the taking of that copy against every custody
 mutation together with its save and rollback, so a copy is a consistent
-observation and no reader sees an actor map or frontier mid-update.
+observation and no reader sees an actor map or frontier mid-update; it is
+distinct from the on-disk advisory lock that serializes separate processes.
 
 `internal/app` selects this build's interpreter from that vocabulary: it
 records the binding at init for an application an absent binding does not

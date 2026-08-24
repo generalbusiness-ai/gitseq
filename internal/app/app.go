@@ -472,9 +472,12 @@ func readActor(path string) (ed25519.PrivateKey, error) {
 	return ed25519.PrivateKey(decoded), nil
 }
 
-// save persists Config. Callers hold configMu: the serialization reads the
-// actor map and frontier pointer, so an unlocked save would race the very
-// mutations it is persisting.
+// save writes the whole remembered configuration. Only the bootstrap creation
+// path uses it — the workspace that runs init has just written this very file
+// itself, so there is no concurrent custody to lose — because writing a whole
+// Config held in memory would erase whatever custody another process
+// persisted since this one loaded. Every change to an existing configuration
+// goes through updateConfig.
 func (w *Workspace) save() error {
 	return apphost.SaveConfig(w.MetaDir, w.config)
 }
@@ -496,6 +499,36 @@ func (w *Workspace) View() apphost.Config {
 // configuration and not yet created one. It exists so a test can pin a
 // concurrent creator into exactly that window; production leaves it empty.
 var attachAbsenceGate = func() {}
+
+// updateConfig persists one declared change without losing what concurrent
+// processes wrote: the file is reloaded under the apphost lock, mutate
+// changes exactly what this save owns on that fresh copy, and the merged
+// result is adopted as the workspace's view, so stale custody in memory
+// refreshes from disk even when this save itself changes nothing. A failed
+// update leaves both the file and the workspace unchanged. This workspace's
+// own memory is only ever a starting point, and then solely for the metadata
+// directory that holds no configuration yet — an attached view recording its
+// first frontier — where someone must write a first file and nobody else's
+// custody can be lost.
+//
+// configMu is taken here, around the base read and the adoption, and nowhere
+// else may callers hold it: configMu stays innermost, the apphost lock is
+// acquired only inside apphost.UpdateConfig, and neither waits on snapshotMu,
+// which the durable-append paths hold. Callers therefore must not arrive
+// holding configMu, or they would deadlock against themselves.
+func (w *Workspace) updateConfig(mutate func(*apphost.Config) (bool, error)) error {
+	w.configMu.Lock()
+	base := w.config.Clone()
+	w.configMu.Unlock()
+	merged, err := apphost.UpdateConfig(w.MetaDir, base, mutate)
+	if err != nil {
+		return err
+	}
+	w.configMu.Lock()
+	defer w.configMu.Unlock()
+	w.config = merged
+	return nil
+}
 
 func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Workspace, error) {
 	if err := apphost.ValidateGenesis(objectFormat, genesis); err != nil {
@@ -585,18 +618,23 @@ func (w *Workspace) AddActor(ctx context.Context, operatorName, name, kind strin
 	}
 	ratification := ratificationSubmission.Record
 	// The durable appends above take snapshotMu, so configMu was released
-	// across them; custody is granted in one locked read-modify-save so a
-	// concurrent View never observes the map with the entry but the file
-	// without it, and a failed save rolls the map back rather than leaving
-	// memory claiming custody the disk never recorded.
-	w.configMu.Lock()
-	defer w.configMu.Unlock()
-	if _, exists := w.config.Actors[name]; exists {
-		return apphost.Actor{}, nil, fmt.Errorf("actor %q already exists", name)
-	}
-	w.config.Actors[name] = actor
-	if err := w.save(); err != nil {
-		delete(w.config.Actors, name)
+	// across them. updateConfig reloads the file under the apphost lock, so
+	// custody granted here merges onto whatever other processes recorded
+	// since this workspace loaded, and a failed update leaves both the file
+	// and this workspace's view unchanged.
+	if err := w.updateConfig(func(c *apphost.Config) (bool, error) {
+		if existing, exists := c.Actors[name]; exists {
+			if existing != actor {
+				return false, fmt.Errorf("config already holds different custody for actor %q", name)
+			}
+			return false, nil
+		}
+		if c.Actors == nil {
+			c.Actors = make(map[string]apphost.Actor)
+		}
+		c.Actors[name] = actor
+		return true, nil
+	}); err != nil {
 		return apphost.Actor{}, nil, err
 	}
 	return actor, []workroom.Record{state, ratification}, nil
@@ -697,23 +735,22 @@ func (w *Workspace) RetireActor(ctx context.Context, retirerName, actorAddress s
 		}
 		return nil, fmt.Errorf("retiring %s was ineffective (%s); its membership and its key are unchanged", actor.Name, reason)
 	}
-	// Custody ends in one locked read-modify-save: a concurrent View never
-	// observes the entry gone from the map while the file still grants it,
-	// and a failed save restores the entry so memory keeps agreeing with
-	// disk. The lock is taken only now — the durable supersession and the
-	// snapshots above acquire snapshotMu, which must never be waited on
-	// while holding configMu.
-	w.configMu.Lock()
-	held, wasHeld := w.config.Actors[actor.Name]
-	delete(w.config.Actors, actor.Name)
-	if err := w.save(); err != nil {
-		if wasHeld {
-			w.config.Actors[actor.Name] = held
+	// updateConfig reloads the file under the apphost lock, so custody ends
+	// by removing exactly this entry from whatever is on disk now — a
+	// concurrent View never observes the entry gone from memory while the
+	// file still grants it, and a failed update leaves both unchanged. No
+	// configMu section is held here, because the durable supersession and
+	// the snapshots above acquire snapshotMu and apphost's lock is taken
+	// only inside updateConfig.
+	if err := w.updateConfig(func(c *apphost.Config) (bool, error) {
+		if _, exists := c.Actors[actor.Name]; !exists {
+			return false, nil
 		}
-		w.configMu.Unlock()
+		delete(c.Actors, actor.Name)
+		return true, nil
+	}); err != nil {
 		return nil, err
 	}
-	w.configMu.Unlock()
 	if actor.KeyFile != "" {
 		if err := os.Remove(actor.KeyFile); err != nil && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("retired %s durably, but its key file remains: %w", actor.Name, err)
@@ -1586,16 +1623,36 @@ func (w *Workspace) Verify(ctx context.Context) (kernel.Verification, error) {
 	return verification, nil
 }
 
-// rememberVerifiedFrontier advances the persisted frontier marker. Every
-// caller holds snapshotMu, which serializes frontier writers; configMu is
-// additionally held for the whole read-validate-write-save-rollback so a
-// concurrent View never observes the pointer mid-update or a memory state the
-// save rolled back. Lock order is therefore snapshotMu then configMu, and the
-// store reads below acquire nothing further.
+// mergeVerifiedFrontier states the conflict rule for the local rollback
+// witness: the marker is monotonic local memory, so the deeper verified depth
+// stands whoever recorded it, an unchanged audit writes nothing, and two
+// different heads claiming one depth cannot both describe this sequence —
+// that is a genuine conflict, not a race to resolve by order of arrival.
+func mergeVerifiedFrontier(base, next *apphost.VerifiedFrontier) (*apphost.VerifiedFrontier, bool, error) {
+	switch {
+	case base == nil:
+		return next, true, nil
+	case base.Head == next.Head && base.Depth == next.Depth:
+		return base, false, nil
+	case base.Depth > next.Depth:
+		return base, false, nil
+	case base.Depth < next.Depth:
+		return next, true, nil
+	default:
+		return nil, false, fmt.Errorf("refuse conflicting verified frontier: configuration records %s at depth %d while this audit verified %s", base.Head, base.Depth, next.Head)
+	}
+}
+
 func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification kernel.Verification) error {
+	// The in-memory marker is only a fast path for the common unchanged case;
+	// the authoritative comparison happens against the freshly reloaded file
+	// inside updateConfig, so a frontier another process advanced is honoured
+	// rather than overwritten. Callers hold snapshotMu, which serializes
+	// frontier writers; configMu is taken inside updateConfig, and the store
+	// reads below acquire nothing further.
 	w.configMu.Lock()
-	defer w.configMu.Unlock()
 	previous := w.config.VerifiedFrontier
+	w.configMu.Unlock()
 	if previous != nil {
 		if verification.Depth < previous.Depth {
 			return fmt.Errorf("refuse verified frontier rollback: depth %d is shorter than previously verified depth %d", verification.Depth, previous.Depth)
@@ -1621,9 +1678,15 @@ func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification k
 			return fmt.Errorf("refuse non-descendant verified frontier: %s does not continue previously verified head %s", verification.Head, previous.Head)
 		}
 	}
-	w.config.VerifiedFrontier = &apphost.VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
-	if err := w.save(); err != nil {
-		w.config.VerifiedFrontier = previous
+	next := &apphost.VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
+	if err := w.updateConfig(func(c *apphost.Config) (bool, error) {
+		merged, changed, err := mergeVerifiedFrontier(c.VerifiedFrontier, next)
+		if err != nil {
+			return false, err
+		}
+		c.VerifiedFrontier = merged
+		return changed, nil
+	}); err != nil {
 		return fmt.Errorf("persist verified frontier before returning data: local rollback witness could not advance: %w", err)
 	}
 	return nil
