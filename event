@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-08-24-multi-workroom.md","body":{"commit":"20722c1be8ed769bac86ae09b69baf228623a042","path":"notes/2026-08-24-multi-workroom.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eb8fa3719539e86ccadc9d781a9056bc33728d2","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-24-multi-workroom.md."}
