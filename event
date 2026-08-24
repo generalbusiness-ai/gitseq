@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:81bb86e90e261ea6e4d034e3a49aa25866c1e318","text":"Merge retired a covered predecessor; the successor is at docs."}
+{"kind":"promise","text":"I will review exact head 87345ee4 against bdf197a7 and sign the statusview, status.md, and wait.md artifacts in one gs review."}
