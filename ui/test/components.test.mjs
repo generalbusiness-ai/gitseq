@@ -330,8 +330,8 @@ test("thread rows start closed and only rows naming something are expandable", a
     );
     const rows = markup.split(/(?=<li[^>]*data-station)/).filter((part) => part.includes("data-station"));
     assert.equal(rows.length, 2, "request and unclaimed promise");
-    assert.match(rows[0], /data-station="request"/);
-    assert.match(rows[0], /<button[^>]*aria-expanded="false"[^>]*aria-controls="detail-request"/, "the request row's text is a closed disclosure button");
+    assert.match(rows[0], /data-station="root"/);
+    assert.match(rows[0], /<button[^>]*aria-expanded="false"[^>]*aria-controls="detail-root"/, "the request row's text is a closed disclosure button");
     assert.doesNotMatch(rows[1], /aria-expanded/, "an unreached station has nothing to open");
     assert.doesNotMatch(markup, /data-record-detail/, "nothing is open until clicked");
   } finally {

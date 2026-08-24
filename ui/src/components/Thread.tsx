@@ -31,6 +31,7 @@ export function Thread({
   frames,
   root,
   index,
+  focus,
   pending,
   onBack,
   onOpenThread,
@@ -45,6 +46,12 @@ export function Thread({
   root: string;
   /** The projection's record index, built once by App and shared. */
   index: RecordIndex;
+  /**
+   * The record the user clicked, when navigation resolved it into a wider
+   * thread. Arrival opens whatever was hiding it and names it, so the user
+   * never has to guess which row they asked for.
+   */
+  focus?: string;
   pending: PendingSay[];
   onBack: () => void;
   onOpenThread: (event: string) => void;
@@ -100,7 +107,18 @@ export function Thread({
   }, [head]);
 
   const request = index.statement(root);
-  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  // Arrival state for a focused record: its detail opens by itself, and so
+  // does the expander hiding it, because "it is on the page, collapsed"
+  // is not visible.
+  const focusedStation = focus ? spine?.stations.find((station) => station.event === focus) : undefined;
+  const focusedHolder = focus ? spine?.expanders.find((expander) => expander.events.includes(focus)) : undefined;
+  const [open, setOpen] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    if (focusedHolder) initial.add(focusedHolder.id);
+    if (focus && !focusedStation) initial.add(`detail:${focus}`);
+    if (focusedStation) initial.add(`detail:${focusedStation.id}`);
+    return initial;
+  });
   const [route, setRoute] = useState<{ id: string; mode: SemanticReplyMode; basis: string; prefill: string }>();
   const toggle = (id: string) =>
     setOpen((current) => {
@@ -145,6 +163,7 @@ export function Thread({
                 first={position === 0}
                 last={position === spine.stations.length - 1}
                 nameOf={nameOf}
+                focused={Boolean(focus && station.event === focus)}
                 actions={actionsFor(station.event ? index.statement(station.event) : undefined)}
                 open={open.has(`detail:${station.id}`)}
                 onToggle={() => toggle(`detail:${station.id}`)}
@@ -187,6 +206,7 @@ export function Thread({
                         index={index}
                         ticket={tickets.get(event)}
                         nameOf={nameOf}
+                        focused={event === focus}
                         onOpenThread={onOpenThread}
                         open={open.has(`detail:${event}`)}
                         onToggle={() => toggle(`detail:${event}`)}
@@ -259,6 +279,7 @@ function SpineRow({
   open,
   onToggle,
   detail,
+  focused,
 }: {
   station: Station;
   first: boolean;
@@ -268,6 +289,7 @@ function SpineRow({
   open: boolean;
   onToggle: () => void;
   detail: React.ReactNode;
+  focused: boolean;
 }) {
   const dim = !station.present;
   const detailed = Boolean(station.event || station.commit);
@@ -275,7 +297,8 @@ function SpineRow({
     <li
       data-station={station.id}
       data-present={station.present}
-      className={cn("group relative text-xs", station.branch && "ml-5")}
+      aria-current={focused || undefined}
+      className={cn("group relative text-xs", station.branch && "ml-5", focused && "-mx-1 rounded bg-elevated px-1")}
     >
       {!station.branch && (
         <span
@@ -348,6 +371,7 @@ function ElidedRecord({
   open,
   onToggle,
   detail,
+  focused,
 }: {
   event: string;
   projection: import("../lib/api").Projection;
@@ -358,6 +382,7 @@ function ElidedRecord({
   open: boolean;
   onToggle: () => void;
   detail: React.ReactNode;
+  focused: boolean;
 }) {
   const statement = index.statement(event);
   const act = index.act(event);
@@ -371,7 +396,7 @@ function ElidedRecord({
   const text = statement?.text ?? act?.text ?? (act ? `${act.type}d` : "");
   const actor = statement?.actor ?? act?.actor ?? "";
   return (
-    <div data-record={event}>
+    <div data-record={event} aria-current={focused || undefined} className={cn(focused && "rounded bg-elevated")}>
       <div className="flex items-baseline gap-2 text-xs">
         <button
           type="button"

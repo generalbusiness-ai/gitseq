@@ -12,8 +12,10 @@ import { reconciledPendingIDs, RetryKeys } from "./lib/interaction";
 
 // Two screens. The list is the default and answers the whole question; the
 // thread answers "what does this one wait on?". There is no third
-// destination, and no presentation to choose between.
-type Screen = { kind: "list" } | { kind: "thread"; event: string };
+// destination, and no presentation to choose between. A thread carries the
+// record the user clicked as focus when navigation resolved it into a wider
+// commitment, so arrival can name what was asked for.
+type Screen = { kind: "list" } | { kind: "thread"; event: string; focus?: string };
 
 export default function App() {
   const workroom = useWorkroom();
@@ -27,10 +29,15 @@ export default function App() {
   const projection = workroom.status?.durable.projection;
 
   // Any record opens the thread it belongs to, resolved one way for every
-  // caller: a promise, report, act, artifact or assert lands on its request.
+  // caller: a promise, report or act lands on the commitment it answers, and
+  // a record belonging to no commitment — a proposal, a free-standing
+  // assert — opens as itself. The clicked record rides along as focus.
   const index = useMemo(() => (projection ? buildRecordIndex(projection) : undefined), [projection]);
   const openThread = useCallback(
-    (event: string) => setScreen({ kind: "thread", event: index ? index.threadRoot(event) : event }),
+    (event: string) => {
+      const root = index ? index.threadRoot(event) : event;
+      setScreen({ kind: "thread", event: root, focus: root === event ? undefined : event });
+    },
     [index],
   );
   const showList = useCallback(() => setScreen({ kind: "list" }), []);
@@ -88,11 +95,12 @@ export default function App() {
         ) : (
           <Thread
             index={index}
-            key={screen.event}
+            key={`${screen.event}:${screen.focus ?? ""}`}
             workroom={workroom}
             session={session}
             frames={frames}
             root={screen.event}
+            focus={screen.focus}
             pending={pending}
             onBack={showList}
             onOpenThread={openThread}

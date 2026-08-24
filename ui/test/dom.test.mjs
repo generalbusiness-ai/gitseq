@@ -632,7 +632,7 @@ test("the thread draws one rail of salient stations and keeps its history collap
 
     // One rail, one node per row, five stations and one blocker branch.
     const stations = [...document.querySelectorAll("[data-station]")];
-    assert.deepEqual(stations.map((row) => row.dataset.station), ["request", "promise", "report", "verdict", "merge", "blocker-open"]);
+    assert.deepEqual(stations.map((row) => row.dataset.station), ["root", "promise", "report", "verdict", "merge", "blocker-open"]);
     // The merge station asked git rather than reading a stored field.
     assert.deepEqual(asked, [{ commits: ["b3bf30833b93aaec5fc3adab7ffa0b6f0fe7792d"] }]);
     assert.match(document.body.textContent, /landed on main/);
@@ -690,7 +690,7 @@ test("clicking a thread row opens its full detail, clicking again closes it, and
     });
 
     const disclosure = (id) => document.querySelector(`button[data-disclosure="${id}"]`);
-    const request = disclosure("detail-request");
+    const request = disclosure("detail-root");
     assert.ok(request, "the request station's text is a native button");
     assert.equal(request.tagName, "BUTTON");
     assert.equal(request.getAttribute("aria-expanded"), "false");
@@ -698,7 +698,7 @@ test("clicking a thread row opens its full detail, clicking again closes it, and
 
     await click(request);
     assert.equal(request.getAttribute("aria-expanded"), "true");
-    const detail = document.getElementById("detail-request");
+    const detail = document.getElementById("detail-root");
     assert.ok(detail, "aria-controls names the panel that opened");
     assert.match(detail.textContent, /req/);
     assert.match(detail.textContent, /rests on/);
@@ -714,7 +714,7 @@ test("clicking a thread row opens its full detail, clicking again closes it, and
 
     await click(request);
     assert.equal(request.getAttribute("aria-expanded"), "false");
-    assert.equal(document.getElementById("detail-request"), null, "second click closes");
+    assert.equal(document.getElementById("detail-root"), null, "second click closes");
 
     // An unreached station has nothing to open and is not a button.
     assert.equal(disclosure("detail-closed"), null);
