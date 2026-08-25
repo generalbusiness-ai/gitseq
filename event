@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9d9f316225f3553929ce04d4dd11e82ae58a0231","text":"Retire stale supported-host coordination request #6909. It produced the current-world child and report, and the implementation chain advanced beyond it."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:74a9ed31174211976f10207065bf1fe637fc999b","text":"Retire stale supported-host repair coordination request #7166. Its repair child #7168 is satisfied."}
