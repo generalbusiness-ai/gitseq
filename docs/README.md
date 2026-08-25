@@ -50,6 +50,7 @@ Read in this order if you are new:
 | [Publish and audit](how-to/publish-and-audit.md) | Share the sequence; verify it from a clone you did not create. |
 | [Deploy a resident](how-to/deploy-a-resident.md) | Run the local service, and what it trusts. |
 | [Configure an agent](how-to/configure-an-agent.md) | Attach an MCP client and check that it can act. |
+| [Connect GitHub](how-to/connect-github.md) | Bring selected issues into a workroom and publish an exact candidate as a pull request. |
 
 ## Reference
 
