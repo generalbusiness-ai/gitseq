@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30bd0c3ff8d907860e1fdc6ed0242dde371ae315"}
+{"kind":"promise","text":"I will independently review the user-focused GitHub connection guide at exact head 5d9e03de6b5566f6258a96601aff986801ac9ec4: verify commands and behavior claims against current source, run the docs gate at that exact tree, confirm each of hughs four readability findings is resolved, and record Architecture, Security and Simplification conclusions, filing the verdict with gs review against artifact 3a7df5b8."}
