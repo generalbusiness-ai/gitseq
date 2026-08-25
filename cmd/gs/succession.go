@@ -545,9 +545,18 @@ func reviewedPaths(projection workroom.Projection, approval string) []string {
 	return paths
 }
 
+// withinReviewedPaths reports whether an artifact standing at path lies inside
+// what the approval reviewed. Reach runs one way only, the same way the fold's
+// own pathCovers runs: a reviewed path bounds retirement at itself and beneath
+// it, never above it. Reviewing one page is not authority over the tree that
+// contains it, so a head that reviews `docs/how-to/x.md` no longer takes
+// another actor's pointer at bare `docs` with it.
 func withinReviewedPaths(reviewed []string, path string) bool {
+	if path == "" {
+		return false
+	}
 	for _, within := range reviewed {
-		if sameTreeLineage(within, path) {
+		if within != "" && (within == path || widerPath(within, path)) {
 			return true
 		}
 	}
@@ -561,13 +570,6 @@ func artifactPath(projection workroom.Projection, event string) string {
 		}
 	}
 	return ""
-}
-
-func sameTreeLineage(one, other string) bool {
-	if one == "" || other == "" {
-		return false
-	}
-	return one == other || widerPath(one, other) || widerPath(other, one)
 }
 
 func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checkout, serverURL, actor string, private ed25519.PrivateKey, receipt mergeReceipt) error {

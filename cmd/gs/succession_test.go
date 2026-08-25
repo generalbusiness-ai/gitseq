@@ -225,6 +225,7 @@ func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *te
 			{Event: "inside", Sequence: 6, Actor: "stranger"},
 			{Event: "covering", Sequence: 7, Actor: "stranger"},
 			{Event: "elsewhere", Sequence: 8, Actor: "stranger"},
+			{Event: "at-reviewed", Sequence: 9, Actor: "stranger"},
 		},
 		Artifacts: []workroom.Artifact{
 			{Event: "approved-artifact", Path: "cmd/gs", Commit: "head1"},
@@ -233,6 +234,7 @@ func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *te
 			{Event: "mine", Path: "docs"},
 			{Event: "inside", Path: "cmd/gs/main.go"},
 			{Event: "covering", Path: "cmd"},
+			{Event: "at-reviewed", Path: "cmd/gs"},
 			{Event: "elsewhere", Path: "docs"},
 			{Event: "in-second", Path: "internal/kernel/fold.go"},
 			{Event: "in-uncited", Path: "ui/src"},
@@ -260,11 +262,26 @@ func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *te
 	if err := refuseUnreachableCrossAuthorRetirements(projection, own, "approval", "implementer"); err != nil {
 		t.Fatalf("retiring the merger's own artifact was refused: %v", err)
 	}
-	// Both directions of one lineage: inside the approved tree, and the
-	// directory covering it that the wider-path rule retires with it.
-	lineage := successionPlan{retire: map[string]string{"inside": "cmd/gs", "covering": "cmd"}}
-	if err := refuseUnreachableCrossAuthorRetirements(projection, lineage, "approval", "implementer"); err != nil {
-		t.Fatalf("retirement on the approved lineage was refused: %v", err)
+	// A reviewed path reaches at itself and beneath it. `approved-artifact`
+	// stands at `cmd/gs`, so a stranger's pointer inside that tree is within
+	// reach, and so is one at the reviewed path exactly.
+	beneath := successionPlan{retire: map[string]string{"inside": "cmd/gs"}}
+	if err := refuseUnreachableCrossAuthorRetirements(projection, beneath, "approval", "implementer"); err != nil {
+		t.Fatalf("retirement beneath the reviewed path was refused: %v", err)
+	}
+	exact := successionPlan{retire: map[string]string{"at-reviewed": "cmd/gs"}}
+	if err := refuseUnreachableCrossAuthorRetirements(projection, exact, "approval", "implementer"); err != nil {
+		t.Fatalf("retirement at the reviewed path itself was refused: %v", err)
+	}
+	// And nowhere above it. Reviewing `cmd/gs` says nothing about `cmd`, which
+	// covers trees this head never put in front of the reviewer, so a
+	// stranger's pointer there is out of reach. The refusal is the command's
+	// own: this guard reads a projection and no repository, so it answers
+	// before the merge commit exists and the target is still where it was.
+	above := successionPlan{retire: map[string]string{"covering": "cmd"}}
+	if err := refuseUnreachableCrossAuthorRetirements(projection, above, "approval", "implementer"); err == nil ||
+		!strings.Contains(err.Error(), "outside the reviewed paths") {
+		t.Fatalf("retirement above the reviewed path error = %v, want a refusal", err)
 	}
 	// Every path the approval reviewed, not only the one its verdict names.
 	// This is the case that stranded a head spanning four maintained trees.

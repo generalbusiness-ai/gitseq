@@ -279,7 +279,8 @@ fold checks all of it from the log alone:
 - the receipt is signed by the author of that implementation artifact — the
   merger of an approved head is the actor whose work it is;
 - the target's path lies on the path lineage of one of the paths that approval
-  reviewed — the same string, or one path containing the other; and
+  reviewed — the same string, or one path containing the other, which the
+  command reads in the narrower single direction described below; and
 - the target carries a successor path in the receipt's signed plan, that path
   covers the target's own path, and the supersession cites the successor
   artifact published there.
@@ -349,6 +350,16 @@ turning testimony into authority.
 A retirement with no successor — a deleted path — takes no authority from a
 merge either, because nothing the merge published stands over it to bound the
 claim.
+
+`merge` reads a reviewed path in one direction only: it reaches that path and
+whatever stands beneath it, and nothing above it. An approval reviewing
+`docs/how-to/x.md` reaches another actor's pointer at that exact path and not
+one at bare `docs`, because the wider pointer speaks for trees the head never
+put in front of the reviewer. Reaching upward was the older reading, and it let
+a merge that reviewed a leaf claim the tree containing it. The fold's own
+lineage test is unchanged and still reads both directions; this is the command
+holding itself to the narrower rule while the target is still where it was. It
+governs merges run from here on. No sealed receipt is reinterpreted.
 
 ### Restart residents at the merged commit
 
