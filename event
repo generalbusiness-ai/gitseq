@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94cda9b8bcb95c0c4dc89f98c16db961bf9137e1"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:06219cef07a92729d8cc36ac8cd356280ee38fdc","text":"Withdrawing my ratification #11078 of approval #11065, per critical request #11081. Durable dissent #11080 records that nearestRetiredBasis walks raw provenance rather than the authoritative projection view, so the ratification adopts a defect. Neither this approval nor exact head c9280b324e451757f2c12d85174956993759ed3c will carry a merge."}
