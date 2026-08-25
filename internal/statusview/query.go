@@ -78,8 +78,9 @@ type WorkReview struct {
 }
 
 // WorkDetails carries the bounded facts needed to act on a commitment row.
-// Conditions is neutralized but not truncated for open requests; the number
-// of rows remains capped by the surrounding status or work page.
+// Conditions is neutralized but not truncated for unclaimed requests whose
+// lifecycle status is open or stale; the number of rows remains capped by the
+// surrounding status or work page.
 type WorkDetails struct {
 	Conditions   string      `json:"conditions,omitempty"`
 	ReportStatus string      `json:"report_status,omitempty"`
@@ -100,6 +101,7 @@ type WorkItem struct {
 	Report      string    `json:"report,omitempty"`
 	Text        string    `json:"text,omitempty"`
 	WorkDetails
+	unclaimedRequest bool
 }
 
 type WorkPage struct {
@@ -198,8 +200,7 @@ func normalizeWorkQuery(input WorkQuery) (WorkQuery, string, error) {
 }
 
 func commitmentLane(commitment workroom.Commitment, actor string) WorkLane {
-	if commitment.Status == "open" && commitment.AddressedTo == actor && commitment.Promise == "" &&
-		commitment.Performer == "" && commitment.WaitingOn == "" {
+	if addressedTo(commitment, actor) {
 		return LaneAvailable
 	}
 	if commitment.WaitingOn == actor {
@@ -297,7 +298,8 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 		requester := actorRef(durable.Projection, commitment.Requester)
 		item := WorkItem{Request: commitment.Request, Lane: lane, Status: commitment.Status, Stale: commitment.Stale,
 			Promise: commitment.Promise, Report: commitment.Report, AddressedTo: actorRef(durable.Projection, commitment.AddressedTo),
-			Performer: actorRef(durable.Projection, commitment.Performer), WaitingOn: actorRef(durable.Projection, commitment.WaitingOn)}
+			Performer: actorRef(durable.Projection, commitment.Performer), WaitingOn: actorRef(durable.Projection, commitment.WaitingOn),
+			unclaimedRequest: isUnclaimedRequest(commitment)}
 		if requester != nil {
 			item.Requester = *requester
 		}
@@ -321,19 +323,20 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 }
 
 type workRowTarget struct {
-	Request  string
-	Report   string
-	Status   string
-	Text     *string
-	Details  *WorkDetails
-	artifact string
+	Request           string
+	Report            string
+	IncludeConditions bool
+	Text              *string
+	Details           *WorkDetails
+	artifact          string
 }
 
 func workItemTargets(items []WorkItem) []workRowTarget {
 	targets := make([]workRowTarget, len(items))
 	for index := range items {
 		targets[index] = workRowTarget{Request: items[index].Request, Report: items[index].Report,
-			Status: items[index].Status, Text: &items[index].Text, Details: &items[index].WorkDetails}
+			IncludeConditions: items[index].unclaimedRequest,
+			Text:              &items[index].Text, Details: &items[index].WorkDetails}
 	}
 	return targets
 }
@@ -355,7 +358,7 @@ func enrichWorkRows(projection workroom.Projection, targets []workRowTarget) {
 			if targets[index].Text != nil {
 				*targets[index].Text = Text(statement.Text)
 			}
-			if targets[index].Status == "open" && targets[index].Details != nil {
+			if targets[index].IncludeConditions && targets[index].Details != nil {
 				targets[index].Details.Conditions = Safe(statement.Body["conditions"])
 			}
 		}

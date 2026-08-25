@@ -29,8 +29,9 @@ Filters are finite, typed choices, not an expression language.
 ## What comes back
 
 The default page is the work still owed: current `open`, `promised` and
-`reported` commitments — including open, unclaimed requests addressed to
-the configured actor — plus commitments the fold left in a `stale`,
+`reported` commitments — including unclaimed requests addressed to the
+configured actor, even when their bases moved and their status became `stale`
+— plus commitments the fold left in a `stale`,
 `cancelled` or `reneged` state, which nobody has closed.
 
 A `satisfied` or `withdrawn` commitment is finished, and the default
@@ -67,7 +68,7 @@ Each returned row also carries the facts needed for routine action without an
 
 | Field | Meaning |
 |---|---|
-| `conditions` | The full, untruncated `body.conditions` for an open request. |
+| `conditions` | The full, untruncated `body.conditions` for an unclaimed request whose status is `open` or `stale`. |
 | `report_status` | The reported statement's `body.status`, when present. |
 | `reported_head` | The exact head named by the report or reporting artifact. |
 | `latest_review` | The latest effective review for that exact head: its report event, verdict, and explicit `ratified`, `retired`, and `stale` booleans. |

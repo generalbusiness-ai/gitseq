@@ -847,11 +847,12 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 }
 
 // laneResponseLimit preserves the byte ceiling while allowing every capped
-// row to carry one full conditions value. Conditions are themselves bounded by
-// the repository's signed payload ceiling; multiplying that by the row cap is
-// still independent of workroom depth. The adapter-wide ceiling remains the
-// final bound even for a repository configured with an unusually large
-// payload.
+// row to carry one full conditions value. Status and wait expose conditions
+// only on their single available lane; work has one page-wide row cap, so rows
+// is the complete possible conditions-bearing count for each response.
+// Conditions are themselves bounded by the repository's signed payload
+// ceiling. The adapter-wide ceiling remains the final bound even for a
+// repository configured with an unusually large payload.
 func laneResponseLimit(current *room, base int64, rows int) int64 {
 	if current == nil || rows <= 0 {
 		return base

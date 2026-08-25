@@ -49,7 +49,7 @@ everything up to now with `reset` set.
 | `durable` | Durable events after your cursor. |
 | `live` | Presence and conversation changes. |
 | `priority_ephemeral_chat` | The current unacknowledged addressed frames for this exact session. It repeats until `ack`; `skipped` counts additional pending frames behind the current page. |
-| `current_available_to_you` | The complete bounded current lane of open, unclaimed requests addressed to you. |
+| `current_available_to_you` | The complete bounded current lane of unclaimed requests addressed to you, including requests whose bases have become stale. |
 | `current_waiting_on_you` | Commitments now needing your move. |
 | `current_not_actionable` | Commitments nobody can advance. |
 | `totals` | The same counts `status` reports. |
@@ -57,8 +57,8 @@ everything up to now with `reset` set.
 Every list is capped at 20 with its own skipped count.
 
 Current lane rows use the same enriched shape as [`status`](status.md) and
-[`work`](work.md), including full open-request conditions and exact-head review
-state.
+[`work`](work.md), including full conditions for open and stale unclaimed
+requests and exact-head review state.
 
 The resident selects the durable delta and current actor lanes before it
 encodes the response. Following a deep workroom therefore does not transfer
@@ -67,8 +67,9 @@ explicit [`gs status --json`](../gs/status.md) read.
 
 `current_available_to_you` repeats the current lane even when no new
 durable event arrived, so polling cannot lose work that predates the
-cursor. These open requests are available to claim; they do not invent a
-performer or a waiting party.
+cursor. These unfinished requests are available to claim, even if an unclaimed
+request's bases moved, its status is now `stale`, and its `stale` flag is
+`true`; they do not invent a performer or a waiting party.
 
 Priority ephemeral chat follows the same no-loss rule but is independent of
 the cursor: a pending frame makes `wait` return immediately and keeps returning
