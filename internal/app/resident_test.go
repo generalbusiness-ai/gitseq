@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -27,29 +29,42 @@ func residentWorkspace(t *testing.T) *Workspace {
 	return workspace
 }
 
+// writeAdvertisement puts raw bytes where the resident record lives, which is
+// what any local process able to write the repository can do.
+func writeAdvertisement(t *testing.T, workspace *Workspace, content []byte) string {
+	t.Helper()
+	path := filepath.Join(workspace.MetaDir, residentFile)
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestResidentAddressIsPublishedBesideTheWorkroomAndWithdrawn(t *testing.T) {
 	workspace := residentWorkspace(t)
-	if url, ok := workspace.ResidentURL(); ok {
-		t.Fatalf("a repository with no service published %q", url)
+	if advertisement := workspace.ResidentAdvertisement(); advertisement.State != NoAdvertisement {
+		t.Fatalf("a repository with no service read as state %d (%q)", advertisement.State, advertisement.URL)
 	}
 	withdraw, err := workspace.PublishResident("http://127.0.0.1:7788/")
 	if err != nil {
 		t.Fatal(err)
 	}
-	url, ok := workspace.ResidentURL()
-	if !ok || url != "http://127.0.0.1:7788" {
-		t.Fatalf("published address was not found: %q ok=%v", url, ok)
+	advertisement := workspace.ResidentAdvertisement()
+	if advertisement.State != AdvertisementPublished || advertisement.URL != "http://127.0.0.1:7788" {
+		t.Fatalf("published address was not found: %+v", advertisement)
 	}
 	withdraw()
-	if url, ok := workspace.ResidentURL(); ok {
-		t.Fatalf("withdrawn address is still advertised: %q", url)
+	if advertisement := workspace.ResidentAdvertisement(); advertisement.State != NoAdvertisement {
+		t.Fatalf("withdrawn address is still advertised: %+v", advertisement)
 	}
 }
 
 // A URL cannot say which workroom answers there, so the genesis travels with
-// it. Trusting a record left by a workroom this repository no longer has would
-// append the repository's acts to another log.
-func TestResidentAddressForAnotherWorkroomIsRefused(t *testing.T) {
+// it. A record left by a workroom this repository no longer has is present and
+// untrustworthy, which is not the same as nothing being advertised: reading it
+// as absence is what let a durable act fold locally in silence. This test used
+// to assert that absence, and asserts the refusal now.
+func TestResidentAddressForAnotherWorkroomIsUnusableRatherThanAbsent(t *testing.T) {
 	workspace := residentWorkspace(t)
 	if _, err := workspace.PublishResident("http://127.0.0.1:7788"); err != nil {
 		t.Fatal(err)
@@ -58,11 +73,160 @@ func TestResidentAddressForAnotherWorkroomIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace.MetaDir, residentFile), content, 0o600); err != nil {
-		t.Fatal(err)
+	writeAdvertisement(t, workspace, content)
+	advertisement := workspace.ResidentAdvertisement()
+	if advertisement.State == AdvertisementPublished {
+		t.Fatalf("a service holding another workroom was accepted: %q", advertisement.URL)
 	}
-	if url, ok := workspace.ResidentURL(); ok {
-		t.Fatalf("a service holding another workroom was accepted: %q", url)
+	if advertisement.State != AdvertisementUnusable {
+		t.Fatalf("a record naming another workroom read as absence, so a caller cannot refuse it: %+v", advertisement)
+	}
+	if !strings.Contains(advertisement.Reason.Error(), "names workroom") {
+		t.Fatalf("the reason does not say which workroom the record names: %v", advertisement.Reason)
+	}
+}
+
+// Every way one record can fail, and which state each resolves to. Only a
+// missing file is absence; everything else is present-and-untrustworthy with a
+// reason a refusal can print. Each case names the guard it exercises, and each
+// asserts its own guard's reason, so a case cannot pass because a different
+// check happened to catch it.
+func TestResidentAdvertisementSeparatesAbsenceFromEveryInvalidRecord(t *testing.T) {
+	valid := func(t *testing.T, workspace *Workspace) []byte {
+		t.Helper()
+		content, err := json.Marshal(Resident{URL: "http://127.0.0.1:7788", Genesis: workspace.config.Genesis, PID: os.Getpid()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return content
+	}
+	cases := map[string]struct {
+		write  func(t *testing.T, workspace *Workspace)
+		state  AdvertisementState
+		reason string
+	}{
+		"absent": {
+			write: func(*testing.T, *Workspace) {},
+			state: NoAdvertisement,
+		},
+		"unreadable": {
+			write: func(t *testing.T, workspace *Workspace) {
+				path := writeAdvertisement(t, workspace, valid(t, workspace))
+				if err := os.Chmod(path, 0o000); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+				// Mode 0000 does not stop a caller that bypasses permissions,
+				// so prove the file really is unreadable here. Without this the
+				// class would pass as root by never reaching the open error it
+				// claims to pin, and a silent pass is worse than a skip.
+				if _, err := os.ReadFile(path); err == nil {
+					t.Skip("this user can read a 0000 file, so the unreadable branch cannot be reached; run as an unprivileged user")
+				}
+			},
+			state:  AdvertisementUnusable,
+			reason: "cannot be read",
+		},
+		"oversized": {
+			write: func(t *testing.T, workspace *Workspace) {
+				// Otherwise entirely valid, so only the size bound can refuse it.
+				padded := append([]byte(`{"url":"http://127.0.0.1:7788","genesis":`), []byte(strconv.Quote(workspace.config.Genesis))...)
+				padded = append(padded, []byte(`,"pad":"`)...)
+				padded = append(padded, bytes.Repeat([]byte("x"), advertisementLimit)...)
+				padded = append(padded, []byte(`"}`)...)
+				writeAdvertisement(t, workspace, padded)
+			},
+			state:  AdvertisementUnusable,
+			reason: "is larger than the 8192 bytes",
+		},
+		"not a record": {
+			write: func(t *testing.T, workspace *Workspace) {
+				writeAdvertisement(t, workspace, []byte("this is not a resident record"))
+			},
+			state:  AdvertisementUnusable,
+			reason: "is not a resident record",
+		},
+		"truncated": {
+			write: func(t *testing.T, workspace *Workspace) {
+				writeAdvertisement(t, workspace, []byte(`{"url":"http://127.0.0.1:7788","genesis":`))
+			},
+			state:  AdvertisementUnusable,
+			reason: "is not a resident record",
+		},
+		"empty address": {
+			write: func(t *testing.T, workspace *Workspace) {
+				content, err := json.Marshal(Resident{URL: "", Genesis: workspace.config.Genesis, PID: os.Getpid()})
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeAdvertisement(t, workspace, content)
+			},
+			state:  AdvertisementUnusable,
+			reason: "advertises no address",
+		},
+		"missing genesis": {
+			write: func(t *testing.T, workspace *Workspace) {
+				writeAdvertisement(t, workspace, []byte(`{"url":"http://127.0.0.1:7788"}`))
+			},
+			state:  AdvertisementUnusable,
+			reason: "names workroom",
+		},
+		"foreign genesis": {
+			write: func(t *testing.T, workspace *Workspace) {
+				writeAdvertisement(t, workspace, []byte(`{"url":"http://127.0.0.1:7788","genesis":"git:sha1:0000000000000000000000000000000000000000"}`))
+			},
+			state:  AdvertisementUnusable,
+			reason: "names workroom",
+		},
+		"valid": {
+			write: func(t *testing.T, workspace *Workspace) {
+				writeAdvertisement(t, workspace, valid(t, workspace))
+			},
+			state: AdvertisementPublished,
+		},
+	}
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			workspace := residentWorkspace(t)
+			want.write(t, workspace)
+			advertisement := workspace.ResidentAdvertisement()
+			if advertisement.State != want.state {
+				t.Fatalf("state = %d, want %d (reason %v)", advertisement.State, want.state, advertisement.Reason)
+			}
+			if want.reason == "" {
+				if advertisement.Reason != nil {
+					t.Fatalf("a %s record carried a reason: %v", name, advertisement.Reason)
+				}
+				return
+			}
+			if advertisement.Reason == nil {
+				t.Fatal("an unusable record carried no reason, so a refusal has nothing to print")
+			}
+			if !strings.Contains(advertisement.Reason.Error(), want.reason) {
+				t.Fatalf("reason = %q, want it to name %q", advertisement.Reason, want.reason)
+			}
+		})
+	}
+}
+
+// A record exactly at the bound still parses. The limit refuses what is larger
+// than a record may be, not what is merely large.
+func TestAResidentRecordAtTheBoundStillReads(t *testing.T) {
+	workspace := residentWorkspace(t)
+	head := append([]byte(`{"url":"http://127.0.0.1:7788","genesis":`), []byte(strconv.Quote(workspace.config.Genesis))...)
+	head = append(head, []byte(`,"pad":"`)...)
+	tail := []byte(`"}`)
+	padding := advertisementLimit - len(head) - len(tail)
+	if padding < 0 {
+		t.Fatalf("the bound is smaller than a minimal record")
+	}
+	content := append(append(head, bytes.Repeat([]byte("x"), padding)...), tail...)
+	if len(content) != advertisementLimit {
+		t.Fatalf("fixture is %d bytes, want exactly %d", len(content), advertisementLimit)
+	}
+	writeAdvertisement(t, workspace, content)
+	if advertisement := workspace.ResidentAdvertisement(); advertisement.State != AdvertisementPublished {
+		t.Fatalf("a record exactly at the bound was refused: %+v", advertisement)
 	}
 }
 
@@ -79,12 +243,11 @@ func TestWithdrawalLeavesALaterServiceAdvertised(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace.MetaDir, residentFile), successor, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeAdvertisement(t, workspace, successor)
 	withdraw()
-	if url, ok := workspace.ResidentURL(); !ok || url != "http://127.0.0.1:7799" {
-		t.Fatalf("the successor's address was withdrawn: %q ok=%v", url, ok)
+	advertisement := workspace.ResidentAdvertisement()
+	if advertisement.State != AdvertisementPublished || advertisement.URL != "http://127.0.0.1:7799" {
+		t.Fatalf("the successor's address was withdrawn: %+v", advertisement)
 	}
 }
 

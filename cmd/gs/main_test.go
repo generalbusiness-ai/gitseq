@@ -177,7 +177,7 @@ func TestAServeRefusedForANonLoopbackListenAdvertisesNothing(t *testing.T) {
 	if !strings.Contains(err.Error(), "loopback") {
 		t.Fatalf("serve refused a non-loopback listen address for another reason: %v", err)
 	}
-	if published, ok := workspace.ResidentURL(); ok {
+	if published, ok := advertised(workspace); ok {
 		t.Fatalf("a refused serve advertised %q", published)
 	}
 }
@@ -3063,7 +3063,7 @@ func TestServePublishesWhereItListensAndWithdrawsOnExit(t *testing.T) {
 
 	var url string
 	for attempt := 0; attempt < 300 && url == ""; attempt++ {
-		if published, ok := workspace.ResidentURL(); ok {
+		if published, ok := advertised(workspace); ok {
 			url = published
 			break
 		}
@@ -3084,7 +3084,7 @@ func TestServePublishesWhereItListensAndWithdrawsOnExit(t *testing.T) {
 	if err := <-served; err != nil && !errors.Is(err, http.ErrServerClosed) {
 		t.Fatalf("serving failed: %v", err)
 	}
-	if published, ok := workspace.ResidentURL(); ok {
+	if published, ok := advertised(workspace); ok {
 		t.Fatalf("a stopped service is still advertised at %q", published)
 	}
 }
@@ -3110,7 +3110,7 @@ func TestServeWithdrawsWhenTheProcessIsInterrupted(t *testing.T) {
 	if err := serving.Wait(); err != nil {
 		t.Fatalf("stopping normally was reported as a failure: %v", err)
 	}
-	if published, ok := workspace.ResidentURL(); ok {
+	if published, ok := advertised(workspace); ok {
 		t.Fatalf("an interrupted service is still advertised at %q", published)
 	}
 }
@@ -3150,7 +3150,7 @@ func TestASecondServeProcessRefusesAndLeavesTheIncumbentUntouched(t *testing.T) 
 	if value, _, err := workspace.Store.RefValue(ctx, ref); err != nil || value != held {
 		t.Fatalf("the refused process disturbed the claim: %q (was %q) err=%v", value, held, err)
 	}
-	if published, ok := workspace.ResidentURL(); !ok || published != url {
+	if published, ok := advertised(workspace); !ok || published != url {
 		t.Fatalf("the refused process took the advertisement: %q ok=%v", published, ok)
 	}
 	response, err := http.Get(url + "/v0/presence")
@@ -3276,7 +3276,7 @@ func startServing(t *testing.T, binary, repo string) *exec.Cmd {
 func awaitPublication(t *testing.T, workspace *app.Workspace, previous string) string {
 	t.Helper()
 	for attempt := 0; attempt < 600; attempt++ {
-		if published, ok := workspace.ResidentURL(); ok && published != previous {
+		if published, ok := advertised(workspace); ok && published != previous {
 			return published
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -3524,7 +3524,7 @@ func TestASecondServeRefusesWhileTheFirstHoldsTheRepository(t *testing.T) {
 
 	var url string
 	for attempt := 0; attempt < 300 && url == ""; attempt++ {
-		if published, ok := workspace.ResidentURL(); ok {
+		if published, ok := advertised(workspace); ok {
 			url = published
 			break
 		}
@@ -3554,7 +3554,7 @@ func TestASecondServeRefusesWhileTheFirstHoldsTheRepository(t *testing.T) {
 		stop()
 		t.Fatalf("the refused start disturbed the claim: %q (was %q) err=%v", value, held, err)
 	}
-	if published, ok := workspace.ResidentURL(); !ok || published != url {
+	if published, ok := advertised(workspace); !ok || published != url {
 		stop()
 		t.Fatalf("the refused start advertised itself: %q ok=%v", published, ok)
 	}
@@ -3577,7 +3577,7 @@ func TestASecondServeRefusesWhileTheFirstHoldsTheRepository(t *testing.T) {
 	}()
 	var successor string
 	for attempt := 0; attempt < 300 && successor == ""; attempt++ {
-		if published, ok := workspace.ResidentURL(); ok && published != url {
+		if published, ok := advertised(workspace); ok && published != url {
 			successor = published
 			break
 		}
@@ -3641,7 +3641,7 @@ func TestServeRecoversAClaimLeftByADeadOwner(t *testing.T) {
 	}()
 	var url string
 	for attempt := 0; attempt < 300 && url == ""; attempt++ {
-		if published, ok := workspace.ResidentURL(); ok {
+		if published, ok := advertised(workspace); ok {
 			url = published
 			break
 		}

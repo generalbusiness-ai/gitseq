@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,10 +31,21 @@ const residentFile = "resident.json"
 
 // PublishResident advertises this process as the repository's resident service
 // and returns the withdrawal. It is endpoint metadata, not authority: the last
-// writer wins, and a record left behind by a dead process costs a client only a
-// refused connection before it falls back to acting locally. Ownership of the
-// repository lives in the claim ref instead — see ClaimResident — and a serving
-// process advertises only after it holds one.
+// writer wins, and ownership of the repository lives in the claim ref instead —
+// see ClaimResident — with a serving process advertising only after it holds
+// one.
+//
+// A record left behind by a dead process is still a trustworthy advertisement:
+// it reads, parses, names this workroom and carries a usable address. What
+// happens next depends on what the caller is doing. A read command may name the
+// failed request on standard error and answer from the verified local read
+// instead. A durable write does not fall back; it refuses, because folding an
+// act locally because a dial failed is a whole-log rebuild the author never
+// asked for.
+//
+// An advertisement that is not trustworthy — unreadable, oversized,
+// unparseable, addressless, or naming another workroom — refuses for every
+// caller before any of that, and ResidentAdvertisement carries the reason.
 func (w *Workspace) PublishResident(url string) (withdraw func(), err error) {
 	record := Resident{URL: strings.TrimRight(url, "/"), Genesis: w.config.Genesis, PID: os.Getpid()}
 	content, err := json.Marshal(record)
@@ -47,34 +60,102 @@ func (w *Workspace) PublishResident(url string) (withdraw func(), err error) {
 		// Only withdraw our own advertisement. A later service that took the
 		// repository over is still serving it, and removing its record would
 		// send clients into degraded mode for no reason.
-		if current, ok := readResident(path); ok && current.PID == record.PID {
+		if current, err := readResident(path); err == nil && current.PID == record.PID {
 			_ = os.Remove(path)
 		}
 	}, nil
 }
 
-// ResidentURL names the service holding this workroom, when one has published
-// itself. A record naming a different genesis was left by a workroom this
-// repository no longer has, and is refused rather than trusted: acting through
-// it would append to another log.
-func (w *Workspace) ResidentURL() (string, bool) {
-	record, ok := readResident(filepath.Join(w.MetaDir, residentFile))
-	if !ok || record.URL == "" || record.Genesis != w.config.Genesis {
-		return "", false
-	}
-	return record.URL, true
+// AdvertisementState is what the repository's resident record resolves to. The
+// three states are deliberately distinct, because collapsing them into one
+// boolean is what let a corrupt, truncated, empty or foreign record read as
+// "nothing is advertised" and send a durable act quietly into the local fold.
+// A caller that must fail closed can only do so if the read tells it that a
+// record is there and cannot be trusted.
+type AdvertisementState int
+
+const (
+	// NoAdvertisement means the record is not there at all. Nothing has been
+	// published, so a client acts locally exactly as it did before residents
+	// existed.
+	NoAdvertisement AdvertisementState = iota
+	// AdvertisementPublished means a record naming this workroom carries an
+	// address. The address itself is still untrusted input and must be
+	// validated before it is dialled.
+	AdvertisementPublished
+	// AdvertisementUnusable means a record is present and cannot be trusted:
+	// unreadable, oversized, not a record, addressless, or naming another
+	// workroom. Reason says which.
+	AdvertisementUnusable
+)
+
+// ResidentAdvertisement is one reading of the record. URL is set only when the
+// state is AdvertisementPublished, or when an unusable record still carried an
+// address worth naming in a refusal. Reason is set only when the state is
+// AdvertisementUnusable.
+type ResidentAdvertisement struct {
+	State  AdvertisementState
+	URL    string
+	Reason error
 }
 
-func readResident(path string) (Resident, bool) {
-	content, err := os.ReadFile(path)
+// advertisementLimit bounds the record read. The advertisement is an ordinary
+// file inside the repository that any local process can write, so its size is
+// untrusted; a genuine record is a couple of hundred bytes. The bound is what
+// stops an oversized file being read whole before anything about it has been
+// checked.
+const advertisementLimit = 8 << 10
+
+// ResidentAdvertisement reads the record that says which service holds this
+// workroom. Every way the record can fail is reported as AdvertisementUnusable
+// with the reason, and only a genuinely missing file is absence. A record
+// naming a different genesis was left by a workroom this repository no longer
+// has: acting through it would append to another log, so it is a refusal
+// rather than a vacancy.
+func (w *Workspace) ResidentAdvertisement() ResidentAdvertisement {
+	path := filepath.Join(w.MetaDir, residentFile)
+	record, err := readResident(path)
 	if err != nil {
-		return Resident{}, false
+		if errors.Is(err, fs.ErrNotExist) {
+			return ResidentAdvertisement{State: NoAdvertisement}
+		}
+		return ResidentAdvertisement{State: AdvertisementUnusable, Reason: fmt.Errorf("the record at %s %w", path, err)}
+	}
+	if record.URL == "" {
+		return ResidentAdvertisement{State: AdvertisementUnusable, Reason: fmt.Errorf("the record at %s advertises no address", path)}
+	}
+	if record.Genesis != w.config.Genesis {
+		return ResidentAdvertisement{
+			State:  AdvertisementUnusable,
+			URL:    record.URL,
+			Reason: fmt.Errorf("the record at %s names workroom %q, not %q", path, record.Genesis, w.config.Genesis),
+		}
+	}
+	return ResidentAdvertisement{State: AdvertisementPublished, URL: record.URL}
+}
+
+// readResident reads and decodes the record, reporting why rather than whether.
+// The bound is applied before decoding, and one byte past the limit is read so
+// that a file exactly at the limit still parses and a larger one is refused
+// without being held whole.
+func readResident(path string) (Resident, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return Resident{}, fmt.Errorf("cannot be read: %w", err)
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, advertisementLimit+1))
+	if err != nil {
+		return Resident{}, fmt.Errorf("cannot be read: %w", err)
+	}
+	if len(content) > advertisementLimit {
+		return Resident{}, fmt.Errorf("is larger than the %d bytes a resident record may be", advertisementLimit)
 	}
 	var record Resident
 	if err := json.Unmarshal(content, &record); err != nil {
-		return Resident{}, false
+		return Resident{}, fmt.Errorf("is not a resident record: %w", err)
 	}
-	return record, true
+	return record, nil
 }
 
 // ResidentRef names the ownership claim for one workroom. It is an ordinary

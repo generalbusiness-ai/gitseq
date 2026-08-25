@@ -248,6 +248,16 @@ address advertisement:
   rebuild the author never asked for and cannot see. `--server -` always acts
   locally.
 
+  Reading the record answers one of three things, not two: nothing is
+  advertised, a record names this workroom at some address, or a record is
+  there and cannot be trusted. Only a genuinely missing file is absence.
+  Unreadable, larger than the 8 KiB bound, not a record, carrying no address,
+  or naming another workroom are all the third answer, and it carries the
+  reason. `internal/app` owns that read; `cmd/gs` turns the third answer into
+  a refusal before it reads a signing key or appends anything, and names
+  `--server -` as the way out. `cmd/gitseq-mcp` decides separately, and
+  treats it as no resident — see [`gs serve`](gs/serve.md).
+
 Ownership authorizes serving; binding a listener does not. A resident binds
 first so the claim can carry the real address, contests ownership, and hands
 the listener to the HTTP server only once the claim is held.

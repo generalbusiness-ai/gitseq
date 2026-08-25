@@ -224,6 +224,14 @@ refused outright. With the flag omitted, `gs status` asks the resident this
 repository publishes and folds locally only when nothing is advertised;
 `--server -` always folds locally.
 
+Nothing advertised means the record is not there. A record that is there and
+cannot be trusted — unreadable, larger than 8 KiB, not a record, carrying no
+address, naming another workroom, or carrying an address that is not a bare
+loopback origin — is refused with the reason and with `--server -` named as
+the way out. That is the same refusal every `gs` command makes, reads
+included, so a repository whose advertisement has been tampered with does
+not answer some questions and refuse others.
+
 The default view is read from the resident's bounded summary endpoint.
 That read is deliberately narrow: no redirects are followed, the response
 is limited to 64 KiB and the request to two seconds, and the returned
@@ -236,6 +244,13 @@ moves while the answer is being read is **named on standard error** and
 the command then does the verified local read instead. The header says
 `verified local fallback`, so a fallback answer is never presented as a
 resident one.
+
+This fallback belongs to reading, and only after the resident has been
+asked and the request or the response failed. It is not what happens when
+the advertisement itself cannot be trusted. An unreadable, oversized,
+unparseable or addressless `resident.json`, or one naming another
+workroom, refuses here as it does everywhere, before any request is made
+— see [`gs serve`](serve.md). Durable writes never fall back at all.
 
 ## Cost
 

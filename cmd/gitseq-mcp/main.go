@@ -149,15 +149,24 @@ type room struct {
 // endpoint names the service to use, re-reading the repository's published
 // address whenever the last one is gone, so a service started or restarted
 // after the adapter attached is picked up without reconnecting the client.
+//
+// The adapter decides deliberately what an untrustworthy advertisement means
+// here, rather than inheriting the answer from a boolean. `gs` refuses on one,
+// because a durable act it folds locally instead is a whole-log rebuild the
+// author never asked for and cannot see. This adapter has a live client on the
+// other side of a long-running session and no channel to refuse a whole
+// attachment on, so it treats an unusable record as no resident and works
+// locally, exactly as it did before the read could tell the two apart. The two
+// surfaces disagree knowingly, and `docs/reference/gs/serve.md` says so.
 func (r *room) endpoint() (string, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.baseURL == "" {
-		published, ok := r.workspace.ResidentURL()
-		if !ok {
+		advertisement := r.workspace.ResidentAdvertisement()
+		if advertisement.State != app.AdvertisementPublished {
 			return "", false
 		}
-		r.baseURL = published
+		r.baseURL = advertisement.URL
 	}
 	validated, err := residentclient.ValidateURL(r.baseURL)
 	if err != nil {

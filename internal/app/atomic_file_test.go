@@ -50,8 +50,8 @@ func TestConcurrentLocalSavesUseUniqueTemporaryFiles(t *testing.T) {
 	if _, err := Open(context.Background(), workspace.Repo); err != nil {
 		t.Fatalf("concurrent saves left an invalid config: %v", err)
 	}
-	if url, ok := workspace.ResidentURL(); !ok || url == "" {
-		t.Fatalf("concurrent publishes left no valid resident: %q ok=%v", url, ok)
+	if advertisement := workspace.ResidentAdvertisement(); advertisement.State != AdvertisementPublished || advertisement.URL == "" {
+		t.Fatalf("concurrent publishes left no valid resident: %+v", advertisement)
 	}
 	for _, pattern := range []string{".config.json.tmp-*", ".resident.json.tmp-*"} {
 		matches, err := filepath.Glob(filepath.Join(workspace.MetaDir, pattern))

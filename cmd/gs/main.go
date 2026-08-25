@@ -1769,10 +1769,15 @@ const localFold = "-"
 // verified fold even when a resident is advertised; and an empty flag takes
 // the address the repository itself publishes, so the resident a checkout
 // already runs answers by default and a repository without one acts locally
-// exactly as before. An advertisement that cannot be validated is refused
-// rather than ignored: the record is an ordinary file any local process can
-// write, and quietly folding a durable act locally because it was malformed
-// would hide both the tampering and the minutes it costs.
+// exactly as before.
+//
+// Only a genuinely missing record is absence. A record that is present and
+// cannot be trusted — unreadable, oversized, not a record, addressless, or
+// naming another workroom — is refused rather than ignored: it is an ordinary
+// file any local process can write, and quietly folding a durable act locally
+// because it was corrupt would hide both the tampering and the minutes it
+// costs. The refusal names the way out, and it happens here, before any
+// command reads a signing key or appends anything.
 func resolveServerURL(workspace *app.Workspace, explicit string) (string, error) {
 	if explicit == localFold {
 		return "", nil
@@ -1780,13 +1785,16 @@ func resolveServerURL(workspace *app.Workspace, explicit string) (string, error)
 	if explicit != "" {
 		return residentclient.ValidateURL(explicit)
 	}
-	advertised, published := workspace.ResidentURL()
-	if !published {
+	advertisement := workspace.ResidentAdvertisement()
+	if advertisement.State == app.NoAdvertisement {
 		return "", nil
 	}
-	validated, err := residentclient.ValidateURL(advertised)
+	if advertisement.State == app.AdvertisementUnusable {
+		return "", fmt.Errorf("this repository advertises a resident that cannot be trusted: %w; pass --server %s to act locally instead", advertisement.Reason, localFold)
+	}
+	validated, err := residentclient.ValidateURL(advertisement.URL)
 	if err != nil {
-		return "", fmt.Errorf("this repository advertises %q, which is not usable: %w; pass --server %s to act locally instead", advertised, err, localFold)
+		return "", fmt.Errorf("this repository advertises %q, which is not usable: %w; pass --server %s to act locally instead", advertisement.URL, err, localFold)
 	}
 	return validated, nil
 }
