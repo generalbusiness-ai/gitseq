@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3b5d320ba5ca0ac0b3bb02c51c21dbdbb6a15912","text":"Retire stale coordination request #5356. Its requested architecture re-anchor child #5361 completed; this parent is residue."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a530fbe1548e45e54b851f99b1dec6c1f1899222","text":"Retire stale request #648. Its implementation and review children #674 and #690 are satisfied; no work remains on this historical spike."}
