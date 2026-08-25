@@ -2278,6 +2278,45 @@ func TestCitationsResolveThroughEveryDurableRecordNotOnlyStatements(t *testing.T
 	}
 }
 
+// Every way a citation can be dead while still resolving is invisible in the
+// submission result otherwise: the record lands, the verdict reads effective,
+// and only the projection knows the ground moved before the act stood on it.
+func TestNotesNameARestOnBasisThatWasAlreadyDead(t *testing.T) {
+	const event = "git:sha1:g#git:sha1:new"
+	const retired = "git:sha1:g#git:sha1:retired"
+	const stale = "git:sha1:g#git:sha1:stale"
+	const superseding = "git:sha1:g#git:sha1:supersede"
+	projection := workroom.Projection{
+		Statements: []workroom.Statement{
+			{Event: retired, Retired: true},
+			{Event: stale, Stale: true},
+			{Event: "git:sha1:g#git:sha1:live"},
+		},
+		Acts:      []workroom.Act{{Event: superseding, Type: "supersede", Verdict: workroom.Effective}},
+		Decisions: []workroom.Decision{{Event: event, Verdict: workroom.Effective}},
+	}
+
+	filing := app.Act{Kind: workroom.KindAssert, RestsOn: []string{retired, stale, superseding}}
+	dead, reported := projectionNotes(projection, filing, event)["dead_rests_on"].(map[string]string)
+	if !reported {
+		t.Fatal("no dead_rests_on note for citations on retired, stale, and supersede bases")
+	}
+	want := map[string]string{retired: "retired", stale: "stale", superseding: "supersede"}
+	if len(dead) != len(want) {
+		t.Fatalf("dead_rests_on = %v, want exactly %v", dead, want)
+	}
+	for id, reason := range want {
+		if dead[id] != reason {
+			t.Errorf("dead_rests_on[%s] = %q, want %q", id, dead[id], reason)
+		}
+	}
+
+	clean := app.Act{Kind: workroom.KindAssert, RestsOn: []string{"git:sha1:g#git:sha1:live"}}
+	if _, reported := projectionNotes(projection, clean, event)["dead_rests_on"]; reported {
+		t.Error("a citation on living ground was named as dead")
+	}
+}
+
 // A report that sets body.verdict and is then ruled ineffective projects no
 // review. Saying it did not set the field would send its author to fix
 // something that is not wrong, while the real reason sits in the verdict note

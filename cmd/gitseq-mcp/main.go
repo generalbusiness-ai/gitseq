@@ -1095,6 +1095,20 @@ func projectionNotes(projection workroom.Projection, act app.Act, event string) 
 		notes["unresolved_rests_on"] = unresolved
 	}
 
+	// Citations that resolve but were already dead when the act landed on
+	// them: the cited record superseded, stale because its own basis moved, or
+	// itself an effective supersession. A landed record reads as success all
+	// the same, and nothing else in the result tells resting on living ground
+	// from citing a corpse — which is how authors end up building on ground
+	// they would never have chosen had they been told.
+	if dead := workroom.DeadBases(projection, act.RestsOn); len(dead) > 0 {
+		reasons := make(map[string]string, len(dead))
+		for id, basis := range dead {
+			reasons[id] = string(basis)
+		}
+		notes["dead_rests_on"] = reasons
+	}
+
 	// Whether a report became a review, and if so what a merge would make of
 	// it. A report reads as a review to any human the moment its text says
 	// "approved"; the fold only sees body.verdict.

@@ -327,6 +327,12 @@ func stateCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	fmt.Println(record.ID)
+	// The record id is already on standard output, so the advisory cannot be
+	// mistaken for it: callers parse exactly one event id line and nothing
+	// else moves there.
+	if snapshot, err := workspace.Snapshot(ctx); err == nil {
+		noteDeadRestsOn(snapshot.Projection, rests)
+	}
 	return nil
 }
 
@@ -1336,10 +1342,36 @@ func batchCommand(ctx context.Context, arguments []string) error {
 		}
 	}
 	report, err := runBatch(ctx, workspace, *serverURL, *as, private, acts, *citedOK)
+	noteBatchDeadRestsOn(ctx, workspace, acts, report)
 	if printErr := printJSON(report); printErr != nil && err == nil {
 		err = printErr
 	}
 	return err
+}
+
+// noteBatchDeadRestsOn gives every act a batch landed the same advisory the
+// single state path gives, from one projection read for the whole chain. The
+// labels a batch resolves internally never reach this function, so they are
+// rebuilt from the report: an act that landed or replayed names its event, in
+// order, which is exactly what runBatch minted as it went.
+func noteBatchDeadRestsOn(ctx context.Context, workspace *app.Workspace, acts []batchAct, report batchReport) {
+	minted := make(map[string]string)
+	for _, outcome := range report.Acts {
+		if outcome.Label != "" && outcome.Event != "" {
+			minted[outcome.Label] = outcome.Event
+		}
+	}
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		return
+	}
+	for _, entry := range acts {
+		resolved := make([]string, 0, len(entry.RestsOn))
+		for _, reference := range entry.RestsOn {
+			resolved = append(resolved, resolveLabel(reference, minted))
+		}
+		noteDeadRestsOn(snapshot.Projection, resolved)
+	}
 }
 
 // readBatch reads the whole input before anything lands, and proves the act
@@ -1511,6 +1543,26 @@ func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, acto
 func warnUndefinedKind(ctx context.Context, workspace *app.Workspace, kind workroom.Kind) {
 	if warning := residentclient.UndefinedKindWarning(ctx, workspace, kind); warning != "" {
 		fmt.Fprintln(os.Stderr, "gs: warning:", warning)
+	}
+}
+
+// noteDeadRestsOn tells an author, on standard error, which citations of the
+// act they just filed were already dead when it landed — retired, stale, or
+// themselves effective supersessions. The act stays either way: the note
+// describes, it does not refuse, and an author may cite a dead event for
+// reasons of their own that a refusal would overrule. Each line names the
+// event id as written so it can be found again in a transcript.
+func noteDeadRestsOn(projection workroom.Projection, restsOn []string) {
+	dead := workroom.DeadBases(projection, restsOn)
+	if len(dead) == 0 {
+		return
+	}
+	said := make(map[string]bool, len(dead))
+	for _, id := range restsOn {
+		if reason, isDead := dead[id]; isDead && !said[id] {
+			said[id] = true
+			fmt.Fprintf(os.Stderr, "note: rests-on %s is already dead (%s)\n", id, reason)
+		}
 	}
 }
 

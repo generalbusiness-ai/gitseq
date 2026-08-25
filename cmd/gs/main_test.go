@@ -1930,6 +1930,119 @@ func TestStateWithAnUndefinedKindWarnsTheAuthorOnStandardError(t *testing.T) {
 	}
 }
 
+// deadWorld lands one live claim, retires it with a supersession, and files
+// another claim on the retired one, which inherits staleness while staying
+// live. It returns the three identifiers a later act can then cite to rest on
+// ground that died in each of the three ways.
+func deadWorld(t *testing.T, f batchFixture) (ground, stale, supersedeEvent string) {
+	t.Helper()
+	printed, _, err := f.state("operator", "assert", "the ground truth", "dead-basis-ground")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ground = strings.TrimSpace(printed)
+	retire := `[{"verb":"supersede","target":"` + ground + `","text":"withdrawn","idempotency_key":"dead-basis-retire"}]`
+	if _, err := f.run("operator", retire); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot := f.snapshot()
+	if statement := statementByEvent(t, snapshot.Projection, ground); !statement.Retired || statement.Stale {
+		t.Fatalf("ground after retirement: retired=%v stale=%v, want retired only", statement.Retired, statement.Stale)
+	}
+	for _, act := range snapshot.Projection.Acts {
+		if act.Type == "supersede" && act.Target == ground && act.Verdict == workroom.Effective {
+			supersedeEvent = act.Event
+		}
+	}
+	if supersedeEvent == "" {
+		t.Fatal("the retirement did not project as an effective supersede act")
+	}
+
+	stalePrinted, _, err := f.state("operator", "assert", "resting on withdrawn ground", "dead-basis-stale", ground)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale = strings.TrimSpace(stalePrinted)
+	if statement := statementByEvent(t, f.snapshot().Projection, stale); statement.Retired || !statement.Stale {
+		t.Fatalf("claim after its basis retired: retired=%v stale=%v, want stale and live", statement.Retired, statement.Stale)
+	}
+	return ground, stale, supersedeEvent
+}
+
+// Everything the state command used to say about resting on a retired basis
+// was indistinguishable from resting on living ground: the act lands, an event
+// id comes back, the exit is clean. Each of the three deaths gets its own line,
+// named by event id, and a citation that is still alive says nothing.
+func TestStateWarnsWhenARestOnBasisIsAlreadyDead(t *testing.T) {
+	f := newBatchFixture(t)
+	ground, stale, supersedeEvent := deadWorld(t, f)
+
+	stdout, stderr, err := f.state("operator", "assert", "citing every dead thing at once", "dead-basis-warn",
+		ground, stale, supersedeEvent, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	if len(lines) != 1 || !strings.Contains(lines[0], "#git:") {
+		t.Fatalf("stdout = %q, want exactly one event id line", stdout)
+	}
+	for id, reason := range map[string]string{
+		ground:         "retired",
+		stale:          "stale",
+		supersedeEvent: "supersede",
+	} {
+		want := "note: rests-on " + id + " is already dead (" + reason + ")"
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr %q does not say %q", stderr, want)
+		}
+	}
+	if strings.Contains(stderr, f.genesis) {
+		t.Errorf("stderr %q warns about the living genesis basis", stderr)
+	}
+
+	_, quiet, err := f.state("operator", "assert", "an act on living ground", "dead-basis-quiet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quiet != "" {
+		t.Fatalf("a clean act warned anyway: %q", quiet)
+	}
+}
+
+// The batch path walks its own acts in order, resolving labels the way runBatch
+// did, so an intra-batch citation is warned about by its durable name.
+func TestBatchWarnsWhenARestOnBasisIsAlreadyDead(t *testing.T) {
+	f := newBatchFixture(t)
+	ground, _, supersedeEvent := deadWorld(t, f)
+
+	acts := `[
+	  {"label":"stale","verb":"state","kind":"assert","text":"on withdrawn ground","rests_on":["` + ground + `"]},
+	  {"label":"final","verb":"state","kind":"assert","text":"citing the chain","rests_on":["$stale","` + supersedeEvent + `"]}
+	]`
+	stdout, stderr, batchErr := f.runFileStreams("operator", acts)
+	if batchErr != nil {
+		t.Fatal(batchErr)
+	}
+	var report batchReport
+	if err := json.Unmarshal(stdout, &report); err != nil {
+		t.Fatalf("decode batch report %q: %v", stdout, err)
+	}
+	if report.Landed != 2 || report.Acts[0].Outcome != "landed" || report.Acts[1].Outcome != "landed" {
+		t.Fatalf("batch report = %#v, want two landed acts", report)
+	}
+	resolvedStale := report.Acts[0].Event
+	for _, want := range []string{
+		"note: rests-on " + ground + " is already dead (retired)",
+		"note: rests-on " + resolvedStale + " is already dead (stale)",
+		"note: rests-on " + supersedeEvent + " is already dead (supersede)",
+	} {
+		if !strings.Contains(string(stderr), want) {
+			t.Errorf("stderr %q does not say %q", stderr, want)
+		}
+	}
+}
+
 // A fixture template is one finished fixture repository, built once for the
 // whole package run. Building a workroom costs dozens of git subprocesses,
 // so every test that needs one copies the finished template instead of
@@ -2041,6 +2154,13 @@ func (f batchFixture) snapshot() app.Snapshot {
 // returns whatever the command printed together with its error. Input rejected
 // before the first append prints nothing at all, so the raw bytes matter.
 func (f batchFixture) runFile(actor, acts string) ([]byte, error) {
+	printed, _, err := f.runFileStreams(actor, acts)
+	return printed, err
+}
+
+// runFileStreams is runFile for the cases where what lands on standard error
+// while the batch runs is the point.
+func (f batchFixture) runFileStreams(actor, acts string) ([]byte, []byte, error) {
 	f.t.Helper()
 	path := filepath.Join(f.t.TempDir(), "batch.json")
 	if err := os.WriteFile(path, []byte(acts), 0o600); err != nil {
@@ -2050,17 +2170,27 @@ func (f batchFixture) runFile(actor, acts string) ([]byte, error) {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	stdout := os.Stdout
-	os.Stdout = writer
-	batchErr := batchCommand(f.ctx, []string{"--repo", f.repo, "--as", actor, path})
-	os.Stdout = stdout
-	writer.Close()
-	printed, err := io.ReadAll(reader)
-	reader.Close()
+	errReader, errWriter, err := os.Pipe()
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	return printed, batchErr
+	stdout, stderr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = writer, errWriter
+	batchErr := batchCommand(f.ctx, []string{"--repo", f.repo, "--as", actor, path})
+	os.Stdout, os.Stderr = stdout, stderr
+	writer.Close()
+	errWriter.Close()
+	printed, err := io.ReadAll(reader)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	warned, err := io.ReadAll(errReader)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	reader.Close()
+	errReader.Close()
+	return printed, warned, batchErr
 }
 
 // run is runFile for the cases that reach the report the command prints.
@@ -2076,8 +2206,13 @@ func (f batchFixture) run(actor, acts string) (batchReport, error) {
 
 // state runs the state command the way a person does and returns what each
 // stream received, because which stream carried the warning is the point.
-func (f batchFixture) state(actor, kind, text, key string) (string, string, error) {
+// Rests-on bases default to the genesis event; a test citing other ground
+// names it and every id gets its own repeat of the flag, as a person types.
+func (f batchFixture) state(actor, kind, text, key string, rests ...string) (string, string, error) {
 	f.t.Helper()
+	if len(rests) == 0 {
+		rests = []string{f.genesis}
+	}
 	outReader, outWriter, err := os.Pipe()
 	if err != nil {
 		f.t.Fatal(err)
@@ -2088,10 +2223,11 @@ func (f batchFixture) state(actor, kind, text, key string) (string, string, erro
 	}
 	stdout, stderr := os.Stdout, os.Stderr
 	os.Stdout, os.Stderr = outWriter, errWriter
-	stateErr := stateCommand(f.ctx, []string{
-		"--repo", f.repo, "--as", actor, "--kind", kind, "--text", text,
-		"--rests-on", f.genesis, "--idempotency-key", key,
-	})
+	arguments := []string{"--repo", f.repo, "--as", actor, "--kind", kind, "--text", text}
+	for _, id := range rests {
+		arguments = append(arguments, "--rests-on", id)
+	}
+	stateErr := stateCommand(f.ctx, append(arguments, "--idempotency-key", key))
 	os.Stdout, os.Stderr = stdout, stderr
 	outWriter.Close()
 	errWriter.Close()
