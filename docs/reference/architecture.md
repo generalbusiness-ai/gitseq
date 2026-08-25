@@ -766,7 +766,15 @@ The outer surfaces present one application to people and programs:
   query needs a fact Git holds
   rather than the projection — whether an approved head is an ancestor of a
   branch — that join happens here, because Git remains outside the Workroom
-  interpreter.
+  interpreter. Its merge command adds one prospective surface rule the fold
+  does not hold: a reviewed path bounds cross-author retirement at itself and
+  beneath it, never above it, checked once in fresh-merge preflight — after
+  Git reserves the receipt ref and stages the tentative merge, but before the
+  target moves and before any durable workroom record is appended.
+  Succession recording never re-applies that guard: resuming an
+  already-sealed receipt appends its recorded suffix without replanning, so
+  the symmetric lineage rule of layer 5 keeps judging everything already
+  admitted.
 - `cmd/gitseq-mcp` exposes Workroom tools and live coordination over an MCP
   transport. The MCP protocol is a surface contract, not the Workroom fold.
   The `work` tool's `stale` enum admits `summary`, `include`, `only` and
