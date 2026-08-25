@@ -24,7 +24,7 @@ whole projection into a terminal. It is the same selection the MCP
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--json` | `false` | Emit the inspection as JSON instead of the human view. |
-| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. |
+| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
 The event is a **positional argument**, and exactly one is required. It
 must be a canonical event identifier; an abbreviation resolves to nothing.

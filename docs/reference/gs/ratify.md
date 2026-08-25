@@ -17,7 +17,7 @@ is decided by the fold, from who signed it and what the target is.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The ratifying actor. |
-| `--server` | | Submit through a resident sequencer instead of writing locally. |
+| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 
 The target event is a **positional argument**, and flag parsing stops at

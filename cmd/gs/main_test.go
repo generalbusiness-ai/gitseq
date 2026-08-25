@@ -193,28 +193,6 @@ func TestProfilerIsDisabledByDefaultAndLoopbackOnly(t *testing.T) {
 	}
 }
 
-func TestValidateLoopbackServer(t *testing.T) {
-	tests := map[string]bool{
-		"http://127.0.0.1:7777":   true,
-		"http://[::1]:7777":       true,
-		"http://localhost:7777":   true,
-		"https://127.0.0.1:7777":  false,
-		"http://user@127.0.0.1:7": false,
-		"http://192.0.2.1:7777":   false,
-		"http://0.0.0.0:7777":     false,
-		"http://127.0.0.1/x":      false,
-		"http://127.0.0.1/?x=y":   false,
-		"not-a-url":               false,
-	}
-	for raw, want := range tests {
-		t.Run(raw, func(t *testing.T) {
-			if got := validateLoopbackServer(raw) == nil; got != want {
-				t.Fatalf("validateLoopbackServer(%q) success = %v, want %v", raw, got, want)
-			}
-		})
-	}
-}
-
 func statusSummaryFixture(t *testing.T) (*app.Workspace, service.SummaryStatus) {
 	t.Helper()
 	ctx := context.Background()

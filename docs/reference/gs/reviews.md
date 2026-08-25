@@ -26,7 +26,7 @@ while anything is outstanding, after printing what.
 | `--checkout` | `--repo` | The checkout whose Git history answers the ancestry question. |
 | `--limit` | `20` | How many events to name under each count, 1 to 50. |
 | `--json` | `false` | Emit the report as JSON instead of the human view. |
-| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. |
+| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
 ## Example
 

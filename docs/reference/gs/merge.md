@@ -23,7 +23,7 @@ resumable batch.
 | `--candidate` | *(required)* | The full, lowercase, approved commit object ID. |
 | `--approval` | *(required)* | The ratified approval report event. |
 | `--text` | *(required)* | A plain-language description of the change and its impact. This begins the merge commit message. |
-| `--server` | | Submit the durable merge receipt through a resident sequencer instead of writing locally. |
+| `--server` | | Submit the durable merge receipt through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
 It takes no positional arguments.
 

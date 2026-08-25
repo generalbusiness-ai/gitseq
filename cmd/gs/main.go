@@ -297,7 +297,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	as := set.String("as", "", "actor name")
 	kind := set.String("kind", "", "statement kind")
 	message := set.String("text", "", "statement text")
-	serverURL := set.String("server", "", "resident sequencer URL")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	var bodyValues, rests, evidence values
 	set.Var(&bodyValues, "body", "body key=value (repeatable)")
@@ -314,6 +314,10 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
 	body, err := pairs(bodyValues)
 	if err != nil {
 		return err
@@ -322,7 +326,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	record, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: *message, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key})
+	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: *message, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key})
 	if err != nil {
 		return err
 	}
@@ -360,7 +364,7 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 	promise := set.String("promise", "", "review promise event")
 	verdict := set.String("verdict", "", "approved or changes-requested")
 	message := set.String("text", "", "review report")
-	serverURL := set.String("server", "", "resident sequencer URL")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	if err := set.Parse(arguments); err != nil {
 		return err
@@ -394,6 +398,10 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 	if err != nil {
 		return err
 	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
 	basis, err := validate(ctx, workspace, reviewer, *checkout, *artifact, *promise)
 	if err != nil {
 		return err
@@ -419,7 +427,7 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 		body["stale"] = "true"
 		body["staleness"] = basis.Staleness
 	}
-	record, err := submitAct(ctx, workspace, *serverURL, reviewer, app.Act{
+	record, err := submitAct(ctx, workspace, serverURL, reviewer, app.Act{
 		Verb: app.VerbState, Kind: workroom.KindReport, Text: *message,
 		Body:    body,
 		RestsOn: append([]string{*promise, basis.Request}, artifacts...), IdempotencyKey: *key,
@@ -438,7 +446,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	candidate := set.String("candidate", "", "full approved commit ID")
 	approval := set.String("approval", "", "ratified approval report event")
 	mergeText := set.String("text", "", "plain-language merge description and impact")
-	serverURL := set.String("server", "", "resident sequencer URL")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -449,6 +457,10 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return errors.New("merge requires --checkout, --candidate, and --approval")
 	}
 	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
@@ -496,7 +508,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		} else if refHead != existing.MergeHead {
 			return fmt.Errorf("merge receipt ref is at unexpected commit %s", refHead)
 		}
-		if err := recordMergeSuccession(ctx, workspace, *checkout, *serverURL, actor, private, existing); err != nil {
+		if err := recordMergeSuccession(ctx, workspace, *checkout, serverURL, actor, private, existing); err != nil {
 			return err
 		}
 		fmt.Println(existing.MergeHead)
@@ -571,7 +583,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	// that receipt chain can cross the exact local and resident admission size
 	// boundaries before moving HEAD; otherwise retry could never finish it.
 	prospectiveActs := successionActs(*approval, *candidate, targetPreHead, *candidate, staleness, plan)
-	if err := preflightBatchAdmission(ctx, workspace, *serverURL, actor, private, prospectiveActs, true); err != nil {
+	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, prospectiveActs, true); err != nil {
 		return fmt.Errorf("merge succession admission preflight: %w", err)
 	}
 	if _, err := git(ctx, *checkout, "commit", "-m", message); err != nil {
@@ -594,7 +606,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if _, err := git(ctx, *checkout, "update-ref", receiptRef, head, targetPreHead); err != nil {
 		return fmt.Errorf("publish merge receipt ref: %w", err)
 	}
-	if err := recordMergeSuccession(ctx, workspace, *checkout, *serverURL, actor, private, receipt); err != nil {
+	if err := recordMergeSuccession(ctx, workspace, *checkout, serverURL, actor, private, receipt); err != nil {
 		return err
 	}
 	fmt.Println(head)
@@ -1205,7 +1217,7 @@ func decisionEffective(projection workroom.Projection, event string) bool {
 func ratifyCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("ratify", arguments)
 	as := set.String("as", "", "actor name")
-	serverURL := set.String("server", "", "resident sequencer URL")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	if err := set.Parse(arguments); err != nil {
 		return err
@@ -1221,8 +1233,12 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
 	target := set.Arg(0)
-	record, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: *key})
+	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: *key})
 	if err != nil {
 		return err
 	}
@@ -1235,7 +1251,7 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	as := set.String("as", "", "actor name")
 	message := set.String("text", "", "reason")
 	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites the target")
-	serverURL := set.String("server", "", "resident sequencer URL")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	var rests values
 	set.Var(&rests, "rests-on", "additional causal event id")
@@ -1253,8 +1269,12 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
 	target := set.Arg(0)
-	record, err := submitAct(ctx, workspace, *serverURL, actor, app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key, CitedOK: *citedOK})
+	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key, CitedOK: *citedOK})
 	if err != nil {
 		return err
 	}
@@ -1348,7 +1368,7 @@ type batchReport struct {
 func batchCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("batch", arguments)
 	as := set.String("as", "", "actor name for every act in the batch")
-	serverURL := set.String("server", "", "resident sequencer URL")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites a target")
 	if err := set.Parse(arguments); err != nil {
 		return err
@@ -1364,6 +1384,10 @@ func batchCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
@@ -1384,7 +1408,7 @@ func batchCommand(ctx context.Context, arguments []string) error {
 			return fmt.Errorf("act %d: %w", position, err)
 		}
 	}
-	report, err := runBatch(ctx, workspace, *serverURL, *as, private, acts, *citedOK)
+	report, err := runBatch(ctx, workspace, serverURL, *as, private, acts, *citedOK)
 	noteBatchDeadRestsOn(ctx, workspace, acts, report)
 	if printErr := printJSON(report); printErr != nil && err == nil {
 		err = printErr
@@ -1652,15 +1676,27 @@ func noteDeadRestsOn(projection workroom.Projection, restsOn []string) {
 	}
 }
 
+// submitRequest sequences one signed act, and refuses rather than folding it
+// locally when the resident does not answer. A silent local fallback would
+// trade the second the resident costs for a whole-log fold nobody asked for,
+// and now that the address is usually the repository's own advertisement
+// rather than something the author typed, they would have no way to tell.
+// Only a refused dial is definite enough to say nothing landed — the same
+// asymmetry the ownership probe holds — so only that failure names the way
+// out; any other refusal is reported as it came.
 func submitRequest(ctx context.Context, workspace *app.Workspace, serverURL string, request kernel.Request) (app.Submission, error) {
-	return residentclient.New(10*time.Second).Submit(ctx, workspace, serverURL, request)
+	submission, err := residentclient.New(10*time.Second).Submit(ctx, workspace, serverURL, request)
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return app.Submission{}, fmt.Errorf("no resident is listening at %s, so nothing was appended: start one with `gs serve`, or pass --server %s to fold this act locally: %w", serverURL, localFold, err)
+	}
+	return submission, err
 }
 
 func statusCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("status", arguments)
 	jsonOutput := set.Bool("json", false, "render JSON")
 	all := set.Bool("all", false, "render complete human-readable status")
-	serverURL := set.String("server", "", "workroom URL including live state")
+	serverFlag := set.String("server", "", "workroom URL including live state")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -1671,12 +1707,13 @@ func statusCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if *serverURL != "" {
-		if err := validateLoopbackServer(*serverURL); err != nil {
-			return err
-		}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
+	if serverURL != "" {
 		if *jsonOutput || *all {
-			status, remoteErr := fetchFullStatus(ctx, *serverURL)
+			status, remoteErr := fetchFullStatus(ctx, serverURL)
 			if remoteErr == nil {
 				if err := validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head); err == nil {
 					if *jsonOutput {
@@ -1690,7 +1727,7 @@ func statusCommand(ctx context.Context, arguments []string) error {
 			}
 			fmt.Fprintf(os.Stderr, "gs: resident status unavailable (%v); performing verified local fallback\n", remoteErr)
 		} else {
-			summary, remoteErr := fetchSummary(ctx, workspace, *serverURL)
+			summary, remoteErr := fetchSummary(ctx, workspace, serverURL)
 			if remoteErr == nil {
 				_, err = os.Stdout.Write(statusview.Render(summary.Durable, "resident summary"))
 				return err
@@ -1710,7 +1747,7 @@ func statusCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	source := "verified local"
-	if *serverURL != "" {
+	if serverURL != "" {
 		source = "verified local fallback"
 	}
 	summary := statusview.Build(snapshot.Genesis, snapshot.Head, snapshot.Depth, snapshot.Projection)
@@ -1723,9 +1760,35 @@ const (
 	fullResponseLimit    = 64 << 20
 )
 
-func validateLoopbackServer(raw string) error {
-	_, err := residentclient.ValidateURL(raw)
-	return err
+// localFold is the --server value that forces the local verified fold. It is
+// not a URL, so no advertisement can ever collide with it.
+const localFold = "-"
+
+// resolveServerURL decides where one command acts. An explicit --server URL
+// is honoured after loopback validation; the value "-" forces the local
+// verified fold even when a resident is advertised; and an empty flag takes
+// the address the repository itself publishes, so the resident a checkout
+// already runs answers by default and a repository without one acts locally
+// exactly as before. An advertisement that cannot be validated is refused
+// rather than ignored: the record is an ordinary file any local process can
+// write, and quietly folding a durable act locally because it was malformed
+// would hide both the tampering and the minutes it costs.
+func resolveServerURL(workspace *app.Workspace, explicit string) (string, error) {
+	if explicit == localFold {
+		return "", nil
+	}
+	if explicit != "" {
+		return residentclient.ValidateURL(explicit)
+	}
+	advertised, published := workspace.ResidentURL()
+	if !published {
+		return "", nil
+	}
+	validated, err := residentclient.ValidateURL(advertised)
+	if err != nil {
+		return "", fmt.Errorf("this repository advertises %q, which is not usable: %w; pass --server %s to act locally instead", advertised, err, localFold)
+	}
+	return validated, nil
 }
 
 func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (service.SummaryStatus, error) {
@@ -1828,7 +1891,7 @@ func workCommand(ctx context.Context, arguments []string) error {
 	limit := set.Int("limit", 0, "page size")
 	cursor := set.String("cursor", "", "opaque continuation from a previous page")
 	jsonOutput := set.Bool("json", false, "render JSON")
-	serverURL := set.String("server", "", "resident sequencer URL")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -1842,7 +1905,11 @@ func workCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	workspace, err := openForQuery(ctx, *repo, *serverURL)
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
@@ -1856,15 +1923,15 @@ func workCommand(ctx context.Context, arguments []string) error {
 	}
 	var page statusview.WorkPage
 	answered := false
-	if *serverURL != "" {
-		answered = askResident(ctx, workspace, *serverURL, "/v0/work-query", query, &page, func() statusview.Frontier { return page.Frontier })
+	if serverURL != "" {
+		answered = askResident(ctx, workspace, serverURL, "/v0/work-query", query, &page, func() statusview.Frontier { return page.Frontier })
 	}
 	if !answered {
 		snapshot, err := snapshotWithProgress(ctx, workspace)
 		if err != nil {
 			return err
 		}
-		page, err = statusview.BuildWorkPage(snapshot, query, *serverURL != "")
+		page, err = statusview.BuildWorkPage(snapshot, query, serverURL != "")
 		if err != nil {
 			return err
 		}
@@ -1872,7 +1939,7 @@ func workCommand(ctx context.Context, arguments []string) error {
 	if *jsonOutput {
 		return printJSON(page)
 	}
-	_, err = os.Stdout.WriteString(renderWorkPage(page, querySource(*serverURL != "", answered)))
+	_, err = os.Stdout.WriteString(renderWorkPage(page, querySource(serverURL != "", answered)))
 	return err
 }
 
@@ -1885,14 +1952,18 @@ func artifactsCommand(ctx context.Context, arguments []string) error {
 	limit := set.Int("limit", 0, "page size")
 	cursor := set.String("cursor", "", "opaque continuation from a previous page")
 	jsonOutput := set.Bool("json", false, "render JSON")
-	serverURL := set.String("server", "", "resident sequencer URL")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
 	if set.NArg() != 0 {
 		return errors.New("artifacts takes no positional arguments")
 	}
-	workspace, err := openForQuery(ctx, *repo, *serverURL)
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
@@ -1901,14 +1972,14 @@ func artifactsCommand(ctx context.Context, arguments []string) error {
 	answered := false
 	var snapshot app.Snapshot
 	degraded := false
-	if *serverURL != "" && *state == "" && *reaches == "" {
+	if serverURL != "" && *state == "" && *reaches == "" {
 		wire := statusview.ArtifactQuery{Paths: paths, Limit: *limit, Cursor: *cursor}
-		answered = askResident(ctx, workspace, *serverURL, "/v0/artifact-query", wire, &page, func() statusview.Frontier { return page.Frontier })
-	} else if *serverURL != "" {
+		answered = askResident(ctx, workspace, serverURL, "/v0/artifact-query", wire, &page, func() statusview.Frontier { return page.Frontier })
+	} else if serverURL != "" {
 		// The extra selectors are deliberately CLI-only. Read the resident's
 		// existing full snapshot instead of smuggling them through the bounded
 		// HTTP request type and silently widening that protocol.
-		status, remoteErr := fetchFullStatus(ctx, *serverURL)
+		status, remoteErr := fetchFullStatus(ctx, serverURL)
 		if remoteErr == nil {
 			remoteErr = validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head)
 		}
@@ -1921,7 +1992,7 @@ func artifactsCommand(ctx context.Context, arguments []string) error {
 		}
 	}
 	if !answered {
-		degraded = degraded || *serverURL != ""
+		degraded = degraded || serverURL != ""
 		if snapshot.Head == "" {
 			snapshot, err = snapshotWithProgress(ctx, workspace)
 			if err != nil {
@@ -1941,7 +2012,7 @@ func artifactsCommand(ctx context.Context, arguments []string) error {
 	if *jsonOutput {
 		return printJSON(page)
 	}
-	_, err = os.Stdout.WriteString(renderArtifactPage(page, querySource(*serverURL != "", answered)))
+	_, err = os.Stdout.WriteString(renderArtifactPage(page, querySource(serverURL != "", answered)))
 	return err
 }
 
@@ -2022,7 +2093,7 @@ func stalenessWaveCommand(ctx context.Context, arguments []string) error {
 func inspectCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("inspect", arguments)
 	jsonOutput := set.Bool("json", false, "render JSON")
-	serverURL := set.String("server", "", "resident sequencer URL")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -2030,21 +2101,25 @@ func inspectCommand(ctx context.Context, arguments []string) error {
 		return errors.New("inspect requires one event")
 	}
 	event := set.Arg(0)
-	workspace, err := openForQuery(ctx, *repo, *serverURL)
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
 	var inspection statusview.ItemInspection
 	answered := false
-	if *serverURL != "" {
-		answered = askResident(ctx, workspace, *serverURL, "/v0/inspect", statusview.InspectRequest{Event: event}, &inspection, func() statusview.Frontier { return inspection.Frontier })
+	if serverURL != "" {
+		answered = askResident(ctx, workspace, serverURL, "/v0/inspect", statusview.InspectRequest{Event: event}, &inspection, func() statusview.Frontier { return inspection.Frontier })
 	}
 	if !answered {
 		snapshot, err := snapshotWithProgress(ctx, workspace)
 		if err != nil {
 			return err
 		}
-		inspection, err = statusview.BuildItemInspection(snapshot, event, *serverURL != "")
+		inspection, err = statusview.BuildItemInspection(snapshot, event, serverURL != "")
 		if err != nil {
 			return err
 		}
@@ -2052,7 +2127,7 @@ func inspectCommand(ctx context.Context, arguments []string) error {
 	if *jsonOutput {
 		return printJSON(inspection)
 	}
-	_, err = os.Stdout.WriteString(renderInspection(inspection, querySource(*serverURL != "", answered)))
+	_, err = os.Stdout.WriteString(renderInspection(inspection, querySource(serverURL != "", answered)))
 	return err
 }
 
@@ -2070,7 +2145,7 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 	checkout := set.String("checkout", "", "checkout whose Git history answers the ancestry question (default --repo)")
 	limit := set.Int("limit", 0, "how many events to name under each count")
 	jsonOutput := set.Bool("json", false, "render JSON")
-	serverURL := set.String("server", "", "resident sequencer URL")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -2080,7 +2155,11 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 	if *checkout == "" {
 		*checkout = *repo
 	}
-	workspace, err := openForQuery(ctx, *repo, *serverURL)
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
@@ -2089,8 +2168,8 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 	// complete projection is read instead, and the same builder folds it.
 	snapshot := app.Snapshot{}
 	degraded := false
-	if *serverURL != "" {
-		status, remoteErr := fetchFullStatus(ctx, *serverURL)
+	if serverURL != "" {
+		status, remoteErr := fetchFullStatus(ctx, serverURL)
 		if remoteErr == nil {
 			remoteErr = validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head)
 		}
@@ -2135,7 +2214,7 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 			gate.Quiet() && landing.outTotal == 0 && landing.unknownTotal == 0}); err != nil {
 			return err
 		}
-	} else if _, err := os.Stdout.WriteString(renderReviewGate(gate, *branch, querySource(*serverURL != "", !degraded && *serverURL != ""), landing)); err != nil {
+	} else if _, err := os.Stdout.WriteString(renderReviewGate(gate, *branch, querySource(serverURL != "", !degraded && serverURL != ""), landing)); err != nil {
 		return err
 	}
 	return landing.refusal(gate, *branch)

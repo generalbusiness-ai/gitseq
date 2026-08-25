@@ -28,7 +28,7 @@ they do not widen either remote request contract.
 | `--limit` | `20` | Page size, 1 to 50. |
 | `--cursor` | | The opaque continuation from a previous page. |
 | `--json` | `false` | Emit the page as JSON instead of the human view. |
-| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. |
+| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
 Either `--path` or `--reaches` is required. A query naming neither is the
 request for every artifact in the log, and it is refused.

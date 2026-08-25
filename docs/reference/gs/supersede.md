@@ -22,7 +22,7 @@ Prefer supersession to contradiction.
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The superseding actor. |
 | `--text` | *(required)* | Why. This is what a later reader gets. |
 | `--rests-on` | | An additional event identifier, repeatable. The target is added first automatically. |
-| `--server` | | Submit through a resident sequencer instead of writing locally. |
+| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 | `--cited-ok` | `false` | Retire even though tracked documentation still names the target. Without it the retirement is refused and the pages are listed, because a page resting on a withdrawn pointer fails the documentation gate. Use it for a migration that retires first and re-anchors after. |
 
