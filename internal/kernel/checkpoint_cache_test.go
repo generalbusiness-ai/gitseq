@@ -538,7 +538,7 @@ func TestCheckpointCacheRefusesOversizedEventBeforeCloning(t *testing.T) {
 			t.Fatalf("oversized append was admitted: %v", cache.err)
 		}
 	})
-	if allocs > 8 {
+	if !raceEnabled && allocs > 8 {
 		t.Fatalf("refused append allocated %.0f times; the event must not be cloned before the preflight admits it", allocs)
 	}
 }
@@ -799,7 +799,9 @@ func TestCheckpointCacheScratchPreflightCountsRetainedOutput(t *testing.T) {
 // allocated: a preflight refusal allocates only the writer plumbing and
 // its error — eight allocations measured — while checking after the fact
 // would allocate the names slice first. The ceiling is the measured
-// preflight count, so even that one extra allocation fails.
+// preflight count, so even that one extra allocation fails. That ceiling
+// holds only without the race detector, whose per-call bookkeeping the
+// count would otherwise include; the refusal itself is checked either way.
 func TestCheckpointCacheScratchPreflightRefusesBeforeAllocation(t *testing.T) {
 	const attachmentCount = 4096
 	attachments := make(map[string][]byte, attachmentCount)
@@ -820,7 +822,7 @@ func TestCheckpointCacheScratchPreflightRefusesBeforeAllocation(t *testing.T) {
 			t.Fatalf("scratch past the budget was admitted: %v", refused.err)
 		}
 	})
-	if allocs > 8 {
+	if !raceEnabled && allocs > 8 {
 		t.Fatalf("preflight refusal allocated %.0f times; the names slice must not be allocated for scratch the budget refuses", allocs)
 	}
 }
@@ -854,7 +856,7 @@ func TestCompactCheckpointWriterRefusesAboveDecoderCeiling(t *testing.T) {
 			t.Fatal("writer admitted an undecodable event")
 		}
 	})
-	if allocs > 1 {
+	if !raceEnabled && allocs > 1 {
 		t.Fatalf("refusal allocated %.0f times, want only the error: the names slice must not be allocated first", allocs)
 	}
 
