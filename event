@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ec815a792dddb941957205841f51d477d507b963","text":"Retire stale correction request #5563. Corrected assignment #5565 was filed and the design and implementation proceeded."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:65af1aef23182a425210cc20165ef6b3eeeac8c0","text":"Retire stale dot-citation coordination request #5655. The lane was replaced by the later minimal executable request #7267 and completed."}
