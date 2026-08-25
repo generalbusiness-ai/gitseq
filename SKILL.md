@@ -67,8 +67,9 @@ acknowledging. See [Live attention](docs/reference/live-attention.md).
   understand one item.
 - `say {about, text, conversation?, re?}` — ephemeral frame in the
   conversation anchored at `about` (minted if none is open). A unique
-  effective-roster `@name` mention reaches the priority inbox of every live
-  session of that actor; an unknown or ambiguous mention stays ordinary
+  effective-roster `@name` mention keeps the conversation for every live
+  session of that actor and reaches the priority inbox of each session that
+  registered inbox support; an unknown or ambiguous mention stays ordinary
   text. `re` is an exact `<conversation>:<sequence>` handle and also
   addresses that frame's author. Answer useful addressed chat with `say`;
   do not automatically promote it to the durable record.
@@ -190,8 +191,10 @@ artifact it names.
    covers what you changed as part of stating the new one. More than one
    can be live at a path; retire all of them. A first artifact at a path
    has no predecessor and needs none retired. The projection marks what you
-   skip — *unable to flare*, or *succession not recorded* with the count —
-   and a flare means re-check this, not this is wrong. The narrower
+   skip — *unable to flare*, or *succession not recorded* with the count;
+   [docs/concepts/staleness.md](docs/concepts/staleness.md) says which
+   condition produces which — and a flare means re-check this, not this is
+   wrong. The narrower
    *describes a superseded world* flag follows artifact-to-artifact
    provenance only; other reasoning edges carry ordinary staleness but do
    not pass it onward. `gs merge` records ordinary staleness in its receipt
