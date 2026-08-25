@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:69a7fdf2f4fcb4d7427ff34fd966f60fad3ee741"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a11619ba8416eb3ae0136802dbb872bccc8d84dd","text":"Retire this unpromised review request because it inherited ordinary staleness from its effective governing proposal and artifacts before review began. The exact candidate head and conditions are unchanged, and the fold records no describes_superseded_world fact; a current-snapshot request replaces it."}
