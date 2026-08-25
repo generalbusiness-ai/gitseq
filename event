@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at .github/workflows","body":{"commit":"77519a329d62c9d4c23b967310b01512a975bdc7","path":".github/workflows"}}
+{"kind":"artifact","text":"Merge published the current artifact at go.mod","body":{"commit":"77519a329d62c9d4c23b967310b01512a975bdc7","path":"go.mod"}}
