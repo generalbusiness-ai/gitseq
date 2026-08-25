@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd499d00ff50b98123700ba64ab5cd2227e1b115","text":"Merge retired a covered predecessor; the successor is at docs."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a10248caeced0322a444a86ff03d019da06dd754","text":"Retire the stale host artifact after merge 5ba0fefb re-anchored every documentation citation on the surviving live host artifact #10147 (cadb3875). Exactly one live artifact now remains at path host."}
