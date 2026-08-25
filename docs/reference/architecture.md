@@ -579,7 +579,22 @@ fold, or UI expectations.
   before merge, and one the world moved under afterwards is recorded instead;
   the explicitly ratified review approval remains
   a pre-merge requirement, and the same sealed receipt closes the implementation
-  commitment whose reporting artifact it merges;
+  commitment whose reporting artifact it merges. The receipt also accounts for
+  every other live artifact covered by the first-parent diff without granting
+  authority over it: it seals whether an unsettled durable commitment protects
+  the candidate or whether the candidate is abandoned. The Git and durable
+  receipts also seal the canonical exact old/new path set from the
+  first-parent diff, so the fold can verify coverage without interpreting a
+  Git tree or treating every artifact below a broad successor as changed. The
+  fold verifies the testimony from log facts at the receipt's position and
+  fixes the successor's succession warning there; receipts without the two
+  prospective fields retain the historical moving, current-fold calculation.
+  Before Git moves, the CLI also constructs every signed succession request
+  and applies the kernel's exact genesis-ceiling measure plus the resident JSON
+  transport limit when that surface is selected. Thus the application cannot
+  land a merge whose required durable receipt or later succession act is too
+  large to admit. This projection change advances the profile to
+  `workroom-fold@11`;
 - Workroom MCP tools and their application meanings;
 - the agent practice in `SKILL.md`;
 - connector clauses and observations; and

@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -38,6 +39,10 @@ const (
 	OrientationProjectionVersion = statusview.OrientationProjectionVersion
 	InboxProtocolVersion         = "gitseq.addressed-inbox.v1"
 	TrustedProcessPosture        = "trusted processes only: every process inside this resident boundary can act as every actor key this application can open"
+	// SubmissionRequestLimit is the exact request-body cap on /v0/submit.
+	// Merge preflight shares it so a locally acceptable signed request is not
+	// discovered to be untransportable only after the Git merge has landed.
+	SubmissionRequestLimit int64 = 2 << 20
 )
 
 type Status struct {
@@ -798,9 +803,23 @@ func decode(request *http.Request, target any) error {
 	if err := guardMutation(request); err != nil {
 		return err
 	}
-	decoder := json.NewDecoder(http.MaxBytesReader(nil, request.Body, 2<<20))
+	decoder := json.NewDecoder(http.MaxBytesReader(nil, request.Body, SubmissionRequestLimit))
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(target)
+}
+
+// ValidateSubmissionRequestSize uses the same JSON encoding as the resident
+// client and the same byte ceiling as the resident decoder, without sending or
+// accepting the request.
+func ValidateSubmissionRequestSize(request kernel.Request) error {
+	encoded, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	if int64(len(encoded)) > SubmissionRequestLimit {
+		return fmt.Errorf("resident submission request exceeds %d bytes", SubmissionRequestLimit)
+	}
+	return nil
 }
 
 func write(writer http.ResponseWriter, value any, err error) {

@@ -84,6 +84,10 @@ type Statement struct {
 	DescribesSupersededWorld bool `json:"describes_superseded_world,omitempty"`
 	// WorldSupersededAt carries the same dating as on Artifact.
 	WorldSupersededAt int `json:"world_superseded_at,omitempty"`
+	// MergeLeftLive is the fold's receipt-time verification of prospective
+	// merge_left_live testimony. It lives on the receipt statement even when a
+	// malformed or dangling entry cannot be associated with an artifact path.
+	MergeLeftLive []LeftLiveAccounting `json:"merge_left_live,omitempty"`
 }
 
 type Commitment struct {
@@ -144,6 +148,24 @@ type Artifact struct {
 	// are compared as exact strings, because path is a free body field and
 	// inferring which spellings mean the same tree would be guesswork.
 	SuccessionUnrecorded bool `json:"succession_unrecorded,omitempty"`
+	// MergeLeftLive records the predecessors a merge receipt deliberately left
+	// standing at this path. Verification is sealed when the receipt lands, so
+	// later settlement or retirement cannot rewrite what the merge accounted
+	// for. Unverified testimony remains visible but accounts for nothing.
+	MergeLeftLive []LeftLiveAccounting `json:"merge_left_live,omitempty"`
+}
+
+// LeftLiveAccounting is one merge receipt's prospective testimony about an
+// artifact it did not retire. Class is sibling or abandoned. A sibling names
+// the unsettled commitment which protected the artifact at receipt time;
+// abandoned asserts that no such commitment existed. Reason is present only
+// when the fold could not verify the testimony.
+type LeftLiveAccounting struct {
+	Artifact   string `json:"artifact"`
+	Class      string `json:"class"`
+	Commitment string `json:"commitment,omitempty"`
+	Verified   bool   `json:"verified"`
+	Reason     string `json:"reason,omitempty"`
 }
 
 // Act is a ratify or supersede event in client-friendly form: what it
@@ -246,6 +268,29 @@ type parsedRecord struct {
 	definition *KindDefinition
 	declared   *KindDefinition
 	mergePlan  map[string]string
+	// A receipt becomes prospective only when both fields are present and the
+	// changed-path list is canonical. Truly legacy receipts carry neither and
+	// retain the old fold-time succession projection exactly. Present but
+	// invalid metadata stays visible as unverified testimony and gains no
+	// accounting effect.
+	mergeAccountingPresent   bool
+	mergeLeftLivePresent     bool
+	mergeChangedPathsPresent bool
+	mergeChangedPathsValid   bool
+	mergeChangedPaths        []string
+	mergeLeftLive            []leftLiveAccounting
+	mergeUnaccounted         map[string]int
+}
+
+type leftLiveClaim struct {
+	Class      string `json:"class"`
+	Commitment string `json:"commitment,omitempty"`
+}
+
+type leftLiveAccounting struct {
+	LeftLiveAccounting
+	path      string
+	successor string
 }
 
 type roleGrant struct {
@@ -424,7 +469,29 @@ func (f *foldState) append(index int, record Record) {
 	}
 	if state, ok := body.(*State); ok && state.Kind == KindAssert {
 		parsed.mergePlan = f.validateMergeReceiptNow(parsed)
-		f.records[len(f.records)-1].mergePlan = parsed.mergePlan
+		stored := &f.records[len(f.records)-1]
+		stored.mergePlan = parsed.mergePlan
+		// A valid retirement plan remains the sole source of merge authority.
+		// Left-live testimony is parsed only after that authority is sealed and
+		// can neither widen nor invalidate it.
+		if parsed.mergePlan != nil {
+			leftRaw, leftPresent := state.Body["merge_left_live"]
+			changedRaw, changedPresent := state.Body["merge_changed_paths"]
+			parsed.mergeAccountingPresent = leftPresent || changedPresent
+			parsed.mergeLeftLivePresent = leftPresent
+			parsed.mergeChangedPathsPresent = changedPresent
+			if parsed.mergeAccountingPresent {
+				parsed.mergeChangedPaths, parsed.mergeChangedPathsValid = parseMergeChangedPaths(changedRaw, changedPresent)
+				parsed.mergeLeftLive, parsed.mergeUnaccounted = f.validateMergeLeftLiveNow(parsed, leftRaw, leftPresent)
+			}
+		}
+		stored.mergeAccountingPresent = parsed.mergeAccountingPresent
+		stored.mergeLeftLivePresent = parsed.mergeLeftLivePresent
+		stored.mergeChangedPathsPresent = parsed.mergeChangedPathsPresent
+		stored.mergeChangedPathsValid = parsed.mergeChangedPathsValid
+		stored.mergeChangedPaths = parsed.mergeChangedPaths
+		stored.mergeLeftLive = parsed.mergeLeftLive
+		stored.mergeUnaccounted = parsed.mergeUnaccounted
 	}
 	if _, ok := body.(*State); ok && parsed.definition != nil {
 		// A record may repeat a basis. directDependents historically returned
@@ -1164,6 +1231,320 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 		}
 	}
 	return reached
+}
+
+// validateMergeLeftLiveNow verifies non-authoritative receipt testimony and
+// freezes the succession question at the receipt's own position. It runs only
+// for a receipt whose ordinary merge plan has already passed the independent
+// exact-head checks above. Its result is projection evidence, never retirement
+// authority: validateMergeReceiptNow does not read it and hasAuthorizedMergeReceipt
+// continues to consult mergePlan alone.
+func (f *foldState) validateMergeLeftLiveNow(receipt *parsedRecord, raw string, present bool) ([]leftLiveAccounting, map[string]int) {
+	if !present {
+		accounting := []leftLiveAccounting{{LeftLiveAccounting: LeftLiveAccounting{
+			Verified: false, Reason: "merge_left_live is absent",
+		}}}
+		return append(accounting, f.missingLeftLiveAtReceipt(receipt, nil)...), f.unaccountedAtReceipt(receipt, nil)
+	}
+	var claims map[string]leftLiveClaim
+	if err := json.Unmarshal([]byte(raw), &claims); err != nil || claims == nil {
+		accounting := []leftLiveAccounting{{LeftLiveAccounting: LeftLiveAccounting{
+			Verified: false, Reason: "merge_left_live is not valid JSON testimony",
+		}}}
+		return append(accounting, f.missingLeftLiveAtReceipt(receipt, nil)...), f.unaccountedAtReceipt(receipt, nil)
+	}
+	if !receipt.mergeChangedPathsValid && len(claims) == 0 {
+		return []leftLiveAccounting{{LeftLiveAccounting: LeftLiveAccounting{
+			Verified: false, Reason: "merge_changed_paths is absent or invalid",
+		}}}, f.unaccountedAtReceipt(receipt, nil)
+	}
+
+	unsettled := f.unsettledCommitmentEvents()
+	ids := make([]string, 0, len(claims))
+	for id := range claims {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	accounting := make([]leftLiveAccounting, 0, len(ids))
+	verified := make(map[string]bool, len(ids))
+	classified := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		classified[id] = true
+		claim := claims[id]
+		entry := leftLiveAccounting{LeftLiveAccounting: LeftLiveAccounting{
+			Artifact: f.intern(id), Class: f.intern(claim.Class), Commitment: f.intern(claim.Commitment),
+		}}
+		artifact := f.byID[id]
+		path, artifactOK := f.artifactPath(id)
+		switch {
+		case !artifactOK || artifact.decision.Verdict != Effective || artifact.index >= receipt.index:
+			entry.Reason = "artifact is unresolved at the receipt position"
+		case f.retired(id):
+			entry.path = path
+			entry.Reason = "artifact is not live at the receipt position"
+		case hasKey(receipt.mergePlan, id):
+			entry.path = path
+			entry.Reason = "artifact is also classified for retirement"
+		case !receipt.mergeChangedPathsValid:
+			entry.path = path
+			entry.Reason = "merge_changed_paths is absent or invalid"
+		case !artifactCoversChangedPath(path, receipt.mergeChangedPaths):
+			entry.path = path
+			entry.Reason = "artifact does not cover a declared changed path"
+		default:
+			entry.path = path
+			entry.successor = f.leftLiveSuccessor(receipt, path)
+			switch claim.Class {
+			case "sibling":
+				if claim.Commitment == "" {
+					entry.Reason = "sibling testimony names no commitment"
+				} else if !unsettled[claim.Commitment] {
+					entry.Reason = "commitment is unresolved or settled at the receipt position"
+				} else if !f.commitmentProtectsArtifact(claim.Commitment, artifact) {
+					entry.Reason = "commitment does not name or reach the artifact"
+				} else {
+					entry.Verified = true
+				}
+			case "abandoned":
+				if claim.Commitment != "" {
+					entry.Reason = "abandoned testimony must not name a commitment"
+				} else if protector := f.liveProtector(artifact, unsettled); protector != "" {
+					entry.Reason = "artifact is protected by live commitment " + protector
+				} else {
+					entry.Verified = true
+				}
+			default:
+				entry.Reason = "class must be sibling or abandoned"
+			}
+		}
+		if entry.Verified {
+			verified[id] = true
+		}
+		accounting = append(accounting, entry)
+	}
+	accounting = append(accounting, f.missingLeftLiveAtReceipt(receipt, classified)...)
+	return accounting, f.unaccountedAtReceipt(receipt, verified)
+}
+
+func (f *foldState) missingLeftLiveAtReceipt(receipt *parsedRecord, classified map[string]bool) []leftLiveAccounting {
+	if !receipt.mergeChangedPathsValid {
+		return nil
+	}
+	var missing []leftLiveAccounting
+	for index := range f.records {
+		record := &f.records[index]
+		if record.index >= receipt.index || record.decision.Verdict != Effective || record.definition == nil || record.definition.Render != RenderArtifact || f.retired(record.record.ID) || classified[record.record.ID] || hasKey(receipt.mergePlan, record.record.ID) {
+			continue
+		}
+		state, ok := record.body.(*State)
+		if !ok || !artifactCoversChangedPath(state.Body["path"], receipt.mergeChangedPaths) {
+			continue
+		}
+		missing = append(missing, leftLiveAccounting{
+			LeftLiveAccounting: LeftLiveAccounting{Artifact: record.record.ID, Verified: false, Reason: "not classified by receipt"},
+			path:               state.Body["path"], successor: f.leftLiveSuccessor(receipt, state.Body["path"]),
+		})
+	}
+	return missing
+}
+
+// parseMergeChangedPaths accepts only the canonical representation the merge
+// client signs: a JSON array of sorted, deduplicated, non-empty exact paths.
+// Canonical bytes matter because this is durable receipt testimony, not a
+// convenience input the fold may silently normalize.
+func parseMergeChangedPaths(raw string, present bool) ([]string, bool) {
+	if !present {
+		return nil, false
+	}
+	var paths []string
+	if err := json.Unmarshal([]byte(raw), &paths); err != nil || paths == nil {
+		return nil, false
+	}
+	for index, path := range paths {
+		if path == "" || (index > 0 && paths[index-1] >= path) {
+			return nil, false
+		}
+	}
+	canonical, err := json.Marshal(paths)
+	if err != nil || string(canonical) != raw {
+		return nil, false
+	}
+	return paths, true
+}
+
+func artifactCoversChangedPath(artifact string, changed []string) bool {
+	for _, path := range changed {
+		if pathCovers(artifact, path) {
+			return true
+		}
+	}
+	return false
+}
+
+// unaccountedAtReceipt counts live artifacts at each declared successor path
+// exactly when the receipt lands. Planned retirements and verified left-live
+// testimony account for a predecessor. Later retirement cannot change this
+// stored answer.
+func (f *foldState) unaccountedAtReceipt(receipt *parsedRecord, verified map[string]bool) map[string]int {
+	if !receipt.mergeChangedPathsValid {
+		unaccounted := make(map[string]int)
+		for _, successor := range f.mergeSuccessorPaths(receipt) {
+			if successor != "" {
+				unaccounted[successor] = 1
+			}
+		}
+		if len(unaccounted) == 0 {
+			unaccounted[""] = 1
+		}
+		return unaccounted
+	}
+	paths := f.mergeSuccessorPaths(receipt)
+	if len(paths) == 0 {
+		return nil
+	}
+	unaccounted := make(map[string]int, len(paths))
+	for index := range f.records {
+		record := &f.records[index]
+		if record.index >= receipt.index || record.decision.Verdict != Effective || record.definition == nil || record.definition.Render != RenderArtifact || f.retired(record.record.ID) {
+			continue
+		}
+		state, ok := record.body.(*State)
+		if !ok || !artifactCoversChangedPath(state.Body["path"], receipt.mergeChangedPaths) {
+			continue
+		}
+		if _, planned := receipt.mergePlan[record.record.ID]; planned || verified[record.record.ID] {
+			continue
+		}
+		successor := closestCoveringPath(paths, state.Body["path"])
+		unaccounted[successor]++
+	}
+	return unaccounted
+}
+
+func hasKey(values map[string]string, key string) bool {
+	_, ok := values[key]
+	return ok
+}
+
+func (f *foldState) leftLiveSuccessor(receipt *parsedRecord, predecessor string) string {
+	return closestCoveringPath(f.mergeSuccessorPaths(receipt), predecessor)
+}
+
+func closestCoveringPath(successors []string, predecessor string) string {
+	winner := ""
+	for _, successor := range successors {
+		if !pathCovers(successor, predecessor) {
+			continue
+		}
+		// Attach to the closest declared successor. If docs and docs/how-to
+		// both cover one predecessor, docs/how-to is the actionable scope.
+		if winner == "" || (successor != winner && pathCovers(winner, successor)) {
+			winner = successor
+		}
+	}
+	return winner
+}
+
+func (f *foldState) mergeSuccessorPaths(receipt *parsedRecord) []string {
+	state, ok := receipt.body.(*State)
+	if !ok {
+		return nil
+	}
+	var paths []string
+	if err := json.Unmarshal([]byte(state.Body["merge_successors"]), &paths); err != nil {
+		return nil
+	}
+	return paths
+}
+
+// unsettledCommitmentEvents indexes each request, promise, and report event in
+// a commitment row which still expects an actor to move. The projection is
+// evaluated while the receipt is appended, so this answer is already scoped
+// to the receipt position and is then stored rather than recomputed.
+func (f *foldState) unsettledCommitmentEvents() map[string]bool {
+	succeeded := f.succeededRetirements()
+	stale, _, _ := f.stalenessNow().staleness(succeeded)
+	active := make(map[string]bool)
+	for _, commitment := range f.projectCommitments(stale) {
+		switch commitment.Status {
+		case "open", "promised", "reported", "stale":
+			active[commitment.Request] = true
+			if commitment.Promise != "" {
+				active[commitment.Promise] = true
+			}
+			if commitment.Report != "" {
+				active[commitment.Report] = true
+			}
+		}
+	}
+	return active
+}
+
+func (f *foldState) liveProtector(artifact *parsedRecord, unsettled map[string]bool) string {
+	ids := make([]string, 0, len(unsettled))
+	for id := range unsettled {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if f.commitmentProtectsArtifact(id, artifact) {
+			return id
+		}
+	}
+	return ""
+}
+
+func (f *foldState) commitmentProtectsArtifact(commitment string, artifact *parsedRecord) bool {
+	record := f.byID[commitment]
+	if record == nil || record.decision.Verdict != Effective || record.definition == nil {
+		return false
+	}
+	switch record.definition.Lifecycle {
+	case LifecycleRequest, LifecyclePromise, LifecycleReport:
+	default:
+		return false
+	}
+	state, ok := record.body.(*State)
+	implementation, artifactOK := artifact.body.(*State)
+	if !ok || !artifactOK {
+		return false
+	}
+	commit := implementation.Body["commit"]
+	if commit != "" && (state.Body["head"] == commit || state.Body["commit"] == commit) {
+		return true
+	}
+	// Requests and reports can name or cite an already-published artifact.
+	// The ordinary implementation shape points the other way: an artifact
+	// published later rests on the live promise it fulfils. Both directions
+	// prove that this exact durable lane stands behind this exact artifact;
+	// merely sharing an actor, branch, or path does not.
+	return f.effectiveProvenanceReaches(commitment, artifact.record.ID) ||
+		f.effectiveProvenanceReaches(artifact.record.ID, commitment)
+}
+
+func (f *foldState) effectiveProvenanceReaches(from, target string) bool {
+	seen := make(map[string]bool)
+	var walk func(string) bool
+	walk = func(current string) bool {
+		if current == target {
+			return true
+		}
+		if seen[current] {
+			return false
+		}
+		seen[current] = true
+		record := f.byID[current]
+		if record == nil || record.decision.Verdict != Effective {
+			return false
+		}
+		for _, basis := range record.record.RestsOn {
+			if walk(basis) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(from)
 }
 
 // reviewedPaths is what an approval puts within reach of the receipt that
@@ -1995,6 +2376,10 @@ func (f *foldState) project() Projection {
 	// A, B and C at one path, retiring B cleared C's warning while A stayed
 	// live. A count keeps every ancestor.
 	liveByPath := make(map[string]int)
+	liveArtifactsByPath := make(map[string][]string)
+	protectedSiblings := make(map[string]bool)
+	receiptDebts := make(map[string]bool)
+	var currentUnsettled map[string]bool
 	// Review independence needs the author of the artifact for the head judged,
 	// and the commit each artifact stands at, so a verdict cannot be paired
 	// with an artifact for some other head. All three indexes are filled by the
@@ -2039,6 +2424,7 @@ func (f *foldState) project() Projection {
 			Retired: f.retired(record.record.ID), Stale: stale[record.record.ID],
 			DescribesSupersededWorld: world[record.record.ID],
 			WorldSupersededAt:        causedAt[record.record.ID],
+			MergeLeftLive:            projectLeftLive(record.mergeLeftLive, ""),
 		})
 		if record.decision.Verdict == UndefinedKind {
 			projection.OpaqueKinds[string(state.Kind)] = append(projection.OpaqueKinds[string(state.Kind)], record.record.ID)
@@ -2049,6 +2435,39 @@ func (f *foldState) project() Projection {
 		if record.decision.Verdict == Effective && record.definition != nil && record.definition.Render == RenderArtifact {
 			path := state.Body["path"]
 			live := liveByPath[path]
+			var leftLive []LeftLiveAccounting
+			if receipt := f.leftLiveReceiptFor(&record); receipt != nil {
+				// The receipt snapshot is immutable. Artifacts after its frontier
+				// remain unaccounted even if a later retirement would have removed
+				// them from the old end-of-fold count.
+				postCount, postLive := f.postReceiptAccounting(receipt, &record, path)
+				live = receipt.mergeUnaccounted[path] + postCount
+				leftLive = projectLeftLive(receipt.mergeLeftLive, path)
+				if !f.retired(record.record.ID) {
+					for _, artifact := range postLive {
+						receiptDebts[artifact] = true
+					}
+					for _, entry := range receipt.mergeLeftLive {
+						if !entry.Verified || entry.successor != path || f.retired(entry.Artifact) {
+							continue
+						}
+						switch entry.Class {
+						case "sibling":
+							if currentUnsettled == nil {
+								currentUnsettled = f.unsettledCommitmentEvents()
+							}
+							artifact := f.byID[entry.Artifact]
+							if currentUnsettled[entry.Commitment] && artifact != nil && f.commitmentProtectsArtifact(entry.Commitment, artifact) && !f.hasPostReceiptLiveArtifact(receipt, artifact, &record) {
+								protectedSiblings[entry.Artifact] = true
+							} else {
+								receiptDebts[entry.Artifact] = true
+							}
+						case "abandoned":
+							receiptDebts[entry.Artifact] = true
+						}
+					}
+				}
+			}
 			projection.Artifacts = append(projection.Artifacts, Artifact{
 				Event: record.record.ID, Path: path, Commit: state.Body["commit"],
 				Retired:                  f.retired(record.record.ID),
@@ -2059,9 +2478,11 @@ func (f *foldState) project() Projection {
 				UnableToFlare:            f.unableToFlare(record.record.RestsOn),
 				SuccessionUnrecorded:     live > 0,
 				LivePredecessors:         live,
+				MergeLeftLive:            leftLive,
 			})
 			if !f.retired(record.record.ID) {
 				liveByPath[path]++
+				liveArtifactsByPath[path] = append(liveArtifactsByPath[path], record.record.ID)
 			}
 			if record.decision.Verdict == Effective {
 				implementers[record.record.ID] = record.record.Actor
@@ -2097,11 +2518,22 @@ func (f *foldState) project() Projection {
 	// less one, and nothing less than the count is needed to say it. This is
 	// not summed from LivePredecessors, which counts a shared ancestor once
 	// per successor and would multiply the same debt.
-	for _, live := range liveByPath {
-		if live > 1 {
-			projection.OmittedSupersessions += live - 1
+	owed := make(map[string]bool)
+	for _, artifacts := range liveArtifactsByPath {
+		if len(artifacts) < 2 {
+			continue
+		}
+		for _, artifact := range artifacts[:len(artifacts)-1] {
+			owed[artifact] = true
 		}
 	}
+	for artifact := range protectedSiblings {
+		delete(owed, artifact)
+	}
+	for artifact := range receiptDebts {
+		owed[artifact] = true
+	}
+	projection.OmittedSupersessions = len(owed)
 	for _, grant := range f.roleGrants {
 		if !f.roleGrantActive(grant) {
 			continue
@@ -2202,6 +2634,81 @@ func cloneStringMap(input map[string]string) map[string]string {
 		output[key] = value
 	}
 	return output
+}
+
+func projectLeftLive(input []leftLiveAccounting, path string) []LeftLiveAccounting {
+	var output []LeftLiveAccounting
+	for _, entry := range input {
+		if path != "" && entry.successor != path {
+			continue
+		}
+		output = append(output, entry.LeftLiveAccounting)
+	}
+	return output
+}
+
+// leftLiveReceiptFor finds the prospective receipt that published artifact.
+// Historical receipts have mergeLeftLivePresent false and therefore retain
+// the old end-of-fold succession behavior byte for byte.
+func (f *foldState) leftLiveReceiptFor(artifact *parsedRecord) *parsedRecord {
+	var latest *parsedRecord
+	for _, basis := range artifact.record.RestsOn {
+		receipt := f.byID[basis]
+		if receipt == nil || !receipt.mergeAccountingPresent || receipt.mergePlan == nil || !f.publishedByMerge(artifact, receipt) {
+			continue
+		}
+		if latest == nil || receipt.index > latest.index {
+			latest = receipt
+		}
+	}
+	return latest
+}
+
+// postReceiptAccounting scans the receipt-to-successor interval once for both
+// projections of the same fact: the frozen count records every covered
+// post-frontier artifact, while live IDs are the subset which still owe
+// retirement now.
+func (f *foldState) postReceiptAccounting(receipt, successor *parsedRecord, path string) (int, []string) {
+	count := 0
+	var live []string
+	successors := f.mergeSuccessorPaths(receipt)
+	for index := receipt.index + 1; index < successor.index; index++ {
+		record := &f.records[index]
+		if record.decision.Verdict != Effective || record.definition == nil || record.definition.Render != RenderArtifact {
+			continue
+		}
+		state, ok := record.body.(*State)
+		if ok && artifactCoversChangedPath(state.Body["path"], receipt.mergeChangedPaths) && closestCoveringPath(successors, state.Body["path"]) == path {
+			count++
+			if !f.retired(record.record.ID) {
+				live = append(live, record.record.ID)
+			}
+		}
+	}
+	return count, live
+}
+
+// hasPostReceiptLiveArtifact keeps a receipt's protection from suppressing a
+// different succession debt created after its frontier. The receipt-published
+// successor itself is the accounted replacement and is excluded; any other
+// later live artifact at the sibling's exact path is new, unsealed work.
+func (f *foldState) hasPostReceiptLiveArtifact(receipt, artifact, successor *parsedRecord) bool {
+	artifactState, ok := artifact.body.(*State)
+	if !ok {
+		return false
+	}
+	path := artifactState.Body["path"]
+	for index := receipt.index + 1; index < len(f.records); index++ {
+		record := &f.records[index]
+		if record.record.ID == successor.record.ID || f.retired(record.record.ID) || record.decision.Verdict != Effective || record.definition == nil || record.definition.Render != RenderArtifact {
+			continue
+		}
+		state, ok := record.body.(*State)
+		if ok && state.Body["path"] == path {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *foldState) vocabulary() Vocabulary {

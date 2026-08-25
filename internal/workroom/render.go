@@ -19,6 +19,10 @@ func RenderJSON(projection Projection) ([]byte, error) {
 func RenderStatus(projection Projection) []byte {
 	var output bytes.Buffer
 	sequences := projection.sequences()
+	authors := make(map[string]string, len(projection.Statements))
+	for _, statement := range projection.Statements {
+		authors[statement.Event] = statement.Actor
+	}
 	output.WriteString("# Workroom status\n\n")
 	if summary := projection.Summary(); summary != "" {
 		fmt.Fprintf(&output, "%s\n\n", summary)
@@ -131,7 +135,12 @@ func RenderStatus(projection Projection) []byte {
 			// touching C's. Where every later artifact was itself withdrawn the
 			// row still stands as history while nothing is owed, so the two
 			// figures are stated separately rather than as one number.
-			fmt.Fprintf(&output, "%d artifacts across %d paths follow a live artifact at the same path without superseding it; supersessions still owed: %d, counting once each predecessor a live successor stands in for.\n", successionUnrecorded, len(successionPaths), projection.OmittedSupersessions)
+			fmt.Fprintf(&output, "%d artifacts across %d paths follow a live artifact covering the merge without superseding or accounting for it; supersessions still owed: %d, counting once each predecessor a live successor stands in for.\n", successionUnrecorded, len(successionPaths), projection.OmittedSupersessions)
+		}
+		for _, statement := range projection.Statements {
+			for _, accounting := range statement.MergeLeftLive {
+				fmt.Fprintf(&output, "%s carries %s.\n", name(statement.Event, sequences), escape(renderLeftLive(accounting, sequences, authors, projection.Actors)))
+			}
 		}
 	}
 	output.WriteString("\n## Attempts\n\n")
@@ -141,6 +150,34 @@ func RenderStatus(projection Projection) []byte {
 		}
 	}
 	return output.Bytes()
+}
+
+func renderLeftLive(accounting LeftLiveAccounting, sequences map[string]int, authors map[string]string, actors map[string]ActorState) string {
+	if !accounting.Verified {
+		testimony := accounting.Class
+		if accounting.Artifact != "" {
+			testimony += " for " + name(accounting.Artifact, sequences)
+		}
+		if accounting.Commitment != "" {
+			testimony += " under " + name(accounting.Commitment, sequences)
+		}
+		if testimony == "" {
+			testimony = "entry"
+		}
+		return "UNVERIFIED left-live testimony: " + testimony + " — " + accounting.Reason
+	}
+	if accounting.Class == "sibling" {
+		return "left live at merge: sibling under " + name(accounting.Commitment, sequences) + " — artifact " + name(accounting.Artifact, sequences)
+	}
+	author := authors[accounting.Artifact]
+	responsible := short(author)
+	if actor, ok := actors[author]; ok && actor.Name != "" {
+		responsible = "@" + actor.Name
+	}
+	if responsible == "" {
+		responsible = "artifact author"
+	}
+	return "left live at merge: abandoned artifact " + name(accounting.Artifact, sequences) + ", retirement owed by " + responsible
 }
 
 func RenderProvenance(projection Projection, event string) []byte {

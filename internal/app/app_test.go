@@ -2165,7 +2165,7 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 // version would never match whatever the build holds, and the cache would be
 // dropped for the wrong reason: the witness would pass with the bump reverted.
 // The seeded cache stands at the current head, so the profile is the only thing
-// that can cause a replay. Revert ProfileVersion to @9 and the first branch of
+// that can cause a replay. Revert ProfileVersion to @10 and the first branch of
 // snapshotWithSource returns the undated projection verbatim.
 func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	ctx := context.Background()
@@ -2213,9 +2213,10 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	}
 	// Re-anchored to the current transition. Hard-coded identities are the
 	// point: they make whoever moves the profile look at the cache, which is
-	// what happened here when world_superseded_at took it to @10.
-	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@9"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@10"
+	// what happened here when receipt-stable succession accounting took it to
+	// @11.
+	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@10"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@11"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &stale
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail

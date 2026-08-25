@@ -1554,6 +1554,36 @@ func TestSubmitChargesPayloadAndAllAttachmentsToOneCeiling(t *testing.T) {
 	}
 }
 
+func TestValidateRequestSizeMatchesSubmitAccountingWithoutWriting(t *testing.T) {
+	f := newFixture(t, "sha1")
+	request := f.request(t, actor(t), "validate-size", []byte("payload"), nil)
+	decoded, err := intent.Verify(request.Signed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exact := uint64(len(intent.Envelope(request.Signed, decoded.RestsOn)) + len(request.Payload))
+	before, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateRequestSize(request, exact); err != nil {
+		t.Fatalf("exact request size rejected: %v", err)
+	}
+	if err := ValidateRequestSize(request, exact-1); err == nil || !strings.Contains(err.Error(), "event exceeds genesis ceiling") {
+		t.Fatalf("oversized request validation error = %v", err)
+	}
+	after, err := f.store.Head(f.ctx, Ref(f.genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("read-only size validation moved sequence: before=%s after=%s", before, after)
+	}
+	if _, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatalf("Submit disagreed with successful validation: %v", err)
+	}
+}
+
 func TestOversizedEnvelopeIsRefusedWithoutPoisoningTheLog(t *testing.T) {
 	f := newFixture(t, "sha1")
 	private := actor(t)

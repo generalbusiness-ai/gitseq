@@ -2519,6 +2519,499 @@ func TestFreeStandingSupersessionStillRequiresAuthorOrRatifier(t *testing.T) {
 	}
 }
 
+func TestMergeLeftLiveSiblingAccountingIsVerifiedAndStable(t *testing.T) {
+	leftLive := `{"sibling":{"class":"sibling","commitment":"sibling-promise"}}`
+	records := reviewRecords(t,
+		event(t, "sibling-request", operator, SchemaState, State{Kind: KindRequest, Text: "implement sibling", Body: map[string]string{"to": agent, "conditions": "publish sibling"}}, "r0"),
+		event(t, "sibling-promise", agent, SchemaState, State{Kind: KindPromise, Text: "will implement sibling"}, "sibling-request"),
+		// The normal provenance direction is artifact -> promise: the promise
+		// cannot cite an artifact which did not exist when it was signed.
+		event(t, "sibling", agent, SchemaState, State{Kind: KindArtifact, Text: "sibling candidate", Body: map[string]string{"path": "spike", "commit": "sibling-head"}}, "sibling-promise"),
+		event(t, "loose", operator, SchemaState, State{Kind: KindArtifact, Text: "unaccounted candidate", Body: map[string]string{"path": "spike", "commit": "loose-head"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		leftLiveReceipt(t, "merge", "approval", "head1", "merged", `{"r5":"spike"}`, leftLive),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "retire-r5", agent, SchemaSupersede, Supersede{Target: "r5", Text: "merged"}, "r5", "merge", "successor"),
+		event(t, "retire-sibling", agent, SchemaSupersede, Supersede{Target: "sibling", Text: "lane closed later"}, "sibling"),
+		event(t, "retire-loose", operator, SchemaSupersede, Supersede{Target: "loose", Text: "cleaned up later"}, "loose"),
+	)
+	projection := Fold(records)
+	successor := artifactByEvent(t, projection, "successor")
+	if successor.LivePredecessors != 1 || !successor.SuccessionUnrecorded {
+		t.Fatalf("receipt-time accounting moved after later retirements: %+v", successor)
+	}
+	if len(successor.MergeLeftLive) != 2 || !successor.MergeLeftLive[0].Verified || successor.MergeLeftLive[0].Artifact != "sibling" || successor.MergeLeftLive[1].Artifact != "loose" || successor.MergeLeftLive[1].Reason != "not classified by receipt" {
+		t.Fatalf("sibling testimony = %+v", successor.MergeLeftLive)
+	}
+	status := string(RenderStatus(projection))
+	if !strings.Contains(status, "left live at merge: sibling under #") || !strings.Contains(status, "succession not recorded") {
+		t.Fatalf("status omitted accounting or warning:\n%s", status)
+	}
+}
+
+func TestMergeLeftLiveUsesClosestCoveringSuccessorForNestedArtifacts(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "sibling-request", operator, SchemaState, State{Kind: KindRequest, Text: "nested sibling", Body: map[string]string{"to": agent, "conditions": "publish sibling"}}, "r0"),
+		event(t, "sibling-promise", agent, SchemaState, State{Kind: KindPromise, Text: "will publish nested sibling"}, "sibling-request"),
+		event(t, "sibling", agent, SchemaState, State{Kind: KindArtifact, Text: "nested sibling", Body: map[string]string{"path": "dir/a", "commit": "sibling-head"}}, "sibling-promise"),
+		event(t, "abandoned", operator, SchemaState, State{Kind: KindArtifact, Text: "nested abandoned", Body: map[string]string{"path": "dir/b", "commit": "abandoned-head"}}, "r0"),
+		event(t, "unverified", operator, SchemaState, State{Kind: KindArtifact, Text: "nested bad testimony", Body: map[string]string{"path": "dir/c", "commit": "unverified-head"}}, "r0"),
+		event(t, "missing", operator, SchemaState, State{Kind: KindArtifact, Text: "nested omitted testimony", Body: map[string]string{"path": "dir/d", "commit": "missing-head"}}, "r0"),
+		event(t, "dir-candidate", agent, SchemaState, State{Kind: KindArtifact, Text: "reviewed directory", Body: map[string]string{"path": "dir", "commit": "head1"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5", "dir-candidate"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "nested merge", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"r5":"spike","dir-candidate":"dir"}`, "merge_successors": `["dir","spike"]`,
+			"merge_changed_paths": `["dir/a/file","dir/b/file","dir/c/file","dir/d/file"]`,
+			"merge_left_live":     `{"sibling":{"class":"sibling","commitment":"sibling-promise"},"abandoned":{"class":"abandoned"},"unverified":{"class":"sibling","commitment":"missing-commitment"}}`,
+		}}, "approval"),
+		event(t, "dir-successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged directory", Body: map[string]string{"path": "dir", "commit": "merged"}}, "merge"),
+	)
+	projection := Fold(records)
+	successor := artifactByEvent(t, projection, "dir-successor")
+	if successor.LivePredecessors != 2 || !successor.SuccessionUnrecorded {
+		t.Fatalf("nested missing and unverified claims did not preserve debt: %+v", successor)
+	}
+	if len(successor.MergeLeftLive) != 4 {
+		t.Fatalf("nested accounting attached %d entries, want 4: %+v", len(successor.MergeLeftLive), successor.MergeLeftLive)
+	}
+	verified := map[string]bool{}
+	for _, entry := range successor.MergeLeftLive {
+		verified[entry.Artifact] = entry.Verified
+	}
+	if !verified["sibling"] || !verified["abandoned"] || verified["unverified"] {
+		t.Fatalf("nested verification = %+v", verified)
+	}
+	status := string(RenderStatus(projection))
+	if count := strings.Count(status, "left live at merge: sibling under"); count != 1 {
+		t.Fatalf("verified sibling rendered %d times, want exactly once:\n%s", count, status)
+	}
+	for _, id := range []string{"sibling", "abandoned", "unverified"} {
+		if !strings.Contains(status, name(id, projection.sequences())) {
+			t.Fatalf("status omitted nested artifact %s:\n%s", id, status)
+		}
+	}
+}
+
+func TestMergeLeftLiveClosestSuccessorIsOrderIndependent(t *testing.T) {
+	for _, paths := range [][]string{{"dir", "dir/sub"}, {"dir/sub", "dir"}} {
+		if got := closestCoveringPath(paths, "dir/sub/file"); got != "dir/sub" {
+			t.Fatalf("closest successor for %#v = %q, want dir/sub", paths, got)
+		}
+	}
+	if got := closestCoveringPath([]string{"dir/sub/file"}, "dir/sub"); got != "" {
+		t.Fatalf("narrow successor covered its parent predecessor as %q", got)
+	}
+}
+
+func TestMergeChangedPathsBoundsClaimsAndPostFrontierAccounting(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "wide", operator, SchemaState, State{Kind: KindArtifact, Text: "wide changed scope", Body: map[string]string{"path": "dir", "commit": "wide-head"}}, "r0"),
+		event(t, "nested", operator, SchemaState, State{Kind: KindArtifact, Text: "nested changed scope", Body: map[string]string{"path": "dir/a/nested", "commit": "nested-head"}}, "r0"),
+		event(t, "sibling-tree", operator, SchemaState, State{Kind: KindArtifact, Text: "unrelated sibling tree", Body: map[string]string{"path": "dir/b", "commit": "sibling-tree-head"}}, "r0"),
+		event(t, "dir-candidate", agent, SchemaState, State{Kind: KindArtifact, Text: "reviewed directory", Body: map[string]string{"path": "dir", "commit": "head1"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "dir-candidate"}}, "reviewer-promise", "dir-candidate"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "directory merge", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"dir-candidate":"dir"}`, "merge_successors": `["dir"]`,
+			"merge_changed_paths": `["dir/a/nested/file.go"]`,
+			"merge_left_live":     `{"nested":{"class":"abandoned"},"sibling-tree":{"class":"abandoned"},"wide":{"class":"abandoned"}}`,
+		}}, "approval"),
+		event(t, "post-outside", operator, SchemaState, State{Kind: KindArtifact, Text: "post-frontier unrelated sibling", Body: map[string]string{"path": "dir/b", "commit": "post-outside"}}, "r0"),
+		event(t, "post-covered", operator, SchemaState, State{Kind: KindArtifact, Text: "post-frontier changed scope", Body: map[string]string{"path": "dir/a/nested", "commit": "post-covered"}}, "r0"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged directory", Body: map[string]string{"path": "dir", "commit": "merged"}}, "merge"),
+		event(t, "retire-candidate", agent, SchemaSupersede, Supersede{Target: "dir-candidate", Text: "merged"}, "dir-candidate", "merge", "successor"),
+		event(t, "retire-sibling-tree", operator, SchemaSupersede, Supersede{Target: "sibling-tree", Text: "unrelated lane closed"}, "sibling-tree"),
+	)
+	projection := Fold(records)
+	accounting := statementByEvent(t, projection, "merge").MergeLeftLive
+	got := make(map[string]LeftLiveAccounting, len(accounting))
+	for _, entry := range accounting {
+		got[entry.Artifact] = entry
+	}
+	if !got["wide"].Verified || !got["nested"].Verified {
+		t.Fatalf("covering artifact testimony was refused: %+v", got)
+	}
+	if got["sibling-tree"].Verified || !strings.Contains(got["sibling-tree"].Reason, "does not cover") {
+		t.Fatalf("unrelated dir/b testimony = %+v", got["sibling-tree"])
+	}
+	successor := artifactByEvent(t, projection, "successor")
+	if successor.LivePredecessors != 1 {
+		t.Fatalf("post-frontier changed-path count = %d, want 1 (dir/a only; dir/b ignored)", successor.LivePredecessors)
+	}
+	// wide and nested are live abandoned claims. post-covered is a third,
+	// distinct debt: it landed after the receipt and is nested beneath the
+	// broader dir successor, so exact-path succession alone cannot find it.
+	if projection.OmittedSupersessions != 3 {
+		t.Fatalf("owed supersessions = %d, want 3 including post-covered", projection.OmittedSupersessions)
+	}
+}
+
+func TestMergeChangedPathsProtectsNestedSiblingsUntilNamedCommitmentEnds(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "request-one", operator, SchemaState, State{Kind: KindRequest, Text: "first sibling", Body: map[string]string{"to": agent, "conditions": "publish first"}}, "r0"),
+		event(t, "promise-one", agent, SchemaState, State{Kind: KindPromise, Text: "first sibling"}, "request-one"),
+		event(t, "sibling-one", agent, SchemaState, State{Kind: KindArtifact, Text: "first protected sibling", Body: map[string]string{"path": "dir/a", "commit": "one"}}, "promise-one"),
+		event(t, "request-two", operator, SchemaState, State{Kind: KindRequest, Text: "second sibling", Body: map[string]string{"to": agent, "conditions": "publish second"}}, "r0"),
+		event(t, "promise-two", agent, SchemaState, State{Kind: KindPromise, Text: "second sibling"}, "request-two"),
+		event(t, "sibling-two", agent, SchemaState, State{Kind: KindArtifact, Text: "second protected sibling", Body: map[string]string{"path": "dir/a", "commit": "two"}}, "promise-two"),
+		event(t, "dir-candidate", agent, SchemaState, State{Kind: KindArtifact, Text: "reviewed exact candidate", Body: map[string]string{"path": "dir/a", "commit": "head1"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "dir-candidate"}}, "reviewer-promise", "dir-candidate"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "directory merge", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"dir-candidate":"dir"}`, "merge_successors": `["dir"]`,
+			"merge_changed_paths": `["dir/a/file.go"]`,
+			"merge_left_live":     `{"sibling-one":{"class":"sibling","commitment":"promise-one"},"sibling-two":{"class":"sibling","commitment":"promise-two"}}`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged directory", Body: map[string]string{"path": "dir", "commit": "merged"}}, "merge"),
+		event(t, "retire-candidate", agent, SchemaSupersede, Supersede{Target: "dir-candidate", Text: "merged"}, "dir-candidate", "merge", "successor"),
+		event(t, "retire-promise-one", agent, SchemaSupersede, Supersede{Target: "promise-one", Text: "first lane ended"}, "promise-one"),
+	)
+	beforeSettlement := Fold(records[:len(records)-1])
+	if beforeSettlement.OmittedSupersessions != 0 || artifactByEvent(t, beforeSettlement, "successor").LivePredecessors != 0 {
+		t.Fatalf("two protected nested siblings owed debt before settlement: omitted=%d successor=%+v", beforeSettlement.OmittedSupersessions, artifactByEvent(t, beforeSettlement, "successor"))
+	}
+	afterSettlement := Fold(records)
+	if afterSettlement.OmittedSupersessions != 1 {
+		t.Fatalf("ended named protection left debt %d, want 1", afterSettlement.OmittedSupersessions)
+	}
+	if successor := artifactByEvent(t, afterSettlement, "successor"); successor.LivePredecessors != 0 || successor.SuccessionUnrecorded {
+		t.Fatalf("historical receipt accounting was rewritten by settlement: %+v", successor)
+	}
+}
+
+func TestMergeChangedPathsRequiresCanonicalProspectiveField(t *testing.T) {
+	valid := []string{`[]`, `["dir/a","dir/b"]`}
+	for _, raw := range valid {
+		if _, ok := parseMergeChangedPaths(raw, true); !ok {
+			t.Errorf("canonical changed paths refused: %s", raw)
+		}
+	}
+	invalid := []string{"", `null`, ` ["dir/a"]`, `["dir/b","dir/a"]`, `["dir/a","dir/a"]`, `[""]`}
+	for _, raw := range invalid {
+		if _, ok := parseMergeChangedPaths(raw, raw != ""); ok {
+			t.Errorf("noncanonical changed paths admitted: %q", raw)
+		}
+	}
+}
+
+func TestMergeAccountingOneFieldOnlyFailsClosed(t *testing.T) {
+	tests := []struct {
+		name, left, changed, reason string
+		leftPresent, changedPresent bool
+	}{
+		{name: "changed paths only", changed: `["spike"]`, changedPresent: true, reason: "merge_left_live is absent"},
+		{name: "left live only", left: `{}`, leftPresent: true, reason: "merge_changed_paths is absent or invalid"},
+		{name: "empty left with null frontier", left: `{}`, leftPresent: true, changed: `null`, changedPresent: true, reason: "merge_changed_paths is absent or invalid"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := map[string]string{
+				"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+				"merge_retirements": `{"r5":"spike"}`, "merge_successors": `["spike"]`,
+			}
+			if test.leftPresent {
+				body["merge_left_live"] = test.left
+			}
+			if test.changedPresent {
+				body["merge_changed_paths"] = test.changed
+			}
+			projection := Fold(reviewRecords(t,
+				event(t, "loose", operator, SchemaState, State{Kind: KindArtifact, Text: "unclassified", Body: map[string]string{"path": "spike", "commit": "loose"}}, "r0"),
+				event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+				event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+				event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "prospective seam", Body: body}, "approval"),
+				event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+				event(t, "retire-r5", agent, SchemaSupersede, Supersede{Target: "r5", Text: "merged"}, "r5", "merge", "successor"),
+			))
+			accounting := statementByEvent(t, projection, "merge").MergeLeftLive
+			found := false
+			for _, entry := range accounting {
+				found = found || strings.Contains(entry.Reason, test.reason)
+			}
+			if !found {
+				t.Fatalf("prospective seam testimony = %+v, want %q", accounting, test.reason)
+			}
+			if successor := artifactByEvent(t, projection, "successor"); successor.LivePredecessors == 0 || !successor.SuccessionUnrecorded {
+				t.Fatalf("incomplete prospective receipt cleared debt: %+v", successor)
+			}
+			if decision, _ := projection.Decision("retire-r5"); decision.Verdict != Effective {
+				t.Fatalf("accounting seam changed retirement authority: %+v", decision)
+			}
+		})
+	}
+}
+
+func TestMergeAccountingDeletionOmissionStaysVisibleOnReceipt(t *testing.T) {
+	projection := Fold(reviewRecords(t,
+		event(t, "gone-left", operator, SchemaState, State{Kind: KindArtifact, Text: "unclassified deletion candidate", Body: map[string]string{"path": "gone", "commit": "other"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "merge with unclassified deletion", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"r5":"spike"}`, "merge_successors": `["spike"]`,
+			"merge_changed_paths": `["gone/file","spike"]`, "merge_left_live": `{}`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "retire-r5", agent, SchemaSupersede, Supersede{Target: "r5", Text: "merged"}, "r5", "merge", "successor"),
+	))
+	accounting := statementByEvent(t, projection, "merge").MergeLeftLive
+	if len(accounting) != 1 || accounting[0].Artifact != "gone-left" || accounting[0].Reason != "not classified by receipt" {
+		t.Fatalf("deletion omission testimony = %+v", accounting)
+	}
+	status := string(RenderStatus(projection))
+	if !strings.Contains(status, name("gone-left", projection.sequences())) || !strings.Contains(status, "not classified by receipt") {
+		t.Fatalf("deletion omission was not rendered:\n%s", status)
+	}
+	if decision, _ := projection.Decision("retire-r5"); decision.Verdict != Effective {
+		t.Fatalf("deletion omission changed retirement authority: %+v", decision)
+	}
+}
+
+func TestMergeLeftLiveProtectedSiblingIsNotRetirementDebt(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "sibling-request", operator, SchemaState, State{Kind: KindRequest, Text: "keep sibling live", Body: map[string]string{"to": agent, "conditions": "publish sibling"}}, "r0"),
+		event(t, "sibling-promise", agent, SchemaState, State{Kind: KindPromise, Text: "will publish sibling"}, "sibling-request"),
+		event(t, "sibling", agent, SchemaState, State{Kind: KindArtifact, Text: "protected sibling", Body: map[string]string{"path": "spike", "commit": "sibling-head"}}, "sibling-promise"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		leftLiveReceipt(t, "merge", "approval", "head1", "merged", `{"r5":"spike"}`, `{"sibling":{"class":"sibling","commitment":"sibling-promise"}}`),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "retire-r5", agent, SchemaSupersede, Supersede{Target: "r5", Text: "merged"}, "r5", "merge", "successor"),
+	)
+	projection := Fold(records)
+	successor := artifactByEvent(t, projection, "successor")
+	if successor.SuccessionUnrecorded || successor.LivePredecessors != 0 {
+		t.Fatalf("protected sibling became an unrecorded succession: %+v", successor)
+	}
+	if projection.OmittedSupersessions != 0 {
+		t.Fatalf("protected sibling counted as retirement debt: %d", projection.OmittedSupersessions)
+	}
+	if strings.Contains(string(RenderStatus(projection)), "supersessions still owed") {
+		t.Fatal("status says the protected sibling must be retired")
+	}
+}
+
+func TestMergeLeftLiveWrongTestimonyWarnsWithoutChangingReceiptAuthority(t *testing.T) {
+	tests := []struct {
+		name       string
+		before     []Record
+		testimony  string
+		wantReason string
+	}{
+		{
+			name: "settled commitment",
+			before: []Record{
+				event(t, "candidate-request", operator, SchemaState, State{Kind: KindRequest, Text: "candidate", Body: map[string]string{"to": agent, "conditions": "candidate"}}, "r0"),
+				event(t, "candidate-promise", agent, SchemaState, State{Kind: KindPromise, Text: "candidate"}, "candidate-request"),
+				event(t, "left", agent, SchemaState, State{Kind: KindArtifact, Text: "left candidate", Body: map[string]string{"path": "spike", "commit": "left-head"}}, "candidate-promise"),
+				event(t, "settled-report", agent, SchemaState, State{Kind: KindReport, Text: "done", Body: map[string]string{"commit": "left-head"}}, "candidate-promise", "left"),
+				event(t, "settled-ratified", operator, SchemaRatify, Ratify{Target: "settled-report"}, "settled-report"),
+			},
+			testimony:  `{"left":{"class":"sibling","commitment":"settled-report"}}`,
+			wantReason: "settled",
+		},
+		{
+			name:       "dangling artifact and commitment",
+			testimony:  `{"missing":{"class":"sibling","commitment":"also-missing"}}`,
+			wantReason: "unresolved",
+		},
+		{
+			name:       "retirement overlap",
+			testimony:  `{"r5":{"class":"abandoned"}}`,
+			wantReason: "also classified for retirement",
+		},
+		{
+			name: "outside successor coverage",
+			before: []Record{
+				event(t, "elsewhere", operator, SchemaState, State{Kind: KindArtifact, Text: "unrelated candidate", Body: map[string]string{"path": "elsewhere", "commit": "elsewhere-head"}}, "r0"),
+			},
+			testimony:  `{"elsewhere":{"class":"abandoned"}}`,
+			wantReason: "does not cover a declared changed path",
+		},
+		{
+			name: "ineffective provenance does not protect",
+			before: []Record{
+				event(t, "candidate-request", operator, SchemaState, State{Kind: KindRequest, Text: "candidate", Body: map[string]string{"to": agent, "conditions": "candidate"}}, "r0"),
+				event(t, "candidate-promise", agent, SchemaState, State{Kind: KindPromise, Text: "candidate"}, "candidate-request"),
+				// Missing conditions makes this request ineffective. Traversal
+				// must stop here rather than borrowing the promise behind it.
+				event(t, "ineffective-middle", agent, SchemaState, State{Kind: KindRequest, Text: "not admitted", Body: map[string]string{"to": agent}}, "candidate-promise"),
+				event(t, "left", agent, SchemaState, State{Kind: KindArtifact, Text: "left candidate", Body: map[string]string{"path": "spike", "commit": "left-head"}}, "ineffective-middle"),
+			},
+			testimony:  `{"left":{"class":"sibling","commitment":"candidate-promise"}}`,
+			wantReason: "does not name or reach",
+		},
+		{
+			name: "malformed present field",
+			before: []Record{
+				event(t, "left", operator, SchemaState, State{Kind: KindArtifact, Text: "left candidate", Body: map[string]string{"path": "spike", "commit": "left-head"}}, "r0"),
+			},
+			testimony:  `{not-json`,
+			wantReason: "not valid JSON",
+		},
+		{
+			name: "null present field",
+			before: []Record{
+				event(t, "left", operator, SchemaState, State{Kind: KindArtifact, Text: "left candidate", Body: map[string]string{"path": "spike", "commit": "left-head"}}, "r0"),
+			},
+			testimony:  `null`,
+			wantReason: "not valid JSON",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tail := append([]Record(nil), test.before...)
+			tail = append(tail,
+				event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+				event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+				leftLiveReceipt(t, "merge", "approval", "head1", "merged", `{"r5":"spike"}`, test.testimony),
+				event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+				event(t, "retire-r5", agent, SchemaSupersede, Supersede{Target: "r5", Text: "merged"}, "r5", "merge", "successor"),
+			)
+			projection := Fold(reviewRecords(t, tail...))
+			decision, _ := projection.Decision("retire-r5")
+			if decision.Verdict != Effective {
+				t.Fatalf("testimony changed receipt retirement authority: %+v", decision)
+			}
+			accounting := statementByEvent(t, projection, "merge").MergeLeftLive
+			foundReason := false
+			for _, entry := range accounting {
+				foundReason = foundReason || (!entry.Verified && strings.Contains(entry.Reason, test.wantReason))
+			}
+			if !foundReason {
+				t.Fatalf("unverified testimony = %+v", accounting)
+			}
+			if !strings.Contains(string(RenderStatus(projection)), "UNVERIFIED left-live testimony") {
+				t.Fatal("status hid unverified testimony")
+			}
+		})
+	}
+}
+
+func TestMergeLeftLiveAbandonedRequiresExistingBareSupersessionAuthority(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "abandoned", other, SchemaState, State{Kind: KindArtifact, Text: "abandoned candidate", Body: map[string]string{"path": "spike", "commit": "abandoned-head"}}, "r0"),
+		event(t, "abandoned-two", operator, SchemaState, State{Kind: KindArtifact, Text: "second abandoned candidate", Body: map[string]string{"path": "spike", "commit": "abandoned-head-two"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		leftLiveReceipt(t, "merge", "approval", "head1", "merged", `{"r5":"spike"}`, `{"abandoned":{"class":"abandoned"},"abandoned-two":{"class":"abandoned"}}`),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "retire-r5", agent, SchemaSupersede, Supersede{Target: "r5", Text: "merged"}, "r5", "merge", "successor"),
+		event(t, "stranger-retire", agent, SchemaSupersede, Supersede{Target: "abandoned", Text: "not mine"}, "abandoned"),
+		event(t, "author-retire", other, SchemaSupersede, Supersede{Target: "abandoned", Text: "my abandoned candidate"}, "abandoned"),
+	)
+	projection := Fold(records)
+	successor := artifactByEvent(t, projection, "successor")
+	if successor.SuccessionUnrecorded || len(successor.MergeLeftLive) != 2 || !successor.MergeLeftLive[0].Verified || !successor.MergeLeftLive[1].Verified {
+		t.Fatalf("abandoned accounting = %+v", successor)
+	}
+	stranger, _ := projection.Decision("stranger-retire")
+	author, _ := projection.Decision("author-retire")
+	if stranger.Verdict != Ineffective || author.Verdict != Effective {
+		t.Fatalf("abandoned authority changed: stranger=%+v author=%+v", stranger, author)
+	}
+	if projection.OmittedSupersessions != 1 {
+		t.Fatalf("live abandoned candidate debt = %d, want 1", projection.OmittedSupersessions)
+	}
+	status := string(RenderStatus(projection))
+	for _, id := range []string{"abandoned", "abandoned-two"} {
+		if !strings.Contains(status, "abandoned artifact "+name(id, projection.sequences())) || !strings.Contains(status, "retirement owed by") {
+			t.Fatalf("status omitted distinguishable abandoned duty for %s:\n%s", id, status)
+		}
+	}
+}
+
+func TestMergeLeftLiveDeletedPathRemainsVisibleOnReceipt(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "gone-old", operator, SchemaState, State{Kind: KindArtifact, Text: "deleted predecessor", Body: map[string]string{"path": "gone", "commit": "base"}}, "r0"),
+		event(t, "gone-left", operator, SchemaState, State{Kind: KindArtifact, Text: "abandoned deleted-path candidate", Body: map[string]string{"path": "gone", "commit": "other-head"}}, "r0"),
+		event(t, "gone-candidate", agent, SchemaState, State{Kind: KindArtifact, Text: "reviewed deletion", Body: map[string]string{"path": "gone", "commit": "head1"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5", "gone-candidate"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "merge with deletion", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"r5":"spike","gone-candidate":"","gone-old":""}`, "merge_successors": `["spike"]`,
+			"merge_changed_paths": `["gone/file"]`,
+			"merge_left_live":     `{"gone-left":{"class":"abandoned"}}`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+	)
+	projection := Fold(records)
+	accounting := statementByEvent(t, projection, "merge").MergeLeftLive
+	if len(accounting) != 1 || !accounting[0].Verified || accounting[0].Artifact != "gone-left" {
+		t.Fatalf("deleted-path accounting = %+v", accounting)
+	}
+	if got := artifactByEvent(t, projection, "successor").MergeLeftLive; len(got) != 0 {
+		t.Fatalf("deleted-path prompt attached to unrelated successor: %+v", got)
+	}
+	status := string(RenderStatus(projection))
+	if !strings.Contains(status, "abandoned artifact "+name("gone-left", projection.sequences())) || !strings.Contains(status, "retirement owed by") {
+		t.Fatalf("deleted-path prompt disappeared:\n%s", status)
+	}
+}
+
+func TestMergeLeftLivePostFrontierRemainsUnaccountedUntilNextReceipt(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		leftLiveReceipt(t, "merge", "approval", "head1", "merged", `{"r5":"spike"}`, `{}`),
+		event(t, "race", operator, SchemaState, State{Kind: KindArtifact, Text: "published after receipt frontier", Body: map[string]string{"path": "spike", "commit": "race-head"}}, "r0"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "retire-r5", agent, SchemaSupersede, Supersede{Target: "r5", Text: "first merge"}, "r5", "merge", "successor"),
+		event(t, "review2-request", operator, SchemaState, State{Kind: KindRequest, Text: "review next merge", Body: map[string]string{"to": other, "conditions": "exact head"}}, "successor"),
+		event(t, "review2-promise", other, SchemaState, State{Kind: KindPromise, Text: "will review"}, "review2-request"),
+		event(t, "approval2", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "merged", "artifact": "successor"}}, "review2-promise", "successor"),
+		event(t, "approval2-ratified", operator, SchemaRatify, Ratify{Target: "approval2"}, "approval2"),
+		leftLiveReceipt(t, "merge2", "approval2", "merged", "merged2", `{"successor":"spike"}`, `{"race":{"class":"abandoned"}}`),
+		event(t, "successor2", agent, SchemaState, State{Kind: KindArtifact, Text: "next merged implementation", Body: map[string]string{"path": "spike", "commit": "merged2"}}, "merge2"),
+	)
+	projection := Fold(records)
+	first := artifactByEvent(t, projection, "successor")
+	if first.LivePredecessors != 1 || !first.SuccessionUnrecorded {
+		t.Fatalf("post-frontier artifact was not retained as unaccounted: %+v", first)
+	}
+	second := artifactByEvent(t, projection, "successor2")
+	if second.LivePredecessors != 0 || second.SuccessionUnrecorded || len(second.MergeLeftLive) != 1 || !second.MergeLeftLive[0].Verified {
+		t.Fatalf("next receipt did not account for the race: %+v", second)
+	}
+}
+
+func TestReceiptWithoutMergeLeftLiveKeepsFoldTimeSuccessionBehavior(t *testing.T) {
+	records := reviewRecords(t,
+		event(t, "left", operator, SchemaState, State{Kind: KindArtifact, Text: "temporarily live", Body: map[string]string{"path": "spike", "commit": "left-head"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "historical receipt", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"r5":"spike"}`, "merge_successors": `["spike"]`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged implementation", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge"),
+		event(t, "retire-left", operator, SchemaSupersede, Supersede{Target: "left", Text: "later cleanup"}, "left"),
+		event(t, "retire-r5", agent, SchemaSupersede, Supersede{Target: "r5", Text: "merged"}, "r5", "merge", "successor"),
+	)
+	projection := Fold(records)
+	successor := artifactByEvent(t, projection, "successor")
+	if successor.LivePredecessors != 0 || successor.SuccessionUnrecorded || successor.MergeLeftLive != nil {
+		t.Fatalf("historical receipt was reinterpreted: %+v", successor)
+	}
+	if statementByEvent(t, projection, "merge").MergeLeftLive != nil {
+		t.Fatal("absent historical field projected prospective testimony")
+	}
+}
+
+func leftLiveReceipt(t *testing.T, id, approval, candidate, merged, retirements, leftLive string) Record {
+	t.Helper()
+	return event(t, id, agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+		"merge_approval": approval, "merge_candidate": candidate, "merge_target_pre_head": "base", "merge_head": merged,
+		"merge_retirements": retirements, "merge_successors": `["spike"]`, "merge_changed_paths": `["spike"]`, "merge_left_live": leftLive,
+	}}, approval)
+}
+
 // An artifact with no basis can never go stale, so its silence must not read
 // as currency.
 func TestUnbridgedArtifactIsMarkedUnableToFlare(t *testing.T) {
@@ -2575,7 +3068,7 @@ func TestStatusPageCountsSuccessionPathsAsWellAsArtifacts(t *testing.T) {
 		t.Fatalf("owed supersessions = %d, want 3", projection.OmittedSupersessions)
 	}
 	page := RenderStatus(projection)
-	want := "3 artifacts across 2 paths follow a live artifact at the same path without superseding it; supersessions still owed: 3"
+	want := "3 artifacts across 2 paths follow a live artifact covering the merge without superseding or accounting for it; supersessions still owed: 3"
 	if !bytes.Contains(page, []byte(want)) {
 		t.Fatalf("page does not separate owed acts from rows and paths, want %q\n%s", want, page)
 	}
