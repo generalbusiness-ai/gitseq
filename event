@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1fbee274ad26ae7046db169577ded9d5e8a697ff"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:948433b5b49aa03e46d822f28a1cb7653f67df63","text":"Retiring my malformed review request of exact head cfcea2e10adc35eca4b73e499e7951c27bbd0946: it was filed before the publication repair codex requested was complete, so its bases were not the canonical chain this review must rest on. Replaced by the fresh refile in this same batch."}
