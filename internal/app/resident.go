@@ -31,10 +31,21 @@ const residentFile = "resident.json"
 
 // PublishResident advertises this process as the repository's resident service
 // and returns the withdrawal. It is endpoint metadata, not authority: the last
-// writer wins, and a record left behind by a dead process costs a client only a
-// refused connection before it falls back to acting locally. Ownership of the
-// repository lives in the claim ref instead — see ClaimResident — and a serving
-// process advertises only after it holds one.
+// writer wins, and ownership of the repository lives in the claim ref instead —
+// see ClaimResident — with a serving process advertising only after it holds
+// one.
+//
+// A record left behind by a dead process is still a trustworthy advertisement:
+// it reads, parses, names this workroom and carries a usable address. What
+// happens next depends on what the caller is doing. A read command may name the
+// failed request on standard error and answer from the verified local read
+// instead. A durable write does not fall back; it refuses, because folding an
+// act locally because a dial failed is a whole-log rebuild the author never
+// asked for.
+//
+// An advertisement that is not trustworthy — unreadable, oversized,
+// unparseable, addressless, or naming another workroom — refuses for every
+// caller before any of that, and ResidentAdvertisement carries the reason.
 func (w *Workspace) PublishResident(url string) (withdraw func(), err error) {
 	record := Resident{URL: strings.TrimRight(url, "/"), Genesis: w.config.Genesis, PID: os.Getpid()}
 	content, err := json.Marshal(record)

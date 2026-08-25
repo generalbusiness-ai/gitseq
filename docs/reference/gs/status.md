@@ -245,6 +245,13 @@ the command then does the verified local read instead. The header says
 `verified local fallback`, so a fallback answer is never presented as a
 resident one.
 
+This fallback belongs to reading, and only after the resident has been
+asked and the request or the response failed. It is not what happens when
+the advertisement itself cannot be trusted. An unreadable, oversized,
+unparseable or addressless `resident.json`, or one naming another
+workroom, refuses here as it does everywhere, before any request is made
+— see [`gs serve`](serve.md). Durable writes never fall back at all.
+
 ## Cost
 
 The local read tries the application-owned checkpoint selector under

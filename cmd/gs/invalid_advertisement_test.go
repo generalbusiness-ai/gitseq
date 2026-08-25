@@ -103,6 +103,13 @@ func invalidClasses() map[string]invalidClass {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+				// Mode 0000 does not stop a caller that bypasses permissions,
+				// so prove the file really is unreadable here. Without this the
+				// class would pass as root by never reaching the open error it
+				// claims to pin, and a silent pass is worse than a skip.
+				if _, err := os.ReadFile(path); err == nil {
+					t.Skip("this user can read a 0000 file, so the unreadable branch cannot be reached; run as an unprivileged user")
+				}
 			},
 			reason: "cannot be read",
 		},

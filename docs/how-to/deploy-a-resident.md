@@ -254,9 +254,19 @@ trap - EXIT
 
 Interrupt and terminate both count as being told to stop: the service
 withdraws its advertisement and exits reporting success, so an ordinary
-shutdown does not read as a fault in a supervisor's logs. Only a hard
-kill leaves the record behind, and that costs a client one refused
-connection before it falls back to acting locally.
+shutdown does not read as a fault in a supervisor's logs.
+
+Only a hard kill leaves the record behind. That record is still a
+well-formed advertisement, so what a client does next depends on what it
+was asked to do. A read command names the refused connection on standard
+error and answers from the verified local read instead. A durable write
+refuses and appends nothing, and tells you to start the resident again or
+pass `--server -` to act locally on purpose. Writing to the local log
+because a dial failed would rebuild the whole log without being asked, so
+`gs` makes you say it.
+
+Remove the stale record, or start the resident again, and both go back to
+normal.
 
 ## See also
 
