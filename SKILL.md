@@ -186,21 +186,25 @@ artifact it names.
    Two rules follow, one on each side of a document. **Describing
    behaviour**, rest on the artifacts for the implementation you describe,
    not only on the request that produced the document: ask whether retiring
-   a basis would mean the prose needs re-checking, and a request alone
-   never does. **Changing behaviour**, supersede every live artifact that
-   covers what you changed as part of stating the new one. More than one
-   can be live at a path; retire all of them. A first artifact at a path
-   has no predecessor and needs none retired. The projection marks what you
-   skip — *unable to flare*, or *succession not recorded* with the count;
+   a basis would mean the prose needs re-checking, and a request alone never
+   does. **Changing behaviour**, retire the predecessors in the target's
+   world and publish the successor at the path the area keeps. The sealed
+   receipt pairs the canonical `merge_changed_paths` frontier with
+   `merge_left_live`, classifying every other live candidate that covers the
+   change as a protected sibling when an unsettled commitment reaches it, or
+   as abandoned otherwise. Protected siblings stay live. An abandoned
+   candidate still requires bare supersession by its author or a `ratifier`;
+   the merge gains no authority over it. A first artifact has no predecessor
+   and needs none retired. The projection marks what you skip — *unable to
+   flare*, or *succession not recorded* with the count;
    [docs/concepts/staleness.md](docs/concepts/staleness.md) says which
    condition produces which — and a flare means re-check this, not this is
-   wrong. The narrower
-   *describes a superseded world* flag follows artifact-to-artifact
-   provenance only; other reasoning edges carry ordinary staleness but do
-   not pass it onward. `gs merge` records ordinary staleness in its receipt
-   and may land the exact approved head; a superseded world it judges as of
-   the verdict. [`gs merge`](docs/reference/gs/merge.md) states the dated
-   rules.
+   wrong. The narrower *describes a superseded world* flag follows
+   artifact-to-artifact provenance only; other reasoning edges carry ordinary
+   staleness but do not pass it onward. `gs merge` records ordinary staleness
+   in its receipt and may land the exact approved head; a superseded world it
+   judges as of the verdict. [`gs merge`](docs/reference/gs/merge.md) states
+   the dated rules.
 9. **Publish live activity honestly.** Start work with `busy` and its
    relevant focus EventIDs. Publish `waiting` or `blocked` immediately;
    return to `available` and clear focus when leaving. Keep routine failed
@@ -214,25 +218,25 @@ artifact it names.
     `internal/workroom` never reaches one at `internal/workroom/fold.go`,
     so reuse the exact string the area already uses, and never join paths
     into one — `AGENTS.md,SKILL.md` is a string no predecessor can equal.
-    Retiring and publishing are separate decisions. Retire every live
-    artifact covering the change; publish a successor only at the path the
-    area keeps. A first artifact — where no live artifact covers the change
-    — picks the granularity a reader would cite, a package directory or a
-    document, and keeps that string stable, because the next merge in that
-    area must match it. Where a directory and something inside it are both
-    live over one changed file, the wider path wins: the successor goes
-    there and the narrower artifact is retired by a bare `supersede` naming
-    the surviving path. A renamed or deleted file's old path is retired the
-    same way and never published at again; a rename opens a first artifact
-    at the new path, a deletion opens nothing. A bare `supersede` is
-    admitted only from the target's own author or an actor holding
-    `ratifier`, so ask that actor when the artifact to retire is not yours.
-    Never record an artifact at `.`: it claims the whole repository, so the
-    next change anywhere retires it and everything anchored to it flares
-    however unrelated the change. Nothing stands in for a whole-repository
-    pointer, and nothing needs to — which commit a branch carries is git's
-    question, and the live artifact at each path already names the commit
-    that last changed that area.
+    Retiring, accounting, and publishing are separate duties. Retire every
+    in-target predecessor covering the change; account for every other live
+    covering candidate in the paired receipt fields; publish a successor
+    only at the stable path the area keeps. Where no live artifact covers
+    the change, pick a stable package or document path for the first
+    artifact. Where a directory and something inside it are both live over
+    one changed file, the wider path wins: publish there and retire the
+    narrower artifact by a bare `supersede` naming the surviving path. A
+    receipt's abandoned classification is the durable prompt for cleanup,
+    not authority for the merge to do it. A renamed or deleted file's old
+    path is retired the same way and never published at again; a rename opens
+    a first artifact at the new path, a deletion opens nothing. A bare
+    `supersede` is admitted only from the target's own author or an actor
+    holding `ratifier`, so ask that actor when the artifact to retire is not
+    yours. Never record an artifact at `.`: it claims the whole repository,
+    so the next change anywhere retires it and everything anchored to it
+    flares however unrelated the change. Nothing stands in for a
+    whole-repository pointer, and nothing needs to — Git names the branch
+    commit, while live artifacts name the commit that last changed each area.
 11. **Ordinary staleness is not a question.** A request, promise or report
     that is stale only because a basis under it was retired and succeeded
     has lost nothing but its anchor: the reasoning moved, the requirements

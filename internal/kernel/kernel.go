@@ -349,6 +349,38 @@ func Submit(ctx context.Context, store gitstore.Store, request Request, options 
 	return submit(ctx, store, request, options, nil)
 }
 
+// ValidateRequestSize applies the kernel's exact envelope, payload, and
+// attachment accounting without reading or writing a log. Callers that must
+// prove a later submission can fit before changing some other durable state
+// use the same calculation Submit applies after it reads the target genesis.
+func ValidateRequestSize(request Request, ceiling uint64) error {
+	decoded, err := intent.Verify(request.Signed)
+	if err != nil {
+		return err
+	}
+	return validateRequestSize(request, decoded, ceiling)
+}
+
+func validateRequestSize(request Request, decoded intent.Intent, ceiling uint64) error {
+	message := intent.Envelope(request.Signed, decoded.RestsOn)
+	eventSize := uint64(len(message))
+	if eventSize > ceiling || uint64(len(request.Payload)) > ceiling-eventSize {
+		return errors.New("event exceeds genesis ceiling")
+	}
+	eventSize += uint64(len(request.Payload))
+	for _, attachment := range request.Attachments {
+		size := uint64(len(attachment))
+		if eventSize > ceiling || size > ceiling-eventSize {
+			return errors.New("event exceeds genesis ceiling")
+		}
+		eventSize += size
+	}
+	if eventSize > ceiling {
+		return errors.New("event exceeds genesis ceiling")
+	}
+	return nil
+}
+
 // Rotate appends the kernel's reserved key-rotation event. The rotation commit
 // is signed by the current sequencer key and names the only key accepted for
 // later commits. The private key named by options remains the current key;
@@ -439,20 +471,8 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 		return Result{}, err
 	}
 	message := intent.Envelope(request.Signed, decoded.RestsOn)
-	eventSize := uint64(len(message))
-	if eventSize > desc.PayloadCeiling || uint64(len(request.Payload)) > desc.PayloadCeiling-eventSize {
-		return Result{}, errors.New("event exceeds genesis ceiling")
-	}
-	eventSize += uint64(len(request.Payload))
-	for _, attachment := range request.Attachments {
-		size := uint64(len(attachment))
-		if eventSize > desc.PayloadCeiling || size > desc.PayloadCeiling-eventSize {
-			return Result{}, errors.New("event exceeds genesis ceiling")
-		}
-		eventSize += size
-	}
-	if eventSize > desc.PayloadCeiling {
-		return Result{}, errors.New("event exceeds genesis ceiling")
+	if err := validateRequestSize(request, decoded, desc.PayloadCeiling); err != nil {
+		return Result{}, err
 	}
 	if options.PreAppend != nil {
 		admission := Admission{Intent: decoded, ActorKey: bytes.Clone(request.Signed.ActorKey), CapabilityProof: bytes.Clone(request.CapabilityProof)}

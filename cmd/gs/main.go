@@ -544,15 +544,18 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if _, err := git(ctx, *checkout, "merge", "--no-ff", "--no-commit", "--", *candidate); err != nil {
 		return err
 	}
-	changes, err := stagedMergeChanges(ctx, *checkout)
+	changes, err := readStagedMergeChanges(ctx, *checkout)
 	if err != nil {
 		return fmt.Errorf("read tentative merge changes: %w", err)
+	}
+	if err := validateMergeChangePaths(changes); err != nil {
+		return err
 	}
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
 		return err
 	}
-	predecessors := successionPredecessors(ctx, *checkout, snapshot.Projection, targetPreHead, *candidate)
+	predecessors := successionPredecessors(ctx, *checkout, snapshot.Projection, changes, targetPreHead, *candidate)
 	plan := planSuccession(snapshot.Projection, changes, predecessors)
 	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
@@ -563,6 +566,13 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	message, err := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead, staleness, plan)
 	if err != nil {
 		return err
+	}
+	// The merge commit makes its durable receipt mandatory. Prove every act in
+	// that receipt chain can cross the exact local and resident admission size
+	// boundaries before moving HEAD; otherwise retry could never finish it.
+	prospectiveActs := successionActs(*approval, *candidate, targetPreHead, *candidate, staleness, plan)
+	if err := preflightBatchAdmission(ctx, workspace, *serverURL, actor, private, prospectiveActs, true); err != nil {
+		return fmt.Errorf("merge succession admission preflight: %w", err)
 	}
 	if _, err := git(ctx, *checkout, "commit", "-m", message); err != nil {
 		return err
@@ -592,22 +602,28 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 }
 
 type mergeReceipt struct {
-	Approval      string
-	Candidate     string
-	TargetPreHead string
-	MergeHead     string
-	Retirements   string
-	Successors    string
-	Staleness     string
+	Approval            string
+	Candidate           string
+	TargetPreHead       string
+	MergeHead           string
+	Retirements         string
+	Successors          string
+	LeftLive            string
+	LeftLivePresent     bool
+	ChangedPaths        string
+	ChangedPathsPresent bool
+	Staleness           string
 }
 
 const (
-	mergeApprovalTrailer    = "Gitseq-Approval: "
-	mergeCandidateTrailer   = "Gitseq-Candidate: "
-	mergeTargetTrailer      = "Gitseq-Target-Pre-Head: "
-	mergeRetirementsTrailer = "Gitseq-Retirements: "
-	mergeSuccessorsTrailer  = "Gitseq-Successors: "
-	mergeStalenessTrailer   = "Gitseq-Staleness: "
+	mergeApprovalTrailer     = "Gitseq-Approval: "
+	mergeCandidateTrailer    = "Gitseq-Candidate: "
+	mergeTargetTrailer       = "Gitseq-Target-Pre-Head: "
+	mergeRetirementsTrailer  = "Gitseq-Retirements: "
+	mergeSuccessorsTrailer   = "Gitseq-Successors: "
+	mergeLeftLiveTrailer     = "Gitseq-Left-Live: "
+	mergeChangedPathsTrailer = "Gitseq-Changed-Paths: "
+	mergeStalenessTrailer    = "Gitseq-Staleness: "
 )
 
 func mergeReceiptKey(approval string) string {
@@ -620,6 +636,9 @@ func mergeReceiptRef(approval string) string {
 }
 
 func mergeReceiptMessage(text, approval, candidate, targetPreHead, staleness string, plan successionPlan) (string, error) {
+	if (plan.leftLive != nil) != (plan.changedPaths != nil) {
+		return "", errors.New("prospective merge receipt requires both left-live accounting and changed paths")
+	}
 	retirements, err := json.Marshal(plan.retire)
 	if err != nil {
 		return "", err
@@ -631,6 +650,20 @@ func mergeReceiptMessage(text, approval, candidate, targetPreHead, staleness str
 	message := fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
 		mergeApprovalTrailer, approval, mergeCandidateTrailer, candidate, mergeTargetTrailer, targetPreHead,
 		mergeRetirementsTrailer, retirements, mergeSuccessorsTrailer, successors)
+	if plan.leftLive != nil {
+		leftLive, err := json.Marshal(plan.leftLive)
+		if err != nil {
+			return "", err
+		}
+		message += "\n" + mergeLeftLiveTrailer + string(leftLive)
+	}
+	if plan.changedPaths != nil {
+		changedPaths, err := json.Marshal(plan.changedPaths)
+		if err != nil {
+			return "", err
+		}
+		message += "\n" + mergeChangedPathsTrailer + string(changedPaths)
+	}
 	if staleness != "" {
 		message += "\n" + mergeStalenessTrailer + staleness
 	}
@@ -660,6 +693,16 @@ func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt,
 			receipt.Retirements = strings.TrimPrefix(line, mergeRetirementsTrailer)
 		case strings.HasPrefix(line, mergeSuccessorsTrailer):
 			receipt.Successors = strings.TrimPrefix(line, mergeSuccessorsTrailer)
+		case line == strings.TrimSpace(mergeLeftLiveTrailer):
+			receipt.LeftLivePresent = true
+		case strings.HasPrefix(line, mergeLeftLiveTrailer):
+			receipt.LeftLive = strings.TrimPrefix(line, mergeLeftLiveTrailer)
+			receipt.LeftLivePresent = true
+		case line == strings.TrimSpace(mergeChangedPathsTrailer):
+			receipt.ChangedPathsPresent = true
+		case strings.HasPrefix(line, mergeChangedPathsTrailer):
+			receipt.ChangedPaths = strings.TrimPrefix(line, mergeChangedPathsTrailer)
+			receipt.ChangedPathsPresent = true
 		case strings.HasPrefix(line, mergeStalenessTrailer):
 			receipt.Staleness = strings.TrimPrefix(line, mergeStalenessTrailer)
 		}
@@ -1423,14 +1466,7 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 	}
 	minted := make(map[string]string, len(acts))
 	for position, entry := range acts {
-		act := app.Act{
-			Verb: entry.Verb, Kind: entry.Kind, Text: entry.Text, Body: entry.Body,
-			Target: resolveLabel(entry.Target, minted), IdempotencyKey: entry.IdempotencyKey,
-			CitedOK: citedOK,
-		}
-		for _, reference := range entry.RestsOn {
-			act.RestsOn = append(act.RestsOn, resolveLabel(reference, minted))
-		}
+		act := resolveBatchAct(entry, minted, citedOK)
 		submission, err := submitSigned(ctx, workspace, serverURL, actorName, private, act)
 		if err != nil {
 			failure := batchFail("submit", "%v", err)
@@ -1451,6 +1487,56 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 		}
 	}
 	return report, nil
+}
+
+// preflightBatchAdmission constructs every request with the same application
+// encoder used by submission, then checks the kernel and optional resident
+// byte ceilings without appending. Intra-batch event IDs are not known yet;
+// their canonical IDs always have the genesis hash width, so a valid dummy OID
+// preserves the exact envelope and JSON lengths of the eventual references.
+func preflightBatchAdmission(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, acts []batchAct, citedOK bool) error {
+	if position, failure := checkBatch(acts); failure != nil {
+		return fmt.Errorf("act %d: %w", position, failure)
+	}
+	if serverURL != "" {
+		if _, err := residentclient.ValidateURL(serverURL); err != nil {
+			return err
+		}
+	}
+	view := workspace.View()
+	syntheticEvent := workspace.EventID(strings.Repeat("0", len(view.Genesis)))
+	minted := make(map[string]string, len(acts))
+	for position, entry := range acts {
+		act := resolveBatchAct(entry, minted, citedOK)
+		request, err := workspace.BuildActRequest(ctx, private, actorName, act)
+		if err != nil {
+			return fmt.Errorf("act %d: %w", position, err)
+		}
+		if err := kernel.ValidateRequestSize(request, view.PayloadCeiling); err != nil {
+			return fmt.Errorf("act %d: %w", position, err)
+		}
+		if serverURL != "" {
+			if err := service.ValidateSubmissionRequestSize(request); err != nil {
+				return fmt.Errorf("act %d: %w", position, err)
+			}
+		}
+		if entry.Label != "" {
+			minted[entry.Label] = syntheticEvent
+		}
+	}
+	return nil
+}
+
+func resolveBatchAct(entry batchAct, minted map[string]string, citedOK bool) app.Act {
+	act := app.Act{
+		Verb: entry.Verb, Kind: entry.Kind, Text: entry.Text, Body: entry.Body,
+		Target: resolveLabel(entry.Target, minted), IdempotencyKey: entry.IdempotencyKey,
+		CitedOK: citedOK,
+	}
+	for _, reference := range entry.RestsOn {
+		act.RestsOn = append(act.RestsOn, resolveLabel(reference, minted))
+	}
+	return act
 }
 
 // checkBatch validates the shape of every act and proves that each intra-batch

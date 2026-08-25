@@ -2,12 +2,142 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
+
+func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	testGit(t, "", "init", "-q", "-b", "main", repo)
+	write := func(name, content, message string) string {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		testGit(t, repo, "add", name)
+		testGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", message)
+		return testGit(t, repo, "rev-parse", "HEAD")
+	}
+	base := write("base", "base\n", "base")
+	testGit(t, repo, "checkout", "-qb", "candidate")
+	candidate := write("candidate", "candidate\n", "candidate")
+	testGit(t, repo, "checkout", "-qb", "other", base)
+	sibling := write("sibling", "sibling\n", "protected sibling")
+	abandoned := write("abandoned", "abandoned\n", "abandoned candidate")
+
+	projection := workroom.Projection{
+		Artifacts: []workroom.Artifact{
+			{Event: "target-artifact", Path: "shared", Commit: base},
+			{Event: "candidate-artifact", Path: "shared", Commit: candidate},
+			{Event: "sibling-artifact", Path: "shared", Commit: sibling},
+			{Event: "abandoned-artifact", Path: "shared", Commit: abandoned},
+			{Event: "empty-commit-artifact", Path: "shared", Commit: ""},
+			{Event: "ineffective-chain-artifact", Path: "shared", Commit: abandoned},
+			{Event: "outside-diff-artifact", Path: "elsewhere", Commit: "not-a-git-object"},
+		},
+		Statements: []workroom.Statement{
+			{Event: "request", Lifecycle: workroom.LifecycleRequest},
+			{Event: "protect", Lifecycle: workroom.LifecyclePromise},
+			{Event: "settled-request", Lifecycle: workroom.LifecycleRequest},
+			{Event: "settled-report", Lifecycle: workroom.LifecycleReport, Body: map[string]string{"head": abandoned}},
+			{Event: "ineffective-request", Lifecycle: workroom.LifecycleRequest},
+			{Event: "ineffective-promise", Lifecycle: workroom.LifecyclePromise},
+		},
+		Commitments: []workroom.Commitment{
+			{Request: "request", Promise: "protect", Status: "promised"},
+			{Request: "settled-request", Report: "settled-report", Status: "satisfied"},
+			{Request: "ineffective-request", Promise: "ineffective-promise", Status: "promised"},
+		},
+		Provenance: map[string][]string{
+			"protect":                    {"request"},
+			"sibling-artifact":           {"middle"},
+			"middle":                     {"protect"},
+			"ineffective-chain-artifact": {"ineffective-middle"},
+			"ineffective-middle":         {"ineffective-promise"},
+		},
+		Decisions: []workroom.Decision{{Event: "ineffective-middle", Verdict: workroom.Ineffective}},
+	}
+	changes := []mergeChange{{status: "M", new: "shared/file"}}
+	classified := successionPredecessors(context.Background(), repo, projection, changes, base, candidate)
+	for _, event := range []string{"target-artifact", "candidate-artifact"} {
+		if !classified[event].predecessor {
+			t.Errorf("%s was not classified as an in-target predecessor", event)
+		}
+	}
+	if got := classified["sibling-artifact"].leftLive; got.Class != leftLiveSibling || got.Commitment != "protect" {
+		t.Errorf("protected candidate = %+v, want sibling under protect", got)
+	}
+	if got := classified["abandoned-artifact"].leftLive; got.Class != leftLiveAbandoned || got.Commitment != "" {
+		t.Errorf("unprotected candidate = %+v, want abandoned", got)
+	}
+	if got := classified["empty-commit-artifact"].leftLive; got.Class != leftLiveAbandoned || got.Commitment != "" {
+		t.Errorf("empty-commit candidate = %+v, want abandoned", got)
+	}
+	if got := classified["ineffective-chain-artifact"].leftLive; got.Class != leftLiveAbandoned || got.Commitment != "" {
+		t.Errorf("candidate behind ineffective provenance = %+v, want abandoned", got)
+	}
+	if _, exists := classified["outside-diff-artifact"]; exists {
+		t.Fatal("classifier queried or classified an artifact outside the diff")
+	}
+
+	plan := planSuccession(projection, changes, classified)
+	if len(plan.retire) != 2 || plan.retire["target-artifact"] != "shared" || plan.retire["candidate-artifact"] != "shared" {
+		t.Fatalf("in-target retirements = %#v", plan.retire)
+	}
+	if !reflect.DeepEqual(plan.leftLive, map[string]mergeLeftLive{
+		"sibling-artifact":           {Class: leftLiveSibling, Commitment: "protect"},
+		"abandoned-artifact":         {Class: leftLiveAbandoned},
+		"empty-commit-artifact":      {Class: leftLiveAbandoned},
+		"ineffective-chain-artifact": {Class: leftLiveAbandoned},
+	}) {
+		t.Fatalf("left-live accounting = %#v", plan.leftLive)
+	}
+}
+
+func TestMergeChangedPathsAreTheCanonicalOldAndNewDiffSet(t *testing.T) {
+	changes := []mergeChange{
+		{status: "M", new: "z.txt"},
+		{status: "R100", old: "old/name.go", new: "new/name.go"},
+		{status: "D", old: "gone.txt"},
+		{status: "C100", old: "old/name.go", new: "copy/name.go"},
+		{status: "M", new: "z.txt"},
+	}
+	want := []string{"copy/name.go", "gone.txt", "new/name.go", "old/name.go", "z.txt"}
+	if got := mergeChangedPaths(changes); !reflect.DeepEqual(got, want) {
+		t.Fatalf("changed paths = %#v, want %#v", got, want)
+	}
+	if got := mergeChangedPaths(nil); got == nil || len(got) != 0 {
+		t.Fatalf("empty changed paths = %#v, want a sealed empty array", got)
+	}
+}
+
+func TestMergeDoesNotProtectThroughIneffectiveProvenance(t *testing.T) {
+	projection := workroom.Projection{
+		Artifacts: []workroom.Artifact{{Event: "candidate-artifact", Path: "shared", Commit: "candidate-head"}},
+		Statements: []workroom.Statement{
+			{Event: "request", Lifecycle: workroom.LifecycleRequest},
+			{Event: "promise", Lifecycle: workroom.LifecyclePromise},
+		},
+		Commitments: []workroom.Commitment{{Request: "request", Promise: "promise", Status: "promised"}},
+		Provenance: map[string][]string{
+			"candidate-artifact": {"ineffective-middle"},
+			"ineffective-middle": {"promise"},
+		},
+		Decisions: []workroom.Decision{
+			{Event: "candidate-artifact", Verdict: workroom.Effective},
+			{Event: "ineffective-middle", Verdict: workroom.Ineffective},
+			{Event: "promise", Verdict: workroom.Effective},
+		},
+	}
+	if got := protectionIndex(projection, projection.Artifacts)["candidate-artifact"]; got != "" {
+		t.Fatalf("ineffective provenance protected candidate under %q", got)
+	}
+}
 
 // Both covering artifacts sit above the changed file, so neither path is the
 // fallback and the comparison is the only thing that can pick a winner. An

@@ -39,6 +39,15 @@ export interface Statement {
   // Narrows stale: what moved was the world this statement describes.
   describes_superseded_world?: boolean;
   world_superseded_at?: number;
+  merge_left_live?: LeftLiveAccounting[];
+}
+
+export interface LeftLiveAccounting {
+  artifact: string;
+  class: string;
+  commitment?: string;
+  verified: boolean;
+  reason?: string;
 }
 
 export interface Commitment {
@@ -83,6 +92,7 @@ export interface Artifact {
   // summable across rows — with A, B and C at one path, B counts A and C
   // counts both, so a total would double-count A.
   live_predecessors?: number;
+  merge_left_live?: LeftLiveAccounting[];
 }
 
 // A review verdict as the fold computed it. The thread rail reads its

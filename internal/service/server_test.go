@@ -26,6 +26,16 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
+func TestValidateSubmissionRequestSizeMatchesResidentJSONCap(t *testing.T) {
+	if err := ValidateSubmissionRequestSize(kernel.Request{Payload: []byte("small")}); err != nil {
+		t.Fatalf("small resident request rejected: %v", err)
+	}
+	oversized := kernel.Request{Payload: make([]byte, SubmissionRequestLimit)}
+	if err := ValidateSubmissionRequestSize(oversized); err == nil || !strings.Contains(err.Error(), "resident submission request exceeds") {
+		t.Fatalf("oversized resident request error = %v", err)
+	}
+}
+
 func announceCredential(t *testing.T, server *Server, input presenceRequest) (string, nexus.Change) {
 	t.Helper()
 	body, err := json.Marshal(input)

@@ -9,8 +9,8 @@ rests_on:
 # `gs merge`
 
 Merges one approved commit into the checkout, after checking that the
-approval really covers that commit and still stands. It then retires the live
-artifact pointers the merge changed and publishes their successors as one
+approval really covers that commit and still stands. It then accounts for the
+live artifact pointers the merge changed and publishes their successors as one
 resumable batch.
 
 ## Flags
@@ -159,8 +159,9 @@ Concurrent callers first reserve
 Only one caller can proceed. A successful merge leaves three matching
 records, followed by the artifact succession authorized by that receipt:
 
-- merge commit trailers naming `Gitseq-Approval`, `Gitseq-Candidate`, and
-  `Gitseq-Target-Pre-Head`;
+- merge commit trailers naming `Gitseq-Approval`, `Gitseq-Candidate`,
+  `Gitseq-Target-Pre-Head`, `Gitseq-Changed-Paths`, and
+  `Gitseq-Left-Live`;
 - the repository receipt ref, advanced from the target's pre-merge head
   to the merge head; and
 - a signed workroom assertion naming the approval, candidate, target
@@ -177,6 +178,14 @@ the checkout still at that merge head. It finds the immutable Git receipt and
 resumes the missing suffix; it does not merge a second time or retire a
 successor it already published.
 
+Before creating the merge commit, the command builds the signed request for
+every act in that succession batch. It checks each request with the kernel's
+exact genesis-ceiling accounting and, when `--server` is used, with the
+resident's exact JSON request limit. Intra-batch labels are replaced with
+canonical event identifiers of the same encoded length as the identifiers the
+sequencer will mint. A batch that cannot be admitted is refused while `HEAD`,
+the workroom log, and the receipt reservation are still unchanged.
+
 When the reviewed candidate artifact rests on its implementer's promise, that
 artifact already serves as the implementation report. The sealed receipt
 closes that commitment; no implementation ratification follows the merge. The
@@ -186,14 +195,19 @@ this command accepts it.
 ## Artifact succession
 
 The command reads the first-parent diff of the merge that actually lands. It
-treats stale artifacts as live until they are retired, deduplicates work across
-changed files, publishes all successors, and then retires every covered
-predecessor in the same batch.
+treats stale artifacts as live until they are retired and deduplicates work
+across changed files. It retires covered predecessors in the target's world,
+publishes their successors, and seals why every other covered candidate stayed
+live.
 
 | Situation | Enforced result |
 |---|---|
-| One live path covers the change | One successor is published at that exact string and every live predecessor there is retired. |
-| A directory and something inside it both cover one changed file | The wider directory wins. One successor is published there; every wider and narrower predecessor is retired. |
+| One live path covers the change | One successor is published at that exact string. In-target predecessors are retired; other candidates are accounted for and stay live. |
+| A directory and something inside it both cover one changed file | The wider directory wins. One successor is published there; every covered artifact is retired or accounted for. |
+| A non-target candidate has an unsettled commitment naming its head or reaching its artifact | It stays live and `Gitseq-Left-Live` records it as a sibling with the protecting commitment. |
+| A non-target candidate has no unsettled commitment | It stays live and `Gitseq-Left-Live` records it as abandoned. Its author or a `ratifier` owes the bare supersession. |
+| Testimony names a settled, mismatched, or unknown commitment | The receipt remains effective and grants no extra authority. The testimony is unverified and the successor keeps its succession warning. |
+| An artifact appears after the sealed snapshot | It is outside the plan and the successor warns that succession was not recorded. A later merge at the path accounts for it. |
 | No live artifact covers an added or modified file | A first artifact is published at the changed file path. |
 | A file is renamed | Its exact old path is retired without a successor there. The destination receives a first artifact or the successor for the live path already covering it. |
 | A file is deleted | Its exact old path is retired with no successor. A live covering directory still receives its successor because the directory changed. |
@@ -204,6 +218,25 @@ predecessor in the same batch.
 their original decisions but valid historical paths remain candidates for
 retirement and succession. New raw submissions cannot use retired state@0 or
 state@1 admission to bypass current rules.
+
+`Gitseq-Changed-Paths:` carries the sorted, deduplicated JSON array of exact
+old and new paths from the merge's first-parent diff. The durable
+`merge_changed_paths` field preserves the same frontier. On retry, the command
+recomputes the diff and refuses a missing, malformed, non-canonical, or
+mismatched frontier. This prevents a broad successor such as `dir` from making
+an unrelated live artifact at `dir/b` part of a merge that changed only
+`dir/a`.
+
+`Gitseq-Left-Live:` carries deterministic JSON matching the durable
+`merge_left_live` body field. It maps each artifact event to either
+`{"class":"sibling","commitment":"<event id>"}` or
+`{"class":"abandoned"}`. The field grants no retirement authority. The fold
+checks both it and the sealed changed-path frontier from durable log facts at
+the receipt position and uses them only to make the published successor's
+accounting stable. The recorded classification remains historical evidence;
+the current owed-supersession count stops suppressing a sibling once its named
+commitment settles or retires. Receipts without both prospective fields parse
+and project exactly as before.
 
 ### Citations across a merge
 
@@ -307,11 +340,11 @@ by anyone else needs an authorization that survives concurrent revocation, and
 there is none today.
 
 The cost is stated rather than worked around. A merge carries cross-author
-authority only within the paths its approval reviewed; predecessors elsewhere
-stay with their own authors or an actor holding `ratifier`, which is where they
-were before merge succession existed. `merge`
-refuses such a plan before `HEAD` moves rather than landing and stopping
-half-way, and names the target, its path, and the approved tree.
+authority only within the paths its approval reviewed and only for in-target
+predecessors in its sealed retirement plan. Other candidates stay with their
+own authors or an actor holding `ratifier`, which is where they were before
+merge succession existed. The receipt accounts for those candidates without
+turning testimony into authority.
 
 A retirement with no successor — a deleted path — takes no authority from a
 merge either, because nothing the merge published stands over it to bound the
@@ -327,6 +360,11 @@ projection profile to `workroom-fold@5`. Older state and ratification records
 remain readable, but a binary built before these changes projects commitments
 under the old contract and cannot interpret the new schemas. Restart every
 resident sequencer and MCP adapter at the merged commit.
+
+The prospective left-live accounting rule advances the current projection
+profile from `workroom-fold@10` to `workroom-fold@11`. Historical receipts
+without `merge_left_live` and `merge_changed_paths` retain their existing
+projection behavior.
 
 ## See also
 
