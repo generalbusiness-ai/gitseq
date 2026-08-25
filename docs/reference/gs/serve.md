@@ -90,9 +90,10 @@ nothing, and `--listen 127.0.0.1:0` is usable: the kernel picks the port
 and clients read it from the repository rather than being told it. That
 is what you want when several repositories are served at once.
 
-The advertisement carries the genesis of the workroom being served, and a
-client refuses one whose genesis does not match, so an act can never be
-posted to a service holding a different log.
+The advertisement carries the genesis of the workroom being served, and
+`gs` refuses one whose genesis does not match rather than reading it as no
+resident at all, so an act can never be posted to a service holding a
+different log and can never be quietly folded here instead.
 
 Publication is **not a lock**. The last service to start wins the
 advertisement, which at least pulls new clients into one room. Stopping
@@ -111,10 +112,18 @@ Two limits are worth naming now that the advertisement is what `gs` uses by
 default. A resident that accepts an act and then stalls past the client
 deadline leaves the outcome unknown, and a retry mints a fresh idempotency
 key that can append twice; that was true before, but only for somebody who
-deliberately passed `--server`. And `gs` treats a published address it
-cannot validate as a refusal, while `cmd/gitseq-mcp` treats the same record
-as no resident and acts locally. `gs` fails closed on purpose, and the two
+deliberately passed `--server`. And `gs` treats a published record it cannot
+trust as a refusal, while `cmd/gitseq-mcp` treats the same record as no
+resident and acts locally. `gs` fails closed on purpose, and the two
 surfaces disagree knowingly.
+
+A record `gs` will not trust is one that is unreadable, larger than the
+8 KiB a record may be, not a record at all, carrying no address, naming
+another workroom, or carrying an address that is not a bare `http` loopback
+origin. Each refusal names which of those it is and offers `--server -`, and
+each happens before the command reads a signing key or appends anything.
+Only a record that is not there at all is absence, and a repository with
+none acts locally exactly as it did before residents existed.
 
 ## Loopback only
 
