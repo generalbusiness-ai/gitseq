@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c66ac379c4525f18d96aaeab08e699945e726fce","text":"Retire the obsolete e23f1314 candidate artifact at internal/app; fresh current-base successor 53928acf reports recut head da7ff55d at the same exact path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b8602ddcda0bbcbbc3494c4527c61a801272722f","text":"Retire the obsolete e23f1314 candidate artifact at internal/kernel; fresh current-base successor fccafec7 reports recut head da7ff55d at the same exact path."}
