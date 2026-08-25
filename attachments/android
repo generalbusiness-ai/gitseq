@@ -1,0 +1,1 @@
+GOOS=android GOARCH=amd64 go doc syscall.Flock succeeds
