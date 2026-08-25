@@ -27,7 +27,7 @@ the only two acts it cannot make.
 | `--body` | | `key=value`, repeatable. Structured fields. |
 | `--rests-on` | | An event identifier, repeatable. What this act bears on. |
 | `--evidence` | | `name=path`, repeatable. Files embedded as attachments. |
-| `--server` | | Submit through a resident sequencer instead of writing locally. |
+| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 
 ## Example
@@ -117,10 +117,11 @@ variant.
 
 ## Local or through the resident
 
-Without `--server`, the act is written straight to the local sequence.
-With it, the act is submitted to a resident sequencer, which is what
-makes concurrent appends from several actors safe. Both land in the same
-sequence.
+With no resident advertised and no `--server` given, the act is written
+straight to the local sequence. An advertised resident takes it by default,
+and `--server -` always writes locally. Submitting to a resident sequencer
+is what makes concurrent appends from several actors safe. Both land in the
+same sequence.
 
 ## See also
 

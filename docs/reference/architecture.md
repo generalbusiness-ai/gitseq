@@ -241,8 +241,12 @@ address advertisement:
   touches the event log.
 - **Advertisement** is `.git/gitseq/resident.json`. It tells clients where to
   connect and confers nothing. Only a process already holding the claim writes
-  it, and a client that reaches a withdrawn or stale address falls back to
-  acting locally as before.
+  it. `gs` uses it whenever no `--server` flag is given, so the resident a
+  repository already runs answers by default. A bounded read whose resident
+  refuses or diverges still falls back to the verified local fold, loudly; a
+  durable act refuses instead, because a silent local fold is a whole-log
+  rebuild the author never asked for and cannot see. `--server -` always acts
+  locally.
 
 Ownership authorizes serving; binding a listener does not. A resident binds
 first so the claim can carry the real address, contests ownership, and hands

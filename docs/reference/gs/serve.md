@@ -103,7 +103,18 @@ mode for nothing.
 Interrupt and terminate both count as being told to stop, so Ctrl-C and
 an ordinary supervisor shutdown both withdraw the advertisement and both
 exit reporting success. Only a hard kill leaves a record behind, and that
-costs a client one refused connection before it acts locally instead.
+costs a client one refused connection: reads fall back to the verified local
+fold as before, while durable acts refuse and name the way out, either
+starting the resident again or passing `--server -`.
+
+Two limits are worth naming now that the advertisement is what `gs` uses by
+default. A resident that accepts an act and then stalls past the client
+deadline leaves the outcome unknown, and a retry mints a fresh idempotency
+key that can append twice; that was true before, but only for somebody who
+deliberately passed `--server`. And `gs` treats a published address it
+cannot validate as a refusal, while `cmd/gitseq-mcp` treats the same record
+as no resident and acts locally. `gs` fails closed on purpose, and the two
+surfaces disagree knowingly.
 
 ## Loopback only
 

@@ -57,9 +57,10 @@ and revoke roles, append durable acts one at a time or as a chain, guard
 review and merge, project status, walk provenance, verify signatures, run
 the resident service, and attach a clone.
 
-Durable subcommands that accept `--server` submit through a resident
-sequencer when given one and write straight to the local log when not.
-Both land in the same sequence.
+Durable subcommands that accept `--server` submit through the resident
+the repository advertises, write straight to the local log when nothing is
+advertised, and take an explicit URL or `-` (always local) to override. Both
+paths land in the same sequence.
 
 See [the `gs` reference](../reference/gs/).
 

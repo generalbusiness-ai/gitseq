@@ -27,7 +27,7 @@ retired artifacts forever, so the default answers "what now" rather than
 | `--repo` | `.` | The repository holding the workroom. |
 | `--all` | `false` | Render the complete commitment, artifact and attempt tables instead of the bounded view. |
 | `--json` | `false` | Emit the complete snapshot as JSON, with no human view. |
-| `--server` | | Read from a resident service instead of folding locally, falling back to the local read if that fails. |
+| `--server` | | Read from a resident service instead of folding locally, falling back to the local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
 `--all` and `--json` are mutually exclusive; asking for both is refused.
 
@@ -220,7 +220,9 @@ shape rather than one per surface.
 `--server http://127.0.0.1:7777` asks a resident service for the answer
 instead of folding the log here. The URL must be an HTTP **loopback**
 address with no credentials, path, query or fragment; anything else is
-refused outright.
+refused outright. With the flag omitted, `gs status` asks the resident this
+repository publishes and folds locally only when nothing is advertised;
+`--server -` always folds locally.
 
 The default view is read from the resident's bounded summary endpoint.
 That read is deliberately narrow: no redirects are followed, the response

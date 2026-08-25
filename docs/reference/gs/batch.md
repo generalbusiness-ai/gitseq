@@ -20,7 +20,7 @@ the log, and then appends every act against that one frontier.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor signing every act in the chain. |
-| `--server` | | Forward each act to a resident sequencer instead of writing locally. |
+| `--server` | | Forward each act to a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--cited-ok` | `false` | Allow a `supersede` act whose target tracked documentation still names. Without it the whole batch is refused before its first append, and the pages are listed. |
 
 The one positional argument is the file to read. `-`, or no argument at

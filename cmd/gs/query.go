@@ -54,18 +54,6 @@ func askResident(ctx context.Context, workspace *app.Workspace, serverURL, route
 	return true
 }
 
-// openForQuery opens the workspace and validates a resident URL before any
-// read, so a malformed --server is refused rather than silently falling back
-// to a local answer the caller did not ask for.
-func openForQuery(ctx context.Context, repo, serverURL string) (*app.Workspace, error) {
-	if serverURL != "" {
-		if err := validateLoopbackServer(serverURL); err != nil {
-			return nil, err
-		}
-	}
-	return app.Open(ctx, repo)
-}
-
 // headLanding separates the three answers Git can give about one commit, which
 // is not the same as the two answers a shell `||` sees. A non-zero status from
 // `git merge-base --is-ancestor` means either "not an ancestor" or "the check

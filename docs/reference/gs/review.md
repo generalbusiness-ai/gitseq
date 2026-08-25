@@ -26,7 +26,7 @@ review of nothing in particular, because the branch can move afterwards.
 | `--promise` | *(required)* | The reviewer's own promise to review. |
 | `--verdict` | *(required)* | `approved` or `changes-requested`. |
 | `--text` | *(required)* | The review itself. |
-| `--server` | | Submit through a resident sequencer instead of writing locally. |
+| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 
 It takes no positional arguments.
