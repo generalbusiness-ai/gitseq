@@ -381,11 +381,15 @@ configuration leaves an open workspace only as a copy sharing no mutable state
 with it, so a holder cannot alter the workspace's actor custody or verified
 frontier through the value it was handed; the live configuration is a private
 field of the workspace, so the compiler makes that copy the only read path out
-of the owning package. Inside the workspace, one in-memory configuration
-lock serializes the taking of that copy against every custody
-mutation together with its save and rollback, so a copy is a consistent
-observation and no reader sees an actor map or frontier mid-update; it is
-distinct from the on-disk advisory lock that serializes separate processes.
+of the owning package. Inside the workspace, one in-memory configuration lock
+serializes every read and write of those two mutable fields — the actor map
+and the verified frontier — so a copy is a consistent observation and no
+reader sees either mid-update. It guards memory only: persisting a change
+happens inside the update's load-modify-store under the on-disk advisory lock,
+with the in-memory lock released across it, and once the store completes the
+freshly stored custody fields are adopted back into memory under the
+in-memory lock. It is distinct from the on-disk advisory lock that serializes
+separate processes.
 
 `internal/app` selects this build's interpreter from that vocabulary: it
 records the binding at init for an application an absent binding does not

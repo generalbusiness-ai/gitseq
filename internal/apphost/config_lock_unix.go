@@ -1,4 +1,4 @@
-//go:build unix
+//go:build linux || darwin || freebsd || netbsd || openbsd || dragonfly || illumos
 
 package apphost
 
@@ -13,6 +13,12 @@ import (
 // advisory lock on its own open description for one whole load-modify-store,
 // and the kernel drops the lock if the process dies, so a crash cannot leave
 // a stale lock behind.
+//
+// The build tag enumerates exactly the platforms whose syscall package
+// provides Flock. The unix tag alone would also pull in solaris and aix,
+// where it does not exist and this file would not compile; there, and on
+// every other platform without advisory locking,
+// config_lock_other.go refuses updates instead.
 const configLockFile = ".config.lock"
 
 // withConfigLock runs fn while holding an exclusive advisory lock in

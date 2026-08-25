@@ -63,21 +63,22 @@ type Workspace struct {
 	observer observe.Observer
 
 	// configMu guards Config's mutable state — the actor map and the
-	// verified-frontier pointer — together with the save that persists it and
-	// the rollback that undoes it, so a View never observes a half-applied
-	// mutation and memory never silently diverges from disk. The scalar
-	// fields (Genesis, ObjectFormat, ReadOnly, SequencerKey, PayloadCeiling,
-	// IdempotencyNamespace, Version) are written once before the workspace is
-	// shared and never again, so reading them takes no lock.
+	// verified-frontier pointer — against both the readers who take copies
+	// and the updates that adopt freshly stored values, so a View never
+	// observes a half-applied mutation. The scalar fields (Genesis,
+	// ObjectFormat, ReadOnly, SequencerKey, PayloadCeiling,
+	// IdempotencyNamespace, Version) are written once before the workspace
+	// is shared and never again, so reading them takes no lock.
 	//
 	// Lock order: configMu is the innermost lock. snapshotWithSource and
 	// Verify hold snapshotMu when they call rememberVerifiedFrontier, which
 	// acquires configMu, so the established order is snapshotMu before
 	// configMu. Nothing holding configMu may therefore call into a path that
-	// acquires snapshotMu — Act, Snapshot, AcceptSubmission, Verify — which
-	// is why AddActor and RetireActor take configMu only around their
-	// config read-modify-save sections and release it across their durable
-	// appends.
+	// acquires snapshotMu — Act, Snapshot, AcceptSubmission, Verify — and no
+	// caller may arrive holding configMu, or it would deadlock against
+	// itself: updateConfig takes configMu only around its base read and its
+	// adoption, releasing it across apphost.UpdateConfig, where the on-disk
+	// advisory lock covers the whole load-modify-store.
 	configMu sync.Mutex
 
 	// selected is the interpreter this repository is bound to. It is resolved
@@ -502,10 +503,12 @@ var attachAbsenceGate = func() {}
 
 // updateConfig persists one declared change without losing what concurrent
 // processes wrote: the file is reloaded under the apphost lock, mutate
-// changes exactly what this save owns on that fresh copy, and the merged
-// result is adopted as the workspace's view, so stale custody in memory
-// refreshes from disk even when this save itself changes nothing. A failed
-// update leaves both the file and the workspace unchanged. This workspace's
+// changes exactly what this save owns on that fresh copy, and only the
+// merged result's mutable custody fields — the actor map and the verified
+// frontier — are adopted as the workspace's view, so stale memory refreshes
+// from disk even when this save itself changes nothing while the
+// written-once scalar fields stay exactly as opened. A failed update leaves
+// both the file and the workspace unchanged. This workspace's
 // own memory is only ever a starting point, and then solely for the metadata
 // directory that holds no configuration yet — an attached view recording its
 // first frontier — where someone must write a first file and nobody else's
@@ -526,7 +529,11 @@ func (w *Workspace) updateConfig(mutate func(*apphost.Config) (bool, error)) err
 	}
 	w.configMu.Lock()
 	defer w.configMu.Unlock()
-	w.config = merged
+	// Only the custody fields move after open; the scalar fields stay
+	// written-once, so they are adopted never and remain safe to read
+	// without configMu.
+	w.config.Actors = merged.Actors
+	w.config.VerifiedFrontier = merged.VerifiedFrontier
 	return nil
 }
 
