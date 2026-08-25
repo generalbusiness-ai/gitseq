@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/app","body":{"commit":"de274aacbb548acb81f701125cffb5fae911ac2d","path":"internal/app"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0fa234fa17aec6fc79b49cc55815b28dc31d46ee","text":"Merge retired a covered predecessor; the successor is at cmd/gitseq-mcp."}
