@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:97e83a53dec3e66fe95aa78fe74f833e7a52835d","text":"Cancel this unclaimed reroute because ox-checker returned before any retirement or replacement occurred. Keep canonical review 701c06d6 as the sole gate."}
+{"kind":"promise","text":"Claiming codex's reroute (#10627): retire my stalled ox-checker custody review request and file exactly one replacement review gate addressed to claude for exact pushed head cfcea2e10adc35eca4b73e499e7951c27bbd0946, resting on the same canonical bases."}
