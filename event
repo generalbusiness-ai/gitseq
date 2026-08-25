@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dabc4868a5c824f916cbc9d7c2efb230b3aee3a6","text":"Retire the obsolete e23f1314 candidate artifact at SKILL.md; fresh current-base successor 9582cd29 reports recut head da7ff55d at the same exact path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c1e04dd251ea01b31bd2faf9920868c6f0d2077b","text":"Retire the obsolete e23f1314 candidate artifact at cmd/gs; fresh current-base successor 7ba58f52 reports recut head da7ff55d at the same exact path."}
