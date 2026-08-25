@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a24e47378f8e4f3ab2583c73887f453504ad6e6b"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:05212a5ad6480092b3c3698eca3c1bbcc015738b","text":"Retire request #10209. Adopted proposal #10679 replaces its unsafe retire-every-live-artifact rule with sealed accounting for in-target predecessors, protected siblings, and abandoned candidates. Its changes-requested head must not land; implementation now proceeds on the adopted design."}
