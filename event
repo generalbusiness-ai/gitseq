@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7c2a851c07132822d818cf36831ea887d0b60bce","text":"Retire stale host-design coordination request #5558. The malformed child it produced was replaced and the later supported-host decision and implementation chains completed."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aa052e2d53c48db0ddb344a0f4d06b89cd3a32bf","text":"Retire stale coordination request #6596. Its authorized child #6603 is satisfied."}
