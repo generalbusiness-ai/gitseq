@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:65af1aef23182a425210cc20165ef6b3eeeac8c0","text":"Retire stale dot-citation coordination request #5655. The lane was replaced by the later minimal executable request #7267 and completed."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7c2a851c07132822d818cf36831ea887d0b60bce","text":"Retire stale host-design coordination request #5558. The malformed child it produced was replaced and the later supported-host decision and implementation chains completed."}
