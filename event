@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:74a9ed31174211976f10207065bf1fe637fc999b","text":"Retire stale supported-host repair coordination request #7166. Its repair child #7168 is satisfied."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d58216c45a4c2f33edaf4efce56095a119d58609","text":"Retire stale dot-citation replacement coordination request #7265. Its replacement child #7267 is satisfied."}
