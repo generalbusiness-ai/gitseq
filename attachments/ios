@@ -1,1 +1,0 @@
-GOOS=ios GOARCH=arm64 go doc syscall.Flock succeeds

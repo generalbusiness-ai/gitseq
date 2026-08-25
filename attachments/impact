@@ -1,1 +1,0 @@
-Current tags route both platforms to config_lock_other.go, causing config updates to fail at runtime.
