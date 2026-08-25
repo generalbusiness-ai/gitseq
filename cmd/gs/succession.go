@@ -446,10 +446,12 @@ func preflightSuccession(ctx context.Context, workspace *app.Workspace, checkout
 	return nil
 }
 
-// refuseUnreachableCrossAuthorRetirements applies the fold's own bound before
-// the merge commit exists, so a plan the fold will not authorize is refused
-// while the target is still unchanged rather than discovered after `HEAD` has
-// moved and half the succession has landed.
+// refuseUnreachableCrossAuthorRetirements states the command's own reach bound
+// before the merge commit exists, so a plan outside the prospective policy is
+// refused while the target is still unchanged rather than discovered after
+// `HEAD` has moved and half the succession has landed. The bound is narrower
+// than the fold's symmetric lineage rule, which is unchanged and goes on
+// judging what has already been sealed.
 //
 // The bound is the approval's: a receipt reaches another actor's pointer only
 // on the path lineage of the artifact that approval names. The fold holds no
@@ -492,12 +494,20 @@ func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, pla
 	return nil
 }
 
-// reviewedPaths mirrors the fold's own reading of what an approval reaches: the
-// artifacts the reviewer cited as bases of the verdict, each standing at the
-// exact head approved and owned by the implementer it binds. The command has to
-// agree with the fold here, or it refuses merges the fold would allow — which
-// is what stranded a head spanning four maintained trees — or admits ones the
-// fold refuses, which strands a succession after the target has moved.
+// reviewedPaths reads which artifacts an approval puts within reach the way
+// the fold reads it: the artifacts the reviewer cited as bases of the verdict,
+// each standing at the exact head approved and owned by the implementer it
+// binds. That selection has to agree with the fold, or the command refuses
+// merges the fold would allow — which is what stranded a head spanning four
+// maintained trees — or admits ones the fold refuses, which strands a
+// succession after the target has moved.
+//
+// The reach of those paths does not agree, and deliberately so. The fold's own
+// lineage test still reads both directions and is unchanged; this command-side
+// guard narrows its reading to one direction, prospectively, and runs once, in
+// fresh-merge preflight while the target is still where it was. Succession
+// recording never re-applies it: a receipt sealed under the symmetric reading
+// keeps the authority it was sealed with.
 //
 // The command applies one check the fold cannot: whether a candidate describes
 // a superseded world, which is known only after the whole log is folded.
@@ -546,11 +556,13 @@ func reviewedPaths(projection workroom.Projection, approval string) []string {
 }
 
 // withinReviewedPaths reports whether an artifact standing at path lies inside
-// what the approval reviewed. Reach runs one way only, the same way the fold's
-// own pathCovers runs: a reviewed path bounds retirement at itself and beneath
-// it, never above it. Reviewing one page is not authority over the tree that
-// contains it, so a head that reviews `docs/how-to/x.md` no longer takes
-// another actor's pointer at bare `docs` with it.
+// what the approval reviewed. Reach runs one way only: a reviewed path bounds
+// retirement at itself and beneath it, never above it. This is narrower than
+// the fold, whose lineage test still reads both directions; the difference is
+// deliberate, prospective, and never re-applied to a sealed receipt. Reviewing
+// one page is not authority over the tree that contains it, so a head that
+// reviews `docs/how-to/x.md` does not take another actor's pointer at bare
+// `docs` with it.
 func withinReviewedPaths(reviewed []string, path string) bool {
 	if path == "" {
 		return false
@@ -572,6 +584,20 @@ func artifactPath(projection workroom.Projection, event string) string {
 	return ""
 }
 
+// recordMergeSuccession appends the durable succession suffix a sealed Git
+// receipt owes: the receipt assertion, one successor artifact per published
+// path, and one supersession per retired predecessor. The acts are idempotent,
+// so the same call both completes a fresh merge and resumes an interrupted
+// one.
+//
+// The prospective directional reviewed-path guard does not run here, for
+// either entry: reach is judged once, in fresh-merge preflight while the
+// target is still where it was. Re-judging here could refuse a plan after
+// `HEAD` has moved — a fresh merge overtaken by concurrent admissions, or a
+// receipt sealed under the older symmetric reading of reach — and strand it
+// before its durable suffix completes. No authority moves because of this:
+// every act below still crosses the fold's own unchanged rule at admission,
+// signature checks, citation preflight, and admission bounds all still run.
 func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checkout, serverURL, actor string, private ed25519.PrivateKey, receipt mergeReceipt) error {
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
@@ -635,10 +661,6 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 		}
 	}
 	if err := preflightSuccession(ctx, workspace, checkout, plan); err != nil {
-		return err
-	}
-	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, receipt.Approval,
-		workspace.View().Actors[actor].Fingerprint); err != nil {
 		return err
 	}
 	acts := successionActs(receipt.Approval, receipt.Candidate, receipt.TargetPreHead, receipt.MergeHead, receipt.Staleness, plan)

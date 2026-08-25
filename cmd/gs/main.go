@@ -572,6 +572,13 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
 	}
+	// The prospective directional reviewed-path guard lives here, in fresh
+	// preflight: after the temporary receipt reservation and the tentative
+	// merge staging, but before HEAD moves and before any durable workroom
+	// record is appended. It runs nowhere else — succession recording never
+	// re-judges reach, so neither a fresh merge overtaken by concurrent
+	// admissions nor a sealed receipt is stranded against a policy adopted
+	// after the plan was authorized.
 	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, *approval, merger); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
 	}
