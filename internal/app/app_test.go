@@ -2247,7 +2247,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	stale.Projection.Artifacts = append([]workroom.Artifact(nil), current.Projection.Artifacts...)
 	stale.Projection.Artifacts[index].Stale = true
 	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@11"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@12"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@13"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &stale
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail

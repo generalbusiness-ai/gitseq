@@ -24,6 +24,13 @@ export interface Statement {
   // Classifying a historical record by the current vocabulary gives a different
   // answer than the fold gave.
   lifecycle?: string;
+  // Who may ratify this statement, from the same captured definition
+  // `lifecycle` comes from: the one in force when this record was admitted.
+  // The fold decides ratifications against exactly that, so reading it here
+  // rather than looking the kind up in the live vocabulary is what keeps the
+  // screen and the fold from disagreeing after a kind is redefined. Absent
+  // means the fold bound no definition, and nothing may be ratified on it.
+  satisfier?: string;
   text: string;
   body?: Record<string, string>;
   ratified?: boolean;

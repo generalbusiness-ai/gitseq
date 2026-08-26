@@ -1357,6 +1357,80 @@ func TestRefusedArtifactDoesNotProjectAsLive(t *testing.T) {
 	}
 }
 
+// Who may ratify a statement is settled when that statement is admitted, and
+// redefining the kind afterwards does not reopen it. The fold has always
+// decided this way — decideRatify reads the definition captured on the target
+// — but until now it kept the answer to itself, so every reader outside the
+// fold had to guess, and the only material to guess from is the current
+// vocabulary. That guess is wrong in both directions the moment a satisfier is
+// revised, and both directions are asserted here.
+//
+// The projected field and the decisions are asserted together on purpose.
+// Either alone can be satisfied by a projection that publishes a satisfier the
+// fold does not use; together they pin that the value a reader is handed is
+// the value the fold will judge by.
+func TestProjectedSatisfierIsTheOneAdmittedWithTheStatement(t *testing.T) {
+	steward := KindDefinition{
+		Name: "finding", Fields: present("topic"), Basis: []BasisConstraint{},
+		Satisfier: "role:steward", Render: RenderNote, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleNone, Guidance: "Ratified by a steward.",
+	}
+	rider := steward
+	rider.Satisfier = "role:rider"
+	rider.Guidance = "Ratified by a rider."
+	member := func(id, actor, role, basis string) Record {
+		return event(t, id, operator, SchemaState, State{Kind: KindRoster, Text: "roster",
+			Body: map[string]string{"actor": actor, "kind": "agent", "name": actor, "role": role}}, basis)
+	}
+	projection := Fold([]Record{
+		event(t, "e0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+		member("join-a", agent, "participant", "e0"),
+		event(t, "join-a-r", operator, SchemaRatify, Ratify{Target: "join-a"}, "join-a"),
+		member("steward-grant", agent, "steward", "join-a"),
+		event(t, "steward-grant-r", operator, SchemaRatify, Ratify{Target: "steward-grant"}, "steward-grant"),
+		member("join-b", other, "participant", "e0"),
+		event(t, "join-b-r", operator, SchemaRatify, Ratify{Target: "join-b"}, "join-b"),
+		member("rider-grant", other, "rider", "join-b"),
+		event(t, "rider-grant-r", operator, SchemaRatify, Ratify{Target: "rider-grant"}, "rider-grant"),
+		// The kind as first defined, and one statement admitted under it.
+		event(t, "d1", operator, SchemaState, kindDefinitionState(t, steward), "e0"),
+		event(t, "d1r", operator, SchemaRatify, Ratify{Target: "d1"}, "d1"),
+		event(t, "early", operator, SchemaState, State{Kind: "finding", Text: "admitted under the steward rule", Body: map[string]string{"topic": "fold"}}, "e0"),
+		// The kind redefined, and one statement admitted under that.
+		event(t, "d1s", operator, SchemaSupersede, Supersede{Target: "d1", Text: "replace the satisfier"}, "d1"),
+		event(t, "d2", operator, SchemaState, kindDefinitionState(t, rider), "e0"),
+		event(t, "d2r", operator, SchemaRatify, Ratify{Target: "d2"}, "d2"),
+		event(t, "late", operator, SchemaState, State{Kind: "finding", Text: "admitted under the rider rule", Body: map[string]string{"topic": "fold"}}, "e0"),
+		// The steward may still ratify the early statement, though the kind no
+		// longer names stewards; and may not reach the late one, though the
+		// kind named stewards when the steward's own grant was made.
+		event(t, "steward-early", agent, SchemaRatify, Ratify{Target: "early"}, "early"),
+		event(t, "steward-late", agent, SchemaRatify, Ratify{Target: "late"}, "late"),
+		event(t, "rider-late", other, SchemaRatify, Ratify{Target: "late"}, "late"),
+		event(t, "rider-early", other, SchemaRatify, Ratify{Target: "early"}, "early"),
+	})
+	for id, want := range map[string]Verdict{
+		"steward-early": Effective,
+		"steward-late":  Ineffective,
+		"rider-late":    Effective,
+		"rider-early":   Ineffective,
+	} {
+		decision, _ := projection.Decision(id)
+		if decision.Verdict != want {
+			t.Errorf("%s = %s (%s), want %s", id, decision.Verdict, decision.Reason, want)
+		}
+	}
+	satisfiers := make(map[string]string)
+	for _, statement := range projection.Statements {
+		satisfiers[statement.Event] = statement.Satisfier
+	}
+	for id, want := range map[string]string{"early": "role:steward", "late": "role:rider"} {
+		if got := satisfiers[id]; got != want {
+			t.Errorf("projected satisfier for %s = %q, want %q — a reader given this cannot agree with the fold", id, got, want)
+		}
+	}
+}
+
 // A supersession of a supersession contests a retirement. It must not thereby
 // install a definition whose ratification an actor already replaced, and it
 // must not disturb any decision already emitted.

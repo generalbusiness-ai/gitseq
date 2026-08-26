@@ -7,8 +7,10 @@ import { api, type ActInput } from "./lib/api";
 import { TopBar } from "./components/TopBar";
 import { RequestList, defaultListView, type ListView } from "./components/RequestList";
 import { Thread, type PendingSay } from "./components/Thread";
+import { PublishArtifact, type PublishInput } from "./components/Publish";
 import { Avatar } from "./components/Avatar";
 import { reconciledPendingIDs, RetryKeys } from "./lib/interaction";
+import { firstLine } from "./lib/util";
 
 // Two screens. The list is the default and answers the whole question; the
 // thread answers "what does this one wait on?". There is no third
@@ -81,12 +83,68 @@ export default function App() {
     [session.credential],
   );
 
+  // Publishing an artifact is the one act that starts from nothing, so it is
+  // the one the two screens cannot hold. Opened from a thread it offers that
+  // thread's record as a basis, which is how a stamped predecessor comes to
+  // rest on its replacement.
+  const [publishing, setPublishing] = useState(false);
+  const [filing, setFiling] = useState(false);
+  const [awaiting, setAwaiting] = useState<string>();
+  const [publishError, setPublishError] = useState<string>();
+
+  // The record is signed and appended before the fold has projected it. Opening
+  // its thread in that gap renders "this thread is not in the projection",
+  // which is a false negative about a record we just filed successfully — so
+  // the arrival waits for the projection to carry it.
+  useEffect(() => {
+    if (!awaiting || !index?.has(awaiting)) return;
+    setAwaiting(undefined);
+    setPublishing(false);
+    openThread(awaiting);
+  }, [awaiting, index, openThread]);
+
+  const publish = useCallback(
+    async (input: PublishInput) => {
+      if (filing || awaiting) return;
+      setFiling(true);
+      setPublishError(undefined);
+      const act = {
+        credential: session.credential,
+        act: "state" as const,
+        kind: "artifact",
+        text: input.text,
+        body: { path: input.path, commit: input.commit },
+        rests_on: input.basis ? [input.basis] : [],
+      };
+      const key = actKeys.current.forAttempt("publish", JSON.stringify(act));
+      try {
+        const { id } = await api.act({ ...act, idempotency_key: key });
+        actKeys.current.succeeded("publish", key);
+        setAwaiting(id);
+      } catch (error) {
+        setPublishError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setFiling(false);
+      }
+    },
+    [filing, awaiting, session.credential],
+  );
+
+  const publishBasis =
+    screen.kind === "thread"
+      ? { event: screen.event, label: firstLine(index?.statement(screen.event)?.text ?? screen.event, 60) }
+      : undefined;
+
   return (
     <div className="flex h-full flex-col">
       <TopBar
         workroom={workroom}
         session={session}
         onJumpEvent={openThread}
+        onPublish={() => {
+          setPublishError(undefined);
+          setPublishing(true);
+        }}
         selectedEvent={screen.kind === "thread" ? screen.event : undefined}
       />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -111,6 +169,19 @@ export default function App() {
           />
         )}
       </main>
+      {publishing && (
+        <PublishArtifact
+          basis={publishBasis}
+          busy={filing || awaiting !== undefined}
+          error={publishError}
+          onPublish={publish}
+          onClose={() => {
+            setPublishing(false);
+            setAwaiting(undefined);
+            setPublishError(undefined);
+          }}
+        />
+      )}
       {!session.actor && <JoinGate workroom={workroom} onJoin={session.setActor} />}
     </div>
   );
