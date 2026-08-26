@@ -139,6 +139,50 @@ current bases and a fresh review, not another verdict on the same chain.
 A refused merge leaves the signed approval standing and asks only that the
 record be brought up to date first.
 
+### The receipt is a checkpoint for what it published
+
+A receipt that records staleness keeps it. What the merge settles is the
+successor it publishes: on that single edge, ordinary staleness causes already
+active at or before the receipt's own position do not make the successor stale
+at birth. The receipt stays historically stale, and only its successor begins a
+new current implementation epoch.
+
+This is a fold rule, not a command check. `gs merge` still only validates and
+constructs the receipt and the successors; nothing here changes what the
+command refuses, what a receipt may retire, or which candidates it leaves live.
+
+The exception is narrow and fails closed. It applies only when:
+
+| Condition | Why |
+|---|---|
+| The receipt holds an authorized retirement plan | Every `merge_*` field is written by the actor asking for the checkpoint. The plan is the part an independent approval chain already validated. |
+| It carries `merge_left_live` and a canonical `merge_changed_paths` | That pair is the version seam. A receipt with neither field, one half, or a non-canonical frontier keeps its existing projection exactly. |
+| The artifact cites the receipt directly | The checkpoint travels one edge and is not inherited. |
+| The artifact is signed by the receipt's own author | An actor cannot hand another actor's record a checkpoint. |
+| The artifact stands at the receipt's exact `merge_head` | The merge published it; it did not merely follow the merge. |
+| The artifact stands at a declared successor path | The same bound the receipt's own retirement authority uses. |
+
+Anything else — a record that merely cites a receipt, a bystander at the same
+head, an artifact at an undeclared path — goes stale as usual. Whether an
+individual `merge_left_live` claim verifies is not read: that testimony is
+accounting about other actors' candidates and grants no freshness either way.
+
+Three facts still flare the successor. A cause that arose after the receipt was
+never seen by the merge. A planned retirement whose successor chain was later
+condemned answered for nothing after all. And direct retirement of the receipt
+itself withdraws the pointer the successor stands on.
+
+Causes are weighed one at a time and dated. Asking only whether the receipt was
+already stale as of its own position is a different and wrong question: with one
+old cause and one new one both live, the receipt was stale then and is stale
+now, and the cheap comparison would settle the new cause along with the old.
+A cause the fold cannot date fails closed and settles nothing.
+
+`describes_superseded_world` is unchanged by all of this. World staleness
+already present at the verdict still invalidates merge authority, a world that
+moved after the verdict is still recorded, and every other basis of the
+successor is read exactly as before.
+
 ## Why an object ID and not a branch
 
 `gs merge` passes the approved full object ID to `git merge --no-ff`,
@@ -381,10 +425,15 @@ remain readable, but a binary built before these changes projects commitments
 under the old contract and cannot interpret the new schemas. Restart every
 resident sequencer and MCP adapter at the merged commit.
 
-The prospective left-live accounting rule advances the current projection
-profile from `workroom-fold@10` to `workroom-fold@11`. Historical receipts
-without `merge_left_live` and `merge_changed_paths` retain their existing
-projection behavior.
+The prospective left-live accounting rule advances the projection profile from
+`workroom-fold@10` to `workroom-fold@11`. Historical receipts without
+`merge_left_live` and `merge_changed_paths` retain their existing projection
+behavior.
+
+The receipt checkpoint described above advances the current projection profile
+from `workroom-fold@11` to `workroom-fold@12`. A cache written under `@11`
+answers with merge successors stale at birth, so it is rejected and the history
+replayed. Historical receipts without the prospective pair are unaffected.
 
 ## See also
 

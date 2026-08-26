@@ -2041,6 +2041,19 @@ func (s *stalenessScope) stalenessOf(targets []string, successors map[string]str
 			if plan != nil && staleBasis && s.stalenessCoveredByMergePlan(basis, plan, stale, make(map[string]bool)) {
 				continue
 			}
+			// The receipt checkpoint, on this one edge and no other. A merge
+			// settles the reasoning it was published under, so a successor that
+			// merge stood up does not begin life carrying its receipt's own
+			// historical staleness. The receipt keeps that staleness; only the
+			// successor starts the new current epoch.
+			//
+			// It is confined to this basis so that describes_superseded_world is
+			// untouched. A receipt is an assert, never an artifact, so this edge
+			// could not have carried the world flag in either direction; every
+			// other basis of the same successor is examined exactly as before.
+			if staleBasis && s.receiptCheckpointSettles(record, basisRecord, stale, successors) {
+				continue
+			}
 			if !retiredBasis && !staleBasis {
 				continue
 			}
@@ -2246,6 +2259,114 @@ func (s *stalenessScope) stalenessCoveredByMergePlan(event string, plan map[stri
 		covered = true
 	}
 	return covered
+}
+
+// receiptCheckpointSettles reports whether a sealed merge receipt is a
+// freshness checkpoint for one successor it published: whether the ordinary
+// reasoning that made the receipt stale was already accounted for when the
+// merge published this artifact, so the artifact is not born stale.
+//
+// Every condition below is a fact the beneficiary could not write for itself.
+// The receipt must be prospective — merge_left_live present and the
+// merge_changed_paths list canonical — because that pair is the only version
+// seam the fold has for saying the receipt was written under this contract. A
+// historical receipt carrying neither field, and a malformed receipt carrying
+// one half or an uncanonical list, gain nothing and keep their existing
+// projection exactly. It must hold a validated retirement plan, which is the
+// independent approval chain already checked at seal time. The successor must
+// be signed by the receipt's own author, stand at the receipt's exact merge
+// head, and stand at a path the receipt declared it would publish. A record
+// that merely cites a receipt is a bystander: the checkpoint is not a signal
+// any passer-by may borrow.
+//
+// Whether individual left-live testimony verifies is deliberately not read.
+// That testimony is snapshot accounting about other people's candidates, and
+// letting an unverified sibling claim decide this artifact's freshness would
+// give one actor's unchecked prose authority over another lane's projection.
+// Only the presence of the pair and the canonical form of the frontier matter.
+func (s *stalenessScope) receiptCheckpointSettles(successor, receipt *parsedRecord, stale map[string]bool, successors map[string]string) bool {
+	if receipt == nil {
+		return false
+	}
+	// mergeChangedPathsValid is false whenever the field is absent, so it is
+	// both halves of the frontier test: present, and canonical.
+	if !receipt.mergeLeftLivePresent || !receipt.mergeChangedPathsValid {
+		return false
+	}
+	// The sealed plan, and no separate verdict test: a plan is only ever written
+	// for a receipt the fold ruled effective. Nor is there a separate test for
+	// the receipt being retired, which the ruling says must still flare the
+	// successor. The walk below starts at the receipt itself and its own
+	// retirement is the first cause it weighs, so that rule falls out of the
+	// dated computation instead of being restated beside it where neither copy
+	// could be shown to be doing the work.
+	plan := receipt.mergePlan
+	if plan == nil {
+		return false
+	}
+	if successor.record.Actor != receipt.record.Actor {
+		return false
+	}
+	if !s.f.publishedByMerge(successor, receipt) {
+		return false
+	}
+	return s.causesSettledAtReceipt(receipt.record.ID, receipt.sequence(),
+		s.withoutCondemnedSuccessions(plan, successors), stale, make(map[string]bool))
+}
+
+// causesSettledAtReceipt walks the live staleness causes at and under a sealed
+// receipt and reports whether the merge had already accounted for every one of
+// them. A cause counts as settled when the receipt's own narrowed plan names it
+// — the merge performed that retirement itself — or when the supersession that
+// caused it landed at or before the receipt's own position, so the merge was
+// published with that news in hand.
+//
+// The walk begins at the receipt rather than at its bases, which is what makes
+// the withdrawal of the receipt itself flare its successors: a receipt cannot
+// name itself in its own plan, since the plan is cut to artifacts and a receipt
+// is an assert, and its retirement can only ever be dated after it.
+//
+// The walk is per cause and dated. Asking instead whether the receipt was
+// already stale as of its own position is not the same question and is wrong
+// where it matters: with one old cause and one new one, the receipt was stale
+// then and is stale now, and the cheap comparison would settle the new cause
+// along with the old one.
+//
+// A cause the fold cannot date fails closed. activeRetirements leaves the date
+// zero for a retirement whose act the fold does not hold, and an undated cause
+// is not permission to call anything fresh: unknown means no.
+func (s *stalenessScope) causesSettledAtReceipt(event string, at int, plan map[string]string, stale map[string]bool, visited map[string]bool) bool {
+	// Both the cycle guard and the memo. Only a settled answer is ever recorded,
+	// because the first unsettled cause abandons the whole walk.
+	if visited[event] {
+		return true
+	}
+	visited[event] = true
+	if s.retired(event) {
+		if _, planned := plan[event]; !planned {
+			when := s.active[event]
+			if when == 0 || when > at {
+				return false
+			}
+		}
+	}
+	record := s.f.byID[event]
+	if record == nil {
+		return true
+	}
+	for _, basis := range record.record.RestsOn {
+		mode := StalenessPropagates
+		if basisRecord := s.f.byID[basis]; basisRecord != nil && basisRecord.definition != nil {
+			mode = basisRecord.definition.Staleness
+		}
+		if mode == StalenessExempt || (!s.retired(basis) && !(stale[basis] && mode == StalenessPropagates)) {
+			continue
+		}
+		if !s.causesSettledAtReceipt(basis, at, plan, stale, visited) {
+			return false
+		}
+	}
+	return true
 }
 
 // succeededRetirements lists the retired artifacts whose retirement says where

@@ -2149,74 +2149,105 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 // The other half of the profile contract.
 // TestProjectionProfileChangeRebuildsFromTheSameKernelCheckpoint proves a cache
 // is dropped when the profile string changes and that a rebuild with the same
-// rules gives the same answer. It cannot prove the case the profile exists for:
+// rules gives the same answer. This one proves the case the profile exists for:
 // rules that actually changed, where serving the cache would answer with the
-// old world. Statement.lifecycle is the observable: a cache seeded without it
-// answers with the old shape, so if the older profile were served instead of
-// replayed the rebuilt projection would carry none.
+// old world.
 //
-// The transition under test is whichever one the build is making -- @9 to @10
-// as this stands, for world_superseded_at. Re-anchor both constants when the
+// The transition under test is whichever one the build is making -- @11 to @12
+// as this stands, for the receipt checkpoint. Re-anchor both constants when the
 // profile moves again; that edit is the point, because it makes whoever bumps
 // the profile look at the cache.
+//
+// The observable is a real disagreement rather than a missing field. The
+// fixture merges an approved candidate whose review request was withdrawn
+// before the merge, so the receipt is stale under both profiles, while @11 and
+// @12 disagree about the successor that merge published: @11 has it stale at
+// birth and @12 has it fresh. The seeded cache carries the @11 answer, so a
+// served cache is not merely stale in shape, it is wrong about the world.
 //
 // The cache is keyed on the whole stored identity, the application and the fold
 // version together, so this seeds and asserts that exact composite. A bare fold
 // version would never match whatever the build holds, and the cache would be
 // dropped for the wrong reason: the witness would pass with the bump reverted.
 // The seeded cache stands at the current head, so the profile is the only thing
-// that can cause a replay. Revert ProfileVersion to @10 and the first branch of
-// snapshotWithSource returns the undated projection verbatim.
+// that can cause a replay. Revert ProfileVersion to @11 and the first branch of
+// snapshotWithSource returns the @11 answer verbatim.
 func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A moved world, so the observable @10 adds actually has a value here.
-	ground := actRecord(t, ctx, workspace, "human", Act{
-		Verb: VerbState, Kind: workroom.KindArtifact, Text: "the base",
-		Body:    map[string]string{"path": "ground", "commit": "head0"},
-		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-rebuild-ground",
+	if _, _, err := workspace.AddActor(ctx, "human", "agent", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.AddActor(ctx, "human", "reviewer", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	implementation := actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindArtifact, Text: "the reviewed candidate",
+		Body:    map[string]string{"path": "spike", "commit": "head1"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-rebuild-candidate",
+	})
+	reviewRequest := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "review the exact head",
+		Body:    map[string]string{"to": "reviewer", "conditions": "exact head"},
+		RestsOn: []string{implementation.ID}, IdempotencyKey: "profile-rebuild-review-request",
+	})
+	promise := actRecord(t, ctx, workspace, "reviewer", Act{
+		Verb: VerbState, Kind: workroom.KindPromise, Text: "will review",
+		RestsOn: []string{reviewRequest.ID}, IdempotencyKey: "profile-rebuild-review-promise",
+	})
+	approval := actRecord(t, ctx, workspace, "reviewer", Act{
+		Verb: VerbState, Kind: workroom.KindReport, Text: "approved",
+		Body:    map[string]string{"verdict": "approved", "head": "head1", "artifact": implementation.ID},
+		RestsOn: []string{promise.ID, implementation.ID}, IdempotencyKey: "profile-rebuild-approval",
 	})
 	actRecord(t, ctx, workspace, "human", Act{
-		Verb: VerbState, Kind: workroom.KindArtifact, Text: "page describing the base",
-		Body:    map[string]string{"path": "page", "commit": "head1"},
-		RestsOn: []string{ground.ID}, IdempotencyKey: "profile-rebuild-page",
+		Verb: VerbRatify, Target: approval.ID, IdempotencyKey: "profile-rebuild-ratify",
 	})
+	// The ordinary cause, filed before the merge: exactly the reasoning the
+	// merge answered for, and the reason @11 called the successor stale.
 	actRecord(t, ctx, workspace, "human", Act{
-		Verb: VerbSupersede, Target: ground.ID, Text: "the base moved on",
-		IdempotencyKey: "profile-rebuild-retire",
+		Verb: VerbSupersede, Target: reviewRequest.ID, Text: "the review request was refiled before the merge",
+		IdempotencyKey: "profile-rebuild-retire-request",
 	})
+	receipt := actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "approved candidate merged",
+		Body: map[string]string{
+			"merge_approval": approval.ID, "merge_candidate": "head1", "merge_target_pre_head": "base",
+			"merge_head": "merged", "merge_successors": `["spike"]`, "merge_changed_paths": `["spike"]`,
+			"merge_left_live":   `{}`,
+			"merge_retirements": `{` + strconv.Quote(implementation.ID) + `:"spike"}`,
+		},
+		RestsOn: []string{approval.ID}, IdempotencyKey: "profile-rebuild-receipt",
+	})
+	successor := actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindArtifact, Text: "merge published the current artifact at spike",
+		Body:    map[string]string{"path": "spike", "commit": "merged"},
+		RestsOn: []string{receipt.ID}, IdempotencyKey: "profile-rebuild-successor",
+	})
+
 	current, err := workspace.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dated := 0
-	for _, statement := range current.Projection.Statements {
-		if statement.WorldSupersededAt != 0 {
-			dated++
-		}
+	if !statementStale(t, current.Projection, receipt.ID) {
+		t.Fatal("the receipt is not stale, so the two profiles do not disagree here and this test cannot tell a rebuild from a served cache")
 	}
-	if dated == 0 {
-		t.Fatal("no statement carries a world date, so this test cannot tell a rebuild from a stale cache under the @10 rules")
+	index := artifactIndex(t, current.Projection, successor.ID)
+	if current.Projection.Artifacts[index].Stale {
+		t.Fatal("the successor is stale under the profile this build holds, so the seeded @11 answer below would be indistinguishable")
 	}
 
-	// What an @9 cache holds: the same projection at the same head, with the
-	// field @10 adds absent. Lifecycle is left populated deliberately — an @9
-	// cache has it, so using lifecycle as the observable would prove only the
-	// @8-to-@9 transition while claiming to prove this one.
+	// What an @11 cache holds: the same projection at the same head, with the
+	// successor stale at birth. Nothing else is touched, so freshness is the
+	// only thing that can tell a replay from a served cache.
 	stale := current
-	stale.Projection.Statements = append([]workroom.Statement(nil), current.Projection.Statements...)
-	for i := range stale.Projection.Statements {
-		stale.Projection.Statements[i].WorldSupersededAt = 0
-	}
-	// Re-anchored to the current transition. Hard-coded identities are the
-	// point: they make whoever moves the profile look at the cache, which is
-	// what happened here when receipt-stable succession accounting took it to
-	// @11.
-	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@10"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@11"
+	stale.Projection.Artifacts = append([]workroom.Artifact(nil), current.Projection.Artifacts...)
+	stale.Projection.Artifacts[index].Stale = true
+	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@11"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@12"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &stale
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2227,16 +2258,32 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rebuiltDated := 0
-	for _, statement := range rebuilt.Snapshot.Projection.Statements {
-		if statement.WorldSupersededAt != 0 {
-			rebuiltDated++
-		}
-	}
-	if rebuiltDated != dated {
-		t.Fatalf("rebuilt projection dates %d statements, want %d: the %q cache was served instead of replayed", rebuiltDated, dated, oldProfile)
+	if rebuilt.Snapshot.Projection.Artifacts[artifactIndex(t, rebuilt.Snapshot.Projection, successor.ID)].Stale {
+		t.Fatalf("the rebuilt projection still has the merge successor stale at birth: the %q cache was served instead of replayed", oldProfile)
 	}
 	if workspace.snapshotProfile != wantProfile {
 		t.Fatalf("cache profile = %q, want %q: the older profile was not replaced", workspace.snapshotProfile, wantProfile)
 	}
+}
+
+func artifactIndex(t *testing.T, projection workroom.Projection, event string) int {
+	t.Helper()
+	for index, artifact := range projection.Artifacts {
+		if artifact.Event == event {
+			return index
+		}
+	}
+	t.Fatalf("no artifact projected for %s", event)
+	return -1
+}
+
+func statementStale(t *testing.T, projection workroom.Projection, event string) bool {
+	t.Helper()
+	for _, statement := range projection.Statements {
+		if statement.Event == event {
+			return statement.Stale
+		}
+	}
+	t.Fatalf("no statement projected for %s", event)
+	return false
 }
