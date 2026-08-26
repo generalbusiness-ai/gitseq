@@ -52,8 +52,19 @@ export function mayRatify(
   if (satisfier === "originating-requester") {
     // Being the requester is not enough on its own: the fold also refuses a
     // requester who has left the room, because a ratified approval is what a
-    // merge consumes.
-    return originatingRequester !== undefined && originatingRequester === me && actors[me] !== undefined;
+    // merge consumes. That refusal is `hasActor`, which is the participant
+    // role, so this asks for the role and not for a roster entry. The two are
+    // different questions: the fold keeps a departed principal listed with
+    // `retired: true` and no roles at all, because it signed events that are
+    // permanent, so reading the entry as membership fails open on exactly the
+    // actor who has left. This is also the only satisfier that never consults
+    // a role, which is why it is the only place that could fail open — the
+    // `role:` branch below already refuses an actor holding no roles.
+    return (
+      originatingRequester !== undefined &&
+      originatingRequester === me &&
+      actors[me]?.roles?.includes("participant") === true
+    );
   }
   if (satisfier.startsWith("role:")) {
     return actors[me]?.roles?.includes(satisfier.slice("role:".length)) === true;

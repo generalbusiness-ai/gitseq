@@ -151,6 +151,13 @@ export interface ActorState {
   role_sources: Record<string, string[]>;
   dormant_role_sources: Record<string, string[]>;
   retired_role_sources: Record<string, string[]>;
+  /**
+   * A principal whose every membership grant has been superseded. It stays
+   * listed because it signed events that are permanent, and it holds no roles.
+   * Listed is therefore not the same as present, and no authority question may
+   * be answered by the entry existing: ask for the role the fold asks for.
+   */
+  retired?: boolean;
 }
 
 export interface DurableSnapshot {
