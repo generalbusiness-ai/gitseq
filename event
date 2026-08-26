@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4e2a212e75c9db9095430ace08f2c206d0238a3","text":"Merge retired a covered predecessor; the successor is at internal/docset/docset.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c8e4adead000ccaf4dff06932c400016db8e1e0e","text":"Merge retired a covered predecessor; the successor is at internal/docset/citation_test.go."}
