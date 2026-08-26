@@ -147,6 +147,95 @@ func TestCustodyRereadKeepsConcurrentRemovalRemoved(t *testing.T) {
 	}
 }
 
+// When one name moves differently on the live view and in the freshly loaded
+// record across the pinned window, the reconciliation must refuse closed: the
+// resolver reports an explicit refusal instead of picking a winner, and the
+// adopted view stays exactly as the concurrent updateConfig left it — the
+// retired name stays gone, the late actor the resolver was fetching is not
+// slipped in, and the verified frontier does not move. Replacing the refusal
+// with any arbitration that adopts either side fails this test by name.
+func TestCustodyRereadRefusesDivergentChangeAndLeavesTheViewUntouched(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	external, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, _, err := external.AddActor(ctx, "operator", "contested", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Bring contested into this workspace's cached view first, so the
+	// re-read's baseline is a view that held it.
+	if got, err := workspace.ResolveActor("contested"); err != nil || got.Fingerprint != held.Fingerprint {
+		t.Fatalf("contested did not enter the cached view (%+v, %v)", got, err)
+	}
+	replacement := apphost.Actor{Name: "contested", Fingerprint: strings.Repeat("f", 40), KeyFile: held.KeyFile + ".replaced"}
+	if err := storeActorChange(workspace.MetaDir, func(actors map[string]apphost.Actor) {
+		actors["contested"] = replacement
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := apphost.LoadConfig(workspace.MetaDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Actors["contested"] != replacement {
+		t.Fatalf("the external replacement did not land on disk: %+v", stored.Actors["contested"])
+	}
+
+	reached := make(chan struct{})
+	release := make(chan struct{})
+	previousGate := custodyRereadGate
+	custodyRereadGate = func() {
+		close(reached)
+		<-release
+	}
+	defer func() { custodyRereadGate = previousGate }()
+
+	resolved := make(chan error, 1)
+	go func() {
+		_, err := workspace.ResolveActor("late")
+		resolved <- err
+	}()
+	<-reached
+
+	if _, err := workspace.RetireActor(ctx, "operator", "@contested"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := external.AddActor(ctx, "operator", "late", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	before := workspace.View()
+
+	close(release)
+	err = <-resolved
+	if err == nil || !strings.Contains(err.Error(), "refuse divergent custody") || !strings.Contains(err.Error(), "contested") {
+		t.Fatalf("divergent custody across the pinned window = %v, want an explicit refusal naming the actor", err)
+	}
+
+	viewed := workspace.View()
+	if _, present := viewed.Actors["contested"]; present {
+		t.Fatalf("a retired actor came back through the refused reconciliation: %+v", viewed.Actors["contested"])
+	}
+	if _, present := viewed.Actors["late"]; present {
+		t.Fatalf("a refused reconciliation adopted the late actor the resolver was fetching: %+v", viewed.Actors["late"])
+	}
+	if len(viewed.Actors) != len(before.Actors) || viewed.Actors["operator"] != before.Actors["operator"] {
+		t.Fatalf("the failed reconciliation moved the view %+v, want it untouched at %+v", viewed.Actors, before.Actors)
+	}
+	if viewed.VerifiedFrontier == nil || before.VerifiedFrontier == nil ||
+		*viewed.VerifiedFrontier != *before.VerifiedFrontier {
+		t.Fatalf("the failed reconciliation moved the frontier %+v -> %+v, want it unchanged", before.VerifiedFrontier, viewed.VerifiedFrontier)
+	}
+}
+
 // The reconciled frontier follows mergeVerifiedFrontier rather than a
 // depth-only replacement: a strictly deeper stored marker advances the live
 // one on adoption, and an equal-depth marker naming a different head is the
@@ -355,10 +444,11 @@ func TestCustodyRereadKeepsFreshDeletionWhileLiveUnchanged(t *testing.T) {
 }
 
 // When live and fresh both changed one name away from the baseline,
-// differently, the decision is the documented conflict rule, applied
-// deterministically either way: the live entry stands unless the fresh record
-// carries a strictly deeper verified frontier, proving fresh the newer
-// writer, and then fresh stands. An agreed change is taken once.
+// differently, the reconciliation refuses closed: no verified-frontier
+// arbitration picks a winner, the error names the actor, and nothing is
+// adopted — including a replacement racing a deletion. An agreed change is
+// taken once, and an agreed deletion preserves absence instead of inserting
+// a zero Actor.
 func TestReconcileCustodyResolvesDivergentNameByTheDocumentedRule(t *testing.T) {
 	baseline := &apphost.Config{Actors: map[string]apphost.Actor{
 		"contested": {Name: "contested", Fingerprint: strings.Repeat("0", 40), KeyFile: "keys/contested-base"},
@@ -376,33 +466,32 @@ func TestReconcileCustodyResolvesDivergentNameByTheDocumentedRule(t *testing.T) 
 			VerifiedFrontier: frontier,
 		}
 	}
+	withoutContested := func(frontier *apphost.VerifiedFrontier) *apphost.Config {
+		return &apphost.Config{
+			Actors:           map[string]apphost.Actor{"bystander": baseline.Actors["bystander"]},
+			VerifiedFrontier: frontier,
+		}
+	}
 	liveHeld := &apphost.VerifiedFrontier{Head: strings.Repeat("a", 40), Depth: 7}
+	deeper := &apphost.VerifiedFrontier{Head: strings.Repeat("b", 40), Depth: 8}
 
-	t.Run("live stands while fresh proves nothing newer", func(t *testing.T) {
-		shallower := &apphost.VerifiedFrontier{Head: strings.Repeat("0", 40), Depth: 6}
-		actors, frontier, err := reconcileCustody(baseline, withContested(liveEntry, liveHeld), withContested(freshEntry, shallower))
-		if err != nil {
-			t.Fatal(err)
+	t.Run("a divergent change is refused closed", func(t *testing.T) {
+		actors, frontier, err := reconcileCustody(baseline, withContested(liveEntry, liveHeld), withContested(freshEntry, deeper))
+		if err == nil || !strings.Contains(err.Error(), "refuse") || !strings.Contains(err.Error(), "contested") {
+			t.Fatalf("divergent custody = %v, want an explicit refusal naming the actor", err)
 		}
-		if actors["contested"] != liveEntry {
-			t.Fatalf("divergent name resolved to %+v, want the live entry %+v", actors["contested"], liveEntry)
-		}
-		if frontier == nil || *frontier != *liveHeld {
-			t.Fatalf("frontier moved to %+v, want the live marker %+v", frontier, liveHeld)
+		if actors != nil || frontier != nil {
+			t.Fatalf("a refused conflict returned actors %+v, frontier %+v, want nothing adopted", actors, frontier)
 		}
 	})
 
-	t.Run("fresh stands once its frontier proves it newer", func(t *testing.T) {
-		deeper := &apphost.VerifiedFrontier{Head: strings.Repeat("b", 40), Depth: 8}
-		actors, frontier, err := reconcileCustody(baseline, withContested(liveEntry, liveHeld), withContested(freshEntry, deeper))
-		if err != nil {
-			t.Fatal(err)
+	t.Run("a replacement racing a deletion is refused too", func(t *testing.T) {
+		actors, frontier, err := reconcileCustody(baseline, withoutContested(liveHeld), withContested(freshEntry, deeper))
+		if err == nil || !strings.Contains(err.Error(), "refuse") || !strings.Contains(err.Error(), "contested") {
+			t.Fatalf("replacement racing deletion = %v, want an explicit refusal naming the actor", err)
 		}
-		if actors["contested"] != freshEntry {
-			t.Fatalf("divergent name resolved to %+v, want the fresher entry %+v", actors["contested"], freshEntry)
-		}
-		if frontier == nil || *frontier != *deeper {
-			t.Fatalf("frontier stayed at %+v, want the deeper fresh marker %+v", frontier, deeper)
+		if actors != nil || frontier != nil {
+			t.Fatalf("a refused conflict returned actors %+v, frontier %+v, want nothing adopted", actors, frontier)
 		}
 	})
 
@@ -413,6 +502,25 @@ func TestReconcileCustodyResolvesDivergentNameByTheDocumentedRule(t *testing.T) 
 		}
 		if actors["contested"] != freshEntry || actors["bystander"] != baseline.Actors["bystander"] {
 			t.Fatalf("agreed merge produced %+v, want the agreed entry and the bystander intact", actors)
+		}
+	})
+
+	t.Run("an agreed deletion preserves absence", func(t *testing.T) {
+		goneBaseline := &apphost.Config{Actors: map[string]apphost.Actor{
+			"gone":      {Name: "gone", Fingerprint: strings.Repeat("5", 40), KeyFile: "keys/gone"},
+			"bystander": baseline.Actors["bystander"],
+		}}
+		live := withoutContested(liveHeld)
+		fresh := withoutContested(deeper)
+		actors, _, err := reconcileCustody(goneBaseline, live, fresh)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, held := actors["gone"]; held {
+			t.Fatalf("an agreed deletion inserted %+#v instead of preserving absence", actors["gone"])
+		}
+		if actors["bystander"] != baseline.Actors["bystander"] {
+			t.Fatalf("the bystander was disturbed by the agreed deletion: %+v", actors["bystander"])
 		}
 	})
 }

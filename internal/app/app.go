@@ -1291,14 +1291,14 @@ func (w *Workspace) resolveCustody(address string, match func(*apphost.Config) (
 // the load, so fresh stands — including its replacement or removal of that
 // name; where fresh still equals the baseline, the record moved no further
 // than what the view already adopted, so live's concurrent change stands;
-// where live and fresh agree, the agreed entry is taken once. When both
-// sides changed one name differently, the documented conflict rule applies:
-// keep the live entry — this workspace's most recently adopted custody —
-// unless the fresh record also carries a strictly deeper verified frontier,
-// which makes fresh provably the newer writer, and then fresh stands. The
-// frontier follows mergeVerifiedFrontier, so only a deeper fresh marker
-// advances it and an equal-depth disagreement between memory and disk is a
-// refused conflict rather than an overwrite. Only the mutable custody fields
+// where live and fresh agree, the agreed entry is taken once, and an agreed
+// removal preserves the name's absence rather than inserting a zero Actor.
+// A name both sides moved differently since the snapshot is refused closed:
+// no verified-frontier arbitration picks a winner — the reconciliation fails
+// with an explicit error naming that actor, and the caller adopts nothing.
+// The frontier still follows mergeVerifiedFrontier, so only a deeper fresh
+// marker advances it and an equal-depth disagreement between memory and disk
+// is refused there too. Only the mutable custody fields
 // come back; callers hold configMu across the call and the adoption.
 func reconcileCustody(baseline, live, fresh *apphost.Config) (map[string]apphost.Actor, *apphost.VerifiedFrontier, error) {
 	frontier, _, err := mergeVerifiedFrontier(live.VerifiedFrontier, fresh.VerifiedFrontier)
@@ -1334,18 +1334,16 @@ func reconcileCustody(baseline, live, fresh *apphost.Config) (map[string]apphost
 				actors[name] = liveEntry
 			}
 		case sameActorEntry(isHeld, liveEntry, freshHolds, freshEntry):
-			actors[name] = liveEntry
-		default:
-			// Conflict rule for one name changed differently on both sides:
-			// the live entry stands — it is this workspace's most recently
-			// adopted state — unless fresh carries a strictly deeper verified
-			// frontier than live, proving fresh the newer writer; then fresh
-			// stands.
-			if freshFrontierIsNewer(live.VerifiedFrontier, fresh.VerifiedFrontier) && freshHolds {
-				actors[name] = freshEntry
-			} else if isHeld {
+			// Both sides agree on this name: take the agreed entry once, and
+			// an agreed absence stays absent rather than becoming a zero Actor.
+			if isHeld {
 				actors[name] = liveEntry
 			}
+		default:
+			// One name moved differently on both sides: refuse closed. No
+			// verified-frontier arbitration decides whose custody is right,
+			// so nothing is adopted and the caller keeps its previous view.
+			return nil, nil, fmt.Errorf("refuse divergent custody for actor %q: the live view and the freshly stored record both moved it differently since the re-read began", name)
 		}
 	}
 	return actors, frontier, nil
@@ -1355,16 +1353,6 @@ func reconcileCustody(baseline, live, fresh *apphost.Config) (map[string]apphost
 // present and equal as values.
 func sameActorEntry(holds bool, entry apphost.Actor, held bool, other apphost.Actor) bool {
 	return holds == held && (!holds || entry == other)
-}
-
-// freshFrontierIsNewer reports whether the freshly loaded record proves
-// itself the newer writer by carrying a verified frontier strictly deeper
-// than the live view's — or any frontier at all where the view carries none.
-func freshFrontierIsNewer(live, fresh *apphost.VerifiedFrontier) bool {
-	if fresh == nil {
-		return false
-	}
-	return live == nil || fresh.Depth > live.Depth
 }
 
 func (w *Workspace) matchView(match func(*apphost.Config) (apphost.Actor, bool)) (apphost.Actor, bool) {
