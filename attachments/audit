@@ -1,1 +1,0 @@
-Independent re-audit confirmed actor fresh replacement/deletion are ignored at app.go:1298-1311 and nil fresh frontier panics through app.go:1312 -> mergeVerifiedFrontier.
