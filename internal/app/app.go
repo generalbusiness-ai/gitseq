@@ -81,6 +81,14 @@ type Workspace struct {
 	// advisory lock covers the whole load-modify-store.
 	configMu sync.Mutex
 
+	// rereadMu serialises this workspace's one cold resolution path. Every
+	// hit is a memory read; only an address that misses re-reads the
+	// configuration from disk, and this lock makes concurrent misses share
+	// one re-read instead of each paying for their own. It is scoped to the
+	// workspace rather than the package so two workrooms never wait on each
+	// other's custody: each re-read runs against one MetaDir.
+	rereadMu sync.Mutex
+
 	// selected is the interpreter this repository is bound to. It is resolved
 	// when the workspace is made and never again, so nothing appended
 	// afterwards can change what an open workspace means.
@@ -585,14 +593,43 @@ func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Wor
 }
 
 func (w *Workspace) Actor(name string) (apphost.Actor, ed25519.PrivateKey, error) {
-	w.configMu.Lock()
-	actor, ok := w.config.Actors[name]
-	w.configMu.Unlock()
-	if !ok {
-		return apphost.Actor{}, nil, fmt.Errorf("unknown actor %q", name)
+	actor, err := w.ResolveActor(name)
+	if err != nil {
+		return apphost.Actor{}, nil, err
 	}
 	private, err := readActor(actor.KeyFile)
 	return actor, private, err
+}
+
+// custodyRereadGate runs after a custody re-read has loaded the fresh record
+// and before that record is reconciled into the workspace's view. Production
+// leaves it empty. Tests pin the window between the load and the adoption so
+// an interleaving with updateConfig is certain rather than hoped for, the
+// same way attachAbsenceGate pins the attach window.
+var custodyRereadGate = func() {}
+
+// ErrUnknownActor marks an address that still answers nobody after a fresh
+// re-read of the configuration custody record. Callers classify it with
+// errors.Is rather than message text, and it stays apart from the I/O failure
+// a re-read itself can hit, so a caller can never report a live actor as
+// unknown merely because its roster had not been re-read.
+var ErrUnknownActor = errors.New("addresses no known actor")
+
+// ResolveActor addresses one actor by name against this workspace's local
+// configuration custody. The in-memory view answers first and costs no
+// filesystem call; only a miss re-reads config.json once, so an actor another
+// process added after this workspace was opened resolves without reopening —
+// the cached lifetime, not the custody record, was the defect. The two ways
+// to fail stay apart on purpose: an address that still matches nobody after
+// the fresh read says so, while a configuration that cannot be read reports
+// its own I/O failure, so a caller can never report a live actor as unknown.
+// On success the fresh record is reconciled into the workspace's view,
+// keeping every later hit off the disk.
+func (w *Workspace) ResolveActor(name string) (apphost.Actor, error) {
+	return w.resolveCustody(name, func(c *apphost.Config) (apphost.Actor, bool) {
+		actor, ok := c.Actors[name]
+		return actor, ok
+	})
 }
 
 func (w *Workspace) AddActor(ctx context.Context, operatorName, name, kind string) (apphost.Actor, []workroom.Record, error) {
@@ -1184,19 +1221,105 @@ func cloneBody(input map[string]string) map[string]string {
 
 // ResolveActorAddress accepts the human-facing forms used at application
 // edges. Durable request payloads always carry the actor fingerprint.
+// Like ResolveActor, the cached view answers first and only a miss pays one
+// fresh re-read of this workspace's local custody record — never the durable
+// projection — so a state request addressed to an actor another process added
+// after this workspace was opened still normalises to that actor's
+// fingerprint instead of reporting a live actor as unknown.
 func (w *Workspace) ResolveActorAddress(address string) (apphost.Actor, error) {
-	w.configMu.Lock()
-	defer w.configMu.Unlock()
 	name := strings.TrimPrefix(address, "@")
-	if actor, ok := w.config.Actors[name]; ok {
+	return w.resolveCustody(address, func(c *apphost.Config) (apphost.Actor, bool) {
+		if actor, ok := c.Actors[name]; ok {
+			return actor, true
+		}
+		for _, actor := range c.Actors {
+			if actor.Fingerprint == address {
+				return actor, true
+			}
+		}
+		return apphost.Actor{}, false
+	})
+}
+
+// resolveCustody is the one cold path both resolvers share: the cached view
+// answers first, a miss re-reads config.json once under this workspace's
+// rereadMu, and a hit adopts the fresh custody through three-way
+// reconciliation. The matcher decides which forms of address each caller
+// accepts against whichever configuration it is handed, and it runs last of
+// all against exactly the reconciled state that was adopted — never against
+// the bare load — so a returned answer can never name custody the live view
+// does not hold. Adoption takes configMu around the same short section
+// updateConfig uses, touches only the mutable custody fields, and leaves the
+// open-time scalars written-once exactly as updateConfig keeps them.
+func (w *Workspace) resolveCustody(address string, match func(*apphost.Config) (apphost.Actor, bool)) (apphost.Actor, error) {
+	if actor, ok := w.matchView(match); ok {
 		return actor, nil
 	}
-	for _, actor := range w.config.Actors {
-		if actor.Fingerprint == address {
-			return actor, nil
-		}
+	w.rereadMu.Lock()
+	defer w.rereadMu.Unlock()
+	if actor, ok := w.matchView(match); ok {
+		return actor, nil
 	}
-	return apphost.Actor{}, fmt.Errorf("unknown actor address %q", address)
+	w.configMu.Lock()
+	baseline := w.config.Clone()
+	w.configMu.Unlock()
+	fresh, err := apphost.LoadConfig(w.MetaDir)
+	if err != nil {
+		return apphost.Actor{}, fmt.Errorf("re-read configuration custody to address %q: %w", address, err)
+	}
+	custodyRereadGate()
+	w.configMu.Lock()
+	defer w.configMu.Unlock()
+	reconciled := w.config
+	reconciled.Actors, reconciled.VerifiedFrontier, err = reconcileCustody(&baseline, &w.config, &fresh)
+	if err != nil {
+		return apphost.Actor{}, fmt.Errorf("reconcile configuration custody to address %q: %w", address, err)
+	}
+	actor, ok := match(&reconciled)
+	if !ok {
+		return apphost.Actor{}, fmt.Errorf("%w %q after a fresh re-read of the configuration", ErrUnknownActor, address)
+	}
+	w.config.Actors = reconciled.Actors
+	w.config.VerifiedFrontier = reconciled.VerifiedFrontier
+	return actor, nil
+}
+
+// reconcileCustody merges one freshly loaded custody record onto the live
+// view, judged against the record the re-read started from. The live view is
+// never older for a name it still carries — a name's custody is written once
+// and removed through updateConfig — so held entries win over the possibly
+// stale load. A name the load adds is adopted only when the baseline lacked
+// it too: one present in the baseline and in the load but gone from the live
+// view was removed concurrently while this re-read ran, and stays removed.
+// The frontier follows mergeVerifiedFrontier, so only a deeper fresh marker
+// advances it and an equal-depth disagreement between memory and disk is a
+// refused conflict rather than an overwrite. Only the mutable custody fields
+// come back; callers hold configMu across the call and the adoption.
+func reconcileCustody(baseline, live, fresh *apphost.Config) (map[string]apphost.Actor, *apphost.VerifiedFrontier, error) {
+	actors := make(map[string]apphost.Actor, len(live.Actors)+len(fresh.Actors))
+	for name, actor := range live.Actors {
+		actors[name] = actor
+	}
+	for name, actor := range fresh.Actors {
+		if _, held := actors[name]; held {
+			continue
+		}
+		if _, was := baseline.Actors[name]; was {
+			continue
+		}
+		actors[name] = actor
+	}
+	frontier, _, err := mergeVerifiedFrontier(live.VerifiedFrontier, fresh.VerifiedFrontier)
+	if err != nil {
+		return nil, nil, err
+	}
+	return actors, frontier, nil
+}
+
+func (w *Workspace) matchView(match func(*apphost.Config) (apphost.Actor, bool)) (apphost.Actor, bool) {
+	w.configMu.Lock()
+	defer w.configMu.Unlock()
+	return match(&w.config)
 }
 
 func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request) (Submission, error) {
