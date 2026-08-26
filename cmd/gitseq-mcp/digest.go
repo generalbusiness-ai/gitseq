@@ -7,7 +7,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 
+	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 )
@@ -60,14 +62,28 @@ func liveLabel(live liveView) string   { return statusview.LiveLabel(live) }
 // projection speaks in, within the workroom the call is acting in. The same
 // actor name can carry a different fingerprint in a different repository, so
 // the room asked has to be the room answered about. An unconfigured actor
-// yields the empty string, which simply matches nothing rather than matching
-// everyone.
-func (s *mcpServer) fingerprint(current *room) string {
-	return current.workspace.View().Actors[s.actor].Fingerprint
+// yields the empty string with no error, which simply matches nothing rather
+// than matching everyone — that is the ErrUnknownActor meaning here and only
+// that. Every other failure, chiefly the custody I/O error a fresh re-read
+// can hit, is returned as itself, so a digest can never dress a broken
+// custody read up as an unknown actor or the reverse.
+func (s *mcpServer) fingerprint(current *room) (string, error) {
+	actor, err := current.workspace.ResolveActor(s.actor)
+	if err != nil {
+		if errors.Is(err, app.ErrUnknownActor) {
+			return "", nil
+		}
+		return "", err
+	}
+	return actor.Fingerprint, nil
 }
 
-func (s *mcpServer) digest(current *room, status service.Status, degraded bool) actorStatus {
-	return digestStatus(status, s.fingerprint(current), s.actor, degraded)
+func (s *mcpServer) digest(current *room, status service.Status, degraded bool) (actorStatus, error) {
+	fingerprint, err := s.fingerprint(current)
+	if err != nil {
+		return actorStatus{}, err
+	}
+	return digestStatus(status, fingerprint, s.actor, degraded), nil
 }
 
 func remarshal(value any, target any) error {

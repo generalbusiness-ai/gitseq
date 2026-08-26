@@ -81,6 +81,14 @@ type Workspace struct {
 	// advisory lock covers the whole load-modify-store.
 	configMu sync.Mutex
 
+	// rereadMu serialises this workspace's one cold resolution path. Every
+	// hit is a memory read; only an address that misses re-reads the
+	// configuration from disk, and this lock makes concurrent misses share
+	// one re-read instead of each paying for their own. It is scoped to the
+	// workspace rather than the package so two workrooms never wait on each
+	// other's custody: each re-read runs against one MetaDir.
+	rereadMu sync.Mutex
+
 	// selected is the interpreter this repository is bound to. It is resolved
 	// when the workspace is made and never again, so nothing appended
 	// afterwards can change what an open workspace means.
@@ -585,14 +593,43 @@ func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Wor
 }
 
 func (w *Workspace) Actor(name string) (apphost.Actor, ed25519.PrivateKey, error) {
-	w.configMu.Lock()
-	actor, ok := w.config.Actors[name]
-	w.configMu.Unlock()
-	if !ok {
-		return apphost.Actor{}, nil, fmt.Errorf("unknown actor %q", name)
+	actor, err := w.ResolveActor(name)
+	if err != nil {
+		return apphost.Actor{}, nil, err
 	}
 	private, err := readActor(actor.KeyFile)
 	return actor, private, err
+}
+
+// custodyRereadGate runs after a custody re-read has loaded the fresh record
+// and before that record is reconciled into the workspace's view. Production
+// leaves it empty. Tests pin the window between the load and the adoption so
+// an interleaving with updateConfig is certain rather than hoped for, the
+// same way attachAbsenceGate pins the attach window.
+var custodyRereadGate = func() {}
+
+// ErrUnknownActor marks an address that still answers nobody after a fresh
+// re-read of the configuration custody record. Callers classify it with
+// errors.Is rather than message text, and it stays apart from the I/O failure
+// a re-read itself can hit, so a caller can never report a live actor as
+// unknown merely because its roster had not been re-read.
+var ErrUnknownActor = errors.New("addresses no known actor")
+
+// ResolveActor addresses one actor by name against this workspace's local
+// configuration custody. The in-memory view answers first and costs no
+// filesystem call; only a miss re-reads config.json once, so an actor another
+// process added after this workspace was opened resolves without reopening —
+// the cached lifetime, not the custody record, was the defect. The two ways
+// to fail stay apart on purpose: an address that still matches nobody after
+// the fresh read says so, while a configuration that cannot be read reports
+// its own I/O failure, so a caller can never report a live actor as unknown.
+// On success the fresh record is reconciled into the workspace's view,
+// keeping every later hit off the disk.
+func (w *Workspace) ResolveActor(name string) (apphost.Actor, error) {
+	return w.resolveCustody(name, func(c *apphost.Config) (apphost.Actor, bool) {
+		actor, ok := c.Actors[name]
+		return actor, ok
+	})
 }
 
 func (w *Workspace) AddActor(ctx context.Context, operatorName, name, kind string) (apphost.Actor, []workroom.Record, error) {
@@ -1184,19 +1221,144 @@ func cloneBody(input map[string]string) map[string]string {
 
 // ResolveActorAddress accepts the human-facing forms used at application
 // edges. Durable request payloads always carry the actor fingerprint.
+// Like ResolveActor, the cached view answers first and only a miss pays one
+// fresh re-read of this workspace's local custody record — never the durable
+// projection — so a state request addressed to an actor another process added
+// after this workspace was opened still normalises to that actor's
+// fingerprint instead of reporting a live actor as unknown.
 func (w *Workspace) ResolveActorAddress(address string) (apphost.Actor, error) {
-	w.configMu.Lock()
-	defer w.configMu.Unlock()
 	name := strings.TrimPrefix(address, "@")
-	if actor, ok := w.config.Actors[name]; ok {
+	return w.resolveCustody(address, func(c *apphost.Config) (apphost.Actor, bool) {
+		if actor, ok := c.Actors[name]; ok {
+			return actor, true
+		}
+		for _, actor := range c.Actors {
+			if actor.Fingerprint == address {
+				return actor, true
+			}
+		}
+		return apphost.Actor{}, false
+	})
+}
+
+// resolveCustody is the one cold path both resolvers share: the cached view
+// answers first, a miss re-reads config.json once under this workspace's
+// rereadMu, and a hit adopts the fresh custody through three-way
+// reconciliation. The matcher decides which forms of address each caller
+// accepts against whichever configuration it is handed, and it runs last of
+// all against exactly the reconciled state that was adopted — never against
+// the bare load — so a returned answer can never name custody the live view
+// does not hold. Adoption takes configMu around the same short section
+// updateConfig uses, touches only the mutable custody fields, and leaves the
+// open-time scalars written-once exactly as updateConfig keeps them.
+func (w *Workspace) resolveCustody(address string, match func(*apphost.Config) (apphost.Actor, bool)) (apphost.Actor, error) {
+	if actor, ok := w.matchView(match); ok {
 		return actor, nil
 	}
-	for _, actor := range w.config.Actors {
-		if actor.Fingerprint == address {
-			return actor, nil
+	w.rereadMu.Lock()
+	defer w.rereadMu.Unlock()
+	if actor, ok := w.matchView(match); ok {
+		return actor, nil
+	}
+	w.configMu.Lock()
+	baseline := w.config.Clone()
+	w.configMu.Unlock()
+	fresh, err := apphost.LoadConfig(w.MetaDir)
+	if err != nil {
+		return apphost.Actor{}, fmt.Errorf("re-read configuration custody to address %q: %w", address, err)
+	}
+	custodyRereadGate()
+	w.configMu.Lock()
+	defer w.configMu.Unlock()
+	reconciled := w.config
+	reconciled.Actors, reconciled.VerifiedFrontier, err = reconcileCustody(&baseline, &w.config, &fresh)
+	if err != nil {
+		return apphost.Actor{}, fmt.Errorf("reconcile configuration custody to address %q: %w", address, err)
+	}
+	actor, ok := match(&reconciled)
+	if !ok {
+		return apphost.Actor{}, fmt.Errorf("%w %q after a fresh re-read of the configuration", ErrUnknownActor, address)
+	}
+	w.config.Actors = reconciled.Actors
+	w.config.VerifiedFrontier = reconciled.VerifiedFrontier
+	return actor, nil
+}
+
+// reconcileCustody merges one freshly loaded custody record onto the live
+// view, judged against the record the re-read started from: a per-name
+// three-way merge, not a union. Each actor name is decided independently.
+// Where live still equals the baseline, this workspace learned nothing since
+// the load, so fresh stands — including its replacement or removal of that
+// name; where fresh still equals the baseline, the record moved no further
+// than what the view already adopted, so live's concurrent change stands;
+// where live and fresh agree, the agreed entry is taken once, and an agreed
+// removal preserves the name's absence rather than inserting a zero Actor.
+// A name both sides moved differently since the snapshot is refused closed:
+// no verified-frontier arbitration picks a winner — the reconciliation fails
+// with an explicit error naming that actor, and the caller adopts nothing.
+// The frontier still follows mergeVerifiedFrontier, so only a deeper fresh
+// marker advances it and an equal-depth disagreement between memory and disk
+// is refused there too. Only the mutable custody fields
+// come back; callers hold configMu across the call and the adoption.
+func reconcileCustody(baseline, live, fresh *apphost.Config) (map[string]apphost.Actor, *apphost.VerifiedFrontier, error) {
+	frontier, _, err := mergeVerifiedFrontier(live.VerifiedFrontier, fresh.VerifiedFrontier)
+	if err != nil {
+		return nil, nil, err
+	}
+	actors := make(map[string]apphost.Actor, len(live.Actors)+len(fresh.Actors))
+	names := make(map[string]struct{}, len(baseline.Actors)+len(live.Actors)+len(fresh.Actors))
+	for name := range baseline.Actors {
+		names[name] = struct{}{}
+	}
+	for name := range live.Actors {
+		names[name] = struct{}{}
+	}
+	for name := range fresh.Actors {
+		names[name] = struct{}{}
+	}
+	for name := range names {
+		baseEntry, wasHeld := baseline.Actors[name]
+		liveEntry, isHeld := live.Actors[name]
+		freshEntry, freshHolds := fresh.Actors[name]
+		switch {
+		case sameActorEntry(isHeld, liveEntry, wasHeld, baseEntry):
+			// Live is unchanged since the snapshot: adopt fresh wholesale,
+			// replacement or removal alike.
+			if freshHolds {
+				actors[name] = freshEntry
+			}
+		case sameActorEntry(freshHolds, freshEntry, wasHeld, baseEntry):
+			// Fresh is unchanged since the snapshot: keep live's concurrent
+			// change, including its removal.
+			if isHeld {
+				actors[name] = liveEntry
+			}
+		case sameActorEntry(isHeld, liveEntry, freshHolds, freshEntry):
+			// Both sides agree on this name: take the agreed entry once, and
+			// an agreed absence stays absent rather than becoming a zero Actor.
+			if isHeld {
+				actors[name] = liveEntry
+			}
+		default:
+			// One name moved differently on both sides: refuse closed. No
+			// verified-frontier arbitration decides whose custody is right,
+			// so nothing is adopted and the caller keeps its previous view.
+			return nil, nil, fmt.Errorf("refuse divergent custody for actor %q: the live view and the freshly stored record both moved it differently since the re-read began", name)
 		}
 	}
-	return apphost.Actor{}, fmt.Errorf("unknown actor address %q", address)
+	return actors, frontier, nil
+}
+
+// sameActorEntry compares two optional map entries: both absent, or both
+// present and equal as values.
+func sameActorEntry(holds bool, entry apphost.Actor, held bool, other apphost.Actor) bool {
+	return holds == held && (!holds || entry == other)
+}
+
+func (w *Workspace) matchView(match func(*apphost.Config) (apphost.Actor, bool)) (apphost.Actor, bool) {
+	w.configMu.Lock()
+	defer w.configMu.Unlock()
+	return match(&w.config)
 }
 
 func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request) (Submission, error) {
@@ -1635,10 +1797,15 @@ func (w *Workspace) Verify(ctx context.Context) (kernel.Verification, error) {
 // stands whoever recorded it, an unchanged audit writes nothing, and two
 // different heads claiming one depth cannot both describe this sequence —
 // that is a genuine conflict, not a race to resolve by order of arrival.
+// A side carrying no marker moves nothing: an absent next keeps the live
+// frontier as-is rather than moving it backwards, and an absent base adopts
+// whatever is offered.
 func mergeVerifiedFrontier(base, next *apphost.VerifiedFrontier) (*apphost.VerifiedFrontier, bool, error) {
 	switch {
 	case base == nil:
 		return next, true, nil
+	case next == nil:
+		return base, false, nil
 	case base.Head == next.Head && base.Depth == next.Depth:
 		return base, false, nil
 	case base.Depth > next.Depth:

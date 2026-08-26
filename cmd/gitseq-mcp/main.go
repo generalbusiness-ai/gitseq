@@ -656,8 +656,12 @@ func (s *mcpServer) attach(ctx context.Context, repo string) (*room, error) {
 	if err != nil {
 		return nil, fmt.Errorf("no gitseq workroom for %s: %w", path, err)
 	}
-	if _, _, err := workspace.Actor(s.actor); err != nil {
-		return nil, fmt.Errorf("actor %q cannot act in the workroom for %s: %w", s.actor, path, err)
+	// An actor another process adds after this session started must still be
+	// addressable here, so a name nobody knows yet does not refuse the
+	// session; it resolves per call. Only an unreadable custody record is a
+	// reason to refuse outright.
+	if _, err := workspace.ResolveActor(s.actor); err != nil && !errors.Is(err, app.ErrUnknownActor) {
+		return nil, fmt.Errorf("cannot address actor %q in the workroom for %s: %w", s.actor, path, err)
 	}
 	// A linked worktree is a checkout of a repository, not a second workroom:
 	// two paths that share a common git directory share one attachment and one
@@ -739,7 +743,11 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 			if localErr != nil {
 				return nil, localErr
 			}
-			return s.digest(current, local, true), nil
+			digest, err := s.digest(current, local, true)
+			if err != nil {
+				return nil, err
+			}
+			return digest, nil
 		}
 		if err != nil {
 			return nil, err
@@ -756,7 +764,11 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 			if localErr != nil {
 				return nil, localErr
 			}
-			return digestWait(local, requested, s.fingerprint(current), s.actor, true), nil
+			fingerprint, err := s.fingerprint(current)
+			if err != nil {
+				return nil, err
+			}
+			return digestWait(local, requested, fingerprint, s.actor, true), nil
 		}
 		if err != nil {
 			return nil, err
@@ -769,7 +781,11 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		if err := remarshal(arguments, &input); err != nil {
 			return nil, err
 		}
-		input.Actor = s.fingerprint(current)
+		fingerprint, err := s.fingerprint(current)
+		if err != nil {
+			return nil, err
+		}
+		input.Actor = fingerprint
 		var page statusview.WorkPage
 		if err := s.postBoundedJSON(ctx, current, "/v0/work-query", input, laneResponseLimit(current, workResponseLimit, statusview.WorkPageMax), &page); err != nil {
 			if !isTransportError(err) {
@@ -878,8 +894,11 @@ func laneResponseLimit(current *room, base int64, rows int) int64 {
 }
 
 func (s *mcpServer) whoami(ctx context.Context, current *room) (any, error) {
+	actor, err := current.workspace.ResolveActor(s.actor)
+	if err != nil {
+		return nil, err
+	}
 	view := current.workspace.View()
-	actor := view.Actors[s.actor]
 	residentContext, cancel := context.WithTimeout(ctx, orientationTimeout)
 	defer cancel()
 	for attempt := 0; attempt < 2; attempt++ {
@@ -1188,7 +1207,11 @@ func reviewOf(projection workroom.Projection, event string) (workroom.Review, bo
 //
 // It is made once per workroom, before this session announces itself there.
 func (s *mcpServer) warnSharedIdentity(ctx context.Context, current *room) error {
-	actor := current.workspace.View().Actors[s.actor]
+	actor, err := current.workspace.ResolveActor(s.actor)
+	if err != nil {
+		fmt.Fprintln(s.noticeWriter(), "gitseq-mcp: shared-identity check skipped:", err)
+		return nil
+	}
 	value, err := s.get(ctx, current, "/v0/presence-count?actor="+url.QueryEscape(s.actor))
 	if isTransportError(err) {
 		fmt.Fprintln(s.noticeWriter(), "gitseq-mcp: shared-identity check skipped; the resident service is unavailable:", err)

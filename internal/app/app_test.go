@@ -1783,7 +1783,7 @@ func TestRetiredActorCannotBeAddressedOrGrantedAuthority(t *testing.T) {
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "addressed to a retired instance",
 		Body:    map[string]string{"to": instance.Fingerprint, "conditions": "none"},
 		RestsOn: []string{seed.ID}, IdempotencyKey: "retired-request",
-	}); err == nil || !strings.Contains(err.Error(), "unknown actor address") {
+	}); err == nil || !strings.Contains(err.Error(), "addresses no known actor") {
 		t.Fatalf("request to a retired principal = %v", err)
 	}
 	views, err := workspace.ActorViews(ctx)
