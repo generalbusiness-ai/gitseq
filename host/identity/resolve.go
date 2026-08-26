@@ -268,6 +268,16 @@ func (r *Resolution) LookupAt(recordID string) Resolved {
 	return r.lookup(record.actor, record.at)
 }
 
+// LookupActorAt reports who an actor was at one exact record's verified log
+// position. An unknown actor or record identifier resolves empty.
+func (r *Resolution) LookupActorAt(actor, recordID string) Resolved {
+	record, ok := r.records[recordID]
+	if !ok {
+		return Resolved{}
+	}
+	return r.lookup(actor, record.at)
+}
+
 func (r *Resolution) lookup(actor string, at instant) Resolved {
 	candidates := r.bySubject[actor]
 	// The most recent qualifying endorsement answers, so re-anchoring a key —

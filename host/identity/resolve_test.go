@@ -639,6 +639,35 @@ func TestLookupAtFailsClosedForUnknownOrMutatedRecordID(t *testing.T) {
 	}
 }
 
+func TestLookupActorAtUsesTheNamedActorAndExactRecordInstant(t *testing.T) {
+	initializer, _ := testKey(t)
+	witness, _ := testKey(t)
+	session, _ := testKey(t)
+
+	log := newLog(t, initializer)
+	log.declareWitness(initializer, witness, []string{identity.GitHubScheme}, 1000)
+	subject := alice()
+	anchor := log.add(witness, identity.AnchorSchema, identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(session), Identity: &subject, Scope: "play",
+	}, 2000)
+	instant := log.act(initializer, 2000)
+	resolution := log.resolve()
+
+	want := identity.Resolved{
+		Anchored: true, Identity: alice(), Vouching: identity.Witnessed,
+		Verification: identity.InLog, Scope: "play", Record: anchor,
+	}
+	if got := resolution.LookupActorAt(fingerprint(session), instant); got != want {
+		t.Errorf("known actor at known record = %+v, want %+v", got, want)
+	}
+	if got := resolution.LookupActorAt("unknown-actor", instant); got != (identity.Resolved{}) {
+		t.Errorf("unknown actor = %+v, want zero resolution", got)
+	}
+	if got := resolution.LookupActorAt(fingerprint(session), "unknown-record-id"); got != (identity.Resolved{}) {
+		t.Errorf("unknown record = %+v, want zero resolution", got)
+	}
+}
+
 // An empty log answers rather than panics: a repository with nothing in it has
 // no identities, which is a fact and not a failure.
 func TestEmptyLogResolvesToNothing(t *testing.T) {
