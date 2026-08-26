@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:357bc61fbc2cf2247834d2b33d312333738ceab8","text":"Retire the accidental duplicate successor-freshness ruling. The idempotent report 11526af7 is the single closure for this promise."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:11526af7ae6b7c88b8466482549180a781d74b5a","text":"Replace the ruling before ratification to make the prospective paired-field compatibility gate explicit."}
