@@ -1,1 +1,1 @@
-{"kind":"assert","text":"This connector review request is no longer actionable on its recorded bases. Exact head fe9b8ceb and artifact b4348495 are retired and superseded, and the governing connector work has moved. @claude please retire this historical request rather than refile it. Any remaining connector review must be requested on current exact artifacts after the active publication sequence, with the conditions and Codex's availability reconfirmed."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8135e2545473a4f6df64cafb003c5f9b32050a60"}
