@@ -18,8 +18,9 @@ serves bounded SQL queries to the application UI.
 The choices are:
 
 - **SQLite**, one derived database per workroom and application profile;
-- the cgo-free [`ncruces/go-sqlite3`](https://github.com/ncruces/go-sqlite3)
-  binding, pinned to an exact module version;
+- for the current Go resident, the cgo-free
+  [`ncruces/go-sqlite3`](https://github.com/ncruces/go-sqlite3) binding,
+  pinned to an exact module version;
 - SQLite WAL mode, one writer connection, and a small read pool;
 - the native Go JSONata 2.0.6 implementation in
   [`jsonata-go/jsonata`](https://github.com/jsonata-go/jsonata), pinned and
@@ -144,6 +145,32 @@ WAL lets bounded readers proceed beside the fold writer, but long readers can
 delay checkpointing. The query deadline and result bounds therefore protect
 both HTTP capacity and database maintenance.
 
+### Rust alternative
+
+Rust has the more established SQLite binding. [`rusqlite`](https://github.com/rusqlite/rusqlite)
+can bundle a pinned SQLite and directly exposes the authorizer, progress
+handler, interruption, and runtime limits. It would be the first choice if the
+resident were written in Rust. SQLx and Diesel add machinery this synchronous,
+single-writer projection does not need, while making the low-level sandbox
+controls less direct.
+
+It is not a smaller choice for the present Go resident. Using `rusqlite` would
+require either a resident rewrite, a native ABI with ownership and callbacks
+crossing into Go, or a sidecar that no longer embeds the database in the
+resident. If a native toolchain becomes acceptable, a direct Go SQLite binding
+is the smaller comparison. The first implementation should therefore keep the
+database behind a narrow internal interface, spike `ncruces/go-sqlite3`, and
+change the Go binding if that spike fails rather than introduce Rust only as a
+database adapter.
+
+Rust also does not yet provide a more established combined SQLite-and-JSONata
+stack. Stedi's `jsonata-rs` still describes itself as incomplete and alpha.
+The newer [`jsonata-core`](https://github.com/txjmb/jsonata-core) reports full
+reference-suite coverage and useful evaluation bounds, but its first published
+versions appeared in 2026 and its host-extension surface still needs the same
+profile and determinism validation as the Go evaluator. It is a worthwhile
+language-platform spike, not yet a reason to move the resident boundary.
+
 ## JSONata profile
 
 The application binds a Gitseq JSONata language version, never "latest". The
@@ -229,6 +256,10 @@ the sequencing kernel or enlarge the minimal application.
 - [`ncruces/go-sqlite3` package](https://pkg.go.dev/github.com/ncruces/go-sqlite3)
   and [`database/sql` driver](https://pkg.go.dev/github.com/ncruces/go-sqlite3/driver)
 - [`modernc.org/sqlite` package](https://pkg.go.dev/modernc.org/sqlite)
+- [`rusqlite`](https://github.com/rusqlite/rusqlite) and its
+  [connection controls](https://docs.rs/rusqlite/latest/rusqlite/struct.Connection.html)
+- [Stedi `jsonata-rs`](https://github.com/Stedi/jsonata-rs) and
+  [`jsonata-core`](https://github.com/txjmb/jsonata-core)
 - [DuckDB concurrency](https://duckdb.org/docs/current/connect/concurrency)
 - [Go JSONata 2.0.6 API](https://pkg.go.dev/github.com/jsonata-go/jsonata/v206)
   and [JSONata release history](https://github.com/jsonata-js/jsonata/releases)
