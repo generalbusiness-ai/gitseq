@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2210e4ea0311efc4eccfff9d3a2c4463ea12f3d6"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbad8f28e3c16ac8818fd7e538ee19ff2977c9ad","text":"Removing my malformed ratification attempt: it was filed as kind ratify via gs state, which this workroom does not define, so it projects as undefined-kind and forms no lifecycle edge. The real ratification of ruling 4463ea12 is filed with gs ratify beside this retirement."}
