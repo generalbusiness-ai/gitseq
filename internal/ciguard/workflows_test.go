@@ -89,6 +89,23 @@ func TestCIVerifiesTheCommittedUIEmbed(t *testing.T) {
 	}
 }
 
+// The defect codex found in the one-execution CI lane. The Go step captures the
+// suite's JSON stream and the projector reads it back instead of rerunning the
+// named cases, but the step runs under bash -e -o pipefail: at the reviewed
+// head a failing suite ended the step at the pipeline, so the red run projected
+// no adversarial evidence and the upload-on-failure step had nothing to upload.
+// The rule itself is exercised against fixtures in negatives_test.go; this test
+// only holds the real workflow to it.
+func TestCIProjectsEvidenceFromTheOneCapturedRun(t *testing.T) {
+	flow, ok := workflows(t)["ci.yml"]
+	if !ok {
+		t.Fatal("ci.yml is missing")
+	}
+	for _, violation := range checkCapturedSuite("ci.yml", flow) {
+		t.Error(violation)
+	}
+}
+
 type dependabot struct {
 	Version int                `yaml:"version"`
 	Updates []dependabotUpdate `yaml:"updates"`

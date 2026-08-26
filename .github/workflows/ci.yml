@@ -43,13 +43,23 @@ jobs:
       - name: Install the locked UI dependencies
         run: npm ci --prefix ui
 
+      # GitHub runs this step under bash -e -o pipefail, so a failing suite would
+      # abort it before the projector ever reads the captured stream, and the
+      # red run nobody watched live would upload no adversarial evidence. Keep
+      # the pipeline's own status, project the evidence once from that captured
+      # stream on the passing and the failing path alike, then return the
+      # suite's status. No test is run a second time.
       - name: Check Go code and regenerate adversarial evidence
         run: |
           set -o pipefail
           make vet
-          go test -race -count=1 -json ./... | tee "$RUNNER_TEMP/go-test.json"
-          make build
+          status=0
+          go test -race -count=1 -json ./... | tee "$RUNNER_TEMP/go-test.json" || status=$?
           make spike SPIKE_TEST_JSON="$RUNNER_TEMP/go-test.json"
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+          make build
 
       # ui-check, not ui. Both rebuild the bundle, but only ui-check compares
       # the result against what is committed. The reproducibility gate below

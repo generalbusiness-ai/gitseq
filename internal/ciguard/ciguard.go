@@ -290,3 +290,117 @@ func checkWorkflow(root, name string, flow workflow) []string {
 	}
 	return violations
 }
+
+// A red CI run is the only run whose adversarial evidence cannot be
+// regenerated afterwards, and GitHub runs a multiline step under
+// bash -e -o pipefail, where the first non-zero command ends the step. So a
+// step that both runs the Go suite and projects that evidence from the suite's
+// captured output has to keep the suite's own exit status, project after it on
+// the passing and the failing path alike, and only then return that status.
+// Anything else leaves a failing run with nothing to upload. Running the suite
+// a second time on the failure path would give the projector its stream back
+// but throw away the one-execution shape this arrangement exists for, so the
+// rule counts executions as well as ordering.
+var (
+	suiteInvocation     = regexp.MustCompile(`(^|[;&|]\s*)(go test|make test|make race)\b`)
+	projectorInvocation = regexp.MustCompile(`(^|[;&|]\s*)make spike\b`)
+	statusCapture       = regexp.MustCompile(`\|\|\s*([A-Za-z_][A-Za-z0-9_]*)=\$\?$`)
+)
+
+// runLine locates one command inside one step's run script.
+type runLine struct {
+	where  string
+	line   int
+	text   string
+	script []string
+}
+
+// checkCapturedSuite returns every violation of that ordering in one parsed
+// workflow. It is deliberately separate from checkWorkflow: this rule is about
+// one workflow's evidence lane, not about the admissibility every workflow in
+// the tree is held to.
+func checkCapturedSuite(name string, flow workflow) []string {
+	var suites, projections []runLine
+	jobNames := make([]string, 0, len(flow.Jobs))
+	for jobName := range flow.Jobs {
+		jobNames = append(jobNames, jobName)
+	}
+	sort.Strings(jobNames)
+	for _, jobName := range jobNames {
+		for index, s := range flow.Jobs[jobName].Steps {
+			label := s.Name
+			if label == "" {
+				label = fmt.Sprintf("step %d", index)
+			}
+			where := fmt.Sprintf("%s job %s %q", name, jobName, label)
+			script := strings.Split(s.Run, "\n")
+			for number, raw := range script {
+				line := strings.TrimSpace(raw)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				located := runLine{where: where, line: number, text: line, script: script}
+				if suiteInvocation.MatchString(line) {
+					suites = append(suites, located)
+				}
+				if projectorInvocation.MatchString(line) {
+					projections = append(projections, located)
+				}
+			}
+		}
+	}
+
+	var violations []string
+	if len(suites) != 1 {
+		violations = append(violations, fmt.Sprintf(
+			"%s runs the Go suite %d times; the captured-stream lane needs exactly one execution", name, len(suites)))
+	}
+	if len(projections) != 1 {
+		violations = append(violations, fmt.Sprintf(
+			"%s projects the adversarial evidence %d times; it must be projected exactly once, from the captured stream", name, len(projections)))
+	}
+	if len(violations) > 0 {
+		return violations
+	}
+
+	suite, projection := suites[0], projections[0]
+	if suite.where != projection.where {
+		return append(violations, fmt.Sprintf(
+			"%s runs the suite in %s and projects in %s; a later step does not run once the suite step has failed, so a red run projects nothing",
+			name, suite.where, projection.where))
+	}
+	captured := statusCapture.FindStringSubmatch(suite.text)
+	if captured == nil {
+		return append(violations, fmt.Sprintf(
+			"%s runs the suite as %q without capturing its status with `|| status=$?`; under bash -e a failing suite ends the step before the projector runs",
+			suite.where, suite.text))
+	}
+	variable := captured[1]
+	if projection.line < suite.line {
+		violations = append(violations, fmt.Sprintf(
+			"%s projects the evidence before the suite writes the stream it reads", suite.where))
+	}
+	initialised := regexp.MustCompile(`^` + regexp.QuoteMeta(variable) + `=0$`)
+	returned := regexp.MustCompile(`^exit\s+"?\$\{?` + regexp.QuoteMeta(variable) + `\}?"?$`)
+	initialisedBefore, returnedAfter := false, false
+	for number, raw := range suite.script {
+		line := strings.TrimSpace(raw)
+		if number < suite.line && initialised.MatchString(line) {
+			initialisedBefore = true
+		}
+		if number > projection.line && returned.MatchString(line) {
+			returnedAfter = true
+		}
+	}
+	if !initialisedBefore {
+		violations = append(violations, fmt.Sprintf(
+			"%s captures the suite status in %s without setting %s=0 first, so a passing suite leaves it unset",
+			suite.where, variable, variable))
+	}
+	if !returnedAfter {
+		violations = append(violations, fmt.Sprintf(
+			"%s never returns the captured %s after projecting, so a failing suite would report a green step",
+			suite.where, variable))
+	}
+	return violations
+}
