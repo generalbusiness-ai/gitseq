@@ -1,15 +1,24 @@
 ---
 date: 2026-08-26
-status: draft interface specification. Nothing here selects an evaluator,
+status: >-
+  draft interface specification. Nothing here selects an evaluator,
   database, storage layout, or host language. Those choices are outside this
   interface.
-origin: Hugh's application-platform discussion: make the smallest Gitseq
+origin: >-
+  Hugh's application-platform discussion: make the smallest Gitseq
   application read as JSONata with DDL and expose its projection through SQL.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b15de2f8788788a1afe970d6d077f7843862ebf2
 ---
 
 # JSONata with DDL: the application interface
+
+Gitseq is an application platform built on a log of signed events. This note
+proposes a small language for declaring applications with SQL and JSONata,
+designed to work with any event-sourcing platform. The
+[companion implementation note](2026-08-26-jsonata-ddl-application-implementation.md)
+describes a rapid application platform on Gitseq that uses Git-native objects
+as its datastore and Go as its default implementation language.
 
 The kernel verifies and sequences opaque events. An application gives those
 events meaning by declaring their schemas, folding them into typed relations,
