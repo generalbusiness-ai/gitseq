@@ -639,6 +639,125 @@ func TestLookupAtFailsClosedForUnknownOrMutatedRecordID(t *testing.T) {
 	}
 }
 
+func TestLookupActorAtUsesTheNamedActorAndExactRecordInstant(t *testing.T) {
+	initializer, _ := testKey(t)
+	witness, _ := testKey(t)
+	session, _ := testKey(t)
+	recordSigner, _ := testKey(t)
+
+	log := newLog(t, initializer)
+	log.declareWitness(initializer, witness, []string{identity.GitHubScheme}, 1000)
+	subject := alice()
+	anchor := log.add(witness, identity.AnchorSchema, identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(session), Identity: &subject, Scope: "play",
+	}, 2000)
+	recordSignerIdentity := identity.Identity{
+		Scheme: identity.GitHubScheme, Subject: "4343", Handle: "bob",
+	}
+	log.add(witness, identity.AnchorSchema, identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(recordSigner), Identity: &recordSignerIdentity,
+	}, 2000)
+	instant := log.act(recordSigner, 2000)
+	resolution := log.resolve()
+
+	want := identity.Resolved{
+		Anchored: true, Identity: alice(), Vouching: identity.Witnessed,
+		Verification: identity.InLog, Scope: "play", Record: anchor,
+	}
+	if signer := resolution.LookupAt(instant); !signer.Anchored || signer.Identity != recordSignerIdentity {
+		t.Fatalf("record signer = %+v, want anchored as %+v", signer, recordSignerIdentity)
+	}
+	if got := resolution.LookupActorAt(fingerprint(session), instant); got != want {
+		t.Errorf("known actor at known record = %+v, want %+v", got, want)
+	}
+	if got := resolution.LookupActorAt("unknown-actor", instant); got != (identity.Resolved{}) {
+		t.Errorf("unknown actor = %+v, want zero resolution", got)
+	}
+	if got := resolution.LookupActorAt(fingerprint(session), "unknown-record-id"); got != (identity.Resolved{}) {
+		t.Errorf("unknown record = %+v, want zero resolution", got)
+	}
+}
+
+// An anchor takes force at its own position, not at the start of its whole
+// second. The record naming the instant need not be signed by the actor asked
+// about.
+func TestLookupActorAtUsesAnchorPositionAtSameTimestamp(t *testing.T) {
+	initializer, _ := testKey(t)
+	witness, _ := testKey(t)
+	session, _ := testKey(t)
+	bystander, _ := testKey(t)
+
+	log := newLog(t, initializer)
+	log.declareWitness(initializer, witness, []string{identity.GitHubScheme}, 1000)
+	before := log.act(bystander, 2000)
+	subject := alice()
+	anchor := log.add(witness, identity.AnchorSchema, identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(session), Identity: &subject,
+	}, 2000)
+	resolution := log.resolve()
+
+	if got := resolution.LookupActorAt(fingerprint(session), before); got.Anchored {
+		t.Errorf("same-second record before anchor = %+v, want unanchored", got)
+	}
+	if got := resolution.LookupActorAt(fingerprint(session), anchor); !got.Anchored {
+		t.Errorf("actor at anchor record = %+v, want anchored", got)
+	}
+}
+
+// NotAfter is inclusive and uses the selected record's timestamp rather than
+// its signer or the latest time in the log.
+func TestLookupActorAtUsesInclusiveNotAfterTimestamp(t *testing.T) {
+	initializer, _ := testKey(t)
+	witness, _ := testKey(t)
+	session, _ := testKey(t)
+	bystander, _ := testKey(t)
+
+	log := newLog(t, initializer)
+	log.declareWitness(initializer, witness, []string{identity.GitHubScheme}, 1000)
+	subject := alice()
+	log.add(witness, identity.AnchorSchema, identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(session), Identity: &subject, NotAfter: 5000,
+	}, 2000)
+	atExpiry := log.act(bystander, 5000)
+	afterExpiry := log.act(bystander, 5001)
+	resolution := log.resolve()
+
+	if got := resolution.LookupActorAt(fingerprint(session), atExpiry); !got.Anchored {
+		t.Errorf("actor at inclusive NotAfter = %+v, want anchored", got)
+	}
+	if got := resolution.LookupActorAt(fingerprint(session), afterExpiry); got.Anchored {
+		t.Errorf("actor after NotAfter = %+v, want unanchored", got)
+	}
+}
+
+// A revocation takes force at its own position and no earlier, even when the
+// preceding record has the same whole-second timestamp.
+func TestLookupActorAtUsesRevocationPositionAtSameTimestamp(t *testing.T) {
+	initializer, _ := testKey(t)
+	witness, _ := testKey(t)
+	session, _ := testKey(t)
+	bystander, _ := testKey(t)
+
+	log := newLog(t, initializer)
+	log.declareWitness(initializer, witness, []string{identity.GitHubScheme}, 1000)
+	subject := alice()
+	anchor := log.add(witness, identity.AnchorSchema, identity.Anchor{
+		Genesis: testGenesis, Subject: fingerprint(session), Identity: &subject,
+	}, 2000)
+	before := log.act(bystander, 4000)
+	revocation := log.add(witness, identity.RevokeSchema, identity.Revocation{
+		Genesis: testGenesis, Anchor: anchor,
+	}, 4000)
+	resolution := log.resolve()
+
+	if got := resolution.LookupActorAt(fingerprint(session), before); !got.Anchored {
+		t.Errorf("actor immediately before same-second revocation = %+v, want anchored", got)
+	}
+	if got := resolution.LookupActorAt(fingerprint(session), revocation); got.Anchored {
+		t.Errorf("actor at revocation record = %+v, want unanchored", got)
+	}
+}
+
 // An empty log answers rather than panics: a repository with nothing in it has
 // no identities, which is a fact and not a failure.
 func TestEmptyLogResolvesToNothing(t *testing.T) {
