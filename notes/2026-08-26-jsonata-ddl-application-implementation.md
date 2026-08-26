@@ -2,11 +2,11 @@
 date: 2026-08-26
 status: draft companion implementation design. It binds the first choices but
   does not authorize implementation.
-companion_to: notes/2026-08-26-jsonata-ddl-application-interface.md@2511990b01d852db12700c7ee5aa21c5da292efb
+companion_to: notes/2026-08-26-jsonata-ddl-application-interface.md@9db29a7049915fb2db8bbd6f5fc589114206a075
 origin: Hugh's request to validate an embedded database against the application
   SQL and account for the UI and resident-service boundary.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:264cbdd6dc30aad217eaf6c5af2ec14eb39eadd8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b15de2f8788788a1afe970d6d077f7843862ebf2
 ---
 
 # First implementation of the JSONata-with-DDL platform
@@ -166,10 +166,11 @@ database adapter.
 Rust also does not yet provide a more established combined SQLite-and-JSONata
 stack. Stedi's `jsonata-rs` still describes itself as incomplete and alpha.
 The newer [`jsonata-core`](https://github.com/txjmb/jsonata-core) reports full
-reference-suite coverage and useful evaluation bounds, but its first published
-versions appeared in 2026 and its host-extension surface still needs the same
-profile and determinism validation as the Go evaluator. It is a worthwhile
-language-platform spike, not yet a reason to move the resident boundary.
+reference-suite coverage; its 2.1.7 release notes also list timeout, stack, and
+sequence guardrails. Its first published versions appeared in 2026, and its
+host-extension surface still needs the same profile and determinism validation
+as the Go evaluator. It is a worthwhile language-platform spike, not yet a
+reason to move the resident boundary.
 
 ## JSONata profile
 
@@ -259,7 +260,8 @@ the sequencing kernel or enlarge the minimal application.
 - [`rusqlite`](https://github.com/rusqlite/rusqlite) and its
   [connection controls](https://docs.rs/rusqlite/latest/rusqlite/struct.Connection.html)
 - [Stedi `jsonata-rs`](https://github.com/Stedi/jsonata-rs) and
-  [`jsonata-core`](https://github.com/txjmb/jsonata-core)
+  [`jsonata-core`](https://github.com/txjmb/jsonata-core), including its
+  [2.1.7 guardrail release](https://github.com/txjmb/jsonata-core/releases/tag/v2.1.7)
 - [DuckDB concurrency](https://duckdb.org/docs/current/connect/concurrency)
 - [Go JSONata 2.0.6 API](https://pkg.go.dev/github.com/jsonata-go/jsonata/v206)
   and [JSONata release history](https://github.com/jsonata-js/jsonata/releases)
