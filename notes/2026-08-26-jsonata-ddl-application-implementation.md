@@ -1,9 +1,11 @@
 ---
 date: 2026-08-26
-status: draft companion implementation design. It binds the first choices but
+status: >-
+  draft companion implementation design. It binds the first choices but
   does not authorize implementation.
 companion_to: notes/2026-08-26-jsonata-ddl-application-interface.md@9db29a7049915fb2db8bbd6f5fc589114206a075
-origin: Hugh's request to validate an embedded database against the application
+origin: >-
+  Hugh's request to validate an embedded database against the application
   SQL and account for the UI and resident-service boundary.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b15de2f8788788a1afe970d6d077f7843862ebf2

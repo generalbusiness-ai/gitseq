@@ -1,9 +1,11 @@
 ---
 date: 2026-08-26
-status: draft interface specification. Nothing here selects an evaluator,
+status: >-
+  draft interface specification. Nothing here selects an evaluator,
   database, storage layout, or host language. Those choices are outside this
   interface.
-origin: Hugh's application-platform discussion: make the smallest Gitseq
+origin: >-
+  Hugh's application-platform discussion: make the smallest Gitseq
   application read as JSONata with DDL and expose its projection through SQL.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b15de2f8788788a1afe970d6d077f7843862ebf2
