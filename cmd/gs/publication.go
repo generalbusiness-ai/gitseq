@@ -531,9 +531,22 @@ func validatePublicationOutbox(outbox publicationOutbox) error {
 			}
 			switch entry.State {
 			case "pending":
-			case "done", "abandoned":
+			case "done":
 				if entry.Event == "" && entry.Retire == "" {
 					return errors.New("publication outbox contains a completed entry without an event")
+				}
+			case "abandoned":
+				// An entry abandoned because every submission failed names no
+				// event: none was ever recorded. That file is fsynced before
+				// the settling loop clears it, so refusing it here wedged
+				// publication on its own bounded-abandonment path. Exhausted
+				// attempts are what make it terminal — nothing will be
+				// submitted for it again — and they are the only way to reach
+				// this shape, because every other abandonment is a verdict on
+				// an event one of the two phases already recorded. An
+				// abandonment with attempts still to spend is still malformed.
+				if entry.Event == "" && entry.Retire == "" && entry.Attempts < publicationAttemptLimit {
+					return errors.New("publication outbox contains an abandoned entry that names no event and did not exhaust its attempts")
 				}
 			default:
 				return errors.New("publication outbox contains an invalid entry state")

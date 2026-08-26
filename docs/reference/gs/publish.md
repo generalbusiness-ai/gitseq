@@ -249,7 +249,7 @@ Every failure has a bounded end:
 | what happened | what the run does |
 |---|---|
 | Transport or visibility failure, in either phase | The entry stays pending and the run exits non-zero. It is retried on later runs, at most 3 times in all; one run costs one attempt however many phases it drives. |
-| Retried past the attempt ceiling | The entry is **abandoned** with the reason it kept failing for. |
+| Retried past the attempt ceiling | The entry is **abandoned** with the reason it kept failing for. Where every submission failed, it names no event, because none was ever recorded. |
 | The fold ruled either act ineffective | The entry is **abandoned** immediately. Its idempotency key is spent, so no replay could reach a different verdict. |
 | A changed watched path carries another actor's live fact | The run refuses the whole batch. Nothing is queued, appended, or advanced. |
 | Another live actor holds a queue on this same remote and ref | The run refuses. |
@@ -263,6 +263,11 @@ effective is reported **abandoned**, never landed or replayed, so partial
 succession is never shown as a publication. The command exits non-zero.
 Republishing an abandoned path is a deliberate act afterwards, not something a
 later run does by itself.
+
+Abandonment is durable the moment it happens, before the batch it belongs to is
+cleared. A run that ends between those two points — a process death, or another
+entry in the same batch still failing — leaves an outbox the next run loads and
+settles, not one it refuses.
 
 ## Refusals
 

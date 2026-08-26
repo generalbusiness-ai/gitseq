@@ -1137,6 +1137,175 @@ func TestPublicationRetriesAreBoundedByTheAttemptCeiling(t *testing.T) {
 	}
 }
 
+// An entry abandoned at the attempt ceiling because every submission failed
+// names no event: none was ever recorded. The outbox is fsynced in that state
+// the moment the entry runs out of attempts, and the batch-settling loop that
+// would clear it only runs after every remaining entry has been driven. A
+// second entry still failing transport returns before that loop is reached, so
+// the fsynced file is exactly what the next run loads — no process death
+// required. That file must reload and settle, or publication is wedged by its
+// own bounded-abandonment path.
+func TestATerminalAbandonmentWithNoEventReloadsAndSettles(t *testing.T) {
+	f := newPublicationFixture(t)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Error(writer, "resident is down", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	head := strings.Repeat("c", 40)
+	frontier := publicationFrontierKey("origin", "refs/heads/main")
+	outboxPath, statePath, outbox, state := f.handQueueEntries(head,
+		publicationEntry{Path: "notes/exhausted.md", State: "pending"},
+		publicationEntry{Path: "notes/still-trying.md", State: "pending"})
+
+	// Every pass returns on the first entry's transport failure, so only that
+	// entry spends an attempt until it reaches the ceiling and is abandoned.
+	for pass := 1; pass <= publicationAttemptLimit+1; pass++ {
+		var report publicationReport
+		if err := reconcilePublicationOutbox(context.Background(), f.workspace, f.private, "operator", server.URL,
+			outboxPath, &outbox, statePath, &state, &report); err == nil {
+			t.Fatalf("pass %d did not report the transport failure", pass)
+		}
+	}
+
+	// The precondition is asserted here rather than assumed, and from the bytes
+	// on disk rather than from memory: the file left behind carries a
+	// terminally abandoned entry naming neither an event nor a retirement,
+	// beside a pending entry that keeps the batch from being cleared.
+	written := publicationOutbox{}
+	content, err := os.ReadFile(outboxPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := decodePublicationJSON(content, &written); err != nil {
+		t.Fatal(err)
+	}
+	if len(written.Batches) != 1 || len(written.Batches[0].Entries) != 2 {
+		t.Fatalf("the outbox on disk = %+v", written)
+	}
+	exhausted, holding := written.Batches[0].Entries[0], written.Batches[0].Entries[1]
+	if exhausted.State != "abandoned" || exhausted.Event != "" || exhausted.Retire != "" ||
+		exhausted.Attempts != publicationAttemptLimit {
+		t.Fatalf("the first entry is not a terminal abandonment carrying no event: %+v", exhausted)
+	}
+	if holding.State != "pending" {
+		t.Fatalf("the second entry was expected to hold the batch open: %+v", holding)
+	}
+
+	// The defect: this file used to be refused for ever, so publication could
+	// never resume.
+	reloaded, err := loadPublicationOutbox(outboxPath, f.fingerprint)
+	if err != nil {
+		t.Fatalf("the outbox that terminal abandonment fsynced no longer loads: %v", err)
+	}
+	if len(reloaded.Batches) != 1 || len(reloaded.Batches[0].Entries) != 2 {
+		t.Fatalf("the reloaded outbox lost work: %+v", reloaded)
+	}
+
+	// Reloadable is not enough; it has to settle. The second entry spends its
+	// own attempts and is abandoned in turn, and only then does the batch clear.
+	final := publicationReport{}
+	for pass := 1; ; pass++ {
+		if pass > publicationAttemptLimit+1 {
+			t.Fatalf("the reloaded outbox never settled: %+v", reloaded)
+		}
+		final = publicationReport{}
+		if err := reconcilePublicationOutbox(context.Background(), f.workspace, f.private, "operator", server.URL,
+			outboxPath, &reloaded, statePath, &state, &final); err == nil {
+			break
+		}
+	}
+	if len(reloaded.Batches) != 0 {
+		t.Fatalf("the settled batch was retained: %+v", reloaded)
+	}
+	if state.Observed[frontier] != head {
+		t.Fatalf("a settled batch did not release the shared frontier: %+v", state)
+	}
+	// Nothing partial is ever presented as published, and the run still fails.
+	if !publicationUnfinished(final) {
+		t.Fatal("an abandoned batch was counted as finished, so the command would exit zero")
+	}
+	outcomes := outcomesByPath(final)
+	for _, path := range []string{"notes/exhausted.md", "notes/still-trying.md"} {
+		if outcomes[path].Outcome != "abandoned" {
+			t.Fatalf("%s reported %+v, want abandoned", path, outcomes[path])
+		}
+	}
+	// And the cleared file is loadable too, so the next run starts clean.
+	if after, err := loadPublicationOutbox(outboxPath, f.fingerprint); err != nil || len(after.Batches) != 0 {
+		t.Fatalf("the settled outbox on disk = %+v, %v", after, err)
+	}
+}
+
+// The refusal narrows to terminal abandonment and to nothing else. An entry
+// claiming completion still has to name what it recorded, and so does an
+// abandonment that has attempts left, because the only way to abandon with no
+// event at all is to exhaust them.
+func TestAnEntryWithoutAnEventIsRefusedUnlessItExhaustedItsAttempts(t *testing.T) {
+	cases := []struct {
+		name    string
+		entry   publicationEntry
+		refused string
+	}{
+		{
+			name:    "a done entry names no event",
+			entry:   publicationEntry{Path: "notes/one.md", State: "done", Attempts: publicationAttemptLimit},
+			refused: "completed entry without an event",
+		},
+		{
+			name:    "an abandoned entry names no event and has attempts left",
+			entry:   publicationEntry{Path: "notes/one.md", State: "abandoned", Attempts: publicationAttemptLimit - 1},
+			refused: "did not exhaust its attempts",
+		},
+		{
+			name:  "an abandoned entry names no event and exhausted its attempts",
+			entry: publicationEntry{Path: "notes/one.md", State: "abandoned", Attempts: publicationAttemptLimit},
+		},
+		{
+			name:  "a done entry names its event",
+			entry: publicationEntry{Path: "notes/one.md", State: "done", Attempts: publicationAttemptLimit, Event: "event-id"},
+		},
+	}
+
+	// Each case must be separated from the admitted one by exactly the field it
+	// claims to pin, so no single mutation can break two cases for one reason.
+	// The distinction is enforced here, not asserted in a comment.
+	differOnlyIn := func(name string, first, second publicationEntry, clear func(*publicationEntry)) {
+		t.Helper()
+		if reflect.DeepEqual(first, second) {
+			t.Fatalf("the cases meant to differ in %s are identical: %+v", name, first)
+		}
+		clear(&first)
+		clear(&second)
+		if !reflect.DeepEqual(first, second) {
+			t.Fatalf("the cases meant to differ only in %s differ elsewhere: %+v and %+v", name, first, second)
+		}
+	}
+	admitted := cases[2].entry
+	differOnlyIn("State", cases[0].entry, admitted, func(entry *publicationEntry) { entry.State = "" })
+	differOnlyIn("Attempts", cases[1].entry, admitted, func(entry *publicationEntry) { entry.Attempts = 0 })
+	differOnlyIn("Event", cases[3].entry, cases[0].entry, func(entry *publicationEntry) { entry.Event = "" })
+
+	for _, item := range cases {
+		t.Run(item.name, func(t *testing.T) {
+			outbox := publicationOutbox{Version: publicationOutboxV1, Actor: "fingerprint", Batches: []publicationBatch{{
+				Remote: "origin", Ref: "refs/heads/main", Head: strings.Repeat("c", 40), Basis: "basis-event",
+				Entries: []publicationEntry{item.entry},
+			}}}
+			err := validatePublicationOutbox(outbox)
+			if item.refused == "" {
+				if err != nil {
+					t.Fatalf("%+v was refused: %v", item.entry, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), item.refused) {
+				t.Fatalf("%+v gave %v, want a refusal naming %q", item.entry, err, item.refused)
+			}
+		})
+	}
+}
+
 // A foreign queue blocks only when it shares this run's remote and ref, and
 // only when its actor is still able to drain it.
 func TestForeignPublicationBatchesBlockOnlyLiveActorsOnTheSameFrontier(t *testing.T) {
@@ -1783,11 +1952,17 @@ func (f *publicationFixture) outbox() publicationOutbox {
 // that need a queue without a remote behind it.
 func (f *publicationFixture) handQueue(path, head string, withdraw bool) (string, string, publicationOutbox, publicationState) {
 	f.t.Helper()
+	return f.handQueueEntries(head, publicationEntry{Path: path, State: "pending", Withdraw: withdraw})
+}
+
+// handQueueEntries is the same, for the paths that need more than one entry in
+// the batch.
+func (f *publicationFixture) handQueueEntries(head string, entries ...publicationEntry) (string, string, publicationOutbox, publicationState) {
+	f.t.Helper()
 	outboxPath := publicationOutboxPath(f.workspace.MetaDir, f.fingerprint)
 	statePath := publicationStatePath(f.workspace.MetaDir)
 	outbox := publicationOutbox{Version: publicationOutboxV1, Actor: f.fingerprint, Batches: []publicationBatch{{
-		Remote: "origin", Ref: "refs/heads/main", Head: head, Basis: f.basis,
-		Entries: []publicationEntry{{Path: path, State: "pending", Withdraw: withdraw}},
+		Remote: "origin", Ref: "refs/heads/main", Head: head, Basis: f.basis, Entries: entries,
 	}}}
 	if err := savePublicationOutbox(outboxPath, outbox); err != nil {
 		f.t.Fatal(err)
