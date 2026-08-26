@@ -1285,35 +1285,86 @@ func (w *Workspace) resolveCustody(address string, match func(*apphost.Config) (
 }
 
 // reconcileCustody merges one freshly loaded custody record onto the live
-// view, judged against the record the re-read started from. The live view is
-// never older for a name it still carries — a name's custody is written once
-// and removed through updateConfig — so held entries win over the possibly
-// stale load. A name the load adds is adopted only when the baseline lacked
-// it too: one present in the baseline and in the load but gone from the live
-// view was removed concurrently while this re-read ran, and stays removed.
-// The frontier follows mergeVerifiedFrontier, so only a deeper fresh marker
+// view, judged against the record the re-read started from: a per-name
+// three-way merge, not a union. Each actor name is decided independently.
+// Where live still equals the baseline, this workspace learned nothing since
+// the load, so fresh stands — including its replacement or removal of that
+// name; where fresh still equals the baseline, the record moved no further
+// than what the view already adopted, so live's concurrent change stands;
+// where live and fresh agree, the agreed entry is taken once. When both
+// sides changed one name differently, the documented conflict rule applies:
+// keep the live entry — this workspace's most recently adopted custody —
+// unless the fresh record also carries a strictly deeper verified frontier,
+// which makes fresh provably the newer writer, and then fresh stands. The
+// frontier follows mergeVerifiedFrontier, so only a deeper fresh marker
 // advances it and an equal-depth disagreement between memory and disk is a
 // refused conflict rather than an overwrite. Only the mutable custody fields
 // come back; callers hold configMu across the call and the adoption.
 func reconcileCustody(baseline, live, fresh *apphost.Config) (map[string]apphost.Actor, *apphost.VerifiedFrontier, error) {
-	actors := make(map[string]apphost.Actor, len(live.Actors)+len(fresh.Actors))
-	for name, actor := range live.Actors {
-		actors[name] = actor
-	}
-	for name, actor := range fresh.Actors {
-		if _, held := actors[name]; held {
-			continue
-		}
-		if _, was := baseline.Actors[name]; was {
-			continue
-		}
-		actors[name] = actor
-	}
 	frontier, _, err := mergeVerifiedFrontier(live.VerifiedFrontier, fresh.VerifiedFrontier)
 	if err != nil {
 		return nil, nil, err
 	}
+	actors := make(map[string]apphost.Actor, len(live.Actors)+len(fresh.Actors))
+	names := make(map[string]struct{}, len(baseline.Actors)+len(live.Actors)+len(fresh.Actors))
+	for name := range baseline.Actors {
+		names[name] = struct{}{}
+	}
+	for name := range live.Actors {
+		names[name] = struct{}{}
+	}
+	for name := range fresh.Actors {
+		names[name] = struct{}{}
+	}
+	for name := range names {
+		baseEntry, wasHeld := baseline.Actors[name]
+		liveEntry, isHeld := live.Actors[name]
+		freshEntry, freshHolds := fresh.Actors[name]
+		switch {
+		case sameActorEntry(isHeld, liveEntry, wasHeld, baseEntry):
+			// Live is unchanged since the snapshot: adopt fresh wholesale,
+			// replacement or removal alike.
+			if freshHolds {
+				actors[name] = freshEntry
+			}
+		case sameActorEntry(freshHolds, freshEntry, wasHeld, baseEntry):
+			// Fresh is unchanged since the snapshot: keep live's concurrent
+			// change, including its removal.
+			if isHeld {
+				actors[name] = liveEntry
+			}
+		case sameActorEntry(isHeld, liveEntry, freshHolds, freshEntry):
+			actors[name] = liveEntry
+		default:
+			// Conflict rule for one name changed differently on both sides:
+			// the live entry stands — it is this workspace's most recently
+			// adopted state — unless fresh carries a strictly deeper verified
+			// frontier than live, proving fresh the newer writer; then fresh
+			// stands.
+			if freshFrontierIsNewer(live.VerifiedFrontier, fresh.VerifiedFrontier) && freshHolds {
+				actors[name] = freshEntry
+			} else if isHeld {
+				actors[name] = liveEntry
+			}
+		}
+	}
 	return actors, frontier, nil
+}
+
+// sameActorEntry compares two optional map entries: both absent, or both
+// present and equal as values.
+func sameActorEntry(holds bool, entry apphost.Actor, held bool, other apphost.Actor) bool {
+	return holds == held && (!holds || entry == other)
+}
+
+// freshFrontierIsNewer reports whether the freshly loaded record proves
+// itself the newer writer by carrying a verified frontier strictly deeper
+// than the live view's — or any frontier at all where the view carries none.
+func freshFrontierIsNewer(live, fresh *apphost.VerifiedFrontier) bool {
+	if fresh == nil {
+		return false
+	}
+	return live == nil || fresh.Depth > live.Depth
 }
 
 func (w *Workspace) matchView(match func(*apphost.Config) (apphost.Actor, bool)) (apphost.Actor, bool) {
@@ -1758,10 +1809,15 @@ func (w *Workspace) Verify(ctx context.Context) (kernel.Verification, error) {
 // stands whoever recorded it, an unchanged audit writes nothing, and two
 // different heads claiming one depth cannot both describe this sequence —
 // that is a genuine conflict, not a race to resolve by order of arrival.
+// A side carrying no marker moves nothing: an absent next keeps the live
+// frontier as-is rather than moving it backwards, and an absent base adopts
+// whatever is offered.
 func mergeVerifiedFrontier(base, next *apphost.VerifiedFrontier) (*apphost.VerifiedFrontier, bool, error) {
 	switch {
 	case base == nil:
 		return next, true, nil
+	case next == nil:
+		return base, false, nil
 	case base.Head == next.Head && base.Depth == next.Depth:
 		return base, false, nil
 	case base.Depth > next.Depth:

@@ -205,3 +205,250 @@ func storeFrontier(metaDir string, frontier *apphost.VerifiedFrontier) error {
 	})
 	return err
 }
+
+// storeActorChange edits the actor map in the configuration file the way
+// another process would, leaving every other stored field alone.
+func storeActorChange(metaDir string, change func(actors map[string]apphost.Actor)) error {
+	_, err := apphost.UpdateConfig(metaDir, apphost.Config{}, func(c *apphost.Config) (bool, error) {
+		if c.Actors == nil {
+			c.Actors = make(map[string]apphost.Actor)
+		}
+		change(c.Actors)
+		return true, nil
+	})
+	return err
+}
+
+// A pre-window replacement of a name the live view already holds must be
+// adopted when the view has not moved since the re-read started: live equal
+// to baseline means this workspace learned nothing, so fresh stands —
+// including a replacement of that name's custody. Copying held entries ahead
+// of fresh, union-style, resurrects the stale copy and fails this test by
+// name.
+func TestCustodyRereadAdoptsFreshReplacementWhileLiveUnchanged(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	external, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	swapped, _, err := external.AddActor(ctx, "operator", "swapped", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := workspace.ResolveActor("swapped"); err != nil || got.Fingerprint != swapped.Fingerprint {
+		t.Fatalf("swapped did not enter the cached view (%+v, %v)", got, err)
+	}
+	replacement := apphost.Actor{Name: "swapped", Fingerprint: strings.Repeat("f", 40), KeyFile: swapped.KeyFile + ".replaced"}
+	if err := storeActorChange(workspace.MetaDir, func(actors map[string]apphost.Actor) {
+		actors["swapped"] = replacement
+	}); err != nil {
+		t.Fatal(err)
+	}
+	late, _, err := external.AddActor(ctx, "operator", "late", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The gate holds the resolver between its load — which sees the
+	// replacement and the late actor — and its reconciliation, with this
+	// workspace's live view still standing exactly at the baseline.
+	reached := make(chan struct{})
+	release := make(chan struct{})
+	previousGate := custodyRereadGate
+	custodyRereadGate = func() {
+		close(reached)
+		<-release
+	}
+	defer func() { custodyRereadGate = previousGate }()
+
+	resolved := make(chan error, 1)
+	go func() {
+		_, err := workspace.ResolveActor("late")
+		resolved <- err
+	}()
+	<-reached
+	close(release)
+
+	if err := <-resolved; err != nil {
+		t.Fatalf("the late actor did not resolve across the pinned replacement: %v", err)
+	}
+	viewed := workspace.View()
+	if viewed.Actors["late"].Fingerprint != late.Fingerprint {
+		t.Fatalf("the freshly stored actor was lost: %+v", viewed.Actors["late"])
+	}
+	if viewed.Actors["swapped"] != replacement {
+		t.Fatalf("the view kept stale custody %+v, want the fresh replacement %+v", viewed.Actors["swapped"], replacement)
+	}
+}
+
+// A pre-window deletion of a name the live view already holds must stand when
+// the view has not moved since the re-read started: live equal to baseline
+// means this workspace learned nothing, so fresh's removal is adopted.
+// Union-merging the fresh record onto the live map resurrects the deleted
+// name and fails this test by name.
+func TestCustodyRereadKeepsFreshDeletionWhileLiveUnchanged(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	external, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doomed, _, err := external.AddActor(ctx, "operator", "doomed", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := workspace.ResolveActor("doomed"); err != nil || got.Fingerprint != doomed.Fingerprint {
+		t.Fatalf("doomed did not enter the cached view (%+v, %v)", got, err)
+	}
+	if err := storeActorChange(workspace.MetaDir, func(actors map[string]apphost.Actor) {
+		delete(actors, "doomed")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := external.AddActor(ctx, "operator", "late", "agent"); err != nil {
+		t.Fatal(err)
+	}
+
+	// The gate holds the resolver between its load — which no longer carries
+	// the deleted actor — and its reconciliation, with this workspace's live
+	// view still standing exactly at the baseline.
+	reached := make(chan struct{})
+	release := make(chan struct{})
+	previousGate := custodyRereadGate
+	custodyRereadGate = func() {
+		close(reached)
+		<-release
+	}
+	defer func() { custodyRereadGate = previousGate }()
+
+	resolved := make(chan error, 1)
+	go func() {
+		_, err := workspace.ResolveActor("late")
+		resolved <- err
+	}()
+	<-reached
+	close(release)
+
+	if err := <-resolved; err != nil {
+		t.Fatalf("the late actor did not resolve across the pinned deletion: %v", err)
+	}
+	viewed := workspace.View()
+	if _, resurrected := viewed.Actors["doomed"]; resurrected {
+		t.Fatalf("a freshly deleted actor was resurrected while live stood still: %+v", viewed.Actors)
+	}
+	if _, adopted := viewed.Actors["late"]; !adopted {
+		t.Fatalf("the freshly added actor was lost by the same adoption: %+v", viewed.Actors)
+	}
+}
+
+// When live and fresh both changed one name away from the baseline,
+// differently, the decision is the documented conflict rule, applied
+// deterministically either way: the live entry stands unless the fresh record
+// carries a strictly deeper verified frontier, proving fresh the newer
+// writer, and then fresh stands. An agreed change is taken once.
+func TestReconcileCustodyResolvesDivergentNameByTheDocumentedRule(t *testing.T) {
+	baseline := &apphost.Config{Actors: map[string]apphost.Actor{
+		"contested": {Name: "contested", Fingerprint: strings.Repeat("0", 40), KeyFile: "keys/contested-base"},
+		"bystander": {Name: "bystander", Fingerprint: strings.Repeat("9", 40), KeyFile: "keys/bystander"},
+	}}
+	liveEntry := apphost.Actor{Name: "contested", Fingerprint: strings.Repeat("1", 40), KeyFile: "keys/contested-live"}
+	freshEntry := apphost.Actor{Name: "contested", Fingerprint: strings.Repeat("2", 40), KeyFile: "keys/contested-fresh"}
+
+	withContested := func(entry apphost.Actor, frontier *apphost.VerifiedFrontier) *apphost.Config {
+		return &apphost.Config{
+			Actors: map[string]apphost.Actor{
+				"contested": entry,
+				"bystander": baseline.Actors["bystander"],
+			},
+			VerifiedFrontier: frontier,
+		}
+	}
+	liveHeld := &apphost.VerifiedFrontier{Head: strings.Repeat("a", 40), Depth: 7}
+
+	t.Run("live stands while fresh proves nothing newer", func(t *testing.T) {
+		shallower := &apphost.VerifiedFrontier{Head: strings.Repeat("0", 40), Depth: 6}
+		actors, frontier, err := reconcileCustody(baseline, withContested(liveEntry, liveHeld), withContested(freshEntry, shallower))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if actors["contested"] != liveEntry {
+			t.Fatalf("divergent name resolved to %+v, want the live entry %+v", actors["contested"], liveEntry)
+		}
+		if frontier == nil || *frontier != *liveHeld {
+			t.Fatalf("frontier moved to %+v, want the live marker %+v", frontier, liveHeld)
+		}
+	})
+
+	t.Run("fresh stands once its frontier proves it newer", func(t *testing.T) {
+		deeper := &apphost.VerifiedFrontier{Head: strings.Repeat("b", 40), Depth: 8}
+		actors, frontier, err := reconcileCustody(baseline, withContested(liveEntry, liveHeld), withContested(freshEntry, deeper))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if actors["contested"] != freshEntry {
+			t.Fatalf("divergent name resolved to %+v, want the fresher entry %+v", actors["contested"], freshEntry)
+		}
+		if frontier == nil || *frontier != *deeper {
+			t.Fatalf("frontier stayed at %+v, want the deeper fresh marker %+v", frontier, deeper)
+		}
+	})
+
+	t.Run("an agreed change is taken once", func(t *testing.T) {
+		actors, _, err := reconcileCustody(baseline, withContested(freshEntry, liveHeld), withContested(freshEntry, liveHeld))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if actors["contested"] != freshEntry || actors["bystander"] != baseline.Actors["bystander"] {
+			t.Fatalf("agreed merge produced %+v, want the agreed entry and the bystander intact", actors)
+		}
+	})
+}
+
+// A fresh record carrying no verified frontier must neither panic nor move
+// the local witness: the live frontier stays exactly as it was while the rest
+// of the fresh record is still reconciled in. Dereferencing the absent
+// marker, or dropping the live one, fails this test by name.
+func TestCustodyRereadWithNilFreshFrontierKeepsLiveMonotonic(t *testing.T) {
+	held := &apphost.VerifiedFrontier{Head: strings.Repeat("c", 40), Depth: 11}
+
+	got, changed, err := mergeVerifiedFrontier(held, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed || got == nil || got.Head != held.Head || got.Depth != held.Depth {
+		t.Fatalf("merge against a nil fresh marker = (%+v, %v), want the live marker unchanged", got, changed)
+	}
+
+	baseline := &apphost.Config{}
+	live := &apphost.Config{
+		Actors:           map[string]apphost.Actor{"kept": {Name: "kept", Fingerprint: strings.Repeat("3", 40), KeyFile: "keys/kept"}},
+		VerifiedFrontier: held,
+	}
+	fresh := &apphost.Config{Actors: map[string]apphost.Actor{
+		"kept": live.Actors["kept"],
+		"late": {Name: "late", Fingerprint: strings.Repeat("4", 40), KeyFile: "keys/late"},
+	}}
+	actors, frontier, err := reconcileCustody(baseline, live, fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frontier == nil || frontier.Head != held.Head || frontier.Depth != held.Depth {
+		t.Fatalf("reconciliation moved the live frontier to %+v, want it kept at %+v", frontier, held)
+	}
+	if _, adopted := actors["late"]; !adopted {
+		t.Fatalf("the fresh actor was lost because the fresh marker was absent: %+v", actors)
+	}
+}
