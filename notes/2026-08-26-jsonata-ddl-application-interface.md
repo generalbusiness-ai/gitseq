@@ -13,6 +13,13 @@ rests_on:
 
 # JSONata with DDL: the application interface
 
+Gitseq is an application platform built on a log of signed events. This note
+proposes a small language for declaring applications with SQL and JSONata,
+designed to work with any event-sourcing platform. The
+[companion implementation note](2026-08-26-jsonata-ddl-application-implementation.md)
+describes a rapid application platform on Gitseq that uses Git-native objects
+as its datastore and Go as its default implementation language.
+
 The kernel verifies and sequences opaque events. An application gives those
 events meaning by declaring their schemas, folding them into typed relations,
 and exposing those relations for read-only SQL queries.
