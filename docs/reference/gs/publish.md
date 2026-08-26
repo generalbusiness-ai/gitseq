@@ -160,16 +160,43 @@ Each fact rests on one of two things, in this order:
    never left to infer that from a missing field.
 
 A subsequent fact at a path also rests on its same-path predecessor **and
-supersedes it**, so exactly one fact per path stands live. The supersession is
-signed only when this actor may lawfully make it — its own predecessor, or any
-predecessor while holding `ratifier`. The fold admits a supersession from
-nobody else, so signing one for another actor's fact would queue an act that
-can never be effective. In that case the successor still rests on the
-predecessor and the report names the retirement that is owed in
-`succession_owed`.
+supersedes it**, so exactly one fact per remote and path stands live.
 
 When a path leaves the repository's watch globs, its final fact is
 **bare-retired**: superseded with no successor named, because there is none.
+
+## One wire per path, one author end to end
+
+A path's publication facts form one wire: each fact rests on the one before it
+and retires it. That wire is continued by a single author from beginning to
+end.
+
+So a run refuses **the whole derived batch** — before a byte is queued, an act
+appended, or the shared frontier moved — when any changed watched path already
+carries a live publication fact authored by a different actor. Paths in the
+same batch that would have published cleanly do not publish; nothing partial
+survives the refusal. The message names the paths and says what to do:
+
+> The same publisher must continue the chain, or a ratifier must terminally
+> retire an orphan before a new actor begins a fresh chain.
+
+Holding `ratifier` is not an exception, and a publisher holding it is refused
+in exactly the same way. A ratifier may lawfully retire another actor's fact,
+but doing it inside publication would end one author's wire and begin
+another's in a single unreviewed step, and leave the two chains related by
+nothing a reader could follow.
+
+The earlier behaviour was to record the gap as a debt: rest the new fact on
+the foreign predecessor, skip the supersession the fold would refuse, and
+report the retirement as owed. That manufactured standing retirement
+obligations nobody in the run could lawfully close — the same accounting this
+command already refuses to create by minting no artifacts. A foreign
+predecessor is not a debt to record while proceeding. It is a reason to stop.
+
+Two things are unaffected. A path nobody has published carries no wire, so any
+actor may begin one. And a wire ends where its final fact is retired, so once a
+terminal retirement has landed, the next actor starts fresh rather than
+continuing someone else's chain.
 
 ## Orphans belong to a ratifier
 
@@ -181,8 +208,11 @@ command's to clear:
 - an unresolved outbox file left behind by an actor who can no longer sign.
 
 An actor holding `ratifier` clears both — the facts with `gs supersede`, the
-outbox file by deleting it from `.git/gitseq/publication-outbox/`. The command
-reports each orphan it steps over rather than blocking on it.
+outbox file by deleting it from `.git/gitseq/publication-outbox/`. Retiring an
+orphan fact is a deliberate, separate act, and it is what unblocks a path whose
+publisher has changed. The command reports an orphan outbox file it steps over
+rather than blocking on it; an orphan *fact* at a path this run would publish
+refuses the batch, as above.
 
 ## Reconciliation, and how a failure ends
 
@@ -192,35 +222,55 @@ One cross-process advisory lock — the host layer's own, released by the
 operating system on process death — serialises those outboxes with the
 repository-wide remote/ref frontier across linked worktrees.
 
-An entry is settled only after the sequencer that accepted it says so. A
-submission through a resident is verified through that same resident, and never
-against the local fold: a durable write that answered itself out of a different
-frontier could record as settled an act whose verdict this process cannot see.
-The resident's answer must also be about the event that was asked for.
+Each queued entry owes up to two acts, and they are **two separately durable
+phases**:
+
+1. the successor `assert`; and
+2. the supersession of the same-path predecessor it succeeds, where there is
+   one.
+
+An entry is settled only after the sequencer that accepted it says so, phase by
+phase. A submission through a resident is verified through that same resident,
+and never against the local fold: a durable write that answered itself out of a
+different frontier could record as settled an act whose verdict this process
+cannot see. The resident's answer must also be about the event that was asked
+for, and each phase is verified against **its own exact event** — a retirement
+completes only when that supersession is returned as effective.
+
+Recording a phase is not completing it. A recovered entry whose successor is
+already visible still owes its retirement and resumes there: visibility is not
+completion, and a run that stopped at the successor would leave two live facts
+at one path. Until every phase an entry owes is effective, the entry stays
+pending, its batch is kept, and the shared frontier does not advance past that
+head.
 
 Every failure has a bounded end:
 
 | what happened | what the run does |
 |---|---|
-| Transport or visibility failure | The entry stays pending and the run exits non-zero. It is retried on later runs, at most 3 times in all. |
+| Transport or visibility failure, in either phase | The entry stays pending and the run exits non-zero. It is retried on later runs, at most 3 times in all; one run costs one attempt however many phases it drives. |
 | Retried past the attempt ceiling | The entry is **abandoned** with the reason it kept failing for. |
-| The fold ruled the act ineffective | The entry is **abandoned** immediately. Its idempotency key is spent, so no replay could reach a different verdict. |
+| The fold ruled either act ineffective | The entry is **abandoned** immediately. Its idempotency key is spent, so no replay could reach a different verdict. |
+| A changed watched path carries another actor's live fact | The run refuses the whole batch. Nothing is queued, appended, or advanced. |
 | Another live actor holds a queue on this same remote and ref | The run refuses. |
-| A retired or unknown actor holds such a queue | The run reports the orphan and continues. |
+| A retired or unknown actor holds such a queue | The run reports the orphan outbox file and continues. |
 
 An abandoned entry stops holding its batch, and the shared frontier advances
 past that head. Holding it back would re-derive the same refused act on every
 later run for ever, which is the wedge this design exists to remove. Nothing is
-presented as published that was not: the abandonment is named in the report,
-and the command exits non-zero. Republishing an abandoned path is a deliberate
-act afterwards, not something a later run does by itself.
+presented as published that was not: an entry whose retirement never became
+effective is reported **abandoned**, never landed or replayed, so partial
+succession is never shown as a publication. The command exits non-zero.
+Republishing an abandoned path is a deliberate act afterwards, not something a
+later run does by itself.
 
 ## Refusals
 
 A bad ref, basis, or tracked configuration refuses the whole command. One bad
 path is reported while the other watched paths publish. More than 256 otherwise
 valid watched paths refuses the whole new batch before any act is queued, and
-before an outbox file exists at all.
+before an outbox file exists at all. A changed watched path already carrying
+another actor's live publication fact refuses the whole new batch the same way.
 
 Any refusal, pending act, or abandoned act exits non-zero even when other paths
 published successfully.
@@ -229,8 +279,10 @@ published successfully.
 
 The JSON result names the remote, ref, governing basis, previous observed head,
 current remote head, and each landed, replayed, withdrawn, pending, or
-abandoned path, with the artifact each fact rested on where there was one.
-`refused` and `warnings` preserve per-path and per-orphan diagnostics.
+abandoned path, with the artifact each fact rested on where there was one and
+the supersession that retired its predecessor where there was one. `landed` and
+`replayed` mean every phase the entry owed is effective. `refused` and
+`warnings` preserve per-path and per-orphan diagnostics.
 
 See also [`gs state`](state.md), [`gs artifacts`](artifacts.md),
 [`gs supersede`](supersede.md), and [`gs merge`](merge.md).

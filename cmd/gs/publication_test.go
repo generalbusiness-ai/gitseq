@@ -188,7 +188,15 @@ func TestPublicationSuccessorRestsOnAndSupersedesItsPredecessor(t *testing.T) {
 	if report.Published[0].Retire == "" {
 		t.Fatal("successor did not retire its predecessor")
 	}
+	// The whole succession, not half of it: an entry reaches "landed" only
+	// when both durable phases are verified effective.
+	if report.Published[0].Outcome != "landed" {
+		t.Fatalf("own-author succession outcome = %q, want landed", report.Published[0].Outcome)
+	}
 	projection := f.snapshot().Projection
+	if decision, judged := projection.Decision(report.Published[0].Retire); !judged || decision.Verdict != workroom.Effective {
+		t.Fatalf("retirement decision = %+v, judged %v, want effective", decision, judged)
+	}
 	if !containsEvent(projection.Provenance[successor], predecessor) {
 		t.Fatalf("successor bases = %#v, want the same-path predecessor %q", projection.Provenance[successor], predecessor)
 	}
@@ -255,6 +263,411 @@ func TestWatchRemovalBareRetiresTheFinalFact(t *testing.T) {
 	if again := f.publish(); len(again.Published) != 0 {
 		t.Fatalf("watch removal repeated itself: %+v", again)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// One live publication wire per remote and path, succeeded by one author from
+// end to end. A live same-path predecessor belonging to another actor refuses
+// the whole derived batch before a byte is queued, an act appended, or the
+// shared frontier moved.
+// ---------------------------------------------------------------------------
+
+func TestPublicationRefusesTheWholeBatchOverAForeignPredecessor(t *testing.T) {
+	f := newPublicationFixture(t)
+	f.write(".gitseq", "watch notes/**.md\n")
+	f.write("notes/one.md", "one\n")
+	first := f.commit("first note")
+	f.push("HEAD:main")
+
+	firstReport := f.publish()
+	if len(firstReport.Published) != 1 {
+		t.Fatalf("operator publication = %+v", firstReport)
+	}
+	predecessor := firstReport.Published[0].Event
+
+	// A plain participant, holding no authority of any kind. The ratifier case
+	// is a separate test, because a ratifier is refused for a different reason
+	// than "you may not retire that".
+	worker, workerPrivate := f.addActor("worker")
+	if roles := f.snapshot().Projection.Actors[worker].Roles; containsEvent(roles, "ratifier") {
+		t.Fatalf("worker roles = %#v, want no ratifier in this case", roles)
+	}
+
+	// The worker's push touches the operator's path and one nobody has ever
+	// published. Refusing the whole batch means the untouched path stays
+	// unpublished too.
+	f.write("notes/one.md", "rewritten by a second hand\n")
+	f.write("notes/two.md", "a path with no wire at all\n")
+	second := f.commit("second note")
+	f.push("HEAD:main")
+
+	report, err := f.publishAs("worker", worker, workerPrivate)
+	if err == nil {
+		t.Fatalf("a second author continued another actor's publication wire: %+v", report)
+	}
+	for _, want := range []string{
+		"notes/one.md",
+		"same publisher must continue the chain",
+		"ratifier must terminally retire an orphan",
+		"one live publication wire per remote and path",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("handover refusal %q does not say %q", err.Error(), want)
+		}
+	}
+	if len(report.Published) != 0 {
+		t.Fatalf("the refused batch reported publications: %+v", report)
+	}
+
+	// No assert, no outbox, no frontier mutation.
+	if _, statErr := os.Stat(publicationOutboxPath(f.workspace.MetaDir, worker)); !os.IsNotExist(statErr) {
+		t.Fatalf("the refused batch was queued: %v", statErr)
+	}
+	if got := f.frontier(); got != first {
+		t.Fatalf("the refused run moved the frontier to %q, want the operator's head %q", got, first)
+	}
+	projection := f.snapshot().Projection
+	for _, statement := range projection.Statements {
+		if statement.Body[publicationBodyHead] == second {
+			t.Fatalf("the refused batch signed a fact: %+v", statement)
+		}
+	}
+
+	// The predecessor is left sole live, and untouched.
+	facts := livePublicationFacts(projection, "origin")
+	if len(facts) != 1 || facts["notes/one.md"].Event != predecessor {
+		t.Fatalf("live facts after the refusal = %#v, want only the predecessor %q", facts, predecessor)
+	}
+	if statementByEvent(t, projection, predecessor).Retired {
+		t.Fatal("the refused run retired another actor's fact")
+	}
+}
+
+// Holding `ratifier` is not an exception. A ratifier may lawfully retire
+// another actor's fact, but doing it inside publication would end one author's
+// wire and begin another's in a single unreviewed step.
+func TestAPublisherHoldingRatifierIsAlsoRefused(t *testing.T) {
+	f := newPublicationFixture(t)
+	f.write(".gitseq", "watch notes/**.md\n")
+	f.write("notes/one.md", "one\n")
+	first := f.commit("first note")
+	f.push("HEAD:main")
+	if report := f.publish(); len(report.Published) != 1 {
+		t.Fatalf("operator publication = %+v", report)
+	}
+
+	worker, workerPrivate := f.addActor("worker")
+	if _, err := f.workspace.GrantRole(context.Background(), "operator", "worker", "ratifier"); err != nil {
+		t.Fatal(err)
+	}
+	// The precondition is part of the claim: this publisher really does hold
+	// the role the old code made an exception for.
+	roles := f.snapshot().Projection.Actors[worker].Roles
+	if !containsEvent(roles, "ratifier") {
+		t.Fatalf("worker roles = %#v, want ratifier", roles)
+	}
+
+	f.write("notes/one.md", "rewritten by the ratifier\n")
+	f.commit("second note")
+	f.push("HEAD:main")
+
+	report, err := f.publishAs("worker", worker, workerPrivate)
+	if err == nil {
+		t.Fatalf("a ratifier continued another actor's publication wire: %+v", report)
+	}
+	if !strings.Contains(err.Error(), "ratifier must terminally retire an orphan") {
+		t.Fatalf("ratifier refusal = %v", err)
+	}
+	if _, statErr := os.Stat(publicationOutboxPath(f.workspace.MetaDir, worker)); !os.IsNotExist(statErr) {
+		t.Fatalf("the refused ratifier batch was queued: %v", statErr)
+	}
+	if got := f.frontier(); got != first {
+		t.Fatalf("the refused ratifier run moved the frontier to %q, want %q", got, first)
+	}
+}
+
+// A path nobody has published carries no wire, so any actor may begin one.
+func TestADifferentActorMayPublishANeverPublishedPath(t *testing.T) {
+	f := newPublicationFixture(t)
+	f.write(".gitseq", "watch notes/**.md\n")
+	f.write("notes/one.md", "one\n")
+	f.commit("first note")
+	f.push("HEAD:main")
+	if report := f.publish(); len(report.Published) != 1 {
+		t.Fatalf("operator publication = %+v", report)
+	}
+
+	worker, workerPrivate := f.addActor("worker")
+	f.write("notes/two.md", "a path the operator never published\n")
+	head := f.commit("a second path")
+	f.push("HEAD:main")
+
+	report, err := f.publishAs("worker", worker, workerPrivate)
+	if err != nil || len(report.Published) != 1 || report.Published[0].Path != "notes/two.md" || report.Published[0].Outcome != "landed" {
+		t.Fatalf("fresh-path publication by a second actor = %+v, %v", report, err)
+	}
+	// A fresh chain succeeds nothing, so it retires nothing.
+	if report.Published[0].Retire != "" {
+		t.Fatalf("a fresh chain retired something: %+v", report.Published[0])
+	}
+	projection := f.snapshot().Projection
+	fact := statementByEvent(t, projection, report.Published[0].Event)
+	if fact.Actor != worker || fact.Body[publicationBodyHead] != head {
+		t.Fatalf("fresh fact = %+v", fact)
+	}
+	facts := livePublicationFacts(projection, "origin")
+	if len(facts) != 2 || facts["notes/one.md"].Actor != f.fingerprint || facts["notes/two.md"].Actor != worker {
+		t.Fatalf("live facts = %#v, want one wire per author per path", facts)
+	}
+}
+
+// Terminally retiring the orphan is the lawful way a path changes publisher.
+// Once no live fact stands there, the next actor begins a fresh chain rather
+// than continuing someone else's.
+func TestANewActorStartsFreshAfterATerminalOrphanRetirement(t *testing.T) {
+	f := newPublicationFixture(t)
+	f.write(".gitseq", "watch notes/**.md\n")
+	f.write("notes/one.md", "one\n")
+	f.commit("first note")
+	f.push("HEAD:main")
+	first := f.publish()
+	if len(first.Published) != 1 {
+		t.Fatalf("operator publication = %+v", first)
+	}
+	orphan := first.Published[0].Event
+
+	worker, workerPrivate := f.addActor("worker")
+	f.write("notes/one.md", "rewritten by another hand\n")
+	second := f.commit("second note")
+	f.push("HEAD:main")
+	if _, err := f.publishAs("worker", worker, workerPrivate); err == nil {
+		t.Fatal("a second author continued a live wire")
+	}
+
+	// The fact's own author — who here also holds ratifier — terminally
+	// retires it, naming no successor.
+	f.act(app.Act{Verb: app.VerbSupersede, Target: orphan,
+		Text: "Terminally retire the publication wire at notes/one.md so another actor may begin one."})
+	if !statementByEvent(t, f.snapshot().Projection, orphan).Retired {
+		t.Fatal("the orphan was not retired")
+	}
+
+	report, err := f.publishAs("worker", worker, workerPrivate)
+	if err != nil || len(report.Published) != 1 || report.Published[0].Outcome != "landed" {
+		t.Fatalf("fresh chain after a terminal retirement = %+v, %v", report, err)
+	}
+	if report.Published[0].Retire != "" {
+		t.Fatalf("the fresh chain retired something: %+v", report.Published[0])
+	}
+	projection := f.snapshot().Projection
+	successor := report.Published[0].Event
+	if containsEvent(projection.Provenance[successor], orphan) {
+		t.Fatalf("the fresh chain rested on the retired orphan: %#v", projection.Provenance[successor])
+	}
+	fact := statementByEvent(t, projection, successor)
+	if fact.Actor != worker || fact.Body[publicationBodyHead] != second {
+		t.Fatalf("fresh fact = %+v", fact)
+	}
+	facts := livePublicationFacts(projection, "origin")
+	if len(facts) != 1 || facts["notes/one.md"].Event != successor {
+		t.Fatalf("live facts = %#v, want only the worker's fresh fact", facts)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Two durable phases: the successor assert, and the retirement of the
+// predecessor it succeeds. Each is separately durable and verified on the
+// exact event the sequencer accepted.
+// ---------------------------------------------------------------------------
+
+// A crash between the phases leaves a successor that is already visible and a
+// predecessor that is still live. Visibility is not completion: the recovering
+// run owes the retirement, and the shared frontier waits for it.
+func TestARecoveredVisibleSuccessorStillRetiresItsPredecessor(t *testing.T) {
+	f := newPublicationFixture(t)
+	f.write(".gitseq", "watch notes/**.md\n")
+	f.write("notes/one.md", "one\n")
+	first := f.commit("first note")
+	f.push("HEAD:main")
+	firstReport := f.publish()
+	if len(firstReport.Published) != 1 {
+		t.Fatalf("first publication = %+v", firstReport)
+	}
+	predecessor := firstReport.Published[0].Event
+
+	f.write("notes/one.md", "two\n")
+	second := f.commit("second note")
+	f.push("HEAD:main")
+
+	// Exactly what phase one leaves behind: the successor is effective in the
+	// log, under the very idempotency key this command would compute.
+	successor := f.act(app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert,
+		Text: "origin accepted " + second + " and notes/one.md changed within it.",
+		Body: map[string]string{
+			publicationBodyPath: "notes/one.md", publicationBodyHead: second,
+			publicationBodyRemote: "origin", publicationBodyRef: "refs/heads/main",
+		},
+		RestsOn:        []string{f.basis, predecessor},
+		IdempotencyKey: publicationAssertKey("origin", "refs/heads/main", "notes/one.md", second),
+	})
+	outboxPath := publicationOutboxPath(f.workspace.MetaDir, f.fingerprint)
+	if err := savePublicationOutbox(outboxPath, publicationOutbox{
+		Version: publicationOutboxV1, Actor: f.fingerprint,
+		Batches: []publicationBatch{{
+			Remote: "origin", Ref: "refs/heads/main", Before: first, Head: second, Basis: f.basis,
+			Entries: []publicationEntry{{Path: "notes/one.md", Prior: predecessor, Event: successor, State: "pending"}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if statementByEvent(t, f.snapshot().Projection, predecessor).Retired {
+		t.Fatal("the fixture retired the predecessor before the run under test")
+	}
+	if f.frontier() != first {
+		t.Fatalf("fixture frontier = %q, want %q", f.frontier(), first)
+	}
+
+	report := f.publish()
+	if len(report.Published) != 1 || report.Published[0].Event != successor {
+		t.Fatalf("recovered publication = %+v, want the recorded successor", report)
+	}
+	if report.Published[0].Outcome != "replayed" || report.Published[0].Retire == "" {
+		t.Fatalf("recovered outcome = %+v, want a replayed entry carrying its retirement", report.Published[0])
+	}
+	projection := f.snapshot().Projection
+	if !statementByEvent(t, projection, predecessor).Retired {
+		t.Fatal("the recovered run left the predecessor live: visibility was treated as completion")
+	}
+	retirement := report.Published[0].Retire
+	if decision, judged := projection.Decision(retirement); !judged || decision.Verdict != workroom.Effective {
+		t.Fatalf("retirement decision = %+v, judged %v, want effective", decision, judged)
+	}
+	if !containsEvent(projection.Provenance[retirement], successor) {
+		t.Fatalf("retirement bases = %#v, want the successor it names", projection.Provenance[retirement])
+	}
+	facts := livePublicationFacts(projection, "origin")
+	if len(facts) != 1 || facts["notes/one.md"].Event != successor {
+		t.Fatalf("live facts = %#v, want exactly the successor", facts)
+	}
+	if got := f.frontier(); got != second {
+		t.Fatalf("frontier after the completed succession = %q, want %q", got, second)
+	}
+}
+
+// The other half of the same rule: while the retirement is not yet effective,
+// the batch is kept and the frontier stays where it was. Nothing is presented
+// as published.
+func TestAnUnfinishedRetirementHoldsTheBatchAndTheFrontier(t *testing.T) {
+	f := newPublicationFixture(t)
+	report, outbox, state, submissions := f.reconcileAgainstRetirementVerdict(t, nil)
+	if report.err == nil {
+		t.Fatal("an unfinished retirement was reported as complete")
+	}
+	if len(report.report.Published) != 1 || report.report.Published[0].Outcome != "pending" {
+		t.Fatalf("unfinished retirement report = %+v", report.report)
+	}
+	if state.Observed[publicationFrontierKey("origin", "refs/heads/main")] != "" {
+		t.Fatalf("an unfinished retirement advanced the shared frontier: %+v", state)
+	}
+	if len(outbox.Batches) != 1 || outbox.Batches[0].Entries[0].State != "pending" {
+		t.Fatalf("an unfinished retirement settled its batch: %+v", outbox)
+	}
+	if outbox.Batches[0].Entries[0].Retire != publicationFixtureRetirement {
+		t.Fatalf("the submitted retirement was not recorded durably: %+v", outbox.Batches[0].Entries[0])
+	}
+	// Phase one was already effective, so only the retirement was signed.
+	if submissions != 1 {
+		t.Fatalf("submissions = %d, want only the retirement", submissions)
+	}
+}
+
+// An ineffective retirement is terminal — its idempotency key is spent — and
+// it refuses. The successor stands, the succession does not, and the path is
+// never presented as published.
+func TestAnIneffectiveRetirementRefuses(t *testing.T) {
+	f := newPublicationFixture(t)
+	report, outbox, _, _ := f.reconcileAgainstRetirementVerdict(t, &workroom.Decision{
+		Event: publicationFixtureRetirement, Verdict: workroom.Ineffective, Reason: "the fold refused this retirement"})
+	if report.err != nil {
+		t.Fatalf("abandoning an ineffective retirement returned %v, want the report to carry it", report.err)
+	}
+	outcome := report.report.Published
+	if len(outcome) != 1 || outcome[0].Outcome != "abandoned" || !strings.Contains(outcome[0].Error, "the fold refused this retirement") {
+		t.Fatalf("ineffective retirement report = %+v", report.report)
+	}
+	if outcome[0].Event != publicationFixtureSuccessor || outcome[0].Retire != publicationFixtureRetirement {
+		t.Fatalf("the abandoned entry did not name both halves: %+v", outcome[0])
+	}
+	if !publicationUnfinished(report.report) {
+		t.Fatal("an ineffective retirement exited zero")
+	}
+	if len(outbox.Batches) != 0 {
+		t.Fatalf("an abandoned entry kept its batch alive: %+v", outbox)
+	}
+}
+
+const (
+	publicationFixtureSuccessor  = "git:sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#git:sha1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	publicationFixtureRetirement = "git:sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#git:sha1:cccccccccccccccccccccccccccccccccccccccc"
+)
+
+type publicationRunResult struct {
+	report publicationReport
+	err    error
+}
+
+// reconcileAgainstRetirementVerdict drives one entry whose successor is
+// already effective and whose retirement is not yet made, against a sequencer
+// that returns the given decision for that retirement. A nil decision means
+// the retirement never becomes visible.
+func (f *publicationFixture) reconcileAgainstRetirementVerdict(t *testing.T, retirement *workroom.Decision) (publicationRunResult, publicationOutbox, publicationState, int32) {
+	t.Helper()
+	var submissions atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/v0/submit":
+			submissions.Add(1)
+			_ = json.NewEncoder(writer).Encode(app.Submission{
+				Result: kernel.Result{Commit: strings.Repeat("b", 40)},
+				Record: workroom.Record{ID: publicationFixtureRetirement}})
+		case "/v0/inspect":
+			var query statusview.InspectRequest
+			if err := json.NewDecoder(request.Body).Decode(&query); err != nil {
+				http.Error(writer, err.Error(), http.StatusBadRequest)
+				return
+			}
+			answer := statusview.ItemInspection{Event: query.Event}
+			switch query.Event {
+			case publicationFixtureSuccessor:
+				answer.Decision = &workroom.Decision{Event: query.Event, Verdict: workroom.Effective, Reason: "recorded"}
+			case publicationFixtureRetirement:
+				answer.Decision = retirement
+			}
+			_ = json.NewEncoder(writer).Encode(answer)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	outboxPath := publicationOutboxPath(f.workspace.MetaDir, f.fingerprint)
+	statePath := publicationStatePath(f.workspace.MetaDir)
+	outbox := publicationOutbox{Version: publicationOutboxV1, Actor: f.fingerprint, Batches: []publicationBatch{{
+		Remote: "origin", Ref: "refs/heads/main", Head: strings.Repeat("d", 40), Basis: f.basis,
+		Entries: []publicationEntry{{
+			Path: "notes/one.md", Prior: "predecessor-event",
+			Event: publicationFixtureSuccessor, State: "pending"}},
+	}}}
+	if err := savePublicationOutbox(outboxPath, outbox); err != nil {
+		t.Fatal(err)
+	}
+	state := publicationState{Version: publicationStateV1, Observed: map[string]string{}}
+	var report publicationReport
+	err := reconcilePublicationOutbox(context.Background(), f.workspace, f.private, "operator", server.URL,
+		outboxPath, &outbox, statePath, &state, &report)
+	return publicationRunResult{report: report, err: err}, outbox, state, submissions.Load()
 }
 
 // ---------------------------------------------------------------------------
@@ -1309,6 +1722,34 @@ func (f *publicationFixture) publish() publicationReport {
 
 func (f *publicationFixture) tryPublish() (publicationReport, error) {
 	return runPublication(context.Background(), f.workspace, f.private, "operator", f.fingerprint, "", "origin", "refs/heads/main", f.basis)
+}
+
+// addActor seeds a second signing principal, so a test can put two authors on
+// one repository's publication wires.
+func (f *publicationFixture) addActor(name string) (string, ed25519.PrivateKey) {
+	f.t.Helper()
+	if _, _, err := f.workspace.AddActor(context.Background(), "operator", name, "agent"); err != nil {
+		f.t.Fatal(err)
+	}
+	actor, private, err := f.workspace.Actor(name)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return actor.Fingerprint, private
+}
+
+func (f *publicationFixture) publishAs(name, fingerprint string, private ed25519.PrivateKey) (publicationReport, error) {
+	f.t.Helper()
+	return runPublication(context.Background(), f.workspace, private, name, fingerprint, "", "origin", "refs/heads/main", f.basis)
+}
+
+func (f *publicationFixture) frontier() string {
+	f.t.Helper()
+	state, err := loadPublicationState(publicationStatePath(f.workspace.MetaDir))
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return state.Observed[publicationFrontierKey("origin", "refs/heads/main")]
 }
 
 func (f *publicationFixture) snapshot() app.Snapshot {

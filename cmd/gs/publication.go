@@ -44,21 +44,22 @@ import (
 // Asserts never enter the artifact map, so merge succession and its left-live
 // accounting are untouched by every publication this command ever makes.
 const (
-	publicationConfigLimit  = 64 << 10
-	publicationPathLimit    = 4096
-	publicationRefLimit     = 1024
-	publicationBasisLimit   = 1024
-	publicationBatchLimit   = 256
-	publicationGlobLimit    = 64
-	publicationBatchesLimit = 16
-	publicationOutboxLimit  = 4 << 20
-	publicationTreeLimit    = 16 << 20
-	publicationRemoteLimit  = 8 << 10
-	publicationAttemptLimit = 3
-	publicationOutboxV1     = 1
-	publicationStateV1      = 1
-	publicationLockFile     = ".publication.lock"
-	publicationReasonLimit  = 512
+	publicationConfigLimit   = 64 << 10
+	publicationPathLimit     = 4096
+	publicationRefLimit      = 1024
+	publicationBasisLimit    = 1024
+	publicationBatchLimit    = 256
+	publicationGlobLimit     = 64
+	publicationBatchesLimit  = 16
+	publicationOutboxLimit   = 4 << 20
+	publicationTreeLimit     = 16 << 20
+	publicationRemoteLimit   = 8 << 10
+	publicationAttemptLimit  = 3
+	publicationOutboxV1      = 1
+	publicationStateV1       = 1
+	publicationLockFile      = ".publication.lock"
+	publicationReasonLimit   = 512
+	publicationHandoverNamed = 3
 )
 
 // The body field names are deliberately not `path` and `commit`. Those two
@@ -91,19 +92,22 @@ type publicationEntry struct {
 	// accepted head, when one was found at queue time. Empty means none was,
 	// and the fact rests on the governing publication basis instead.
 	Basis string `json:"basis,omitempty"`
-	// Prior is the same-path publication fact this one succeeds. The fact
-	// rests on it always; it is also superseded when this actor may retire it.
+	// Prior is the same-path publication fact this one succeeds, and it is
+	// always this actor's own: a batch whose predecessor belongs to another
+	// actor is refused whole, before it is queued. The successor rests on it
+	// and retires it, in two separately durable phases.
 	Prior string `json:"prior,omitempty"`
-	// Retirable records, at queue time, whether this actor could lawfully
-	// retire Prior. Deciding it once and durably keeps a retry from reaching a
-	// different answer because a role moved between runs.
-	Retirable bool `json:"retirable,omitempty"`
 	// Withdraw marks an entry that only bare-retires Prior: the path left the
 	// repository's watch globs, so its final fact is withdrawn with no
 	// successor and no new assert is made.
 	Withdraw bool   `json:"withdraw,omitempty"`
 	State    string `json:"state"` // pending, done, or abandoned
-	Event    string `json:"event,omitempty"`
+	// Event is phase one: the successor assert the sequencer accepted. Empty
+	// on a withdrawal, which has no successor.
+	Event string `json:"event,omitempty"`
+	// Retire is phase two: the supersession of Prior. Recording it is not
+	// completing it — the entry stays pending until this exact event is
+	// verified effective.
 	Retire   string `json:"retire,omitempty"`
 	Attempts int    `json:"attempts,omitempty"`
 	Error    string `json:"error,omitempty"`
@@ -142,16 +146,15 @@ type publicationOutcome struct {
 	// Retire names the supersession of the same-path predecessor, when this
 	// run made one.
 	Retire string `json:"retire,omitempty"`
-	// Outcome is landed, replayed, withdrawn, pending, or abandoned.
+	// Outcome is landed, replayed, withdrawn, pending, or abandoned. It says
+	// landed or replayed only when every durable phase the entry owed — the
+	// successor assert and, where there is a predecessor, its retirement — is
+	// verified effective.
 	Outcome string `json:"outcome"`
 	// Basis names the artifact this fact rested on, and is empty when no
 	// artifact stood at the path and head and the governing basis was used.
 	Basis string `json:"basis,omitempty"`
-	// SuccessionOwed names a live same-path predecessor this actor may not
-	// lawfully retire. The new fact rests on it; a ratifier or its own author
-	// still owes the retirement.
-	SuccessionOwed string `json:"succession_owed,omitempty"`
-	Error          string `json:"error,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 type publicationReport struct {
@@ -324,25 +327,28 @@ func publishLocked(ctx context.Context, workspace *app.Workspace, private ed2551
 		report.Refused = append(report.Refused, err.Error())
 		return nil
 	}
+	// Before anything is queued, appended, or written to the shared frontier.
+	// A batch that would hand one path's wire to a second author is refused
+	// whole, so nothing partial survives the refusal.
+	if err := refusePublicationHandover(facts, paths, fingerprint); err != nil {
+		return err
+	}
 	if len(paths) == 0 && len(withdrawn) == 0 {
 		state.Observed[key] = head
 		return savePublicationState(statePath, state)
 	}
-	ratifier := actorHoldsRatifier(snapshot.Projection, fingerprint)
 	batch := publicationBatch{Remote: remote, Ref: ref, Before: before, Head: head, Basis: basis}
 	for _, path := range paths {
 		entry := publicationEntry{Path: path, State: "pending"}
 		entry.Basis = artifactAtPathAndHead(snapshot.Projection, path, head)
 		if prior, found := facts[path]; found {
 			entry.Prior = prior.Event
-			entry.Retirable = prior.Actor == fingerprint || ratifier
 		}
 		batch.Entries = append(batch.Entries, entry)
 	}
 	for _, path := range withdrawn {
 		batch.Entries = append(batch.Entries, publicationEntry{
-			Path: path, State: "pending", Withdraw: true,
-			Prior: facts[path].Event, Retirable: true,
+			Path: path, State: "pending", Withdraw: true, Prior: facts[path].Event,
 		})
 	}
 	outbox.Batches = append(outbox.Batches, batch)
@@ -361,6 +367,51 @@ func publishLocked(ctx context.Context, workspace *app.Workspace, private ed2551
 }
 
 func publicationFrontierKey(remote, ref string) string { return remote + "\x00" + ref }
+
+// refusePublicationHandover is the contract in one place: one live publication
+// wire per remote and path, succeeded by one author from end to end.
+//
+// The earlier shape recorded a cross-author succession as a debt — the
+// successor rested on the foreign predecessor, the supersession was skipped
+// because the fold admits one only from the target's author or a ratifier, and
+// the report named a retirement somebody else owed. That manufactured standing
+// retirement obligations nobody in the run could lawfully close, which is the
+// same accounting the command already refuses to create by minting no
+// artifacts. A foreign predecessor is therefore not a debt to record while
+// proceeding. It is a reason to refuse the whole derived batch before a byte
+// is queued, an act appended, or the shared frontier moved.
+//
+// Holding `ratifier` is deliberately no exception. A ratifier may lawfully
+// retire another actor's fact, but doing it inside publication would end one
+// author's wire and begin another's in a single unreviewed step, and leave the
+// two chains related by nothing a reader could follow. Terminating an orphan
+// stays a separate, deliberate act — see `gs publish`.
+func refusePublicationHandover(facts map[string]workroom.Statement, paths []string, fingerprint string) error {
+	var named []string
+	foreign := 0
+	for _, path := range paths {
+		fact, found := facts[path]
+		if !found || fact.Actor == fingerprint {
+			continue
+		}
+		foreign++
+		if len(named) < publicationHandoverNamed {
+			named = append(named, fmt.Sprintf("%s (live fact %s by actor %s)",
+				truncateForError(path), truncateForError(fact.Event), truncateForError(fact.Actor)))
+		}
+	}
+	if foreign == 0 {
+		return nil
+	}
+	listed := strings.Join(named, "; ")
+	if foreign > len(named) {
+		listed += fmt.Sprintf("; and %d more", foreign-len(named))
+	}
+	return fmt.Errorf("publication refuses this whole batch: %d watched path(s) already carry a live publication fact authored by another actor: %s. "+
+		"There is one live publication wire per remote and path, succeeded by one author end to end. "+
+		"The same publisher must continue the chain, or a ratifier must terminally retire an orphan before a new actor begins a fresh chain",
+		foreign, listed)
+}
 
 func validatePublicationBatchSize(count int) error {
 	if count > publicationBatchLimit {
@@ -681,86 +732,156 @@ func reconcilePublicationOutbox(ctx context.Context, workspace *app.Workspace, p
 	return savePublicationOutbox(path, *outbox)
 }
 
-func reconcilePublicationEntry(ctx context.Context, workspace *app.Workspace, private ed25519.PrivateKey, actorName, serverURL, path string, outbox *publicationOutbox, batch *publicationBatch, entry *publicationEntry, report *publicationReport) error {
-	// A prior submission can have landed before its verification response was
-	// observed. Verify the recorded event before replaying the act.
-	if entry.Event != "" {
-		decision, judged, err := publicationDecision(ctx, workspace, serverURL, entry.Event)
-		if err == nil && judged {
-			return settlePublicationEntry(decision, "replayed", path, outbox, entry, report)
-		}
+// publicationVerdict is what the sequencer that accepted an act says about
+// that exact event, and nothing weaker. Absence is pending, never a verdict.
+type publicationVerdict int
+
+const (
+	publicationUnseen publicationVerdict = iota
+	publicationEffective
+	publicationIneffective
+)
+
+// verifyPublicationEvent asks the authority about one exact event. It is the
+// single place both durable phases get their answer, so the envelope and
+// decision identity checks inside publicationDecision cover the retirement as
+// well as the successor: an entry may never be closed on a verdict made about
+// a record nobody here named.
+func verifyPublicationEvent(ctx context.Context, workspace *app.Workspace, serverURL, event string) (publicationVerdict, string) {
+	if event == "" {
+		return publicationUnseen, "nothing has been submitted for this phase yet"
 	}
-	if entry.Attempts >= publicationAttemptLimit {
-		entry.State = "abandoned"
-		entry.Error = fmt.Sprintf("gave up after %d attempts: %s", entry.Attempts, entry.Error)
-		report.Published = append(report.Published, publicationOutcome{
-			Path: entry.Path, Event: entry.Event, Outcome: "abandoned", Error: entry.Error})
-		return savePublicationOutbox(path, *outbox)
-	}
-	entry.Attempts++
-	if err := savePublicationOutbox(path, *outbox); err != nil {
-		return err
-	}
-	if entry.Withdraw {
-		return withdrawPublicationEntry(ctx, workspace, private, actorName, serverURL, path, outbox, entry, report)
-	}
-	act := publicationAssertAct(batch, entry)
-	submission, err := submitSigned(ctx, workspace, serverURL, actorName, private, act)
-	if err != nil {
-		return recordPublicationPending(path, outbox, entry, report, err.Error())
-	}
-	entry.Event = submission.Record.ID
-	if publicationAfterSubmit != nil {
-		if seam := publicationAfterSubmit(); seam != nil {
-			return seam
-		}
-	}
-	if err := savePublicationOutbox(path, *outbox); err != nil {
-		return err
-	}
-	decision, judged, err := publicationDecision(ctx, workspace, serverURL, entry.Event)
+	decision, judged, err := publicationDecision(ctx, workspace, serverURL, event)
 	if err != nil || !judged {
 		reason := "the submitted event is not yet visible in a verified projection"
 		if err != nil {
 			reason += ": " + err.Error()
 		}
-		return recordPublicationPending(path, outbox, entry, report, reason)
+		return publicationUnseen, reason
 	}
-	outcome := "landed"
-	if submission.Result.Replay {
-		outcome = "replayed"
+	if decision.Verdict != workroom.Effective {
+		return publicationIneffective, truncateForError(decision.Reason)
 	}
-	if err := settlePublicationEntry(decision, outcome, path, outbox, entry, report); err != nil {
-		return err
-	}
-	if entry.State != "done" {
-		return nil
-	}
-	return supersedePublicationPredecessor(ctx, workspace, private, actorName, serverURL, path, outbox, entry, report)
+	return publicationEffective, ""
 }
 
-// settlePublicationEntry closes one entry on the fold's own decision. An
-// ineffective act is terminal: its idempotency key is spent, so replaying it
-// could never reach a different verdict, and retrying forever is how the old
-// outbox wedged the repository.
-func settlePublicationEntry(decision workroom.Decision, outcome, path string, outbox *publicationOutbox, entry *publicationEntry, report *publicationReport) error {
-	if decision.Verdict != workroom.Effective {
-		entry.State = "abandoned"
-		entry.Error = truncateForError(decision.Reason)
-		report.Published = append(report.Published, publicationOutcome{
-			Path: entry.Path, Event: entry.Event, Outcome: "abandoned", Error: entry.Error})
-		return savePublicationOutbox(path, *outbox)
+// reconcilePublicationEntry drives one entry through the two durable phases a
+// publication owes: the successor assert, and the retirement of the same-path
+// predecessor it succeeds. Both are separately durable and separately verified
+// against the exact event the sequencer accepted, and the entry stays pending
+// until every phase it owes is effective — so a batch whose retirement has not
+// landed neither settles nor advances the shared frontier.
+//
+// A recovered entry whose successor is already visible resumes at phase two.
+// Visibility is not completion: the predecessor is still live, and stopping
+// there is exactly how a crash used to leave two live facts at one path.
+//
+// The predecessor is always this actor's own. A batch carrying a foreign one
+// is refused whole before it is queued, so no cross-author supersession is
+// ever signed and none is ever owed.
+func reconcilePublicationEntry(ctx context.Context, workspace *app.Workspace, private ed25519.PrivateKey, actorName, serverURL, path string, outbox *publicationOutbox, batch *publicationBatch, entry *publicationEntry, report *publicationReport) error {
+	// Judging what is already recorded signs nothing, so it costs no attempt.
+	// An entry that landed before its response was observed must be able to
+	// settle even at the ceiling.
+	assertVerdict, assertReason := publicationEffective, ""
+	if !entry.Withdraw {
+		if assertVerdict, assertReason = verifyPublicationEvent(ctx, workspace, serverURL, entry.Event); assertVerdict == publicationIneffective {
+			return abandonPublicationEntry(assertReason, path, outbox, entry, report)
+		}
 	}
+	retireVerdict, retireReason := publicationEffective, ""
+	if entry.Prior != "" {
+		if retireVerdict, retireReason = verifyPublicationEvent(ctx, workspace, serverURL, entry.Retire); retireVerdict == publicationIneffective {
+			return abandonPublicationEntry(retireReason, path, outbox, entry, report)
+		}
+	}
+	if assertVerdict == publicationEffective && retireVerdict == publicationEffective {
+		return settlePublicationEntry("replayed", path, outbox, entry, report)
+	}
+
+	// Something still owes a signature. One reconcile pass costs one attempt
+	// however many phases it drives, so the ceiling bounds the entry rather
+	// than each half of it.
+	if entry.Attempts >= publicationAttemptLimit {
+		return abandonPublicationEntry(fmt.Sprintf("gave up after %d attempts: %s", entry.Attempts, entry.Error), path, outbox, entry, report)
+	}
+	entry.Attempts++
+	if err := savePublicationOutbox(path, *outbox); err != nil {
+		return err
+	}
+
+	outcome := "replayed"
+	if assertVerdict != publicationEffective {
+		outcome = "landed"
+		submission, err := submitSigned(ctx, workspace, serverURL, actorName, private, publicationAssertAct(batch, entry))
+		if err != nil {
+			return recordPublicationPending(path, outbox, entry, report, err.Error())
+		}
+		entry.Event = submission.Record.ID
+		if publicationAfterSubmit != nil {
+			if seam := publicationAfterSubmit(); seam != nil {
+				return seam
+			}
+		}
+		if err := savePublicationOutbox(path, *outbox); err != nil {
+			return err
+		}
+		if submission.Result.Replay {
+			outcome = "replayed"
+		}
+		switch assertVerdict, assertReason = verifyPublicationEvent(ctx, workspace, serverURL, entry.Event); assertVerdict {
+		case publicationIneffective:
+			return abandonPublicationEntry(assertReason, path, outbox, entry, report)
+		case publicationUnseen:
+			return recordPublicationPending(path, outbox, entry, report, assertReason)
+		}
+	}
+
+	if retireVerdict != publicationEffective {
+		submission, err := submitSigned(ctx, workspace, serverURL, actorName, private, publicationRetireAct(entry))
+		if err != nil {
+			return recordPublicationPending(path, outbox, entry, report, err.Error())
+		}
+		entry.Retire = submission.Record.ID
+		if err := savePublicationOutbox(path, *outbox); err != nil {
+			return err
+		}
+		switch retireVerdict, retireReason = verifyPublicationEvent(ctx, workspace, serverURL, entry.Retire); retireVerdict {
+		case publicationIneffective:
+			return abandonPublicationEntry(retireReason, path, outbox, entry, report)
+		case publicationUnseen:
+			return recordPublicationPending(path, outbox, entry, report, retireReason)
+		}
+	}
+	return settlePublicationEntry(outcome, path, outbox, entry, report)
+}
+
+// settlePublicationEntry closes an entry every phase of which is verified
+// effective. Nothing else reaches here, so a landed or replayed outcome in the
+// report means the whole succession stands: the successor is effective and its
+// predecessor is retired.
+func settlePublicationEntry(outcome, path string, outbox *publicationOutbox, entry *publicationEntry, report *publicationReport) error {
 	entry.State = "done"
 	entry.Error = ""
 	result := publicationOutcome{Path: entry.Path, Event: entry.Event, Retire: entry.Retire, Outcome: outcome, Basis: entry.Basis}
 	if entry.Withdraw {
 		result.Outcome = "withdrawn"
 	}
-	if entry.Prior != "" && !entry.Retirable {
-		result.SuccessionOwed = entry.Prior
-	}
 	report.Published = append(report.Published, result)
+	return savePublicationOutbox(path, *outbox)
+}
+
+// abandonPublicationEntry ends an entry that can never complete: an act the
+// fold ruled ineffective, whose idempotency key is spent so no replay could
+// reach a different verdict, or one retried past the attempt ceiling. Either
+// half of the succession can end here, and neither is ever presented as
+// published — a successor whose retirement never became effective is reported
+// abandoned, so partial succession is never shown as a publication.
+func abandonPublicationEntry(reason, path string, outbox *publicationOutbox, entry *publicationEntry, report *publicationReport) error {
+	entry.State = "abandoned"
+	entry.Error = truncateForError(reason)
+	report.Published = append(report.Published, publicationOutcome{
+		Path: entry.Path, Event: entry.Event, Retire: entry.Retire, Outcome: "abandoned", Error: entry.Error})
 	return savePublicationOutbox(path, *outbox)
 }
 
@@ -774,66 +895,29 @@ func recordPublicationPending(path string, outbox *publicationOutbox, entry *pub
 	return errors.New(entry.Error)
 }
 
-// supersedePublicationPredecessor is the second half of condition three: a
-// subsequent fact rests on its same-path predecessor and also retires it, so
-// exactly one fact per path stands live. The retirement is attempted only when
-// this actor may lawfully make it — its own predecessor, or any predecessor
-// while holding ratifier. The fold admits a supersession from nobody else, so
-// signing one for another actor's fact would be a refused act queued forever.
-// The new fact still rests on the predecessor, and the report names the
-// retirement that is owed.
-func supersedePublicationPredecessor(ctx context.Context, workspace *app.Workspace, private ed25519.PrivateKey, actorName, serverURL, path string, outbox *publicationOutbox, entry *publicationEntry, report *publicationReport) error {
-	if entry.Prior == "" || !entry.Retirable || entry.Retire != "" {
-		return nil
+// publicationRetireAct is phase two. A successor's retirement rests on the
+// successor and names it, so exactly one fact per remote and path stands live
+// and a reader can follow the wire in both directions. A withdrawal names
+// nothing beyond the fact it retires, because the path left the watch globs
+// and nothing takes its place.
+//
+// The target is always this actor's own fact: publication refuses a batch
+// whose predecessor belongs to another actor, so this never signs a
+// supersession the fold would refuse.
+func publicationRetireAct(entry *publicationEntry) app.Act {
+	if entry.Withdraw {
+		return app.Act{
+			Verb: app.VerbSupersede, Target: entry.Prior,
+			Text:           "The repository stopped watching " + entry.Path + ", so its final publication fact is withdrawn.",
+			IdempotencyKey: publicationWithdrawKey(entry.Prior),
+		}
 	}
-	act := app.Act{
+	return app.Act{
 		Verb: app.VerbSupersede, Target: entry.Prior,
 		Text:           "Publication succeeded the previous fact at " + entry.Path + ".",
 		RestsOn:        []string{entry.Event},
 		IdempotencyKey: publicationRetireKey(entry.Prior),
 	}
-	submission, err := submitSigned(ctx, workspace, serverURL, actorName, private, act)
-	if err != nil {
-		report.Warnings = append(report.Warnings, fmt.Sprintf(
-			"%s: the successor fact landed but retiring predecessor %s failed: %s",
-			entry.Path, entry.Prior, truncateForError(err.Error())))
-		return nil
-	}
-	entry.Retire = submission.Record.ID
-	for index := range report.Published {
-		if report.Published[index].Event == entry.Event {
-			report.Published[index].Retire = entry.Retire
-		}
-	}
-	return savePublicationOutbox(path, *outbox)
-}
-
-// withdrawPublicationEntry bare-retires the final fact at a path the
-// repository stopped watching. It names no successor, because there is none:
-// the path left the watch globs, so nothing takes its place.
-func withdrawPublicationEntry(ctx context.Context, workspace *app.Workspace, private ed25519.PrivateKey, actorName, serverURL, path string, outbox *publicationOutbox, entry *publicationEntry, report *publicationReport) error {
-	act := app.Act{
-		Verb: app.VerbSupersede, Target: entry.Prior,
-		Text:           "The repository stopped watching " + entry.Path + ", so its final publication fact is withdrawn.",
-		IdempotencyKey: publicationWithdrawKey(entry.Prior),
-	}
-	submission, err := submitSigned(ctx, workspace, serverURL, actorName, private, act)
-	if err != nil {
-		return recordPublicationPending(path, outbox, entry, report, err.Error())
-	}
-	entry.Retire = submission.Record.ID
-	if err := savePublicationOutbox(path, *outbox); err != nil {
-		return err
-	}
-	decision, judged, err := publicationDecision(ctx, workspace, serverURL, entry.Retire)
-	if err != nil || !judged {
-		reason := "the submitted withdrawal is not yet visible in a verified projection"
-		if err != nil {
-			reason += ": " + err.Error()
-		}
-		return recordPublicationPending(path, outbox, entry, report, reason)
-	}
-	return settlePublicationEntry(decision, "withdrawn", path, outbox, entry, report)
 }
 
 func publicationAssertAct(batch *publicationBatch, entry *publicationEntry) app.Act {
@@ -945,9 +1029,9 @@ func truncateForError(value string) string {
 
 // livePublicationFacts indexes the current publication fact per watched path
 // for one remote: not retired, ruled effective, and carrying this command's
-// own body fields. The newest by log position wins, so a chain whose
-// retirement is still owed still answers with the fact a successor must rest
-// on.
+// own body fields. The newest by log position wins. It answers two questions
+// with one index — which predecessor a successor rests on and retires, and
+// which actor authored it, which is what the handover refusal reads.
 func livePublicationFacts(projection workroom.Projection, remote string) map[string]workroom.Statement {
 	facts := make(map[string]workroom.Statement)
 	for _, statement := range projection.Statements {
@@ -1030,19 +1114,6 @@ func artifactAtPathAndHead(projection workroom.Projection, path, head string) st
 		}
 	}
 	return chosen
-}
-
-func actorHoldsRatifier(projection workroom.Projection, fingerprint string) bool {
-	state, known := projection.Actors[fingerprint]
-	if !known || state.Retired {
-		return false
-	}
-	for _, role := range state.Roles {
-		if role == "ratifier" {
-			return true
-		}
-	}
-	return false
 }
 
 func validatePublicationRef(ref string) error {
