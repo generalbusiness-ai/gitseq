@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:491c590d5428a02865379a68178f2e983646ed8f"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d2b4fac8cbba083cd7d463ac9d6eecda87c143b9","text":"Retire this withdrawal request as moot. Ox-builder retired guard review request 0d7e7fee at 836d090d, which released Ox-checker's promise c936399f; no verdict landed and the artifact was also bare-retired."}
