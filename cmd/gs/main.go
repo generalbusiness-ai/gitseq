@@ -101,6 +101,8 @@ func main() {
 		err = reassignIfUnclaimedCommand(ctx, os.Args[2:])
 	case "batch":
 		err = batchCommand(ctx, os.Args[2:])
+	case "publish":
+		err = publishCommand(ctx, os.Args[2:])
 	case "status":
 		err = statusCommand(ctx, os.Args[2:])
 	case "work":
@@ -136,8 +138,56 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|reassign-if-unclaimed|batch|status|work|artifacts|supersession-plan|staleness-wave|inspect|reviews|provenance|verify|checkpoint-clear|serve|attach> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|reassign-if-unclaimed|batch|publish|status|work|artifacts|supersession-plan|staleness-wave|inspect|reviews|provenance|verify|checkpoint-clear|serve|attach> [flags]")
 	os.Exit(2)
+}
+
+// publishCommand records what an ordinary Git remote already accepted. It
+// mints no artifact: merge succession owns source paths, and a second live
+// artifact per push at a source path is an accounting row the merger cannot
+// lawfully pay off. What it records is an app-validated publication assert per
+// changed watched path — see cmd/gs/publication.go and docs/reference/gs/publish.md.
+//
+// Identity is process-scoped like every other authoring command, and the
+// server is resolved the same way too: an empty --server takes the address the
+// repository advertises, "-" forces the local verified fold, and an
+// advertisement that cannot be trusted refuses here, before a signing key is
+// read or anything is queued. Passing the raw flag through would have made
+// this the one write command that ignores what the repository publishes.
+func publishCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("publish", arguments)
+	as := set.String("as", "", "publishing actor")
+	remote := set.String("remote", "origin", "configured Git remote")
+	ref := set.String("ref", "", "published branch ref; defaults to the current branch")
+	basis := set.String("basis", "", "event governing publication in this repository")
+	serverFlag := set.String("server", "", "resident sequencer URL")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return errors.New("publish takes no positional arguments")
+	}
+	actorName, err := signingActor(*as)
+	if err != nil {
+		return err
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
+	actor, private, err := workspace.Actor(actorName)
+	if err != nil {
+		return err
+	}
+	report, publishErr := runPublication(ctx, workspace, private, actorName, actor.Fingerprint, serverURL, *remote, *ref, *basis)
+	if printErr := printJSON(report); printErr != nil && publishErr == nil {
+		publishErr = printErr
+	}
+	return publishErr
 }
 
 func flags(name string, arguments []string) (*flag.FlagSet, *string) {

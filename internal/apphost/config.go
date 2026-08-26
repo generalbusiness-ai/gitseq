@@ -290,3 +290,16 @@ func ResolveGitDirs(ctx context.Context, repo string) (gitDir, commonDir string,
 // MetaDir is where a repository keeps its gitseq state, given the common
 // directory that ResolveGitDirs reported.
 func MetaDir(commonDir string) string { return filepath.Join(commonDir, "gitseq") }
+
+// validateLockFile keeps a lock name a name. WithMetaLock joins it to
+// metaDir, so a caller passing a separator or a parent reference would take
+// its lock somewhere other than the directory it named — and two callers
+// spelling the same target differently would then serialise on nothing.
+// Refusing the shape is cheaper than reasoning about which spellings collide.
+func validateLockFile(lockFile string) error {
+	if lockFile == "" || lockFile == "." || lockFile == ".." ||
+		strings.ContainsAny(lockFile, `/\`) || strings.ContainsRune(lockFile, 0) {
+		return fmt.Errorf("lock file %q must be a bare file name", lockFile)
+	}
+	return nil
+}
