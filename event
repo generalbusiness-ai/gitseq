@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-08-26-jsonata-ddl-application-interface.md","body":{"commit":"8cc4687106b25c914bd5dad5f64c4186be13ea20","path":"notes/2026-08-26-jsonata-ddl-application-interface.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:06f77db78fcc9649882526257ebc8b5a58e083d4","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-26-jsonata-ddl-application-implementation.md."}
