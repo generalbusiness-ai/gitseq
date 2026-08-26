@@ -3,7 +3,7 @@ title: Publish and audit
 summary: Share the sequence, and verify it from a clone you did not create.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ce1c5c256729043ed29e41058e4e6ffb1085229
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b34fc905db82c93fe54c49c7868a245cc4440eb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b09c0e250a2eea6d310236fdd4077662785c06d
 ---
 
 # Publish and audit

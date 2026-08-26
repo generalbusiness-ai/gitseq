@@ -3,8 +3,8 @@ title: gs attach
 summary: Add a non-forcing sequence fetch rule to a clone, fetch, and verify.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ce1c5c256729043ed29e41058e4e6ffb1085229
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b34fc905db82c93fe54c49c7868a245cc4440eb
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58225c326c6693b95d330412f50e331fa5890265
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b09c0e250a2eea6d310236fdd4077662785c06d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58cab6e627b7bca241a69e6b4a8431b5e95d997e
 ---
 
 # `gs attach`
