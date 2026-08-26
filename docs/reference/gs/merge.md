@@ -361,6 +361,15 @@ lineage test is unchanged and still reads both directions; this is the command
 holding itself to the narrower rule while the target is still where it was. It
 governs merges run from here on. No sealed receipt is reinterpreted.
 
+The check belongs to fresh merges only, and runs once. It runs in preflight,
+after Git has reserved the receipt ref and staged the tentative merge, but
+before the merge commit exists, before `HEAD` moves, and before any durable
+workroom record is appended; succession recording never re-applies it.
+Resuming an interrupted merge instead finds the immutable Git receipt and
+appends its recorded suffix without replanning and without this guard, so a
+receipt sealed under an older reading of reach keeps exactly the authority it
+was sealed with.
+
 ### Restart residents at the merged commit
 
 The merge-succession change advanced the state schema to `workroom/state@1`,
