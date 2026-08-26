@@ -1,8 +1,8 @@
 ---
 date: 2026-08-26
 status: draft interface specification. Nothing here selects an evaluator,
-  database, storage layout, or host language. Those belong in a follow-up
-  implementation-design note.
+  database, storage layout, or host language. Those choices are outside this
+  interface.
 origin: Hugh's application-platform discussion: make the smallest Gitseq
   application read as JSONata with DDL and expose its projection through SQL.
 rests_on:
@@ -111,14 +111,31 @@ For event position *n*, the application platform:
    table DDL; and
 5. applies the accepted row changes atomically at position *n*.
 
+An event kind enters interpretation only when the bound application has both
+an effective `CREATE EVENT` declaration and an effective `CREATE FOLD` binding
+for it. Without both, the application platform leaves the event opaque and
+untranslated and makes no application projection change for it.
+
 In `rows`, `ONE` is an object, `OPTIONAL ONE` is an object or `null`, and
 `MANY` is an array. In `tables`, each declared table may contain `insert`,
 `upsert`, or `delete` arrays of rows.
 
 The event schema, read names and cardinalities, JSONata program, writable
-tables, and output schemas are part of the bound application identity. There
+tables, output schemas, and declared bounds are content of the application
+package named by the host binding. Its source commit and fold version identify
+that content through the existing `gitseq/app-binding@0` fields. This interface
+does not rename or extend that schema and adds no host-binding fields. There
 are no undeclared reads or writes. Tables are written only by folds; views are
 read-only.
+
+The expression language is a deterministic, total subset of JSONata over
+inputs within the declared bounds. It excludes `$now`, `$random`, `$eval`, and
+equivalent clock, randomness, dynamic-code, ambient-state, or non-total
+capabilities. The application declares limits for evaluation time, evaluator
+memory, recursion depth, every read's cardinality, and the number and encoded
+size of row changes produced by one event. The application platform refuses an
+application whose bounds it cannot enforce. Exceeding a bound stops
+interpretation without applying row changes.
 
 `decision` distinguishes a business rejection from an execution failure. A
 valid fold may return `ineffective` and facts explaining why. Invalid input,
@@ -149,16 +166,17 @@ fold reads.
 
 The SQL database is disposable derived state. The authoritative inputs are the
 verified events and the bound application; the authoritative fold result is
-the ordered logical row-change stream. A conforming platform can rebuild the
-same projection from them.
+the ordered logical row-change stream. A conforming application platform can
+rebuild the same projection from them.
 
-## Small extensions
+## Native helpers
 
-JSONata should cover the common case. An application may also declare named
-helper functions implemented in another language. Each helper has typed
-arguments and result, a version included in the application identity, and the
-same purity, bounds, and deterministic-failure contract as the fold. A fold can
-call only helpers it declares.
+Native helper functions are outside this interface. A follow-up interface may
+admit them only through an explicit allowlist. Each admitted helper must be
+pure, total, deterministic, versioned, resource-bounded, and confined from the
+clock, randomness, network, file system, mutable process state, and other
+ambient authority. A fold must be unable to call any helper that its bound
+application does not name.
 
 The query surface also exposes event position, decision, emitted facts, row
 versions, and row-to-event derivation. Their physical storage is unspecified;
@@ -169,5 +187,4 @@ implicit dependency on database state.
 
 This interface does not choose the JSONata implementation, SQL engine, DDL
 parser, storage format, cache strategy, process boundary, native-function ABI,
-or wire protocol. The first implementation design should make those choices
-without enlarging the two-file minimal application.
+or wire protocol.
