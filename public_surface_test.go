@@ -58,13 +58,16 @@ func TestPublicRepositorySurface(t *testing.T) {
 		},
 		".github/workflows/ci.yml": {
 			"permissions:\n  contents: read",
+			"set -o pipefail",
+			"go test -race -count=1 -json ./...",
+			"make spike SPIKE_TEST_JSON=",
 			"git diff --exit-code",
 			".github/scripts/verify-preview-clone.sh",
 		},
 		".github/scripts/verify-preview-clone.sh": {
 			"$head:refs/heads/main",
 			"test \"$refs\" = \"refs/heads/main\"",
-			"make -C \"$checkout\" test vet build",
+			"make -C \"$checkout\" vet build",
 		},
 	} {
 		content := read(path)

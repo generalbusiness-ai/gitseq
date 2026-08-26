@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,6 +9,64 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestCapturedFullSuiteProjectsOnlyDeclaredEvidence(t *testing.T) {
+	var events strings.Builder
+	want := make(map[string]testResult)
+	for _, definition := range definitions {
+		for _, qualified := range definition.Tests {
+			separator := strings.LastIndex(qualified, ".Test")
+			result := testResult{Package: qualified[:separator], Test: qualified[separator+1:], Status: "pass", Seconds: 0.01}
+			want[qualified] = result
+			event := testEvent{Action: "pass", Package: result.Package, Test: result.Test, Elapsed: result.Seconds}
+			encoded, err := json.Marshal(event)
+			if err != nil {
+				t.Fatal(err)
+			}
+			events.Write(encoded)
+			events.WriteByte('\n')
+		}
+	}
+	// A full-suite stream contains unrelated tests. Their outcome belongs to
+	// the suite gate, not to the stable six-case projection.
+	unrelated, err := json.Marshal(testEvent{Action: "fail", Package: "example/unrelated", Test: "TestLatencyTripwire"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events.Write(unrelated)
+	events.WriteByte('\n')
+
+	path := filepath.Join(t.TempDir(), "go-test.json")
+	if err := os.WriteFile(path, []byte(events.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output, stderr, command, err := testEvents(t.TempDir(), "unused", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stderr != "" || command != "go test -race -count=1 -json ./... (captured)" {
+		t.Fatalf("captured source = stderr %q, command %q", stderr, command)
+	}
+	got, _, err := decodeTestEvents(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, expected := range want {
+		if got[key] != expected {
+			t.Errorf("result %s = %#v, want %#v", key, got[key], expected)
+		}
+	}
+	if _, status := summarise(got, nil, nil); status != statusPass {
+		t.Fatalf("unrelated full-suite failure changed six-case evidence to %q", status)
+	}
+}
+
+func TestCapturedTestStreamReadFailureIsReturned(t *testing.T) {
+	_, _, _, err := testEvents(t.TempDir(), "unused", "missing.json")
+	if err == nil {
+		t.Fatal("missing captured stream was accepted")
+	}
+}
 
 func TestModuleRootFromRepositoryAndSpike(t *testing.T) {
 	original, err := os.Getwd()

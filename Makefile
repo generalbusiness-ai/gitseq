@@ -1,6 +1,7 @@
 .PHONY: test race vet build ui ui-check docs spike perf
 
 GO ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
+SPIKE_TEST_JSON ?=
 
 test:
 	$(GO) test ./...
@@ -34,7 +35,7 @@ ui-check: ui
 
 # Regenerate the stable six-case evidence without mixing it into shipping code.
 spike:
-	$(GO) run ./spike/cmd/gitseq-report
+	$(GO) run ./spike/cmd/gitseq-report $(if $(SPIKE_TEST_JSON),-test-json "$(SPIKE_TEST_JSON)")
 
 # Performance evidence is deliberately outside the ordinary correctness gate.
 # PERF_ARGS selects the tier, output directory, or exact refs to compare.
