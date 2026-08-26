@@ -3,8 +3,8 @@ title: Run a work loop
 summary: Claim work, publish its exact artifact, get it reviewed, and close it by merge or explicit report.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94fcda5debd84534bcc09c45e4645f236f72d73e
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f77c88ea142f5cb81dfda4d344279bb2c870a2f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f97dca2d5321a4abbf2ea61450ce40d43867579
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58cab6e627b7bca241a69e6b4a8431b5e95d997e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66d4d0fccf5ed0fa0a96ce0a396fba92a6e4b3a5
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b049e82976c52fcfe304234c7346e5b85d8cf5c
 ---
 

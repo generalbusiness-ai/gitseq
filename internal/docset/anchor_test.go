@@ -59,7 +59,9 @@ func TestGateEveryNamedActResolvesToALiveRecord(t *testing.T) {
 		artifacts[artifact.Event] = artifact
 	}
 
-	failing := make(map[string]BaselineEntry)
+	// Every fatal citation fails here, directly. There is no exception list:
+	// the migration that emptied one finished, and a list kept past its last
+	// entry is only a place for the next defect to be filed instead of fixed.
 	for _, act := range acts {
 		kind, found := kinds[act]
 		artifact := artifacts[act]
@@ -68,29 +70,10 @@ func TestGateEveryNamedActResolvesToALiveRecord(t *testing.T) {
 		case verdict.Fatal:
 			naming := dependents(pages, act)
 			sort.Strings(naming)
-			failing[act] = BaselineEntry{Reason: verdict.Reason, Pages: naming}
+			t.Errorf("%s %s\n  re-anchor the pages naming it to a live artifact at an exact path in the tree:\n  %s",
+				act, verdict.Reason, strings.Join(naming, "\n  "))
 		case verdict.Report:
 			t.Logf("%s %s:\n  %s", act, verdict.Reason, strings.Join(dependents(pages, act), "\n  "))
 		}
-	}
-
-	// The known-failing list is what keeps this gate honest while the set is
-	// repaired. It fails anything new immediately, refuses a defect that has
-	// changed shape, and refuses an entry that has stopped failing — the last
-	// is what makes the list shrink rather than accumulate.
-	newly, changed, fixed := CompareBaseline(failing, loadBaseline(t))
-	for _, finding := range newly {
-		t.Errorf("%s %s\n  not in %s; repair it or record it there with a reason:\n  %s",
-			finding.Citation, finding.Reason, baselineFile, strings.Join(dependents(pages, finding.Citation), "\n  "))
-	}
-	for _, finding := range changed {
-		t.Errorf("%s %s\n  the recorded defect is not the current one, so this needs review rather than a silent pass:\n  %s",
-			finding.Citation, finding.Reason, strings.Join(dependents(pages, finding.Citation), "\n  "))
-	}
-	for _, finding := range fixed {
-		t.Errorf("%s %s", finding.Citation, finding.Reason)
-	}
-	if len(failing) > 0 {
-		t.Logf("%d citations remain known-failing; see %s", len(failing), baselineFile)
 	}
 }
