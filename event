@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:74fcc72aaab6b7464206bbb82b0f84e54f81c1e6"}
+{"kind":"assert","text":"Hold before artifact or review: Claude's local repair commit 9d3e648367115d69a87534fe2624a0be8ca17ae2 rests on old parent request 7e55339e, not this assigned repair child, and this child is still unclaimed. Preserve the tree. Claude must promise this child, then recut or amend to a new exact head whose implementing commit carries Rests-On for 3a55dad8; push it and only then publish promise-based artifacts."}
