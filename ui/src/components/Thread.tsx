@@ -9,7 +9,7 @@ import { eventDiscussionEntries, RetryKeys, sendTemporaryReply } from "../lib/in
 import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
 import { mentionFingerprints } from "../lib/mentions";
 import { actorTint, clock, cn, firstLine, interpretationNotice, kindLabel } from "../lib/util";
-import { RowToolbar, ToolbarButton, semanticActions, type SemanticReplyMode } from "./Toolbar";
+import { RowToolbar, ToolbarButton, semanticActions, type SemanticAction, type SemanticReplyMode } from "./Toolbar";
 import { RecordDetail } from "./RecordDetail";
 import type { RecordIndex } from "../lib/records";
 
@@ -119,7 +119,15 @@ export function Thread({
     if (focusedStation) initial.add(`detail:${focusedStation.id}`);
     return initial;
   });
-  const [route, setRoute] = useState<{ id: string; mode: SemanticReplyMode; basis: string; prefill: string }>();
+  const [route, setRoute] = useState<{
+    id: string;
+    mode: SemanticReplyMode;
+    /** Everything the reply will cite, in the order the row named it. */
+    bases: string[];
+    prefill: string;
+    /** Body fields the row already knows — never typed, so never mistyped. */
+    body?: Record<string, string>;
+  }>();
   const toggle = (id: string) =>
     setOpen((current) => {
       const next = new Set(current);
@@ -144,8 +152,9 @@ export function Thread({
           commitment: index.commitment(statement.event),
           decision: index.decision(statement.event),
           projection,
+          index,
           me,
-          onRoute: (mode, basis, prefill) => setRoute({ id: crypto.randomUUID(), mode, basis, prefill }),
+          onRoute: (mode, bases, prefill, body) => setRoute({ id: crypto.randomUUID(), mode, bases, prefill, body }),
           doAct,
         })
       : [];
@@ -237,6 +246,8 @@ export function Thread({
         workroom={workroom}
         session={session}
         root={root}
+        index={index}
+        tickets={tickets}
         route={route}
         onClearRoute={() => setRoute(undefined)}
         pending={pending.filter((say) => say.about === root && !say.re)}
@@ -285,7 +296,7 @@ function SpineRow({
   first: boolean;
   last: boolean;
   nameOf: (fingerprint: string) => string;
-  actions: { label: string; symbol: string; tone?: "ok" | "danger"; run: () => void }[];
+  actions: SemanticAction[];
   open: boolean;
   onToggle: () => void;
   detail: React.ReactNode;
@@ -345,7 +356,14 @@ function SpineRow({
       {actions.length > 0 && (
         <RowToolbar>
           {actions.map((action) => (
-            <ToolbarButton key={action.label} label={action.label} icon={<span aria-hidden>{action.symbol}</span>} tone={action.tone} onClick={action.run} />
+            <ToolbarButton
+              key={action.label}
+              label={action.label}
+              icon={<span aria-hidden>{action.symbol}</span>}
+              showLabel={action.showLabel}
+              tone={action.tone}
+              onClick={action.run}
+            />
           ))}
         </RowToolbar>
       )}
@@ -478,6 +496,8 @@ function Composer({
   workroom,
   session,
   root,
+  index,
+  tickets,
   route,
   onClearRoute,
   pending,
@@ -488,7 +508,11 @@ function Composer({
   workroom: Workroom;
   session: Session;
   root: string;
-  route?: { id: string; mode: SemanticReplyMode; basis: string; prefill: string };
+  /** The projection's record index, for naming what the reply will cite. */
+  index: RecordIndex;
+  /** Ticket numbers, so a citation reads as #12 and not only as a hash. */
+  tickets: Map<string, number>;
+  route?: { id: string; mode: SemanticReplyMode; bases: string[]; prefill: string; body?: Record<string, string> };
   onClearRoute: () => void;
   pending: PendingSay[];
   onSay: (text: string, re?: string, about?: string) => string;
@@ -500,6 +524,11 @@ function Composer({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  // What a request needs and nothing else knows: who it is addressed to, and
+  // what would satisfy it. The workroom refuses a request missing either, so
+  // they are asked for here rather than filed empty and refused.
+  const [addressee, setAddressee] = useState("");
+  const [conditions, setConditions] = useState("");
   const retryKeys = useRef(new RetryKeys());
   const seenRoute = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -507,13 +536,17 @@ function Composer({
       seenRoute.current = route.id;
       setType(route.mode);
       setText(route.prefill);
+      setAddressee("");
+      setConditions("");
     }
   }, [route]);
   const durable = type !== "say";
-  const basis = route && type === route.mode ? route.basis : root;
+  const routed = route && type === route.mode ? route : undefined;
+  const bases = routed ? routed.bases : [root];
+  const ready = type !== "request" || (addressee !== "" && conditions.trim() !== "");
 
   const send = async () => {
-    if (!text.trim() || busy || !session.actor) return;
+    if (!text.trim() || busy || !session.actor || !ready) return;
     setBusy(true);
     setError(undefined);
     const line = text.trim();
@@ -534,19 +567,25 @@ function Composer({
       return;
     }
     try {
-      const body: Record<string, string> = {};
+      // Fields the row already resolved come first; nothing here re-derives an
+      // identifier the operator would otherwise have to copy by hand.
+      const body: Record<string, string> = { ...(routed?.body ?? {}) };
       const mentioned = mentionFingerprints(line, workroom.actors);
       if (mentioned.length > 0) body.mentions = mentioned.join(" ");
+      if (type === "request") {
+        body.to = addressee;
+        body.conditions = conditions.trim();
+      }
       const input: ActInput =
         type === "withdraw"
-          ? { credential: session.credential, act: "supersede", target: basis, text: line, rests_on: [] }
+          ? { credential: session.credential, act: "supersede", target: bases[0] ?? root, text: line, rests_on: [] }
           : {
               credential: session.credential,
               act: "state",
               kind: type,
               text: line,
               body: Object.keys(body).length ? body : undefined,
-              rests_on: [basis],
+              rests_on: bases,
             };
       const scope = `${root}:${type}`;
       const key = retryKeys.current.forAttempt(scope, JSON.stringify(input));
@@ -554,6 +593,8 @@ function Composer({
       retryKeys.current.succeeded(scope, key);
       setText("");
       setType("say");
+      setAddressee("");
+      setConditions("");
       onClearRoute();
     } catch (thrown) {
       setError(thrown instanceof Error ? thrown.message : String(thrown));
@@ -578,12 +619,70 @@ function Composer({
               onClick={() => {
                 setType("say");
                 setText("");
+                setAddressee("");
+                setConditions("");
                 onClearRoute();
               }}
               className="text-[11px] text-faint hover:text-muted focus-visible:outline focus-visible:outline-accent"
             >
               cancel
             </button>
+          </div>
+        )}
+        {/*
+          What is about to be signed, before it is signed. The row resolves
+          these so that an identifier nobody should retype by hand is not
+          retyped by hand; that is a reason to prefill them and no reason to
+          hide them. Causal references are what a record means, and an operator
+          answerable for a record has to be able to read them first.
+
+          A withdrawal names the record it retires rather than a basis it
+          rests on, so it says so: one list, two honest labels.
+        */}
+        {durable && (
+          <ul
+            data-citations
+            aria-label={type === "withdraw" ? "the record this will retire" : "citations this reply will sign"}
+            className="list-none space-y-0.5 text-[11px] text-faint"
+          >
+            {bases.map((basis) => {
+              const cited = index.statement(basis);
+              const ticket = tickets.get(basis);
+              return (
+                <li key={basis} className="flex min-w-0 items-baseline gap-1">
+                  <span aria-hidden>↳</span>
+                  {ticket !== undefined && <span className="font-mono">#{ticket}</span>}
+                  {cited && <span className="uppercase tracking-wide">{kindLabel(cited.kind)}</span>}
+                  {cited && <span className="truncate text-muted">{firstLine(cited.text, 80)}</span>}
+                  <span className="truncate font-mono text-faint">{basis}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {type === "request" && (
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="addressed to"
+              value={addressee}
+              onChange={(event) => setAddressee(event.target.value)}
+              className="h-7 rounded border border-input bg-surface px-1.5 text-[11px] text-muted outline-none focus:border-accent/60"
+            >
+              <option value="">addressed to…</option>
+              {workroom.actors.map((actor) => (
+                <option key={actor.fingerprint} value={actor.fingerprint}>
+                  {actor.name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              aria-label="conditions of satisfaction"
+              placeholder="conditions of satisfaction"
+              value={conditions}
+              onChange={(event) => setConditions(event.target.value)}
+              className="h-7 min-w-0 flex-1 rounded border border-input bg-surface px-2 text-[11px] outline-none placeholder:text-faint focus:border-accent/60"
+            />
           </div>
         )}
         <div className="flex items-end gap-2">
@@ -604,9 +703,9 @@ function Composer({
           <button
             type="button"
             onClick={() => void send()}
-            disabled={busy || !text.trim() || !session.live}
+            disabled={busy || !text.trim() || !session.live || !ready}
             aria-label={type === "withdraw" ? "withdraw" : durable ? "keep reply" : "send temporary reply"}
-            title={session.live ? undefined : "not present yet"}
+            title={session.live ? (ready ? undefined : "a request needs an addressee and its conditions") : "not present yet"}
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-background transition-colors hover:bg-accent/90 focus-visible:outline focus-visible:outline-accent disabled:opacity-40"
           >
             {type === "withdraw" ? <Undo2 className="h-3.5 w-3.5" /> : <SendHorizonal className="h-3.5 w-3.5" />}

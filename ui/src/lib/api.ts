@@ -24,6 +24,13 @@ export interface Statement {
   // Classifying a historical record by the current vocabulary gives a different
   // answer than the fold gave.
   lifecycle?: string;
+  // Who may ratify this statement, from the same captured definition
+  // `lifecycle` comes from: the one in force when this record was admitted.
+  // The fold decides ratifications against exactly that, so reading it here
+  // rather than looking the kind up in the live vocabulary is what keeps the
+  // screen and the fold from disagreeing after a kind is redefined. Absent
+  // means the fold bound no definition, and nothing may be ratified on it.
+  satisfier?: string;
   text: string;
   body?: Record<string, string>;
   ratified?: boolean;
@@ -144,6 +151,13 @@ export interface ActorState {
   role_sources: Record<string, string[]>;
   dormant_role_sources: Record<string, string[]>;
   retired_role_sources: Record<string, string[]>;
+  /**
+   * A principal whose every membership grant has been superseded. It stays
+   * listed because it signed events that are permanent, and it holds no roles.
+   * Listed is therefore not the same as present, and no authority question may
+   * be answered by the entry existing: ask for the role the fold asks for.
+   */
+  retired?: boolean;
 }
 
 export interface DurableSnapshot {

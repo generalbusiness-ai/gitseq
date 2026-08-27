@@ -26,7 +26,38 @@ export interface RecordIndex {
    * artifact happened to answer, however unrelated.
    */
   threadRoot: (event: string) => string;
+  /**
+   * The ratified proposals resting **directly** on this record, newest first,
+   * bounded by {@link CITED_PROPOSAL_LIMIT}.
+   *
+   * This is a citation prefill and nothing more. It is not an adoption fact,
+   * it is not consulted to decide what the screen offers, and it says nothing
+   * about whether any decision is adopted — the fold projects no such
+   * relation, and the browser may not invent one. See "Layer 5 and layer 7:
+   * what the browser may derive" in docs/reference/architecture.md.
+   *
+   * Every input is a projected field — the citation edge, the kind, the fold's
+   * verdict, and the fold's own `ratified` and `retired` flags — and nothing
+   * is joined across records. The operator sees the result before signing.
+   */
+  citableProposals: (event: string) => string[];
 }
+
+/**
+ * How many proposals a prefill may cite, and why the number is one.
+ *
+ * Without a bound the browser could put every qualifying proposal into one
+ * record's causal references. Two things go wrong at once. A large enough set
+ * reaches the kernel's own ceiling on causal references and the record cannot
+ * be admitted at all. Long before that, several proposals that contradict each
+ * other all appear to govern the same review, and a reader has no way to tell
+ * which one the signer meant.
+ *
+ * One is the answer rather than some larger round number because only one
+ * proposal can be the current one. Citing the others adds no information and
+ * creates exactly the ambiguity the bound exists to remove.
+ */
+export const CITED_PROPOSAL_LIMIT = 1;
 
 export function buildRecordIndex(projection: Projection): RecordIndex {
   const statements = new Map(projection.statements.map((s) => [s.event, s]));
@@ -55,6 +86,27 @@ export function buildRecordIndex(projection: Projection): RecordIndex {
     const commitment = commitments.get(cursor);
     return commitment ? commitment.request : cursor;
   };
+  // Which proposal is picked may not depend on the order the projection
+  // happened to list things in. `provenance` arrives as a JSON object and its
+  // dependents as a JSON array; both preserve whatever order the fold emitted,
+  // and neither is a contract. The fold's sequence is a contract, so that is
+  // what orders this: newest first, ties broken by the event identifier, which
+  // is unique. The same set of records therefore yields the same citation
+  // whichever way it was serialised.
+  const citableProposals = (event: string): string[] =>
+    (restedOnBy.get(event) ?? [])
+      .map((dependent) => statements.get(dependent))
+      .filter(
+        (candidate): candidate is Statement =>
+          candidate !== undefined &&
+          candidate.kind === "propose" &&
+          candidate.ratified === true &&
+          candidate.retired !== true &&
+          decisions.get(candidate.event)?.verdict === "effective",
+      )
+      .sort((left, right) => right.sequence - left.sequence || (left.event < right.event ? -1 : 1))
+      .slice(0, CITED_PROPOSAL_LIMIT)
+      .map((candidate) => candidate.event);
   return {
     statement: (event) => statements.get(event),
     act: (event) => acts.get(event),
@@ -67,5 +119,6 @@ export function buildRecordIndex(projection: Projection): RecordIndex {
     has: (event) => statements.has(event) || acts.has(event),
     commitment: (event) => commitments.get(event),
     threadRoot,
+    citableProposals,
   };
 }

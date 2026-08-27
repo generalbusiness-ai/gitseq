@@ -57,7 +57,27 @@ type Statement struct {
 	// current vocabulary gets a different answer than the fold did, and the
 	// two then disagree about what a record is — which at a write boundary
 	// means signing something the fold will refuse.
-	Lifecycle Lifecycle         `json:"lifecycle,omitempty"`
+	Lifecycle Lifecycle `json:"lifecycle,omitempty"`
+	// Satisfier is who may ratify this statement, read from the same captured
+	// definition Lifecycle is read from: the one in force at this record's own
+	// position. decideRatify judges against exactly that, so a reader who
+	// instead looks the kind up in the current vocabulary gets a different
+	// answer than the fold will give whenever a kind's satisfier has been
+	// revised since — narrower now, and the reader hides an act the fold would
+	// accept; wider now, and the reader offers an act the fold refuses, which
+	// in an append-only log is a permanent row saying somebody tried something
+	// they were never allowed to do.
+	//
+	// It is projected for the same reason RatifiedBy is: the rule is not
+	// recoverable from what a reader is given. The captured definition is not
+	// in the projection at all, and reconstructing it would mean replaying
+	// every kind definition and its ratifications in reading order — the
+	// fold's authority rule, rebuilt in a layer that has no business holding
+	// one.
+	//
+	// Empty means the fold bound no definition to this record, which is what
+	// an undefined kind gets. Nothing may be ratified on an empty satisfier.
+	Satisfier string            `json:"satisfier,omitempty"`
 	Text      string            `json:"text"`
 	Body      map[string]string `json:"body,omitempty"`
 	Ratified  bool              `json:"ratified,omitempty"`
@@ -2650,6 +2670,17 @@ func lifecycleOf(record *parsedRecord) Lifecycle {
 	return record.definition.Lifecycle
 }
 
+// satisfierOf reports who may ratify this record, from the definition the fold
+// bound to it at admission. decideRatify reads the same field off the same
+// captured definition, so what a reader is shown and what the fold will decide
+// cannot drift apart when the kind is redefined afterwards.
+func satisfierOf(record *parsedRecord) string {
+	if record.definition == nil {
+		return ""
+	}
+	return record.definition.Satisfier
+}
+
 func (f *foldState) project() Projection {
 	succeeded := f.succeededRetirements()
 	stale, world, causedAt := f.stalenessNow().staleness(succeeded)
@@ -2705,8 +2736,8 @@ func (f *foldState) project() Projection {
 		projection.Statements = append(projection.Statements, Statement{
 			Event: record.record.ID, Sequence: record.sequence(),
 			Timestamp: record.record.Timestamp, Actor: record.record.Actor, Kind: state.Kind,
-			Lifecycle: lifecycleOf(&record),
-			Text:      state.Text, Body: cloneStringMap(state.Body),
+			Lifecycle: lifecycleOf(&record), Satisfier: satisfierOf(&record),
+			Text: state.Text, Body: cloneStringMap(state.Body),
 			Ratified: ratification != "", RatifiedBy: ratification,
 			Retired: f.retired(record.record.ID), Stale: stale[record.record.ID],
 			DescribesSupersededWorld: world[record.record.ID],

@@ -796,6 +796,27 @@ validate and construct receipts and successors. This projection change
 advances the profile to `workroom-fold@12`, so a cache written under `@11` is
 rejected and the history replayed.
 
+**The admitted-time authority rule.** A ratification is decided by the
+satisfier on the target kind's definition **as that definition stood when the
+target statement was admitted**, never by whichever definition of the kind
+governs now. The fold has always decided this way: the definition is bound to
+the record at admission and read back from there. It is the rule `lifecycle`
+already follows, for the same reason — a kind redefined later must not change
+what earlier records mean, or what may be done to them.
+
+What changes here is that the fold now publishes that captured satisfier per
+statement instead of keeping it to itself. It has to. The value is not
+recoverable from what a reader is given: the captured definition is not in the
+projection, and reconstructing it would mean replaying every kind definition
+and its ratifications in reading order — this layer's authority rule, rebuilt
+outside this layer. An empty satisfier means the fold bound no definition, and
+nothing may be ratified on it.
+
+This projection change advances the profile to `workroom-fold@14`, so a cache
+written under `@13` is rejected and the history replayed. Without that gate a
+cache predating the field would answer every reader "no satisfier", and every
+ratification would be silently withheld from actors entitled to make it.
+
 **Write-boundary guards.** One Workroom admission evaluation serves every
 state surface — `gs state`, `gs batch`, the MCP state and review tools, and
 the canonical guarded review path. It runs once before signing for early
@@ -1056,6 +1077,76 @@ These surfaces may evolve or be replaced without changing kernel validity.
 They must not infer application force that the selected interpreter did not
 produce.
 
+#### Layer 5 and layer 7: what the browser may derive
+
+"It does not define durable meaning" needs a boundary, because the browser
+plainly does derive things: it sorts rows, counts a queue, and picks which
+button a row offers. The line is not "derives nothing". It is this.
+
+Layer 7 may **read** any field layer 5 projects and **combine** those fields
+for presentation. It may not **name a relation that layer 5 does not project**
+and then treat that relation as a fact about the workroom.
+
+Adoption is the case that fixed the wording. `docs/how-to/keep-decision-records.md`
+describes a decision file as adopted once a proposal citing its artifact is
+ratified, and describes that adoption as standing across later revisions of the
+same file. The Workroom fold projects none of that. It projects proposals,
+ratifications, artifacts, paths and citation edges; it projects no relation
+between a proposal and a decision record, and no notion of an adoption that
+stands. A browser that joined those fields into "the decision at this path is
+adopted" would be inventing an application fact, and every screen reading it
+would present that invention as the workroom's answer. Projecting adoption is a
+layer 5 change: a fold rule, a projected field, and a fold version to carry the
+changed projection bytes. Until that exists, the browser does not have the
+fact and must not act as though it does.
+
+Two consequences follow, and both are visible in `ui/`:
+
+- **No affordance is gated on adoption.** An artifact row offers both the
+  proposal and the review request, and the operator chooses which the decision
+  needs. Choosing for them would require the fact the fold does not project.
+- **Prefilled citations are a convenience, not a claim.** Where a record the
+  browser offers to file would otherwise need an identifier copied by hand, the
+  browser may fill the causal references from projected provenance alone: the
+  records resting **directly** on the record on screen, filtered only by
+  projected fields, ordered by the fold's own sequence so the result never
+  depends on serialization order, and bounded by a fixed limit so no screen can
+  drive a record past the kernel's causal-reference ceiling or make several
+  contradictory records appear to govern one act. The operator reads the
+  citation in the composer before signing, and the fold judges it afterwards.
+
+An affordance is also bounded by authority. The browser offers a ratification
+only when the fold's own published rule says this actor may make it: the
+satisfier **projected on the target statement**, which is the one admitted with
+that statement, checked against the projected roster. It is not the satisfier
+the live vocabulary publishes for that kind now. The two are the same value
+until a kind is redefined and different afterwards, and the difference is the
+whole point — layer 5 decides ratifications on the admitted value, so a screen
+reading the live one disagrees with the fold in both directions:
+
+- **Narrowed since admission.** The screen hides an act the fold would accept,
+  and says nothing. An actor entitled to ratify is silently denied, with no
+  error to notice and nothing on screen to appeal to.
+- **Widened since admission.** The screen offers an act the fold refuses.
+  Pressing it appends a durable record judged ineffective, which stays in an
+  append-only log forever, saying somebody tried to do something they were
+  never allowed to do — and they were told the act was available.
+
+The hazard is not only a coding error. A page that states the live-vocabulary
+rule and a browser that implements it agree with each other and both diverge
+from the fold, which is the shape of contradiction a reader has no way to
+detect: two layers describing one rule, neither of them the layer that decides
+it. Layer 7 derives no authority of its own. It reads the value layer 5
+publishes for this exact record, and where layer 5 publishes none it offers
+nothing rather than guessing.
+
+The citation rule above is enforced the same way. "The operator reads the
+citation in the composer before signing" is a claim about rendered output, so
+it is asserted on rendered output: the composer names every event it will put
+in `rests_on` before its send control can be used. Prefilling a causal
+reference and never showing it is not a convenience, it is signing on somebody
+else's behalf.
+
 ## Compatibility has six axes
 
 "Compatible with Gitseq" is too broad to be useful. State which contract is
@@ -1100,7 +1191,7 @@ the same result.
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |
 | `SKILL.md` | Application guidance | Governs agent conduct in Workroom. It is not a kernel protocol specification. |
-| `ui/`, `internal/service/uidist` | Surface and UI | Renders current Workroom projections, live runtime state, and the Git history facts the service exposes, as two screens: a sortable list of open requests and one thread drawn as a commitment spine. The committed build may not define new semantics; where the fold and Git disagree it shows both rather than choosing. |
+| `ui/`, `internal/service/uidist` | Surface and UI | Renders current Workroom projections, live runtime state, and the Git history facts the service exposes, as two screens: a sortable list of open requests and one thread drawn as a commitment spine. The committed build may not define new semantics; where the fold and Git disagree it shows both rather than choosing, and where the fold projects no relation at all it neither invents one nor gates an affordance on it, per "Layer 5 and layer 7: what the browser may derive" above. |
 
 The important existing dependency direction is real: `internal/kernel` does
 not import `internal/workroom`; `internal/workroom` does not import Git, HTTP,
