@@ -1,25 +1,28 @@
 # gitseq
 
 Agents do real work now: they write code, review it, file requests, and make
-commitments.  An agent's output is not reproducible from its input, so the
-ground for trust shifts from the process to the record — what was done, by
+commitments.  An agent's output need not be reproducible from its input, so
+what you can rely on is the record rather than the process — what was done, by
 whom, in what order, resting on what.  gitseq is that record: a log of
 immutable signed transactions stored in ordinary git, built as a simple
 [event sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) layer.
-Anyone with a clone can verify the whole history offline.
+Once the sequence has been published and fetched, a holder of it can verify
+the whole history offline, without asking us or anyone else.
 
-Humans and agents work in it as peers.  Every actor — a person, or one agent
-session — signs with its own key.  Agents connect over MCP, the primary
-interface: one `gitseq-mcp` process per session, signing everything that
-session does as one named actor.  People reach the same log through the `gs`
-CLI and a browser view.
+Humans and agents work in it as peers.  Each act is signed and attributed to
+the actor that made it.  Agents connect over MCP, the main agent surface: a
+`gitseq-mcp` process acts as one named actor.  People reach the same log
+through the `gs` CLI and a browser view.  A local resident may hold actor keys
+and sign for authenticated sessions, so a signature identifies the actor, not
+a particular process.
 
 The first application is a multi-agent workroom — the one being used to build
-gitseq itself.  Requests, promises, reports, reviews and decisions are durable
-events, so who asked, who committed, who delivered and who approved are
-questions the log answers mechanically, and an audit is a replay anyone can
-run.  Use it to accelerate software development, strengthen review cycles, and
-improve traceability.
+gitseq itself.  Requests, promises, reports, reviews and ratifications are
+durable events; whether each one took force is the fold's verdict, recomputed
+on replay.  So who asked, who committed, who delivered and who approved are
+questions the log answers mechanically, and an audit is a replay anyone
+holding the sequence can run.  Use it to accelerate software development,
+strengthen review cycles, and improve traceability.
 
 Blog:
 [Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
@@ -61,8 +64,8 @@ client-held key proves possession with an expiring, single-use challenge
 before its presence becomes visible; composition keeps the durable Git
 frontier separate from the process-local live cursor.
 
-The first application is the workroom being used to build gitseq itself.
-It uses the _language-action perspective_ to describe acts such as requests,
+The workroom uses the _language-action perspective_ to describe acts such as
+requests,
 promises, reports, agreement, disagreement, and conditions of satisfaction;
 these acts become a lightweight framework for getting things done.
 
@@ -128,13 +131,13 @@ order across concurrent submissions from cryptographically-identified
 actors.  This is more expensive event-sourcing than an unsigned log, but
 has some really nice properties - including simplicity!
 
-Signed writes cost more than unsigned ones: expect a few per second, and
-reads to be far faster.  Most of that cost is implementation rather than
-design — the kernel currently shells out to git for each append, and
-identified optimizations have not been taken yet.  Rendering any
-application-specific materialized view depends on the folding checkpoint
-interval (see the applications section below).  Both figures depend widely
-on context, so treat them as rough.
+Signed writes cost more than unsigned ones: expect a few per second.  The
+kernel currently shells out to git for each append; some of that cost has
+already been removed and further optimizations remain open.  Reads do not
+pay the signing cost, and rendering any application-specific materialized
+view depends on the folding checkpoint interval (see the applications
+section below).  Rates depend on the workload and the machine, so treat any
+figure as rough.
 [Performance evidence](docs/reference/performance.md) holds the measured
 results, with the exact commits, environments and raw samples behind them.
 
