@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5377d7bfbf4d6ffe88207486ec9be93a281a05aa","text":"Hugh clarified that the remote-link head may be reviewed now and that the only remaining constraint is not to merge it. This sequencing assertion no longer governs review."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a6548c5c32e3437e643ebb96748ef6d81850ecc","text":"I withdraw my earlier review decline after Hugh clarified that exact head 95374ec2 is reviewable now; the surviving condition is not to merge."}
