@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at host","body":{"commit":"fd5147a9c96856a85c3056b0f65966bec346dcca","dead_basis_override":"true","path":"host"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/app","body":{"commit":"fd5147a9c96856a85c3056b0f65966bec346dcca","dead_basis_override":"true","path":"internal/app"}}
