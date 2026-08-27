@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -62,7 +64,14 @@ func TestWebRemoteURLAdmitsOnlyHTTPAndHTTPS(t *testing.T) {
 		"https://github.com/org/repo.git?access_token=s3cr3t",
 		"https://github.com/org/repo.git#access_token=s3cr3t",
 		"https://github.com/org/repo.git?ref=main#L1",
+		// The two empty delimiters. url.URL records an empty query as
+		// ForceQuery and puts the ? back, but an empty fragment leaves no
+		// trace at all in the serialisation, so only a test on the raw input
+		// refuses this pair together. The browser's URL keeps the trailing #,
+		// and ui/src/lib/repolink.ts refuses it; admitting it here would emit
+		// a link the page then declines to draw.
 		"https://github.com/org/repo.git?",
+		"https://github.com/org/repo.git#",
 		// Nothing to link.
 		"https://",
 		"http://",
@@ -212,6 +221,151 @@ func TestGitRemotesFailsClosedOnOversizedConfiguration(t *testing.T) {
 	if remotes := gitRemotes(ctx, tooBig); remotes != nil {
 		t.Fatalf("a repository over the config-size bound answered %d remotes, want none", len(remotes))
 	}
+}
+
+// --local answers the question "whose configuration file?" and nothing else.
+// It does not answer "which repository?", and the two are separable: GIT_DIR
+// and GIT_COMMON_DIR both re-point the repository Git resolves, so
+// `git -C victim config --local` reads the attacker's config file while being,
+// by its own lights, strictly local. GIT_WORK_TREE re-points the checkout the
+// same way. Anything able to set a variable in the resident's environment
+// could therefore name a remote this repository never configured — and could
+// make the worktree list describe some other repository's checkouts. Only
+// removing those variables from the child's environment refuses it.
+func TestLocalWorktreesIgnoresInheritedGitRoutingVariables(t *testing.T) {
+	ctx := context.Background()
+	victim := seededRepoNamed(t, "victim", "https://real.invalid/org/repo.git")
+	attacker := seededRepoNamed(t, "attacker", "https://attacker.invalid/evil.git")
+	if _, _, err := Init(ctx, victim, "human", 1<<20); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, variable := range []struct{ name, value string }{
+		{"GIT_DIR", filepath.Join(attacker, ".git")},
+		{"GIT_COMMON_DIR", filepath.Join(attacker, ".git")},
+		{"GIT_WORK_TREE", attacker},
+		{"GIT_INDEX_FILE", filepath.Join(attacker, ".git", "index")},
+	} {
+		t.Run(variable.name, func(t *testing.T) {
+			// A workspace per case, because LocalWorktrees caches for eight
+			// seconds and a shared one would let a later case pass on an
+			// earlier read; and opened before the variable is set, because
+			// Open resolves the repository through internal/gitstore, which
+			// this test is not about. What is under test is the four
+			// read-only Git commands this package runs afterwards.
+			workspace, err := Open(ctx, victim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv(variable.name, variable.value)
+			local, err := workspace.LocalWorktrees(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if local.Remote != "https://real.invalid/org/repo.git" {
+				t.Errorf("LocalRepo.Remote = %q, want the victim's own local origin", local.Remote)
+			}
+			// Each checkout's state comes from its own `git status`, which is
+			// redirected by the same variables: the victim is committed
+			// clean, and comparing its working tree against the attacker's
+			// index or object store reports changes that are not there.
+			var served *WorktreeView
+			for index := range local.Worktrees {
+				view := &local.Worktrees[index]
+				if view.Checkout == "attacker" {
+					t.Errorf("the worktree list described the attacker's checkout: %+v", *view)
+				}
+				if view.Checkout == "victim" {
+					served = view
+				}
+			}
+			switch {
+			case served == nil:
+				t.Errorf("the victim's own checkout is missing from %+v", local.Worktrees)
+			case served.State != "clean":
+				t.Errorf("the victim's checkout is committed clean but reported %q", served.State)
+			}
+			encoded, err := json.Marshal(local)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(encoded), "attacker") {
+				t.Errorf("%s redirected the local repository projection: %s", variable.name, encoded)
+			}
+		})
+	}
+}
+
+// citingDocuments is read as a guard, not as a display: a retirement the
+// documentation still names is refused on the strength of its answer, so an
+// empty answer is a bypass rather than a cosmetic wrong. The pathspec
+// variables are the cheap way to force one — GIT_LITERAL_PATHSPECS makes the
+// `*.md` pathspec a literal filename that matches nothing — and GIT_DIR
+// re-points the grep at a repository where the page does not exist. Neither
+// changes a byte of the command line, which is why the environment is what
+// has to refuse them.
+func TestCitingDocumentsIgnoresInheritedGitRoutingVariables(t *testing.T) {
+	ctx := context.Background()
+	repo := seededRepoNamed(t, "victim", "https://real.invalid/org/repo.git")
+	elsewhere := seededRepoNamed(t, "attacker", "https://attacker.invalid/evil.git")
+	const event = "sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+	if err := os.WriteFile(filepath.Join(repo, "page.md"), []byte("this page cites "+event+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("git", "-C", repo, "add", "page.md").CombinedOutput(); err != nil {
+		t.Fatalf("track page: %v: %s", err, output)
+	}
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "page").CombinedOutput(); err != nil {
+		t.Fatalf("commit page: %v: %s", err, output)
+	}
+	if _, _, err := Init(ctx, repo, "human", 1<<20); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pages := workspace.citingDocuments(ctx, repo, event); len(pages) != 1 || pages[0] != "page.md" {
+		t.Fatalf("baseline citing documents = %v, want [page.md]", pages)
+	}
+
+	for _, variable := range []struct{ name, value string }{
+		{"GIT_LITERAL_PATHSPECS", "1"},
+		{"GIT_NOGLOB_PATHSPECS", "1"},
+		{"GIT_DIR", filepath.Join(elsewhere, ".git")},
+	} {
+		t.Run(variable.name, func(t *testing.T) {
+			t.Setenv(variable.name, variable.value)
+			if pages := workspace.citingDocuments(ctx, repo, event); len(pages) != 1 || pages[0] != "page.md" {
+				t.Errorf("%s hid the citing page: got %v, want [page.md]", variable.name, pages)
+			}
+		})
+	}
+}
+
+// seededRepoNamed builds a clean repository with one origin, in a directory of
+// the given name so that the worktree list's display label says which
+// repository answered. The one tracked file is named after the repository too,
+// so that a checkout compared against the wrong repository's index or object
+// store reports changes and a redirected `git status` cannot be mistaken for
+// the honest one.
+func seededRepoNamed(t *testing.T, name, remote string) string {
+	t.Helper()
+	repo := filepath.Join(t.TempDir(), name)
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init %s: %v: %s", name, err, output)
+	}
+	if err := os.WriteFile(filepath.Join(repo, name+".md"), []byte("belongs to "+name+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("git", "-C", repo, "add", name+".md").CombinedOutput(); err != nil {
+		t.Fatalf("track %s file: %v: %s", name, err, output)
+	}
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "seed").CombinedOutput(); err != nil {
+		t.Fatalf("seed %s: %v: %s", name, err, output)
+	}
+	setRemoteURL(t, repo, "origin", remote)
+	return repo
 }
 
 func setRemoteURL(t *testing.T, repo, name, value string) {

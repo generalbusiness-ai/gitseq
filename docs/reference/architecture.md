@@ -1114,13 +1114,25 @@ a projection it may merge on. This carries the fold profile to
   `/v0/worktrees` carries an optional `remote` alongside the served path. It
   is local Git state, never durable projection, and it is the one value this
   surface emits that a browser will navigate to. Three properties are the
-  contract, not implementation detail. It comes from the repository's own
-  configuration only — `git config --local`, so no outer scope can say where
-  the repository lives. Its size and count are bounded, and a repository past
-  either bound reports no remote rather than a partial one. It is admitted by
-  an allowlist: `http` and `https` only, never userinfo, a query, or a
-  fragment, since each can carry a credential and declining keeps it out of
-  the response body rather than trusting later rendering to drop it. Refused
+  contract, not implementation detail. It comes from the repository this
+  resident was pointed at, and from that repository's own configuration: two
+  bounds, because they answer different questions and neither implies the
+  other. `git config --local` bounds the scope, so no outer configuration
+  scope can name a remote the repository never configured. The environment of
+  every Git command this layer runs is stripped of the variables that decide
+  which repository Git resolves — `GIT_DIR`, `GIT_COMMON_DIR`,
+  `GIT_WORK_TREE` and their family — because those redirect the repository
+  before any scope rule applies, and a strictly local read of the wrong
+  repository is still the wrong repository. The same sanitising covers the
+  pathspec variables, so the guard that refuses a retirement the
+  documentation still cites cannot be silenced into finding nothing. Its size
+  and count are bounded, and a repository past either bound reports no remote
+  rather than a partial one. It is admitted by an allowlist: `http` and
+  `https` only, never userinfo, a query, or a fragment — including the empty
+  `?` and `#`, which are tested on the remote as configured rather than on
+  the parsed form, since one parser records an empty fragment and another
+  does not. Each can carry a credential, and declining keeps it out of the
+  response body rather than trusting later rendering to drop it. Refused
   means absent: the field is omitted, and the reader is told nothing about
   why.
 - `ui/` renders Workroom projections and live state, keeps its private

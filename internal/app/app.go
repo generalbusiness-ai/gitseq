@@ -210,21 +210,98 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 	return b.buffer.Write(p)
 }
 
+// gitRoutingVariables are the inherited environment variables that decide
+// something the command line of a read-only Git command cannot take back.
+//
+// The first group re-points the repository itself. GIT_DIR and GIT_COMMON_DIR
+// both move where Git looks for the config file, the refs and the worktree
+// registry, so `git -C here` reads another repository's answers while
+// reporting nothing unusual; GIT_WORK_TREE moves the checkout those answers
+// describe. GIT_OBJECT_DIRECTORY, GIT_ALTERNATE_OBJECT_DIRECTORIES,
+// GIT_INDEX_FILE and GIT_NAMESPACE move a part each — the object store, the
+// index, the ref namespace — and GIT_CEILING_DIRECTORIES and
+// GIT_DISCOVERY_ACROSS_FILESYSTEM change whether the repository is found at
+// all. None of them is currently a whole disclosure on its own, which is
+// exactly why they are removed as a family rather than one at a time: what
+// makes them dangerous is the shared property that the caller named a
+// repository and Git read a different one.
+//
+// The second group re-interprets the pathspecs after `--`.
+// GIT_LITERAL_PATHSPECS turns the `*.md` in citingDocuments into a literal
+// filename that matches nothing, and the glob variables shift it in the same
+// way. citingDocuments is read as a guard, so an empty answer lets a cited
+// retirement through: silence there is a bypass, not a cosmetic wrong.
+//
+// GIT_CONFIG and GIT_CONFIG_* are deliberately left alone. They are the family
+// through which a caller narrows Git on purpose — internal/gitstore and
+// internal/testgit both pin system and global config to /dev/null through
+// them — and safe.directory, which decides whether Git will read a repository
+// owned by another user at all, is normally set in exactly the scope they
+// point at. Removing them here would silently undo both. The one command below
+// whose output is configuration reads --local, which bounds that question at
+// the argument where it belongs.
+var gitRoutingVariables = map[string]bool{
+	"GIT_DIR":                          true,
+	"GIT_COMMON_DIR":                   true,
+	"GIT_WORK_TREE":                    true,
+	"GIT_OBJECT_DIRECTORY":             true,
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
+	"GIT_INDEX_FILE":                   true,
+	"GIT_NAMESPACE":                    true,
+	"GIT_CEILING_DIRECTORIES":          true,
+	"GIT_DISCOVERY_ACROSS_FILESYSTEM":  true,
+	"GIT_LITERAL_PATHSPECS":            true,
+	"GIT_GLOB_PATHSPECS":               true,
+	"GIT_NOGLOB_PATHSPECS":             true,
+	"GIT_ICASE_PATHSPECS":              true,
+}
+
+// repositoryLocalGit builds every read-only Git command this package runs
+// against a checkout, so that "the repository at repo" is what Git actually
+// reads. There is one constructor rather than a line at each of the five call
+// sites because the defect it closes is invisible at a call site: every one of
+// those commands looked correct, named its repository with -C, and answered
+// out of whichever repository the ambient environment pointed at. A site that
+// forgot the sanitising would look exactly like one that did not, so the only
+// reliable place to put it is where the command is built.
+//
+// --no-optional-locks keeps a read from writing to a repository somebody else
+// may be using; it belongs to every one of these commands for the same reason
+// the environment does.
+func repositoryLocalGit(ctx context.Context, repo string, arguments ...string) *exec.Cmd {
+	argv := append([]string{"--no-optional-locks", "-C", repo}, arguments...)
+	command := exec.CommandContext(ctx, "git", argv...)
+	environment := os.Environ()
+	sanitized := make([]string, 0, len(environment))
+	for _, variable := range environment {
+		if name, _, found := strings.Cut(variable, "="); found && gitRoutingVariables[name] {
+			continue
+		}
+		sanitized = append(sanitized, variable)
+	}
+	command.Env = sanitized
+	return command
+}
+
 // gitRemotes reads the remote URLs this repository itself configures.
 //
-// --local is the whole of that word "itself". Without it the answer is the
-// merge of system, global, command (GIT_CONFIG_COUNT) and local scopes, so
-// anything able to set a variable in the resident's environment or in the
-// invoking user's ~/.gitconfig can name a remote.origin.url the repository
-// never configured — and it is emitted last, so it wins the map below. The
-// repository's own config file is the only thing this is entitled to disclose.
+// Two separate bounds make that word "itself" true, and neither substitutes
+// for the other. --local answers "whose configuration file?": without it the
+// answer is the merge of system, global, command (GIT_CONFIG_COUNT) and local
+// scopes, and the outer value is emitted last, so it would win the map below.
+// The sanitised environment answers "which repository?": --local bounds the
+// scope Git reads and says nothing at all about which repository Git resolved
+// before reading anything, so GIT_DIR or GIT_COMMON_DIR alone would make this
+// disclose another repository's remote through a read that is, by its own
+// lights, strictly local. The repository's own config file is the only thing
+// this is entitled to disclose, and it takes both bounds to name it.
 //
 // The --null form separates records with NUL and the key from its value with a
 // newline, so a URL containing spaces or a name containing dots stays
 // unambiguous. A repository with no remotes makes `git config --get-regexp`
 // exit non-zero, which is not an error here: it is the ordinary answer "none".
 func gitRemotes(ctx context.Context, repo string) map[string]string {
-	command := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", repo, "config", "--local", "--null", "--get-regexp", `^remote\..*\.url$`)
+	command := repositoryLocalGit(ctx, repo, "config", "--local", "--null", "--get-regexp", `^remote\..*\.url$`)
 	output := &boundedBuffer{limit: maxRemoteConfigBytes}
 	command.Stdout = output
 	if err := command.Run(); err != nil {
@@ -293,15 +370,22 @@ func linkableRemote(remotes map[string]string) string {
 // about which parameter names are secret — an enumeration that would be a
 // denylist, the thing the scheme rule is careful not to be.
 //
-// The test is made against the serialised form rather than the parsed fields
-// because escaping decides it exactly: url.URL escapes ? and # wherever they
-// appear in a host or path, so a bare one in the output can only be the query
-// or fragment delimiter — the empty one ForceQuery records included. What this
-// returns therefore never carries either delimiter, which is what lets the
-// browser apply the identical rule to the value it receives.
+// The test is made on the raw input, before parsing, because parsing is where
+// the evidence is lost. url.Parse always reads a bare ? or # as the query or
+// fragment delimiter — anywhere else the character has to arrive
+// percent-encoded, so a raw one in the input can only be that delimiter, and
+// no case is refused here that the parser would have called path or host. What
+// parsing costs is the empty fragment: url.URL records an empty query as
+// ForceQuery and puts the ? back, but "…/repo.git#" parses to an empty
+// Fragment that leaves no trace in the serialisation at all. Testing the
+// serialised form therefore admitted that one URL and emitted it with the #
+// dropped, while the browser's URL keeps the trailing # and
+// ui/src/lib/repolink.ts refuses it — one rule, two answers, and a link the
+// page then declined to draw. The raw test is the same rule for both empty
+// delimiters and one fewer thing to reason about.
 func webRemoteURL(raw string) string {
 	raw = strings.TrimSpace(raw)
-	if raw == "" {
+	if raw == "" || strings.ContainsAny(raw, "?#") {
 		return ""
 	}
 	parsed, err := url.Parse(raw)
@@ -316,11 +400,7 @@ func webRemoteURL(raw string) string {
 	if parsed.User != nil || parsed.Host == "" {
 		return ""
 	}
-	link := parsed.String()
-	if strings.ContainsAny(link, "?#") {
-		return ""
-	}
-	return link
+	return parsed.String()
 }
 
 // WorktreeView is one checkout of the repository. Checkout is a display label
@@ -395,7 +475,7 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 	if age := time.Since(w.worktreesCachedAt); !w.worktreesCachedAt.IsZero() && age >= 0 && age < 8*time.Second {
 		return LocalRepo{Path: w.repoPathCached, Remote: w.repoRemoteCached, Worktrees: append([]WorktreeView(nil), w.worktreesCached...)}, nil
 	}
-	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", w.Repo, "worktree", "list", "--porcelain", "-z").Output()
+	output, err := repositoryLocalGit(ctx, w.Repo, "worktree", "list", "--porcelain", "-z").Output()
 	if err != nil {
 		return LocalRepo{}, fmt.Errorf("list worktrees: %w", err)
 	}
@@ -455,7 +535,7 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 		return filepath.Clean(absolute)
 	}
 	selectedPath := w.Repo
-	if top, topErr := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", w.Repo, "rev-parse", "--show-toplevel").Output(); topErr == nil {
+	if top, topErr := repositoryLocalGit(ctx, w.Repo, "rev-parse", "--show-toplevel").Output(); topErr == nil {
 		selectedPath = strings.TrimSpace(string(top))
 	}
 	selected := canonicalPath(selectedPath)
@@ -480,7 +560,7 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 			view.State = "locked"
 		default:
 			statusCtx, cancel := context.WithTimeout(inspectionCtx, 750*time.Millisecond)
-			status, statusErr := exec.CommandContext(statusCtx, "git", "--no-optional-locks", "-C", item.path, "status", "--porcelain=v1", "--untracked-files=normal").Output()
+			status, statusErr := repositoryLocalGit(statusCtx, item.path, "status", "--porcelain=v1", "--untracked-files=normal").Output()
 			cancel()
 			if statusErr == nil {
 				view.State = "clean"
@@ -1358,8 +1438,14 @@ func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, ki
 // git grep rather than a walk, because tracked is the question. An untracked
 // working copy of a page is not what the gate reads, and a page that git does
 // not know about cannot break anyone else.
+//
+// This one is the reason repositoryLocalGit removes the pathspec variables as
+// well as the routing ones: an answer of "nothing cites it" is what lets a
+// retirement through, so a `*.md` reinterpreted as a literal filename, or a
+// grep re-pointed at a repository where the page does not exist, is a bypass
+// of the guard rather than a wrong display.
 func (w *Workspace) citingDocuments(ctx context.Context, repo, event string) []string {
-	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", repo,
+	output, err := repositoryLocalGit(ctx, repo,
 		"grep", "--name-only", "--fixed-strings", event, "--", "*.md").Output()
 	if err != nil {
 		// git grep exits non-zero when it matches nothing, which is the

@@ -163,3 +163,82 @@ func TestWorktreesResponseIgnoresOutOfRepositoryRemoteConfiguration(t *testing.T
 		t.Fatalf("remote = %q, want the repository's own local origin", local.Remote)
 	}
 }
+
+// The same question asked of the repository rather than of the configuration
+// file. `git config --local` bounds the scope it reads; it does not bound
+// which repository Git resolved before reading anything, and GIT_DIR and
+// GIT_COMMON_DIR both re-point that resolution, so a strictly local read can
+// still answer out of another repository altogether. GIT_WORK_TREE re-points
+// the checkout the list describes. This is the surface where that would be
+// observed: the browser is handed a remote and a set of checkout labels, and
+// neither may come from a repository the resident was not pointed at.
+func TestWorktreesResponseIgnoresInheritedGitRoutingVariables(t *testing.T) {
+	ctx := context.Background()
+	victim := seededRepo(t, "victim", "https://real.invalid/org/repo.git")
+	attacker := seededRepo(t, "attacker", "https://attacker.invalid/evil.git")
+	if _, _, err := app.Init(ctx, victim, "human", 1<<20); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, variable := range []struct{ name, value string }{
+		{"GIT_DIR", filepath.Join(attacker, ".git")},
+		{"GIT_COMMON_DIR", filepath.Join(attacker, ".git")},
+		{"GIT_WORK_TREE", attacker},
+	} {
+		t.Run(variable.name, func(t *testing.T) {
+			// A workspace and server per case, because the worktree cache
+			// lives on the workspace and would otherwise answer a later case
+			// from an earlier read; and opened before the variable is set,
+			// because app.Open resolves the repository through
+			// internal/gitstore, which this test is not about.
+			workspace, err := app.Open(ctx, victim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv(variable.name, variable.value)
+			server, err := New(workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			httpServer := httptest.NewServer(server.Handler())
+			defer httpServer.Close()
+			response, err := http.Get(httpServer.URL + "/v0/worktrees")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(body), "attacker") {
+				t.Fatalf("%s redirected the response the browser is handed: %s", variable.name, body)
+			}
+			var local worktreesResponse
+			if err := json.Unmarshal(body, &local); err != nil {
+				t.Fatalf("decode %s: %v", body, err)
+			}
+			if local.Remote != "https://real.invalid/org/repo.git" {
+				t.Fatalf("remote = %q, want the victim's own local origin", local.Remote)
+			}
+		})
+	}
+}
+
+// seededRepo builds a repository with one commit and one origin, in a
+// directory of the given name so that the checkout labels in the response say
+// which repository answered.
+func seededRepo(t *testing.T, name, remote string) string {
+	t.Helper()
+	repo := filepath.Join(t.TempDir(), name)
+	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init %s: %v: %s", name, err, output)
+	}
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "seed").CombinedOutput(); err != nil {
+		t.Fatalf("seed %s: %v: %s", name, err, output)
+	}
+	if output, err := exec.Command("git", "-C", repo, "config", "remote.origin.url", remote).CombinedOutput(); err != nil {
+		t.Fatalf("set remote on %s: %v: %s", name, err, output)
+	}
+	return repo
+}
