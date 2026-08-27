@@ -71,6 +71,14 @@ gs state --repo "$REPO" --server "http://127.0.0.1:$PORT" --as alice \
   --kind assert --text 'submitted through the resident' --rests-on "$SEED"
 ```
 
+Four authority commands have no resident write path: `actor-add`,
+`actor-retire`, `role-grant`, and `role-revoke`. Their work spans more than one
+append, or changes local key custody as well as the log. They therefore refuse
+before changing anything while the repository advertises a resident. Stop the
+resident first, or pass `--server -` to one of these commands when you
+deliberately choose the local fold. The explicit override never contacts the
+advertised resident.
+
 ## Loopback only, and why
 
 ```sh

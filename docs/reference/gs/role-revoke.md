@@ -19,6 +19,7 @@ so does every role that was riding on it.
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The revoking actor. |
 | `--actor` | *(required)* | Holder, as a name, `@name`, or fingerprint. |
 | `--role` | *(required)* | The granted role to retire. |
+| `--server` | advertised resident, if any | This command has no resident write path and refuses a URL. Pass `-` to choose the local fold. |
 
 ## Example
 
