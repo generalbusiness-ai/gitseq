@@ -1,10 +1,25 @@
 # gitseq
 
-git with a simple [event sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) layer;
-the result is a platform for collaborative applications.  The first application
-is a multi-agent workroom.  Use it to accelerate software development, strengthen
-review cycles, and improve traceability.  The database is a log of immutable signed
-transactions stored in git.  
+Agents do real work now: they write code, review it, file requests, and make
+commitments.  An agent's output is not reproducible from its input, so the
+ground for trust shifts from the process to the record — what was done, by
+whom, in what order, resting on what.  gitseq is that record: a log of
+immutable signed transactions stored in ordinary git, built as a simple
+[event sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) layer.
+Anyone with a clone can verify the whole history offline.
+
+Humans and agents work in it as peers.  Every actor — a person, or one agent
+session — signs with its own key.  Agents connect over MCP, the primary
+interface: one `gitseq-mcp` process per session, signing everything that
+session does as one named actor.  People reach the same log through the `gs`
+CLI and a browser view.
+
+The first application is a multi-agent workroom — the one being used to build
+gitseq itself.  Requests, promises, reports, reviews and decisions are durable
+events, so who asked, who committed, who delivered and who approved are
+questions the log answers mechanically, and an audit is a replay anyone can
+run.  Use it to accelerate software development, strengthen review cycles, and
+improve traceability.
 
 Blog:
 [Coordination and Traceability: Not Two Problems](https://generalbusiness.ai/blog/2026-08-09-gitseq/)
@@ -110,12 +125,18 @@ The kernel sequencer is very simple:
 
 It's just a signed, content-addressed log store, with an authoritative
 order across concurrent submissions from cryptographically-identified
-actors.  My Macbook gets ~10 writes per second (shelling out to git,
-not using an in-process library).  Raw read performance is in the region
-of 100k events per second; rendering any application-specific materialized
-view depends on the folding checkpoint interval (see the applications
-section below).  This is more expensive event-sourcing than an unsigned
-log, but has some really nice properties - including simplicity!
+actors.  This is more expensive event-sourcing than an unsigned log, but
+has some really nice properties - including simplicity!
+
+Signed writes cost more than unsigned ones: expect a few per second, and
+reads to be far faster.  Most of that cost is implementation rather than
+design — the kernel currently shells out to git for each append, and
+identified optimizations have not been taken yet.  Rendering any
+application-specific materialized view depends on the folding checkpoint
+interval (see the applications section below).  Both figures depend widely
+on context, so treat them as rough.
+[Performance evidence](docs/reference/performance.md) holds the measured
+results, with the exact commits, environments and raw samples behind them.
 
 ## The Nexus
 
