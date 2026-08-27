@@ -200,19 +200,24 @@ func normalizeWorkQuery(input WorkQuery) (WorkQuery, string, error) {
 }
 
 func commitmentLane(commitment workroom.Commitment, actor string) WorkLane {
+	// The branch order mirrors BuildActorStatus exactly, so gs work and gs
+	// status classify one row identically. Reading not_actionable off an empty
+	// WaitingOn conflated two different facts: a row nobody owes a move on, and
+	// an actionable row whose performer has not promised yet. The second is a
+	// request its author is actively chasing, and it belongs in the waiting lane.
 	if addressedTo(commitment, actor) {
 		return LaneAvailable
+	}
+	if !involves(commitment, actor) {
+		return ""
+	}
+	if !actionable[commitment.Status] {
+		return LaneNotActionable
 	}
 	if commitment.WaitingOn == actor {
 		return LaneWaitingOnYou
 	}
-	if commitment.WaitingOn != "" && (commitment.Requester == actor || commitment.AddressedTo == actor || commitment.Performer == actor) {
-		return LaneYouAreWaitingOn
-	}
-	if commitment.Requester == actor || commitment.AddressedTo == actor || commitment.Performer == actor {
-		return LaneNotActionable
-	}
-	return ""
+	return LaneYouAreWaitingOn
 }
 
 func decodeWorkCursor(raw, head, filter string) (int, error) {

@@ -355,3 +355,40 @@ func TestExactInspectionDoesNotCopyLargeChainOrUnrelatedStatements(t *testing.T)
 		t.Fatalf("large surrounding projection changed exact inspection size: %d then %d", len(baselineJSON), len(selectedJSON))
 	}
 }
+
+// TestWorkQueryKeepsYourOwnUnclaimedRequestInTheSameLaneAsStatus is the query.go
+// half of the lane-drop repair. The two readers of one projection must classify
+// one row identically: gs work previously filed an unclaimed request its author
+// is chasing under not_actionable while gs status dropped it entirely, so
+// whichever reader you happened to open told you something different.
+func TestWorkQueryKeepsYourOwnUnclaimedRequestInTheSameLaneAsStatus(t *testing.T) {
+	projection := workroom.Projection{
+		Actors: map[string]workroom.ActorState{
+			queryActor: {Name: "Codex", Roles: []string{"participant"}},
+			otherActor: {Name: "Claude", Roles: []string{"participant"}},
+		},
+		Statements: []workroom.Statement{
+			{Event: "request:unclaimed-by-other", Actor: queryActor, Kind: workroom.KindRequest, Text: "filed by me, nobody has claimed it"},
+		},
+		Decisions: []workroom.Decision{{Event: "request:unclaimed-by-other", Verdict: workroom.Effective}},
+		Commitments: []workroom.Commitment{
+			{Request: "request:unclaimed-by-other", Requester: queryActor, AddressedTo: otherActor, Status: "open"},
+		},
+	}
+	snapshot := app.Snapshot{Genesis: "genesis", Head: "head-one", Depth: 1, Projection: projection}
+
+	page, err := BuildWorkPage(snapshot, WorkQuery{Actor: queryActor, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.MatchingTotal != 1 || len(page.Items) != 1 {
+		t.Fatalf("the author's own unclaimed request is missing from gs work: %+v", page)
+	}
+	item := page.Items[0]
+	if item.Lane != LaneYouAreWaitingOn {
+		t.Fatalf("lane = %q, want %q so gs work agrees with gs status", item.Lane, LaneYouAreWaitingOn)
+	}
+	if item.Status != "open" {
+		t.Fatalf("status = %q, want the open status visible so it reads as unclaimed", item.Status)
+	}
+}
