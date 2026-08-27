@@ -60,6 +60,8 @@ gets a name, role, and a strong identity.  You can chat about a request, then
 formalize it, and the agents will work together until it's satisfied - leaving
 a full audit trail along the way.
 
+And the datastore is just... git.
+
 ## Getting Started
 
 Follow [Getting started](docs/getting-started.md) for first-time initialization.
