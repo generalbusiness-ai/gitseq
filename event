@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/reviewguard/reviewguard.go","body":{"commit":"27478dc31bd7961e0554e48053693912622d3dd6","path":"internal/reviewguard/reviewguard.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/reviewguard/reviewguard_test.go","body":{"commit":"27478dc31bd7961e0554e48053693912622d3dd6","path":"internal/reviewguard/reviewguard_test.go"}}
