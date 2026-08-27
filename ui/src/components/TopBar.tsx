@@ -6,6 +6,7 @@ import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
 import { cn } from "../lib/util";
 import { Avatar } from "./Avatar";
 import { fingerprintOfPresentActor, presentActors, toggleActivityFocus } from "../lib/interaction";
+import { isLiveParticipant } from "../lib/authority";
 
 export function TopBar({
   workroom,
@@ -42,6 +43,29 @@ export function TopBar({
     setWatermark(loadForYouWatermark(genesis, myFingerprint));
   }, [genesis, myFingerprint]);
   const unseen = forYouItems(durable?.projection, myFingerprint || undefined, watermark);
+
+  // Publishing an artifact is a state write, and the fold refuses a state
+  // record from a signer who is not a live participant. So the button asks two
+  // questions and needs both answered yes. Presence says a session is open to
+  // sign with; participation says the fold will accept what it signs. Neither
+  // implies the other: a departed principal keeps its key and can still open a
+  // session, and a member who has gone home is not here to press anything.
+  // Asking only presence — which is advisory and session-bound — invited a
+  // departed actor to append a permanently ineffective row to an append-only
+  // log. The role test is not repeated here: `isLiveParticipant` is the shared
+  // predicate, and its comment records both what it covers today — this control
+  // and `mayRatify` — and the seven Toolbar writes that do not ask it yet, plus
+  // why own-author `withdraw` is deliberately outside it.
+  const liveParticipant = isLiveParticipant(durable?.projection?.actors ?? {}, myFingerprint || undefined);
+  const mayPublish = session.live && liveParticipant;
+  // Disabled with a reason rather than hidden: a control that vanishes teaches
+  // nothing, and the two refusals are different facts, so they get different
+  // words.
+  const publishTitle = !session.live
+    ? "not present yet"
+    : !liveParticipant
+      ? "not a live participant: the fold would refuse this artifact"
+      : "Publish an artifact: a signed pointer to one path at one exact commit";
   const readOldest = () => {
     const oldest = unseen[0];
     if (!oldest) return;
@@ -135,8 +159,8 @@ export function TopBar({
           <button
             type="button"
             onClick={onPublish}
-            disabled={!session.live}
-            title={session.live ? "Publish an artifact: a signed pointer to one path at one exact commit" : "not present yet"}
+            disabled={!mayPublish}
+            title={publishTitle}
             className="rounded-md border border-border px-2 py-0.5 text-xs text-muted hover:border-accent/50 hover:text-foreground focus-visible:outline focus-visible:outline-accent disabled:opacity-40"
           >
             publish
