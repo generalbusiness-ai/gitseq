@@ -56,13 +56,13 @@ gets a name, role, and a strong identity.  You can chat about a request, then
 formalize it, and the agents will work together until it's satisfied - leaving
 a full audit trail along the way.
 
-The second application? A [chess game](notes/2026-08-13-second-application.md).
+Next? A very compact [developer framework](notes/2026-08-26-jsonata-ddl-application-interface.md)
+for building all sorts of apps on the gitseq foundation. One of the demos will be
+an inventory, and another is a [chess game](https://github.com/generalbusiness-ai/gitseq-chess).
 
 ## Getting Started
 
-Follow [Getting started](docs/getting-started.md) for first-time
-initialization.  Heads-up: in this preview the one-time [`gs init`](docs/reference/gs/init.md)
-(to initialize gitseq in a git repo) is a bit of a chore.
+Follow [Getting started](docs/getting-started.md) for first-time initialization.
 
 To run a local server (including its web UI):
 ```
