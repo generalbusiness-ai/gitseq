@@ -117,11 +117,20 @@ touched, so nothing else has to be undone:
 ```sh
 COPY="$WORK/copy"
 cp -R "$REPO" "$COPY"
-GITSEQ_DIR="$(git -C "$COPY" rev-parse --path-format=absolute --git-common-dir)/gitseq"
-# Not a recursive force delete. On a path built by substitution that is one
-# bad expansion away from removing something else, so the path is resolved
-# into a variable, checked, and then emptied by find, which removes only what
-# is actually there.
+COMMON_DIR="$(git -C "$COPY" rev-parse --path-format=absolute --git-common-dir)"
+# The safeguard here is the two comparisons below, not find. find is not a
+# safeguard at all: it would empty a wrong directory as thoroughly as the
+# right one. What makes this safe is that the resolved path must equal the
+# one location it is allowed to be, so a substitution returning anything
+# else stops the block instead of deleting. Both sides are resolved with
+# pwd -P first, because git reports an absolute path with symlinks already
+# followed while $COPY may still contain one: on macOS a temporary directory
+# under /tmp or /var is reached through exactly such a link, and comparing
+# the two spellings would fail on every run.
+COPY_DIR="$(cd "$COPY" && pwd -P)"
+test "$COMMON_DIR" = "$COPY_DIR/.git"
+GITSEQ_DIR="$COMMON_DIR/gitseq"
+test "$GITSEQ_DIR" = "$COPY_DIR/.git/gitseq"
 test -d "$GITSEQ_DIR"
 find "$GITSEQ_DIR" -mindepth 1 -depth -type f -exec unlink {} \;
 find "$GITSEQ_DIR" -mindepth 1 -depth -type d -exec rmdir {} +
