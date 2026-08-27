@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Application admission and exact-frontier guard implementation at exact head 4784ab98. Post-dedup admission, cited_ok, custody fail-closed, replay, race and full-suite tests pass.","body":{"commit":"4784ab98c92abe09e60ce0c65b384d13dd802f5b","path":"internal/app"}}
+{"kind":"artifact","text":"Kernel generic signed replay lookup support at exact head 4784ab98. CheckReplay and full-suite tests pass; Workroom semantics remain outside the kernel.","body":{"commit":"4784ab98c92abe09e60ce0c65b384d13dd802f5b","path":"internal/kernel"}}
