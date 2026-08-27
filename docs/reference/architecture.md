@@ -902,14 +902,14 @@ anything else — and without a resolved viewer, since every branch past that
 compares the signer against somebody. The departed own-author exception is held
 to that ordinary path: `decideSupersede` sends a roster target through
 governance first, where the founding seed can never be retired, an operator
-grant needs `operator`, and every other roster change needs `ratifier`, and
-authorship is not consulted at all. The projection carries a statement row for
-every state record, roster included, so those records reach the generic row
-affordance like any other; the browser withholds `withdraw` from them and
-refuses them at the boundary rather than restating the governance ladder, which
-would be a second copy of the fold to keep in step. Excluding is a refusal the
-fold would not always make, and that is the safe direction: `gs supersede` files
-the act and the fold rules on it.
+grant or a membership carrying operator needs `operator`, and every other roster
+change needs `ratifier`, and authorship is not consulted at all. The projection
+carries a statement row for every state record, roster included, so those
+records reach the generic row affordance like any other; the browser withholds
+`withdraw` from them and refuses them at the boundary rather than restating the
+governance ladder, which would be a second copy of the fold to keep in step.
+Excluding is a refusal the fold would not always make, and that is the safe
+direction: `gs supersede` files the act and the fold rules on it.
 
 The cost of getting this wrong is not a failed click. Offering an act the fold
 refuses appends a permanent ineffective row to an append-only log: a durable

@@ -185,11 +185,11 @@ export function semanticActions({
   // arrive here as an unrecognised kind whose only action is this one. But
   // `decideSupersede` routes a roster target through governance before it ever
   // looks at the author: the founding seed can never be retired, an operator
-  // grant needs `operator`, every other roster change needs `ratifier`. Offering
-  // withdraw there offers an act the fold refuses, and the cost of that is a
-  // permanent ineffective row. `signingRefusal` refuses the same target at the
-  // boundary that signs; this is the courtesy that keeps the button from being
-  // drawn in the first place.
+  // grant or a membership carrying operator needs `operator`, every other
+  // roster change needs `ratifier`. Offering withdraw there offers an act the
+  // fold refuses, and the cost of that is a permanent ineffective row.
+  // `signingRefusal` refuses the same target at the boundary that signs; this
+  // is the courtesy that keeps the button from being drawn in the first place.
   if (me === statement.actor && !isRosterGovernance(statement))
     actions.push({ label: "withdraw", symbol: "↩", tone: "danger", run: () => onRoute("withdraw", [statement.event], "") });
   return actions;
