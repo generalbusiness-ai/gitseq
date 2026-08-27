@@ -22,6 +22,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/fxamacker/cbor/v2"
+	gitseqhost "github.com/generalbusiness-ai/gitseq/host"
 )
 
 const (
@@ -1246,10 +1247,7 @@ func ActorSigningBytes(draft Draft) ([]byte, error) {
 
 // ActorFingerprint returns the full lowercase fingerprint bound to a session.
 func ActorFingerprint(key ed25519.PublicKey) (string, error) {
-	if len(key) != ed25519.PublicKeySize {
-		return "", errors.New("invalid actor public key")
-	}
-	return actorFingerprint(key), nil
+	return gitseqhost.ActorFingerprint(key)
 }
 
 func encode(value any) ([]byte, error) {
@@ -1600,8 +1598,11 @@ func containsExact(values []string, wanted string) bool {
 }
 
 func actorFingerprint(key []byte) string {
-	digest := sha256.Sum256(key)
-	return hex.EncodeToString(digest[:])
+	fingerprint, err := gitseqhost.ActorFingerprint(ed25519.PublicKey(key))
+	if err != nil {
+		panic("live runtime received an invalid verified actor key")
+	}
+	return fingerprint
 }
 
 func validateMessage(message Message) error {
@@ -1627,11 +1628,10 @@ func normalizeRecipients(recipients []string) ([]string, error) {
 	seen := make(map[string]bool, len(recipients))
 	normalized := make([]string, 0, len(recipients))
 	for _, recipient := range recipients {
-		if len(recipient) != sha256.Size*2 {
+		if len(recipient) != gitseqhost.ActorFingerprintLength {
 			return nil, errors.New("recipient must be a full actor fingerprint")
 		}
-		decoded, err := hex.DecodeString(recipient)
-		if err != nil || hex.EncodeToString(decoded) != recipient {
+		if !gitseqhost.ValidActorFingerprint(recipient) {
 			return nil, errors.New("recipient must be a lowercase hexadecimal actor fingerprint")
 		}
 		if !seen[recipient] {

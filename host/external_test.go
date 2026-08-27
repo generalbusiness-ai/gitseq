@@ -155,6 +155,20 @@ func TestOutsideApplicationRunsOnTheKernel(t *testing.T) {
 		t.Fatalf("open by another application = %v, want host.ErrUninterpretable", err)
 	}
 }
+
+func TestOutsideApplicationUsesTheIdentifierContract(t *testing.T) {
+	private := key(t)
+	fingerprint, err := host.ActorFingerprint(private.Public().(ed25519.PublicKey))
+	if err != nil || !host.ValidActorFingerprint(fingerprint) {
+		t.Fatalf("external actor fingerprint = %q, %v", fingerprint, err)
+	}
+	const genesis = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const event = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	id := host.EventID("sha1", genesis, event)
+	if id != "git:sha1:"+genesis+"#git:sha1:"+event || !host.ValidEventID(id) {
+		t.Fatalf("external event identifier = %q", id)
+	}
+}
 `
 
 // reachInside is the negative half. If the internal packages were reachable

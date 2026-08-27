@@ -479,7 +479,7 @@ func replaceBinding(ctx context.Context, repo string, application Application, i
 		Genesis: config.Genesis, Application: incoming.Application,
 		OutgoingFoldVersion: outgoing.FoldVersion, IncomingFoldVersion: incoming.FoldVersion,
 		Record: Record{
-			ID: workspace.eventID(result.Commit), Actor: intent.ActorFingerprint(request.Signed.ActorKey),
+			ID: workspace.eventID(result.Commit), Actor: actorFingerprint(request.Signed.ActorKey),
 			ActorKey: ed25519.PublicKey(request.Signed.ActorKey), Schema: apphost.BindingSchema,
 			Payload: payload, Timestamp: result.Timestamp,
 		},
@@ -567,7 +567,7 @@ func (w *Workspace) append(ctx context.Context, signer ed25519.PrivateKey, schem
 		return Record{}, err
 	}
 	return Record{
-		ID: w.eventID(result.Commit), Actor: intent.ActorFingerprint(signed.ActorKey),
+		ID: w.eventID(result.Commit), Actor: actorFingerprint(signed.ActorKey),
 		ActorKey: ed25519.PublicKey(signed.ActorKey), Schema: schema, Payload: payload,
 		RestsOn: restsOn, Timestamp: result.Timestamp,
 	}, nil
@@ -626,7 +626,7 @@ func (w *Workspace) convert(events []kernel.Event) []Record {
 	records := make([]Record, 0, len(events))
 	for _, event := range events {
 		records = append(records, Record{
-			ID: w.eventID(event.Commit), Actor: intent.ActorFingerprint(event.Signed.ActorKey),
+			ID: w.eventID(event.Commit), Actor: actorFingerprint(event.Signed.ActorKey),
 			ActorKey: ed25519.PublicKey(event.Signed.ActorKey), Schema: event.Intent.Schema,
 			Payload: event.Payload, RestsOn: event.Intent.RestsOn, Timestamp: event.Timestamp,
 		})
@@ -635,7 +635,7 @@ func (w *Workspace) convert(events []kernel.Event) []Record {
 }
 
 func (w *Workspace) eventID(commit string) string {
-	return "git:" + w.objectFormat + ":" + w.genesis + "#git:" + w.objectFormat + ":" + commit
+	return EventID(w.objectFormat, w.genesis, commit)
 }
 
 func randomKey() (string, error) {
