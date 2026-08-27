@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:faafef97d95b82de925b28700c21e50bdcbd39bd"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8ef75420464d81395d8037c5178ebd5e8fdd715e","text":"Withdraw this review request because retiring the vulnerable predecessor artifacts made the repair request and all three reported successors stale before review. Planner must refile the repair on current bases before fresh artifacts and review."}
