@@ -79,9 +79,10 @@ Four body keys are reserved for the admission boundary, and a plain
 | `review_frontier` | The guarded review path | [`review`](review.md) |
 | `dead_basis_override` | The dead-basis escape | `allow_dead_basis` |
 
-The refusal names the field: `body.<field>=... is a reserved admission
-field and cannot be supplied by this write`. It happens before signing,
-so nothing reaches the log.
+The refusal names the field and quotes back the value you sent, so a
+`review_path` of `x` is refused as `body.review_path="x" is a reserved
+admission field and cannot be supplied by this write`. It happens before
+signing, so nothing reaches the log.
 
 The first three are stamped by the [`review`](review.md) tool onto the
 verdict it builds, so a hand-written call has no reason to carry them.
