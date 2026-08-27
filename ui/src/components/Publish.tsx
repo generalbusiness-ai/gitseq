@@ -21,6 +21,7 @@ export interface PublishInput {
 export function PublishArtifact({
   basis,
   busy,
+  refusal,
   error,
   onPublish,
   onClose,
@@ -29,6 +30,15 @@ export function PublishArtifact({
   basis?: { event: string; label: string };
   /** Filed and not yet folded: the dialog waits rather than claiming the record is gone. */
   busy: boolean;
+  /**
+   * Why publishing is refused as of this render, or undefined when it is
+   * allowed. Recomputed by the caller on every render from the same rule the
+   * signing boundary asks, so a session that expires or a membership that is
+   * superseded while this dialog is open closes the submit rather than
+   * offering a record the fold will refuse. It carries the reason and not a
+   * bare yes/no so the disabled control can say which refusal this is.
+   */
+  refusal?: string;
   error?: string;
   onPublish: (input: PublishInput) => void;
   onClose: () => void;
@@ -38,6 +48,12 @@ export function PublishArtifact({
   const [text, setText] = useState("");
   const [cite, setCite] = useState(false);
   const ready = path.trim() !== "" && commit.trim() !== "" && text.trim() !== "";
+  // Two different refusals, kept apart: an unfinished form is the operator's
+  // own business, and lost authority is news about the room. They are reported
+  // in different words, and the second is also shown in the dialog rather than
+  // hidden in a tooltip, because it arrives while the form is being filled and
+  // nothing else on this screen would announce it.
+  const blocked = !ready || busy || refusal !== undefined;
   // Initial focus, containment, Escape and restoration, which is what
   // aria-modal below already claims. Escape closes rather than publishing:
   // abandoning a form nobody signed costs nothing.
@@ -53,7 +69,10 @@ export function PublishArtifact({
         aria-labelledby="publish-title"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!ready || busy) return;
+          // Enter in a field submits the form, which no disabled button can
+          // stop, so the same gate is applied here. It is still not the
+          // guarantee: `App`'s publish asks the rule again before it signs.
+          if (blocked) return;
           onPublish({
             path: path.trim(),
             commit: commit.trim(),
@@ -102,6 +121,11 @@ export function PublishArtifact({
             </label>
           )}
         </div>
+        {refusal && (
+          <p role="status" className="mt-3 flex items-center gap-1 text-xs text-muted">
+            <CircleSlash className="h-3 w-3 shrink-0" /> {refusal}
+          </p>
+        )}
         {busy && (
           <p className="mt-3 text-xs text-muted" role="status">
             Filed. Waiting for the workroom to record it…
@@ -122,7 +146,8 @@ export function PublishArtifact({
           </button>
           <button
             type="submit"
-            disabled={!ready || busy}
+            disabled={blocked}
+            title={refusal ?? (ready ? undefined : "fill in what this artifact records, its path and its exact commit")}
             className="rounded-md bg-accent px-3 py-1 text-xs text-background transition-colors hover:bg-accent/90 focus-visible:outline focus-visible:outline-accent disabled:opacity-40"
           >
             publish

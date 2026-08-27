@@ -9,6 +9,7 @@ import { RequestList, defaultListView, type ListView } from "./components/Reques
 import { Thread, type PendingSay } from "./components/Thread";
 import { PublishArtifact, type PublishInput } from "./components/Publish";
 import { Avatar } from "./components/Avatar";
+import { publishRefusal } from "./lib/authority";
 import { reconciledPendingIDs, RetryKeys } from "./lib/interaction";
 import { firstLine } from "./lib/util";
 
@@ -83,6 +84,15 @@ export default function App() {
     [session.credential],
   );
 
+  // Publish authority, asked once here and read everywhere the publish path
+  // can still be stopped: the top bar's control, the dialog's submit, and the
+  // signing boundary below. It is a fact about this render, not about the
+  // moment the dialog opened — a lease can expire and a membership grant can
+  // be superseded while the form is on screen, and the fold refuses a state
+  // record from a signer who is not a live participant whenever that happens.
+  const myFingerprint = workroom.actors.find((actor) => actor.name === session.actor)?.fingerprint;
+  const publishDenied = publishRefusal(session.live, projection?.actors ?? {}, myFingerprint || undefined);
+
   // Publishing an artifact is the one act that starts from nothing, so it is
   // the one the two screens cannot hold. Opened from a thread it offers that
   // thread's record as a basis, which is how a stamped predecessor comes to
@@ -106,6 +116,18 @@ export default function App() {
   const publish = useCallback(
     async (input: PublishInput) => {
       if (filing || awaiting) return;
+      // The load-bearing check, and the last one. Every gate before this is a
+      // courtesy drawn on a screen: a disabled button stops a click, and
+      // stops nothing else. This runs in the same statement sequence as the
+      // signature, with the authority read at this render rather than the one
+      // that opened the dialog, so a session that expired or a membership that
+      // was superseded in between refuses here — with the reason on screen —
+      // instead of appending a permanently ineffective row to an append-only
+      // log.
+      if (publishDenied) {
+        setPublishError(`not filed: ${publishDenied}`);
+        return;
+      }
       setFiling(true);
       setPublishError(undefined);
       const act = {
@@ -127,7 +149,7 @@ export default function App() {
         setFiling(false);
       }
     },
-    [filing, awaiting, session.credential],
+    [filing, awaiting, session.credential, publishDenied],
   );
 
   const publishBasis =
@@ -173,6 +195,7 @@ export default function App() {
         <PublishArtifact
           basis={publishBasis}
           busy={filing || awaiting !== undefined}
+          refusal={publishDenied}
           error={publishError}
           onPublish={publish}
           onClose={() => {

@@ -16,9 +16,16 @@ import type { ActorState, Statement } from "./api.ts";
 // ineffective row to an append-only log, which is what this predicate exists
 // to prevent.
 //
-// WHAT IT COVERS TODAY, stated exactly rather than aspirationally. Two callers:
-// the top bar's `publish` control, and `mayRatify` below for the
-// originating-requester case. Nothing else asks it yet.
+// WHAT IT COVERS TODAY, stated exactly rather than aspirationally. Two
+// functions call this predicate: `publishRefusal` below, and `mayRatify` below
+// for the originating-requester case. `publishRefusal` is in turn asked at
+// three points on the publish path — the top bar's `publish` control
+// (`components/TopBar.tsx`), the artifact dialog's submit gate
+// (`components/Publish.tsx`, given the answer as a prop), and the signing
+// boundary in `App.tsx`'s `publish`, which is the one that actually decides
+// whether a record is written. The first two are courtesies that show a
+// refusal early; the third is the guarantee, because the dialog can outlive
+// the authority that opened it. Nothing else asks it yet.
 //
 // WHAT IT DOES NOT COVER YET. Seven state-writing affordances in
 // `components/Toolbar.tsx` are still offered on authorship or commitment role
@@ -50,6 +57,36 @@ import type { ActorState, Statement } from "./api.ts";
 export function isLiveParticipant(actors: Record<string, ActorState>, me?: string): boolean {
   if (!me) return false;
   return actors[me]?.roles?.includes("participant") === true;
+}
+
+// May this viewer publish an artifact right now, and if not, why not.
+//
+// Asked wherever the publish path can still be stopped, so that the control,
+// the dialog and the signing boundary cannot disagree: one rule, one place,
+// three callers. Answering with the reason rather than a bare boolean is what
+// lets each caller show the refusal it is holding instead of inventing words
+// for it, and what lets the signing boundary tell the operator why nothing was
+// filed.
+//
+// The two questions are independent and both must be yes. Presence says there
+// is a live session to sign with; participation says the fold will accept what
+// it signs. A departed principal keeps its key and can open a session, and a
+// member who has gone home has no session to press anything with.
+//
+// It is asked again at the moment of signing because both answers can change
+// while the dialog is open: a lease expires, or a membership grant is
+// superseded, and the form on screen was rendered before either happened.
+export function publishRefusal(
+  /** A live lease: `Session.live`. */
+  live: boolean,
+  /** The projected roster, keyed by fingerprint. */
+  actors: Record<string, ActorState>,
+  /** The viewer's fingerprint. */
+  me?: string,
+): string | undefined {
+  if (!live) return "not present yet";
+  if (!isLiveParticipant(actors, me)) return "not a live participant: the fold would refuse this artifact";
+  return undefined;
 }
 
 // Who may ratify what, read from the fold's own decision about this exact
