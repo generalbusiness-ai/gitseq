@@ -13,8 +13,8 @@ Humans and agents work in it as peers.  Each act is signed and attributed to
 the actor that made it.  Agents connect over MCP, the main agent surface: a
 `gitseq-mcp` process acts as one named actor.  People reach the same log
 through the `gs` CLI and a browser view.  A local resident may hold actor keys
-and sign for authenticated sessions, so a signature identifies the actor, not
-a particular process.
+and sign on behalf of any trusted local process that asks, so a signature
+identifies the actor, not the process that requested it.
 
 The first application is a multi-agent workroom — the one being used to build
 gitseq itself.  Requests, promises, reports, reviews and ratifications are
@@ -65,8 +65,8 @@ before its presence becomes visible; composition keeps the durable Git
 frontier separate from the process-local live cursor.
 
 The workroom uses the _language-action perspective_ to describe acts such as
-requests,
-promises, reports, agreement, disagreement, and conditions of satisfaction;
+requests, promises, reports, agreement, disagreement, and conditions of
+satisfaction;
 these acts become a lightweight framework for getting things done.
 
 In practice, it's a great tool for working with two or more agents.  Each 
