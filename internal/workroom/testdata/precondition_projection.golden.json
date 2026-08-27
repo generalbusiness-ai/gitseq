@@ -92,6 +92,7 @@
       "actor": "actor:operator",
       "kind": "roster",
       "lifecycle": "none",
+      "satisfier": "role:ratifier",
       "text": "Operator begins the workroom",
       "body": {
         "actor": "actor:operator",
@@ -105,6 +106,7 @@
       "actor": "actor:operator",
       "kind": "propose",
       "lifecycle": "none",
+      "satisfier": "role:ratifier",
       "text": "Adopt the projection contract",
       "ratified": true,
       "ratified_by": "e7"
@@ -115,6 +117,7 @@
       "actor": "actor:operator",
       "kind": "request",
       "lifecycle": "request",
+      "satisfier": "none",
       "text": "Ship the projector",
       "body": {
         "to": "actor:operator"
@@ -126,6 +129,7 @@
       "actor": "actor:operator",
       "kind": "artifact",
       "lifecycle": "none",
+      "satisfier": "none",
       "text": "Half a citation",
       "body": {
         "path": "internal/workroom"

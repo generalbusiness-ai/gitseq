@@ -8,6 +8,25 @@ import { createServer } from "vite";
 
 const uiRoot = fileURLToPath(new URL("..", import.meta.url));
 
+// The satisfiers the shipped fold captures on these kinds, carried where the
+// fold carries them: on each admitted statement, not in a lookup against the
+// vocabulary in force now. The fold decides a ratification against the
+// definition bound to the target when it was admitted, so the browser must
+// read the same value or it will disagree with the fold the first time a kind
+// is redefined. before-signing.test.mjs is where that disagreement is driven
+// in both directions; these fixtures only have to be honest about where the
+// value lives.
+const ADMITTED = {
+  propose: "role:ratifier",
+  request: "none",
+  report: "originating-requester",
+  artifact: "none",
+};
+const admitted = (statement) => ({ ...statement, satisfier: ADMITTED[statement.kind] });
+
+const ratifier = (name) => ({ name, kind: "human", roles: ["ratifier"], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} });
+const bystander = (name) => ({ name, kind: "human", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} });
+
 function workroom(presence, suppliedProjection) {
   const projection = suppliedProjection ?? {
     decisions: [],
@@ -65,12 +84,13 @@ test("an addressed proposal-ratification request offers the requested decision d
     const projection = {
       decisions: [proposal, request].map(({ event }) => ({ event, verdict: "effective", reason: "recorded" })),
       acts: [],
-      statements: [proposal, request],
+      statements: [proposal, request].map(admitted),
       commitments: [{ request: request.event, requester: request.actor, addressed_to: viewer, status: "open" }],
       artifacts: [],
-      actors: {},
+      actors: { [viewer]: ratifier("hugh") },
       provenance: { proposal: [], request: [proposal.event] },
     };
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
     const routed = [];
     const acted = [];
     const actions = semanticActions({
@@ -78,6 +98,7 @@ test("an addressed proposal-ratification request offers the requested decision d
       commitment: projection.commitments[0],
       decision: projection.decisions[1],
       projection,
+      index: buildRecordIndex(projection),
       me: viewer,
       onRoute: (...args) => routed.push(args),
       doAct: (...args) => acted.push(args),
@@ -88,7 +109,7 @@ test("an addressed proposal-ratification request offers the requested decision d
     actions[0].run();
     actions[1].run();
     assert.deepEqual(acted, [["ratify:proposal", { act: "ratify", target: proposal.event }]]);
-    assert.deepEqual(routed, [["dissent", proposal.event, ""]]);
+    assert.deepEqual(routed, [["dissent", [proposal.event], ""]]);
 
     const ordinary = semanticActions({
       statement: { ...request, event: "ordinary-request", text: "Implement the feature." },
@@ -99,11 +120,67 @@ test("an addressed proposal-ratification request offers the requested decision d
         statements: [{ ...request, event: "ordinary-request", text: "Implement the feature." }],
         provenance: { "ordinary-request": [] },
       },
+      index: buildRecordIndex(projection),
       me: viewer,
       onRoute() {},
       doAct() {},
     });
     assert.deepEqual(ordinary.map(({ label }) => label), ["accept"]);
+  } finally {
+    await vite.close();
+  }
+});
+
+// Authority, not sign-in. The fold decides a ratification by the satisfier
+// admitted with the target: `propose` named `role:ratifier`, so an actor
+// without that role gets an ineffective record and a permanent row in the log
+// saying they tried. The toolbar used to offer the button to every signed-in
+// actor, which is how that row came to be written. Denying needs no authority
+// and stays.
+//
+// The roles are what varies here. What happens when the admitted satisfier and
+// the live vocabulary disagree is a different question, driven on the rendered
+// screen in before-signing.test.mjs.
+test("a ratification is offered only to an actor the fold would let ratify", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { semanticActions } = await vite.ssrLoadModule("/src/components/Toolbar.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const viewer = "hugh-fingerprint";
+    const proposal = admitted({ event: "proposal", sequence: 1, actor: "codex-fingerprint", kind: "propose", text: "Use it.", timestamp: 1 });
+    const build = (statement, actors) => ({
+      decisions: [{ event: "proposal", sequence: 1, verdict: "effective", reason: "recorded" }],
+      acts: [],
+      statements: [statement],
+      commitments: [],
+      artifacts: [],
+      actors,
+      provenance: {},
+    });
+    const labels = (statement, actors) => {
+      const projection = build(statement, actors);
+      return semanticActions({
+        statement,
+        projection,
+        index: buildRecordIndex(projection),
+        me: viewer,
+        onRoute() {},
+        doAct() {},
+      }).map(({ label }) => label);
+    };
+
+    assert.deepEqual(labels(proposal, { [viewer]: ratifier("hugh") }), ["agree", "disagree"]);
+    assert.deepEqual(labels(proposal, { [viewer]: bystander("hugh") }), ["disagree"], "no ratifier role, no agree button");
+    assert.deepEqual(labels(proposal, {}), ["disagree"], "an actor the roster does not carry holds no role at all");
+    // A statement carrying no satisfier proves nothing about who may ratify
+    // it: either the fold bound it no definition, or the projection is too old
+    // to say. Layer 6 already refuses to present a partial projection as
+    // authoritative, and showing the button anyway would be guessing.
+    assert.deepEqual(
+      labels({ ...proposal, satisfier: undefined }, { [viewer]: ratifier("hugh") }),
+      ["disagree"],
+      "no admitted satisfier, no proof",
+    );
   } finally {
     await vite.close();
   }
@@ -206,17 +283,19 @@ test("a withdrawn ratification offers the decision again", async () => {
         { event: "ratify-a", actor: viewer, type: "ratify", target: "proposal", verdict: "effective", reason: "recorded" },
         { event: "withdraw-a", actor: viewer, type: "supersede", target: "ratify-a", verdict: "effective", reason: "recorded" },
       ],
-      statements: [{ ...proposal, ratified: ratifiedBy !== undefined, ratified_by: ratifiedBy }, request],
+      statements: [{ ...proposal, ratified: ratifiedBy !== undefined, ratified_by: ratifiedBy }, request].map(admitted),
       commitments: [{ request: "request", requester: request.actor, addressed_to: viewer, status: "open" }],
       artifacts: [],
-      actors: {},
+      actors: { [viewer]: ratifier("hugh") },
       provenance: { proposal: [], request: ["proposal"] },
     });
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
 
     const withdrawn = build(undefined);
     const afterWithdrawal = semanticActions({
       statement: request, commitment: withdrawn.commitments[0], decision: withdrawn.decisions[1],
-      projection: withdrawn, me: viewer, onRoute() {}, doAct() {},
+      projection: withdrawn, index: buildRecordIndex(withdrawn),
+      me: viewer, onRoute() {}, doAct() {},
     });
     assert.deepEqual(
       afterWithdrawal.map(({ label }) => label),
@@ -227,12 +306,71 @@ test("a withdrawn ratification offers the decision again", async () => {
     const standing = build("ratify-a");
     const whileStanding = semanticActions({
       statement: request, commitment: standing.commitments[0], decision: standing.decisions[1],
-      projection: standing, me: viewer, onRoute() {}, doAct() {},
+      projection: standing, index: buildRecordIndex(standing),
+      me: viewer, onRoute() {}, doAct() {},
     });
     assert.deepEqual(
       whileStanding.map(({ label }) => label),
       ["deny"],
       "while the viewer's ratification stands, ratifying again is not offered",
+    );
+  } finally {
+    await vite.close();
+  }
+});
+
+// Withdraw is offered on authorship, and authorship is the fold's rule for an
+// ordinary record and not for a roster one. The fold projects a statement row
+// for every state record it admits -- membership grants and role grants
+// included -- so a roster record reaches this toolbar as an unrecognised kind
+// that matches none of the branches above, and the only action left for it is
+// `withdraw`. `decideSupersede` routes a roster target through governance
+// before it ever reads the author: the founding seed can never be retired, an
+// operator grant needs `operator`, every other roster change needs `ratifier`.
+// So the button was offering an act the fold refuses, to the one person the
+// fold does not ask about.
+test("withdraw is not offered on a roster record the viewer authored", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { semanticActions } = await vite.ssrLoadModule("/src/components/Toolbar.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const viewer = "hugh-fingerprint";
+    // The shape internal/app writes when an actor joins: kind "roster" on the
+    // statement, and body.kind carrying the actor kind, which is a different
+    // field entirely.
+    const grant = {
+      event: "grant", actor: viewer, kind: "roster", satisfier: "role:ratifier",
+      text: "codex joins as agent", timestamp: 1,
+      body: { actor: "codex-fingerprint", kind: "agent", name: "codex", role: "participant" },
+    };
+    const ordinary = { event: "note", actor: viewer, kind: "assert", satisfier: "none", text: "The build is red.", timestamp: 2 };
+    const projection = {
+      decisions: [grant, ordinary].map(({ event }) => ({ event, verdict: "effective", reason: "recorded" })),
+      acts: [],
+      statements: [grant, ordinary],
+      commitments: [],
+      artifacts: [],
+      actors: { [viewer]: ratifier("hugh") },
+      provenance: { grant: [], note: [] },
+    };
+    const index = buildRecordIndex(projection);
+    const labels = (statement) =>
+      semanticActions({
+        statement, decision: projection.decisions.find(({ event }) => event === statement.event),
+        projection, index, me: viewer, onRoute() {}, doAct() {},
+      }).map(({ label }) => label);
+
+    assert.deepEqual(
+      labels(grant),
+      [],
+      "false offer: decideSupersede decides a roster target by standing, and the viewer's authorship is not standing",
+    );
+    // The positive control. Without it an empty list proves only that
+    // semanticActions returned nothing, which a broken fixture also does.
+    assert.deepEqual(
+      labels(ordinary),
+      ["withdraw"],
+      "false refusal: the roster exclusion must not take the ordinary own-authored withdraw with it",
     );
   } finally {
     await vite.close();

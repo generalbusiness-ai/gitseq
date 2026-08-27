@@ -7,8 +7,11 @@ import { api, type ActInput } from "./lib/api";
 import { TopBar } from "./components/TopBar";
 import { RequestList, defaultListView, type ListView } from "./components/RequestList";
 import { Thread, type PendingSay } from "./components/Thread";
+import { PublishArtifact, type PublishInput } from "./components/Publish";
 import { Avatar } from "./components/Avatar";
+import { publishRefusal, signingRefusal } from "./lib/authority";
 import { reconciledPendingIDs, RetryKeys } from "./lib/interaction";
+import { firstLine } from "./lib/util";
 
 // Two screens. The list is the default and answers the whole question; the
 // thread answers "what does this one wait on?". There is no third
@@ -57,6 +60,8 @@ export default function App() {
     if (matched.length > 0) dropPending(matched);
   }, [pending, frames, session.actor, dropPending]);
 
+  const myFingerprint = workroom.actors.find((actor) => actor.name === session.actor)?.fingerprint;
+
   // A one-flight, one-key guard per user intention: double-clicks and retries
   // reuse the same idempotency key, so at most one durable event results.
   const inFlight = useRef(new Set<string>());
@@ -65,6 +70,26 @@ export default function App() {
   const doAct = useCallback(
     async (intent: string, input: Omit<ActInput, "credential" | "idempotency_key">) => {
       if (inFlight.current.has(intent)) return;
+      // The authority question, asked here rather than only where the control
+      // was drawn. Toolbar decides what to offer when a row renders; between
+      // that render and this signature a lease can expire and a role can be
+      // superseded, and the fold judges the record by what is true now. This
+      // reads the current projection, not the one the offer was drawn from.
+      const denied = signingRefusal(input, {
+        live: session.live,
+        actors: projection?.actors ?? {},
+        me: myFingerprint || undefined,
+        target: input.target ? index?.statement(input.target) : undefined,
+        // The fold refuses a ratification whose target it has not ruled
+        // effective, and effectiveness is not on the statement — it is in
+        // `decisions`. Resolving it here is what lets the guard fail closed.
+        targetDecision: input.target ? index?.decision(input.target) : undefined,
+        originatingRequester: input.target ? index?.commitment(input.target)?.requester : undefined,
+      });
+      if (denied) {
+        setActError(`not filed: ${denied}`);
+        return;
+      }
       inFlight.current.add(intent);
       setActError(undefined);
       const payload = JSON.stringify(input);
@@ -78,8 +103,80 @@ export default function App() {
         inFlight.current.delete(intent);
       }
     },
-    [session.credential],
+    [session.credential, session.live, projection, index, myFingerprint],
   );
+
+  // Publish authority, asked once here and read everywhere the publish path
+  // can still be stopped: the top bar's control, the dialog's submit, and the
+  // signing boundary below. It is a fact about this render, not about the
+  // moment the dialog opened — a lease can expire and a membership grant can
+  // be superseded while the form is on screen, and the fold refuses a state
+  // record from a signer who is not a live participant whenever that happens.
+  const publishDenied = publishRefusal(session.live, projection?.actors ?? {}, myFingerprint || undefined);
+
+  // Publishing an artifact is the one act that starts from nothing, so it is
+  // the one the two screens cannot hold. Opened from a thread it offers that
+  // thread's record as a basis, which is how a stamped predecessor comes to
+  // rest on its replacement.
+  const [publishing, setPublishing] = useState(false);
+  const [filing, setFiling] = useState(false);
+  const [awaiting, setAwaiting] = useState<string>();
+  const [publishError, setPublishError] = useState<string>();
+
+  // The record is signed and appended before the fold has projected it. Opening
+  // its thread in that gap renders "this thread is not in the projection",
+  // which is a false negative about a record we just filed successfully — so
+  // the arrival waits for the projection to carry it.
+  useEffect(() => {
+    if (!awaiting || !index?.has(awaiting)) return;
+    setAwaiting(undefined);
+    setPublishing(false);
+    openThread(awaiting);
+  }, [awaiting, index, openThread]);
+
+  const publish = useCallback(
+    async (input: PublishInput) => {
+      if (filing || awaiting) return;
+      // The load-bearing check, and the last one. Every gate before this is a
+      // courtesy drawn on a screen: a disabled button stops a click, and
+      // stops nothing else. This runs in the same statement sequence as the
+      // signature, with the authority read at this render rather than the one
+      // that opened the dialog, so a session that expired or a membership that
+      // was superseded in between refuses here — with the reason on screen —
+      // instead of appending a permanently ineffective row to an append-only
+      // log.
+      if (publishDenied) {
+        setPublishError(`not filed: ${publishDenied}`);
+        return;
+      }
+      setFiling(true);
+      setPublishError(undefined);
+      const act = {
+        credential: session.credential,
+        act: "state" as const,
+        kind: "artifact",
+        text: input.text,
+        body: { path: input.path, commit: input.commit },
+        rests_on: input.basis ? [input.basis] : [],
+      };
+      const key = actKeys.current.forAttempt("publish", JSON.stringify(act));
+      try {
+        const { id } = await api.act({ ...act, idempotency_key: key });
+        actKeys.current.succeeded("publish", key);
+        setAwaiting(id);
+      } catch (error) {
+        setPublishError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setFiling(false);
+      }
+    },
+    [filing, awaiting, session.credential, publishDenied],
+  );
+
+  const publishBasis =
+    screen.kind === "thread"
+      ? { event: screen.event, label: firstLine(index?.statement(screen.event)?.text ?? screen.event, 60) }
+      : undefined;
 
   return (
     <div className="flex h-full flex-col">
@@ -87,6 +184,10 @@ export default function App() {
         workroom={workroom}
         session={session}
         onJumpEvent={openThread}
+        onPublish={() => {
+          setPublishError(undefined);
+          setPublishing(true);
+        }}
         selectedEvent={screen.kind === "thread" ? screen.event : undefined}
       />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -111,6 +212,20 @@ export default function App() {
           />
         )}
       </main>
+      {publishing && (
+        <PublishArtifact
+          basis={publishBasis}
+          busy={filing || awaiting !== undefined}
+          refusal={publishDenied}
+          error={publishError}
+          onPublish={publish}
+          onClose={() => {
+            setPublishing(false);
+            setAwaiting(undefined);
+            setPublishError(undefined);
+          }}
+        />
+      )}
       {!session.actor && <JoinGate workroom={workroom} onJoin={session.setActor} />}
     </div>
   );

@@ -1,8 +1,10 @@
 import type { ActInput, Commitment, Decision, Projection, Statement } from "../lib/api";
+import type { RecordIndex } from "../lib/records";
+import { isRosterGovernance, mayRatify } from "../lib/authority";
 import { activeRatification } from "../lib/ratification";
 import { cn } from "../lib/util";
 
-export type SemanticReplyMode = "promise" | "report" | "dissent" | "withdraw";
+export type SemanticReplyMode = "promise" | "report" | "dissent" | "withdraw" | "propose" | "request";
 
 // The one row affordance, Slack-shaped: a small raised card that floats at
 // the top-right of a row on hover or focus, holding every action the row
@@ -66,6 +68,8 @@ export interface SemanticAction {
   label: string;
   symbol: string;
   tone?: "ok" | "danger";
+  /** Words beside the symbol. The yes/no pair reads without them; nothing else does. */
+  showLabel?: boolean;
   run: () => void;
 }
 
@@ -78,6 +82,7 @@ export function semanticActions({
   commitment,
   decision,
   projection,
+  index,
   me,
   onRoute,
   doAct,
@@ -86,8 +91,10 @@ export function semanticActions({
   commitment?: Commitment;
   decision?: Decision;
   projection: Projection;
+  /** The projection's index, built once by App: every lookup here is a map read. */
+  index: RecordIndex;
   me?: string;
-  onRoute: (mode: SemanticReplyMode, basis: string, prefill: string) => void;
+  onRoute: (mode: SemanticReplyMode, bases: string[], prefill: string, body?: Record<string, string>) => void;
   doAct: (intent: string, input: Omit<ActInput, "credential" | "idempotency_key">) => void;
 }): SemanticAction[] {
   const actions: SemanticAction[] = [];
@@ -98,6 +105,13 @@ export function semanticActions({
   // "did I ever" hides it forever.
   const ratifiedByMe = (target: Statement) =>
     me !== undefined && activeRatification(projection, target)?.actor === me;
+  // Two separate questions, and both have to be yes before a ratification is
+  // offered. "Is it already mine?" is about the fold's current state; "may I
+  // at all?" is about authority, and until this was asked the toolbar put
+  // "agree" in front of every signed-in actor including those without the
+  // ratifier role, whose act the fold then recorded as ineffective for ever.
+  const canRatify = (target: Statement, originatingRequester?: string) =>
+    mayRatify(target, { actors: projection.actors, me, originatingRequester });
   if (statement.kind === "request" && commitment && !commitment.promise && me && statement.body?.to === me) {
     const directProposal = (projection.provenance[statement.event] ?? [])
       .map((basis) => ({
@@ -110,24 +124,73 @@ export function semanticActions({
     if (directProposal.length === 1) {
       const proposal = directProposal[0].statement!;
       const target = proposal.event;
-      if (!ratifiedByMe(proposal))
+      if (!ratifiedByMe(proposal) && canRatify(proposal))
         actions.push({ label: "ratify yes", symbol: "👍", tone: "ok", run: () => doAct(key("ratify", target), { act: "ratify", target }) });
-      actions.push({ label: "deny", symbol: "👎", tone: "danger", run: () => onRoute("dissent", target, "") });
+      actions.push({ label: "deny", symbol: "👎", tone: "danger", run: () => onRoute("dissent", [target], "") });
     } else {
-      actions.push({ label: "accept", symbol: "👍", tone: "ok", run: () => onRoute("promise", statement.event, "I will do this.") });
+      actions.push({ label: "accept", symbol: "👍", tone: "ok", run: () => onRoute("promise", [statement.event], "I will do this.") });
     }
   }
   if (statement.kind === "propose") {
-    if (!ratifiedByMe(statement)) actions.push({ label: "agree", symbol: "👍", tone: "ok", run: () => doAct(key("ratify"), { act: "ratify", target: statement.event }) });
-    actions.push({ label: "disagree", symbol: "👎", tone: "danger", run: () => onRoute("dissent", statement.event, "") });
+    if (!ratifiedByMe(statement) && canRatify(statement))
+      actions.push({ label: "agree", symbol: "👍", tone: "ok", run: () => doAct(key("ratify"), { act: "ratify", target: statement.event }) });
+    actions.push({ label: "disagree", symbol: "👎", tone: "danger", run: () => onRoute("dissent", [statement.event], "") });
+  }
+  // The two acts of the decision-records loop, offered on an artifact row.
+  //
+  // Both are offered, always. Which one is right depends on whether the
+  // decision at that path has been adopted, and the browser does not know
+  // that: the fold projects proposals, ratifications and artifacts, and no
+  // relation between them that means "adopted". Choosing for the operator
+  // would mean inventing that relation here, which layer 7 may not do, so the
+  // operator chooses — see docs/how-to/keep-decision-records.md for which act
+  // comes when, and docs/reference/architecture.md for why the screen stays
+  // out of it.
+  //
+  // What the browser does supply is the citations, so an identifier nobody
+  // should retype by hand is not retyped by hand. They are read from the
+  // fold's own provenance, ordered by the fold's own sequence and bounded, and
+  // they are visible in the composer before anything is signed.
+  if (statement.kind === "artifact") {
+    const path = statement.body?.path ?? "";
+    const named = path || "this artifact";
+    actions.push({
+      label: "propose adoption",
+      symbol: "◇",
+      showLabel: true,
+      run: () => onRoute("propose", [statement.event], `Adopt the decision recorded at ${named} at this exact commit`),
+    });
+    const body: Record<string, string> = { artifact: statement.event };
+    if (statement.body?.commit) body.head = statement.body.commit;
+    actions.push({
+      label: "request review",
+      symbol: "◎",
+      showLabel: true,
+      run: () =>
+        onRoute("request", [statement.event, ...index.citableProposals(statement.event)], `Review ${named} at its exact head`, body),
+    });
   }
   if (commitment?.promise && me === commitment.performer && commitment.status === "promised")
-    actions.push({ label: "mark done", symbol: "✓", tone: "ok", run: () => onRoute("report", commitment.promise!, "") });
-  if (commitment?.report && me === commitment.requester && commitment.status === "reported") {
-    actions.push({ label: "accept", symbol: "👍", tone: "ok", run: () => doAct(key("satisfy"), { act: "ratify", target: commitment.report! }) });
-    actions.push({ label: "needs work", symbol: "👎", tone: "danger", run: () => onRoute("dissent", commitment.report!, "") });
+    actions.push({ label: "mark done", symbol: "✓", tone: "ok", run: () => onRoute("report", [commitment.promise!], "") });
+  if (commitment?.report && commitment.status === "reported") {
+    const report = index.statement(commitment.report);
+    if (report && canRatify(report, commitment.requester))
+      actions.push({ label: "accept", symbol: "👍", tone: "ok", run: () => doAct(key("satisfy"), { act: "ratify", target: commitment.report! }) });
+    if (me === commitment.requester)
+      actions.push({ label: "needs work", symbol: "👎", tone: "danger", run: () => onRoute("dissent", [commitment.report!], "") });
   }
-  if (me === statement.actor)
-    actions.push({ label: "withdraw", symbol: "↩", tone: "danger", run: () => onRoute("withdraw", statement.event, "") });
+  // Withdraw, on authorship — which is the fold's rule for an ordinary record
+  // and not its rule for a roster one. The projection emits a statement row for
+  // every state record it admits, membership and role grants included, and they
+  // arrive here as an unrecognised kind whose only action is this one. But
+  // `decideSupersede` routes a roster target through governance before it ever
+  // looks at the author: the founding seed can never be retired, an operator
+  // grant or a membership carrying operator needs `operator`, every other
+  // roster change needs `ratifier`. Offering withdraw there offers an act the
+  // fold refuses, and the cost of that is a permanent ineffective row.
+  // `signingRefusal` refuses the same target at the boundary that signs; this
+  // is the courtesy that keeps the button from being drawn in the first place.
+  if (me === statement.actor && !isRosterGovernance(statement))
+    actions.push({ label: "withdraw", symbol: "↩", tone: "danger", run: () => onRoute("withdraw", [statement.event], "") });
   return actions;
 }
