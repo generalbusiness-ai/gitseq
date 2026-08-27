@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -741,41 +742,45 @@ func (s *Server) liveSnapshot() nexus.Snapshot {
 	return s.hub.Snapshot()
 }
 
-// TrustedHostHandler rejects requests whose Host is not wholly loopback before
-// a route can read or change state. The listener is loopback-only too; this
-// separate request check closes the DNS rebinding shape in which a hostile page
-// reaches that listener under a host name controlled elsewhere.
+// TrustedHostHandler admits only an explicit numeric port on a literal loopback
+// IP or localhost name before a route can read or change state. It never
+// resolves request hostnames, so an attacker cannot gain admission by changing
+// a DNS answer to loopback. The listener is loopback-only too.
 func TrustedHostHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if !loopbackRequestHost(request.Host) {
 			writer.Header().Set("Content-Type", "application/json")
 			writer.Header().Set("Cache-Control", "no-store")
 			writer.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(writer).Encode(map[string]string{"error": "request host must resolve only to loopback"})
+			_ = json.NewEncoder(writer).Encode(map[string]string{"error": "request host must name an allowed loopback address"})
 			return
 		}
 		next.ServeHTTP(writer, request)
 	})
 }
 
+type requestHostResolver func(string) ([]net.IP, error)
+
 func loopbackRequestHost(value string) bool {
-	host, _, err := net.SplitHostPort(value)
-	if err != nil || host == "" {
+	return loopbackRequestHostWithResolver(value, nil)
+}
+
+// loopbackRequestHostWithResolver keeps a resolver seam solely so the
+// regression test can distinguish this policy from resolver-based admission.
+// resolve is deliberately never called: the request Host alone decides.
+func loopbackRequestHostWithResolver(value string, resolve requestHostResolver) bool {
+	host, port, err := net.SplitHostPort(value)
+	if err != nil || host == "" || port == "" {
+		return false
+	}
+	parsedPort, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || parsedPort == 0 {
 		return false
 	}
 	if ip := net.ParseIP(host); ip != nil {
 		return ip.IsLoopback()
 	}
-	addresses, err := net.LookupIP(host)
-	if err != nil || len(addresses) == 0 {
-		return false
-	}
-	for _, address := range addresses {
-		if !address.IsLoopback() {
-			return false
-		}
-	}
-	return true
+	return strings.EqualFold(host, "localhost") || strings.EqualFold(host, "localhost.")
 }
 
 // guardMutation is the browser-facing boundary for state-changing calls:

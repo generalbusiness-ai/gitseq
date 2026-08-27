@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -222,6 +223,85 @@ func TestTrustedHostAndOriginGuardsRunBeforeRouting(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || called.Load() != 2 {
 		t.Fatalf("same-origin loopback mutation = %d, called=%d", response.Code, called.Load())
+	}
+}
+
+func TestTrustedHostAllowsLoopbackReadAndMutationClients(t *testing.T) {
+	for _, host := range []string{
+		"127.0.0.1:7777",
+		"[::1]:7777",
+		"localhost:7777",
+		"LOCALHOST.:7777",
+	} {
+		t.Run(host, func(t *testing.T) {
+			var called atomic.Int64
+			handler := TrustedHostHandler(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.Method == http.MethodPost {
+					if err := guardMutation(request); err != nil {
+						write(writer, nil, err)
+						return
+					}
+				}
+				called.Add(1)
+				write(writer, map[string]bool{"ok": true}, nil)
+			}))
+
+			request := httptest.NewRequest(http.MethodGet, "http://"+host+"/v0/status", nil)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusOK || called.Load() != 1 {
+				t.Fatalf("loopback read = %d, called=%d", response.Code, called.Load())
+			}
+
+			request = httptest.NewRequest(http.MethodPost, "http://"+host+"/v0/act", strings.NewReader("{}"))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", "http://"+host)
+			request.Header.Set("Sec-Fetch-Site", "same-origin")
+			response = httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusOK || called.Load() != 2 {
+				t.Fatalf("loopback mutation = %d, called=%d", response.Code, called.Load())
+			}
+		})
+	}
+}
+
+func TestLoopbackRequestHostRefusesDNSNameWithoutResolver(t *testing.T) {
+	resolverCalls := 0
+	resolveToLoopback := func(host string) ([]net.IP, error) {
+		resolverCalls++
+		if host != "rebinding.example" {
+			t.Fatalf("resolver called with %q", host)
+		}
+		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+	}
+
+	if loopbackRequestHostWithResolver("rebinding.example:7777", resolveToLoopback) {
+		t.Fatal("ordinary DNS name resolving to loopback was admitted")
+	}
+	if resolverCalls != 0 {
+		t.Fatalf("request Host triggered %d resolver calls", resolverCalls)
+	}
+}
+
+func TestLoopbackRequestHostRefusesMalformedAndPortlessValues(t *testing.T) {
+	for _, host := range []string{
+		"",
+		"localhost",
+		"127.0.0.1",
+		"::1",
+		"localhost:",
+		"localhost:http",
+		"localhost:0",
+		"localhost:65536",
+		"localhost..:7777",
+		"workroom.example:7777",
+	} {
+		t.Run(host, func(t *testing.T) {
+			if loopbackRequestHost(host) {
+				t.Fatalf("malformed, portless, or non-local Host %q was admitted", host)
+			}
+		})
 	}
 }
 
