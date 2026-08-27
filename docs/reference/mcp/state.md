@@ -67,6 +67,31 @@ promisor, it names the exact implementation commit, and its bases contain
 exactly one effective promise: the promise it fulfils. This adds no required
 artifact field and does not change ordinary artifacts.
 
+## Reserved fields you cannot write
+
+Four body keys are reserved for the admission boundary, and a plain
+`state` call is refused if it supplies any of them:
+
+| Field | Belongs to | Ask for it with |
+|---|---|---|
+| `review_path` | The guarded review path | [`review`](review.md) |
+| `head_news_acknowledged` | The guarded review path | [`review`](review.md) |
+| `review_frontier` | The guarded review path | [`review`](review.md) |
+| `dead_basis_override` | The dead-basis escape | `allow_dead_basis` |
+
+The refusal names the field and quotes back the value you sent, so a
+`review_path` of `x` is refused as `body.review_path="x" is a reserved
+admission field and cannot be supplied by this write`. It happens before
+signing, so nothing reaches the log.
+
+The first three are stamped by the [`review`](review.md) tool onto the
+verdict it builds, so a hand-written call has no reason to carry them.
+`dead_basis_override` is different: it records a deliberate escape, and
+the way to ask for that escape is the `allow_dead_basis` argument, which
+signs the field for you. Setting it by hand is refused because a reserved
+field means the same thing wherever it appears, and a caller that writes
+it directly is claiming an authorisation the boundary never granted.
+
 ## Evidence
 
 `evidence` is a map of name to content, embedded as attachments in the
@@ -102,7 +127,8 @@ and the quietest to survive:
 | `review` | For a report: whether it became a review, and which artifact it judges. |
 
 **These notes describe; they do not refuse.** Unknown body keys are still
-accepted. Refusing them would catch `status` today and narrow a
+accepted — the reserved fields above are the one closed exception, and
+they are refused by the admission boundary rather than by these notes. Refusing them would catch `status` today and narrow a
 deliberately open structure for good — the body map is open so a room can
 carry vocabulary this implementation never anticipated, and a validator
 that rejects what it does not recognise takes that away to fix one

@@ -68,6 +68,31 @@ Implementation requests, promises and reports may also carry `branch` and
 checkout. They claim nothing about that checkout being clean or current;
 the `artifact` is the durable pointer.
 
+## Reserved fields you cannot write
+
+Four body keys are reserved for the admission boundary, and a plain
+`gs state` call is refused if it supplies any of them:
+
+| Field | Belongs to | Ask for it with |
+|---|---|---|
+| `review_path` | The guarded review path | [`gs review`](review.md) |
+| `head_news_acknowledged` | The guarded review path | [`gs review`](review.md) |
+| `review_frontier` | The guarded review path | [`gs review`](review.md) |
+| `dead_basis_override` | The dead-basis escape | `--allow-dead-basis` |
+
+The refusal names the field and quotes back the value you sent, so a
+`review_path` of `x` is refused as `body.review_path="x" is a reserved
+admission field and cannot be supplied by this write`. It happens before
+signing, so nothing reaches the log.
+
+The first three are stamped by `gs review` onto the verdict it builds, so
+a hand-written call has no reason to carry them. `dead_basis_override` is
+different: it records a deliberate escape, and the way to ask for that
+escape is `--allow-dead-basis`, which signs the field for you. Setting it
+by hand is refused because a reserved field means the same thing wherever
+it appears, and a caller that writes it directly is claiming an
+authorisation the boundary never granted.
+
 ## Citing
 
 `--rests-on` is how an act says what it bears on. Copy identifiers whole
