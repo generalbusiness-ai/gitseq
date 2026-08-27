@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9f1c947ce057ef947cdeecd3a4fa7d78874b7a3d","text":"I withdraw this cleanup request. Hugh clarified that the four artifacts and exact head may proceed through independent review now; no merge is authorized."}
+{"kind":"promise","text":"I will independently review exact clean head 95374ec2b44779fc712de97c0bec4270c94b9fcb against all four named artifacts, recording Architecture, Security, and Simplification conclusions. I will not merge it."}
