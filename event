@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/reviewguard/reviewguard_test.go","body":{"commit":"27478dc31bd7961e0554e48053693912622d3dd6","path":"internal/reviewguard/reviewguard_test.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1bf7f869486b2756e70614e4c690973fd95901f0","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/review.md."}
