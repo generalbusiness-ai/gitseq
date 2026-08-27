@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/apphost","body":{"commit":"fd5147a9c96856a85c3056b0f65966bec346dcca","dead_basis_override":"true","path":"internal/apphost"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0baadffc9ea51e7d3f31d7a1ea4a6ae210322c4c","text":"Merge retired a covered predecessor; the successor is at internal/apphost."}
