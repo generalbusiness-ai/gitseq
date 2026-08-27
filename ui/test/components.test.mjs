@@ -319,6 +319,64 @@ test("a withdrawn ratification offers the decision again", async () => {
   }
 });
 
+// Withdraw is offered on authorship, and authorship is the fold's rule for an
+// ordinary record and not for a roster one. The fold projects a statement row
+// for every state record it admits -- membership grants and role grants
+// included -- so a roster record reaches this toolbar as an unrecognised kind
+// that matches none of the branches above, and the only action left for it is
+// `withdraw`. `decideSupersede` routes a roster target through governance
+// before it ever reads the author: the founding seed can never be retired, an
+// operator grant needs `operator`, every other roster change needs `ratifier`.
+// So the button was offering an act the fold refuses, to the one person the
+// fold does not ask about.
+test("withdraw is not offered on a roster record the viewer authored", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { semanticActions } = await vite.ssrLoadModule("/src/components/Toolbar.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const viewer = "hugh-fingerprint";
+    // The shape internal/app writes when an actor joins: kind "roster" on the
+    // statement, and body.kind carrying the actor kind, which is a different
+    // field entirely.
+    const grant = {
+      event: "grant", actor: viewer, kind: "roster", satisfier: "role:ratifier",
+      text: "codex joins as agent", timestamp: 1,
+      body: { actor: "codex-fingerprint", kind: "agent", name: "codex", role: "participant" },
+    };
+    const ordinary = { event: "note", actor: viewer, kind: "assert", satisfier: "none", text: "The build is red.", timestamp: 2 };
+    const projection = {
+      decisions: [grant, ordinary].map(({ event }) => ({ event, verdict: "effective", reason: "recorded" })),
+      acts: [],
+      statements: [grant, ordinary],
+      commitments: [],
+      artifacts: [],
+      actors: { [viewer]: ratifier("hugh") },
+      provenance: { grant: [], note: [] },
+    };
+    const index = buildRecordIndex(projection);
+    const labels = (statement) =>
+      semanticActions({
+        statement, decision: projection.decisions.find(({ event }) => event === statement.event),
+        projection, index, me: viewer, onRoute() {}, doAct() {},
+      }).map(({ label }) => label);
+
+    assert.deepEqual(
+      labels(grant),
+      [],
+      "false offer: decideSupersede decides a roster target by standing, and the viewer's authorship is not standing",
+    );
+    // The positive control. Without it an empty list proves only that
+    // semanticActions returned nothing, which a broken fixture also does.
+    assert.deepEqual(
+      labels(ordinary),
+      ["withdraw"],
+      "false refusal: the roster exclusion must not take the ordinary own-authored withdraw with it",
+    );
+  } finally {
+    await vite.close();
+  }
+});
+
 // The thread row abbreviates; the detail under it does not. Every fact the
 // projection holds about the record is shown whole, and each basis is a link.
 test("a record's detail shows full ids, body fields and both directions of provenance", async () => {

@@ -75,8 +75,13 @@ test("own-author supersession stays outside the guard, for a departed author", (
   // decideSupersede returns Effective on target.record.Actor == record.record.Actor
   // with no hasActor test, and docs/reference/architecture.md documents that
   // cleanup exception. Guarding it invents a refusal the fold does not make.
+  //
+  // The target is stated. An earlier version of this test omitted it and passed
+  // for the wrong reason: the branch fell through to `undefined` for ANY act
+  // with no resolved target, so it was asserting the fail-open below rather
+  // than the exception it names.
   assert.equal(
-    signingRefusal(supersedeAct, { live: true, actors: departed, me: ME }),
+    signingRefusal(supersedeAct, { live: true, actors: departed, me: ME, target: { event: "some-record", actor: ME } }),
     undefined,
     "false refusal: a departed actor may still withdraw an act they authored",
   );
@@ -215,11 +220,67 @@ test("superseding somebody else's record is refused unless you hold ratifier", (
     undefined,
     "false refusal: a ratifier may retire another actor's record",
   );
-  // Artifact targets reach paths this guard does not model, so an unresolved
-  // target defers rather than inventing a refusal.
-  assert.equal(
+});
+
+// The three fail-open cases codex probed at head b1daa567 and got ALLOWED from.
+// Each is the guard answering a question it had no facts for, which is exactly
+// what the ratify branch above was repaired not to do; the supersede branch was
+// left doing it.
+
+test("a supersede whose target is not in the projection is refused, not guessed", () => {
+  // `index.statement(event)` returns undefined for anything this projection has
+  // not caught up with, and a route can name a record newer than the projection
+  // the page is holding. `decideSupersede` refuses "supersede target is
+  // unknown" before it reads anything else; a guard that allows here has
+  // vouched for a record it never saw.
+  assert.ok(
     signingRefusal(supersedeAct, { live: true, actors: participant, me: ME, target: undefined }),
+    "false offer: decideSupersede refuses an unknown target outright",
+  );
+});
+
+test("a supersede with no viewer identity is refused", () => {
+  // Every branch past the target check compares the signer against somebody --
+  // the target's author, or the roster. With no fingerprint there is nobody to
+  // compare, and the roster read `hasRole` already fails closed on it. The
+  // branch must not reach a verdict the comparison never made.
+  assert.ok(
+    signingRefusal(supersedeAct, { live: true, actors: participant, me: undefined, target: { event: "some-record", actor: ME } }),
+    "no identity, no signature: the supersede branch must fail closed like the state branch",
+  );
+});
+
+test("withdrawing your own roster grant is refused: the fold decides it by standing", () => {
+  // The projection emits a statement row for every state record, roster
+  // included, so a membership or role grant reaches the generic surfaces as an
+  // ordinary statement -- and the only action the toolbar computes for an
+  // unrecognised kind is `withdraw`, on authorship. `decideSupersede` sends a
+  // roster target through governance FIRST and never asks who wrote it: the
+  // founding seed can never be retired, an operator grant needs `operator`,
+  // and every other roster change needs `ratifier`. Own-authorship is not on
+  // that list, so the departed-author exception must not reach it.
+  const myGrant = { event: "some-record", actor: ME, kind: "roster", body: { actor: ME, name: "me", role: "participant", kind: "human" } };
+  assert.ok(
+    signingRefusal(supersedeAct, { live: true, actors: participant, me: ME, target: myGrant }),
+    "false offer: decideSupersede requires ratifier standing to change roster governance, and authorship is not standing",
+  );
+  assert.ok(
+    signingRefusal(supersedeAct, { live: true, actors: departed, me: ME, target: myGrant }),
+    "the cleanup exception is for ordinary records: a departed author does not get to retire a roster grant",
+  );
+  // Excluded for the ratifier too, and deliberately. The fold would admit this
+  // one, so it is a refusal the fold does not make -- the price of not keeping
+  // a second copy of the governance ladder in the browser, paid in the safe
+  // direction. `gs supersede` files it and the fold rules.
+  assert.ok(
+    signingRefusal(supersedeAct, { live: true, actors: roleOnly, me: ME, target: myGrant }),
+    "roster governance is excluded from this surface rather than modelled, ratifier or not",
+  );
+  // And the exclusion is by kind, not by anything the fixture happens to share
+  // with it: the same actor withdrawing an ordinary record still passes.
+  assert.equal(
+    signingRefusal(supersedeAct, { live: true, actors: participant, me: ME, target: { event: "some-record", actor: ME, kind: "assert" } }),
     undefined,
-    "an unresolved supersede target defers to the fold rather than refusing",
+    "false refusal: the roster exclusion must not swallow the ordinary withdraw path it sits in front of",
   );
 });

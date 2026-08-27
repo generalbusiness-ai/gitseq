@@ -895,6 +895,22 @@ that cannot see the fact must not vouch for it. Effectiveness is not carried on
 the statement; it is published per record in `decisions`, so the boundary must
 be handed the decision as well as the record.
 
+For a supersession the same guard is narrowed to the ordinary withdraw path the
+browser actually offers, and fails closed everywhere else. It refuses without a
+resolved target — `decideSupersede` refuses an unknown target before it reads
+anything else — and without a resolved viewer, since every branch past that
+compares the signer against somebody. The departed own-author exception is held
+to that ordinary path: `decideSupersede` sends a roster target through
+governance first, where the founding seed can never be retired, an operator
+grant needs `operator`, and every other roster change needs `ratifier`, and
+authorship is not consulted at all. The projection carries a statement row for
+every state record, roster included, so those records reach the generic row
+affordance like any other; the browser withholds `withdraw` from them and
+refuses them at the boundary rather than restating the governance ladder, which
+would be a second copy of the fold to keep in step. Excluding is a refusal the
+fold would not always make, and that is the safe direction: `gs supersede` files
+the act and the fold rules on it.
+
 The cost of getting this wrong is not a failed click. Offering an act the fold
 refuses appends a permanent ineffective row to an append-only log: a durable
 record that somebody tried to do something they were never allowed to do.

@@ -1,6 +1,6 @@
 import type { ActInput, Commitment, Decision, Projection, Statement } from "../lib/api";
 import type { RecordIndex } from "../lib/records";
-import { mayRatify } from "../lib/authority";
+import { isRosterGovernance, mayRatify } from "../lib/authority";
 import { activeRatification } from "../lib/ratification";
 import { cn } from "../lib/util";
 
@@ -179,7 +179,18 @@ export function semanticActions({
     if (me === commitment.requester)
       actions.push({ label: "needs work", symbol: "👎", tone: "danger", run: () => onRoute("dissent", [commitment.report!], "") });
   }
-  if (me === statement.actor)
+  // Withdraw, on authorship — which is the fold's rule for an ordinary record
+  // and not its rule for a roster one. The projection emits a statement row for
+  // every state record it admits, membership and role grants included, and they
+  // arrive here as an unrecognised kind whose only action is this one. But
+  // `decideSupersede` routes a roster target through governance before it ever
+  // looks at the author: the founding seed can never be retired, an operator
+  // grant needs `operator`, every other roster change needs `ratifier`. Offering
+  // withdraw there offers an act the fold refuses, and the cost of that is a
+  // permanent ineffective row. `signingRefusal` refuses the same target at the
+  // boundary that signs; this is the courtesy that keeps the button from being
+  // drawn in the first place.
+  if (me === statement.actor && !isRosterGovernance(statement))
     actions.push({ label: "withdraw", symbol: "↩", tone: "danger", run: () => onRoute("withdraw", [statement.event], "") });
   return actions;
 }

@@ -44,7 +44,10 @@ import type { ActorState, Decision, Statement } from "./api.ts";
 // cannot be mistaken for a claim that the surface is already covered.
 //
 // `withdraw` is not ungated either, though it is gated on authorship rather
-// than membership: see the `supersede` branch of `signingRefusal`.
+// than membership: see the `supersede` branch of `signingRefusal`. Authorship
+// is the fold's rule for an ordinary record and not for a roster one, so the
+// toolbar withholds `withdraw` from roster rows and the boundary refuses them
+// — see {@link isRosterGovernance}.
 //
 // It is not asked of presence. Presence is advisory and session-bound, so a
 // live session is not membership; and membership is not presence, so an
@@ -67,6 +70,39 @@ export function isLiveParticipant(actors: Record<string, ActorState>, me?: strin
 function hasRole(actors: Record<string, ActorState>, role: string, me?: string): boolean {
   if (!me) return false;
   return actors[me]?.roles?.includes(role) === true;
+}
+
+// Is this statement a roster-governance record — one whose retirement the fold
+// decides by governance rather than by authorship?
+//
+// The projection emits a statement row for every state record the fold admits,
+// `roster` among them (`Kind: state.Kind` in `internal/workroom/fold.go`), so a
+// membership or role grant arrives on the generic surfaces as an ordinary
+// statement with no affordance of its own. `decideSupersede` treats it as
+// anything but ordinary: it sends a roster target through `governanceTarget`
+// *first*, and that ladder never asks who wrote the record.
+//
+//   index 0                 the founding operator seed, which can never be
+//                           retired by anybody
+//   operator grant, or a
+//   membership carrying
+//   operator                the signer must hold `operator`
+//   any other roster change the signer must hold `ratifier`
+//
+// Authorship appears nowhere in that list. So the one predicate is named here,
+// beside the guard that refuses on it, and read by the control that would
+// otherwise offer the act: `semanticActions` in `components/Toolbar.tsx` draws
+// `withdraw` from `me === statement.actor`, which is the fold's *ordinary*
+// supersede rule and not its roster rule.
+//
+// It is exclusion rather than modelling, deliberately. Restating the ladder in
+// the browser would be a second copy of the fold to keep in step, and the fold
+// reaches its verdict from facts this projection does not carry — whether a
+// membership grant carries operator, and whether a chain of supersessions is
+// retiring or restoring. `gs supersede` remains the way to retire a roster
+// record, and it asks the fold rather than guessing.
+export function isRosterGovernance(statement: Statement): boolean {
+  return statement.kind === "roster";
 }
 
 // May this viewer publish an artifact right now, and if not, why not.
@@ -206,12 +242,16 @@ export function mayRatify(
  *                docs/reference/architecture.md documents that cleanup
  *                exception, "a departed actor may still supersede an earlier
  *                act they authored" — so this must not ask
- *                {@link isLiveParticipant} on that branch. It narrows only
- *                when the target resolves to a statement, which is the shape
- *                the withdraw control offers; artifact targets reach paths
- *                this guard does not model (roster governance, authorized
- *                merge receipts), and restating those here would be a second
- *                copy of the fold to keep in step.
+ *                {@link isLiveParticipant} on that branch. The exception is
+ *                held to the ordinary withdraw path it was written about: the
+ *                branch fails closed without a resolved target and a resolved
+ *                viewer, and refuses roster governance outright
+ *                ({@link isRosterGovernance}), because the fold decides that
+ *                by standing and never by authorship. What is left outside is
+ *                the fold's cross-author merge-receipt path for artifacts,
+ *                which this guard refuses rather than models; that is a
+ *                refusal the fold might not make, and it is the safe
+ *                direction — `gs supersede` files it and the fold rules.
  */
 export function signingRefusal(
   act: { act: string; target?: string },
@@ -241,10 +281,28 @@ export function signingRefusal(
   // otherwise refuse.
   if (!live) return "not present yet";
   if (act.act === "supersede") {
-    // Own-authorship first, and with no participation test: that is the
-    // documented cleanup exception, and asking membership here would invent a
-    // refusal the fold does not make.
-    if (target && me && target.actor !== me && !hasRole(actors, "ratifier", me)) {
+    // Fail closed on the two facts the rest of this branch cannot be decided
+    // without. `decideSupersede` refuses an unknown target outright before it
+    // reads anything else, and every branch past that compares the signer with
+    // somebody — with no viewer fingerprint there is nobody to compare. Both
+    // used to fall through to `undefined`: a route naming a record this
+    // projection had not caught up with, and a page with no resolved identity,
+    // were each ALLOWED. That is the guard vouching for a fact it never saw,
+    // which is the same failure the ratify branch fails closed on above.
+    if (!target) return "the record this would retire is not in the projection";
+    if (!me) return "no identity to retire this with";
+    // Governance before authorship, in the fold's own order. See
+    // {@link isRosterGovernance}: `decideSupersede` decides a roster target by
+    // founding seed and operator or ratifier standing and never by who wrote
+    // it, so the own-author exception below must not reach it.
+    if (isRosterGovernance(target)) {
+      return "roster governance is not retired from here: the fold decides it by standing, not authorship";
+    }
+    // Own-authorship, and with no participation test: that is the documented
+    // cleanup exception, and asking membership here would invent a refusal the
+    // fold does not make. It is applied only now, to an ordinary modelled
+    // target, which is what the exception is written about.
+    if (target.actor !== me && !hasRole(actors, "ratifier", me)) {
       return "only the record's author or a ratifier may retire it";
     }
     return undefined;
