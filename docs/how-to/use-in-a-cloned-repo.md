@@ -447,11 +447,11 @@ gs state --repo "$TAMPER" --as alice --kind assert \
 test "$(depth)" = "$((SETTLED + 2))"
 ```
 
-The [MCP adapter decides this differently](../reference/gs/serve.md) and
-treats an untrustworthy record as no resident, because a long-lived
-session has no per-call way to refuse an attachment. The two surfaces
-disagree knowingly; `gs`, which has you watching its standard error,
-fails closed.
+The [MCP adapter refuses the same way](../reference/gs/serve.md): a
+durable call through it stops with the same reason, and a read still
+answers from the verified local fold. It refuses the call rather than the
+attachment, so a long-lived session survives a record it can repair, and
+deleting the record is the whole recovery there too.
 
 Now the ordinary case. Start a resident and keep working exactly as
 before:

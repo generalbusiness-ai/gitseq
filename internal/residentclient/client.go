@@ -69,6 +69,28 @@ func ValidateURL(raw string) (string, error) {
 	return strings.TrimRight(raw, "/"), nil
 }
 
+// UntrustedAdvertisement and UnusableAdvertisedURL are the two sentences every
+// surface says about a published resident record it will not act through. They
+// live here, beside the validation that produces the second one, because the
+// cost of each surface wording its own was exactly the divergence this pair
+// removes: two accounts of the same six failures, drifting apart unobserved.
+// Each names which failure it is and leaves the way out to the caller, since
+// that is the only part that honestly differs between a command with flags and
+// a long-running adapter without them.
+//
+// UntrustedAdvertisement covers the five the record itself fails: unreadable,
+// larger than the 8 KiB bound, not a record, carrying no address, or naming
+// another workroom. Reason comes from app.ResidentAdvertisement.
+func UntrustedAdvertisement(reason error) error {
+	return fmt.Errorf("this repository advertises a resident that cannot be trusted: %w", reason)
+}
+
+// UnusableAdvertisedURL covers the sixth: a record that reads and names this
+// workroom, but carries an address ValidateURL will not dial.
+func UnusableAdvertisedURL(advertised string, reason error) error {
+	return fmt.Errorf("this repository advertises %q, which is not usable: %w", advertised, reason)
+}
+
 // TransportError marks failure to exchange an HTTP response with the resident.
 // Callers such as MCP use this distinction to decide whether local fallback is
 // honest; malformed or refused resident answers are not transport failures.

@@ -147,38 +147,54 @@ type room struct {
 	identityNoticeChecked bool
 }
 
-// endpoint names the service to use, re-reading the repository's published
-// address whenever the last one is gone, so a service started or restarted
-// after the adapter attached is picked up without reconnecting the client.
+// resolveEndpoint names the service to use, re-reading the repository's
+// published address whenever the last one is gone, so a service started or
+// restarted after the adapter attached is picked up without reconnecting the
+// client. It reports the three answers the advertisement actually has, rather
+// than collapsing two of them into one boolean: an address, absence ("" with
+// no error), or a record that is present and cannot be trusted (an error
+// naming which of the six ways it fails).
 //
-// The adapter decides deliberately what an untrustworthy advertisement means
-// here, rather than inheriting the answer from a boolean. `gs` refuses on one,
-// because a durable act it folds locally instead is a whole-log rebuild the
-// author never asked for and cannot see. This adapter has a live client on the
-// other side of a long-running session and no channel to refuse a whole
-// attachment on, so it treats an unusable record as no resident and works
-// locally, exactly as it did before the read could tell the two apart. The two
-// surfaces disagree knowingly, and `docs/reference/gs/serve.md` says so.
-func (r *room) endpoint() (string, bool) {
+// Keeping the third answer is what lets each caller pay its own price for it.
+// A read may still answer from the verified local fold, because reading
+// locally costs nothing but a stale view the caller is told about. A durable
+// act may not: folding it locally because the record saying where to send it
+// had been tampered with is a whole-log rebuild the author never asked for and
+// cannot see. That is the same reasoning `gs` applies, and the two surfaces
+// now agree.
+func (r *room) resolveEndpoint() (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.baseURL == "" {
 		advertisement := r.workspace.ResidentAdvertisement()
-		if advertisement.State != app.AdvertisementPublished {
-			return "", false
+		if advertisement.State == app.NoAdvertisement {
+			return "", nil
+		}
+		if advertisement.State == app.AdvertisementUnusable {
+			return "", residentclient.UntrustedAdvertisement(advertisement.Reason)
 		}
 		r.baseURL = advertisement.URL
 	}
 	validated, err := residentclient.ValidateURL(r.baseURL)
 	if err != nil {
+		advertised := r.baseURL
 		r.baseURL = ""
 		r.credential = ""
 		r.announced = false
 		r.inbox = false
-		return "", false
+		return "", residentclient.UnusableAdvertisedURL(advertised, err)
 	}
 	r.baseURL = validated
-	return validated, true
+	return validated, nil
+}
+
+// endpoint is the reading a caller that may proceed without a resident wants:
+// an address, or nothing usable. It discards which of absence and refusal it
+// was, so only a caller that has looked at the reason may act on the
+// difference.
+func (r *room) endpoint() (string, bool) {
+	base, _ := r.resolveEndpoint()
+	return base, base != ""
 }
 
 // lost forgets an address that did not answer, and the presence announced
@@ -1089,7 +1105,18 @@ func (s *mcpServer) review(ctx context.Context, current *room, call toolCall) (a
 	})
 }
 
+// submit is the one durable path through this adapter, and the one place an
+// untrustworthy advertisement is a refusal rather than a vacancy. The
+// resolution comes first, before the signing key is read and long before
+// anything is appended, so a repository whose record has been tampered with
+// costs the caller a message and nothing else. The refusal is per call: the
+// room, its attachment and its session survive it, and the next call resolves
+// the record again, so repairing or removing it is all it takes to carry on.
 func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any, error) {
+	base, err := current.resolveEndpoint()
+	if err != nil {
+		return nil, fmt.Errorf("%w; nothing was appended: repair or remove that record, or fold this act locally on purpose with `gs` and --server -", err)
+	}
 	_, private, err := current.workspace.Actor(s.actor)
 	if err != nil {
 		return nil, err
@@ -1098,8 +1125,7 @@ func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any
 	if err != nil {
 		return nil, err
 	}
-	base, available := current.endpoint()
-	if available {
+	if base != "" {
 		requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor("/v0/submit"))
 		submission, err := s.client.Submit(requestContext, current.workspace, base, request)
 		cancel()

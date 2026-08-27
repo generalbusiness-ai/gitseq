@@ -314,10 +314,14 @@ and cannot be trusted. Only a genuinely missing file is absence. Unreadable,
 larger than the 8 KiB bound, not a record, carrying no address, or naming
 another workroom are all the third answer, and it carries the reason.
 
-`internal/app` owns that read. `cmd/gs` turns the third answer into a refusal
-before it reads a signing key or appends anything, and names `--server -` as
-the way out. `cmd/gitseq-mcp` decides separately, and treats it as no resident
-— see [`gs serve`](gs/serve.md).
+`internal/app` owns that read, and `internal/residentclient` owns the sentence
+each surface says about it, so neither can drift from the other's account of
+the six failures. `cmd/gs` turns the third answer into a refusal of the whole
+command before it reads a signing key or appends anything, and names
+`--server -` as the way out. `cmd/gitseq-mcp` refuses the durable call for the
+same reason and before the same work, while leaving the attachment and the
+session intact, and still lets a read answer from the verified local fold —
+see [`gs serve`](gs/serve.md).
 
 Ownership authorizes serving; binding a listener does not. A resident binds
 first so the claim can carry the real address, contests ownership, and hands

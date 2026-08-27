@@ -112,18 +112,22 @@ Two limits are worth naming now that the advertisement is what `gs` uses by
 default. A resident that accepts an act and then stalls past the client
 deadline leaves the outcome unknown, and a retry mints a fresh idempotency
 key that can append twice; that was true before, but only for somebody who
-deliberately passed `--server`. And `gs` treats a published record it cannot
-trust as a refusal, while `cmd/gitseq-mcp` treats the same record as no
-resident and acts locally. `gs` fails closed on purpose, and the two
-surfaces disagree knowingly.
+deliberately passed `--server`. And a published record that cannot be
+trusted stops every durable act in the repository until somebody repairs or
+removes it: `gs` refuses the command, and `cmd/gitseq-mcp` refuses the one
+call, leaving its attachment and its session intact so the repair is the
+whole recovery. Both fail closed on purpose. A read still answers from the
+verified local fold on either.
 
-A record `gs` will not trust is one that is unreadable, larger than the
+A record that will not be trusted is one that is unreadable, larger than the
 8 KiB a record may be, not a record at all, carrying no address, naming
 another workroom, or carrying an address that is not a bare `http` loopback
-origin. Each refusal names which of those it is and offers `--server -`, and
-each happens before the command reads a signing key or appends anything.
-Only a record that is not there at all is absence, and a repository with
-none acts locally exactly as it did before residents existed.
+origin. Each refusal names which of those it is and the way out — `gs`
+offers `--server -`, and the adapter, which has no such flag, says to repair
+or remove the record — and each happens before the caller reads a signing
+key or appends anything. Only a record that is not there at all is absence,
+and a repository with none acts locally exactly as it did before residents
+existed.
 
 ## Loopback only
 
