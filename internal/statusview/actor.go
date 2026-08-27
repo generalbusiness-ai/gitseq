@@ -374,7 +374,13 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 			digest.NotActionable = append(digest.NotActionable, view)
 		} else if commitment.WaitingOn == fingerprint {
 			digest.WaitingOnYou = append(digest.WaitingOnYou, view)
-		} else if commitment.WaitingOn != "" {
+		} else {
+			// Total by construction: a row that involves you, is actionable,
+			// is not yours to claim and is not waiting on you leaves you
+			// waiting on someone. An unclaimed request you filed has an empty
+			// WaitingOn because the fold sets Performer and WaitingOn only
+			// once a promise takes force, so requiring one here dropped those
+			// rows into no lane at all rather than into a wrong one.
 			digest.YouAreWaiting = append(digest.YouAreWaiting, view)
 		}
 	}

@@ -227,3 +227,43 @@ func BenchmarkActorStatusAtDepth500000(b *testing.B) {
 		b.ReportMetric(float64(len(body)), "response_bytes")
 	}
 }
+
+// TestActorStatusKeepsYourOwnUnclaimedRequestOnTheBoard pins the lane-drop
+// repair. A request you filed and addressed to someone else, which nobody has
+// promised yet, carries an actionable status and an empty WaitingOn because the
+// fold sets Performer and WaitingOn only once a promise takes force. Before the
+// repair it matched no branch and was appended to no lane at all — not even
+// not_actionable — so its author could not see it on their own board.
+func TestActorStatusKeepsYourOwnUnclaimedRequestOnTheBoard(t *testing.T) {
+	projection := workroom.Projection{
+		Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},
+		Statements: []workroom.Statement{
+			{Event: "request:unclaimed-by-them", Actor: me, Kind: workroom.KindRequest, Text: "filed by me, nobody has claimed it"},
+		},
+		Commitments: []workroom.Commitment{
+			{Request: "request:unclaimed-by-them", Requester: me, AddressedTo: them, Status: "open"},
+		},
+	}
+	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 1, Projection: projection}
+
+	digest := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
+
+	total := len(digest.AvailableToYou) + len(digest.WaitingOnYou) + len(digest.YouAreWaiting) + len(digest.NotActionable)
+	if total != 1 {
+		t.Fatalf("the row reached %d lanes, want exactly one: available=%#v waitingOnYou=%#v youAreWaiting=%#v notActionable=%#v",
+			total, digest.AvailableToYou, digest.WaitingOnYou, digest.YouAreWaiting, digest.NotActionable)
+	}
+	if len(digest.YouAreWaiting) != 1 {
+		t.Fatalf("your own unclaimed request is not in the waiting lane: %#v", digest.YouAreWaiting)
+	}
+	waiting := digest.YouAreWaiting[0]
+	if waiting.Request != "request:unclaimed-by-them" || waiting.Status != "open" {
+		t.Fatalf("row lost its identity or status: %#v", waiting)
+	}
+	if waiting.Performer != "" || waiting.Promise != "" {
+		t.Fatalf("classification invented a commitment the fold has not recorded: %#v", waiting)
+	}
+	if len(digest.AvailableToYou) != 0 {
+		t.Fatalf("a request addressed to someone else was offered to its author to claim: %#v", digest.AvailableToYou)
+	}
+}
