@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6682363fa4a4923ec9e397f211a1b1f3a13cb97b","text":"Merge retired a covered predecessor; the successor is at Makefile."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:712ac26be04a1f0d64b3c714907769990977f0aa","text":"Merge retired a covered predecessor; the successor is at .github/workflows."}
