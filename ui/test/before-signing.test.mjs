@@ -55,6 +55,28 @@ function click(element) {
 
 const labelled = (label) => document.querySelector(`[aria-label="${label}"]`);
 
+// The workroom the pane is handed, around a projection and the kind definitions
+// in force. Only the projection differs between the fixtures below, so this is
+// everything the pane needs that neither of them is about.
+const workroomAround = (projection, definitions) => ({
+  actors: [{ name: "hugh", fingerprint: ME, roles: [], custody: true }],
+  commits: [],
+  graphTruncated: false,
+  offline: false,
+  localOffline: false,
+  status: {
+    durable: {
+      genesis: "genesis",
+      head: "head",
+      depth: projection.statements.length,
+      projection,
+      vocabulary: { definitions },
+    },
+    live: { cursor: { generation: "generation", position: 1 }, presence: {}, activity: {}, conversations: [] },
+    cursor: { frontier: [], live: { generation: "generation", position: 1 } },
+  },
+});
+
 // One room, two knobs. `admitted` is the satisfier the fold captured on the
 // proposal when it admitted it — projected per statement, the way `lifecycle`
 // already is. `live` is the satisfier the current vocabulary publishes for
@@ -79,30 +101,11 @@ function room({ admitted, live, roles }) {
     },
     provenance: { art: ["req"], prop: ["art"] },
   };
-  return {
-    actors: [{ name: "hugh", fingerprint: ME, roles: [], custody: true }],
-    commits: [],
-    graphTruncated: false,
-    offline: false,
-    localOffline: false,
-    status: {
-      durable: {
-        genesis: "genesis",
-        head: "head",
-        depth: statements.length,
-        projection,
-        vocabulary: {
-          definitions: [
-            { name: "propose", satisfier: live, render: "proposal" },
-            { name: "artifact", satisfier: "none", render: "artifact" },
-            { name: "request", satisfier: "none", render: "commitment" },
-          ],
-        },
-      },
-      live: { cursor: { generation: "generation", position: 1 }, presence: {}, activity: {}, conversations: [] },
-      cursor: { frontier: [], live: { generation: "generation", position: 1 } },
-    },
-  };
+  return workroomAround(projection, [
+    { name: "propose", satisfier: live, render: "proposal" },
+    { name: "artifact", satisfier: "none", render: "artifact" },
+    { name: "request", satisfier: "none", render: "commitment" },
+  ]);
 }
 
 async function mount(vite, root, workroom, at) {
@@ -181,6 +184,77 @@ test("a ratification is offered by the satisfier admitted with the statement, no
     // ineffective rows got written in the first place.
     await mount(vite, root, room({ admitted: undefined, live: "role:steward", roles: ["steward"] }), "prop");
     assert.equal(labelled("agree"), null, "no admitted satisfier, no proof of authority");
+  });
+});
+
+// A second room, for the one satisfier that names a person instead of a role.
+//
+// `roles` and `retired` are the roster entry the fold publishes for the
+// viewer, who is also the requester here. The fold keeps a departed principal
+// listed with `retired: true` and no roles at all, because that principal
+// signed events that are permanent and dropping it would leave those
+// signatures attributed to nothing.
+function reportedRoom({ roles, retired }) {
+  const statements = [
+    { event: "req", sequence: 1, actor: ME, kind: "request", text: "Record the decision.", timestamp: AT, body: { to: "codex" } },
+    { event: "prom", sequence: 2, actor: "codex", kind: "promise", text: "I will do it.", timestamp: AT },
+    { event: "rep", sequence: 3, actor: "codex", kind: "report", text: "Done.", timestamp: AT, satisfier: "originating-requester" },
+  ];
+  const projection = {
+    decisions: statements.map((item) => ({ event: item.event, sequence: item.sequence, verdict: "effective", reason: "recorded" })),
+    acts: [],
+    statements,
+    commitments: [
+      { request: "req", requester: ME, addressed_to: "codex", performer: "codex", promise: "prom", report: "rep", status: "reported", waiting_on: ME },
+    ],
+    artifacts: [],
+    actors: {
+      [ME]: { name: "hugh", kind: "human", roles, retired, role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
+      codex: { name: "codex", kind: "agent", roles: ["participant"], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
+    },
+    provenance: { prom: ["req"], rep: ["prom"] },
+  };
+  return workroomAround(projection, [
+    { name: "request", satisfier: "none", render: "commitment" },
+    { name: "promise", satisfier: "none", render: "commitment" },
+    { name: "report", satisfier: "originating-requester", render: "commitment" },
+  ]);
+}
+
+// `originating-requester` is the only satisfier that never consults a role, so
+// it is the only one a departed principal can still be offered. Every
+// `role:` satisfier already fails closed on a principal the fold left with no
+// roles; this one asked a different question — is this fingerprint listed? —
+// and a departed principal stays listed for ever.
+//
+// The fold asks `hasActor`, which is the participant role, and refuses a
+// departed requester with "requester is not a live participant". A ratified
+// report is what closes a commitment and a ratified approval is what `gs
+// merge` consumes, so offering this act appends a permanent ineffective row to
+// an append-only log, which is exactly the harm the satisfier repair exists to
+// stop. The membership question the screen asks has to be the one the fold
+// asks, not a weaker one that happens to agree while nobody has left.
+test("a departed requester is not offered the ratification the fold refuses them", async () => {
+  await withPane(async (vite, root) => {
+    // Still a participant: the fold would record this ratification as
+    // effective, so withholding it would be the silent denial in the other
+    // direction.
+    await mount(vite, root, reportedRoom({ roles: ["participant"] }), "req");
+    assert.ok(
+      labelled("accept"),
+      "false denial: the requester is a live participant and the fold would accept this ratification, but the screen offered no control",
+    );
+
+    // Departed: listed, because the signatures are permanent, and holding no
+    // roles, because the membership grants were all superseded.
+    await mount(vite, root, reportedRoom({ roles: [], retired: true }), "req");
+    // Compared as a boolean on purpose. Handing a live DOM node to an
+    // assertion as its actual value makes the runner try to render a diff of
+    // it, and the test hangs instead of printing why it failed.
+    assert.ok(
+      labelled("accept") === null,
+      "false offer: the screen offered a ratification the fold refuses with \"requester is not a live participant\"",
+    );
   });
 });
 
