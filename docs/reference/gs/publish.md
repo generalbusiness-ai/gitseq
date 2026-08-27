@@ -2,7 +2,8 @@
 title: gs publish
 summary: Record what a Git remote already accepted, as publication facts that are not artifacts.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:13c9a0a2861529a51aacfc20bf721135f951fe25
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55981a21629973f2d732a27565d606edcf246ac5
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a27668b9112717eafde2516d16387d8d50858e87
 ---
 
 # `gs publish`
