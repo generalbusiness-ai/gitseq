@@ -3,6 +3,7 @@ package jsonataddl
 import (
 	"context"
 	"crypto/ed25519"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"testing/fstest"
 
 	"github.com/generalbusiness-ai/gitseq/host"
+	"github.com/ncruces/go-sqlite3"
 )
 
 func TestInventoryReplayIsDeterministicAndQueryable(t *testing.T) {
@@ -119,6 +121,113 @@ func TestProfileRejectsAmbientJSONata(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "ambient") {
 		t.Fatalf("Load error = %v, want ambient-function refusal", err)
 	}
+}
+
+func TestFoldReadSurfaceIsClosed(t *testing.T) {
+	valid, err := compileRead(`SELECT sku, available FROM stock WHERE sku = :event.sku`)
+	if err != nil || valid.table != "stock" || valid.whereColumn != "sku" {
+		t.Fatalf("inventory read did not compile: %#v, %v", valid, err)
+	}
+	for _, query := range []string{
+		`SELECT changes() FROM stock WHERE sku = :event.sku`,
+		`SELECT total_changes() FROM stock WHERE sku = :event.sku`,
+		`SELECT last_insert_rowid() FROM stock WHERE sku = :event.sku`,
+		`SELECT random() FROM stock WHERE sku = :event.sku`,
+		`SELECT * FROM stock WHERE sku = :event.sku`,
+		`SELECT sku FROM stock`,
+	} {
+		if _, err := compileRead(query); err == nil {
+			t.Errorf("closed fold-read grammar admitted %q", query)
+		}
+	}
+
+	tables := map[string]tableDefinition{
+		"stock": {columns: []tableColumn{{name: "sku", pk: 1}, {name: "available"}}, primary: []string{"sku"}},
+	}
+	authorize := foldReadAuthorizer(tables)
+	for _, check := range []struct {
+		action sqlite3.AuthorizerActionCode
+		name3  string
+		name4  string
+		schema string
+		label  string
+	}{
+		{sqlite3.AUTH_FUNCTION, "", "changes", "", "changes()"},
+		{sqlite3.AUTH_FUNCTION, "", "total_changes", "", "total_changes()"},
+		{sqlite3.AUTH_FUNCTION, "", "last_insert_rowid", "", "last_insert_rowid()"},
+		{sqlite3.AUTH_FUNCTION, "", "random", "", "random()"},
+		{sqlite3.AUTH_PRAGMA, "page_count", "", "", "PRAGMA state"},
+		{sqlite3.AUTH_READ, "sqlite_schema", "name", "main", "physical schema"},
+		{sqlite3.AUTH_READ, "gitseq_frontier", "verified_head", "main", "platform state"},
+		{sqlite3.AUTH_RECURSIVE, "", "", "", "recursive work"},
+	} {
+		if got := authorize(check.action, check.name3, check.name4, check.schema, ""); got != sqlite3.AUTH_DENY {
+			t.Errorf("fold-read authority admitted %s", check.label)
+		}
+	}
+}
+
+func TestEvaluationInputByteLimit(t *testing.T) {
+	input := func(pad string) map[string]any {
+		return map[string]any{
+			"meta":  map[string]any{"position": 1, "event_id": "event", "actor": "actor", "event_type": "stock_received"},
+			"event": map[string]any{"id": "s1", "sku": "ink", "qty": 1},
+			"rows":  map[string]any{"stock_row": map[string]any{"sku": "ink", "available": 0, "padding": pad}},
+		}
+	}
+	empty, err := json.Marshal(input(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	exactInput := input(strings.Repeat("x", maxEvaluationInput-len(empty)))
+	exact, err := encodeEvaluationInput(exactInput)
+	if err != nil {
+		t.Fatalf("exactly-at-cap input refused: %v", err)
+	}
+	if len(exact) != maxEvaluationInput {
+		t.Fatalf("encoded exact input = %d bytes, want %d", len(exact), maxEvaluationInput)
+	}
+	overInput := input(strings.Repeat("x", maxEvaluationInput-len(empty)+1))
+	if encoded, err := encodeEvaluationInput(overInput); err == nil {
+		t.Fatalf("one-byte-over input was admitted at %d bytes", len(encoded))
+	}
+}
+
+func TestGapFailuresDoNotReturnUnstoredFrontier(t *testing.T) {
+	ctx := context.Background()
+	profile, log := inventoryLog(t, ctx,
+		testAct{schema: "stock_received", payload: map[string]any{"id": "s1", "sku": "ink", "qty": 10}},
+		testAct{schema: "reservation_requested", payload: map[string]any{"id": "r1", "sku": "ink", "qty": 2}},
+		testAct{schema: "reservation_requested", payload: map[string]any{"id": "r1", "sku": "ink", "qty": 2}},
+	)
+
+	t.Run("persistence", func(t *testing.T) {
+		injected := errors.New("injected gap persistence failure")
+		options := newBuildOptions()
+		options.persistGap = func(context.Context, *sql.DB, Frontier) error { return injected }
+		projection, err := build(ctx, profile, log, filepath.Join(t.TempDir(), "persist.sqlite"), options)
+		if projection != nil {
+			t.Fatal("gap persistence failure returned a projection with an unstored frontier")
+		}
+		if !errors.Is(err, injected) {
+			t.Fatalf("Build error = %v, want injected persistence failure", err)
+		}
+	})
+
+	t.Run("writer close", func(t *testing.T) {
+		injected := errors.New("injected writer close failure")
+		options := newBuildOptions()
+		options.closeWriter = func(writer *sql.DB) error {
+			return errors.Join(writer.Close(), injected)
+		}
+		projection, err := build(ctx, profile, log, filepath.Join(t.TempDir(), "close.sqlite"), options)
+		if projection != nil {
+			t.Fatal("writer close failure returned a projection")
+		}
+		if !errors.Is(err, injected) {
+			t.Fatalf("Build error = %v, want injected writer close failure", err)
+		}
+	})
 }
 
 type testAct struct {

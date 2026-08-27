@@ -23,15 +23,19 @@ import (
 )
 
 const (
-	maxApplicationSQL = 64 << 10
-	maxProgramBytes   = 64 << 10
-	maxPayloadBytes   = 16 << 10
-	maxOutputBytes    = 64 << 10
-	maxRowChanges     = 256
-	maxFacts          = 64
-	maxQueryBytes     = 16 << 10
-	maxQueryRows      = 256
-	maxQueryResult    = 256 << 10
+	maxApplicationSQL  = 64 << 10
+	maxProgramBytes    = 64 << 10
+	maxPayloadBytes    = 16 << 10
+	maxEvaluationInput = 24 << 10
+	maxOutputBytes     = 64 << 10
+	maxRowChanges      = 256
+	maxFacts           = 64
+	maxQueryBytes      = 16 << 10
+	maxQueryRows       = 256
+	maxQueryResult     = 256 << 10
+	maxFoldReadSQL     = 4 << 10
+	maxFoldReadVDBE    = 1024
+	maxFoldSQLiteValue = 128 << 10
 )
 
 // InventoryApplication is the host identity of the embedded spike fixture.
@@ -53,7 +57,7 @@ var (
 	foldRE         = regexp.MustCompile(`(?is)^CREATE\s+FOLD\s+(` + identifier + `)\s+ON\s+(` + identifier + `)\s+READ\s+(` + identifier + `)\s+(ONE|OPTIONAL\s+ONE)\s+AS\s+(.+?)\s+USING\s+'([^']+)'\s+WRITES\s+(.+)$`)
 	ambientSQL     = regexp.MustCompile(`(?i)\b(?:random|randomblob|current_date|current_time|current_timestamp|load_extension)\b|\b(?:date|time|datetime|julianday|unixepoch|strftime)\s*\(`)
 	ambientJSONata = regexp.MustCompile(`(?i)\$(?:now|millis|random|shuffle|eval)\b`)
-	eventParam     = regexp.MustCompile(`:event\.(` + identifier + `)`)
+	foldReadRE     = regexp.MustCompile(`(?is)^SELECT\s+(` + identifier + `(?:\s*,\s*` + identifier + `)*)\s+FROM\s+(` + identifier + `)\s+WHERE\s+(` + identifier + `)\s*=\s*:event\.(` + identifier + `)$`)
 )
 
 type eventDefinition struct {
@@ -66,7 +70,10 @@ type readDefinition struct {
 	name        string
 	cardinality string
 	query       string
-	parameters  []string
+	parameter   string
+	table       string
+	columns     []string
+	whereColumn string
 }
 
 type foldDefinition struct {
@@ -139,10 +146,12 @@ func Load(files fs.FS, root string, application host.Application) (*Profile, err
 			if _, exists := profile.folds[event]; exists {
 				return nil, fmt.Errorf("event %q has more than one fold", event)
 			}
-			query, parameters, err := compileRead(match[5])
+			read, err := compileRead(match[5])
 			if err != nil {
 				return nil, fmt.Errorf("fold %q: %w", name, err)
 			}
+			read.name = match[3]
+			read.cardinality = strings.Join(strings.Fields(strings.ToUpper(match[4])), " ")
 			programPath := path.Clean(path.Join(root, match[6]))
 			if programPath == root || !strings.HasPrefix(programPath, strings.TrimSuffix(root, "/")+"/") {
 				return nil, fmt.Errorf("fold %q program escapes the application directory", name)
@@ -169,7 +178,7 @@ func Load(files fs.FS, root string, application host.Application) (*Profile, err
 			}
 			profile.folds[event] = foldDefinition{
 				name: name, event: event,
-				read:    readDefinition{name: match[3], cardinality: strings.Join(strings.Fields(strings.ToUpper(match[4])), " "), query: query, parameters: parameters},
+				read:    read,
 				program: expression, programRaw: program, writes: writes,
 			}
 			programs[programPath] = program
@@ -193,10 +202,8 @@ func Load(files fs.FS, root string, application host.Application) (*Profile, err
 		if !exists {
 			return nil, fmt.Errorf("fold %q names undeclared event %q", fold.name, event)
 		}
-		for _, parameter := range fold.read.parameters {
-			if !contains(declaration.columns, parameter) {
-				return nil, fmt.Errorf("fold %q read names undeclared event field %q", fold.name, parameter)
-			}
+		if !contains(declaration.columns, fold.read.parameter) {
+			return nil, fmt.Errorf("fold %q read names undeclared event field %q", fold.name, fold.read.parameter)
 		}
 		for table := range fold.writes {
 			if !tables[table] {
@@ -208,23 +215,23 @@ func Load(files fs.FS, root string, application host.Application) (*Profile, err
 	return profile, nil
 }
 
-func compileRead(query string) (string, []string, error) {
+func compileRead(query string) (readDefinition, error) {
 	query = strings.TrimSpace(query)
-	if !regexp.MustCompile(`(?is)^SELECT\b`).MatchString(query) {
-		return "", nil, errors.New("fold read must be one SELECT")
+	if len(query) > maxFoldReadSQL {
+		return readDefinition{}, errors.New("fold read is too large")
 	}
-	if strings.Contains(query, ";") || ambientSQL.MatchString(query) {
-		return "", nil, errors.New("fold read contains multiple statements or ambient SQL")
+	match := foldReadRE.FindStringSubmatch(query)
+	if match == nil {
+		return readDefinition{}, errors.New("fold read must be a primary-key equality SELECT of named columns")
 	}
-	parameters := make([]string, 0)
-	rewritten := eventParam.ReplaceAllStringFunc(query, func(value string) string {
-		parameters = append(parameters, strings.TrimPrefix(value, ":event."))
-		return "?"
-	})
-	if strings.Contains(rewritten, ":") || strings.Contains(rewritten, "?") && len(parameters) == 0 {
-		return "", nil, errors.New("fold read has an undeclared parameter")
-	}
-	return rewritten, parameters, nil
+	columns := regexp.MustCompile(`\s*,\s*`).Split(match[1], -1)
+	return readDefinition{
+		query:       `SELECT ` + quotedList(columns) + ` FROM ` + quoteIdentifier(match[2]) + ` WHERE ` + quoteIdentifier(match[3]) + ` = ?`,
+		parameter:   match[4],
+		table:       match[2],
+		columns:     columns,
+		whereColumn: match[3],
+	}, nil
 }
 
 func declaredColumns(body string) ([]string, error) {

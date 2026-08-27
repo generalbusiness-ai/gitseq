@@ -72,10 +72,39 @@ func (e *GapError) Error() string {
 
 func (e *GapError) Unwrap() error { return e.Err }
 
+type buildOptions struct {
+	persistGap  func(context.Context, *sql.DB, Frontier) error
+	closeWriter func(*sql.DB) error
+}
+
+func newBuildOptions() buildOptions {
+	return buildOptions{
+		persistGap: func(ctx context.Context, writer *sql.DB, frontier Frontier) error {
+			result, err := writer.ExecContext(ctx, `UPDATE gitseq_frontier SET gap_event = ?, gap_reason = ? WHERE singleton = 1`, frontier.GapEvent, frontier.GapReason)
+			if err != nil {
+				return err
+			}
+			rows, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if rows != 1 {
+				return fmt.Errorf("gap metadata updated %d frontier rows, want 1", rows)
+			}
+			return nil
+		},
+		closeWriter: func(writer *sql.DB) error { return writer.Close() },
+	}
+}
+
 // Build replays a verified log into a new file-backed WAL database. It refuses
 // to overwrite an existing path; cache reuse and replacement are intentionally
 // outside this spike.
 func Build(ctx context.Context, profile *Profile, log host.Log, databasePath string) (*Projection, error) {
+	return build(ctx, profile, log, databasePath, newBuildOptions())
+}
+
+func build(ctx context.Context, profile *Profile, log host.Log, databasePath string, options buildOptions) (*Projection, error) {
 	if profile == nil {
 		return nil, errors.New("profile is required")
 	}
@@ -104,16 +133,23 @@ func Build(ctx context.Context, profile *Profile, log host.Log, databasePath str
 	frontier := Frontier{Genesis: log.Genesis, VerifiedHead: log.Head, VerifiedDepth: log.Depth}
 	tables, err := initialize(ctx, writer, profile, frontier)
 	if err != nil {
-		writer.Close()
-		return nil, err
+		return nil, errors.Join(err, options.closeWriter(writer))
+	}
+	foldReader, err := openFoldReader(ctx, absolute, tables)
+	if err != nil {
+		return nil, errors.Join(err, options.closeWriter(writer))
 	}
 	for index, record := range log.Records {
 		position := index + 1
-		if err := foldRecord(ctx, writer, profile, tables, record, position); err != nil {
+		if err := foldRecord(ctx, writer, foldReader, profile, tables, record, position); err != nil {
 			gap := &GapError{Event: record.ID, Position: position, Err: err}
 			frontier.GapEvent, frontier.GapReason = record.ID, gap.Error()
-			_, _ = writer.ExecContext(ctx, `UPDATE gitseq_frontier SET gap_event = ?, gap_reason = ? WHERE singleton = 1`, frontier.GapEvent, frontier.GapReason)
-			writer.Close()
+			persistErr := options.persistGap(ctx, writer, frontier)
+			foldCloseErr := foldReader.Close()
+			writerCloseErr := options.closeWriter(writer)
+			if persistErr != nil || foldCloseErr != nil || writerCloseErr != nil {
+				return nil, errors.Join(gap, wrapError("persist gap metadata", persistErr), wrapError("close fold reader", foldCloseErr), wrapError("close projection writer", writerCloseErr))
+			}
 			reader, openErr := openReader(ctx, absolute)
 			if openErr != nil {
 				return nil, errors.Join(gap, openErr)
@@ -129,10 +165,9 @@ func Build(ctx context.Context, profile *Profile, log host.Log, databasePath str
 	}
 	frontier.Complete = true
 	if _, err := writer.ExecContext(ctx, `UPDATE gitseq_frontier SET complete = 1 WHERE singleton = 1`); err != nil {
-		writer.Close()
-		return nil, err
+		return nil, errors.Join(err, foldReader.Close(), options.closeWriter(writer))
 	}
-	if err := writer.Close(); err != nil {
+	if err := errors.Join(foldReader.Close(), options.closeWriter(writer)); err != nil {
 		return nil, err
 	}
 	reader, err := openReader(ctx, absolute)
@@ -140,6 +175,13 @@ func Build(ctx context.Context, profile *Profile, log host.Log, databasePath str
 		return nil, err
 	}
 	return &Projection{db: reader, frontier: frontier}, nil
+}
+
+func wrapError(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func openWriter(ctx context.Context, path string) (*sql.DB, error) {
@@ -196,6 +238,82 @@ func openReader(ctx context.Context, path string) (*sql.DB, error) {
 	}
 	database.SetMaxOpenConns(4)
 	return database, nil
+}
+
+// openFoldReader creates the only SQL surface visible to fold programs. It is
+// a separate read-only connection opened after schema initialization, so a
+// fold observes the committed n-1 projection even while the writer holds its
+// immediate transaction for event n.
+func openFoldReader(ctx context.Context, path string, tables map[string]tableDefinition) (*sql.DB, error) {
+	database, err := sqlitedriver.Open(sqliteDSN(path, true), func(connection *sqlite3.Conn) error {
+		if _, err := connection.Config(sqlite3.DBCONFIG_DEFENSIVE, true); err != nil {
+			return err
+		}
+		if _, err := connection.Config(sqlite3.DBCONFIG_TRUSTED_SCHEMA, false); err != nil {
+			return err
+		}
+		if _, err := connection.Config(sqlite3.DBCONFIG_ENABLE_LOAD_EXTENSION, false); err != nil {
+			return err
+		}
+		connection.Limit(sqlite3.LIMIT_LENGTH, maxFoldSQLiteValue)
+		connection.Limit(sqlite3.LIMIT_SQL_LENGTH, maxFoldReadSQL)
+		connection.Limit(sqlite3.LIMIT_COLUMN, 32)
+		connection.Limit(sqlite3.LIMIT_EXPR_DEPTH, 8)
+		connection.Limit(sqlite3.LIMIT_COMPOUND_SELECT, 1)
+		connection.Limit(sqlite3.LIMIT_VDBE_OP, maxFoldReadVDBE)
+		connection.Limit(sqlite3.LIMIT_FUNCTION_ARG, 8)
+		connection.Limit(sqlite3.LIMIT_ATTACHED, 0)
+		connection.Limit(sqlite3.LIMIT_VARIABLE_NUMBER, 1)
+		connection.Limit(sqlite3.LIMIT_WORKER_THREADS, 0)
+		if err := connection.Exec(`PRAGMA query_only=ON`); err != nil {
+			return err
+		}
+		return connection.SetAuthorizer(foldReadAuthorizer(tables))
+	})
+	if err != nil {
+		return nil, err
+	}
+	database.SetMaxOpenConns(1)
+	if err := database.PingContext(ctx); err != nil {
+		database.Close()
+		return nil, err
+	}
+	return database, nil
+}
+
+func foldReadAuthorizer(tables map[string]tableDefinition) func(sqlite3.AuthorizerActionCode, string, string, string, string) sqlite3.AuthorizerReturnCode {
+	return func(action sqlite3.AuthorizerActionCode, name3rd, name4th, schema, inner string) sqlite3.AuthorizerReturnCode {
+		switch action {
+		case sqlite3.AUTH_SELECT:
+			return sqlite3.AUTH_OK
+		case sqlite3.AUTH_READ:
+			definition, exists := tables[name3rd]
+			if schema != "main" || !exists || !tableHasColumn(definition, name4th) || inner != "" {
+				return sqlite3.AUTH_DENY
+			}
+			return sqlite3.AUTH_OK
+		case sqlite3.AUTH_PRAGMA:
+			// database/sql reasserts this connection invariant after the
+			// authorizer is installed. No application PRAGMA is admitted.
+			if strings.EqualFold(name3rd, "query_only") && name4th == "" {
+				return sqlite3.AUTH_OK
+			}
+			return sqlite3.AUTH_DENY
+		default:
+			// Functions (including connection-state functions), recursion,
+			// physical schema access, writes and connection changes all deny.
+			return sqlite3.AUTH_DENY
+		}
+	}
+}
+
+func tableHasColumn(table tableDefinition, wanted string) bool {
+	for _, column := range table.columns {
+		if column.name == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func sqliteDSN(path string, readOnly bool) string {
@@ -285,6 +403,18 @@ func initialize(ctx context.Context, database *sql.DB, profile *Profile, frontie
 		tables[match[1]] = definition
 	}
 	for _, fold := range profile.folds {
+		definition, exists := tables[fold.read.table]
+		if !exists {
+			return nil, fmt.Errorf("fold %q reads undeclared application table %q", fold.name, fold.read.table)
+		}
+		if len(definition.primary) != 1 || definition.primary[0] != fold.read.whereColumn {
+			return nil, fmt.Errorf("fold %q read must constrain the table's complete primary key", fold.name)
+		}
+		for _, column := range fold.read.columns {
+			if !tableHasColumn(definition, column) {
+				return nil, fmt.Errorf("fold %q reads undeclared column %q", fold.name, column)
+			}
+		}
 		statement, err := database.PrepareContext(ctx, fold.read.query)
 		if err != nil {
 			return nil, fmt.Errorf("prepare fold %q read: %w", fold.name, err)
@@ -326,7 +456,7 @@ func inspectTable(ctx context.Context, database *sql.DB, table string) (tableDef
 	return definition, nil
 }
 
-func foldRecord(ctx context.Context, database *sql.DB, profile *Profile, tables map[string]tableDefinition, record host.Record, position int) error {
+func foldRecord(ctx context.Context, database, foldReader *sql.DB, profile *Profile, tables map[string]tableDefinition, record host.Record, position int) error {
 	tx, err := database.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -346,7 +476,7 @@ func foldRecord(ctx context.Context, database *sql.DB, profile *Profile, tables 
 	if err := validateEvent(ctx, tx, profile.events[record.Schema], event); err != nil {
 		return err
 	}
-	read, err := runRead(ctx, tx, fold.read, event)
+	read, err := runRead(ctx, foldReader, fold.read, event)
 	if err != nil {
 		return err
 	}
@@ -355,7 +485,7 @@ func foldRecord(ctx context.Context, database *sql.DB, profile *Profile, tables 
 		"event": event,
 		"rows":  map[string]any{fold.read.name: read},
 	}
-	encoded, err := json.Marshal(input)
+	encoded, err := encodeEvaluationInput(input)
 	if err != nil {
 		return err
 	}
@@ -393,6 +523,17 @@ func foldRecord(ctx context.Context, database *sql.DB, profile *Profile, tables 
 		return err
 	}
 	return tx.Commit()
+}
+
+func encodeEvaluationInput(input any) ([]byte, error) {
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+	if len(encoded) > maxEvaluationInput {
+		return nil, fmt.Errorf("encoded JSONata input is %d bytes, limit is %d", len(encoded), maxEvaluationInput)
+	}
+	return encoded, nil
 }
 
 func advanceFrontier(ctx context.Context, tx *sql.Tx, event string, position int) error {
@@ -451,16 +592,12 @@ func validateEvent(ctx context.Context, tx *sql.Tx, declaration eventDefinition,
 	return nil
 }
 
-func runRead(ctx context.Context, tx *sql.Tx, read readDefinition, event map[string]any) (any, error) {
-	arguments := make([]any, len(read.parameters))
-	for index, name := range read.parameters {
-		value, err := sqlValue(event[name])
-		if err != nil {
-			return nil, err
-		}
-		arguments[index] = value
+func runRead(ctx context.Context, database *sql.DB, read readDefinition, event map[string]any) (any, error) {
+	argument, err := sqlValue(event[read.parameter])
+	if err != nil {
+		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, read.query, arguments...)
+	rows, err := database.QueryContext(ctx, read.query, argument)
 	if err != nil {
 		return nil, fmt.Errorf("fold read %q: %w", read.name, err)
 	}
