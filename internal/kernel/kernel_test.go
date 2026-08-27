@@ -959,6 +959,126 @@ func TestSubmitterRebuildsAndRetriesAfterCASLoss(t *testing.T) {
 	}
 }
 
+func TestPostDedupRunsOncePerNewSubmissionAndNeverForAReplay(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	var seen []Application
+	submitter := NewSubmitter(f.store, Options{
+		SigningKey: f.signingKey,
+		PostDedup: func(_ context.Context, application Application) error {
+			seen = append(seen, application)
+			return nil
+		},
+	})
+	first := f.request(t, private, "guarded", []byte("first"), nil)
+	result, err := submitter.Submit(f.ctx, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("post-dedup hook calls = %d, want 1", len(seen))
+	}
+	if string(seen[0].Payload) != "first" || seen[0].Head != result.BaseHead || seen[0].Intent.IdempotencyKey != "guarded" {
+		t.Fatalf("post-dedup application = %+v", seen[0])
+	}
+	replay, err := submitter.Submit(f.ctx, first)
+	if err != nil || !replay.Replay {
+		t.Fatalf("exact retry = %+v err %v, want a replay", replay, err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("replay ran the post-dedup hook again: %d calls", len(seen))
+	}
+	conflict := f.request(t, private, "guarded", []byte("different"), nil)
+	if _, err := submitter.Submit(f.ctx, conflict); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("changed-intent retry error = %v, want ErrIdempotencyConflict", err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("conflict ran the post-dedup hook: %d calls", len(seen))
+	}
+	refused := f.request(t, private, "refused", []byte("refused"), nil)
+	blocker := errors.New("no workroom semantics survive this")
+	blocked := NewSubmitter(f.store, Options{SigningKey: f.signingKey, PostDedup: func(context.Context, Application) error { return blocker }})
+	if _, err := blocked.Submit(f.ctx, refused); !errors.Is(err, blocker) {
+		t.Fatalf("refused submission error = %v, want %v", err, blocker)
+	}
+	verified, err := Verify(f.ctx, f.store, f.genesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.Events != 1 {
+		t.Fatalf("a refused submission was sequenced anyway: %d events", verified.Events)
+	}
+}
+
+// The hook runs inside the compare-and-swap loop, so a log that moved between
+// the head read and the ref update makes it judge the newer world before the
+// retried commit is written against it.
+func TestPostDedupReevaluatesAgainstTheNewHeadAfterCASLoss(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	var mu sync.Mutex
+	var heads []string
+	arrived := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey,
+		Failpoint: func(name string) {
+			if name == "before_ref_cas" {
+				once.Do(func() {
+					mu.Lock()
+					recorded := append([]string(nil), heads...)
+					mu.Unlock()
+					if len(recorded) != 1 {
+						t.Errorf("hook ran %d times before the first CAS, want 1", len(recorded))
+						close(arrived)
+						close(release)
+						return
+					}
+					close(arrived)
+					<-release
+				})
+			}
+		},
+		PostDedup: func(_ context.Context, application Application) error {
+			mu.Lock()
+			heads = append(heads, application.Head)
+			mu.Unlock()
+			return nil
+		},
+	})
+	type outcome struct {
+		result Result
+		err    error
+	}
+	completed := make(chan outcome, 1)
+	residentRequest := f.request(t, private, "resident", []byte("resident"), nil)
+	go func() {
+		result, err := submitter.Submit(f.ctx, residentRequest)
+		completed <- outcome{result: result, err: err}
+	}()
+	<-arrived
+	external, err := Submit(f.ctx, f.store, f.request(t, private, "external", []byte("external"), nil), Options{SigningKey: f.signingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	out := <-completed
+	if out.err != nil {
+		t.Fatal(out.err)
+	}
+	if out.result.CASRetries != 1 {
+		t.Fatalf("CAS retries = %d, want 1", out.result.CASRetries)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(heads) != 2 {
+		t.Fatalf("post-dedup hook ran %d times, want once per attempt", len(heads))
+	}
+	if heads[0] == heads[1] || heads[1] != external.Head {
+		t.Fatalf("hook heads = [%s, %s], want the second attempt to see the external head %s", heads[0], heads[1], external.Head)
+	}
+}
+
 func BenchmarkSubmitSequence(b *testing.B) {
 	for _, resident := range []bool{false, true} {
 		name := "stateless"

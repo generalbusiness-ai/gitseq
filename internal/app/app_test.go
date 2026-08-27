@@ -432,7 +432,10 @@ func TestApprovedReportMustRestOnItsNamedArtifactBeforeSigning(t *testing.T) {
 	if _, err := workspace.Act(ctx, "agent", approval); err == nil {
 		t.Fatal("an approved report was signed without its named artifact basis")
 	} else {
-		for _, want := range []string{"approved report must rest on its named artifact", artifact.ID, "gs review"} {
+		// Admission refuses the verdict shape outright now, naming the guarded
+		// route, which subsumes the older artifact-basis check for ordinary
+		// state writes.
+		for _, want := range []string{"review verdict", "gs review", "MCP review tool"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Fatalf("approval basis error %q does not name %q", err, want)
 			}
@@ -446,12 +449,51 @@ func TestApprovedReportMustRestOnItsNamedArtifactBeforeSigning(t *testing.T) {
 		t.Fatalf("refused approval changed workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
 	}
 
+	// The verdict shape is now guarded at the write boundary, but a record an
+	// older writer already put in the log stays visible exactly as recorded.
+	// File one below this process's application boundary to prove the fold
+	// still reads it as an effective review once its named artifact basis is
+	// present.
 	approval.RestsOn = append(approval.RestsOn, artifact.ID)
 	approval.IdempotencyKey = "approval-with-artifact-basis"
-	record := actRecord(t, ctx, workspace, "agent", approval)
+	_, private, err := workspace.Actor("agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := workroom.Encode(workroom.State{Kind: approval.Kind, Text: approval.Text, Body: map[string]string{
+		"verdict": approval.Body["verdict"], "head": approval.Body["head"], "artifact": approval.Body["artifact"],
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := workspace.Store.WritePayloadTree(ctx, payload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := workspace.View()
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version,
+		Target:  "git:" + view.ObjectFormat + ":" + view.Genesis,
+		Schema:  workroom.SchemaState, PayloadTree: "git:" + view.ObjectFormat + ":" + tree,
+		RestsOn:        approval.RestsOn,
+		IdempotencyNS:  view.IdempotencyNamespace,
+		IdempotencyKey: approval.IdempotencyKey,
+	}, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := kernel.Submit(ctx, workspace.Store, kernel.Request{Signed: signed, Payload: payload}, kernel.Options{SigningKey: view.SequencerKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := workroom.Record{
+		ID: workspace.EventID(result.Commit), Timestamp: result.Timestamp,
+		Actor: intent.ActorFingerprint(signed.ActorKey), Schema: workroom.SchemaState,
+		RestsOn: approval.RestsOn, Payload: payload,
+	}
 	decision, ok := workspace.mustSnapshot(t, ctx).Projection.Decision(record.ID)
 	if !ok || decision.Verdict != workroom.Effective {
-		t.Fatalf("approval with its named artifact basis = %+v, found=%v", decision, ok)
+		t.Fatalf("historical approval with its named artifact basis = %+v, found=%v", decision, ok)
 	}
 }
 
@@ -2198,11 +2240,50 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 		Verb: VerbState, Kind: workroom.KindPromise, Text: "will review",
 		RestsOn: []string{reviewRequest.ID}, IdempotencyKey: "profile-rebuild-review-promise",
 	})
-	approval := actRecord(t, ctx, workspace, "reviewer", Act{
-		Verb: VerbState, Kind: workroom.KindReport, Text: "approved",
-		Body:    map[string]string{"verdict": "approved", "head": "head1", "artifact": implementation.ID},
-		RestsOn: []string{promise.ID, implementation.ID}, IdempotencyKey: "profile-rebuild-approval",
+	// This cache-migration fixture represents a verdict written by the older
+	// application profile. Put that historical record below today's admission
+	// boundary; the test is about refolding the same durable history, not about
+	// whether a generic state write may file a new verdict now.
+	_, reviewerPrivate, err := workspace.Actor("reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvalRestsOn := []string{promise.ID, implementation.ID}
+	approvalPayload, err := workroom.Encode(workroom.State{
+		Kind: workroom.KindReport,
+		Text: "approved",
+		Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": implementation.ID},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvalTree, err := workspace.Store.WritePayloadTree(ctx, approvalPayload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := workspace.View()
+	signedApproval, err := intent.Sign(intent.Intent{
+		Version: intent.Version,
+		Target:  "git:" + view.ObjectFormat + ":" + view.Genesis,
+		Schema:  workroom.SchemaState, PayloadTree: "git:" + view.ObjectFormat + ":" + approvalTree,
+		RestsOn:        approvalRestsOn,
+		IdempotencyNS:  view.IdempotencyNamespace,
+		IdempotencyKey: "profile-rebuild-approval",
+	}, reviewerPrivate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvalResult, err := kernel.Submit(ctx, workspace.Store, kernel.Request{
+		Signed: signedApproval, Payload: approvalPayload,
+	}, kernel.Options{SigningKey: view.SequencerKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval := workroom.Record{
+		ID: workspace.EventID(approvalResult.Commit), Timestamp: approvalResult.Timestamp,
+		Actor: intent.ActorFingerprint(signedApproval.ActorKey), Schema: workroom.SchemaState,
+		RestsOn: approvalRestsOn, Payload: approvalPayload,
+	}
 	actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbRatify, Target: approval.ID, IdempotencyKey: "profile-rebuild-ratify",
 	})
@@ -2220,12 +2301,12 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 			"merge_left_live":   `{}`,
 			"merge_retirements": `{` + strconv.Quote(implementation.ID) + `:"spike"}`,
 		},
-		RestsOn: []string{approval.ID}, IdempotencyKey: "profile-rebuild-receipt",
+		RestsOn: []string{approval.ID}, AllowDeadBasis: true, IdempotencyKey: "profile-rebuild-receipt",
 	})
 	successor := actRecord(t, ctx, workspace, "agent", Act{
 		Verb: VerbState, Kind: workroom.KindArtifact, Text: "merge published the current artifact at spike",
 		Body:    map[string]string{"path": "spike", "commit": "merged"},
-		RestsOn: []string{receipt.ID}, IdempotencyKey: "profile-rebuild-successor",
+		RestsOn: []string{receipt.ID}, AllowDeadBasis: true, IdempotencyKey: "profile-rebuild-successor",
 	})
 
 	current, err := workspace.Snapshot(ctx)

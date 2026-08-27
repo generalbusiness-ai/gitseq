@@ -25,6 +25,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -757,20 +758,20 @@ func TestReviewGuardRefusesCheckoutFromAnotherRepository(t *testing.T) {
 func TestReviewGuardRefusesBasisChangeBeforeSigning(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	calls := 0
-	validate := func(ctx context.Context, workspace *app.Workspace, actorName, checkout, artifact, promise string) (reviewBasis, error) {
-		basis, err := validateReview(ctx, workspace, actorName, checkout, artifact, promise)
+	read := func() (reviewguard.Basis, []reviewguard.News, workroom.Projection, error) {
+		basis, news, projection, err := reviewRead(fixture.ctx, fixture.workspace, "reviewer", fixture.feature, fixture.artifact, fixture.promise)()
 		calls++
 		if calls == 2 && err == nil {
 			basis.Request += "-changed"
 		}
-		return basis, err
+		return basis, news, projection, err
 	}
 	before := fixture.snapshot(t).Depth
 	err := reviewCommandWithValidator(fixture.ctx, []string{
 		"--repo", fixture.repo, "--as", "reviewer", "--checkout", fixture.feature,
 		"--artifact", fixture.artifact, "--promise", fixture.promise,
 		"--verdict", "approved", "--text", "must not be signed",
-	}, validate)
+	}, read)
 	if err == nil || !strings.Contains(err.Error(), "review basis changed while validating") {
 		t.Fatalf("changed review basis error = %v", err)
 	}
@@ -779,6 +780,137 @@ func TestReviewGuardRefusesBasisChangeBeforeSigning(t *testing.T) {
 	}
 	if after := fixture.snapshot(t).Depth; after != before {
 		t.Fatalf("changed review basis signed a verdict: depth %d -> %d", before, after)
+	}
+}
+
+// A statement sequenced after the review request that names the reviewed head
+// is head news: the verdict refuses until the reviewer has acknowledged it.
+func TestReviewGuardRefusesUnacknowledgedHeadNews(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	before := fixture.snapshot(t).Depth
+	news, err := fixture.fileHeadNews(t, "the implementer pushed again")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fixture.reviewError()
+	if err == nil || !strings.Contains(err.Error(), news) || !strings.Contains(err.Error(), "not acknowledged") {
+		t.Fatalf("unacknowledged head news error = %v, want a refusal naming %s", err, news)
+	}
+	if after := fixture.snapshot(t).Depth; after != before+1 {
+		t.Fatalf("head news refusal changed depth %d -> %d", before, after)
+	}
+}
+
+// Acknowledging exactly the news lets the verdict through, and the verdict
+// then rests on what it acknowledged and records the canonical set.
+func TestReviewGuardAcceptsExactHeadNewsAcknowledgments(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	before := fixture.snapshot(t).Depth
+	news, err := fixture.fileHeadNews(t, "a stranger noticed this head")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reviewCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "reviewer", "--checkout", fixture.feature,
+		"--artifact", fixture.artifact, "--promise", fixture.promise,
+		"--verdict", "approved", "--text", "APPROVED with news seen",
+		"--ack-head-news", news,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := fixture.snapshot(t)
+	if snapshot.Depth != before+2 {
+		t.Fatalf("depth = %d, want news plus verdict", snapshot.Depth)
+	}
+	statement := snapshot.Projection.Statements[len(snapshot.Projection.Statements)-1]
+	if !contains(snapshot.Projection.Provenance[statement.Event], news) {
+		t.Fatalf("verdict provenance %v does not rest on acknowledged news %s", snapshot.Projection.Provenance[statement.Event], news)
+	}
+	want, _ := json.Marshal([]string{fixture.promise, news})
+	// The promise matches through its direct basis and is cited by the verdict;
+	// the acknowledged array records every matched event in sequence order.
+	if statement.Body["head_news_acknowledged"] != string(want) {
+		t.Fatalf("head_news_acknowledged = %q, want %s", statement.Body["head_news_acknowledged"], want)
+	}
+	if statement.Body["review_frontier"] == "" {
+		t.Fatal("verdict recorded no review frontier")
+	}
+	if statement.Body["review_path"] != "reviewguard@1" {
+		t.Fatalf("review_path = %q", statement.Body["review_path"])
+	}
+}
+
+func TestReviewGuardRejectsWrongAcknowledgmentSets(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	first, err := fixture.fileHeadNews(t, "first piece of news")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := fixture.fileHeadNews(t, "second piece of news")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := fixture.snapshot(t).Depth
+	for _, test := range []struct {
+		name string
+		acks []string
+		want string
+	}{
+		{name: "missing", acks: []string{first}, want: "missing"},
+		{name: "extraneous", acks: []string{first, second, fixture.artifact}, want: "extraneous"},
+		{name: "duplicate", acks: []string{first, first, second}, want: "twice"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			arguments := []string{
+				"--repo", fixture.repo, "--as", "reviewer", "--checkout", fixture.feature,
+				"--artifact", fixture.artifact, "--promise", fixture.promise,
+				"--verdict", "approved", "--text", "must not be signed",
+			}
+			for _, ack := range test.acks {
+				arguments = append(arguments, "--ack-head-news", ack)
+			}
+			err := reviewCommand(fixture.ctx, arguments)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("%s acknowledgment error = %v", test.name, err)
+			}
+			if after := fixture.snapshot(t).Depth; after != before {
+				t.Fatalf("wrong acknowledgment set changed depth %d -> %d", before, after)
+			}
+		})
+	}
+}
+
+// News arriving between confirmation and sequencing reruns preflight instead
+// of chaining the verdict onto a world it never saw. The confirming read sees
+// what landed meanwhile, so the command refuses before anything is signed.
+func TestReviewGuardExposesLateArrivingNewsAtSequencingTime(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	before := fixture.snapshot(t).Depth
+	calls := 0
+	read := func() (reviewguard.Basis, []reviewguard.News, workroom.Projection, error) {
+		basis, news, projection, err := reviewRead(fixture.ctx, fixture.workspace, "reviewer", fixture.feature, fixture.artifact, fixture.promise)()
+		calls++
+		if calls == 2 && err == nil {
+			if _, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
+				Verb: app.VerbState, Kind: workroom.KindAssert, Text: "late news",
+				Body:    map[string]string{"head": basis.Head},
+				RestsOn: []string{fixture.artifact}, IdempotencyKey: "late-arrival",
+			}); err != nil {
+				return basis, news, projection, err
+			}
+		}
+		return basis, news, projection, err
+	}
+	err := reviewCommandWithValidator(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "reviewer", "--checkout", fixture.feature,
+		"--artifact", fixture.artifact, "--promise", fixture.promise,
+		"--verdict", "approved", "--text", "must not be signed",
+	}, read)
+	if err == nil || !strings.Contains(err.Error(), "changed") {
+		t.Fatalf("late arrival error = %v, want a basis-changed refusal", err)
+	}
+	if after := fixture.snapshot(t).Depth; after != before+1 {
+		t.Fatalf("late arrival changed depth %d -> %d, want only the news itself", before, after)
 	}
 }
 
@@ -931,7 +1063,7 @@ func TestSuccessionAdmissionPreflightsEveryActWithoutAppending(t *testing.T) {
 		t.Fatalf("receipt act alone should fit: %v", err)
 	}
 	err = preflightBatchAdmission(ctx, workspace, "", "operator", private, acts, true)
-	if err == nil || !strings.Contains(err.Error(), "act 1: event exceeds genesis ceiling") {
+	if err == nil || !strings.Contains(err.Error(), "act 1:") || !strings.Contains(err.Error(), "event exceeds genesis ceiling") {
 		t.Fatalf("later oversized act error = %v", err)
 	}
 	after, err := workspace.Snapshot(ctx)
@@ -2142,22 +2274,23 @@ func TestMergeGuardRefusesApprovalNotRestingOnNamedArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	view := fixture.workspace.View()
 	signed, err := intent.Sign(intent.Intent{
 		Version: intent.Version,
-		Target:  "git:" + fixture.workspace.View().ObjectFormat + ":" + fixture.workspace.View().Genesis,
-		Schema:  workroom.SchemaState, PayloadTree: "git:" + fixture.workspace.View().ObjectFormat + ":" + tree,
+		Target:  "git:" + view.ObjectFormat + ":" + view.Genesis,
+		Schema:  workroom.SchemaState, PayloadTree: "git:" + view.ObjectFormat + ":" + tree,
 		RestsOn:        []string{fixture.promise, fixture.request},
-		IdempotencyNS:  fixture.workspace.View().IdempotencyNamespace,
+		IdempotencyNS:  view.IdempotencyNamespace,
 		IdempotencyKey: "ungrounded-artifact-approval",
 	}, private)
 	if err != nil {
 		t.Fatal(err)
 	}
-	approvalSubmission, err := fixture.workspace.AcceptSubmission(fixture.ctx, kernel.Request{Signed: signed, Payload: payload})
-	if err != nil {
+	if _, err := kernel.Submit(fixture.ctx, fixture.workspace.Store, kernel.Request{Signed: signed, Payload: payload}, kernel.Options{SigningKey: view.SequencerKey}); err != nil {
 		t.Fatal(err)
 	}
-	approval := approvalSubmission.Record.ID
+	snapshotAfter := fixture.snapshot(t).Projection
+	approval := snapshotAfter.Statements[len(snapshotAfter.Statements)-1].Event
 	fixture.ratify(t, approval)
 	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
 	err = mergeCommand(fixture.ctx, []string{
@@ -2315,8 +2448,9 @@ func TestBatchRefusesTrailingInputWithoutLanding(t *testing.T) {
 // the label to the event already minted, and lands only the suffix.
 func TestBatchRetryAfterPartialLandingReplaysPrefixAndLandsSuffix(t *testing.T) {
 	fixture := newBatchFixture(t)
-	// The second act is addressed to an actor the roster does not carry yet,
-	// so it cannot be signed and the chain stops after the first act.
+	// An act the application boundary cannot build now stops the whole batch
+	// before the first append, so the prefix is durable only once the chain
+	// can land cleanly; the idempotency keys keep every later rerun cheap.
 	acts := fmt.Sprintf(`[
 	  {"label": "note", "verb": "state", "kind": "assert", "text": "the prefix is durable",
 	   "rests_on": [%q], "idempotency_key": "partial-assert"},
@@ -2328,44 +2462,49 @@ func TestBatchRetryAfterPartialLandingReplaysPrefixAndLandsSuffix(t *testing.T) 
 	before := fixture.snapshot()
 	first, err := fixture.run("operator", acts)
 	if err == nil {
-		t.Fatal("batch naming an unknown performer succeeded, so no prefix was left partly landed")
+		t.Fatal("batch naming an unknown performer succeeded")
 	}
-	if first.Landed != 1 || first.Replayed != 0 || first.Error == nil {
-		t.Fatalf("partial run report = %#v", first)
+	if first.Landed != 0 || first.Replayed != 0 || first.Error == nil {
+		t.Fatalf("preflighted run report = %#v", first)
 	}
-	if first.Acts[0].Outcome != "landed" || first.Acts[1].Outcome != "failed" {
-		t.Fatalf("partial run acts = %#v", first.Acts)
-	}
-	partial := fixture.snapshot()
-	if partial.Depth != before.Depth+1 {
-		t.Fatalf("partial run depth = %d, want %d", partial.Depth, before.Depth+1)
+	if fixture.snapshot().Depth != before.Depth {
+		t.Fatalf("a batch whose suffix cannot build changed depth to %d", fixture.snapshot().Depth)
 	}
 
 	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "operator", "latecomer", "agent"); err != nil {
 		t.Fatal(err)
 	}
-	admitted := fixture.snapshot()
-
 	second, err := fixture.run("operator", acts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Landed != 1 || second.Replayed != 1 || second.Error != nil {
-		t.Fatalf("retry report = %#v", second)
+	if second.Landed != 2 || second.Replayed != 0 || second.Error != nil {
+		t.Fatalf("repair run report = %#v", second)
 	}
-	if second.Acts[0].Outcome != "replayed" || second.Acts[0].Event != first.Acts[0].Event {
-		t.Fatalf("retry act 0 = %#v, want the first run's event %s replayed", second.Acts[0], first.Acts[0].Event)
+	if second.Acts[0].Outcome != "landed" || second.Acts[1].Outcome != "landed" {
+		t.Fatalf("repair acts = %#v", second.Acts)
 	}
-	if second.Acts[1].Outcome != "landed" || second.Acts[1].Event == "" {
-		t.Fatalf("retry act 1 = %#v, want the suffix landed", second.Acts[1])
+	landed := fixture.snapshot()
+	if !contains(landed.Projection.Provenance[second.Acts[1].Event], second.Acts[0].Event) {
+		t.Fatalf("suffix provenance = %#v, want the prefix event %s",
+			landed.Projection.Provenance[second.Acts[1].Event], second.Acts[0].Event)
+	}
+
+	third, err := fixture.run("operator", acts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third.Landed != 0 || third.Replayed != 2 || third.Error != nil {
+		t.Fatalf("retry report = %#v", third)
+	}
+	for position := range third.Acts {
+		if third.Acts[position].Outcome != "replayed" || third.Acts[position].Event != second.Acts[position].Event {
+			t.Fatalf("retry act %d = %#v, want the earlier event %s", position, third.Acts[position], second.Acts[position].Event)
+		}
 	}
 	after := fixture.snapshot()
-	if after.Depth != admitted.Depth+1 {
-		t.Fatalf("retry depth = %d, want %d: only the suffix should have landed", after.Depth, admitted.Depth+1)
-	}
-	if !contains(after.Projection.Provenance[second.Acts[1].Event], first.Acts[0].Event) {
-		t.Fatalf("suffix provenance = %#v, want the replayed prefix event %s",
-			after.Projection.Provenance[second.Acts[1].Event], first.Acts[0].Event)
+	if after.Head != landed.Head || after.Depth != landed.Depth {
+		t.Fatalf("retry moved the log to %s depth %d, want %s depth %d", after.Head, after.Depth, landed.Head, landed.Depth)
 	}
 	assertions := 0
 	for _, statement := range after.Projection.Statements {
@@ -2405,58 +2544,35 @@ func TestBatchMixesStateAndRatify(t *testing.T) {
 	}
 }
 
-// A kind this workroom does not define is admitted and stays visible, and the
-// fold still calls it undefined-kind. Nothing about that changes: the record
-// was right about the two review promises filed as kind "commit", and hiding
-// the attempt would be worse than keeping it.
-func TestStateWithAnUndefinedKindStillLandsAndProjectsUndefinedKind(t *testing.T) {
+// A kind this workroom does not define is refused before anything is signed.
+// The refusal names the live vocabulary and the ratified kind-def that would
+// establish the kind, and a defined kind still lands quietly.
+func TestStateRefusesUndefinedKindsAndListsTheVocabulary(t *testing.T) {
 	fixture := newBatchFixture(t)
 	before := fixture.snapshot().Depth
-	printed, _, err := fixture.state("operator", "commit", "I will re-review task/x at exact head y", "undefined-kind-lands")
-	if err != nil {
-		t.Fatalf("state with an undefined kind failed: %v", err)
+	_, _, err := fixture.state("operator", "commit", "I will re-review task/x at exact head y", "undefined-kind-refused")
+	if err == nil {
+		t.Fatal("state with an undefined kind was signed")
 	}
-	event := strings.TrimSpace(printed)
-	if !strings.Contains(event, "#git:") {
-		t.Fatalf("state printed no event id: %q", printed)
-	}
-	snapshot := fixture.snapshot()
-	if snapshot.Depth != before+1 {
-		t.Fatalf("depth = %d, want %d", snapshot.Depth, before+1)
-	}
-	decision := decisionByEvent(t, snapshot.Projection, event)
-	if decision.Verdict != workroom.UndefinedKind {
-		t.Fatalf("verdict = %q (%s), want %q", decision.Verdict, decision.Reason, workroom.UndefinedKind)
-	}
-}
-
-// What changes is that the author finds out at once. The act carried what
-// reads in English as a promise; it formed no promise, and only the writing
-// path is in a position to say so before the author acts on the belief.
-func TestStateWithAnUndefinedKindWarnsTheAuthorOnStandardError(t *testing.T) {
-	fixture := newBatchFixture(t)
-	_, warned, err := fixture.state("operator", "commit", "I will re-review task/x at exact head y", "undefined-kind-warns")
-	if err != nil {
-		t.Fatalf("state with an undefined kind failed: %v", err)
-	}
-	for _, want := range []string{`"commit"`, "no rule reads it", "undefined-kind", "does not form", "kinds defined here:"} {
-		if !strings.Contains(warned, want) {
-			t.Fatalf("warning %q does not say %q", warned, want)
+	for _, want := range []string{`"commit"`, "no override exists", "kinds defined here:", "ratified kind-def"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("refusal %q does not say %q", err, want)
 		}
 	}
 	for _, definition := range fixture.snapshot().Vocabulary.Definitions {
-		if !strings.Contains(warned, string(definition.Name)) {
-			t.Fatalf("warning %q does not list the defined kind %q", warned, definition.Name)
+		if !strings.Contains(err.Error(), string(definition.Name)) {
+			t.Fatalf("refusal %q does not list the defined kind %q", err, definition.Name)
 		}
 	}
-	// A defined kind is ordinary work and says nothing, so the warning cannot
-	// pass by being printed every time.
-	_, quiet, err := fixture.state("operator", "assert", "an ordinary claim", "defined-kind-is-quiet")
+	if got := fixture.snapshot().Depth; got != before {
+		t.Fatalf("refused undefined kind changed depth %d -> %d", before, got)
+	}
+	printed, warned, err := fixture.state("operator", "assert", "an ordinary claim", "defined-kind-is-quiet")
 	if err != nil {
 		t.Fatalf("state with a defined kind failed: %v", err)
 	}
-	if strings.TrimSpace(quiet) != "" {
-		t.Fatalf("a defined kind warned anyway: %q", quiet)
+	if !strings.Contains(printed, "#git:") || strings.TrimSpace(warned) != "" {
+		t.Fatalf("a defined kind landed noisily: stdout=%q stderr=%q", printed, warned)
 	}
 }
 
@@ -2489,7 +2605,10 @@ func deadWorld(t *testing.T, f batchFixture) (ground, stale, supersedeEvent stri
 		t.Fatal("the retirement did not project as an effective supersede act")
 	}
 
-	stalePrinted, _, err := f.state("operator", "assert", "resting on withdrawn ground", "dead-basis-stale", ground)
+	// The stale claim is itself the escape the dead-basis rule exists for: it
+	// rests on withdrawn ground deliberately, signing the override.
+	stalePrinted, _, err := f.stateWith("operator", "assert", "resting on withdrawn ground",
+		"dead-basis-stale", []string{"--allow-dead-basis"}, ground)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2500,22 +2619,48 @@ func deadWorld(t *testing.T, f batchFixture) (ground, stale, supersedeEvent stri
 	return ground, stale, supersedeEvent
 }
 
-// Everything the state command used to say about resting on a retired basis
-// was indistinguishable from resting on living ground: the act lands, an event
-// id comes back, the exit is clean. Each of the three deaths gets its own line,
-// named by event id, and a citation that is still alive says nothing.
-func TestStateWarnsWhenARestOnBasisIsAlreadyDead(t *testing.T) {
+// Resting on a retired basis refuses by default now, naming every dead basis
+// and the escape. Asking for the escape signs the override, the act lands, and
+// each of the three deaths still gets its own advisory line, named by event
+// id; a citation that is alive says nothing.
+func TestStateRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	f := newBatchFixture(t)
 	ground, stale, supersedeEvent := deadWorld(t, f)
 
-	stdout, stderr, err := f.state("operator", "assert", "citing every dead thing at once", "dead-basis-warn",
+	before := f.snapshot().Depth
+	_, _, err := f.state("operator", "assert", "citing every dead thing at once", "dead-basis-refused",
 		ground, stale, supersedeEvent, f.genesis)
+	if err == nil {
+		t.Fatal("a state resting on retired ground was signed without the escape")
+	}
+	if !strings.Contains(err.Error(), "--allow-dead-basis") {
+		t.Errorf("refusal %q does not name the escape", err)
+	}
+	for id, reason := range map[string]string{
+		ground:         "retired",
+		stale:          "stale",
+		supersedeEvent: "supersede",
+	} {
+		want := id + " (" + reason + ")"
+		if reason != "supersede" && !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q does not name %q", err, want)
+		}
+	}
+	if got := f.snapshot().Depth; got != before {
+		t.Fatalf("refused dead-basis state changed depth %d -> %d", before, got)
+	}
+
+	stdout, stderr, err := f.stateWith("operator", "assert", "citing every dead thing at once",
+		"dead-basis-override", []string{"--allow-dead-basis"}, ground, stale, supersedeEvent, f.genesis)
 	if err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
 	if len(lines) != 1 || !strings.Contains(lines[0], "#git:") {
 		t.Fatalf("stdout = %q, want exactly one event id line", stdout)
+	}
+	if stamped := statementByEvent(t, f.snapshot().Projection, strings.TrimSpace(stdout)); stamped.Body["dead_basis_override"] != "true" {
+		t.Fatalf("override act body = %#v, want dead_basis_override=true", stamped.Body)
 	}
 	for id, reason := range map[string]string{
 		ground:         "retired",
@@ -2540,17 +2685,39 @@ func TestStateWarnsWhenARestOnBasisIsAlreadyDead(t *testing.T) {
 	}
 }
 
-// The batch path walks its own acts in order, resolving labels the way runBatch
-// did, so an intra-batch citation is warned about by its durable name.
-func TestBatchWarnsWhenARestOnBasisIsAlreadyDead(t *testing.T) {
+// The batch preflight refuses a chain resting on dead bases before anything
+// lands; with the per-act escape the chain lands, each recorded act carries
+// dead_basis_override=true on its body, and the advisory notes still resolve
+// intra-batch citations to their durable names.
+func TestBatchRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	f := newBatchFixture(t)
 	ground, _, supersedeEvent := deadWorld(t, f)
 
-	acts := `[
+	blocked := `[
 	  {"label":"stale","verb":"state","kind":"assert","text":"on withdrawn ground","rests_on":["` + ground + `"]},
 	  {"label":"final","verb":"state","kind":"assert","text":"citing the chain","rests_on":["$stale","` + supersedeEvent + `"]}
 	]`
-	stdout, stderr, batchErr := f.runFileStreams("operator", acts)
+	before := f.snapshot().Depth
+	stdout, stderr, batchErr := f.runFileStreams("operator", blocked)
+	if batchErr == nil {
+		t.Fatal("a batch resting on dead bases was admitted")
+	}
+	var refused batchReport
+	if err := json.Unmarshal(stdout, &refused); err != nil {
+		t.Fatalf("decode batch report %q: %v (stderr %q)", stdout, err, stderr)
+	}
+	if refused.Landed != 0 || refused.Error == nil {
+		t.Fatalf("refused report = %#v", refused)
+	}
+	if f.snapshot().Depth != before {
+		t.Fatalf("refused batch changed depth %d -> %d", before, f.snapshot().Depth)
+	}
+
+	escaped := `[
+	  {"label":"stale","verb":"state","kind":"assert","text":"on withdrawn ground","rests_on":["` + ground + `"],"allow_dead_basis":true},
+	  {"label":"final","verb":"state","kind":"assert","text":"citing the chain","rests_on":["$stale","` + supersedeEvent + `"],"allow_dead_basis":true}
+	]`
+	stdout, stderr, batchErr = f.runFileStreams("operator", escaped)
 	if batchErr != nil {
 		t.Fatal(batchErr)
 	}
@@ -2560,6 +2727,13 @@ func TestBatchWarnsWhenARestOnBasisIsAlreadyDead(t *testing.T) {
 	}
 	if report.Landed != 2 || report.Acts[0].Outcome != "landed" || report.Acts[1].Outcome != "landed" {
 		t.Fatalf("batch report = %#v, want two landed acts", report)
+	}
+	projection := f.snapshot().Projection
+	for _, landedAct := range report.Acts {
+		stamped := statementByEvent(t, projection, landedAct.Event)
+		if stamped.Body["dead_basis_override"] != "true" {
+			t.Fatalf("act %s body = %#v, want dead_basis_override=true", stamped.Event, stamped.Body)
+		}
 	}
 	resolvedStale := report.Acts[0].Event
 	for _, want := range []string{
@@ -2739,6 +2913,12 @@ func (f batchFixture) run(actor, acts string) (batchReport, error) {
 // Rests-on bases default to the genesis event; a test citing other ground
 // names it and every id gets its own repeat of the flag, as a person types.
 func (f batchFixture) state(actor, kind, text, key string, rests ...string) (string, string, error) {
+	return f.stateWith(actor, kind, text, key, nil, rests...)
+}
+
+// stateWith is state with extra command-line flags, for tests that exercise
+// the explicit escapes.
+func (f batchFixture) stateWith(actor, kind, text, key string, extraFlags []string, rests ...string) (string, string, error) {
 	f.t.Helper()
 	if len(rests) == 0 {
 		rests = []string{f.genesis}
@@ -2757,6 +2937,7 @@ func (f batchFixture) state(actor, kind, text, key string, rests ...string) (str
 	for _, id := range rests {
 		arguments = append(arguments, "--rests-on", id)
 	}
+	arguments = append(arguments, extraFlags...)
 	stateErr := stateCommand(f.ctx, append(arguments, "--idempotency-key", key))
 	os.Stdout, os.Stderr = stdout, stderr
 	outWriter.Close()
@@ -3058,6 +3239,22 @@ func (f workflowFixture) moveTheWorld(t *testing.T) {
 	if promise := statementByEvent(t, snapshot.Projection, f.promise); promise.Retired || !promise.Stale {
 		t.Fatalf("review promise after the base moved: retired=%v stale=%v, want stale and live", promise.Retired, promise.Stale)
 	}
+}
+
+// fileHeadNews files a durable statement sequenced after the review request
+// that names the reviewed head in a structured body field, and returns the
+// event id the guard must see as head news.
+func (f workflowFixture) fileHeadNews(t *testing.T, text string) (string, error) {
+	t.Helper()
+	submission, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: text,
+		Body:    map[string]string{"head": f.candidate},
+		RestsOn: []string{f.artifact}, IdempotencyKey: "head-news-" + text,
+	})
+	if err != nil {
+		return "", err
+	}
+	return submission.Record.ID, nil
 }
 
 func (f workflowFixture) snapshot(t *testing.T) app.Snapshot {
@@ -3503,23 +3700,49 @@ func TestMergeGuardRefusesApprovalSignedByTheImplementer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	approval, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
-		Verb: app.VerbState, Kind: workroom.KindReport, Text: "approving my own head",
-		Body:    map[string]string{"verdict": "approved", "head": fixture.candidate, "artifact": own.Record.ID},
-		RestsOn: []string{fixture.promise, fixture.request, own.Record.ID}, IdempotencyKey: "self-approval",
+	// Build below the application write boundary: ordinary state surfaces now
+	// refuse a verdict shape before signing it, and this test exists to prove
+	// the merge gate still refuses a self-review on its own facts.
+	_, private, err := fixture.workspace.Actor("reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := workroom.Encode(workroom.State{
+		Kind: workroom.KindReport, Text: "approving my own head",
+		Body: map[string]string{"verdict": "approved", "head": fixture.candidate, "artifact": own.Record.ID},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.ratify(t, approval.Record.ID)
-	review, found := fixture.snapshot(t).Projection.Review(approval.Record.ID)
+	tree, err := fixture.workspace.Store.WritePayloadTree(fixture.ctx, payload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := fixture.workspace.View()
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version,
+		Target:  "git:" + view.ObjectFormat + ":" + view.Genesis,
+		Schema:  workroom.SchemaState, PayloadTree: "git:" + view.ObjectFormat + ":" + tree,
+		RestsOn:        []string{fixture.promise, fixture.request, own.Record.ID},
+		IdempotencyNS:  view.IdempotencyNamespace,
+		IdempotencyKey: "self-approval",
+	}, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kernel.Submit(fixture.ctx, fixture.workspace.Store, kernel.Request{Signed: signed, Payload: payload}, kernel.Options{SigningKey: view.SequencerKey}); err != nil {
+		t.Fatal(err)
+	}
+	selfFiled := fixture.snapshot(t).Projection.Statements[len(fixture.snapshot(t).Projection.Statements)-1].Event
+	fixture.ratify(t, selfFiled)
+	review, found := fixture.snapshot(t).Projection.Review(selfFiled)
 	if !found || review.Independence != workroom.IndependenceSelfReview {
 		t.Fatalf("projected review = %+v (found %v)", review, found)
 	}
 	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
 	err = mergeCommand(fixture.ctx, []string{
 		"--repo", fixture.repo, "--checkout", fixture.repo,
-		"--candidate", fixture.candidate, "--approval", approval.Record.ID,
+		"--candidate", fixture.candidate, "--approval", selfFiled,
 	})
 	if err == nil || !strings.Contains(err.Error(), "an independent review is required") {
 		t.Fatalf("self-approved merge error = %v", err)

@@ -25,6 +25,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
+	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -598,7 +599,15 @@ func tools() []map[string]any {
 		{"name": "inspect", "description": "Inspect one exact canonical durable event with its decision, commitment chain, direct provenance, and related review artifacts.", "inputSchema": object(withRepo(map[string]any{"event": stringField}), "event")},
 		{"name": "say", "description": "Publish signed ephemeral chat. Unique @name mentions and exact replies address live recipient sessions for priority delivery.", "inputSchema": object(withRepo(map[string]any{"about": stringField, "text": stringField, "conversation": stringField, "re": stringField}), "about", "text")},
 		{"name": "ack", "description": "Acknowledge exact priority-chat thread handles for this leased session. This is not a durable read receipt.", "inputSchema": object(withRepo(map[string]any{"threads": map[string]any{"type": "array", "items": stringField, "maxItems": nexus.MaxInboxFrames}}), "threads")},
-		{"name": "state", "description": "Append a durable attributed utterance. Evidence values are embedded attachments. A request body addresses its performer as name, @name, or fingerprint; the signed event stores the fingerprint.", "inputSchema": object(withRepo(map[string]any{"kind": stringField, "text": stringField, "body": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "rests_on": map[string]any{"type": "array", "items": stringField}, "evidence": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "idempotency_key": stringField}), "kind", "text", "rests_on")},
+		{"name": "state", "description": "Append a durable attributed utterance. Evidence values are embedded attachments. A request body addresses its performer as name, @name, or fingerprint; the signed event stores the fingerprint. allow_dead_basis rests on retired or stale bases anyway, signing body.dead_basis_override=true.", "inputSchema": object(withRepo(map[string]any{"kind": stringField, "text": stringField, "body": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "rests_on": map[string]any{"type": "array", "items": stringField}, "evidence": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "allow_dead_basis": map[string]string{"type": "boolean"}, "idempotency_key": stringField}), "kind", "text", "rests_on")},
+		{"name": "review", "description": "File a guarded review verdict against an exact head. ack_head_news acknowledges durable statements sequenced after the review request that name this head or lane; missing, duplicate, or extraneous acknowledgments refuse.", "inputSchema": object(withRepo(map[string]any{
+			"artifacts":       map[string]any{"type": "array", "items": stringField, "minItems": 1},
+			"promise":         stringField,
+			"verdict":         enum("approved", "changes-requested"),
+			"text":            stringField,
+			"ack_head_news":   map[string]any{"type": "array", "items": stringField},
+			"idempotency_key": stringField,
+		}), "artifacts", "promise", "verdict", "text")},
 		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(withRepo(map[string]any{"target": stringField, "idempotency_key": stringField}), "target")},
 		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(withRepo(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}), "target", "text")},
 	}
@@ -859,7 +868,10 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		for name, content := range stringMap(call.Arguments["evidence"]) {
 			evidence[name] = []byte(content)
 		}
-		return s.submit(ctx, current, app.Act{Verb: app.VerbState, Kind: workroom.Kind(kind), Text: text, Body: body, RestsOn: rests, Attachments: evidence, IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
+		allowDead, _ := call.Arguments["allow_dead_basis"].(bool)
+		return s.submit(ctx, current, app.Act{Verb: app.VerbState, Kind: workroom.Kind(kind), Text: text, Body: body, RestsOn: rests, Attachments: evidence, IdempotencyKey: stringValue(call.Arguments["idempotency_key"]), AllowDeadBasis: allowDead})
+	case "review":
+		return s.review(ctx, current, call)
 	case "ratify":
 		target := stringValue(call.Arguments["target"])
 		return s.submit(ctx, current, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
@@ -969,6 +981,57 @@ func containsString(values []string, wanted string) bool {
 		}
 	}
 	return false
+}
+
+// review files a guarded verdict through internal/reviewguard. It parses only
+// the tool's arguments: discovery, acknowledgment validation, canonical
+// encoding, and act construction are the guard's, and admission judges the act
+// again at sequencing against the frontier this surface confirmed. The MCP
+// surface holds no working tree, so the reviewed head comes from the durable
+// artifact row rather than from a checkout.
+func (s *mcpServer) review(ctx context.Context, current *room, call toolCall) (any, error) {
+	cited, err := reviewguard.CheckCitations(stringSlice(call.Arguments["artifacts"]))
+	if err != nil {
+		return nil, err
+	}
+	promise := stringValue(call.Arguments["promise"])
+	verdict := stringValue(call.Arguments["verdict"])
+	text := stringValue(call.Arguments["text"])
+	if text == "" {
+		return nil, errors.New("review requires text")
+	}
+	headNews := stringSlice(call.Arguments["ack_head_news"])
+
+	// The tool holds no working tree, so every guarded read takes the
+	// reviewed head from the durable artifact row; Confirm runs the shared
+	// three-read choreography with its exact-set, same-read, acknowledgment,
+	// and build checks, exactly as the command line runs it.
+	read := func() (reviewguard.Basis, []reviewguard.News, workroom.Projection, error) {
+		snapshot, err := current.workspace.Snapshot(ctx)
+		if err != nil {
+			return reviewguard.Basis{}, nil, workroom.Projection{}, err
+		}
+		actor, err := current.workspace.ResolveActor(s.actor)
+		if err != nil {
+			return reviewguard.Basis{}, nil, workroom.Projection{}, err
+		}
+		basis, news, err := reviewguard.ReviewBasis(reviewguard.Read{
+			Projection:          snapshot.Projection,
+			ReviewerFingerprint: actor.Fingerprint,
+			FrontierEvent:       current.workspace.EventID(snapshot.Head),
+			NoCheckout:          true,
+		}, cited[0], promise)
+		return basis, news, snapshot.Projection, err
+	}
+	body, restsOn, err := reviewguard.Confirm(read, cited, headNews, verdict, text)
+	if err != nil {
+		return nil, err
+	}
+	return s.submit(ctx, current, app.Act{
+		Verb: app.VerbState, Kind: workroom.KindReport, Text: text,
+		Body: body, RestsOn: restsOn, GuardedReview: true,
+		IdempotencyKey: stringValue(call.Arguments["idempotency_key"]),
+	})
 }
 
 func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any, error) {
