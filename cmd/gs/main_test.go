@@ -28,6 +28,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
+	"github.com/generalbusiness-ai/gitseq/internal/testgit"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -2816,7 +2817,7 @@ func buildBatchTemplate(root string) error {
 // TestMain removes the shared fixture templates once every test is done with
 // them.
 func TestMain(m *testing.M) {
-	code := m.Run()
+	code := testgit.Run(m)
 	for _, template := range []*fixtureTemplate{&batchTemplate, &workflowTemplates[0].fixtureTemplate, &workflowTemplates[1].fixtureTemplate} {
 		if template.root != "" {
 			os.RemoveAll(template.root)
