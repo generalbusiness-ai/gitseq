@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a4ff11885bf9b4d16b1551f771bb23eca2be792c","text":"The corrected server.go artifact at 73d6282c replaces the vulnerable resolver-based admission artifact at 5be75dc2."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b9f6b9a9e38f66fe717e6caf6616edf84589d67","text":"The corrected mutation-sensitive server_test.go artifact at 73d6282c replaces the insufficient test artifact at 5be75dc2."}
