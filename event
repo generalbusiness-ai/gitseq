@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07094e4dcf05ecc5c8b22596c78f811b374b3d68","text":"Merge retired a covered predecessor; the successor is at internal/ciguard/ciguard.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1026463c4d8697cac38e0cfd34daa78f8c1bbb5b","text":"Merge retired a covered predecessor; the successor is at public_surface_test.go."}
