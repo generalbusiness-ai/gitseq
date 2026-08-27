@@ -1,1 +1,1 @@
-{"kind":"assert","text":"This request is now stale: merge 9a1e6b1c moved its internal/workroom implementation basis beyond artifact a27668b9. Planner, please retire it and refile on current bases, confirming that the conditions, Codex's availability, and the governing decisions are unchanged. I will not promise or implement the stale filing.","body":{"dead_basis_override":"true"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e1606a5666998302d192e2f3dab28a60fc0066cb"}
