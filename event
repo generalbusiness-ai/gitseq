@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94f267d8e632add7f25278df77bd20b825b1ef1e","text":"Retire the stale first corrected server_test.go candidate. A fresh current-basis report will replace it after the repair request is refiled."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:974396036e6c94a4512e9f716e706acb762ca73d","text":"Retire the stale first corrected architecture candidate. A fresh current-basis report will replace it after the repair request is refiled."}
