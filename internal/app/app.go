@@ -3,6 +3,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -183,18 +184,54 @@ type LocalRepo struct {
 	Worktrees []WorktreeView `json:"worktrees"`
 }
 
-// gitRemotes reads every configured remote URL. The --null form separates
-// records with NUL and the key from its value with a newline, so a URL
-// containing spaces or a name containing dots stays unambiguous. A repository
-// with no remotes makes `git config --get-regexp` exit non-zero, which is not
-// an error here: it is the ordinary answer "none".
+// Bounds on what one repository's remote configuration may be. Both are far
+// above any real repository and exist so that valid-but-oversized
+// configuration fails closed — no link — rather than being read whole into a
+// resident that serves this on every uncached worktree read.
+const (
+	maxRemoteConfigBytes = 64 << 10
+	maxRemoteCount       = 64
+)
+
+var errRemoteConfigTooLarge = errors.New("remote configuration exceeds the local projection limit")
+
+// boundedBuffer collects a subprocess's output up to limit bytes and then
+// fails. os/exec stops copying on that failure and reports it from Wait, so
+// the caller sees an error rather than a truncated answer it might parse.
+type boundedBuffer struct {
+	buffer bytes.Buffer
+	limit  int
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if b.buffer.Len()+len(p) > b.limit {
+		return 0, errRemoteConfigTooLarge
+	}
+	return b.buffer.Write(p)
+}
+
+// gitRemotes reads the remote URLs this repository itself configures.
+//
+// --local is the whole of that word "itself". Without it the answer is the
+// merge of system, global, command (GIT_CONFIG_COUNT) and local scopes, so
+// anything able to set a variable in the resident's environment or in the
+// invoking user's ~/.gitconfig can name a remote.origin.url the repository
+// never configured — and it is emitted last, so it wins the map below. The
+// repository's own config file is the only thing this is entitled to disclose.
+//
+// The --null form separates records with NUL and the key from its value with a
+// newline, so a URL containing spaces or a name containing dots stays
+// unambiguous. A repository with no remotes makes `git config --get-regexp`
+// exit non-zero, which is not an error here: it is the ordinary answer "none".
 func gitRemotes(ctx context.Context, repo string) map[string]string {
-	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", repo, "config", "--null", "--get-regexp", `^remote\..*\.url$`).Output()
-	if err != nil {
+	command := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", repo, "config", "--local", "--null", "--get-regexp", `^remote\..*\.url$`)
+	output := &boundedBuffer{limit: maxRemoteConfigBytes}
+	command.Stdout = output
+	if err := command.Run(); err != nil {
 		return nil
 	}
 	remotes := make(map[string]string)
-	for _, record := range strings.Split(string(output), "\x00") {
+	for _, record := range strings.Split(output.buffer.String(), "\x00") {
 		if record == "" {
 			continue
 		}
@@ -205,6 +242,11 @@ func gitRemotes(ctx context.Context, repo string) map[string]string {
 		name := strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url")
 		if name == "" {
 			continue
+		}
+		if _, known := remotes[name]; !known && len(remotes) >= maxRemoteCount {
+			// Refuse rather than truncate: a truncated set would make which
+			// remote gets linked depend on where the reading stopped.
+			return nil
 		}
 		remotes[name] = value
 	}
@@ -242,6 +284,21 @@ func linkableRemote(remotes map[string]string) string {
 // form https://x-access-token:SECRET@host/org/repo carries a credential, and
 // declining keeps it out of this response body altogether rather than trusting
 // every later rendering path to drop it again.
+//
+// A query or fragment is declined for exactly that reason. ?access_token=SECRET
+// and #access_token=SECRET carry credential material as readily as userinfo
+// does, and admitting them while declining userinfo would be one rule applied
+// to one syntax. What this links is a repository's own address, which needs
+// neither component, so refusing both costs nothing real and needs no judgement
+// about which parameter names are secret — an enumeration that would be a
+// denylist, the thing the scheme rule is careful not to be.
+//
+// The test is made against the serialised form rather than the parsed fields
+// because escaping decides it exactly: url.URL escapes ? and # wherever they
+// appear in a host or path, so a bare one in the output can only be the query
+// or fragment delimiter — the empty one ForceQuery records included. What this
+// returns therefore never carries either delimiter, which is what lets the
+// browser apply the identical rule to the value it receives.
 func webRemoteURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -259,7 +316,11 @@ func webRemoteURL(raw string) string {
 	if parsed.User != nil || parsed.Host == "" {
 		return ""
 	}
-	return parsed.String()
+	link := parsed.String()
+	if strings.ContainsAny(link, "?#") {
+		return ""
+	}
+	return link
 }
 
 // WorktreeView is one checkout of the repository. Checkout is a display label

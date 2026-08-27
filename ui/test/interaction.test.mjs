@@ -1128,6 +1128,16 @@ test("only http and https remotes become a link", () => {
   assert.equal(repoRemoteHref("http://git.example.invalid/org/repo"), "http://git.example.invalid/org/repo");
   assert.equal(repoRemoteHref("HTTPS://github.com/org/repo.git"), "https://github.com/org/repo.git");
   assert.equal(repoRemoteHref("https://git.example.invalid:8443/o/r.git"), "https://git.example.invalid:8443/o/r.git");
+  // A percent-encoded ? in the path is path, not a query: the query rule reads
+  // the parser's serialization, where a naive substring test would refuse this.
+  assert.equal(repoRemoteHref("https://github.com/org/re%3Fpo.git"), "https://github.com/org/re%3Fpo.git");
+});
+
+// An allowlist refuses a scheme because it is unlisted. A denylist of the
+// schemes somebody thought to enumerate admits every one they did not.
+test("an unenumerated scheme carrying an authority is still refused", () => {
+  assert.equal(repoRemoteHref("future+git://github.com/org/repo.git"), undefined);
+  assert.equal(repoRemoteHref("x-unheard-of://github.com/org/repo.git"), undefined);
 });
 
 test("a script-bearing remote never becomes a link", () => {
@@ -1171,4 +1181,15 @@ test("a remote carrying userinfo is declined rather than stripped", () => {
   assert.equal(repoRemoteHref("https://x-access-token:s3cr3t@github.com/org/repo.git"), undefined);
   assert.equal(repoRemoteHref("https://token@github.com/org/repo.git"), undefined);
   assert.equal(repoRemoteHref("https://:s3cr3t@github.com/org/repo.git"), undefined);
+});
+
+// ?access_token=SECRET and #access_token=SECRET carry credential material as
+// readily as userinfo does. Admitting them while declining userinfo would be
+// one rule applied to one syntax, so the same refusal covers all three.
+test("a remote carrying a query or fragment is declined for the same reason", () => {
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git?access_token=s3cr3t"), undefined);
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git#access_token=s3cr3t"), undefined);
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git?ref=main#L1"), undefined);
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git?"), undefined);
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git#"), undefined);
 });

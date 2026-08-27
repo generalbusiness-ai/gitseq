@@ -1110,9 +1110,30 @@ a projection it may merge on. This carries the fold profile to
   application, nexus, HTTP projections and queries, and the browser assets. It
   publishes the trusted-process posture in resident status and rejects unsafe
   mutation hosts before a route can act.
+
+  `/v0/worktrees` carries an optional `remote` alongside the served path. It
+  is local Git state, never durable projection, and it is the one value this
+  surface emits that a browser will navigate to. Three properties are the
+  contract, not implementation detail. It comes from the repository's own
+  configuration only — `git config --local`, so no outer scope can say where
+  the repository lives. Its size and count are bounded, and a repository past
+  either bound reports no remote rather than a partial one. It is admitted by
+  an allowlist: `http` and `https` only, never userinfo, a query, or a
+  fragment, since each can carry a credential and declining keeps it out of
+  the response body rather than trusting later rendering to drop it. Refused
+  means absent: the field is omitted, and the reader is told nothing about
+  why.
 - `ui/` renders Workroom projections and live state, keeps its private
   resident credential only in tab memory, and displays the trust boundary
   before actor selection; it does not define durable meaning.
+
+  It navigates to that remote, which is the only place a string from local
+  Git configuration becomes an `href`. Being the site where the attribute is
+  written, it applies the same allowlist again to the value it received
+  rather than trusting the field: an older resident, a stale embed, or any
+  future caller gets the same answer. A refused remote renders byte-for-byte
+  as a repository with no remote does, so the page never distinguishes the
+  two.
 
 These surfaces may evolve or be replaced without changing kernel validity.
 They must not infer application force that the selected interpreter did not
@@ -1232,7 +1253,7 @@ the same result.
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |
 | `SKILL.md` | Application guidance | Governs agent conduct in Workroom. It is not a kernel protocol specification. |
-| `ui/`, `internal/service/uidist` | Surface and UI | Renders current Workroom projections, live runtime state, and the Git history facts the service exposes, as two screens: a sortable list of open requests and one thread drawn as a commitment spine. The committed build may not define new semantics; where the fold and Git disagree it shows both rather than choosing, and where the fold projects no relation at all it neither invents one nor gates an affordance on it, per "Layer 5 and layer 7: what the browser may derive" above. |
+| `ui/`, `internal/service/uidist` | Surface and UI | Renders current Workroom projections, live runtime state, and the Git history facts the service exposes, as two screens: a sortable list of open requests and one thread drawn as a commitment spine. The committed build may not define new semantics; where the fold and Git disagree it shows both rather than choosing, and where the fold projects no relation at all it neither invents one nor gates an affordance on it, per "Layer 5 and layer 7: what the browser may derive" above. Where it navigates away — the repository's remote is the one such link — it re-applies the service's allowlist at the site the `href` is written rather than trusting the field it was handed. |
 
 The important existing dependency direction is real: `internal/kernel` does
 not import `internal/workroom`; `internal/workroom` does not import Git, HTTP,

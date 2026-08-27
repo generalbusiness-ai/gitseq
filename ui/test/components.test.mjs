@@ -606,6 +606,10 @@ test("an unlinkable remote renders exactly as no remote does", async () => {
       // allowlist can refuse it.
       "git://github.com/generalbusiness-ai/gitseq.git",
       "file:///srv/git/gitseq.git",
+      // A scheme nobody has enumerated, carrying an authority so that a
+      // missing host is not what refuses it. An allowlist refuses this
+      // because it is unlisted; a denylist of known-bad schemes admits it.
+      "future+git://github.com/generalbusiness-ai/gitseq.git",
       "not a url at all",
     ]) {
       assert.equal(await topBarMarkup(vite, unlinkable), none, `${unlinkable} did not fall back to plain text`);
@@ -638,6 +642,25 @@ test("a remote carrying userinfo does not leak it into the DOM", async () => {
     const markup = await topBarMarkup(vite, "https://x-access-token:s3cr3t-token@github.com/generalbusiness-ai/gitseq.git");
     assert.doesNotMatch(markup, /s3cr3t-token|x-access-token/, "a credential in the remote URL reached the DOM");
     assert.doesNotMatch(markup, /<a\b/, "a remote carrying userinfo is declined, not stripped and linked");
+  } finally {
+    await vite.close();
+  }
+});
+
+// The same rule as userinfo, applied to the other two places a URL can carry a
+// credential. Declining userinfo while passing a query through would be one
+// rule applied to one syntax.
+test("a remote carrying a query or fragment does not leak it into the DOM", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    for (const bearing of [
+      "https://github.com/generalbusiness-ai/gitseq.git?access_token=s3cr3t-token",
+      "https://github.com/generalbusiness-ai/gitseq.git#access_token=s3cr3t-token",
+    ]) {
+      const markup = await topBarMarkup(vite, bearing);
+      assert.doesNotMatch(markup, /s3cr3t-token|access_token/, `${bearing} reached the DOM`);
+      assert.doesNotMatch(markup, /<a\b/, `${bearing} was linked rather than declined`);
+    }
   } finally {
     await vite.close();
   }

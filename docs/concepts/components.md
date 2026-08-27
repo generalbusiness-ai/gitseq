@@ -153,11 +153,19 @@ those are what a merge will actually refuse.
 The resident also reads local worktree state, which is *not* part of the
 durable projection. That endpoint names the served checkout's own
 absolute path, so a reader can tell which repository the page is showing,
-and otherwise emits only checkout basenames, branch and HEAD, and
-explicit clean, dirty, detached, bare, locked, prunable or unavailable
-state. Naming the served path is safe because the service binds loopback
-addresses only: whoever is reading the page is already on the host it
-names.
+and otherwise emits only checkout basenames, branch and HEAD, explicit
+clean, dirty, detached, bare, locked, prunable or unavailable state, and
+that repository's own remote when there is one safe to link. Naming the
+served path is safe because the service binds loopback addresses only:
+whoever is reading the page is already on the host it names.
+
+The remote is what lets the browser turn the path into a link to where
+the repository lives. It is read from the repository's own configuration
+only, bounded in size and count, and admitted by an allowlist: `http` and
+`https` only, and never a URL carrying userinfo, a query or a fragment,
+any of which can carry a credential. Anything refused is absent from the
+response, and the page shows the path as plain text. See
+[`gs serve`](../reference/gs/serve.md).
 
 ## Choosing a path in
 

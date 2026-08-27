@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -19,6 +20,10 @@ func TestWebRemoteURLAdmitsOnlyHTTPAndHTTPS(t *testing.T) {
 		"HTTPS://github.com/org/repo.git":          "https://github.com/org/repo.git",
 		"  https://github.com/org/repo.git\n":      "https://github.com/org/repo.git",
 		"https://git.example.invalid:8443/o/r.git": "https://git.example.invalid:8443/o/r.git",
+		// A percent-encoded ? in the path is path, not a query. The query rule
+		// reads the parser's serialization, so this stays admitted and a naive
+		// substring test over the caller's input would not.
+		"https://github.com/org/re%3Fpo.git": "https://github.com/org/re%3Fpo.git",
 	}
 	for raw, want := range admitted {
 		if got := webRemoteURL(raw); got != want {
@@ -43,10 +48,21 @@ func TestWebRemoteURLAdmitsOnlyHTTPAndHTTPS(t *testing.T) {
 		"data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
 		"vbscript:msgbox(1)",
 		"blob:https://github.com/deadbeef",
+		// A scheme nobody has enumerated, carrying an authority so that the
+		// host check cannot be what refuses it. Only an allowlist refuses
+		// this; every denylist of known-bad schemes admits it.
+		"future+git://github.com/org/repo.git",
+		"x-unheard-of://github.com/org/repo.git",
 		// Credentials in the URL are declined outright, never stripped.
 		"https://x-access-token:s3cr3t@github.com/org/repo.git",
 		"https://token@github.com/org/repo.git",
 		"https://:s3cr3t@github.com/org/repo.git",
+		// A query or fragment can carry credential material exactly as
+		// userinfo can, so it is declined by the same rule.
+		"https://github.com/org/repo.git?access_token=s3cr3t",
+		"https://github.com/org/repo.git#access_token=s3cr3t",
+		"https://github.com/org/repo.git?ref=main#L1",
+		"https://github.com/org/repo.git?",
 		// Nothing to link.
 		"https://",
 		"http://",
@@ -102,6 +118,99 @@ func TestLinkableRemoteSelectsOriginThenTheFirstNameAlphabetically(t *testing.T)
 		if got := linkableRemote(item.remotes); got != item.want {
 			t.Errorf("%s: linkableRemote = %q, want %q", item.name, got, item.want)
 		}
+	}
+}
+
+// Configuration outside the repository must not be able to say where the
+// repository lives. `git config` without --local answers from the merge of
+// system, global, command and local scopes, and command scope is set by three
+// environment variables: anything that can reach the resident's environment or
+// the invoking user's ~/.gitconfig could name a remote.origin.url this
+// repository never configured, and git emits the outer value last, so a
+// name-keyed map takes it. Only reading --local refuses that.
+func TestGitRemotesReadsRepositoryLocalConfigurationOnly(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	setRemoteURL(t, repo, "origin", "https://real.invalid/org/repo.git")
+
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "remote.origin.url")
+	t.Setenv("GIT_CONFIG_VALUE_0", "https://attacker.invalid/evil.git")
+
+	remotes := gitRemotes(ctx, repo)
+	if got := remotes["origin"]; got != "https://real.invalid/org/repo.git" {
+		t.Fatalf("origin = %q, want the repository's own local origin", got)
+	}
+
+	// An outer scope must not be able to introduce a remote either, not just
+	// overwrite one: reading --local means the whole outer scope is absent.
+	t.Setenv("GIT_CONFIG_KEY_0", "remote.aardvark.url")
+	if _, present := gitRemotes(ctx, repo)["aardvark"]; present {
+		t.Fatal("an out-of-repository scope introduced a remote")
+	}
+}
+
+// The same defect, followed all the way to the value that leaves this
+// boundary. gitRemotes is where it is fixed; LocalRepo.Remote is where it
+// would have been observed.
+func TestLocalWorktreesIgnoresOutOfRepositoryRemoteConfiguration(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "seed").CombinedOutput(); err != nil {
+		t.Fatalf("seed history: %v: %s", err, output)
+	}
+	if _, _, err := Init(ctx, repo, "human", 1<<20); err != nil {
+		t.Fatal(err)
+	}
+	setRemoteURL(t, repo, "origin", "https://real.invalid/org/repo.git")
+
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "remote.origin.url")
+	t.Setenv("GIT_CONFIG_VALUE_0", "https://attacker.invalid/evil.git")
+
+	workspace, err := Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, err := workspace.LocalWorktrees(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.Remote != "https://real.invalid/org/repo.git" {
+		t.Fatalf("LocalRepo.Remote = %q, want the repository's own local origin", local.Remote)
+	}
+	encoded, err := json.Marshal(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "attacker.invalid") {
+		t.Fatalf("an out-of-repository remote reached the local repository projection: %s", encoded)
+	}
+}
+
+// Valid configuration that is merely enormous must fail closed. Neither bound
+// is reachable by any real repository; they exist so that the resident reads a
+// bounded amount on every uncached worktree read and answers "no link" rather
+// than a partial parse when a repository exceeds them.
+func TestGitRemotesFailsClosedOnOversizedConfiguration(t *testing.T) {
+	ctx := context.Background()
+
+	tooMany := testRepo(t)
+	setRemoteURL(t, tooMany, "origin", "https://real.invalid/org/repo.git")
+	for index := 0; index <= maxRemoteCount; index++ {
+		setRemoteURL(t, tooMany, fmt.Sprintf("filler%03d", index), "https://filler.invalid/f.git")
+	}
+	if remotes := gitRemotes(ctx, tooMany); remotes != nil {
+		t.Fatalf("a repository over the remote-count bound answered %d remotes, want none", len(remotes))
+	}
+	if got := linkableRemote(gitRemotes(ctx, tooMany)); got != "" {
+		t.Fatalf("a repository over the remote-count bound linked %q", got)
+	}
+
+	tooBig := testRepo(t)
+	setRemoteURL(t, tooBig, "origin", "https://real.invalid/"+strings.Repeat("p", maxRemoteConfigBytes+1)+".git")
+	if remotes := gitRemotes(ctx, tooBig); remotes != nil {
+		t.Fatalf("a repository over the config-size bound answered %d remotes, want none", len(remotes))
 	}
 }
 
