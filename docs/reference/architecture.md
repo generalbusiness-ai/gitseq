@@ -609,6 +609,29 @@ fold, or UI expectations.
   land a merge whose required durable receipt or later succession act is too
   large to admit. This projection change advances the profile to
   `workroom-fold@11`;
+- the receipt freshness checkpoint. A sealed prospective receipt is a
+  checkpoint on the single edge from that receipt to a successor the same merge
+  published. Ordinary staleness causes already active at or before the
+  receipt's own position were settled by the merge and do not make that
+  successor stale at birth. A cause arising after the receipt still propagates,
+  direct retirement of the receipt still flares the successor, and the receipt
+  itself stays historically stale: only the successor begins a new current
+  implementation epoch. The exception is narrow and fail-closed. It needs an
+  authorized retirement plan carrying both `merge_left_live` and a canonical
+  `merge_changed_paths`, cited directly by an artifact its own author signed,
+  standing at the receipt's exact merge head, at a path the receipt declared it
+  would publish. A malformed half-pair, a historical receipt without the pair,
+  and a record that merely cites a receipt gain nothing, and whether individual
+  left-live testimony verifies is not read: that testimony is accounting about
+  other actors' candidates and grants no freshness. Causes are weighed one at a
+  time and dated, because comparing staleness now against staleness as of the
+  receipt cannot separate an old cause from a new one while both are live, and
+  a cause the fold cannot date fails closed. `describes_superseded_world` is
+  unchanged in every branch. Ownership is this layer: the rule lives in the
+  fold's staleness computation and projection, not in the kernel and not in
+  `gs`, which continues only to validate and construct receipts and successors.
+  This projection change advances the profile to `workroom-fold@12`, so a cache
+  written under `@11` is rejected and the history replayed;
 - Workroom MCP tools and their application meanings;
 - the agent practice in `SKILL.md`;
 - connector clauses and observations; and

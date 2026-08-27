@@ -97,6 +97,23 @@ reason the merge step retires the live artifacts covering what it changed.
 The rule is the edge, not the act: artifact-to-artifact provenance always
 carries the flare; every other `rests_on` edge is quieted by succession.
 
+### A merge is a checkpoint for what it publishes
+
+A merge receipt often stands on reasoning that had already moved. The receipt
+records that and keeps it. Its successor does not inherit it: on the one edge
+from a receipt to an artifact that same merge published, causes already active
+when the receipt sealed were settled by the merge, so the successor is not
+born stale. The receipt stays stale, and only the successor starts the new
+current epoch — which is what makes a merged implementation a basis worth
+resting on.
+
+The checkpoint travels one edge and no further. A record that merely cites a
+receipt keeps nothing. Nor does an artifact by another author, or one standing
+at a commit or a path the receipt never declared. A cause that arose after the
+receipt, a planned retirement whose successor was later condemned, and
+retirement of the receipt itself all still flare the successor, and
+`describes a superseded world` is untouched throughout.
+
 ## Two marks about practice
 
 Alongside staleness, the projection reports two situations that are
