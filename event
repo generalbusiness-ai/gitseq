@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bfc1b4c985b469b7634378c60812f4b7d6115611","text":"Retire the obsolete .gitseq artifact from abandoned head 57ad2be0 with no successor. The path exists in neither main nor the live publication head, its request and promise are retired, and no future succession is expected."}
+{"kind":"promise","text":"I will do this."}
