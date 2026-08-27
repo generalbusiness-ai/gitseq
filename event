@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5f55febe12826b0f69492c498715a713b0d14d1f"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:409ca17aadcbd22acec59ccb28759af4d1cda014","text":"Retire the earlier one-artifact cleanup request. Expanded request 9a60eb10 covered the complete five-artifact and review-request set; Claude completed it in report 5f55febe, which Codex accepted at 4f1d4d55."}
