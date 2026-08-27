@@ -8,29 +8,35 @@
 // here decodes an application payload, so nothing here can disagree with the
 // application about what its records mean.
 //
-// The whole surface is four acts:
+// The whole surface is five acts:
 //
 //	ws, err := host.Init(ctx, dir, app, initializer, host.Options{})
 //	ws, err := host.Open(ctx, dir, app)
+//	replacement, err := host.ReplaceBinding(ctx, dir, nextApp, initializer)
 //	rec, err := ws.Append(ctx, signer, host.Act{Schema: "chess/move@0", Payload: encoded})
 //	log, err := ws.Records(ctx)
 //
-// Init binds the repository to one application for life and Open refuses to
-// hand back a repository bound to a different one. Append signs one act with
-// the caller's key and gives it a position. Records returns the verified
-// ordered records for the application to fold. There is no projection here,
-// because the projection is the application's.
+// Init records the first binding and makes its signer the binding authority.
+// Open refuses to hand back a repository bound to an application or fold this
+// build does not hold. ReplaceBinding lets that initializing signer record an
+// ordered replacement after establishing the migration is sound. Append signs
+// one application act with the caller's key and gives it a position. Records
+// returns the verified ordered records for the application to fold. There is
+// no projection here, because the projection is the application's.
 //
 // # Binding
 //
-// A repository declares its application once, in its opening records, and that
-// choice is permanent. Open reads the binding in force, checks it against what
-// the running binary says it is, and refuses with [ErrUninterpretable] when
-// they differ — the repository is still kernel-verifiable, and only its
-// meaning is unavailable. A repository that declares no binding is a Workroom
-// repository by the fixed compatibility rule, so an application other than
-// Workroom refuses it too. Reading or recording a binding fetches, builds, and
-// runs nothing.
+// A repository declares its first application in its opening records. The key
+// that signed the first record may later replace that binding; no other key or
+// application-level role may do so. Bindings are read in order and the newest
+// qualifying replacement wins. An unauthorized, unparseable, or malformed
+// binding-shaped record is skipped and leaves the previous valid binding in
+// force. Open checks that binding against what the running binary says it is
+// and refuses with [ErrUninterpretable] when they differ — the repository is
+// still kernel-verifiable, and only its meaning is unavailable. A repository
+// that declares no binding is a Workroom repository by the fixed compatibility
+// rule, so an application other than Workroom refuses it too. Reading or
+// recording a binding fetches, builds, and runs nothing.
 //
 // # Who may append
 //
@@ -58,6 +64,7 @@
 package host
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -89,8 +96,10 @@ const defaultPayloadCeiling = 1 << 20
 // bound to an application, or a fold of that application, which the running
 // binary does not embody. It is not a damaged repository and not a failed
 // signature check: the log's authority is intact and readable, and only the
-// meaning of its records is unavailable here. Recovering the meaning takes the
-// application at the bound version, not a repair.
+// meaning of its records is unavailable here. Recovering the meaning takes
+// either the application at the bound version or an authorized binding
+// replacement whose migration evidence establishes how the incoming fold
+// judges the existing log.
 var ErrUninterpretable = errors.New("repository is verifiable but uninterpretable")
 
 // Application is what a binary says it is. Name and FoldVersion are the
@@ -201,6 +210,17 @@ type Log struct {
 	Records []Record
 }
 
+// BindingReplacement reports one ordered transition between fold versions.
+// The replacement record itself carries the same genesis and outgoing fold,
+// so this result is a convenient rendering rather than the only evidence.
+type BindingReplacement struct {
+	Genesis             string `json:"genesis"`
+	Application         string `json:"application"`
+	OutgoingFoldVersion string `json:"outgoing_fold_version"`
+	IncomingFoldVersion string `json:"incoming_fold_version"`
+	Record              Record `json:"record"`
+}
+
 // Workspace is one opened repository, bound to one application. The binding is
 // read when the workspace is made and never again, so every operation on one
 // workspace means the same thing however the log moves underneath it.
@@ -219,8 +239,8 @@ type Workspace struct {
 	depth     int
 }
 
-// Init creates a sequence in an existing Git repository and binds it to one
-// application, permanently. The binding is the log's first record, signed by
+// Init creates a sequence in an existing Git repository and records its first
+// application binding. The binding is the log's first record, signed by
 // initializer, and that key is the binding authority from then on: only it can
 // record a replacement, and no application-level role can grant or revoke
 // that. Keep it, or the repository can never be rebound.
@@ -353,6 +373,124 @@ func Open(ctx context.Context, repo string, application Application) (*Workspace
 	return workspace, nil
 }
 
+// ReplaceBinding records a new application binding after verifying the whole
+// sequence. The caller must hold the private key that signed the log's first
+// record; having a sequencer key or an application-level role is insufficient.
+//
+// This operation authorizes application to interpret the existing log. It
+// does not prove that application's fold preserves earlier judgments: the
+// operator must establish that separately before calling it. The replacement
+// records the exact genesis and outgoing fold version, and is admitted only if
+// that same binding remains in force at the head it will extend. A concurrent
+// replacement therefore causes a refusal instead of being overwritten.
+//
+// A repository with no explicit binding cannot be replaced through this
+// surface because its compatibility binding names no exact outgoing fold in
+// the log. A repository already carrying the exact requested binding is also
+// refused rather than gaining a redundant transition.
+func ReplaceBinding(ctx context.Context, repo string, application Application, initializer ed25519.PrivateKey) (BindingReplacement, error) {
+	return replaceBinding(ctx, repo, application, initializer, nil)
+}
+
+func replaceBinding(ctx context.Context, repo string, application Application, initializer ed25519.PrivateKey, failpoint func(string)) (BindingReplacement, error) {
+	if err := application.validate(); err != nil {
+		return BindingReplacement{}, err
+	}
+	if len(initializer) != ed25519.PrivateKeySize {
+		return BindingReplacement{}, errors.New("initializer must be an ed25519 private key")
+	}
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
+	if err != nil {
+		return BindingReplacement{}, err
+	}
+	config, err := apphost.LoadConfig(apphost.MetaDir(commonDir))
+	if err != nil {
+		return BindingReplacement{}, err
+	}
+	if config.ReadOnly || config.SequencerKey == "" {
+		return BindingReplacement{}, errors.New("repository is attached read-only: it holds no sequencer key to replace its binding")
+	}
+	workspace := newWorkspace(config, gitstore.Store{Repo: commonDir})
+	verified, err := workspace.Records(ctx)
+	if err != nil {
+		return BindingReplacement{}, err
+	}
+	if len(verified.Records) == 0 {
+		return BindingReplacement{}, errors.New("repository has no initializing actor record")
+	}
+	initializingKey := verified.Records[0].ActorKey
+	if !bytes.Equal(initializer.Public().(ed25519.PublicKey), initializingKey) {
+		return BindingReplacement{}, errors.New("binding replacement requires the initializing actor's key")
+	}
+	outgoing, err := apphost.BindingInForce(ctx, workspace.store, config.Genesis, verified.Head)
+	if err != nil {
+		return BindingReplacement{}, err
+	}
+	if outgoing == nil {
+		return BindingReplacement{}, errors.New("repository has no explicit binding with an exact outgoing fold version")
+	}
+	incoming := apphost.Binding{
+		Application: application.Name, SourceCommit: apphost.SourceCommit(),
+		SourceURL: application.SourceURL, FoldVersion: application.FoldVersion,
+	}
+	if sameBindingIdentity(*outgoing, incoming) {
+		return BindingReplacement{}, errors.New("requested binding is already in force")
+	}
+	recorded := incoming
+	recorded.Genesis = "git:" + config.ObjectFormat + ":" + config.Genesis
+	recorded.PreviousFoldVersion = outgoing.FoldVersion
+	payload, err := recorded.Payload()
+	if err != nil {
+		return BindingReplacement{}, err
+	}
+	request, err := workspace.bindingRequest(ctx, initializer, payload, verified.Head)
+	if err != nil {
+		return BindingReplacement{}, err
+	}
+	expected := *outgoing
+	submitter := kernel.NewSubmitter(workspace.store, kernel.Options{
+		SigningKey: config.SequencerKey, MaxQueueDepth: queueDepth, Failpoint: failpoint,
+		PostDedup: func(ctx context.Context, act kernel.Application) error {
+			if !bytes.Equal(act.ActorKey, initializingKey) {
+				return errors.New("binding replacement requires the initializing actor's key")
+			}
+			current, err := apphost.BindingInForce(ctx, workspace.store, config.Genesis, act.Head)
+			if err != nil {
+				return err
+			}
+			if current == nil || *current != expected {
+				return errors.New("binding in force changed while its replacement was being recorded")
+			}
+			return nil
+		},
+	})
+	result, err := submitter.Submit(ctx, request)
+	if err != nil {
+		return BindingReplacement{}, err
+	}
+	inForce, err := apphost.BindingInForce(ctx, workspace.store, config.Genesis, result.Head)
+	if err != nil {
+		return BindingReplacement{}, err
+	}
+	if inForce == nil || *inForce != recorded {
+		return BindingReplacement{}, errors.New("recorded binding replacement did not take force")
+	}
+	return BindingReplacement{
+		Genesis: config.Genesis, Application: incoming.Application,
+		OutgoingFoldVersion: outgoing.FoldVersion, IncomingFoldVersion: incoming.FoldVersion,
+		Record: Record{
+			ID: workspace.eventID(result.Commit), Actor: intent.ActorFingerprint(request.Signed.ActorKey),
+			ActorKey: ed25519.PublicKey(request.Signed.ActorKey), Schema: apphost.BindingSchema,
+			Payload: payload, Timestamp: result.Timestamp,
+		},
+	}, nil
+}
+
+func sameBindingIdentity(left, right apphost.Binding) bool {
+	return left.Application == right.Application && left.SourceCommit == right.SourceCommit &&
+		left.SourceURL == right.SourceURL && left.FoldVersion == right.FoldVersion
+}
+
 func newWorkspace(config apphost.Config, store gitstore.Store) *Workspace {
 	return &Workspace{
 		genesis: config.Genesis, objectFormat: config.ObjectFormat,
@@ -433,6 +571,22 @@ func (w *Workspace) append(ctx context.Context, signer ed25519.PrivateKey, schem
 		ActorKey: ed25519.PublicKey(signed.ActorKey), Schema: schema, Payload: payload,
 		RestsOn: restsOn, Timestamp: result.Timestamp,
 	}, nil
+}
+
+func (w *Workspace) bindingRequest(ctx context.Context, signer ed25519.PrivateKey, payload []byte, head string) (kernel.Request, error) {
+	tree, err := gitstore.HashPayloadTree(w.objectFormat, payload, nil)
+	if err != nil {
+		return kernel.Request{}, err
+	}
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version, Target: "git:" + w.objectFormat + ":" + w.genesis,
+		Schema: apphost.BindingSchema, PayloadTree: "git:" + w.objectFormat + ":" + tree,
+		IdempotencyNS: w.namespace, IdempotencyKey: "binding/" + head,
+	}, signer)
+	if err != nil {
+		return kernel.Request{}, err
+	}
+	return kernel.Request{Signed: signed, Payload: payload}, nil
 }
 
 // Records verifies the sequence and returns every accepted record in order.

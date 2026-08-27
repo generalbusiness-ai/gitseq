@@ -39,10 +39,12 @@ const (
 // SourceCommit is format-qualified (`git:sha1:<commit>`), never a bare hash.
 // SourceURL is provenance and never authority: nothing here fetches it.
 type Binding struct {
-	Application  string `json:"application"`
-	SourceCommit string `json:"source_commit,omitempty"`
-	SourceURL    string `json:"source_url,omitempty"`
-	FoldVersion  string `json:"fold_version"`
+	Application         string `json:"application"`
+	SourceCommit        string `json:"source_commit,omitempty"`
+	SourceURL           string `json:"source_url,omitempty"`
+	FoldVersion         string `json:"fold_version"`
+	Genesis             string `json:"genesis,omitempty"`
+	PreviousFoldVersion string `json:"previous_fold_version,omitempty"`
 }
 
 // Validate reports whether a binding says enough to select an interpreter.
@@ -56,6 +58,14 @@ func (b Binding) Validate() error {
 	if b.SourceCommit != "" {
 		if _, _, err := gitstore.ParseTypedOID(b.SourceCommit); err != nil {
 			return fmt.Errorf("binding source commit: %w", err)
+		}
+	}
+	if (b.Genesis == "") != (b.PreviousFoldVersion == "") {
+		return errors.New("replacement binding requires both genesis and previous fold version")
+	}
+	if b.Genesis != "" {
+		if _, _, err := gitstore.ParseTypedOID(b.Genesis); err != nil {
+			return fmt.Errorf("binding genesis: %w", err)
 		}
 	}
 	return nil
@@ -184,6 +194,16 @@ func BindingInForce(ctx context.Context, store gitstore.Store, genesis, revision
 		decoded, err := DecodeBinding(payload)
 		if err != nil {
 			return nil
+		}
+		// Replacement metadata makes the transition self-describing and
+		// prevents a record prepared for one history from taking force in
+		// another. A replacement that no longer names the binding immediately
+		// before it is stale input, so it is passed over like every other
+		// malformed binding-shaped record.
+		if decoded.Genesis != "" {
+			if decoded.Genesis != target || inForce == nil || decoded.PreviousFoldVersion != inForce.FoldVersion {
+				return nil
+			}
 		}
 		inForce = &decoded
 		return nil
