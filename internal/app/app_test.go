@@ -2196,7 +2196,7 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 // rules that actually changed, where serving the cache would answer with the
 // old world.
 //
-// The transition under test is whichever one the build is making -- @12 to @13
+// The transition under test is whichever one the build is making -- @13 to @14
 // as this stands, for the satisfier the fold captured on each statement.
 // Re-anchor both constants and the observable when the profile moves again;
 // that edit is the point, because it makes whoever bumps the profile look at
@@ -2204,10 +2204,16 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 // leaves the test passing while it proves nothing about the transition it
 // names.
 //
-// The observable is the satisfier on the ratified approval. @12 projected no
-// such field, so an @12 cache carries the empty string where @13 carries
+// That is not a hypothetical. This block said "@12 to @13" while the constants
+// below already read @13 and @14, because the profile moved and only the prose
+// was left behind -- the exact drift the paragraph above warns about, in the
+// paragraph that warns about it. The constants were right and the test was
+// sound; a reader trusting the comment would have believed otherwise.
+//
+// The observable is the satisfier on the ratified approval. @13 projected no
+// such field, so an @13 cache carries the empty string where @14 carries
 // "originating-requester", and the difference is not cosmetic: mayRatify reads
-// exactly this value and refuses when it is absent, so a served @12 cache
+// exactly this value and refuses when it is absent, so a served @13 cache
 // answers every reader "no authority" and reintroduces through the cache alone
 // the silent denial the field was added to close.
 //
@@ -2216,8 +2222,8 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 // version would never match whatever the build holds, and the cache would be
 // dropped for the wrong reason: the witness would pass with the bump reverted.
 // The seeded cache stands at the current head, so the profile is the only thing
-// that can cause a replay. Revert ProfileVersion to @12 and the first branch of
-// snapshotWithSource returns the @12 answer verbatim.
+// that can cause a replay. Revert ProfileVersion to @13 and the first branch of
+// snapshotWithSource returns the @13 answer verbatim.
 //
 // The @11-to-@12 receipt checkpoint this test used to witness is not kept here.
 // It says nothing about the transition the build is making, and the rule
