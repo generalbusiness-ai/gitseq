@@ -220,10 +220,13 @@ has kernel durability.
 
 The supported host posture is one trusted operator account, not a partial
 shared-host authentication system. `gs serve` discloses that posture on every
-start, resolves the listener host to loopback only, and checks every mutation
-Host and browser provenance before routing. Within that boundary, the resident
-can open several actor keys and every process running as the account is
-trusted to ask it to act as any of them. Direct local
+start and resolves the configured listener host to loopback only. Before
+routing a request, it requires the Host to contain an explicit numeric port and
+either a literal loopback IP or `localhost`, compared without case and with one
+optional trailing dot. It never resolves request hostnames. It also checks every
+mutation's browser provenance. Within that boundary, the resident can open
+several actor keys and every process running as the account is trusted to ask it
+to act as any of them. Direct local
 `gs` key access and malicious same-account processes remain outside the
 resident's protection.
 
