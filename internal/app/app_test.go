@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -2327,8 +2328,8 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	stale := current
 	stale.Projection.Artifacts = append([]workroom.Artifact(nil), current.Projection.Artifacts...)
 	stale.Projection.Artifacts[index].Stale = true
-	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@11"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@12"
+	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@12"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@13"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &stale
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2344,6 +2345,61 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	}
 	if workspace.snapshotProfile != wantProfile {
 		t.Fatalf("cache profile = %q, want %q: the older profile was not replaced", workspace.snapshotProfile, wantProfile)
+	}
+}
+
+// The @13 bump has a semantic witness of its own. An @12 fold cannot decode
+// either guarded schema, so its cache sees ineffective opaque records. The
+// current fold lowers them to an ordinary supersession and request only after
+// enforcing their signed commitment tuple. Serving the old cache would thus
+// erase a reassignment that the durable history actually contains.
+func TestReassignSchemasRebuildAnOlderProfileCache(t *testing.T) {
+	ctx := context.Background()
+	fixture := newReassignFixture(t)
+	retirement := actRecord(t, ctx, fixture.workspace, "human", fixture.retireAct())
+	replacement := actRecord(t, ctx, fixture.workspace, "human", fixture.replacementAct(retirement.ID))
+	current := fixture.workspace.mustSnapshot(t, ctx)
+	for _, event := range []string{retirement.ID, replacement.ID} {
+		decision, ok := current.Projection.Decision(event)
+		if !ok || decision.Verdict != workroom.Effective {
+			t.Fatalf("current guarded decision %s = %+v, found=%v", event, decision, ok)
+		}
+	}
+
+	old := current
+	old.Projection.Decisions = append([]workroom.Decision(nil), current.Projection.Decisions...)
+	for index := range old.Projection.Decisions {
+		decision := &old.Projection.Decisions[index]
+		if decision.Event == retirement.ID || decision.Event == replacement.ID {
+			decision.Verdict = workroom.Ineffective
+			decision.Reason = "unsupported workroom schema under workroom-fold@12"
+		}
+	}
+	old.Projection.Acts = slices.DeleteFunc(append([]workroom.Act(nil), current.Projection.Acts...), func(act workroom.Act) bool {
+		return act.Event == retirement.ID
+	})
+	old.Projection.Statements = slices.DeleteFunc(append([]workroom.Statement(nil), current.Projection.Statements...), func(statement workroom.Statement) bool {
+		return statement.Event == replacement.ID
+	})
+	fixture.workspace.snapshotMu.Lock()
+	fixture.workspace.snapshotCache = &old
+	fixture.workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
+	fixture.workspace.snapshotProfile = apphost.DefaultApplication + "\x00workroom-fold@12"
+	fixture.workspace.snapshotMu.Unlock()
+
+	rebuilt, err := fixture.workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []string{retirement.ID, replacement.ID} {
+		decision, ok := rebuilt.Snapshot.Projection.Decision(event)
+		if !ok || decision.Verdict != workroom.Effective {
+			t.Fatalf("rebuilt guarded decision %s = %+v, found=%v", event, decision, ok)
+		}
+	}
+	want := apphost.DefaultApplication + "\x00workroom-fold@13"
+	if fixture.workspace.snapshotProfile != want {
+		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
 	}
 }
 

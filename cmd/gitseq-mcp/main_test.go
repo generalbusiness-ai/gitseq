@@ -74,7 +74,7 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 	if result["resultType"] != "complete" {
 		t.Fatalf("tool list has no complete result type: %#v", result)
 	}
-	if got := len(result["tools"].([]any)); got != 13 {
+	if got := len(result["tools"].([]any)); got != 14 {
 		t.Fatalf("got %d tools", got)
 	}
 	listed := make(map[string]map[string]any)

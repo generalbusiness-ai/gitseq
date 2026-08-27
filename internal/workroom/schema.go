@@ -13,13 +13,15 @@ const (
 	// ProfileVersion identifies the exact deterministic application projection
 	// contract. Kernel checkpoints are profile-independent verified event
 	// material; application projection caches use this value as their gate.
-	ProfileVersion     = "workroom-fold@12"
-	SchemaStateLegacy  = "workroom/state@0"
-	SchemaStateV1      = "workroom/state@1"
-	SchemaState        = "workroom/state@2"
-	SchemaRatifyLegacy = "workroom/ratify@0"
-	SchemaRatify       = "workroom/ratify@1"
-	SchemaSupersede    = "workroom/supersede@0"
+	ProfileVersion        = "workroom-fold@13"
+	SchemaStateLegacy     = "workroom/state@0"
+	SchemaStateV1         = "workroom/state@1"
+	SchemaState           = "workroom/state@2"
+	SchemaRatifyLegacy    = "workroom/ratify@0"
+	SchemaRatify          = "workroom/ratify@1"
+	SchemaSupersede       = "workroom/supersede@0"
+	SchemaRetireUnclaimed = "workroom/retire-if-unclaimed@0"
+	SchemaReassignRequest = "workroom/reassign-if-unclaimed@0"
 )
 
 type Kind string
@@ -58,6 +60,40 @@ type Supersede struct {
 	Text   string `json:"text"`
 }
 
+const CommitmentAbsent = "absent"
+
+// UnclaimedExpectation is the signed commitment tuple used by guarded
+// reassignment. Absence is an explicit word rather than an omitted field, so
+// old or hand-built payloads cannot accidentally turn a missing expectation
+// into permission.
+type UnclaimedExpectation struct {
+	Request    string `json:"request"`
+	Retirement string `json:"retirement,omitempty"`
+	Promise    string `json:"promise"`
+	Completion string `json:"completion"`
+}
+
+// RetireIfUnclaimed retires one request only while the signed expectation is
+// still true. It deliberately remains a distinct schema from Supersede: a
+// resident that does not understand the guard must leave the act ineffective
+// instead of applying an ordinary retirement without its precondition.
+type RetireIfUnclaimed struct {
+	Target      string               `json:"target"`
+	Text        string               `json:"text"`
+	CitedOK     bool                 `json:"cited_ok"`
+	Expectation UnclaimedExpectation `json:"expectation"`
+}
+
+// ReassignIfUnclaimed publishes the replacement request after the guarded
+// retirement it names, provided no promise or direct completion appeared on
+// the old request in between. The request kind is fixed by the schema; callers
+// cannot use this authority to smuggle another statement lifecycle through.
+type ReassignIfUnclaimed struct {
+	Text        string               `json:"text"`
+	Body        map[string]string    `json:"body"`
+	Expectation UnclaimedExpectation `json:"expectation"`
+}
+
 func Encode(value any) ([]byte, error) {
 	if err := validatePayload(value); err != nil {
 		return nil, err
@@ -82,6 +118,10 @@ func decode(schema string, data []byte, pool map[string]string) (any, error) {
 		value = &Ratify{}
 	case SchemaSupersede:
 		value = &Supersede{}
+	case SchemaRetireUnclaimed:
+		value = &RetireIfUnclaimed{}
+	case SchemaReassignRequest:
+		value = &ReassignIfUnclaimed{}
 	default:
 		return nil, fmt.Errorf("unsupported workroom schema %q", schema)
 	}
@@ -199,8 +239,41 @@ func validatePayload(value any) error {
 		}
 	case *Supersede:
 		return validatePayload(*body)
+	case RetireIfUnclaimed:
+		if body.Target == "" || body.Text == "" {
+			return errors.New("guarded retirement target and text are required")
+		}
+		return validateUnclaimedExpectation(body.Expectation, false)
+	case *RetireIfUnclaimed:
+		return validatePayload(*body)
+	case ReassignIfUnclaimed:
+		if body.Text == "" {
+			return errors.New("guarded replacement text is required")
+		}
+		if err := validateState(State{Kind: KindRequest, Text: body.Text, Body: body.Body}); err != nil {
+			return err
+		}
+		return validateUnclaimedExpectation(body.Expectation, true)
+	case *ReassignIfUnclaimed:
+		return validatePayload(*body)
 	default:
 		return fmt.Errorf("unsupported workroom payload %T", value)
+	}
+	return nil
+}
+
+func validateUnclaimedExpectation(expectation UnclaimedExpectation, replacement bool) error {
+	if expectation.Request == "" {
+		return errors.New("unclaimed expectation request is required")
+	}
+	if replacement && expectation.Retirement == "" {
+		return errors.New("replacement expectation retirement is required")
+	}
+	if !replacement && expectation.Retirement != "" {
+		return errors.New("retirement expectation must not name a prior retirement")
+	}
+	if expectation.Promise != CommitmentAbsent || expectation.Completion != CommitmentAbsent {
+		return errors.New("unclaimed expectation must explicitly require absent promise and completion")
 	}
 	return nil
 }

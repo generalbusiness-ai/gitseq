@@ -1010,6 +1010,25 @@ func TestPostDedupRunsOncePerNewSubmissionAndNeverForAReplay(t *testing.T) {
 	}
 }
 
+func TestCheckReplayDistinguishesAbsentExactAndConflictingIntents(t *testing.T) {
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	request := f.request(t, private, "check-replay", []byte("first"), nil)
+	if replay, err := CheckReplay(f.ctx, f.store, request); err != nil || replay {
+		t.Fatalf("absent replay = %v, %v", replay, err)
+	}
+	if _, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey}); err != nil {
+		t.Fatal(err)
+	}
+	if replay, err := CheckReplay(f.ctx, f.store, request); err != nil || !replay {
+		t.Fatalf("exact replay = %v, %v", replay, err)
+	}
+	conflict := f.request(t, private, "check-replay", []byte("different"), nil)
+	if replay, err := CheckReplay(f.ctx, f.store, conflict); replay || !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("conflicting replay = %v, %v", replay, err)
+	}
+}
+
 // The hook runs inside the compare-and-swap loop, so a log that moved between
 // the head read and the ref update makes it judge the newer world before the
 // retried commit is written against it.

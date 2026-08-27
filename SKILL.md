@@ -20,7 +20,8 @@ participants leave or their presence leases expire. Use it for thinking
 out loud, questions, drafts, disagreement-in-progress. Cheap — prefer
 it. NOT private: any participant can keep a copy forever.
 
-**Durable** (`state`, `ratify`, `supersede`): the permanent record.
+**Durable** (`state`, `ratify`, `supersede`, `reassign_if_unclaimed`): the
+permanent record.
 Every durable event cites its basis in `rests_on`.
 
 ## Tools
@@ -94,6 +95,11 @@ acknowledging. See [Live attention](docs/reference/live-attention.md).
 - `supersede {target, text, rests_on}` — retire a prior event, propagating
   staleness to everything resting on it. Prefer supersession to
   contradiction.
+- `reassign_if_unclaimed {old_request, to, text, conditions,
+  idempotency_key, rests_on?}` — resumable, separately guarded two-act
+  reassignment.
+  It retires and replaces only a live, fresh request with no admitted direct
+  promise or completion; exact retries replay the pair.
 - Every tool takes an optional `repo` naming the repository whose workroom
   the call acts in; it defaults to the directory your adapter was started
   in, including from any of its linked worktrees. Name it only to act in a
@@ -127,6 +133,17 @@ faith, not fault. A requester withdrawing a request under a live promise in
 order to reassign the work should ask the promisor to supersede their
 promise first: one extra act, and the commitment closes reneged and
 readable instead of being cancelled out from under work in flight.
+
+When a request appears unclaimed and you intend to move it to another actor,
+use `reassign_if_unclaimed` (or `gs reassign-if-unclaimed`) rather than reading
+the board and filing an ordinary retirement plus replacement. The helper signs
+the exact old request and guarded retirement. The fold requires the request to
+remain live and fresh with no admitted direct promise or completion, and checks
+the same facts again before admitting the replacement. Unrelated durable
+traffic may interleave. A claim or completion means your earlier read moved:
+re-read instead of publishing the replacement. This does not narrow ordinary
+supersession; a requester deliberately withdrawing promised work still uses
+`supersede` and accepts its visible lifecycle result.
 
 **Intake**: the loop above says how to keep a commitment, not how to take
 or refuse one. Each working cycle, every request addressed to you in the
@@ -249,6 +266,12 @@ artifact it names.
     decision actually changed: a condition of satisfaction, the addressee's
     availability, or the governing decision itself retired with no
     successor.
+12. **Guard an unclaimed reassignment.** “Unclaimed” is a fact about the exact
+    request position you read, not a reason an ordinary two-act sequence can
+    preserve. Use the guarded reassignment helper, give it one stable
+    idempotency key, and let its signed retirement and replacement carry the
+    request-local precondition. If either half refuses, re-read the commitment;
+    never complete the pair by hand around the refusal.
 
 ## The repo underneath
 

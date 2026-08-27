@@ -21,7 +21,7 @@ the log, and then appends every act against that one frontier.
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor signing every act in the chain. |
 | `--server` | | Forward each act to a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
-| `--cited-ok` | `false` | Allow a `supersede` act whose target tracked documentation still names. Without it the whole batch is refused before its first append, and the pages are listed. |
+| `--cited-ok` | `false` | Allow a `supersede` or `retire-if-unclaimed` act whose target tracked documentation still names. Guarded retirement signs this admission observation separately from its fold-enforced commitment guard. |
 
 The one positional argument is the file to read. `-`, or no argument at
 all, reads standard input.
@@ -29,8 +29,9 @@ all, reads standard input.
 ## The input
 
 A JSON array of acts. Each entry carries an optional `label`, a `verb` of
-`state`, `ratify` or `supersede`, and that verb's usual fields: `kind`,
-`text`, `body`, `rests_on`, `target` and `idempotency_key`. Unknown
+`state`, `ratify`, `supersede`, `retire-if-unclaimed`, or
+`reassign-if-unclaimed`, and that verb's usual fields: `kind`, `text`, `body`,
+`rests_on`, `target`, `retirement`, and `idempotency_key`. Unknown
 fields are refused.
 
 ```text
@@ -45,7 +46,7 @@ fields are refused.
 ```
 
 A later act cites an earlier act of the same chain as `$label`, in
-`rests_on` or in `target`, and the label resolves to the identifier
+`rests_on`, `target`, or `retirement`, and the label resolves to the identifier
 minted for that act. The whole file is parsed and every reference checked
 before the first append, so a malformed entry, a duplicate label, or a
 label that is unknown or defined later lands nothing.
@@ -107,6 +108,27 @@ file replays the prefix that already landed, without duplicating it, and
 continues from the first act that did not. Acts given no idempotency key
 are not resumable and land afresh.
 
+For guarded reassignment, use adjacent `retire-if-unclaimed` and
+`reassign-if-unclaimed` entries. The replacement names both the old request in
+`target` and the first entry in `retirement`:
+
+```json
+[
+  {"label":"retirement", "verb":"retire-if-unclaimed",
+   "target":"git:sha1:<genesis>#git:sha1:<old-request>",
+   "text":"retire before reassignment", "idempotency_key":"move-retirement"},
+  {"verb":"reassign-if-unclaimed",
+   "target":"git:sha1:<genesis>#git:sha1:<old-request>",
+   "retirement":"$retirement", "text":"Ask the next agent",
+   "body":{"to":"@next-agent","conditions":"the work is complete"},
+   "idempotency_key":"move-request"}
+]
+```
+
+The fold checks the same signed tuple as the purpose-specific command. Batch
+labels save callers from retyping the retirement event identifier; unrelated
+interleaving is allowed, while a promise or direct completion refuses.
+
 ## Through a resident
 
 `--server` forwards the same signed requests to the resident sequencer,
@@ -116,5 +138,6 @@ semantics stay per-act exactly as they are locally.
 ## See also
 
 - [`gs state`](state.md), [`gs ratify`](ratify.md),
-  [`gs supersede`](supersede.md)
+  [`gs supersede`](supersede.md),
+  [`gs reassign-if-unclaimed`](reassign-if-unclaimed.md)
 - [Event identifiers](../event-identifiers.md)

@@ -191,20 +191,26 @@ type WorktreeView struct {
 type Verb string
 
 const (
-	VerbState     Verb = "state"
-	VerbRatify    Verb = "ratify"
-	VerbSupersede Verb = "supersede"
+	VerbState               Verb = "state"
+	VerbRatify              Verb = "ratify"
+	VerbSupersede           Verb = "supersede"
+	VerbRetireIfUnclaimed   Verb = "retire-if-unclaimed"
+	VerbReassignIfUnclaimed Verb = "reassign-if-unclaimed"
 )
 
 // Act is the one application command accepted by every local adapter. RestsOn
-// contains all bases for state and only additional bases for supersede; ratify
-// and supersede always place their target first.
+// contains all bases for state and only additional bases for retirement acts;
+// ratify and every retirement place their target first. A guarded replacement
+// places Retirement first.
 type Act struct {
-	Verb           Verb
-	Kind           workroom.Kind
-	Text           string
-	Body           map[string]string
-	Target         string
+	Verb   Verb
+	Kind   workroom.Kind
+	Text   string
+	Body   map[string]string
+	Target string
+	// Retirement names the effective guarded retirement consumed by a
+	// reassign-if-unclaimed replacement.
+	Retirement     string
 	RestsOn        []string
 	Attachments    map[string][]byte
 	IdempotencyKey string
@@ -894,6 +900,7 @@ func (w *Workspace) Act(ctx context.Context, actorName string, act Act) (Submiss
 func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act) (kernel.Request, error) {
 	var schema string
 	var payload any
+	guardedRetirement := false
 	rests := append([]string(nil), act.RestsOn...)
 	switch act.Verb {
 	case VerbState:
@@ -943,10 +950,87 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 		schema = workroom.SchemaSupersede
 		payload = workroom.Supersede{Target: act.Target, Text: act.Text}
 		rests = append([]string{act.Target}, rests...)
+	case VerbRetireIfUnclaimed:
+		guardedRetirement = true
+		schema = workroom.SchemaRetireUnclaimed
+		payload = workroom.RetireIfUnclaimed{
+			Target: act.Target, Text: act.Text, CitedOK: act.CitedOK,
+			Expectation: workroom.UnclaimedExpectation{
+				Request: act.Target, Promise: workroom.CommitmentAbsent, Completion: workroom.CommitmentAbsent,
+			},
+		}
+		rests = append([]string{act.Target}, rests...)
+	case VerbReassignIfUnclaimed:
+		body, err := w.normalizeGuardedRequestShape(ctx, act.Body)
+		if err != nil {
+			return kernel.Request{}, err
+		}
+		if err := refuseClientReservedFields(act.Body); err != nil {
+			return kernel.Request{}, err
+		}
+		rests = append([]string{act.Retirement}, rests...)
+		schema = workroom.SchemaReassignRequest
+		payload = workroom.ReassignIfUnclaimed{
+			Text: act.Text, Body: body,
+			Expectation: workroom.UnclaimedExpectation{
+				Request: act.Target, Retirement: act.Retirement,
+				Promise: workroom.CommitmentAbsent, Completion: workroom.CommitmentAbsent,
+			},
+		}
 	default:
 		return kernel.Request{}, fmt.Errorf("unknown act verb %q", act.Verb)
 	}
-	return w.buildRequest(ctx, private, actorName, schema, payload, rests, act.Attachments, act.IdempotencyKey)
+	request, err := w.buildRequest(ctx, private, actorName, schema, payload, rests, act.Attachments, act.IdempotencyKey)
+	if err != nil {
+		return kernel.Request{}, err
+	}
+	if guardedRetirement {
+		if err := w.RefuseCitedGuardedRetirement(ctx, act.Target, act.CitedOK, request); err != nil {
+			return kernel.Request{}, err
+		}
+	}
+	return request, nil
+}
+
+// normalizeGuardedRequestShape keeps a guarded replacement reproducible after
+// its performer leaves local custody. Ordinary requests intentionally resolve
+// only current custody. A retry of this two-act purpose must reconstruct the
+// same signed fingerprint after the successful pair, though, so it may fall
+// back to the durable roster entry that retirement keeps for attribution.
+// Admission still requires that fingerprint to be live for every new act.
+func (w *Workspace) normalizeGuardedRequestShape(ctx context.Context, body map[string]string) (map[string]string, error) {
+	normalized := cloneBody(body)
+	if strings.TrimSpace(normalized["conditions"]) == "" {
+		return nil, fmt.Errorf("%s state requires body.conditions", workroom.KindRequest)
+	}
+	address := strings.TrimSpace(normalized["to"])
+	if address == "" {
+		return nil, fmt.Errorf("%s state requires body.to", workroom.KindRequest)
+	}
+	actor, err := w.ResolveActorAddress(address)
+	if err == nil {
+		normalized["to"] = actor.Fingerprint
+		return normalized, nil
+	}
+	if !errors.Is(err, ErrUnknownActor) {
+		return nil, fmt.Errorf("%s body.to: %w", workroom.KindRequest, err)
+	}
+	snapshot, snapshotErr := w.Snapshot(ctx)
+	if snapshotErr != nil {
+		return nil, fmt.Errorf("%s body.to: actor is absent from custody and the durable roster could not be read: %w", workroom.KindRequest, snapshotErr)
+	}
+	name := strings.TrimPrefix(address, "@")
+	matches := make([]string, 0, 1)
+	for fingerprint, historical := range snapshot.Projection.Actors {
+		if fingerprint == address || historical.Name == name {
+			matches = append(matches, fingerprint)
+		}
+	}
+	if len(matches) != 1 {
+		return nil, fmt.Errorf("%s body.to: %w", workroom.KindRequest, err)
+	}
+	normalized["to"] = matches[0]
+	return normalized, nil
 }
 
 // normalizeRequestShape mirrors the fold's request-lifecycle field and actor
@@ -1146,11 +1230,30 @@ func (w *Workspace) citingDocuments(ctx context.Context, repo, event string) []s
 }
 
 // RefuseCitedRetirement stops a supersession whose target the documentation
-// still names, whatever surface asked for it. BuildActRequest calls it so no
-// surface can skip it; `gs batch` also calls it ahead of its first append, so
-// a batch that cannot land cleanly lands nothing rather than stopping halfway.
+// still names. Ordinary supersession calls it while building; guarded
+// retirement carries its override in the signed payload and calls it from the
+// post-dedup admission hook, so an exact retry is never re-judged.
 func (w *Workspace) RefuseCitedRetirement(ctx context.Context, target string, allowed bool) error {
 	return w.RefuseCitedRetirementInCheckout(ctx, w.Repo, target, allowed)
+}
+
+// RefuseCitedGuardedRetirement protects the caller's own checkout before a
+// remote resident sees the act. Once the request is already retired, the act
+// may be an exact retry; the kernel must see it before any checkout drift is
+// re-judged. Genuinely new acts against that retired request still fail the
+// signed workroom guard at post-dedup admission.
+func (w *Workspace) RefuseCitedGuardedRetirement(ctx context.Context, target string, allowed bool, request kernel.Request) error {
+	if allowed {
+		return nil
+	}
+	replay, err := kernel.CheckReplay(ctx, w.Store, request)
+	if err != nil {
+		return fmt.Errorf("check guarded retirement replay: %w", err)
+	}
+	if replay {
+		return nil
+	}
+	return w.RefuseCitedRetirement(ctx, target, false)
 }
 
 // RefuseCitedRetirementInCheckout evaluates the tracked tree which will
