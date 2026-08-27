@@ -32,6 +32,10 @@ cases, refreshes the tracked stable projection in `spike/SPIKE-RESULTS.md`,
 and writes machine-specific JSON, timings, and a detailed Markdown report
 under ignored `spike/.spike/`.
 
+CI runs the complete Go suite once with the race detector and JSON output,
+then passes that same output to `make spike` through `SPIKE_TEST_JSON`. The
+report still selects only the named adversarial cases; it does not rerun them.
+
 The optional forge lane is described in `FORGE.md` and uses the `forge`
 Docker Compose profile. It is separate because pulling and booting a forge
 must not slow the kernel correctness loop.

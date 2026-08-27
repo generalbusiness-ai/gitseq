@@ -380,3 +380,114 @@ runs:
 		})
 	}
 }
+
+// The semantic negatives for the captured-stream lane. Each case is a shape of
+// the CI Go step that would leave a red run without projected adversarial
+// evidence, or would win the evidence back by running the suite twice. The
+// first case is the reviewed head this rule was written against, and the last
+// is the shape the repository actually carries.
+func TestRejectsUnprojectableEvidenceOrdering(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  string
+		want []string
+	}{
+		{
+			name: "failing suite ends the step before the projector",
+			run: `set -o pipefail
+go test -race -count=1 -json ./... | tee "$RUNNER_TEMP/go-test.json"
+make build
+make spike SPIKE_TEST_JSON="$RUNNER_TEMP/go-test.json"`,
+			want: []string{"without capturing its status with `|| status=$?`"},
+		},
+		{
+			name: "projector runs before the suite writes the stream",
+			run: `status=0
+make spike SPIKE_TEST_JSON="$RUNNER_TEMP/go-test.json"
+go test -race -count=1 -json ./... | tee "$RUNNER_TEMP/go-test.json" || status=$?
+exit "$status"`,
+			want: []string{"projects the evidence before the suite writes the stream it reads"},
+		},
+		{
+			name: "status returned before the evidence is projected",
+			run: `status=0
+go test -race -count=1 -json ./... | tee "$RUNNER_TEMP/go-test.json" || status=$?
+if [ "$status" -ne 0 ]; then
+  exit "$status"
+fi
+make spike SPIKE_TEST_JSON="$RUNNER_TEMP/go-test.json"`,
+			want: []string{"never returns the captured status after projecting"},
+		},
+		{
+			name: "captured status never returned",
+			run: `status=0
+go test -race -count=1 -json ./... | tee "$RUNNER_TEMP/go-test.json" || status=$?
+make spike SPIKE_TEST_JSON="$RUNNER_TEMP/go-test.json"`,
+			want: []string{"never returns the captured status after projecting"},
+		},
+		{
+			name: "status variable never initialised",
+			run: `go test -race -count=1 -json ./... | tee "$RUNNER_TEMP/go-test.json" || status=$?
+make spike SPIKE_TEST_JSON="$RUNNER_TEMP/go-test.json"
+exit "$status"`,
+			want: []string{"without setting status=0 first"},
+		},
+		{
+			name: "failure path reruns the suite",
+			run: `status=0
+go test -race -count=1 -json ./... | tee "$RUNNER_TEMP/go-test.json" || status=$?
+make spike SPIKE_TEST_JSON="$RUNNER_TEMP/go-test.json"
+if [ "$status" -ne 0 ]; then
+  make race
+  exit "$status"
+fi`,
+			want: []string{"runs the Go suite 2 times"},
+		},
+		{
+			name: "evidence projected in a later step",
+			run:  "",
+			want: []string{"a later step does not run once the suite step has failed"},
+		},
+		{
+			name: "projector removed altogether",
+			run: `status=0
+go test -race -count=1 -json ./... | tee "$RUNNER_TEMP/go-test.json" || status=$?
+exit "$status"`,
+			want: []string{"projects the adversarial evidence 0 times"},
+		},
+		{
+			name: "the shape the repository carries",
+			run: `set -o pipefail
+make vet
+status=0
+go test -race -count=1 -json ./... | tee "$RUNNER_TEMP/go-test.json" || status=$?
+make spike SPIKE_TEST_JSON="$RUNNER_TEMP/go-test.json"
+if [ "$status" -ne 0 ]; then
+  exit "$status"
+fi
+make build`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			flow := workflow{Jobs: map[string]job{"verify": {Steps: []step{{Name: "Check Go code", Run: tc.run}}}}}
+			if tc.run == "" {
+				// The split-step shape: the suite in one step, the projector in
+				// a step GitHub skips once the suite step has failed.
+				flow.Jobs["verify"] = job{Steps: []step{
+					{Name: "Check Go code", Run: "status=0\ngo test -race -count=1 -json ./... | tee \"$RUNNER_TEMP/go-test.json\" || status=$?\nexit \"$status\""},
+					{Name: "Regenerate the adversarial evidence", Run: "make spike SPIKE_TEST_JSON=\"$RUNNER_TEMP/go-test.json\""},
+				}}
+			}
+			violations := checkCapturedSuite("fixture.yml", flow)
+			joined := strings.Join(violations, "\n")
+			for _, want := range tc.want {
+				if !strings.Contains(joined, want) {
+					t.Errorf("violations do not state %q; got:\n%s", want, joined)
+				}
+			}
+			if len(tc.want) == 0 && len(violations) != 0 {
+				t.Errorf("admissible fixture was refused:\n%s", joined)
+			}
+		})
+	}
+}

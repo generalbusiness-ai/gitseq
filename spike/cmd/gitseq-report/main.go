@@ -1,10 +1,11 @@
-// gitseq-report runs the six adversarial cases and writes evidence projections.
+// gitseq-report reads the six adversarial cases and writes evidence projections.
 package main
 
 import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -147,24 +148,49 @@ var definitions = []caseDefinition{
 }
 
 func main() {
+	testJSON := flag.String("test-json", "", "reuse a go test -json stream instead of running the named cases")
+	flag.Parse()
+
 	root, err := moduleRoot()
 	if err != nil {
 		fatal(err)
 	}
 	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
-	output, stderr, commandDescription, runErr := runNamedTests(root, goTool)
+	output, stderr, commandDescription, runErr := testEvents(root, goTool, *testJSON)
+	results, runnerOutput, decodeErr := decodeTestEvents(output)
 
+	gitVersion := strings.TrimSpace(string(mustOutput("git", "--version")))
+	report := evidence{Schema: "gitseq.spike-evidence.v0", GoVersion: runtime.Version(), GitVersion: gitVersion, Command: commandDescription}
+	report.Cases, report.Status = summarise(results, runErr, decodeErr)
+	details := stderr
+	if report.Status != statusPass {
+		details = failureDetails(report, runnerOutput, stderr, runErr, decodeErr)
+	}
+
+	writeEvidence(root, report, details)
+}
+
+func testEvents(root, goTool, capturedPath string) ([]byte, string, string, error) {
+	if strings.TrimSpace(capturedPath) == "" {
+		return runNamedTests(root, goTool)
+	}
+	if !filepath.IsAbs(capturedPath) {
+		capturedPath = filepath.Join(root, capturedPath)
+	}
+	output, err := os.ReadFile(capturedPath)
+	return output, "", "go test -race -count=1 -json ./... (captured)", err
+}
+
+func decodeTestEvents(output []byte) (map[string]testResult, string, error) {
 	results := make(map[string]testResult)
 	var runnerOutput strings.Builder
 	decoder := json.NewDecoder(bytes.NewReader(output))
-	var decodeErr error
 	for {
 		var event testEvent
 		if err := decoder.Decode(&event); errors.Is(err, io.EOF) {
-			break
+			return results, runnerOutput.String(), nil
 		} else if err != nil {
-			decodeErr = err
-			break
+			return results, runnerOutput.String(), err
 		}
 		if event.Output != "" {
 			runnerOutput.WriteString(event.Output)
@@ -177,15 +203,9 @@ func main() {
 			results[key] = testResult{Package: event.Package, Test: event.Test, Status: event.Action, Seconds: event.Elapsed}
 		}
 	}
+}
 
-	gitVersion := strings.TrimSpace(string(mustOutput("git", "--version")))
-	report := evidence{Schema: "gitseq.spike-evidence.v0", GoVersion: runtime.Version(), GitVersion: gitVersion, Command: commandDescription}
-	report.Cases, report.Status = summarise(results, runErr, decodeErr)
-	details := stderr
-	if report.Status != statusPass {
-		details = failureDetails(report, runnerOutput.String(), stderr, runErr, decodeErr)
-	}
-
+func writeEvidence(root string, report evidence, details string) {
 	// Keep run-specific and stable evidence beside the adversarial fixture even
 	// though the test process now runs from the shipping module root.
 	directory := filepath.Join(root, "spike", ".spike")

@@ -43,11 +43,22 @@ jobs:
       - name: Install the locked UI dependencies
         run: npm ci --prefix ui
 
-      - name: Check Go code
+      # GitHub runs this step under bash -e -o pipefail, so a failing suite would
+      # abort it before the projector ever reads the captured stream, and the
+      # red run nobody watched live would upload no adversarial evidence. Keep
+      # the pipeline's own status, project the evidence once from that captured
+      # stream on the passing and the failing path alike, then return the
+      # suite's status. No test is run a second time.
+      - name: Check Go code and regenerate adversarial evidence
         run: |
+          set -o pipefail
           make vet
-          make test
-          make race
+          status=0
+          go test -race -count=1 -json ./... | tee "$RUNNER_TEMP/go-test.json" || status=$?
+          make spike SPIKE_TEST_JSON="$RUNNER_TEMP/go-test.json"
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
           make build
 
       # ui-check, not ui. Both rebuild the bundle, but only ui-check compares
@@ -61,9 +72,6 @@ jobs:
         run: |
           npm test --prefix ui
           make ui-check
-
-      - name: Regenerate the adversarial evidence
-        run: make spike
 
       # The run-specific evidence under spike/.spike/ is where a red run explains
       # itself: which case failed, or which package the runner died in. Without
@@ -86,5 +94,5 @@ jobs:
       - name: Require reproducible tracked output
         run: git diff --exit-code
 
-      - name: Verify the documented install from a main-only clone
+      - name: Verify the documented build from a main-only clone
         run: .github/scripts/verify-preview-clone.sh
