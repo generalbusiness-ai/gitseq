@@ -80,6 +80,10 @@ export default function App() {
         actors: projection?.actors ?? {},
         me: myFingerprint || undefined,
         target: input.target ? index?.statement(input.target) : undefined,
+        // The fold refuses a ratification whose target it has not ruled
+        // effective, and effectiveness is not on the statement — it is in
+        // `decisions`. Resolving it here is what lets the guard fail closed.
+        targetDecision: input.target ? index?.decision(input.target) : undefined,
         originatingRequester: input.target ? index?.commitment(input.target)?.requester : undefined,
       });
       if (denied) {

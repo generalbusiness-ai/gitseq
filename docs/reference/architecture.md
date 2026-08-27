@@ -874,6 +874,31 @@ exception confers no force on a new state or on a ratification. These are fold
 rules rather than kernel admission or signature rules: the kernel still
 accepts the signed record, and the application decides what it means.
 
+**An affordance and a signature are different questions, and the browser asks
+both.** What a control offers is drawn from the projection at render time;
+what may be signed is decided at the moment of signing, from the projection as
+it stands then. The two answers differ whenever authority moves under an open
+form — a lease expires, a membership grant is superseded, a target is retired
+— and the fold judges the record by what is true when it arrives, not by what
+was true when the button appeared. So the browser guards at the boundary that
+signs rather than only at the button: `signingRefusal` in `ui/src/lib`, asked
+by `doAct` in `App.tsx` and `send` in `Thread.tsx`. Publishing is the third
+durable path and asks `publishRefusal` at its own boundary.
+
+That guard dispatches by act, because the fold does not apply one rule to all
+of them, and a browser that pretended otherwise would refuse work the fold
+accepts. For a ratification the fold settles *standing* first — a target it has
+not ruled effective, and a retired target, are refused before any satisfier is
+consulted — and only then asks who may satisfy the kind. Standing fails closed:
+a caller that cannot resolve the target's decision is refused, because a guard
+that cannot see the fact must not vouch for it. Effectiveness is not carried on
+the statement; it is published per record in `decisions`, so the boundary must
+be handed the decision as well as the record.
+
+The cost of getting this wrong is not a failed click. Offering an act the fold
+refuses appends a permanent ineffective row to an append-only log: a durable
+record that somebody tried to do something they were never allowed to do.
+
 **Workroom state schemas are prospectively versioned when admission tightens.**
 `workroom/state@0` remains readable with the decisions it historically made.
 `workroom/state@1` refuses whole-repository and comma-joined artifact paths.

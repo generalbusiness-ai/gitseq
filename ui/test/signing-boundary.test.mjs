@@ -2,21 +2,31 @@
 //
 // A disabled button stops a click and stops nothing else. The defect this
 // pins is the one codex found on the publish path: authority read when a
-// control was drawn, and never asked again before `api.act`. Every durable
-// act in the browser now passes through `signingRefusal` immediately before
-// that call.
+// control was drawn, and never asked again before `api.act`. The two act
+// boundaries -- `doAct` in App.tsx and `send` in Thread.tsx -- ask
+// `signingRefusal` immediately before that call. Publishing is the third
+// durable path and asks `publishRefusal` instead; an earlier version of this
+// comment said every durable act came through here, which was not true.
 //
-// The load-bearing case here is NOT that it refuses. It is that it refuses
-// exactly what the fold refuses and nothing else. `decideRatify` in
-// internal/workroom/fold.go does not apply one rule:
+// The guard must refuse exactly what the fold refuses, and it fails in BOTH
+// directions. `decideRatify` in internal/workroom/fold.go refuses in a
+// specific order, and the order is the point:
 //
-//   satisfier "originating-requester"  requires the requester AND f.hasActor
-//   satisfier "role:<name>"            requires only f.hasRole -- no participation
+//   target not effective     refused, before any satisfier is consulted
+//   target retired           refused, before any satisfier is consulted
+//   "originating-requester"  requires the requester AND f.hasActor
+//   "role:<name>"            requires only f.hasRole -- no participation
 //
-// so guarding every ratification on participation would refuse a role-holder
-// the fold accepts. That is a false refusal, the same class of error as
-// gating own-author withdraw, and the tests below fail if anyone "tightens"
-// the guard into it.
+// The first two were missing here, and their absence was a FALSE OFFER: the
+// guard said yes to a ratification the fold refuses, appending a permanent
+// ineffective row to an append-only log. The last two are the mirror: guarding
+// every ratification on participation would refuse a role-holder the fold
+// accepts. Tests for both directions live below, because a guard fixed only in
+// the direction someone noticed is how the other direction gets shipped.
+//
+// Standing fails CLOSED. A caller that cannot resolve the target's decision
+// gets a refusal, which is why every ratify fixture below states a decision
+// explicitly: a guard that cannot see the fact must not vouch for it.
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -34,6 +44,12 @@ const ratifyAct = { act: "ratify", target: "target-event" };
 
 const requesterSatisfied = { event: "target-event", satisfier: "originating-requester" };
 const roleSatisfied = { event: "target-event", satisfier: "role:ratifier" };
+
+// Effectiveness is not carried on the statement: the projection publishes it in
+// `decisions`, so the guard is handed the decision separately and every fixture
+// that expects an offer has to say the fold ruled the target effective.
+const effective = { event: "target-event", sequence: 1, verdict: "effective", reason: "recorded" };
+const ineffective = { event: "target-event", sequence: 1, verdict: "ineffective", reason: "report has no promise" };
 
 test("a state write is refused exactly when the fold would refuse it", () => {
   assert.equal(
@@ -77,6 +93,7 @@ test("a role-satisfied ratification is NOT refused for want of participation", (
       actors: roleOnly,
       me: ME,
       target: roleSatisfied,
+      targetDecision: effective,
     }),
     undefined,
     "false refusal: the fold's role: satisfier requires the role, not participation",
@@ -90,6 +107,7 @@ test("an originating-requester ratification does require participation", () => {
       actors: participant,
       me: ME,
       target: requesterSatisfied,
+      targetDecision: effective,
       originatingRequester: ME,
     }),
     undefined,
@@ -101,6 +119,7 @@ test("an originating-requester ratification does require participation", () => {
       actors: departed,
       me: ME,
       target: requesterSatisfied,
+      targetDecision: effective,
       originatingRequester: ME,
     }),
     "a departed requester must not confer force: a ratified approval is what gs merge consumes",
@@ -111,6 +130,7 @@ test("an originating-requester ratification does require participation", () => {
       actors: participant,
       me: ME,
       target: requesterSatisfied,
+      targetDecision: effective,
       originatingRequester: "somebody-else",
     }),
     "only the originating requester may declare satisfaction",
@@ -121,5 +141,85 @@ test("a ratification whose target is not in the projection is refused, not guess
   assert.ok(
     signingRefusal(ratifyAct, { live: true, actors: participant, me: ME, target: undefined }),
     "the boundary cannot ask mayRatify without the record, and must not assume yes",
+  );
+});
+
+// The defect codex reproduced at head 6bcb4798. The guard checked that the
+// target existed and then asked `mayRatify`, which reads the satisfier and the
+// roster and nothing else -- neither the target's decision nor its retirement.
+// The fold refuses on both of those BEFORE it reaches the satisfier, so the
+// browser offered, and signed, ratifications the fold was always going to
+// refuse. Each one is a permanent ineffective row.
+test("a ratification of a target the fold never ruled effective is refused", () => {
+  assert.ok(
+    signingRefusal(ratifyAct, {
+      live: true,
+      actors: roleOnly,
+      me: ME,
+      target: roleSatisfied,
+      targetDecision: ineffective,
+    }),
+    "false offer: decideRatify refuses \"ratify target is not effective\" before it reads the satisfier",
+  );
+});
+
+test("a ratification of a retired target is refused", () => {
+  assert.ok(
+    signingRefusal(ratifyAct, {
+      live: true,
+      actors: roleOnly,
+      me: ME,
+      target: { ...roleSatisfied, retired: true },
+      targetDecision: effective,
+    }),
+    "false offer: decideRatify refuses \"retired statement cannot be ratified\" before it reads the satisfier",
+  );
+});
+
+test("standing fails closed when the decision cannot be resolved", () => {
+  // Not a hypothetical: `index.decision(event)` returns undefined for anything
+  // the projection has not published a decision for, and a projection can be
+  // older than the record a route names. Allowing on an unreadable fact is how
+  // a guard vouches for something it never saw.
+  assert.ok(
+    signingRefusal(ratifyAct, {
+      live: true,
+      actors: roleOnly,
+      me: ME,
+      target: roleSatisfied,
+      targetDecision: undefined,
+    }),
+    "an unresolvable decision must refuse, not assume the target is effective",
+  );
+});
+
+// The mirror of the standing repair. Superseding was a blanket pass, which is
+// looser than the fold: `decideSupersede` admits the target's own author or a
+// ratifier, and refuses everyone else. The own-author branch still carries no
+// participation test, so the departed-author case above must keep passing --
+// that is the false refusal this narrowing must not introduce.
+test("superseding somebody else's record is refused unless you hold ratifier", () => {
+  const mine = { event: "some-record", actor: ME };
+  const theirs = { event: "some-record", actor: "somebody-else" };
+  assert.equal(
+    signingRefusal(supersedeAct, { live: true, actors: departed, me: ME, target: mine }),
+    undefined,
+    "false refusal: a departed actor may still withdraw an act they authored",
+  );
+  assert.ok(
+    signingRefusal(supersedeAct, { live: true, actors: participant, me: ME, target: theirs }),
+    "false offer: the fold admits only the target's author or a ratifier",
+  );
+  assert.equal(
+    signingRefusal(supersedeAct, { live: true, actors: roleOnly, me: ME, target: theirs }),
+    undefined,
+    "false refusal: a ratifier may retire another actor's record",
+  );
+  // Artifact targets reach paths this guard does not model, so an unresolved
+  // target defers rather than inventing a refusal.
+  assert.equal(
+    signingRefusal(supersedeAct, { live: true, actors: participant, me: ME, target: undefined }),
+    undefined,
+    "an unresolved supersede target defers to the fold rather than refusing",
   );
 });

@@ -1,4 +1,4 @@
-import type { ActorState, Statement } from "./api.ts";
+import type { ActorState, Decision, Statement } from "./api.ts";
 
 // The membership question the fold asks, asked once and asked here.
 //
@@ -43,6 +43,9 @@ import type { ActorState, Statement } from "./api.ts";
 // here so the next reader does not have to rediscover them, and so this comment
 // cannot be mistaken for a claim that the surface is already covered.
 //
+// `withdraw` is not ungated either, though it is gated on authorship rather
+// than membership: see the `supersede` branch of `signingRefusal`.
+//
 // It is not asked of presence. Presence is advisory and session-bound, so a
 // live session is not membership; and membership is not presence, so an
 // absent participant has nothing to sign with. Publishing requires both.
@@ -52,11 +55,18 @@ import type { ActorState, Statement } from "./api.ts";
 // `target.record.Actor == record.record.Actor` with no `hasActor` test, and
 // docs/reference/architecture.md states the rule — "A departed actor may still
 // supersede an earlier act they authored". The toolbar's `withdraw` is that
-// act, so it must stay ungated: guarding it here would invent a refusal the
-// fold does not make.
+// act, so it must stay outside *this* predicate: asking membership of it would
+// invent a refusal the fold does not make. That is not the same as ungated —
+// `signingRefusal` still holds it to the fold's authorship rule.
 export function isLiveParticipant(actors: Record<string, ActorState>, me?: string): boolean {
   if (!me) return false;
   return actors[me]?.roles?.includes("participant") === true;
+}
+
+// One role test, so the callers below read the roster the same way.
+function hasRole(actors: Record<string, ActorState>, role: string, me?: string): boolean {
+  if (!me) return false;
+  return actors[me]?.roles?.includes(role) === true;
 }
 
 // May this viewer publish an artifact right now, and if not, why not.
@@ -163,8 +173,15 @@ export function mayRatify(
  *
  * Asked at the signing boundary rather than only where the control is drawn.
  * A disabled button stops a click; it does not stop a submit that was already
- * reachable when authority moved underneath it. Every durable act in the
- * browser passes through here immediately before `api.act`.
+ * reachable when authority moved underneath it.
+ *
+ * Two signing boundaries ask this: `doAct` in `App.tsx` and `send` in
+ * `components/Thread.tsx`. Publishing an artifact is the third durable path
+ * and it does not come through here — it asks {@link publishRefusal} at its
+ * own boundary. An earlier version of this comment claimed every durable
+ * browser act passed through this function; it did not, and the claim is
+ * corrected rather than quietly dropped because a guard that overstates its
+ * own reach is how the next reader stops checking.
  *
  * It dispatches rather than deciding, because the fold does not apply one rule
  * to every act and a browser that pretended otherwise would refuse work the
@@ -173,17 +190,28 @@ export function mayRatify(
  *   `state`      `decideState` refuses post-genesis state from a signer
  *                without the participant role, so this asks
  *                {@link isLiveParticipant}.
- *   `ratify`     `decideRatify` branches on the satisfier bound at admission:
- *                `originating-requester` also requires participation, while
- *                `role:<name>` requires only the role. {@link mayRatify}
- *                already models exactly that split, so this asks it and does
- *                not second-guess it. Guarding every ratification on
- *                participation would refuse a role-holder the fold accepts.
- *   `supersede`  `decideSupersede` returns Effective for an author retiring
- *                their own act with no `hasActor` test, and
+ *   `ratify`     `decideRatify` refuses on the target's *standing* before it
+ *                ever reaches the satisfier: a target the fold has not ruled
+ *                effective, and a retired target, are both refused outright.
+ *                Only past those does it branch on the satisfier bound at
+ *                admission — `originating-requester` also requires
+ *                participation, while `role:<name>` requires only the role,
+ *                which {@link mayRatify} models. Standing is checked here
+ *                first, in the fold's own order, and fails closed: a caller
+ *                that cannot resolve the target's decision gets a refusal,
+ *                because a guard that cannot see the fact must not vouch for
+ *                it.
+ *   `supersede`  `decideSupersede` admits the target's own author or a
+ *                ratifier. Own-authorship carries no participation test —
  *                docs/reference/architecture.md documents that cleanup
- *                exception. Guarding it would invent a refusal, so this does
- *                not.
+ *                exception, "a departed actor may still supersede an earlier
+ *                act they authored" — so this must not ask
+ *                {@link isLiveParticipant} on that branch. It narrows only
+ *                when the target resolves to a statement, which is the shape
+ *                the withdraw control offers; artifact targets reach paths
+ *                this guard does not model (roster governance, authorized
+ *                merge receipts), and restating those here would be a second
+ *                copy of the fold to keep in step.
  */
 export function signingRefusal(
   act: { act: string; target?: string },
@@ -194,20 +222,46 @@ export function signingRefusal(
     actors: Record<string, ActorState>;
     /** The viewer's fingerprint. */
     me?: string;
-    /** The statement named by `act.target`, for `ratify`. */
+    /** The statement named by `act.target`, for `ratify` and `supersede`. */
     target?: Statement;
+    /**
+     * The fold's decision about `act.target`. Required for `ratify`: the fold
+     * refuses a target it has not ruled effective, and this guard cannot know
+     * that from the statement alone, because the projection carries
+     * effectiveness in `decisions` and not on the statement.
+     */
+    targetDecision?: Decision;
     /** The author of the request `act.target` answers, for `ratify`. */
     originatingRequester?: string;
   },
 ): string | undefined {
-  const { live, actors, me, target, originatingRequester } = context;
+  const { live, actors, me, target, targetDecision, originatingRequester } = context;
   // No lease, no signature: this one is about the session rather than the
   // fold, and it is true of every act including the ones the fold would not
   // otherwise refuse.
   if (!live) return "not present yet";
-  if (act.act === "supersede") return undefined;
+  if (act.act === "supersede") {
+    // Own-authorship first, and with no participation test: that is the
+    // documented cleanup exception, and asking membership here would invent a
+    // refusal the fold does not make.
+    if (target && me && target.actor !== me && !hasRole(actors, "ratifier", me)) {
+      return "only the record's author or a ratifier may retire it";
+    }
+    return undefined;
+  }
   if (act.act === "ratify") {
     if (!target) return "the record this would ratify is not in the projection";
+    // Standing before satisfier, in the fold's own order. Both of these
+    // refusals sit above the satisfier branches in `decideRatify`, so a guard
+    // that asked only `mayRatify` would offer a control the fold refuses and
+    // append a permanent ineffective row to say so.
+    //
+    // The comparison is written as "not effective" rather than "is
+    // ineffective" so that an absent or unreadable decision refuses too.
+    if (targetDecision?.verdict !== "effective") {
+      return "the fold has not ruled this record effective, so it cannot be ratified";
+    }
+    if (target.retired) return "a retired record cannot be ratified";
     return mayRatify(target, { actors, me, originatingRequester })
       ? undefined
       : "the fold would refuse this ratification from you now";

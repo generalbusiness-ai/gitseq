@@ -591,13 +591,20 @@ function Composer({
       // Asked at the boundary that signs, not only on the button. session.live
       // gates the control above, but a lease can expire and a participant
       // grant can be superseded while the composer is open, and the fold
-      // judges this record by what is true when it arrives. withdraw is
-      // deliberately exempt: it submits supersede, and an author retiring
-      // their own act needs no participation — see signingRefusal.
+      // judges this record by what is true when it arrives.
+      //
+      // withdraw needs no participation — an author retiring their own act is
+      // the fold's documented cleanup exception — but it is still held to
+      // authorship, so the target it names is resolved and passed. This is the
+      // only site that signs supersede; leaving the target out here would make
+      // that rule unreachable.
       const denied = signingRefusal(input, {
         live: session.live,
         actors: workroom.status?.durable.projection?.actors ?? {},
         me: workroom.actors.find((actor) => actor.name === session.actor)?.fingerprint,
+        target: input.target ? index.statement(input.target) : undefined,
+        targetDecision: input.target ? index.decision(input.target) : undefined,
+        originatingRequester: input.target ? index.commitment(input.target)?.requester : undefined,
       });
       if (denied) {
         setError(`not filed: ${denied}`);
