@@ -162,30 +162,59 @@ type room struct {
 // had been tampered with is a whole-log rebuild the author never asked for and
 // cannot see. That is the same reasoning `gs` applies, and the two surfaces
 // now agree.
-func (r *room) resolveEndpoint() (string, error) {
+//
+// classify is which question is being asked, and it is the whole difference
+// between the two callers. False asks what address this room is using, which
+// the cached one answers without touching the disk: that is the read path, and
+// it stays as cheap as it was. True asks what the record says now, which is
+// the only question a durable act may act on. A room that had cached a good
+// address and then met a tampered record would otherwise never look again, so
+// the guard would protect a fresh room and quietly let a running one through —
+// and a resident that later stopped would drop that act into the local fold
+// with the tampering unmentioned. The record is untrusted input every time it
+// is read, not only the first time.
+func (r *room) resolveEndpoint(classify bool) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.baseURL == "" {
+	advertised := r.baseURL
+	if classify || advertised == "" {
 		advertisement := r.workspace.ResidentAdvertisement()
-		if advertisement.State == app.NoAdvertisement {
-			return "", nil
-		}
-		if advertisement.State == app.AdvertisementUnusable {
+		switch advertisement.State {
+		case app.AdvertisementUnusable:
 			return "", residentclient.UntrustedAdvertisement(advertisement.Reason)
+		case app.AdvertisementPublished:
+			advertised = advertisement.URL
+		case app.NoAdvertisement:
+			// Absence is not untrustworthiness. A repository that advertises
+			// nothing acts locally as it always did, and a room already
+			// holding an address keeps it: the address came from a record
+			// that was trusted when it was read, and a service that has since
+			// gone will say so by not answering, which is an honest fallback.
 		}
-		r.baseURL = advertisement.URL
 	}
-	validated, err := residentclient.ValidateURL(r.baseURL)
+	if advertised == "" {
+		return "", nil
+	}
+	validated, err := residentclient.ValidateURL(advertised)
 	if err != nil {
-		advertised := r.baseURL
-		r.baseURL = ""
-		r.credential = ""
-		r.announced = false
-		r.inbox = false
+		r.forget()
 		return "", residentclient.UnusableAdvertisedURL(advertised, err)
 	}
-	r.baseURL = validated
+	if validated != r.baseURL {
+		// The record names a different service than the one this room was
+		// using. Everything the room holds — its credential, its announced
+		// presence, its inbox — was minted by the old one and means nothing
+		// at the new address, so the address is adopted without them.
+		r.forget()
+		r.baseURL = validated
+	}
 	return validated, nil
+}
+
+// durableEndpoint is the resolution a durable act must use: the record as it
+// stands now, not the address this room happens to be holding.
+func (r *room) durableEndpoint() (string, error) {
+	return r.resolveEndpoint(true)
 }
 
 // endpoint is the reading a caller that may proceed without a resident wants:
@@ -193,7 +222,7 @@ func (r *room) resolveEndpoint() (string, error) {
 // was, so only a caller that has looked at the reason may act on the
 // difference.
 func (r *room) endpoint() (string, bool) {
-	base, _ := r.resolveEndpoint()
+	base, _ := r.resolveEndpoint(false)
 	return base, base != ""
 }
 
@@ -203,6 +232,12 @@ func (r *room) endpoint() (string, bool) {
 func (r *room) lost() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.forget()
+}
+
+// forget drops the address and everything that only meant anything at it. The
+// caller holds the lock.
+func (r *room) forget() {
 	r.baseURL = ""
 	r.credential = ""
 	r.announced = false
@@ -1105,17 +1140,29 @@ func (s *mcpServer) review(ctx context.Context, current *room, call toolCall) (a
 	})
 }
 
+// untrustedAdvertisementRefusal is what a durable call says when it will not
+// send an act through a record it cannot trust. It names nothing about the
+// failure itself, which the wrapped reason already says, and adds only what
+// the caller needs next: that the log is untouched, and the two ways on.
+func untrustedAdvertisementRefusal(reason error) error {
+	return fmt.Errorf("%w; nothing was appended: repair or remove that record, or fold this act locally on purpose with `gs` and --server -", reason)
+}
+
 // submit is the one durable path through this adapter, and the one place an
-// untrustworthy advertisement is a refusal rather than a vacancy. The
-// resolution comes first, before the signing key is read and long before
-// anything is appended, so a repository whose record has been tampered with
-// costs the caller a message and nothing else. The refusal is per call: the
-// room, its attachment and its session survive it, and the next call resolves
-// the record again, so repairing or removing it is all it takes to carry on.
+// untrustworthy advertisement is a refusal rather than a vacancy. The record
+// is classified first, from the file rather than from the address this room
+// has been using, and before the signing key is read or anything is built, so
+// a repository whose record has been tampered with costs the caller a message
+// and nothing else — whether the tampering happened before this session
+// attached or an hour into it. It is read once more if the resident then fails
+// to answer, so the fallback below can never become the local fold this
+// refuses. The refusal is per call: the room, its attachment and its session
+// survive it, and the next call resolves the record again, so repairing or
+// removing it is all it takes to carry on.
 func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any, error) {
-	base, err := current.resolveEndpoint()
+	base, err := current.durableEndpoint()
 	if err != nil {
-		return nil, fmt.Errorf("%w; nothing was appended: repair or remove that record, or fold this act locally on purpose with `gs` and --server -", err)
+		return nil, untrustedAdvertisementRefusal(err)
 	}
 	_, private, err := current.workspace.Actor(s.actor)
 	if err != nil {
@@ -1136,6 +1183,17 @@ func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any
 		err = residentClientError(current, err)
 		if !isTransportError(err) {
 			return nil, err
+		}
+		// The resident did not answer, and the local fold below is the
+		// fallback for exactly that. But the record can be tampered with while
+		// a call is in flight, and losing the connection is what a tamper
+		// followed by a stopped service looks like from here, so the record is
+		// read once more before this act is folded anywhere. Transport loss
+		// through a record that still reads is an honest fallback; transport
+		// loss through one that does not is the case this whole guard exists
+		// to refuse.
+		if _, recheck := current.durableEndpoint(); recheck != nil {
+			return nil, fmt.Errorf("the resident did not answer this act (%v), and the local fold is not an honest substitute for it: %w; repair or remove that record and act again, or fold locally on purpose with `gs` and --server -", err, recheck)
 		}
 	}
 	submission, err := current.workspace.AcceptSubmission(ctx, request)
