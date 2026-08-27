@@ -24,7 +24,7 @@ func reviewFixture(t *testing.T) (*app.Workspace, string, string) {
 	if _, _, err := workspace.AddActor(ctx, "human", "reviewer", "agent"); err != nil {
 		t.Fatal(err)
 	}
-	if output, err := exec.Command("git", "-C", repo, "commit", "-q", "--allow-empty", "-m", "candidate").CombinedOutput(); err != nil {
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-q", "--allow-empty", "-m", "candidate").CombinedOutput(); err != nil {
 		t.Fatalf("candidate commit: %v: %s", err, output)
 	}
 	head, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output()
