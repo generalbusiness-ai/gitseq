@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"CLI supersede reference at exact head 4784ab98 distinguishes ordinary withdrawal from guarded unclaimed reassignment; docset and full-suite gates pass.","body":{"commit":"4784ab98c92abe09e60ce0c65b384d13dd802f5b","path":"docs/reference/gs/supersede.md"}}
+{"kind":"artifact","text":"MCP reassign_if_unclaimed reference at exact head 4784ab98 documents the guarded pair, exact retry, and refusal behavior; docset and full-suite gates pass.","body":{"commit":"4784ab98c92abe09e60ce0c65b384d13dd802f5b","path":"docs/reference/mcp/reassign_if_unclaimed.md"}}
