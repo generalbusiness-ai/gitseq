@@ -7,6 +7,7 @@ import { buildSpine, type Station } from "../lib/spine";
 import { age } from "../lib/rows";
 import { eventDiscussionEntries, RetryKeys, sendTemporaryReply } from "../lib/interaction";
 import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
+import { signingRefusal } from "../lib/authority";
 import { mentionFingerprints } from "../lib/mentions";
 import { actorTint, clock, cn, firstLine, interpretationNotice, kindLabel } from "../lib/util";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticAction, type SemanticReplyMode } from "./Toolbar";
@@ -587,6 +588,22 @@ function Composer({
               body: Object.keys(body).length ? body : undefined,
               rests_on: bases,
             };
+      // Asked at the boundary that signs, not only on the button. session.live
+      // gates the control above, but a lease can expire and a participant
+      // grant can be superseded while the composer is open, and the fold
+      // judges this record by what is true when it arrives. withdraw is
+      // deliberately exempt: it submits supersede, and an author retiring
+      // their own act needs no participation — see signingRefusal.
+      const denied = signingRefusal(input, {
+        live: session.live,
+        actors: workroom.status?.durable.projection?.actors ?? {},
+        me: workroom.actors.find((actor) => actor.name === session.actor)?.fingerprint,
+      });
+      if (denied) {
+        setError(`not filed: ${denied}`);
+        setBusy(false);
+        return;
+      }
       const scope = `${root}:${type}`;
       const key = retryKeys.current.forAttempt(scope, JSON.stringify(input));
       await api.act({ ...input, idempotency_key: key });

@@ -157,3 +157,62 @@ export function mayRatify(
   }
   return false;
 }
+
+/**
+ * May this act be signed, right now, by this viewer?
+ *
+ * Asked at the signing boundary rather than only where the control is drawn.
+ * A disabled button stops a click; it does not stop a submit that was already
+ * reachable when authority moved underneath it. Every durable act in the
+ * browser passes through here immediately before `api.act`.
+ *
+ * It dispatches rather than deciding, because the fold does not apply one rule
+ * to every act and a browser that pretended otherwise would refuse work the
+ * fold accepts:
+ *
+ *   `state`      `decideState` refuses post-genesis state from a signer
+ *                without the participant role, so this asks
+ *                {@link isLiveParticipant}.
+ *   `ratify`     `decideRatify` branches on the satisfier bound at admission:
+ *                `originating-requester` also requires participation, while
+ *                `role:<name>` requires only the role. {@link mayRatify}
+ *                already models exactly that split, so this asks it and does
+ *                not second-guess it. Guarding every ratification on
+ *                participation would refuse a role-holder the fold accepts.
+ *   `supersede`  `decideSupersede` returns Effective for an author retiring
+ *                their own act with no `hasActor` test, and
+ *                docs/reference/architecture.md documents that cleanup
+ *                exception. Guarding it would invent a refusal, so this does
+ *                not.
+ */
+export function signingRefusal(
+  act: { act: string; target?: string },
+  context: {
+    /** A live lease: `Session.live`. */
+    live: boolean;
+    /** The projected roster, keyed by fingerprint. */
+    actors: Record<string, ActorState>;
+    /** The viewer's fingerprint. */
+    me?: string;
+    /** The statement named by `act.target`, for `ratify`. */
+    target?: Statement;
+    /** The author of the request `act.target` answers, for `ratify`. */
+    originatingRequester?: string;
+  },
+): string | undefined {
+  const { live, actors, me, target, originatingRequester } = context;
+  // No lease, no signature: this one is about the session rather than the
+  // fold, and it is true of every act including the ones the fold would not
+  // otherwise refuse.
+  if (!live) return "not present yet";
+  if (act.act === "supersede") return undefined;
+  if (act.act === "ratify") {
+    if (!target) return "the record this would ratify is not in the projection";
+    return mayRatify(target, { actors, me, originatingRequester })
+      ? undefined
+      : "the fold would refuse this ratification from you now";
+  }
+  return isLiveParticipant(actors, me)
+    ? undefined
+    : "not a live participant: the fold would refuse this record";
+}

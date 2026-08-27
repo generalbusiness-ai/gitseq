@@ -9,7 +9,7 @@ import { RequestList, defaultListView, type ListView } from "./components/Reques
 import { Thread, type PendingSay } from "./components/Thread";
 import { PublishArtifact, type PublishInput } from "./components/Publish";
 import { Avatar } from "./components/Avatar";
-import { publishRefusal } from "./lib/authority";
+import { publishRefusal, signingRefusal } from "./lib/authority";
 import { reconciledPendingIDs, RetryKeys } from "./lib/interaction";
 import { firstLine } from "./lib/util";
 
@@ -60,6 +60,8 @@ export default function App() {
     if (matched.length > 0) dropPending(matched);
   }, [pending, frames, session.actor, dropPending]);
 
+  const myFingerprint = workroom.actors.find((actor) => actor.name === session.actor)?.fingerprint;
+
   // A one-flight, one-key guard per user intention: double-clicks and retries
   // reuse the same idempotency key, so at most one durable event results.
   const inFlight = useRef(new Set<string>());
@@ -68,6 +70,22 @@ export default function App() {
   const doAct = useCallback(
     async (intent: string, input: Omit<ActInput, "credential" | "idempotency_key">) => {
       if (inFlight.current.has(intent)) return;
+      // The authority question, asked here rather than only where the control
+      // was drawn. Toolbar decides what to offer when a row renders; between
+      // that render and this signature a lease can expire and a role can be
+      // superseded, and the fold judges the record by what is true now. This
+      // reads the current projection, not the one the offer was drawn from.
+      const denied = signingRefusal(input, {
+        live: session.live,
+        actors: projection?.actors ?? {},
+        me: myFingerprint || undefined,
+        target: input.target ? index?.statement(input.target) : undefined,
+        originatingRequester: input.target ? index?.commitment(input.target)?.requester : undefined,
+      });
+      if (denied) {
+        setActError(`not filed: ${denied}`);
+        return;
+      }
       inFlight.current.add(intent);
       setActError(undefined);
       const payload = JSON.stringify(input);
@@ -81,7 +99,7 @@ export default function App() {
         inFlight.current.delete(intent);
       }
     },
-    [session.credential],
+    [session.credential, session.live, projection, index, myFingerprint],
   );
 
   // Publish authority, asked once here and read everywhere the publish path
@@ -90,7 +108,6 @@ export default function App() {
   // moment the dialog opened — a lease can expire and a membership grant can
   // be superseded while the form is on screen, and the fold refuses a state
   // record from a signer who is not a live participant whenever that happens.
-  const myFingerprint = workroom.actors.find((actor) => actor.name === session.actor)?.fingerprint;
   const publishDenied = publishRefusal(session.live, projection?.actors ?? {}, myFingerprint || undefined);
 
   // Publishing an artifact is the one act that starts from nothing, so it is
