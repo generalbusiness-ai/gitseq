@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ce2b9a1d7ac7fcbda5ac24bce0205cbd4fe38b87","text":"Retire this stale publication repair request. Its scope was superseded by the live current-basis publication and reconciliation request 3b338797, whose conditions and Claude commitment remain current."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3a82a7f653f2309e6ba63bd034908436d3e1f386"}
