@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	gitseqhost "github.com/generalbusiness-ai/gitseq/host"
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
@@ -1563,7 +1564,7 @@ func randomKey() (string, error) {
 }
 
 func (w *Workspace) EventID(commit string) string {
-	return "git:" + w.config.ObjectFormat + ":" + w.config.Genesis + "#git:" + w.config.ObjectFormat + ":" + commit
+	return gitseqhost.EventID(w.config.ObjectFormat, w.config.Genesis, commit)
 }
 
 // RebuildProgress reports how far a cold verified rebuild has got, and whether
