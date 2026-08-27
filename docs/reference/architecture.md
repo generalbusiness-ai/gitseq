@@ -55,9 +55,9 @@ flowchart TB
   Host --> Other
 ```
 
-The same verified stream can therefore feed the current Workroom interpreter,
-a future Workroom interpreter, or an application with no commitment concept at
-all. Sharing the stream does not make their meanings compatible.
+One verified stream can feed the current Workroom interpreter, a future
+Workroom interpreter, or an application with no commitment concept at all.
+Sharing the stream does not make their meanings compatible.
 
 Code, documentation, and reviews must preserve that boundary. A new
 application can reuse the kernel without inheriting actors by name, roles,
@@ -65,24 +65,28 @@ commitments, artifacts, or the Workroom user interface.
 
 ## The layers
 
-The layers build upward. A higher layer may use the guarantees below it; a
-lower layer must not import meanings from above it.
+Seven layers, numbered from storage upward. Each section below says what its
+layer owns, what it must never do, and which package holds it.
+
+A higher layer may use the guarantees below it; a lower layer must not import
+meanings from above it.
 
 ### 1. Ordinary Git storage
 
-Git stores objects and advances refs. A durable Gitseq sequence is a chain of
-ordinary commits under `refs/seq/<genesis>`. Application files, branches,
-tags, and worktrees remain ordinary Git content and are not placed inside the
-sequence.
+**What it owns:** object formats, commits, trees, refs, compare-and-swap, and
+reachability.
 
-The storage layer knows object formats, commits, trees, refs, compare-and-swap,
-and reachability. It does not know Gitseq event kinds or application state.
-`internal/gitstore` is the adapter to this layer.
+A durable Gitseq sequence is a chain of ordinary commits under
+`refs/seq/<genesis>`. Application files, branches, tags, and worktrees remain
+ordinary Git content and are not placed inside the sequence.
+
+This layer does not know Gitseq event kinds or application state.
+`internal/gitstore` is the adapter to it.
 
 ### 2. Kernel
 
-The kernel turns signed requests into one verifiable order. Its public facts
-are deliberately narrower than Workroom's facts.
+**What it owns:** turning signed requests into one verifiable order. Its
+public facts are deliberately narrower than Workroom's.
 
 The kernel owns:
 
@@ -106,53 +110,6 @@ The kernel owns:
   with an optional opaque selector supplied by the host; and
 - sequencer key rotation, sealing, and verified continuation.
 
-Reference resolvability is the one thing the kernel can check about `rests_on`
-without an ontology. A canonical event identifier whose workroom half is the log
-being submitted to asserts that its event half is a position in that sequence,
-and Git alone settles whether it is. Admission refuses a submission that asserts
-it falsely, because the sequence is append-only: a dangling reference admitted
-once is inherited by every fold and every reader afterwards, and no later act
-can repair it. A reference that makes no such assertion — another workroom's
-identifier, a URL, any other opaque string — is carried unchanged, because the
-kernel has nothing to resolve it against.
-
-The check gates submission and nothing else. Verification, checkpoints and
-continuation read history exactly as before, so records sequenced with dangling
-references before the gate existed remain readable and remain part of the
-verified order.
-
-An application may supply an admission hook. The kernel owns when that hook is
-enforced and what signed envelope and capability material it may inspect. The
-application owns the policy. The hook cannot inspect application payload
-bytes, so it cannot silently turn the kernel into an application interpreter.
-
-A second, generic hook runs later in the same path. After idempotency-replay
-detection has recognized an exact retry — so a replay never re-judges history —
-and before any commit is written, the kernel schedules one call to the
-application's post-dedup admission callback, handing it the decoded intent,
-the actor key, the payload bytes and attachments uninterpreted, and the exact
-pre-sequence head the event would extend. The kernel learns nothing from what
-the callback reads and schedules nothing else about it; the callback runs
-inside the compare-and-swap loop, so a log that moved under a submission makes
-the application reevaluate the world the event would actually join before the
-retried commit chains onto it. A refusal leaves nothing sequenced.
-
-The current compact checkpoint schema is `gitseq-checkpoint@3`. It authenticates
-kernel identity and event material but carries no application profile. Readers
-also accept authenticated JSON `@1` and compact `@2` checkpoints; their required
-historical profile field is ignored rather than used as an eligibility key.
-
-A full read may transfer verified events to the selected host interpreter as a
-bounded stream instead of retaining a second depth-sized event slice. Delivery
-during a cold audit is provisional until the whole kernel chain succeeds: a
-later invalid event rejects the read, so callback effects cannot become visible
-application state. A compact checkpoint candidate and its suffix are fully
-authenticated before replay. `internal/app` folds either path into a private
-folder and publishes the folder and projection together only after kernel
-verification, complete application folding, frontier persistence and the
-projection gate all succeed. This changes the transfer shape, not signature,
-ordering, bounds, compare-and-swap or application-interpretation authority.
-
 The kernel does **not** understand:
 
 - actor names, membership, or retirement;
@@ -167,83 +124,171 @@ The kernel does **not** understand:
 `internal/kernel` sequences and verifies it. Neither package imports
 `internal/workroom`.
 
+#### What the kernel checks about `rests_on`
+
+Reference resolvability is the one thing the kernel can check about `rests_on`
+without an ontology. A canonical event identifier whose workroom half is the
+log being submitted to asserts that its event half is a position in that
+sequence, and Git alone settles whether it is. Admission refuses a submission
+that asserts it falsely. The sequence is append-only, so a dangling reference
+admitted once is inherited by every fold and every reader afterwards, and no
+later act can repair it.
+
+A reference that makes no such assertion — another workroom's identifier, a
+URL, any other opaque string — is carried unchanged, because the kernel has
+nothing to resolve it against.
+
+The check gates submission and nothing else. Verification, checkpoints and
+continuation read history exactly as before, so records sequenced with
+dangling references before the gate existed remain readable and remain part of
+the verified order.
+
+#### Two admission hooks
+
+An application may supply an admission hook. The kernel owns when that hook is
+enforced and what signed envelope and capability material it may inspect. The
+application owns the policy. The hook cannot inspect application payload
+bytes, so it cannot silently turn the kernel into an application interpreter.
+
+A second, generic hook runs later in the same path: the application's
+post-dedup admission callback. The kernel schedules exactly one call to it
+after idempotency-replay detection has recognized an exact retry — so a replay
+never re-judges history — and before any commit is written. The call hands the
+application the decoded intent, the actor key, the payload bytes and
+attachments uninterpreted, and the exact pre-sequence head the event would
+extend.
+
+The kernel learns nothing from what the callback reads and schedules nothing
+else about it. The callback runs inside the compare-and-swap loop, so a log
+that moved under a submission makes the application reevaluate the world the
+event would actually join before the retried commit chains onto it. A refusal
+leaves nothing sequenced.
+
+#### Checkpoints and streamed reads
+
+The current compact checkpoint schema is `gitseq-checkpoint@3`. It
+authenticates kernel identity and event material but carries no application
+profile. Readers also accept authenticated JSON `@1` and compact `@2`
+checkpoints; their required historical profile field is ignored rather than
+used as an eligibility key.
+
+A full read may transfer verified events to the selected host interpreter as a
+bounded stream instead of retaining a second depth-sized event slice. Delivery
+during a cold audit is provisional until the whole kernel chain succeeds: a
+later invalid event rejects the read, so callback effects cannot become
+visible application state. A compact checkpoint candidate and its suffix are
+fully authenticated before replay. `internal/app` folds either path into a
+private folder and publishes the folder and projection together only after
+kernel verification, complete application folding, frontier persistence and
+the projection gate all succeed. This changes the transfer shape, not
+signature, ordering, bounds, compare-and-swap or application-interpretation
+authority.
+
 ### 3. Nexus and live runtime
 
-The nexus is a separate, amnesiac sequence for live coordination. It carries
-leased presence, activity, and ephemeral signed conversation. Its cursor and
-frames die with the process. It does not change the durable sequence and must
-not pretend that live state survived a restart.
+**What it owns:** live coordination that dies with the process.
 
-Addressed chat keeps this boundary. The Workroom-facing service resolves
-mentions against the effective roster; the nexus receives opaque actor
-fingerprints, validates exact reply handles, includes the final sorted
-recipient list in the actor-signed payload, and retains the conversation for
-every current matching lease. It enqueues priority delivery only for leases
-that registered the versioned inbox protocol. Presence alone does not opt a
-browser or older adapter into an inbox it cannot consume. Per-session inboxes
-and acknowledgements are live attention state, not Workroom authority or
-durable records. Acknowledgement changes no nexus cursor.
+The nexus is a separate, amnesiac sequence. It carries leased presence,
+activity, and ephemeral signed conversation. Its cursor and frames die with
+the process. It does not change the durable sequence and must not pretend that
+live state survived a restart.
+
+#### Addressed chat
+
+The Workroom-facing service resolves mentions against the effective roster.
+The nexus receives opaque actor fingerprints, validates exact reply handles,
+includes the final sorted recipient list in the actor-signed payload, and
+retains the conversation for every current matching lease.
+
+It enqueues priority delivery only for leases that registered the versioned
+inbox protocol. Presence alone does not opt a browser or older adapter into an
+inbox it cannot consume.
+
+Per-session inboxes and acknowledgements are live attention state, not
+Workroom authority or durable records. Acknowledgement changes no nexus
+cursor.
+
+#### Signing stays outside the runtime
 
 `host/live` implements this layer as a public, application-neutral runtime.
 An application prepares an optimistic frame draft, signs the canonical bytes
 outside the runtime, and submits the public key and signature. The runtime
-never receives an actor private key. A draft retains no reservation: its
-generation, scope, conversation, sequence, or previous hash moving before
-submission makes it stale, so the application prepares again. For a new
-conversation, the conversation identifier hashes a genesis envelope that
-binds the exact scope, runtime generation, and runtime signing key before the
-actor signs that identifier.
+never receives an actor private key.
+
+A draft retains no reservation: its generation, scope, conversation, sequence,
+or previous hash moving before submission makes it stale, so the application
+prepares again. For a new conversation, the conversation identifier hashes a
+genesis envelope that binds the exact scope, runtime generation, and runtime
+signing key before the actor signs that identifier.
+
+#### Sessions and challenges
 
 Public-key sessions follow the same custody rule. Preparing a session returns
 a bounded, expiring challenge and publishes no presence. The client signs the
 challenge bytes with the named actor key; only a valid proof opens the lease.
 A challenge is consumed by its first opening attempt and cannot be replayed,
-even after a failed signature. Actor names, presence values, lease duration,
-pending challenges, total sessions, and sessions per actor all have exported
-limits enforced before open and again on renewal. The separate
-`OpenTrustedSession` entry point is only for an in-process custodial adapter
-which already authenticated the actor or holds its private key. A public or
-browser transport must never route to that entry point.
+even after a failed signature.
 
-Composition with durable state also remains explicit. `host/live` can wait on
-a caller-supplied durable reader and its own live observation, but it treats
-the durable value as opaque and retains a `DurableFrontier` separately from
-the process-local live cursor. Bounded polling notices ordinary Git progress
-written by another process without suggesting that a live cursor orders,
-authenticates, or survives with the durable sequence. The application host,
-not the live runtime, chooses and interprets the durable frontier.
+Actor names, presence values, lease duration, pending challenges, total
+sessions, and sessions per actor all have exported limits enforced before open
+and again on renewal.
+
+The separate `OpenTrustedSession` entry point is only for an in-process
+custodial adapter which already authenticated the actor or holds its private
+key. A public or browser transport must never route to that entry point.
+
+#### Joining live state to durable state
+
+`host/live` can wait on a caller-supplied durable reader and its own live
+observation, but it treats the durable value as opaque and retains a
+`DurableFrontier` separately from the process-local live cursor. Bounded
+polling notices ordinary Git progress written by another process without
+suggesting that a live cursor orders, authenticates, or survives with the
+durable sequence. The application host, not the live runtime, chooses and
+interprets the durable frontier.
 
 The resident in `internal/service` hosts the same runtime alongside the
 durable application and supplies Workroom message policy at that composition
 boundary. Co-location is operational convenience, not a claim that live data
 has kernel durability.
 
+#### Host posture
+
 The supported host posture is one trusted operator account, not a partial
 shared-host authentication system. `gs serve` discloses that posture on every
-start and resolves the configured listener host to loopback only. Before
-routing a request, it requires the Host to contain an explicit numeric port and
-either a literal loopback IP or `localhost`, compared without case and with one
-optional trailing dot. It never resolves request hostnames. It also checks every
-mutation's browser provenance. Within that boundary, the resident can open
-several actor keys and every process running as the account is trusted to ask it
-to act as any of them. Direct local
-`gs` key access and malicious same-account processes remain outside the
-resident's protection.
+start, and resolves the configured listener host to loopback only.
 
-Live credentials belong to this layer. The resident mints each from 256 bits
-of system randomness, binds it to one repository and an actor fingerprint
-derived from that actor's public key, and revokes it on departure, expiry or
-restart. Browser and MCP clients keep it in process memory and never choose
-it. Ordinary status, presence, tool results, logs, diagnostics, durable events
-and URLs expose only a separate display handle, not the credential. These
-controls protect the live transport boundary; they do not change kernel
-verification or Workroom fold semantics.
+Before routing a request, it requires the Host to contain an explicit numeric
+port and either a literal loopback IP or `localhost`, compared without case and
+with one optional trailing dot. It never resolves request hostnames, so an
+attacker cannot win admission by changing a DNS answer to point at loopback. It
+also checks every mutation's browser provenance.
 
-Because this layer is per-process, one repository must have one resident.
-Two would leave the durable sequence correct and still split presence and
-conversation into two rooms whose participants cannot see each other. The
-boundary that prevents it is an ownership claim, and it is separate from the
-address advertisement:
+Within that boundary, the resident can open several actor keys, and every
+process running as the account is trusted to ask it to act as any of them.
+Direct local `gs` key access and malicious same-account processes remain
+outside the resident's protection.
+
+#### Live credentials
+
+The resident mints each live credential from 256 bits of system randomness,
+binds it to one repository and an actor fingerprint derived from that actor's
+public key, and revokes it on departure, expiry or restart. Browser and MCP
+clients keep it in process memory and never choose it.
+
+Ordinary status, presence, tool results, logs, diagnostics, durable events and
+URLs expose only a separate display handle, not the credential. These controls
+protect the live transport boundary; they do not change kernel verification or
+Workroom fold semantics.
+
+#### One resident per repository
+
+Because this layer is per-process, one repository must have one resident. Two
+would leave the durable sequence correct and still split presence and
+conversation into two rooms whose participants cannot see each other.
+
+The boundary that prevents it is an ownership claim, separate from the address
+advertisement:
 
 - **Ownership** is the ref `refs/gitseq/resident/<genesis>`, whose blob holds
   the served address and a fresh random nonce. It is acquired, transferred and
@@ -262,40 +307,47 @@ address advertisement:
   rebuild the author never asked for and cannot see. `--server -` always acts
   locally.
 
-  Reading the record answers one of three things, not two: nothing is
-  advertised, a record names this workroom at some address, or a record is
-  there and cannot be trusted. Only a genuinely missing file is absence.
-  Unreadable, larger than the 8 KiB bound, not a record, carrying no address,
-  or naming another workroom are all the third answer, and it carries the
-  reason. `internal/app` owns that read; `cmd/gs` turns the third answer into
-  a refusal before it reads a signing key or appends anything, and names
-  `--server -` as the way out. `cmd/gitseq-mcp` decides separately, and
-  treats it as no resident — see [`gs serve`](gs/serve.md).
+Reading the advertisement answers one of three things, not two: nothing is
+advertised, a record names this workroom at some address, or a record is there
+and cannot be trusted. Only a genuinely missing file is absence. Unreadable,
+larger than the 8 KiB bound, not a record, carrying no address, or naming
+another workroom are all the third answer, and it carries the reason.
+
+`internal/app` owns that read. `cmd/gs` turns the third answer into a refusal
+before it reads a signing key or appends anything, and names `--server -` as
+the way out. `cmd/gitseq-mcp` decides separately, and treats it as no resident
+— see [`gs serve`](gs/serve.md).
 
 Ownership authorizes serving; binding a listener does not. A resident binds
 first so the claim can carry the real address, contests ownership, and hands
 the listener to the HTTP server only once the claim is held.
 
-Liveness is the one part of this that is not a compare-and-swap, so it is
-deliberately asymmetric. A claim is trusted as held unless the address it
-names refuses a connection outright; a timeout, a silent port, an unparseable
-answer, or an answer from another workroom all leave the claim standing and
-refuse the start. `internal/residentclient` owns that probe, including the
-duty to refuse to dial anything but loopback, because a claim is an ordinary
-repository file and its address is untrusted input. The whole mechanism is
-coordination between cooperating residents, not a defence against a hostile
-local process, which already reaches the repository directly.
+#### The liveness probe is deliberately asymmetric
+
+Liveness is the one part of this that is not a compare-and-swap. A claim is
+trusted as held unless the address it names refuses a connection outright; a
+timeout, a silent port, an unparseable answer, or an answer from another
+workroom all leave the claim standing and refuse the start.
+
+`internal/residentclient` owns that probe, including the duty to refuse to
+dial anything but loopback, because a claim is an ordinary repository file and
+its address is untrusted input. The whole mechanism is coordination between
+cooperating residents, not a defence against a hostile local process, which
+already reaches the repository directly.
 
 ### 4. Application host binding
 
-The host binding selects one application interpreter for the repository before
-any application record is folded. Its vocabulary sits above the kernel and
-below every application profile, because a host must read it without already
-knowing whether the repository contains Workroom, chess, or another
-application.
+**What it owns:** selecting one application interpreter for the repository
+before any application record is folded.
+
+This vocabulary sits above the kernel and below every application profile,
+because a host must read it without already knowing whether the repository
+contains Workroom, chess, or another application.
 
 Every host recognizes the fixed binding schema family
 `gitseq/app-binding@0`; application profiles cannot rename or extend it.
+
+#### What a binding records
 
 An effective binding records:
 
@@ -305,31 +357,18 @@ An effective binding records:
 - the fold-profile version or hash that gives the application's records their
   exact meaning.
 
+Reading or recording a binding never fetches, builds, or runs application
+code. The source URL remains inert provenance until a person deliberately uses
+it outside Gitseq.
+
+#### Replacing a binding
+
 A replacement additionally records the exact genesis and outgoing fold
 version. The signed intent already targets that genesis; carrying it in the
 canonical replacement payload makes the transition legible on its own. The
 outgoing version is a compare-and-set condition, not commentary: if another
 replacement has moved the binding before this one can append, admission
 refuses it instead of silently overwriting the newer choice.
-
-Reading or recording a binding never fetches, builds, or runs application
-code. The source URL remains inert provenance until a person deliberately
-uses it outside Gitseq.
-
-The binding is effective only in the repository's bootstrap position, or as a
-later replacement signed by the key that initialized the repository. A record
-that merely resembles a binding anywhere else has no force. This authority is
-a host fact below application roles: retiring an operator inside Workroom does
-not revoke the initializing key's binding authority, because another
-application has no Workroom roster to consult.
-
-The bootstrap binding and a later replacement are one rule read once: the
-binding in force is the last binding record signed by the initializing key, so
-the newest effective binding wins. A binding-shaped record that is
-unauthorized, unparseable, or malformed has no force and leaves the previous
-answer standing. Nobody able to append can therefore make a repository
-unreadable by recording one, and a host never refuses to interpret a
-repository because of a record it should have ignored.
 
 A fold upgrade is therefore a host-binding replacement, not an application
 statement kind. Its source commit and fold version name the interpreter code,
@@ -348,98 +387,142 @@ such as `internal/workroom/testdata/legacy_projection.golden.json`, is one
 repeatable way to supply equivalence evidence. The replacement operation does
 not manufacture this proof and must not be presented as doing so.
 
+#### Who may bind
+
+The binding is effective only in the repository's bootstrap position, or as a
+later replacement signed by the key that initialized the repository. A record
+that merely resembles a binding anywhere else has no force.
+
+This authority is a host fact below application roles: retiring an operator
+inside Workroom does not revoke the initializing key's binding authority,
+because another application has no Workroom roster to consult.
+
+The bootstrap binding and a later replacement are one rule read once: the
+binding in force is the last binding record signed by the initializing key, so
+the newest effective binding wins. A binding-shaped record that is
+unauthorized, unparseable, or malformed has no force and leaves the previous
+answer standing. Nobody able to append can therefore make a repository
+unreadable by recording one, and a host never refuses to interpret a
+repository because of a record it should have ignored.
+
+#### The order in which a repository opens
+
 Opening a repository has one fixed order: **read the binding, select the named
 interpreter, then fold**. A host must never fold with a guessed interpreter and
-repair the projection after discovering a mismatch. The selection is made when
-the repository is opened and does not change while it stays open: a replacement
-binding recorded afterwards is read by the next open, so no operation changes
-meaning because of activity that followed the open. A repository whose log
-cannot be read has no binding to read and does not open.
+repair the projection after discovering a mismatch.
 
-If the selected interpreter or fold version is unavailable, kernel verification
-still stands, but application state is unavailable and the host must report the
-repository as verifiable but uninterpretable. That report is a claim about a
-verified repository, so it comes after kernel verification, never before it: an
-unverifiable chain is reported as an unverifiable chain, and no history an
-appender controls can present itself as a missing interpreter instead.
+The selection is made when the repository is opened and does not change while
+it stays open: a replacement binding recorded afterwards is read by the next
+open, so no operation changes meaning because of activity that followed the
+open. A repository whose log cannot be read has no binding to read and does
+not open.
+
+If the selected interpreter or fold version is unavailable, kernel
+verification still stands, but application state is unavailable and the host
+must report the repository as verifiable but uninterpretable. That report is a
+claim about a verified repository, so it comes after kernel verification,
+never before it: an unverifiable chain is reported as an unverifiable chain,
+and no history an appender controls can present itself as a missing
+interpreter instead.
 
 A host that verifies first reads the binding out of the exact frontier it
-verified, and the binding read is told which revision to answer for rather than
-consulting the ref itself. Asking the ref a second time would leave a gap
+verified, and the binding read is told which revision to answer for rather
+than consulting the ref itself. Asking the ref a second time would leave a gap
 between the two questions that a concurrent appender can move in, and the
 opened workspace would come back bound by a frontier nobody checked. A host
-with no verified frontier yet — one whose audit runs later, when the fold first
-reads the log — names the ref, and its selection is still fixed at open.
+with no verified frontier yet — one whose audit runs later, when the fold
+first reads the log — names the ref, and its selection is still fixed at open.
 
-Repositories created before host bindings have a permanent compatibility
-rule: no binding means Workroom at the version shipped by the reader, and the
-binding authority is the bootstrap operator key in the opening records. This
-avoids a flag-day backfill while making the legacy choice explicit.
+#### Repositories created before host bindings
+
+They have a permanent compatibility rule: no binding means Workroom at the
+version shipped by the reader, and the binding authority is the bootstrap
+operator key in the opening records. This avoids a flag-day backfill while
+making the legacy choice explicit.
+
+#### Which packages hold this layer
+
+`internal/apphost` holds the vocabulary and the repository state around it:
+what a binding record is, who may record one, which one is in force, and what
+a checkout must remember to reopen its own log. It imports no application
+profile, which is what lets a program that has never heard of Workroom read a
+binding a Workroom build wrote.
+
+Its read is a bounded pre-audit read rather than a verification. It
+authenticates the initializing actor's signature over an intent that names the
+genesis and the tree the commit carries, and leaves the sequencer chain to the
+audit that runs before any record is folded.
+
+`internal/app` selects this build's interpreter from that vocabulary: it
+records the binding at init for an application an absent binding does not
+already name, and reads the binding in force as the workspace opens, before it
+can fold or append anything.
 
 The detailed product design is recorded in
 `notes/2026-08-13-second-application.md`. Its merged historical filing was
 artifact
 `git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d5d30c17385f242466e3804a85e1d050a4e30d33`;
 that event is cited here as design history, not as this page's causal basis.
-`internal/apphost` holds this vocabulary and the repository state around it:
-what a binding record is, who may record one, which one is in force, and what
-a checkout must remember to reopen its own log. It imports no application
-profile, which is what lets a program that has never heard of Workroom read a
-binding a Workroom build wrote. The read is a bounded pre-audit read rather
-than a verification — it authenticates the initializing actor's signature over
-an intent that names the genesis and the tree the commit carries, and leaves
-the sequencer chain to the audit that runs before any record is folded.
 
-That remembered state — the repository-private configuration holding the
-genesis, object format, payload ceiling, sequencer key path, local actor
-custody, and the last verified frontier — has its own custody contract. The
-file is created exclusively: the content is written and closed at a privately
+#### Repository configuration custody
+
+The state a checkout remembers — the repository-private configuration holding
+the genesis, object format, payload ceiling, sequencer key path, local actor
+custody, and the last verified frontier — has its own custody contract.
+
+**Creating it is exclusive.** The content is written and closed at a privately
 named staging file in the same directory, and only the completed file is then
-hard-linked to the destination, so of two concurrent creators exactly one wins
-and the other is refused, and an attach that lost the creation race fails
+hard-linked to the destination. Of two concurrent creators exactly one wins
+and the other is refused, so an attach that lost the creation race fails
 instead of silently answering for a genesis it never stored. Because the link
 publishes a file that is already whole, a concurrent reader sees the
-destination as either absent or complete while the system stays up; a crash
-keeps no such promise, since nothing syncs the staging file or its directory
-before the link, so a power loss can persist the directory entry ahead of the
-data. Replacement is a different path: it writes a temporary file and renames it
-over the destination, which is how an initialization stores the file and how
-every later save publishes its result. Updating an existing configuration does
-more than replace: it holds an exclusive advisory lock across one whole
-load-modify-store, reloading the file inside the lock and merging only what
-the caller declares, so a process holding stale memory cannot erase custody
-another process recorded meanwhile — rename-over alone prevents torn reads,
-not lost updates. The lock lives in a dedicated `.config.lock` beside the
-protected file and is never renamed, so a crash cannot leave a lock dangling:
-the kernel drops it when the process dies. Where no advisory locking exists,
-updates refuse loudly rather than lose updates silently, while creating a
-first configuration stays available. The two paths do not accept the same
-filesystems: creation requires hard links within the metadata directory — a
-refused link is reported as the creation's failure, with no rename fallback —
-so an attach can be refused on a filesystem where an initialization succeeds.
-Where exclusive creation, the update lock, or the rename is refused, the
-writer reports the failure and the writable configuration does not proceed.
-The reader fails closed too: a missing or partially visible file never
-validates, so a reader refuses to open rather than acting on a configuration
-nobody stored. In memory, a
-configuration leaves an open workspace only as a copy sharing no mutable state
-with it, so a holder cannot alter the workspace's actor custody or verified
-frontier through the value it was handed; the live configuration is a private
-field of the workspace, so the compiler makes that copy the only read path out
-of the owning package. Inside the workspace, one in-memory configuration lock
-serializes every read and write of those two mutable fields — the actor map
-and the verified frontier — so a copy is a consistent observation and no
-reader sees either mid-update. It guards memory only: persisting a change
-happens inside the update's load-modify-store under the on-disk advisory lock,
-with the in-memory lock released across it, and once the store completes the
-freshly stored custody fields are adopted back into memory under the
-in-memory lock. It is distinct from the on-disk advisory lock that serializes
-separate processes.
+destination as either absent or complete while the system stays up. A crash
+keeps no such promise: nothing syncs the staging file or its directory before
+the link, so a power loss can persist the directory entry ahead of the data.
 
-`internal/app` selects this build's interpreter from that vocabulary: it
-records the binding at init for an application an absent binding does not
-already name, and reads the binding in force as the workspace opens, before it
-can fold or append anything.
+**Replacing it is a rename.** A temporary file is written and renamed over the
+destination. That is how an initialization stores the file and how every later
+save publishes its result.
+
+**Updating it takes a lock.** An update holds an exclusive advisory lock
+across one whole load-modify-store, reloading the file inside the lock and
+merging only what the caller declares, so a process holding stale memory
+cannot erase custody another process recorded meanwhile. Rename-over alone
+prevents torn reads, not lost updates. The lock lives in a dedicated
+`.config.lock` beside the protected file and is never renamed, so a crash
+cannot leave a lock dangling: the kernel drops it when the process dies. Where
+no advisory locking exists, updates refuse loudly rather than lose updates
+silently, while creating a first configuration stays available.
+
+**The two paths do not accept the same filesystems.** Creation requires hard
+links within the metadata directory — a refused link is reported as the
+creation's failure, with no rename fallback — so an attach can be refused on a
+filesystem where an initialization succeeds.
+
+**Both ends fail closed.** Where exclusive creation, the update lock, or the
+rename is refused, the writer reports the failure and the writable
+configuration does not proceed. A missing or partially visible file never
+validates, so a reader refuses to open rather than acting on a configuration
+nobody stored.
+
+**In memory, the configuration is copied out and locked inside.** A
+configuration leaves an open workspace only as a copy sharing no mutable state
+with it. A holder therefore cannot alter the workspace's actor custody or
+verified frontier through the value it was handed. The live configuration is a
+private field of the workspace, so the compiler makes that copy the only read
+path out of the owning package.
+
+Inside the workspace, one in-memory configuration lock serializes every read
+and write of those two mutable fields, the actor map and the verified
+frontier. A copy is therefore a consistent observation, and no reader sees
+either field mid-update.
+
+That lock guards memory only. Persisting a change happens inside the update's
+load-modify-store under the on-disk advisory lock, with the in-memory lock
+released across it. Once the store completes, the freshly stored custody
+fields are adopted back into memory under the in-memory lock. The in-memory
+lock is distinct from the on-disk advisory lock that serializes separate
+processes.
 
 #### Host identity
 
@@ -453,93 +536,99 @@ meaning: which key signed this record. A key with nothing more than that is a
 first-class actor, and a repository that never says anything else about it is
 complete. Everything above that is an upgrade, never a requirement.
 
-The upgrade is an **anchor**: a record saying that one signing key belongs to a
-persistent identity, for this repository, within a scope, until an expiry.
+**The upgrade is an anchor:** a record saying that one signing key belongs to
+a persistent identity, for this repository, within a scope, until an expiry.
 Three fixed schema families carry it — `gitseq/identity-witness@0`,
 `gitseq/identity-anchor@0`, and `gitseq/identity-revoke@0` — and application
 profiles cannot rename or extend them.
 
-An anchor is not simply strong or weak. Two independent things vary, and both
-are reported, because collapsing them into one number hides which assumption a
-reader is making. **Vouching** says who stands behind the endorsement.
-**Verification** says what a reader must trust to check it: a signature carried
-in the log verifies offline forever, while a claim needing a third party to
-answer again verifies only while that third party cooperates.
+**Two axes, reported separately.** An anchor is not simply strong or weak, and
+collapsing the two into one number hides which assumption a reader is making.
+**Vouching** says who stands behind the endorsement. **Verification** says
+what a reader must trust to check it: a signature carried in the log verifies
+offline forever, while a claim needing a third party to answer again verifies
+only while that third party cooperates.
 
-Two vouching rungs are implemented. **Witnessed** means a deployment's key says
-a provider said so. **Self-signed** means the identity's own Nostr key signed
-the anchor, so nobody beyond that identity has to be trusted for the claim.
-Both are reachable states produced by the resolver, and self-signed is the
-stronger value when a delegation reduces the chain to its weakest rung. A
+Two vouching rungs are implemented. **Witnessed** means a deployment's key
+says a provider said so. **Self-signed** means the identity's own Nostr key
+signed the anchor, so nobody beyond that identity has to be trusted for the
+claim. Both are reachable states produced by the resolver, and self-signed is
+the stronger value when a delegation reduces the chain to its weakest rung. A
 published forge signing key remains deferred because its verification would
 need a live lookup.
 
-A Nostr anchor carries a complete NIP-01 signed event, in the shape returned by
-the standard NIP-07 `signEvent` browser call. Its content is one deterministic,
-domain-separated delegation string binding the repository, Gitseq subject key,
-application-owned scope and expiry. The event uses the fixed ephemeral kind
-`20000` and an empty tag array, so neither field can silently widen the grant;
-its `created_at` participates in the NIP-01 event id but grants no authority and
-does not govern Gitseq time. The proof is not intended for relay publication.
-The subject's Ed25519 key also signs the containing Gitseq record, so the
-persistent root and the session key both accept the binding. The host identity
-interpreter recomputes the NIP-01 event id and verifies its BIP-340 signature;
-the kernel continues to verify only its own Ed25519 actor and order and never
-imports the curve or Nostr vocabulary.
+**Nostr anchors.** A Nostr anchor carries a complete NIP-01 signed event, in
+the shape returned by the standard NIP-07 `signEvent` browser call. Its
+content is one deterministic, domain-separated delegation string binding the
+repository, Gitseq subject key, application-owned scope and expiry. The event
+uses the fixed ephemeral kind `20000` and an empty tag array, so neither field
+can silently widen the grant; its `created_at` participates in the NIP-01
+event id but grants no authority and does not govern Gitseq time. The proof is
+not intended for relay publication. The subject's Ed25519 key also signs the
+containing Gitseq record, so the persistent root and the session key both
+accept the binding. The host identity interpreter recomputes the NIP-01 event
+id and verifies its BIP-340 signature; the kernel continues to verify only its
+own Ed25519 actor and order and never imports the curve or Nostr vocabulary.
 
-The session key that accepted a Nostr anchor may withdraw it through the
-ordinary host act. The persistent Nostr root may also use the same NIP-07 event
-envelope to sign a repository-bound withdrawal and let any Gitseq actor submit
-it. That second path matters when the session key was lost or compromised; the
-resolver admits it only when the withdrawal proof names the same root as the
-anchor. A root withdrawal retires the signed NIP-01 grant event id, not merely
-one Gitseq record that carried it: every earlier or later replay of that exact
-proof is ineffective from the withdrawal's log position onward. A genuinely
-fresh root-signed event has a fresh id and can grant again.
+**Withdrawal has two paths.** The session key that accepted a Nostr anchor may
+withdraw it through the ordinary host act. The persistent Nostr root may also
+use the same NIP-07 event envelope to sign a repository-bound withdrawal and
+let any Gitseq actor submit it. That second path matters when the session key
+was lost or compromised; the resolver admits it only when the withdrawal proof
+names the same root as the anchor. A root withdrawal retires the signed NIP-01
+grant event id, not merely one Gitseq record that carried it: every earlier or
+later replay of that exact proof is ineffective from the withdrawal's log
+position onward. A genuinely fresh root-signed event has a fresh id and can
+grant again.
 
-Vouching is never claimed in a payload, only derived from signatures the host
-verifies, so no record can promote itself. A witness declaration is in force only
-when the key that initialized the repository signed it — the same authority the
-binding answers to, and for the same reason, since another application has no
-roster to consult. The last authorized declaration wins, so rotating the
-witness key is one more record, and it does not reach back: anchors the
-previous key signed keep the force they had where they stand. A witness is
-declared for named identity schemes and cannot mint an identity outside them,
-so adding a provider is a visible act rather than a silent widening.
+**Vouching is never claimed in a payload**, only derived from signatures the
+host verifies, so no record can promote itself. A witness declaration is in force
+only when the key that initialized the repository signed it — the same
+authority the binding answers to, and for the same reason, since another
+application has no roster to consult. The last authorized declaration wins, so
+rotating the witness key is one more record, and it does not reach back:
+anchors the previous key signed keep the force they had where they stand. A
+witness is declared for named identity schemes and cannot mint an identity
+outside them, so adding a provider is a visible act rather than a silent
+widening.
 
-An endorsement from any other anchored key is a delegation — a new device, or
-an agent credential. It names no identity and inherits the endorser's, reduced
-to the weaker value on each axis, because nobody can hand on more than they
-hold. It cannot outlive the anchor it rests on, and withdrawing that anchor
-withdraws what it minted, or a revocation would leave standing the keys it was
-called to stop.
+**Delegation inherits, reduced.** An endorsement from any other anchored key
+is a delegation — a new device, or an agent credential. It names no identity
+and inherits the endorser's, reduced to the weaker value on each axis, because
+nobody can hand on more than they hold. It cannot outlive the anchor it rests
+on, and withdrawing that anchor withdraws what it minted, or a revocation
+would leave standing the keys it was called to stop.
 
-Resolution is the authority, and nothing here gates appending. An identity
-record that is unauthorized, unparseable, malformed, naming another repository,
-or claiming an identity its signer cannot hand on is recorded exactly as signed
-and resolves to nothing, leaving the previous answer standing. So no appender
-can make a repository's identities unreadable by writing a record, and no
-admission check has to be trusted to keep one out.
+**Resolution is the authority, and nothing here gates appending.** An identity
+record that is unauthorized, unparseable, malformed, naming another
+repository, or claiming an identity its signer cannot hand on is recorded
+exactly as signed and resolves to nothing, leaving the previous answer
+standing. So no appender can make a repository's identities unreadable by
+writing a record, and no admission check has to be trusted to keep one out.
 
-Anchor, delegation and withdrawal boundaries are judged against verified log
-position, so records sharing one signed second still follow their immutable
-order. The public identity boundary resolves an exact record id and fails
-closed when that id is unknown or changed; it offers no timestamp-only lookup.
-`NotAfter` expiry alone is judged against the sequencer's signed timestamp on
-the record being folded, never against the reader's clock, so two clones
-resolving one log reach the same answers. A provider check — verifying a login
-with the provider that issued it — runs outside the fold, and only its result
-is signed into the log; replaying a log makes no network request, and a clone
-with no access to the provider reads exactly the same identities. That check
-holds the person's bearer token, and the rule that keeps it out of a log is
-that no byte of provider- or transport-controlled text reaches an error from
-it: a refusal is reported as the numeric status with this program's own phrase
-for it, and a transport failure or an unreadable answer in fixed words of the
-package's own. Redaction was considered and refused, because it removes only
-the spelling it goes looking for and the party echoing the credential chooses
-the spelling.
+**Time comes from the log, not the reader.** Anchor, delegation and withdrawal
+boundaries are judged against verified log position, so records sharing one
+signed second still follow their immutable order. The public identity boundary
+resolves an exact record id and fails closed when that id is unknown or
+changed; it offers no timestamp-only lookup. `NotAfter` expiry alone is judged
+against the sequencer's signed timestamp on the record being folded, never
+against the reader's clock, so two clones resolving one log reach the same
+answers.
 
-This is the mechanism, not a login system. It authenticates nobody and
+**Provider checks stay outside the fold.** Verifying a login with the provider
+that issued it runs outside the fold, and only its result is signed into the
+log. Replaying a log makes no network request, and a clone with no access to
+the provider reads exactly the same identities.
+
+That check holds the person's bearer token. The rule that keeps it out of a
+log is that no byte of provider- or transport-controlled text reaches an error
+from it. A refusal is reported as the numeric status with this program's own
+phrase for it. A transport failure or an unreadable answer is reported in
+fixed words of the package's own. Redaction is not enough, because it removes
+only the spelling it goes looking for, and the party echoing the credential
+chooses the spelling.
+
+**This is the mechanism, not a login system.** It authenticates nobody and
 authorizes nothing: it says who a key belongs to and leaves what that is worth
 to the application's fold. The public display helper keeps anchored versus
 unanchored state and both trust axes visible; applications still decide what
@@ -551,10 +640,12 @@ deferred.
 
 ### 5. Application profile and interpreter
 
-An application profile gives opaque kernel events meaning. It owns its schema
-family, payload decoding, governed vocabulary, admission policy, deterministic
-fold, authority rules, and application decisions. Its interpreter consumes
-the verified ordered records and produces application state.
+**What it owns:** giving opaque kernel events meaning.
+
+An application profile owns its schema family, payload decoding, governed
+vocabulary, admission policy, deterministic fold, authority rules, and
+application decisions. Its interpreter consumes the verified ordered records
+and produces application state.
 
 An event whose schema or bound interpreter a reader does not hold remains
 **kernel-verifiable**: its keys, signatures, position, payload binding, and
@@ -565,148 +656,180 @@ fold, or UI expectations.
 
 #### Workroom, the current application
 
-`internal/workroom` is the Workroom profile and interpreter. Workroom owns:
+`internal/workroom` is the Workroom profile and interpreter.
 
-- the `workroom/*` schemas and governed kind vocabulary;
-- its deterministic fold and fold-profile version;
-- actor roster, names, membership, roles, and authority;
-- commitment lifecycles and who is waiting on whom: an explicit report closes
-  when its requester ratifies it, while a promisor's exact-head artifact acts
-  as the implementation report and its sealed approved merge closes the
-  commitment. A report answers exactly one lifecycle claim: the promise that
-  took the work, or — when no promise of the reporter's stands on it — the
-  request itself. What it answers is not the same as what it may cite: a
-  report on a promise may also rest on that promise's governing request as
-  provenance, which is what `gs review` writes, and any other request is
-  refused. The direct shape is admitted only from the request's addressee, and
-  refused while that actor holds a live promise on the same request, so one
-  commitment keeps one closure; it projects as claim and complete, with the
-  reporter as performer, no promise, and the requester waiting. Which claim a
-  report answered is settled when it is folded and read from there afterwards,
-  so a later withdrawal or a later promise cannot move a completion between
-  commitments. Widening the basis reinterprets records already in the log — three
-  reports refused for want of a promise become effective on a re-fold — so it
-  advances the fold profile to `workroom-fold@8`. Every projected statement
-  also carries the commitment lifecycle it was decided under: the definition
-  bound at that record's own position, not whichever definition of its kind
-  stands now. A reader classifying a historical record by the current
-  vocabulary would disagree with the fold about what that record is, so a
-  redefined kind would silently change the meaning of claims already made.
-  The one place the current vocabulary is right is the statement not yet
-  appended, which has no position and will be decided under the definition
-  standing when it lands. Carrying the lifecycle changes the exact projection
-  bytes, which is what a projection cache is keyed on, so it advances the
-  profile again to `workroom-fold@9`: a cache written under `@8` is rejected
-  and the history replayed, rather than answered from the old world;
-- ratification and supersession rules. The projection names the ratification
-  in force for a statement, not only that one exists, because the rule cannot
-  be recovered from what it hands out: projected acts carry no retirement, so
-  neither the first nor the last effective ratification of a target is
-  reliably the surviving one. A reader that picked either would be rebuilding
-  this layer's retirement rule for itself, so the answer is stated here and
-  read everywhere else;
-- path-at-commit artifact statements, retirement, succession, reviews, and
-  staleness: ordinary staleness crosses governed reasoning edges, while the
-  narrower `describes_superseded_world` fact crosses direct retired-artifact
-  edges and artifact-to-artifact provenance only. A retirement is read for what
-  its own act rested on: a supersession resting on an artifact covering the
-  same path is succession and carries no staleness across reasoning edges,
-  while one naming no covering successor is condemnation and propagates as
-  before. Artifact-to-artifact provenance carries the flare either way, so the
-  pages describing an implementation still move when it does;
-- guarded review and merge semantics, including the merge receipt that lets the
-  implementer of an approved head retire another actor's predecessors only on
-  the path lineages of the artifacts that approval itself cites, each standing
-  at the approved head and owned by the implementer, since the fold is pure over
-  records and can verify no merge head, diff, or tree; merge receipts record
-  ordinary reasoning staleness, while an approval or artifact that already
-  described a superseded world when the verdict was signed must be re-anchored
-  before merge, and one the world moved under afterwards is recorded instead;
-  the explicitly ratified review approval remains
-  a pre-merge requirement, and the same sealed receipt closes the implementation
-  commitment whose reporting artifact it merges. The receipt also accounts for
-  every other live artifact covered by the first-parent diff without granting
-  authority over it: it seals whether an unsettled durable commitment protects
-  the candidate or whether the candidate is abandoned. The Git and durable
-  receipts also seal the canonical exact old/new path set from the
-  first-parent diff, so the fold can verify coverage without interpreting a
-  Git tree or treating every artifact below a broad successor as changed. The
-  fold verifies the testimony from log facts at the receipt's position and
-  fixes the successor's succession warning there; receipts without the two
-  prospective fields retain the historical moving, current-fold calculation.
-  Before Git moves, the CLI also constructs every signed succession request
-  and applies the kernel's exact genesis-ceiling measure plus the resident JSON
-  transport limit when that surface is selected. Thus the application cannot
-  land a merge whose required durable receipt or later succession act is too
-  large to admit. This projection change advances the profile to
-  `workroom-fold@11`;
-- the receipt freshness checkpoint. A sealed prospective receipt is a
-  checkpoint on the single edge from that receipt to a successor the same merge
-  published. Ordinary staleness causes already active at or before the
-  receipt's own position were settled by the merge and do not make that
-  successor stale at birth. A cause arising after the receipt still propagates,
-  direct retirement of the receipt still flares the successor, and the receipt
-  itself stays historically stale: only the successor begins a new current
-  implementation epoch. The exception is narrow and fail-closed. It needs an
-  authorized retirement plan carrying both `merge_left_live` and a canonical
-  `merge_changed_paths`, cited directly by an artifact its own author signed,
-  standing at the receipt's exact merge head, at a path the receipt declared it
-  would publish. A malformed half-pair, a historical receipt without the pair,
-  and a record that merely cites a receipt gain nothing, and whether individual
-  left-live testimony verifies is not read: that testimony is accounting about
-  other actors' candidates and grants no freshness. Causes are weighed one at a
-  time and dated, because comparing staleness now against staleness as of the
-  receipt cannot separate an old cause from a new one while both are live, and
-  a cause the fold cannot date fails closed. `describes_superseded_world` is
-  unchanged in every branch. Ownership is this layer: the rule lives in the
-  fold's staleness computation and projection, not in the kernel and not in
-  `gs`, which continues only to validate and construct receipts and successors.
-  This projection change advances the profile to `workroom-fold@12`, so a cache
-  written under `@11` is rejected and the history replayed;
-- write-boundary guards: one Workroom admission evaluation serves every state
-  surface — `gs state`, `gs batch`, the MCP state and review tools, and the
-  canonical guarded review path — once before signing for early feedback, and
-  authoritatively through the kernel's post-dedup callback against the exact
-  pre-sequence frontier, read from a private verified world that shares
-  nothing with reader snapshots, checkpoint cadence, or the rollback witness.
-  An undefined state kind refuses before signing with no override:
-  command-shaped kinds point at their dedicated commands and tools, and any
-  other absent kind lists the live vocabulary with the ratified kind-def that
-  must establish it; declared custom kinds stay valid. A report whose
-  `body.verdict` or `body.status` is exactly approved or changes-requested is
-  a review verdict and refuses on generic paths, naming the guarded route;
-  canonical review paths carry the reserved `body.review_path` marker and
-  reserved admission fields are never caller input. A state resting on an
-  already-retired or already-stale basis refuses by default until the author
-  asks for the recorded escape (`body.dead_basis_override=true`), while an
-  effective supersession stays advisory; neither the refusal nor the override
-  removes staleness or grants authority. The guarded verdict path owns
-  head-news discovery — statements sequenced strictly after the review request
-  that name the reviewed head or lane — exact-set acknowledgment validation,
-  canonical acknowledgment encoding, frontier binding, and act construction,
-  shared by `gs review` and the MCP review tool so they cannot drift;
-- Workroom MCP tools and their application meanings;
-- the agent practice in `SKILL.md`;
-- connector clauses and observations; and
-- the Work board, event railway, artifact views, and other Workroom UI.
+**Schemas and fold.** Workroom owns the `workroom/*` schemas and governed kind
+vocabulary, its deterministic fold, and its fold-profile version.
 
-In precise terms, the kernel has no artifact ontology. It stores a signed
-schema string, payload binding, and causal strings. The Workroom interpreter
-decodes a Workroom state event, recognizes its governed `artifact` kind, and
-projects `path@commit`, retirement, succession, and staleness. Another
-application may have no artifacts or may define a different concept under a
-different schema family.
+**Actors.** It owns the actor roster, names, membership, roles, and authority.
 
-Workroom also makes live membership an application-level authority boundary.
-After the genesis operator seed, a state author must be a live participant,
-and an originating requester must still be live to ratify a report. A
-departed actor may still supersede an earlier act they authored; that narrow
-cleanup exception confers no force on a new state or on a ratification. These
-are fold rules rather than kernel admission or signature rules: the kernel
-still accepts the signed record, and the application decides what it means.
+**Commitments: who is waiting on whom.** An explicit report closes when its
+requester ratifies it. A promisor's exact-head artifact acts as the
+implementation report, and its sealed approved merge closes the commitment.
 
-Workroom state schemas are prospectively versioned when admission tightens.
-`workroom/state@0` remains readable with the decisions it historically made;
+A report answers exactly one lifecycle claim: the promise that took the work,
+or — when no promise of the reporter's stands on it — the request itself. What
+it answers is not the same as what it may cite: a report on a promise may also
+rest on that promise's governing request as provenance, which is what
+`gs review` writes, and any other request is refused.
+
+The direct shape is admitted only from the request's addressee, and refused
+while that actor holds a live promise on the same request, so one commitment
+keeps one closure. It projects as claim and complete, with the reporter as
+performer, no promise, and the requester waiting.
+
+Which claim a report answered is settled when it is folded and read from there
+afterwards, so a later withdrawal or a later promise cannot move a completion
+between commitments. Widening the basis reinterprets records already in the
+log, so it advances the fold profile to `workroom-fold@8`.
+
+**Every projected statement carries the lifecycle it was decided under** — the
+definition bound at that record's own position, not whichever definition of
+its kind stands now. A reader classifying a historical record by the current
+vocabulary would disagree with the fold about what that record is, so a
+redefined kind would silently change the meaning of claims already made. The
+one place the current vocabulary is right is the statement not yet appended,
+which has no position and will be decided under the definition standing when
+it lands.
+
+Carrying the lifecycle changes the exact projection bytes, which is what a
+projection cache is keyed on, so it advances the profile again to
+`workroom-fold@9`: a cache written under `@8` is rejected and the history
+replayed, rather than answered from the old world.
+
+**Ratification and supersession.** The projection names the ratification in
+force for a statement, not only that one exists. A reader cannot recover that
+rule from what the projection hands out: projected acts carry no retirement,
+so neither the first nor the last effective ratification of a target is
+reliably the surviving one. A reader that picked either would be rebuilding
+this layer's retirement rule for itself. The answer is stated here and read
+everywhere else.
+
+**Artifacts and staleness.** Workroom owns path-at-commit artifact statements,
+retirement, succession, reviews, and staleness. Ordinary staleness crosses
+governed reasoning edges, while the narrower `describes_superseded_world` fact
+crosses direct retired-artifact edges and artifact-to-artifact provenance
+only.
+
+A retirement is read for what its own act rested on. A supersession resting on
+an artifact covering the same path is succession, and carries no staleness
+across reasoning edges. One naming no covering successor is condemnation, and
+propagates as before. Artifact-to-artifact provenance carries the flare either
+way, so the pages describing an implementation still move when it does.
+
+**Review and merge.** Workroom owns guarded review and merge semantics,
+including the merge receipt. That receipt lets the implementer of an approved
+head retire another actor's predecessors only on the path lineages of the
+artifacts that approval itself cites, each standing at the approved head and
+owned by the implementer. The bound exists because the fold is pure over
+records and can verify no merge head, diff, or tree.
+
+Merge receipts record ordinary reasoning staleness. An approval or artifact
+that already described a superseded world when the verdict was signed must be
+re-anchored before merge; one the world moved under afterwards is recorded
+instead. The explicitly ratified review approval remains a pre-merge
+requirement, and the same sealed receipt closes the implementation commitment
+whose reporting artifact it merges.
+
+The receipt also accounts for every other live artifact covered by the
+first-parent diff without granting authority over it: it seals whether an
+unsettled durable commitment protects the candidate or whether the candidate
+is abandoned. The Git and durable receipts also seal the canonical exact
+old/new path set from the first-parent diff, so the fold can verify coverage
+without interpreting a Git tree or treating every artifact below a broad
+successor as changed. The fold verifies the testimony from log facts at the
+receipt's position and fixes the successor's succession warning there;
+receipts without the two prospective fields retain the historical moving,
+current-fold calculation.
+
+Before Git moves, the CLI also constructs every signed succession request and
+applies the kernel's exact genesis-ceiling measure plus the resident JSON
+transport limit when that surface is selected. Thus the application cannot
+land a merge whose required durable receipt or later succession act is too
+large to admit. This projection change advances the profile to
+`workroom-fold@11`.
+
+**The receipt freshness checkpoint.** A sealed prospective receipt is a
+checkpoint on the single edge from that receipt to a successor the same merge
+published. Ordinary staleness causes already active at or before the
+receipt's own position were settled by the merge and do not make that
+successor stale at birth. A cause arising after the receipt still propagates,
+direct retirement of the receipt still flares the successor, and the receipt
+itself stays historically stale: only the successor begins a new current
+implementation epoch.
+
+The exception is narrow and fail-closed. It needs an authorized retirement
+plan carrying both `merge_left_live` and a canonical `merge_changed_paths`,
+cited directly by an artifact its own author signed, standing at the receipt's
+exact merge head, at a path the receipt declared it would publish. A malformed
+half-pair, a historical receipt without the pair, and a record that merely
+cites a receipt gain nothing. Whether individual left-live testimony verifies
+is not read: that testimony is accounting about other actors' candidates and
+grants no freshness.
+
+Causes are weighed one at a time and dated, because comparing staleness now
+against staleness as of the receipt cannot separate an old cause from a new
+one while both are live, and a cause the fold cannot date fails closed.
+`describes_superseded_world` is unchanged in every branch.
+
+Ownership is this layer: the rule lives in the fold's staleness computation
+and projection, not in the kernel and not in `gs`, which continues only to
+validate and construct receipts and successors. This projection change
+advances the profile to `workroom-fold@12`, so a cache written under `@11` is
+rejected and the history replayed.
+
+**Write-boundary guards.** One Workroom admission evaluation serves every
+state surface — `gs state`, `gs batch`, the MCP state and review tools, and
+the canonical guarded review path. It runs once before signing for early
+feedback, and authoritatively through the kernel's post-dedup callback against
+the exact pre-sequence frontier, read from a private verified world that
+shares nothing with reader snapshots, checkpoint cadence, or the rollback
+witness.
+
+An undefined state kind refuses before signing with no override:
+command-shaped kinds point at their dedicated commands and tools, and any
+other absent kind lists the live vocabulary with the ratified kind-def that
+must establish it. Declared custom kinds stay valid.
+
+A report whose `body.verdict` or `body.status` is exactly approved or
+changes-requested is a review verdict and refuses on generic paths, naming the
+guarded route. Canonical review paths carry the reserved `body.review_path`
+marker, and reserved admission fields are never caller input.
+
+A state resting on an already-retired or already-stale basis refuses by
+default until the author asks for the recorded escape
+(`body.dead_basis_override=true`), while an effective supersession stays
+advisory. Neither the refusal nor the override removes staleness or grants
+authority.
+
+The guarded verdict path owns head-news discovery — statements sequenced
+strictly after the review request that name the reviewed head or lane —
+exact-set acknowledgment validation, canonical acknowledgment encoding,
+frontier binding, and act construction, shared by `gs review` and the MCP
+review tool so they cannot drift.
+
+**Surfaces and guidance.** Workroom also owns its MCP tools and their
+application meanings; the agent practice in `SKILL.md`; connector clauses and
+observations; and the Work board, event railway, artifact views, and other
+Workroom UI.
+
+**What this means precisely.** The kernel has no artifact ontology. It stores
+a signed schema string, payload binding, and causal strings. The Workroom
+interpreter decodes a Workroom state event, recognizes its governed `artifact`
+kind, and projects `path@commit`, retirement, succession, and staleness.
+Another application may have no artifacts or may define a different concept
+under a different schema family.
+
+**Live membership is an application-level authority boundary.** After the
+genesis operator seed, a state author must be a live participant, and an
+originating requester must still be live to ratify a report. A departed actor
+may still supersede an earlier act they authored; that narrow cleanup
+exception confers no force on a new state or on a ratification. These are fold
+rules rather than kernel admission or signature rules: the kernel still
+accepts the signed record, and the application decides what it means.
+
+**Workroom state schemas are prospectively versioned when admission tightens.**
+`workroom/state@0` remains readable with the decisions it historically made.
 `workroom/state@1` refuses whole-repository and comma-joined artifact paths.
 `workroom/state@2` preserves those path rules and removes new in-fold
 activation authority. `workroom/ratify@1` closes the other side of that
@@ -717,13 +840,13 @@ maintain. The schema version is Workroom application meaning, not a kernel
 protocol feature.
 
 The same bridge preserves state@0/state@1 `fold-activation` history ratified
-with `workroom/ratify@0`:
-the old transition and the uninterpretable seam after it replay exactly as
-before. `fold-activation` is absent from the current starter vocabulary, new
-state@2 records under that name are undefined, and the application refuses a
-new state@0/state@1 activation or a ratification@0 submitted after the
-boundary. A ratification@1 of an activation is ineffective even if it bypasses
-application admission.
+with `workroom/ratify@0`: the old transition and the uninterpretable seam
+after it replay exactly as before. `fold-activation` is absent from the
+current starter vocabulary, new state@2 records under that name are undefined,
+and the application refuses a new state@0/state@1 activation or a
+ratification@0 submitted after the boundary. A ratification@1 of an activation
+is ineffective even if it bypasses application admission.
+
 New upgrades are binding replacements at the host layer. `kind-def` remains a
 finite declarative constraint language; a definition carrying `body.fold` is
 uninterpretable and cannot introduce a code pointer.
@@ -736,14 +859,18 @@ the kernel, and it is the only gitseq package such a module can import: every
 other package here is `internal/`, which the compiler enforces across the
 module boundary. What that surface exports is therefore the whole contract.
 
-It exports five acts and nothing else. `Init` creates a sequence and records
-the first application binding, making that record's signer the initializing
-key. `Open` verifies the sequence and then hands it back only to the application
-and exact fold it is bound to, refusing anything else as verifiable but
-uninterpretable. `ReplaceBinding` lets the initializing key record an evidenced
-transition to another exact fold without weakening that open-time equality.
-`Append` signs one application act with a caller's key and gives it a position.
-`Records` returns the verified ordered records.
+It exports five acts and nothing else:
+
+- `Init` creates a sequence and records the first application binding, making
+  that record's signer the initializing key.
+- `Open` verifies the sequence and then hands it back only to the application
+  and exact fold it is bound to, refusing anything else as verifiable but
+  uninterpretable.
+- `ReplaceBinding` lets the initializing key record an evidenced transition to
+  another exact fold without weakening that open-time equality.
+- `Append` signs one application act with a caller's key and gives it a
+  position.
+- `Records` returns the verified ordered records.
 
 There is no projection in that list, and its absence is the boundary. An
 outside application holds its own fold and its own state; gitseq gives it
@@ -764,100 +891,117 @@ never admission — is what says who acted.
 
 ### 6. Projections and queries
 
-A projection is a read model derived from an application interpreter, not a
-kernel fact. Workroom projects decisions, actors, commitments, artifacts,
-reviews, vocabulary, and staleness. Bounded queries select from that derived
-state. Live status may be joined to it, but the durable and live cursors remain
-distinct.
+**What it owns:** read models derived from an application interpreter.
+
+A projection is not a kernel fact. Workroom projects decisions, actors,
+commitments, artifacts, reviews, vocabulary, and staleness. Bounded queries
+select from that derived state. Live status may be joined to it, but the
+durable and live cursors remain distinct.
 
 `internal/statusview` builds Workroom summaries, orientations, bounded work
 pages, exact-path artifact pages, exact-item inspection, the whole-log review
 gate, the bounded staleness-wave summary, and the bounded join of a caller's
-live priority inbox. The resident and MCP artifact contract remains the live
-exact-path page. A separate CLI selection asks the same page-building core for
-one of four lifecycle states — live, retired, succeeded, all — or for artifacts
-whose chain of artifact bases reaches an anchor path transitively. The
-review gate is a fixed answer rather than a composable filter: it reports
+live priority inbox.
+
+The resident and MCP artifact contract remains the live exact-path page. A
+separate CLI selection asks the same page-building core for one of four
+lifecycle states — live, retired, succeeded, all — or for artifacts whose
+chain of artifact bases reaches an anchor path transitively.
+
+The review gate is a fixed answer rather than a composable filter. It reports
 review requests awaiting a first verdict, references that resolve to no live
 artifact, and the approved heads still worth asking Git about. Whether those
 heads have landed is a Git question and is answered by the surface that can
-ask, not by the projection. Work and status rows include the
-request, report, exact-head, and latest-review facts needed for routine action;
-write surfaces return the fold decision after an append rather than previewing
-application force. `internal/app` opens a repository, joins the kernel records
-to the interpreter the repository is bound to, and exposes the resulting
-durable snapshot. Readers must report an unbound or unavailable interpreter
-instead of presenting a partial
-projection as authoritative. In particular, a degraded client marks priority
-chat unavailable; it does not invent an empty live inbox.
+ask, not by the projection.
+
+Work and status rows include the request, report, exact-head, and
+latest-review facts needed for routine action. Write surfaces return the fold
+decision after an append rather than previewing application force.
+
+`internal/app` opens a repository, joins the kernel records to the interpreter
+the repository is bound to, and exposes the resulting durable snapshot.
+Readers must report an unbound or unavailable interpreter instead of
+presenting a partial projection as authoritative. In particular, a degraded
+client marks priority chat unavailable; it does not invent an empty live
+inbox.
+
+#### Staleness is held apart from lifecycle
 
 The bounded views hold a record's staleness apart from its lifecycle, and the
 omission rules that follow are part of the projection contract rather than
-presentation detail. Ordinary reasoning staleness qualifies a status; it does
-not reopen a finished commitment. A satisfied or withdrawn commitment is
-omitted from every default lane whether or not it is stale, and the per-status
-counts carry it instead, so a caller reading a default lane is reading work
-still owed rather than history. The staleness policy on a work query is a
-named value and not an absence: an omitted policy means `summary`, which is
-not `include`, and the explicit `include`, `only` and `exclude` policies each
-return what they always returned. Naming any lifecycle status also overrides
-the summary. A page reports what the summary left out in
-`closed_stale_omitted`, which is omitted when it is zero. Retirement and a
-superseded world remain individually visible wherever they occur and are
-counted apart from ordinary staleness in `retired_artifacts` and
-`world_stale_artifacts`, both always present, because one figure covering
-every non-current artifact answers nothing in a workroom of any age.
+presentation detail.
 
-A superseded world also carries its date. `world_superseded_at` on a statement
-and on an artifact is the log position of the earliest retirement **still
-accounting for** that moved world, and the fold is the only layer that computes
-it. A reader deciding whether a judgement was made before or after the world
-moved needs that position, and cannot recover it from the acts alone: the acts
-say a supersession happened, not whether its own supersession has since
-withdrawn it. Two retirements can account for one moved world, and withdrawing
-the earlier leaves the later as the only live cause, which moves the date
-forward.
+Ordinary reasoning staleness qualifies a status; it does not reopen a finished
+commitment. A satisfied or withdrawn commitment is omitted from every default
+lane whether or not it is stale, and the per-status counts carry it instead,
+so a caller reading a default lane is reading work still owed rather than
+history.
+
+The staleness policy on a work query is a named value and not an absence: an
+omitted policy means `summary`, which is not `include`, and the explicit
+`include`, `only` and `exclude` policies each return what they always
+returned. Naming any lifecycle status also overrides the summary.
+
+A page reports what the summary left out in `closed_stale_omitted`, which is
+omitted when it is zero. Retirement and a superseded world remain individually
+visible wherever they occur and are counted apart from ordinary staleness in
+`retired_artifacts` and `world_stale_artifacts`, both always present, because
+one figure covering every non-current artifact answers nothing in a workroom
+of any age.
+
+#### A superseded world carries its date
+
+`world_superseded_at` on a statement and on an artifact is the log position of
+the earliest retirement **still accounting for** that moved world, and the
+fold is the only layer that computes it.
+
+A reader deciding whether a judgement was made before or after the world moved
+needs that position, and cannot recover it from the acts alone: the acts say a
+supersession happened, not whether its own supersession has since withdrawn
+it. Two retirements can account for one moved world, and withdrawing the
+earlier leaves the later as the only live cause, which moves the date forward.
 
 The date is taken across **every** basis a record cites, not the first one
-carrying the flag. Stopping at the first would let the order a signer wrote its
-citations in decide the date, hiding an older cause behind a newer one, and that
-date gates an irreversible merge. Deriving the same rule a second time outside
-the fold means a second copy of it, and the copy is what drifts.
+carrying the flag. Stopping at the first would let the order a signer wrote
+its citations in decide the date, hiding an older cause behind a newer one,
+and that date gates an irreversible merge. Deriving the same rule a second
+time outside the fold means a second copy of it, and the copy is what drifts.
 
 The field is zero when the fold finds no active cause. For a record that
-describes a superseded world that is a fact to fail closed on, never permission:
-`gs merge` refuses an undated superseded world rather than reading the absence
-as "after the verdict", because a projection it cannot date is not a projection
-it may merge on. This carries the fold profile to `workroom-fold@10`, since the
-published projection bytes change.
+describes a superseded world that is a fact to fail closed on, never
+permission: `gs merge` refuses an undated superseded world rather than reading
+the absence as "after the verdict", because a projection it cannot date is not
+a projection it may merge on. This carries the fold profile to
+`workroom-fold@10`, since the published projection bytes change.
 
 ### 7. CLI, MCP, skills, connectors, and UI
 
-The outer surfaces present one application to people and programs:
+**What it owns:** presenting one application to people and programs.
 
 - `cmd/gs` combines storage and kernel operations with Workroom authoring,
   projection, query, review, merge, and resident commands. Its bounded query
   commands reuse the `internal/statusview` filtering and page builders used by
   the remote surfaces. CLI-only selector request types keep additional reach
   from widening the resident HTTP or MCP contracts as a side effect. Where a
-  query needs a fact Git holds
-  rather than the projection — whether an approved head is an ancestor of a
-  branch — that join happens here, because Git remains outside the Workroom
-  interpreter. Its merge command adds one prospective surface rule the fold
-  does not hold: a reviewed path bounds cross-author retirement at itself and
-  beneath it, never above it, checked once in fresh-merge preflight — after
+  query needs a fact Git holds rather than the projection — whether an
+  approved head is an ancestor of a branch — that join happens here, because
+  Git remains outside the Workroom interpreter.
+
+  Its merge command adds one prospective surface rule the fold does not hold:
+  a reviewed path bounds cross-author retirement at itself and beneath it,
+  never above it. That rule is checked once, in fresh-merge preflight: after
   Git reserves the receipt ref and stages the tentative merge, but before the
   target moves and before any durable workroom record is appended.
-  Succession recording never re-applies that guard: resuming an
-  already-sealed receipt appends its recorded suffix without replanning, so
-  the symmetric lineage rule of layer 5 keeps judging everything already
-  admitted.
+
+  Succession recording never re-applies that guard. Resuming an already-sealed
+  receipt appends its recorded suffix without replanning, so the symmetric
+  lineage rule of layer 5 keeps judging everything already admitted.
 - `cmd/gitseq-mcp` exposes Workroom tools and live coordination over an MCP
   transport. The MCP protocol is a surface contract, not the Workroom fold.
   The `work` tool's `stale` enum admits `summary`, `include`, `only` and
   `exclude`, and `summary` is what a call that names no policy receives. The
-  tool schema is the surface contract for that default; the selection it
-  names belongs to the projection above. The adapter holds one resident-minted
+  tool schema is the surface contract for that default; the selection it names
+  belongs to the projection above. The adapter holds one resident-minted
   credential per exact repository, renews or replaces it internally, and never
   returns it through MCP.
 - `SKILL.md` is the normative operating contract for an agent participating
@@ -868,9 +1012,9 @@ The outer surfaces present one application to people and programs:
   application, nexus, HTTP projections and queries, and the browser assets. It
   publishes the trusted-process posture in resident status and rejects unsafe
   mutation hosts before a route can act.
-- `ui/` renders Workroom projections and live state, keeps its private resident
-  credential only in tab memory, and displays the trust boundary before actor
-  selection; it does not define durable meaning.
+- `ui/` renders Workroom projections and live state, keeps its private
+  resident credential only in tab memory, and displays the trust boundary
+  before actor selection; it does not define durable meaning.
 
 These surfaces may evolve or be replaced without changing kernel validity.
 They must not infer application force that the selected interpreter did not
@@ -926,13 +1070,16 @@ The important existing dependency direction is real: `internal/kernel` does
 not import `internal/workroom`; `internal/workroom` does not import Git, HTTP,
 or MCP; and `internal/app` joins them. The host binding belongs at that seam,
 not in either lower package or inside a particular application. New code
-should keep application meaning above it. `host`, `host/identity`,
-`host/live` and `internal/apphost` sit at
-that seam and must stay free of any application profile: a public surface that
-imported the Workroom-coupled adapter would put layer 4 on top of layer 5, and
-an outside application would inherit meanings it never asked for. Where `cmd/gs` and
-`internal/service` currently compose several layers, treat that as explicit
-integration, not permission to make the lower layers understand Workroom.
+should keep application meaning above it.
+
+`host`, `host/identity`, `host/live` and `internal/apphost` sit at that seam
+and must stay free of any application profile: a public surface that imported
+the Workroom-coupled adapter would put layer 4 on top of layer 5, and an
+outside application would inherit meanings it never asked for.
+
+Where `cmd/gs` and `internal/service` currently compose several layers, treat
+that as explicit integration, not permission to make the lower layers
+understand Workroom.
 
 ## Review rule
 
