@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/testgit"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -54,7 +55,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	code := m.Run()
+	code := testgit.Run(m)
 	for _, directory := range []string{templateDir, buildDir} {
 		if directory != "" {
 			_ = os.RemoveAll(directory)
