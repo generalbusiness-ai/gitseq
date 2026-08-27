@@ -741,18 +741,17 @@ func (s *Server) liveSnapshot() nexus.Snapshot {
 	return s.hub.Snapshot()
 }
 
-// TrustedHostHandler rejects browser and non-browser mutations whose Host is
-// not wholly loopback before a route can decode input or change state. The
-// listener is loopback-only too; this separate request check closes the DNS
-// rebinding shape in which a hostile page reaches that listener under a host
-// name controlled elsewhere.
+// TrustedHostHandler rejects requests whose Host is not wholly loopback before
+// a route can read or change state. The listener is loopback-only too; this
+// separate request check closes the DNS rebinding shape in which a hostile page
+// reaches that listener under a host name controlled elsewhere.
 func TrustedHostHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodGet && request.Method != http.MethodHead && !loopbackRequestHost(request.Host) {
+		if !loopbackRequestHost(request.Host) {
 			writer.Header().Set("Content-Type", "application/json")
 			writer.Header().Set("Cache-Control", "no-store")
 			writer.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(writer).Encode(map[string]string{"error": "mutation host must resolve only to loopback"})
+			_ = json.NewEncoder(writer).Encode(map[string]string{"error": "request host must resolve only to loopback"})
 			return
 		}
 		next.ServeHTTP(writer, request)

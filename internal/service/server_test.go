@@ -169,16 +169,27 @@ func TestResidentCredentialNeverAppearsOutsideCreationResponse(t *testing.T) {
 	}
 }
 
-func TestTrustedHostAndOriginGuardsRunBeforeMutation(t *testing.T) {
+func TestTrustedHostAndOriginGuardsRunBeforeRouting(t *testing.T) {
 	var called atomic.Int64
 	handler := TrustedHostHandler(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if err := guardMutation(request); err != nil {
-			write(writer, nil, err)
-			return
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			if err := guardMutation(request); err != nil {
+				write(writer, nil, err)
+				return
+			}
 		}
 		called.Add(1)
 		write(writer, map[string]bool{"ok": true}, nil)
 	}))
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		request := httptest.NewRequest(method, "http://workroom.example/v0/status", nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code == http.StatusOK || called.Load() != 0 {
+			t.Fatalf("non-loopback Host reached a %s route", method)
+		}
+	}
+
 	request := httptest.NewRequest(http.MethodPost, "http://workroom.example/v0/act", strings.NewReader("{}"))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -196,13 +207,20 @@ func TestTrustedHostAndOriginGuardsRunBeforeMutation(t *testing.T) {
 		t.Fatal("cross-scheme browser origin reached a mutation")
 	}
 
+	request = httptest.NewRequest(http.MethodGet, "http://localhost:7777/v0/status", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || called.Load() != 1 {
+		t.Fatalf("loopback read = %d, called=%d", response.Code, called.Load())
+	}
+
 	request = httptest.NewRequest(http.MethodPost, "http://localhost:7777/v0/act", strings.NewReader("{}"))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Origin", "http://localhost:7777")
 	request.Header.Set("Sec-Fetch-Site", "same-origin")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || called.Load() != 1 {
+	if response.Code != http.StatusOK || called.Load() != 2 {
 		t.Fatalf("same-origin loopback mutation = %d, called=%d", response.Code, called.Load())
 	}
 }
