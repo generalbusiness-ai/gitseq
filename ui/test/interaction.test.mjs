@@ -9,6 +9,7 @@ import { buildThreadIndex } from "../src/lib/threads.ts";
 import { decodeFrame } from "../src/lib/api.ts";
 import { renewCredential } from "../src/lib/lease.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
+import { repoRemoteHref } from "../src/lib/repolink.ts";
 import { age, sortAfterClick, sortRows, workRows } from "../src/lib/rows.ts";
 import { buildSpine } from "../src/lib/spine.ts";
 import { interpretationNotice, isInterpretationGap, kindLabel } from "../src/lib/util.ts";
@@ -1116,4 +1117,58 @@ test("a request reported without a claim shows the promise station as skipped, n
   const report = spine.stations.find((station) => station.id === "report");
   assert.equal(report.present, true, "the report itself is a station");
   assert.equal(report.event, "rep");
+});
+
+// The scheme allowlist is the security substance of the repository link, so it
+// is pinned by what must become an href and by what must not. Being unlisted is
+// itself a refusal: the check never compares against a set of dangerous
+// schemes, so one nobody has thought of is refused rather than admitted.
+test("only http and https remotes become a link", () => {
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git"), "https://github.com/org/repo.git");
+  assert.equal(repoRemoteHref("http://git.example.invalid/org/repo"), "http://git.example.invalid/org/repo");
+  assert.equal(repoRemoteHref("HTTPS://github.com/org/repo.git"), "https://github.com/org/repo.git");
+  assert.equal(repoRemoteHref("https://git.example.invalid:8443/o/r.git"), "https://git.example.invalid:8443/o/r.git");
+});
+
+test("a script-bearing remote never becomes a link", () => {
+  for (const hostile of [
+    "javascript:alert(document.domain)",
+    "JavaScript:alert(1)",
+    "jAvAsCrIpT:alert(1)",
+    "java\tscript:alert(1)",
+    "  javascript:alert(1)",
+    "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+    "vbscript:msgbox(1)",
+    "blob:https://github.com/deadbeef",
+  ]) {
+    assert.equal(repoRemoteHref(hostile), undefined, `${hostile} was admitted as a link`);
+  }
+});
+
+test("git's non-web transports fall back to plain text", () => {
+  for (const remote of [
+    "git@github.com:org/repo.git",
+    "org-alias:org/repo.git",
+    "ssh://git@github.com/org/repo.git",
+    "git://github.com/org/repo.git",
+    "file:///srv/git/repo.git",
+    "/srv/git/repo.git",
+    "../sibling/repo.git",
+    "https://",
+    "",
+    "   ",
+    undefined,
+    null,
+  ]) {
+    assert.equal(repoRemoteHref(remote), undefined, `${remote} was admitted as a link`);
+  }
+});
+
+// A remote of the form https://x-access-token:SECRET@host/org/repo carries a
+// credential. Declining the link outright keeps it out of the DOM entirely,
+// where stripping would leave every later rendering path to drop it again.
+test("a remote carrying userinfo is declined rather than stripped", () => {
+  assert.equal(repoRemoteHref("https://x-access-token:s3cr3t@github.com/org/repo.git"), undefined);
+  assert.equal(repoRemoteHref("https://token@github.com/org/repo.git"), undefined);
+  assert.equal(repoRemoteHref("https://:s3cr3t@github.com/org/repo.git"), undefined);
 });

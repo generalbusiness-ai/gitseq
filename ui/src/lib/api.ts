@@ -287,8 +287,12 @@ export interface GraphCommit {
 // from Status: none of these fields belong to the durable workroom projection.
 // `repo` is the absolute path of the checkout the service is serving — the one
 // path it discloses, and only because it refuses to listen off loopback.
+// `remote` is the repository's own remote when the service judged it safe to
+// link, and absent otherwise. It is never trusted here: repoRemoteHref applies
+// the same allowlist again before any of it reaches an href.
 export interface LocalRepo {
   repo: string;
+  remote?: string;
   worktrees: WorktreeView[];
 }
 
@@ -360,7 +364,7 @@ export const api = {
   worktrees: () =>
     fetch("/v0/worktrees", { cache: "no-store" })
       .then((r) => json<LocalRepo>(r))
-      .then((local) => ({ repo: local.repo ?? "", worktrees: local.worktrees ?? [] })),
+      .then((local) => ({ repo: local.repo ?? "", remote: local.remote ?? "", worktrees: local.worktrees ?? [] })),
   actors: () => fetch("/v0/actors").then((r) => json<Actor[]>(r)),
   // The merge station's second source. The browser names commits; the branch
   // is a ref the service resolves, never one a page may choose.

@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -124,6 +125,7 @@ type Workspace struct {
 	worktreesMu       sync.Mutex
 	worktreesCached   []WorktreeView
 	repoPathCached    string
+	repoRemoteCached  string
 	worktreesCachedAt time.Time
 }
 
@@ -172,9 +174,92 @@ type SourcedSnapshot struct {
 // address that is not loopback, so that reader is already on this host. The
 // other checkouts stay basenames in WorktreeView: naming them is enough to
 // associate work, and the wider host layout has no reader who needs it.
+// Remote is the repository's own remote, and only when it is safe to render as
+// a hyperlink: see linkableRemote. It is empty far more often than not, and an
+// empty Remote means exactly "show the path with no link".
 type LocalRepo struct {
 	Path      string         `json:"path"`
+	Remote    string         `json:"remote,omitempty"`
 	Worktrees []WorktreeView `json:"worktrees"`
+}
+
+// gitRemotes reads every configured remote URL. The --null form separates
+// records with NUL and the key from its value with a newline, so a URL
+// containing spaces or a name containing dots stays unambiguous. A repository
+// with no remotes makes `git config --get-regexp` exit non-zero, which is not
+// an error here: it is the ordinary answer "none".
+func gitRemotes(ctx context.Context, repo string) map[string]string {
+	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", repo, "config", "--null", "--get-regexp", `^remote\..*\.url$`).Output()
+	if err != nil {
+		return nil
+	}
+	remotes := make(map[string]string)
+	for _, record := range strings.Split(string(output), "\x00") {
+		if record == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(record, "\n")
+		if !ok {
+			continue
+		}
+		name := strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url")
+		if name == "" {
+			continue
+		}
+		remotes[name] = value
+	}
+	return remotes
+}
+
+// linkableRemote picks the one remote a reader would follow, then admits it
+// only if it is safe to link. The selection rule is deliberately dull: origin
+// when the repository has one, otherwise the lexicographically first remote
+// name. Selecting by name *before* filtering by scheme keeps the answer
+// predictable — the bar links the repository's own remote or nothing, never
+// some other remote that merely happened to carry a friendlier scheme.
+func linkableRemote(remotes map[string]string) string {
+	if len(remotes) == 0 {
+		return ""
+	}
+	name := "origin"
+	if _, ok := remotes[name]; !ok {
+		name = ""
+		for candidate := range remotes {
+			if name == "" || candidate < name {
+				name = candidate
+			}
+		}
+	}
+	return webRemoteURL(remotes[name])
+}
+
+// webRemoteURL is an allowlist: http and https are admitted and everything else
+// is refused, including ssh, scp-style git@host:org/repo, file, and anything
+// that does not parse. Nothing is matched against a list of dangerous schemes,
+// so a scheme nobody thought of is refused by default rather than admitted.
+//
+// Userinfo declines the URL outright instead of being stripped. A remote of the
+// form https://x-access-token:SECRET@host/org/repo carries a credential, and
+// declining keeps it out of this response body altogether rather than trusting
+// every later rendering path to drop it again.
+func webRemoteURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	switch parsed.Scheme {
+	case "http", "https":
+	default:
+		return ""
+	}
+	if parsed.User != nil || parsed.Host == "" {
+		return ""
+	}
+	return parsed.String()
 }
 
 // WorktreeView is one checkout of the repository. Checkout is a display label
@@ -247,7 +332,7 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 	w.worktreesMu.Lock()
 	defer w.worktreesMu.Unlock()
 	if age := time.Since(w.worktreesCachedAt); !w.worktreesCachedAt.IsZero() && age >= 0 && age < 8*time.Second {
-		return LocalRepo{Path: w.repoPathCached, Worktrees: append([]WorktreeView(nil), w.worktreesCached...)}, nil
+		return LocalRepo{Path: w.repoPathCached, Remote: w.repoRemoteCached, Worktrees: append([]WorktreeView(nil), w.worktreesCached...)}, nil
 	}
 	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", w.Repo, "worktree", "list", "--porcelain", "-z").Output()
 	if err != nil {
@@ -354,10 +439,12 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 		}
 		return views[i].Checkout < views[j].Checkout
 	})
+	remote := linkableRemote(gitRemotes(ctx, w.Repo))
 	w.worktreesCached = append(w.worktreesCached[:0], views...)
 	w.repoPathCached = selected
+	w.repoRemoteCached = remote
 	w.worktreesCachedAt = time.Now()
-	return LocalRepo{Path: selected, Worktrees: append([]WorktreeView(nil), views...)}, nil
+	return LocalRepo{Path: selected, Remote: remote, Worktrees: append([]WorktreeView(nil), views...)}, nil
 }
 
 func Open(ctx context.Context, repo string) (*Workspace, error) {

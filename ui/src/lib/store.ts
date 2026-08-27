@@ -6,6 +6,7 @@ export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 export interface Workroom {
   status?: Status;
   repo?: string; // absolute path of the checkout this service is serving
+  repoRemote?: string; // that repository's remote, when one is safe to link
   actors: Actor[];
   offline: boolean;
 }
@@ -21,6 +22,7 @@ export interface Workroom {
 export function useWorkroom(): Workroom {
   const [status, setStatus] = useState<Status>();
   const [repo, setRepo] = useState<string>();
+  const [repoRemote, setRepoRemote] = useState<string>();
   const [actors, setActors] = useState<Actor[]>([]);
   const [offline, setOffline] = useState(false);
 
@@ -37,7 +39,14 @@ export function useWorkroom(): Workroom {
 
     const loop = async () => {
       api.actors().then((list) => !stopped && setActors(list)).catch(() => {});
-      api.worktrees().then((local) => !stopped && setRepo(local.repo || undefined)).catch(() => {});
+      api
+        .worktrees()
+        .then((local) => {
+          if (stopped) return;
+          setRepo(local.repo || undefined);
+          setRepoRemote(local.remote || undefined);
+        })
+        .catch(() => {});
       while (!stopped) {
         try {
           if (!cursor) {
@@ -58,7 +67,7 @@ export function useWorkroom(): Workroom {
     };
   }, []);
 
-  return { status, repo, actors, offline };
+  return { status, repo, repoRemote, actors, offline };
 }
 
 // Ticket numbers: every durable event's 1-based position in log order.
