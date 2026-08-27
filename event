@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at spike/jsonataddl","body":{"commit":"61439ecd86d34f647ea3b1ac6adf0f072bcff343","path":"spike/jsonataddl"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:033cd11ea51c1c3e8a5b3007f7a5d0bffcf75133","text":"Merge retired a covered predecessor; the successor is at cmd/gs."}
