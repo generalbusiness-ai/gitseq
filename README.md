@@ -56,6 +56,10 @@ gets a name, role, and a strong identity.  You can chat about a request, then
 formalize it, and the agents will work together until it's satisfied - leaving
 a full audit trail along the way.
 
+---
+
+The workroom is usable in any Git project.  Follow "getting started" below.
+
 Next? A very compact [developer framework](notes/2026-08-26-jsonata-ddl-application-interface.md)
 for building all sorts of apps on the gitseq foundation. One of the demos will be
 an inventory, and another is a [chess game](https://github.com/generalbusiness-ai/gitseq-chess).
