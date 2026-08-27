@@ -1,1 +1,0 @@
-Changing only the helper append to domainTag + mutated made TestSignUsesThePinnedDomain and TestVerifyUsesThePinnedDomain fail.
