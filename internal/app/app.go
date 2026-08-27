@@ -100,7 +100,18 @@ type Workspace struct {
 	snapshotFolder *workroom.Folder
 	// snapshotProfile gates application-derived state independently of the
 	// kernel's profile-independent verified-event checkpoint.
-	snapshotProfile    string
+	snapshotProfile string
+	// admissionReader and admissionFolder hold the private verified world the
+	// admission guards judge against, on both the signing path and the
+	// sequencing path. They deliberately share nothing with the reader-side
+	// snapshot: no rollback witness, no checkpoint writes, and no
+	// cached-projection reuse, because admission must judge the exact position
+	// an event would extend even when a reader would refuse the journey there.
+	// Every use takes admissionMu, which nests inside the sequencer lock the
+	// post-dedup hook runs under and is free-standing on the signing path.
+	admissionMu        sync.Mutex
+	admissionReader    *kernel.Reader
+	admissionFolder    *workroom.Folder
 	flightMu           sync.Mutex
 	flight             atomic.Pointer[snapshotFlight]
 	rebuildTestGate    func(kernel.Progress)
@@ -202,6 +213,18 @@ type Act struct {
 	// escape has to exist — but it must be asked for, and only a surface
 	// that can offer that choice to a person should ever set it.
 	CitedOK bool
+
+	// AllowDeadBasis is the explicit escape for a state resting on a basis
+	// that admission already shows to be retired or stale. Asking for it
+	// signs body.dead_basis_override=true: testimony that the author saw the
+	// dead bases, not a repair of them.
+	AllowDeadBasis bool
+
+	// GuardedReview marks an act whose body was built by internal/reviewguard.
+	// It is process-local and never accepted as input: only its presence lets
+	// the reserved review fields through the builder, and their contents are
+	// still judged by admission against the workroom.
+	GuardedReview bool
 }
 
 type Submission struct {
@@ -877,6 +900,24 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 		if err != nil {
 			return kernel.Request{}, err
 		}
+		// Reserved admission fields are never caller input. The guarded
+		// review path stamps its own onto the body it built, and admission
+		// judges those contents against the workroom like everything else.
+		if !act.GuardedReview {
+			if err := refuseClientReservedFields(act.Body); err != nil {
+				return kernel.Request{}, err
+			}
+		}
+		// A guarded review answers a moved world instead of refusing it: its
+		// staleness goes into the signed verdict words, so the dead-basis
+		// escape is part of what the path records.
+		body, err = w.AdmitState(ctx, stateAdmission{
+			Kind: act.Kind, Body: body, RestsOn: rests,
+			AllowDeadBasis: act.AllowDeadBasis || act.GuardedReview,
+		})
+		if err != nil {
+			return kernel.Request{}, err
+		}
 		lifecycle, starter := workroom.StarterLifecycle(act.Kind)
 		if !starter || lifecycle == workroom.LifecycleReport {
 			reporter := intent.ActorFingerprint(private.Public().(ed25519.PublicKey))
@@ -1445,6 +1486,7 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 		checkpoint := w.checkpointOptions()
 		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{
 			SigningKey: w.config.SequencerKey, CheckpointEnabled: checkpoint.Enabled, CheckpointPointer: checkpoint.Pointer, PreAppend: w.allowlist,
+			PostDedup:     w.admitApplication,
 			MaxQueueDepth: ResidentQueueDepth,
 		})
 	})

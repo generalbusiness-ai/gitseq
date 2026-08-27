@@ -83,10 +83,33 @@ type Options struct {
 	Failpoint         func(string)
 	MaxRetries        int
 	PreAppend         func(context.Context, Admission) error
+	// PostDedup is the application's own admission hook. The kernel schedules
+	// it once per genuinely new submission, after idempotency-replay detection
+	// has recognized an exact retry and before any commit is written, and it
+	// learns nothing from what the hook reads: payload bytes are handed over
+	// uninterpreted. It runs inside the compare-and-swap loop against the
+	// exact pre-sequence head, so a log that moved under a submission makes
+	// the hook reevaluate the world the event would actually extend.
+	PostDedup func(context.Context, Application) error
 	// MaxQueueDepth bounds how many submissions may be inside Submitter.Submit
 	// at once, counting the one holding the lock. Zero leaves the queue
 	// unbounded, which is the behaviour every existing deployment has.
 	MaxQueueDepth int
+}
+
+// Application is one genuinely new submission as the post-dedup hook sees it.
+// Unlike Admission it carries the payload bytes and attachments, because the
+// application hook is allowed to read application data; the kernel still
+// assigns no meaning to any of it.
+type Application struct {
+	Intent      intent.Intent
+	ActorKey    []byte
+	Payload     []byte
+	Attachments map[string][]byte
+	// Head is the exact tip this event would extend. A hook that needs to
+	// judge the submission against workroom state must judge state that
+	// covers this position and no less.
+	Head string
 }
 
 // Submitter is the resident sequencing path. It retains only a log state that
@@ -535,6 +558,15 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 		// as it was written.
 		if err := resolveReferences(storeFormat, targetOID, log, decoded.RestsOn); err != nil {
 			return Result{}, err
+		}
+		if options.PostDedup != nil {
+			application := Application{
+				Intent: decoded, ActorKey: bytes.Clone(request.Signed.ActorKey),
+				Payload: request.Payload, Attachments: request.Attachments, Head: head,
+			}
+			if err := options.PostDedup(ctx, application); err != nil {
+				return Result{}, fmt.Errorf("application admission refused: %w", err)
+			}
 		}
 		actorID := intent.ActorFingerprint(request.Signed.ActorKey)
 		commit, timestamp, err := store.SignedCommitWithTimestamp(ctx, writtenTree, head, message, options.SigningKey, gitstore.CommitIdentity{

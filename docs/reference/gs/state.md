@@ -27,6 +27,7 @@ the only two acts it cannot make.
 | `--body` | | `key=value`, repeatable. Structured fields. |
 | `--rests-on` | | An event identifier, repeatable. What this act bears on. |
 | `--evidence` | | `name=path`, repeatable. Files embedded as attachments. |
+| `--allow-dead-basis` | `false` | Rest on retired or stale bases anyway. Asking for it signs `dead_basis_override=true`: testimony that you saw them, not a repair of them. Citing an effective supersession stays advisory. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 

@@ -126,6 +126,17 @@ enforced and what signed envelope and capability material it may inspect. The
 application owns the policy. The hook cannot inspect application payload
 bytes, so it cannot silently turn the kernel into an application interpreter.
 
+A second, generic hook runs later in the same path. After idempotency-replay
+detection has recognized an exact retry — so a replay never re-judges history —
+and before any commit is written, the kernel schedules one call to the
+application's post-dedup admission callback, handing it the decoded intent,
+the actor key, the payload bytes and attachments uninterpreted, and the exact
+pre-sequence head the event would extend. The kernel learns nothing from what
+the callback reads and schedules nothing else about it; the callback runs
+inside the compare-and-swap loop, so a log that moved under a submission makes
+the application reevaluate the world the event would actually join before the
+retried commit chains onto it. A refusal leaves nothing sequenced.
+
 The current compact checkpoint schema is `gitseq-checkpoint@3`. It authenticates
 kernel identity and event material but carries no application profile. Readers
 also accept authenticated JSON `@1` and compact `@2` checkpoints; their required
@@ -632,6 +643,28 @@ fold, or UI expectations.
   `gs`, which continues only to validate and construct receipts and successors.
   This projection change advances the profile to `workroom-fold@12`, so a cache
   written under `@11` is rejected and the history replayed;
+- write-boundary guards: one Workroom admission evaluation serves every state
+  surface — `gs state`, `gs batch`, the MCP state and review tools, and the
+  canonical guarded review path — once before signing for early feedback, and
+  authoritatively through the kernel's post-dedup callback against the exact
+  pre-sequence frontier, read from a private verified world that shares
+  nothing with reader snapshots, checkpoint cadence, or the rollback witness.
+  An undefined state kind refuses before signing with no override:
+  command-shaped kinds point at their dedicated commands and tools, and any
+  other absent kind lists the live vocabulary with the ratified kind-def that
+  must establish it; declared custom kinds stay valid. A report whose
+  `body.verdict` or `body.status` is exactly approved or changes-requested is
+  a review verdict and refuses on generic paths, naming the guarded route;
+  canonical review paths carry the reserved `body.review_path` marker and
+  reserved admission fields are never caller input. A state resting on an
+  already-retired or already-stale basis refuses by default until the author
+  asks for the recorded escape (`body.dead_basis_override=true`), while an
+  effective supersession stays advisory; neither the refusal nor the override
+  removes staleness or grants authority. The guarded verdict path owns
+  head-news discovery — statements sequenced strictly after the review request
+  that name the reviewed head or lane — exact-set acknowledgment validation,
+  canonical acknowledgment encoding, frontier binding, and act construction,
+  shared by `gs review` and the MCP review tool so they cannot drift;
 - Workroom MCP tools and their application meanings;
 - the agent practice in `SKILL.md`;
 - connector clauses and observations; and
@@ -851,7 +884,7 @@ the same result.
 |---|---|---|
 | `internal/gitstore` | Ordinary Git storage | Implements object and ref operations, including plain history questions such as whether a branch already carries a commit. It must remain ignorant of application schemas, and it reports "cannot tell" separately from "no" so a failed query is never read as a negative. |
 | `internal/intent` | Kernel | Owns canonical signed intents and actor-key fingerprints. Schema and `rests_on` are bounded opaque strings. |
-| `internal/kernel` | Kernel | Uses only Git storage, intents, and an optional host interface that loads or stores an opaque checkpoint object ID. It performs no local checkpoint filesystem I/O. Its application admission callback receives envelope facts, not payload meaning. A checkpoint caches only kernel-verified events and kernel identity (schema, object format, genesis, and authenticated sequencer-key lineage), never projection state or an application profile; every candidate is verified from those kernel facts. |
+| `internal/kernel` | Kernel | Uses only Git storage, intents, and an optional host interface that loads or stores an opaque checkpoint object ID. It performs no local checkpoint filesystem I/O. Its pre-append admission callback receives envelope facts, not payload meaning; its scheduled post-dedup application admission hook is handed the payload bytes and attachments uninterpreted so the application can judge the submission that would extend the log, and still assigns no meaning to them. A checkpoint caches only kernel-verified events and kernel identity (schema, object format, genesis, and authenticated sequencer-key lineage), never projection state or an application profile; every candidate is verified from those kernel facts. |
 | `internal/custody` | Example application interpreter | Folds opaque offer, acceptance and settlement records into asset-custody state. It manages no local signing keys and defines no kernel policy. |
 | `host/live` | Live runtime, public surface | Owns the single process-local coordination runtime. It opens public-key leases only after an expiring single-use possession proof, exposes a separate trusted-only custodial entry point, prepares deterministic application-neutral frame drafts, verifies actor signatures made outside the runtime, binds conversations to exact scopes, supplies runtime ordering, and retains bounded live state. Its optional composition helper keeps caller-owned durable frontiers separate from live cursors. It imports no application profile and is independent of the durable Workroom fold. |
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |

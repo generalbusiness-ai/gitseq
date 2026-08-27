@@ -20,6 +20,7 @@ appends is permanent.
 | `rests_on` | required | Array of event identifiers. What this act bears on. |
 | `body` | optional | String map of structured fields. |
 | `evidence` | optional | String map of `name` to content, embedded as attachments. |
+| `allow_dead_basis` | optional | Rest on retired or stale bases anyway, signing `dead_basis_override=true`. Testimony that you saw them, not a repair of them. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 

@@ -74,7 +74,7 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 	if result["resultType"] != "complete" {
 		t.Fatalf("tool list has no complete result type: %#v", result)
 	}
-	if got := len(result["tools"].([]any)); got != 12 {
+	if got := len(result["tools"].([]any)); got != 13 {
 		t.Fatalf("got %d tools", got)
 	}
 	listed := make(map[string]map[string]any)
@@ -1408,13 +1408,11 @@ func TestAServiceThatStopsAnsweringIsLookedUpAgain(t *testing.T) {
 	}
 }
 
-// The author who wrote a promise under a kind this room does not define was
-// writing over MCP, so the warning belongs in the tool result: in the
-// structured payload and in the one text block every client reads. It has to
-// arrive whether the act went through the resident service or straight to the
-// log because none was answering. The act itself still lands and still
-// projects as undefined-kind.
-func TestStateToolCarriesTheUndefinedKindWarningInItsResult(t *testing.T) {
+// An undefined kind now refuses before anything is signed, on both the
+// resident and the degraded path, and the refusal names the live vocabulary.
+// A defined kind is ordinary work: it lands, carries no warning, and the fold
+// ruling still rides in the result.
+func TestStateToolRefusesUndefinedKindsOnBothPaths(t *testing.T) {
 	for _, testCase := range []struct {
 		name     string
 		resident bool
@@ -1442,51 +1440,33 @@ func TestStateToolCarriesTheUndefinedKindWarningInItsResult(t *testing.T) {
 			server, _ := attachedServer(t, workspace, "human", baseURL, client)
 			genesis := workspace.EventID(workspace.View().Genesis)
 
-			value, _, err := server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
-				"kind": "commit", "text": "I will re-review task/x at exact head y",
-				"rests_on": []any{genesis}, "idempotency_key": "undefined-kind",
-			}})
-			if err != nil {
-				t.Fatalf("state with an undefined kind failed: %v", err)
-			}
-			result, ok := value.(map[string]any)
-			if !ok {
-				t.Fatalf("state result has the wrong shape: %#v", value)
-			}
-			warning, _ := result["warning"].(string)
-			for _, want := range []string{`"commit"`, "no rule reads it", "undefined-kind", "does not form", "kinds defined here:"} {
-				if !strings.Contains(warning, want) {
-					t.Fatalf("state result warning %q does not say %q", warning, want)
-				}
-			}
-			if summary := summarize("state", value); !strings.Contains(summary, warning) {
-				t.Fatalf("the text block %q does not carry the warning", summary)
-			}
-			projected, ok := result["projected"].(map[string]any)
-			if !ok || projected["verdict"] != string(workroom.UndefinedKind) {
-				t.Fatalf("state result omitted the fold ruling: %#v", result)
-			}
-
-			snapshot, err := workspace.Snapshot(context.Background())
+			before, err := workspace.Snapshot(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
-			if snapshot.Depth != 2 {
-				t.Fatalf("depth = %d, want the act to have landed at 2", snapshot.Depth)
+			_, _, err = server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
+				"kind": "commit", "text": "I will re-review task/x at exact head y",
+				"rests_on": []any{genesis}, "idempotency_key": "undefined-kind",
+			}})
+			if err == nil {
+				t.Fatal("state with an undefined kind was signed")
 			}
-			landed := false
-			for _, decision := range snapshot.Projection.Decisions {
-				if decision.Event != genesis && decision.Verdict == workroom.UndefinedKind {
-					landed = true
+			for _, want := range []string{`"commit"`, "no override exists", "kinds defined here:", "ratified kind-def"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("refusal %q does not say %q", err, want)
 				}
 			}
-			if !landed {
-				t.Fatalf("the act did not project as undefined-kind: %+v", snapshot.Projection.Decisions)
+			after, err := workspace.Snapshot(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after.Depth != before.Depth {
+				t.Fatalf("refused undefined kind changed depth %d -> %d", before.Depth, after.Depth)
 			}
 
-			// A defined kind is ordinary work and carries no warning, so the
-			// warning cannot pass by being attached to every result.
-			value, _, err = server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
+			// A defined kind is ordinary work and carries no warning, so a
+			// refusal can never be mistaken for noise on every result.
+			value, _, err := server.call(context.Background(), toolCall{Name: "state", Arguments: map[string]any{
 				"kind": "assert", "text": "an ordinary claim",
 				"rests_on": []any{genesis}, "idempotency_key": "defined-kind",
 			}})
@@ -1496,7 +1476,7 @@ func TestStateToolCarriesTheUndefinedKindWarningInItsResult(t *testing.T) {
 			if warned, held := value.(map[string]any)["warning"]; held {
 				t.Fatalf("a defined kind warned anyway: %v", warned)
 			}
-			projected, ok = value.(map[string]any)["projected"].(map[string]any)
+			projected, ok := value.(map[string]any)["projected"].(map[string]any)
 			if !ok || projected["verdict"] != string(workroom.Effective) {
 				t.Fatalf("effective state result omitted the fold ruling: %#v", value)
 			}

@@ -777,11 +777,16 @@ func successionActs(approval, candidate, targetPreHead, mergeHead, staleness str
 		receiptBody["stale"] = "true"
 		receiptBody["staleness"] = staleness
 	}
+	// The merge machinery rests on the approval it was granted, whatever had
+	// moved underneath it while it was reviewed; validateMerge has already
+	// judged that movement and the receipt records it. Dead bases here are
+	// expected, so every act asks for the recorded escape.
 	acts := []batchAct{{
 		Label: "merge", Verb: app.VerbState, Kind: workroom.KindAssert,
 		Text:    "approved candidate merged",
 		Body:    receiptBody,
 		RestsOn: []string{approval}, IdempotencyKey: mergeReceiptKey(approval),
+		AllowDeadBasis: true,
 	}}
 	labels := make(map[string]string, len(plan.publish))
 	for index, path := range plan.publish {
@@ -792,6 +797,7 @@ func successionActs(approval, candidate, targetPreHead, mergeHead, staleness str
 			Text:    "Merge published the current artifact at " + path,
 			Body:    map[string]string{"path": path, "commit": mergeHead},
 			RestsOn: []string{"$merge"}, IdempotencyKey: successionKey(approval, "publish", path),
+			AllowDeadBasis: true,
 		})
 	}
 	targets := make([]string, 0, len(plan.retire))
@@ -850,29 +856,5 @@ func (r *repeatedFlag) Set(value string) error {
 		return errors.New("value may not be blank")
 	}
 	*r = append(*r, value)
-	return nil
-}
-
-// validateReviewedSet holds every co-signed artifact to the primary's standard.
-// The set is what widens a merge receipt's reach, so a member that is retired,
-// ineffective, or standing at another commit must stop the verdict rather than
-// travel inside it unexamined.
-func validateReviewedSet(ctx context.Context, workspace *app.Workspace, artifacts []string, head string) error {
-	if len(artifacts) < 2 {
-		return nil
-	}
-	snapshot, err := workspace.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	for _, cited := range artifacts[1:] {
-		artifact, err := liveArtifact(snapshot.Projection, cited)
-		if err != nil {
-			return fmt.Errorf("reviewed artifact %s: %w", cited, err)
-		}
-		if artifact.Commit != head {
-			return fmt.Errorf("reviewed artifact %s stands at %s, not at the reviewed head %s", cited, artifact.Commit, head)
-		}
-	}
 	return nil
 }

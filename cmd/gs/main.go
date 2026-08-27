@@ -28,6 +28,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
+	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/telemetry"
@@ -299,6 +300,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	message := set.String("text", "", "statement text")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
+	deadOK := set.Bool("allow-dead-basis", false, "rest on retired or stale bases anyway, signing body.dead_basis_override=true")
 	var bodyValues, rests, evidence values
 	set.Var(&bodyValues, "body", "body key=value (repeatable)")
 	set.Var(&rests, "rests-on", "causal event id (repeatable)")
@@ -326,7 +328,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: *message, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key})
+	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: *message, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key, AllowDeadBasis: *deadOK})
 	if err != nil {
 		return err
 	}
@@ -340,30 +342,24 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-// reviewBasis is everything a signed verdict has to name: the exact immutable
-// head reviewed, the request the review answers, and whatever had moved
-// underneath while the reviewer signed anyway.
-type reviewBasis struct {
-	Head      string
-	Request   string
-	Staleness string
-}
-
-type reviewValidator func(context.Context, *app.Workspace, string, string, string, string) (reviewBasis, error)
-
 func reviewCommand(ctx context.Context, arguments []string) error {
-	return reviewCommandWithValidator(ctx, arguments, validateReview)
+	return reviewCommandWithValidator(ctx, arguments, nil)
 }
 
-func reviewCommandWithValidator(ctx context.Context, arguments []string, validate reviewValidator) error {
+// reviewCommandWithValidator files a guarded verdict through the one
+// confirmation choreography reviewguard owns. A non-nil inject replaces the
+// real basis read for tests that stage movement between reads.
+func reviewCommandWithValidator(ctx context.Context, arguments []string, inject reviewguard.ReadFunc) error {
 	set, repo := flags("review", arguments)
 	as := set.String("as", "", "reviewer actor name")
 	checkout := set.String("checkout", "", "checkout reviewed")
-	var artifacts repeatedFlag
-	set.Var(&artifacts, "artifact", "artifact event standing at the reviewed head; repeat to sign the whole reviewed set")
+	var artifactsFlag repeatedFlag
+	set.Var(&artifactsFlag, "artifact", "artifact event standing at the reviewed head; repeat to sign the whole reviewed set")
 	promise := set.String("promise", "", "review promise event")
 	verdict := set.String("verdict", "", "approved or changes-requested")
 	message := set.String("text", "", "review report")
+	var headNews repeatedFlag
+	set.Var(&headNews, "ack-head-news", "durable statement sequenced after the review request that names this head or lane; repeat per event")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	if err := set.Parse(arguments); err != nil {
@@ -372,27 +368,20 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 	if set.NArg() != 0 {
 		return errors.New("review takes no positional arguments")
 	}
-	if *checkout == "" || len(artifacts) == 0 || *promise == "" || *message == "" {
+	if *checkout == "" || len(artifactsFlag) == 0 || *promise == "" || *message == "" {
 		return errors.New("review requires --checkout, --artifact, --promise, and --text")
 	}
 	// The first citation is the primary the verdict names; every citation is a
 	// basis of the report. What a receipt may later retire is read from those
 	// bases and nowhere else, so this list is the reviewer signing a set rather
 	// than the implementer asserting one.
-	artifact := &artifacts[0]
-	for index, cited := range artifacts {
-		for _, earlier := range artifacts[:index] {
-			if earlier == cited {
-				return fmt.Errorf("review cites artifact %s twice", cited)
-			}
-		}
+	cited, err := reviewguard.CheckCitations(artifactsFlag)
+	if err != nil {
+		return err
 	}
 	reviewer, err := signingActor(*as)
 	if err != nil {
 		return err
-	}
-	if *verdict != "approved" && *verdict != "changes-requested" {
-		return errors.New("review --verdict must be approved or changes-requested")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
@@ -402,41 +391,53 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, validat
 	if err != nil {
 		return err
 	}
-	basis, err := validate(ctx, workspace, reviewer, *checkout, *artifact, *promise)
+	// One guarded read takes the projection, the reviewer's fingerprint, and
+	// the canonical frontier event from a single verified snapshot, and
+	// reviewguard judges them; Confirm runs it three times — initial,
+	// re-read, confirmation — with the exact-set, same-read, acknowledgment,
+	// and build checks between and after, so this surface cannot drift from
+	// the tool.
+	read := reviewRead(ctx, workspace, reviewer, *checkout, cited[0], *promise)
+	if inject != nil {
+		read = inject
+	}
+	body, restsOn, err := reviewguard.Confirm(read, cited, headNews, *verdict, *message)
 	if err != nil {
 		return err
 	}
-	// Every co-signed artifact is held to the same standard as the primary:
-	// live, standing, and at the exact head being reviewed. A reviewer signing
-	// a set is answerable for all of it.
-	if err := validateReviewedSet(ctx, workspace, artifacts, basis.Head); err != nil {
-		return err
-	}
-	// Re-read immediately before signing. The verdict names the immutable
-	// commit, so a later checkout movement cannot retarget it.
-	if repeated, err := validate(ctx, workspace, reviewer, *checkout, *artifact, *promise); err != nil {
-		return err
-	} else if repeated != basis {
-		return errors.New("review basis changed while validating")
-	}
-	body := map[string]string{"verdict": *verdict, "head": basis.Head, "artifact": *artifact}
-	// A review over a moved world says so in its own words. Without this the
-	// verdict would read as though nothing had moved, which is the lie the
-	// refusal was there to prevent and a worse one than the refusal.
-	if basis.Staleness != "" {
-		body["stale"] = "true"
-		body["staleness"] = basis.Staleness
-	}
 	record, err := submitAct(ctx, workspace, serverURL, reviewer, app.Act{
 		Verb: app.VerbState, Kind: workroom.KindReport, Text: *message,
-		Body:    body,
-		RestsOn: append([]string{*promise, basis.Request}, artifacts...), IdempotencyKey: *key,
+		Body: body, RestsOn: restsOn, GuardedReview: true, IdempotencyKey: *key,
 	})
 	if err != nil {
 		return err
 	}
 	fmt.Println(record.ID)
 	return nil
+}
+
+// reviewRead returns the command line's guarded basis read: every read takes
+// one verified snapshot, and the reviewed head comes from the checkout named
+// on the command line.
+func reviewRead(ctx context.Context, workspace *app.Workspace, actorName, checkout, artifactEvent, promiseEvent string) reviewguard.ReadFunc {
+	return func() (reviewguard.Basis, []reviewguard.News, workroom.Projection, error) {
+		snapshot, err := workspace.Snapshot(ctx)
+		if err != nil {
+			return reviewguard.Basis{}, nil, workroom.Projection{}, err
+		}
+		actor, _, err := workspace.Actor(actorName)
+		if err != nil {
+			return reviewguard.Basis{}, nil, workroom.Projection{}, err
+		}
+		basis, news, err := reviewguard.ReviewBasis(reviewguard.Read{
+			Projection:          snapshot.Projection,
+			ReviewerFingerprint: actor.Fingerprint,
+			Checkout:            checkout,
+			CommonDir:           workspace.CommonDir,
+			FrontierEvent:       workspace.EventID(snapshot.Head),
+		}, artifactEvent, promiseEvent)
+		return basis, news, snapshot.Projection, err
+	}
 }
 
 func mergeCommand(ctx context.Context, arguments []string) error {
@@ -759,146 +760,6 @@ func existingGitMergeReceipt(ctx context.Context, checkout, approval string) (me
 	return mergeReceipt{}, false, nil
 }
 
-// validateReview admits a review of a world that has moved. Retirement and
-// ineffectiveness still refuse: a withdrawn pointer names nothing to review,
-// and neither does an act that never took force. Staleness does not refuse,
-// because deciding whether the movement matters to this exact commit is the
-// reviewer's work, and refusing it leaves the question permanently unanswered
-// by the only party positioned to answer it.
-func validateReview(ctx context.Context, workspace *app.Workspace, actorName, checkout, artifactEvent, promiseEvent string) (reviewBasis, error) {
-	snapshot, err := workspace.Snapshot(ctx)
-	if err != nil {
-		return reviewBasis{}, err
-	}
-	projection := snapshot.Projection
-	artifact, err := standingArtifact(projection, artifactEvent)
-	if err != nil {
-		return reviewBasis{}, err
-	}
-	// The same artifact read as a statement, for the one fact the artifact
-	// projection does not carry: who signed it. Standing rather than live,
-	// because a moved world is the reviewer's question to answer and refusing
-	// it here would take back the latitude the gate above just granted.
-	implementation, err := standingStatement(projection, artifactEvent, workroom.KindArtifact)
-	if err != nil {
-		return reviewBasis{}, fmt.Errorf("reviewed artifact: %w", err)
-	}
-	promise, err := standingStatement(projection, promiseEvent, workroom.KindPromise)
-	if err != nil {
-		return reviewBasis{}, err
-	}
-	actor, _, err := workspace.Actor(actorName)
-	if err != nil {
-		return reviewBasis{}, err
-	}
-	if promise.Actor != actor.Fingerprint {
-		return reviewBasis{}, errors.New("review actor did not make the named promise")
-	}
-	// Independence is a property of fingerprints, not of names. Refusing here
-	// keeps the self-signed verdict out of the log; the projection still
-	// reports independence for verdicts written any other way.
-	if implementation.Actor == actor.Fingerprint {
-		return reviewBasis{}, errors.New("review actor signed the artifact under review; an independent reviewer must sign the verdict")
-	}
-	request, err := uniqueStandingBasis(projection, promiseEvent, workroom.KindRequest)
-	if err != nil {
-		return reviewBasis{}, fmt.Errorf("review promise: %w", err)
-	}
-	if err := validateCheckout(ctx, workspace.Repo, checkout, artifact.Commit, true); err != nil {
-		return reviewBasis{}, err
-	}
-	return reviewBasis{Head: artifact.Commit, Request: request.Event, Staleness: reviewStaleness(projection, []reviewPart{
-		{name: "artifact", event: artifact.Event, stale: artifact.Stale, world: artifact.DescribesSupersededWorld},
-		{name: "promise", event: promise.Event, stale: promise.Stale, world: promise.DescribesSupersededWorld},
-		{name: "request", event: request.Event, stale: request.Stale, world: request.DescribesSupersededWorld},
-	})}, nil
-}
-
-// reviewPart is one thing a review stands on, with the two staleness facts the
-// projection keeps about it.
-type reviewPart struct {
-	name  string
-	event string
-	stale bool
-	world bool
-}
-
-// stalenessCauseCap bounds the causes a verdict body names. A verdict is a
-// message, not a projection: past a handful of retired bases a reader goes to
-// gs provenance, and an unbounded body would only get in the way.
-const stalenessCauseCap = 4
-
-// reviewStaleness says in one line what had moved under a review. It names the
-// stale parts, then whether the movement was in the world they describe rather
-// than the argument they stand on, then the retired bases themselves — the
-// last being what a reader actually has to go and look at.
-func reviewStaleness(projection workroom.Projection, parts []reviewPart) string {
-	var moved, roots []string
-	world := false
-	for _, part := range parts {
-		if !part.stale {
-			continue
-		}
-		moved = append(moved, part.name)
-		roots = append(roots, part.event)
-		world = world || part.world
-	}
-	if len(moved) == 0 {
-		return ""
-	}
-	note := strings.Join(moved, ", ") + " stale"
-	if world {
-		note += "; describes a superseded world"
-	}
-	causes := retiredBases(projection, roots)
-	if len(causes) == 0 {
-		return note
-	}
-	suffix := ""
-	if len(causes) > stalenessCauseCap {
-		suffix = fmt.Sprintf(" and %d more", len(causes)-stalenessCauseCap)
-		causes = causes[:stalenessCauseCap]
-	}
-	return note + "; retired bases: " + strings.Join(causes, ", ") + suffix
-}
-
-// retiredBases walks provenance from the given events down to the retired
-// statements underneath them: the acts that actually moved. The walk stops at
-// each retired basis, because that is the nearest act a reader can act on and
-// everything under it is stale only through it. Breadth-first over a visited
-// set, so a shared ancestor is named once and a diamond terminates.
-func retiredBases(projection workroom.Projection, events []string) []string {
-	retired := make(map[string]bool)
-	for _, statement := range projection.Statements {
-		if statement.Retired {
-			retired[statement.Event] = true
-		}
-	}
-	seen := make(map[string]bool, len(events))
-	queue := append([]string(nil), events...)
-	for _, event := range events {
-		seen[event] = true
-	}
-	var found []string
-	for len(queue) > 0 {
-		event := queue[0]
-		queue = queue[1:]
-		for _, basis := range projection.Provenance[event] {
-			if seen[basis] {
-				continue
-			}
-			seen[basis] = true
-			if retired[basis] {
-				found = append(found, basis)
-				continue
-			}
-			queue = append(queue, basis)
-		}
-	}
-	slices.Sort(found)
-	return found
-}
-
 // validateMerge refuses retirement, ineffectiveness, and a record that still
 // describes a superseded world. Ordinary reasoning staleness is evidence, not
 // a veto: the exact immutable head was reviewed, and the merge receipt records
@@ -995,9 +856,9 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	case workroom.IndependenceSelfReview:
 		return "", errors.New("approval was signed by the actor who implemented this head; an independent review is required")
 	case workroom.IndependenceIndependent:
-		return reviewStaleness(projection, []reviewPart{
-			{name: "approval", event: approval.Event, stale: approval.Stale, world: approval.DescribesSupersededWorld},
-			{name: "artifact", event: artifact.Event, stale: artifact.Stale, world: artifact.DescribesSupersededWorld},
+		return reviewguard.StalenessNote(projection, []reviewguard.Part{
+			{Name: "approval", Event: approval.Event, Stale: approval.Stale, World: approval.DescribesSupersededWorld},
+			{Name: "artifact", Event: artifact.Event, Stale: artifact.Stale, World: artifact.DescribesSupersededWorld},
 		}), nil
 	default:
 		return "", errors.New("the record cannot say whether this approval was independent; name the reviewed artifact in the review report")
@@ -1300,6 +1161,10 @@ type batchAct struct {
 	Target         string            `json:"target,omitempty"`
 	RestsOn        []string          `json:"rests_on,omitempty"`
 	IdempotencyKey string            `json:"idempotency_key,omitempty"`
+
+	// AllowDeadBasis is the per-act form of gs state's --allow-dead-basis:
+	// asking for it signs body.dead_basis_override=true on that act.
+	AllowDeadBasis bool `json:"allow_dead_basis,omitempty"`
 }
 
 // batchError names the class of a batch failure so a caller can branch on it
@@ -1495,6 +1360,15 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 		report.Error = failure
 		return report, failure
 	}
+	// Before the first append, build every act through the same application
+	// boundary submission uses: an undefined kind, a verdict shape, a spoofed
+	// reserved field, or a dead basis stops the batch before anything lands.
+	// The authoritative re-judgement still happens per act at sequencing.
+	if position, failure := preflightAdmission(ctx, workspace, serverURL, actorName, private, acts, citedOK); failure != nil {
+		report.Acts[position].Outcome = "failed"
+		report.Error = failure
+		return report, failure
+	}
 	minted := make(map[string]string, len(acts))
 	for position, entry := range acts {
 		act := resolveBatchAct(entry, minted, citedOK)
@@ -1529,9 +1403,19 @@ func preflightBatchAdmission(ctx context.Context, workspace *app.Workspace, serv
 	if position, failure := checkBatch(acts); failure != nil {
 		return fmt.Errorf("act %d: %w", position, failure)
 	}
+	if position, failure := preflightAdmission(ctx, workspace, serverURL, actorName, private, acts, citedOK); failure != nil {
+		return fmt.Errorf("act %d: %w", position, failure)
+	}
+	return nil
+}
+
+// preflightAdmission builds every act through the application boundary and
+// checks the kernel and optional resident byte ceilings without appending. It
+// reports the position of the first refusal as a batch failure.
+func preflightAdmission(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, acts []batchAct, citedOK bool) (int, *batchError) {
 	if serverURL != "" {
 		if _, err := residentclient.ValidateURL(serverURL); err != nil {
-			return err
+			return 0, batchFail("admission", "%v", err)
 		}
 	}
 	view := workspace.View()
@@ -1541,28 +1425,28 @@ func preflightBatchAdmission(ctx context.Context, workspace *app.Workspace, serv
 		act := resolveBatchAct(entry, minted, citedOK)
 		request, err := workspace.BuildActRequest(ctx, private, actorName, act)
 		if err != nil {
-			return fmt.Errorf("act %d: %w", position, err)
+			return position, batchFail("admission", "%v", err)
 		}
 		if err := kernel.ValidateRequestSize(request, view.PayloadCeiling); err != nil {
-			return fmt.Errorf("act %d: %w", position, err)
+			return position, batchFail("admission", "%v", err)
 		}
 		if serverURL != "" {
 			if err := service.ValidateSubmissionRequestSize(request); err != nil {
-				return fmt.Errorf("act %d: %w", position, err)
+				return position, batchFail("admission", "%v", err)
 			}
 		}
 		if entry.Label != "" {
 			minted[entry.Label] = syntheticEvent
 		}
 	}
-	return nil
+	return 0, nil
 }
 
 func resolveBatchAct(entry batchAct, minted map[string]string, citedOK bool) app.Act {
 	act := app.Act{
 		Verb: entry.Verb, Kind: entry.Kind, Text: entry.Text, Body: entry.Body,
 		Target: resolveLabel(entry.Target, minted), IdempotencyKey: entry.IdempotencyKey,
-		CitedOK: citedOK,
+		CitedOK: citedOK, AllowDeadBasis: entry.AllowDeadBasis,
 	}
 	for _, reference := range entry.RestsOn {
 		act.RestsOn = append(act.RestsOn, resolveLabel(reference, minted))
