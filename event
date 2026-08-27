@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e60f10b3ae195535ff7bd521cf20fbf792f539dd","text":"Retire the stale first corrected server.go candidate. Its vulnerable predecessor was retired after publication, so a fresh current-basis report must replace it after Planner refiles the request."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94f267d8e632add7f25278df77bd20b825b1ef1e","text":"Retire the stale first corrected server_test.go candidate. A fresh current-basis report will replace it after the repair request is refiled."}
