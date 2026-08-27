@@ -63,6 +63,11 @@ implementation flare. Skip it, and `gs status` marks the new artifact
 someone promised it, the promisor is released. The promise stays in
 history as kept faith.
 
+When you are reassigning a request because it appeared unclaimed, use
+[`gs reassign-if-unclaimed`](reassign-if-unclaimed.md). Its signed pair refuses
+if a promise or direct completion raced your read. Ordinary supersession stays
+available for a requester deliberately withdrawing promised work.
+
 **Reneging.** Superseding your own promise is reneging, and it is visible
 forever. Do it as early as you know you cannot keep it.
 
@@ -92,3 +97,4 @@ authority is checked again at the time of restoration.
 
 - [Staleness](../../concepts/staleness.md)
 - [`gs status`](status.md)
+- [`gs reassign-if-unclaimed`](reassign-if-unclaimed.md)

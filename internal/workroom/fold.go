@@ -280,6 +280,13 @@ type parsedRecord struct {
 	mergeChangedPaths        []string
 	mergeLeftLive            []leftLiveAccounting
 	mergeUnaccounted         map[string]int
+	// unclaimedExpectation is retained separately from body after the two
+	// guarded schemas are lowered to the ordinary request and supersede shapes
+	// used by the rest of the fold. That keeps one projection path while making
+	// the signed precondition available to the position-aware decision.
+	unclaimedExpectation *UnclaimedExpectation
+	guardedRetirement    bool
+	guardedReplacement   bool
 }
 
 type leftLiveClaim struct {
@@ -446,8 +453,27 @@ func (f *foldState) append(index int, record Record) {
 		f.addDecision(record, nil, index, decision)
 		return
 	}
+	parsed := &parsedRecord{record: record, index: index}
+	switch value := body.(type) {
+	case *RetireIfUnclaimed:
+		expectation := value.Expectation
+		parsed.unclaimedExpectation = &expectation
+		parsed.guardedRetirement = true
+		body = &Supersede{Target: value.Target, Text: value.Text}
+	case *ReassignIfUnclaimed:
+		expectation := value.Expectation
+		parsed.unclaimedExpectation = &expectation
+		parsed.guardedReplacement = true
+		body = &State{Kind: KindRequest, Text: value.Text, Body: value.Body}
+	}
 	f.internBody(body)
-	parsed := &parsedRecord{record: record, body: body, index: index}
+	if parsed.unclaimedExpectation != nil {
+		parsed.unclaimedExpectation.Request = f.intern(parsed.unclaimedExpectation.Request)
+		parsed.unclaimedExpectation.Retirement = f.intern(parsed.unclaimedExpectation.Retirement)
+		parsed.unclaimedExpectation.Promise = f.intern(parsed.unclaimedExpectation.Promise)
+		parsed.unclaimedExpectation.Completion = f.intern(parsed.unclaimedExpectation.Completion)
+	}
+	parsed.body = body
 	if len(f.transitions) != 0 {
 		f.beyondSeam = true
 		decision.Verdict = Uninterpretable
@@ -457,11 +483,19 @@ func (f *foldState) append(index int, record Record) {
 	}
 	switch value := body.(type) {
 	case *State:
-		decision = f.decideState(parsed, *value)
+		if parsed.guardedReplacement {
+			decision = f.decideReassignIfUnclaimed(parsed, *value)
+		} else {
+			decision = f.decideState(parsed, *value)
+		}
 	case *Ratify:
 		decision = f.decideRatify(parsed, *value)
 	case *Supersede:
-		decision = f.decideSupersede(parsed, *value)
+		if parsed.guardedRetirement {
+			decision = f.decideRetireIfUnclaimed(parsed, *value)
+		} else {
+			decision = f.decideSupersede(parsed, *value)
+		}
 	}
 	f.addDecision(record, parsed, index, decision)
 	if decision.Verdict != Effective {
@@ -1031,6 +1065,138 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "merge approval authorized artifact succession"}
 	}
 	return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor may not supersede target"}
+}
+
+func (f *foldState) decideRetireIfUnclaimed(record *parsedRecord, supersede Supersede) Decision {
+	if reason := f.unclaimedExpectationReason(record, false); reason != "" {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: reason}
+	}
+	return f.decideSupersede(record, supersede)
+}
+
+func (f *foldState) decideReassignIfUnclaimed(record *parsedRecord, state State) Decision {
+	if reason := f.unclaimedExpectationReason(record, true); reason != "" {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: reason}
+	}
+	return f.decideState(record, state)
+}
+
+// unclaimedExpectationReason evaluates the signed, request-local compare and
+// swap. It intentionally does not read Commitment.Status: a retired request
+// projects as withdrawn even when a late direct completion exists. The fold's
+// admitted dependency and completion facts are the authority.
+func (f *foldState) unclaimedExpectationReason(record *parsedRecord, replacement bool) string {
+	expectation := record.unclaimedExpectation
+	if expectation == nil {
+		return "reassign-if-unclaimed expectation is missing"
+	}
+	request := f.byID[expectation.Request]
+	if request == nil || request.decision.Verdict != Effective || lifecycleOf(request) != LifecycleRequest {
+		return "reassign-if-unclaimed request is not one effective request-lifecycle statement"
+	}
+	state, ok := request.body.(*State)
+	if !ok || state.Kind == "" {
+		return "reassign-if-unclaimed request shape is ambiguous"
+	}
+	if expectation.Promise != CommitmentAbsent || expectation.Completion != CommitmentAbsent {
+		return "reassign-if-unclaimed expectation must explicitly require absent promise and completion"
+	}
+	if stale, _, _ := f.stalenessNow().stalenessOf([]string{expectation.Request}, f.succeededRetirements()); stale[expectation.Request] {
+		return "reassign-if-unclaimed request is stale; re-read and refile on current bases"
+	}
+	if promises := f.directDependents(expectation.Request, LifecyclePromise); len(promises) != 0 {
+		return fmt.Sprintf("reassign-if-unclaimed request has %d admitted promise(s); re-read before changing its assignment", len(promises))
+	}
+	completions := 0
+	for _, claim := range f.admittedClaims {
+		if claim.direct && claim.request != nil && claim.request.record.ID == expectation.Request {
+			completions++
+		}
+	}
+	if completions != 0 {
+		return fmt.Sprintf("reassign-if-unclaimed request has %d admitted direct completion(s); re-read before changing its assignment", completions)
+	}
+	if !replacement {
+		if expectation.Retirement != "" {
+			return "guarded retirement does not name exactly its expected request"
+		}
+		supersede, ok := record.body.(*Supersede)
+		if !ok || supersede.Target != expectation.Request {
+			return "guarded retirement does not name exactly its expected request"
+		}
+		if f.retired(expectation.Request) {
+			return "reassign-if-unclaimed request is not live"
+		}
+		if countExact(record.record.RestsOn, expectation.Request) != 1 || len(record.record.RestsOn) == 0 || record.record.RestsOn[0] != expectation.Request {
+			return "guarded retirement must rest first and exactly once on its expected request"
+		}
+		return ""
+	}
+	if expectation.Retirement == "" {
+		return "guarded replacement does not name a retirement"
+	}
+	retirement := f.byID[expectation.Retirement]
+	if retirement == nil || retirement.decision.Verdict != Effective || !retirement.guardedRetirement {
+		return "guarded replacement retirement is not one effective guarded retirement"
+	}
+	retired, ok := retirement.body.(*Supersede)
+	if !ok || retired.Target != expectation.Request || retirement.unclaimedExpectation == nil || retirement.unclaimedExpectation.Request != expectation.Request {
+		return "guarded replacement retirement does not retire its expected request"
+	}
+	if retirement.record.Actor != record.record.Actor {
+		return "guarded replacement must be signed by the guarded retirement author"
+	}
+	if f.retired(expectation.Retirement) || !f.retired(expectation.Request) || f.retirementCauses[expectation.Request] != 1 {
+		return "guarded replacement retirement is no longer the one live retirement of its request"
+	}
+	if countExact(record.record.RestsOn, expectation.Retirement) != 1 || len(record.record.RestsOn) == 0 || record.record.RestsOn[0] != expectation.Retirement {
+		return "guarded replacement must rest first and exactly once on its named retirement"
+	}
+	return ""
+}
+
+func countExact(values []string, wanted string) int {
+	count := 0
+	for _, value := range values {
+		if value == wanted {
+			count++
+		}
+	}
+	return count
+}
+
+// AdmitRetireIfUnclaimed applies the same guard as the authoritative fold to
+// the exact pre-sequence prefix held by application admission. It evaluates
+// only the precondition; ordinary supersession authority remains the fold's
+// decision, as it is for SchemaSupersede.
+func (f *Folder) AdmitRetireIfUnclaimed(actor string, payload RetireIfUnclaimed, restsOn []string) error {
+	expectation := payload.Expectation
+	record := &parsedRecord{
+		record:               Record{Actor: actor, RestsOn: append([]string(nil), restsOn...)},
+		body:                 &Supersede{Target: payload.Target, Text: payload.Text},
+		unclaimedExpectation: &expectation,
+		guardedRetirement:    true,
+	}
+	if reason := f.state.unclaimedExpectationReason(record, false); reason != "" {
+		return fmt.Errorf("reassign-if-unclaimed refused: %s", reason)
+	}
+	return nil
+}
+
+// AdmitReassignIfUnclaimed is the replacement half of the same exact-prefix
+// check. The named retirement is already in the prefix by construction.
+func (f *Folder) AdmitReassignIfUnclaimed(actor string, payload ReassignIfUnclaimed, restsOn []string) error {
+	expectation := payload.Expectation
+	record := &parsedRecord{
+		record:               Record{Actor: actor, RestsOn: append([]string(nil), restsOn...)},
+		body:                 &State{Kind: KindRequest, Text: payload.Text, Body: payload.Body},
+		unclaimedExpectation: &expectation,
+		guardedReplacement:   true,
+	}
+	if reason := f.state.unclaimedExpectationReason(record, true); reason != "" {
+		return fmt.Errorf("reassign-if-unclaimed refused: %s", reason)
+	}
+	return nil
 }
 
 // hasAuthorizedMergeReceipt admits the one cross-author supersession which is

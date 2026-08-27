@@ -56,6 +56,10 @@ the projection reports **succession not recorded**.
 **Withdrawing your own request.** Whoever promised it is released, and
 their promise stays in history as kept faith.
 
+When the reason is that the request appeared unclaimed and should move to a
+new addressee, use [`reassign_if_unclaimed`](reassign_if_unclaimed.md). Its
+signed guards refuse if a promise or direct completion raced the earlier read.
+
 **Reneging.** Superseding your own promise is visible forever. Do it as
 early as you know you cannot keep it.
 

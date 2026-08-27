@@ -97,6 +97,8 @@ func main() {
 		err = ratifyCommand(ctx, os.Args[2:])
 	case "supersede":
 		err = supersedeCommand(ctx, os.Args[2:])
+	case "reassign-if-unclaimed":
+		err = reassignIfUnclaimedCommand(ctx, os.Args[2:])
 	case "batch":
 		err = batchCommand(ctx, os.Args[2:])
 	case "status":
@@ -134,7 +136,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|batch|status|work|artifacts|supersession-plan|staleness-wave|inspect|reviews|provenance|verify|checkpoint-clear|serve|attach> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|reassign-if-unclaimed|batch|status|work|artifacts|supersession-plan|staleness-wave|inspect|reviews|provenance|verify|checkpoint-clear|serve|attach> [flags]")
 	os.Exit(2)
 }
 
@@ -1150,6 +1152,70 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
+type reassignIfUnclaimedResult struct {
+	Retirement string `json:"retirement"`
+	Request    string `json:"request"`
+}
+
+// reassignIfUnclaimedCommand owns the two-act choreography so a caller cannot
+// accidentally omit the old request or named retirement from the signed
+// tuple. The stable key is required because the only honest recovery from a
+// crash between acts is to replay the retirement exactly and continue.
+func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("reassign-if-unclaimed", arguments)
+	as := set.String("as", "", "requester actor name")
+	to := set.String("to", "", "new requested performer")
+	message := set.String("text", "", "replacement request text")
+	conditions := set.String("conditions", "", "replacement conditions of satisfaction")
+	retirementText := set.String("retirement-text", "retire unclaimed request before reassignment", "retirement reason")
+	serverFlag := set.String("server", "", "resident sequencer URL")
+	key := set.String("idempotency-key", "", "stable retry key (required)")
+	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites the old request")
+	var rests values
+	set.Var(&rests, "rests-on", "additional current basis for the replacement request (repeatable)")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 1 {
+		return errors.New("reassign-if-unclaimed requires one old request event")
+	}
+	if *to == "" || *message == "" || *conditions == "" {
+		return errors.New("reassign-if-unclaimed requires --to, --text, and --conditions")
+	}
+	if *key == "" {
+		return errors.New("reassign-if-unclaimed requires --idempotency-key for two-act retry recovery")
+	}
+	actor, err := signingActor(*as)
+	if err != nil {
+		return err
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
+	oldRequest := set.Arg(0)
+	retirement, err := submitAct(ctx, workspace, serverURL, actor, app.Act{
+		Verb: app.VerbRetireIfUnclaimed, Target: oldRequest, Text: *retirementText,
+		IdempotencyKey: *key + "/retirement", CitedOK: *citedOK,
+	})
+	if err != nil {
+		return err
+	}
+	replacement, err := submitAct(ctx, workspace, serverURL, actor, app.Act{
+		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest, Retirement: retirement.ID,
+		Text: *message, Body: map[string]string{"to": *to, "conditions": *conditions},
+		RestsOn: rests, IdempotencyKey: *key + "/request",
+	})
+	if err != nil {
+		return fmt.Errorf("guarded retirement %s landed or replayed, but its replacement was refused: %w; re-read the old request before retrying", retirement.ID, err)
+	}
+	return printJSON(reassignIfUnclaimedResult{Retirement: retirement.ID, Request: replacement.ID})
+}
+
 // batchAct is one entry of a batch file. Field names and meanings follow
 // app.Act; label is local to the batch and never leaves it.
 type batchAct struct {
@@ -1159,6 +1225,7 @@ type batchAct struct {
 	Text           string            `json:"text,omitempty"`
 	Body           map[string]string `json:"body,omitempty"`
 	Target         string            `json:"target,omitempty"`
+	Retirement     string            `json:"retirement,omitempty"`
 	RestsOn        []string          `json:"rests_on,omitempty"`
 	IdempotencyKey string            `json:"idempotency_key,omitempty"`
 
@@ -1445,7 +1512,7 @@ func preflightAdmission(ctx context.Context, workspace *app.Workspace, serverURL
 func resolveBatchAct(entry batchAct, minted map[string]string, citedOK bool) app.Act {
 	act := app.Act{
 		Verb: entry.Verb, Kind: entry.Kind, Text: entry.Text, Body: entry.Body,
-		Target: resolveLabel(entry.Target, minted), IdempotencyKey: entry.IdempotencyKey,
+		Target: resolveLabel(entry.Target, minted), Retirement: resolveLabel(entry.Retirement, minted), IdempotencyKey: entry.IdempotencyKey,
 		CitedOK: citedOK, AllowDeadBasis: entry.AllowDeadBasis,
 	}
 	for _, reference := range entry.RestsOn {
@@ -1465,14 +1532,25 @@ func checkBatch(acts []batchAct) (int, *batchError) {
 			if entry.Target != "" {
 				return position, batchFail("verb", "state takes no target")
 			}
-		case app.VerbRatify, app.VerbSupersede:
+		case app.VerbRatify, app.VerbSupersede, app.VerbRetireIfUnclaimed:
 			if entry.Target == "" {
 				return position, batchFail("verb", "%s requires a target", entry.Verb)
+			}
+			if entry.Verb == app.VerbRetireIfUnclaimed && entry.Retirement != "" {
+				return position, batchFail("verb", "%s cannot name a prior retirement", entry.Verb)
+			}
+		case app.VerbReassignIfUnclaimed:
+			if entry.Target == "" || entry.Retirement == "" {
+				return position, batchFail("verb", "%s requires target and retirement", entry.Verb)
+			}
+			if entry.Kind != "" {
+				return position, batchFail("verb", "%s has the request kind fixed by its schema", entry.Verb)
 			}
 		default:
 			return position, batchFail("verb", "unknown verb %q", entry.Verb)
 		}
-		for _, reference := range append([]string{entry.Target}, entry.RestsOn...) {
+		references := append([]string{entry.Target, entry.Retirement}, entry.RestsOn...)
+		for _, reference := range references {
 			name, cited := strings.CutPrefix(reference, "$")
 			if !cited {
 				continue

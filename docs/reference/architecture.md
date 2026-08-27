@@ -100,7 +100,8 @@ The kernel owns:
 - carrying the signed `rests_on` strings without assigning them application
   semantics, while refusing at admission a submitted reference that claims a
   position in this log and does not name one;
-- idempotency namespaces, keys, replay, and conflicting-retry detection;
+- idempotency namespaces, keys, replay, conflicting-retry detection, and the
+  verified read-only exact-replay check used before mutable client preflight;
 - bounds on intent fields, causal-reference counts, envelopes, payloads, and
   attachments;
 - verification of history, object shape, signatures, ordering, and payload
@@ -683,6 +684,23 @@ afterwards, so a later withdrawal or a later promise cannot move a completion
 between commitments. Widening the basis reinterprets records already in the
 log, so it advances the fold profile to `workroom-fold@8`.
 
+**Unclaimed reassignment is a signed request-local compare and swap.** The
+guarded retirement schema names the exact old request and explicitly expects
+no admitted direct promise or completion. It is effective only while that
+request is live and fresh. The guarded replacement schema names both the old
+request and the one effective guarded retirement it follows; it refuses when a
+promise or completion appeared between the acts. Unrelated records do not
+matter. The fold reads its admitted dependency and completion facts rather
+than a projected status word, because a retired request can project as
+`withdrawn` while a late direct completion remains in its history.
+
+Both schemas lower to the ordinary supersession and request shapes only after
+their guards pass, so retirement, staleness, commitment, inspect, and status
+projections keep one implementation. A fold that does not know the schemas
+leaves them ineffective instead of treating them as unguarded acts. This
+semantic change advances the profile to `workroom-fold@13`; a cache written
+under `@12` is rejected and the same verified history is replayed.
+
 **Every projected statement carries the lifecycle it was decided under** — the
 definition bound at that record's own position, not whichever definition of
 its kind stands now. A reader classifying a historical record by the current
@@ -807,6 +825,13 @@ strictly after the review request that name the reviewed head or lane —
 exact-set acknowledgment validation, canonical acknowledgment encoding,
 frontier binding, and act construction, shared by `gs review` and the MCP
 review tool so they cannot drift.
+
+Guarded reassignment uses the same exact-frontier admission boundary, but only
+after kernel idempotency replay detection. A genuinely new act is refused
+before append when its request-local expectation no longer holds; an exact
+retry replays without re-judging history that moved afterwards. The fold still
+enforces both new schemas, so an older or admission-skipping resident cannot
+grant unguarded force.
 
 **Surfaces and guidance.** Workroom also owns its MCP tools and their
 application meanings; the agent practice in `SKILL.md`; connector clauses and
@@ -996,6 +1021,14 @@ a projection it may merge on. This carries the fold profile to
   Succession recording never re-applies that guard. Resuming an already-sealed
   receipt appends its recorded suffix without replanning, so the symmetric
   lineage rule of layer 5 keeps judging everything already admitted.
+
+  `reassign-if-unclaimed` composes the two guarded schemas and derives stable
+  per-act idempotency keys from one required key. Batch exposes the same two
+  verbs and lets its labels carry the exact retirement into the replacement.
+  Both paths can resume after the first act without weakening the guard. The
+  retirement's signed `cited_ok` is an explicit checkout/admission escape
+  carried across remote sequencing and replay; it is not part of the
+  `UnclaimedExpectation` compare-and-swap tuple and grants no fold authority.
 - `cmd/gitseq-mcp` exposes Workroom tools and live coordination over an MCP
   transport. The MCP protocol is a surface contract, not the Workroom fold.
   The `work` tool's `stale` enum admits `summary`, `include`, `only` and
@@ -1004,6 +1037,9 @@ a projection it may merge on. This carries the fold profile to
   belongs to the projection above. The adapter holds one resident-minted
   credential per exact repository, renews or replaces it internally, and never
   returns it through MCP.
+  Its `reassign_if_unclaimed` tool owns the same guarded pair and retry
+  choreography as the CLI, rather than asking callers to construct a
+  commitment expectation from generic state and supersede tools.
 - `SKILL.md` is the normative operating contract for an agent participating
   in the Workroom application.
 - `internal/connector/github` and `cmd/gitseq-github` translate admitted

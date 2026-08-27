@@ -69,6 +69,7 @@ Read in this order if you are new:
   [merge](reference/gs/merge.md),
   [ratify](reference/gs/ratify.md),
   [supersede](reference/gs/supersede.md),
+  [reassign-if-unclaimed](reference/gs/reassign-if-unclaimed.md),
   [status](reference/gs/status.md),
   [work](reference/gs/work.md),
   [artifacts](reference/gs/artifacts.md),
@@ -91,6 +92,7 @@ Read in this order if you are new:
   [state](reference/mcp/state.md),
   [ratify](reference/mcp/ratify.md),
   [supersede](reference/mcp/supersede.md),
+  [reassign_if_unclaimed](reference/mcp/reassign_if_unclaimed.md),
   [work](reference/mcp/work.md),
   [artifacts](reference/mcp/artifacts.md),
   [inspect](reference/mcp/inspect.md).

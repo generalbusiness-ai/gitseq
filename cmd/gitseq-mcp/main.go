@@ -610,6 +610,15 @@ func tools() []map[string]any {
 		}), "artifacts", "promise", "verdict", "text")},
 		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(withRepo(map[string]any{"target": stringField, "idempotency_key": stringField}), "target")},
 		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(withRepo(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}), "target", "text")},
+		{"name": "reassign_if_unclaimed", "description": "Retire one still-fresh unclaimed request and publish its replacement as a guarded, resumable pair. Unrelated durable traffic is allowed; any promise or direct completion refuses.", "inputSchema": object(withRepo(map[string]any{
+			"old_request":     stringField,
+			"to":              stringField,
+			"text":            stringField,
+			"conditions":      stringField,
+			"retirement_text": stringField,
+			"rests_on":        map[string]any{"type": "array", "items": stringField},
+			"idempotency_key": stringField,
+		}), "old_request", "to", "text", "conditions", "idempotency_key")},
 	}
 }
 
@@ -878,9 +887,55 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 	case "supersede":
 		target := stringValue(call.Arguments["target"])
 		return s.submit(ctx, current, app.Act{Verb: app.VerbSupersede, Target: target, Text: stringValue(call.Arguments["text"]), RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
+	case "reassign_if_unclaimed":
+		return s.reassignIfUnclaimed(ctx, current, call)
 	default:
 		return nil, fmt.Errorf("unknown tool %q", call.Name)
 	}
+}
+
+func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call toolCall) (any, error) {
+	oldRequest := stringValue(call.Arguments["old_request"])
+	key := stringValue(call.Arguments["idempotency_key"])
+	if oldRequest == "" || stringValue(call.Arguments["to"]) == "" || stringValue(call.Arguments["text"]) == "" || stringValue(call.Arguments["conditions"]) == "" || key == "" {
+		return nil, errors.New("reassign_if_unclaimed requires old_request, to, text, conditions, and idempotency_key")
+	}
+	retirementText := stringValue(call.Arguments["retirement_text"])
+	if retirementText == "" {
+		retirementText = "retire unclaimed request before reassignment"
+	}
+	retirement, err := s.submit(ctx, current, app.Act{
+		Verb: app.VerbRetireIfUnclaimed, Target: oldRequest, Text: retirementText,
+		IdempotencyKey: key + "/retirement",
+	})
+	if err != nil {
+		return nil, err
+	}
+	retirementRecord, ok := submissionRecord(retirement)
+	if !ok {
+		return nil, errors.New("guarded retirement returned no durable record")
+	}
+	replacement, err := s.submit(ctx, current, app.Act{
+		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest, Retirement: retirementRecord.ID,
+		Text: stringValue(call.Arguments["text"]),
+		Body: map[string]string{
+			"to": stringValue(call.Arguments["to"]), "conditions": stringValue(call.Arguments["conditions"]),
+		},
+		RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: key + "/request",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("guarded retirement %s landed or replayed, but its replacement was refused: %w; re-read the old request before retrying", retirementRecord.ID, err)
+	}
+	return map[string]any{"retirement": retirement, "request": replacement}, nil
+}
+
+func submissionRecord(value any) (workroom.Record, bool) {
+	result, ok := value.(map[string]any)
+	if !ok {
+		return workroom.Record{}, false
+	}
+	record, ok := result["record"].(workroom.Record)
+	return record, ok
 }
 
 // laneResponseLimit preserves the byte ceiling while allowing every capped

@@ -384,6 +384,42 @@ func ValidateRequestSize(request Request, ceiling uint64) error {
 	return validateRequestSize(request, decoded, ceiling)
 }
 
+// CheckReplay verifies the target log and reports whether request is the exact
+// signed intent already held under its idempotency key. It never writes
+// objects or runs admission hooks. A caller may use it to avoid re-judging
+// mutable local preflight state before Submit gets the same retry.
+func CheckReplay(ctx context.Context, store gitstore.Store, request Request) (bool, error) {
+	decoded, err := intent.Verify(request.Signed)
+	if err != nil {
+		return false, err
+	}
+	storeFormat, err := store.ObjectFormat(ctx)
+	if err != nil {
+		return false, err
+	}
+	targetFormat, targetOID, err := gitstore.ParseTypedOID(decoded.Target)
+	if err != nil {
+		return false, err
+	}
+	if targetFormat != storeFormat {
+		return false, errors.New("target object format differs from repository")
+	}
+	head, err := store.Head(ctx, Ref(targetOID))
+	if err != nil {
+		return false, errors.New("unknown target log")
+	}
+	log, err := scanHead(ctx, store, targetOID, head, false, nil)
+	if err != nil {
+		return false, err
+	}
+	key, err := request.Signed.DedupKey()
+	if err != nil {
+		return false, err
+	}
+	_, replay, err := dedupPrior(log.Dedup, key, request.Signed)
+	return replay, err
+}
+
 func validateRequestSize(request Request, decoded intent.Intent, ceiling uint64) error {
 	message := intent.Envelope(request.Signed, decoded.RestsOn)
 	eventSize := uint64(len(message))

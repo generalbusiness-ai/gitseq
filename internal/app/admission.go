@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -202,25 +203,54 @@ func (w *Workspace) refuseDeadBases(snapshot Snapshot, restsOn []string, body ma
 func (w *Workspace) admitApplication(ctx context.Context, application kernel.Application) error {
 	switch application.Intent.Schema {
 	case workroom.SchemaStateLegacy, workroom.SchemaStateV1, workroom.SchemaState:
+		decoded, err := workroom.Decode(application.Intent.Schema, application.Payload)
+		if err != nil {
+			return fmt.Errorf("admission decode: %w", err)
+		}
+		state, ok := decoded.(*workroom.State)
+		if !ok {
+			return nil
+		}
+		snapshot, err := w.admissionWorld(ctx, application.Head)
+		if err != nil {
+			return err
+		}
+		_, err = w.admitState(snapshot, stateAdmission{
+			Kind: state.Kind, Body: state.Body, RestsOn: application.Intent.RestsOn,
+		}, application.Head)
+		return err
+	case workroom.SchemaRetireUnclaimed:
+		decoded, err := workroom.Decode(application.Intent.Schema, application.Payload)
+		if err != nil {
+			return fmt.Errorf("admission decode: %w", err)
+		}
+		guard := decoded.(*workroom.RetireIfUnclaimed)
+		if err := w.RefuseCitedRetirement(ctx, guard.Target, guard.CitedOK); err != nil {
+			return err
+		}
+		_, err = w.admissionWorldChecked(ctx, application.Head, func(folder *workroom.Folder) error {
+			return folder.AdmitRetireIfUnclaimed(intent.ActorFingerprint(application.ActorKey), *guard, application.Intent.RestsOn)
+		})
+		return err
+	case workroom.SchemaReassignRequest:
+		decoded, err := workroom.Decode(application.Intent.Schema, application.Payload)
+		if err != nil {
+			return fmt.Errorf("admission decode: %w", err)
+		}
+		guard := decoded.(*workroom.ReassignIfUnclaimed)
+		snapshot, err := w.admissionWorldChecked(ctx, application.Head, func(folder *workroom.Folder) error {
+			return folder.AdmitReassignIfUnclaimed(intent.ActorFingerprint(application.ActorKey), *guard, application.Intent.RestsOn)
+		})
+		if err != nil {
+			return err
+		}
+		_, err = w.admitState(snapshot, stateAdmission{
+			Kind: workroom.KindRequest, Body: guard.Body, RestsOn: application.Intent.RestsOn,
+		}, application.Head)
+		return err
 	default:
 		return nil
 	}
-	decoded, err := workroom.Decode(application.Intent.Schema, application.Payload)
-	if err != nil {
-		return fmt.Errorf("admission decode: %w", err)
-	}
-	state, ok := decoded.(*workroom.State)
-	if !ok {
-		return nil
-	}
-	snapshot, err := w.admissionWorld(ctx, application.Head)
-	if err != nil {
-		return err
-	}
-	_, err = w.admitState(snapshot, stateAdmission{
-		Kind: state.Kind, Body: state.Body, RestsOn: application.Intent.RestsOn,
-	}, application.Head)
-	return err
 }
 
 // admissionWorld returns the verified workroom exactly at head, judged from
@@ -229,6 +259,10 @@ func (w *Workspace) admitApplication(ctx context.Context, application kernel.App
 // must instead judge the position the event would actually extend, whatever a
 // reader would say about the journey there.
 func (w *Workspace) admissionWorld(ctx context.Context, head string) (Snapshot, error) {
+	return w.admissionWorldChecked(ctx, head, nil)
+}
+
+func (w *Workspace) admissionWorldChecked(ctx context.Context, head string, check func(*workroom.Folder) error) (Snapshot, error) {
 	w.admissionMu.Lock()
 	defer w.admissionMu.Unlock()
 	if w.admissionReader == nil {
@@ -257,6 +291,11 @@ func (w *Workspace) admissionWorld(ctx context.Context, head string) (Snapshot, 
 	}
 	for _, event := range loaded.Events {
 		folder.Append(w.record(event))
+	}
+	if check != nil {
+		if err := check(folder); err != nil {
+			return Snapshot{}, err
+		}
 	}
 	return Snapshot{
 		Genesis: w.config.Genesis, Head: loaded.Verification.Head, Depth: loaded.Verification.Depth,

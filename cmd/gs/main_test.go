@@ -2909,6 +2909,144 @@ func (f batchFixture) run(actor, acts string) (batchReport, error) {
 	return report, batchErr
 }
 
+func TestBatchReassignIfUnclaimedCarriesTheGuardedPairAndReplaysIt(t *testing.T) {
+	fixture := newBatchFixture(t)
+	old := actRecordCLI(t, fixture, app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "do it",
+		Body:    map[string]string{"to": "@worker", "conditions": "finish"},
+		RestsOn: []string{fixture.genesis}, IdempotencyKey: "reassign-old",
+	})
+	acts := `[
+  {"label":"retirement","verb":"retire-if-unclaimed","target":"` + old.ID + `","text":"retire before reassignment","idempotency_key":"reassign-retirement"},
+  {"verb":"state","kind":"assert","text":"unrelated traffic","rests_on":["` + fixture.genesis + `"],"idempotency_key":"reassign-unrelated"},
+  {"label":"replacement","verb":"reassign-if-unclaimed","target":"` + old.ID + `","retirement":"$retirement","text":"ask again","body":{"to":"@worker","conditions":"finish on current bases"},"idempotency_key":"reassign-replacement"}
+]`
+	first, err := fixture.run("operator", acts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Landed != 3 || first.Replayed != 0 {
+		t.Fatalf("first batch = %+v", first)
+	}
+	if _, err := fixture.workspace.RetireActor(fixture.ctx, "operator", "@worker"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := fixture.run("operator", acts)
+	if err != nil {
+		t.Fatalf("exact retry: %v", err)
+	}
+	if second.Landed != 0 || second.Replayed != 3 {
+		t.Fatalf("retry batch = %+v", second)
+	}
+}
+
+func TestReassignIfUnclaimedCommandOwnsTwoActRetry(t *testing.T) {
+	fixture := newBatchFixture(t)
+	old := actRecordCLI(t, fixture, app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "old request",
+		Body:    map[string]string{"to": "@worker", "conditions": "finish"},
+		RestsOn: []string{fixture.genesis}, IdempotencyKey: "command-old",
+	})
+	arguments := []string{
+		"--repo", fixture.repo, "--as", "operator", "--server", localFold,
+		"--to", "@worker", "--text", "replacement request", "--conditions", "finish on current bases",
+		"--idempotency-key", "command-reassign", old.ID,
+	}
+	first := runReassignCommand(t, fixture.ctx, arguments)
+	if _, err := fixture.workspace.RetireActor(fixture.ctx, "operator", "@worker"); err != nil {
+		t.Fatal(err)
+	}
+	actRecordCLI(t, fixture, app.Act{
+		Verb: app.VerbSupersede, Target: first.Retirement,
+		Text: "restore the original request after the completed reassignment", IdempotencyKey: "restore-command-old",
+	})
+	page := filepath.Join(fixture.repo, "docs", "reference", "late-command-citation.md")
+	if err := os.MkdirAll(filepath.Dir(page), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(page, []byte("---\nrests_on:\n  - "+old.ID+"\n---\n\nlate citation\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, fixture.repo, "add", "docs/reference/late-command-citation.md")
+	second := runReassignCommand(t, fixture.ctx, arguments)
+	if first != second || first.Retirement == "" || first.Request == "" {
+		t.Fatalf("first=%+v second=%+v", first, second)
+	}
+}
+
+func TestReassignIfUnclaimedChecksTheCallingWorktreeBeforeResidentSubmission(t *testing.T) {
+	fixture := newBatchFixture(t)
+	old := actRecordCLI(t, fixture, app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "old request",
+		Body:    map[string]string{"to": "@worker", "conditions": "finish"},
+		RestsOn: []string{fixture.genesis}, IdempotencyKey: "linked-command-old",
+	})
+	linked := filepath.Join(filepath.Dir(fixture.repo), "linked")
+	testGit(t, fixture.repo, "worktree", "add", "-qb", "linked-reassign", linked)
+	page := filepath.Join(linked, "docs", "reference", "linked-request.md")
+	if err := os.MkdirAll(filepath.Dir(page), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(page, []byte("---\nrests_on:\n  - "+old.ID+"\n---\n\nlinked candidate\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, linked, "add", "docs/reference/linked-request.md")
+
+	resident, err := service.New(fixture.workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(resident.Handler())
+	defer httpServer.Close()
+	before := fixture.snapshot().Depth
+	err = reassignIfUnclaimedCommand(fixture.ctx, []string{
+		"--repo", linked, "--as", "operator", "--server", httpServer.URL,
+		"--to", "@worker", "--text", "replacement", "--conditions", "finish",
+		"--idempotency-key", "linked-reassign", old.ID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "docs/reference/linked-request.md") {
+		t.Fatalf("linked worktree citation error = %v", err)
+	}
+	if after := fixture.snapshot().Depth; after != before {
+		t.Fatalf("resident received a refused guarded retirement: depth %d -> %d", before, after)
+	}
+}
+
+func actRecordCLI(t *testing.T, fixture batchFixture, act app.Act) workroom.Record {
+	t.Helper()
+	submission, err := fixture.workspace.Act(fixture.ctx, "operator", act)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return submission.Record
+}
+
+func runReassignCommand(t *testing.T, ctx context.Context, arguments []string) reassignIfUnclaimedResult {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout := os.Stdout
+	os.Stdout = writer
+	err = reassignIfUnclaimedCommand(ctx, arguments)
+	os.Stdout = stdout
+	writer.Close()
+	printed, readErr := io.ReadAll(reader)
+	reader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	var result reassignIfUnclaimedResult
+	if err := json.Unmarshal(printed, &result); err != nil {
+		t.Fatalf("decode %q: %v", printed, err)
+	}
+	return result
+}
+
 // state runs the state command the way a person does and returns what each
 // stream received, because which stream carried the warning is the point.
 // Rests-on bases default to the genesis event; a test citing other ground
