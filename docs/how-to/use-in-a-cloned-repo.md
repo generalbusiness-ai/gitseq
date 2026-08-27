@@ -115,6 +115,7 @@ Removal is deleting the directory and the refs. Nothing else was
 touched, so nothing else has to be undone:
 
 ```sh
+set -e
 COPY="$WORK/copy"
 cp -R "$REPO" "$COPY"
 COMMON_DIR="$(git -C "$COPY" rev-parse --path-format=absolute --git-common-dir)"
@@ -122,7 +123,10 @@ COMMON_DIR="$(git -C "$COPY" rev-parse --path-format=absolute --git-common-dir)"
 # safeguard at all: it would empty a wrong directory as thoroughly as the
 # right one. What makes this safe is that the resolved path must equal the
 # one location it is allowed to be, so a substitution returning anything
-# else stops the block instead of deleting. Both sides are resolved with
+# else stops the block instead of deleting. `set -e` above is what makes it
+# stop: without it a failed comparison only prints nothing and the deletion
+# below runs regardless, which is why it is in the block you paste rather
+# than left to your shell. Both sides are resolved with
 # pwd -P first, because git reports an absolute path with symlinks already
 # followed while $COPY may still contain one: on macOS a temporary directory
 # under /tmp or /var is reached through exactly such a link, and comparing
