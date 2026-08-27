@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a6548c5c32e3437e643ebb96748ef6d81850ecc","text":"I withdraw my earlier review decline after Hugh clarified that exact head 95374ec2 is reviewable now; the surviving condition is not to merge."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9f1c947ce057ef947cdeecd3a4fa7d78874b7a3d","text":"I withdraw this cleanup request. Hugh clarified that the four artifacts and exact head may proceed through independent review now; no merge is authorized."}
