@@ -11,11 +11,18 @@ export function TopBar({
   workroom,
   session,
   onJumpEvent,
+  onPublish,
   selectedEvent,
 }: {
   workroom: Workroom;
   session: Session;
   onJumpEvent: (event: string) => void;
+  /**
+   * Opens the artifact dialog. It lives here because publishing answers no
+   * request and replies to no thread, so neither screen owns it — and because
+   * from a thread it can offer that thread's record as the pointer's basis.
+   */
+  onPublish: () => void;
   /** The thread that is open, if one is: what advisory focus would name. */
   selectedEvent?: string;
 }) {
@@ -122,6 +129,17 @@ export function TopBar({
             <AtSign className="h-3 w-3" />
             {unseen.length}
             <span className="hidden sm:inline"> for you</span>
+          </button>
+        )}
+        {session.actor && (
+          <button
+            type="button"
+            onClick={onPublish}
+            disabled={!session.live}
+            title={session.live ? "Publish an artifact: a signed pointer to one path at one exact commit" : "not present yet"}
+            className="rounded-md border border-border px-2 py-0.5 text-xs text-muted hover:border-accent/50 hover:text-foreground focus-visible:outline focus-visible:outline-accent disabled:opacity-40"
+          >
+            publish
           </button>
         )}
         {session.actor && (
