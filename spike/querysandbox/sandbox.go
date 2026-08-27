@@ -192,7 +192,10 @@ func (s *Sandbox) Query(ctx context.Context, query string) (Result, error) {
 		row := make([]any, len(columns))
 		rowBytes := 0
 		for index := range row {
-			value, size := columnValue(statement, index)
+			value, size, err := columnValue(statement, index)
+			if err != nil {
+				return Result{}, err
+			}
 			row[index] = value
 			rowBytes += size
 		}
@@ -216,22 +219,26 @@ func queryError(ctx context.Context, err error) error {
 	return err
 }
 
-func columnValue(statement *sqlite3.Stmt, column int) (any, int) {
-	switch statement.ColumnType(column) {
+func columnValue(statement *sqlite3.Stmt, column int) (any, int, error) {
+	return columnValueOfType(statement, column, statement.ColumnType(column))
+}
+
+func columnValueOfType(statement *sqlite3.Stmt, column int, datatype sqlite3.Datatype) (any, int, error) {
+	switch datatype {
 	case sqlite3.INTEGER:
-		return statement.ColumnInt64(column), 8
+		return statement.ColumnInt64(column), 8, nil
 	case sqlite3.FLOAT:
-		return statement.ColumnFloat(column), 8
+		return statement.ColumnFloat(column), 8, nil
 	case sqlite3.TEXT:
 		value := statement.ColumnText(column)
-		return value, len(value)
+		return value, len(value), nil
 	case sqlite3.BLOB:
 		value := statement.ColumnBlob(column, nil)
-		return value, len(value)
+		return value, len(value), nil
 	case sqlite3.NULL:
-		return nil, 0
+		return nil, 0, nil
 	default:
-		panic("unreachable SQLite datatype")
+		return nil, 0, fmt.Errorf("unexpected SQLite datatype %d", datatype)
 	}
 }
 

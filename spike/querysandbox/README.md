@@ -61,9 +61,12 @@ deadline and delay checkpoint progress for that period.
   cheap. The deadline is elapsed-time cancellation, not a deterministic
   SQLite step budget. `SQLITE_LIMIT_VDBE_OP` limits prepared program size, not
   executions of a small loop.
-- The byte count covers returned SQLite values. It does not account for Go
-  slice, string, allocator, or JSON-encoding overhead, so it is not a memory
-  quota.
+- `Query` materializes a complete row before applying `MaxResultBytes`. A row
+  containing four 60 KiB values measured 264,352 bytes, or 32.3 times the
+  8 KiB cap, before rejection. Under the existing 32-column and 64 KiB value
+  limits, the dominant SQLite value-byte term can reach roughly 2 MiB. The
+  smaller Go slice, string, allocator, and JSON-encoding overhead sits beside
+  that term, so the cap is not a memory quota.
 - The spike exposes relations by exact name. It does not design per-actor or
   row-level query authority for a mutually untrusted remote deployment.
 - It proves that the SQL `load_extension` entry point is blocked before a file

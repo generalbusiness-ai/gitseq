@@ -166,6 +166,13 @@ func TestResultRowsAndBytesAreBounded(t *testing.T) {
 	}
 }
 
+func TestColumnValueRejectsUnexpectedSQLiteDatatype(t *testing.T) {
+	_, _, err := columnValueOfType(nil, 0, sqlite3.Datatype(0))
+	if err == nil || !strings.Contains(err.Error(), "unexpected SQLite datatype 0") {
+		t.Fatalf("unexpected datatype error = %v", err)
+	}
+}
+
 func TestReaderProceedsWhileImmediateFoldTransactionIsOpen(t *testing.T) {
 	sandbox, _, writer := newFixture(t)
 	tx, err := writer.BeginTx(context.Background(), nil)
