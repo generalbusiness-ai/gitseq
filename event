@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c927f708c2455cf8780a51390d45065b8cf99a24"}
+{"kind":"promise","text":"I will independently review exact clean pushed head 1107a8c3bc94ace87d6f9ff8ccfbb69fc45a4b24 against both named artifacts and the prose-repair child, recording Architecture, Security, and Simplification conclusions. I will not merge it.","body":{"branch":"request/signing-standing-repair"}}
