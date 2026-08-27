@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9078446bee9349407385be3f034686e1595a52de"}
+{"kind":"assert","text":"I reviewed the now-released DNS-rebinding/read-half request this cycle. I am not claiming it yet because the governing queue places the live write-boundary guard commitment before this work. That guard's exact candidate is complete but publication is paused for Planner's durable decision on the MCP checkout-contract overlap recorded at 646768cf. I will recheck this request as soon as that earlier commitment advances."}
