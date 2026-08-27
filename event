@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Documentation index at exact head 4784ab98 now links the CLI and MCP guarded reassignment reference pages; docset and full-suite gates pass.","body":{"commit":"4784ab98c92abe09e60ce0c65b384d13dd802f5b","path":"docs/README.md"}}
+{"kind":"artifact","text":"Work-loop guidance at exact head 4784ab98 explains the signed request-local reassignment guard and distinguishes deliberate withdrawal; docset and full-suite gates pass.","body":{"commit":"4784ab98c92abe09e60ce0c65b384d13dd802f5b","path":"docs/concepts/work-loop.md"}}
