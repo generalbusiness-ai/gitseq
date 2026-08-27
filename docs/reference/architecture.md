@@ -302,6 +302,13 @@ An effective binding records:
 - the fold-profile version or hash that gives the application's records their
   exact meaning.
 
+A replacement additionally records the exact genesis and outgoing fold
+version. The signed intent already targets that genesis; carrying it in the
+canonical replacement payload makes the transition legible on its own. The
+outgoing version is a compare-and-set condition, not commentary: if another
+replacement has moved the binding before this one can append, admission
+refuses it instead of silently overwriting the newer choice.
+
 Reading or recording a binding never fetches, builds, or runs application
 code. The source URL remains inert provenance until a person deliberately
 uses it outside Gitseq.
@@ -327,6 +334,16 @@ and its position in the sequence is the transition. The initializing key is
 the binding authority; the host accepts the replacement only when the named
 application and fold are held by the build that opens the repository. The
 source URL remains inert provenance and cannot install code.
+
+Replacing a binding authorizes the incoming fold to interpret every existing
+record; it does not prove that the fold preserves the outgoing fold's
+judgments. Before publishing a fold-version bump that anyone will migrate
+across, the application must therefore publish either evidence that both folds
+produce the same judgments over the existing log, or an enumeration of every
+difference and why it is acceptable. A checked-in legacy projection fixture,
+such as `internal/workroom/testdata/legacy_projection.golden.json`, is one
+repeatable way to supply equivalence evidence. The replacement operation does
+not manufacture this proof and must not be presented as doing so.
 
 Opening a repository has one fixed order: **read the binding, select the named
 interpreter, then fold**. A host must never fold with a guessed interpreter and
@@ -716,13 +733,14 @@ the kernel, and it is the only gitseq package such a module can import: every
 other package here is `internal/`, which the compiler enforces across the
 module boundary. What that surface exports is therefore the whole contract.
 
-It exports four acts and nothing else. `Init` creates a sequence and binds it
-to the application permanently, recording the binding as the log's first record
-so that the key which signed it is the initializing key from then on. `Open`
-verifies the sequence and then hands it back only to the application it is
-bound to, refusing anything else as verifiable but uninterpretable. `Append`
-signs one act with a caller's key and gives it a position. `Records` returns
-the verified ordered records.
+It exports five acts and nothing else. `Init` creates a sequence and records
+the first application binding, making that record's signer the initializing
+key. `Open` verifies the sequence and then hands it back only to the application
+and exact fold it is bound to, refusing anything else as verifiable but
+uninterpretable. `ReplaceBinding` lets the initializing key record an evidenced
+transition to another exact fold without weakening that open-time equality.
+`Append` signs one application act with a caller's key and gives it a position.
+`Records` returns the verified ordered records.
 
 There is no projection in that list, and its absence is the boundary. An
 outside application holds its own fold and its own state; gitseq gives it

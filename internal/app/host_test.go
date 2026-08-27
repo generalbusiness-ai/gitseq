@@ -585,16 +585,18 @@ func TestRetryingOneBindingSubmissionAppendsOnce(t *testing.T) {
 
 func TestBindingPayloadsAreCanonicalAndComplete(t *testing.T) {
 	for name, payload := range map[string]string{
-		"no application":       `{"fold_version":"workroom-fold@3"}`,
-		"no fold version":      `{"application":"workroom"}`,
-		"bare source commit":   `{"application":"workroom","source_commit":"deadbeef","fold_version":"workroom-fold@3"}`,
-		"unknown field":        `{"application":"workroom","fold_version":"workroom-fold@3","interpreter":"anything"}`,
-		"not canonical":        `{"application":"workroom", "fold_version":"workroom-fold@3"}`,
-		"reordered fields":     `{"fold_version":"workroom-fold@3","application":"workroom"}`,
-		"trailing json":        `{"application":"workroom","fold_version":"workroom-fold@3"}{}`,
-		"empty":                ``,
-		"empty source commit":  `{"application":"workroom","source_commit":"","fold_version":"workroom-fold@3"}`,
-		"unqualified url form": `{"application":"workroom","source_commit":"sha1:deadbeef","fold_version":"workroom-fold@3"}`,
+		"no application":               `{"fold_version":"workroom-fold@3"}`,
+		"no fold version":              `{"application":"workroom"}`,
+		"bare source commit":           `{"application":"workroom","source_commit":"deadbeef","fold_version":"workroom-fold@3"}`,
+		"unknown field":                `{"application":"workroom","fold_version":"workroom-fold@3","interpreter":"anything"}`,
+		"not canonical":                `{"application":"workroom", "fold_version":"workroom-fold@3"}`,
+		"reordered fields":             `{"fold_version":"workroom-fold@3","application":"workroom"}`,
+		"trailing json":                `{"application":"workroom","fold_version":"workroom-fold@3"}{}`,
+		"empty":                        ``,
+		"empty source commit":          `{"application":"workroom","source_commit":"","fold_version":"workroom-fold@3"}`,
+		"unqualified url form":         `{"application":"workroom","source_commit":"sha1:deadbeef","fold_version":"workroom-fold@3"}`,
+		"replacement without genesis":  `{"application":"workroom","fold_version":"workroom-fold@3","previous_fold_version":"workroom-fold@2"}`,
+		"replacement without outgoing": `{"application":"workroom","fold_version":"workroom-fold@3","genesis":"git:sha1:0123456789012345678901234567890123456789"}`,
 	} {
 		if _, err := apphost.DecodeBinding([]byte(payload)); err == nil {
 			t.Fatalf("%s: decoded %q, want a refusal", name, payload)

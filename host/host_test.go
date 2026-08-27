@@ -17,6 +17,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 )
 
@@ -328,6 +329,118 @@ func TestOpenRefusesAnotherFoldVersion(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), testFold) {
 		t.Fatalf("refusal %q does not name the fold the repository is bound to", err)
+	}
+}
+
+func TestInitializingActorReplacesTheBindingAndTheNewFoldOpens(t *testing.T) {
+	ctx := context.Background()
+	repo, _, initializer := initialized(t, ctx)
+	incoming := testApplication()
+	incoming.FoldVersion = testFold + "-next"
+
+	replacement, err := host.ReplaceBinding(ctx, repo, incoming, initializer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacement.Genesis == "" || replacement.Application != testName ||
+		replacement.OutgoingFoldVersion != testFold || replacement.IncomingFoldVersion != incoming.FoldVersion {
+		t.Fatalf("replacement = %+v, want the exact genesis and fold transition", replacement)
+	}
+	decoded, err := apphost.DecodeBinding(replacement.Record.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Genesis != "git:sha1:"+replacement.Genesis || decoded.PreviousFoldVersion != testFold || decoded.FoldVersion != incoming.FoldVersion {
+		t.Fatalf("recorded binding = %+v, want the exact genesis and fold transition", decoded)
+	}
+	if _, err := host.Open(ctx, repo, incoming); err != nil {
+		t.Fatalf("new-version build could not open the replaced repository: %v", err)
+	}
+	if _, err := host.Open(ctx, repo, testApplication()); !errors.Is(err, host.ErrUninterpretable) {
+		t.Fatalf("old-version open = %v, want the replacement to be in force", err)
+	}
+	if _, err := host.ReplaceBinding(ctx, repo, incoming, initializer); err == nil || !strings.Contains(err.Error(), "already in force") {
+		t.Fatalf("identical replacement = %v, want a refusal", err)
+	}
+}
+
+func TestBindingReplacementByAnotherActorLeavesThePreviousBindingInForce(t *testing.T) {
+	ctx := context.Background()
+	repo, workspace, _ := initialized(t, ctx)
+	incoming := testApplication()
+	incoming.FoldVersion = testFold + "-next"
+
+	if _, err := host.ReplaceBinding(ctx, repo, incoming, testKey(t)); err == nil || !strings.Contains(err.Error(), "initializing actor") {
+		t.Fatalf("unauthorized replacement = %v, want an initializing-actor refusal", err)
+	}
+	if _, err := host.Open(ctx, repo, testApplication()); err != nil {
+		t.Fatalf("previous binding no longer opens: %v", err)
+	}
+	log, err := workspace.Records(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if log.Depth != 1 {
+		t.Fatalf("unauthorized replacement changed log depth to %d, want 1", log.Depth)
+	}
+}
+
+func TestMalformedBindingShapedRecordLeavesThePreviousBindingInForce(t *testing.T) {
+	ctx := context.Background()
+	repo, _, initializer := initialized(t, ctx)
+	appendRawBinding(t, ctx, repo, initializer, []byte(`{"application":"only-half-a-binding"}`), "malformed-binding")
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := apphost.LoadConfig(apphost.MetaDir(commonDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongTransition, err := (apphost.Binding{
+		Application: testName, FoldVersion: testFold + "-next",
+		Genesis: "git:" + config.ObjectFormat + ":" + config.Genesis, PreviousFoldVersion: "some-other-fold@0",
+	}).Payload()
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendRawBinding(t, ctx, repo, initializer, wrongTransition, "wrong-outgoing-binding")
+
+	if _, err := host.Open(ctx, repo, testApplication()); err != nil {
+		t.Fatalf("previous binding no longer opens after malformed record: %v", err)
+	}
+	incoming := testApplication()
+	incoming.FoldVersion = testFold + "-next"
+	if _, err := host.Open(ctx, repo, incoming); !errors.Is(err, host.ErrUninterpretable) {
+		t.Fatalf("new-version open = %v, want the previous binding to remain in force", err)
+	}
+}
+
+func appendRawBinding(t *testing.T, ctx context.Context, repo string, signer ed25519.PrivateKey, payload []byte, key string) {
+	t.Helper()
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := apphost.LoadConfig(apphost.MetaDir(commonDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := gitstore.Store{Repo: commonDir}
+	tree, err := gitstore.HashPayloadTree(config.ObjectFormat, payload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version, Target: "git:" + config.ObjectFormat + ":" + config.Genesis,
+		Schema: apphost.BindingSchema, PayloadTree: "git:" + config.ObjectFormat + ":" + tree,
+		IdempotencyNS: testName, IdempotencyKey: key,
+	}, signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kernel.Submit(ctx, store, kernel.Request{Signed: signed, Payload: payload}, kernel.Options{SigningKey: config.SequencerKey}); err != nil {
+		t.Fatal(err)
 	}
 }
 
