@@ -85,6 +85,19 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 		if properties, exists := schema["properties"]; exists && properties == nil {
 			t.Fatalf("tool schema contains properties:null: %#v", tool)
 		}
+		// A client that only reads structuredContent when the tool declares an
+		// output schema sees nothing from a tool that omits one, so the naming
+		// here is deliberate: the failure has to say which tool is silent, not
+		// merely that some tool is. The type is checked because the protocol
+		// admits only an object schema, and a schema of any other type would be
+		// worse than none.
+		output, declared := definition["outputSchema"].(map[string]any)
+		if !declared {
+			t.Fatalf("tool %q declares no object outputSchema, so structuredContent is invisible to clients that require one: %#v", definition["name"], definition["outputSchema"])
+		}
+		if output["type"] != "object" {
+			t.Fatalf("tool %q declares outputSchema type %#v, want object", definition["name"], output["type"])
+		}
 	}
 	for _, name := range []string{"work", "artifacts", "inspect"} {
 		if listed[name] == nil {

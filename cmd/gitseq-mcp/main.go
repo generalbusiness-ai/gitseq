@@ -575,7 +575,7 @@ func tools() []map[string]any {
 		}
 		return fields
 	}
-	return []map[string]any{
+	definitions := []map[string]any{
 		{"name": "whoami", "description": "Show the configured durable actor and selected workroom without disclosing the resident credential.", "inputSchema": object(withRepo(nil))},
 		{"name": "presence", "description": "Inspect leased presence, or update this session's advisory activity. Focus does not claim or complete work.", "inputSchema": object(withRepo(map[string]any{
 			"status": map[string]any{"type": "string", "enum": []string{"available", "busy", "waiting", "blocked"}},
@@ -620,6 +620,39 @@ func tools() []map[string]any {
 			"idempotency_key": stringField,
 		}), "old_request", "to", "text", "conditions", "idempotency_key")},
 	}
+	// Some clients only look for structuredContent when the tool advertises an
+	// output schema, and this adapter has always returned structuredContent, so
+	// the payload was invisible to them for no reason other than a missing
+	// declaration. Declaring one is not free: a conformant client validates
+	// structuredContent against the schema and rejects a response that does not
+	// conform, which means an over-specific schema breaks a client that works
+	// today, while no schema at all merely leaves it where it already was. The
+	// schema is therefore the weakest true statement the adapter can make.
+	//
+	// What it asserts is that the payload is a JSON object, and that holds on
+	// every path. dispatch returns a Go map for whoami, presence, state,
+	// ratify, supersede, review, say, ack, and reassign_if_unclaimed, and a
+	// statusview struct for status, wait, work, artifacts, and inspect; both
+	// encode as an object. The failure path never reaches here at all, because
+	// a refused call answers with isError and content and carries no
+	// structuredContent to validate.
+	//
+	// It deliberately names no keys. Most tools answer from the resident when
+	// one is reachable and from a degraded local fold when it is not, and the
+	// paged tools answer differently again when a page is empty or capped, so
+	// a key proved present on one of those paths is not thereby present on the
+	// others. Naming it would turn a correct response into a rejected one.
+	// additionalProperties is written out rather than left to the default so a
+	// later reader can see the permissiveness was chosen and not overlooked.
+	// Tightening one tool against its own proved responses is a safe later
+	// change; guessing at all fourteen now is not.
+	//
+	// The schema is attached here rather than repeated in each definition so
+	// that a tool added later cannot be the one that forgets it.
+	for _, definition := range definitions {
+		definition["outputSchema"] = map[string]any{"type": "object", "additionalProperties": true}
+	}
+	return definitions
 }
 
 // absolute names a repository the same way every time, so two calls that mean
