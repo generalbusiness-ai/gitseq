@@ -6,6 +6,17 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
+import {
+  COMPANION_NOTE,
+  INTERFACE_NOTE,
+  PROPOSAL,
+  realProjection,
+  REVIEW_APPROVAL,
+  REVIEW_PROMISE,
+  REVIEW_REQUEST,
+  SEED,
+} from "./real-log.mjs";
+
 const uiRoot = fileURLToPath(new URL("..", import.meta.url));
 
 function workroom(projection) {
@@ -177,6 +188,94 @@ test("arrival opens and marks the record the user clicked without a further clic
     );
     assert.match(markup, new RegExp(note), "the focused record's whole id is on the page on arrival");
     assert.match(markup, /aria-current="true"/, "the focused row is marked as the one the user asked for");
+  } finally {
+    await vite.close();
+  }
+});
+
+// The grouping defect, driven on the records it was found on. See
+// test/real-log.mjs: seven verbatim records from this workroom's own log,
+// #1 through #11872.
+//
+// Reading the first basis as a reply is right inside one commitment and wrong
+// across two. Review request #11869 opens by citing artifact #11867, which
+// rests on proposal #6, which rests on the founding seed #1 — so the walk
+// carried the request, its promise and its approval into the thread of "hugh
+// begins the workroom", a record nothing in the log answers. On the whole log
+// that was 3040 of 13800 records and 431 whole commitments filed under the
+// seed; the approval landed under "Earlier rounds — superseded review
+// verdicts", in a thread that has never had a review round.
+//
+// Both directions are asserted, because dropping the edge would be no better
+// than inventing it if the records then belonged nowhere. They belong to their
+// own commitment, and that is where the second half looks for them.
+test("a commitment reached by citation is its own thread, not a descendant of what it cited", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { buildThreadIndex } = await vite.ssrLoadModule("/src/lib/threads.ts");
+    const projection = realProjection();
+    const index = buildThreadIndex(projection);
+
+    const seeded = index.content(SEED).events;
+    assert.deepEqual(
+      seeded,
+      [PROPOSAL, INTERFACE_NOTE, COMPANION_NOTE],
+      "the seed's thread is the records that really reply to it: one proposal and the two artifacts resting on it",
+    );
+    assert.ok(seeded.length > 0, "and it is not empty, so the absences below are absences and not a walk that never ran");
+    for (const [name, event] of [["request", REVIEW_REQUEST], ["promise", REVIEW_PROMISE], ["approval", REVIEW_APPROVAL]]) {
+      assert.ok(!seeded.includes(event), `the review ${name} is not filed under the founding seed`);
+    }
+
+    assert.deepEqual(
+      index.content(REVIEW_REQUEST).events,
+      [REVIEW_PROMISE, REVIEW_APPROVAL],
+      "and the three records are whole in the commitment that owns them, rather than dropped",
+    );
+  } finally {
+    await vite.close();
+  }
+});
+
+// The same fact on the screen, because the walk feeds the thread and the
+// thread is what a reader sees. Opening the seed with the approval as the
+// clicked record used to open the expander holding it and print it; now there
+// is no expander holding it, and the arrival is quiet about a record that was
+// never in this thread.
+//
+// The positive half is in the same markup rather than in a second test: the
+// seed's own row and the two artifacts it really holds have to be on the page
+// before "the approval is not on the page" says anything at all.
+test("the founding seed's thread renders its own records and not another commitment's", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { Thread } = await vite.ssrLoadModule("/src/components/Thread.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const projection = realProjection();
+    const markup = renderToStaticMarkup(
+      React.createElement(Thread, {
+        index: buildRecordIndex(projection),
+        workroom: workroom(projection),
+        session,
+        frames: [],
+        root: SEED,
+        focus: REVIEW_APPROVAL,
+        pending: [],
+        onBack() {},
+        onOpenThread() {},
+        onSay: () => "id",
+        onSayFailed() {},
+        doAct() {},
+      }),
+    );
+
+    assert.match(markup, /hugh begins the workroom/, "the thread rendered: its root station names the seed");
+    assert.match(markup, /Repair chain/, "and rendered the two retired artifacts that really descend from it");
+    assert.match(markup, /Proposals/, "and the proposal that really rests on it");
+
+    assert.doesNotMatch(markup, new RegExp(REVIEW_APPROVAL), "the approval's id is nowhere on the seed's thread");
+    assert.doesNotMatch(markup, /APPROVED at exact head/, "nor its text, under any expander");
+    assert.doesNotMatch(markup, /Ox-checker: independently review/, "nor the request that opened that commitment");
   } finally {
     await vite.close();
   }
