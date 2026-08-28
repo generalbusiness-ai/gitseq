@@ -459,6 +459,29 @@ records the binding at init for an application an absent binding does not
 already name, and reads the binding in force as the workspace opens, before it
 can fold or append anything.
 
+The public `host` boundary keeps actor custody and sequencer custody separate.
+For an actor-held key, `Prepare` returns the canonical encoded intent without
+writing or reserving anything. `ActorSigningBytes` asks `internal/intent` for
+the fresh domain-separated bytes the actor signs outside the host, so the
+public boundary never names or reconstructs the kernel's domain tag.
+`internal/intent.SigningBytes` canonical-decodes the intent before returning
+those bytes, and both local `Sign` and admission `Verify` use that one
+construction. `AppendSigned` receives only the prepared act, public key and
+signature. Before submission it verifies the signature and requires the signed
+sequence, application idempotency namespace, non-host schema and payload tree
+to match this workspace. A malformed or tampered public submission therefore
+reaches no Git write. `Append` remains the local-custody convenience over the
+same kernel protocol.
+
+Sequencer custody is explicit when an already-fetched clone becomes a writer.
+`OpenAttached` takes a public attachment description containing the existing
+genesis and a local OpenSSH sequencer-key path. It derives the object format
+from the clone, verifies the existing sequence before interpreting its binding,
+and creates neither a genesis nor repository configuration. The kernel still
+checks that key against the verified current sequencer at append. This makes
+opening an attached writer a different operation from `Init`, without exposing
+`internal/apphost.Config` or changing sequencing semantics.
+
 The detailed product design is recorded in
 `notes/2026-08-13-second-application.md`. Its merged historical filing was
 artifact
@@ -1351,7 +1374,7 @@ the same result.
 | `host/live` | Live runtime, public surface | Owns the single process-local coordination runtime. It opens public-key leases only after an expiring single-use possession proof, exposes a separate trusted-only custodial entry point, prepares deterministic application-neutral frame drafts, verifies actor signatures made outside the runtime, binds conversations to exact scopes, supplies runtime ordering, and retains bounded live state. Its optional composition helper keeps caller-owned durable frontiers separate from live cursors. It imports no application profile and is independent of the durable Workroom fold. |
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
 | `internal/apphost` | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and the binding in force shared by every host, together with the repository configuration a checkout needs to reopen its own log. It imports no application profile and has no application ontology. |
-| `host` | Durable application host, public surface | Exports binding at init, opening against a declared application, appending a signed act, and reading the verified record stream — and no projection, because the outside application owns its fold. It depends on the kernel and `internal/apphost`, never on an application profile. |
+| `host` | Durable application host, public surface | Exports binding at init, configured and attached-clone opening against a declared application, local-custody append, prepare/submit for externally actor-signed acts, and the verified record stream — and no projection, because the outside application owns its fold. It delegates canonical signing-byte construction to `internal/intent`, so no public host API names the kernel's domain tag. Attached opening receives a genesis and sequencer-key path through public fields, verifies before interpreting, and never initializes or exposes `internal/apphost.Config`. It depends on the kernel and `internal/apphost`, never on an application profile. |
 | `host/identity` | Application host, public surface | Holds the host identity vocabulary an application inherits rather than reinvents: witness declarations, witnessed GitHub and self-signed Nostr anchors, withdrawal, and two-axis resolution with a plain display at an exact verified record position. It imports `host` and no application profile, gates no append, and reads no clock. Nostr BIP-340 verification stays in this host interpreter, outside the Ed25519 kernel. The provider check that turns a GitHub login into an identity runs outside the fold, and only its result is recorded. |
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it opens the repository's configured actor and sequencer key custody, builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. The trusted resident may invoke this local custody for several actors; the nexus credential does not alter key files, kernel verification or fold authority. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |

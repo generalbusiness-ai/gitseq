@@ -8,21 +8,27 @@
 // here decodes an application payload, so nothing here can disagree with the
 // application about what its records mean.
 //
-// The whole surface is five acts:
+// The whole surface is eight acts:
 //
 //	ws, err := host.Init(ctx, dir, app, initializer, host.Options{})
 //	ws, err := host.Open(ctx, dir, app)
+//	ws, err := host.OpenAttached(ctx, clone, app, host.Attachment{Genesis: genesis, SequencerKey: key})
 //	replacement, err := host.ReplaceBinding(ctx, dir, nextApp, initializer)
 //	rec, err := ws.Append(ctx, signer, host.Act{Schema: "chess/move@0", Payload: encoded})
+//	draft, err := ws.Prepare(host.Act{Schema: "chess/move@0", Payload: encoded})
+//	rec, err := ws.AppendSigned(ctx, host.SignedAct{Prepared: draft, ActorKey: public, ActorSignature: signature})
 //	log, err := ws.Records(ctx)
 //
 // Init records the first binding and makes its signer the binding authority.
 // Open refuses to hand back a repository bound to an application or fold this
-// build does not hold. ReplaceBinding lets that initializing signer record an
-// ordered replacement after establishing the migration is sound. Append signs
-// one application act with the caller's key and gives it a position. Records
-// returns the verified ordered records for the application to fold. There is
-// no projection here, because the projection is the application's.
+// build does not hold. OpenAttached opens an already-fetched sequence with
+// caller-supplied sequencer custody; unlike Init, it never creates a sequence.
+// ReplaceBinding lets that initializing signer record an ordered replacement
+// after establishing the migration is sound. Append signs one application act
+// with the caller's key and gives it a position. Prepare and AppendSigned split
+// that operation so the actor can sign outside this process. Records returns
+// the verified ordered records for the application to fold. There is no
+// projection here, because the projection is the application's.
 //
 // # Binding
 //
@@ -146,6 +152,15 @@ type Options struct {
 	PayloadCeiling uint64
 }
 
+// Attachment identifies one already-fetched sequence and the local sequencer
+// custody that may extend it. OpenAttached derives the object format and every
+// other kernel fact from the verified repository. SequencerKey is a path to an
+// OpenSSH Ed25519 private key; the key itself is never copied into this value.
+type Attachment struct {
+	Genesis      string
+	SequencerKey string
+}
+
 // Act is one thing an actor does. Gitseq carries Schema and Payload without
 // reading them; the application owns both.
 type Act struct {
@@ -165,6 +180,26 @@ type Act struct {
 	// unique and generates one, which is right for a fresh act and wrong for
 	// a retry.
 	IdempotencyKey string
+}
+
+// PreparedAct is an application act bound to this sequence and ready for its
+// actor to sign. Intent is canonical kernel intent bytes. Payload is carried
+// beside it because its Git tree identifier is already inside Intent.
+//
+// Preparation writes nothing. Keep the whole value for a retry: when the
+// caller omitted Act.IdempotencyKey, preparation chose one and signed it into
+// Intent.
+type PreparedAct struct {
+	Intent  []byte `json:"intent"`
+	Payload []byte `json:"payload"`
+}
+
+// SignedAct carries an actor signature made outside the host. The host never
+// receives the corresponding private key.
+type SignedAct struct {
+	Prepared       PreparedAct       `json:"prepared"`
+	ActorKey       ed25519.PublicKey `json:"actor_key"`
+	ActorSignature []byte            `json:"actor_signature"`
 }
 
 // Record is one accepted act, as the application's fold will see it.
@@ -347,13 +382,52 @@ func Open(ctx context.Context, repo string, application Application) (*Workspace
 		return nil, err
 	}
 	workspace := newWorkspace(config, gitstore.Store{Repo: commonDir})
+	return openBound(ctx, workspace, application)
+}
+
+// OpenAttached opens an existing sequence whose refs have already been
+// fetched into repo, using caller-supplied sequencer custody to make the
+// returned workspace writable. It never creates a sequence or writes Gitseq
+// configuration, which keeps attaching distinct from initialization and lets
+// an outside application use this boundary without importing internal/apphost.
+//
+// Genesis must name the fetched sequence. SequencerKey is checked by the
+// kernel on the first append against the sequence's verified current key; a
+// missing, malformed, stale, or unrelated key cannot advance the sequence.
+func OpenAttached(ctx context.Context, repo string, application Application, attachment Attachment) (*Workspace, error) {
+	if err := application.validate(); err != nil {
+		return nil, err
+	}
+	if attachment.SequencerKey == "" {
+		return nil, errors.New("attachment sequencer key is required")
+	}
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	store := gitstore.Store{Repo: commonDir}
+	format, err := store.ObjectFormat(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := apphost.ValidateGenesis(format, attachment.Genesis); err != nil {
+		return nil, fmt.Errorf("invalid attachment genesis: %w", err)
+	}
+	workspace := newWorkspace(apphost.Config{
+		Version: 0, Genesis: attachment.Genesis, ObjectFormat: format,
+		IdempotencyNamespace: application.Name, SequencerKey: attachment.SequencerKey,
+	}, store)
+	return openBound(ctx, workspace, application)
+}
+
+func openBound(ctx context.Context, workspace *Workspace, application Application) (*Workspace, error) {
 	// The kernel speaks first, and the frontier it verified is what the
 	// binding is then read out of.
 	verified, err := workspace.Records(ctx)
 	if err != nil {
 		return nil, err
 	}
-	recorded, err := apphost.BindingInForce(ctx, workspace.store, config.Genesis, verified.Head)
+	recorded, err := apphost.BindingInForce(ctx, workspace.store, workspace.genesis, verified.Head)
 	if err != nil {
 		return nil, err
 	}
@@ -511,23 +585,110 @@ func (w *Workspace) Append(ctx context.Context, signer ed25519.PrivateKey, act A
 	if len(signer) != ed25519.PrivateKeySize {
 		return Record{}, errors.New("signer must be an ed25519 private key")
 	}
-	if act.Schema == "" {
-		return Record{}, errors.New("act schema is required")
+	if err := w.validateAct(act.Schema); err != nil {
+		return Record{}, err
+	}
+	return w.append(ctx, signer, act.Schema, act.Payload, act.RestsOn, act.IdempotencyKey)
+}
+
+// Prepare binds an application act to this sequence and returns the exact
+// canonical intent an actor must sign. It retains no draft and writes no Git
+// object. When IdempotencyKey is empty it chooses one here, so a caller must
+// retry with the returned PreparedAct rather than prepare the act again.
+func (w *Workspace) Prepare(act Act) (PreparedAct, error) {
+	if err := w.validateAct(act.Schema); err != nil {
+		return PreparedAct{}, err
+	}
+	tree, err := gitstore.HashPayloadTree(w.objectFormat, act.Payload, nil)
+	if err != nil {
+		return PreparedAct{}, err
+	}
+	key := act.IdempotencyKey
+	if key == "" {
+		key, err = randomKey()
+		if err != nil {
+			return PreparedAct{}, err
+		}
+	}
+	encoded, err := intent.Encode(intent.Intent{
+		Version: intent.Version, Target: "git:" + w.objectFormat + ":" + w.genesis,
+		Schema: act.Schema, PayloadTree: "git:" + w.objectFormat + ":" + tree,
+		RestsOn: act.RestsOn, IdempotencyNS: w.namespace, IdempotencyKey: key,
+	})
+	if err != nil {
+		return PreparedAct{}, err
+	}
+	return PreparedAct{Intent: encoded, Payload: bytes.Clone(act.Payload)}, nil
+}
+
+// ActorSigningBytes returns the exact domain-separated bytes an actor signs
+// for Prepared. It accepts only a canonical kernel intent; malformed or
+// non-canonical input is refused before any signature can be mistaken for a
+// Gitseq act.
+func ActorSigningBytes(prepared PreparedAct) ([]byte, error) {
+	return intent.SigningBytes(prepared.Intent)
+}
+
+// AppendSigned verifies and sequences an act signed outside the host. It
+// accepts only the sequence, namespace, schema and payload tree Prepare would
+// have produced for this workspace. Rejected signatures and tampered drafts
+// reach no Git write.
+func (w *Workspace) AppendSigned(ctx context.Context, submission SignedAct) (Record, error) {
+	signed := intent.Signed{
+		Intent: bytes.Clone(submission.Prepared.Intent), ActorKey: bytes.Clone(submission.ActorKey),
+		Signature: bytes.Clone(submission.ActorSignature),
+	}
+	decoded, err := intent.Verify(signed)
+	if err != nil {
+		return Record{}, err
+	}
+	if err := w.validatePrepared(decoded, submission.Prepared.Payload); err != nil {
+		return Record{}, err
+	}
+	return w.submitSigned(ctx, signed, decoded, submission.Prepared.Payload)
+}
+
+func (w *Workspace) validateAct(schema string) error {
+	if schema == "" {
+		return errors.New("act schema is required")
 	}
 	if w.sequencerKey == "" {
 		// A repository attached for reading holds no sequencer key. Saying so
 		// here is better than letting the kernel refuse an unsigned position
 		// and leaving the caller to work out which key was missing.
-		return Record{}, errors.New("repository is attached read-only: it holds no sequencer key to append with")
+		return errors.New("repository is attached read-only: it holds no sequencer key to append with")
 	}
-	if act.Schema == apphost.BindingSchema {
+	if schema == apphost.BindingSchema {
 		// The binding is host vocabulary, not application vocabulary. Letting
 		// an application write one through this path would put a record with
 		// binding authority's schema in the log without the checks Init makes
 		// about who signs it and where it stands.
-		return Record{}, fmt.Errorf("schema %q is reserved for the host binding", act.Schema)
+		return fmt.Errorf("schema %q is reserved for the host binding", schema)
 	}
-	return w.append(ctx, signer, act.Schema, act.Payload, act.RestsOn, act.IdempotencyKey)
+	return nil
+}
+
+func (w *Workspace) validatePrepared(decoded intent.Intent, payload []byte) error {
+	if err := w.validateAct(decoded.Schema); err != nil {
+		return err
+	}
+	if decoded.Target != "git:"+w.objectFormat+":"+w.genesis {
+		return errors.New("signed act targets a different sequence")
+	}
+	if decoded.IdempotencyNS != w.namespace {
+		return errors.New("signed act uses a different idempotency namespace")
+	}
+	if decoded.EnvelopeVersion != 0 || len(decoded.CapabilityHash) != 0 {
+		return errors.New("signed act uses host-unsupported envelope fields")
+	}
+	tree, err := gitstore.HashPayloadTree(w.objectFormat, payload, nil)
+	if err != nil {
+		return err
+	}
+	if decoded.PayloadTree != "git:"+w.objectFormat+":"+tree {
+		return errors.New("signed act payload does not match its intent")
+	}
+	return nil
 }
 
 func (w *Workspace) append(ctx context.Context, signer ed25519.PrivateKey, schema string, payload []byte, restsOn []string, idempotencyKey string) (Record, error) {
@@ -556,6 +717,14 @@ func (w *Workspace) append(ctx context.Context, signer ed25519.PrivateKey, schem
 	if err != nil {
 		return Record{}, err
 	}
+	return w.submitSigned(ctx, signed, intent.Intent{
+		Version: intent.Version, Target: "git:" + w.objectFormat + ":" + w.genesis,
+		Schema: schema, PayloadTree: "git:" + w.objectFormat + ":" + tree,
+		RestsOn: restsOn, IdempotencyNS: w.namespace, IdempotencyKey: idempotencyKey,
+	}, payload)
+}
+
+func (w *Workspace) submitSigned(ctx context.Context, signed intent.Signed, decoded intent.Intent, payload []byte) (Record, error) {
 	w.mu.Lock()
 	if w.submitter == nil {
 		w.submitter = kernel.NewSubmitter(w.store, kernel.Options{SigningKey: w.sequencerKey, MaxQueueDepth: queueDepth})
@@ -568,8 +737,8 @@ func (w *Workspace) append(ctx context.Context, signer ed25519.PrivateKey, schem
 	}
 	return Record{
 		ID: w.eventID(result.Commit), Actor: actorFingerprint(signed.ActorKey),
-		ActorKey: ed25519.PublicKey(signed.ActorKey), Schema: schema, Payload: payload,
-		RestsOn: restsOn, Timestamp: result.Timestamp,
+		ActorKey: ed25519.PublicKey(signed.ActorKey), Schema: decoded.Schema, Payload: payload,
+		RestsOn: decoded.RestsOn, Timestamp: result.Timestamp,
 	}, nil
 }
 

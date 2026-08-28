@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"math"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -61,6 +62,18 @@ func initialized(t *testing.T, ctx context.Context) (string, *host.Workspace, ed
 		t.Fatal(err)
 	}
 	return repo, workspace, key
+}
+
+func externallySign(t testing.TB, prepared host.PreparedAct, private ed25519.PrivateKey) host.SignedAct {
+	t.Helper()
+	message, err := host.ActorSigningBytes(prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return host.SignedAct{
+		Prepared: prepared, ActorKey: private.Public().(ed25519.PublicKey),
+		ActorSignature: ed25519.Sign(private, message),
+	}
 }
 
 // The whole point of the package in one test: an application creates a
@@ -129,6 +142,207 @@ func TestOutsideApplicationAppendsAndReplaysItsOwnRecords(t *testing.T) {
 		if record.ID != log.Records[index].ID || !bytes.Equal(record.Payload, log.Records[index].Payload) {
 			t.Fatalf("record %d differs between the writer and a fresh reader", index)
 		}
+	}
+}
+
+// The actor signs outside host and submits only public material. The host's
+// private-key Append remains a convenience, not the only way to write.
+func TestExternallySignedActAppendsWithoutPrivateKeyCustody(t *testing.T) {
+	ctx := context.Background()
+	_, workspace, _ := initialized(t, ctx)
+	actor := testKey(t)
+	prepared, err := workspace.Prepare(host.Act{
+		Schema: "test/move@0", Payload: []byte(`{"m":"e4"}`), IdempotencyKey: "external-move-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := workspace.AppendSigned(ctx, externallySign(t, prepared, actor))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Schema != "test/move@0" || string(record.Payload) != `{"m":"e4"}` || !record.ActorKey.Equal(actor.Public()) {
+		t.Fatalf("record = %+v, want the externally signed act and actor", record)
+	}
+
+	// The prepared idempotency position is the retry token. Reusing it returns
+	// the same record; preparing the source act again would intentionally make
+	// a fresh act when no key was supplied.
+	replay, err := workspace.AppendSigned(ctx, externallySign(t, prepared, actor))
+	if err != nil || replay.ID != record.ID {
+		t.Fatalf("external retry = %+v, %v, want %s", replay, err, record.ID)
+	}
+}
+
+// Signature, actor key, canonical encoding, payload, sequence, namespace,
+// unsupported envelope fields, and reserved-schema checks all sit before
+// submission. The exact sequence error makes that assertion sensitive to the
+// host guard: the kernel also refuses another target, but with a different
+// error. The loose-object count makes the payload assertion mutation-sensitive:
+// the kernel also refuses a mismatched payload tree, but only after writing the
+// presented payload tree, which this boundary promises not to reach for
+// malformed public input.
+func TestAppendSignedRejectsTamperingBeforeAnyGitWrite(t *testing.T) {
+	ctx := context.Background()
+	repo, workspace, _ := initialized(t, ctx)
+	actor := testKey(t)
+	prepared, err := workspace.Prepare(host.Act{Schema: "test/move@0", Payload: []byte("e4"), IdempotencyKey: "tamper"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := workspace.Records(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objectsBefore := looseObjects(t, commonDir)
+
+	tamperedPayload := externallySign(t, prepared, actor)
+	tamperedPayload.Prepared.Payload = []byte("d4")
+	if _, err := workspace.AppendSigned(ctx, tamperedPayload); err == nil || !strings.Contains(err.Error(), "payload") {
+		t.Fatalf("tampered payload = %v, want a payload refusal", err)
+	}
+	if got := looseObjects(t, commonDir); got != objectsBefore {
+		t.Fatalf("tampered payload wrote %d loose objects, had %d", got, objectsBefore)
+	}
+
+	badSignature := externallySign(t, prepared, actor)
+	badSignature.ActorSignature[0] ^= 0xff
+	if _, err := workspace.AppendSigned(ctx, badSignature); err == nil || !strings.Contains(err.Error(), "signature") {
+		t.Fatalf("tampered signature = %v, want a signature refusal", err)
+	}
+
+	actorMismatch := externallySign(t, prepared, actor)
+	actorMismatch.ActorKey = testKey(t).Public().(ed25519.PublicKey)
+	if _, err := workspace.AppendSigned(ctx, actorMismatch); err == nil || err.Error() != "invalid actor signature" {
+		t.Fatalf("actor-key mismatch = %v, want invalid actor signature", err)
+	}
+
+	// Version zero is canonically encoded as 0x00. Its two-byte CBOR form has
+	// the same value, but AppendSigned must still reject it as non-canonical.
+	noncanonical := externallySign(t, prepared, actor)
+	noncanonical.Prepared.Intent = make([]byte, 0, len(prepared.Intent)+1)
+	noncanonical.Prepared.Intent = append(noncanonical.Prepared.Intent, prepared.Intent[0], 0x18, 0x00)
+	noncanonical.Prepared.Intent = append(noncanonical.Prepared.Intent, prepared.Intent[2:]...)
+	if _, err := workspace.AppendSigned(ctx, noncanonical); err == nil || !strings.Contains(err.Error(), "core-deterministic") {
+		t.Fatalf("non-canonical intent = %v, want a canonical-encoding refusal", err)
+	}
+
+	decoded, err := intent.Decode(prepared.Intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, test := range map[string]struct {
+		mutate func(*intent.Intent)
+		want   string
+	}{
+		"sequence": {
+			mutate: func(value *intent.Intent) { value.Target = "git:sha1:" + strings.Repeat("f", 40) },
+			want:   "signed act targets a different sequence",
+		},
+		"namespace": {
+			mutate: func(value *intent.Intent) { value.IdempotencyNS = "another-application" },
+			want:   "signed act uses a different idempotency namespace",
+		},
+		"schema": {
+			mutate: func(value *intent.Intent) { value.Schema = "gitseq/app-binding@0" },
+			want:   `schema "gitseq/app-binding@0" is reserved for the host binding`,
+		},
+		"envelope version": {
+			mutate: func(value *intent.Intent) { value.EnvelopeVersion = 1 },
+			want:   "signed act uses host-unsupported envelope fields",
+		},
+		"capability hash": {
+			mutate: func(value *intent.Intent) { value.CapabilityHash = []byte{1} },
+			want:   "signed act uses host-unsupported envelope fields",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := decoded
+			test.mutate(&changed)
+			signed, err := intent.Sign(changed, actor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = workspace.AppendSigned(ctx, host.SignedAct{
+				Prepared: host.PreparedAct{Intent: signed.Intent, Payload: prepared.Payload},
+				ActorKey: signed.ActorKey, ActorSignature: signed.Signature,
+			})
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("valid signature over mutated %s = %v, want %q", name, err, test.want)
+			}
+		})
+	}
+	after, err := workspace.Records(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Head != baseline.Head || after.Depth != baseline.Depth || looseObjects(t, commonDir) != objectsBefore {
+		t.Fatalf("rejected public inputs mutated the sequence: before=%d@%s after=%d@%s", baseline.Depth, baseline.Head, after.Depth, after.Head)
+	}
+}
+
+// A cloned repository that already has the sequence refs is opened, not
+// initialized. It gains no Gitseq config and no replacement genesis; explicit
+// sequencer custody makes that attached sequence writable through the public
+// package alone.
+func TestOpenAttachedOpensAnExistingSequenceForWriting(t *testing.T) {
+	ctx := context.Background()
+	source, workspace, _ := initialized(t, ctx)
+	before, err := workspace.Records(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, sourceCommon, err := apphost.ResolveGitDirs(ctx, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := apphost.LoadConfig(apphost.MetaDir(sourceCommon))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	clone := testRepo(t)
+	ref := "refs/seq/" + before.Genesis
+	if output, err := exec.Command("git", "-C", clone, "fetch", "--no-tags", source, ref+":"+ref).CombinedOutput(); err != nil {
+		t.Fatalf("fetch attached sequence: %v: %s", err, output)
+	}
+	_, cloneCommon, err := apphost.ResolveGitDirs(ctx, clone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(apphost.MetaDir(cloneCommon), apphost.ConfigFile)
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("fresh clone Gitseq config = %v, want absent", err)
+	}
+
+	attached, err := host.OpenAttached(ctx, clone, testApplication(), host.Attachment{
+		Genesis: before.Genesis, SequencerKey: config.SequencerKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := testKey(t)
+	prepared, err := attached.Prepare(host.Act{Schema: "test/attached@0", Payload: []byte("written"), IdempotencyKey: "attached-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := attached.AppendSigned(ctx, externallySign(t, prepared, actor))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := attached.Records(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Genesis != before.Genesis || after.Depth != before.Depth+1 || after.Records[len(after.Records)-1].ID != record.ID {
+		t.Fatalf("attached log = %+v, want existing genesis %s advanced once", after, before.Genesis)
+	}
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("OpenAttached created configuration: %v", err)
 	}
 }
 
