@@ -269,11 +269,17 @@ Disclosing the served path is safe because [`gs serve`](serve.md) refuses
 any listen address that is not loopback: whoever is reading the page is
 already on the host it names.
 
-The remote is read from the repository's own configuration only —
-`git config --local` — so configuration outside the repository cannot say
-where the repository lives. Both the bytes read and the number of remotes
-kept are bounded, and a repository past either bound reports no remote
-rather than a partial answer.
+The remote comes from the repository this resident was pointed at, and
+from that repository's own configuration. Those are two bounds, not one,
+and neither implies the other. `git config --local` bounds the scope, so
+no outer configuration scope can name a remote the repository never
+configured. It does not bound which repository Git resolves: `GIT_DIR`,
+`GIT_COMMON_DIR`, `GIT_WORK_TREE` and their family redirect that before
+any scope rule applies, and a strictly local read of the wrong repository
+is still the wrong repository. So the environment of every Git command
+behind this endpoint is stripped of them. Both the bytes read and the
+number of remotes kept are bounded, and a repository past either bound
+reports no remote rather than a partial answer.
 
 Which remote is a rule a reader can predict: `origin` when there is one,
 otherwise the first remote name alphabetically. That single choice is then
