@@ -87,6 +87,35 @@ func TestWorkQueryDefaultsIncludeAddressedWorkWithoutWaitingDebt(t *testing.T) {
 	}
 }
 
+func TestWorkQueryReturnsLinkedSuccessorOnlyWhenTerminalHistoryIsRequested(t *testing.T) {
+	snapshot := workSnapshot(0)
+	snapshot.Projection.Statements = append(snapshot.Projection.Statements,
+		workroom.Statement{Event: "request:rejected", Actor: queryActor, Kind: workroom.KindRequest, Text: "rejected implementation"})
+	snapshot.Projection.Commitments = append(snapshot.Projection.Commitments, workroom.Commitment{
+		Request: "request:rejected", Requester: queryActor, Performer: otherActor,
+		Promise: "promise:rejected", Report: "artifact:rejected", Status: "superseded",
+		SuccessorRequest: "request:repair",
+	})
+
+	current, err := BuildWorkPage(snapshot, WorkQuery{Actor: queryActor, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range current.Items {
+		if item.Request == "request:rejected" {
+			t.Fatalf("terminal superseded row appeared as current work: %+v", item)
+		}
+	}
+
+	history, err := BuildWorkPage(snapshot, WorkQuery{Actor: queryActor, Statuses: []string{"superseded"}, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history.Items) != 1 || history.Items[0].Status != "superseded" || history.Items[0].SuccessorRequest != "request:repair" || history.Items[0].Lane != LaneNotActionable {
+		t.Fatalf("linked successor history = %+v", history)
+	}
+}
+
 // Nothing is hidden, only summarized. Every explicit staleness policy returns
 // exactly what it returned before the default became a summary, so a caller
 // who asks for the detail still gets every record.

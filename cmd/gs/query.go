@@ -198,6 +198,9 @@ func renderWorkPage(page statusview.WorkPage, source string) string {
 		if item.WaitingOn != nil {
 			fmt.Fprintf(&out, "    waiting on %s\n", item.WaitingOn.Name)
 		}
+		if item.SuccessorRequest != "" {
+			fmt.Fprintf(&out, "    successor request %s\n", item.SuccessorRequest)
+		}
 		if item.LatestReview != nil {
 			fmt.Fprintf(&out, "    latest review %s (%s)\n", item.LatestReview.Verdict, reviewQualifiers(*item.LatestReview))
 		}

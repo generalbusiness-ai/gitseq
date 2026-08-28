@@ -278,6 +278,18 @@ function liveBlockers(input: {
 }): Station[] {
   const { commitment, report, verdict, landing, nameOf, tickets } = input;
   const blockers: Station[] = [];
+  if (commitment?.status === "awaiting-merge" && report) {
+    blockers.push({
+      id: "blocker-open",
+      kind: "open",
+      event: report.event,
+      ticket: tickets.get(report.event),
+      timestamp: report.timestamp,
+      what: "implementation published — awaiting an independently approved exact-head merge",
+      present: true,
+      branch: true,
+    });
+  }
   if (commitment?.status === "reported" && report) {
     const landed = landing?.status === "landed";
     blockers.push({

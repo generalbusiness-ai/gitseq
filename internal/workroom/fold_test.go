@@ -484,7 +484,7 @@ func TestArtifactOnPromiseDischargesTheReportObligation(t *testing.T) {
 		event(t, "artifact", agent, SchemaState, State{Kind: KindArtifact, Text: "implementation at its exact head", Body: map[string]string{"path": "internal/workroom", "commit": "head1"}}, "promise"),
 	)
 	commitment := Fold(records).Commitments[0]
-	if commitment.Status != "reported" || commitment.Report != "artifact" || commitment.WaitingOn != operator {
+	if commitment.Status != "awaiting-merge" || commitment.Report != "artifact" || commitment.WaitingOn != "" {
 		t.Fatalf("artifact-backed commitment = %+v", commitment)
 	}
 }
@@ -592,7 +592,7 @@ func TestMergeDoesNotCloseAnotherAuthorsCommitment(t *testing.T) {
 			}
 		case "foreign-request":
 			seen[commitment.Request] = true
-			if commitment.Status != "reported" || commitment.Report != "foreign-artifact" || commitment.WaitingOn != operator {
+			if commitment.Status != "awaiting-merge" || commitment.Report != "foreign-artifact" || commitment.WaitingOn != "" {
 				t.Fatalf("merge closed another author's commitment = %+v", commitment)
 			}
 		}
@@ -608,7 +608,7 @@ func TestMergeDoesNotCloseCommitmentWithoutExplicitApprovalRatification(t *testi
 		if commitment.Request != "implementation-request" {
 			continue
 		}
-		if commitment.Status != "reported" || commitment.Report != "implementation-artifact" || commitment.WaitingOn != operator {
+		if commitment.Status != "awaiting-merge" || commitment.Report != "implementation-artifact" || commitment.WaitingOn != "" {
 			t.Fatalf("unratified approval closed implementation commitment = %+v", commitment)
 		}
 		return

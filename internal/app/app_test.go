@@ -1942,6 +1942,52 @@ func TestBuildActRequestRefusesRetiringACitedRecord(t *testing.T) {
 	}
 }
 
+func TestBuildActRequestRefusesRatifyingAnArtifactAndNamesTheClosingAct(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "Implement it",
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "approved head merges"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "unratifiable-artifact-request",
+	})
+	promise := actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindPromise, Text: "I will",
+		RestsOn: []string{request.ID}, IdempotencyKey: "unratifiable-artifact-promise",
+	})
+	artifact := actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindArtifact, Text: "Exact implementation head",
+		Body:    map[string]string{"path": "internal/workroom", "commit": "abc123"},
+		RestsOn: []string{promise.ID}, IdempotencyKey: "unratifiable-artifact",
+	})
+	_, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := workspace.mustSnapshot(t, ctx)
+	_, err = workspace.BuildActRequest(ctx, private, "human", Act{
+		Verb: VerbRatify, Target: artifact.ID, IdempotencyKey: "refused-artifact-ratification",
+	})
+	if err == nil {
+		t.Fatal("ratifying an artifact was built even though its satisfier is none")
+	}
+	for _, want := range []string{`kind "artifact"`, `satisfier "none"`, "merge an independently approved exact head"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("ratify refusal %q does not name %q", err, want)
+		}
+	}
+	after := workspace.mustSnapshot(t, ctx)
+	if after.Depth != before.Depth || after.Head != before.Head {
+		t.Fatalf("refused ratification changed the log: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+	}
+}
+
 // The write boundary has to admit what the fold admits. A report may rest on
 // the request it answers, and this is where that record is built and signed:
 // if the validator still demands a promise, the rule is widened in the log and
@@ -2329,7 +2375,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 		unsatisfied.Projection.Statements[position].Satisfier = ""
 	}
 	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@13"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@14"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@15"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &unsatisfied
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2347,6 +2393,78 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	if workspace.snapshotProfile != wantProfile {
 		t.Fatalf("cache profile = %q, want %q: the older profile was not replaced", workspace.snapshotProfile, wantProfile)
 	}
+}
+
+func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "Implement it",
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "approved head merges"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-awaiting-merge-request",
+	})
+	promise := actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindPromise, Text: "I will",
+		RestsOn: []string{request.ID}, IdempotencyKey: "profile-awaiting-merge-promise",
+	})
+	artifact := actRecord(t, ctx, workspace, "agent", Act{
+		Verb: VerbState, Kind: workroom.KindArtifact, Text: "Exact implementation head",
+		Body:    map[string]string{"path": "internal/workroom", "commit": "abc123"},
+		RestsOn: []string{promise.ID}, IdempotencyKey: "profile-awaiting-merge-artifact",
+	})
+
+	current := workspace.mustSnapshot(t, ctx)
+	old := current
+	old.Projection.Commitments = append([]workroom.Commitment(nil), current.Projection.Commitments...)
+	position := -1
+	for index := range old.Projection.Commitments {
+		if old.Projection.Commitments[index].Report == artifact.ID {
+			position = index
+			break
+		}
+	}
+	if position < 0 {
+		t.Fatal("artifact completion is absent from the current projection")
+	}
+	if got := old.Projection.Commitments[position]; got.Status != "awaiting-merge" || got.WaitingOn != "" {
+		t.Fatalf("current artifact completion = %+v", got)
+	}
+	// @14 projected the artifact like an explicit report and sent the
+	// requester toward a ratification the fold necessarily refused.
+	old.Projection.Commitments[position].Status = "reported"
+	old.Projection.Commitments[position].WaitingOn = old.Projection.Commitments[position].Requester
+	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@14"
+	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@15"
+	workspace.snapshotMu.Lock()
+	workspace.snapshotCache = &old
+	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
+	workspace.snapshotProfile = oldProfile
+	workspace.snapshotMu.Unlock()
+
+	rebuilt, err := workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, commitment := range rebuilt.Snapshot.Projection.Commitments {
+		if commitment.Report != artifact.ID {
+			continue
+		}
+		if commitment.Status != "awaiting-merge" || commitment.WaitingOn != "" {
+			t.Fatalf("rebuilt artifact completion = %+v; the %q cache was served instead of replayed", commitment, oldProfile)
+		}
+		if workspace.snapshotProfile != wantProfile {
+			t.Fatalf("cache profile = %q, want %q", workspace.snapshotProfile, wantProfile)
+		}
+		return
+	}
+	t.Fatal("rebuilt projection omitted the artifact completion")
 }
 
 // The guarded schemas have a semantic witness of their own. An @12 fold cannot decode
@@ -2398,7 +2516,7 @@ func TestReassignSchemasRebuildAnOlderProfileCache(t *testing.T) {
 			t.Fatalf("rebuilt guarded decision %s = %+v, found=%v", event, decision, ok)
 		}
 	}
-	want := apphost.DefaultApplication + "\x00workroom-fold@14"
+	want := apphost.DefaultApplication + "\x00workroom-fold@15"
 	if fixture.workspace.snapshotProfile != want {
 		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
 	}

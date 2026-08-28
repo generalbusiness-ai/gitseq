@@ -42,7 +42,7 @@ force.
 
 A commitment is one request paired with one promise. A request nobody has
 promised is a commitment too, with the promise half empty. The fold
-projects eight statuses and no others.
+projects ten statuses and no others.
 
 Before anyone promises:
 
@@ -63,10 +63,14 @@ After a promise, the same commitment continues:
 promised ───────────┤
                     ├─ a cited event is retired ───────▶ stale
                     │
-                    └─ promisor files artifact or report ──▶ reported
-                                                              │
-                         approved exact head merges ──────────┤
-                         requester ratifies explicit report ──┴─▶ satisfied
+                    ├─ promisor files explicit report ──▶ reported
+                    │                                      │
+                    │       requester ratifies report ─────┤
+                    │                                      │
+                    └─ promisor files artifact ─▶ awaiting-merge
+                                                           ├─ approved exact head merges ─▶ satisfied
+                                                           │
+                         rejected repair explicitly moved ─┴─▶ superseded
 ```
 
 | Status | What it means | Who caused it |
@@ -74,7 +78,9 @@ promised ───────────┤
 | `open` | Asked, unclaimed. | the requester, by asking |
 | `withdrawn` | The request was retired before anyone promised. | the requester, or a ratifier |
 | `promised` | Claimed, not yet reported. | the promisor |
-| `reported` | Completion claimed by an artifact or explicit report, awaiting its closing act. | the promisor |
+| `reported` | Completion claimed by an explicit report, awaiting requester ratification. | the promisor |
+| `awaiting-merge` | Completion claimed by an artifact, awaiting an independently approved exact-head merge and naming no waiting actor. | the promisor |
+| `superseded` | A ratified `changes-requested` verdict rejected the reporting artifact, and an explicit linked supersession moved the required repair to `successor_request`. | the requester, or a ratifier |
 | `satisfied` | The approved exact head merged, or the requester accepted an explicit report. | the merge or the requester |
 | `cancelled` | The request was retired after a promise existed. | the requester, or a ratifier |
 | `reneged` | The promise was retired. | the promisor, or a ratifier |
@@ -116,7 +122,7 @@ The fold enforces, in `internal/workroom/kinds.go`:
 
 And in `internal/workroom/fold.go`:
 
-- the eight statuses above, and which event causes each;
+- the ten statuses above, and which event causes each;
 - that only the promisor may report — anyone else is refused with *only
   the promisor may report completion*;
 - that a promisor's exact-head artifact resting on one promise discharges the
@@ -179,8 +185,9 @@ trusting a green projection to catch a bad one.
 ## Honest states
 
 A completion artifact before merge, or an unratified explicit report, is
-**honest status**, not failure. It reads "reported, awaiting satisfaction".
-Do not treat it as a gap to be chased.
+**honest status**, not failure. The artifact reads `awaiting-merge` without a
+waiting actor; the explicit report reads `reported` and waits on its requester.
+Do not treat either as a gap to be chased.
 
 Superseding your own promise is **reneging**, and it stays visible
 forever. Do it as early as you know you cannot keep it: early reneging is
@@ -188,6 +195,14 @@ honourable, late reneging is not.
 
 If the requester supersedes the request after you promised, you are
 released. The promise stays in history as kept faith, not fault.
+
+An ordinary request retirement after a promise is `cancelled`. A rejected
+implementation round is `superseded` only when the explicit retirement also
+cites one effective repair child from the same requester, that child directly
+rests on the old request, and a live ratified `changes-requested` verdict names
+the reporting artifact and its exact head. `successor_request` is the pointer;
+the child's later outcome stays on the child row rather than rewriting the
+historical transfer.
 
 If the requester read the request as unclaimed and wants to change its
 addressee, the read can race a promise or direct completion. The guarded

@@ -46,9 +46,10 @@ type Orientation struct {
 }
 
 type CommitmentView struct {
-	Request     string `json:"request"`
-	Status      string `json:"status"`
-	AddressedTo string `json:"addressed_to,omitempty"`
+	Request          string `json:"request"`
+	Status           string `json:"status"`
+	SuccessorRequest string `json:"successor_request,omitempty"`
+	AddressedTo      string `json:"addressed_to,omitempty"`
 	// Stale qualifies Status; it never replaces it. See statusview.Commitment.
 	// The lanes no longer reopen a closed commitment for it: ActorTotals
 	// .StaleCommitments counts it per status instead.
@@ -77,7 +78,7 @@ type ActorTotals struct {
 	Commitments map[string]int `json:"commitments,omitempty"`
 	// StaleCommitments counts, per status, how many carry the stale qualifier.
 	// This is where ordinary staleness on closed commitments is reported: the
-	// lanes above hold work still owed, and satisfied or withdrawn rows are
+	// lanes above hold work still owed, and superseded, satisfied or withdrawn rows are
 	// counted here rather than listed.
 	StaleCommitments map[string]int `json:"stale_commitments,omitempty"`
 	Artifacts        int            `json:"artifacts"`
@@ -205,7 +206,7 @@ func actIndex(projection workroom.Projection) map[string]workroom.Act {
 
 func viewCommitment(projection workroom.Projection, commitment workroom.Commitment) CommitmentView {
 	return CommitmentView{
-		Request: commitment.Request, Status: commitment.Status, Stale: commitment.Stale,
+		Request: commitment.Request, Status: commitment.Status, SuccessorRequest: commitment.SuccessorRequest, Stale: commitment.Stale,
 		AddressedTo: Text(ActorName(projection, commitment.AddressedTo)),
 		Requester:   Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
 		Promise: commitment.Promise, Report: commitment.Report,

@@ -583,6 +583,20 @@ test("a row says state, waits-on, age, title and ticket, and nothing else", () =
   assert.equal(row.attention, false);
 });
 
+test("an artifact completion stays visible as awaiting merge and names no waiting actor", () => {
+  const projection = room(
+    [
+      { event: "request", kind: "request", actor: "hugh", ts: NOW - DAY, text: "Implement the change" },
+      { event: "artifact", kind: "artifact", actor: "codex", ts: NOW - HOUR, parent: "request" },
+    ],
+    { commitments: [{ request: "request", requester: "hugh", performer: "codex", report: "artifact", status: "awaiting-merge" }] },
+  );
+  const [row] = workRows(projection, context(projection));
+  assert.equal(row.state, "awaiting merge");
+  assert.equal(row.waitsOn, "");
+  assert.equal(row.waitsOnName, "unassigned");
+});
+
 test("only world-staleness and dispute make a row need attention", () => {
   const projection = room(
     [
@@ -684,6 +698,7 @@ test("every commitment lands in exactly one of the five populations, and closed 
       { event: "moved", kind: "request", actor: "hugh", ts: NOW - DAY },
       { event: "stale", kind: "request", actor: "hugh", ts: NOW - DAY },
       { event: "done", kind: "request", actor: "hugh", ts: NOW - DAY },
+      { event: "superseded", kind: "request", actor: "hugh", ts: NOW - DAY },
       { event: "cancelled", kind: "request", actor: "hugh", ts: NOW - DAY },
       { event: "withdrawn", kind: "request", actor: "hugh", ts: NOW - DAY },
     ],
@@ -693,6 +708,7 @@ test("every commitment lands in exactly one of the five populations, and closed 
         { request: "moved", requester: "hugh", status: "promised", promise: "p", performer: "claude", stale: true },
         { request: "stale", requester: "hugh", status: "stale" },
         { request: "done", requester: "hugh", status: "satisfied" },
+        { request: "superseded", requester: "hugh", status: "superseded", successor_request: "repair" },
         { request: "cancelled", requester: "hugh", status: "cancelled" },
         { request: "withdrawn", requester: "hugh", status: "withdrawn" },
       ],
@@ -703,11 +719,11 @@ test("every commitment lands in exactly one of the five populations, and closed 
   assert.deepEqual(events("moved"), ["moved"]);
   assert.deepEqual(events("stale"), ["stale"]);
   assert.deepEqual(events("done"), ["done"]);
-  assert.deepEqual(events("closed"), ["cancelled", "withdrawn"]);
+  assert.deepEqual(events("closed"), ["cancelled", "superseded", "withdrawn"]);
   // The state word outside the live tabs is the fold's own status, so a
   // closed row says how it closed rather than a lifecycle word that is not true of it.
   const states = Object.fromEntries(workRows(projection, context(projection), "closed").map((row) => [row.event, row.state]));
-  assert.deepEqual(states, { cancelled: "cancelled", withdrawn: "withdrawn" });
+  assert.deepEqual(states, { cancelled: "cancelled", superseded: "superseded", withdrawn: "withdrawn" });
   assert.equal(workRows(projection, context(projection), "done")[0].state, "satisfied");
 });
 

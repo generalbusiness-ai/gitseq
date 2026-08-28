@@ -51,8 +51,8 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 | `you` | Your name, fingerprint and current roles. |
 | `frontier` | The genesis, head and depth this answer was folded at. |
 | `available_to_you` | Unclaimed requests addressed to you, including requests whose bases have become stale. |
-| `waiting_on_you` | Commitments where the next move is yours. |
-| `you_are_waiting_on` | Commitments where it is not. |
+| `waiting_on_you` | Commitments where you have an admissible next act. |
+| `you_are_waiting_on` | Commitments involving you where no admissible next act is assigned to you, including artifact completions awaiting merge. |
 | `not_actionable` | Commitments involving you that nobody can currently advance. |
 | `needs_your_attention` | Your own acts that did not take force, and events that concern you. |
 | `totals` | Depth, commitment counts by status with a stale count beside each, artifact counts split into stale, retired and superseded-world, and ineffective and disputed acts. |
@@ -77,15 +77,23 @@ priority ephemeral chat: 0 unacknowledged; depth 1, you hold 3 roles, 0 addresse
 or waiting party; it merely names you as the actor who may claim it. Its status
 is normally `open`. If the request's bases moved before anyone claimed it, its
 status is `stale` and its `stale` flag is `true`, but the unfinished request
-remains in this lane. `waiting_on_you` begins only after a promise, reporting
-artifact, or explicit report puts the next move on you.
+remains in this lane. `waiting_on_you` begins only after a promise or explicit
+report gives you an admissible next act. A reporting artifact instead projects
+`awaiting-merge` with no `waiting_on`: artifacts have satisfier `none`, so the
+requester cannot ratify one. The implementation commitment closes only when an
+independently approved exact head merges.
+
+A rejected implementation parent closes as terminal `superseded` only after an
+explicit qualifying linked supersession. Its row carries `successor_request`
+naming the repair child; it appears in history rather than a live lane. The
+child's later outcome does not rewrite that pointer.
 
 Lane rows carry the same action fields as [`work`](work.md): full
 `conditions` for open and stale unclaimed requests, `report_status`, `reported_head`, and the
 latest effective review for that exact head with its explicit `ratified` flag.
 Routine triage therefore does not need one `inspect` call per row.
 
-The lanes hold work still owed. A satisfied or withdrawn commitment is
+The lanes hold work still owed. A superseded, satisfied, or withdrawn commitment is
 finished, and ordinary reasoning staleness under it does not reopen it —
 that staleness blocks nothing and reaches most closed commitments, so a
 lane full of it hid the rows that were still owed. `totals

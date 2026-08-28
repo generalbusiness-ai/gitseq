@@ -817,6 +817,41 @@ written under `@13` is rejected and the history replayed. Without that gate a
 cache predating the field would answer every reader "no satisfier", and every
 ratification would be silently withheld from actors entitled to make it.
 
+**Truthful artifact completion.** An explicit report and an implementation
+artifact have different closing authority, so the fold projects different
+states. An explicit report is `reported` and waits on its originating
+requester, whose ratification can satisfy it. An artifact is
+`awaiting-merge` and names no `waiting_on` actor: its admitted satisfier is
+`none`, and only an independently approved exact-head merge closes the
+implementation commitment. The application write boundary reads that same
+admission-time satisfier before signing a ratification. When it is `none`, it
+refuses and names the target kind, the satisfier, and the applicable workflow
+act, rather than adding an ineffective attempt to the permanent log.
+
+The browser and bounded status/query projections preserve `awaiting-merge` as
+unfinished work while showing no invented waiting party. This changes the
+application projection bytes and lifecycle meaning, so it advances the profile
+to `workroom-fold@15`; a cache written under `@14` is rejected and history is
+replayed.
+
+**Rejected-round successor transfer.** A ratified `changes-requested` verdict
+rejects an implementation head but does not say where its required repair went.
+The fold recognizes that transfer only from an explicit supersession of the old
+request. At the supersession's own position it requires one effective child
+request cited after the target, the same requester on both requests, a direct
+child-to-parent provenance edge, and a live ratified changes-requested verdict
+that explicitly names the reporting artifact and its exact commit. The old
+commitment then becomes terminal `superseded` and carries
+`successor_request`; it is never relabelled satisfied, cancelled, or reneged.
+The qualification is sealed on the supersession, so retiring or failing the
+child later changes only the child row. Retiring the supersession itself
+restores the ordinary parent state.
+
+This also changes projection bytes and lifecycle meaning. It is included in
+the same unpublished `workroom-fold@15` candidate described above, so the
+deployed transition remains one step from `@14` to `@15`; there is no
+intermediate `@15` cache contract to invalidate again.
+
 **Write-boundary guards.** One Workroom admission evaluation serves every
 state surface — `gs state`, `gs batch`, the MCP state and review tools, and
 the canonical guarded review path. It runs once before signing for early
@@ -1019,7 +1054,7 @@ omission rules that follow are part of the projection contract rather than
 presentation detail.
 
 Ordinary reasoning staleness qualifies a status; it does not reopen a finished
-commitment. A satisfied or withdrawn commitment is omitted from every default
+commitment. A superseded, satisfied, or withdrawn commitment is omitted from every default
 lane whether or not it is stale, and the per-status counts carry it instead,
 so a caller reading a default lane is reading work still owed rather than
 history.
