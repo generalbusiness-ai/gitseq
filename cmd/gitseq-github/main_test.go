@@ -313,6 +313,61 @@ func TestAProposalMustNameFactsThatHoldTogether(t *testing.T) {
 			t.Error("a real request was paired with a real artifact from different work")
 		}
 	})
+
+	// Assigned implementation artifacts normally report against the promise
+	// they fulfil. The promise is the bridge to the request, and only carries
+	// that relationship while it is an effective, standing promise for this
+	// exact request.
+	const promise = "git:sha1:g#git:sha1:promise"
+	promiseChain := func() workroom.Projection {
+		return workroom.Projection{
+			Decisions: []workroom.Decision{
+				{Event: request, Verdict: workroom.Effective, Reason: "statement recorded"},
+				{Event: promise, Verdict: workroom.Effective, Reason: "statement recorded"},
+				{Event: artifact, Verdict: workroom.Effective, Reason: "statement recorded"},
+			},
+			Statements: []workroom.Statement{
+				{Event: request, Kind: workroom.KindRequest},
+				{Event: promise, Kind: workroom.KindPromise},
+				{Event: artifact, Kind: workroom.KindArtifact},
+			},
+			Artifacts:  []workroom.Artifact{{Event: artifact, Commit: commit}},
+			Provenance: map[string][]string{promise: {request}, artifact: {promise}},
+		}
+	}
+	t.Run("artifact on a live promise for the request", func(t *testing.T) {
+		if err := proposalIsCoherent(promiseChain(), request, artifact, commit); err != nil {
+			t.Errorf("the normal artifact-on-promise chain was refused: %v", err)
+		}
+	})
+	t.Run("artifact on a stale promise", func(t *testing.T) {
+		projection := promiseChain()
+		projection.Statements[1].Stale = true
+		if err := proposalIsCoherent(projection, request, artifact, commit); err == nil {
+			t.Error("an artifact was rendered against a request through a stale promise")
+		}
+	})
+	t.Run("artifact on an ineffective promise", func(t *testing.T) {
+		projection := promiseChain()
+		projection.Decisions[1] = workroom.Decision{Event: promise, Verdict: workroom.Ineffective, Reason: "dangling"}
+		if err := proposalIsCoherent(projection, request, artifact, commit); err == nil {
+			t.Error("an artifact was rendered against a request through a promise the fold gave no force")
+		}
+	})
+	t.Run("artifact on a promise for another request", func(t *testing.T) {
+		projection := promiseChain()
+		projection.Provenance[promise] = []string{"git:sha1:g#git:sha1:other-request"}
+		if err := proposalIsCoherent(projection, request, artifact, commit); err == nil {
+			t.Error("a promise for another request carried this pairing")
+		}
+	})
+	t.Run("artifact on a non-promise intermediate", func(t *testing.T) {
+		projection := promiseChain()
+		projection.Statements[1].Kind = workroom.KindAssert
+		if err := proposalIsCoherent(projection, request, artifact, commit); err == nil {
+			t.Error("an assert resting on the request carried the pairing")
+		}
+	})
 }
 
 // The composed path, from a projection through clauseSources into admission.

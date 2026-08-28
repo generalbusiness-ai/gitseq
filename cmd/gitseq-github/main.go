@@ -253,6 +253,12 @@ func proposePullRequest(ctx context.Context, client *github.Client, owner, name 
 // separately because they mean different things: an unknown event is a citation
 // error, a retired one is a staleness error, and an artifact naming another
 // commit is a claim about the wrong code.
+//
+// Belonging itself has two lawful shapes. The artifact may rest directly on
+// the request, or — the ordinary assigned-work shape — on the promise it
+// fulfils, with the promise resting on the request. Both prove that this exact
+// commitment chain stands behind this exact artifact; anything else pairs work
+// that merely shares a log with work it never served.
 func proposalIsCoherent(projection workroom.Projection, request, artifact, commit string) error {
 	if _, err := effectiveStatement(projection, request, "request"); err != nil {
 		return err
@@ -269,10 +275,22 @@ func proposalIsCoherent(projection workroom.Projection, request, artifact, commi
 		}
 		// The artifact must belong to the work the request governs, or the
 		// rendering pairs a real request with a real artifact from elsewhere.
-		if !slices.Contains(projection.Provenance[artifact], request) {
-			return fmt.Errorf("artifact %s does not rest on request %s, so they are not the same piece of work", artifact, request)
+		if slices.Contains(projection.Provenance[artifact], request) {
+			return nil
 		}
-		return nil
+		// Through its promise: every bridging basis is held to the same
+		// effective-and-standing standard as the ends of the chain before it
+		// may connect them, so a dead promise or an unrelated record cannot
+		// carry the pairing.
+		for _, basis := range projection.Provenance[artifact] {
+			if _, err := effectiveStatement(projection, basis, "promise"); err != nil {
+				continue
+			}
+			if slices.Contains(projection.Provenance[basis], request) {
+				return nil
+			}
+		}
+		return fmt.Errorf("artifact %s does not rest on request %s or on a standing promise for it, so they are not the same piece of work", artifact, request)
 	}
 	return fmt.Errorf("%s is not an artifact in this workroom", artifact)
 }
