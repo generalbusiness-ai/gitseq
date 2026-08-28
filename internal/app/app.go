@@ -210,112 +210,115 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 	return b.buffer.Write(p)
 }
 
-// gitRoutingVariables are the inherited environment variables that decide
-// something the command line of a read-only Git command cannot take back.
+// gitInheritedEnvironment names every environment variable a read-only Git
+// command built here may inherit from whoever started this process. It is an
+// allowlist, and it is one because the denied set it replaces was escaped four
+// times in four rounds of review.
 //
-// The first group re-points the repository itself. GIT_DIR and GIT_COMMON_DIR
-// both move where Git looks for the config file, the refs and the worktree
-// registry, so `git -C here` reads another repository's answers while
-// reporting nothing unusual; GIT_WORK_TREE moves the checkout those answers
-// describe. GIT_OBJECT_DIRECTORY, GIT_ALTERNATE_OBJECT_DIRECTORIES,
-// GIT_INDEX_FILE and GIT_NAMESPACE move a part each — the object store, the
-// index, the ref namespace — and GIT_CEILING_DIRECTORIES and
-// GIT_DISCOVERY_ACROSS_FILESYSTEM change whether the repository is found at
-// all. None of them is currently a whole disclosure on its own, which is
-// exactly why they are removed as a family rather than one at a time: what
-// makes them dangerous is the shared property that the caller named a
-// repository and Git read a different one.
+// A denied set has to anticipate the channel, and each of these arrived from a
+// direction the previous list had not thought of. GIT_CONFIG_COUNT with its
+// KEY_n/VALUE_n pairs writes configuration straight into the command scope,
+// which outranks every file and needs no file at all. GIT_CONFIG_GLOBAL and
+// GIT_CONFIG_SYSTEM name a configuration *file*, and a Git configuration file
+// is not data: core.fsmonitor, core.pager and diff.external name programs, and
+// Git runs them, so allowlisting the *name* of a variable that points at a file
+// bounds nothing whatever about what that file says. HOME reaches ~/.gitconfig
+// with no GIT_CONFIG variable set at all. And with the system and global scopes
+// pinned shut, HOME was still reached from inside the one scope that has to
+// stay admitted, because a repository-local `include.path = ~/attack.cfg`
+// expands the tilde against it; while XDG_CONFIG_HOME needs no configuration
+// file whatever, because the default ignore and attributes files are read on
+// their own and can move the status answer without executing anything. Each
+// escape was closed and the next one arrived. The pattern is not that the list
+// was careless; it is that a list of forbidden names is the wrong shape for the
+// question, because the channel that matters next is the one nobody here has
+// heard of.
 //
-// The second group re-interprets the pathspecs after `--`.
-// GIT_LITERAL_PATHSPECS turns the `*.md` in citingDocuments into a literal
-// filename that matches nothing, and the glob variables shift it in the same
-// way. citingDocuments is read as a guard, so an empty answer lets a cited
-// retirement through: silence there is a bypass, not a cosmetic wrong.
+// So this list answers the opposite question: what does a Git command need in
+// order to run? Everything unnamed is absent by construction, a future Git
+// release's variables included.
 //
-// The GIT_CONFIG family is dropped whole, and the configuration these commands
-// do run under is set here instead of inherited. gitTrustedConfiguration below
-// is that setting, and the two halves of the rule are one decision: nothing
-// about the caller's configuration is trusted, so the isolation these commands
-// need is stated rather than borrowed.
+// PATH is the only name on it, and admitting it is unavoidable at this layer
+// rather than safe. Whoever controls PATH chooses which binary named `git`
+// runs, which is an execution channel of exactly the kind the rest of this
+// contract exists to close. It cannot be closed from here: exec.CommandContext
+// resolves `git` through exec.LookPath against *this process's* PATH before any
+// child environment exists, so the binary has already been chosen by the time
+// this list is consulted, and dropping PATH from the child would leave that
+// choice where it was while taking away Git's ability to resolve the programs
+// it runs itself. Closing it takes an absolute path to a trusted git, chosen by
+// whoever deploys this; that is a different decision at a different layer, and
+// this comment is here so nobody reads the allowlist as a claim that the
+// environment of these commands is now trustworthy. It is bounded, which is
+// less than that.
 //
-// The reason it cannot be a list of admitted names is that half this family
-// names a file. GIT_CONFIG, GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM each point
-// Git at a configuration file, and a Git configuration file is not data:
-// core.fsmonitor, core.pager and diff.external name programs, and Git runs
-// them. `git status` runs core.fsmonitor unprompted on an ordinary read, then
-// appends its own arguments to whatever was configured, so a single inherited
-// variable buys both arbitrary execution and a corrupted answer. Admitting a
-// variable's *name* bounds nothing whatever about the contents of the file it
-// points at, which is why the earlier reasoning — that these three only narrow
-// scope — was wrong in kind rather than merely incomplete. Narrowing which
-// files are read says nothing about what those files then say.
-//
-// The other half injects configuration directly. GIT_CONFIG_COUNT with its
-// KEY_n/VALUE_n pairs, and GIT_CONFIG_PARAMETERS, set values in the command
-// scope, which outranks every file scope and needs no repository access at all.
-//
-// Neither half is anything a caller of this package has ever needed, so the
-// test is a prefix rather than a list of names. A variable in this family that
-// nobody here has heard of — a future Git release, a wrapper — is dropped by
-// default rather than admitted by omission.
-//
-// This is the secondary defence and must be read as one. It narrows how a
-// caller reaches the malfunction; it does not decide what happens when one is
-// reached anyway. What makes an unanswerable citation lookup safe is that
-// citingDocuments distinguishes "found nothing" from "did not run" and refuses
-// the retirement on the second — see the primary defence there. Bounding the
-// environment does not close that class, and a later reader who believes it
-// does will reintroduce the fail-open the first time the lookup breaks for a
-// reason no environment can reach: a corrupt index, a resource limit, a
-// setting in the repository's own configuration file.
-//
-// The one command below whose output is configuration also reads --local,
-// which bounds the scope question at the argument where it belongs.
-var gitRoutingVariables = map[string]bool{
-	"GIT_DIR":                          true,
-	"GIT_COMMON_DIR":                   true,
-	"GIT_WORK_TREE":                    true,
-	"GIT_OBJECT_DIRECTORY":             true,
-	"GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
-	"GIT_INDEX_FILE":                   true,
-	"GIT_NAMESPACE":                    true,
-	"GIT_CEILING_DIRECTORIES":          true,
-	"GIT_DISCOVERY_ACROSS_FILESYSTEM":  true,
-	"GIT_LITERAL_PATHSPECS":            true,
-	"GIT_GLOB_PATHSPECS":               true,
-	"GIT_NOGLOB_PATHSPECS":             true,
-	"GIT_ICASE_PATHSPECS":              true,
-}
+// Honesty about the measurement: all five commands built here complete with no
+// environment at all on darwin with git 2.50 and on linux with git 2.53, PATH
+// included, so none of them was observed to need it. It is admitted because
+// Git resolves the programs it runs through PATH by documented design — a
+// pager, a hook, a credential helper, a non-builtin subcommand — and a command
+// added to this constructor later would otherwise fail in a way that looks like
+// a broken repository rather than a missing variable.
+var gitInheritedEnvironment = []string{"PATH"}
 
-// gitTrustedConfiguration is the entire configuration contract for the Git
-// commands this package runs: every scope outside the repository is pinned
-// shut, and the repository's own file is the only configuration that remains.
-// That file is not optional — remote.origin.url lives in it, and reading it is
-// the whole job of gitRemotes — so the contract is "the repository's
-// configuration and nothing else" rather than "no configuration".
+// gitStatedEnvironment is what these commands are told, as against the one name
+// above that they are allowed to inherit. Naming a value rather than leaving
+// the variable out is the same decision the configuration pins already
+// embodied, made once more: dropping HOME would leave what these reads look at
+// to whatever Git does with an unset variable, which is a property of the Git
+// on the machine rather than a contract this package holds. Measured today,
+// every command built here completes with no HOME at all on darwin with git
+// 2.50 and on linux with git 2.53; naming the location is how that stays true
+// of the next Git and of an implementation nobody here has tried.
 //
-// It is set here rather than inherited, and that is the whole of the change.
-// internal/gitstore and internal/testgit pin exactly these three variables, and
-// forwarding their pins was the original reason to admit the names at all; but
-// a bound this package relies on is a bound this package has to state. A caller
-// that merely omits the variables would otherwise have the invoking user's
-// ~/.gitconfig read into every command here, and a caller that sets them
-// hostilely would have its own file read instead. Stating it costs three
-// strings and does not depend on who started the process. NOSYSTEM and SYSTEM
-// both name the system scope because either alone is enough and Git honours
-// both; keeping the pair matches what internal/gitstore already writes.
+// os.DevNull is that location. It is not a directory this package creates: a
+// path that cannot hold a directory entry is a stronger statement than a
+// directory that happens to be empty right now, it cannot be raced or filled in
+// by anyone between the two commands of a single projection, and it needs no
+// creation, no cleanup and no error path in a constructor that has nowhere to
+// report one. Every path Git derives from these two variables — ~/.gitconfig,
+// $XDG_CONFIG_HOME/git/config, the $XDG_CONFIG_HOME/git/ignore and
+// $XDG_CONFIG_HOME/git/attributes defaults, the $HOME/.config/git fallbacks for
+// both, and the tilde in an `include.path` inside an admitted repository-local
+// or worktree scope — resolves under it and finds nothing.
 //
-// The cost is real and worth naming, because it is the one thing this takes
-// away. safe.directory is honoured only from protected configuration — the
-// system, global and command scopes — so pinning those two files shut means Git
-// consults no operator allowance for a repository owned by another user, and
-// refuses to read one. That is a visible error on every command here rather
-// than a wrong answer: the worktree list fails, and citingDocuments turns it
-// into a refused retirement rather than a silent pass. If a deployment ever
-// genuinely serves a repository it does not own, the answer is to name that one
-// repository in an explicit -c argument, deliberately and in view, and not to
-// reopen a channel whose contents are executable.
-var gitTrustedConfiguration = []string{
+// The three GIT_CONFIG pins stay, and they are not made redundant by pointing
+// HOME at nothing. GIT_CONFIG_NOSYSTEM and GIT_CONFIG_SYSTEM close the system
+// scope, whose path is compiled into Git and owes nothing to HOME. And
+// GIT_CONFIG_GLOBAL states the global scope directly: "the global scope is
+// os.DevNull" is the contract, whereas "HOME points at nothing" is a fact about
+// a different variable that implies the contract only for as long as Git
+// derives the global scope from HOME the way it does today.
+//
+// SUDO_UID is neutralised here by being absent, which is what the allowlist
+// gives for free and is the reason it is worth naming. Git treats a repository
+// as owned by the current user before it will parse that repository's
+// configuration at all, and when Git runs as root on a platform with sudo it
+// widens that test: it reads SUDO_UID and trusts repositories owned by the uid
+// recorded there as well as by root. Under `sudo`, therefore, an inherited
+// SUDO_UID makes another user's repository readable, and reading a repository
+// means parsing its configuration file, which is the executable channel this
+// whole contract is about. Git's own documentation prescribes exactly this
+// remedy: remove SUDO_UID from the environment before invoking git.
+//
+// The cost is real and is stated rather than hidden. Two ownership allowances
+// are now gone from these five commands: safe.directory, which Git honours only
+// from protected configuration and so only from the scopes pinned above, and
+// the sudo widening just described. A deployment that runs this under `sudo`
+// against a repository owned by the invoking user will find these reads
+// refused. That is a visible error and never a wrong answer — the worktree list
+// fails, and citingDocuments turns a refused citation lookup into a refused
+// retirement rather than a silent pass — and the remedy is to run as the owner,
+// not to reopen a channel whose contents are executable.
+//
+// This mechanism should later be shared with internal/gitstore, which bounds
+// its own Git environment separately and closes less of this: one statement of
+// what Git may see, in one place, is what stops the two drifting apart. That is
+// deliberately not done here. It changes a second package's contract, it is
+// gated on a pending ruling, and it belongs to its own request.
+var gitStatedEnvironment = []string{
+	"HOME=" + os.DevNull,
+	"XDG_CONFIG_HOME=" + os.DevNull,
 	"GIT_CONFIG_NOSYSTEM=1",
 	"GIT_CONFIG_SYSTEM=" + os.DevNull,
 	"GIT_CONFIG_GLOBAL=" + os.DevNull,
@@ -323,49 +326,93 @@ var gitTrustedConfiguration = []string{
 
 // repositoryLocalGit builds every read-only Git command this package runs
 // against a checkout, so that "the repository at repo" is what Git actually
-// reads. There is one constructor rather than a line at each of the five call
-// sites because the defect it closes is invisible at a call site: every one of
-// those commands looked correct, named its repository with -C, and answered
-// out of whichever repository the ambient environment pointed at. A site that
-// forgot the sanitising would look exactly like one that did not, so the only
-// reliable place to put it is where the command is built.
+// reads and the repository's own configuration file is the only configuration
+// it reads it under. There is one constructor rather than a line at each of the
+// five call sites because the defect it closes is invisible at a call site:
+// every one of those commands looked correct, named its repository with -C, and
+// answered out of whichever repository the ambient environment pointed at. A
+// site that forgot the bounding would look exactly like one that did not, so
+// the only reliable place to put it is where the command is built.
 //
 // --no-optional-locks keeps a read from writing to a repository somebody else
 // may be using; it belongs to every one of these commands for the same reason
 // the environment does.
-//
-// The environment is built in two steps, and the order matters. The inherited
-// variables are filtered first, then gitTrustedConfiguration is appended, so
-// this package's pins are last and win: os/exec keeps the final value for a
-// duplicated name, which makes the second step a statement of the contract
-// rather than a hope that the first step removed every spelling of it.
 func repositoryLocalGit(ctx context.Context, repo string, arguments ...string) *exec.Cmd {
 	argv := append([]string{"--no-optional-locks", "-C", repo}, arguments...)
 	command := exec.CommandContext(ctx, "git", argv...)
-	environment := os.Environ()
-	sanitized := make([]string, 0, len(environment)+len(gitTrustedConfiguration))
-	for _, variable := range environment {
-		if name, _, found := strings.Cut(variable, "="); found && !inheritedGitVariableAdmitted(name) {
-			continue
-		}
-		sanitized = append(sanitized, variable)
-	}
-	command.Env = append(sanitized, gitTrustedConfiguration...)
+	command.Env = gitCommandEnvironment(os.Environ())
 	return command
 }
 
-// inheritedGitVariableAdmitted answers whether one inherited variable may reach
-// a read-only Git command this package builds. Everything not named to Git is
-// none of this function's business and passes: PATH, HOME and the rest are what
-// make Git runnable at all.
-func inheritedGitVariableAdmitted(name string) bool {
-	if gitRoutingVariables[name] {
-		return false
+// gitCommandEnvironment builds the child environment from an explicit admitted
+// set: it starts from nothing, copies across the inherited variables named by
+// gitInheritedEnvironment, and appends gitStatedEnvironment. It takes the
+// inherited slice rather than reading os.Environ itself so that the shape of
+// the result can be asserted directly, including for spellings a test cannot
+// put into a real process environment on this platform.
+//
+// Names are compared without regard to case, and that is a portability
+// requirement rather than a courtesy. Windows environment keys are
+// case-insensitive and Windows spells the one admitted name `Path`, so an
+// exact-case comparison would drop the real PATH there and leave Git unable
+// to resolve anything; in the other direction, a case-varied spelling of a name this
+// package states would be the same variable as the stated one on Windows and a
+// different, inert one on Unix. Comparing by fold is correct on both, because
+// it is a superset of what either platform's own lookup treats as equal.
+// strings.EqualFold is Unicode simple folding rather than ASCII folding; every
+// name here is ASCII, and folding more names together than an operating system
+// would can only move a variable from admitted-and-inert to admitted-and-inert,
+// never the reverse.
+//
+// An admitted variable is copied with the spelling it arrived under, never
+// rewritten to the canonical one. On a platform whose lookup is case-sensitive,
+// re-emitting `pAtH=...` as `PATH=...` would promote a variable Git was
+// ignoring into the one it reads, which is a widening performed by the very
+// code meant to narrow.
+//
+// Nothing whose name folds to a stated name can be admitted, because no stated
+// name appears in the allowlist, so the result holds each stated name exactly
+// once and this does not depend on how duplicates are resolved. That
+// independence is worth having: os/exec keeps the last value for a duplicated
+// key, but it decides which keys are duplicates case-insensitively on Windows
+// and case-sensitively everywhere else, so a contract resting on "ours is
+// appended last" would mean something different on each platform. Building the
+// set so no duplicate arises says the same thing everywhere.
+//
+// os/exec appends SYSTEMROOT from this process on Windows when the environment
+// it is given does not carry one. That is outside this function's reach and is
+// left alone: it names a system directory, it is required for ordinary Windows
+// API calls to work at all, and it is not a channel through which Git reads
+// configuration or runs a program of the caller's choosing.
+func gitCommandEnvironment(inherited []string) []string {
+	environment := make([]string, 0, len(gitInheritedEnvironment)+len(gitStatedEnvironment))
+	for _, variable := range inherited {
+		name, _, found := strings.Cut(variable, "=")
+		if !found {
+			// Not of the form Git or any other program can read. Dropping it
+			// costs nothing and keeps the result to entries this function has
+			// actually judged.
+			continue
+		}
+		if !gitEnvironmentNameAdmitted(name) {
+			continue
+		}
+		environment = append(environment, variable)
 	}
-	// No inherited configuration at all, whether it carries a value or names a
-	// file that carries one. gitTrustedConfiguration supplies what these
-	// commands run under instead.
-	return !strings.HasPrefix(name, "GIT_CONFIG")
+	return append(environment, gitStatedEnvironment...)
+}
+
+// gitEnvironmentNameAdmitted answers whether one inherited variable name is on
+// the allowlist. It is the whole of the admission rule: a name that is not
+// there is absent from the child, whatever it is and whatever it would have
+// meant to Git.
+func gitEnvironmentNameAdmitted(name string) bool {
+	for _, admitted := range gitInheritedEnvironment {
+		if strings.EqualFold(name, admitted) {
+			return true
+		}
+	}
+	return false
 }
 
 // gitRemotes reads the remote URLs this repository itself configures.

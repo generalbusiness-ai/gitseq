@@ -1119,29 +1119,53 @@ a projection it may merge on. This carries the fold profile to
   bounds, because they answer different questions and neither implies the
   other. `git config --local` bounds the scope, so no outer configuration
   scope can name a remote the repository never configured. The environment of
-  every Git command this layer runs is stripped of the variables that decide
-  which repository Git resolves — `GIT_DIR`, `GIT_COMMON_DIR`,
-  `GIT_WORK_TREE` and their family — because those redirect the repository
-  before any scope rule applies, and a strictly local read of the wrong
-  repository is still the wrong repository. No inherited Git configuration
-  reaches those commands either, and the layer pins the system and global
-  scopes shut itself rather than forwarding whichever pins it was started
-  with. A variable naming a configuration *file* bounds nothing about what
-  that file says, and a Git configuration file names programs Git runs:
-  `core.fsmonitor` and its relatives make configuration an execution channel
-  rather than a scope question, so admitting such a variable by name is not a
-  narrowing. The repository's own configuration file is the one scope that
-  remains, because reading it is what the answer is made of. The cost is
-  stated rather than hidden: `safe.directory` is honoured only from the
-  scopes now pinned, so a repository owned by another user is refused outright
-  instead of read on an inherited allowance. The guard that refuses a
+  every Git command this layer runs is built from an explicit admitted set
+  rather than filtered for known-bad names: it starts from nothing, admits
+  `PATH` alone out of what it inherited, and states everything else itself, so
+  a variable nobody here has heard of is absent by construction. That shape is
+  the correction of four rounds in which a denied set was escaped — by
+  command-scope injection, which needs no file; by a variable naming a
+  configuration *file*, whose contents name programs Git runs, so that
+  admitting such a variable by name bounds nothing at all; by `HOME` reaching
+  `~/.gitconfig` with no such variable set; and finally by `HOME` reached from
+  *inside* the one scope that has to stay admitted, because a repository-local
+  `include.path = ~/attack.cfg` expands its tilde. `HOME` and
+  `XDG_CONFIG_HOME` are therefore pointed at a location that can hold nothing,
+  which is what makes `~/.gitconfig`, the default ignore and attributes files
+  Git reads through those two variables without any scope rule mentioning
+  them, their `$HOME/.config` fallbacks, and any tilde inside an admitted
+  scope resolve to nothing rather than to the caller's files. The system and
+  global scopes are pinned by this layer rather than forwarded from whoever
+  started the process, and the variables that decide which repository Git
+  resolves — `GIT_DIR`, `GIT_COMMON_DIR`, `GIT_WORK_TREE` and their family —
+  are absent along with everything else unnamed, because those redirect the
+  repository before any scope rule applies, and a strictly local read of the
+  wrong repository is still the wrong repository. The repository's own
+  configuration file is the one scope that remains, because reading it is what
+  the answer is made of. `PATH` is admitted because Git resolves the programs
+  it runs through it, and the allowlist makes no claim that it is safe:
+  whoever controls it chooses which binary named `git` runs, and that choice
+  was already made from this process's `PATH` before any child environment
+  existed, so it is a bound this layer cannot state and a deployment that
+  needs it closed must name an absolute path. The cost is stated rather than
+  hidden. Two ownership allowances Git would otherwise take from the
+  environment do not reach these commands: `safe.directory`, which Git honours
+  only from protected configuration and so only from the scopes now pinned,
+  and the widening Git applies when it runs as root under `sudo`, where it
+  reads `SUDO_UID` and trusts that uid's repositories as well as root's.
+  Running these reads under `sudo` therefore refuses repositories it would
+  once have read. The refusal is a visible error rather than a wrong answer.
+  The same mechanism belongs in `internal/gitstore`, which bounds its own Git
+  environment separately and closes less of this; sharing one statement of
+  what Git may see is a separate change. The guard that refuses a
   retirement the documentation still cites states a property rather than a
   list of what it defends against: it refuses whenever it cannot positively
   confirm that no live document cites the target. A lookup that does not run
   at all — a broken Git, a resource limit, a setting in the repository's own
   configuration file — yields a refusal, never a silent pass. Bounding the
   environment narrows how such a lookup is reached; it is not what makes the
-  answer safe, and no list of variable names is load-bearing. The remote read
+  answer safe, and no enumeration of variables, admitted or denied, is what
+  the guard rests on. The remote read
   is bounded in size and in count, and a repository past either bound reports
   no remote rather than a partial one. It is admitted by an allowlist: `http`
   and `https` only, never userinfo, a query, or a fragment — including the

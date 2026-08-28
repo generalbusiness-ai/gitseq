@@ -338,6 +338,12 @@ func TestInheritedConfigurationCannotReachTheWorktreeStatusRead(t *testing.T) {
 		// the control's own environment, and set on this process for the
 		// guarded read. Both runs therefore face the same inherited state.
 		variables func(t *testing.T, marker string) map[string]string
+		// prepare writes whatever the vector needs inside the repository
+		// itself, and is applied to the control's repository and to the
+		// guarded one alike, for the same reason variables is: the two runs
+		// have to face the same world or the control proves nothing about the
+		// guarded read. Most vectors need nothing here.
+		prepare func(t *testing.T, repo string)
 	}{
 		{
 			"GIT_CONFIG_GLOBAL names the file",
@@ -347,6 +353,7 @@ func TestInheritedConfigurationCannotReachTheWorktreeStatusRead(t *testing.T) {
 					"GIT_CONFIG_GLOBAL": commandBearingConfiguration(t, filepath.Join(t.TempDir(), "gitconfig"), marker),
 				}
 			},
+			nil,
 		},
 		{
 			"HOME names the directory holding it",
@@ -355,10 +362,42 @@ func TestInheritedConfigurationCannotReachTheWorktreeStatusRead(t *testing.T) {
 				commandBearingConfiguration(t, filepath.Join(home, ".gitconfig"), marker)
 				return map[string]string{"HOME": home}
 			},
+			nil,
+		},
+		{
+			// The vector that ends the argument for a denied set of names.
+			// Every GIT_CONFIG variable is gone and the system and global
+			// scopes are pinned shut, so the only configuration Git reads is
+			// the repository's own file — which is exactly the scope that
+			// cannot be closed, because remote.origin.url lives in it and
+			// reading it is what gitRemotes is for. Inside that admitted
+			// scope, `include.path = ~/attack.cfg` expands the tilde against
+			// HOME, so the caller supplies the contents of an admitted scope
+			// without setting any variable Git calls configuration. The pins
+			// are part of this vector's own environment, on the control as
+			// well as on the guarded read, because a control that did not face
+			// them would be demonstrating something easier than the claim.
+			"a repository-local include.path expands its tilde against HOME",
+			func(t *testing.T, marker string) map[string]string {
+				home := t.TempDir()
+				commandBearingConfiguration(t, filepath.Join(home, "attack.cfg"), marker)
+				variables := statedConfigurationPins()
+				variables["HOME"] = home
+				return variables
+			},
+			func(t *testing.T, repo string) {
+				t.Helper()
+				if output, err := exec.Command("git", "-C", repo, "config", "--local", "include.path", "~/attack.cfg").CombinedOutput(); err != nil {
+					t.Fatalf("set the repository's own include.path: %v: %s", err, output)
+				}
+			},
 		},
 	} {
 		t.Run(vector.name, func(t *testing.T) {
 			control := seededRepoNamed(t, "control", "https://real.invalid/org/repo.git")
+			if vector.prepare != nil {
+				vector.prepare(t, control)
+			}
 			controlMarker := filepath.Join(t.TempDir(), "CONTROL-EXECUTED")
 			controlRead := exec.Command("git", "--no-optional-locks", "-C", control,
 				"status", "--porcelain=v1", "--untracked-files=normal")
@@ -397,6 +436,12 @@ func TestInheritedConfigurationCannotReachTheWorktreeStatusRead(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// After Open, because Open resolves the repository through
+			// internal/gitstore under this process's own environment, and a
+			// vector planted before it would be testing that package instead.
+			if vector.prepare != nil {
+				vector.prepare(t, victim)
+			}
 			marker := filepath.Join(t.TempDir(), "EXECUTED")
 			for name, value := range vector.variables(t, marker) {
 				t.Setenv(name, value)
@@ -427,6 +472,333 @@ func TestInheritedConfigurationCannotReachTheWorktreeStatusRead(t *testing.T) {
 				t.Errorf("inherited configuration corrupted the status answer: state %q, checkout now holds %v", served.State, entries)
 			}
 		})
+	}
+}
+
+// Not every corruption of a read needs a configuration file, and the ones that
+// do not are the reason pinning the configuration scopes is not the whole
+// contract. Git reads two files by default that no scope rule mentions:
+// $XDG_CONFIG_HOME/git/ignore, and $HOME/.config/git/ignore when
+// XDG_CONFIG_HOME is unset. Both are read with the system and global scopes
+// pinned shut and no GIT_CONFIG variable set at all, because they are not
+// configuration scopes — they are defaults Git derives from two variables that
+// have nothing to do with Git.
+//
+// What that buys a caller is the status answer. `--untracked-files=normal` is
+// how this projection tells a reader that a checkout has uncommitted work in
+// it, and an ignore rule the caller supplies suppresses exactly that: a
+// checkout with work in it reports "clean". Nothing executes and nothing looks
+// wrong, which makes it the quieter half of the same class and the half a test
+// written only around `core.fsmonitor` would miss. The same two variables carry
+// the default attributes file, which can move the answer a second way through
+// end-of-line conversion; the ignore file is the cheapest of the family to
+// arrange and stands for it.
+//
+// Two control runs, because one would not separate the two things that must
+// both be true. The first proves the untracked file really is untracked and
+// really is reported, so that a later empty answer means something. The second
+// proves the caller's ignore file still suppresses it on this Git. Both fail
+// hard rather than skip: a Git that stopped reading these files is a reason to
+// re-derive the vector deliberately, and a silent skip here would be
+// indistinguishable from a working guard.
+func TestInheritedIgnoreRulesCannotCorruptTheWorktreeStatusAnswer(t *testing.T) {
+	ctx := context.Background()
+	const uncommitted = "uncommitted-work.txt"
+
+	for _, vector := range []struct {
+		name      string
+		variables func(t *testing.T) map[string]string
+	}{
+		{
+			"XDG_CONFIG_HOME names the directory holding the default ignore file",
+			func(t *testing.T) map[string]string {
+				xdg := t.TempDir()
+				writeDefaultIgnoreFile(t, filepath.Join(xdg, "git"), uncommitted)
+				variables := statedConfigurationPins()
+				variables["HOME"] = t.TempDir()
+				variables["XDG_CONFIG_HOME"] = xdg
+				return variables
+			},
+		},
+		{
+			// The fallback Git uses when XDG_CONFIG_HOME is unset. It is a
+			// separate case because closing XDG_CONFIG_HOME alone leaves it
+			// open, and a caller who simply omits that variable reaches the
+			// same file through HOME.
+			"HOME names the .config fallback for the default ignore file",
+			func(t *testing.T) map[string]string {
+				home := t.TempDir()
+				writeDefaultIgnoreFile(t, filepath.Join(home, ".config", "git"), uncommitted)
+				variables := statedConfigurationPins()
+				variables["HOME"] = home
+				return variables
+			},
+		},
+	} {
+		t.Run(vector.name, func(t *testing.T) {
+			control := seededRepoNamed(t, "control", "https://real.invalid/org/repo.git")
+			if err := os.WriteFile(filepath.Join(control, uncommitted), []byte("work in progress\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			controlRead := func(variables map[string]string) string {
+				t.Helper()
+				command := exec.Command("git", "--no-optional-locks", "-C", control,
+					"status", "--porcelain=v1", "--untracked-files=normal")
+				// Built from nothing but PATH and the case's own variables, so
+				// that this package's test-wide Git isolation cannot be what
+				// produces either control answer.
+				command.Env = []string{"PATH=" + os.Getenv("PATH")}
+				for name, value := range variables {
+					command.Env = append(command.Env, name+"="+value)
+				}
+				output, err := command.Output()
+				if err != nil {
+					t.Fatalf("control status read: %v", err)
+				}
+				return string(output)
+			}
+
+			starved := statedConfigurationPins()
+			starved["HOME"] = os.DevNull
+			starved["XDG_CONFIG_HOME"] = os.DevNull
+			if honest := controlRead(starved); !strings.Contains(honest, uncommitted) {
+				t.Fatalf("the control repository no longer reports its untracked file (%q); re-derive the vector rather than deleting the test", honest)
+			}
+			if corrupted := controlRead(vector.variables(t)); strings.Contains(corrupted, uncommitted) {
+				t.Fatalf("the vector this test defends against no longer hides an untracked file (%q); re-derive it rather than deleting the test", corrupted)
+			}
+
+			// A repository and a workspace per case, because LocalWorktrees
+			// caches for eight seconds and a shared one would let a later case
+			// pass on an earlier read.
+			victim := seededRepoNamed(t, "victim", "https://real.invalid/org/repo.git")
+			if _, _, err := Init(ctx, victim, "human", 1<<20); err != nil {
+				t.Fatal(err)
+			}
+			workspace, err := Open(ctx, victim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(victim, uncommitted), []byte("work in progress\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for name, value := range vector.variables(t) {
+				t.Setenv(name, value)
+			}
+
+			local, err := workspace.LocalWorktrees(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var served *WorktreeView
+			for index := range local.Worktrees {
+				if local.Worktrees[index].Checkout == "victim" {
+					served = &local.Worktrees[index]
+				}
+			}
+			switch {
+			case served == nil:
+				t.Fatalf("the victim's own checkout is missing from %+v", local.Worktrees)
+			case served.State != "dirty":
+				t.Errorf("an inherited ignore rule hid uncommitted work: state %q, want dirty", served.State)
+			}
+		})
+	}
+}
+
+// writeDefaultIgnoreFile writes one of the two ignore files Git reads without
+// being pointed at them, at the directory given. Its argument is a path
+// pattern, and suppressing a single named file is enough: the claim is that a
+// caller can change what the status answer says, not that they can change all
+// of it.
+func writeDefaultIgnoreFile(t *testing.T, directory, pattern string) {
+	t.Helper()
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "ignore"), []byte(pattern+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The admitted set, asserted as a closed world rather than as a list of
+// refusals, and asserted over spellings that vary by case.
+//
+// Case matters because this package builds for Windows, where environment keys
+// are case-insensitive and the variable this allowlist admits is conventionally
+// spelled `Path`. An exact-case comparison would fail in both directions there:
+// it would drop the real PATH, leaving Git unable to resolve anything, and it
+// would treat `Git_Config_Global` as a name it had never heard of while the
+// operating system handed it to Git as GIT_CONFIG_GLOBAL. On Unix the same
+// spelling is a different, inert variable, so the case rule cannot be
+// demonstrated at the `git status` boundary on the platforms this suite runs
+// on; the environment the constructor builds is where the rule lives and the
+// only place it is observable everywhere the package builds. That is why the
+// assertion below is on that environment rather than on a status answer, and
+// it is a deviation worth knowing about rather than a stronger test.
+//
+// The control keeps it from being vacuous in the way that matters here: it
+// proves that on this Git, an inherited configuration variable still buys
+// command execution during an ordinary read. If that ever stops being true,
+// this test's subject has changed and the test should be re-derived rather than
+// trusted. It fails hard for that reason and does not skip.
+//
+// Written as a closed world — every entry is either an inherited PATH or one of
+// the five stated variables, with the stated values spelled out here rather
+// than read from the package — this also refuses a widened allowlist. A name
+// added to gitInheritedEnvironment to make some other test pass fails this one
+// by name, which is the point: what these commands may see is a decision, and a
+// decision should have to be made on purpose.
+func TestCaseVariedEnvironmentNamesCannotReachTheGitCommands(t *testing.T) {
+	control := seededRepoNamed(t, "control", "https://real.invalid/org/repo.git")
+	controlMarker := filepath.Join(t.TempDir(), "CONTROL-EXECUTED")
+	controlRead := exec.Command("git", "--no-optional-locks", "-C", control,
+		"status", "--porcelain=v1", "--untracked-files=normal")
+	controlRead.Env = []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + t.TempDir(),
+		"GIT_CONFIG_GLOBAL=" + commandBearingConfiguration(t, filepath.Join(t.TempDir(), "gitconfig"), controlMarker),
+	}
+	if _, err := controlRead.Output(); err != nil {
+		t.Fatalf("control status read: %v", err)
+	}
+	if _, err := os.Stat(controlMarker); err != nil {
+		t.Fatalf("an inherited configuration variable no longer buys execution here (%v); re-derive this test's subject rather than deleting it", err)
+	}
+
+	attacker := t.TempDir()
+	inherited := []string{
+		"PATH=" + os.Getenv("PATH"),
+		// Windows' own spelling of the one admitted name. It must survive, or
+		// Git has no PATH on the platform that spells it this way.
+		"Path=" + attacker,
+		"Home=" + attacker,
+		"hOmE=" + attacker,
+		"XDG_Config_Home=" + attacker,
+		"Git_Config_Global=" + filepath.Join(attacker, "gitconfig"),
+		"gIt_CoNfIg_NoSySteM=0",
+		"gIt_CoNfIg_CoUnT=1",
+		"Git_Config_Key_0=core.fsmonitor",
+		"Git_Config_Value_0=touch " + filepath.Join(attacker, "EXECUTED"),
+		"Git_Dir=" + filepath.Join(attacker, ".git"),
+		"gIt_LiTeRaL_PaThSpEcS=1",
+		"Sudo_Uid=0",
+		// Not of the form name=value at all. Git cannot read it and neither
+		// can this function, so it must not be carried through unjudged.
+		"a malformed entry with no equals sign",
+	}
+	built := gitCommandEnvironment(inherited)
+
+	// Spelled out rather than read from gitStatedEnvironment: a test that
+	// compared the implementation against itself would agree with any change.
+	stated := map[string]string{
+		"HOME":                os.DevNull,
+		"XDG_CONFIG_HOME":     os.DevNull,
+		"GIT_CONFIG_NOSYSTEM": "1",
+		"GIT_CONFIG_SYSTEM":   os.DevNull,
+		"GIT_CONFIG_GLOBAL":   os.DevNull,
+	}
+	seen := make(map[string]int, len(stated))
+	admittedPath := 0
+	for _, entry := range built {
+		name, value, found := strings.Cut(entry, "=")
+		if !found {
+			t.Errorf("the built environment carries an entry that is not name=value: %q", entry)
+			continue
+		}
+		matched := ""
+		for statedName := range stated {
+			if strings.EqualFold(name, statedName) {
+				matched = statedName
+			}
+		}
+		if matched != "" {
+			seen[matched]++
+			if value != stated[matched] {
+				t.Errorf("%s = %q, want the stated %q", name, value, stated[matched])
+			}
+			continue
+		}
+		if !strings.EqualFold(name, "PATH") {
+			t.Errorf("an unadmitted variable reached a read-only Git command: %q", entry)
+			continue
+		}
+		admittedPath++
+		// Admitted variables keep the spelling they arrived under. Rewriting
+		// `Path` to `PATH` on a platform whose lookup is case-sensitive would
+		// promote a variable Git was ignoring into the one it reads, which is a
+		// widening performed by the code meant to narrow.
+		verbatim := false
+		for _, original := range inherited {
+			if original == entry {
+				verbatim = true
+			}
+		}
+		if !verbatim {
+			t.Errorf("an admitted variable was rewritten rather than carried through: %q", entry)
+		}
+	}
+	if admittedPath != 2 {
+		t.Errorf("both spellings of the admitted name must survive; %d did", admittedPath)
+	}
+	for name := range stated {
+		if seen[name] != 1 {
+			// Exactly once, so the contract does not rest on how duplicates
+			// are resolved. os/exec keeps the last value for a duplicated key
+			// but decides which keys are duplicates case-insensitively only on
+			// Windows, so "ours is appended last" would mean two different
+			// things on two platforms.
+			t.Errorf("%s appears %d times in the built environment, want exactly once", name, seen[name])
+		}
+	}
+}
+
+// Ownership trust is inherited too, and it is not a configuration variable, so
+// nothing above would have caught it. Before Git will parse a repository's
+// configuration it checks that the repository is owned by the user running it,
+// and when it runs as root on a platform with sudo it widens that check: it
+// reads SUDO_UID and treats repositories owned by the uid recorded there as
+// owned by the current user. Under `sudo`, an inherited SUDO_UID therefore
+// makes another user's repository readable, and reading a repository means
+// parsing its configuration file — the executable channel this whole contract
+// exists to close, reached by a variable that names no file and sets no value.
+// Git's own documentation prescribes the remedy this test asserts: remove
+// SUDO_UID from the environment before invoking git.
+//
+// What is asserted is the absence, at the environment the constructor builds.
+// The consequence is not exercised, and saying so plainly is better than a
+// green test that implies it was: demonstrating it needs the test process to
+// run as root and needs a repository owned by a second uid, neither of which a
+// unit test may arrange. A reader deciding how much this covers should read it
+// as "the variable does not reach Git", not as "Git was observed to refuse the
+// repository".
+func TestSudoOwnershipTrustIsNotInheritedByTheGitCommands(t *testing.T) {
+	built := gitCommandEnvironment([]string{
+		"PATH=" + os.Getenv("PATH"),
+		"SUDO_UID=0",
+		"SUDO_GID=0",
+		"SUDO_USER=root",
+		"Sudo_Uid=0",
+	})
+	for _, entry := range built {
+		name, _, _ := strings.Cut(entry, "=")
+		if len(name) >= 5 && strings.EqualFold(name[:5], "SUDO_") {
+			t.Errorf("inherited sudo ownership trust reached a read-only Git command: %q", entry)
+		}
+	}
+}
+
+// statedConfigurationPins is what internal/app pins the configuration scopes to,
+// written out here rather than read from the package variable. A control run
+// has to face the pins independently for its result to mean anything: reusing
+// the value under test would make the control agree with the implementation by
+// construction, and a vector that survives these pins is precisely the claim
+// each caller of this makes.
+func statedConfigurationPins() map[string]string {
+	return map[string]string{
+		"GIT_CONFIG_NOSYSTEM": "1",
+		"GIT_CONFIG_SYSTEM":   os.DevNull,
+		"GIT_CONFIG_GLOBAL":   os.DevNull,
 	}
 }
 
