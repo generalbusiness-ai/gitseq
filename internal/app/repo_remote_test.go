@@ -159,6 +159,93 @@ func TestGitRemotesReadsRepositoryLocalConfigurationOnly(t *testing.T) {
 	}
 }
 
+// `git config --local --no-includes` is narrower than "the repository's
+// configuration", by two cases that no test reached until this one. Git reads
+// worktree configuration from $GIT_DIR/config.worktree once the repository sets
+// extensions.worktreeConfig, and it follows an `include.path` inside the
+// repository's own file. A repository may put remote.origin.url in either, and
+// this read will not see it: the bar shows no link where a `git remote -v` in
+// the same checkout shows one.
+//
+// That gap is the deliberate side of the bound, so it is pinned as behaviour
+// rather than described in a comment where it could quietly stop being true.
+// Widening the read to close it would give up the scope bound that makes the
+// disclosed URL the repository's own.
+//
+// The two cases are not equal evidence and which is which matters. The worktree
+// case pins a decision this code makes: drop `--local` and the read reports the
+// worktree remote and this fails. The include case pins a Git *default* — `git
+// config` documents `--includes` as off whenever a scope is named, and that is
+// what git 2.50 does — so `--no-includes` is explicit rather than load-bearing
+// and removing it changes nothing here. Keeping the include case is worth it
+// anyway, as a watch on that default: if a future Git follows includes under
+// `--local`, this fails, and the flag that was merely explicit becomes the
+// thing holding the read to one file.
+//
+// Each case carries a control that fails hard and never skips. An unscoped read
+// under the same stated environment must see the remote, or a green result here
+// would mean only that the fixture never configured one.
+func TestTheRemoteReadDoesNotSeeWorktreeOrIncludedConfiguration(t *testing.T) {
+	ctx := context.Background()
+	for _, testCase := range []struct {
+		name  string
+		place func(t *testing.T, repo string)
+	}{
+		{"worktree configuration", func(t *testing.T, repo string) {
+			if output, err := exec.Command("git", "-C", repo, "config", "extensions.worktreeConfig", "true").CombinedOutput(); err != nil {
+				t.Fatalf("enable worktree configuration: %v: %s", err, output)
+			}
+			write(t, filepath.Join(repo, ".git", "config.worktree"),
+				"[remote \"origin\"]\n	url = https://real.invalid/org/repo.git\n")
+		}},
+		{"a file the repository includes", func(t *testing.T, repo string) {
+			write(t, filepath.Join(repo, "remotes.cfg"),
+				"[remote \"origin\"]\n	url = https://real.invalid/org/repo.git\n")
+			appendTo(t, filepath.Join(repo, ".git", "config"), "[include]\n	path = ../remotes.cfg\n")
+		}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			repo := seededRepoNamed(t, "victim", "https://real.invalid/org/repo.git")
+			if output, err := exec.Command("git", "-C", repo, "remote", "remove", "origin").CombinedOutput(); err != nil {
+				t.Fatalf("clear the repository-local origin: %v: %s", err, output)
+			}
+			testCase.place(t, repo)
+
+			// The control. It faces the same stated environment as the read
+			// under test and differs from it only in scope, so a remote it
+			// cannot see is a broken fixture rather than a bound working.
+			control := repositoryLocalGit(ctx, repo, "config", "--get-regexp", `^remote\..*\.url$`)
+			visible, err := control.Output()
+			if err != nil {
+				t.Fatalf("control read: %v", err)
+			}
+			if !strings.Contains(string(visible), "https://real.invalid/org/repo.git") {
+				t.Fatalf("the fixture configured no remote Git can see: %q", visible)
+			}
+
+			if remotes := gitRemotes(ctx, repo); len(remotes) != 0 {
+				t.Errorf("the remote read reached outside the repository's own configuration file: %v", remotes)
+			}
+		})
+	}
+}
+
+func write(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func appendTo(t *testing.T, path, content string) {
+	t.Helper()
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, path, string(existing)+content)
+}
+
 // The same defect, followed all the way to the value that leaves this
 // boundary. gitRemotes is where it is fixed; LocalRepo.Remote is where it
 // would have been observed.
@@ -621,35 +708,44 @@ func writeDefaultIgnoreFile(t *testing.T, directory, pattern string) {
 	}
 }
 
-// The admitted set, asserted as a closed world rather than as a list of
-// refusals, and asserted over spellings that vary by case.
+// The environment these commands run under, asserted as a closed world.
 //
-// Case matters because this package builds for Windows, where environment keys
-// are case-insensitive and the variable this allowlist admits is conventionally
-// spelled `Path`. An exact-case comparison would fail in both directions there:
-// it would drop the real PATH, leaving Git unable to resolve anything, and it
-// would treat `Git_Config_Global` as a name it had never heard of while the
-// operating system handed it to Git as GIT_CONFIG_GLOBAL. On Unix the same
-// spelling is a different, inert variable, so the case rule cannot be
-// demonstrated at the `git status` boundary on the platforms this suite runs
-// on; the environment the constructor builds is where the rule lives and the
-// only place it is observable everywhere the package builds. That is why the
-// assertion below is on that environment rather than on a status answer, and
-// it is a deviation worth knowing about rather than a stronger test.
+// This test used to assert a case-folding rule: the allowlist admitted PATH,
+// Windows spells that name `Path` and matches environment keys without regard
+// to case, so the comparison had to fold and the folding had to be exercised.
+// That rule is gone with the allowlist. Nothing is inherited now, so there is
+// no name to compare and no case in which to compare it, and asserting the
+// folding would be asserting a rule the package no longer has.
 //
-// The control keeps it from being vacuous in the way that matters here: it
-// proves that on this Git, an inherited configuration variable still buys
-// command execution during an ordinary read. If that ever stops being true,
-// this test's subject has changed and the test should be re-derived rather than
-// trusted. It fails hard for that reason and does not skip.
+// What replaces it is the stronger claim the empty inherited set makes
+// available, and it is asserted one layer out. Rather than handing a slice to a
+// filtering helper, this drives repositoryLocalGit itself — the constructor
+// every one of the five reads actually goes through — from a process whose own
+// environment carries the vectors, and requires the command it returns to carry
+// the five stated entries and nothing else. The case-varied spellings stay in
+// that vector set, but they are no longer the subject: they are there because a
+// closed world should be closed against every spelling, and because if
+// inheritance is ever reintroduced this test should name what got through.
 //
-// Written as a closed world — every entry is either an inherited PATH or one of
-// the five stated variables, with the stated values spelled out here rather
-// than read from the package — this also refuses a widened allowlist. A name
-// added to gitInheritedEnvironment to make some other test pass fails this one
-// by name, which is the point: what these commands may see is a decision, and a
-// decision should have to be made on purpose.
-func TestCaseVariedEnvironmentNamesCannotReachTheGitCommands(t *testing.T) {
+// Two limits on what this proves, stated rather than left to be assumed.
+//
+// It reads Cmd.Env, which is what this package built. On Windows os/exec adds
+// SYSTEMROOT to the environment the child actually receives, and it does that
+// at start time without touching Cmd.Env, so this assertion holds identically
+// on Windows while saying nothing about the Windows child. The closed-child
+// claim is a Unix claim and this suite runs on Unix.
+//
+// And the constructor no longer consults os.Environ at all, so setting these
+// variables cannot change its answer today. They are set anyway because the
+// claim is about a process that carries them, and because a reintroduced
+// os.Environ read would then fail here by name rather than by count.
+//
+// The control keeps it from being vacuous in the way that matters: it proves
+// that on this Git, an inherited configuration variable still buys command
+// execution during an ordinary read. If that ever stops being true, this test's
+// subject has changed and the test should be re-derived rather than trusted. It
+// fails hard for that reason and does not skip.
+func TestNoInheritedVariableReachesTheGitCommands(t *testing.T) {
 	control := seededRepoNamed(t, "control", "https://real.invalid/org/repo.git")
 	controlMarker := filepath.Join(t.TempDir(), "CONTROL-EXECUTED")
 	controlRead := exec.Command("git", "--no-optional-locks", "-C", control,
@@ -667,27 +763,26 @@ func TestCaseVariedEnvironmentNamesCannotReachTheGitCommands(t *testing.T) {
 	}
 
 	attacker := t.TempDir()
-	inherited := []string{
-		"PATH=" + os.Getenv("PATH"),
-		// Windows' own spelling of the one admitted name. It must survive, or
-		// Git has no PATH on the platform that spells it this way.
-		"Path=" + attacker,
-		"Home=" + attacker,
-		"hOmE=" + attacker,
-		"XDG_Config_Home=" + attacker,
-		"Git_Config_Global=" + filepath.Join(attacker, "gitconfig"),
-		"gIt_CoNfIg_NoSySteM=0",
-		"gIt_CoNfIg_CoUnT=1",
-		"Git_Config_Key_0=core.fsmonitor",
-		"Git_Config_Value_0=touch " + filepath.Join(attacker, "EXECUTED"),
-		"Git_Dir=" + filepath.Join(attacker, ".git"),
-		"gIt_LiTeRaL_PaThSpEcS=1",
-		"Sudo_Uid=0",
-		// Not of the form name=value at all. Git cannot read it and neither
-		// can this function, so it must not be carried through unjudged.
-		"a malformed entry with no equals sign",
+	for _, variable := range [][2]string{
+		{"Home", attacker},
+		{"hOmE", attacker},
+		{"XDG_Config_Home", attacker},
+		{"GIT_CONFIG_GLOBAL", filepath.Join(attacker, "gitconfig")},
+		{"Git_Config_Global", filepath.Join(attacker, "gitconfig")},
+		{"GIT_CONFIG_NOSYSTEM", "0"},
+		{"gIt_CoNfIg_NoSySteM", "0"},
+		{"GIT_CONFIG_COUNT", "1"},
+		{"GIT_CONFIG_KEY_0", "core.fsmonitor"},
+		{"GIT_CONFIG_VALUE_0", "touch " + filepath.Join(attacker, "EXECUTED")},
+		{"GIT_DIR", filepath.Join(attacker, ".git")},
+		{"GIT_LITERAL_PATHSPECS", "1"},
+		{"SUDO_UID", "0"},
+		// Windows' own spelling of the name the allowlist used to admit. It
+		// has no privilege here any more, which is the change under test.
+		{"Path", attacker},
+	} {
+		t.Setenv(variable[0], variable[1])
 	}
-	built := gitCommandEnvironment(inherited)
 
 	// Spelled out rather than read from gitStatedEnvironment: a test that
 	// compared the implementation against itself would agree with any change.
@@ -698,48 +793,31 @@ func TestCaseVariedEnvironmentNamesCannotReachTheGitCommands(t *testing.T) {
 		"GIT_CONFIG_SYSTEM":   os.DevNull,
 		"GIT_CONFIG_GLOBAL":   os.DevNull,
 	}
+	built := repositoryLocalGit(context.Background(), control,
+		"status", "--porcelain=v1", "--untracked-files=normal").Env
+
 	seen := make(map[string]int, len(stated))
-	admittedPath := 0
 	for _, entry := range built {
 		name, value, found := strings.Cut(entry, "=")
 		if !found {
 			t.Errorf("the built environment carries an entry that is not name=value: %q", entry)
 			continue
 		}
-		matched := ""
-		for statedName := range stated {
-			if strings.EqualFold(name, statedName) {
-				matched = statedName
-			}
-		}
-		if matched != "" {
-			seen[matched]++
-			if value != stated[matched] {
-				t.Errorf("%s = %q, want the stated %q", name, value, stated[matched])
-			}
+		want, isStated := stated[name]
+		if !isStated {
+			// Matched by exact name, not by fold. Every name here is one this
+			// package writes itself, so its spelling is known; accepting a
+			// folded spelling would accept an entry this package did not write.
+			t.Errorf("a variable this package does not state reached a read-only Git command: %q", entry)
 			continue
 		}
-		if !strings.EqualFold(name, "PATH") {
-			t.Errorf("an unadmitted variable reached a read-only Git command: %q", entry)
-			continue
-		}
-		admittedPath++
-		// Admitted variables keep the spelling they arrived under. Rewriting
-		// `Path` to `PATH` on a platform whose lookup is case-sensitive would
-		// promote a variable Git was ignoring into the one it reads, which is a
-		// widening performed by the code meant to narrow.
-		verbatim := false
-		for _, original := range inherited {
-			if original == entry {
-				verbatim = true
-			}
-		}
-		if !verbatim {
-			t.Errorf("an admitted variable was rewritten rather than carried through: %q", entry)
+		seen[name]++
+		if value != want {
+			t.Errorf("%s = %q, want the stated %q", name, value, want)
 		}
 	}
-	if admittedPath != 2 {
-		t.Errorf("both spellings of the admitted name must survive; %d did", admittedPath)
+	if len(built) != len(stated) {
+		t.Errorf("the built environment has %d entries, want exactly the %d stated ones: %q", len(built), len(stated), built)
 	}
 	for name := range stated {
 		if seen[name] != 1 {
@@ -753,8 +831,45 @@ func TestCaseVariedEnvironmentNamesCannotReachTheGitCommands(t *testing.T) {
 	}
 }
 
-// Ownership trust is inherited too, and it is not a configuration variable, so
-// nothing above would have caught it. Before Git will parse a repository's
+// Each command gets its own copy of the stated environment. A caller holding
+// one command may set Cmd.Env entries — os/exec invites exactly that — and if
+// the constructor handed out the package-level slice instead of a copy, doing
+// so would silently rewrite what every later command runs under. Nothing in
+// this package does that today, which is why it is worth pinning: the cost of
+// the copy is one allocation and the cost of losing it is invisible.
+func TestEachGitCommandGetsItsOwnEnvironment(t *testing.T) {
+	ctx := context.Background()
+	repo := seededRepoNamed(t, "victim", "https://real.invalid/org/repo.git")
+
+	first := repositoryLocalGit(ctx, repo, "status", "--porcelain=v1")
+	for index, entry := range first.Env {
+		if strings.HasPrefix(entry, "GIT_CONFIG_GLOBAL=") {
+			first.Env[index] = "GIT_CONFIG_GLOBAL=" + filepath.Join(t.TempDir(), "gitconfig")
+		}
+	}
+
+	second := repositoryLocalGit(ctx, repo, "status", "--porcelain=v1")
+	want := "GIT_CONFIG_GLOBAL=" + os.DevNull
+	found := false
+	for _, entry := range second.Env {
+		if strings.HasPrefix(entry, "GIT_CONFIG_GLOBAL=") {
+			found = true
+			if entry != want {
+				t.Errorf("editing one command's environment changed the next one's: %q, want %q", entry, want)
+			}
+		}
+	}
+	if !found {
+		t.Error("the second command carries no GIT_CONFIG_GLOBAL at all")
+	}
+}
+
+// Ownership trust is inherited too, and it is not a configuration variable.
+// The closed-world test above now catches it along with everything else, by
+// counting; this stays because a count says only that something got through and
+// this says which channel it was and why that channel matters. It also checks
+// the whole SUDO_ family by prefix rather than the one name that happens to be
+// in the vector list above. Before Git will parse a repository's
 // configuration it checks that the repository is owned by the user running it,
 // and when it runs as root on a platform with sudo it widens that check: it
 // reads SUDO_UID and treats repositories owned by the uid recorded there as
@@ -773,13 +888,17 @@ func TestCaseVariedEnvironmentNamesCannotReachTheGitCommands(t *testing.T) {
 // as "the variable does not reach Git", not as "Git was observed to refuse the
 // repository".
 func TestSudoOwnershipTrustIsNotInheritedByTheGitCommands(t *testing.T) {
-	built := gitCommandEnvironment([]string{
-		"PATH=" + os.Getenv("PATH"),
-		"SUDO_UID=0",
-		"SUDO_GID=0",
-		"SUDO_USER=root",
-		"Sudo_Uid=0",
-	})
+	for _, variable := range [][2]string{
+		{"SUDO_UID", "0"},
+		{"SUDO_GID", "0"},
+		{"SUDO_USER", "root"},
+		{"Sudo_Uid", "0"},
+	} {
+		t.Setenv(variable[0], variable[1])
+	}
+	built := repositoryLocalGit(context.Background(),
+		seededRepoNamed(t, "victim", "https://real.invalid/org/repo.git"),
+		"status", "--porcelain=v1", "--untracked-files=normal").Env
 	for _, entry := range built {
 		name, _, _ := strings.Cut(entry, "=")
 		if len(name) >= 5 && strings.EqualFold(name[:5], "SUDO_") {

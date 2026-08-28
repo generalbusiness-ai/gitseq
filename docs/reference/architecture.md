@@ -1117,13 +1117,20 @@ a projection it may merge on. This carries the fold profile to
   contract, not implementation detail. It comes from the repository this
   resident was pointed at, and from that repository's own configuration: two
   bounds, because they answer different questions and neither implies the
-  other. `git config --local` bounds the scope, so no outer configuration
-  scope can name a remote the repository never configured. The environment of
-  every Git command this layer runs is built from an explicit admitted set
-  rather than filtered for known-bad names: it starts from nothing, admits
-  `PATH` alone out of what it inherited, and states everything else itself, so
-  a variable nobody here has heard of is absent by construction. That shape is
-  the correction of four rounds in which a denied set was escaped — by
+  other. `git config --local --no-includes` bounds the scope, so no outer
+  configuration scope can name a remote the repository never configured, and
+  the read consults exactly one file. The flag pins a Git default rather than
+  changing this answer: `git config` documents `--includes` as off when a
+  scope is named, and that was checked on git 2.50. The cost, unchanged by the
+  flag, is that a repository reaching its remotes through an `include`, or
+  through worktree configuration, reports no remote and gets no link. The
+  environment of every Git command this layer runs is stated rather than
+  filtered for known-bad names: it inherits nothing whatever from the process
+  that started the resident, and this layer names every variable itself. On
+  Unix, which is where this is exercised, that stated set is the whole of the
+  child's environment, so a variable nobody here has heard of is absent by
+  construction. That shape is the correction of four rounds in which a denied
+  set was escaped — by
   command-scope injection, which needs no file; by a variable naming a
   configuration *file*, whose contents name programs Git runs, so that
   admitting such a variable by name bounds nothing at all; by `HOME` reaching
@@ -1140,15 +1147,28 @@ a projection it may merge on. This carries the fold profile to
   resolves — `GIT_DIR`, `GIT_COMMON_DIR`, `GIT_WORK_TREE` and their family —
   are absent along with everything else unnamed, because those redirect the
   repository before any scope rule applies, and a strictly local read of the
-  wrong repository is still the wrong repository. The repository's own
-  configuration file is the one scope that remains, because reading it is what
-  the answer is made of. `PATH` is admitted because Git resolves the programs
-  it runs through it, and the allowlist makes no claim that it is safe:
-  whoever controls it chooses which binary named `git` runs, and that choice
-  was already made from this process's `PATH` before any child environment
-  existed, so it is a bound this layer cannot state and a deployment that
-  needs it closed must name an absolute path. The cost is stated rather than
-  hidden. Two ownership allowances Git would otherwise take from the
+  wrong repository is still the wrong repository. What remains admitted is a
+  scope rather than a file: the repository's own configuration, its worktree
+  configuration at `$GIT_DIR/config.worktree` where the repository sets
+  `extensions.worktreeConfig`, and whatever an `include.path` or an
+  `includeIf` condition inside either of those names, by absolute or relative
+  path. All of it is executable — `core.fsmonitor` set in any of those five
+  places was measured running a program of its author's choosing during an
+  ordinary `git status` under this stated environment — and it stays admitted
+  because reading the repository this resident was pointed at is what the
+  answers are made of. `PATH` is not forwarded either. `os/exec` resolves
+  `git` against the *starting* process's `PATH` and records the absolute
+  result before any child environment exists, so which binary named `git` runs
+  was settled before this bound applied, and forwarding `PATH` would not have
+  changed that while additionally letting the caller name the programs Git
+  resolves for itself. Choosing that binary is a deployment trust boundary
+  this layer does not close and cannot; closing it takes an absolute path to a
+  trusted `git`, named by whoever deploys the resident. Windows is a second
+  boundary this layer does not state. The package builds for it, nothing here
+  has been exercised on it, and the closed-environment property is false there:
+  Go's `os/exec` adds `SYSTEMROOT` from the starting process to what the child
+  receives when the stated set carries no such name. The contract above is a
+  Unix contract. The cost is stated rather than hidden. Two ownership allowances Git would otherwise take from the
   environment do not reach these commands: `safe.directory`, which Git honours
   only from protected configuration and so only from the scopes now pinned,
   and the widening Git applies when it runs as root under `sudo`, where it
@@ -1161,8 +1181,9 @@ a projection it may merge on. This carries the fold profile to
   retirement the documentation still cites states a property rather than a
   list of what it defends against: it refuses whenever it cannot positively
   confirm that no live document cites the target. A lookup that does not run
-  at all — a broken Git, a resource limit, a setting in the repository's own
-  configuration file — yields a refusal, never a silent pass. Bounding the
+  at all — a broken Git, a resource limit, a setting anywhere in the
+  repository's own configuration scope — yields a refusal, never a silent
+  pass. Bounding the
   environment narrows how such a lookup is reached; it is not what makes the
   answer safe, and no enumeration of variables, admitted or denied, is what
   the guard rests on. The remote read
