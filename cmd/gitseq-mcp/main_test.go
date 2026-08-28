@@ -177,6 +177,14 @@ func TestEveryToolDeclaresAnOutputSchemaItsOwnResponsesSatisfy(t *testing.T) {
 		if schema["type"] != "object" {
 			t.Fatalf("tool %q declares outputSchema type %#v, want object", name, schema["type"])
 		}
+		// The exact boolean, not merely "not false". JSON Schema requires a
+		// schema here, so a boolean or an object; a string "true" is invalid
+		// and a conforming client rejects the whole declaration. Comparing
+		// against the one admissible value rejects every wrong one at once,
+		// including absent, which is what the payload checks below cannot see.
+		if schema["additionalProperties"] != true {
+			t.Fatalf("tool %q declares additionalProperties %#v, want the boolean true", name, schema["additionalProperties"])
+		}
 		declared[name] = schema
 	}
 	if len(declared) != 14 {
