@@ -4,6 +4,7 @@ import { forYouItems, ticketsOf, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
 import { loadForYouWatermark, saveForYouWatermark } from "../lib/memory";
 import { cn } from "../lib/util";
+import { repoRemoteHref } from "../lib/repolink";
 import { Avatar } from "./Avatar";
 import { fingerprintOfPresentActor, presentActors, toggleActivityFocus } from "../lib/interaction";
 import { publishRefusal } from "../lib/authority";
@@ -32,6 +33,10 @@ export function TopBar({
   const tickets = ticketsOf(durable?.projection);
   const selectedFocused = Boolean(selectedEvent && session.activity?.focus.includes(selectedEvent));
   const fingerprintOf = (name: string) => workroom.actors.find((a) => a.name === name)?.fingerprint ?? "";
+  // The served path names the repository; its remote, when there is one this is
+  // willing to link, says where that repository lives. Anything the allowlist
+  // refuses leaves this undefined and the path renders as it always has.
+  const repoHref = repoRemoteHref(workroom.repoRemote);
 
   // "For you": durable acts addressed to me since the stored watermark.
   // Clicking steps to the oldest unseen one and marks it read; each click
@@ -78,11 +83,22 @@ export function TopBar({
     <header className="flex items-center justify-between gap-3 border-b border-border px-3 py-2.5 sm:gap-6 sm:px-6">
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
         <h1 className="shrink-0 font-serif text-lg font-semibold tracking-tight sm:text-xl">The Workroom</h1>
-        {workroom.repo && (
-          <span className="truncate font-mono text-xs text-faint" title={workroom.repo}>
-            {workroom.repo}
-          </span>
-        )}
+        {workroom.repo &&
+          (repoHref ? (
+            <a
+              href={repoHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="truncate font-mono text-xs text-faint hover:text-muted hover:underline focus-visible:outline focus-visible:outline-accent"
+              title={workroom.repo}
+            >
+              {workroom.repo}
+            </a>
+          ) : (
+            <span className="truncate font-mono text-xs text-faint" title={workroom.repo}>
+              {workroom.repo}
+            </span>
+          ))}
       </div>
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
         {session.actor && (

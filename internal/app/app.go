@@ -3,6 +3,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -10,9 +11,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -124,6 +127,7 @@ type Workspace struct {
 	worktreesMu       sync.Mutex
 	worktreesCached   []WorktreeView
 	repoPathCached    string
+	repoRemoteCached  string
 	worktreesCachedAt time.Time
 }
 
@@ -172,9 +176,355 @@ type SourcedSnapshot struct {
 // address that is not loopback, so that reader is already on this host. The
 // other checkouts stay basenames in WorktreeView: naming them is enough to
 // associate work, and the wider host layout has no reader who needs it.
+// Remote is the repository's own remote, and only when it is safe to render as
+// a hyperlink: see linkableRemote. It is empty far more often than not, and an
+// empty Remote means exactly "show the path with no link".
 type LocalRepo struct {
 	Path      string         `json:"path"`
+	Remote    string         `json:"remote,omitempty"`
 	Worktrees []WorktreeView `json:"worktrees"`
+}
+
+// Bounds on what one repository's remote configuration may be. Both are far
+// above any real repository and exist so that valid-but-oversized
+// configuration fails closed — no link — rather than being read whole into a
+// resident that serves this on every uncached worktree read.
+const (
+	maxRemoteConfigBytes = 64 << 10
+	maxRemoteCount       = 64
+)
+
+var errRemoteConfigTooLarge = errors.New("remote configuration exceeds the local projection limit")
+
+// boundedBuffer collects a subprocess's output up to limit bytes and then
+// fails. os/exec stops copying on that failure and reports it from Wait, so
+// the caller sees an error rather than a truncated answer it might parse.
+type boundedBuffer struct {
+	buffer bytes.Buffer
+	limit  int
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if b.buffer.Len()+len(p) > b.limit {
+		return 0, errRemoteConfigTooLarge
+	}
+	return b.buffer.Write(p)
+}
+
+// gitStatedEnvironment is the whole of the environment a read-only Git command
+// built here is given, on Unix, which is the boundary this package exercises.
+// Nothing is inherited from whoever started this process: repositoryLocalGit
+// hands the child a copy of this list and nothing else, so the list is an
+// inventory of what these commands may see rather than a filter over what they
+// were handed. On Windows the claim is false and the qualification belongs
+// here rather than further down — Go's os/exec adds SYSTEMROOT to what the
+// child receives — and the paragraph below says what that means.
+//
+// It is an inventory because the denied set it replaces was escaped four times
+// in four rounds of review, and each escape arrived from a direction the
+// previous list had not thought of. GIT_CONFIG_COUNT with its KEY_n/VALUE_n
+// pairs writes configuration straight into the command scope, which outranks
+// every file and needs no file at all. GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM
+// name a configuration *file*, and a Git configuration file is not data:
+// core.fsmonitor, core.pager and diff.external name programs, and Git runs
+// them, so naming such a variable in an allowlist bounds nothing whatever about
+// what the file it points at says. HOME reaches ~/.gitconfig with no
+// GIT_CONFIG variable set at all. And with the system and global scopes pinned
+// shut, HOME was still reached from inside the scope that has to stay admitted,
+// because a repository-local `include.path = ~/attack.cfg` expands the tilde
+// against it; while XDG_CONFIG_HOME needs no configuration file whatever,
+// because the default ignore and attributes files are read on their own and can
+// move the status answer without executing anything. Each escape was closed and
+// the next one arrived. The pattern is not that the list was careless; it is
+// that a list of forbidden names is the wrong shape for the question, because
+// the channel that matters next is the one nobody here has heard of.
+//
+// So this answers the opposite question: what do these commands need in order
+// to run? Measured, the answer is nothing. All five commands built by
+// repositoryLocalGit complete with no inherited variable whatever — on darwin
+// with git 2.50 and on linux with git 2.53 — so the list below is the entire
+// environment and every name absent from it is absent because it was never
+// copied, a future Git release's variables included.
+//
+// PATH is not forwarded either, and that is worth stating because an earlier
+// round of this did forward it. It is not needed: exec.CommandContext resolves
+// `git` through exec.LookPath against *this* process's PATH and records the
+// absolute result on the command before any child environment exists, so the
+// child never consults PATH to find git. Nor does Git lose the ability to
+// resolve a bare program name of its own: measured with a repository-local
+// `core.fsmonitor = touch <path>`, which ran with this list as the whole
+// environment. Whichever search path Git used to find it — this did not measure
+// that — the caller did not name it, because the child has no PATH to name it
+// with.
+//
+// Which binary named `git` that parent-side exec.LookPath finds is a real trust
+// boundary, and it is a *deployment* one that this constructor does not close
+// and cannot. The choice is already made by the time this list is used.
+// Forwarding PATH would not have closed it either; it would only have handed
+// the caller the second resolution as well. Closing it takes an absolute path
+// to a trusted git, chosen by whoever deploys this. That is named here so
+// nobody reads an empty inherited set as a claim that these commands are
+// running the git this package meant. What the list bounds is what git is told
+// once it is running, which is less than that.
+//
+// The closed-environment property above is stated for Unix, which is where it
+// is exercised. This package also builds for Windows, and there it is false:
+// Go's os/exec appends SYSTEMROOT from this process to the child's environment
+// whenever the environment it is handed carries no name folding to SYSTEMROOT,
+// which this list does not. Windows is therefore outside the contract this
+// comment states rather than a caveat inside it, and nothing here has been run
+// on it. Note also where the append happens — os/exec builds the child's
+// environment at start time and does not modify Cmd.Env — so a test reading
+// Cmd.Env sees this list exactly on every platform and is not evidence about
+// what a Windows child receives.
+//
+// Naming a value rather than leaving the variable out is the same decision the
+// configuration pins already embodied, made once more: dropping HOME would
+// leave what these reads look at to whatever Git does with an unset variable,
+// which is a property of the Git
+// on the machine rather than a contract this package holds. Measured today,
+// every command built here completes with no HOME at all on darwin with git
+// 2.50 and on linux with git 2.53; naming the location is how that stays true
+// of the next Git and of an implementation nobody here has tried.
+//
+// os.DevNull is that location. It is not a directory this package creates: a
+// path that cannot hold a directory entry is a stronger statement than a
+// directory that happens to be empty right now, it cannot be raced or filled in
+// by anyone between the two commands of a single projection, and it needs no
+// creation, no cleanup and no error path in a constructor that has nowhere to
+// report one. Every path Git derives from these two variables — ~/.gitconfig,
+// $XDG_CONFIG_HOME/git/config, the $XDG_CONFIG_HOME/git/ignore and
+// $XDG_CONFIG_HOME/git/attributes defaults, the $HOME/.config/git fallbacks for
+// both, and the tilde in an `include.path` inside an admitted repository-local
+// or worktree scope — resolves under it and finds nothing.
+//
+// The three GIT_CONFIG pins stay, and they are not made redundant by pointing
+// HOME at nothing. GIT_CONFIG_NOSYSTEM and GIT_CONFIG_SYSTEM close the system
+// scope, whose path is compiled into Git and owes nothing to HOME. And
+// GIT_CONFIG_GLOBAL states the global scope directly: "the global scope is
+// os.DevNull" is the contract, whereas "HOME points at nothing" is a fact about
+// a different variable that implies the contract only for as long as Git
+// derives the global scope from HOME the way it does today.
+//
+// SUDO_UID is neutralised here by being absent, which an inventory gives for
+// free and is the reason it is worth naming. Git treats a repository
+// as owned by the current user before it will parse that repository's
+// configuration at all, and when Git runs as root on a platform with sudo it
+// widens that test: it reads SUDO_UID and trusts repositories owned by the uid
+// recorded there as well as by root. Under `sudo`, therefore, an inherited
+// SUDO_UID makes another user's repository readable, and reading a repository
+// means parsing its configuration file, which is the executable channel this
+// whole contract is about. Git's own documentation prescribes exactly this
+// remedy: remove SUDO_UID from the environment before invoking git.
+//
+// The cost is real and is stated rather than hidden. Two ownership allowances
+// are now gone from these five commands: safe.directory, which Git honours only
+// from protected configuration and so only from the scopes pinned above, and
+// the sudo widening just described. A deployment that runs this under `sudo`
+// against a repository owned by the invoking user will find these reads
+// refused. That is a visible error and never a wrong answer — the worktree list
+// fails, and citingDocuments turns a refused citation lookup into a refused
+// retirement rather than a silent pass — and the remedy is to run as the owner,
+// not to reopen a channel whose contents are executable.
+//
+// This mechanism should later be shared with internal/gitstore, which bounds
+// its own Git environment separately and closes less of this: one statement of
+// what Git may see, in one place, is what stops the two drifting apart. That is
+// deliberately not done here. It changes a second package's contract, it is
+// gated on a pending ruling, and it belongs to its own request.
+var gitStatedEnvironment = []string{
+	"HOME=" + os.DevNull,
+	"XDG_CONFIG_HOME=" + os.DevNull,
+	"GIT_CONFIG_NOSYSTEM=1",
+	"GIT_CONFIG_SYSTEM=" + os.DevNull,
+	"GIT_CONFIG_GLOBAL=" + os.DevNull,
+}
+
+// repositoryLocalGit builds every read-only Git command this package runs
+// against a checkout, so that "the repository at repo" is what Git actually
+// reads. There is one constructor rather than a line at each of the five call
+// sites because the defect it closes is invisible at a call site: every one of
+// those commands looked correct, named its repository with -C, and answered out
+// of whichever repository the ambient environment pointed at. A site that forgot
+// the bounding would look exactly like one that did not, so the only reliable
+// place to put it is where the command is built.
+//
+// What the bounding leaves admitted is a scope, not a file, and stating it as
+// "the repository's own configuration file" understates it by three cases that
+// were measured here on git 2.50. The scope is: the repository's own
+// configuration; its worktree configuration at $GIT_DIR/config.worktree, which
+// Git reads once the repository sets extensions.worktreeConfig; and whatever
+// `include.path` or an `includeIf` condition inside either of those names, by
+// absolute path or relative one. Every part of it is executable rather than
+// merely readable — `core.fsmonitor` placed in the repository's configuration,
+// in its worktree configuration, behind a relative include, behind an absolute
+// include, and behind an `includeIf gitdir:` condition each ran a program of its
+// author's choosing during an ordinary `git status` under exactly the
+// environment stated above. Admitting that scope is not an oversight: reading
+// the repository Git was pointed at is what these five answers are made of, and
+// a caller who can already write into that repository's .git directory is not a
+// caller this bound was ever meant to hold out.
+//
+// What the bound does is narrower than "keeps that scope to itself", and saying
+// it that way would be false against the paragraph above: an absolute include
+// is that scope reaching outside itself, and it stays admitted. What is held is
+// that ambient system, global and environment routing can neither redirect
+// which repository Git reads nor add configuration to what it finds there.
+// Everything the repository itself delegates to — its own configuration, its
+// worktree configuration, and every include target reached recursively from
+// either — remains trusted and executable.
+//
+// The environment is a copy rather than gitStatedEnvironment itself, so that a
+// caller adjusting one command's Env cannot alter what the next command gets.
+//
+// --no-optional-locks keeps a read from writing to a repository somebody else
+// may be using; it belongs to every one of these commands for the same reason
+// the environment does.
+func repositoryLocalGit(ctx context.Context, repo string, arguments ...string) *exec.Cmd {
+	argv := append([]string{"--no-optional-locks", "-C", repo}, arguments...)
+	command := exec.CommandContext(ctx, "git", argv...)
+	command.Env = slices.Clone(gitStatedEnvironment)
+	return command
+}
+
+// gitRemotes reads the remote URLs this repository itself configures.
+//
+// Two separate bounds make that word "itself" true, and neither substitutes
+// for the other. --local answers "whose configuration file?": without it the
+// answer is the merge of system, global, command (GIT_CONFIG_COUNT) and local
+// scopes, and the outer value is emitted last, so it would win the map below.
+// The sanitised environment answers "which repository?": --local bounds the
+// scope Git reads and says nothing at all about which repository Git resolved
+// before reading anything, so GIT_DIR or GIT_COMMON_DIR alone would make this
+// disclose another repository's remote through a read that is, by its own
+// lights, strictly local. The repository's own config file is the only thing
+// this is entitled to disclose, and it takes both bounds to name it.
+//
+// --no-includes is the third word in that phrase, "config *file*", made
+// explicit. Unlike the commands repositoryLocalGit builds elsewhere, this one
+// is meant to read exactly one file, and Git already reads it that way: git
+// config documents --includes as defaulting off when a scope or file is named
+// and on when it is searching all config files, and that default was checked
+// here on git 2.50 — a `[remote "origin"] url` behind an `include.path` in
+// .git/config is invisible to `git config --local --get-regexp`, and visible
+// again with --includes added. So the flag pins a documented default rather
+// than changing what this read returns today, which is the whole reason to
+// spell it: the bound should be a decision this function made and not one it
+// inherited.
+//
+// It has a cost, and the cost is the same with the flag as without it, since
+// the behaviour is unchanged. A repository that reaches its remotes through an
+// include, or that keeps them in worktree configuration — also outside --local,
+// checked the same way — reports no remote here and its bar shows no link.
+// That is a display gap rather than a wrong answer, and widening the read to
+// close it would give up the scope bound that makes the disclosed URL the
+// repository's own.
+//
+// The --null form separates records with NUL and the key from its value with a
+// newline, so a URL containing spaces or a name containing dots stays
+// unambiguous. A repository with no remotes makes `git config --get-regexp`
+// exit non-zero, which is not an error here: it is the ordinary answer "none".
+func gitRemotes(ctx context.Context, repo string) map[string]string {
+	command := repositoryLocalGit(ctx, repo, "config", "--local", "--no-includes", "--null", "--get-regexp", `^remote\..*\.url$`)
+	output := &boundedBuffer{limit: maxRemoteConfigBytes}
+	command.Stdout = output
+	if err := command.Run(); err != nil {
+		return nil
+	}
+	remotes := make(map[string]string)
+	for _, record := range strings.Split(output.buffer.String(), "\x00") {
+		if record == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(record, "\n")
+		if !ok {
+			continue
+		}
+		name := strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url")
+		if name == "" {
+			continue
+		}
+		if _, known := remotes[name]; !known && len(remotes) >= maxRemoteCount {
+			// Refuse rather than truncate: a truncated set would make which
+			// remote gets linked depend on where the reading stopped.
+			return nil
+		}
+		remotes[name] = value
+	}
+	return remotes
+}
+
+// linkableRemote picks the one remote a reader would follow, then admits it
+// only if it is safe to link. The selection rule is deliberately dull: origin
+// when the repository has one, otherwise the lexicographically first remote
+// name. Selecting by name *before* filtering by scheme keeps the answer
+// predictable — the bar links the repository's own remote or nothing, never
+// some other remote that merely happened to carry a friendlier scheme.
+func linkableRemote(remotes map[string]string) string {
+	if len(remotes) == 0 {
+		return ""
+	}
+	name := "origin"
+	if _, ok := remotes[name]; !ok {
+		name = ""
+		for candidate := range remotes {
+			if name == "" || candidate < name {
+				name = candidate
+			}
+		}
+	}
+	return webRemoteURL(remotes[name])
+}
+
+// webRemoteURL is an allowlist: http and https are admitted and everything else
+// is refused, including ssh, scp-style git@host:org/repo, file, and anything
+// that does not parse. Nothing is matched against a list of dangerous schemes,
+// so a scheme nobody thought of is refused by default rather than admitted.
+//
+// Userinfo declines the URL outright instead of being stripped. A remote of the
+// form https://x-access-token:SECRET@host/org/repo carries a credential, and
+// declining keeps it out of this response body altogether rather than trusting
+// every later rendering path to drop it again.
+//
+// A query or fragment is declined for exactly that reason. ?access_token=SECRET
+// and #access_token=SECRET carry credential material as readily as userinfo
+// does, and admitting them while declining userinfo would be one rule applied
+// to one syntax. What this links is a repository's own address, which needs
+// neither component, so refusing both costs nothing real and needs no judgement
+// about which parameter names are secret — an enumeration that would be a
+// denylist, the thing the scheme rule is careful not to be.
+//
+// The test is made on the raw input, before parsing, because parsing is where
+// the evidence is lost. url.Parse always reads a bare ? or # as the query or
+// fragment delimiter — anywhere else the character has to arrive
+// percent-encoded, so a raw one in the input can only be that delimiter, and
+// no case is refused here that the parser would have called path or host. What
+// parsing costs is the empty fragment: url.URL records an empty query as
+// ForceQuery and puts the ? back, but "…/repo.git#" parses to an empty
+// Fragment that leaves no trace in the serialisation at all. Testing the
+// serialised form therefore admitted that one URL and emitted it with the #
+// dropped, while the browser's URL keeps the trailing # and
+// ui/src/lib/repolink.ts refuses it — one rule, two answers, and a link the
+// page then declined to draw. The raw test is the same rule for both empty
+// delimiters and one fewer thing to reason about.
+func webRemoteURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.ContainsAny(raw, "?#") {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	switch parsed.Scheme {
+	case "http", "https":
+	default:
+		return ""
+	}
+	if parsed.User != nil || parsed.Host == "" {
+		return ""
+	}
+	return parsed.String()
 }
 
 // WorktreeView is one checkout of the repository. Checkout is a display label
@@ -247,9 +597,9 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 	w.worktreesMu.Lock()
 	defer w.worktreesMu.Unlock()
 	if age := time.Since(w.worktreesCachedAt); !w.worktreesCachedAt.IsZero() && age >= 0 && age < 8*time.Second {
-		return LocalRepo{Path: w.repoPathCached, Worktrees: append([]WorktreeView(nil), w.worktreesCached...)}, nil
+		return LocalRepo{Path: w.repoPathCached, Remote: w.repoRemoteCached, Worktrees: append([]WorktreeView(nil), w.worktreesCached...)}, nil
 	}
-	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", w.Repo, "worktree", "list", "--porcelain", "-z").Output()
+	output, err := repositoryLocalGit(ctx, w.Repo, "worktree", "list", "--porcelain", "-z").Output()
 	if err != nil {
 		return LocalRepo{}, fmt.Errorf("list worktrees: %w", err)
 	}
@@ -309,7 +659,7 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 		return filepath.Clean(absolute)
 	}
 	selectedPath := w.Repo
-	if top, topErr := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", w.Repo, "rev-parse", "--show-toplevel").Output(); topErr == nil {
+	if top, topErr := repositoryLocalGit(ctx, w.Repo, "rev-parse", "--show-toplevel").Output(); topErr == nil {
 		selectedPath = strings.TrimSpace(string(top))
 	}
 	selected := canonicalPath(selectedPath)
@@ -334,7 +684,7 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 			view.State = "locked"
 		default:
 			statusCtx, cancel := context.WithTimeout(inspectionCtx, 750*time.Millisecond)
-			status, statusErr := exec.CommandContext(statusCtx, "git", "--no-optional-locks", "-C", item.path, "status", "--porcelain=v1", "--untracked-files=normal").Output()
+			status, statusErr := repositoryLocalGit(statusCtx, item.path, "status", "--porcelain=v1", "--untracked-files=normal").Output()
 			cancel()
 			if statusErr == nil {
 				view.State = "clean"
@@ -354,10 +704,12 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 		}
 		return views[i].Checkout < views[j].Checkout
 	})
+	remote := linkableRemote(gitRemotes(ctx, w.Repo))
 	w.worktreesCached = append(w.worktreesCached[:0], views...)
 	w.repoPathCached = selected
+	w.repoRemoteCached = remote
 	w.worktreesCachedAt = time.Now()
-	return LocalRepo{Path: selected, Worktrees: append([]WorktreeView(nil), views...)}, nil
+	return LocalRepo{Path: selected, Remote: remote, Worktrees: append([]WorktreeView(nil), views...)}, nil
 }
 
 func Open(ctx context.Context, repo string) (*Workspace, error) {
@@ -1210,15 +1562,67 @@ func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, ki
 // git grep rather than a walk, because tracked is the question. An untracked
 // working copy of a page is not what the gate reads, and a page that git does
 // not know about cannot break anyone else.
-func (w *Workspace) citingDocuments(ctx context.Context, repo, event string) []string {
-	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", repo,
+//
+// This one is the reason repositoryLocalGit bounds the environment at all: an
+// answer of "nothing cites it" is what lets a retirement through, so a `*.md`
+// reinterpreted as a literal filename, a grep re-pointed at a repository where
+// the page does not exist, or a configuration setting that stops the grep
+// starting, is a bypass of the guard rather than a wrong display.
+//
+// The two returns are separate for the same reason. An empty page list means
+// the lookup ran and found nothing; an error means the lookup did not answer,
+// and no caller may read the second as the first. That distinction is the
+// primary defence, and it is deliberately the one that does not depend on
+// anticipating anything: it holds whatever the unanswerable lookup was broken
+// by. Bounding the environment is the secondary defence and narrows how easily
+// a caller can reach for the breakage in the first place.
+func (w *Workspace) citingDocuments(ctx context.Context, repo, event string) ([]string, error) {
+	output, err := repositoryLocalGit(ctx, repo,
 		"grep", "--name-only", "--fixed-strings", event, "--", "*.md").Output()
 	if err != nil {
-		// git grep exits non-zero when it matches nothing, which is the
-		// ordinary case and not a failure. Anything else is worth noticing but
-		// never worth blocking a retirement over: a guard that fails closed on
-		// its own malfunction would make a broken git a broken workroom.
-		return nil
+		// git grep reports two entirely different things through a non-zero
+		// exit, and this guard is only entitled to act on one of them. Exit 1
+		// is "no file matched": the ordinary answer on nearly every
+		// retirement, and the answer that permits it. Every other exit —
+		// 128 for a configuration or repository error, a signal, a failure to
+		// start git at all — means the lookup did not run, so there is no
+		// answer to act on.
+		//
+		// Returning nil for the second case is what made this a fail-open. An
+		// empty page list is indistinguishable from "no page cites this", so a
+		// lookup that never ran read as a clean bill of health and the
+		// retirement went through. The old comment argued that a guard failing
+		// closed on its own malfunction would make a broken git a broken
+		// workroom. The premise is true and the conclusion still does not
+		// follow, because the two costs are not comparable. Stopping costs a
+		// retry: the operator fixes the repository or the environment and
+		// files the same act again, and nothing durable has happened. Passing
+		// costs a retirement the documentation still cites — an append-only
+		// event that leaves live pages resting on a withdrawn pointer and the
+		// repository red, which is exactly the breakage this guard exists to
+		// prevent and which no later act can take back. A cheap reversible
+		// cost against an expensive irreversible one is not a close call.
+		//
+		// The deliberate escape stays where it was: cited_ok is signed into
+		// the act by an actor who has decided to retire anyway. A caller who
+		// really must proceed past an unanswerable lookup has that, and takes
+		// the responsibility with it.
+		//
+		// ExitCode reports -1 for a process killed by a signal and for one
+		// that never started, so both land on the refusing side without a
+		// case of their own. git's own diagnosis is carried through when there
+		// is one, because the operator's next move depends on what broke and
+		// this refusal is the only place they will see it.
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			if exit.ExitCode() == 1 {
+				return nil, nil
+			}
+			if detail := strings.TrimSpace(string(exit.Stderr)); detail != "" {
+				return nil, fmt.Errorf("citation lookup for %s did not run in %s: %s", event, repo, detail)
+			}
+		}
+		return nil, fmt.Errorf("citation lookup for %s did not run in %s: %w", event, repo, err)
 	}
 	var pages []string
 	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
@@ -1226,7 +1630,7 @@ func (w *Workspace) citingDocuments(ctx context.Context, repo, event string) []s
 			pages = append(pages, page)
 		}
 	}
-	return pages
+	return pages, nil
 }
 
 // RefuseCitedRetirement stops a supersession whose target the documentation
@@ -1263,7 +1667,15 @@ func (w *Workspace) RefuseCitedRetirementInCheckout(ctx context.Context, checkou
 	if allowed || strings.TrimSpace(target) == "" {
 		return nil
 	}
-	pages := w.citingDocuments(ctx, checkout, target)
+	pages, err := w.citingDocuments(ctx, checkout, target)
+	if err != nil {
+		// A lookup that did not answer is a refusal, not a pass. The wording
+		// separates it from the citation refusal below, because the two ask
+		// for different things: this one asks the operator to make the
+		// repository readable and file the same act again, and that one asks
+		// them to repoint pages first.
+		return fmt.Errorf("cannot tell whether documentation still cites %s, so the retirement is refused: %w\nrepair the repository or the environment and file it again, or retire deliberately with the cited override", target, err)
+	}
 	if len(pages) == 0 {
 		return nil
 	}

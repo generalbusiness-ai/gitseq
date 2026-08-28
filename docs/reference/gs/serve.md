@@ -260,12 +260,37 @@ departing does not linger in presence forever.
 A resident serves local checkout state at `/v0/worktrees`. It names the
 served checkout's own absolute path, so a reader can tell which repository
 the page is showing, and otherwise emits only checkout basenames, branch
-and HEAD, and explicit clean, dirty, detached, bare, locked, prunable or
-unavailable state. Of that, the browser reads only the served path: the
-per-checkout rows it once displayed are gone, so the rest bounds what the
-endpoint discloses rather than what any page shows. Disclosing the served path is safe
-because [`gs serve`](serve.md) refuses any listen address that is not
-loopback: whoever is reading the page is already on the host it names.
+and HEAD, explicit clean, dirty, detached, bare, locked, prunable or
+unavailable state, and — when there is one it is willing to link — that
+repository's own remote. Of that, the browser reads the served path and
+the remote: the per-checkout rows it once displayed are gone, so the rest
+bounds what the endpoint discloses rather than what any page shows.
+Disclosing the served path is safe because [`gs serve`](serve.md) refuses
+any listen address that is not loopback: whoever is reading the page is
+already on the host it names.
+
+The remote comes from the repository this resident was pointed at, and
+from that repository's own configuration. Those are two bounds, not one,
+and neither implies the other. `git config --local` bounds the scope, so
+no outer configuration scope can name a remote the repository never
+configured. It does not bound which repository Git resolves: `GIT_DIR`,
+`GIT_COMMON_DIR`, `GIT_WORK_TREE` and their family redirect that before
+any scope rule applies, and a strictly local read of the wrong repository
+is still the wrong repository. So the environment of every Git command
+behind this endpoint is stripped of them. Both the bytes read and the
+number of remotes kept are bounded, and a repository past either bound
+reports no remote rather than a partial answer.
+
+Which remote is a rule a reader can predict: `origin` when there is one,
+otherwise the first remote name alphabetically. That single choice is then
+admitted only if it is safe to render as a hyperlink. The rule is an
+allowlist — `http` and `https` are admitted and everything else is
+refused, so a scheme nobody has thought of is refused by being unlisted
+rather than admitted for want of a rule against it. A URL carrying
+userinfo, a query or a fragment is declined outright rather than stripped,
+because any of the three can carry a credential and refusing keeps it out
+of the response body altogether. Anything refused is simply absent: the
+field is omitted, and the page shows the path with no link.
 
 None of that is part of the durable projection. A checkout associated
 with a commitment only through a commit's `Rests-On:` trailer is marked

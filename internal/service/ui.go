@@ -128,6 +128,7 @@ func (s *Server) handleLanded(writer http.ResponseWriter, request *http.Request)
 
 type worktreesResponse struct {
 	Repo      string             `json:"repo"`
+	Remote    string             `json:"remote,omitempty"`
 	Worktrees []app.WorktreeView `json:"worktrees"`
 }
 
@@ -136,7 +137,7 @@ func (s *Server) handleWorktrees(writer http.ResponseWriter, request *http.Reque
 	if local.Worktrees == nil {
 		local.Worktrees = []app.WorktreeView{}
 	}
-	write(writer, worktreesResponse{Repo: local.Path, Worktrees: local.Worktrees}, err)
+	write(writer, worktreesResponse{Repo: local.Path, Remote: local.Remote, Worktrees: local.Worktrees}, err)
 }
 
 // actRequest is a session-bound durable act: the same custody model as
