@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cdfabd6ba6b92c73a19154bcb69fd3d4341c6927","text":"Retire the abandoned public-host candidate artifact at internal/intent: merged successor 2556ced7 publishes the completed signing-byte boundary at main 3f35d6ed."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a6892909685f2cdf36cbfd4b5173113d45f2ec51","text":"Retire the abandoned public-host candidate artifact at docs/reference/architecture.md: merged successor 88a1d59e documents the completed custody boundary at main 3f35d6ed."}
