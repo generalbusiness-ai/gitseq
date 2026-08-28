@@ -16,32 +16,44 @@ import type { ActorState, Decision, Statement } from "./api.ts";
 // ineffective row to an append-only log, which is what this predicate exists
 // to prevent.
 //
-// WHAT IT COVERS TODAY, stated exactly rather than aspirationally. Two
-// functions call this predicate: `publishRefusal` below, and `mayRatify` below
-// for the originating-requester case. `publishRefusal` is in turn asked at
-// three points on the publish path — the top bar's `publish` control
-// (`components/TopBar.tsx`), the artifact dialog's submit gate
-// (`components/Publish.tsx`, given the answer as a prop), and the signing
-// boundary in `App.tsx`'s `publish`, which is the one that actually decides
-// whether a record is written. The first two are courtesies that show a
-// refusal early; the third is the guarantee, because the dialog can outlive
-// the authority that opened it. Nothing else asks it yet.
+// WHAT IT COVERS TODAY, stated exactly rather than aspirationally. Three
+// functions call this predicate: `publishRefusal` below, `mayRatify` below for
+// the originating-requester case, and `signingRefusal` below on its `state`
+// branch. `publishRefusal` is in turn asked at three points on the publish
+// path — the top bar's `publish` control (`components/TopBar.tsx`), the
+// artifact dialog's submit gate (`components/Publish.tsx`, given the answer as
+// a prop), and the signing boundary in `App.tsx`'s `publish`, which is the one
+// that actually decides whether a record is written. The first two are
+// courtesies that show a refusal early; the third is the guarantee, because the
+// dialog can outlive the authority that opened it. `signingRefusal` covers the
+// other two boundaries that sign — `doAct` in `App.tsx` and `send` in
+// `components/Thread.tsx` — so no act reaches the log from this browser
+// without being held either to this predicate or to the fold's rule for that
+// act's own kind.
 //
-// WHAT IT DOES NOT COVER YET. Seven state-writing affordances in
-// `components/Toolbar.tsx` are still offered on authorship or commitment role
-// with no membership test: `deny` and `accept` on a request addressed to you,
-// `disagree` on a proposal, `propose adoption` and `request review` on an
-// artifact, `mark done` as performer, and `needs work` as requester. None of
-// the seven submits an act itself: each calls `onRoute`, which only opens the
-// composer, and one call site in `Thread.tsx` signs act `state` for all of
-// them. The fold therefore refuses all seven from a departed signer exactly as
-// it refuses publish. The toolbar's other `accept` is not one of them — it
-// calls `doAct` to submit act `ratify` directly, and `canRatify` gates it
-// already — and neither is `withdraw`, whose composer route signs act
-// `supersede`, deliberately ungated for the reason given below. They are the
-// same defect at different sites and have their own request; they are listed
-// here so the next reader does not have to rediscover them, and so this comment
-// cannot be mistaken for a claim that the surface is already covered.
+// WHAT IT DOES NOT COVER YET, which is the control rather than the signature.
+// Seven affordances in `components/Toolbar.tsx` are offered on authorship or
+// commitment role with no membership test: `deny` and `accept` on a request
+// addressed to you, `disagree` on a proposal, `propose adoption` and `request
+// review` on an artifact, `mark done` as performer, and `needs work` as
+// requester. None of the seven signs anything itself. Each calls `onRoute`,
+// which only opens the composer with a reply type, and `send` in `Thread.tsx`
+// is the single site that signs act `state` for all seven — so
+// `signingRefusal` does refuse them from a departed signer, and no ineffective
+// row is filed. What is missing is the courtesy the publish control has: the
+// button is still drawn, and the refusal arrives only after the operator has
+// written the record and pressed send. That gap has its own request; it is
+// described here so the next reader does not have to rediscover it, and so
+// this comment cannot be mistaken for a claim that the surface is covered.
+//
+// The toolbar's three other yes-buttons are a different family and are already
+// gated: `ratify yes` on a direct proposal, `agree` on a proposal, and the
+// second `accept` on a report each call `doAct` to submit act `ratify`
+// directly, behind `canRatify`. Do not read the two controls labelled `accept`
+// as one affordance — the one on a request routes to `promise` and belongs to
+// the seven, and the one on a report submits `ratify` and does not. `withdraw`
+// is outside both families: its composer route signs act `supersede`,
+// deliberately outside this predicate for the reason given below.
 //
 // `withdraw` is not ungated either, though it is gated on authorship rather
 // than membership: see the `supersede` branch of `signingRefusal`. Authorship

@@ -59,9 +59,15 @@ export function TopBar({
   // departed actor to append a permanently ineffective row to an append-only
   // log. Neither question is answered here: `publishRefusal` is the shared
   // rule, asked again by the dialog's submit gate and by the signing boundary
-  // in `App.tsx`, so this control cannot drift from what actually decides. Its
-  // comment records what asks it today, the seven Toolbar writes that do not
-  // ask it yet, and why own-author `withdraw` is deliberately outside it.
+  // in `App.tsx`, so this control cannot drift from what actually decides.
+  //
+  // The claim made here is about this control only. `isLiveParticipant` is not
+  // the one predicate every state-writing affordance asks: its own comment in
+  // `lib/authority.ts` lists what asks it today — `publishRefusal` on this
+  // path, `mayRatify` for the originating-requester case, and `signingRefusal`
+  // at the boundaries that sign — the seven Toolbar controls that are still
+  // drawn without asking it, and why own-author `withdraw` is deliberately
+  // outside it.
   //
   // Opening the dialog is not the last chance to refuse, and this control is
   // not the guarantee: authority can be lost while the dialog is open, so the
