@@ -18,6 +18,7 @@ grant rests on the target's membership as its first basis.
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The granting actor. Needs authority to grant. |
 | `--actor` | *(required)* | Recipient, as a name, `@name`, or fingerprint. |
 | `--role` | *(required)* | The role to confer, for example `ratifier`. |
+| `--server` | advertised resident, if any | This command has no resident write path and refuses a URL. Pass `-` to choose the local fold. |
 
 ## Example
 
