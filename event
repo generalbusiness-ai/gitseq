@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f48470a62cb2bcd7dda44dcd237122a556c6e862","text":"Retire the narrower cmd/gs file artifact; the surviving candidate is recorded at the wider stable path cmd/gs by 33dff58f."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e7b334487da73be26a954b50411ec235190f9457","text":"Retire the narrower cmd/gs file artifact; the surviving candidate is recorded at the wider stable path cmd/gs by 33dff58f."}
