@@ -360,8 +360,16 @@ var gitStatedEnvironment = []string{
 // environment stated above. Admitting that scope is not an oversight: reading
 // the repository Git was pointed at is what these five answers are made of, and
 // a caller who can already write into that repository's .git directory is not a
-// caller this bound was ever meant to hold out. What the bound does is stop that
-// scope reaching outside itself and stop anything outside it reaching in.
+// caller this bound was ever meant to hold out.
+//
+// What the bound does is narrower than "keeps that scope to itself", and saying
+// it that way would be false against the paragraph above: an absolute include
+// is that scope reaching outside itself, and it stays admitted. What is held is
+// that ambient system, global and environment routing can neither redirect
+// which repository Git reads nor add configuration to what it finds there.
+// Everything the repository itself delegates to — its own configuration, its
+// worktree configuration, and every include target reached recursively from
+// either — remains trusted and executable.
 //
 // The environment is a copy rather than gitStatedEnvironment itself, so that a
 // caller adjusting one command's Env cannot alter what the next command gets.
