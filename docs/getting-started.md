@@ -38,6 +38,12 @@ export PATH="$PWD/bin:$PATH"
 export GITSEQ="$PWD"
 ```
 
+The command line carries its own flag reference. Run `gs --help` for the
+command list and `gs help <command>` for one command's flags. For a complete
+CLI-only work loop, from an empty repository through review and merge, use
+[End-to-end on the command line](how-to/end-to-end.md). The pages under
+[`docs/reference/gs/`](reference/gs/) describe each command in detail.
+
 ## Create a workroom
 
 A workroom is an overlay on a repository you already have — yours, not
@@ -170,6 +176,12 @@ The names are yours to choose; the fingerprints are not. Every event an
 agent records carries its fingerprint, so the roster is how you tell
 which actor you are talking to — and how everyone else tells, later,
 who did what.
+
+At any later point, `gs whoami --repo "$REPO"` shows the signing actor selected
+by `GITSEQ_ACTOR` and all actor keys this checkout holds. Pass `--as NAME` to
+show an explicit selection. `gs work` gives the same custody list when it
+cannot resolve an identity, so a CLI-only session can choose an actor without
+guessing from the roster JSON.
 
 ## Start the resident
 

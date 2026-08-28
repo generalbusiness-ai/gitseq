@@ -63,7 +63,31 @@ func signingActorFrom(flagName, flagValue string) (string, error) {
 
 func main() {
 	if len(os.Args) < 2 {
-		usage()
+		usage(os.Stderr)
+		os.Exit(2)
+	}
+	if os.Args[1] == "-h" || os.Args[1] == "--help" {
+		usage(os.Stderr)
+		return
+	}
+	// Help is ordinary command parsing with --help inserted. Every flag set
+	// therefore prints the flags it actually accepts, with no second catalog
+	// to drift, while the top-level form remains useful without a subcommand.
+	if os.Args[1] == "help" {
+		switch len(os.Args) {
+		case 2:
+			usage(os.Stderr)
+			return
+		case 3:
+			if os.Args[2] == "help" {
+				usage(os.Stderr)
+				return
+			}
+			os.Args = []string{os.Args[0], os.Args[2], "--help"}
+		default:
+			fmt.Fprintln(os.Stderr, "gs: help accepts at most one subcommand")
+			os.Exit(1)
+		}
 	}
 	// A person stops a long-running command with an interrupt, so that is the
 	// path the command has to unwind on. Without this, serving died where it
@@ -87,6 +111,8 @@ func main() {
 		err = actorRetireCommand(ctx, os.Args[2:])
 	case "actors":
 		err = actorsCommand(ctx, os.Args[2:])
+	case "whoami":
+		err = whoamiCommand(ctx, os.Args[2:])
 	case "state":
 		err = stateCommand(ctx, os.Args[2:])
 	case "review":
@@ -128,18 +154,26 @@ func main() {
 	case "attach":
 		err = attachCommand(ctx, os.Args[2:])
 	default:
-		usage()
+		usage(os.Stderr)
+		fmt.Fprintf(os.Stderr, "\ngs: unknown command %q\n", os.Args[1])
+		os.Exit(2)
 	}
 	if err != nil {
 		release()
+		if errors.Is(err, flag.ErrHelp) {
+			return
+		}
 		fmt.Fprintln(os.Stderr, "gs:", err)
 		os.Exit(1)
 	}
 }
 
-func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|reassign-if-unclaimed|batch|publish|status|work|artifacts|supersession-plan|staleness-wave|inspect|reviews|provenance|verify|checkpoint-clear|serve|attach> [flags]")
-	os.Exit(2)
+func usage(output io.Writer) {
+	fmt.Fprintln(output, "usage: gs <command> [flags]")
+	fmt.Fprintln(output, "commands: init, actor-add, actor-retire, role-grant, role-revoke, actors, whoami, state, review, merge, ratify, supersede, reassign-if-unclaimed, batch, publish, status, work, artifacts, supersession-plan, staleness-wave, inspect, reviews, provenance, verify, checkpoint-clear, serve, attach")
+	fmt.Fprintln(output, "run `gs help <command>` for command flags")
+	fmt.Fprintln(output, "CLI walkthrough: docs/how-to/end-to-end.md")
+	fmt.Fprintln(output, "command reference: docs/reference/gs/")
 }
 
 // publishCommand records what an ordinary Git remote already accepted. It
@@ -193,7 +227,22 @@ func publishCommand(ctx context.Context, arguments []string) error {
 func flags(name string, arguments []string) (*flag.FlagSet, *string) {
 	set := flag.NewFlagSet(name, flag.ContinueOnError)
 	repo := set.String("repo", ".", "ordinary Git repository")
-	set.SetOutput(io.Discard)
+	set.SetOutput(os.Stderr)
+	set.Usage = func() {
+		synopsis := "[flags]"
+		switch name {
+		case "ratify", "supersede":
+			synopsis = "[flags] <target-event>"
+		case "reassign-if-unclaimed":
+			synopsis = "[flags] <old-request-event>"
+		case "batch":
+			synopsis = "[flags] [file]"
+		case "inspect", "provenance":
+			synopsis = "[flags] <event>"
+		}
+		fmt.Fprintf(set.Output(), "usage: gs %s %s\n\nFlags:\n", name, synopsis)
+		set.PrintDefaults()
+	}
 	return set, repo
 }
 
@@ -361,6 +410,70 @@ func actorsCommand(ctx context.Context, arguments []string) error {
 	return printJSON(actors)
 }
 
+type whoamiView struct {
+	SigningActor string          `json:"signing_actor,omitempty"`
+	Source       string          `json:"source"`
+	Provisioned  bool            `json:"provisioned"`
+	Custody      bool            `json:"custody"`
+	LocalCustody []app.ActorView `json:"local_custody"`
+}
+
+func whoamiCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("whoami", arguments)
+	as := set.String("as", "", "actor name; defaults to "+actorEnvironment)
+	jsonOutput := set.Bool("json", false, "render JSON")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return errors.New("whoami takes no positional arguments")
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	actors, err := workspace.ActorViews(ctx)
+	if err != nil {
+		return err
+	}
+	view := whoamiView{Source: "unset", LocalCustody: make([]app.ActorView, 0)}
+	view.SigningActor = strings.TrimSpace(*as)
+	if view.SigningActor != "" {
+		view.Source = "--as"
+	} else if view.SigningActor = strings.TrimSpace(os.Getenv(actorEnvironment)); view.SigningActor != "" {
+		view.Source = actorEnvironment
+	}
+	for _, actor := range actors {
+		if actor.Custody {
+			view.LocalCustody = append(view.LocalCustody, actor)
+		}
+		if actor.Name == view.SigningActor {
+			view.Provisioned = !actor.Retired
+			view.Custody = actor.Custody
+		}
+	}
+	if *jsonOutput {
+		return printJSON(view)
+	}
+	if view.SigningActor == "" {
+		fmt.Fprintln(os.Stdout, "signing actor: not set")
+	} else {
+		fmt.Fprintf(os.Stdout, "signing actor: %s (from %s; provisioned=%t; custody=%t)\n", view.SigningActor, view.Source, view.Provisioned, view.Custody)
+	}
+	fmt.Fprintln(os.Stdout, "local custody:")
+	if len(view.LocalCustody) == 0 {
+		fmt.Fprintln(os.Stdout, "  none")
+	}
+	for _, actor := range view.LocalCustody {
+		retired := ""
+		if actor.Retired {
+			retired = " (retired)"
+		}
+		fmt.Fprintf(os.Stdout, "  %s %s%s\n", actor.Name, actor.Fingerprint, retired)
+	}
+	return nil
+}
+
 func stateCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("state", arguments)
 	as := set.String("as", "", "actor name")
@@ -391,6 +504,11 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	body, err := pairs(bodyValues)
 	if err != nil {
 		return err
+	}
+	if workroom.Kind(*kind) == workroom.KindArtifact && body["commit"] != "" {
+		if err := validateArtifactCommit(ctx, *repo, body["commit"]); err != nil {
+			return err
+		}
 	}
 	attachments, err := files(evidence)
 	if err != nil {
@@ -989,6 +1107,18 @@ func canonicalCommit(ctx context.Context, repo, commit string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(resolved), nil
+}
+
+func validateArtifactCommit(ctx context.Context, repo, commit string) error {
+	resolved, err := git(ctx, repo, "rev-parse", "--verify", "--end-of-options", commit+"^{commit}")
+	if err != nil {
+		return fmt.Errorf("artifact commit does not resolve to a commit: %w", err)
+	}
+	resolved = strings.TrimSpace(resolved)
+	if commit != resolved {
+		return fmt.Errorf("commit must be the full canonical object ID: got %s, resolved %s", commit, resolved)
+	}
+	return nil
 }
 
 func canonicalPath(path string) string {
@@ -1667,16 +1797,36 @@ func submitAct(ctx context.Context, workspace *app.Workspace, serverURL, actorNa
 func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, act app.Act) (app.Submission, error) {
 	request, err := workspace.BuildActRequest(ctx, private, actorName, act)
 	if err != nil {
-		return app.Submission{}, err
+		return app.Submission{}, explainLifecycleRefusal(err)
 	}
 	submission, err := submitRequest(ctx, workspace, serverURL, request)
 	if err != nil {
-		return app.Submission{}, err
+		return app.Submission{}, explainLifecycleRefusal(err)
 	}
 	if act.Verb == app.VerbState {
 		warnUndefinedKind(ctx, workspace, act.Kind)
 	}
 	return submission, nil
+}
+
+func explainLifecycleRefusal(err error) error {
+	if err == nil || strings.Contains(err.Error(), "docs/reference/gs/state.md") {
+		return err
+	}
+	message := err.Error()
+	switch {
+	case strings.Contains(message, "dangling promise has no request"):
+		return fmt.Errorf("%w. Add exactly one live request event with --rests-on. See docs/reference/gs/state.md#citing", err)
+	case strings.Contains(message, "report rests on the request while promise"),
+		strings.Contains(message, "report cites a request other than the one its promise answers"),
+		strings.Contains(message, "report requires exactly one effective promise"),
+		strings.Contains(message, "report requires exactly one effective request"),
+		strings.Contains(message, "report actor must be the promisor"),
+		strings.Contains(message, "report requires exactly one effective promise or request"):
+		return fmt.Errorf("%w. File against the one live promise you made; use the request directly only when you made no promise. See docs/reference/gs/state.md#citing", err)
+	default:
+		return err
+	}
 }
 
 // warnUndefinedKind tells an author, on the stream they are already reading,
@@ -1959,16 +2109,16 @@ func workCommand(ctx context.Context, arguments []string) error {
 	if set.NArg() != 0 {
 		return errors.New("work takes no positional arguments")
 	}
-	// A read still needs to know whose work it is. There is no default actor
-	// here for the same reason there is none on a write: the default was a
-	// name several concurrent instances shared.
-	actorName, err := signingActorFrom("--as", *as)
-	if err != nil {
-		return err
-	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
 		return err
+	}
+	// A read still needs to know whose work it is. Opening the workroom first
+	// lets the refusal name the identities whose keys this checkout actually
+	// holds, rather than merely telling a novice that an identity is missing.
+	actorName, err := signingActorFrom("--as", *as)
+	if err != nil {
+		return workIdentityRefusal(ctx, workspace, err)
 	}
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
@@ -1976,7 +2126,7 @@ func workCommand(ctx context.Context, arguments []string) error {
 	}
 	fingerprint := workspace.View().Actors[actorName].Fingerprint
 	if fingerprint == "" {
-		return fmt.Errorf("actor %q is not provisioned in this checkout", actorName)
+		return workIdentityRefusal(ctx, workspace, fmt.Errorf("actor %q is not provisioned in this checkout", actorName))
 	}
 	query := statusview.WorkQuery{Actor: fingerprint, Statuses: statuses, Stale: statusview.StaleFilter(*stale), Limit: *limit, Cursor: *cursor}
 	for _, lane := range lanes {
@@ -2002,6 +2152,24 @@ func workCommand(ctx context.Context, arguments []string) error {
 	}
 	_, err = os.Stdout.WriteString(renderWorkPage(page, querySource(serverURL != "", answered)))
 	return err
+}
+
+func workIdentityRefusal(ctx context.Context, workspace *app.Workspace, cause error) error {
+	actors, err := workspace.ActorViews(ctx)
+	if err != nil {
+		return fmt.Errorf("%w; local custody could not be read: %v", cause, err)
+	}
+	var names []string
+	for _, actor := range actors {
+		if actor.Custody && !actor.Retired {
+			names = append(names, actor.Name)
+		}
+	}
+	available := "none"
+	if len(names) > 0 {
+		available = strings.Join(names, ", ")
+	}
+	return fmt.Errorf("%w; local custody actors: %s. Choose one with --as or %s; run `gs whoami --repo %s` for details. See docs/reference/gs/whoami.md", cause, available, actorEnvironment, workspace.Repo)
 }
 
 func artifactsCommand(ctx context.Context, arguments []string) error {
@@ -2182,6 +2350,9 @@ func inspectCommand(ctx context.Context, arguments []string) error {
 		}
 		inspection, err = statusview.BuildItemInspection(snapshot, event, serverURL != "")
 		if err != nil {
+			if err.Error() == "event is not in the durable projection" {
+				return fmt.Errorf("%w. Event IDs must use the full git:sha1:<genesis>#git:sha1:<event> form (or this repository's object format); #N is a display index only and does not resolve. Copy the full ID from `gs work --json` or other --json output", err)
+			}
 			return err
 		}
 	}

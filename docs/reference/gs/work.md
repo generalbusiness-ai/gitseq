@@ -33,6 +33,9 @@ filters, the caps and the cursor mean one thing on every surface, and
 There is no default actor, for the same reason there is none on a write:
 a default was a name several concurrent instances shared, and a lane read
 under the wrong identity is the wrong answer rather than a slower one.
+If neither `--as` nor `GITSEQ_ACTOR` selects an actor, the refusal names the
+non-retired actors whose keys this checkout holds. Use [`gs whoami`](whoami.md)
+to inspect the same custody view directly.
 
 ## Example
 
@@ -79,6 +82,10 @@ A rejected implementation parent has terminal status `superseded` only after
 an explicit qualifying linked supersession. Its JSON row carries
 `successor_request`, the exact repair child; request that status explicitly to
 read the historical transfer.
+
+The human view prints the request's full canonical event ID. `#N` remains a
+useful display index in one workroom, but it is not accepted in `--rests-on`,
+targets, or `Rests-On:` trailers. `--json` also carries every event ID in full.
 
 `--stale summary`, which is what a call naming no policy receives, answers
 *what is still owed*. A superseded, satisfied, or withdrawn commitment carrying only

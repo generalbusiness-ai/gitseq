@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -141,6 +142,87 @@ func TestWorkJSONIsTheSharedWorkPage(t *testing.T) {
 	}
 	if page.Returned == 0 {
 		t.Fatal("the fixture has an open commitment and the page returned nothing")
+	}
+}
+
+func TestWhoamiAndWorkExposeLocalCustody(t *testing.T) {
+	fixture := newQueryFixture(t)
+	t.Setenv(actorEnvironment, "")
+
+	printed, _, err := fixture.run(whoamiCommand, "--as", "worker", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var identity whoamiView
+	if err := json.Unmarshal([]byte(printed), &identity); err != nil {
+		t.Fatal(err)
+	}
+	if identity.SigningActor != "worker" || identity.Source != "--as" || !identity.Provisioned || !identity.Custody {
+		t.Fatalf("resolved identity = %+v", identity)
+	}
+	var custody []string
+	for _, actor := range identity.LocalCustody {
+		custody = append(custody, actor.Name)
+	}
+	if !slices.Contains(custody, "operator") || !slices.Contains(custody, "worker") {
+		t.Fatalf("local custody = %v, want operator and worker", custody)
+	}
+
+	if _, _, err := fixture.run(workCommand); err == nil {
+		t.Fatal("work without an identity was accepted")
+	} else {
+		for _, want := range []string{"local custody actors: operator, worker", "--as", actorEnvironment, "gs whoami", "docs/reference/gs/whoami.md"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("work identity refusal omits %q: %v", want, err)
+			}
+		}
+	}
+}
+
+func TestArtifactFilingRequiresFullCanonicalCommit(t *testing.T) {
+	fixture := newQueryFixture(t)
+	head := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	beforeSnapshot, err := fixture.workspace.Snapshot(fixture.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := beforeSnapshot.Depth
+	printed, _, err := fixture.run(stateCommand, "--as", "worker", "--kind", "artifact", "--text", "short commit must not land",
+		"--body", "path=short.txt", "--body", "commit="+head[:12], "--rests-on", fixture.request)
+	if err == nil {
+		t.Fatalf("short artifact commit landed as %q", printed)
+	}
+	for _, want := range []string{"commit must be the full canonical object ID", head[:12], head} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("artifact refusal omits %q: %v", want, err)
+		}
+	}
+	snapshot, err := fixture.workspace.Snapshot(fixture.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Depth != before {
+		t.Fatalf("refused artifact appended: depth %d -> %d", before, snapshot.Depth)
+	}
+}
+
+func TestHumanWorkAndInspectPrintCanonicalEventIDs(t *testing.T) {
+	fixture := newQueryFixture(t)
+	work, _, err := fixture.run(workCommand, "--as", "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(work, fixture.request) || strings.Contains(work, short(fixture.request)) {
+		t.Fatalf("work row does not carry the canonical request id:\n%s", work)
+	}
+	inspection, _, err := fixture.run(inspectCommand, fixture.artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{fixture.artifact, fixture.request} {
+		if !strings.Contains(inspection, want) {
+			t.Errorf("inspection omits canonical id %s:\n%s", want, inspection)
+		}
 	}
 }
 
@@ -360,6 +442,11 @@ func TestInspectRefusesAnEventTheLogDoesNotHold(t *testing.T) {
 	if !strings.Contains(err.Error(), "not in the durable projection") {
 		t.Fatalf("the refusal does not say why: %v", err)
 	}
+	for _, want := range []string{"git:sha1:<genesis>#git:sha1:<event>", "#N is a display index only", "gs work --json"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal omits %q: %v", want, err)
+		}
+	}
 }
 
 func TestInspectJSONIsTheSharedInspection(t *testing.T) {
@@ -379,6 +466,18 @@ func TestInspectJSONIsTheSharedInspection(t *testing.T) {
 	}
 	if !contains(inspection.ProvenanceBases, fixture.request) {
 		t.Fatalf("the inspection lost the basis the artifact rests on: %v", inspection.ProvenanceBases)
+	}
+}
+
+func TestHumanInspectionExplainsDanglingPromiseRefusal(t *testing.T) {
+	rendered := renderInspection(statusview.ItemInspection{
+		Event:    "promise",
+		Decision: &workroom.Decision{Verdict: workroom.Ineffective, Reason: "dangling promise has no request"},
+	}, "test")
+	for _, want := range []string{"dangling promise has no request", "Add exactly one live request event with --rests-on", "docs/reference/gs/state.md#citing"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("inspection refusal omits %q:\n%s", want, rendered)
+		}
 	}
 }
 
