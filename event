@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gitseq-mcp","body":{"commit":"4d5d62b6f2f23d7d3540f3c2ba07abcbea8d6067","path":"cmd/gitseq-mcp"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4e934059eab294cabd07b40da9c96114baa9dcee","text":"Merge retired a covered predecessor; the successor is at cmd/gitseq-mcp."}
