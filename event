@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will ratify approval c7115dcf, merge exact clean pushed head 82bf95ff61d48f429b1b69daa72bd038337c7de2 with the single approved cmd/gitseq-github artifact, push main and the sequence ref, and report the merge commit. I will stop if preflight finds any uncovered path or stale approval."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c7115dcfdfe61c235c3fd4fbb518c124a4a9c83f"}
