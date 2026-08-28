@@ -246,7 +246,9 @@ func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *te
 	}
 	unrelated := successionPlan{retire: map[string]string{"elsewhere": "docs"}}
 	err := refuseUnreachableCrossAuthorRetirements(projection, unrelated, "approval", "implementer")
-	if err == nil || !strings.Contains(err.Error(), "outside the reviewed paths") {
+	if err == nil || !strings.Contains(err.Error(), "outside the reviewed paths") ||
+		!strings.Contains(err.Error(), "have the approval cover it") ||
+		!strings.Contains(err.Error(), "docs/reference/gs/merge.md#approval-scope-and-receipt") {
 		t.Fatalf("cross-author retirement outside the approved tree error = %v", err)
 	}
 	// Not even for a ratifier, though the fold would let one retire anything.

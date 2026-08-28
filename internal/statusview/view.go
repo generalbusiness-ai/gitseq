@@ -529,7 +529,7 @@ func Render(summary Summary, source string) []byte {
 		output.WriteString("None.\n")
 	} else {
 		for _, attempt := range summary.Attempts {
-			fmt.Fprintf(&output, "- %s — %s: %s\n", name(attempt.Event, attempt.Sequence), attempt.Verdict, attempt.Reason)
+			fmt.Fprintf(&output, "- %s — %s: %s\n", name(attempt.Event, attempt.Sequence), attempt.Verdict, explainDecisionReason(attempt.Reason))
 		}
 		writeOmitted(&output, len(summary.Attempts), summary.AttemptsOmitted)
 	}
@@ -585,15 +585,24 @@ func writeOmitted(output *bytes.Buffer, listed, omitted int) {
 	}
 }
 
-// name renders an event as a reader says it. Falling back to the identifier in
-// full rather than an abbreviation is deliberate: `short` elides the middle, so
-// its output is visibly incomplete and cannot be mistaken for a name, but an
-// event that has a number should be called by it.
+// name keeps the readable sequence beside the only identifier a CLI command
+// accepts. #N is a display index scoped to one workroom; it must never be the
+// only name a novice can copy from the human view.
 func name(event string, sequence int) string {
 	if sequence > 0 {
-		return fmt.Sprintf("#%d", sequence)
+		return fmt.Sprintf("#%d %s", sequence, event)
 	}
 	return event
+}
+
+func explainDecisionReason(reason string) string {
+	if reason == "dangling promise has no request" {
+		return reason + ". Add exactly one live request event with --rests-on. See docs/reference/gs/state.md#citing"
+	}
+	if reason == "report cites a request other than the one its promise answers" {
+		return reason + ". File against the one live promise you made. See docs/reference/gs/state.md#citing"
+	}
+	return reason
 }
 
 func short(value string) string {

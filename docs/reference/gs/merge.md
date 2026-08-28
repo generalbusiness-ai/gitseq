@@ -116,6 +116,7 @@ world is a projection this command cannot date, not a permission to land.
 | The checkout is dirty | The merge result would contain unreviewed work. |
 | The checkout belongs to another repository | The workroom does not govern it. |
 | `--candidate` is not a full lowercase object ID | An abbreviation could become ambiguous later. |
+| The retirement plan reaches another actor's artifact outside every path the approval reviewed | Re-file the approval so it covers that path, or ask the artifact's author or an actor holding `ratifier` to retire it. The refusal names the event, path, reviewed paths, and this page. |
 
 Every check runs twice, immediately before git is invoked.
 

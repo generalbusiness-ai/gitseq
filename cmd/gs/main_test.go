@@ -3695,6 +3695,59 @@ func buildGS(t *testing.T) string {
 	return binary
 }
 
+func TestInstalledHelpIsUsefulAndHasStableExitCodes(t *testing.T) {
+	binary := buildGS(t)
+	tests := []struct {
+		name     string
+		args     []string
+		exitCode int
+		contains []string
+	}{
+		{name: "top help", args: []string{"--help"}, contains: []string{"usage: gs <command> [flags]", "docs/how-to/end-to-end.md", "docs/reference/gs/"}},
+		{name: "help command", args: []string{"help"}, contains: []string{"usage: gs <command> [flags]", "docs/how-to/end-to-end.md"}},
+		{name: "subcommand help", args: []string{"help", "work"}, contains: []string{"usage: gs work [flags]", "-as string", "-repo string", "-stale string"}},
+		{name: "subcommand flag help", args: []string{"work", "--help"}, contains: []string{"usage: gs work [flags]", "-lane value", "-json"}},
+		{name: "unknown flag", args: []string{"work", "--not-a-flag"}, exitCode: 1, contains: []string{"flag provided but not defined: -not-a-flag", "usage: gs work [flags]", "-as string"}},
+		{name: "missing command", exitCode: 2, contains: []string{"usage: gs <command> [flags]", "docs/how-to/end-to-end.md"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			output, err := exec.Command(binary, test.args...).CombinedOutput()
+			if test.exitCode == 0 && err != nil {
+				t.Fatalf("help exited with %v: %s", err, output)
+			}
+			if test.exitCode != 0 {
+				var exitErr *exec.ExitError
+				if !errors.As(err, &exitErr) || exitErr.ExitCode() != test.exitCode {
+					t.Fatalf("exit = %v, want %d: %s", err, test.exitCode, output)
+				}
+			}
+			for _, want := range test.contains {
+				if !bytes.Contains(output, []byte(want)) {
+					t.Errorf("output omits %q:\n%s", want, output)
+				}
+			}
+		})
+	}
+}
+
+func TestLifecycleRefusalsTellTheActorWhatToDo(t *testing.T) {
+	tests := []struct {
+		message string
+		want    string
+	}{
+		{message: "dangling promise has no request", want: "Add exactly one live request event with --rests-on"},
+		{message: "report cites a request other than the one its promise answers", want: "File against the one live promise you made"},
+		{message: "report rests on the request while promise event is live; report on the promise", want: "use the request directly only when you made no promise"},
+	}
+	for _, test := range tests {
+		got := explainLifecycleRefusal(errors.New(test.message)).Error()
+		if !strings.Contains(got, test.message) || !strings.Contains(got, test.want) || !strings.Contains(got, "docs/reference/gs/state.md#citing") {
+			t.Errorf("guidance for %q = %q", test.message, got)
+		}
+	}
+}
+
 // These checks run the installed command rather than calling batchCommand in
 // process. A returned error is not enough at this boundary: scripts only see
 // the process status, and the positional file is passed to main before the

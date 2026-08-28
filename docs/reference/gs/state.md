@@ -62,6 +62,10 @@ catalog in force rather than trusting this list to be complete:
 | `request` | `to` | The performer: a configured name, `@name`, or fingerprint. The signed event stores the fingerprint, and it must identify a live roster actor. |
 | `artifact` | `path`, `commit` | Implementation truth as `path@commit`. |
 
+For an artifact, `commit` must resolve in `--repo` and must already be the
+full canonical commit object ID. A branch, tag, symbolic name, uppercase ID,
+or abbreviated hash is refused before the statement is signed or appended.
+
 Implementation requests, promises and reports may also carry `branch` and
 `head` (or `commit`) as advisory hints, so a local tool can associate a
 checkout. They claim nothing about that checkout being clean or current;
@@ -118,6 +122,15 @@ Required edges, by kind:
   vocabulary for exactly one effective promise-lifecycle basis and checks that
   its promisor is the report signer. An error tells the caller which rule the
   draft violates; the fold remains authoritative if the log moves meanwhile.
+
+When these lifecycle edges do not match, the CLI keeps the precise reason and
+adds the recovery: a promise uses exactly one live request in `--rests-on`; a
+report uses the one live promise the reporter made, or the request directly
+only when that reporter made no promise. Report preflight adds that guidance
+to its refusal before append. If the fold records an ineffective act, the
+human status and inspection views add it beside the fold's unchanged verdict,
+so a terse reason such as `dangling promise has no request` is actionable at
+the terminal.
 
 An artifact can report assigned implementation work without changing the
 governed artifact schema. It qualifies when its signer is the promisor, it
