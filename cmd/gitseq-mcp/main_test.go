@@ -109,6 +109,117 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 	}
 }
 
+// The adapter declares an output schema so that what it already returns is
+// described rather than merely sent. Two things decide whether that
+// declaration is honest: every tool has to carry one, and real non-empty
+// structuredContent has to satisfy the schema its own tool declares. A schema
+// that named keys or refused unnamed ones would turn a correct response into
+// an invalid one, and validating here is what catches that.
+//
+// MCP 2026-07-28 admits any JSON Schema as an outputSchema, so the protocol
+// does not force an object. Object is right for a narrower reason: every
+// gitseq success payload encodes as a JSON object, and an object schema is the
+// shape older protocol revisions understand too.
+func TestEveryToolDeclaresAnOutputSchemaItsOwnResponsesSatisfy(t *testing.T) {
+	workspace := initRepository(t, "repo")
+	workroomServer, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(workroomServer.Handler())
+	defer httpServer.Close()
+	server, attached := attachedServer(t, workspace, "human", httpServer.URL, httpServer.Client())
+	if err := server.announce(context.Background(), attached); err != nil {
+		t.Fatal(err)
+	}
+	defer server.depart(context.Background())
+	meta := `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}`
+	// These calls cover both payload shapes the adapter produces: a Go map from
+	// whoami and presence, and a statusview struct from status, work, and
+	// artifacts, including the paged tools whose page here is empty.
+	exercised := []struct {
+		name      string
+		arguments string
+	}{
+		{"whoami", "{}"},
+		{"presence", "{}"},
+		{"status", "{}"},
+		{"work", "{}"},
+		{"artifacts", `{"paths":["AGENTS.md"]}`},
+	}
+	var script strings.Builder
+	fmt.Fprintf(&script, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{%s}}\n", meta)
+	for index, call := range exercised {
+		fmt.Fprintf(&script, "{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"tools/call\",\"params\":{%s,\"name\":%q,\"arguments\":%s}}\n", index+2, meta, call.name, call.arguments)
+	}
+	var output bytes.Buffer
+	if err := server.run(context.Background(), strings.NewReader(script.String()), &output); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != len(exercised)+1 {
+		t.Fatalf("got %d responses, want %d: %s", len(lines), len(exercised)+1, output.String())
+	}
+	var listResponse map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &listResponse); err != nil {
+		t.Fatal(err)
+	}
+	declared := make(map[string]map[string]any)
+	for _, tool := range listResponse["result"].(map[string]any)["tools"].([]any) {
+		definition := tool.(map[string]any)
+		name := definition["name"].(string)
+		// Naming the tool matters: a tool that misses the declaration is the one
+		// thing this has to identify, not that some tool somewhere did.
+		schema, isObject := definition["outputSchema"].(map[string]any)
+		if !isObject {
+			t.Fatalf("tool %q declares no outputSchema object: %#v", name, definition["outputSchema"])
+		}
+		if schema["type"] != "object" {
+			t.Fatalf("tool %q declares outputSchema type %#v, want object", name, schema["type"])
+		}
+		declared[name] = schema
+	}
+	if len(declared) != 14 {
+		t.Fatalf("got %d tools carrying an output schema, want 14: %#v", len(declared), declared)
+	}
+	for index, call := range exercised {
+		var response map[string]any
+		if err := json.Unmarshal([]byte(lines[index+1]), &response); err != nil {
+			t.Fatal(err)
+		}
+		result := response["result"].(map[string]any)
+		if result["isError"] != false {
+			t.Fatalf("tool %q refused, so its response proves nothing about the schema: %#v", call.name, result)
+		}
+		payload, isObject := result["structuredContent"].(map[string]any)
+		if !isObject || len(payload) == 0 {
+			t.Fatalf("tool %q returned no non-empty structuredContent to validate: %#v", call.name, result["structuredContent"])
+		}
+		if err := schemaRejects(declared[call.name], payload); err != nil {
+			t.Fatalf("tool %q returns structuredContent its own outputSchema rejects: %v", call.name, err)
+		}
+	}
+}
+
+// schemaRejects validates a payload against the part of JSON Schema the
+// adapter declares: the type, the members the schema names, and whether it
+// admits any others. A conformant client runs the same check and drops what
+// fails it.
+func schemaRejects(schema map[string]any, payload map[string]any) error {
+	if schema["type"] != "object" {
+		return fmt.Errorf("declared type %#v is not object", schema["type"])
+	}
+	if schema["additionalProperties"] == false {
+		named, _ := schema["properties"].(map[string]any)
+		for member := range payload {
+			if _, isNamed := named[member]; !isNamed {
+				return fmt.Errorf("member %q is not named by the schema, which admits no others", member)
+			}
+		}
+	}
+	return nil
+}
+
 func TestMissingPerRequestMetadataIsRejected(t *testing.T) {
 	server := &mcpServer{}
 	input := strings.NewReader("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}\n")
