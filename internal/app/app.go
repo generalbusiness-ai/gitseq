@@ -212,10 +212,13 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 }
 
 // gitStatedEnvironment is the whole of the environment a read-only Git command
-// built here is given. Nothing at all is inherited from whoever started this
-// process: repositoryLocalGit hands the child a copy of this list and nothing
-// else, so the list is an inventory of what these commands may see rather than
-// a filter over what they were handed.
+// built here is given, on Unix, which is the boundary this package exercises.
+// Nothing is inherited from whoever started this process: repositoryLocalGit
+// hands the child a copy of this list and nothing else, so the list is an
+// inventory of what these commands may see rather than a filter over what they
+// were handed. On Windows the claim is false and the qualification belongs
+// here rather than further down — Go's os/exec adds SYSTEMROOT to what the
+// child receives — and the paragraph below says what that means.
 //
 // It is an inventory because the denied set it replaces was escaped four times
 // in four rounds of review, and each escape arrived from a direction the

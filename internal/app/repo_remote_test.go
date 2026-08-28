@@ -708,14 +708,16 @@ func writeDefaultIgnoreFile(t *testing.T, directory, pattern string) {
 	}
 }
 
-// The environment these commands run under, asserted as a closed world.
+// The environment these commands run under, asserted as a closed world over
+// Cmd.Env — which is a Unix closed-child claim, for the reason set out under
+// "Two limits" below rather than only there.
 //
 // This test used to assert a case-folding rule: the allowlist admitted PATH,
 // Windows spells that name `Path` and matches environment keys without regard
 // to case, so the comparison had to fold and the folding had to be exercised.
-// That rule is gone with the allowlist. Nothing is inherited now, so there is
-// no name to compare and no case in which to compare it, and asserting the
-// folding would be asserting a rule the package no longer has.
+// That rule is gone with the allowlist. Nothing is inherited into Cmd.Env now,
+// so there is no name to compare and no case in which to compare it, and
+// asserting the folding would be asserting a rule the package no longer has.
 //
 // What replaces it is the stronger claim the empty inherited set makes
 // available, and it is asserted one layer out. Rather than handing a slice to a
