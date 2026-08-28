@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will implement the phase-one machine-enforced merge-authorization boundary in cmd/gs, its receipt provenance, diagnostics, mutation-sensitive tests, architecture/merge documentation, and SKILL guidance at an exact reviewed head. I will preserve the semantic-free kernel and existing merge 4d5d62b6, and I will not merge this implementation."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bf4c4ac65e1d2b0981dee5fbb1a9501d2f0e7724"}
