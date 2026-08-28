@@ -575,7 +575,7 @@ func tools() []map[string]any {
 		}
 		return fields
 	}
-	return []map[string]any{
+	definitions := []map[string]any{
 		{"name": "whoami", "description": "Show the configured durable actor and selected workroom without disclosing the resident credential.", "inputSchema": object(withRepo(nil))},
 		{"name": "presence", "description": "Inspect leased presence, or update this session's advisory activity. Focus does not claim or complete work.", "inputSchema": object(withRepo(map[string]any{
 			"status": map[string]any{"type": "string", "enum": []string{"available", "busy", "waiting", "blocked"}},
@@ -620,6 +620,24 @@ func tools() []map[string]any {
 			"idempotency_key": stringField,
 		}), "old_request", "to", "text", "conditions", "idempotency_key")},
 	}
+	// MCP provides outputSchema so that a tool can declare the shape of the
+	// structuredContent it returns. This adapter returns structuredContent on
+	// every success and declared nothing about it, so the declaration is a
+	// matter of self-description and interoperation with the standard, not a
+	// repair of any observed client.
+	//
+	// An object is the whole of what is proved. dispatch answers with a Go map
+	// or a statusview struct, both of which encode as a JSON object, and a
+	// refused call carries no structuredContent at all. No key is proved: tools
+	// answer from the resident or from a degraded local fold, and a page comes
+	// back empty or capped, so additionalProperties stays true and a conformant
+	// client validating against this schema still accepts every response the
+	// adapter makes today. Attaching after the definitions rather than inside
+	// each one means a tool added later cannot be the one that forgets.
+	for _, definition := range definitions {
+		definition["outputSchema"] = map[string]any{"type": "object", "additionalProperties": true}
+	}
+	return definitions
 }
 
 // absolute names a repository the same way every time, so two calls that mean
