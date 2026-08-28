@@ -120,12 +120,27 @@ func Decode(data []byte) (Intent, error) {
 	return i, nil
 }
 
+// SigningBytes returns a fresh copy of the domain-separated bytes covered by
+// an actor signature. Only canonical encoded intents have signing bytes.
+func SigningBytes(encoded []byte) ([]byte, error) {
+	if _, err := Decode(encoded); err != nil {
+		return nil, err
+	}
+	message := make([]byte, 0, len(domainTag)+len(encoded))
+	message = append(message, domainTag...)
+	message = append(message, encoded...)
+	return message, nil
+}
+
 func Sign(i Intent, private ed25519.PrivateKey) (Signed, error) {
 	encoded, err := Encode(i)
 	if err != nil {
 		return Signed{}, err
 	}
-	message := append([]byte(domainTag), encoded...)
+	message, err := SigningBytes(encoded)
+	if err != nil {
+		return Signed{}, err
+	}
 	return Signed{
 		Intent:    encoded,
 		ActorKey:  append([]byte(nil), private.Public().(ed25519.PublicKey)...),
@@ -144,7 +159,10 @@ func Verify(s Signed) (Intent, error) {
 	if err != nil {
 		return Intent{}, err
 	}
-	message := append([]byte(domainTag), s.Intent...)
+	message, err := SigningBytes(s.Intent)
+	if err != nil {
+		return Intent{}, err
+	}
 	if !ed25519.Verify(ed25519.PublicKey(s.ActorKey), message, s.Signature) {
 		return Intent{}, errors.New("invalid actor signature")
 	}

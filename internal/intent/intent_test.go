@@ -43,6 +43,63 @@ func TestIntentRoundTripAndBinding(t *testing.T) {
 	}
 }
 
+func TestSigningBytesRequireCanonicalIntentAndReturnFreshBytes(t *testing.T) {
+	original, signed := fixture(t)
+	got, err := SigningBytes(signed.Intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := append([]byte(domainTag), signed.Intent...)
+	if string(got) != string(want) {
+		t.Fatal("signing bytes do not contain the domain-separated intent")
+	}
+
+	got[len(got)-1] ^= 1
+	reencoded, err := Encode(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(signed.Intent) != string(reencoded) {
+		t.Fatal("signing bytes alias the encoded intent")
+	}
+
+	// Version zero is canonically encoded as 0x00. The two-byte form is valid
+	// CBOR with the same value, but it is not core-deterministic.
+	noncanonical := make([]byte, 0, len(signed.Intent)+1)
+	noncanonical = append(noncanonical, signed.Intent[0], 0x18, 0x00)
+	noncanonical = append(noncanonical, signed.Intent[2:]...)
+	if _, err := SigningBytes(noncanonical); err == nil {
+		t.Fatal("non-canonical encoded intent received signing bytes")
+	}
+}
+
+func TestSignUsesThePinnedDomain(t *testing.T) {
+	_, signed := fixture(t)
+	pinned := append([]byte(domainTag), signed.Intent...)
+	if !ed25519.Verify(ed25519.PublicKey(signed.ActorKey), pinned, signed.Signature) {
+		t.Fatal("Sign did not cover the pinned domain-separated intent")
+	}
+}
+
+func TestVerifyUsesThePinnedDomain(t *testing.T) {
+	original, _ := fixture(t)
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := Encode(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	external := Signed{
+		Intent: encoded, ActorKey: private.Public().(ed25519.PublicKey),
+		Signature: ed25519.Sign(private, append([]byte(domainTag), encoded...)),
+	}
+	if _, err := Verify(external); err != nil {
+		t.Fatalf("Verify refused the pinned domain-separated intent: %v", err)
+	}
+}
+
 func TestEnvelopeRejectsAlteredCausality(t *testing.T) {
 	_, signed := fixture(t)
 	message := Envelope(signed, []string{"git:sha1:abc#git:sha1:123"})

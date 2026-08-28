@@ -31,6 +31,7 @@ import (
 	"errors"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/host"
@@ -118,9 +119,27 @@ func TestOutsideApplicationRunsOnTheKernel(t *testing.T) {
 	}
 	play(white, "e4")
 	play(black, "e5")
-	// Out of turn. The kernel takes it because it is properly signed, and the
-	// fold is what refuses it.
-	play(black, "d5")
+	// Out of turn, and signed outside host. The host receives the canonical
+	// draft, public key, and signature, never black's private key. The kernel
+	// takes the valid signature and the fold is what refuses the move.
+	payload, err := json.Marshal(move{Square: "d5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := workspace.Prepare(host.Act{Schema: "outside/move@0", Payload: payload, IdempotencyKey: "external-d5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signingBytes, err := host.ActorSigningBytes(prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.AppendSigned(ctx, host.SignedAct{
+		Prepared: prepared, ActorKey: black.Public().(ed25519.PublicKey),
+		ActorSignature: ed25519.Sign(black, signingBytes),
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	log, err := workspace.Records(ctx)
 	if err != nil {
@@ -132,6 +151,47 @@ func TestOutsideApplicationRunsOnTheKernel(t *testing.T) {
 	}
 	if result.refused != 1 {
 		t.Fatalf("refused %d acts, want the out-of-turn move recorded and ineffective", result.refused)
+	}
+
+	// An ordinary clone with the already-fetched sequence is a different
+	// operation from Init. OpenAttached needs only public attachment fields,
+	// and explicit sequencer custody makes that existing sequence writable.
+	clone := filepath.Join(t.TempDir(), "clone")
+	if output, err := exec.Command("git", "init", "-q", clone).CombinedOutput(); err != nil {
+		t.Fatalf("git init clone: %v: %s", err, output)
+	}
+	ref := "refs/seq/" + log.Genesis
+	if output, err := exec.Command("git", "-C", clone, "fetch", "--no-tags", repo, ref+":"+ref).CombinedOutput(); err != nil {
+		t.Fatalf("fetch sequence: %v: %s", err, output)
+	}
+	gitDir, err := exec.Command("git", "-C", repo, "rev-parse", "--absolute-git-dir").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	attached, err := host.OpenAttached(ctx, clone, application(), host.Attachment{
+		Genesis: log.Genesis, SequencerKey: filepath.Join(strings.TrimSpace(string(gitDir)), "gitseq", "sequencer"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := key(t)
+	prepared, err = attached.Prepare(host.Act{Schema: "outside/audit@0", Payload: []byte("attached"), IdempotencyKey: "attached"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signingBytes, err = host.ActorSigningBytes(prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := attached.AppendSigned(ctx, host.SignedAct{
+		Prepared: prepared, ActorKey: remote.Public().(ed25519.PublicKey),
+		ActorSignature: ed25519.Sign(remote, signingBytes),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	attachedLog, err := attached.Records(ctx)
+	if err != nil || attachedLog.Genesis != log.Genesis || attachedLog.Depth != log.Depth+1 {
+		t.Fatalf("attached log = %+v, %v, want existing genesis advanced once", attachedLog, err)
 	}
 
 	// A second reader replays the same log to the same state.
