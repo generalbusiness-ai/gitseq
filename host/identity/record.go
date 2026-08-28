@@ -70,19 +70,53 @@ func DeclareWitness(ctx context.Context, workspace *host.Workspace, initializer 
 // rest of the host takes. Signatures say who acted and what they endorsed, and
 // the fold says what that was worth.
 func Endorse(ctx context.Context, workspace *host.Workspace, endorser ed25519.PrivateKey, anchor Anchor) (host.Record, error) {
-	genesis, err := genesisOf(ctx, workspace)
-	if err != nil {
-		return host.Record{}, err
-	}
-	// The repository is not the caller's to choose. Filling it in rather than
-	// taking it means an endorsement cannot be built for one log and appended
-	// to another.
-	anchor.Genesis = genesis
-	payload, err := encodeBody(anchor)
+	payload, err := endorsementPayload(ctx, workspace, &anchor)
 	if err != nil {
 		return host.Record{}, err
 	}
 	return workspace.Append(ctx, endorser, host.Act{Schema: AnchorSchema, Payload: payload, RestsOn: nil})
+}
+
+// PrepareEndorsement binds an endorsement to this repository for its actor to
+// sign outside the host, and returns the [host.PreparedAct] that
+// [host.ActorSigningBytes] and [host.Workspace.AppendSigned] consume. It is the
+// external-signing twin of [Endorse]: the deployment holding the actor key —
+// the subject session key for a self-signed Nostr anchor, or the endorser for a
+// witnessed or delegated one — never hands that private key to this process.
+//
+// Preparation runs the exact same checks [Endorse] runs and shares its one
+// validation and encoding site, so the private-key signer and the
+// external-signing caller cannot diverge on what a well-formed endorsement is.
+// The repository is filled in from the verified log rather than taken from the
+// caller, an invalid payload is refused, and a carried [NostrProof] is
+// BIP-340-verified before anything is prepared. Nothing here writes a Git
+// object or a record.
+//
+// IdempotencyKey follows the host's retry contract: supply one to make a retry
+// the same act, or leave it empty and keep the returned [host.PreparedAct],
+// because preparation chose the key and signed it into the intent.
+func PrepareEndorsement(ctx context.Context, workspace *host.Workspace, anchor Anchor, idempotencyKey string) (host.PreparedAct, error) {
+	payload, err := endorsementPayload(ctx, workspace, &anchor)
+	if err != nil {
+		return host.PreparedAct{}, err
+	}
+	return workspace.Prepare(host.Act{Schema: AnchorSchema, Payload: payload, IdempotencyKey: idempotencyKey})
+}
+
+// endorsementPayload is the single site that turns an anchor into the exact
+// bytes an endorsement record carries. It fills Genesis from the verified log —
+// the repository is not the caller's to choose, so an endorsement cannot be
+// built for one log and appended to another — and encodes the anchor, which
+// validates it, including BIP-340 verification of any carried Nostr proof.
+// [Endorse] and [PrepareEndorsement] both go through here, which is what keeps
+// the private-key and external-signing paths from diverging.
+func endorsementPayload(ctx context.Context, workspace *host.Workspace, anchor *Anchor) ([]byte, error) {
+	genesis, err := genesisOf(ctx, workspace)
+	if err != nil {
+		return nil, err
+	}
+	anchor.Genesis = genesis
+	return encodeBody(*anchor)
 }
 
 // Revoke withdraws an endorsement before its expiry.
