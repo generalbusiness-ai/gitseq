@@ -135,6 +135,15 @@ order to reassign the work should ask the promisor to supersede their
 promise first: one extra act, and the commitment closes reneged and
 readable instead of being cancelled out from under work in flight.
 
+When an implementation request says not to merge until a governing actor
+authorizes it, keep that order durable. Ask for an authorization report whose
+structured body names `authorizes_candidate`, `authorizes_approval`,
+`authorizes_request`, and `target_pre_head` (plus
+`remeasure=disjoint-paths` only when needed). The authorization requester
+ratifies that report; then the implementer runs `gs merge --authorization`
+with the exact report event. Phase-one omission warns for older in-flight
+lanes, but new work should carry the structured guard.
+
 A `changes-requested` review does not close its implementation commitment and
 cannot authorize a merge. A corrected exact head still needs a fresh artifact,
 independent review, ratified approval, and merge. When the requester moves the
