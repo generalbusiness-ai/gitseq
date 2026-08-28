@@ -178,6 +178,7 @@ func actorAddCommand(ctx context.Context, arguments []string) error {
 	as := set.String("as", "", "operator actor")
 	name := set.String("name", "", "new actor name")
 	kind := set.String("kind", "agent", "principal kind: human, agent, or service")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -187,6 +188,9 @@ func actorAddCommand(ctx context.Context, arguments []string) error {
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
+		return err
+	}
+	if err := requireLocalAuthorityWrite(workspace, *serverFlag, "actor-add"); err != nil {
 		return err
 	}
 	actor, records, err := workspace.AddActor(ctx, operator, *name, *kind)
@@ -200,6 +204,7 @@ func actorRetireCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("actor-retire", arguments)
 	as := set.String("as", "", "retiring actor")
 	actor := set.String("actor", "", "actor name, @name, or fingerprint")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -212,6 +217,9 @@ func actorRetireCommand(ctx context.Context, arguments []string) error {
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
+		return err
+	}
+	if err := requireLocalAuthorityWrite(workspace, *serverFlag, "actor-retire"); err != nil {
 		return err
 	}
 	records, err := workspace.RetireActor(ctx, retirer, *actor)
@@ -230,6 +238,7 @@ func roleGrantCommand(ctx context.Context, arguments []string) error {
 	as := set.String("as", "", "granting actor")
 	actor := set.String("actor", "", "actor name, @name, or fingerprint")
 	role := set.String("role", "", "durable authority role")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -239,6 +248,9 @@ func roleGrantCommand(ctx context.Context, arguments []string) error {
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
+		return err
+	}
+	if err := requireLocalAuthorityWrite(workspace, *serverFlag, "role-grant"); err != nil {
 		return err
 	}
 	records, err := workspace.GrantRole(ctx, grantor, *actor, *role)
@@ -257,6 +269,7 @@ func roleRevokeCommand(ctx context.Context, arguments []string) error {
 	as := set.String("as", "", "revoking actor")
 	actor := set.String("actor", "", "actor name, @name, or fingerprint")
 	role := set.String("role", "", "durable authority role")
+	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -266,6 +279,9 @@ func roleRevokeCommand(ctx context.Context, arguments []string) error {
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
+		return err
+	}
+	if err := requireLocalAuthorityWrite(workspace, *serverFlag, "role-revoke"); err != nil {
 		return err
 	}
 	records, err := workspace.RevokeRole(ctx, revoker, *actor, *role)
@@ -1766,6 +1782,24 @@ func resolveServerURL(workspace *app.Workspace, explicit string) (string, error)
 		return "", fmt.Errorf("this repository advertises %q, which is not usable: %w; pass --server %s to act locally instead", advertisement.URL, err, localFold)
 	}
 	return validated, nil
+}
+
+// requireLocalAuthorityWrite keeps the authority and custody commands on the
+// same writer boundary as every other durable command. Their operations span
+// more than one append, and actor-add and actor-retire also change local key
+// custody, so they have no single resident request to submit. An advertised or
+// explicit resident must therefore stop them before any local mutation. The
+// same explicit sentinel as the other commands lets an operator choose the
+// local path deliberately.
+func requireLocalAuthorityWrite(workspace *app.Workspace, explicit, command string) error {
+	serverURL, err := resolveServerURL(workspace, explicit)
+	if err != nil {
+		return err
+	}
+	if serverURL != "" {
+		return fmt.Errorf("gs %s has no resident write path; pass --server %s to act locally instead", command, localFold)
+	}
+	return nil
 }
 
 func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (service.SummaryStatus, error) {

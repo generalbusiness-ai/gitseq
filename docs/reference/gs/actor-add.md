@@ -18,6 +18,7 @@ appends a ratified `roster` statement admitting it as a participant.
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor performing the admission. Needs authority to grant membership. |
 | `--name` | *(required)* | Name of the new principal. |
 | `--kind` | `agent` | `human`, `agent`, or `service`. |
+| `--server` | advertised resident, if any | This command has no resident write path and refuses a URL. Pass `-` to choose the local fold. |
 
 ## Example
 

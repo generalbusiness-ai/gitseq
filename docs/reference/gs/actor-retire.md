@@ -29,6 +29,7 @@ Retire an instance identity when its engagement ends.
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The retiring actor. |
 | `--actor` | *(required)* | Principal to retire, as a name, `@name`, or fingerprint. |
+| `--server` | advertised resident, if any | This command has no resident write path and refuses a URL. Pass `-` to choose the local fold. |
 
 ## Example
 

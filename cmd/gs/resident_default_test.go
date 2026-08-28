@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -193,6 +194,137 @@ func TestServerDashForcesTheLocalFold(t *testing.T) {
 	}
 	if after.Depth <= before.Depth {
 		t.Fatalf("the forced-local write landed nothing: depth %d, want an advance past %d", after.Depth, before.Depth)
+	}
+}
+
+// The authority commands are multi-act operations, and two of them also
+// change local key custody, so they cannot be forwarded as one resident
+// submission. Each must refuse before its first local mutation while a
+// resident is advertised. Removing the requireLocalAuthorityWrite call from
+// any one handler makes that command's named case append and fail here. An
+// unusable advertisement and an explicit URL exercise the other two refusal
+// inputs, while the explicit local sentinel remains the deliberate escape
+// hatch.
+func TestAuthorityCommandsRefuseAnAdvertisedResidentBeforeLocalMutation(t *testing.T) {
+	binary := buildGS(t)
+	commands := []struct {
+		name  string
+		setup func(t *testing.T, workspace *app.Workspace)
+		args  []string
+	}{
+		{
+			name: "actor-add",
+			args: []string{"--as", "human", "--name", "new-agent", "--kind", "agent"},
+		},
+		{
+			name: "role-grant",
+			setup: func(t *testing.T, workspace *app.Workspace) {
+				t.Helper()
+				if _, _, err := workspace.AddActor(context.Background(), "human", "agent", "agent"); err != nil {
+					t.Fatal(err)
+				}
+			},
+			args: []string{"--as", "human", "--actor", "agent", "--role", "ratifier"},
+		},
+		{
+			name: "role-revoke",
+			setup: func(t *testing.T, workspace *app.Workspace) {
+				t.Helper()
+				if _, _, err := workspace.AddActor(context.Background(), "human", "agent", "agent"); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := workspace.GrantRole(context.Background(), "human", "agent", "ratifier"); err != nil {
+					t.Fatal(err)
+				}
+			},
+			args: []string{"--as", "human", "--actor", "agent", "--role", "ratifier"},
+		},
+		{
+			name: "actor-retire",
+			setup: func(t *testing.T, workspace *app.Workspace) {
+				t.Helper()
+				if _, _, err := workspace.AddActor(context.Background(), "human", "agent", "agent"); err != nil {
+					t.Fatal(err)
+				}
+			},
+			args: []string{"--as", "human", "--actor", "agent"},
+		},
+	}
+	for _, command := range commands {
+		t.Run(command.name, func(t *testing.T) {
+			repo, workspace := servableRepository(t)
+			if command.setup != nil {
+				command.setup(t, workspace)
+			}
+			hits := publishResident(t, workspace)
+			before, err := workspace.Snapshot(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			arguments := append([]string{command.name, "--repo", repo}, command.args...)
+
+			output, commandErr := exec.Command(binary, arguments...).CombinedOutput()
+			if commandErr == nil {
+				t.Fatalf("gs %s appended locally past the advertised resident: %s", command.name, output)
+			}
+			for _, want := range []string{"has no resident write path", "--server -"} {
+				if !strings.Contains(string(output), want) {
+					t.Fatalf("gs %s refusal does not name %q: %s", command.name, want, output)
+				}
+			}
+			if hits.Load() != 0 {
+				t.Fatalf("gs %s dialed the resident %d times instead of refusing before mutation", command.name, hits.Load())
+			}
+			mustNotAppend(t, workspace, before)
+
+			var explicitHits atomic.Int64
+			explicitResident := countingServer(t, &explicitHits, http.NotFoundHandler())
+			output, commandErr = exec.Command(binary, append(arguments, "--server", explicitResident.URL)...).CombinedOutput()
+			if commandErr == nil {
+				t.Fatalf("gs %s accepted an explicit resident URL: %s", command.name, output)
+			}
+			for _, want := range []string{"has no resident write path", "--server -"} {
+				if !strings.Contains(string(output), want) {
+					t.Fatalf("gs %s explicit-URL refusal does not name %q: %s", command.name, want, output)
+				}
+			}
+			if explicitHits.Load() != 0 {
+				t.Fatalf("gs %s dialed the explicit resident %d times instead of refusing", command.name, explicitHits.Load())
+			}
+			mustNotAppend(t, workspace, before)
+
+			if _, err := workspace.PublishResident("not-a-url"); err != nil {
+				t.Fatal(err)
+			}
+			output, commandErr = exec.Command(binary, arguments...).CombinedOutput()
+			if commandErr == nil {
+				t.Fatalf("gs %s accepted an unusable advertised resident: %s", command.name, output)
+			}
+			for _, want := range []string{"advertises", "not-a-url", "--server -"} {
+				if !strings.Contains(string(output), want) {
+					t.Fatalf("gs %s unusable-advertisement refusal does not name %q: %s", command.name, want, output)
+				}
+			}
+			if hits.Load() != 0 {
+				t.Fatalf("gs %s dialed the prior resident %d times after its advertisement changed", command.name, hits.Load())
+			}
+			mustNotAppend(t, workspace, before)
+
+			output, commandErr = exec.Command(binary, append(arguments, "--server", "-")...).CombinedOutput()
+			if commandErr != nil {
+				t.Fatalf("gs %s --server -: %v: %s", command.name, commandErr, output)
+			}
+			after, err := workspace.Snapshot(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after.Depth <= before.Depth {
+				t.Fatalf("gs %s --server - appended nothing: depth %d, want an advance past %d", command.name, after.Depth, before.Depth)
+			}
+			if hits.Load() != 0 {
+				t.Fatalf("gs %s --server - dialed the resident %d times", command.name, hits.Load())
+			}
+		})
 	}
 }
 
