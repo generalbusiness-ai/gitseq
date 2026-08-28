@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -141,7 +142,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v0/conversations/{conversation}/frames", s.handleFrames)
 }
 
-// handleIdentity says which workroom answers here, and nothing else. It exists
+// handleIdentity says which workroom and process answer here, and nothing else. It exists
 // for one caller: a starting resident deciding whether an existing ownership
 // claim still has a service behind it. That job sets every property of it. It
 // takes no parameters and needs no credential, so nothing about it is worth
@@ -150,7 +151,10 @@ func (s *Server) routes() {
 // snapshot, because a probe that queued behind a cold audit would make a
 // healthy incumbent look hung and invite a takeover.
 func (s *Server) handleIdentity(writer http.ResponseWriter, request *http.Request) {
-	write(writer, map[string]string{"genesis": s.workspace.View().Genesis}, nil)
+	write(writer, struct {
+		Genesis string `json:"genesis"`
+		PID     int    `json:"pid"`
+	}{Genesis: s.workspace.View().Genesis, PID: os.Getpid()}, nil)
 }
 
 func (s *Server) handleOrientation(writer http.ResponseWriter, request *http.Request) {

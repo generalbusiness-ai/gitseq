@@ -319,9 +319,15 @@ before it reads a signing key or appends anything, and names `--server -` as
 the way out. `cmd/gitseq-mcp` decides separately, and treats it as no resident
 — see [`gs serve`](gs/serve.md).
 
-Ownership authorizes serving; binding a listener does not. A resident binds
-first so the claim can carry the real address, contests ownership, and hands
-the listener to the HTTP server only once the claim is held.
+Ownership authorizes serving; neither a liveness proof nor binding a listener
+does. A resident first probes any incumbent claim so a
+service already holding the requested port produces a precise ownership
+refusal instead of an opaque bind error. It then binds, so a new claim can
+carry the real address, and may spend the preflight's dead-claim proof only on
+one compare-and-swap against the exact object it observed. If that position
+moved, it discards the proof, re-reads and probes normally. It must hold the
+post-bind claim before handing the listener to the HTTP server, so a claim that
+appears or moves after preflight is still protected.
 
 #### The liveness probe is deliberately asymmetric
 

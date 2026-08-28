@@ -1557,7 +1557,7 @@ func TestAttentionAnswersAndDegradesWithoutRefusing(t *testing.T) {
 
 // The identity endpoint exists so a starting resident can tell a live
 // incumbent from a claim left by a dead one. Everything about it is shaped by
-// that job: it says which workroom answers here and nothing else, it needs no
+// that job: it says which workroom and process answer here, it needs no
 // credential, it changes nothing, and it grants no cross-origin authority.
 func TestIdentitySaysWhichWorkroomAnswersAndNothingElse(t *testing.T) {
 	ctx := context.Background()
@@ -1594,12 +1594,12 @@ func TestIdentitySaysWhichWorkroomAnswersAndNothingElse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var identity map[string]string
+	var identity map[string]any
 	if err := json.Unmarshal(body, &identity); err != nil {
 		t.Fatalf("identity body %q: %v", body, err)
 	}
-	if len(identity) != 1 || identity["genesis"] != workspace.View().Genesis {
-		t.Fatalf("identity answered %v; it must carry the genesis and nothing else", identity)
+	if len(identity) != 2 || identity["genesis"] != workspace.View().Genesis || identity["pid"] != float64(os.Getpid()) {
+		t.Fatalf("identity answered %v; it must carry only the genesis and answering process id", identity)
 	}
 
 	// Nothing here accepts a write, so a probe cannot be turned into one.

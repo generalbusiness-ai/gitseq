@@ -193,21 +193,37 @@ retry, but presence and conversation are per-process, so the two would form
 separate rooms whose participants never see each other and are never told.
 
 Ownership is a claim at `refs/gitseq/resident/<genesis>`, taken with a git
-ref update carrying the expected old value. Serving binds the listener
-first, so the claim carries the address actually served including a port
-the kernel chose, then contests ownership, and only then serves. Binding is
-not what authorizes serving; holding the claim is. A start that does not
-win the claim closes its listener and exits non-zero without answering
-anything.
+ref update carrying the expected old value. Serving first performs a read-only
+liveness preflight, so an incumbent already bound to the requested port can be
+named precisely. It then binds the listener, so the claim carries the address
+actually served including a port the kernel chose. A preflight proof that the
+old address refused a connection may be spent only on one compare-and-swap
+against that exact claim object; if the ref moved, startup discards the proof
+and re-reads and probes normally. The proof authorizes only that one exact CAS
+attempt; neither it nor the bound listener authorizes serving. Holding the
+post-bind claim does. A start that does not win closes its listener and exits
+non-zero without answering anything.
 
 The claim is a shared ref in the repository's common directory, so path
 aliases, symlinks and linked worktrees all reach the same one, and separate
 repositories never contend.
 
-A normal stop releases the claim. A killed process leaves it behind, and
-the next start recovers it: it asks the claimed address whether it is still
-serving, and takes the claim only when nothing is listening. Every other
-answer leaves the claim alone and refuses.
+A normal SIGINT or SIGTERM stop closes the listener, releases this process's
+exact claim, and withdraws its advertisement before exit. Claim release is
+compare-and-swap guarded and retried for brief ref-lock contention; a cleanup
+failure is reported instead of being discarded. A successor's claim is never
+removed.
+
+A crash or SIGKILL can still leave a claim behind. The next start actively
+probes the claimed loopback address with a two-second bound. It uses the
+resident's small `/v0/identity` status response instead of the full projection,
+so a cold durable-log audit cannot make a healthy service look dead. A refused
+connection proves that nothing is listening: startup replaces the exact stale
+claim by compare-and-swap and logs the recovery. A valid response naming this
+workroom proves that a service is answering; startup refuses and, when the
+service returned it, names its PID. Timeouts, malformed responses, a different
+workroom, and addresses outside the loopback HTTP boundary are ambiguous. They
+leave the claim alone and refuse.
 
 The advertisement at `.git/gitseq/resident.json` remains what clients read
 to find the address. It is metadata, written only by the process that holds
@@ -226,9 +242,10 @@ both loopback and non-loopback addresses, is refused.
 | A `--listen` hostname fails to resolve or any result is non-loopback | `--listen must resolve only to loopback addresses; the resident service is a trusted local multi-actor custodian` |
 | A read-only attachment | `cannot serve a read-only attachment` |
 | The port is taken | The bind error, before anything is claimed, published or announced. |
-| Another service holds the repository | `refusing to serve: another service already holds this repository's workroom and is answering (<url>)` |
-| The holder cannot be shown to be gone | `refusing to serve: the service holding this repository could not be shown to be gone, so its claim is left alone (<url>); if you are certain no service is running, remove the claim with git update-ref -d refs/gitseq/resident/<genesis>` |
-| The claim cannot be read | `refusing to serve: the ownership claim at refs/gitseq/resident/<genesis> (<object>) cannot be read as a claim: <reason>; …` — a damaged claim is never treated as a vacancy. |
+| Another service holds the repository | `refusing to serve: another service already holds this repository's workroom and is answering (<url>, pid <pid>)` — no claim-deletion hint is offered while a service answers. The PID is omitted when the answering service did not return one. |
+| A loopback connection is refused | The exact stale claim is reclaimed automatically and startup logs `reclaimed stale resident claim after <url> refused the liveness probe`. |
+| The holder cannot be shown to be gone | `refusing to serve: the service holding this repository could not be shown to be gone, so its claim is left alone (<url>); last-resort override: first prove no service is answering; deleting a live service's claim can start a second resident and race the log; only then remove the claim with git update-ref -d refs/gitseq/resident/<genesis>` |
+| The claim cannot be read | `refusing to serve: the ownership claim at refs/gitseq/resident/<genesis> (<object>) cannot be read as a claim: <reason>; …` — a damaged claim is never treated as a vacancy, and the same last-resort race warning accompanies the manual override. |
 
 ## Restart
 

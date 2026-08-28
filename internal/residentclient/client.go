@@ -33,7 +33,8 @@ const (
 	SubmissionResponseLimit int64 = 2 << 20
 
 	// IdentityLimit bounds the liveness answer. The whole reply is one short
-	// hex string, so anything larger is not a resident answering.
+	// hex string and an optional process id, so anything larger is not a
+	// resident answering.
 	IdentityLimit int64 = 4 << 10
 )
 
@@ -279,24 +280,25 @@ func responseError(response *http.Response, data []byte) error {
 // repository can put a URL into, so the address is untrusted input and goes
 // through the same loopback validation as every other resident call. Dialing
 // whatever it named would turn starting a service into a request forgery.
-func (c *Client) ProbeResident(ctx context.Context, claim app.ResidentClaim) app.Liveness {
+func (c *Client) ProbeResident(ctx context.Context, claim app.ResidentClaim) app.ResidentProbe {
 	base, err := ValidateURL(claim.URL)
 	if err != nil {
-		return app.Ambiguous
+		return app.ResidentProbe{Liveness: app.Ambiguous}
 	}
 	var identity struct {
 		Genesis string `json:"genesis"`
+		PID     int    `json:"pid"`
 	}
 	if err := c.GetJSON(ctx, base, "/v0/identity", IdentityLimit, &identity); err != nil {
 		if errors.Is(err, syscall.ECONNREFUSED) {
-			return app.Dead
+			return app.ResidentProbe{Liveness: app.Dead}
 		}
-		return app.Ambiguous
+		return app.ResidentProbe{Liveness: app.Ambiguous}
 	}
 	if identity.Genesis == "" || identity.Genesis != claim.Genesis {
-		return app.Ambiguous
+		return app.ResidentProbe{Liveness: app.Ambiguous}
 	}
-	return app.Alive
+	return app.ResidentProbe{Liveness: app.Alive, PID: identity.PID}
 }
 
 // Submit sequences a fully signed request through the named resident, or
