@@ -776,12 +776,23 @@ The `cmd/gs` composition surface also owns phase-one merge authorization. An
 optional `--authorization` names an ordinary ratified Workroom report that
 closes an authorization request and binds the exact candidate, ratified
 approval, original implementation request, and measured target head. The CLI
-checks those bindings twice before Git moves. A newer target is accepted only
+identifies the exact implementation and authorization commitments and admits
+only a report signed by the original implementation requester, the live actor
+named exactly `planner`, or a live actor carrying `ratifier`. It checks those
+facts and bindings twice before Git moves. A newer target is accepted only
 under an explicit `disjoint-paths` remeasurement whose candidate and target
-path sets do not intersect. Git and durable receipts preserve the
-authorization event so later ratification cannot rewrite the order in which a
-legacy merge occurred. This changes no kernel guarantee, Workroom vocabulary,
-fold rule, projection, or cache profile.
+path sets do not intersect.
+
+The Git receipt seals both the authorization report and its exact
+sequencer-admitted `RatifiedBy` event. Embedding that unpredictable event ID in
+the later Git commit is the temporal witness that the report had force before
+Git moved. Recovery requires the pair, revalidates the commitments, signer,
+bindings and target measurement against the sealed pre-head, and appends no
+durable suffix if the current ratification differs. A receipt with neither
+field is legacy; one with authorization but no witness fails closed. The
+durable receipt preserves the same pair, so later ratification cannot rewrite
+the order in which a merge occurred. This changes no kernel guarantee,
+Workroom vocabulary, fold rule, projection, or cache profile.
 
 Phase two should use a declared application seam rather than search request
 prose. A future `workroom/state@3` request field

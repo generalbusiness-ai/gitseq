@@ -976,6 +976,38 @@ func TestMergeGuardMergesOnlyRatifiedApprovedExactHead(t *testing.T) {
 	}
 }
 
+func TestMergePhaseOneWarnsWhenAuthorizationIsAbsent(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr := os.Stderr
+	os.Stderr = writer
+	mergeErr := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Merge under the explicit phase-one compatibility path.",
+	})
+	os.Stderr = stderr
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	warning, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mergeErr != nil {
+		t.Fatal(mergeErr)
+	}
+	const want = "warning: merge has no structured authorization; phase-one compatibility permits this merge"
+	if !strings.Contains(string(warning), want) {
+		t.Fatalf("phase-one stderr = %q, want %q", warning, want)
+	}
+}
+
 func TestMergeGuardRecordsStructuredAuthorization(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	approval := fixture.review(t)
@@ -996,6 +1028,10 @@ func TestMergeGuardRecordsStructuredAuthorization(t *testing.T) {
 	if receipt.Authorization != authorization {
 		t.Fatalf("Git receipt authorization = %q, want %q", receipt.Authorization, authorization)
 	}
+	authorizationStatement := statementByEvent(t, fixture.snapshot(t).Projection, authorization)
+	if receipt.AuthorizationRatification != authorizationStatement.RatifiedBy {
+		t.Fatalf("Git receipt authorization ratification = %q, want %q", receipt.AuthorizationRatification, authorizationStatement.RatifiedBy)
+	}
 	var durable workroom.Statement
 	for _, statement := range fixture.snapshot(t).Projection.Statements {
 		if statement.Body["merge_approval"] == approval {
@@ -1005,8 +1041,81 @@ func TestMergeGuardRecordsStructuredAuthorization(t *testing.T) {
 	if durable.Body["merge_authorization"] != authorization {
 		t.Fatalf("durable receipt authorization = %q, want %q", durable.Body["merge_authorization"], authorization)
 	}
+	if durable.Body["merge_authorization_ratification"] != authorizationStatement.RatifiedBy {
+		t.Fatalf("durable receipt authorization ratification = %q, want %q", durable.Body["merge_authorization_ratification"], authorizationStatement.RatifiedBy)
+	}
 	if !slices.Contains(fixture.snapshot(t).Projection.Provenance[durable.Event], authorization) {
 		t.Fatal("durable receipt does not rest on its merge authorization")
+	}
+	if !slices.Contains(fixture.snapshot(t).Projection.Provenance[durable.Event], authorizationStatement.RatifiedBy) {
+		t.Fatal("durable receipt does not rest on its sealed authorization ratification")
+	}
+}
+
+func TestMergeAuthorizationRefusesOrdinaryParticipantsSelfAuthorizing(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "operator", "intruder", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "operator", "accomplice", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	authorization := fixture.authorizeAs(t, approval, "intruder", "accomplice", true, nil)
+	beforeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	before := fixture.snapshot(t)
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval, "--authorization", authorization,
+		"--text", "Ordinary participants must not authorize this merge for themselves.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "is not the implementation requester and is not a live actor named planner or carrying ratifier") {
+		t.Fatalf("ordinary participant authorization error = %v", err)
+	}
+	if afterHead := testGit(t, fixture.repo, "rev-parse", "HEAD"); afterHead != beforeHead {
+		t.Fatalf("refused authorization moved HEAD from %s to %s", beforeHead, afterHead)
+	}
+	after := fixture.snapshot(t)
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("refused authorization changed durable log from %s/%d to %s/%d", before.Head, before.Depth, after.Head, after.Depth)
+	}
+}
+
+func TestMergeAuthorizationAcceptsLivePlanner(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "operator", "planner", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	authorization := fixture.authorizeAs(t, approval, "operator", "planner", true, nil)
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval, "--authorization", authorization,
+		"--text", "Merge the exact head authorized by the live Planner actor.",
+	}); err != nil {
+		t.Fatalf("Planner authorization refused: %v", err)
+	}
+}
+
+func TestMergeAuthorizationAcceptsLiveRatifier(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "operator", "governor", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.workspace.GrantRole(fixture.ctx, "operator", "governor", "ratifier"); err != nil {
+		t.Fatal(err)
+	}
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	authorization := fixture.authorizeAs(t, approval, "operator", "governor", true, nil)
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval, "--authorization", authorization,
+		"--text", "Merge the exact head authorized by a live ratifier.",
+	}); err != nil {
+		t.Fatalf("ratifier authorization refused: %v", err)
 	}
 }
 
@@ -1063,7 +1172,8 @@ func TestMergeAuthorizationRequiresRatificationAndPreReceiptOrdering(t *testing.
 	projection := fixture.snapshot(t).Projection
 	ratified := statementByEvent(t, projection, authorization)
 	ratificationSequence := eventSequence(projection, ratified.RatifiedBy)
-	err = validateMergeAuthorization(fixture.ctx, projection, fixture.repo, fixture.candidate, approval, authorization, true, ratificationSequence)
+	_, err = validateMergeAuthorization(fixture.ctx, projection, fixture.repo, fixture.candidate, approval, authorization,
+		testGit(t, fixture.repo, "rev-parse", "HEAD"), true, ratificationSequence, "")
 	if err == nil || !strings.Contains(err.Error(), "is not before merge receipt") {
 		t.Fatalf("late ratification ordering error = %v", err)
 	}
@@ -1073,7 +1183,8 @@ func TestMergeAuthorizationRequiredModeRefusesAbsence(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	approval := fixture.review(t)
 	fixture.ratify(t, approval)
-	err := validateMergeAuthorization(fixture.ctx, fixture.snapshot(t).Projection, fixture.repo, fixture.candidate, approval, "", true, fixture.snapshot(t).Depth+1)
+	_, err := validateMergeAuthorization(fixture.ctx, fixture.snapshot(t).Projection, fixture.repo, fixture.candidate, approval, "",
+		testGit(t, fixture.repo, "rev-parse", "HEAD"), true, fixture.snapshot(t).Depth+1, "")
 	if err == nil || !strings.Contains(err.Error(), "--authorization is required") {
 		t.Fatalf("required authorization error = %v", err)
 	}
@@ -1091,7 +1202,8 @@ func TestMergeAuthorizationRefusesBlockingStaleness(t *testing.T) {
 			snapshot.Projection.Statements[index].WorldSupersededAt = snapshot.Projection.Statements[index].Sequence
 		}
 	}
-	err := validateMergeAuthorization(fixture.ctx, snapshot.Projection, fixture.repo, fixture.candidate, approval, authorization, true, snapshot.Depth+1)
+	_, err := validateMergeAuthorization(fixture.ctx, snapshot.Projection, fixture.repo, fixture.candidate, approval, authorization,
+		testGit(t, fixture.repo, "rev-parse", "HEAD"), true, snapshot.Depth+1, "")
 	if err == nil || !strings.Contains(err.Error(), "describes a superseded world") {
 		t.Fatalf("world-stale authorization error = %v", err)
 	}
@@ -1101,7 +1213,8 @@ func TestMergeAuthorizationRefusesBlockingStaleness(t *testing.T) {
 			snapshot.Projection.Statements[index].Retired = true
 		}
 	}
-	err = validateMergeAuthorization(fixture.ctx, snapshot.Projection, fixture.repo, fixture.candidate, approval, authorization, true, snapshot.Depth+1)
+	_, err = validateMergeAuthorization(fixture.ctx, snapshot.Projection, fixture.repo, fixture.candidate, approval, authorization,
+		testGit(t, fixture.repo, "rev-parse", "HEAD"), true, snapshot.Depth+1, "")
 	if err == nil || !strings.Contains(err.Error(), "retired") {
 		t.Fatalf("retired authorization error = %v", err)
 	}
@@ -1125,6 +1238,117 @@ func TestMergeAuthorizationRemeasuresDisjointTargetMovement(t *testing.T) {
 		"--text", "Merge the authorized feature after a disjoint main change.",
 	}); err != nil {
 		t.Fatalf("disjoint remeasurement refused: %v", err)
+	}
+}
+
+func TestMergeAuthorizationRefusesOverlappingTargetMovement(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	authorization := fixture.authorize(t, approval, true, func(body map[string]string) {
+		body["remeasure"] = "disjoint-paths"
+	})
+	if err := os.WriteFile(filepath.Join(fixture.repo, "feature.txt"), []byte("main changed the same path\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, fixture.repo, "add", "feature.txt")
+	testGit(t, fixture.repo, "commit", "-m", "move main on the candidate path")
+	beforeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	before := fixture.snapshot(t)
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval, "--authorization", authorization,
+		"--text", "Do not merge when target movement overlaps the candidate.",
+	})
+	if err == nil || !strings.Contains(err.Error(), `disjoint-paths remeasurement failed: "feature.txt" changed in both candidate and target`) {
+		t.Fatalf("overlapping remeasurement error = %v", err)
+	}
+	if afterHead := testGit(t, fixture.repo, "rev-parse", "HEAD"); afterHead != beforeHead {
+		t.Fatalf("overlap refusal moved HEAD from %s to %s", beforeHead, afterHead)
+	}
+	after := fixture.snapshot(t)
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("overlap refusal changed durable log from %s/%d to %s/%d", before.Head, before.Depth, after.Head, after.Depth)
+	}
+}
+
+func TestResumeRefusesSealedUnratifiedAuthorizationBeforeDurableSuffix(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	authorization := fixture.authorize(t, approval, false, nil)
+	targetPreHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	snapshot := fixture.snapshot(t)
+	changes, err := mergeChangesBetween(fixture.ctx, fixture.repo, targetPreHead, fixture.candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
+	plan := planSuccession(snapshot.Projection, changes, predecessors)
+	message, err := mergeReceiptMessage("Seal a receipt whose authorization was never ratified.", approval,
+		authorization, approval, fixture.candidate, targetPreHead, "", plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, fixture.repo, "merge", "--no-ff", "--no-commit", "--", fixture.candidate)
+	testGit(t, fixture.repo, "commit", "-m", message)
+	mergeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	before := fixture.snapshot(t)
+	err = mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval, "--authorization", authorization,
+		"--text", "Do not resume a receipt without pre-Git authorization force.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "sealed receipt authorization: report is not ratified by its requester") {
+		t.Fatalf("sealed unratified authorization error = %v", err)
+	}
+	if afterHead := testGit(t, fixture.repo, "rev-parse", "HEAD"); afterHead != mergeHead {
+		t.Fatalf("resume refusal moved HEAD from sealed merge %s to %s", mergeHead, afterHead)
+	}
+	after := fixture.snapshot(t)
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("resume refusal appended durable suffix: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
+	}
+}
+
+func TestResumeRefusesAuthorizationWithoutRatificationWitness(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	authorization := fixture.authorize(t, approval, true, nil)
+	authorizationStatement := statementByEvent(t, fixture.snapshot(t).Projection, authorization)
+	targetPreHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	snapshot := fixture.snapshot(t)
+	changes, err := mergeChangesBetween(fixture.ctx, fixture.repo, targetPreHead, fixture.candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
+	plan := planSuccession(snapshot.Projection, changes, predecessors)
+	message, err := mergeReceiptMessage("Seal an incomplete authorization receipt.", approval, authorization,
+		authorizationStatement.RatifiedBy, fixture.candidate, targetPreHead, "", plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message = strings.Replace(message, "\n"+mergeAuthorizationRatificationTrailer+authorizationStatement.RatifiedBy, "", 1)
+	testGit(t, fixture.repo, "merge", "--no-ff", "--no-commit", "--", fixture.candidate)
+	testGit(t, fixture.repo, "commit", "-m", message)
+	mergeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	before := fixture.snapshot(t)
+	err = mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval, "--authorization", authorization,
+		"--text", "Do not resume authorization without its temporal witness.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "must carry Gitseq-Authorization and Gitseq-Authorization-Ratification together") {
+		t.Fatalf("missing authorization witness error = %v", err)
+	}
+	if afterHead := testGit(t, fixture.repo, "rev-parse", "HEAD"); afterHead != mergeHead {
+		t.Fatalf("missing-witness refusal moved HEAD from %s to %s", mergeHead, afterHead)
+	}
+	after := fixture.snapshot(t)
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("missing-witness refusal appended durable suffix: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
 	}
 }
 
@@ -1321,7 +1545,7 @@ func TestMergeReceiptLeftLiveRoundTripAndLegacyCompatibility(t *testing.T) {
 				"a-artifact": {Class: leftLiveSibling, Commitment: "promise"},
 			},
 		}
-		message, err := mergeReceiptMessage("Merge with complete accounting.", "approval", "", fixture.candidate, targetPreHead, "", plan)
+		message, err := mergeReceiptMessage("Merge with complete accounting.", "approval", "", "", fixture.candidate, targetPreHead, "", plan)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1417,7 +1641,7 @@ func TestMergeRetryRejectsMalformedOrForgedProspectiveAccounting(t *testing.T) {
 			snapshot := fixture.snapshot(t)
 			classified := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
 			plan := planSuccession(snapshot.Projection, changes, classified)
-			message, err := mergeReceiptMessage("Merge a deliberately malformed receipt.", approval, "", fixture.candidate, targetPreHead, "", plan)
+			message, err := mergeReceiptMessage("Merge a deliberately malformed receipt.", approval, "", "", fixture.candidate, targetPreHead, "", plan)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1839,7 +2063,7 @@ func TestMergeRetryResumesPartlyLandedSuccessionWithoutRemerging(t *testing.T) {
 	}
 	snapshot := fixture.snapshot(t)
 	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
-	message, err := mergeReceiptMessage("Merge the approved feature.", approval, "", fixture.candidate, targetPreHead, "", planSuccession(snapshot.Projection, changes, predecessors))
+	message, err := mergeReceiptMessage("Merge the approved feature.", approval, "", "", fixture.candidate, targetPreHead, "", planSuccession(snapshot.Projection, changes, predecessors))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1854,7 +2078,7 @@ func TestMergeRetryResumesPartlyLandedSuccessionWithoutRemerging(t *testing.T) {
 	snapshot = fixture.snapshot(t)
 	predecessors = successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
 	plan := planSuccession(snapshot.Projection, changes, predecessors)
-	acts := successionActs(approval, "", fixture.candidate, targetPreHead, mergeHead, "", plan)
+	acts := successionActs(approval, "", "", fixture.candidate, targetPreHead, mergeHead, "", plan)
 	if len(acts) < 3 {
 		t.Fatalf("succession acts = %d, want receipt, successor, and retirement", len(acts))
 	}
@@ -1911,7 +2135,7 @@ func TestMergeRetryBeforeDurableReceiptUsesTheSealedGitPlan(t *testing.T) {
 	snapshot := fixture.snapshot(t)
 	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
 	sealed := planSuccession(snapshot.Projection, changes, predecessors)
-	message, err := mergeReceiptMessage("Merge the approved feature.", approval, "", fixture.candidate, targetPreHead, "", sealed)
+	message, err := mergeReceiptMessage("Merge the approved feature.", approval, "", "", fixture.candidate, targetPreHead, "", sealed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2060,7 +2284,7 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 	if !maps.Equal(sealed.retire, wantRetire) {
 		t.Fatalf("sealed retirements = %v, want %v", sealed.retire, wantRetire)
 	}
-	message, err := mergeReceiptMessage("Merge the approved nested guide.", approval, "", candidate, targetPreHead, "", sealed)
+	message, err := mergeReceiptMessage("Merge the approved nested guide.", approval, "", "", candidate, targetPreHead, "", sealed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3659,16 +3883,20 @@ func (f workflowFixture) ratify(t *testing.T, approval string) {
 }
 
 func (f workflowFixture) authorize(t *testing.T, approval string, ratified bool, mutate func(map[string]string)) string {
+	return f.authorizeAs(t, approval, "operator", "reviewer", ratified, mutate)
+}
+
+func (f workflowFixture) authorizeAs(t *testing.T, approval, requester, reporter string, ratified bool, mutate func(map[string]string)) string {
 	t.Helper()
 	targetPreHead := testGit(t, f.repo, "rev-parse", "HEAD")
-	request, err := f.workspace.Act(f.ctx, "operator", app.Act{
+	request, err := f.workspace.Act(f.ctx, requester, app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "authorize the exact merge",
 		Body: map[string]string{
-			"to":         f.workspace.View().Actors["reviewer"].Fingerprint,
+			"to":         f.workspace.View().Actors[reporter].Fingerprint,
 			"conditions": "lift do-not-merge only for the structured bindings in the report",
 		},
 		RestsOn:        []string{approval, f.implementationRequest},
-		IdempotencyKey: "authorization-request-" + approval,
+		IdempotencyKey: "authorization-request-" + approval + "-" + requester + "-" + reporter,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -3682,18 +3910,18 @@ func (f workflowFixture) authorize(t *testing.T, approval string, ratified bool,
 	if mutate != nil {
 		mutate(body)
 	}
-	report, err := f.workspace.Act(f.ctx, "reviewer", app.Act{
+	report, err := f.workspace.Act(f.ctx, reporter, app.Act{
 		Verb: app.VerbState, Kind: workroom.KindReport, Text: "authorize only the bound merge",
 		Body: body, RestsOn: []string{request.Record.ID},
-		IdempotencyKey: "authorization-report-" + approval,
+		IdempotencyKey: "authorization-report-" + approval + "-" + requester + "-" + reporter,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ratified {
-		if _, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		if _, err := f.workspace.Act(f.ctx, requester, app.Act{
 			Verb: app.VerbRatify, Target: report.Record.ID,
-			IdempotencyKey: "ratify-authorization-" + approval,
+			IdempotencyKey: "ratify-authorization-" + approval + "-" + requester + "-" + reporter,
 		}); err != nil {
 			t.Fatal(err)
 		}
