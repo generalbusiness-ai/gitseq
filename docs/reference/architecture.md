@@ -1123,12 +1123,23 @@ a projection it may merge on. This carries the fold profile to
   which repository Git resolves — `GIT_DIR`, `GIT_COMMON_DIR`,
   `GIT_WORK_TREE` and their family — because those redirect the repository
   before any scope rule applies, and a strictly local read of the wrong
-  repository is still the wrong repository. The guard that refuses a
+  repository is still the wrong repository. No inherited Git configuration
+  reaches those commands either, and the layer pins the system and global
+  scopes shut itself rather than forwarding whichever pins it was started
+  with. A variable naming a configuration *file* bounds nothing about what
+  that file says, and a Git configuration file names programs Git runs:
+  `core.fsmonitor` and its relatives make configuration an execution channel
+  rather than a scope question, so admitting such a variable by name is not a
+  narrowing. The repository's own configuration file is the one scope that
+  remains, because reading it is what the answer is made of. The cost is
+  stated rather than hidden: `safe.directory` is honoured only from the
+  scopes now pinned, so a repository owned by another user is refused outright
+  instead of read on an inherited allowance. The guard that refuses a
   retirement the documentation still cites states a property rather than a
   list of what it defends against: it refuses whenever it cannot positively
   confirm that no live document cites the target. A lookup that does not run
-  at all — a broken Git, a resource limit, a hostile command-scope
-  configuration — yields a refusal, never a silent pass. Bounding the
+  at all — a broken Git, a resource limit, a setting in the repository's own
+  configuration file — yields a refusal, never a silent pass. Bounding the
   environment narrows how such a lookup is reached; it is not what makes the
   answer safe, and no list of variable names is load-bearing. The remote read
   is bounded in size and in count, and a repository past either bound reports

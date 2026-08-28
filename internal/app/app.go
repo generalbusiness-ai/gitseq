@@ -232,45 +232,45 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 // way. citingDocuments is read as a guard, so an empty answer lets a cited
 // retirement through: silence there is a bypass, not a cosmetic wrong.
 //
-// The GIT_CONFIG family is neither kept whole nor dropped whole, because the
-// two halves of it do opposite things.
+// The GIT_CONFIG family is dropped whole, and the configuration these commands
+// do run under is set here instead of inherited. gitTrustedConfiguration below
+// is that setting, and the two halves of the rule are one decision: nothing
+// about the caller's configuration is trusted, so the isolation these commands
+// need is stated rather than borrowed.
 //
-// gitConfigScopePins below is the narrowing half. GIT_CONFIG_NOSYSTEM,
-// GIT_CONFIG_SYSTEM and GIT_CONFIG_GLOBAL only ever take configuration away or
-// redirect a whole scope to a file the caller chose on purpose:
-// internal/gitstore and internal/testgit both pin system and global config to
-// /dev/null through exactly these, and safe.directory — which decides whether
-// Git will read a repository owned by another user at all — normally lives in
-// the scope they name. Dropping them would silently undo both, trading this
-// fail-open for another, so they are passed through untouched.
+// The reason it cannot be a list of admitted names is that half this family
+// names a file. GIT_CONFIG, GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM each point
+// Git at a configuration file, and a Git configuration file is not data:
+// core.fsmonitor, core.pager and diff.external name programs, and Git runs
+// them. `git status` runs core.fsmonitor unprompted on an ordinary read, then
+// appends its own arguments to whatever was configured, so a single inherited
+// variable buys both arbitrary execution and a corrupted answer. Admitting a
+// variable's *name* bounds nothing whatever about the contents of the file it
+// points at, which is why the earlier reasoning — that these three only narrow
+// scope — was wrong in kind rather than merely incomplete. Narrowing which
+// files are read says nothing about what those files then say.
 //
-// Everything else in the family is the injecting half. GIT_CONFIG_COUNT with
-// its KEY_n/VALUE_n pairs, and GIT_CONFIG_PARAMETERS, add configuration in the
-// command scope, which outranks every file scope and needs no repository
-// access at all: three environment variables set any Git setting for every
-// command this package runs. GIT_CONFIG redirects a config read outright. None
-// of them is anything a caller of this package has ever needed, so the test is
-// an allowlist rather than a list of the injecting names. A variable in this
-// family that nobody here has heard of — a future Git release, a wrapper — is
-// dropped by default rather than admitted by omission.
+// The other half injects configuration directly. GIT_CONFIG_COUNT with its
+// KEY_n/VALUE_n pairs, and GIT_CONFIG_PARAMETERS, set values in the command
+// scope, which outranks every file scope and needs no repository access at all.
+//
+// Neither half is anything a caller of this package has ever needed, so the
+// test is a prefix rather than a list of names. A variable in this family that
+// nobody here has heard of — a future Git release, a wrapper — is dropped by
+// default rather than admitted by omission.
 //
 // This is the secondary defence and must be read as one. It narrows how a
 // caller reaches the malfunction; it does not decide what happens when one is
-// reached anyway, and a name that gets through it still has to be harmless.
-// What makes an unanswerable citation lookup safe is that citingDocuments
-// distinguishes "found nothing" from "did not run" and refuses the retirement
-// on the second — see the primary defence there. Repairing or extending this
-// list does not close that class, and a later reader who believes it does will
-// reintroduce the fail-open the first time an unanticipated key gets through.
+// reached anyway. What makes an unanswerable citation lookup safe is that
+// citingDocuments distinguishes "found nothing" from "did not run" and refuses
+// the retirement on the second — see the primary defence there. Bounding the
+// environment does not close that class, and a later reader who believes it
+// does will reintroduce the fail-open the first time the lookup breaks for a
+// reason no environment can reach: a corrupt index, a resource limit, a
+// setting in the repository's own configuration file.
 //
 // The one command below whose output is configuration also reads --local,
 // which bounds the scope question at the argument where it belongs.
-var gitConfigScopePins = map[string]bool{
-	"GIT_CONFIG_NOSYSTEM": true,
-	"GIT_CONFIG_SYSTEM":   true,
-	"GIT_CONFIG_GLOBAL":   true,
-}
-
 var gitRoutingVariables = map[string]bool{
 	"GIT_DIR":                          true,
 	"GIT_COMMON_DIR":                   true,
@@ -287,6 +287,40 @@ var gitRoutingVariables = map[string]bool{
 	"GIT_ICASE_PATHSPECS":              true,
 }
 
+// gitTrustedConfiguration is the entire configuration contract for the Git
+// commands this package runs: every scope outside the repository is pinned
+// shut, and the repository's own file is the only configuration that remains.
+// That file is not optional — remote.origin.url lives in it, and reading it is
+// the whole job of gitRemotes — so the contract is "the repository's
+// configuration and nothing else" rather than "no configuration".
+//
+// It is set here rather than inherited, and that is the whole of the change.
+// internal/gitstore and internal/testgit pin exactly these three variables, and
+// forwarding their pins was the original reason to admit the names at all; but
+// a bound this package relies on is a bound this package has to state. A caller
+// that merely omits the variables would otherwise have the invoking user's
+// ~/.gitconfig read into every command here, and a caller that sets them
+// hostilely would have its own file read instead. Stating it costs three
+// strings and does not depend on who started the process. NOSYSTEM and SYSTEM
+// both name the system scope because either alone is enough and Git honours
+// both; keeping the pair matches what internal/gitstore already writes.
+//
+// The cost is real and worth naming, because it is the one thing this takes
+// away. safe.directory is honoured only from protected configuration — the
+// system, global and command scopes — so pinning those two files shut means Git
+// consults no operator allowance for a repository owned by another user, and
+// refuses to read one. That is a visible error on every command here rather
+// than a wrong answer: the worktree list fails, and citingDocuments turns it
+// into a refused retirement rather than a silent pass. If a deployment ever
+// genuinely serves a repository it does not own, the answer is to name that one
+// repository in an explicit -c argument, deliberately and in view, and not to
+// reopen a channel whose contents are executable.
+var gitTrustedConfiguration = []string{
+	"GIT_CONFIG_NOSYSTEM=1",
+	"GIT_CONFIG_SYSTEM=" + os.DevNull,
+	"GIT_CONFIG_GLOBAL=" + os.DevNull,
+}
+
 // repositoryLocalGit builds every read-only Git command this package runs
 // against a checkout, so that "the repository at repo" is what Git actually
 // reads. There is one constructor rather than a line at each of the five call
@@ -299,18 +333,24 @@ var gitRoutingVariables = map[string]bool{
 // --no-optional-locks keeps a read from writing to a repository somebody else
 // may be using; it belongs to every one of these commands for the same reason
 // the environment does.
+//
+// The environment is built in two steps, and the order matters. The inherited
+// variables are filtered first, then gitTrustedConfiguration is appended, so
+// this package's pins are last and win: os/exec keeps the final value for a
+// duplicated name, which makes the second step a statement of the contract
+// rather than a hope that the first step removed every spelling of it.
 func repositoryLocalGit(ctx context.Context, repo string, arguments ...string) *exec.Cmd {
 	argv := append([]string{"--no-optional-locks", "-C", repo}, arguments...)
 	command := exec.CommandContext(ctx, "git", argv...)
 	environment := os.Environ()
-	sanitized := make([]string, 0, len(environment))
+	sanitized := make([]string, 0, len(environment)+len(gitTrustedConfiguration))
 	for _, variable := range environment {
 		if name, _, found := strings.Cut(variable, "="); found && !inheritedGitVariableAdmitted(name) {
 			continue
 		}
 		sanitized = append(sanitized, variable)
 	}
-	command.Env = sanitized
+	command.Env = append(sanitized, gitTrustedConfiguration...)
 	return command
 }
 
@@ -322,10 +362,10 @@ func inheritedGitVariableAdmitted(name string) bool {
 	if gitRoutingVariables[name] {
 		return false
 	}
-	if strings.HasPrefix(name, "GIT_CONFIG") {
-		return gitConfigScopePins[name]
-	}
-	return true
+	// No inherited configuration at all, whether it carries a value or names a
+	// file that carries one. gitTrustedConfiguration supplies what these
+	// commands run under instead.
+	return !strings.HasPrefix(name, "GIT_CONFIG")
 }
 
 // gitRemotes reads the remote URLs this repository itself configures.

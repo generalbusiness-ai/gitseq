@@ -296,6 +296,153 @@ func TestLocalWorktreesIgnoresInheritedGitRoutingVariables(t *testing.T) {
 	}
 }
 
+// A Git configuration file is not data. `core.fsmonitor`, `core.pager`,
+// `diff.external` and their relatives name programs Git runs, so a variable
+// that points Git at a configuration file hands the caller command execution
+// inside this process's shoes, whatever the variable is called. Admitting
+// `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` on the reasoning that they only
+// ever narrow scope was wrong in kind: allowlisting the *name* of a variable
+// that points at a *file* bounds nothing at all about the file's contents.
+//
+// `git status` is the boundary that has to refuse it, because it is the one
+// command here that runs against every linked checkout and the one whose answer
+// a reader acts on. Both effects are asserted, and neither implies the other. A
+// change that stopped the program running but still let the file reach Git
+// would pass an execution-only test while some other execution-free directive
+// still moved the answer; a change that fixed the answer while the program
+// still ran would leave the worse of the two defects in place.
+//
+// Both channels the contract closes are exercised, because dropping the
+// GIT_CONFIG family alone does not close either one. A caller who merely omits
+// GIT_CONFIG_GLOBAL still gets the invoking user's ~/.gitconfig read, and HOME
+// is inherited on purpose — Git is not runnable without it — so a caller able
+// to set HOME reaches the same file by another name. Only pinning the global
+// and system scopes shut refuses the second case, which is why the pins are set
+// here rather than passed through from whoever started the process.
+//
+// The control run is what stops each case passing vacuously. It performs the
+// same exploit against a throwaway repository outside the constructor, so a
+// green result below means the constructor refused the vector rather than that
+// the vector stopped working. It is a hard failure and not a skip: a silently
+// skipped security regression is indistinguishable from a passing one, and a
+// Git that no longer executes `core.fsmonitor` is a reason to re-derive the
+// vector deliberately, not to stop testing the property. The control needs its
+// own repository because the exploit leaves junk files behind, which is the
+// second effect and would make the guarded checkout dirty for the wrong reason.
+func TestInheritedConfigurationCannotReachTheWorktreeStatusRead(t *testing.T) {
+	ctx := context.Background()
+
+	for _, vector := range []struct {
+		name string
+		// variables names what the caller controls, and is used twice: set on
+		// the control's own environment, and set on this process for the
+		// guarded read. Both runs therefore face the same inherited state.
+		variables func(t *testing.T, marker string) map[string]string
+	}{
+		{
+			"GIT_CONFIG_GLOBAL names the file",
+			func(t *testing.T, marker string) map[string]string {
+				return map[string]string{
+					"HOME":              t.TempDir(),
+					"GIT_CONFIG_GLOBAL": commandBearingConfiguration(t, filepath.Join(t.TempDir(), "gitconfig"), marker),
+				}
+			},
+		},
+		{
+			"HOME names the directory holding it",
+			func(t *testing.T, marker string) map[string]string {
+				home := t.TempDir()
+				commandBearingConfiguration(t, filepath.Join(home, ".gitconfig"), marker)
+				return map[string]string{"HOME": home}
+			},
+		},
+	} {
+		t.Run(vector.name, func(t *testing.T) {
+			control := seededRepoNamed(t, "control", "https://real.invalid/org/repo.git")
+			controlMarker := filepath.Join(t.TempDir(), "CONTROL-EXECUTED")
+			controlRead := exec.Command("git", "--no-optional-locks", "-C", control,
+				"status", "--porcelain=v1", "--untracked-files=normal")
+			// Built from nothing but PATH and the vector, so that the test
+			// process's own isolation — internal/testgit pins the global scope
+			// for every test in this package — cannot be what refuses the
+			// control, and so cannot make the control report that a vector
+			// still working has stopped working.
+			controlRead.Env = []string{"PATH=" + os.Getenv("PATH")}
+			for name, value := range vector.variables(t, controlMarker) {
+				controlRead.Env = append(controlRead.Env, name+"="+value)
+			}
+			controlStatus, err := controlRead.Output()
+			if err != nil {
+				t.Fatalf("control status read: %v", err)
+			}
+			if _, statErr := os.Stat(controlMarker); statErr != nil {
+				t.Fatalf("the vector this test defends against no longer executes here (%v); re-derive it rather than deleting the test", statErr)
+			}
+			if len(controlStatus) == 0 {
+				t.Fatal("the vector no longer corrupts the status answer; re-derive it rather than deleting the test")
+			}
+
+			// A repository and a workspace per case, because LocalWorktrees
+			// caches for eight seconds and a shared one would let a later case
+			// pass on an earlier read. Opened before the variables are set,
+			// because Open resolves the repository through internal/gitstore,
+			// which bounds its own environment and is not what this test is
+			// about. What is under test is the read-only Git commands this
+			// package runs afterwards.
+			victim := seededRepoNamed(t, "victim", "https://real.invalid/org/repo.git")
+			if _, _, err := Init(ctx, victim, "human", 1<<20); err != nil {
+				t.Fatal(err)
+			}
+			workspace, err := Open(ctx, victim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			marker := filepath.Join(t.TempDir(), "EXECUTED")
+			for name, value := range vector.variables(t, marker) {
+				t.Setenv(name, value)
+			}
+
+			local, err := workspace.LocalWorktrees(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, statErr := os.Stat(marker); statErr == nil {
+				t.Errorf("inherited configuration ran a command from a read-only Git command: %s exists", marker)
+			}
+			var served *WorktreeView
+			for index := range local.Worktrees {
+				if local.Worktrees[index].Checkout == "victim" {
+					served = &local.Worktrees[index]
+				}
+			}
+			switch {
+			case served == nil:
+				t.Fatalf("the victim's own checkout is missing from %+v", local.Worktrees)
+			case served.State != "clean":
+				// Git appends its own arguments to whatever the configured
+				// command is, so the program it runs leaves files in the
+				// checkout it was reading. The answer the reader acts on then
+				// says "dirty" about a checkout nobody touched.
+				entries, _ := os.ReadDir(victim)
+				t.Errorf("inherited configuration corrupted the status answer: state %q, checkout now holds %v", served.State, entries)
+			}
+		})
+	}
+}
+
+// commandBearingConfiguration writes a Git configuration file whose contents
+// are a command rather than a value, and returns where it put it. It stands for
+// every execution-affecting directive a configuration file can carry;
+// `core.fsmonitor` is the cheapest to arrange because `git status` runs it
+// unprompted on an ordinary read.
+func commandBearingConfiguration(t *testing.T, path, marker string) string {
+	t.Helper()
+	if err := os.WriteFile(path, []byte("[core]\n\tfsmonitor = touch "+marker+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 // citingDocuments is read as a guard, not as a display: a retirement the
 // documentation still names is refused on the strength of its answer, so an
 // empty answer is a bypass rather than a cosmetic wrong. The pathspec
@@ -354,21 +501,24 @@ func TestCitingDocumentsIgnoresInheritedGitRoutingVariables(t *testing.T) {
 // give is a confident "nothing cites this" that it did not actually establish.
 // `git grep` says "no matches" by exiting 1 and says "I did not run" by exiting
 // anything else, and a guard that reads both as an empty page list retires a
-// record the documentation still names — the exact breakage of 2026-08-12, now
-// reachable by anyone who can put one variable in the resident's environment.
+// record the documentation still names — the exact breakage of 2026-08-12. The
+// environment can no longer reach it, but that is not what makes it safe: a
+// repository Git declines to read, an exhausted resource, or a setting in the
+// repository's own configuration file stops the lookup just as dead, and none
+// of those is anything an environment bound has an opinion about.
 //
-// The lookup is broken here through `GIT_CONFIG_GLOBAL`, not through the
-// command scope, and that choice is the whole point of the test. The command
-// scope is closed by the environment bound in repositoryLocalGit; the global
-// scope is deliberately left open, because internal/gitstore and
-// internal/testgit pin system and global config through exactly those
-// variables and `safe.directory` normally lives in the scope they name. So this
-// is a way of breaking the lookup that no list of variable names is allowed to
-// close, which is what makes it a test of the exit-code distinction rather than
-// a second test of the environment bound. `grep.threads = -1` is valid
-// configuration syntax that `git grep` refuses at startup, so nothing about the
-// repository or the command line has to be wrong for the lookup to stop
-// answering.
+// The lookup is broken here through the repository's own configuration file,
+// and that choice is the whole point of the test. Every scope outside the
+// repository is now pinned shut by repositoryLocalGit, so breaking the lookup
+// from out there would only re-test that bound; the repository's own file is
+// inside the contract by necessity, because remote.origin.url lives in it and
+// reading it is what gitRemotes is for. So this is a way of breaking the lookup
+// that no environment bound is allowed to close, which is what keeps this a
+// test of the exit-code distinction rather than a second test of the
+// configuration contract. `grep.threads = -1` is valid configuration syntax
+// that `git grep` refuses at startup, so nothing about the command line has to
+// be wrong for the lookup to stop answering, and nothing but grep is affected:
+// the same act builds cleanly right up until the setting is written.
 //
 // The target is one nothing cites, so a refusal here cannot be the ordinary
 // citation refusal wearing a disguise: before the configuration is broken the
@@ -390,7 +540,7 @@ func TestRetirementIsRefusedWhenTheCitationLookupCannotRun(t *testing.T) {
 		t.Fatalf("baseline: an uncited retirement must build, got %v", err)
 	}
 
-	t.Setenv("GIT_CONFIG_GLOBAL", unrunnableGrepConfiguration(t))
+	makeGrepUnrunnable(t, repo)
 	_, err = workspace.BuildActRequest(ctx, private, "human", retire)
 	if err == nil {
 		t.Fatal("a retirement was built on a citation lookup that never ran")
@@ -487,18 +637,18 @@ func TestCommandScopeConfigurationCannotReachTheCitationLookup(t *testing.T) {
 	}
 }
 
-// unrunnableGrepConfiguration writes a Git configuration file that is valid to
-// parse and impossible to run a grep under. It is a stand-in for every reason
-// the lookup might not answer — a broken Git, an exhausted file descriptor
-// table, a repository Git declines to read — and it is the cheapest of them to
-// arrange reproducibly.
-func unrunnableGrepConfiguration(t *testing.T) string {
+// makeGrepUnrunnable writes into a repository's own configuration file a
+// setting that is valid to parse and impossible to run a grep under. It is a
+// stand-in for every reason the lookup might not answer — a broken Git, an
+// exhausted file descriptor table, a corrupt index, a repository Git declines
+// to read — and it is the cheapest of them to arrange reproducibly. None of
+// those causes is reachable by a list of environment variables, which is the
+// property the caller depends on.
+func makeGrepUnrunnable(t *testing.T, repo string) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "gitconfig")
-	if err := os.WriteFile(path, []byte("[grep]\n\tthreads = -1\n"), 0o600); err != nil {
-		t.Fatal(err)
+	if output, err := exec.Command("git", "-C", repo, "config", "--local", "grep.threads", "-1").CombinedOutput(); err != nil {
+		t.Fatalf("break the repository's grep configuration: %v: %s", err, output)
 	}
-	return path
 }
 
 // seededRepoNamed builds a clean repository with one origin, in a directory of
