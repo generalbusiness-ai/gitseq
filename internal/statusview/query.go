@@ -89,17 +89,18 @@ type WorkDetails struct {
 }
 
 type WorkItem struct {
-	Request     string    `json:"request"`
-	Lane        WorkLane  `json:"lane"`
-	Status      string    `json:"status"`
-	Stale       bool      `json:"stale,omitempty"`
-	Requester   ActorRef  `json:"requester"`
-	AddressedTo *ActorRef `json:"addressed_to,omitempty"`
-	Performer   *ActorRef `json:"performer,omitempty"`
-	WaitingOn   *ActorRef `json:"waiting_on,omitempty"`
-	Promise     string    `json:"promise,omitempty"`
-	Report      string    `json:"report,omitempty"`
-	Text        string    `json:"text,omitempty"`
+	Request          string    `json:"request"`
+	Lane             WorkLane  `json:"lane"`
+	Status           string    `json:"status"`
+	SuccessorRequest string    `json:"successor_request,omitempty"`
+	Stale            bool      `json:"stale,omitempty"`
+	Requester        ActorRef  `json:"requester"`
+	AddressedTo      *ActorRef `json:"addressed_to,omitempty"`
+	Performer        *ActorRef `json:"performer,omitempty"`
+	WaitingOn        *ActorRef `json:"waiting_on,omitempty"`
+	Promise          string    `json:"promise,omitempty"`
+	Report           string    `json:"report,omitempty"`
+	Text             string    `json:"text,omitempty"`
 	WorkDetails
 	unclaimedRequest bool
 }
@@ -128,7 +129,7 @@ type workCursor struct {
 }
 
 var knownStatuses = map[string]bool{
-	"open": true, "promised": true, "reported": true, "satisfied": true,
+	"open": true, "promised": true, "reported": true, "awaiting-merge": true, "superseded": true, "satisfied": true,
 	"stale": true, "cancelled": true, "reneged": true, "withdrawn": true,
 }
 
@@ -287,7 +288,7 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 		} else if query.Stale == StaleSummary && terminal[commitment.Status] {
 			// Named statuses and an explicit staleness policy both say the
 			// caller wants this history. Naming neither asks for the work
-			// still owed, so a satisfied or withdrawn commitment that only
+			// still owed, so a superseded, satisfied or withdrawn commitment that only
 			// carries ordinary staleness is counted, not listed.
 			closedStale++
 			continue
@@ -302,7 +303,7 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 		}
 		requester := actorRef(durable.Projection, commitment.Requester)
 		item := WorkItem{Request: commitment.Request, Lane: lane, Status: commitment.Status, Stale: commitment.Stale,
-			Promise: commitment.Promise, Report: commitment.Report, AddressedTo: actorRef(durable.Projection, commitment.AddressedTo),
+			SuccessorRequest: commitment.SuccessorRequest, Promise: commitment.Promise, Report: commitment.Report, AddressedTo: actorRef(durable.Projection, commitment.AddressedTo),
 			Performer: actorRef(durable.Projection, commitment.Performer), WaitingOn: actorRef(durable.Projection, commitment.WaitingOn),
 			unclaimedRequest: isUnclaimedRequest(commitment)}
 		if requester != nil {

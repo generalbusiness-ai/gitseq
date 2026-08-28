@@ -57,15 +57,24 @@ fallback`. Then a line of totals, and six sections:
 
 | Section | What is in it |
 |---|---|
-| Actionable commitments | Commitments someone can advance now: `open`, `promised`, `reported`. |
-| Needs attention | Live commitments in any other state — `stale`, `reneged`, `cancelled`. |
+| Actionable commitments | Commitments still in flight: `open`, `promised`, `reported`, `awaiting-merge`. |
+| Needs attention | Live commitments in any other state — `stale`, `reneged`, `cancelled`. Terminal `superseded` rows stay in history. |
 | Current artifacts | Artifacts that are neither retired nor stale. |
 | Stale artifacts | Artifacts that were retired, and artifacts a retirement reached. |
 | Dissents | Standing objections, each naming the act it is recorded against. |
 | Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
 
-Satisfied and withdrawn commitments are finished, and are counted in the
+Superseded, satisfied, and withdrawn commitments are finished, and are counted in the
 totals rather than listed.
+
+`awaiting-merge` names an artifact-backed completion. It has no `waiting_on`
+actor because the artifact's satisfier is `none`; the closing act is an
+independently approved exact-head merge, not requester ratification.
+
+`superseded` names a rejected implementation parent whose required repair was
+explicitly transferred to one qualifying child. Its JSON row carries
+`successor_request`; it is terminal history, not cancelled work and not a
+satisfied implementation.
 
 ## Two kinds of staleness
 
@@ -95,7 +104,7 @@ it**:
   totals line carries the fact per lane instead: `reported 27 (24
   stale)` says how many of that lane's commitments rest on something
   retired.
-- A satisfied or withdrawn commitment stays out of the lists whether or
+- A superseded, satisfied, or withdrawn commitment stays out of the lists whether or
   not it is stale. It is finished, and a basis moving under it afterwards
   does not reopen it. The totals still count it.
 - A commitment that was never reported has no outcome to preserve, so

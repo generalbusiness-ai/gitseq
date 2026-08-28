@@ -23,7 +23,7 @@ filters, the caps and the cursor mean one thing on every surface, and
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | | The actor whose work is selected. Required; falls back to `GITSEQ_ACTOR`. |
 | `--lane` | all four | Relationship lane: `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Repeat to name several. |
-| `--status` | | Lifecycle status: `open`, `promised`, `reported`, `satisfied`, `stale`, `cancelled`, `reneged`, `withdrawn`. Repeat to name several. |
+| `--status` | | Lifecycle status: `open`, `promised`, `reported`, `awaiting-merge`, `superseded`, `satisfied`, `stale`, `cancelled`, `reneged`, `withdrawn`. Repeat to name several. |
 | `--stale` | `summary` | Staleness policy: `summary`, `include`, `only`, or `exclude`. |
 | `--limit` | `20` | Page size, 1 to 50. |
 | `--cursor` | | The opaque continuation from a previous page. |
@@ -64,15 +64,24 @@ page returned, how many came before it and how many remain — so a
 shortened list never reads as a complete one.
 
 Each row carries its lifecycle status, its lane, the request event, the
-request text, who the work waits on, and the latest effective review for
+request text, who the work waits on when anyone is named, and the latest effective review for
 the reported head. Those are the facts needed to act on a row without a
 second call. An unclaimed request addressed to the selected actor stays in
 `available_to_you` if its bases move: its status becomes `stale`, its `stale`
 flag is `true`, and its full conditions remain present. Claimed and closed
 stale commitments keep their existing lanes.
 
+An artifact completion has status `awaiting-merge` and no `waiting_on` actor.
+Its kind has satisfier `none`, so requester ratification is not an admissible
+closing act; an independently approved exact-head merge closes it.
+
+A rejected implementation parent has terminal status `superseded` only after
+an explicit qualifying linked supersession. Its JSON row carries
+`successor_request`, the exact repair child; request that status explicitly to
+read the historical transfer.
+
 `--stale summary`, which is what a call naming no policy receives, answers
-*what is still owed*. A satisfied or withdrawn commitment carrying only
+*what is still owed*. A superseded, satisfied, or withdrawn commitment carrying only
 ordinary reasoning staleness is counted in `closed_stale_omitted` rather
 than listed. Naming any `--status` also overrides the summary. The other
 three policies return exactly what they say: `include` adds the closed

@@ -111,15 +111,16 @@ type Statement struct {
 }
 
 type Commitment struct {
-	Request     string `json:"request"`
-	Requester   string `json:"requester"`
-	AddressedTo string `json:"addressed_to,omitempty"`
-	Performer   string `json:"performer,omitempty"`
-	Promise     string `json:"promise,omitempty"`
-	Report      string `json:"report,omitempty"`
-	Status      string `json:"status"`
-	Stale       bool   `json:"stale,omitempty"`
-	WaitingOn   string `json:"waiting_on,omitempty"`
+	Request          string `json:"request"`
+	Requester        string `json:"requester"`
+	AddressedTo      string `json:"addressed_to,omitempty"`
+	Performer        string `json:"performer,omitempty"`
+	Promise          string `json:"promise,omitempty"`
+	Report           string `json:"report,omitempty"`
+	Status           string `json:"status"`
+	SuccessorRequest string `json:"successor_request,omitempty"`
+	Stale            bool   `json:"stale,omitempty"`
+	WaitingOn        string `json:"waiting_on,omitempty"`
 }
 
 type Artifact struct {
@@ -307,6 +308,11 @@ type parsedRecord struct {
 	unclaimedExpectation *UnclaimedExpectation
 	guardedRetirement    bool
 	guardedReplacement   bool
+	// linkedSuccessorRequest seals the successor-transfer facts that stood when
+	// this supersession landed. Later retirement or failure of the child must
+	// change the child's row, not rewrite the old commitment's historical
+	// transfer.
+	linkedSuccessorRequest string
 }
 
 type leftLiveClaim struct {
@@ -515,6 +521,11 @@ func (f *foldState) append(index int, record Record) {
 			decision = f.decideRetireIfUnclaimed(parsed, *value)
 		} else {
 			decision = f.decideSupersede(parsed, *value)
+		}
+	}
+	if decision.Verdict == Effective {
+		if supersede, ok := body.(*Supersede); ok {
+			parsed.linkedSuccessorRequest = f.qualifyingRequestSuccessor(parsed, *supersede)
 		}
 	}
 	f.addDecision(record, parsed, index, decision)
@@ -1087,6 +1098,96 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 	return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "actor may not supersede target"}
 }
 
+// qualifyingRequestSuccessor recognizes the one supersession shape that
+// transfers a rejected implementation round to a repair child. It records the
+// answer on the supersession at admission time: later retirement or failure of
+// the child belongs to the child's commitment and must not rewrite this
+// historical transfer.
+//
+// The supersession itself keeps the ordinary authority rule above. Failure to
+// qualify here therefore preserves the existing withdrawn or cancelled
+// projection rather than turning a malformed successor claim into new force.
+func (f *foldState) qualifyingRequestSuccessor(record *parsedRecord, supersede Supersede) string {
+	target := f.byID[supersede.Target]
+	if target == nil || target.decision.Verdict != Effective || lifecycleOf(target) != LifecycleRequest || f.retired(target.record.ID) {
+		return ""
+	}
+	if countExact(record.record.RestsOn, target.record.ID) != 1 || len(record.record.RestsOn) < 2 || record.record.RestsOn[0] != target.record.ID {
+		return ""
+	}
+
+	var successor *parsedRecord
+	for _, basis := range record.record.RestsOn[1:] {
+		candidate := f.byID[basis]
+		if candidate == nil || candidate.decision.Verdict != Effective || lifecycleOf(candidate) != LifecycleRequest {
+			continue
+		}
+		if successor != nil {
+			return ""
+		}
+		successor = candidate
+	}
+	if successor == nil || successor.index <= target.index || successor.record.Actor != target.record.Actor ||
+		countExact(successor.record.RestsOn, target.record.ID) == 0 {
+		return ""
+	}
+	if !f.requestHasRatifiedChangesRequestedArtifact(target) {
+		return ""
+	}
+	return successor.record.ID
+}
+
+// requestHasRatifiedChangesRequestedArtifact proves the rejected-round side of
+// a linked transfer without scanning unrelated history. A reporting artifact
+// is indexed under its admitted request or promise, and a verdict that names it
+// is indexed under the artifact. The explicit artifact field and exact head
+// match are both required: a verdict about another artifact or another commit
+// cannot move this commitment.
+func (f *foldState) requestHasRatifiedChangesRequestedArtifact(request *parsedRecord) bool {
+	claims := []*parsedRecord{request}
+	claims = append(claims, f.directDependents(request.record.ID, LifecyclePromise)...)
+	for _, claim := range claims {
+		for _, artifact := range f.directDependents(claim.record.ID, LifecycleNone) {
+			state, ok := artifact.body.(*State)
+			admitted, reported := f.admittedClaims[artifact.record.ID]
+			if !ok || artifact.definition == nil || artifact.definition.Render != RenderArtifact ||
+				state.Body["commit"] == "" || !reported || admitted.request.record.ID != request.record.ID ||
+				f.retired(artifact.record.ID) {
+				continue
+			}
+			for _, verdict := range f.directDependents(artifact.record.ID, LifecycleReport) {
+				report, ok := verdict.body.(*State)
+				if !ok || report.Kind != KindReport || report.Body["verdict"] != "changes-requested" ||
+					report.Body["artifact"] != artifact.record.ID || f.retired(verdict.record.ID) || !f.ratified(verdict.record.ID) {
+					continue
+				}
+				head := report.Body["head"]
+				if head == "" {
+					head = report.Body["commit"]
+				}
+				if head == state.Body["commit"] {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// linkedRequestSuccessor returns the first surviving linked transfer for a
+// request. Retiring the supersession restores the ordinary commitment state;
+// retiring the child does not, because the transfer itself still happened.
+func (f *foldState) linkedRequestSuccessor(request string) string {
+	for _, supersession := range f.supersessions {
+		value, ok := supersession.body.(*Supersede)
+		if !ok || value.Target != request || supersession.linkedSuccessorRequest == "" || f.retired(supersession.record.ID) {
+			continue
+		}
+		return supersession.linkedSuccessorRequest
+	}
+	return ""
+}
+
 func (f *foldState) decideRetireIfUnclaimed(record *parsedRecord, supersede Supersede) Decision {
 	if reason := f.unclaimedExpectationReason(record, false); reason != "" {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: reason}
@@ -1653,7 +1754,7 @@ func (f *foldState) unsettledCommitmentEvents() map[string]bool {
 	active := make(map[string]bool)
 	for _, commitment := range f.projectCommitments(stale) {
 		switch commitment.Status {
-		case "open", "promised", "reported", "stale":
+		case "open", "promised", "reported", "awaiting-merge", "stale":
 			active[commitment.Request] = true
 			if commitment.Promise != "" {
 				active[commitment.Promise] = true
@@ -3062,6 +3163,7 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 			continue
 		}
 		promises := f.directDependents(requestRecord.record.ID, LifecyclePromise)
+		successorRequest := f.linkedRequestSuccessor(requestRecord.record.ID)
 		// A direct completion is projected because it was admitted as one, not
 		// because of how many claims stand now. Gating on the current count
 		// reversed decisions the fold had already made: a later promise hid an
@@ -3076,17 +3178,36 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 			if completion != nil || len(promises) == 0 {
 				entry := Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, AddressedTo: request.Body["to"], Status: "open", Stale: stale[requestRecord.record.ID]}
 				// Claim and complete in one act. The addressee answered the
-				// request directly, so what the requester owes is a
-				// ratification. Reading it as open would show work already
-				// finished as work nobody has taken.
+				// request directly: an explicit report waits on requester
+				// ratification, while an artifact waits on merge. Reading either
+				// as open would show work already finished as work nobody took.
 				switch {
+				case successorRequest != "":
+					entry.Status = "superseded"
+					entry.SuccessorRequest = successorRequest
+					entry.WaitingOn = ""
+					if completion != nil {
+						entry.Performer = completion.record.Actor
+						entry.Report = completion.record.ID
+						entry.Stale = entry.Stale || stale[completion.record.ID]
+					}
 				case f.retired(requestRecord.record.ID):
 					entry.Status = "withdrawn"
 				case completion != nil:
 					entry.Performer = completion.record.Actor
 					entry.Report = completion.record.ID
-					entry.Status = "reported"
-					entry.WaitingOn = requestRecord.record.Actor
+					if completion.definition.Lifecycle == LifecycleReport {
+						entry.Status = "reported"
+						entry.WaitingOn = requestRecord.record.Actor
+					} else {
+						// An artifact cannot be ratified: its declared satisfier is
+						// none. The independently approved exact head has to merge.
+						// Naming the requester here told them to make an act the fold
+						// necessarily refuses, so preserve the unfinished work without
+						// inventing a waiting party.
+						entry.Status = "awaiting-merge"
+						entry.WaitingOn = ""
+					}
 					entry.Stale = stale[requestRecord.record.ID] || stale[completion.record.ID]
 					if completion.definition.Lifecycle == LifecycleReport && f.ratified(completion.record.ID) {
 						entry.Status = "satisfied"
@@ -3106,7 +3227,16 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 		}
 		for _, promiseRecord := range promises {
 			entry := Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, Performer: promiseRecord.record.Actor, Promise: promiseRecord.record.ID, Status: "promised", WaitingOn: promiseRecord.record.Actor}
+			completion := f.latestCompletion(promiseRecord, promiseRecord.record.Actor, mergedArtifacts)
 			switch {
+			case successorRequest != "":
+				entry.Status = "superseded"
+				entry.SuccessorRequest = successorRequest
+				entry.WaitingOn = ""
+				if completion != nil {
+					entry.Report = completion.record.ID
+					entry.Stale = stale[requestRecord.record.ID] || stale[promiseRecord.record.ID] || stale[completion.record.ID]
+				}
 			case f.retired(requestRecord.record.ID):
 				entry.Status = "cancelled"
 				entry.WaitingOn = ""
@@ -3114,11 +3244,15 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 				entry.Status = "reneged"
 				entry.WaitingOn = ""
 			default:
-				completion := f.latestCompletion(promiseRecord, promiseRecord.record.Actor, mergedArtifacts)
 				if completion != nil {
 					entry.Report = completion.record.ID
-					entry.Status = "reported"
-					entry.WaitingOn = requestRecord.record.Actor
+					if completion.definition.Lifecycle == LifecycleReport {
+						entry.Status = "reported"
+						entry.WaitingOn = requestRecord.record.Actor
+					} else {
+						entry.Status = "awaiting-merge"
+						entry.WaitingOn = ""
+					}
 					entry.Stale = stale[requestRecord.record.ID] || stale[promiseRecord.record.ID] || stale[completion.record.ID]
 					if completion.definition.Lifecycle == LifecycleReport && f.ratified(completion.record.ID) {
 						entry.Status = "satisfied"

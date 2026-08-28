@@ -18,7 +18,7 @@ never fetches the complete `/v0/status` projection.
 | argument | required | meaning |
 |---|---|---|
 | `lanes` | optional | Typed relationship lanes: `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Default is all four. |
-| `statuses` | optional | Lifecycle statuses to include: `open`, `promised`, `reported`, `satisfied`, `stale`, `cancelled`, `reneged`, `withdrawn`. An unknown status is an error, not a guess. |
+| `statuses` | optional | Lifecycle statuses to include: `open`, `promised`, `reported`, `awaiting-merge`, `superseded`, `satisfied`, `stale`, `cancelled`, `reneged`, `withdrawn`. An unknown status is an error, not a guess. |
 | `stale` | optional | One staleness policy: `summary` (default), `include`, `only`, or `exclude`. |
 | `limit` | optional | Page size, 1 to 50. Default 20. |
 | `cursor` | optional | The opaque continuation from a previous page. |
@@ -28,13 +28,13 @@ Filters are finite, typed choices, not an expression language.
 
 ## What comes back
 
-The default page is the work still owed: current `open`, `promised` and
-`reported` commitments — including unclaimed requests addressed to the
+The default page is the work still owed: current `open`, `promised`,
+`reported`, and `awaiting-merge` commitments — including unclaimed requests addressed to the
 configured actor, even when their bases moved and their status became `stale`
 — plus commitments the fold left in a `stale`,
 `cancelled` or `reneged` state, which nobody has closed.
 
-A `satisfied` or `withdrawn` commitment is finished, and the default
+A `superseded`, `satisfied`, or `withdrawn` commitment is finished, and the default
 leaves it out. Ordinary reasoning staleness does not bring it back: a
 basis moving under a closed commitment is the normal condition of an
 append-only log, it blocks nothing, and listing every one of them buried
@@ -72,6 +72,7 @@ Each returned row also carries the facts needed for routine action without an
 | `report_status` | The reported statement's `body.status`, when present. |
 | `reported_head` | The exact head named by the report or reporting artifact. |
 | `latest_review` | The latest effective review for that exact head: its report event, verdict, and explicit `ratified`, `retired`, and `stale` booleans. |
+| `successor_request` | On a terminal `superseded` row, the exact repair child named by the qualifying linked supersession. |
 
 The page still caps its row count. It does not shorten `conditions` or omit
 these fields merely to fit more rows into one answer.

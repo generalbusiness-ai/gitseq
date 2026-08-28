@@ -83,6 +83,38 @@ func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *te
 	}
 }
 
+func TestArtifactCompletionDoesNotInventAWaitingActor(t *testing.T) {
+	projection := workroom.Projection{
+		Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},
+		Statements: []workroom.Statement{
+			{Event: "request:implementation", Actor: me, Kind: workroom.KindRequest, Text: "implement it"},
+			{Event: "artifact:implementation", Actor: them, Kind: workroom.KindArtifact, Text: "exact head"},
+		},
+		Commitments: []workroom.Commitment{{
+			Request: "request:implementation", Requester: me, Performer: them,
+			Report: "artifact:implementation", Status: "awaiting-merge",
+		}},
+	}
+	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 2, Projection: projection}
+
+	digest := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
+	if len(digest.WaitingOnYou) != 0 {
+		t.Fatalf("artifact completion was assigned to the requester: %#v", digest.WaitingOnYou)
+	}
+	row := findCommitmentView(digest.YouAreWaiting, "request:implementation")
+	if row == nil || row.Status != "awaiting-merge" {
+		t.Fatalf("artifact completion was hidden instead of awaiting merge: %#v", digest.YouAreWaiting)
+	}
+
+	page, err := BuildWorkPage(snapshot, WorkQuery{Actor: me, Statuses: []string{"awaiting-merge"}, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Lane != LaneYouAreWaitingOn || page.Items[0].WaitingOn != nil {
+		t.Fatalf("work query invented a closing actor: %#v", page.Items)
+	}
+}
+
 func TestActorStatusAndWaitExposeStaleUnclaimedAddressedWork(t *testing.T) {
 	conditions := strings.Repeat("still required ", 40)
 	claimedConditions := strings.Repeat("already accepted ", 40)

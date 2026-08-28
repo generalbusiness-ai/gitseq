@@ -1,10 +1,9 @@
 import type { ActorState, Commitment, KindDefinition, Projection, Statement, Vocabulary } from "./api.ts";
 import { firstLine } from "./util.ts";
 
-// The words a row may say about itself. The first four are what a live row
-// can say, and no fifth: whether a reported row is already approved and
-// waiting on a merge is a fact about *who* it waits on, and belongs in the
-// next column.
+// The words a row may say about itself. Awaiting merge is deliberately
+// separate from reported: an artifact has no satisfier, so it cannot truthfully
+// name the requester as the actor who should ratify it.
 //
 // "stale" is not a fifth live state: it belongs only to the lifecycle-stale
 // population, which is a different list reached by its own count. A row there
@@ -20,7 +19,9 @@ export type RowState =
   | "unclaimed"
   | "in progress"
   | "reported"
+  | "awaiting merge"
   | "stale"
+  | "superseded"
   | "satisfied"
   | "cancelled"
   | "reneged"
@@ -76,8 +77,8 @@ export interface WorkRow {
 
 // The lifecycle states that are work in flight. Everything else is history or
 // a queue that is no longer moving.
-const LIVE_STATUSES = ["open", "promised", "reported"];
-const CLOSED_STATUSES = ["cancelled", "reneged", "withdrawn"];
+const LIVE_STATUSES = ["open", "promised", "reported", "awaiting-merge"];
+const CLOSED_STATUSES = ["superseded", "cancelled", "reneged", "withdrawn"];
 
 function inPopulation(commitment: Commitment, population: Population): boolean {
   switch (population) {
@@ -150,13 +151,14 @@ function needsAttention(commitment: Commitment, records: (Statement | undefined)
 function rowState(commitment: Commitment, attention: boolean, population: Population): RowState {
   // Outside the live populations the fold has already said this commitment
   // is not in flight, and the only true word for it is the one the fold used:
-  // stale, satisfied, cancelled, reneged or withdrawn. No live lifecycle word
+  // stale, superseded, satisfied, cancelled, reneged or withdrawn. No live lifecycle word
   // applies, whether or not somebody once claimed it. The row can still be
   // loud — attention is carried in its own field, not in this word — so a
   // world-stale stale row reads "stale" and is coloured, which is both facts
   // at once rather than either one swallowing the other.
   if (population === "stale" || population === "done" || population === "closed") return commitment.status as RowState;
   if (attention) return "needs attention";
+  if (commitment.status === "awaiting-merge") return "awaiting merge";
   if (commitment.status === "reported") return "reported";
   if (commitment.promise) return "in progress";
   return "unclaimed";
@@ -222,7 +224,7 @@ function priorityGroup(row: WorkRow): number {
   // Every lifecycle-stale row shares one state, so the group only breaks ties.
   // It sits with the oldest-first groups because age is the only signal left
   // in a queue that stopped moving.
-  if (row.state !== "in progress" && row.state !== "reported") return 1;
+  if (row.state !== "in progress" && row.state !== "reported" && row.state !== "awaiting merge") return 1;
   if (row.waitsOnHuman) return 2;
   return 3;
 }
@@ -248,7 +250,9 @@ const STATE_ORDER: Record<RowState, number> = {
   unclaimed: 1,
   "in progress": 2,
   reported: 3,
+  "awaiting merge": 3,
   stale: 4,
+  superseded: 5,
   satisfied: 5,
   cancelled: 6,
   reneged: 6,

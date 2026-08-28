@@ -118,9 +118,10 @@ promise is optional: file one to show work in flight, or, if it is already
 done, report straight against the request. Only the addressee may do that,
 and not while their own promise on that request is live — one commitment
 takes one closure. For implementing work, your exact-head artifact serves as the
-implementation report (discipline 8); an independently approved merge
-closes the commitment, with no duplicate report or post-merge
-ratification. The review
+implementation report (discipline 8). It projects `awaiting-merge`, with no
+`waiting_on` actor: an artifact has satisfier `none`, so asking the requester to
+ratify it would ask for an act the fold refuses. An independently approved merge
+closes the commitment, with no duplicate report or post-merge ratification. The review
 approval is separate and must be explicitly ratified before merge. Work
 that resolves without a merge uses an explicit `report` against the promise,
 or against the request when there is no promise, which the *requester*
@@ -133,6 +134,20 @@ faith, not fault. A requester withdrawing a request under a live promise in
 order to reassign the work should ask the promisor to supersede their
 promise first: one extra act, and the commitment closes reneged and
 readable instead of being cancelled out from under work in flight.
+
+A `changes-requested` review does not close its implementation commitment and
+cannot authorize a merge. A corrected exact head still needs a fresh artifact,
+independent review, ratified approval, and merge. When the requester moves the
+required repair into a child request, filing the child alone does not close the
+rejected parent, and ratifying the artifact is not an escape. The requester or
+a `ratifier` explicitly supersedes the old request and cites exactly one repair
+child after it. The fold projects the old commitment as `superseded`, with
+`successor_request` naming that child, only when the old request has a reporting
+artifact, a live ratified `changes-requested` verdict names that artifact and
+its exact head, the effective child directly rests on the old request, and both
+requests have the same requester. Otherwise ordinary request retirement keeps
+its `withdrawn` or `cancelled` meaning. The transfer is historical: later
+retirement or failure of the child changes the child row, not the old one.
 
 When a request appears unclaimed and you intend to move it to another actor,
 use `reassign_if_unclaimed` (or `gs reassign-if-unclaimed`) rather than reading

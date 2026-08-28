@@ -371,7 +371,7 @@ func protectionIndex(projection workroom.Projection, artifacts []workroom.Artifa
 
 func unsettledCommitment(status string) bool {
 	switch status {
-	case "open", "promised", "reported", "stale":
+	case "open", "promised", "reported", "awaiting-merge", "stale":
 		return true
 	default:
 		return false

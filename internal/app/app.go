@@ -1288,6 +1288,9 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 		schema = workroom.SchemaState
 		payload = workroom.State{Kind: act.Kind, Text: act.Text, Body: body}
 	case VerbRatify:
+		if err := w.refuseUnratifiableTarget(ctx, act.Target); err != nil {
+			return kernel.Request{}, err
+		}
 		schema = workroom.SchemaRatify
 		payload = workroom.Ratify{Target: act.Target}
 		rests = []string{act.Target}
@@ -1342,6 +1345,52 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 		}
 	}
 	return request, nil
+}
+
+// refuseUnratifiableTarget keeps a locally built ratification out of the
+// append-only log when the fold has already published that no actor can make
+// it effective. The projected satisfier is the admission-time rule the fold
+// itself will use, not a fresh lookup in today's vocabulary.
+func (w *Workspace) refuseUnratifiableTarget(ctx context.Context, target string) error {
+	snapshot, err := w.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("read ratify target: %w", err)
+	}
+	for _, statement := range snapshot.Projection.Statements {
+		if statement.Event != target {
+			continue
+		}
+		decision, decided := snapshot.Projection.Decision(target)
+		if !decided || decision.Verdict != workroom.Effective || statement.Retired {
+			return nil
+		}
+		if statement.Satisfier != workroom.SatisfierNone && statement.Satisfier != "" {
+			return nil
+		}
+
+		alternative := "use the lifecycle act defined for that statement rather than ratify"
+		switch statement.Kind {
+		case workroom.KindArtifact:
+			alternative = "file and ratify a proposal resting on the artifact"
+			for _, commitment := range snapshot.Projection.Commitments {
+				if commitment.Report == target {
+					alternative = "merge an independently approved exact head to close the implementation commitment"
+					break
+				}
+			}
+		case workroom.KindRequest:
+			alternative = "the addressee may promise or report the request, or its author or a ratifier may supersede it"
+		case workroom.KindPromise:
+			alternative = "the promisor may report or publish an implementation artifact, or supersede the promise"
+		case workroom.KindDissent:
+			alternative = "its author or a ratifier may supersede the dissent"
+		}
+		return fmt.Errorf("cannot ratify target %s: kind %q has satisfier %q; %s", target, statement.Kind, statement.Satisfier, alternative)
+	}
+	// An unknown target still goes through the normal signed admission path.
+	// Only the fold can authoritatively distinguish a moved frontier from a
+	// malformed citation, and this pre-flight must not invent that decision.
+	return nil
 }
 
 // normalizeGuardedRequestShape keeps a guarded replacement reproducible after

@@ -42,9 +42,10 @@ type Totals struct {
 }
 
 type Commitment struct {
-	Request     string `json:"request"`
-	Status      string `json:"status"`
-	AddressedTo string `json:"addressed_to,omitempty"`
+	Request          string `json:"request"`
+	Status           string `json:"status"`
+	SuccessorRequest string `json:"successor_request,omitempty"`
+	AddressedTo      string `json:"addressed_to,omitempty"`
 	// Stale qualifies Status rather than replacing it. The lifecycle word says
 	// what was last done and who owes the next move; the qualifier says a basis
 	// underneath it was retired, so the reasoning moved.
@@ -116,12 +117,12 @@ type Summary struct {
 
 // The lanes a commitment can be in. These are exactly the statuses the fold
 // emits (see foldState.projectCommitments): open, promised, reported,
-// satisfied, stale, cancelled, reneged, withdrawn.
+// awaiting-merge, superseded, satisfied, stale, cancelled, reneged, withdrawn.
 //
 // Open is the current fold vocabulary for an addressed request that has not
 // been claimed. It is actionable without inventing a performer or waiting
 // party, so the global view includes it while preserving those empty fields.
-var actionable = map[string]bool{"open": true, "promised": true, "reported": true}
+var actionable = map[string]bool{"open": true, "promised": true, "reported": true, "awaiting-merge": true}
 
 // Terminal commitments are done with: nobody owes a next move. They stay out
 // of the bounded lists so the lists show work, not history.
@@ -131,7 +132,7 @@ var actionable = map[string]bool{"open": true, "promised": true, "reported": tru
 // nine in ten closed commitments here carry it — so promoting each one into a live
 // lane buried the handful of rows that were genuinely unfinished. The counts
 // in Totals.StaleCommitments keep the fact, per status, without the rows.
-var terminal = map[string]bool{"satisfied": true, "withdrawn": true}
+var terminal = map[string]bool{"superseded": true, "satisfied": true, "withdrawn": true}
 
 // Cap keeps the newest limit entries and reports exactly how many it omitted.
 func Cap[T any](items []T, limit int) ([]T, int) {
@@ -310,7 +311,7 @@ func commitmentViews(projection workroom.Projection, statements map[string]workr
 	for _, commitment := range source {
 		view := Commitment{
 			Request: commitment.Request, Sequence: sequences[commitment.Request],
-			Status: commitment.Status, Stale: commitment.Stale,
+			Status: commitment.Status, SuccessorRequest: commitment.SuccessorRequest, Stale: commitment.Stale,
 			AddressedTo: Text(ActorName(projection, commitment.AddressedTo)),
 			Requester:   Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
 			WaitingOn: Text(ActorName(projection, commitment.WaitingOn)),
