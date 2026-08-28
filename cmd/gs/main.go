@@ -632,6 +632,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	checkout := set.String("checkout", "", "checkout receiving the merge")
 	candidate := set.String("candidate", "", "full approved commit ID")
 	approval := set.String("approval", "", "ratified approval report event")
+	authorization := set.String("authorization", "", "ratified merge authorization report event")
 	mergeText := set.String("text", "", "plain-language merge description and impact")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
@@ -656,8 +657,11 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if !found {
-		if _, err := validateMerge(ctx, workspace, *checkout, *candidate, *approval); err != nil {
+		if _, err := validateMerge(ctx, workspace, *checkout, *candidate, *approval, *authorization, false); err != nil {
 			return err
+		}
+		if *authorization == "" {
+			fmt.Fprintln(os.Stderr, "warning: merge has no structured authorization; phase-one compatibility permits this merge")
 		}
 	}
 	if strings.TrimSpace(*mergeText) == "" {
@@ -675,6 +679,12 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if found {
 		if existing.Candidate != *candidate {
 			return fmt.Errorf("approval was already used for candidate %s", existing.Candidate)
+		}
+		if *authorization != "" && existing.Authorization == "" {
+			return errors.New("legacy merge receipt has no authorization; --authorization cannot retroactively order it")
+		}
+		if *authorization != "" && existing.Authorization != *authorization {
+			return fmt.Errorf("merge receipt authorization is %s, not %s", existing.Authorization, *authorization)
 		}
 		checkoutHead, err := git(ctx, *checkout, "rev-parse", "--verify", "HEAD^{commit}")
 		if err != nil {
@@ -711,7 +721,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	}
 	// Repeat the durable and local checks directly before invoking Git. The
 	// merge argument remains the approved object ID, never a movable ref.
-	staleness, err := validateMerge(ctx, workspace, *checkout, *candidate, *approval)
+	staleness, err := validateMerge(ctx, workspace, *checkout, *candidate, *approval, *authorization, false)
 	if err != nil {
 		return err
 	}
@@ -769,14 +779,14 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, *approval, merger); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
 	}
-	message, err := mergeReceiptMessage(*mergeText, *approval, *candidate, targetPreHead, staleness, plan)
+	message, err := mergeReceiptMessage(*mergeText, *approval, *authorization, *candidate, targetPreHead, staleness, plan)
 	if err != nil {
 		return err
 	}
 	// The merge commit makes its durable receipt mandatory. Prove every act in
 	// that receipt chain can cross the exact local and resident admission size
 	// boundaries before moving HEAD; otherwise retry could never finish it.
-	prospectiveActs := successionActs(*approval, *candidate, targetPreHead, *candidate, staleness, plan)
+	prospectiveActs := successionActs(*approval, *authorization, *candidate, targetPreHead, *candidate, staleness, plan)
 	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, prospectiveActs, true); err != nil {
 		return fmt.Errorf("merge succession admission preflight: %w", err)
 	}
@@ -794,7 +804,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if !ok || receipt.Approval != *approval || receipt.Candidate != *candidate || receipt.TargetPreHead != targetPreHead || receipt.MergeHead != head {
+	if !ok || receipt.Approval != *approval || receipt.Authorization != *authorization || receipt.Candidate != *candidate || receipt.TargetPreHead != targetPreHead || receipt.MergeHead != head {
 		return errors.New("resulting merge commit does not carry the requested receipt")
 	}
 	if _, err := git(ctx, *checkout, "update-ref", receiptRef, head, targetPreHead); err != nil {
@@ -809,6 +819,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 
 type mergeReceipt struct {
 	Approval            string
+	Authorization       string
 	Candidate           string
 	TargetPreHead       string
 	MergeHead           string
@@ -822,14 +833,15 @@ type mergeReceipt struct {
 }
 
 const (
-	mergeApprovalTrailer     = "Gitseq-Approval: "
-	mergeCandidateTrailer    = "Gitseq-Candidate: "
-	mergeTargetTrailer       = "Gitseq-Target-Pre-Head: "
-	mergeRetirementsTrailer  = "Gitseq-Retirements: "
-	mergeSuccessorsTrailer   = "Gitseq-Successors: "
-	mergeLeftLiveTrailer     = "Gitseq-Left-Live: "
-	mergeChangedPathsTrailer = "Gitseq-Changed-Paths: "
-	mergeStalenessTrailer    = "Gitseq-Staleness: "
+	mergeApprovalTrailer      = "Gitseq-Approval: "
+	mergeAuthorizationTrailer = "Gitseq-Authorization: "
+	mergeCandidateTrailer     = "Gitseq-Candidate: "
+	mergeTargetTrailer        = "Gitseq-Target-Pre-Head: "
+	mergeRetirementsTrailer   = "Gitseq-Retirements: "
+	mergeSuccessorsTrailer    = "Gitseq-Successors: "
+	mergeLeftLiveTrailer      = "Gitseq-Left-Live: "
+	mergeChangedPathsTrailer  = "Gitseq-Changed-Paths: "
+	mergeStalenessTrailer     = "Gitseq-Staleness: "
 )
 
 func mergeReceiptKey(approval string) string {
@@ -841,7 +853,7 @@ func mergeReceiptRef(approval string) string {
 	return "refs/gitseq/merge-receipts/" + strings.TrimPrefix(mergeReceiptKey(approval), "merge-receipt-")
 }
 
-func mergeReceiptMessage(text, approval, candidate, targetPreHead, staleness string, plan successionPlan) (string, error) {
+func mergeReceiptMessage(text, approval, authorization, candidate, targetPreHead, staleness string, plan successionPlan) (string, error) {
 	if (plan.leftLive != nil) != (plan.changedPaths != nil) {
 		return "", errors.New("prospective merge receipt requires both left-live accounting and changed paths")
 	}
@@ -856,6 +868,9 @@ func mergeReceiptMessage(text, approval, candidate, targetPreHead, staleness str
 	message := fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
 		mergeApprovalTrailer, approval, mergeCandidateTrailer, candidate, mergeTargetTrailer, targetPreHead,
 		mergeRetirementsTrailer, retirements, mergeSuccessorsTrailer, successors)
+	if authorization != "" {
+		message += "\n" + mergeAuthorizationTrailer + authorization
+	}
 	if plan.leftLive != nil {
 		leftLive, err := json.Marshal(plan.leftLive)
 		if err != nil {
@@ -891,6 +906,8 @@ func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt,
 		switch {
 		case strings.HasPrefix(line, mergeApprovalTrailer):
 			receipt.Approval = strings.TrimPrefix(line, mergeApprovalTrailer)
+		case strings.HasPrefix(line, mergeAuthorizationTrailer):
+			receipt.Authorization = strings.TrimPrefix(line, mergeAuthorizationTrailer)
 		case strings.HasPrefix(line, mergeCandidateTrailer):
 			receipt.Candidate = strings.TrimPrefix(line, mergeCandidateTrailer)
 		case strings.HasPrefix(line, mergeTargetTrailer):
@@ -987,7 +1004,7 @@ func requireApprovedImplementer(projection workroom.Projection, approvalEvent, m
 	return nil
 }
 
-func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent string) (string, error) {
+func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent, authorizationEvent string, authorizationRequired bool) (string, error) {
 	if err := validateCheckout(ctx, workspace.Repo, checkout, candidate, false); err != nil {
 		return "", err
 	}
@@ -1019,6 +1036,9 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	if approval.Body["head"] != candidate {
 		return "", fmt.Errorf("candidate %s does not equal approved head %s", candidate, approval.Body["head"])
 	}
+	if err := validateMergeAuthorization(ctx, projection, checkout, candidate, approvalEvent, authorizationEvent, authorizationRequired, snapshot.Depth+1); err != nil {
+		return "", fmt.Errorf("authorization: %w", err)
+	}
 	artifactEvent := approval.Body["artifact"]
 	if artifactEvent == "" || !slices.Contains(projection.Provenance[approvalEvent], artifactEvent) {
 		return "", errors.New("approval does not rest on its named artifact")
@@ -1042,13 +1062,148 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	case workroom.IndependenceSelfReview:
 		return "", errors.New("approval was signed by the actor who implemented this head; an independent review is required")
 	case workroom.IndependenceIndependent:
-		return reviewguard.StalenessNote(projection, []reviewguard.Part{
+		parts := []reviewguard.Part{
 			{Name: "approval", Event: approval.Event, Stale: approval.Stale, World: approval.DescribesSupersededWorld},
 			{Name: "artifact", Event: artifact.Event, Stale: artifact.Stale, World: artifact.DescribesSupersededWorld},
-		}), nil
+		}
+		if authorizationEvent != "" {
+			authorization, _ := standingStatement(projection, authorizationEvent, workroom.KindReport)
+			parts = append(parts, reviewguard.Part{
+				Name: "authorization", Event: authorization.Event, Stale: authorization.Stale,
+				World: authorization.DescribesSupersededWorld,
+			})
+		}
+		return reviewguard.StalenessNote(projection, parts), nil
 	default:
 		return "", errors.New("the record cannot say whether this approval was independent; name the reviewed artifact in the review report")
 	}
+}
+
+// validateMergeAuthorization is the phase-one application guard. It reads
+// ordinary Workroom reports and their projected ratification; it adds no
+// authorization primitive to either the kernel or the fold.
+func validateMergeAuthorization(ctx context.Context, projection workroom.Projection, checkout, candidate, approvalEvent, authorizationEvent string, required bool, receiptSequence int) error {
+	if authorizationEvent == "" {
+		if required {
+			return errors.New("--authorization is required for this implementation request")
+		}
+		return nil
+	}
+	authorization, err := standingStatement(projection, authorizationEvent, workroom.KindReport)
+	if err != nil {
+		return err
+	}
+	if !authorization.Ratified || authorization.RatifiedBy == "" {
+		return errors.New("report is not ratified by its requester")
+	}
+	ratificationSequence := eventSequence(projection, authorization.RatifiedBy)
+	if ratificationSequence == 0 || !decisionEffective(projection, authorization.RatifiedBy) {
+		return errors.New("ratification is not an effective sequenced event")
+	}
+	if ratificationSequence >= receiptSequence {
+		return fmt.Errorf("ratification sequence %d is not before merge receipt sequence %d", ratificationSequence, receiptSequence)
+	}
+	if _, err := liveStatementAsOf(projection, authorizationEvent, workroom.KindReport, ratificationSequence); err != nil {
+		return err
+	}
+	if got := authorization.Body["authorizes_candidate"]; got != candidate {
+		return fmt.Errorf("authorizes_candidate is %q, want %q", got, candidate)
+	}
+	if got := authorization.Body["authorizes_approval"]; got != approvalEvent {
+		return fmt.Errorf("authorizes_approval is %q, want %q", got, approvalEvent)
+	}
+	implementationRequest, err := approvalImplementationRequest(projection, approvalEvent)
+	if err != nil {
+		return err
+	}
+	if got := authorization.Body["authorizes_request"]; got != implementationRequest {
+		return fmt.Errorf("authorizes_request is %q, want approval lane request %q", got, implementationRequest)
+	}
+	if !authorizationClosesRequest(projection, authorizationEvent) {
+		return errors.New("report does not close an authorization request")
+	}
+	measuredHead := authorization.Body["target_pre_head"]
+	if measuredHead == "" {
+		return errors.New("target_pre_head is missing")
+	}
+	canonical, err := canonicalCommit(ctx, checkout, measuredHead)
+	if err != nil {
+		return fmt.Errorf("target_pre_head: %w", err)
+	}
+	if canonical != measuredHead {
+		return fmt.Errorf("target_pre_head must be the full canonical object ID: got %s, resolved %s", measuredHead, canonical)
+	}
+	remeasure := authorization.Body["remeasure"]
+	if remeasure != "" && remeasure != "disjoint-paths" {
+		return fmt.Errorf("remeasure is %q, want disjoint-paths", remeasure)
+	}
+	currentHead, err := git(ctx, checkout, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return err
+	}
+	currentHead = strings.TrimSpace(currentHead)
+	if currentHead == measuredHead {
+		return nil
+	}
+	if remeasure != "disjoint-paths" {
+		return fmt.Errorf("target_pre_head is %s, but current target is %s and remeasure is not disjoint-paths", measuredHead, currentHead)
+	}
+	if _, err := git(ctx, checkout, "merge-base", "--is-ancestor", measuredHead, currentHead); err != nil {
+		return fmt.Errorf("target_pre_head %s is not an ancestor of current target %s", measuredHead, currentHead)
+	}
+	candidateChanges, err := mergeChangesBetween(ctx, checkout, measuredHead, candidate)
+	if err != nil {
+		return fmt.Errorf("measure candidate paths: %w", err)
+	}
+	targetChanges, err := mergeChangesBetween(ctx, checkout, measuredHead, currentHead)
+	if err != nil {
+		return fmt.Errorf("measure target paths: %w", err)
+	}
+	left, right := mergeChangedPaths(candidateChanges), mergeChangedPaths(targetChanges)
+	for _, candidatePath := range left {
+		if slices.Contains(right, candidatePath) {
+			return fmt.Errorf("disjoint-paths remeasurement failed: %q changed in both candidate and target", candidatePath)
+		}
+	}
+	return nil
+}
+
+func eventSequence(projection workroom.Projection, event string) int {
+	for _, decision := range projection.Decisions {
+		if decision.Event == event {
+			return decision.Sequence
+		}
+	}
+	return 0
+}
+
+func approvalImplementationRequest(projection workroom.Projection, approvalEvent string) (string, error) {
+	approval, err := standingStatement(projection, approvalEvent, workroom.KindReport)
+	if err != nil {
+		return "", fmt.Errorf("approval: %w", err)
+	}
+	artifact := approval.Body["artifact"]
+	var requests []string
+	for _, commitment := range projection.Commitments {
+		if commitment.Report == artifact {
+			requests = append(requests, commitment.Request)
+		}
+	}
+	slices.Sort(requests)
+	requests = slices.Compact(requests)
+	if len(requests) != 1 {
+		return "", fmt.Errorf("approval artifact belongs to %d implementation request lanes, want exactly one", len(requests))
+	}
+	return requests[0], nil
+}
+
+func authorizationClosesRequest(projection workroom.Projection, authorization string) bool {
+	for _, commitment := range projection.Commitments {
+		if commitment.Report == authorization {
+			return true
+		}
+	}
+	return false
 }
 
 func validateCheckout(ctx context.Context, workroomRepo, checkout, commit string, requireHead bool) error {
