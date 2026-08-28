@@ -1123,14 +1123,19 @@ a projection it may merge on. This carries the fold profile to
   which repository Git resolves — `GIT_DIR`, `GIT_COMMON_DIR`,
   `GIT_WORK_TREE` and their family — because those redirect the repository
   before any scope rule applies, and a strictly local read of the wrong
-  repository is still the wrong repository. The same sanitising covers the
-  pathspec variables, so the guard that refuses a retirement the
-  documentation still cites cannot be silenced into finding nothing. Its size
-  and count are bounded, and a repository past either bound reports no remote
-  rather than a partial one. It is admitted by an allowlist: `http` and
-  `https` only, never userinfo, a query, or a fragment — including the empty
-  `?` and `#`, which are tested on the remote as configured rather than on
-  the parsed form, since one parser records an empty fragment and another
+  repository is still the wrong repository. The guard that refuses a
+  retirement the documentation still cites states a property rather than a
+  list of what it defends against: it refuses whenever it cannot positively
+  confirm that no live document cites the target. A lookup that does not run
+  at all — a broken Git, a resource limit, a hostile command-scope
+  configuration — yields a refusal, never a silent pass. Bounding the
+  environment narrows how such a lookup is reached; it is not what makes the
+  answer safe, and no list of variable names is load-bearing. The remote read
+  is bounded in size and in count, and a repository past either bound reports
+  no remote rather than a partial one. It is admitted by an allowlist: `http`
+  and `https` only, never userinfo, a query, or a fragment — including the
+  empty `?` and `#`, which are tested on the remote as configured rather than
+  on the parsed form, since one parser records an empty fragment and another
   does not. Each can carry a credential, and declining keeps it out of the
   response body rather than trusting later rendering to drop it. Refused
   means absent: the field is omitted, and the reader is told nothing about

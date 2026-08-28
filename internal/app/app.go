@@ -232,14 +232,45 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 // way. citingDocuments is read as a guard, so an empty answer lets a cited
 // retirement through: silence there is a bypass, not a cosmetic wrong.
 //
-// GIT_CONFIG and GIT_CONFIG_* are deliberately left alone. They are the family
-// through which a caller narrows Git on purpose — internal/gitstore and
-// internal/testgit both pin system and global config to /dev/null through
-// them — and safe.directory, which decides whether Git will read a repository
-// owned by another user at all, is normally set in exactly the scope they
-// point at. Removing them here would silently undo both. The one command below
-// whose output is configuration reads --local, which bounds that question at
-// the argument where it belongs.
+// The GIT_CONFIG family is neither kept whole nor dropped whole, because the
+// two halves of it do opposite things.
+//
+// gitConfigScopePins below is the narrowing half. GIT_CONFIG_NOSYSTEM,
+// GIT_CONFIG_SYSTEM and GIT_CONFIG_GLOBAL only ever take configuration away or
+// redirect a whole scope to a file the caller chose on purpose:
+// internal/gitstore and internal/testgit both pin system and global config to
+// /dev/null through exactly these, and safe.directory — which decides whether
+// Git will read a repository owned by another user at all — normally lives in
+// the scope they name. Dropping them would silently undo both, trading this
+// fail-open for another, so they are passed through untouched.
+//
+// Everything else in the family is the injecting half. GIT_CONFIG_COUNT with
+// its KEY_n/VALUE_n pairs, and GIT_CONFIG_PARAMETERS, add configuration in the
+// command scope, which outranks every file scope and needs no repository
+// access at all: three environment variables set any Git setting for every
+// command this package runs. GIT_CONFIG redirects a config read outright. None
+// of them is anything a caller of this package has ever needed, so the test is
+// an allowlist rather than a list of the injecting names. A variable in this
+// family that nobody here has heard of — a future Git release, a wrapper — is
+// dropped by default rather than admitted by omission.
+//
+// This is the secondary defence and must be read as one. It narrows how a
+// caller reaches the malfunction; it does not decide what happens when one is
+// reached anyway, and a name that gets through it still has to be harmless.
+// What makes an unanswerable citation lookup safe is that citingDocuments
+// distinguishes "found nothing" from "did not run" and refuses the retirement
+// on the second — see the primary defence there. Repairing or extending this
+// list does not close that class, and a later reader who believes it does will
+// reintroduce the fail-open the first time an unanticipated key gets through.
+//
+// The one command below whose output is configuration also reads --local,
+// which bounds the scope question at the argument where it belongs.
+var gitConfigScopePins = map[string]bool{
+	"GIT_CONFIG_NOSYSTEM": true,
+	"GIT_CONFIG_SYSTEM":   true,
+	"GIT_CONFIG_GLOBAL":   true,
+}
+
 var gitRoutingVariables = map[string]bool{
 	"GIT_DIR":                          true,
 	"GIT_COMMON_DIR":                   true,
@@ -274,13 +305,27 @@ func repositoryLocalGit(ctx context.Context, repo string, arguments ...string) *
 	environment := os.Environ()
 	sanitized := make([]string, 0, len(environment))
 	for _, variable := range environment {
-		if name, _, found := strings.Cut(variable, "="); found && gitRoutingVariables[name] {
+		if name, _, found := strings.Cut(variable, "="); found && !inheritedGitVariableAdmitted(name) {
 			continue
 		}
 		sanitized = append(sanitized, variable)
 	}
 	command.Env = sanitized
 	return command
+}
+
+// inheritedGitVariableAdmitted answers whether one inherited variable may reach
+// a read-only Git command this package builds. Everything not named to Git is
+// none of this function's business and passes: PATH, HOME and the rest are what
+// make Git runnable at all.
+func inheritedGitVariableAdmitted(name string) bool {
+	if gitRoutingVariables[name] {
+		return false
+	}
+	if strings.HasPrefix(name, "GIT_CONFIG") {
+		return gitConfigScopePins[name]
+	}
+	return true
 }
 
 // gitRemotes reads the remote URLs this repository itself configures.
@@ -1439,20 +1484,66 @@ func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, ki
 // working copy of a page is not what the gate reads, and a page that git does
 // not know about cannot break anyone else.
 //
-// This one is the reason repositoryLocalGit removes the pathspec variables as
-// well as the routing ones: an answer of "nothing cites it" is what lets a
-// retirement through, so a `*.md` reinterpreted as a literal filename, or a
-// grep re-pointed at a repository where the page does not exist, is a bypass
-// of the guard rather than a wrong display.
-func (w *Workspace) citingDocuments(ctx context.Context, repo, event string) []string {
+// This one is the reason repositoryLocalGit bounds the environment at all: an
+// answer of "nothing cites it" is what lets a retirement through, so a `*.md`
+// reinterpreted as a literal filename, a grep re-pointed at a repository where
+// the page does not exist, or a configuration setting that stops the grep
+// starting, is a bypass of the guard rather than a wrong display.
+//
+// The two returns are separate for the same reason. An empty page list means
+// the lookup ran and found nothing; an error means the lookup did not answer,
+// and no caller may read the second as the first. That distinction is the
+// primary defence, and it is deliberately the one that does not depend on
+// anticipating anything: it holds whatever the unanswerable lookup was broken
+// by. Bounding the environment is the secondary defence and narrows how easily
+// a caller can reach for the breakage in the first place.
+func (w *Workspace) citingDocuments(ctx context.Context, repo, event string) ([]string, error) {
 	output, err := repositoryLocalGit(ctx, repo,
 		"grep", "--name-only", "--fixed-strings", event, "--", "*.md").Output()
 	if err != nil {
-		// git grep exits non-zero when it matches nothing, which is the
-		// ordinary case and not a failure. Anything else is worth noticing but
-		// never worth blocking a retirement over: a guard that fails closed on
-		// its own malfunction would make a broken git a broken workroom.
-		return nil
+		// git grep reports two entirely different things through a non-zero
+		// exit, and this guard is only entitled to act on one of them. Exit 1
+		// is "no file matched": the ordinary answer on nearly every
+		// retirement, and the answer that permits it. Every other exit —
+		// 128 for a configuration or repository error, a signal, a failure to
+		// start git at all — means the lookup did not run, so there is no
+		// answer to act on.
+		//
+		// Returning nil for the second case is what made this a fail-open. An
+		// empty page list is indistinguishable from "no page cites this", so a
+		// lookup that never ran read as a clean bill of health and the
+		// retirement went through. The old comment argued that a guard failing
+		// closed on its own malfunction would make a broken git a broken
+		// workroom. The premise is true and the conclusion still does not
+		// follow, because the two costs are not comparable. Stopping costs a
+		// retry: the operator fixes the repository or the environment and
+		// files the same act again, and nothing durable has happened. Passing
+		// costs a retirement the documentation still cites — an append-only
+		// event that leaves live pages resting on a withdrawn pointer and the
+		// repository red, which is exactly the breakage this guard exists to
+		// prevent and which no later act can take back. A cheap reversible
+		// cost against an expensive irreversible one is not a close call.
+		//
+		// The deliberate escape stays where it was: cited_ok is signed into
+		// the act by an actor who has decided to retire anyway. A caller who
+		// really must proceed past an unanswerable lookup has that, and takes
+		// the responsibility with it.
+		//
+		// ExitCode reports -1 for a process killed by a signal and for one
+		// that never started, so both land on the refusing side without a
+		// case of their own. git's own diagnosis is carried through when there
+		// is one, because the operator's next move depends on what broke and
+		// this refusal is the only place they will see it.
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			if exit.ExitCode() == 1 {
+				return nil, nil
+			}
+			if detail := strings.TrimSpace(string(exit.Stderr)); detail != "" {
+				return nil, fmt.Errorf("citation lookup for %s did not run in %s: %s", event, repo, detail)
+			}
+		}
+		return nil, fmt.Errorf("citation lookup for %s did not run in %s: %w", event, repo, err)
 	}
 	var pages []string
 	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
@@ -1460,7 +1551,7 @@ func (w *Workspace) citingDocuments(ctx context.Context, repo, event string) []s
 			pages = append(pages, page)
 		}
 	}
-	return pages
+	return pages, nil
 }
 
 // RefuseCitedRetirement stops a supersession whose target the documentation
@@ -1497,7 +1588,15 @@ func (w *Workspace) RefuseCitedRetirementInCheckout(ctx context.Context, checkou
 	if allowed || strings.TrimSpace(target) == "" {
 		return nil
 	}
-	pages := w.citingDocuments(ctx, checkout, target)
+	pages, err := w.citingDocuments(ctx, checkout, target)
+	if err != nil {
+		// A lookup that did not answer is a refusal, not a pass. The wording
+		// separates it from the citation refusal below, because the two ask
+		// for different things: this one asks the operator to make the
+		// repository readable and file the same act again, and that one asks
+		// them to repoint pages first.
+		return fmt.Errorf("cannot tell whether documentation still cites %s, so the retirement is refused: %w\nrepair the repository or the environment and file it again, or retire deliberately with the cited override", target, err)
+	}
 	if len(pages) == 0 {
 		return nil
 	}

@@ -325,7 +325,11 @@ func TestCitingDocumentsIgnoresInheritedGitRoutingVariables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pages := workspace.citingDocuments(ctx, repo, event); len(pages) != 1 || pages[0] != "page.md" {
+	pages, err := workspace.citingDocuments(ctx, repo, event)
+	if err != nil {
+		t.Fatalf("baseline citation lookup: %v", err)
+	}
+	if len(pages) != 1 || pages[0] != "page.md" {
 		t.Fatalf("baseline citing documents = %v, want [page.md]", pages)
 	}
 
@@ -336,11 +340,165 @@ func TestCitingDocumentsIgnoresInheritedGitRoutingVariables(t *testing.T) {
 	} {
 		t.Run(variable.name, func(t *testing.T) {
 			t.Setenv(variable.name, variable.value)
-			if pages := workspace.citingDocuments(ctx, repo, event); len(pages) != 1 || pages[0] != "page.md" {
+			pages, err := workspace.citingDocuments(ctx, repo, event)
+			if err != nil {
+				t.Errorf("%s stopped the citation lookup answering: %v", variable.name, err)
+			} else if len(pages) != 1 || pages[0] != "page.md" {
 				t.Errorf("%s hid the citing page: got %v, want [page.md]", variable.name, pages)
 			}
 		})
 	}
+}
+
+// The citation guard decides a retirement, so the one answer it must never
+// give is a confident "nothing cites this" that it did not actually establish.
+// `git grep` says "no matches" by exiting 1 and says "I did not run" by exiting
+// anything else, and a guard that reads both as an empty page list retires a
+// record the documentation still names — the exact breakage of 2026-08-12, now
+// reachable by anyone who can put one variable in the resident's environment.
+//
+// The lookup is broken here through `GIT_CONFIG_GLOBAL`, not through the
+// command scope, and that choice is the whole point of the test. The command
+// scope is closed by the environment bound in repositoryLocalGit; the global
+// scope is deliberately left open, because internal/gitstore and
+// internal/testgit pin system and global config through exactly those
+// variables and `safe.directory` normally lives in the scope they name. So this
+// is a way of breaking the lookup that no list of variable names is allowed to
+// close, which is what makes it a test of the exit-code distinction rather than
+// a second test of the environment bound. `grep.threads = -1` is valid
+// configuration syntax that `git grep` refuses at startup, so nothing about the
+// repository or the command line has to be wrong for the lookup to stop
+// answering.
+//
+// The target is one nothing cites, so a refusal here cannot be the ordinary
+// citation refusal wearing a disguise: before the configuration is broken the
+// same act builds cleanly.
+func TestRetirementIsRefusedWhenTheCitationLookupCannotRun(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	workspace, seed, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	uncited := seed.ID + "-nothing-cites-this"
+	retire := Act{Verb: VerbSupersede, Target: uncited, Text: "retire it"}
+	if _, err := workspace.BuildActRequest(ctx, private, "human", retire); err != nil {
+		t.Fatalf("baseline: an uncited retirement must build, got %v", err)
+	}
+
+	t.Setenv("GIT_CONFIG_GLOBAL", unrunnableGrepConfiguration(t))
+	_, err = workspace.BuildActRequest(ctx, private, "human", retire)
+	if err == nil {
+		t.Fatal("a retirement was built on a citation lookup that never ran")
+	}
+	// The message has to say which of the two refusals this is, because the
+	// operator's next move differs: a lookup that could not run is retried
+	// once the repository is readable again, and a genuine citation is
+	// repointed first. Naming the target as well keeps a batch refusal
+	// attributable to one act.
+	if !strings.Contains(err.Error(), "citation lookup") || !strings.Contains(err.Error(), uncited) {
+		t.Errorf("the refusal must say the lookup did not run and name %s, got %v", uncited, err)
+	}
+}
+
+// The other half of the same distinction, and the reason the fix cannot be
+// "refuse every non-zero exit". Exit 1 is how `git grep` says nothing matched,
+// which is the ordinary answer on nearly every retirement there will ever be:
+// reading it as a failure would refuse the whole verb. The repository here
+// tracks a Markdown page that does not name the target, so the grep really
+// walks a candidate file and really finds nothing, rather than exiting early on
+// a pathspec that matches no tracked file at all.
+func TestCitationLookupFindingNothingStillPermitsTheRetirement(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	workspace, seed, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := filepath.Join(repo, "docs", "reference", "elsewhere.md")
+	if err := os.MkdirAll(filepath.Dir(page), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(page, []byte("prose that names no event at all\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("git", "-C", repo, "add", "docs/reference/elsewhere.md").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v: %s", err, output)
+	}
+
+	retire := Act{Verb: VerbSupersede, Target: seed.ID, Text: "retire it"}
+	if _, err := workspace.BuildActRequest(ctx, private, "human", retire); err != nil {
+		t.Fatalf("no page cites the target, so the retirement must build: %v", err)
+	}
+}
+
+// The secondary defence, stated as the property it buys rather than as the
+// list it is implemented by: nothing a caller puts in the command configuration
+// scope may change what the citation guard sees. Command scope is the cheapest
+// injection there is — three environment variables, no file, no repository
+// access — and `grep.threads = -1` in it stops the lookup dead.
+//
+// The assertion is on the honest answer, not merely on a refusal. Either
+// defence alone produces some refusal here, so a test that only demanded "an
+// error" would pass with the injection still reaching Git. Demanding that the
+// refusal names the citing page demands that the lookup ran and answered
+// truthfully, which only the environment bound gives.
+func TestCommandScopeConfigurationCannotReachTheCitationLookup(t *testing.T) {
+	ctx := context.Background()
+	repo := testRepo(t)
+	workspace, seed, err := Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := filepath.Join(repo, "docs", "reference", "thing.md")
+	if err := os.MkdirAll(filepath.Dir(page), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(page, []byte("---\nrests_on:\n  - "+seed.ID+"\n---\n\nprose\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("git", "-C", repo, "add", "docs/reference/thing.md").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v: %s", err, output)
+	}
+
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "grep.threads")
+	t.Setenv("GIT_CONFIG_VALUE_0", "-1")
+
+	retire := Act{Verb: VerbSupersede, Target: seed.ID, Text: "retire it"}
+	_, err = workspace.BuildActRequest(ctx, private, "human", retire)
+	if err == nil {
+		t.Fatal("command-scope configuration silenced the citation guard")
+	}
+	if !strings.Contains(err.Error(), "docs/reference/thing.md") {
+		t.Errorf("command-scope configuration displaced the honest answer, got %v", err)
+	}
+}
+
+// unrunnableGrepConfiguration writes a Git configuration file that is valid to
+// parse and impossible to run a grep under. It is a stand-in for every reason
+// the lookup might not answer — a broken Git, an exhausted file descriptor
+// table, a repository Git declines to read — and it is the cheapest of them to
+// arrange reproducibly.
+func unrunnableGrepConfiguration(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "gitconfig")
+	if err := os.WriteFile(path, []byte("[grep]\n\tthreads = -1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 // seededRepoNamed builds a clean repository with one origin, in a directory of
