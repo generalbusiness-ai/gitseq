@@ -105,6 +105,40 @@ export function isRosterGovernance(statement: Statement): boolean {
   return statement.kind === "roster";
 }
 
+// Is this the founding seed — the one record in the log that no act can ever
+// take hold on?
+//
+// Every workroom's first event is the same shape, because `decideState`
+// refuses any other: "first event must self-seed the operator roster", which
+// admits it only when the kind is `roster`, `body.actor` is the signer's own
+// fingerprint, and `body.role` is `operator`. That shape is what makes both
+// halves of its immunity permanent rather than incidental:
+//
+//   ratify     `decideRatify` refuses an authority grant that is "authored or
+//              ratified by its beneficiary". The seed's beneficiary is its
+//              author by admission, so this refusal fires for every signer,
+//              including a ratifier, for ever.
+//   supersede  `decideSupersede` sends a roster target through
+//              `governanceTarget` and refuses index 0 outright: "founding
+//              operator seed cannot be retired".
+//
+// Position is the whole predicate because position is the whole rule. The fold
+// asks `record.index == 0`; the projection publishes the same position as
+// `sequence`, counting the seed as 1, and `fold_test.go` holds that the seed is
+// #1 and nothing is #0. Reading the roster body instead would restate the
+// admission rule in the browser to identify a record the log already numbers.
+//
+// It is narrow on purpose. The seed is not "a governance record" or "a
+// lifecycle-none record", and neither of those wider sets is un-ratifiable: a
+// membership grant one participant writes for another is ratified by a
+// ratifier and the fold accepts it — six of this workroom's seven roster
+// records carry exactly such a ratification. Excluding those would invent a
+// refusal the fold does not make, which is the mirror of the defect this
+// closes.
+export function isFoundingSeed(statement: Statement): boolean {
+  return statement.sequence === 1;
+}
+
 // May this viewer publish an artifact right now, and if not, why not.
 //
 // Asked wherever the publish path can still be stopped, so that the control,

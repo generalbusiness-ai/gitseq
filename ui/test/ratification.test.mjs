@@ -6,6 +6,8 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
+import { realProjection, SEED, VOCABULARY as REAL_VOCABULARY } from "./real-log.mjs";
+
 const uiRoot = fileURLToPath(new URL("..", import.meta.url));
 
 const HUGH = "7fbc80f1aaaa0000";
@@ -23,13 +25,21 @@ const VOCABULARY = {
   ],
 };
 
+// Sequences are the fold's positions and the fold gives every event its own,
+// counting the founding seed as 1. These fixtures used to stamp 1 on every
+// record, which is a log no fold could produce, and it mattered the moment
+// anything read the number: #1 is the founding roster seed, the one record the
+// fold refuses every act on. Numbering from 2 leaves that position where it
+// belongs — empty — so a row here is owed because of its kind and standing and
+// not because it borrowed the seed's position.
+let nextSequence = 2;
 function statement(event, kind, extra = {}) {
-  return { event, sequence: 1, timestamp: 1, actor: CODEX, kind, text: `${kind} ${event}`, ...extra };
+  return { event, sequence: nextSequence++, timestamp: 1, actor: CODEX, kind, text: `${kind} ${event}`, ...extra };
 }
 
 function projectionOf(statements, actors) {
   return {
-    decisions: statements.map((s) => ({ event: s.event, sequence: 1, verdict: "effective" })),
+    decisions: statements.map((s) => ({ event: s.event, sequence: s.sequence, verdict: "effective" })),
     acts: [],
     statements,
     commitments: [],
@@ -172,6 +182,82 @@ test("the list shows the ratification queue as its own count, and says when nobo
     // unless the screen says which it is.
     const without = render({});
     assert.match(without, /1 act awaits ratification/);
+  } finally {
+    await vite.close();
+  }
+});
+
+// The founding seed, on the records it was found on. See test/real-log.mjs.
+//
+// #1 is `roster`, whose satisfier names the ratifier role, so the queue's rule
+// admitted it — and the fold then refuses the act from every possible signer:
+// `decideRatify` refuses an authority grant "authored or ratified by its
+// beneficiary", and the seed is its own beneficiary by the admission rule that
+// let it be first at all. On a fresh workroom this was the entire queue: one
+// row, owed by nobody, dischargeable by nobody, and pressing it would append a
+// permanent ineffective row to an append-only log.
+//
+// The positive controls are the tests above, which still hold: a roster
+// governance record that is not the seed is counted, and a proposal is
+// counted. The guard is the seed's position, not its kind, and those two
+// assertions are what would fail if it were the kind.
+test("the founding seed is not owed a ratification the fold refuses from everybody", async () => {
+  const [{ ratificationRows }, close] = await rowsModule();
+  try {
+    const projection = realProjection();
+    const seed = projection.statements.find((statement) => statement.event === SEED);
+    assert.equal(seed.kind, "roster", "the seed's kind is one the queue's rule admits");
+    assert.equal(seed.satisfier, "role:ratifier", "and its satisfier is the one the queue reads");
+    assert.equal(seed.ratified, undefined, "and nothing has ratified it, so nothing else excludes it");
+
+    const context = { nameOf: () => "hugh", tickets: new Map(), actors: projection.actors };
+    const view = ratificationRows(projection, REAL_VOCABULARY, context);
+    assert.equal(view.ratifiers.length, 1, "the room has a ratifier, so an empty queue is not an empty room");
+    assert.deepEqual(view.rows, [], "and the seed is not in it");
+  } finally {
+    await close();
+  }
+});
+
+// And on the screen, where the operator met it. The list has to be shown
+// rendering rows from this exact projection before "the seed is not among
+// them" means anything, so the same real records are rendered twice: once on
+// the completed tab, which holds the review commitment they came from, and
+// once on the ratification tab, which now holds nothing.
+test("the list renders this log's rows and does not offer the founding seed for ratification", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const projection = realProjection();
+    const render = (population) =>
+      renderToStaticMarkup(
+        React.createElement(RequestList, {
+          workroom: {
+            actors: [],
+            commits: [],
+            graphTruncated: false,
+            offline: false,
+            localOffline: false,
+            status: {
+              durable: { genesis: "g", head: "h", depth: 13800, projection, vocabulary: REAL_VOCABULARY },
+              live: { cursor: { generation: "g", position: 1 }, presence: {}, activity: {}, conversations: [] },
+              cursor: { frontier: [], live: { generation: "g", position: 1 } },
+            },
+          },
+          onOpenThread() {},
+          view: { query: "", population },
+          onView() {},
+        }),
+      );
+
+    const completed = render("done");
+    assert.match(completed, /1 completed/, "the list renders rows from these records");
+    assert.match(completed, /Ox-checker: independently review/, "and prints the one commitment they contain");
+
+    const owed = render("ratification");
+    assert.match(owed, /0 acts await ratification/, "the queue rendered, and it is empty");
+    assert.doesNotMatch(owed, /hugh begins the workroom/, "the founding seed is not offered as a thing to ratify");
+    assert.doesNotMatch(owed, /awaiting ratification<\/td>/, "and no row carries that state");
   } finally {
     await vite.close();
   }

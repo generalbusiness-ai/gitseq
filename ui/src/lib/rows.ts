@@ -1,4 +1,5 @@
 import type { ActorState, Commitment, KindDefinition, Projection, Statement, Vocabulary } from "./api.ts";
+import { isFoundingSeed } from "./authority.ts";
 import { firstLine } from "./util.ts";
 
 // The words a row may say about itself. Awaiting merge is deliberately
@@ -352,6 +353,15 @@ export function ratificationRows(
   const rows: WorkRow[] = [];
   for (const statement of projection.statements) {
     if (!owed.has(statement.kind)) continue;
+    // The founding seed's kind is `roster`, whose satisfier names the ratifier
+    // role, so the rule above admits it — and the fold then refuses the act
+    // from everybody who could press the button. See {@link isFoundingSeed}.
+    // On a new workroom this row is the whole queue: the one thing the board
+    // says is owed is the one thing nobody can discharge, and a queue whose
+    // only entry is impossible teaches a reader to stop reading it. It is
+    // worse than noise, because pressing what it offers appends a permanent
+    // ineffective row to an append-only log.
+    if (isFoundingSeed(statement)) continue;
     // A retired statement asks for nothing and an ineffective one never took
     // hold, so neither is waiting on anybody.
     if (statement.ratified || statement.retired) continue;
