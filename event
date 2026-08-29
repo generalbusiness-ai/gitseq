@@ -1,1 +1,1 @@
-{"kind":"assert","text":"Resident-lifecycle repair is waiting for Planners"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f18322ca56134d303fc6064b952543d8b5f43e37","text":"Retire malformed assertion: shell quoting truncated its text and dropped every intended causal basis; a corrected assertion follows."}
