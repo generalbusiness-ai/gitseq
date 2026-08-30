@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-08-30-outcome-map.md","body":{"commit":"a18a0f29281b5cf46298260ca477c3736faa4d53","path":"notes/2026-08-30-outcome-map.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6a9ae99b35b244b18a8d8ce787e48127c9216904","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-30-outcome-map.md."}
