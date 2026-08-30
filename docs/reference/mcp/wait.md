@@ -49,6 +49,7 @@ everything up to now with `reset` set.
 | `durable` | Durable events after your cursor. |
 | `live` | Presence and conversation changes. |
 | `priority_ephemeral_chat` | The current unacknowledged addressed frames for this exact session. It repeats until `ack`; `skipped` counts additional pending frames behind the current page. |
+| `current_awaiting_ratification` | The complete bounded current lane of standing proposals whose captured role satisfier you hold. |
 | `current_available_to_you` | The complete bounded current lane of unclaimed requests addressed to you, including requests whose bases have become stale. |
 | `current_waiting_on_you` | Commitments now needing your move. |
 | `current_not_actionable` | Commitments nobody can advance. |
@@ -65,11 +66,15 @@ encodes the response. Following a deep workroom therefore does not transfer
 the complete projection on every poll. Complete projection access remains an
 explicit [`gs status --json`](../gs/status.md) read.
 
-`current_available_to_you` repeats the current lane even when no new
-durable event arrived, so polling cannot lose work that predates the
-cursor. These unfinished requests are available to claim, even if an unclaimed
+`current_awaiting_ratification` and `current_available_to_you` repeat their
+current lanes even when no new durable event arrived, so polling cannot lose
+work that predates the cursor. These unfinished requests are available to claim, even if an unclaimed
 request's bases moved, its status is now `stale`, and its `stale` flag is
 `true`; they do not invent a performer or a waiting party.
+
+The ratification lane likewise invents no commitment. Its proposal disappears
+after ratification, supersession, or a standing direct dissent, and remains
+visible with `stale: true` when only its reasoning bases moved.
 
 Priority ephemeral chat follows the same no-loss rule but is independent of
 the cursor: a pending frame makes `wait` return immediately and keeps returning

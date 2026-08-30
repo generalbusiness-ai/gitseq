@@ -191,7 +191,11 @@ func renderWorkPage(page statusview.WorkPage, source string) string {
 	}
 	out.WriteString(".\n")
 	for _, item := range page.Items {
-		fmt.Fprintf(&out, "%-10s %-18s %s\n", item.Status, item.Lane, short(item.Request))
+		event := item.Request
+		if event == "" {
+			event = item.Event
+		}
+		fmt.Fprintf(&out, "%-21s %-23s %s\n", item.Status, item.Lane, short(event))
 		if item.Text != "" {
 			fmt.Fprintf(&out, "    %s\n", item.Text)
 		}

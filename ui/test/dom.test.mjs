@@ -456,7 +456,7 @@ test("exactly one number heads the list, and each other number opens to its own 
     // A proposal is not a commitment, so it can only ever reach the screen
     // through a population of its own. The assert beside it names the ratifier
     // role too and must not be counted.
-    projection.statements.push({ event: "e10", sequence: 10, actor: "codex", kind: "propose", text: "Bounded status", timestamp: NOW_S - 3 * 86400 });
+    projection.statements.push({ event: "e10", sequence: 10, actor: "codex", kind: "propose", satisfier: "role:ratifier", text: "Bounded status", timestamp: NOW_S - 3 * 86400 });
     projection.statements.push({ event: "e11", sequence: 11, actor: "codex", kind: "assert", text: "A note", timestamp: NOW_S - 3 * 86400 });
     projection.decisions.push({ event: "e10", sequence: 10, verdict: "effective", reason: "recorded" });
     projection.decisions.push({ event: "e11", sequence: 11, verdict: "effective", reason: "recorded" });
@@ -518,7 +518,7 @@ test("the ratification queue says when nobody, or nobody in particular, can disc
       const projection = workroom.status.durable.projection;
       projection.actors.hugh.roles = roles.hugh;
       projection.actors.codex.roles = roles.codex;
-      projection.statements.push({ event: "e10", sequence: 10, actor: "codex", kind: "propose", text: "Bounded status", timestamp: NOW_S - 3 * 86400 });
+      projection.statements.push({ event: "e10", sequence: 10, actor: "codex", kind: "propose", satisfier: "role:ratifier", text: "Bounded status", timestamp: NOW_S - 3 * 86400 });
       projection.decisions.push({ event: "e10", sequence: 10, verdict: "effective", reason: "recorded" });
       await act(async () => {
         root.render(React.createElement(ListHost, { RequestList, workroom, onOpenThread() {} }));

@@ -633,11 +633,11 @@ func tools() []map[string]any {
 			"focus":  map[string]any{"type": "array", "items": stringField, "maxItems": nexus.MaxFocusEvents},
 			"note":   map[string]any{"type": "string", "maxLength": nexus.MaxActivityNoteBytes},
 		}))},
-		{"name": "status", "description": "Project durable work and this session's priority ephemeral chat; available_to_you contains open unclaimed requests addressed to this actor.", "inputSchema": object(withRepo(nil))},
+		{"name": "status", "description": "Project durable work and this session's priority ephemeral chat; awaiting_ratification contains standing proposals this actor's roles may ratify, and available_to_you contains open unclaimed requests addressed to this actor.", "inputSchema": object(withRepo(nil))},
 		{"name": "wait", "description": "Long-poll after a composite cursor; repeats unacknowledged priority ephemeral chat until ack is called.", "inputSchema": object(withRepo(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
-		{"name": "work", "description": "Query the current actor's durable work through a bounded resident-side projection. Defaults return the work still owed, including addressed unclaimed work; closed commitments carrying only ordinary staleness are counted in closed_stale_omitted instead of listed. Pass stale=include or name statuses to list them.", "inputSchema": object(withRepo(map[string]any{
-			"lanes":    arrayOf(enum("available_to_you", "waiting_on_you", "you_are_waiting_on", "not_actionable")),
-			"statuses": arrayOf(enum("open", "promised", "reported", "awaiting-merge", "superseded", "satisfied", "stale", "cancelled", "reneged", "withdrawn")),
+		{"name": "work", "description": "Query the current actor's durable work through a bounded resident-side projection. Defaults return work still owed, including standing proposals this actor may ratify and addressed unclaimed requests; closed commitments carrying only ordinary staleness are counted in closed_stale_omitted instead of listed. Pass stale=include or name statuses to list them.", "inputSchema": object(withRepo(map[string]any{
+			"lanes":    arrayOf(enum("available_to_you", "awaiting_ratification", "waiting_on_you", "you_are_waiting_on", "not_actionable")),
+			"statuses": arrayOf(enum("open", "promised", "reported", "awaiting-merge", "awaiting-ratification", "superseded", "satisfied", "stale", "cancelled", "reneged", "withdrawn")),
 			"stale":    enum("summary", "include", "only", "exclude"),
 			"limit":    map[string]any{"type": "integer", "minimum": 1, "maximum": statusview.WorkPageMax},
 			"cursor":   stringField,
