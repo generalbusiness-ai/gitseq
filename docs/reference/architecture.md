@@ -270,6 +270,52 @@ process running as the account is trusted to ask it to act as any of them.
 Direct local `gs` key access and malicious same-account processes remain
 outside the resident's protection.
 
+The operator's ambient Git environment is trusted on the same footing.
+`GIT_DIR`, `GIT_WORK_TREE` and `GIT_COMMON_DIR`, which decide which
+repository Git resolves; `GIT_CONFIG`, `GIT_CONFIG_GLOBAL`,
+`GIT_CONFIG_SYSTEM` and the rest of the `GIT_CONFIG_*` family, which decide
+what configuration it reads; and `HOME` and `XDG_CONFIG_HOME`, which locate
+several of those files — all are outside the threat model. Gitseq trusts the
+environment of the operator who runs it, and defending a hostile
+operator-controlled environment is a non-goal.
+
+The reason a defence there would buy little is worth stating exactly, because
+the sweeping version of it is false. Some of these variables name a program
+Git will run: `core.fsmonitor`, `core.pager` and `diff.external` are commands,
+and an include can reach a configuration file outside the repository. Setting
+one of those, and then reaching a Git invocation that consults it, gets code
+run as the operator — which is the account the resident's keys already live
+in, so such an attacker gains nothing they could not reach another way. Others
+only route or select configuration, and whether they lead to anything depends
+on a relevant Git invocation existing at all. So the claim is not that anyone
+who can set any of these variables can already execute code; it is that this
+boundary is not where gitseq stops an attacker who is already inside the
+operator's account.
+
+Two different things follow, and the page keeps them apart because they are
+not the same kind of claim.
+
+Where the code bounds the environment for **determinism**, it is not making a
+security claim: a read that ignores the invoking shell answers for the
+repository it was pointed at, whoever started the process. `internal/app`
+states the environment for the Git commands behind `/v0/worktrees` on that
+basis, and that is all it is doing.
+
+`internal/gitstore`'s `hermeticGitEnvironment` is **defence in depth, and a
+control that exists rather than a convenience**. It strips `GIT_CONFIG` and
+every `GIT_CONFIG_*` variable from the inherited environment, then pins
+`GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_SYSTEM` and `GIT_CONFIG_GLOBAL` at a
+location that can hold nothing. It is applied on the paths that sign and
+verify — `SignedCommit` and SSH commit verification run through
+`runHermetic` — so operator configuration cannot redirect `gpg.ssh.program`
+and substitute the program that signs or checks a signature. A test in
+`internal/gitstore` sets a hostile `gpg.ssh.program` through both
+`GIT_CONFIG_GLOBAL` and the `GIT_CONFIG_COUNT` family and asserts that
+signing and verification are unchanged and the planted program is never
+invoked. Describing this as determinism would erase a control the code
+actually provides, and would tell the next maintainer that weakening the
+signing and verification quarantine is free. It is not.
+
 #### Live credentials
 
 The resident mints each live credential from 256 bits of system randomness,
