@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/apphost","body":{"commit":"fb4c44c83542028fd28696147dd40b45fd114f52","dead_basis_override":"true","path":"internal/apphost"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:27a12350afd53e026f22038e5034707daac88607","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
