@@ -25,14 +25,34 @@ const configLockFile = ".config.lock"
 // metaDir, so concurrent updaters serialise instead of racing a lost update
 // through the gap between reading ConfigFile and renaming over it.
 func withConfigLock[T any](metaDir string, fn func() (T, error)) (T, error) {
-	file, err := os.OpenFile(filepath.Join(metaDir, configLockFile), os.O_CREATE|os.O_RDWR, 0o600)
+	return WithMetaLock(metaDir, configLockFile, fn)
+}
+
+// WithMetaLock runs fn while holding an exclusive advisory lock on the named
+// lock file inside metaDir. It is the one advisory-lock primitive in this
+// repository, and it names no application vocabulary: a caller says which
+// file it is serialising on, and the host layer says how a lock is taken and
+// released. A second helper elsewhere would be a second answer to the
+// crash-safety question this one already answers.
+//
+// The lock file is created if it does not exist and is never renamed, so the
+// kernel drops the lock when the process dies. Each distinct name is a
+// distinct lock: config updates take configLockFile and nothing else, so a
+// caller holding another name may still update its configuration inside fn.
+// A caller must never nest two acquisitions of the same name in one process
+// — flock is per open description, so the inner acquisition would block on
+// the outer one forever.
+func WithMetaLock[T any](metaDir, lockFile string, fn func() (T, error)) (T, error) {
+	var zero T
+	if err := validateLockFile(lockFile); err != nil {
+		return zero, err
+	}
+	file, err := os.OpenFile(filepath.Join(metaDir, lockFile), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		var zero T
 		return zero, err
 	}
 	defer file.Close()
 	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
-		var zero T
 		return zero, err
 	}
 	defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
