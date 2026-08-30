@@ -37,15 +37,21 @@ const residentFile = "resident.json"
 //
 // A record left behind by a dead process is still a trustworthy advertisement:
 // it reads, parses, names this workroom and carries a usable address. What
-// happens next depends on what the caller is doing. A read command may name the
-// failed request on standard error and answer from the verified local read
-// instead. A durable write does not fall back; it refuses, because folding an
-// act locally because a dial failed is a whole-log rebuild the author never
-// asked for.
+// happens next depends on the caller. A read may name the failed request and
+// answer from the verified local fold instead. For a durable act the two
+// surfaces differ: `gs` refuses when the advertised address does not answer,
+// naming `--server -` as the deliberate way to fold locally, while the MCP
+// adapter re-reads this record after transport loss and folds the act
+// locally, marked degraded, when the re-read still yields something it can
+// act on — the same record, a valid replacement, or no record at all. Only a
+// re-read that cannot be trusted refuses that fallback.
 //
-// An advertisement that is not trustworthy — unreadable, oversized,
-// unparseable, addressless, or naming another workroom — refuses for every
-// caller before any of that, and ResidentAdvertisement carries the reason.
+// An advertisement that is not trustworthy — unreadable, oversized, not a
+// record, addressless, or naming another workroom — refuses every durable
+// act before a signing key is read or anything is built, and
+// ResidentAdvertisement carries the reason. Reads differ again: `gs` refuses
+// the whole command, while the MCP adapter answers a read from the verified
+// local fold.
 func (w *Workspace) PublishResident(url string) (withdraw func(), err error) {
 	record := Resident{URL: strings.TrimRight(url, "/"), Genesis: w.config.Genesis, PID: os.Getpid()}
 	content, err := json.Marshal(record)

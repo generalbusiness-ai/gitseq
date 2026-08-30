@@ -1775,11 +1775,11 @@ func resolveServerURL(workspace *app.Workspace, explicit string) (string, error)
 		return "", nil
 	}
 	if advertisement.State == app.AdvertisementUnusable {
-		return "", fmt.Errorf("this repository advertises a resident that cannot be trusted: %w; pass --server %s to act locally instead", advertisement.Reason, localFold)
+		return "", fmt.Errorf("%w; pass --server %s to act locally instead", residentclient.UntrustedAdvertisement(advertisement.Reason), localFold)
 	}
 	validated, err := residentclient.ValidateURL(advertisement.URL)
 	if err != nil {
-		return "", fmt.Errorf("this repository advertises %q, which is not usable: %w; pass --server %s to act locally instead", advertisement.URL, err, localFold)
+		return "", fmt.Errorf("%w; pass --server %s to act locally instead", residentclient.UnusableAdvertisedURL(advertisement.URL, err), localFold)
 	}
 	return validated, nil
 }

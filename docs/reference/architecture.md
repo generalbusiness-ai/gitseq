@@ -360,9 +360,17 @@ and cannot be trusted. Only a genuinely missing file is absence. Unreadable,
 larger than the 8 KiB bound, not a record, carrying no address, or naming
 another workroom are all the third answer, and it carries the reason.
 
-`internal/app` owns that read. `cmd/gs` turns the third answer into a refusal
-before it reads a signing key or appends anything, and names `--server -` as
-the way out. `cmd/gitseq-mcp` decides separately, and treats it as no resident
+`internal/app` owns that read, and `internal/residentclient` owns the clause
+naming which of the six failures it is — not each surface's complete sentence,
+whose remainder is the way out that surface offers. That is what keeps the two
+from drifting into separate accounts of the same record. `cmd/gs` turns the
+third answer into a refusal of the whole command before it reads a signing key
+or appends anything, and names `--server -` as the way out. `cmd/gitseq-mcp`
+refuses the durable call for the same reason and before the same work, while
+leaving the attachment and the session intact, and still lets a read answer
+from the verified local fold. It judges the record on every durable act rather
+than once per session, and again before any fall back to the local fold, so a
+remembered address never stands in for a record that has since been rewritten
 — see [`gs serve`](gs/serve.md).
 
 Ownership authorizes serving; binding a listener does not. A resident binds

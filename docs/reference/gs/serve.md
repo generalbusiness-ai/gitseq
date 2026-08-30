@@ -104,26 +104,48 @@ mode for nothing.
 Interrupt and terminate both count as being told to stop, so Ctrl-C and
 an ordinary supervisor shutdown both withdraw the advertisement and both
 exit reporting success. Only a hard kill leaves a record behind, and that
-costs a client one refused connection: reads fall back to the verified local
-fold as before, while durable acts refuse and name the way out, either
-starting the resident again or passing `--server -`.
+record still reads as a good one: what is gone is the service, not the
+record. So it costs a client one refused connection, and the two surfaces
+answer that differently. Reads fall back to the verified local fold as
+before. `gs` refuses the durable act and names the way out, either starting
+the resident again or passing `--server -`. `cmd/gitseq-mcp` folds the act
+into the local fold and marks the result `degraded`, which is what it does
+for any resident that stops answering.
 
 Two limits are worth naming now that the advertisement is what `gs` uses by
 default. A resident that accepts an act and then stalls past the client
 deadline leaves the outcome unknown, and a retry mints a fresh idempotency
 key that can append twice; that was true before, but only for somebody who
-deliberately passed `--server`. And `gs` treats a published record it cannot
-trust as a refusal, while `cmd/gitseq-mcp` treats the same record as no
-resident and acts locally. `gs` fails closed on purpose, and the two
-surfaces disagree knowingly.
+deliberately passed `--server`. And a published record that cannot be
+trusted stops durable acts in the repository until somebody repairs or
+removes it: `gs` refuses the command, and `cmd/gitseq-mcp` refuses the one
+call, leaving its attachment and its session intact so the repair is the
+whole recovery. Both fail closed on purpose. The one way past it is to ask
+for the local fold deliberately with `gs --server -`, which reads no record
+at all. Neither surface refuses a read: a read answers through the resident
+when one is answering and from the verified local fold when none is.
 
-A record `gs` will not trust is one that is unreadable, larger than the
+A record that will not be trusted is one that is unreadable, larger than the
 8 KiB a record may be, not a record at all, carrying no address, naming
 another workroom, or carrying an address that is not a bare `http` loopback
-origin. Each refusal names which of those it is and offers `--server -`, and
-each happens before the command reads a signing key or appends anything.
-Only a record that is not there at all is absence, and a repository with
-none acts locally exactly as it did before residents existed.
+origin. `internal/residentclient` owns the clause naming which of those it
+is, so the two surfaces cannot drift into separate accounts of the same six
+failures; each adds its own way out, which is the part that honestly
+differs. `gs` offers `--server -`. The adapter has no flags of its own, so
+it says to repair or remove the record, or to fold that one act locally on
+purpose with `gs` and `--server -`. Each refusal happens before the caller
+reads a signing key or appends anything.
+
+The record is judged on every durable act, not once per session. An adapter
+that found a good resident an hour ago still refuses the next act if the
+record has been rewritten since, and when a resident stops answering it
+reads the record once more before folding locally. A rewrite landing
+mid-call refuses the local fallback only when that re-read cannot be
+trusted; a record that was removed, or replaced with one that still reads
+and names this workroom, leaves the transport loss an honest reason to fold
+locally, marked `degraded`. Only a record that is not there at all is
+absence, and a repository with none acts locally exactly as it did before
+residents existed.
 
 ## Loopback only
 
