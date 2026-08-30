@@ -1,0 +1,8 @@
+(
+  $existing := rows.reservation;
+  {
+    "decision": $existing ? "effective" : "ineffective",
+    "facts": $existing ? [] : [{"kind": "unknown-reservation"}],
+    "tables": $existing ? {"reservations": {"delete": [{"id": event.id}]}} : {}
+  }
+)

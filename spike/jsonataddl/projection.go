@@ -21,8 +21,9 @@ import (
 )
 
 type tableColumn struct {
-	name string
-	pk   int
+	name         string
+	declaredType string
+	pk           int
 }
 
 type tableDefinition struct {
@@ -47,7 +48,10 @@ type Frontier struct {
 // Projection is a disposable SQLite view rebuilt from one verified host log.
 type Projection struct {
 	db       *sql.DB
+	path     string
 	frontier Frontier
+	tables   map[string]tableDefinition
+	views    []string
 }
 
 // QueryResult carries the exact frontier alongside bounded typed SQL rows.
@@ -75,6 +79,15 @@ func (e *GapError) Unwrap() error { return e.Err }
 type buildOptions struct {
 	persistGap  func(context.Context, *sql.DB, Frontier) error
 	closeWriter func(*sql.DB) error
+	// writerVFS names a registered SQLite VFS for the projection writer. The
+	// crash tests use it to record every durable mutation; production reuse
+	// is not implied.
+	writerVFS string
+	// afterInitialize and afterEvent are observation seams for the crash
+	// tests: they mark the schema-initialization commit and each event-commit
+	// boundary, and let a test force a mid-replay checkpoint.
+	afterInitialize func(context.Context, *sql.DB) error
+	afterEvent      func(context.Context, *sql.DB, int) error
 }
 
 func newBuildOptions() buildOptions {
@@ -126,7 +139,7 @@ func build(ctx context.Context, profile *Profile, log host.Log, databasePath str
 	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
 		return nil, err
 	}
-	writer, err := openWriter(ctx, absolute)
+	writer, err := openWriter(ctx, absolute, options.writerVFS)
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +147,11 @@ func build(ctx context.Context, profile *Profile, log host.Log, databasePath str
 	tables, err := initialize(ctx, writer, profile, frontier)
 	if err != nil {
 		return nil, errors.Join(err, options.closeWriter(writer))
+	}
+	if options.afterInitialize != nil {
+		if err := options.afterInitialize(ctx, writer); err != nil {
+			return nil, errors.Join(err, options.closeWriter(writer))
+		}
 	}
 	foldReader, err := openFoldReader(ctx, absolute, tables)
 	if err != nil {
@@ -159,9 +177,14 @@ func build(ctx context.Context, profile *Profile, log host.Log, databasePath str
 				reader.Close()
 				return nil, errors.Join(gap, loadErr)
 			}
-			return &Projection{db: reader, frontier: loaded}, gap
+			return &Projection{db: reader, path: absolute, frontier: loaded, tables: tables, views: declaredViews(profile)}, gap
 		}
 		frontier.InterpretedEvent, frontier.InterpretedPosition = record.ID, position
+		if options.afterEvent != nil {
+			if err := options.afterEvent(ctx, writer, position); err != nil {
+				return nil, errors.Join(err, foldReader.Close(), options.closeWriter(writer))
+			}
+		}
 	}
 	frontier.Complete = true
 	if _, err := writer.ExecContext(ctx, `UPDATE gitseq_frontier SET complete = 1 WHERE singleton = 1`); err != nil {
@@ -174,7 +197,7 @@ func build(ctx context.Context, profile *Profile, log host.Log, databasePath str
 	if err != nil {
 		return nil, err
 	}
-	return &Projection{db: reader, frontier: frontier}, nil
+	return &Projection{db: reader, path: absolute, frontier: frontier, tables: tables, views: declaredViews(profile)}, nil
 }
 
 func wrapError(operation string, err error) error {
@@ -184,8 +207,11 @@ func wrapError(operation string, err error) error {
 	return fmt.Errorf("%s: %w", operation, err)
 }
 
-func openWriter(ctx context.Context, path string) (*sql.DB, error) {
+func openWriter(ctx context.Context, path, vfsName string) (*sql.DB, error) {
 	dsn := sqliteDSN(path, false)
+	if vfsName != "" {
+		dsn += "&vfs=" + url.QueryEscape(vfsName)
+	}
 	database, err := sqlitedriver.Open(dsn, func(connection *sqlite3.Conn) error {
 		if _, err := connection.Config(sqlite3.DBCONFIG_DEFENSIVE, true); err != nil {
 			return err
@@ -358,7 +384,18 @@ func queryAuthorizer(action sqlite3.AuthorizerActionCode, name3rd, name4th, sche
 	}
 }
 
+// initialize creates the complete physical schema and the identity and
+// frontier records in one transaction. A crash during initialization
+// therefore leaves either an empty database (no frontier relation: an
+// unambiguous discard-and-rebuild signal for a disposable projection) or the
+// complete initialized schema, never a partial schema carrying a plausible
+// frontier row.
 func initialize(ctx context.Context, database *sql.DB, profile *Profile, frontier Frontier) (map[string]tableDefinition, error) {
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
 	platform := []string{
 		`CREATE TABLE gitseq_projection_identity (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), genesis TEXT NOT NULL, application TEXT NOT NULL, fold_version TEXT NOT NULL, schema_digest TEXT NOT NULL) STRICT`,
 		`CREATE TABLE gitseq_frontier (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), verified_head TEXT NOT NULL, verified_depth INTEGER NOT NULL, interpreted_event TEXT NOT NULL DEFAULT '', interpreted_position INTEGER NOT NULL DEFAULT 0, complete INTEGER NOT NULL DEFAULT 0, gap_event TEXT NOT NULL DEFAULT '', gap_reason TEXT NOT NULL DEFAULT '') STRICT`,
@@ -366,24 +403,24 @@ func initialize(ctx context.Context, database *sql.DB, profile *Profile, frontie
 		`CREATE TABLE gitseq_facts (position INTEGER NOT NULL, event_id TEXT NOT NULL, ordinal INTEGER NOT NULL, kind TEXT NOT NULL, fact_json TEXT NOT NULL CHECK (json_valid(fact_json)), PRIMARY KEY (event_id, ordinal)) STRICT`,
 	}
 	for _, statement := range platform {
-		if _, err := database.ExecContext(ctx, statement); err != nil {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := database.ExecContext(ctx, `INSERT INTO gitseq_projection_identity VALUES (1, ?, ?, ?, ?)`, frontier.Genesis, profile.Application.Name, profile.Application.FoldVersion, profile.SchemaDigest); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO gitseq_projection_identity VALUES (1, ?, ?, ?, ?)`, frontier.Genesis, profile.Application.Name, profile.Application.FoldVersion, profile.SchemaDigest); err != nil {
 		return nil, err
 	}
-	if _, err := database.ExecContext(ctx, `INSERT INTO gitseq_frontier (singleton, verified_head, verified_depth) VALUES (1, ?, ?)`, frontier.VerifiedHead, frontier.VerifiedDepth); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO gitseq_frontier (singleton, verified_head, verified_depth) VALUES (1, ?, ?)`, frontier.VerifiedHead, frontier.VerifiedDepth); err != nil {
 		return nil, err
 	}
 	for _, statement := range profile.ddl {
-		if _, err := database.ExecContext(ctx, statement); err != nil {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return nil, fmt.Errorf("application DDL: %w", err)
 		}
 	}
 	for _, event := range profile.events {
 		statement := `CREATE TABLE ` + quoteIdentifier("__gitseq_event_"+event.name) + ` (` + event.columnsSQL + `) STRICT`
-		if _, err := database.ExecContext(ctx, statement); err != nil {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return nil, fmt.Errorf("event %q schema: %w", event.name, err)
 		}
 	}
@@ -393,7 +430,7 @@ func initialize(ctx context.Context, database *sql.DB, profile *Profile, frontie
 		if match == nil {
 			continue
 		}
-		definition, err := inspectTable(ctx, database, match[1])
+		definition, err := inspectTable(ctx, tx, match[1])
 		if err != nil {
 			return nil, err
 		}
@@ -401,6 +438,11 @@ func initialize(ctx context.Context, database *sql.DB, profile *Profile, frontie
 			return nil, fmt.Errorf("writable application table %q has no primary key", match[1])
 		}
 		tables[match[1]] = definition
+		for _, versionStatement := range versionTableDDL(match[1], definition) {
+			if _, err := tx.ExecContext(ctx, versionStatement); err != nil {
+				return nil, fmt.Errorf("version relation for %q: %w", match[1], err)
+			}
+		}
 	}
 	for _, fold := range profile.folds {
 		definition, exists := tables[fold.read.table]
@@ -415,16 +457,19 @@ func initialize(ctx context.Context, database *sql.DB, profile *Profile, frontie
 				return nil, fmt.Errorf("fold %q reads undeclared column %q", fold.name, column)
 			}
 		}
-		statement, err := database.PrepareContext(ctx, fold.read.query)
+		statement, err := tx.PrepareContext(ctx, fold.read.query)
 		if err != nil {
 			return nil, fmt.Errorf("prepare fold %q read: %w", fold.name, err)
 		}
 		statement.Close()
 	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	return tables, nil
 }
 
-func inspectTable(ctx context.Context, database *sql.DB, table string) (tableDefinition, error) {
+func inspectTable(ctx context.Context, database *sql.Tx, table string) (tableDefinition, error) {
 	rows, err := database.QueryContext(ctx, `PRAGMA table_xinfo(`+quoteIdentifier(table)+`)`)
 	if err != nil {
 		return tableDefinition{}, err
@@ -441,7 +486,7 @@ func inspectTable(ctx context.Context, database *sql.DB, table string) (tableDef
 		if hidden != 0 {
 			continue
 		}
-		definition.columns = append(definition.columns, tableColumn{name: name, pk: pk})
+		definition.columns = append(definition.columns, tableColumn{name: name, declaredType: kind, pk: pk})
 	}
 	if err := rows.Err(); err != nil {
 		return tableDefinition{}, err
@@ -500,7 +545,7 @@ func foldRecord(ctx context.Context, database, foldReader *sql.DB, profile *Prof
 	if err != nil {
 		return err
 	}
-	if err := applyOutput(ctx, tx, fold, tables, output); err != nil {
+	if err := applyOutput(ctx, tx, fold, tables, output, record.ID, position); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO gitseq_decisions VALUES (?, ?, ?, ?)`, position, record.ID, record.Schema, output.Decision); err != nil {
@@ -692,7 +737,7 @@ func decodeOutput(payload []byte) (foldOutput, error) {
 	return output, nil
 }
 
-func applyOutput(ctx context.Context, tx *sql.Tx, fold foldDefinition, tables map[string]tableDefinition, output foldOutput) error {
+func applyOutput(ctx context.Context, tx *sql.Tx, fold foldDefinition, tables map[string]tableDefinition, output foldOutput, event string, position int) error {
 	names := make([]string, 0, len(output.Tables))
 	for table := range output.Tables {
 		names = append(names, table)
@@ -708,17 +753,17 @@ func applyOutput(ctx context.Context, tx *sql.Tx, fold foldDefinition, tables ma
 		}
 		changes := output.Tables[table]
 		for _, row := range changes.Insert {
-			if err := insertRow(ctx, tx, table, definition, row, false); err != nil {
+			if err := insertRow(ctx, tx, table, definition, row, false, event, position); err != nil {
 				return err
 			}
 		}
 		for _, row := range changes.Upsert {
-			if err := insertRow(ctx, tx, table, definition, row, true); err != nil {
+			if err := insertRow(ctx, tx, table, definition, row, true, event, position); err != nil {
 				return err
 			}
 		}
 		for _, row := range changes.Delete {
-			if err := deleteRow(ctx, tx, table, definition, row); err != nil {
+			if err := deleteRow(ctx, tx, table, definition, row, position); err != nil {
 				return err
 			}
 		}
@@ -726,7 +771,7 @@ func applyOutput(ctx context.Context, tx *sql.Tx, fold foldDefinition, tables ma
 	return nil
 }
 
-func insertRow(ctx context.Context, tx *sql.Tx, table string, definition tableDefinition, row map[string]any, upsert bool) error {
+func insertRow(ctx context.Context, tx *sql.Tx, table string, definition tableDefinition, row map[string]any, upsert bool, event string, position int) error {
 	if len(row) != len(definition.columns) {
 		return fmt.Errorf("%s row is not complete: got fields %v", table, sortedKeys(row))
 	}
@@ -763,7 +808,11 @@ func insertRow(ctx context.Context, tx *sql.Tx, table string, definition tableDe
 	if _, err := tx.ExecContext(ctx, statement, values...); err != nil {
 		return fmt.Errorf("apply %s row: %w", table, err)
 	}
-	return nil
+	operation := "insert"
+	if upsert {
+		operation = "upsert"
+	}
+	return recordVersionChange(ctx, tx, table, definition, values, event, operation, position)
 }
 
 func sortedKeys(row map[string]any) []string {
@@ -775,7 +824,7 @@ func sortedKeys(row map[string]any) []string {
 	return keys
 }
 
-func deleteRow(ctx context.Context, tx *sql.Tx, table string, definition tableDefinition, row map[string]any) error {
+func deleteRow(ctx context.Context, tx *sql.Tx, table string, definition tableDefinition, row map[string]any, position int) error {
 	if len(row) != len(definition.primary) {
 		return fmt.Errorf("%s delete must carry the complete primary key", table)
 	}
@@ -795,7 +844,7 @@ func deleteRow(ctx context.Context, tx *sql.Tx, table string, definition tableDe
 	if _, err := tx.ExecContext(ctx, `DELETE FROM `+quoteIdentifier(table)+` WHERE `+strings.Join(clauses, ` AND `), values...); err != nil {
 		return fmt.Errorf("delete %s row: %w", table, err)
 	}
-	return nil
+	return closeOpenVersion(ctx, tx, table, definition, values, position)
 }
 
 func sqlValue(value any) (any, error) {
@@ -875,17 +924,21 @@ func (p *Projection) Query(ctx context.Context, query string, arguments ...any) 
 	if p == nil || p.db == nil {
 		return QueryResult{}, errors.New("projection is closed")
 	}
+	return collectRows(ctx, p.db, p.frontier, query, arguments)
+}
+
+func collectRows(ctx context.Context, database *sql.DB, frontier Frontier, query string, arguments []any) (QueryResult, error) {
 	if len(query) == 0 || len(query) > maxQueryBytes {
 		return QueryResult{}, errors.New("query is empty or too large")
 	}
-	readOnly, err := statementReadOnly(ctx, p.db, query)
+	readOnly, err := statementReadOnly(ctx, database, query)
 	if err != nil {
 		return QueryResult{}, err
 	}
 	if !readOnly {
 		return QueryResult{}, errors.New("query is not read-only")
 	}
-	rows, err := p.db.QueryContext(ctx, query, arguments...)
+	rows, err := database.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return QueryResult{}, err
 	}
@@ -894,7 +947,7 @@ func (p *Projection) Query(ctx context.Context, query string, arguments ...any) 
 	if err != nil {
 		return QueryResult{}, err
 	}
-	result := QueryResult{Frontier: p.frontier, Columns: columns}
+	result := QueryResult{Frontier: frontier, Columns: columns}
 	bytesUsed := 0
 	for rows.Next() {
 		if len(result.Rows) == maxQueryRows {

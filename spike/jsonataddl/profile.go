@@ -46,7 +46,7 @@ var InventoryApplication = host.Application{
 	SourceURL:   "https://github.com/generalbusiness-ai/gitseq.git",
 }
 
-//go:embed inventory/application.sql inventory/folds/inventory.jsonata
+//go:embed inventory/application.sql inventory/folds/inventory.jsonata inventory/folds/cancel.jsonata
 var inventoryFiles embed.FS
 
 var (
