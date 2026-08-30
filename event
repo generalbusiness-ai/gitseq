@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at docs/reference/architecture.md","body":{"commit":"389a4e6a9bde2c9d66c0ae0e5397fd909149d021","path":"docs/reference/architecture.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ec0495ad906b11a08dae4b636da299e82113f99","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
