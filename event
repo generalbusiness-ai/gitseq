@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6c9ac2a416c4fd11b326554bee4f3e72b2e3b373","text":"Merge retired a covered predecessor; the successor is at docs/reference/mcp/ack.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:74e60c3c0a03ac6bb50fc82afea2950bc333b559","text":"Merge retired a covered predecessor; the successor is at docs/concepts/work-loop.md."}
