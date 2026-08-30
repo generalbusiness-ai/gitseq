@@ -20,6 +20,7 @@ decision, not yours.
 | `target` | required | The event identifier to ratify. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `agent` | optional | The actor whose existing accessible key signs this call; defaults to startup `--actor`. |
 
 There is no `rests_on`. `ratify` cites its target and nothing else, and
 refuses any surplus citation — the one act in the system strict enough to

@@ -23,6 +23,7 @@ standing, with a pointer to what replaced it.
 | `rests_on` | optional | Additional event identifiers. The target is placed first automatically. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `agent` | optional | The actor whose existing accessible key signs this retirement; defaults to startup `--actor`. |
 
 `text` is required for a reason: a retirement with no stated cause tells
 the next reader that something changed and nothing about what.

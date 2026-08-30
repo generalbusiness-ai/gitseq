@@ -25,14 +25,15 @@ and does not survive a restart.
 | argument | required | meaning |
 |---|---|---|
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `agent` | optional | The actor whose existing accessible key owns this leased session; defaults to startup `--actor`. |
 | `status` | optional | This session's activity: `available`, `busy`, `waiting`, or `blocked`. |
 | `focus` | optional | Up to eight durable EventIDs from this workroom that currently have this session's attention. An empty list clears focus. |
 | `note` | optional | A short activity note, at most 160 bytes. An empty string clears it. |
 
-Every tool takes `repo`. Naming a different repository acts in that
-repository's workroom instead; the adapter is installed once and serves
-whatever repository a call names. Linked worktrees of one repository are
-one workroom, not several.
+Every tool takes both selectors. Naming a different repository acts in that
+workroom; naming a different agent uses that actor's distinct leased session.
+The adapter serves only repositories and actor keys the process can already
+access. Linked worktrees of one repository are one workroom, not several.
 
 ## Example
 

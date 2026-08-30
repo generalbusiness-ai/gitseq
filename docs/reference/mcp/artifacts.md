@@ -20,6 +20,7 @@ behavior at one or more maintained paths.
 | `limit` | optional | Page size, 1 to 50. Default 20. |
 | `cursor` | optional | The opaque continuation from a previous page. |
 | `repo` | optional | The repository whose workroom this call acts in. |
+| `agent` | optional | The actor whose existing accessible key selects this call; defaults to startup `--actor`. |
 
 ## What comes back
 

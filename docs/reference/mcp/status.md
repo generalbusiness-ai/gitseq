@@ -25,11 +25,11 @@ the caller.
 | argument | required | meaning |
 |---|---|---|
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `agent` | optional | The actor whose current work is projected; defaults to startup `--actor`. The actor's key must already be accessible. |
 
-Every tool takes `repo`. Naming a different repository acts in that
-repository's workroom instead; the adapter is installed once and serves
-whatever repository a call names. Linked worktrees of one repository are
-one workroom, not several.
+Every tool takes both selectors. Naming a different repository acts in that
+workroom; naming a different agent selects that actor's existing key and
+durable lane. Linked worktrees of one repository are one workroom, not several.
 
 ## Example
 

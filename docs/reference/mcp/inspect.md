@@ -20,6 +20,7 @@ to read one event.
 |---|---|---|
 | `event` | required | One full canonical event ID. An unknown ID fails instead of producing an inferred match. |
 | `repo` | optional | The repository whose workroom this call acts in. |
+| `agent` | optional | The actor whose existing accessible key selects this call; defaults to startup `--actor`. |
 
 ## What comes back
 

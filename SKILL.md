@@ -100,10 +100,17 @@ acknowledging. See [Live attention](docs/reference/live-attention.md).
   reassignment.
   It retires and replaces only a live, fresh request with no admitted direct
   promise or completion; exact retries replay the pair.
-- Every tool takes an optional `repo` naming the repository whose workroom
-  the call acts in; it defaults to the directory your adapter was started
-  in, including from any of its linked worktrees. Name it only to act in a
-  different repository, and check `whoami` if you are unsure.
+- Every tool takes optional `repo` and `agent` selectors. `repo` names the
+  repository whose workroom the call acts in and defaults to the directory
+  the adapter was started in, including from any of its linked worktrees.
+  `agent` names the actor whose existing accessible key signs the call and
+  defaults to startup `--actor`. The trust boundary is key access: these
+  selectors neither mint keys nor grant identities, and an inaccessible key,
+  unavailable repository, or actor absent from the effective roster refuses
+  instead of falling back to either default. The development key model still
+  derives keys from actor names, so this shorthand does not become a real
+  custody boundary until actor keys are access-gated secrets. Check `whoami`
+  after changing either selector.
 
 Historical `state@0` rooms keep their fold activation seam in
 `status.durable.vocabulary.binding`; current fold upgrades are host-binding

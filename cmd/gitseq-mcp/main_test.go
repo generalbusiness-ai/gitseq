@@ -85,6 +85,10 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 		if properties, exists := schema["properties"]; exists && properties == nil {
 			t.Fatalf("tool schema contains properties:null: %#v", tool)
 		}
+		properties := schema["properties"].(map[string]any)
+		if properties["repo"] == nil || properties["agent"] == nil {
+			t.Fatalf("tool %q omits the common repo/agent selectors: %#v", definition["name"], properties)
+		}
 	}
 	for _, name := range []string{"work", "artifacts", "inspect"} {
 		if listed[name] == nil {
@@ -636,7 +640,15 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	mu.Lock()
 	gotPaths := append([]string(nil), paths...)
 	mu.Unlock()
-	if strings.Join(gotPaths, ",") != "/v0/work-query,/v0/artifact-query,/v0/artifact-query,/v0/artifact-query,/v0/inspect" {
+	fingerprint := workspace.View().Actors["human"].Fingerprint
+	wantPaths := []string{
+		"/v0/orientation/" + fingerprint, "/v0/work-query",
+		"/v0/orientation/" + fingerprint, "/v0/artifact-query",
+		"/v0/orientation/" + fingerprint, "/v0/artifact-query",
+		"/v0/orientation/" + fingerprint, "/v0/artifact-query",
+		"/v0/orientation/" + fingerprint, "/v0/inspect",
+	}
+	if strings.Join(gotPaths, ",") != strings.Join(wantPaths, ",") {
 		t.Fatalf("selective tools used the wrong resident routes: %v", gotPaths)
 	}
 }
@@ -703,7 +715,9 @@ func TestStatusAndWaitUseBoundedResidentViews(t *testing.T) {
 	mu.Lock()
 	gotPaths := append([]string(nil), paths...)
 	mu.Unlock()
-	if strings.Join(gotPaths, ",") != "/v0/actor-status,/v0/actor-wait" {
+	fingerprint := workspace.View().Actors["human"].Fingerprint
+	wantPaths := []string{"/v0/orientation/" + fingerprint, "/v0/actor-status", "/v0/orientation/" + fingerprint, "/v0/actor-wait"}
+	if strings.Join(gotPaths, ",") != strings.Join(wantPaths, ",") {
 		t.Fatalf("status or wait used an unbounded resident route: %v", gotPaths)
 	}
 }
@@ -714,9 +728,14 @@ func attachedServer(t testing.TB, workspace *app.Workspace, actor, baseURL strin
 	t.Helper()
 	server := newServer(actor, workspace.Repo)
 	server.client = residentclient.NewWithHTTP(client, residentHTTPTimeout)
-	attached := &room{workspace: workspace, baseURL: strings.TrimRight(baseURL, "/")}
-	server.byPath[server.repo] = attached
-	server.byCommonDir[workspace.CommonDir] = attached
+	configured, err := workspace.ResolveActor(actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attached := &room{workspace: workspace, actor: actor, fingerprint: configured.Fingerprint, baseURL: strings.TrimRight(baseURL, "/")}
+	genesis := workspace.View().Genesis
+	server.byPath[roomSelection{path: server.repo, commonDir: workspace.CommonDir, genesis: genesis, actor: actor, fingerprint: configured.Fingerprint}] = attached
+	server.byCommonDir[roomSelection{commonDir: workspace.CommonDir, genesis: genesis, actor: actor, fingerprint: configured.Fingerprint}] = attached
 	return server, attached
 }
 
@@ -1037,6 +1056,8 @@ func TestAddressedSayFailsClosedWhenResidentDowngradesDuringSessionRepair(t *tes
 			_ = json.NewEncoder(writer).Encode(map[string]any{"opaque": true})
 		case request.Method == http.MethodPost && request.URL.Path == "/v0/presence":
 			_ = json.NewEncoder(writer).Encode(map[string]any{"credential": "credential:" + strings.Repeat("b", 64), "change": map[string]any{}})
+		case request.Method == http.MethodPost && request.URL.Path == "/v0/actor-status":
+			_ = json.NewEncoder(writer).Encode(actorStatus{You: statusview.ActorView{Fingerprint: workspace.View().Actors["human"].Fingerprint}})
 		case request.Method == http.MethodPost && request.URL.Path == "/v0/inbox/register":
 			http.NotFound(writer, request)
 		default:
@@ -1246,10 +1267,12 @@ func TestOneAdapterSharesRoomAcrossLinkedWorktrees(t *testing.T) {
 	if mainRoom != linkedRoom {
 		t.Fatal("one adapter allocated separate room and projection caches for linked checkouts")
 	}
-	if len(server.byCommonDir) != 1 || server.byCommonDir[mainCommonDir] != mainRoom {
+	fingerprint := mainRoom.fingerprint
+	genesis := mainRoom.workspace.View().Genesis
+	if len(server.byCommonDir) != 1 || server.byCommonDir[roomSelection{commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint}] != mainRoom {
 		t.Fatalf("common-directory cache does not hold the shared room: %+v", server.byCommonDir)
 	}
-	if server.byPath[absolute(repo)] != mainRoom || server.byPath[absolute(linked)] != mainRoom {
+	if server.byPath[roomSelection{path: absolute(repo), commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint}] != mainRoom || server.byPath[roomSelection{path: absolute(linked), commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint}] != mainRoom {
 		t.Fatalf("checkout paths do not resolve to the shared room: %+v", server.byPath)
 	}
 }
@@ -2454,6 +2477,9 @@ func TestARefusedReportIsNotDescribedAsMissingItsVerdict(t *testing.T) {
 // failure this disclosure exists to prevent, arriving through the disclosure.
 func TestEveryVerbIsToldWhenTheProjectionCouldNotBeRead(t *testing.T) {
 	workspace := initRepository(t, "unreadable")
+	if _, _, err := workspace.AddActor(context.Background(), "human", "claude", "agent"); err != nil {
+		t.Fatal(err)
+	}
 	server, attached := attachedServer(t, workspace, "claude", "", nil)
 
 	// Break the repository underneath so Snapshot genuinely fails, rather than
@@ -2653,12 +2679,14 @@ func TestAttentionReadsTheRoomTheCallActedIn(t *testing.T) {
 	second := initRepository(t, "second")
 
 	server := newServer("human", first.Repo)
-	firstRoom := &room{workspace: first, baseURL: "http://first.invalid"}
-	secondRoom := &room{workspace: second, baseURL: "http://second.invalid"}
-	server.byPath[first.Repo] = firstRoom
-	server.byPath[second.Repo] = secondRoom
-	server.byCommonDir[first.CommonDir] = firstRoom
-	server.byCommonDir[second.CommonDir] = secondRoom
+	firstFingerprint := first.View().Actors["human"].Fingerprint
+	secondFingerprint := second.View().Actors["human"].Fingerprint
+	firstRoom := &room{workspace: first, actor: "human", fingerprint: firstFingerprint, baseURL: "http://first.invalid"}
+	secondRoom := &room{workspace: second, actor: "human", fingerprint: secondFingerprint, baseURL: "http://second.invalid"}
+	server.byPath[roomSelection{path: first.Repo, commonDir: first.CommonDir, genesis: first.View().Genesis, actor: "human", fingerprint: firstFingerprint}] = firstRoom
+	server.byPath[roomSelection{path: second.Repo, commonDir: second.CommonDir, genesis: second.View().Genesis, actor: "human", fingerprint: secondFingerprint}] = secondRoom
+	server.byCommonDir[roomSelection{commonDir: first.CommonDir, genesis: first.View().Genesis, actor: "human", fingerprint: firstFingerprint}] = firstRoom
+	server.byCommonDir[roomSelection{commonDir: second.CommonDir, genesis: second.View().Genesis, actor: "human", fingerprint: secondFingerprint}] = secondRoom
 
 	// The adapter default is the first repository. A call naming the second
 	// must still be answered about the second.

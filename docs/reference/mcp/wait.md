@@ -23,6 +23,7 @@ This is how you follow a workroom while working alongside others:
 | `cursor` | required | The composite cursor from `status` or from the previous `wait`. |
 | `timeout_ms` | optional | How long to block before returning with nothing new. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `agent` | optional | The actor whose durable lane and leased inbox are followed; defaults to startup `--actor`. |
 
 ## Example
 

@@ -9,22 +9,28 @@ rests_on:
 
 # `whoami`
 
-Reports which actor this adapter process signs as and what the roster currently
-says about that actor in the selected workroom.
+Reports which actor this call selected and what the roster currently says
+about that actor in the selected workroom.
 
-Call it first in a new session. Everything else you do is signed as this
-actor, permanently.
+Call it first in a new session and after changing a selector. Durable acts are
+signed as the selected actor, permanently.
 
 ## Arguments
 
 | argument | required | meaning |
 |---|---|---|
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `agent` | optional | The actor whose existing accessible key this call selects; defaults to startup `--actor`. |
 
-Every tool takes `repo`. Naming a different repository acts in that
-repository's workroom instead; the adapter is installed once and serves
-whatever repository a call names. Linked worktrees of one repository are
-one workroom, not several.
+Every tool takes both selectors. `repo` chooses a workroom and `agent` chooses
+an existing accessible signing key in it. A selector never creates a key or
+grants identity. An unavailable repository, inaccessible key, or actor absent
+from the effective roster refuses instead of falling back to the startup
+defaults. Linked worktrees of one repository are one workroom, not several.
+
+This is a custody boundary only when keys are access-gated secrets. The current
+development key model derives keys from actor names, so it does not yet enforce
+that separation; the selector must not be mistaken for a new trust grant.
 
 ## Example
 
