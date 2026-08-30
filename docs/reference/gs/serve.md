@@ -139,10 +139,13 @@ reads a signing key or appends anything.
 The record is judged on every durable act, not once per session. An adapter
 that found a good resident an hour ago still refuses the next act if the
 record has been rewritten since, and when a resident stops answering it
-reads the record once more before folding locally, so a rewrite landing
-mid-call cannot be answered by the local fold either. Only a record that is
-not there at all is absence, and a repository with none acts locally exactly
-as it did before residents existed.
+reads the record once more before folding locally. A rewrite landing
+mid-call refuses the local fallback only when that re-read cannot be
+trusted; a record that was removed, or replaced with one that still reads
+and names this workroom, leaves the transport loss an honest reason to fold
+locally, marked `degraded`. Only a record that is not there at all is
+absence, and a repository with none acts locally exactly as it did before
+residents existed.
 
 ## Loopback only
 
