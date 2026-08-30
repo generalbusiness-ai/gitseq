@@ -1,0 +1,94 @@
+{
+  "reference": "jsonata-js 2.0.6",
+  "port": "github.com/jsonata-go/jsonata/v206 at 599f35f32e5f",
+  "cases": [
+    {
+      "name": "fold arithmetic",
+      "expression": "event.qty + rows.stock_row.available",
+      "input": {"event":{"qty":2},"rows":{"stock_row":{"available":5}}},
+      "reference": 7,
+      "class": "portable"
+    },
+    {
+      "name": "array map",
+      "expression": "$map([1,2,3], function($v){$v*$v})",
+      "input": {},
+      "reference": [1,4,9],
+      "class": "portable"
+    },
+    {
+      "name": "array range",
+      "expression": "[1..5]",
+      "input": {},
+      "reference": [1,2,3,4,5],
+      "class": "portable"
+    },
+    {
+      "name": "decimal sum",
+      "expression": "$sum([0.1,0.2])",
+      "input": {},
+      "reference": 0.30000000000000004,
+      "class": "portable"
+    },
+    {
+      "name": "decimal round",
+      "expression": "$round(2.675,2)",
+      "input": {},
+      "reference": 2.68,
+      "class": "portable"
+    },
+    {
+      "name": "object key order",
+      "expression": "$keys({\"b\":1,\"a\":2})",
+      "input": {},
+      "reference": ["b","a"],
+      "class": "order-dependent",
+      "reason": "The language exposes object insertion order through $keys; this fold profile must not use that order as authority."
+    },
+    {
+      "name": "object each order",
+      "expression": "$each({\"b\":1,\"a\":2}, function($v,$k){$k})",
+      "input": {},
+      "reference": ["b","a"],
+      "class": "order-dependent",
+      "reason": "The reference follows insertion order, while the Go port exposes map iteration order; the fold profile rejects $each."
+    },
+    {
+      "name": "object spread order",
+      "expression": "$spread({\"b\":1,\"a\":2})",
+      "input": {},
+      "reference": [{"b":1},{"a":2}],
+      "class": "order-dependent",
+      "reason": "The reference spreads in insertion order, while the Go port exposes map iteration order; the fold profile rejects $spread."
+    },
+    {
+      "name": "object wildcard order",
+      "expression": "{\"b\":1,\"a\":2}.*",
+      "input": {},
+      "reference": [1,2],
+      "class": "order-dependent",
+      "reason": "Object wildcard traversal exposes implementation map order; the fold profile rejects object wildcard syntax."
+    },
+    {
+      "name": "wall clock",
+      "expression": "$now()",
+      "input": {},
+      "class": "environment-dependent",
+      "reason": "The reference reads wall-clock time; profile loading rejects $now."
+    },
+    {
+      "name": "random number",
+      "expression": "$random()",
+      "input": {},
+      "class": "environment-dependent",
+      "reason": "The reference reads process randomness; profile loading rejects $random."
+    },
+    {
+      "name": "random order",
+      "expression": "$shuffle([1,2,3,4])",
+      "input": {},
+      "class": "environment-dependent",
+      "reason": "The reference randomises array order; profile loading rejects $shuffle."
+    }
+  ]
+}
