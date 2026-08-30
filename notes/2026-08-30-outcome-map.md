@@ -2,35 +2,49 @@
 date: 2026-08-30
 status: candidate design; no UI implementation is authorized by this note
 origin: Hugh's discussion with planner about seeing top-level requests and the
-  work that flows from them, refined against a local interactive mock-up and
-  the current Gitseq projection
+  recorded relations around them, refined against a local interactive mock-up
+  and the current Gitseq projection
 ---
 
 # An outcome map for the work board
 
 The board answers which requests are open. It does not yet show the larger
 shape of the work: which requests began as operator-level outcomes, which
-requests were discovered while pursuing them, which decisions gated later
-work, and which attempts were replaced. That shape is present in the durable
-log, but it is distributed across thread views and provenance links.
+later requests cite them, which decisions were ratified before later work,
+and which attempts were retired. That shape is present in the durable log,
+but it is distributed across thread views and provenance links.
 
 Add a second presentation of the same board population: a horizontal,
 zoomable outcome map. Each card is one thread-level work item. Lines between
 cards render only relations the log records. Clicking a card selects its
-connected work flow; opening it replaces the map with the existing full-width
+connected component; opening it replaces the map with the existing full-width
 thread view. The current table remains the precise compact view.
 
 This is a presentation design. It changes no workroom kind, fold rule,
-authority boundary, or durable event shape. In particular, it does not infer
-conditions from prose and does not claim that a request is blocked when the
-projection cannot prove that.
+authority boundary, or durable event shape. It does change the documented
+layer-seven presentation contract. `docs/reference/architecture.md` currently
+defines exactly two screens, a sortable list and one thread spine, while
+`notes/2026-08-19-ui-simplification.md` deliberately rejects a presentation
+switch because another arrangement of the same rows can become configuration
+rather than information. The map reverses that decision only for one reason:
+it renders exact cross-thread relations that the list cannot show, rather than
+merely rearranging the rows. The first implementing head must update the UI
+layer entry in `docs/reference/architecture.md` in the same head and publish
+its candidate artifact. If the graph cannot demonstrate that added relational
+information, retain the two-screen contract.
+
+The layer-seven authority boundary remains unchanged. The browser may combine
+projected fields for presentation, but it may not name a relation the fold did
+not project. In particular, the map does not infer conditions from prose and
+does not claim that a request is blocked when the projection cannot prove
+that.
 
 ## The operator's question
 
 The map should make four questions cheap:
 
 1. What are the top-level outcomes in this population?
-2. What work flowed from each outcome, and through which recorded relation?
+2. Which later work is connected to each outcome by a recorded relation?
 3. Who or what does the next visible step wait on?
 4. Which branches are current, replaced, complete, or resting on reasoning
    that moved?
@@ -54,6 +68,8 @@ The card carries only information needed to scan the map:
   projection names nobody;
 - the request author and, when compactly available, its direct governing
   basis, such as a ratified proposal or another request;
+- whether it is a `root of this view`, and whether recorded bases exist outside
+  the visible context;
 - ordinary staleness or attention as a qualifier, without replacing the
   lifecycle state; and
 - an optional work-class label when that vocabulary exists.
@@ -72,14 +88,17 @@ the minimum recorded context needed to explain its relations.
 
 The focal nodes are the rows in the chosen population after search is
 applied. Several focal roots may occupy the leftmost column. A contextual
-ancestor, decision gate, or replacement may remain visible even when it is
-outside that population, but it must be marked `context` and must not be
+ancestor, decision gate, or superseded target may remain visible even when it
+is outside that population, but it must be marked `context` and must not be
 included in the population count.
 
-A thread is a root in this picture when it has no incoming displayed
-thread-to-thread relation. That does not mean it has no durable basis. A
-direct artifact or decision basis outside the displayed node classes is
-shown as a compact basis chip on the card or in its selection summary.
+A thread is a `root of this view` when it has no incoming displayed
+thread-to-thread relation. That is a layout fact, not a claim that the request
+is top-level or has no durable basis. The card must distinguish `no recorded
+basis` from `recorded basis outside this view`; a search-filtered later request
+must never acquire a misleading top-level label. A direct artifact or decision
+basis outside the displayed node classes is shown as a compact basis chip on
+the card or in its selection summary.
 
 ### Direction
 
@@ -110,63 +129,71 @@ recorded data, but they answer different questions.
 
 | Relation | Meaning in the map | Default line |
 | --- | --- | --- |
-| direct basis | a statement in the dependent thread directly rests on a statement in the basis thread | solid |
-| ratification gate | the dependent thread directly rests on a ratification act, or on a reviewed chain whose cross-thread gate is that act | dotted |
-| supersession | a recorded supersession replaces or retires work represented by another visible thread | dashed |
+| `rests on` | a statement in the later thread directly rests on a statement in the basis thread | solid |
+| `ratified by` | the direct basis is a ratify act, or a directly cited statement has projected `ratified_by` | dotted |
+| `superseded` | a supersede act directly names its retired target | dashed |
 
 The exact label appears when the line is hovered, focused, or selected. There
 are no permanent words on every line; on a dense graph they would cover the
 data they describe. Line style is repeated in the tooltip and legend, so the
 distinction never depends on colour alone.
 
-### Direct basis is the task-flow edge
+### Direct basis: `rests on`
 
-Most discovered work is not supersession. It is a child request resting on a
-parent request or on the promise under which the work was discovered. Those
-recorded provenance edges are the main flow of the map and determine its
-layers.
+Most cross-thread provenance is not supersession. It is a later request
+resting on an earlier request or on a promise. Those exact provenance edges
+are the main layout input.
 
-When a child rests on a promise, the collapsed line connects the promise's
-request thread to the child's request thread. The tooltip names the exact
-promise rather than pretending the child directly cited the parent request.
+When a later request rests on a promise, the collapsed line connects the
+promise's request thread to the later request thread. The tooltip names the
+exact promise rather than pretending the later request directly cited the
+earlier request.
 
 ### Ratification is usually a gate, not another card
 
 Ratification normally happens inside a thread and should not create a card.
-It becomes graph-visible when another thread directly cites the ratification
-act or the reviewed chain it authorizes. The collapsed line is styled as a
-ratification gate and its tooltip names the target statement, the ratification
-act, and the dependent event.
+It becomes graph-visible only when another thread directly cites the
+ratification act, or directly cites a statement whose projected `ratified_by`
+field is set. The collapsed line is styled as `ratified by`; its tooltip names
+the directly cited event, the projected ratification act, and the later event.
+Do not walk an act chain in the browser to reconstruct which ratification
+counts. The fold's projected `ratified_by` is the authority in force.
 
-This makes a useful distinction visible: a proposal or review may exist, but
-later work begins only after the recorded act that gave it force.
+This makes a useful distinction visible: a proposal or review may exist, while
+a directly recorded ratification fact may or may not connect later work to it.
 
-### Supersession is replacement history
+### Supersession names retirement, not replacement
 
-Supersession usually records withdrawal, retirement, or a replacement attempt;
-it does not usually represent a spawned subtask. It therefore supplies
-important context without becoming the primary layout relation.
+The projection types the target retired by a supersede act. It does not type
+another provenance basis as the replacement. The dashed edge may therefore
+run only from the supersede act's thread to its recorded target and say
+`superseded`. If the act rests on another statement, that remains an ordinary
+direct `rests on` edge. A replacement relation may be shown only when the fold
+projects `commitments.successor_request` for a linked refile.
 
-The current branch remains visually dominant. Replaced branches are subdued
-and their dashed line says who superseded what. A view control may hide
-supersession history after the graph semantics are established, but the
-default mock-up should keep it visible so its value can be judged with real
-work.
+The existing `soleCurrentSupersedeBasis` heuristic in
+`ui/src/lib/supersedeLinks.ts` must not be rendered as a durable fact. A sole
+other current basis may be evidence or governance rather than a replacement.
+
+Current work remains visually dominant. Retired work is subdued and its
+dashed line says exactly which act superseded which target. A view control may
+hide this history after the graph semantics are established, but the default
+mock-up should keep it visible so its value can be judged with real work.
 
 ## Layout
 
 The primary layout is horizontal:
 
 ```text
-top-level outcome  ->  planned or discovered work  ->  repairs  ->  landing
-top-level outcome  ->  another branch              ->  follow-up
-top-level outcome  ->  gated decision               ->  implementation
+view root  ->  later request  ->  repair request  ->  landing
+view root  ->  another recorded basis relation
+view root  ->  ratified statement  ->  implementation
 ```
 
 Use a deterministic layered layout. Recorded basis relations determine the
 earliest possible column. Supersession edges influence ordering within and
-between adjacent layers but do not drag a replacement history into the main
-flow when doing so would make the dependency order less clear.
+between adjacent layers but do not override the order established by direct
+`rests on` relations.
 
 The graph may become wider than the viewport. Provide pan, zoom, `fit`, and
 `reset`. `Fit` may run when the population first opens or changes; it must not
@@ -206,15 +233,14 @@ second, independent interpretation of which rows belong to a population.
 ## Selection and the thread transition
 
 A single click or keyboard activation selects a card and its connected
-component, dims unrelated cards, and opens a narrow selection rail. Selection
-does not change layout.
+component and dims unrelated cards. Selection does not change layout.
 
-The rail is for rapid comparison, not for the full thread. It shows the card
-fields, direct incoming and outgoing relations, exact edge labels, and an
-`Open full thread` action. Opening the full thread replaces the board content
-with the existing thread view at its current useful width. Back returns to
-the exact population, search, presentation, selection, zoom, and pan position
-where practical.
+The first implementation should try the existing full thread as the only
+detail surface. Activating a selected card opens that full-width thread; back
+returns to the exact population, search, presentation, selection, zoom, and
+pan position where practical. A narrow comparison rail is optional later,
+only if testing shows that direct thread navigation makes comparison too slow
+and the rail earns the width it consumes.
 
 An edge is itself focusable. Selecting it highlights its two endpoint cards
 and shows the same exact relation text available in its tooltip. Touch users
@@ -232,19 +258,22 @@ It can state:
 - whether nobody is named;
 - whether a promise, report, review, ratification, or merge-related event is
   present in the thread; and
-- which recorded bases and replacements connect the work.
+- which recorded bases and supersessions connect the work.
 
 It cannot currently prove:
 
 - that an actor is free to act merely because they are named;
 - that an unnamed row is blocked;
-- that one request must wait for another unless a recorded relation says so;
-- that prose in `body.conditions` names a dependency; or
+- that one request must wait for another merely because one rests on the
+  other;
+- that prose in `body.conditions` names a `rests on` relation; or
 - that age means blockage rather than neglect, priority, or deliberate delay.
 
-The visual must therefore use `waits on`, `not named`, and recorded state. It
-must not synthesize a `blocked` badge from graph position, age, conditions, or
-agent memory.
+The visual must therefore use `waits on`, `not named`, and recorded state. At
+the review frontier, `waiting_on` is set on only 4 of 20 live rows and is
+deliberately empty for ordinary open and awaiting-merge rows, so `not named`
+will be common and is not an error. The map must not synthesize a `blocked`
+badge from graph position, age, conditions, or agent memory.
 
 If durable execution blocking is later needed, design an optional explicit
 event-to-event relation with its own meaning and lifecycle. Do not overload
@@ -277,7 +306,7 @@ The implementation is acceptable only if these invariants hold:
 
 1. A card and all of its incident rendered relations enter and leave a filter
    atomically. Filtering cannot leave disconnected arrows.
-2. Selection, tooltip display, and rail opening do not move cards.
+2. Selection and tooltip display do not move cards.
 3. Auto-fit never overrides a manual view transform in the same graph.
 4. Every visible line resolves to one or more exact recorded relations.
 5. No relation is derived from conditions prose or agent memory.
@@ -290,25 +319,30 @@ The implementation is acceptable only if these invariants hold:
 10. A malformed or cyclic relation set produces a bounded warning and a
     usable partial graph, not a blank board.
 
-Rendering should stay bounded. Build the collapsed graph once per projection
-frontier, then filter and lay out the selected population. Avoid walking the
-full provenance graph separately for every card. The first implementation
-should measure the current workroom's open population and a deliberately
-dense fixture before selecting thresholds for edge aggregation or context
-limits.
+Rendering should stay bounded. At the review frontier, `/v0/status` is about
+30.7 MB and contains 14,695 provenance keys. Reuse
+`ui/src/lib/threads.ts`'s thread-membership rule: follow the first basis as a
+reply only until it crosses a commitment boundary. Build that thread index
+once per projection frontier, then construct the collapsed graph only for the
+selected population plus bounded direct context; do not materialize a graph
+of the whole log and do not walk provenance separately for every card. The
+first implementation should measure the current workroom population and a
+deliberately dense fixture before selecting thresholds for edge aggregation
+or context limits.
 
 ## Proposed implementation slices
 
 This note authorizes none of these slices. After adoption and review, file
-implementation requests in dependency order.
+implementation requests in recorded-basis order.
 
 1. **Graph projection.** Define thread nodes, exact collapsed relations,
    contextual inclusion, and deterministic fixtures. No drawing yet.
 2. **Read-only graph presentation.** Horizontal layout, cards, lines, labels,
    pan, zoom, fit, selection, and accessibility. Use the existing population
    and search state.
-3. **Navigation.** Selection rail, full-thread transition, and exact state
-   restoration on back.
+3. **Navigation.** Full-thread transition and exact state restoration on back.
+   Evaluate a selection rail only after the full-thread transition has been
+   tested as the sole detail surface.
 4. **Optional work-class reader.** Only after its vocabulary is independently
    adopted. Missing metadata remains ordinary.
 5. **Optional explicit blocking relation.** A separate design, only if the
@@ -325,8 +359,8 @@ Independent review should answer these questions against the exact note head:
 
 - Does the collapse from durable events to thread cards preserve the meaning
   and exact identity of every visible relation?
-- Are ratification and supersession visible where they add task-flow context
-  without turning the map back into an event transcript?
+- Are ratification and supersession visible where they add recorded-relation
+  context without turning the map back into an event transcript?
 - Can the chosen root and context rules make a focal row appear top-level in
   a misleading way?
 - Does the `waits on` presentation stay within what the projection proves?
@@ -335,4 +369,3 @@ Independent review should answer these questions against the exact note head:
 - Are layout, filter, focus, and navigation invariants precise enough to test?
 - Is any part of the design simpler to remove without weakening the
   operator's four questions?
-
