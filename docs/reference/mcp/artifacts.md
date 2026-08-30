@@ -2,8 +2,8 @@
 title: MCP artifacts
 summary: Page through live artifact bases at exact path strings.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e42417eb5b568cbd099571f99ef18dc10cf7ee5
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9627cf187f0a8002ea2c43861dd7cb208a09ce51
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35a8c246effe4f81fe54aac7ebd260f8fb3888d4
 ---
 
 # `artifacts`
