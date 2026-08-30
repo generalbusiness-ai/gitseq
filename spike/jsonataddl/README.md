@@ -1,10 +1,9 @@
 # JSONata and DDL application spike
 
-This spike loads one application profile from exactly two application files:
-[`inventory/application.sql`](inventory/application.sql) declares events,
-tables, named fold reads and write authority; and
-[`inventory/folds/inventory.jsonata`](inventory/folds/inventory.jsonata)
-defines the fold.
+This spike loads one application profile from one SQL file and its fold
+programs: [`inventory/application.sql`](inventory/application.sql) declares
+events, tables, views, named fold reads and write authority; the JSONata
+files under [`inventory/folds/`](inventory/folds/) define the folds.
 
 It demonstrates a deliberately small end-to-end path:
 
@@ -18,10 +17,22 @@ It demonstrates a deliberately small end-to-end path:
   variable and VDBE-op limits bound the surface;
 - the canonical `{meta,event,rows}` JSON encoding is capped at 24 KiB before
   the pinned JSONata 2.0.6 evaluator sees it;
-- validated inserts and upserts, decisions, facts and the interpreted frontier
-  commit atomically into a file-backed SQLite WAL database; and
+- validated inserts, upserts and deletes, their hidden per-table row
+  versions, decisions, facts and the interpreted frontier commit atomically
+  into a file-backed SQLite WAL database;
 - a read-only, authorizer-limited SQL connection returns bounded rows together
-  with the exact verified and interpreted frontiers.
+  with the exact verified and interpreted frontiers; and
+- a historical read runs the same application SQL — including nested declared
+  views — at any interpreted position, through a dedicated read-only
+  connection whose temporary schema shadows the application tables and views
+  with the row versions visible at that position.
+
+Crash recovery is tested by sweep: a recording VFS captures every durable
+mutation the projection writer makes, each write boundary (and each half
+write) is replayed onto fresh files, and every recovered image must be
+exactly one clean prefix projection whose frontier names that prefix.
+[`RECOVERY.md`](RECOVERY.md) states the interruption points, their observed
+recovery behaviour, and the crash model's limits.
 
 Run the focused proof with `go test ./spike/jsonataddl`. Given a repository
 already bound to the fixture's application identity, the small query program
@@ -51,10 +62,9 @@ could expand much further, but that profile is outside this closed spike.
 ## Deliberate omissions
 
 This is not the resident or the general application platform. It does not
-implement a general SQL parser, `MANY` or historical reads, typed version
-relations, projection-cache reuse or suffix replay, crash failpoints, HTTP/UI
-or event submission, query concurrency slots, a general query-work budget, or
-the complete JSONata compatibility corpus. The evaluator wrapper excludes the
+implement a general SQL parser, `MANY` reads, projection-cache reuse or
+suffix replay, HTTP/UI or event submission, query concurrency slots, a
+general query-work budget, or the complete JSONata compatibility corpus. The evaluator wrapper excludes the
 known ambient functions and bounds depth, ranges, encoded input and output,
 but it does not yet provide deterministic evaluation-step and allocation
 bounds or settle all map-order and numeric edge cases. Those omitted contracts
