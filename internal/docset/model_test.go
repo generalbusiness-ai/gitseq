@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"sync"
+	"strconv"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
@@ -23,138 +23,108 @@ import (
 // guard.
 //
 // So the graph is replayed instead. Each distinct act named in front matter
-// gets a stand-in artifact in a scratch workroom, each page gets an artifact
-// resting on the stand-ins for the acts it names, and the gates then read the
-// same marks — unable_to_flare, stale — that the projection shows for the real
-// record. What is under test is the declared graph and the fold's treatment of
-// it, which is exactly what a reader relies on.
+// gets a stand-in artifact, each page gets an artifact resting on the
+// stand-ins for the acts it names, and the gates then read the same marks —
+// unable_to_flare, stale — that the projection shows for the real record. What
+// is under test is the declared graph and the fold's treatment of it, which is
+// exactly what a reader relies on.
+//
+// The replay runs through workroom.Fold on records built in memory. Those
+// marks are decided by the fold over the record sequence, not by the signing
+// and storage underneath it, so a Git-backed workspace per test bought no
+// coverage the fold cannot give — only signing, repository copies and reopen
+// time. TestGateGitBackedWorkroomShowsTheSameMarks keeps one real signed
+// workroom end to end, so the wiring from an appended act to these projection
+// marks stays proven against the same storage the real record uses.
+
+// modelActor signs every modelled record. One actor is enough: the fold lets
+// an actor supersede its own statements, which is all retire needs.
+const modelActor = "actor:operator"
 
 type model struct {
-	workspace *app.Workspace
-	// standIn maps a declared act identifier to the scratch event standing in
-	// for it.
+	// records is the modelled log, in append order, ready for workroom.Fold.
+	records []workroom.Record
+	// standIn maps a declared act identifier to the record standing in for it.
 	standIn map[string]string
-	// artifact maps a page path to the scratch artifact representing it.
+	// artifact maps a page path to the record representing it.
 	artifact map[string]string
-	// seed is the workroom's first record: the one basis every stand-in rests
-	// on, and a resolvable event for the control case.
+	// seed is the modelled log's first record: the one basis every stand-in
+	// rests on, and a resolvable event for the control case.
 	seed string
-	// dir is the repository the model lives in.
-	dir string
 }
-
-// Signing every event is the expensive part, and the flare gate needs one
-// workroom per act it retires. So the graph is built once and copied: event
-// identifiers are derived from content, so a copy has the same identifiers as
-// the original and the maps carry over unchanged.
-var (
-	templateOnce sync.Once
-	templateDir  string
-	template     *model
-	templateErr  error
-)
 
 func TestMain(m *testing.M) {
 	code := testgit.Run(m)
-	for _, directory := range []string{templateDir, buildDir} {
-		if directory != "" {
-			_ = os.RemoveAll(directory)
-		}
+	if buildDir != "" {
+		_ = os.RemoveAll(buildDir)
 	}
 	os.Exit(code)
 }
 
-// modelCopy returns a private copy of the modelled set, ready to be superseded
-// in without disturbing any other test.
-func modelCopy(t *testing.T, pages []Page) *model {
-	t.Helper()
-	requireTool(t, "git")
-	templateOnce.Do(func() {
-		directory, err := os.MkdirTemp("", "docset-model")
-		if err != nil {
-			templateErr = err
-			return
-		}
-		templateDir = directory
-		template = buildModelIn(t, filepath.Join(directory, "room"), pages)
-	})
-	if templateErr != nil {
-		t.Fatal(templateErr)
-	}
-	destination := filepath.Join(t.TempDir(), "room")
-	if err := os.CopyFS(destination, os.DirFS(template.dir)); err != nil {
-		t.Fatal(err)
-	}
-	workspace, err := app.Open(context.Background(), destination)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &model{workspace: workspace, standIn: template.standIn, artifact: template.artifact, seed: template.seed, dir: destination}
-}
-
+// buildModel replays the declared graph as in-memory records. Building from
+// scratch per test is cheap without signing, and gives every test its own
+// records so parallel subtests never share a backing array.
 func buildModel(t *testing.T, pages []Page) *model {
 	t.Helper()
-	requireTool(t, "git")
-	return buildModelIn(t, filepath.Join(t.TempDir(), "room"), pages)
-}
-
-func buildModelIn(t *testing.T, directory string, pages []Page) *model {
-	t.Helper()
-	ctx := context.Background()
-	if err := os.MkdirAll(directory, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if output, err := exec.Command("git", "init", "-q", directory).CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v: %s", err, output)
-	}
-	workspace, seed, err := app.Init(ctx, directory, "operator", 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	built := &model{workspace: workspace, standIn: map[string]string{}, artifact: map[string]string{}, seed: seed.ID, dir: directory}
+	built := &model{standIn: map[string]string{}, artifact: map[string]string{}, seed: "seed"}
+	// The fold requires the first record to self-seed the operator roster, the
+	// same founding record app.Init writes.
+	built.append(t, built.seed, workroom.SchemaState, workroom.State{
+		Kind: workroom.KindRoster, Text: "founding operator",
+		Body: map[string]string{"actor": modelActor, "kind": "human", "name": "Operator", "role": "operator"},
+	})
 	for index, act := range declaredActs(pages) {
-		submission, err := workspace.Act(ctx, "operator", app.Act{
-			Verb: app.VerbState, Kind: workroom.KindArtifact,
-			Text:           "stands in for " + act,
-			Body:           map[string]string{"path": "governed/" + itoa(index), "commit": fakeCommit(act)},
-			RestsOn:        []string{seed.ID},
-			IdempotencyKey: "act-" + itoa(index),
-		})
-		if err != nil {
-			t.Fatalf("stand-in for %s: %v", act, err)
-		}
-		built.standIn[act] = submission.Record.ID
+		id := "act-" + strconv.Itoa(index)
+		built.append(t, id, workroom.SchemaState, workroom.State{
+			Kind: workroom.KindArtifact,
+			Text: "stands in for " + act,
+			Body: map[string]string{"path": "governed/" + strconv.Itoa(index), "commit": fakeCommit(act)},
+		}, built.seed)
+		built.standIn[act] = id
 	}
 	for index, page := range pages {
 		bases := make([]string, 0, len(page.RestsOn))
 		for _, act := range page.RestsOn {
 			bases = append(bases, built.standIn[act])
 		}
-		submission, err := workspace.Act(ctx, "operator", app.Act{
-			Verb: app.VerbState, Kind: workroom.KindArtifact,
-			Text:           page.Path,
-			Body:           map[string]string{"path": page.Path, "commit": fakeCommit(page.Path)},
-			RestsOn:        bases,
-			IdempotencyKey: "page-" + itoa(index),
-		})
-		if err != nil {
-			t.Fatalf("page artifact for %s: %v", page.Path, err)
-		}
-		built.artifact[page.Path] = submission.Record.ID
+		id := "page-" + strconv.Itoa(index)
+		built.append(t, id, workroom.SchemaState, workroom.State{
+			Kind: workroom.KindArtifact,
+			Text: page.Path,
+			Body: map[string]string{"path": page.Path, "commit": fakeCommit(page.Path)},
+		}, bases...)
+		built.artifact[page.Path] = id
 	}
 	return built
 }
 
-// artifacts returns the current projection's artifacts by event.
-func (m *model) artifacts(t *testing.T) map[string]workroom.Artifact {
+// append encodes one payload and adds it to the modelled log.
+func (m *model) append(t *testing.T, id, schema string, payload any, restsOn ...string) {
 	t.Helper()
-	snapshot, err := m.workspace.Snapshot(context.Background())
+	encoded, err := workroom.Encode(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := make(map[string]workroom.Artifact, len(snapshot.Projection.Artifacts))
-	for _, artifact := range snapshot.Projection.Artifacts {
+	m.records = append(m.records, workroom.Record{
+		ID: id, Actor: modelActor, Schema: schema, RestsOn: restsOn, Payload: encoded,
+	})
+}
+
+// artifacts folds the modelled log and returns the projection's artifacts by
+// event. The fold reports a refused record as a decision rather than an error,
+// so every modelled record's decision is checked here: a silently ineffective
+// retirement would otherwise read as a page that never flares.
+func (m *model) artifacts(t *testing.T) map[string]workroom.Artifact {
+	t.Helper()
+	projection := workroom.Fold(m.records)
+	for _, record := range m.records {
+		decision, ok := projection.Decision(record.ID)
+		if !ok || decision.Verdict != workroom.Effective {
+			t.Fatalf("modelled record %s is not effective: %s", record.ID, decision.Reason)
+		}
+	}
+	found := make(map[string]workroom.Artifact, len(projection.Artifacts))
+	for _, artifact := range projection.Artifacts {
 		found[artifact.Event] = artifact
 	}
 	return found
@@ -168,12 +138,9 @@ func (m *model) retire(t *testing.T, act string) {
 	if !ok {
 		t.Fatalf("no stand-in for %s", act)
 	}
-	if _, err := m.workspace.Act(context.Background(), "operator", app.Act{
-		Verb: app.VerbSupersede, Target: target, Text: "the world moved under " + act,
-		IdempotencyKey: "retire",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	m.append(t, "retire", workroom.SchemaSupersede, workroom.Supersede{
+		Target: target, Text: "the world moved under " + act,
+	}, target)
 }
 
 // declaredActs lists every distinct act named across the set, in stable order.
@@ -212,14 +179,71 @@ func fakeCommit(seed string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func itoa(value int) string {
-	if value == 0 {
-		return "0"
+// The gates above trust that the marks workroom.Fold shows for in-memory
+// records are the marks a real Git-backed workroom shows for its signed,
+// appended record. This case proves that wiring end to end: one initialized
+// repository, acts submitted through the application, the repository reopened
+// from disk, and the same marks — stale on a page whose basis was retired,
+// unable_to_flare on a page citing nothing — read back from its snapshot.
+func TestGateGitBackedWorkroomShowsTheSameMarks(t *testing.T) {
+	requireTool(t, "git")
+	ctx := context.Background()
+	directory := filepath.Join(t.TempDir(), "room")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	var digits []byte
-	for value > 0 {
-		digits = append([]byte{byte('0' + value%10)}, digits...)
-		value /= 10
+	if output, err := exec.Command("git", "init", "-q", directory).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
 	}
-	return string(digits)
+	workspace, seed, err := app.Init(ctx, directory, "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := func(key, text string, restsOn ...string) string {
+		submission, err := workspace.Act(ctx, "operator", app.Act{
+			Verb: app.VerbState, Kind: workroom.KindArtifact,
+			Text:           text,
+			Body:           map[string]string{"path": "docs/" + key + ".md", "commit": fakeCommit(key)},
+			RestsOn:        restsOn,
+			IdempotencyKey: key,
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", key, err)
+		}
+		return submission.Record.ID
+	}
+	basis := file("basis", "the behaviour a page describes", seed.ID)
+	anchored := file("anchored", "a page resting on that behaviour", basis)
+	unbridged := file("unbridged", "a page citing nothing")
+	if _, err := workspace.Act(ctx, "operator", app.Act{
+		Verb: app.VerbSupersede, Target: basis, Text: "the world moved",
+		IdempotencyKey: "retire",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := app.Open(ctx, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := reopened.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts := make(map[string]workroom.Artifact, len(snapshot.Projection.Artifacts))
+	for _, artifact := range snapshot.Projection.Artifacts {
+		artifacts[artifact.Event] = artifact
+	}
+	if got := artifacts[anchored]; !got.Stale && !got.DescribesSupersededWorld {
+		t.Errorf("retiring the basis did not flare the page resting on it: %+v", got)
+	}
+	if got := artifacts[anchored]; got.UnableToFlare {
+		t.Errorf("a page citing a real basis is marked unable to flare: %+v", got)
+	}
+	if !artifacts[unbridged].UnableToFlare {
+		t.Errorf("a page citing nothing is not marked unable to flare: %+v", artifacts[unbridged])
+	}
+	if !artifacts[basis].Retired {
+		t.Errorf("the superseded basis is not marked retired: %+v", artifacts[basis])
+	}
 }
