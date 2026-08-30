@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1ff95bf4466a1a0036f14e2ce909eca109f35ff7"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:148d57529d3abbafadec690140b646de4d8476a4","text":"Retired unclaimed: ox-builder has no live session; replacement addressed to codex at operator direction (2026-08-30, per #14486).","cited_ok":false,"expectation":{"request":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:148d57529d3abbafadec690140b646de4d8476a4","promise":"absent","completion":"absent"}}
