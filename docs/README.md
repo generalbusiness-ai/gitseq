@@ -65,6 +65,7 @@ Read in this order if you are new:
   [actors](reference/gs/actors.md),
   [state](reference/gs/state.md),
   [batch](reference/gs/batch.md),
+  [publish](reference/gs/publish.md),
   [review](reference/gs/review.md),
   [merge](reference/gs/merge.md),
   [ratify](reference/gs/ratify.md),

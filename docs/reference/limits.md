@@ -63,6 +63,29 @@ The bound belongs to Gitseq's resident. A program embedding the kernel
 directly may leave it unset, which means an unbounded queue; that is the
 embedding opt-out, not a posture Gitseq takes.
 
+## Published paths
+
+`gs publish` applies separate bounds before it queues a new batch of
+publication facts:
+
+| Limit | Value |
+|---|---|
+| Tracked `.gitseq` file | 64 KiB and valid UTF-8 |
+| Watch globs | 64 |
+| Branch ref | 1,024 bytes, valid UTF-8, with no control bytes |
+| Governing basis | 1,024 bytes, valid UTF-8, with no control bytes |
+| Published path | 4,096 bytes, valid UTF-8, with no control bytes |
+| Watched paths in one published head | 256 |
+| Attempts before an entry is abandoned | 3 |
+| Batches in one actor's outbox | 16 |
+
+A bad ref, basis, or configuration refuses the command. One bad path is
+reported while the other watched paths publish; exceeding the 256-path ceiling
+refuses the whole new batch before any act is queued and before an outbox file
+exists. The repository-private outbox and frontier are each bounded to 4 MiB,
+applied before the file is read rather than after. See
+[`gs publish`](gs/publish.md) for the derivation and reconciliation rules.
+
 ## Genesis sequencer key
 
 Genesis pins exactly one canonical `ssh-ed25519` sequencer public key:
