@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/docset","body":{"commit":"977242e22ea7104ddacac72cea02d6573cf1a069","path":"internal/docset"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1dfce57c591413fb367c9eb8f493f429e959f5f3","text":"Merge retired a covered predecessor; the successor is at internal/docset."}
