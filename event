@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at docs/reference/performance.md","body":{"commit":"95c2b1e33edff789a76e037bce144a898392899d","path":"docs/reference/performance.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:00925ae6c09fb0b8e2a72e84c22ca3488bc9534d","text":"Merge retired a covered predecessor; the successor is at docs/reference/mcp/reassign_if_unclaimed.md."}
