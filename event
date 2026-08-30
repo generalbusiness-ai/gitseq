@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review exact head 1402387af84055d3bf3504df29aaafcc65c6df81, including the requested architecture, security, simplification, recovery-seam, mutation-proof, scope, and documentation checks. I will not merge it."}
+{"kind":"promise","text":"I will independently review exact head 74cf0243bda3e3266adf9d3d7e5fa7b8eff8f70f, including the requested architecture, security, simplification, coverage-equivalence, mutation-proof, scope, and timing checks. I will not merge it."}
