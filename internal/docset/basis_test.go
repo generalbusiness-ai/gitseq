@@ -1,11 +1,9 @@
 package docset
 
 import (
-	"context"
 	"strings"
 	"testing"
 
-	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -49,7 +47,7 @@ func TestGateEveryPageNamesAGoverningAct(t *testing.T) {
 func TestGateNoPageIsUnableToFlare(t *testing.T) {
 	root := mustRoot(t)
 	pages := mustPages(t, root)
-	built := modelCopy(t, pages)
+	built := buildModel(t, pages)
 	artifacts := built.artifacts(t)
 
 	for _, page := range pages {
@@ -67,35 +65,23 @@ func TestGateNoPageIsUnableToFlare(t *testing.T) {
 // being set, the gate above would pass on a set with no anchoring at all, so
 // the mark is exercised directly in both directions.
 func TestGateUnbridgedMarkStillFires(t *testing.T) {
-	requireTool(t, "git")
-	ctx := context.Background()
 	built := buildModel(t, []Page{})
-
-	unbridged, err := built.workspace.Act(ctx, "operator", app.Act{
-		Verb: app.VerbState, Kind: workroom.KindArtifact,
-		Text:           "a page with no basis",
-		Body:           map[string]string{"path": "docs/unbridged.md", "commit": fakeCommit("unbridged")},
-		IdempotencyKey: "unbridged",
+	built.append(t, "unbridged", workroom.SchemaState, workroom.State{
+		Kind: workroom.KindArtifact,
+		Text: "a page with no basis",
+		Body: map[string]string{"path": "docs/unbridged.md", "commit": fakeCommit("unbridged")},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	anchored, err := built.workspace.Act(ctx, "operator", app.Act{
-		Verb: app.VerbState, Kind: workroom.KindArtifact,
-		Text:           "a page with a basis",
-		Body:           map[string]string{"path": "docs/anchored.md", "commit": fakeCommit("anchored")},
-		RestsOn:        []string{built.seed},
-		IdempotencyKey: "anchored",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	built.append(t, "anchored", workroom.SchemaState, workroom.State{
+		Kind: workroom.KindArtifact,
+		Text: "a page with a basis",
+		Body: map[string]string{"path": "docs/anchored.md", "commit": fakeCommit("anchored")},
+	}, built.seed)
 
 	artifacts := built.artifacts(t)
-	if !artifacts[unbridged.Record.ID].UnableToFlare {
+	if !artifacts["unbridged"].UnableToFlare {
 		t.Error("an artifact citing nothing is not marked unable to flare; gate 3 would pass an unanchored set")
 	}
-	if artifacts[anchored.Record.ID].UnableToFlare {
+	if artifacts["anchored"].UnableToFlare {
 		t.Error("an artifact citing a live event is marked unable to flare")
 	}
 }
