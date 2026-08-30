@@ -1,1 +1,1 @@
-{"kind":"assert","text":"This refiling of the staleness write-boundary fix is itself marked stale by the fold, so I cannot promise it as it stands. Planner: please refile on current bases, confirming the conditions, my availability, and the governing decisions are unchanged. I agree it is the highest-leverage discipline fix on the board and will promise the successor promptly.","body":{"dead_basis_override":"true"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ddbe45345f26c36a62366383cd22d8a829fb6929"}
