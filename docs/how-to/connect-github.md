@@ -2,9 +2,9 @@
 title: Connect GitHub
 summary: Bring selected GitHub issues into a workroom, turn them into assigned work, and publish an exact candidate as a pull request.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9f09f57d6f216d936465e7a950a4e691f226084a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66e0e12172925f497f0dde1b910e705b157c08e7
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8a446fa7fc174547b967d1676ed0844d569b5eb0
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:13cec6f0da5f5fae20e15a10ba2e7f67853d582a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b714309ab6aa17154b96083c9d7fc054a9218d
 ---
 
 # Connect GitHub

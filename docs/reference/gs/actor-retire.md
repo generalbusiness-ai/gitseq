@@ -2,7 +2,7 @@
 title: gs actor-retire
 summary: Retire a principal's membership and delete its key from local custody.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:34c5f09e2f5bc4e4fa5acb7404ae9b7df4808e52
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b714309ab6aa17154b96083c9d7fc054a9218d
 ---
 
 # `gs actor-retire`
