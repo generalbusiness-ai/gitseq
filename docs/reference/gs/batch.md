@@ -2,7 +2,7 @@
 title: gs batch
 summary: Append an ordered chain of durable acts, loading and verifying the log once.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ce1c5c256729043ed29e41058e4e6ffb1085229
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9936cbb28db1642a5cdabd2f787fb881fb33dbf2
 ---
 
 # `gs batch`

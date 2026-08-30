@@ -2,8 +2,8 @@
 title: Keep decision records
 summary: Record a decision as an ordinary file, adopt it with a ratified proposal, get it reviewed and merged, then revise or replace it.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f603226baf4c1a1fd03d5b729bee3f0cf21623f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6daf5f618393abe10c89c2bdf2e9743be9f5b336
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b714309ab6aa17154b96083c9d7fc054a9218d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c2e4a75812b8ad4ed6e79a69998728f3e317e415
 ---
 

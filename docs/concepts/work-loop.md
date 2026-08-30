@@ -2,7 +2,7 @@
 title: The work loop
 summary: How promises become exact artifacts, independently approved merges, or explicit reports.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2edd696b01e4ce953cf31194eb1a3dbb67e9b56
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
 ---
 
 # The work loop

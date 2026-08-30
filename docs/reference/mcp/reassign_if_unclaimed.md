@@ -3,7 +3,7 @@ title: MCP reassign_if_unclaimed
 summary: Guardedly retire an unclaimed request and publish its replacement.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a27668b9112717eafde2516d16387d8d50858e87
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dcf8b2410cd9ad8bca7e9650bfbcceda2659c5f8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
 ---
 
 # `reassign_if_unclaimed`

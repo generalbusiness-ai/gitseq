@@ -2,14 +2,11 @@
 title: Performance evidence
 summary: Measured dependency fan-out, append cost and resident-memory evidence.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f0047ba0e5d25ad1f9620bf1428a651f37e1a302
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:86288a0f149fa39592758bc97ab422b994f2dcb8
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f1569302953f2b46ed91f78414538b5b80454768
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f3a67e0c4d3a06c97c1bf8fa08250af6a77e3977
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f713bdb87c3ddc83f977c5388d2d771ddebbda9a
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abba189910f0cc6a1a737acca890fefe1bb07664
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a097018a3e48d083684443824d3f864755be8f1
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5f629f7a8a8da3a23adcbd8c91df89a722d698ef
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94310c5a430a5f66bf0fd097c93900e1dc5715ec
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:56c0e84d7115c2695fb92a8715268d42aedba8f7
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:937f18e9dbadaec1f5458d84254197f42c06fd63
 ---
 

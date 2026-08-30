@@ -2,10 +2,10 @@
 title: Run a work loop
 summary: Claim work, publish its exact artifact, get it reviewed, and close it by merge or explicit report.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94fcda5debd84534bcc09c45e4645f236f72d73e
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58cab6e627b7bca241a69e6b4a8431b5e95d997e
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66d4d0fccf5ed0fa0a96ce0a396fba92a6e4b3a5
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b049e82976c52fcfe304234c7346e5b85d8cf5c
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c429ad207e7341afababd58e65d542547e43fb35
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a5bb9becc97d3ae601879a02b19923a2194811e
 ---
 
 # Run a work loop
