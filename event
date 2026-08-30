@@ -1,1 +1,1 @@
-{"kind":"propose","text":"Adopt the decision recorded at notes/2026-08-31-merged-head-commitment-reconciliation.md at commit 6133831facfa4221e54de082556955abbd6d627c: surface Git incorporation as bounded advisory evidence, preserve satisfaction through performer report plus requester ratification, and add no automatic merge-wide closure or artifact retirement."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:69f7a223787bcb526921d486db5f657e187c00b9"}
