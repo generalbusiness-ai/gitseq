@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/residentclient","body":{"commit":"40bac77a33aa273fddf76cca5e5dbf8284cff2a7","path":"internal/residentclient"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1f0c8f8f8a522c586eadbde721cdb25bad8abe96","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/serve.md."}
