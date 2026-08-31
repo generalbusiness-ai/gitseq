@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"The fold accepts structurally valid carried testimony as non-authoritative current accounting and excludes it from succession debt.","body":{"commit":"44d8d59f368082ec19fec003497fc3d39306570d","path":"internal/workroom/fold.go"}}
+{"kind":"artifact","text":"Fold tests verify carried liveness, zero predecessor and debt projection, truthful status, and rejection of a carried commitment.","body":{"commit":"44d8d59f368082ec19fec003497fc3d39306570d","path":"internal/workroom/fold_test.go"}}
