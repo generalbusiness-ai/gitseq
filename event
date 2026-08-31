@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Unit coverage proves exact-candidate and target-main-ancestor wider artifacts are carried rather than predecessors or non-target candidates; both ancestry mutations fail.","body":{"commit":"44d8d59f368082ec19fec003497fc3d39306570d","path":"cmd/gs/succession_test.go"}}
+{"kind":"artifact","text":"End-to-end merge coverage verifies carried receipt bytes, no wider retirement, no false debt or retirement status, and the oversized candidate-head arm.","body":{"commit":"44d8d59f368082ec19fec003497fc3d39306570d","path":"cmd/gs/main_test.go"}}
