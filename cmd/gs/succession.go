@@ -3,18 +3,16 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -22,6 +20,22 @@ type mergeChange struct {
 	status string
 	old    string
 	new    string
+}
+
+func sharedChanges(changes []mergeChange) []mergeplan.Change {
+	shared := make([]mergeplan.Change, len(changes))
+	for index, change := range changes {
+		shared[index] = mergeplan.Change{Status: change.status, Old: change.old, New: change.new}
+	}
+	return shared
+}
+
+func localChanges(changes []mergeplan.Change) []mergeChange {
+	local := make([]mergeChange, len(changes))
+	for index, change := range changes {
+		local[index] = mergeChange{status: change.Status, old: change.Old, new: change.New}
+	}
+	return local
 }
 
 // mergeChanges reads the merge commit rather than the candidate branch. That
@@ -61,32 +75,11 @@ func validateMergeChangePaths(changes []mergeChange) error {
 }
 
 func parseMergeChanges(raw string) ([]mergeChange, error) {
-	fields := strings.Split(raw, "\x00")
-	if len(fields) != 0 && fields[len(fields)-1] == "" {
-		fields = fields[:len(fields)-1]
+	shared, err := mergeplan.ParseChanges(raw)
+	if err != nil {
+		return nil, errMalformedDiff
 	}
-	var changes []mergeChange
-	for position := 0; position < len(fields); {
-		status := fields[position]
-		position++
-		if status == "" || position >= len(fields) {
-			return nil, errMalformedDiff
-		}
-		change := mergeChange{status: status, new: fields[position]}
-		position++
-		if status[0] == 'R' || status[0] == 'C' {
-			change.old = change.new
-			if position >= len(fields) {
-				return nil, errMalformedDiff
-			}
-			change.new = fields[position]
-			position++
-		} else if status[0] == 'D' {
-			change.old, change.new = change.new, ""
-		}
-		changes = append(changes, change)
-	}
-	return changes, nil
+	return localChanges(shared), nil
 }
 
 var errMalformedDiff = errors.New("malformed NUL-delimited merge diff")
@@ -121,106 +114,27 @@ const (
 // was withdrawn. Historical unmaintainable paths are ignored; state@1 and
 // later prevent any more from entering the effective set.
 func planSuccession(projection workroom.Projection, changes []mergeChange, candidates map[string]successionCandidate) successionPlan {
-	var live []workroom.Artifact
-	for _, artifact := range projection.Artifacts {
-		if artifact.Retired || artifact.Path == "." || strings.Contains(artifact.Path, ",") {
-			continue
-		}
-		live = append(live, artifact)
-	}
-	published := map[string]bool{}
-	retire := map[string]string{}
-	var leftLive map[string]mergeLeftLive
-	if candidates != nil {
-		leftLive = make(map[string]mergeLeftLive)
-	}
-
-	covering := func(path string, includeExact bool) []workroom.Artifact {
-		var found []workroom.Artifact
-		for _, artifact := range live {
-			if artifact.Path == path {
-				if includeExact {
-					found = append(found, artifact)
-				}
-				continue
+	sharedCandidates := make(map[string]mergeplan.Candidate, len(candidates))
+	for event, candidate := range candidates {
+		if candidate.predecessor {
+			sharedCandidates[event] = mergeplan.Candidate{Class: mergeplan.ClassInTargetPredecessor}
+		} else {
+			class := mergeplan.ClassAbandoned
+			if candidate.leftLive.Class == leftLiveSibling {
+				class = mergeplan.ClassProtectedSibling
 			}
-			if strings.HasPrefix(path, strings.TrimSuffix(artifact.Path, "/")+"/") {
-				found = append(found, artifact)
-			}
-		}
-		return found
-	}
-	// The sentinel is emptiness, never the fallback string. An earlier form
-	// seeded the winner with the changed path, so a narrow artifact sitting at
-	// exactly that path left `winner == fallback` true and the next artifact
-	// won by that arm whatever the comparison said — the wider-path rule was
-	// unreachable, and disabling it changed no result anywhere.
-	widest := func(artifacts []workroom.Artifact, fallback string) string {
-		winner := ""
-		for _, artifact := range artifacts {
-			if winner == "" || widerPath(artifact.Path, winner) {
-				winner = artifact.Path
-			}
-		}
-		if winner == "" {
-			return fallback
-		}
-		return winner
-	}
-	assign := func(artifact workroom.Artifact, successor string) {
-		if candidate, classified := candidates[artifact.Event]; classified && !candidate.predecessor {
-			leftLive[artifact.Event] = candidate.leftLive
-			return
-		}
-		current, exists := retire[artifact.Event]
-		if !exists || current == "" || (successor != "" && widerPath(successor, current)) {
-			retire[artifact.Event] = successor
+			sharedCandidates[event] = mergeplan.Candidate{Class: class, LeftLive: mergeplan.LeftLive{Class: candidate.leftLive.Class, Commitment: candidate.leftLive.Commitment}}
 		}
 	}
-	landed := func(path string) {
-		covers := covering(path, true)
-		winner := widest(covers, path)
-		published[winner] = true
-		for _, artifact := range covers {
-			assign(artifact, winner)
-		}
+	shared := mergeplan.PlanSuccession(projection, sharedChanges(changes), sharedCandidates)
+	leftLive := make(map[string]mergeLeftLive, len(shared.LeftLive))
+	for event, left := range shared.LeftLive {
+		leftLive[event] = mergeLeftLive{Class: left.Class, Commitment: left.Commitment}
 	}
-	removed := func(path string) {
-		// An artifact at the removed file is gone. A directory which covered it
-		// survives with changed contents and therefore receives a successor.
-		for _, artifact := range covering(path, true) {
-			if artifact.Path == path {
-				assign(artifact, "")
-			}
-		}
-		covers := covering(path, false)
-		if len(covers) == 0 {
-			return
-		}
-		winner := widest(covers, path)
-		published[winner] = true
-		for _, artifact := range covers {
-			assign(artifact, winner)
-		}
+	if candidates == nil {
+		leftLive = nil
 	}
-
-	for _, change := range changes {
-		switch change.status[0] {
-		case 'D':
-			removed(change.old)
-		case 'R':
-			removed(change.old)
-			landed(change.new)
-		default:
-			landed(change.new)
-		}
-	}
-	paths := make([]string, 0, len(published))
-	for path := range published {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
-	return successionPlan{publish: paths, retire: retire, changedPaths: mergeChangedPaths(changes), leftLive: leftLive}
+	return successionPlan{publish: shared.Publish, retire: shared.Retire, changedPaths: shared.ChangedPaths, leftLive: leftLive}
 }
 
 // mergeChangedPaths seals the complete path set from the diff: both sides of
@@ -228,21 +142,7 @@ func planSuccession(projection workroom.Projection, changes []mergeChange, candi
 // addition or modification. A set makes repeated paths harmless; sorting makes
 // the JSON stable across Git's output order and retries.
 func mergeChangedPaths(changes []mergeChange) []string {
-	set := make(map[string]bool)
-	for _, change := range changes {
-		if change.old != "" {
-			set[change.old] = true
-		}
-		if change.new != "" {
-			set[change.new] = true
-		}
-	}
-	paths := make([]string, 0, len(set))
-	for path := range set {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
-	return paths
+	return mergeplan.ChangedPaths(sharedChanges(changes))
 }
 
 // successionPredecessors classifies every live artifact rather than silently
@@ -252,52 +152,20 @@ func mergeChangedPaths(changes []mergeChange) []string {
 // left live and the sealed receipt says whether an unsettled durable
 // commitment protects it or it is abandoned.
 func successionPredecessors(ctx context.Context, checkout string, projection workroom.Projection, changes []mergeChange, targetPreHead, candidate string) map[string]successionCandidate {
-	classified := make(map[string]successionCandidate)
-	covered := coveredArtifacts(projection, changes)
-	protected := protectionIndex(projection, covered)
-	byCommit := make(map[string]bool)
-	for _, artifact := range covered {
-		if artifact.Commit == candidate {
-			classified[artifact.Event] = successionCandidate{predecessor: true}
-			continue
-		}
-		ancestor := false
-		if artifact.Commit != "" {
-			var checked bool
-			ancestor, checked = byCommit[artifact.Commit]
-			if !checked {
-				_, err := git(ctx, checkout, "merge-base", "--is-ancestor", artifact.Commit, targetPreHead)
-				ancestor = err == nil
-				byCommit[artifact.Commit] = ancestor
-			}
-		}
-		if ancestor {
-			classified[artifact.Event] = successionCandidate{predecessor: true}
-			continue
-		}
-		if commitment := protected[artifact.Event]; commitment != "" {
-			classified[artifact.Event] = successionCandidate{leftLive: mergeLeftLive{Class: leftLiveSibling, Commitment: commitment}}
+	shared := mergeplan.Classify(ctx, checkout, projection, sharedChanges(changes), targetPreHead, candidate, nil)
+	classified := make(map[string]successionCandidate, len(shared))
+	for event, candidate := range shared {
+		if candidate.Class == mergeplan.ClassInTargetPredecessor || candidate.Class == mergeplan.ClassReviewedCandidate {
+			classified[event] = successionCandidate{predecessor: true}
 		} else {
-			classified[artifact.Event] = successionCandidate{leftLive: mergeLeftLive{Class: leftLiveAbandoned}}
+			classified[event] = successionCandidate{leftLive: mergeLeftLive{Class: candidate.LeftLive.Class, Commitment: candidate.LeftLive.Commitment}}
 		}
 	}
 	return classified
 }
 
 func coveredArtifacts(projection workroom.Projection, changes []mergeChange) []workroom.Artifact {
-	var covered []workroom.Artifact
-	for _, artifact := range projection.Artifacts {
-		if artifact.Retired || artifact.Path == "." || strings.Contains(artifact.Path, ",") {
-			continue
-		}
-		for _, change := range changes {
-			if artifactCoversPath(artifact.Path, change.old) || artifactCoversPath(artifact.Path, change.new) {
-				covered = append(covered, artifact)
-				break
-			}
-		}
-	}
-	return covered
+	return mergeplan.CoveredArtifacts(projection, sharedChanges(changes))
 }
 
 func artifactCoversPath(artifact, changed string) bool {
@@ -416,34 +284,9 @@ func provenanceClosure(provenance map[string][]string, effective map[string]bool
 // so a bare retirement, which orphans whatever cites it, is still refused here
 // and still needs a deliberate `gs supersede --cited-ok` after the pages move.
 func preflightSuccession(ctx context.Context, workspace *app.Workspace, checkout string, plan successionPlan) error {
-	published := make(map[string]bool, len(plan.publish))
-	for _, path := range plan.publish {
-		if path == "." || strings.Contains(path, ",") {
-			return fmt.Errorf("merge would publish an invalid artifact path %q", path)
-		}
-		published[path] = true
-	}
-	targets := make([]string, 0, len(plan.retire))
-	for target := range plan.retire {
-		targets = append(targets, target)
-	}
-	sort.Strings(targets)
-	for _, target := range targets {
-		successor := plan.retire[target]
-		if successor == "" {
-			if err := workspace.RefuseCitedRetirementInCheckout(ctx, checkout, target, false); err != nil {
-				return err
-			}
-			continue
-		}
-		// A named successor only preserves the citation if this merge really
-		// publishes it. A plan claiming one it does not publish would retire
-		// the predecessor and leave the pages pointing at nothing.
-		if !published[successor] {
-			return fmt.Errorf("merge would retire %s naming a successor at %q that it does not publish", target, successor)
-		}
-	}
-	return nil
+	return mergeplan.ValidateSuccession(ctx, workspace, checkout, mergeplan.Succession{
+		Publish: plan.publish, Retire: plan.retire, ChangedPaths: plan.changedPaths,
+	})
 }
 
 // refuseUnreachableCrossAuthorRetirements states the command's own reach bound
@@ -467,31 +310,7 @@ func preflightSuccession(ctx context.Context, workspace *app.Workspace, checkout
 // recoverable and costs a caller nothing; discovering it afterwards leaves the
 // target moved and the succession half-done.
 func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, plan successionPlan, approval, actor string) error {
-	if actor == "" {
-		return errors.New("merge succession needs the merging actor's fingerprint")
-	}
-	reviewed := reviewedPaths(projection, approval)
-	if len(reviewed) == 0 {
-		return fmt.Errorf("approval %s puts no artifact path within reach, so it bounds no retirement", approval)
-	}
-	authors := make(map[string]string, len(projection.Statements))
-	for _, statement := range projection.Statements {
-		authors[statement.Event] = statement.Actor
-	}
-	targets := make([]string, 0, len(plan.retire))
-	for target := range plan.retire {
-		targets = append(targets, target)
-	}
-	sort.Strings(targets)
-	for _, target := range targets {
-		path := artifactPath(projection, target)
-		if authors[target] == actor || withinReviewedPaths(reviewed, path) {
-			continue
-		}
-		return fmt.Errorf("merge would retire %s at %q, which belongs to another actor and lies outside the reviewed paths %s:\nhave the approval cover it, or ask its author or an actor holding ratifier to retire it",
-			target, path, strings.Join(reviewed, ", "))
-	}
-	return nil
+	return mergeplan.ValidateReach(projection, mergeplan.Succession{Publish: plan.publish, Retire: plan.retire, ChangedPaths: plan.changedPaths}, approval, actor)
 }
 
 // reviewedPaths reads which artifacts an approval puts within reach the way
@@ -514,44 +333,7 @@ func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, pla
 // Ordinary reasoning staleness remains review evidence and does not erase the
 // reviewer's signed reach over this exact head.
 func reviewedPaths(projection workroom.Projection, approval string) []string {
-	review, found := projection.Review(approval)
-	if !found || review.Implementer == "" || review.Head == "" {
-		return nil
-	}
-	authors := make(map[string]string, len(projection.Statements))
-	for _, statement := range projection.Statements {
-		authors[statement.Event] = statement.Actor
-	}
-	standing := make(map[string]workroom.Artifact, len(projection.Artifacts))
-	for _, artifact := range projection.Artifacts {
-		standing[artifact.Event] = artifact
-	}
-	// The same temporal rule the merge guard applies to the approval's primary
-	// artifact, read from the same fold-published date. A pointer the reviewer
-	// signed still bounds what their approval reaches when the world moved after
-	// they signed it; one that already described a superseded world when they
-	// looked does not, and an undated one fails closed.
-	verdict := verdictSequence(projection, approval)
-	var paths []string
-	seen := make(map[string]bool)
-	for _, basis := range projection.Provenance[approval] {
-		artifact, isArtifact := standing[basis]
-		if !isArtifact || artifact.Retired || artifact.Path == "" {
-			continue
-		}
-		if artifact.DescribesSupersededWorld && !worldMovedAfterVerdict(artifact, verdict) {
-			continue
-		}
-		if artifact.Commit != review.Head || authors[basis] != review.Implementer {
-			continue
-		}
-		if seen[artifact.Path] {
-			continue
-		}
-		seen[artifact.Path] = true
-		paths = append(paths, artifact.Path)
-	}
-	sort.Strings(paths)
+	_, paths := mergeplan.ReviewedScope(projection, approval)
 	return paths
 }
 
@@ -737,85 +519,24 @@ func widerPath(candidate, current string) bool {
 	return candidate != current && strings.HasPrefix(current, strings.TrimSuffix(candidate, "/")+"/")
 }
 
-func successionKey(approval, class, value string) string {
-	sum := sha256.Sum256([]byte(approval + "\x00" + class + "\x00" + value))
-	return "merge-succession-" + hex.EncodeToString(sum[:])
-}
-
 func successionActs(approval, candidate, targetPreHead, mergeHead, staleness string, plan successionPlan) []batchAct {
 	if (plan.leftLive != nil) != (plan.changedPaths != nil) {
 		return nil
 	}
-	retirements, err := json.Marshal(plan.retire)
-	if err != nil {
-		return nil
+	leftLive := make(map[string]mergeplan.LeftLive, len(plan.leftLive))
+	for event, left := range plan.leftLive {
+		leftLive[event] = mergeplan.LeftLive{Class: left.Class, Commitment: left.Commitment}
 	}
-	successors, err := json.Marshal(plan.publish)
-	if err != nil {
-		return nil
-	}
-	receiptBody := map[string]string{
-		"merge_approval": approval, "merge_candidate": candidate,
-		"merge_target_pre_head": targetPreHead, "merge_head": mergeHead,
-		"merge_retirements": string(retirements), "merge_successors": string(successors),
-	}
-	if plan.leftLive != nil {
-		leftLive, err := json.Marshal(plan.leftLive)
-		if err != nil {
-			return nil
-		}
-		receiptBody["merge_left_live"] = string(leftLive)
-	}
-	if plan.changedPaths != nil {
-		changedPaths, err := json.Marshal(plan.changedPaths)
-		if err != nil {
-			return nil
-		}
-		receiptBody["merge_changed_paths"] = string(changedPaths)
-	}
-	if staleness != "" {
-		receiptBody["stale"] = "true"
-		receiptBody["staleness"] = staleness
-	}
-	// The merge machinery rests on the approval it was granted, whatever had
-	// moved underneath it while it was reviewed; validateMerge has already
-	// judged that movement and the receipt records it. Dead bases here are
-	// expected, so every act asks for the recorded escape.
-	acts := []batchAct{{
-		Label: "merge", Verb: app.VerbState, Kind: workroom.KindAssert,
-		Text:    "approved candidate merged",
-		Body:    receiptBody,
-		RestsOn: []string{approval}, IdempotencyKey: mergeReceiptKey(approval),
-		AllowDeadBasis: true,
-	}}
-	labels := make(map[string]string, len(plan.publish))
-	for index, path := range plan.publish {
-		label := fmt.Sprintf("successor-%d", index)
-		labels[path] = label
+	shared := mergeplan.SuccessionActs(approval, candidate, targetPreHead, mergeHead, staleness, mergeplan.Succession{
+		Publish: plan.publish, Retire: plan.retire, ChangedPaths: plan.changedPaths, LeftLive: leftLive,
+	})
+	acts := make([]batchAct, 0, len(shared))
+	for _, entry := range shared {
+		act := entry.Act
 		acts = append(acts, batchAct{
-			Label: label, Verb: app.VerbState, Kind: workroom.KindArtifact,
-			Text:    "Merge published the current artifact at " + path,
-			Body:    map[string]string{"path": path, "commit": mergeHead},
-			RestsOn: []string{"$merge"}, IdempotencyKey: successionKey(approval, "publish", path),
-			AllowDeadBasis: true,
-		})
-	}
-	targets := make([]string, 0, len(plan.retire))
-	for target := range plan.retire {
-		targets = append(targets, target)
-	}
-	sort.Strings(targets)
-	for _, target := range targets {
-		successor := plan.retire[target]
-		rests := []string{"$merge"}
-		text := "Merge retired a covered predecessor with no successor at its old path."
-		if successor != "" {
-			rests = append(rests, "$"+labels[successor])
-			text = "Merge retired a covered predecessor; the successor is at " + successor + "."
-		}
-		acts = append(acts, batchAct{
-			Verb: app.VerbSupersede, Target: target, Text: text, RestsOn: rests,
-			IdempotencyKey: successionKey(approval, "retire", target),
+			Label: entry.Label, Verb: act.Verb, Kind: act.Kind, Text: act.Text, Body: act.Body,
+			Target: act.Target, RestsOn: act.RestsOn, IdempotencyKey: act.IdempotencyKey,
+			AllowDeadBasis: act.AllowDeadBasis,
 		})
 	}
 	return acts

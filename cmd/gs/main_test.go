@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
@@ -974,6 +976,138 @@ func TestMergeGuardMergesOnlyRatifiedApprovedExactHead(t *testing.T) {
 	if live != 1 {
 		t.Fatalf("live artifacts at feature.txt = %d, want exactly one", live)
 	}
+}
+
+func TestMergePlanAllowsSamePathCrossAuthorPredecessorWithoutMutation(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	base := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	predecessor, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "shipped feature predecessor",
+		Body:    map[string]string{"path": "feature.txt", "commit": base},
+		RestsOn: []string{fixture.ground}, IdempotencyKey: "cross-author-feature-predecessor",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	cold, err := app.Open(fixture.ctx, fixture.repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := mergePlanRepositoryState(t, cold)
+	_, private, err := cold.Actor("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := mergeplan.Build(fixture.ctx, cold, fixture.repo, fixture.candidate, approval,
+		cold.View().Actors["operator"].Fingerprint, mergeplan.Signer{Name: "operator", Private: private})
+	after := mergePlanRepositoryState(t, cold)
+	if before != after {
+		t.Fatalf("read-only merge plan changed repository state\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	if !result.Allowed || result.Mode != "fresh" {
+		t.Fatalf("merge plan = %+v", result)
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout := os.Stdout
+	os.Stdout = writer
+	commandErr := mergePlanCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+	})
+	os.Stdout = stdout
+	if closeErr := writer.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	encoded, readErr := io.ReadAll(reader)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if commandErr != nil {
+		t.Fatal(commandErr)
+	}
+	var cli mergeplan.Result
+	if err := json.Unmarshal(encoded, &cli); err != nil {
+		t.Fatalf("decode CLI merge plan: %v: %s", err, encoded)
+	}
+	if !reflect.DeepEqual(cli, result) {
+		t.Fatalf("CLI and shared merge plans differ\nCLI: %+v\nshared: %+v", cli, result)
+	}
+	classes := make(map[string]string)
+	for _, artifact := range result.CoveringArtifacts {
+		classes[artifact.Event] = artifact.Class
+	}
+	if classes[fixture.artifact] != mergeplan.ClassReviewedCandidate || classes[predecessor.Record.ID] != mergeplan.ClassInTargetPredecessor {
+		t.Fatalf("covering classes = %#v", classes)
+	}
+	for _, artifact := range result.CandidateArtifacts {
+		if artifact.Event == predecessor.Record.ID && artifact.Reviewed {
+			t.Fatal("the in-main predecessor became a review input")
+		}
+	}
+}
+
+func TestMergePlanRefusesDirtyCheckoutWithoutMutation(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	if err := os.WriteFile(filepath.Join(fixture.repo, "untracked-plan-sentinel"), []byte("unchanged\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cold, err := app.Open(fixture.ctx, fixture.repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := cold.Actor("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := mergePlanRepositoryState(t, cold)
+	result := mergeplan.Build(fixture.ctx, cold, fixture.repo, fixture.candidate, approval,
+		cold.View().Actors["operator"].Fingerprint, mergeplan.Signer{Name: "operator", Private: private})
+	after := mergePlanRepositoryState(t, cold)
+	if before != after {
+		t.Fatalf("refused merge plan changed repository state\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	if result.Allowed || len(result.Reasons) != 1 || result.Reasons[0].Code != "checkout_refused" {
+		t.Fatalf("dirty checkout result = %+v", result)
+	}
+}
+
+func mergePlanRepositoryState(t *testing.T, workspace *app.Workspace) string {
+	t.Helper()
+	read := func(arguments ...string) string {
+		args := append([]string{"--no-optional-locks", "--no-replace-objects", "-C", workspace.Repo}, arguments...)
+		output, err := exec.Command("git", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", arguments, err, output)
+		}
+		return string(output)
+	}
+	gitseqConfig, err := os.ReadFile(filepath.Join(workspace.MetaDir, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitConfig, err := os.ReadFile(filepath.Join(workspace.CommonDir, "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := os.ReadFile(filepath.Join(workspace.GitDir, "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join([]string{
+		read("rev-parse", "HEAD"),
+		read("for-each-ref", "--format=%(refname) %(objectname)"),
+		read("status", "--porcelain=v2", "--untracked-files=all"),
+		read("worktree", "list", "--porcelain"),
+		read("cat-file", "--batch-all-objects", "--batch-check=%(objectname)"),
+		fmt.Sprintf("git-config:%x\ngitseq-config:%x\nindex:%x\n", gitConfig, gitseqConfig, index),
+	}, "")
 }
 
 func TestMergeRefusesUnrecordableReceiptBeforeMovingHead(t *testing.T) {

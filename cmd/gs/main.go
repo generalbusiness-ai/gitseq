@@ -25,8 +25,8 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
-	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
@@ -93,6 +93,8 @@ func main() {
 		err = reviewCommand(ctx, os.Args[2:])
 	case "merge":
 		err = mergeCommand(ctx, os.Args[2:])
+	case "merge-plan":
+		err = mergePlanCommand(ctx, os.Args[2:])
 	case "ratify":
 		err = ratifyCommand(ctx, os.Args[2:])
 	case "supersede":
@@ -138,7 +140,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|ratify|supersede|reassign-if-unclaimed|batch|publish|status|work|artifacts|supersession-plan|staleness-wave|inspect|reviews|provenance|verify|checkpoint-clear|serve|attach> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: gs <init|actor-add|actor-retire|role-grant|role-revoke|actors|state|review|merge|merge-plan|ratify|supersede|reassign-if-unclaimed|batch|publish|status|work|artifacts|supersession-plan|staleness-wave|inspect|reviews|provenance|verify|checkpoint-clear|serve|attach> [flags]")
 	os.Exit(2)
 }
 
@@ -583,11 +585,24 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		fmt.Println(existing.MergeHead)
 		return nil
 	}
+	prospective := mergeplan.Build(ctx, workspace, *checkout, *candidate, *approval, merger, mergeplan.Signer{
+		Name: actor, Private: private, CheckResidentCeiling: serverURL != "",
+	})
+	if !prospective.Allowed {
+		if len(prospective.Reasons) == 0 {
+			return errors.New("merge plan refused without a reason")
+		}
+		refusal := prospective.Reasons[len(prospective.Reasons)-1]
+		return fmt.Errorf("merge plan %s: %s", refusal.Check, refusal.Reason)
+	}
 	targetPreHead, err := git(ctx, *checkout, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
 		return err
 	}
 	targetPreHead = strings.TrimSpace(targetPreHead)
+	if targetPreHead != prospective.TargetPreHead {
+		return fmt.Errorf("merge target moved after planning: planned %s, now %s", prospective.TargetPreHead, targetPreHead)
+	}
 	if _, err := git(ctx, *checkout, "merge-base", "--is-ancestor", *candidate, targetPreHead); err == nil {
 		return errors.New("approved candidate is already contained in the target")
 	}
@@ -632,12 +647,34 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err := validateMergeChangePaths(changes); err != nil {
 		return err
 	}
+	if actual := mergeChangedPaths(changes); !slices.Equal(actual, prospective.ChangedPaths) {
+		return fmt.Errorf("tentative merge changed paths %q do not equal the read-only merge plan %q", actual, prospective.ChangedPaths)
+	}
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
 		return err
 	}
-	predecessors := successionPredecessors(ctx, *checkout, snapshot.Projection, changes, targetPreHead, *candidate)
-	plan := planSuccession(snapshot.Projection, changes, predecessors)
+	if snapshot.Head != prospective.Frontier.Head || snapshot.Depth != prospective.Frontier.Depth {
+		return fmt.Errorf("workroom frontier moved after planning: planned %s at depth %d, now %s at depth %d",
+			prospective.Frontier.Head, prospective.Frontier.Depth, snapshot.Head, snapshot.Depth)
+	}
+	plan := successionPlan{
+		publish:      append([]string(nil), prospective.Successors...),
+		retire:       make(map[string]string, len(prospective.Retirements)),
+		changedPaths: append([]string(nil), prospective.ChangedPaths...),
+		leftLive:     make(map[string]mergeLeftLive),
+	}
+	for _, retirement := range prospective.Retirements {
+		plan.retire[retirement.Artifact] = retirement.Successor
+	}
+	for _, artifact := range prospective.CoveringArtifacts {
+		switch artifact.Class {
+		case mergeplan.ClassProtectedSibling:
+			plan.leftLive[artifact.Event] = mergeLeftLive{Class: leftLiveSibling, Commitment: artifact.Commitment}
+		case mergeplan.ClassAbandoned:
+			plan.leftLive[artifact.Event] = mergeLeftLive{Class: leftLiveAbandoned}
+		}
+	}
 	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
 	}
@@ -687,6 +724,45 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	}
 	fmt.Println(head)
 	return nil
+}
+
+// mergePlanCommand exposes fresh-merge preflight without reserving an
+// approval, touching the governed checkout, or appending a durable act.
+func mergePlanCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("merge-plan", arguments)
+	as := set.String("as", "", "actor who would record the merge receipt")
+	checkout := set.String("checkout", "", "checkout that would receive the merge")
+	candidate := set.String("candidate", "", "full approved commit ID")
+	approval := set.String("approval", "", "ratified approval report event")
+	serverFlag := set.String("server", "", "resident sequencer URL")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return errors.New("merge-plan takes no positional arguments")
+	}
+	if *checkout == "" || *candidate == "" || *approval == "" {
+		return errors.New("merge-plan requires --checkout, --candidate, and --approval")
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	actor, err := signingActor(*as)
+	if err != nil {
+		return err
+	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
+	resolved, private, err := workspace.Actor(actor)
+	if err != nil {
+		return err
+	}
+	return printJSON(mergeplan.Build(ctx, workspace, *checkout, *candidate, *approval, resolved.Fingerprint, mergeplan.Signer{
+		Name: actor, Private: private, CheckResidentCeiling: serverURL != "",
+	}))
 }
 
 type mergeReceipt struct {
@@ -855,18 +931,7 @@ func existingGitMergeReceipt(ctx context.Context, checkout, approval string) (me
 // path for anyone else needs an authorization that survives concurrent
 // revocation, and that is a design, not a clause.
 func requireApprovedImplementer(projection workroom.Projection, approvalEvent, merger string) error {
-	if merger == "" {
-		return errors.New("merge needs the signing actor's fingerprint")
-	}
-	review, found := projection.Review(approvalEvent)
-	if !found || review.Implementer == "" {
-		return errors.New("the record cannot say who implemented this approved head, so nobody may merge it on that approval")
-	}
-	if review.Implementer != merger {
-		return fmt.Errorf("merge must be signed by the actor whose approved work is landing (%s); --as names %s",
-			review.Implementer, merger)
-	}
-	return nil
+	return mergeplan.RequireImplementer(projection, approvalEvent, merger)
 }
 
 func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent string) (string, error) {
@@ -888,87 +953,15 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 			return "", fmt.Errorf("approval already has durable merge receipt %s", statement.Event)
 		}
 	}
-	approval, err := liveStatementAsOf(projection, approvalEvent, workroom.KindReport, verdictSequence(projection, approvalEvent))
+	approved, err := mergeplan.ValidateApproval(projection, candidate, approvalEvent)
 	if err != nil {
-		return "", fmt.Errorf("approval: %w", err)
+		return "", err
 	}
-	if !approval.Ratified {
-		return "", errors.New("approval report is not ratified by its requester")
-	}
-	if approval.Body["verdict"] != "approved" {
-		return "", errors.New("review verdict is not approved")
-	}
-	if approval.Body["head"] != candidate {
-		return "", fmt.Errorf("candidate %s does not equal approved head %s", candidate, approval.Body["head"])
-	}
-	artifactEvent := approval.Body["artifact"]
-	if artifactEvent == "" || !slices.Contains(projection.Provenance[approvalEvent], artifactEvent) {
-		return "", errors.New("approval does not rest on its named artifact")
-	}
-	artifact, err := liveArtifactAsOf(projection, artifactEvent, approval.Sequence)
-	if err != nil {
-		return "", fmt.Errorf("approval artifact: %w", err)
-	}
-	if artifact.Commit != candidate {
-		return "", fmt.Errorf("approved artifact head %s does not equal candidate %s", artifact.Commit, candidate)
-	}
-	// The rule that review comes from a different agent is checked here rather
-	// than assumed. An approval the projection cannot call independent does not
-	// merge, whether because the reviewer implemented the head or because the
-	// record cannot say who did.
-	review, found := projection.Review(approvalEvent)
-	if !found {
-		return "", errors.New("approval is not projected as a review")
-	}
-	switch review.Independence {
-	case workroom.IndependenceSelfReview:
-		return "", errors.New("approval was signed by the actor who implemented this head; an independent review is required")
-	case workroom.IndependenceIndependent:
-		return reviewguard.StalenessNote(projection, []reviewguard.Part{
-			{Name: "approval", Event: approval.Event, Stale: approval.Stale, World: approval.DescribesSupersededWorld},
-			{Name: "artifact", Event: artifact.Event, Stale: artifact.Stale, World: artifact.DescribesSupersededWorld},
-		}), nil
-	default:
-		return "", errors.New("the record cannot say whether this approval was independent; name the reviewed artifact in the review report")
-	}
+	return approved.Staleness, nil
 }
 
 func validateCheckout(ctx context.Context, workroomRepo, checkout, commit string, requireHead bool) error {
-	want, err := canonicalCommit(ctx, checkout, commit)
-	if err != nil {
-		return err
-	}
-	if want != commit {
-		return fmt.Errorf("commit must be the full canonical object ID: got %s, resolved %s", commit, want)
-	}
-	_, workroomCommon, err := apphost.ResolveGitDirs(ctx, workroomRepo)
-	if err != nil {
-		return err
-	}
-	_, checkoutCommon, err := apphost.ResolveGitDirs(ctx, checkout)
-	if err != nil {
-		return err
-	}
-	if canonicalPath(workroomCommon) != canonicalPath(checkoutCommon) {
-		return errors.New("checkout does not belong to the workroom repository")
-	}
-	status, err := git(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=normal")
-	if err != nil {
-		return err
-	}
-	if status != "" {
-		return errors.New("checkout is dirty")
-	}
-	if requireHead {
-		head, err := git(ctx, checkout, "rev-parse", "HEAD")
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(head) != commit {
-			return fmt.Errorf("checkout HEAD %s does not equal artifact head %s", strings.TrimSpace(head), commit)
-		}
-	}
-	return nil
+	return mergeplan.ValidateCheckout(ctx, workroomRepo, checkout, commit, requireHead)
 }
 
 func canonicalCommit(ctx context.Context, repo, commit string) (string, error) {
