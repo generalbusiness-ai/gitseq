@@ -226,9 +226,12 @@ artifact it names.
    a basis would mean the prose needs re-checking, and a request alone never
    does. **Changing behaviour**, publish each added, modified, or renamed
    destination at its exact changed path and retire every live in-target
-   predecessor at that exact string. A wider covering pointer stays live and
-   is not selected for retirement by this plan. The sealed receipt pairs the
-   canonical `merge_changed_paths` frontier with
+   predecessor at that exact string. A pointer wider than a landed destination
+   stays live and is not selected for retirement by that destination. Removing
+   a rename source or deleted file also changes its covering directories, so
+   the plan may retire in-target directory pointers and publish the widest
+   directory successor. The sealed receipt pairs the canonical
+   `merge_changed_paths` frontier with
    `merge_left_live`, classifying every other live candidate that covers the
    change as a protected sibling when an unsettled commitment reaches it, or
    as abandoned otherwise. Protected siblings stay live. An abandoned
@@ -260,16 +263,17 @@ artifact it names.
     Retiring, accounting, and publishing are separate duties. For an added or
     modified file, and for a rename destination, publish a successor at its
     exact changed path and retire every live in-target predecessor at that
-    exact string. Account for every other covering candidate in the paired
-    receipt fields, but keep wider covering paths live: a narrower successor
+    exact string. Account for every other candidate covering a landed path in
+    the paired receipt fields, but keep wider paths live: a narrower successor
     does not select or retire its parent. Where no live artifact exists at the
     changed path, publish a first artifact there. A receipt's abandoned
     classification is the durable prompt for cleanup, not authority for the
     merge to do it. A renamed or deleted file's old exact path is retired with
     no successor there and never published at again; a rename opens a first
     artifact at the new path, and a deletion opens nothing at the removed
-    path. A live directory covering a deletion may receive the widest
-    directory successor because its contents changed. A bare
+    path. Removing either a rename source or a deleted file changes its
+    covering directories, so the plan may retire in-target covering pointers
+    and publish the widest directory successor. A bare
     `supersede` is admitted only from the target's own author or an actor
     holding `ratifier`, so ask that actor when the artifact to retire is not
     yours. Never record an artifact at `.`: it claims the whole repository,

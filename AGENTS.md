@@ -71,12 +71,14 @@ per ISO 24495-1, for a technical audience.
      fluff.
 5. Merge only an approved exact head. In the same step, publish each added,
    modified, or renamed destination at its exact changed path and retire the
-   live in-target predecessors at that exact string. A wider covering pointer
-   is a separate wire, stays live, and is not selected for retirement by this
-   plan. Keep other live candidates live, but seal each one in the receipt as
-   either a sibling protected by its unsettled commitment or an abandoned
-   candidate. The abandoned candidate's author or a `ratifier`, not the merge,
-   retires it.
+   live in-target predecessors at that exact string. A pointer wider than a
+   landed destination is a separate wire: keep it live and seal it in the
+   receipt as either a sibling protected by its unsettled commitment or an
+   abandoned candidate. Removing a rename source or deleted file also changes
+   its covering directories, so the plan may retire in-target directory
+   pointers and publish the widest directory successor. Other live candidates
+   stay sealed and unretired. The abandoned candidate's author or a `ratifier`,
+   not the merge, retires it.
    `SKILL.md` states those succession rules in full
    and [`docs/reference/gs/merge.md`](docs/reference/gs/merge.md) tabulates
    what `gs merge` enforces. Three of them bite hardest. Paths match as exact

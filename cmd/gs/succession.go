@@ -150,22 +150,19 @@ func planSuccession(projection workroom.Projection, changes []mergeChange, candi
 		}
 		return found
 	}
-	// The sentinel is emptiness, never the fallback string. An earlier form
-	// seeded the winner with the changed path, so a narrow artifact sitting at
-	// exactly that path left `winner == fallback` true and the next artifact
-	// won by that arm whatever the comparison said — the wider-path rule was
-	// unreachable, and disabling it changed no result anywhere.
-	widest := func(artifacts []workroom.Artifact, fallback string) string {
+	widest := func(artifacts []workroom.Artifact) string {
 		winner := ""
 		for _, artifact := range artifacts {
 			if winner == "" || widerPath(artifact.Path, winner) {
 				winner = artifact.Path
 			}
 		}
-		if winner == "" {
-			return fallback
-		}
 		return winner
+	}
+	account := func(artifact workroom.Artifact) {
+		if candidate, classified := candidates[artifact.Event]; classified && !candidate.predecessor {
+			leftLive[artifact.Event] = candidate.leftLive
+		}
 	}
 	assign := func(artifact workroom.Artifact, successor string) {
 		if candidate, classified := candidates[artifact.Event]; classified && !candidate.predecessor {
@@ -183,9 +180,11 @@ func planSuccession(projection workroom.Projection, changes []mergeChange, candi
 		// it.
 		published[path] = true
 		for _, artifact := range covering(path, true) {
-			if artifact.Path == path {
-				assign(artifact, path)
+			if artifact.Path != path {
+				account(artifact)
+				continue
 			}
+			assign(artifact, path)
 		}
 	}
 	removed := func(path string) {
@@ -200,7 +199,7 @@ func planSuccession(projection workroom.Projection, changes []mergeChange, candi
 		if len(covers) == 0 {
 			return
 		}
-		winner := widest(covers, path)
+		winner := widest(covers)
 		published[winner] = true
 		for _, artifact := range covers {
 			assign(artifact, winner)
@@ -260,12 +259,12 @@ func successionPredecessors(ctx context.Context, checkout string, projection wor
 	protected := protectionIndex(projection, covered)
 	byCommit := make(map[string]bool)
 	for _, artifact := range covered {
-		if artifact.Commit == candidate {
+		if artifactRetiresForChanges(artifact.Path, changes) && artifact.Commit == candidate {
 			classified[artifact.Event] = successionCandidate{predecessor: true}
 			continue
 		}
 		ancestor := false
-		if artifact.Commit != "" {
+		if artifactRetiresForChanges(artifact.Path, changes) && artifact.Commit != "" {
 			var checked bool
 			ancestor, checked = byCommit[artifact.Commit]
 			if !checked {
@@ -285,6 +284,25 @@ func successionPredecessors(ctx context.Context, checkout string, projection wor
 		}
 	}
 	return classified
+}
+
+// artifactRetiresForChanges distinguishes exact-path succession from the
+// wider directory lineage. Landed paths retire only exact predecessors. A
+// removed source changes every directory that covers it, so those lineages
+// may be retired and republished at the widest covering directory.
+func artifactRetiresForChanges(path string, changes []mergeChange) bool {
+	for _, change := range changes {
+		switch change.status[0] {
+		case 'D', 'R':
+			if artifactCoversPath(path, change.old) {
+				return true
+			}
+		}
+		if path == change.new {
+			return true
+		}
+	}
+	return false
 }
 
 func coveredArtifacts(projection workroom.Projection, changes []mergeChange) []workroom.Artifact {

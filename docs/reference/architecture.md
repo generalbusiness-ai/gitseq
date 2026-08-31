@@ -828,11 +828,12 @@ records and can verify no merge head, diff, or tree.
 
 For an added or modified file, and a rename destination, the merge adapter
 publishes the successor at the exact changed-file path and selects only live
-predecessors at that same exact string. A wider covering artifact stays live:
-it is a separate path lineage, not a predecessor a narrower successor may
-retire. A removed file retires its exact-file artifact with no successor there;
-a covering directory may receive the widest directory successor because its
-contents changed.
+predecessors at that same exact string. A wider artifact covering the landed
+destination stays live and is sealed in the receipt: it is a separate path
+lineage, not a predecessor a narrower successor may retire. Removing a rename
+source or deleted file retires its exact-file artifact with no successor there
+and changes its covering directories, so in-target directory pointers may be
+retired and the widest directory successor published.
 
 Merge receipts record ordinary reasoning staleness. An approval or artifact
 that already described a superseded world when the verdict was signed must be

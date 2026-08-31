@@ -36,6 +36,8 @@ func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
 			{Event: "candidate-artifact", Path: "shared/file", Commit: candidate},
 			{Event: "sibling-artifact", Path: "shared/file", Commit: sibling},
 			{Event: "abandoned-artifact", Path: "shared/file", Commit: abandoned},
+			{Event: "wider-sibling-artifact", Path: "shared", Commit: sibling},
+			{Event: "wider-abandoned-artifact", Path: "shared", Commit: abandoned},
 			{Event: "empty-commit-artifact", Path: "shared/file", Commit: ""},
 			{Event: "ineffective-chain-artifact", Path: "shared/file", Commit: abandoned},
 			{Event: "outside-diff-artifact", Path: "elsewhere", Commit: "not-a-git-object"},
@@ -56,6 +58,7 @@ func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
 		Provenance: map[string][]string{
 			"protect":                    {"request"},
 			"sibling-artifact":           {"middle"},
+			"wider-sibling-artifact":     {"middle"},
 			"middle":                     {"protect"},
 			"ineffective-chain-artifact": {"ineffective-middle"},
 			"ineffective-middle":         {"ineffective-promise"},
@@ -75,6 +78,12 @@ func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
 	if got := classified["abandoned-artifact"].leftLive; got.Class != leftLiveAbandoned || got.Commitment != "" {
 		t.Errorf("unprotected candidate = %+v, want abandoned", got)
 	}
+	if got := classified["wider-sibling-artifact"].leftLive; got.Class != leftLiveSibling || got.Commitment != "protect" {
+		t.Errorf("wider protected candidate = %+v, want sibling under protect", got)
+	}
+	if got := classified["wider-abandoned-artifact"].leftLive; got.Class != leftLiveAbandoned || got.Commitment != "" {
+		t.Errorf("wider unprotected candidate = %+v, want abandoned", got)
+	}
 	if got := classified["empty-commit-artifact"].leftLive; got.Class != leftLiveAbandoned || got.Commitment != "" {
 		t.Errorf("empty-commit candidate = %+v, want abandoned", got)
 	}
@@ -92,6 +101,8 @@ func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
 	if !reflect.DeepEqual(plan.leftLive, map[string]mergeLeftLive{
 		"sibling-artifact":           {Class: leftLiveSibling, Commitment: "protect"},
 		"abandoned-artifact":         {Class: leftLiveAbandoned},
+		"wider-sibling-artifact":     {Class: leftLiveSibling, Commitment: "protect"},
+		"wider-abandoned-artifact":   {Class: leftLiveAbandoned},
 		"empty-commit-artifact":      {Class: leftLiveAbandoned},
 		"ineffective-chain-artifact": {Class: leftLiveAbandoned},
 	}) {
@@ -195,6 +206,27 @@ func TestMergeDeleteRetiresOldPathWithoutSuccessor(t *testing.T) {
 	}
 	if successor, exists := plan.retire["deleted"]; !exists || successor != "" {
 		t.Fatalf("deleted-path retirement = %q, exists %v", successor, exists)
+	}
+}
+
+func TestMergeDeleteRepublishesTheWidestCoveringDirectory(t *testing.T) {
+	projection := workroom.Projection{Artifacts: []workroom.Artifact{
+		{Event: "deleted", Path: "internal/workroom/fold.go", Commit: "old"},
+		{Event: "narrow", Path: "internal/workroom", Commit: "old"},
+		{Event: "wide", Path: "internal", Commit: "old"},
+	}}
+	plan := planSuccession(projection,
+		[]mergeChange{{status: "D", old: "internal/workroom/fold.go"}}, nil)
+	if !reflect.DeepEqual(plan.publish, []string{"internal"}) {
+		t.Fatalf("deletion published %#v, want the widest covering directory", plan.publish)
+	}
+	want := map[string]string{
+		"deleted": "",
+		"narrow":  "internal",
+		"wide":    "internal",
+	}
+	if !reflect.DeepEqual(plan.retire, want) {
+		t.Fatalf("deletion retirements = %#v, want %#v", plan.retire, want)
 	}
 }
 

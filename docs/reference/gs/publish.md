@@ -16,12 +16,14 @@ never pushes Git refs and is not a pre-push hook.
 
 This is the part to read first, because the command's name suggests otherwise.
 
-Merge succession already owns source paths. `gs merge` lands one artifact at
-every path its first-parent diff changed and retires the predecessors that
-cover them. If publication also minted an artifact per push at a source path,
-every push would add an accounting row the merger did not create — and often
-cannot lawfully retire, because it belongs to another actor. The merge would
-then either strand or drag another actor's pointer with it.
+Merge succession already owns source paths. For each landed path in its
+first-parent diff, `gs merge` publishes an exact-path artifact, retires
+in-target predecessors at that exact string, and accounts for wider covering
+artifacts without retiring them. If publication also minted an artifact per
+push at a source path, every push would add an accounting row the merger did
+not create — and often cannot lawfully retire, because it belongs to another
+actor. The merge would then either strand or drag another actor's pointer with
+it.
 
 So publication mints no artifacts at all. What it records is an **app-validated
 publication assert**:
