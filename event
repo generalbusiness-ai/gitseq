@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will add the four bounded mutation-sensitive authorization-refusal proofs, verify them against unchanged production guards, publish them for independent review, and not merge."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5ac13552340b1ff5cac201ffabc4e39f68603ef2","text":"Rejected exact head af2d5122 is replaced by child request 98816d9b, which preserves the production implementation and assigns only the four missing mutation-sensitive red proofs required by the ratified review."}
