@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7ac26e187dc467d8385f1b4ae220fd0e21dea86c","text":"Merge retired a covered predecessor; the successor is at public_surface_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4ab9f055e95e5e27f106ad6d07a3082fe0996e2","text":"Merge retired a covered predecessor; the successor is at .github/workflows/performance.yml."}
