@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc8b1adf364e04049f0b7bb3c6e52a266d5b01cd","text":"Retire the duplicate 44d8 candidate artifact; the equivalent ea118 candidate is the single active review lane."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1b26db925d03d80f6f05a6085638660607469c8e","text":"Retire the duplicate 44d8 candidate artifact; the equivalent ea118 candidate is the single active review lane."}
