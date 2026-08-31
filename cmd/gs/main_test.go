@@ -1052,9 +1052,10 @@ func TestSuccessionAdmissionPreflightsEveryActWithoutAppending(t *testing.T) {
 		t.Fatal(err)
 	}
 	largePath := strings.Repeat("p", 1400)
+	head := testGit(t, repo, "rev-parse", "HEAD")
 	acts := []batchAct{
 		{Label: "merge", Verb: app.VerbState, Kind: workroom.KindAssert, Text: "small merge receipt", RestsOn: []string{seed.ID}, IdempotencyKey: "preflight-receipt"},
-		{Label: "successor", Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "Merge published the current artifact at " + largePath, Body: map[string]string{"path": largePath, "commit": strings.Repeat("a", 40)}, RestsOn: []string{"$merge"}, IdempotencyKey: "preflight-successor"},
+		{Label: "successor", Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "Merge published the current artifact at " + largePath, Body: map[string]string{"path": largePath, "commit": head}, RestsOn: []string{"$merge"}, IdempotencyKey: "preflight-successor"},
 	}
 	before, err := workspace.Snapshot(ctx)
 	if err != nil {
@@ -2339,6 +2340,34 @@ func TestBatchLandsChainResolvingIntraBatchLabels(t *testing.T) {
 	request, promise := report.Acts[0].Event, report.Acts[1].Event
 	if !contains(snapshot.Projection.Provenance[promise], request) {
 		t.Fatalf("promise provenance = %#v, want the minted request %s", snapshot.Projection.Provenance[promise], request)
+	}
+}
+
+func TestBatchArtifactFilingRequiresFullCanonicalCommit(t *testing.T) {
+	fixture := newBatchFixture(t)
+	testGit(t, fixture.repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "artifact head")
+	head := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	before := fixture.snapshot()
+	acts := fmt.Sprintf(`[
+	  {"verb":"state","kind":"artifact","text":"short commit must not land",
+	   "body":{"path":"short.txt","commit":%q},
+	   "rests_on":[%q],"idempotency_key":"short-artifact-commit"}
+	]`, head[:12], fixture.genesis)
+	report, err := fixture.run("operator", acts)
+	if err == nil {
+		t.Fatalf("short artifact commit landed: %#v", report)
+	}
+	for _, want := range []string{"commit must be the full canonical object ID", head[:12], head} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("batch artifact refusal omits %q: %v", want, err)
+		}
+	}
+	if len(report.Acts) != 1 || report.Acts[0].Outcome != "failed" || report.Error == nil || report.Error.Code != "admission" {
+		t.Fatalf("refused batch report = %#v", report)
+	}
+	after := fixture.snapshot()
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("refused batch changed workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
 	}
 }
 

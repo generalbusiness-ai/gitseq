@@ -3634,6 +3634,25 @@ func TestRenderedSurfacesNameEventsByNumberAndCanonicalID(t *testing.T) {
 	}
 }
 
+func TestRenderStatusKeepsLongCanonicalEventID(t *testing.T) {
+	const request = "git:sha1:0123456789abcdef0123456789abcdef01234567#git:sha1:89abcdef0123456789abcdef0123456789abcdef"
+	projection := Projection{
+		Commitments: []Commitment{{
+			Request: request, Requester: operator, Performer: agent,
+			WaitingOn: agent, Status: "promised",
+		}},
+		Decisions: []Decision{{Event: request, Sequence: 41, Verdict: Effective}},
+	}
+
+	rendered := string(RenderStatus(projection))
+	if want := "#41 " + request; !strings.Contains(rendered, want) {
+		t.Fatalf("status omits the canonical event name %q:\n%s", want, rendered)
+	}
+	if abbreviated := short(request); strings.Contains(rendered, abbreviated) {
+		t.Fatalf("status abbreviates the event as %q instead of preserving its canonical ID:\n%s", abbreviated, rendered)
+	}
+}
+
 // eventsOn collects the identifiers the status renderer names in a row.
 func eventsOn(projection Projection) []string {
 	var events []string
