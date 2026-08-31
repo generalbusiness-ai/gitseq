@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:feefcac9de14ca7a866fc3b0f24601571d53eaae","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/work.md."}
+{"kind":"assert","text":"Not actionable yet: the three tip receipts exist in the release worktree, but origin/main still resolves to 72b2e5e3ff2379a5a052c582f59c905fe0520bd4 rather than the merged novice tip. This request requires the resulting origin/main as its base; I will begin when the merge owner pushes that final main head."}
