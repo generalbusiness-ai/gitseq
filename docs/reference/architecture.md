@@ -826,6 +826,14 @@ artifacts that approval itself cites, each standing at the approved head and
 owned by the implementer. The bound exists because the fold is pure over
 records and can verify no merge head, diff, or tree.
 
+For an added or modified file, and a rename destination, the merge adapter
+publishes the successor at the exact changed-file path and selects only live
+predecessors at that same exact string. A wider covering artifact stays live:
+it is a separate path lineage, not a predecessor a narrower successor may
+retire. A removed file retires its exact-file artifact with no successor there;
+a covering directory may receive the widest directory successor because its
+contents changed.
+
 Merge receipts record ordinary reasoning staleness. An approval or artifact
 that already described a superseded world when the verdict was signed must be
 re-anchored before merge; one the world moved under afterwards is recorded

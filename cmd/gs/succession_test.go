@@ -32,12 +32,12 @@ func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
 
 	projection := workroom.Projection{
 		Artifacts: []workroom.Artifact{
-			{Event: "target-artifact", Path: "shared", Commit: base},
-			{Event: "candidate-artifact", Path: "shared", Commit: candidate},
-			{Event: "sibling-artifact", Path: "shared", Commit: sibling},
-			{Event: "abandoned-artifact", Path: "shared", Commit: abandoned},
-			{Event: "empty-commit-artifact", Path: "shared", Commit: ""},
-			{Event: "ineffective-chain-artifact", Path: "shared", Commit: abandoned},
+			{Event: "target-artifact", Path: "shared/file", Commit: base},
+			{Event: "candidate-artifact", Path: "shared/file", Commit: candidate},
+			{Event: "sibling-artifact", Path: "shared/file", Commit: sibling},
+			{Event: "abandoned-artifact", Path: "shared/file", Commit: abandoned},
+			{Event: "empty-commit-artifact", Path: "shared/file", Commit: ""},
+			{Event: "ineffective-chain-artifact", Path: "shared/file", Commit: abandoned},
 			{Event: "outside-diff-artifact", Path: "elsewhere", Commit: "not-a-git-object"},
 		},
 		Statements: []workroom.Statement{
@@ -86,7 +86,7 @@ func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
 	}
 
 	plan := planSuccession(projection, changes, classified)
-	if len(plan.retire) != 2 || plan.retire["target-artifact"] != "shared" || plan.retire["candidate-artifact"] != "shared" {
+	if len(plan.retire) != 2 || plan.retire["target-artifact"] != "shared/file" || plan.retire["candidate-artifact"] != "shared/file" {
 		t.Fatalf("in-target retirements = %#v", plan.retire)
 	}
 	if !reflect.DeepEqual(plan.leftLive, map[string]mergeLeftLive{
@@ -139,23 +139,21 @@ func TestMergeDoesNotProtectThroughIneffectiveProvenance(t *testing.T) {
 	}
 }
 
-// Both covering artifacts sit above the changed file, so neither path is the
-// fallback and the comparison is the only thing that can pick a winner. An
-// earlier fixture put the narrow artifact at exactly the changed path, which
-// left the fallback arm answering for it: replacing widerPath with `return
-// false` changed no result in the whole package. Both orders run, because a
-// comparison that is never reached still passes whichever order happens to be
-// right.
-func TestMergeWiderPathWinsOverNestedArtifact(t *testing.T) {
+// A covering directory does not choose the path of a changed file's successor.
+// Both orders prove that projection order cannot choose a different result.
+func TestMergePublishesTheChangedPathInsteadOfACoveringDirectory(t *testing.T) {
+	exact := workroom.Artifact{Event: "exact", Path: "internal/workroom/fold.go", Commit: "old"}
+	secondExact := workroom.Artifact{Event: "second-exact", Path: "internal/workroom/fold.go", Commit: "other"}
 	narrow := workroom.Artifact{Event: "narrow", Path: "internal/workroom", Commit: "old"}
 	wide := workroom.Artifact{Event: "wide", Path: "internal", Commit: "old"}
-	for _, order := range [][]workroom.Artifact{{narrow, wide}, {wide, narrow}} {
+	for _, order := range [][]workroom.Artifact{{exact, secondExact, narrow, wide}, {wide, narrow, secondExact, exact}} {
 		plan := planSuccession(workroom.Projection{Artifacts: order},
 			[]mergeChange{{status: "M", new: "internal/workroom/fold.go"}}, nil)
-		if !reflect.DeepEqual(plan.publish, []string{"internal"}) {
+		if !reflect.DeepEqual(plan.publish, []string{"internal/workroom/fold.go"}) {
 			t.Fatalf("published paths = %#v for %s first", plan.publish, order[0].Path)
 		}
-		if plan.retire["wide"] != "internal" || plan.retire["narrow"] != "internal" {
+		want := map[string]string{"exact": "internal/workroom/fold.go", "second-exact": "internal/workroom/fold.go"}
+		if !reflect.DeepEqual(plan.retire, want) {
 			t.Fatalf("retirements = %#v for %s first", plan.retire, order[0].Path)
 		}
 	}

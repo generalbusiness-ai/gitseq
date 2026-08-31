@@ -69,12 +69,14 @@ per ISO 24495-1, for a technical audience.
    - **Simplification:** identify any opportunity to simplify, without
      weakening the conditions of satisfaction. Request changes to cut the
      fluff.
-5. Merge only an approved exact head. In the same step, account for every live
-   artifact that covers what the merge changed. Retire each in-target
-   predecessor and publish a successor at the path the area keeps using. Keep
-   other live candidates live, but seal each one in the receipt as either a
-   sibling protected by its unsettled commitment or an abandoned candidate.
-   The abandoned candidate's author or a `ratifier`, not the merge, retires it.
+5. Merge only an approved exact head. In the same step, publish each added,
+   modified, or renamed destination at its exact changed path and retire the
+   live in-target predecessors at that exact string. A wider covering pointer
+   is a separate wire, stays live, and is not selected for retirement by this
+   plan. Keep other live candidates live, but seal each one in the receipt as
+   either a sibling protected by its unsettled commitment or an abandoned
+   candidate. The abandoned candidate's author or a `ratifier`, not the merge,
+   retires it.
    `SKILL.md` states those succession rules in full
    and [`docs/reference/gs/merge.md`](docs/reference/gs/merge.md) tabulates
    what `gs merge` enforces. Three of them bite hardest. Paths match as exact

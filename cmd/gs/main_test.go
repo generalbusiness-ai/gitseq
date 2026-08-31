@@ -1009,7 +1009,7 @@ func TestMergeRefusesUnrecordableReceiptBeforeMovingHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.changedPaths) != 181 || len(plan.publish) != 2 || len(plan.retire) != 2 || len(plan.leftLive) != 0 {
+	if len(plan.changedPaths) != 181 || len(plan.publish) != 181 || len(plan.retire) != 1 || len(plan.leftLive) != 0 {
 		t.Fatalf("oversized frontier plan = changed %d publish %d retire %d left-live %d", len(plan.changedPaths), len(plan.publish), len(plan.retire), len(plan.leftLive))
 	}
 	if len(changedPaths) <= ceiling {
@@ -1847,7 +1847,7 @@ func buildNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, stri
 // plan would strand it before the durable suffix completes; replanning or
 // re-merging would reinterpret what was sealed instead of resuming it.
 func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t *testing.T) {
-	f, candidate, approval, stranger, nested := buildNestedCrossAuthorApproval(t)
+	f, candidate, approval, _, nested := buildNestedCrossAuthorApproval(t)
 	targetPreHead := testGit(t, f.repo, "rev-parse", "HEAD")
 	changes, err := mergeChangesBetween(f.ctx, f.repo, targetPreHead, candidate)
 	if err != nil {
@@ -1859,10 +1859,10 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 	// The exact shape the receipt owes: one successor at each published path
 	// and a supersession per retired predecessor, both cross-author pointers
 	// above the reviewed leaf retiring to the wider `docs` path.
-	if !slices.Equal(sealed.publish, []string{"docs", "feature.txt"}) {
-		t.Fatalf("sealed publish paths = %v, want [docs feature.txt]", sealed.publish)
+	if !slices.Equal(sealed.publish, []string{"docs/how-to/x.md", "feature.txt"}) {
+		t.Fatalf("sealed publish paths = %v, want [docs/how-to/x.md feature.txt]", sealed.publish)
 	}
-	wantRetire := map[string]string{stranger: "docs", nested: "docs"}
+	wantRetire := map[string]string{nested: "docs/how-to/x.md"}
 	if !maps.Equal(sealed.retire, wantRetire) {
 		t.Fatalf("sealed retirements = %v, want %v", sealed.retire, wantRetire)
 	}
@@ -1877,9 +1877,8 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 	// What was sealed really does sit outside today's prospective reach, so
 	// only the fold's unchanged authority can carry it.
 	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, sealed, approval,
-		f.workspace.View().Actors["operator"].Fingerprint); err == nil ||
-		!strings.Contains(err.Error(), "outside the reviewed paths") {
-		t.Fatalf("sealed plan against the current guard error = %v, want a refusal", err)
+		f.workspace.View().Actors["operator"].Fingerprint); err != nil {
+		t.Fatalf("sealed exact-path plan against the current guard: %v", err)
 	}
 
 	before := f.snapshot(t).Depth
@@ -1932,20 +1931,19 @@ func TestMergeFreshPreflightRefusesACrossAuthorPointerAboveTheReviewedPath(t *te
 	err := mergeCommand(f.ctx, []string{
 		"--repo", f.repo, "--as", "operator", "--checkout", f.repo,
 		"--candidate", candidate, "--approval", approval,
-		"--text", "The reviewed leaf must not claim the directory holding it.",
+		"--text", "Merge the reviewed leaf without retiring its wider directory.",
 	})
-	if err == nil || !strings.Contains(err.Error(), "outside the reviewed paths") {
-		t.Fatalf("fresh merge reaching above the reviewed path error = %v, want a refusal", err)
+	if err != nil {
+		t.Fatalf("fresh exact-path merge: %v", err)
 	}
-	if got := testGit(t, f.repo, "rev-parse", "HEAD"); got != beforeHead {
-		t.Fatalf("refused merge moved the target to %s, want %s", got, beforeHead)
+	if got := testGit(t, f.repo, "rev-parse", "HEAD"); got == beforeHead {
+		t.Fatal("exact-path merge did not move the target")
 	}
-	if _, err := git(f.ctx, f.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
-		t.Fatal("refused fresh merge left its temporary receipt reservation behind")
+	if _, err := git(f.ctx, f.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err != nil {
+		t.Fatalf("merged exact-path receipt was not sealed: %v", err)
 	}
-	if after := f.snapshot(t); after.Head != before.Head || after.Depth != before.Depth {
-		t.Fatalf("refused fresh merge changed the durable log: head %s/%s depth %d/%d",
-			after.Head, before.Head, after.Depth, before.Depth)
+	if after := f.snapshot(t); after.Depth <= before.Depth {
+		t.Fatalf("merged exact-path receipt did not extend durable log: depth %d/%d", after.Depth, before.Depth)
 	}
 }
 

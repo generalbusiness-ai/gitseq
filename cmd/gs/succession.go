@@ -178,11 +178,14 @@ func planSuccession(projection workroom.Projection, changes []mergeChange, candi
 		}
 	}
 	landed := func(path string) {
-		covers := covering(path, true)
-		winner := widest(covers, path)
-		published[winner] = true
-		for _, artifact := range covers {
-			assign(artifact, winner)
+		// Git proves this exact file changed. A covering directory remains a
+		// separate artifact path, so this successor neither selects nor retires
+		// it.
+		published[path] = true
+		for _, artifact := range covering(path, true) {
+			if artifact.Path == path {
+				assign(artifact, path)
+			}
 		}
 	}
 	removed := func(path string) {
