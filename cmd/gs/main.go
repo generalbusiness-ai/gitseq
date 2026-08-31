@@ -1945,9 +1945,9 @@ func workCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("work", arguments)
 	as := set.String("as", "", "actor whose work is selected")
 	var lanes values
-	set.Var(&lanes, "lane", "relationship lane; repeat to name several (default all four)")
+	set.Var(&lanes, "lane", "relationship lane; repeat to name several (default all five)")
 	var statuses values
-	set.Var(&statuses, "status", "lifecycle status; repeat to name several")
+	set.Var(&statuses, "status", "row state; repeat to name several")
 	stale := set.String("stale", "", "staleness policy: summary, include, only, or exclude")
 	limit := set.Int("limit", 0, "page size")
 	cursor := set.String("cursor", "", "opaque continuation from a previous page")

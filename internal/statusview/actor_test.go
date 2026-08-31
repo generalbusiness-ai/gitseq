@@ -45,6 +45,87 @@ func findCommitmentView(items []CommitmentView, request string) *CommitmentView 
 	return nil
 }
 
+func ratificationSnapshot() app.Snapshot {
+	projection := workroom.Projection{
+		Actors: map[string]workroom.ActorState{
+			me:   {Name: "me", Roles: []string{"participant", "ratifier"}},
+			them: {Name: "them", Roles: []string{"participant"}},
+		},
+		Statements: []workroom.Statement{
+			{Event: "proposal:open", Sequence: 1, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier", Text: "adopt open"},
+			{Event: "proposal:stale", Sequence: 2, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier", Text: "adopt stale", Stale: true},
+			{Event: "proposal:ratified", Sequence: 3, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier", Ratified: true},
+			{Event: "proposal:retired", Sequence: 4, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier", Retired: true},
+			{Event: "proposal:other-role", Sequence: 5, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:steward"},
+			{Event: "proposal:refused", Sequence: 6, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier"},
+			{Event: "proposal:dissented", Sequence: 7, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier"},
+			{Event: "dissent", Sequence: 8, Actor: me, Kind: workroom.KindDissent, Satisfier: workroom.SatisfierNone},
+		},
+		Provenance: map[string][]string{"dissent": {"proposal:dissented"}},
+	}
+	for _, statement := range projection.Statements {
+		verdict := workroom.Effective
+		if statement.Event == "proposal:refused" {
+			verdict = workroom.Ineffective
+		}
+		projection.Decisions = append(projection.Decisions, workroom.Decision{Event: statement.Event, Sequence: statement.Sequence, Verdict: verdict})
+	}
+	return app.Snapshot{Genesis: "genesis", Head: "head", Depth: len(projection.Decisions), Projection: projection}
+}
+
+func TestActorStatusWaitAndWorkExposeOnlyStandingRoleRatifications(t *testing.T) {
+	snapshot := ratificationSnapshot()
+	digest := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
+	if len(digest.AwaitingRatification) != 2 || digest.AwaitingRatification[0].Event != "proposal:open" ||
+		digest.AwaitingRatification[1].Event != "proposal:stale" || !digest.AwaitingRatification[1].Stale {
+		t.Fatalf("awaiting ratification = %#v", digest.AwaitingRatification)
+	}
+	if summary := Summarize("status", digest); !strings.Contains(summary, "2 awaiting your ratification") {
+		t.Fatalf("status summary hides ratification duty: %q", summary)
+	}
+
+	delta := BuildWait(snapshot, Cursor{}, nil, false, Cursor{}, nil, me, "me", true)
+	if len(delta.CurrentAwaitingRatification) != 2 || delta.CurrentAwaitingRatification[1].Event != "proposal:stale" {
+		t.Fatalf("wait ratification lane = %#v", delta.CurrentAwaitingRatification)
+	}
+	if summary := Summarize("wait", delta); !strings.Contains(summary, "2 awaiting your ratification") {
+		t.Fatalf("wait summary hides ratification duty: %q", summary)
+	}
+
+	page, err := BuildWorkPage(snapshot, WorkQuery{Actor: me, Lanes: []WorkLane{LaneAwaitingRatification}, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 2 || page.Items[0].Event != "proposal:stale" || page.Items[0].Request != "" ||
+		page.Items[0].Lane != LaneAwaitingRatification || page.Items[0].Status != "awaiting-ratification" || page.Items[0].Author == nil || page.Items[0].Author.Fingerprint != them {
+		t.Fatalf("work ratification lane invented commitment fields or lost proposal fields: %#v", page.Items)
+	}
+	fresh, err := BuildWorkPage(snapshot, WorkQuery{Actor: me, Lanes: []WorkLane{LaneAwaitingRatification},
+		Statuses: []string{"awaiting-ratification"}, Stale: StaleExclude, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fresh.Items) != 1 || fresh.Items[0].Event != "proposal:open" {
+		t.Fatalf("stale exclusion did not preserve only the current proposal: %#v", fresh.Items)
+	}
+	moved, err := BuildWorkPage(snapshot, WorkQuery{Actor: me, Lanes: []WorkLane{LaneAwaitingRatification},
+		Stale: StaleOnly, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(moved.Items) != 1 || moved.Items[0].Event != "proposal:stale" || !moved.Items[0].Stale {
+		t.Fatalf("stale-only ratification selection = %#v", moved.Items)
+	}
+
+	current, err := BuildWorkPage(snapshot, WorkQuery{Actor: them, Lanes: []WorkLane{LaneAwaitingRatification}, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.MatchingTotal != 0 {
+		t.Fatalf("actor without satisfier role received ratification work: %#v", current.Items)
+	}
+}
+
 func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *testing.T) {
 	projection := workroom.Projection{
 		Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},

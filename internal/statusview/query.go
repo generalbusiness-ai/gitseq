@@ -23,10 +23,11 @@ const (
 type WorkLane string
 
 const (
-	LaneAvailable       WorkLane = "available_to_you"
-	LaneWaitingOnYou    WorkLane = "waiting_on_you"
-	LaneYouAreWaitingOn WorkLane = "you_are_waiting_on"
-	LaneNotActionable   WorkLane = "not_actionable"
+	LaneAvailable            WorkLane = "available_to_you"
+	LaneAwaitingRatification WorkLane = "awaiting_ratification"
+	LaneWaitingOnYou         WorkLane = "waiting_on_you"
+	LaneYouAreWaitingOn      WorkLane = "you_are_waiting_on"
+	LaneNotActionable        WorkLane = "not_actionable"
 )
 
 type StaleFilter string
@@ -89,6 +90,12 @@ type WorkDetails struct {
 }
 
 type WorkItem struct {
+	// Event is present for attention that is not a commitment. Pending
+	// ratification rows use it instead of pretending the proposal is a request.
+	Event            string    `json:"event,omitempty"`
+	Kind             string    `json:"kind,omitempty"`
+	Author           *ActorRef `json:"author,omitempty"`
+	Satisfier        string    `json:"satisfier,omitempty"`
 	Request          string    `json:"request"`
 	Lane             WorkLane  `json:"lane"`
 	Status           string    `json:"status"`
@@ -130,11 +137,11 @@ type workCursor struct {
 
 var knownStatuses = map[string]bool{
 	"open": true, "promised": true, "reported": true, "awaiting-merge": true, "superseded": true, "satisfied": true,
-	"stale": true, "cancelled": true, "reneged": true, "withdrawn": true,
+	"stale": true, "cancelled": true, "reneged": true, "withdrawn": true, "awaiting-ratification": true,
 }
 
 var knownLanes = map[WorkLane]bool{
-	LaneAvailable: true, LaneWaitingOnYou: true, LaneYouAreWaitingOn: true, LaneNotActionable: true,
+	LaneAvailable: true, LaneAwaitingRatification: true, LaneWaitingOnYou: true, LaneYouAreWaitingOn: true, LaneNotActionable: true,
 }
 
 func actorRef(projection workroom.Projection, fingerprint string) *ActorRef {
@@ -161,7 +168,7 @@ func normalizeWorkQuery(input WorkQuery) (WorkQuery, string, error) {
 		return WorkQuery{}, "", fmt.Errorf("unknown stale filter %q", input.Stale)
 	}
 	if len(input.Lanes) == 0 {
-		input.Lanes = []WorkLane{LaneAvailable, LaneWaitingOnYou, LaneYouAreWaitingOn, LaneNotActionable}
+		input.Lanes = []WorkLane{LaneAvailable, LaneAwaitingRatification, LaneWaitingOnYou, LaneYouAreWaitingOn, LaneNotActionable}
 	}
 	laneSet := make(map[WorkLane]bool, len(input.Lanes))
 	for _, lane := range input.Lanes {
@@ -273,6 +280,30 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 	}
 	items := make([]WorkItem, 0, query.Limit)
 	matching, closedStale := 0, 0
+	consider := func(item WorkItem) {
+		position := matching
+		matching++
+		if position >= offset && len(items) < query.Limit {
+			items = append(items, item)
+		}
+	}
+	// Ratification attention comes first in the default page. It is not a
+	// commitment and should not be buried behind commitment history merely
+	// because both share one bounded query surface.
+	if lanes[LaneAwaitingRatification] && (len(statuses) == 0 || statuses["awaiting-ratification"]) {
+		pending := awaitingRatifications(durable.Projection, query.Actor)
+		for index := len(pending) - 1; index >= 0; index-- {
+			row := pending[index]
+			if query.Stale == StaleOnly && !row.Stale || query.Stale == StaleExclude && row.Stale {
+				continue
+			}
+			consider(WorkItem{
+				Event: row.Event, Kind: row.Kind, Author: actorRef(durable.Projection, row.actorFingerprint),
+				Satisfier: row.Satisfier, Lane: LaneAwaitingRatification, Status: "awaiting-ratification",
+				Stale: row.Stale, Text: row.Text,
+			})
+		}
+	}
 	for index := len(durable.Projection.Commitments) - 1; index >= 0; index-- {
 		commitment := durable.Projection.Commitments[index]
 		lane := commitmentLane(commitment, query.Actor)
@@ -296,11 +327,6 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 		if query.Stale == StaleOnly && !commitment.Stale || query.Stale == StaleExclude && commitment.Stale {
 			continue
 		}
-		position := matching
-		matching++
-		if position < offset || len(items) == query.Limit {
-			continue
-		}
 		requester := actorRef(durable.Projection, commitment.Requester)
 		item := WorkItem{Request: commitment.Request, Lane: lane, Status: commitment.Status, Stale: commitment.Stale,
 			SuccessorRequest: commitment.SuccessorRequest, Promise: commitment.Promise, Report: commitment.Report, AddressedTo: actorRef(durable.Projection, commitment.AddressedTo),
@@ -309,7 +335,7 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 		if requester != nil {
 			item.Requester = *requester
 		}
-		items = append(items, item)
+		consider(item)
 	}
 	enrichWorkRows(durable.Projection, workItemTargets(items))
 	if offset > matching {

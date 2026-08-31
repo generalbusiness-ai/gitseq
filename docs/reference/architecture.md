@@ -1124,6 +1124,19 @@ Work and status rows include the request, report, exact-head, and
 latest-review facts needed for routine action. Write surfaces return the fold
 decision after an append rather than previewing application force.
 
+Pending ratification is a separate attention lane, not a commitment state.
+`internal/statusview` selects effective, unratified, live proposals whose
+captured `role:<name>` satisfier is held by the actor being viewed. It reads the
+satisfier projected on each statement, never the current vocabulary, because
+the fold admits a ratification under the definition captured with that
+statement. Ratification, proposal supersession, or a standing effective direct
+dissent removes the row; ordinary staleness remains a qualifier on it. Status,
+wait, and work expose the same bounded selection. Work uses an `event` field
+for these rows and leaves `request` empty, so the query does not manufacture a
+request, performer, promise, or waiting party around a proposal. The browser's
+awaiting-ratification population applies the same standing and captured-role
+rules to the full projection.
+
 `internal/app` opens a repository, joins the kernel records to the interpreter
 the repository is bound to, and exposes the resulting durable snapshot.
 Readers must report an unbound or unavailable interpreter instead of

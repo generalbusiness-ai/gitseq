@@ -17,8 +17,8 @@ never fetches the complete `/v0/status` projection.
 
 | argument | required | meaning |
 |---|---|---|
-| `lanes` | optional | Typed relationship lanes: `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Default is all four. |
-| `statuses` | optional | Lifecycle statuses to include: `open`, `promised`, `reported`, `awaiting-merge`, `superseded`, `satisfied`, `stale`, `cancelled`, `reneged`, `withdrawn`. An unknown status is an error, not a guess. |
+| `lanes` | optional | Typed relationship lanes: `awaiting_ratification`, `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Default is all five. |
+| `statuses` | optional | Row states to include: commitment lifecycle states plus `awaiting-ratification` for the non-commitment proposal lane. An unknown state is an error, not a guess. |
 | `stale` | optional | One staleness policy: `summary` (default), `include`, `only`, or `exclude`. |
 | `limit` | optional | Page size, 1 to 50. Default 20. |
 | `cursor` | optional | The opaque continuation from a previous page. |
@@ -28,7 +28,8 @@ Filters are finite, typed choices, not an expression language.
 
 ## What comes back
 
-The default page is the work still owed: current `open`, `promised`,
+The default page is the work still owed: effective proposals whose captured
+role satisfier the configured actor holds, plus current `open`, `promised`,
 `reported`, and `awaiting-merge` commitments — including unclaimed requests addressed to the
 configured actor, even when their bases moved and their status became `stale`
 — plus commitments the fold left in a `stale`,
@@ -56,6 +57,12 @@ unknown policy is an error, not a guess.
 
 Every returned row still carries its own `stale` field. The default
 changes which rows are listed, never what a listed row says.
+
+An `awaiting_ratification` row is attention, not a commitment. It carries the
+proposal in `event`, with `kind`, `author`, `satisfier`, `text`, and `stale`;
+`request` is empty and no performer, promise, or waiting party is invented.
+Ratification, proposal supersession, or a standing effective direct dissent
+clears it. Use state `awaiting-ratification` when selecting only these rows.
 
 Every response gives the exact durable frontier, the matching total,
 the returned count, the preceding count, the remaining count, and a

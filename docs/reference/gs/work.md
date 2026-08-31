@@ -8,7 +8,7 @@ rests_on:
 
 # `gs work`
 
-Selects one actor's commitments by relationship lane, lifecycle status
+Selects one actor's commitments and pending ratification attention by relationship lane, row state
 and staleness policy, and pages through the result.
 
 This is the same selection the MCP [`work`](../mcp/work.md) tool and the
@@ -22,8 +22,8 @@ filters, the caps and the cursor mean one thing on every surface, and
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | | The actor whose work is selected. Required; falls back to `GITSEQ_ACTOR`. |
-| `--lane` | all four | Relationship lane: `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Repeat to name several. |
-| `--status` | | Lifecycle status: `open`, `promised`, `reported`, `awaiting-merge`, `superseded`, `satisfied`, `stale`, `cancelled`, `reneged`, `withdrawn`. Repeat to name several. |
+| `--lane` | all five | Relationship lane: `awaiting_ratification`, `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Repeat to name several. |
+| `--status` | | Row state: the commitment lifecycle states or `awaiting-ratification`. Repeat to name several. |
 | `--stale` | `summary` | Staleness policy: `summary`, `include`, `only`, or `exclude`. |
 | `--limit` | `20` | Page size, 1 to 50. |
 | `--cursor` | | The opaque continuation from a previous page. |
@@ -70,6 +70,13 @@ second call. An unclaimed request addressed to the selected actor stays in
 `available_to_you` if its bases move: its status becomes `stale`, its `stale`
 flag is `true`, and its full conditions remain present. Claimed and closed
 stale commitments keep their existing lanes.
+
+The exception to the commitment-shaped row is `awaiting_ratification`. It
+names the proposal in `event` and leaves `request` empty, because a proposal is
+not a commitment. The row appears to every actor holding the role in the
+proposal's captured satisfier and carries its author, kind, text, satisfier,
+and staleness qualifier. Ratification, supersession, or standing direct
+dissent removes it.
 
 An artifact completion has status `awaiting-merge` and no `waiting_on` actor.
 Its kind has satisfier `none`, so requester ratification is not an admissible

@@ -48,6 +48,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 |---|---|
 | `you` | Your name, fingerprint and current roles. |
 | `frontier` | The genesis, head and depth this answer was folded at. |
+| `awaiting_ratification` | Effective, unratified, live proposals whose captured role satisfier you currently hold. |
 | `available_to_you` | Unclaimed requests addressed to you, including requests whose bases have become stale. |
 | `waiting_on_you` | Commitments where you have an admissible next act. |
 | `you_are_waiting_on` | Commitments involving you where no admissible next act is assigned to you, including artifact completions awaiting merge. |
@@ -67,7 +68,7 @@ state the trusted-process boundary under which that credential is meaningful.
 There is also a one-line text summary, which is usually enough:
 
 ```text
-priority ephemeral chat: 0 unacknowledged; depth 1, you hold 3 roles, 0 addressed to you, 0 waiting on you, 0 you are waiting on,
+priority ephemeral chat: 0 unacknowledged; depth 1, you hold 3 roles, 0 awaiting your ratification, 0 addressed to you, 0 waiting on you, 0 you are waiting on,
 0 not actionable, 0 of your acts did not take force; live alice (1fb980b1de47)
 ```
 
@@ -80,6 +81,14 @@ report gives you an admissible next act. A reporting artifact instead projects
 `awaiting-merge` with no `waiting_on`: artifacts have satisfier `none`, so the
 requester cannot ratify one. The implementation commitment closes only when an
 independently approved exact head merges.
+
+`awaiting_ratification` is also not a commitment. Each row names the proposal
+in `event`, its author, kind, text, captured satisfier, and staleness qualifier;
+it has no request, performer, promise, or waiting party. The row is present
+only while the proposal is effective, unratified, unsuperseded, and has no
+standing direct dissent. It is selected for every actor who currently holds
+the role named by the proposal's captured satisfier. Ratification,
+supersession, or dissent clears it. Ordinary staleness does not hide it.
 
 A rejected implementation parent closes as terminal `superseded` only after an
 explicit qualifying linked supersession. Its row carries `successor_request`

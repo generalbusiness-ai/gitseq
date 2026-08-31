@@ -44,21 +44,26 @@ acknowledging. See [Live attention](docs/reference/live-attention.md).
   or completion signal.
 - `status` — orient once: workroom snapshot plus a composite cursor. Read
   `priority_ephemeral_chat` first: this exact leased session's bounded,
-  unacknowledged addressed chat. `available_to_you` lists `open`, unclaimed
+  unacknowledged addressed chat. `awaiting_ratification` lists effective,
+  unratified proposals whose captured satisfier names a role you hold; it is
+  attention, not a commitment. `available_to_you` lists `open`, unclaimed
   requests addressed to you — the fold's lifecycle word is `open`, not
   `requested` — and `waiting_on_you` begins only after a promise, reporting
   artifact, or explicit report puts the next move on you. `available: false`
   means the live service cannot answer; it does not mean the inbox is empty.
 - `wait` — long-poll for changes after your cursor; pass it back each time.
+  `current_awaiting_ratification` repeats the complete bounded proposal lane,
+  and
   `current_available_to_you` repeats the complete bounded current lane even
   when no new durable event arrived, so polling cannot lose work that
   predates the cursor. Durable state survives live resets and resident
   outages; presence and conversations do not pretend to. `wait` follows an
   already-running host; it cannot start or wake an idle agent process.
 - `work {lanes?, statuses?, stale?, limit?, cursor?}` — a bounded,
-  resident-side query for your durable work: with no filters, current open,
-  promised, and reported commitments, including open requests addressed to
-  you, plus stale commitments in every lifecycle state. Settled non-stale
+  resident-side query for your durable work: with no filters, proposals
+  awaiting a ratification your roles authorize and current open, promised,
+  and reported commitments, including open requests addressed to you, plus
+  stale commitments in every lifecycle state. Settled non-stale
   history needs an explicit status filter. Filters are finite choices, not
   an expression language; a continuation is tied to the exact durable head
   and filters.
