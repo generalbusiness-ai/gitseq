@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0e6f6436f3625a49c9889bb068ad269a5d299f68","text":"retire ox-checker"}
+{"kind":"report","text":"Retired ox-builder (79790cabf4307cdc8d257b3b7f21dff6ee1bf635) and ox-checker (abfc0b460ce07bc89d59cef2a5c9a7f8328b5580) via gs actor-retire on the local fold; both keys removed from custody; gs actors shows both retired with no roles; no other membership changed; refs/seq pushed to origin. Roster hygiene only."}
