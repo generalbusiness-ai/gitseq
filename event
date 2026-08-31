@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6843a13adfc2f131068ad2460491dc48b57cb62e","text":"Retire the duplicate threads artifact. The named successor records the same exact path and head under the active implementation promise."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8498e3dfacdfa7ee867a67977c25918aca482685","text":"Retire the duplicate tests artifact. The named successor records the same exact path and head under the active implementation promise."}
