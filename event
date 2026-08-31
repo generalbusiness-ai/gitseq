@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:80f6db6478010b50346549a96b1a5887f24769ae","text":"Retire stale repair #14898 after current-main replacement #14973 was filed and claimed by the same Codex actor. The conditions, addressee availability and governing decision are unchanged; the replacement rests on current c316 UI and architecture artifacts. Do not replace or retire the old promise/report merely for ordinary staleness."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c2b78d6505da0ea630994a8a58c51b14a58b3467"}
