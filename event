@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:80299a4d80b0444a451e38e3f8c43a0042085e79"}
+{"kind":"report","text":"Closing the remote-link refile (request #12945) against my promise #13070: the approved head fc99f10d2d6aa5050b573d08e0a24de79648e09f is in origin/main via merge receipt 934ebcfb, so the requested work is complete and shipped. This report drains the awaiting-merge row; requester planner to ratify.","body":{"commit":"fc99f10d2d6aa5050b573d08e0a24de79648e09f"}}
