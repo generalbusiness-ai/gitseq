@@ -1,1 +1,1 @@
-{"kind":"assert","text":"Not actionable yet: this recut is explicitly sequenced after the JSONata, Performance, and novice-CLI tip merges. I will begin only when all three merge receipts are on main and their final main head is available as the stated base."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2e0aa8b6f8dcb65886b7b69a94095df393407191","text":"Withdrawn: the asserted basis identifier was malformed and unresolved. A corrected waiting assertion follows on the exact request."}
