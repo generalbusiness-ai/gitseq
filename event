@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:59636e3cfff96fb7f4b9624b9138f3449e9cb5c9"}
+{"kind":"artifact","text":"Exact-path succession recut at d1dd3d01c0720af718509e11bf9f8b054a45adbc: AGENTS.md records the reviewed current-main implementation and its verified contract.","body":{"branch":"request/specific-path-succession-current","commit":"d1dd3d01c0720af718509e11bf9f8b054a45adbc","path":"AGENTS.md"}}
