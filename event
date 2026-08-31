@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"List-level Table and Graph presentation wording at 23642b5b preserves the existing two-screen model and full-thread navigation.","body":{"commit":"23642b5b71ee49164d4a06dd34f7212f1c270fb7","path":"ui/src/App.tsx"}}
+{"kind":"artifact","text":"Static outcome-map coverage at 23642b5b proves default Table, exact-relation-only graph content, projected waiting_on, and colour-independent relation cues.","body":{"commit":"23642b5b71ee49164d4a06dd34f7212f1c270fb7","path":"ui/test/components.test.mjs"}}
