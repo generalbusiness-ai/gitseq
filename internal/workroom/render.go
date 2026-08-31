@@ -146,7 +146,7 @@ func RenderStatus(projection Projection) []byte {
 	output.WriteString("\n## Attempts\n\n")
 	for _, decision := range projection.Decisions {
 		if decision.Verdict != Effective {
-			fmt.Fprintf(&output, "- `%s` — **%s**: %s\n", name(decision.Event, sequences), decision.Verdict, escape(decision.Reason))
+			fmt.Fprintf(&output, "- `%s` — **%s**: %s\n", name(decision.Event, sequences), decision.Verdict, escape(explainDecisionReason(decision.Reason)))
 		}
 	}
 	return output.Bytes()
@@ -218,15 +218,23 @@ func (p Projection) sequences() map[string]int {
 	return index
 }
 
-// name renders an event the way a reader says it. The fallback is the whole
-// identifier rather than an abbreviation: `short` elides the middle so its
-// output is visibly incomplete, which is right for a git object a reader can
-// still resolve, and wrong for an event name that must round-trip.
+// name keeps the workroom-local sequence beside the only identifier durable
+// commands accept. #N is readable but does not resolve at an action boundary.
 func name(event string, sequences map[string]int) string {
 	if sequence := sequences[event]; sequence > 0 {
-		return fmt.Sprintf("#%d", sequence)
+		return fmt.Sprintf("#%d %s", sequence, event)
 	}
 	return event
+}
+
+func explainDecisionReason(reason string) string {
+	if reason == "dangling promise has no request" {
+		return reason + ". Add exactly one live request event with --rests-on. See docs/reference/gs/state.md#citing"
+	}
+	if reason == "report cites a request other than the one its promise answers" {
+		return reason + ". File against the one live promise you made. See docs/reference/gs/state.md#citing"
+	}
+	return reason
 }
 
 func short(value string) string {

@@ -63,6 +63,7 @@ Read in this order if you are new:
   [role-grant](reference/gs/role-grant.md),
   [role-revoke](reference/gs/role-revoke.md),
   [actors](reference/gs/actors.md),
+  [whoami](reference/gs/whoami.md),
   [state](reference/gs/state.md),
   [batch](reference/gs/batch.md),
   [publish](reference/gs/publish.md),

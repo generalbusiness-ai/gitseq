@@ -1052,9 +1052,10 @@ func TestSuccessionAdmissionPreflightsEveryActWithoutAppending(t *testing.T) {
 		t.Fatal(err)
 	}
 	largePath := strings.Repeat("p", 1400)
+	head := testGit(t, repo, "rev-parse", "HEAD")
 	acts := []batchAct{
 		{Label: "merge", Verb: app.VerbState, Kind: workroom.KindAssert, Text: "small merge receipt", RestsOn: []string{seed.ID}, IdempotencyKey: "preflight-receipt"},
-		{Label: "successor", Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "Merge published the current artifact at " + largePath, Body: map[string]string{"path": largePath, "commit": strings.Repeat("a", 40)}, RestsOn: []string{"$merge"}, IdempotencyKey: "preflight-successor"},
+		{Label: "successor", Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "Merge published the current artifact at " + largePath, Body: map[string]string{"path": largePath, "commit": head}, RestsOn: []string{"$merge"}, IdempotencyKey: "preflight-successor"},
 	}
 	before, err := workspace.Snapshot(ctx)
 	if err != nil {
@@ -2339,6 +2340,34 @@ func TestBatchLandsChainResolvingIntraBatchLabels(t *testing.T) {
 	request, promise := report.Acts[0].Event, report.Acts[1].Event
 	if !contains(snapshot.Projection.Provenance[promise], request) {
 		t.Fatalf("promise provenance = %#v, want the minted request %s", snapshot.Projection.Provenance[promise], request)
+	}
+}
+
+func TestBatchArtifactFilingRequiresFullCanonicalCommit(t *testing.T) {
+	fixture := newBatchFixture(t)
+	testGit(t, fixture.repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "artifact head")
+	head := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	before := fixture.snapshot()
+	acts := fmt.Sprintf(`[
+	  {"verb":"state","kind":"artifact","text":"short commit must not land",
+	   "body":{"path":"short.txt","commit":%q},
+	   "rests_on":[%q],"idempotency_key":"short-artifact-commit"}
+	]`, head[:12], fixture.genesis)
+	report, err := fixture.run("operator", acts)
+	if err == nil {
+		t.Fatalf("short artifact commit landed: %#v", report)
+	}
+	for _, want := range []string{"commit must be the full canonical object ID", head[:12], head} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("batch artifact refusal omits %q: %v", want, err)
+		}
+	}
+	if len(report.Acts) != 1 || report.Acts[0].Outcome != "failed" || report.Error == nil || report.Error.Code != "admission" {
+		t.Fatalf("refused batch report = %#v", report)
+	}
+	after := fixture.snapshot()
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("refused batch changed workroom: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
 	}
 }
 
@@ -3693,6 +3722,59 @@ func buildGS(t *testing.T) string {
 		t.Fatalf("building gs: %v: %s", err, output)
 	}
 	return binary
+}
+
+func TestInstalledHelpIsUsefulAndHasStableExitCodes(t *testing.T) {
+	binary := buildGS(t)
+	tests := []struct {
+		name     string
+		args     []string
+		exitCode int
+		contains []string
+	}{
+		{name: "top help", args: []string{"--help"}, contains: []string{"usage: gs <command> [flags]", "docs/how-to/end-to-end.md", "docs/reference/gs/"}},
+		{name: "help command", args: []string{"help"}, contains: []string{"usage: gs <command> [flags]", "docs/how-to/end-to-end.md"}},
+		{name: "subcommand help", args: []string{"help", "work"}, contains: []string{"usage: gs work [flags]", "-as string", "-repo string", "-stale string"}},
+		{name: "subcommand flag help", args: []string{"work", "--help"}, contains: []string{"usage: gs work [flags]", "-lane value", "-json"}},
+		{name: "unknown flag", args: []string{"work", "--not-a-flag"}, exitCode: 1, contains: []string{"flag provided but not defined: -not-a-flag", "usage: gs work [flags]", "-as string"}},
+		{name: "missing command", exitCode: 2, contains: []string{"usage: gs <command> [flags]", "docs/how-to/end-to-end.md"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			output, err := exec.Command(binary, test.args...).CombinedOutput()
+			if test.exitCode == 0 && err != nil {
+				t.Fatalf("help exited with %v: %s", err, output)
+			}
+			if test.exitCode != 0 {
+				var exitErr *exec.ExitError
+				if !errors.As(err, &exitErr) || exitErr.ExitCode() != test.exitCode {
+					t.Fatalf("exit = %v, want %d: %s", err, test.exitCode, output)
+				}
+			}
+			for _, want := range test.contains {
+				if !bytes.Contains(output, []byte(want)) {
+					t.Errorf("output omits %q:\n%s", want, output)
+				}
+			}
+		})
+	}
+}
+
+func TestLifecycleRefusalsTellTheActorWhatToDo(t *testing.T) {
+	tests := []struct {
+		message string
+		want    string
+	}{
+		{message: "dangling promise has no request", want: "Add exactly one live request event with --rests-on"},
+		{message: "report cites a request other than the one its promise answers", want: "File against the one live promise you made"},
+		{message: "report rests on the request while promise event is live; report on the promise", want: "use the request directly only when you made no promise"},
+	}
+	for _, test := range tests {
+		got := explainLifecycleRefusal(errors.New(test.message)).Error()
+		if !strings.Contains(got, test.message) || !strings.Contains(got, test.want) || !strings.Contains(got, "docs/reference/gs/state.md#citing") {
+			t.Errorf("guidance for %q = %q", test.message, got)
+		}
+	}
 }
 
 // These checks run the installed command rather than calling batchCommand in

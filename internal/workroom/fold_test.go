@@ -746,12 +746,9 @@ func TestUnclaimedRequestIsOpenWithoutWaitingOnItsAddressee(t *testing.T) {
 		}
 	}
 	page := RenderStatus(Fold(records))
-	// The request column now carries the number rather than the raw event id.
-	// That is the change under test elsewhere in this file, and the expectation
-	// is updated deliberately rather than loosened: what this test is actually
-	// about is that an unclaimed request is rendered as addressed and waiting
-	// on nobody, and both of those still read exactly as before.
-	if !bytes.Contains(page, []byte("| open |  | actor:operator | addressed to actor:agent — unclaimed | #4 |  |")) {
+	// The request column carries both the readable sequence and the exact event
+	// name a command accepts. This test remains about the unclaimed assignment.
+	if !bytes.Contains(page, []byte("| open |  | actor:operator | addressed to actor:agent — unclaimed | #4 w3 |  |")) {
 		t.Fatalf("status page does not render the request as addressed and unclaimed:\n%s", page)
 	}
 
@@ -3614,48 +3611,45 @@ func TestSequenceIsStableAcrossARefold(t *testing.T) {
 // reader actually meets it.
 //
 // It is mutation-sensitive by construction: it fails if any event-bearing row
-// prints a hash fragment instead of #N. Git object identifiers are exempt and
-// must stay exempt — a commit abbreviation resolves back through git, an event
-// abbreviation resolves back through nothing.
-func TestRenderedSurfacesNameEventsByNumber(t *testing.T) {
+// drops either the readable #N or the exact event identifier. Git object IDs
+// remain abbreviated because Git can resolve those; neither half of an event
+// name can stand in for the other at a durable boundary.
+func TestRenderedSurfacesNameEventsByNumberAndCanonicalID(t *testing.T) {
 	projection := golden(t)
 	if len(projection.Commitments) == 0 || len(projection.Artifacts) == 0 {
 		t.Fatal("the golden log has no commitments or artifacts, so this proves nothing")
 	}
 	rendered := string(RenderStatus(projection))
 
-	commits := map[string]bool{}
-	for _, artifact := range projection.Artifacts {
-		commits[artifact.Commit] = true
-	}
-	for _, review := range projection.Reviews {
-		commits[review.Head] = true
-	}
-
-	// Every abbreviation the renderer emitted, checked against what it is
-	// allowed to abbreviate. An actor fingerprint and a git commit may be
-	// elided; an event may not.
 	sequences := projection.sequences()
 	for _, event := range eventsOn(projection) {
-		if commits[event] {
-			continue
+		sequence := sequences[event]
+		want := event
+		if sequence > 0 {
+			want = fmt.Sprintf("#%d %s", sequence, event)
 		}
-		// An event with no number is named by its identifier in full, and that
-		// is correct, so its full form appearing in the output is not a defect
-		// to detect. Skipping it keeps this test measuring the one thing it is
-		// for: an abbreviation standing where a number belongs.
-		if sequences[event] == 0 {
-			continue
-		}
-		if abbreviated := short(event); strings.Contains(rendered, abbreviated) {
-			t.Errorf("the status renderer prints %s as %q instead of its number", event, abbreviated)
+		if !strings.Contains(rendered, want) {
+			t.Errorf("the status renderer omits exact event name %q", want)
 		}
 	}
+}
 
-	// And the number is actually there, so the test cannot pass by rendering
-	// nothing at all.
-	if !strings.Contains(rendered, "#") {
-		t.Error("no event was named by number anywhere in the rendered status")
+func TestRenderStatusKeepsLongCanonicalEventID(t *testing.T) {
+	const request = "git:sha1:0123456789abcdef0123456789abcdef01234567#git:sha1:89abcdef0123456789abcdef0123456789abcdef"
+	projection := Projection{
+		Commitments: []Commitment{{
+			Request: request, Requester: operator, Performer: agent,
+			WaitingOn: agent, Status: "promised",
+		}},
+		Decisions: []Decision{{Event: request, Sequence: 41, Verdict: Effective}},
+	}
+
+	rendered := string(RenderStatus(projection))
+	if want := "#41 " + request; !strings.Contains(rendered, want) {
+		t.Fatalf("status omits the canonical event name %q:\n%s", want, rendered)
+	}
+	if abbreviated := short(request); strings.Contains(rendered, abbreviated) {
+		t.Fatalf("status abbreviates the event as %q instead of preserving its canonical ID:\n%s", abbreviated, rendered)
 	}
 }
 

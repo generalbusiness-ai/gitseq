@@ -68,6 +68,14 @@ fact, not an empty inspection. An empty page for a mistyped identifier
 would read like a real answer about a real event that happens to have
 nothing on it.
 
+The refusal also names the required form:
+`git:sha1:<genesis>#git:sha1:<event>` for a SHA-1 workroom, or the equivalent
+for the repository's object format. `#N` is a display index only; this command
+does not resolve it, a prefix, or an ellipsis-truncated value. Copy the full ID
+from `gs work --json`, another `--json` answer, or a command that printed the
+event when it was filed. The human inspection prints its event and direct
+event bases in full for the same reason.
+
 ## See also
 
 - [`gs work`](work.md), [`gs artifacts`](artifacts.md), [`gs provenance`](provenance.md)
