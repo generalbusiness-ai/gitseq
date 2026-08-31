@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7b05d5053733b136841563f7bdd07876f3bb07a7","text":"Replaced by successor artifact #15240 at the same note path, correcting the retired authority-gap lane's status."}
+{"kind":"propose","text":"Adopt the corrected thread-actions design at notes/2026-08-22-thread-actions.md, as recorded by artifact #15240 at exact head 194059b666eb52890f5d51cc9f6a2fd06b4b89ec."}
