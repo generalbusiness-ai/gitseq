@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ef68ec476494d08c77afe57854da7b26b0b544a2"}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d14e96fb65a69c43fcfeeb59ab320cebafe72492","text":"Retire the exhausted decision-records UI request. Its reviewed candidates were rejected, its viable successor work was superseded, and the surviving behavior shipped through later approved lanes; no implementable substance remains."}
