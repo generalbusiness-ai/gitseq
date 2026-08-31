@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9fafacf43b6f7df90510f041f4f7187f7fd19a4e","text":"Merge retired a covered predecessor; the successor is at spike/jsonataddl/inventory_ui_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc511f5fc3c8ad7990fbacd000e2ff2ad723437c","text":"Merge retired a covered predecessor; the successor is at spike/jsonataddl/compatibility_test.go."}
