@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will complete the ratified inventory exact head through inventory-local artifacts, independent review, merge, synchronized refs, and a cross-workroom completion report."}
+{"kind":"promise","text":"I will complete the specified inventory candidate through exact-path artifacts, independent review, ratified approval, merge, and verified source/workroom reference publication without changing its head unless review finds a defect.","body":{"head":"a3ce0fc6d4150a05ec8655340509f06b96a4822f","repo":"/Users/hughpyle/play/gitseq-inventory"}}
