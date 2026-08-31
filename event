@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Current-main novice CLI recut at exact clean pushed head 924bd7736e131130da714c3abec4e3c9443d3ed1 for cmd/gs/query_test.go. Full original gate matrix passed.","body":{"commit":"924bd7736e131130da714c3abec4e3c9443d3ed1","path":"cmd/gs/query_test.go"}}
+{"kind":"artifact","text":"Current-main novice CLI recut at exact clean pushed head 924bd7736e131130da714c3abec4e3c9443d3ed1 for cmd/gs/succession.go. Full original gate matrix passed.","body":{"commit":"924bd7736e131130da714c3abec4e3c9443d3ed1","path":"cmd/gs/succession.go"}}
