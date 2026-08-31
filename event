@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at .github/workflows/performance.yml","body":{"commit":"72b2e5e3ff2379a5a052c582f59c905fe0520bd4","dead_basis_override":"true","path":".github/workflows/performance.yml"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/perfscenario","body":{"commit":"72b2e5e3ff2379a5a052c582f59c905fe0520bd4","dead_basis_override":"true","path":"internal/perfscenario"}}
