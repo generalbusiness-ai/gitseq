@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will repair the two bounded Toolbar review blockers on the exact reviewed head, test and publish it for fresh independent review; I will not merge."}
+{"kind":"promise","text":"I will repair only the two stale Toolbar comments and add the narrow non-participant-ratifier mutation proof at the exact reviewed head, run every named gate, publish exact successor artifacts, and carry the result through fresh Claude review without merging.","body":{"branch":"request/toolbar-live-participant-current","head":"5c4ce6627ff3f2952d320332a332bcc40ff4d768"}}
