@@ -72,13 +72,14 @@ per ISO 24495-1, for a technical audience.
 5. Merge only an approved exact head. In the same step, publish each added,
    modified, or renamed destination at its exact changed path and retire the
    live in-target predecessors at that exact string. A pointer wider than a
-   landed destination is a separate wire: keep it live and seal it in the
-   receipt as either a sibling protected by its unsettled commitment or an
-   abandoned candidate. Removing a rename source or deleted file also changes
+   landed destination is a separate wire: keep an in-target pointer live and
+   seal it as carried, with no cleanup obligation. Seal an outside-target
+   candidate as a sibling when an unsettled commitment protects it, or as
+   abandoned otherwise. Removing a rename source or deleted file also changes
    its covering directories, so the plan may retire in-target directory
    pointers and publish the widest directory successor. Other live candidates
-   stay sealed and unretired. The abandoned candidate's author or a `ratifier`,
-   not the merge, retires it.
+   stay sealed and unretired. Only an abandoned classification prompts cleanup,
+   and the candidate's author or a `ratifier`, not the merge, retires it.
    `SKILL.md` states those succession rules in full
    and [`docs/reference/gs/merge.md`](docs/reference/gs/merge.md) tabulates
    what `gs merge` enforces. Three of them bite hardest. Paths match as exact

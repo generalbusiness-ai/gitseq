@@ -846,13 +846,16 @@ The receipt also accounts for every other live artifact covered by the
 first-parent diff without granting authority over it: it seals a wider pointer
 already current in the target world as carried, or records an outside-world
 candidate as protected by an unsettled durable commitment or abandoned. A
-carried pointer has no cleanup duty. The Git and durable receipts also seal
-the canonical exact old/new path set from the first-parent diff, so the fold can verify coverage
-without interpreting a Git tree or treating every artifact below a broad
-successor as changed. The fold verifies the testimony from log facts at the
-receipt's position and fixes the successor's succession warning there;
-receipts without the two prospective fields retain the historical moving,
-current-fold calculation.
+carried pointer has no cleanup duty. Accepting and rendering this class changes
+the deterministic projection for a fixed log, so it advances the profile to
+`workroom-fold@16`; a cache written under `@15` is rejected and history is
+replayed. The Git and durable receipts also seal the canonical exact old/new
+path set from the first-parent diff, so the fold can verify coverage without
+interpreting a Git tree or treating every artifact below a broad successor as
+changed. The fold verifies the testimony from log facts at the receipt's
+position and fixes the successor's succession warning there; receipts without
+the two prospective fields retain the historical moving, current-fold
+calculation.
 
 Before Git moves, the CLI also constructs every signed succession request and
 applies the kernel's exact genesis-ceiling measure plus the resident JSON

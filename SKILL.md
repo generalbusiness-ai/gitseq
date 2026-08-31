@@ -233,11 +233,13 @@ artifact it names.
    directory successor. The sealed receipt pairs the canonical
    `merge_changed_paths` frontier with
    `merge_left_live`, classifying every other live candidate that covers the
-   change as a protected sibling when an unsettled commitment reaches it, or
-   as abandoned otherwise. Protected siblings stay live. An abandoned
-   candidate still requires bare supersession by its author or a `ratifier`;
-   the merge gains no authority over it. A first artifact has no predecessor
-   and needs none retired. The projection marks what you skip — *unable to
+   change three ways: an in-target wider pointer is carried; an outside-target
+   candidate is a protected sibling when an unsettled commitment reaches it,
+   or abandoned otherwise. Carried pointers and protected siblings stay live
+   with no cleanup obligation. Only an abandoned classification prompts bare
+   supersession by its author or a `ratifier`; the merge gains no authority
+   over it. A first artifact has no predecessor and needs none retired. The
+   projection marks what you skip — *unable to
    flare*, or *succession not recorded* with the count;
    [docs/concepts/staleness.md](docs/concepts/staleness.md) says which
    condition produces which — and a flare means re-check this, not this is
@@ -264,11 +266,14 @@ artifact it names.
     modified file, and for a rename destination, publish a successor at its
     exact changed path and retire every live in-target predecessor at that
     exact string. Account for every other candidate covering a landed path in
-    the paired receipt fields, but keep wider paths live: a narrower successor
-    does not select or retire its parent. Where no live artifact exists at the
-    changed path, publish a first artifact there. A receipt's abandoned
-    classification is the durable prompt for cleanup, not authority for the
-    merge to do it. A renamed or deleted file's old exact path is retired with
+    the paired receipt fields, but keep wider paths live: an in-target wider
+    pointer is carried with no cleanup obligation, while an outside-target
+    candidate is a protected sibling when an unsettled commitment reaches it,
+    or abandoned otherwise. A narrower successor does not select or retire its
+    parent. Where no live artifact exists at the changed path, publish a first
+    artifact there. Only an abandoned classification is the durable prompt for
+    cleanup, not authority for the merge to do it. A renamed or deleted file's
+    old exact path is retired with
     no successor there and never published at again; a rename opens a first
     artifact at the new path, and a deletion opens nothing at the removed
     path. Removing either a rename source or a deleted file changes its
