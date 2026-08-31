@@ -247,7 +247,7 @@ why every other covering candidate stayed live.
 | Situation | Enforced result |
 |---|---|
 | One or more live artifacts have the exact changed-file path | One successor is published at that exact string. Every in-target predecessor at that exact string is retired; other candidates are accounted for and stay live. |
-| A directory covers a landed destination | The file successor is still published at the exact changed-file path. The wider directory stays live, is not selected for retirement by that destination, and is sealed as a sibling or abandoned candidate. |
+| A directory covers a landed destination | The file successor is still published at the exact changed-file path. A wider directory already in the target world stays live, is not selected for retirement by that destination, and is sealed as `carried`; an outside-world candidate is sealed as a sibling or abandoned candidate. |
 | A non-target candidate has an unsettled commitment naming its head or reaching its artifact | It stays live and `Gitseq-Left-Live` records it as a sibling with the protecting commitment. |
 | A non-target candidate has no unsettled commitment | It stays live and `Gitseq-Left-Live` records it as abandoned. Its author or a `ratifier` owes the bare supersession. |
 | Testimony names a settled, mismatched, or unknown commitment | The receipt remains effective and grants no extra authority. The testimony is unverified and the successor keeps its succession warning. |
@@ -273,8 +273,10 @@ an unrelated live artifact at `dir/b` part of a merge that changed only
 
 `Gitseq-Left-Live:` carries deterministic JSON matching the durable
 `merge_left_live` body field. It maps each artifact event to either
-`{"class":"sibling","commitment":"<event id>"}` or
-`{"class":"abandoned"}`. The field grants no retirement authority. The fold
+`{"class":"carried"}`, `{"class":"sibling","commitment":"<event id>"}`, or
+`{"class":"abandoned"}`. `carried` records a current wider pointer in the
+landed target and carries no cleanup duty. Sibling and abandoned remain
+outside-world candidates. The field grants no retirement authority. The fold
 checks both it and the sealed changed-path frontier from durable log facts at
 the receipt position and uses them only to make the published successor's
 accounting stable. The recorded classification remains historical evidence;

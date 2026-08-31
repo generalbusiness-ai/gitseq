@@ -95,9 +95,11 @@ type successionPlan struct {
 	publish      []string
 	retire       map[string]string // predecessor event -> successor path, empty when gone
 	changedPaths []string
-	// leftLive accounts for covered live artifacts that are not in the target
-	// world and therefore are not within this merge's retirement authority.
-	// A nil map marks a historical receipt which predates this accounting.
+	// leftLive accounts for covered live artifacts that this merge does not
+	// retire. A carried artifact is already in the target world but is wider
+	// than a landed exact path; siblings and abandoned artifacts are candidates
+	// outside that world. A nil map marks a historical receipt which predates
+	// this accounting.
 	leftLive map[string]mergeLeftLive
 }
 
@@ -112,6 +114,7 @@ type successionCandidate struct {
 }
 
 const (
+	leftLiveCarried   = "carried"
 	leftLiveSibling   = "sibling"
 	leftLiveAbandoned = "abandoned"
 )
@@ -159,18 +162,19 @@ func planSuccession(projection workroom.Projection, changes []mergeChange, candi
 		}
 		return winner
 	}
-	account := func(artifact workroom.Artifact) {
+	leaveLive := func(artifact workroom.Artifact) bool {
 		if candidate, classified := candidates[artifact.Event]; classified && !candidate.predecessor {
 			leftLive[artifact.Event] = candidate.leftLive
+			return true
 		}
+		return false
 	}
 	assign := func(artifact workroom.Artifact, successor string) {
-		if candidate, classified := candidates[artifact.Event]; classified && !candidate.predecessor {
-			leftLive[artifact.Event] = candidate.leftLive
+		if leaveLive(artifact) {
 			return
 		}
 		current, exists := retire[artifact.Event]
-		if !exists || current == "" || (successor != "" && widerPath(successor, current)) {
+		if !exists || current == "" {
 			retire[artifact.Event] = successor
 		}
 	}
@@ -181,7 +185,7 @@ func planSuccession(projection workroom.Projection, changes []mergeChange, candi
 		published[path] = true
 		for _, artifact := range covering(path, true) {
 			if artifact.Path != path {
-				account(artifact)
+				leaveLive(artifact)
 				continue
 			}
 			assign(artifact, path)
@@ -249,32 +253,32 @@ func mergeChangedPaths(changes []mergeChange) []string {
 
 // successionPredecessors classifies every live artifact rather than silently
 // filtering non-ancestors out of the plan. A shipped artifact is a predecessor
-// when its commit is in the target's world; the exact reviewed candidate is a
-// predecessor because that world is what is landing. Every other candidate is
-// left live and the sealed receipt says whether an unsettled durable
-// commitment protects it or it is abandoned.
+// when its commit is in the target's world and its exact lineage is changed.
+// An in-target wider pointer remains live as carried accounting; the reviewed
+// candidate follows the same rule. Every outside-world candidate is left live
+// as either a protected sibling or abandoned candidate.
 func successionPredecessors(ctx context.Context, checkout string, projection workroom.Projection, changes []mergeChange, targetPreHead, candidate string) map[string]successionCandidate {
 	classified := make(map[string]successionCandidate)
 	covered := coveredArtifacts(projection, changes)
 	protected := protectionIndex(projection, covered)
 	byCommit := make(map[string]bool)
 	for _, artifact := range covered {
-		if artifactRetiresForChanges(artifact.Path, changes) && artifact.Commit == candidate {
-			classified[artifact.Event] = successionCandidate{predecessor: true}
-			continue
-		}
-		ancestor := false
-		if artifactRetiresForChanges(artifact.Path, changes) && artifact.Commit != "" {
+		inTarget := artifact.Commit == candidate
+		if !inTarget && artifact.Commit != "" {
 			var checked bool
-			ancestor, checked = byCommit[artifact.Commit]
+			inTarget, checked = byCommit[artifact.Commit]
 			if !checked {
 				_, err := git(ctx, checkout, "merge-base", "--is-ancestor", artifact.Commit, targetPreHead)
-				ancestor = err == nil
-				byCommit[artifact.Commit] = ancestor
+				inTarget = err == nil
+				byCommit[artifact.Commit] = inTarget
 			}
 		}
-		if ancestor {
-			classified[artifact.Event] = successionCandidate{predecessor: true}
+		if inTarget {
+			if artifactRetiresForChanges(artifact.Path, changes) {
+				classified[artifact.Event] = successionCandidate{predecessor: true}
+			} else {
+				classified[artifact.Event] = successionCandidate{leftLive: mergeLeftLive{Class: leftLiveCarried}}
+			}
 			continue
 		}
 		if commitment := protected[artifact.Event]; commitment != "" {

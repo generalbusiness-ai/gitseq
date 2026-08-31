@@ -169,6 +169,9 @@ func renderLeftLive(accounting LeftLiveAccounting, sequences map[string]int, aut
 	if accounting.Class == "sibling" {
 		return "left live at merge: sibling under " + name(accounting.Commitment, sequences) + " — artifact " + name(accounting.Artifact, sequences)
 	}
+	if accounting.Class == "carried" {
+		return "left live at merge: carried current artifact " + name(accounting.Artifact, sequences)
+	}
 	author := authors[accounting.Artifact]
 	responsible := short(author)
 	if actor, ok := actors[author]; ok && actor.Name != "" {

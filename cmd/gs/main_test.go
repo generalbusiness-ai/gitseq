@@ -1020,8 +1020,8 @@ func TestMergeRefusesUnrecordableReceiptBeforeMovingHead(t *testing.T) {
 		}
 	}
 	if extraArtifact == "" || !maps.Equal(plan.leftLive,
-		map[string]mergeLeftLive{extraArtifact: {Class: leftLiveAbandoned}}) {
-		t.Fatalf("oversized frontier left-live accounting = %#v, want abandoned extra tree", plan.leftLive)
+		map[string]mergeLeftLive{extraArtifact: {Class: leftLiveCarried}}) {
+		t.Fatalf("oversized frontier left-live accounting = %#v, want carried target tree", plan.leftLive)
 	}
 	if len(changedPaths) <= ceiling {
 		t.Fatalf("changed-path seal is %d bytes, want more than %d-byte ceiling", len(changedPaths), ceiling)
