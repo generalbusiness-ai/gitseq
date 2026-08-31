@@ -67,7 +67,9 @@ per ISO 24495-1, for a technical audience.
      changes.
    - **Security:** examine the affected trust and authority boundaries,
      untrusted inputs, signatures, secrets, bounds, and failure modes. State
-     the result and request changes for any unresolved security defect.
+     the result and request changes for any unresolved security defect. Before
+     approving work that rests on an authority-bearing request chain, confirm
+     all four authority facts in `SKILL.md` from the durable record.
    - **Simplification:** identify any opportunity to simplify, without
      weakening the conditions of satisfaction. Request changes to cut the
      fluff.

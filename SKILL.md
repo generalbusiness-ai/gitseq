@@ -190,6 +190,10 @@ in-flight commitment row, so nobody can see from the board that the work is
 underway. File a verdict with `gs review`; a verdict filed by hand must rest on
 the artifact it names.
 
+Before approving work that rests on an authority-bearing request chain, the
+independent reviewer confirms all four authority facts under Notes and decisions
+from the durable record.
+
 ## Discipline
 
 1. **Cite or don't commit.** A durable event with an empty `rests_on`
@@ -351,8 +355,13 @@ all of these facts are in the durable record:
   the work that follows it, rather than merely asking for research or a draft;
 - the decision artifact was delivered through that request chain, independently
   approved, and merged so the request is satisfied; and
-- the request chain and the merged decision artifact are effective, current and
-  unretired when the follow-on work begins.
+- the request chain and the merged decision artifact are effective, not stale
+  and unretired when the follow-on work begins.
+
+The independent reviewer confirms all four facts from the durable record before
+approving work that rests on this chain. Ordinary staleness arising after the
+follow-on work begins is recorded at merge under the existing rules; it does not
+reopen adoption.
 
 That chain is already the authority act. Do not restate it in a proposal and ask
 the same authority holder to ratify it again. If any fact is missing — including
