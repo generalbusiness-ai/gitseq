@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bf382525daa554f5aede373b4612997a3c6801e1"}
+{"kind":"artifact","text":"Companion succession artifact for the exact @types/react-dom 19.2.5 head. This names the whole ui tree at d3ccfa4f0fa8718d4669cd99fcb3941718a5c57d so a reviewed merge can replace the current live ui pointer while changing only ui/package-lock.json; it adds no code and makes no claim beyond the already reported and tested exact head.","body":{"commit":"d3ccfa4f0fa8718d4669cd99fcb3941718a5c57d","path":"ui"}}
