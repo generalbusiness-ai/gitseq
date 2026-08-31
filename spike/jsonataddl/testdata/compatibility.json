@@ -1,6 +1,7 @@
 {
   "reference": "jsonata-js 2.0.6",
   "port": "github.com/jsonata-go/jsonata/v206 at 599f35f32e5f",
+  "reference_divergences": "No standalone deterministic reference divergences were found in the focused corpus; every deterministic result is checked against live jsonata-js 2.0.6 on every test run.",
   "cases": [
     {
       "name": "fold arithmetic",
@@ -68,6 +69,38 @@
       "reference": [1,2],
       "class": "order-dependent",
       "reason": "Object wildcard traversal exposes implementation map order; the fold profile rejects object wildcard syntax."
+    },
+    {
+      "name": "bare object wildcard order",
+      "expression": "*",
+      "input": {
+        "b": 1,
+        "a": 2
+      },
+      "reference": [
+        1,
+        2
+      ],
+      "class": "order-dependent",
+      "reason": "A bare object wildcard exposes implementation map order; the fold profile rejects leading wildcard syntax."
+    },
+    {
+      "name": "leading descendant order",
+      "expression": "**.id",
+      "input": {
+        "b": {
+          "id": "b"
+        },
+        "a": {
+          "id": "a"
+        }
+      },
+      "reference": [
+        "b",
+        "a"
+      ],
+      "class": "order-dependent",
+      "reason": "Leading descendant traversal exposes implementation map order; the fold profile rejects leading descendant syntax."
     },
     {
       "name": "wall clock",

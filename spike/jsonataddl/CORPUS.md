@@ -16,7 +16,7 @@ Go port:
 - `$sum([0.1,0.2])`
 - `$round(2.675,2)`
 
-Four expressions expose a reference difference and order dependence. JSONata
+Six expressions expose a reference difference and order dependence. JSONata
 2.0.6 preserves the object literal's insertion order. The Go port ranges over
 a Go map, so repeated evaluations return both orders:
 
@@ -24,11 +24,21 @@ a Go map, so repeated evaluations return both orders:
 - `$each({"b":1,"a":2}, function($v,$k){$k})`
 - `$spread({"b":1,"a":2})`
 - `{"b":1,"a":2}.*`
+- `*` over `{"b":1,"a":2}`
+- `**.id` over nested `b` then `a` objects
 
 The spike narrows the fold profile rather than blessing either result: profile
 loading rejects `$keys`, `$each`, `$spread`, and object wildcard or descendant
 traversal. The fold version advances to `jsonata-v206-sqlite-spike@1` because
 that admitted language is part of fold identity.
+
+No standalone deterministic reference divergences were found in the focused
+corpus; every deterministic result is checked against live jsonata-js 2.0.6 on
+every test run. That result is not inferred from the checked fixtures: the test
+executes the pinned JavaScript reference and compares each deterministic case
+before it evaluates the Go port. The order-dependent cases above are classified
+separately because they differ only in sequence order and are excluded from the
+fold profile.
 
 The reference also demonstrates three environment-dependent expressions:
 `$now()`, `$random()`, and `$shuffle([1,2,3,4])`. The profile rejects all

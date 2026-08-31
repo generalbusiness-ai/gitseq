@@ -21,7 +21,7 @@ import (
 
 const testSessionCredential = "inventory-test-session"
 
-func TestInventoryUIDiscoversSubmitsWaitsAndQueries(t *testing.T) {
+func TestInventoryUIBrowserFlowAcceptsRawUnsortedPayload(t *testing.T) {
 	ui, server := testInventoryUI(t)
 	defer ui.Close()
 	defer server.Close()
@@ -48,10 +48,7 @@ func TestInventoryUIDiscoversSubmitsWaitsAndQueries(t *testing.T) {
 	case <-time.After(40 * time.Millisecond):
 	}
 
-	response := postJSON(t, server.URL+"/api/events", map[string]any{
-		"event_type": "stock_received", "payload": map[string]any{"id": "stock-1", "sku": "ink", "qty": 5},
-		"idempotency_key": "ui-stock-1",
-	}, testSessionCredential)
+	response := postRawJSON(t, server.URL+"/api/events", `{"event_type":"stock_received","payload":{"id":"stock-1","sku":"ink","qty":5},"idempotency_key":"ui-stock-1"}`, testSessionCredential)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("submit status = %d", response.StatusCode)
@@ -132,6 +129,12 @@ func TestInventoryUIRefusesCredentialAndStaleQueryFrontier(t *testing.T) {
 	unauthorized.Body.Close()
 	if unauthorized.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("unauthorized submit status = %d", unauthorized.StatusCode)
+	}
+
+	duplicate := postRawJSON(t, server.URL+"/api/events", `{"event_type":"stock_received","payload":{"id":"s","id":"other","sku":"ink","qty":1},"idempotency_key":"duplicate"}`, testSessionCredential)
+	duplicate.Body.Close()
+	if duplicate.StatusCode != http.StatusBadRequest {
+		t.Fatalf("duplicate-field submit status = %d", duplicate.StatusCode)
 	}
 
 	submitted := postJSON(t, server.URL+"/api/events", map[string]any{
@@ -221,6 +224,23 @@ func postJSON(t *testing.T, url string, value any, credential string) *http.Resp
 		t.Fatal(err)
 	}
 	request, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if credential != "" {
+		request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", credential))
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+func postRawJSON(t *testing.T, url, body, credential string) *http.Response {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}

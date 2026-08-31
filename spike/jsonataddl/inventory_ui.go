@@ -1,6 +1,7 @@
 package jsonataddl
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/subtle"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/generalbusiness-ai/gitseq/host"
 )
@@ -216,6 +218,12 @@ func (ui *InventoryUI) serveEvent(writer http.ResponseWriter, request *http.Requ
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "idempotency_key is required"})
 		return
 	}
+	canonicalPayload, err := canonicalEventPayload(input.Payload)
+	if err != nil {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	input.Payload = canonicalPayload
 	if _, err := decodeEvent(definition, input.Payload); err != nil {
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -255,6 +263,88 @@ func (ui *InventoryUI) serveEvent(writer http.ResponseWriter, request *http.Requ
 	ui.changed = make(chan struct{})
 	_ = old.Close()
 	writeJSON(writer, http.StatusOK, eventResponse{EventID: record.ID, Decision: fmt.Sprint(decision.Rows[0][0]), Frontier: next.Frontier()})
+}
+
+// canonicalEventPayload confines browser JSON normalisation to the submission
+// boundary. Records enter the signed host log in the canonical form that replay
+// already requires, while duplicate keys remain an error rather than silently
+// taking whichever value a decoder happens to retain.
+func canonicalEventPayload(payload []byte) ([]byte, error) {
+	if len(payload) == 0 || len(payload) > maxPayloadBytes {
+		return nil, errors.New("event payload is empty or too large")
+	}
+	if !utf8.Valid(payload) {
+		return nil, errors.New("event payload is not valid UTF-8")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	value, err := decodeUniqueJSONValue(decoder)
+	if err != nil {
+		return nil, fmt.Errorf("event payload is invalid JSON: %w", err)
+	}
+	if _, ok := value.(map[string]any); !ok {
+		return nil, errors.New("event payload is not a JSON object")
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return nil, errors.New("event payload has trailing data")
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize event payload: %w", err)
+	}
+	return canonical, nil
+}
+
+func decodeUniqueJSONValue(decoder *json.Decoder) (any, error) {
+	token, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	delimiter, compound := token.(json.Delim)
+	if !compound {
+		return token, nil
+	}
+	switch delimiter {
+	case '{':
+		object := make(map[string]any)
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return nil, err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return nil, errors.New("object field name is not a string")
+			}
+			if _, duplicate := object[key]; duplicate {
+				return nil, fmt.Errorf("duplicate object field %q", key)
+			}
+			value, err := decodeUniqueJSONValue(decoder)
+			if err != nil {
+				return nil, err
+			}
+			object[key] = value
+		}
+		if end, err := decoder.Token(); err != nil || end != json.Delim('}') {
+			return nil, errors.New("object is not closed")
+		}
+		return object, nil
+	case '[':
+		array := make([]any, 0)
+		for decoder.More() {
+			value, err := decodeUniqueJSONValue(decoder)
+			if err != nil {
+				return nil, err
+			}
+			array = append(array, value)
+		}
+		if end, err := decoder.Token(); err != nil || end != json.Delim(']') {
+			return nil, errors.New("array is not closed")
+		}
+		return array, nil
+	default:
+		return nil, errors.New("unexpected JSON delimiter")
+	}
 }
 
 // serveWait waits for the projection's verified frontier, not merely for an

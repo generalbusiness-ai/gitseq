@@ -56,7 +56,7 @@ var (
 	allowedDDL    = regexp.MustCompile(`(?is)^CREATE\s+(?:TABLE|INDEX|VIEW)\b`)
 	foldRE        = regexp.MustCompile(`(?is)^CREATE\s+FOLD\s+(` + identifier + `)\s+ON\s+(` + identifier + `)\s+READ\s+(` + identifier + `)\s+(ONE|OPTIONAL\s+ONE)\s+AS\s+(.+?)\s+USING\s+'([^']+)'\s+WRITES\s+(.+)$`)
 	ambientSQL    = regexp.MustCompile(`(?i)\b(?:random|randomblob|current_date|current_time|current_timestamp|load_extension)\b|\b(?:date|time|datetime|julianday|unixepoch|strftime)\s*\(`)
-	unsafeJSONata = regexp.MustCompile(`(?i)\$(?:now|millis|random|shuffle|eval|each|keys|spread)\b|\.\s*\*{1,2}`)
+	unsafeJSONata = regexp.MustCompile(`(?im)\$(?:now|millis|random|shuffle|eval|each|keys|spread)\b|\.\s*\*{1,2}|^\s*\*{1,2}(?:\s*\.|\s*$)`)
 	foldReadRE    = regexp.MustCompile(`(?is)^SELECT\s+(` + identifier + `(?:\s*,\s*` + identifier + `)*)\s+FROM\s+(` + identifier + `)\s+WHERE\s+(` + identifier + `)\s*=\s*:event\.(` + identifier + `)$`)
 )
 

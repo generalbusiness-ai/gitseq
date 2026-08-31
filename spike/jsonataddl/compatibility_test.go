@@ -17,9 +17,10 @@ import (
 )
 
 type compatibilityCorpus struct {
-	Reference string              `json:"reference"`
-	Port      string              `json:"port"`
-	Cases     []compatibilityCase `json:"cases"`
+	Reference            string              `json:"reference"`
+	Port                 string              `json:"port"`
+	ReferenceDivergences string              `json:"reference_divergences"`
+	Cases                []compatibilityCase `json:"cases"`
 }
 
 type compatibilityCase struct {
@@ -27,7 +28,6 @@ type compatibilityCase struct {
 	Expression string `json:"expression"`
 	Input      any    `json:"input"`
 	Reference  any    `json:"reference"`
-	Go         any    `json:"go"`
 	Class      string `json:"class"`
 	Reason     string `json:"reason"`
 }
@@ -47,13 +47,22 @@ func TestJSONataCompatibilityAndDeterminismCorpus(t *testing.T) {
 	if len(corpus.Cases) < 8 {
 		t.Fatalf("corpus has %d cases; it is too small to exercise the profile", len(corpus.Cases))
 	}
+	documentation, err := os.ReadFile("CORPUS.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	documented := strings.Join(strings.Fields(string(documentation)), " ")
+	declared := strings.Join(strings.Fields(corpus.ReferenceDivergences), " ")
+	if declared == "" || !strings.Contains(documented, declared) {
+		t.Fatalf("CORPUS.md and compatibility.json disagree about reference divergences: %q", corpus.ReferenceDivergences)
+	}
 	referenceResults := evaluateReferenceCorpus(t, source)
 
 	seenExceptional := map[string]bool{}
 	for _, test := range corpus.Cases {
 		t.Run(test.Name, func(t *testing.T) {
 			switch test.Class {
-			case "portable", "order-dependent", "reference-divergence":
+			case "portable", "order-dependent":
 				reference, exists := referenceResults[test.Name]
 				if !exists || !reflect.DeepEqual(reference, test.Reference) {
 					t.Fatalf("checked reference result changed: live %#v, fixture %#v", reference, test.Reference)
@@ -90,14 +99,6 @@ func TestJSONataCompatibilityAndDeterminismCorpus(t *testing.T) {
 					files := oneFoldFiles(test.Expression)
 					if _, err := Load(files, "app", host.Application{Name: "corpus", FoldVersion: "corpus@0"}); err == nil || !strings.Contains(err.Error(), "order-dependent") {
 						t.Fatalf("profile admitted order-dependent expression %q: %v", test.Expression, err)
-					}
-				case "reference-divergence":
-					seenExceptional[test.Class] = true
-					if test.Reason == "" || test.Go == nil {
-						t.Fatal("reference divergence has no reason or expected Go result")
-					}
-					if reflect.DeepEqual(got, test.Reference) || !reflect.DeepEqual(got, test.Go) {
-						t.Fatalf("declared divergence changed: Go %#v, expected Go %#v, reference %#v", got, test.Go, test.Reference)
 					}
 				}
 			case "environment-dependent":
