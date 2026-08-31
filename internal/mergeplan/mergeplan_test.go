@@ -167,6 +167,56 @@ func TestAllAndOnlyUnsettledCommitmentStatusesProtectCoveringArtifacts(t *testin
 	}
 }
 
+func TestIneffectiveProvenanceCannotProtectCoveredArtifact(t *testing.T) {
+	projection := workroom.Projection{
+		Artifacts: []workroom.Artifact{{Event: "candidate-artifact", Path: "shared"}},
+		Statements: []workroom.Statement{
+			{Event: "request", Lifecycle: workroom.LifecycleRequest},
+			{Event: "promise", Lifecycle: workroom.LifecyclePromise},
+		},
+		Commitments: []workroom.Commitment{{Request: "request", Promise: "promise", Status: "promised"}},
+		Provenance: map[string][]string{
+			"candidate-artifact": {"ineffective-middle"},
+			"ineffective-middle": {"promise"},
+		},
+		Decisions: []workroom.Decision{{Event: "ineffective-middle", Verdict: workroom.Ineffective}},
+	}
+	changes := []Change{{Status: "M", New: "shared/file.go"}}
+	classified := Classify(context.Background(), "", projection, changes, "target", "candidate", nil)
+	got := classified["candidate-artifact"]
+	if got.Class != ClassAbandoned || got.LeftLive.Class != "abandoned" || got.LeftLive.Commitment != "" {
+		t.Fatalf("artifact behind ineffective provenance classified as %+v, want abandoned", got)
+	}
+	plan := PlanSuccession(projection, changes, classified)
+	if left := plan.LeftLive["candidate-artifact"]; left.Class != "abandoned" || left.Commitment != "" {
+		t.Fatalf("artifact behind ineffective provenance sealed as %+v, want abandoned", left)
+	}
+}
+
+func TestUnrelatedPathCannotEnterCoveredClassificationOrReceipt(t *testing.T) {
+	projection := workroom.Projection{
+		Artifacts: []workroom.Artifact{{Event: "unrelated-artifact", Path: "elsewhere"}},
+		Statements: []workroom.Statement{
+			{Event: "request", Lifecycle: workroom.LifecycleRequest},
+			{Event: "promise", Lifecycle: workroom.LifecyclePromise},
+		},
+		Commitments: []workroom.Commitment{{Request: "request", Promise: "promise", Status: "promised"}},
+		Provenance:  map[string][]string{"unrelated-artifact": {"promise"}},
+	}
+	changes := []Change{{Status: "M", New: "shared/file.go"}}
+	if covered := CoveredArtifacts(projection, changes); len(covered) != 0 {
+		t.Fatalf("unrelated artifact entered covered set: %#v", covered)
+	}
+	classified := Classify(context.Background(), "", projection, changes, "target", "candidate", nil)
+	if got, exists := classified["unrelated-artifact"]; exists {
+		t.Fatalf("unrelated artifact entered classification as %+v", got)
+	}
+	plan := PlanSuccession(projection, changes, classified)
+	if left, exists := plan.LeftLive["unrelated-artifact"]; exists {
+		t.Fatalf("unrelated artifact entered sealed left-live accounting as %+v", left)
+	}
+}
+
 func TestChangedPathsAreTheCanonicalOldAndNewDiffSet(t *testing.T) {
 	changes := []Change{
 		{Status: "M", New: "z.txt"},

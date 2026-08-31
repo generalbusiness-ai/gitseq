@@ -346,10 +346,6 @@ func decodeChangedPaths(raw, source string) ([]string, error) {
 	return paths, nil
 }
 
-func widerPath(candidate, current string) bool {
-	return candidate != current && strings.HasPrefix(current, strings.TrimSuffix(candidate, "/")+"/")
-}
-
 func successionActs(approval, candidate, targetPreHead, mergeHead, staleness string, plan successionPlan) []batchAct {
 	if (plan.leftLive != nil) != (plan.changedPaths != nil) {
 		return nil
