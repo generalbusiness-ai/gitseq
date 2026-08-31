@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c78f7e307e5bc1df9e6f2b977c23d60386267476","text":"Retire this artifact: its commit field was mistyped during the provenance recut. The corrected TopBar artifact names 64a78663edada38121bf5d20e222020e4fc358be."}
+{"kind":"artifact","text":"The TopBar authority comment on this recut head distinguishes withheld ordinary state composition from direct role-authorized ratification and own-author supersession.","body":{"commit":"64a78663edada38121bf5d20e222020e4fc358be","path":"ui/src/components/TopBar.tsx"}}
