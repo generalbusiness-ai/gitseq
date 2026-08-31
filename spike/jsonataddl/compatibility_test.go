@@ -28,6 +28,7 @@ type compatibilityCase struct {
 	Expression string `json:"expression"`
 	Input      any    `json:"input"`
 	Reference  any    `json:"reference"`
+	GoValues   []any  `json:"go_values"`
 	Class      string `json:"class"`
 	Reason     string `json:"reason"`
 }
@@ -56,20 +57,21 @@ func TestJSONataCompatibilityAndDeterminismCorpus(t *testing.T) {
 	if declared == "" || !strings.Contains(documented, declared) {
 		t.Fatalf("CORPUS.md and compatibility.json disagree about reference divergences: %q", corpus.ReferenceDivergences)
 	}
+	assertWildcardDocumentation(t, string(documentation), corpus.Cases)
 	referenceResults := evaluateReferenceCorpus(t, source)
 
 	seenExceptional := map[string]bool{}
 	for _, test := range corpus.Cases {
 		t.Run(test.Name, func(t *testing.T) {
 			switch test.Class {
-			case "portable", "order-dependent":
+			case "portable", "order-dependent", "admitted-portable", "admitted-order-dependent":
 				reference, exists := referenceResults[test.Name]
 				if !exists || !reflect.DeepEqual(reference, test.Reference) {
 					t.Fatalf("checked reference result changed: live %#v, fixture %#v", reference, test.Reference)
 				}
 				got := evaluateCorpusExpression(t, test.Expression, test.Input)
 				switch test.Class {
-				case "portable":
+				case "portable", "admitted-portable":
 					for run := 0; run < 16; run++ {
 						if replay := evaluateCorpusExpression(t, test.Expression, test.Input); !reflect.DeepEqual(replay, got) {
 							t.Fatalf("Go result changed between identical runs: first %#v, replay %#v", got, replay)
@@ -78,7 +80,12 @@ func TestJSONataCompatibilityAndDeterminismCorpus(t *testing.T) {
 					if !reflect.DeepEqual(got, test.Reference) {
 						t.Fatalf("result differs from %s: Go %#v, reference %#v", corpus.Reference, got, test.Reference)
 					}
-				case "order-dependent":
+					if test.Class == "admitted-portable" {
+						if _, err := Load(oneFoldFiles(test.Expression), "app", host.Application{Name: "corpus", FoldVersion: "corpus@0"}); err != nil {
+							t.Fatalf("profile refused documented admitted expression %q: %v", test.Expression, err)
+						}
+					}
+				case "order-dependent", "admitted-order-dependent":
 					seenExceptional[test.Class] = true
 					if test.Reason == "" {
 						t.Fatal("order-dependent expression has no reason")
@@ -92,13 +99,24 @@ func TestJSONataCompatibilityAndDeterminismCorpus(t *testing.T) {
 					}
 					for encoded := range distinct {
 						var result any
-						if err := json.Unmarshal([]byte(encoded), &result); err != nil || !sameArrayElements(result, test.Reference) {
+						if err := json.Unmarshal([]byte(encoded), &result); err != nil {
+							t.Fatalf("decode order-dependent result %q: %v", encoded, err)
+						}
+						if len(test.GoValues) > 0 {
+							if !containsJSONValue(test.GoValues, result) {
+								t.Fatalf("order-dependent result is not an admitted Go value: %s, admitted %#v", encoded, test.GoValues)
+							}
+						} else if !sameArrayElements(result, test.Reference) {
 							t.Fatalf("order-dependent result changed values: Go %s, reference %#v", encoded, test.Reference)
 						}
 					}
 					files := oneFoldFiles(test.Expression)
-					if _, err := Load(files, "app", host.Application{Name: "corpus", FoldVersion: "corpus@0"}); err == nil || !strings.Contains(err.Error(), "order-dependent") {
+					_, err := Load(files, "app", host.Application{Name: "corpus", FoldVersion: "corpus@0"})
+					if test.Class == "order-dependent" && (err == nil || !strings.Contains(err.Error(), "order-dependent")) {
 						t.Fatalf("profile admitted order-dependent expression %q: %v", test.Expression, err)
+					}
+					if test.Class == "admitted-order-dependent" && err != nil {
+						t.Fatalf("profile refused documented admitted expression %q: %v", test.Expression, err)
 					}
 				}
 			case "environment-dependent":
@@ -118,6 +136,40 @@ func TestJSONataCompatibilityAndDeterminismCorpus(t *testing.T) {
 	for _, class := range []string{"order-dependent", "environment-dependent"} {
 		if !seenExceptional[class] {
 			t.Errorf("corpus names no %s expression", class)
+		}
+	}
+}
+
+func assertWildcardDocumentation(t *testing.T, documentation string, cases []compatibilityCase) {
+	t.Helper()
+	normalized := strings.Join(strings.Fields(documentation), " ")
+	if strings.Contains(documentation, "object wildcard or descendant traversal") {
+		t.Fatal("CORPUS.md overclaims a category exclusion instead of naming the guarded spellings")
+	}
+	if !strings.Contains(documentation, "bare leading `*` or `**`, and leading `*.` or `**.` paths") {
+		t.Fatal("CORPUS.md does not name the current wildcard guard precisely")
+	}
+	if !strings.Contains(normalized, "The current narrow text guard admits `(*)`, `*[0]`, `**[0]`, and `($x := *; $x)`.") {
+		t.Fatal("CORPUS.md does not carry the complete admitted wildcard-expression list")
+	}
+	want := map[string]string{
+		"(*)":           "admitted-order-dependent",
+		"*[0]":          "admitted-order-dependent",
+		"**[0]":         "admitted-portable",
+		"($x := *; $x)": "admitted-order-dependent",
+	}
+	got := make(map[string]string, len(want))
+	for _, test := range cases {
+		if _, exists := want[test.Expression]; exists {
+			got[test.Expression] = test.Class
+		}
+	}
+	for expression, class := range want {
+		if got[expression] != class {
+			t.Fatalf("corpus class for admitted expression %q = %q, want %q", expression, got[expression], class)
+		}
+		if !strings.Contains(documentation, "`"+expression+"`") {
+			t.Fatalf("CORPUS.md omits documented admitted expression %q", expression)
 		}
 	}
 }
@@ -193,6 +245,15 @@ func sameArrayElements(left, right any) bool {
 	sort.Strings(leftJSON)
 	sort.Strings(rightJSON)
 	return reflect.DeepEqual(leftJSON, rightJSON)
+}
+
+func containsJSONValue(values []any, want any) bool {
+	for _, value := range values {
+		if reflect.DeepEqual(value, want) {
+			return true
+		}
+	}
+	return false
 }
 
 func oneFoldFiles(expression string) fstest.MapFS {

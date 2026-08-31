@@ -103,6 +103,60 @@
       "reason": "Leading descendant traversal exposes implementation map order; the fold profile rejects leading descendant syntax."
     },
     {
+      "name": "parenthesized wildcard order",
+      "expression": "(*)",
+      "input": {
+        "b": 1,
+        "a": 2
+      },
+      "reference": [
+        1,
+        2
+      ],
+      "class": "admitted-order-dependent",
+      "reason": "Parenthesizing a wildcard re-admits it; the Go port exposes map iteration order, so this spelling cannot be authority."
+    },
+    {
+      "name": "indexed wildcard order",
+      "expression": "*[0]",
+      "input": {
+        "b": ["b"],
+        "a": ["a"]
+      },
+      "reference": "b",
+      "go_values": ["a", "b"],
+      "class": "admitted-order-dependent",
+      "reason": "Indexing a leading wildcard re-admits it; the selected Go value follows map iteration order."
+    },
+    {
+      "name": "indexed descendant remains admitted",
+      "expression": "**[0]",
+      "input": {
+        "b": ["b"],
+        "a": ["a"]
+      },
+      "reference": {
+        "b": ["b"],
+        "a": ["a"]
+      },
+      "class": "admitted-portable",
+      "reason": "The indexed descendant spelling is admitted by the narrow guard; this focused input remains deterministic in the Go evaluator."
+    },
+    {
+      "name": "assigned wildcard order",
+      "expression": "($x := *; $x)",
+      "input": {
+        "b": 1,
+        "a": 2
+      },
+      "reference": [
+        1,
+        2
+      ],
+      "class": "admitted-order-dependent",
+      "reason": "Assigning a wildcard result re-admits it; the Go port exposes map iteration order, so this spelling cannot be authority."
+    },
+    {
       "name": "wall clock",
       "expression": "$now()",
       "input": {},

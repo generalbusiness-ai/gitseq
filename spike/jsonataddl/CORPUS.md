@@ -28,9 +28,15 @@ a Go map, so repeated evaluations return both orders:
 - `**.id` over nested `b` then `a` objects
 
 The spike narrows the fold profile rather than blessing either result: profile
-loading rejects `$keys`, `$each`, `$spread`, and object wildcard or descendant
-traversal. The fold version advances to `jsonata-v206-sqlite-spike@1` because
-that admitted language is part of fold identity.
+loading rejects `$keys`, `$each`, `$spread`, any `.*` or `.**` object-wildcard
+spelling, bare leading `*` or `**`, and leading `*.` or `**.` paths such as
+`**.id`. The current narrow text guard admits `(*)`, `*[0]`, `**[0]`, and
+`($x := *; $x)`.
+On the focused inputs, `(*)`, `*[0]`, and `($x := *; $x)` are order-dependent
+in the Go evaluator and therefore cannot be authority; `**[0]` is admitted
+but deterministic on its focused corpus input. The fold version advances to
+`jsonata-v206-sqlite-spike@1` because that admitted language is part of fold
+identity.
 
 No standalone deterministic reference divergences were found in the focused
 corpus; every deterministic result is checked against live jsonata-js 2.0.6 on

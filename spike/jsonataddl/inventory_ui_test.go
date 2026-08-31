@@ -152,6 +152,33 @@ func TestInventoryUIRefusesCredentialAndStaleQueryFrontier(t *testing.T) {
 	}
 }
 
+func TestInventoryUIRefusesNestedDuplicatePayloadBeforeAppend(t *testing.T) {
+	ui, server := testInventoryUI(t)
+	defer ui.Close()
+	defer server.Close()
+
+	before, err := ui.workspace.Records(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	frontier := getMetadata(t, server.URL).Frontier
+	response := postRawJSON(t, server.URL+"/api/events", `{"event_type":"stock_received","payload":{"id":"nested-duplicate","sku":"ink","qty":{"value":5,"value":5}},"idempotency_key":"nested-duplicate"}`, testSessionCredential)
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("nested duplicate submit status = %d", response.StatusCode)
+	}
+	after, err := ui.workspace.Records(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Records) != len(before.Records) {
+		t.Fatalf("nested duplicate reached append: records before %d, after %d", len(before.Records), len(after.Records))
+	}
+	if observed := getMetadata(t, server.URL).Frontier; !sameFrontier(observed, frontier) {
+		t.Fatalf("nested duplicate advanced frontier: before %#v, after %#v", frontier, observed)
+	}
+}
+
 func TestInventoryUIStaticPageDoesNotDiscloseCredential(t *testing.T) {
 	ui, server := testInventoryUI(t)
 	defer ui.Close()
