@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Interaction-surface coverage at 23642b5b preserves the two-screen contract while admitting the board presentation selector.","body":{"commit":"23642b5b71ee49164d4a06dd34f7212f1c270fb7","path":"ui/test/interaction.test.mjs"}}
+{"kind":"artifact","text":"Outcome-map geometry coverage at 23642b5b proves stable horizontal multi-root layout and card-boundary arrow paths.","body":{"commit":"23642b5b71ee49164d4a06dd34f7212f1c270fb7","path":"ui/test/outcome-map.test.mjs"}}
