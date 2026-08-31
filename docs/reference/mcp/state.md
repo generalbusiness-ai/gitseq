@@ -68,7 +68,16 @@ they are written from the bases this act actually rests on, and a `stale` or
 `staleness` value you supply is discarded and replaced. You can therefore
 neither suppress the note by sending one of your own nor claim staleness that
 nothing under the act supports — where no basis is stale, neither field
-appears. A basis still live when you signed but stale by the time the act was
+appears.
+
+There is one exception, and it is not a way round the rule. If the ratified
+kind you are filing declares a body field of its own called `stale` or
+`staleness`, that field belongs to the kind's schema and your value is kept
+exactly as written. In this workroom that is `kind-def`, whose `staleness`
+field says how staleness propagates through the kind it defines. Check the
+kind's declared fields in `status.durable.vocabulary.definitions`: if the name
+is not in that kind's schema, the field is admission's and nothing you send
+under it survives. A basis still live when you signed but stale by the time the act was
 sequenced lands with no note at all, because the note is written into the body
 you sign. Recording staleness neither repairs it nor grants anything:
 [`status`](status.md) shows the fold's own mark on the row either way.

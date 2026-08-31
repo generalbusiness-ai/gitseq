@@ -960,9 +960,30 @@ A state resting on an already-retired basis refuses by default until the author
 asks for the recorded escape (`body.dead_basis_override=true`). A state resting
 on a merely stale basis is admitted and the staleness is recorded on the row it
 lands as, in the same `stale` and `staleness` body fields a merge receipt uses
-and from the same note builder, unless the body already carries a note of its
-own. An effective supersession stays advisory. Neither the refusal, the
-override, nor the recorded note removes staleness or grants authority.
+and from the same note builder. An effective supersession stays advisory.
+Neither the refusal, the override, nor the recorded note removes staleness or
+grants authority.
+
+Those two fields are admission's for every write a caller can make. Whatever
+arrives under those names is removed and rewritten from the bases the act was
+actually admitted over, so a caller can neither suppress the note by supplying
+one nor claim staleness no basis supports; where no basis is stale, neither
+field is present. Two in-process builders keep the note they construct, because
+each covers more than the act's own bases: the guarded verdict path, marked by
+`body.review_path`, and the merge receipt, marked by a process-local field
+nothing decodes from input, whose note covers the reviewed artifact although
+that artifact is not a basis of the receipt.
+
+The one exception on the caller's side is confined to a name a ratified kind
+schema has claimed. Where the active vocabulary's definition for the act's own
+kind declares a body field called `stale` or `staleness`, that field belongs to
+the kind and is kept exactly as written. `kind-def` is the case in this tree:
+its schema declares `staleness` to say how staleness propagates through the
+kind being defined, and admission speaking over it would make every vocabulary
+declaration malformed. The check reads the live vocabulary rather than naming a
+kind, so a room that declares its own kind using either word keeps it too, and
+it extends no further than a declared field of the kind actually being
+written.
 
 The guarded verdict path owns head-news discovery — statements sequenced
 strictly after the review request that name the reviewed head or lane —

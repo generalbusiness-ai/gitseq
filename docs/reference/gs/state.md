@@ -111,6 +111,12 @@ fields belong to the admission boundary: a `stale` or `staleness` value you
 supply is discarded and replaced by what admission found, and where no basis
 is stale neither field appears.
 
+The exception is confined to a name a ratified kind schema has claimed. If the
+kind you are filing declares a body field called `stale` or `staleness` — as
+`kind-def` declares `staleness` for the propagation mode of the kind it defines
+— that field is the kind's and your value is kept as written. For every other
+kind those two names are admission's.
+
 Required edges, by kind:
 
 - every local filing surface checks a request-lifecycle draft before signing:

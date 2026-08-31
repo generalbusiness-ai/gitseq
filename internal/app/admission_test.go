@@ -400,6 +400,74 @@ func TestAdmissionKeepsAnInternallyBuiltStalenessNote(t *testing.T) {
 	}
 }
 
+// The exception to admission's ownership is a field a ratified kind schema
+// declares for itself, and it covers either name. kind-def already proves the
+// `staleness` spelling, because its own schema declares that field to say how
+// staleness propagates through the kind it defines. This proves the other one
+// directly: a ratified custom kind that declares `stale` keeps what its author
+// wrote there, even filing over a basis that really had gone stale, where an
+// ordinary write would have both fields replaced.
+//
+// Both proofs are needed and neither substitutes for the other. Recognising
+// only one spelling leaves the other silently stripped, and a kind whose
+// required field admission deletes cannot be filed at all.
+func TestAdmissionKeepsAFieldARatifiedKindDeclaresForItself(t *testing.T) {
+	ctx := context.Background()
+	workspace, _, stale := deadBasisFixture(t, ctx)
+
+	// A sensor reading whose own vocabulary uses the word `stale` for
+	// something of its own: whether the reading itself was old when taken.
+	// That has nothing to do with provenance, and admission may not speak
+	// over it.
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindKindDef, Text: "declare reading",
+		Body: map[string]string{
+			"name": "reading", "fields": `[{"op":"present","name":"stale"}]`, "basis": "[]",
+			"satisfier": "none", "render": "note", "staleness": "propagates", "lifecycle": "none",
+			"guidance": "Report one sensor reading; stale says the reading was old when taken.",
+		},
+		IdempotencyKey: "kind-def-reading",
+	})
+	definition := ""
+	for _, statement := range workspace.mustSnapshot(t, ctx).Projection.Statements {
+		if statement.Kind == workroom.KindKindDef && statement.Body["name"] == "reading" {
+			definition = statement.Event
+		}
+	}
+	if definition == "" {
+		t.Fatal("the kind-def did not land")
+	}
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbRatify, Target: definition, IdempotencyKey: "ratify-reading",
+	})
+
+	// Filed over a genuinely stale basis, so an ordinary write here would have
+	// stale set to "true" and staleness replaced by the canonical note. The
+	// declared field is what stops that.
+	const wasOld = "the reading was already an hour old when taken"
+	const drift = "sensor drift, not provenance"
+	record := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: "reading", Text: "14 degrees",
+		Body:           map[string]string{"stale": wasOld, "staleness": drift},
+		RestsOn:        []string{stale},
+		IdempotencyKey: "reading-lands",
+	})
+	snapshot := workspace.mustSnapshot(t, ctx)
+	// Effective as well as intact: `stale` is a required field of this kind,
+	// so admission deleting it would leave the fold refusing the act outright.
+	decision, ok := snapshot.Projection.Decision(record.ID)
+	if !ok || decision.Verdict != workroom.Effective {
+		t.Fatalf("declared kind refused after ratification: %+v found=%v", decision, ok)
+	}
+	body := bodyOf(t, ctx, workspace, record.ID)
+	if body["stale"] != wasOld {
+		t.Fatalf("admission spoke over the kind's own stale field: %q, want %q", body["stale"], wasOld)
+	}
+	if body["staleness"] != drift {
+		t.Fatalf("admission replaced the kind's own staleness field: %q, want %q", body["staleness"], drift)
+	}
+}
+
 // An exact retry replays without re-judgement even after the world moved:
 // idempotency-replay detection answers before admission ever looks.
 func TestAdmissionReplaysExactRetriesWithoutRejudging(t *testing.T) {
