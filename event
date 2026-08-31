@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Committed browser embed entry point at 23642b5b references the regenerated outcome-map presentation bundle.","body":{"commit":"23642b5b71ee49164d4a06dd34f7212f1c270fb7","path":"internal/service/uidist/index.html"}}
+{"kind":"artifact","text":"Committed generated browser script at 23642b5b contains the reviewed outcome-map presentation.","body":{"commit":"23642b5b71ee49164d4a06dd34f7212f1c270fb7","path":"internal/service/uidist/assets/index-DWouoMVO.js"}}
