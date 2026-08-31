@@ -168,6 +168,18 @@ func (c *Client) Delete(ctx context.Context, baseURL, path string) error {
 }
 
 func (c *Client) doJSON(ctx context.Context, method, baseURL, path string, value any, limit int64, target any) error {
+	return c.decodeJSON(ctx, method, baseURL, path, value, limit, target, true)
+}
+
+// identityJSON is deliberately the only forward-compatible object decoder.
+// The liveness endpoint is shared by independently deployed binaries, so a
+// newer resident may add facts that an older starter does not need. All other
+// resident response schemas remain strict.
+func (c *Client) identityJSON(ctx context.Context, baseURL string, target any) error {
+	return c.decodeJSON(ctx, http.MethodGet, baseURL, "/v0/identity", nil, IdentityLimit, target, false)
+}
+
+func (c *Client) decodeJSON(ctx context.Context, method, baseURL, path string, value any, limit int64, target any, rejectUnknown bool) error {
 	data, response, err := c.read(ctx, method, baseURL, path, value, limit)
 	if err != nil {
 		return err
@@ -176,7 +188,9 @@ func (c *Client) doJSON(ctx context.Context, method, baseURL, path string, value
 		return responseError(response, data)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
+	if rejectUnknown {
+		decoder.DisallowUnknownFields()
+	}
 	if err := decoder.Decode(target); err != nil {
 		return err
 	}
@@ -289,7 +303,7 @@ func (c *Client) ProbeResident(ctx context.Context, claim app.ResidentClaim) app
 		Genesis string `json:"genesis"`
 		PID     int    `json:"pid"`
 	}
-	if err := c.GetJSON(ctx, base, "/v0/identity", IdentityLimit, &identity); err != nil {
+	if err := c.identityJSON(ctx, base, &identity); err != nil {
 		if errors.Is(err, syscall.ECONNREFUSED) {
 			return app.ResidentProbe{Liveness: app.Dead}
 		}

@@ -197,6 +197,42 @@ func TestProbeResidentTreatsOnlyARefusedDialAsDefinitive(t *testing.T) {
 	}
 }
 
+func TestProbeResidentAcceptsFutureIdentityFieldsButRetainsFailureBoundaries(t *testing.T) {
+	ctx := context.Background()
+	for name, fixture := range map[string]struct {
+		status  int
+		body    string
+		want    app.Liveness
+		wantPID int
+	}{
+		"future field":       {body: `{"genesis":"abc123","pid":4242,"future":{"enabled":true}}`, want: app.Alive, wantPID: 4242},
+		"malformed JSON":     {body: `{"genesis":`, want: app.Ambiguous},
+		"trailing JSON":      {body: `{"genesis":"abc123"} {}`, want: app.Ambiguous},
+		"empty genesis":      {body: `{"genesis":"","pid":4242}`, want: app.Ambiguous},
+		"mismatched genesis": {body: `{"genesis":"another","pid":4242}`, want: app.Ambiguous},
+		"HTTP refusal":       {status: http.StatusServiceUnavailable, body: `{"error":"not ready"}`, want: app.Ambiguous},
+		"oversized response": {body: `{"genesis":"abc123","padding":"` + strings.Repeat("x", int(IdentityLimit)) + `"}`, want: app.Ambiguous},
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.Method != http.MethodGet || request.URL.Path != "/v0/identity" {
+					t.Errorf("probe request = %s %s", request.Method, request.URL.Path)
+				}
+				if fixture.status != 0 {
+					writer.WriteHeader(fixture.status)
+				}
+				_, _ = writer.Write([]byte(fixture.body))
+			}))
+			defer server.Close()
+
+			got := NewWithHTTP(server.Client(), time.Second).ProbeResident(ctx, app.ResidentClaim{URL: server.URL, Genesis: "abc123"})
+			if got.Liveness != fixture.want || got.PID != fixture.wantPID {
+				t.Fatalf("probe = %+v, want liveness %v pid %d", got, fixture.want, fixture.wantPID)
+			}
+		})
+	}
+}
+
 // A claim is an ordinary file in the repository, so its URL is untrusted input.
 // Probing whatever it named would turn starting a service into a request
 // forgery against any address a local writer chose.

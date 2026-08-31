@@ -400,6 +400,30 @@ func TestResidentPreflightReportsAnIncumbentWithoutMovingItsClaim(t *testing.T) 
 	}
 }
 
+// An ambiguous answer is not a vacancy proof. In particular, a resident that
+// accepts connections but never answers must keep its exact claim: handing the
+// caller a proof here would let the post-bind CAS start a second resident.
+func TestResidentPreflightRejectsAmbiguousIncumbentWithoutVacancy(t *testing.T) {
+	workspace := residentWorkspace(t)
+	mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
+	before, present := claimRef(t, workspace)
+	if !present {
+		t.Fatal("fixture holds no claim")
+	}
+
+	vacancy, err := workspace.CheckResident(context.Background(), probeSaying(Ambiguous))
+	if vacancy != nil {
+		t.Fatal("ambiguous preflight issued a vacancy proof")
+	}
+	var refusal *ResidentHeldError
+	if !errors.As(err, &refusal) {
+		t.Fatalf("ambiguous preflight = %T %v, want *ResidentHeldError", err, err)
+	}
+	if after, stillPresent := claimRef(t, workspace); !stillPresent || after != before {
+		t.Fatalf("ambiguous preflight moved the claim: before=%s after=%s present=%v", before, after, stillPresent)
+	}
+}
+
 // A vacancy proof is not a lease. If another process takes the ref between
 // preflight and the post-bind CAS, the miss spends the proof and the ordinary
 // loop probes the new owner instead of displacing it.
