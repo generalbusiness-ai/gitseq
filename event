@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eb1eaefff8bfabd0567910faea1b52f10be2331a","text":"Retire the malformed-head TopBar artifact: Planner selected amended head 27e43714685992e2d09441e255f3048a7f58dc1b, whose successor artifact will replace it."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dce7344531e3c45d90625215f9109926160358b8","text":"Retire the malformed-head standing-test artifact: Planner selected amended head 27e43714685992e2d09441e255f3048a7f58dc1b, whose successor artifact will replace it."}
