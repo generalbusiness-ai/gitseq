@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3b787ad8f515ec0e194f83d66e3c73d441f5c4be"}
+{"kind":"artifact","text":"Classifies target-world wider pointers as carried and preserves exact-path retirement. Exact clean pushed head ea11839271af369baca9b6f79d7aefb48f48af56; gofmt, diff check, build, vet, module verification, docs, full tests, and targeted mutations passed.","body":{"commit":"ea11839271af369baca9b6f79d7aefb48f48af56","path":"cmd/gs/succession.go"}}
