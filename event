@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b7f689b2c515b7cd87446d05427bca82f7c94998"}
+{"kind":"artifact","text":"Repaired thread-actions design candidate. It specifies direct ratification, proposal-before-review provenance, guarded review-path limits, and projection-backed ratification checks. The diff is limited to this note and passes git diff --check.","body":{"branch":"request/thread-actions-design-current","commit":"e2c6209a3a7491f17df8e5d0a5d028ac828bc9e4","path":"notes/2026-08-22-thread-actions.md"}}
