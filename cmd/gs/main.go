@@ -1298,6 +1298,13 @@ type batchAct struct {
 	// AllowDeadBasis is the per-act form of gs state's --allow-dead-basis:
 	// asking for it signs body.dead_basis_override=true on that act.
 	AllowDeadBasis bool `json:"allow_dead_basis,omitempty"`
+
+	// internalStaleness marks the one act this process builds whose stale and
+	// staleness body fields cover more than its own bases: the merge receipt.
+	// It is unexported and json:"-" on purpose, twice over, so a batch file
+	// cannot claim it and admission owns those fields for every act a caller
+	// can write.
+	internalStaleness bool `json:"-"`
 }
 
 // batchError names the class of a batch failure so a caller can branch on it
@@ -1580,6 +1587,7 @@ func resolveBatchAct(entry batchAct, minted map[string]string, citedOK bool) app
 		Verb: entry.Verb, Kind: entry.Kind, Text: entry.Text, Body: entry.Body,
 		Target: resolveLabel(entry.Target, minted), Retirement: resolveLabel(entry.Retirement, minted), IdempotencyKey: entry.IdempotencyKey,
 		CitedOK: citedOK, AllowDeadBasis: entry.AllowDeadBasis,
+		InternalStaleness: entry.internalStaleness,
 	}
 	for _, reference := range entry.RestsOn {
 		act.RestsOn = append(act.RestsOn, resolveLabel(reference, minted))

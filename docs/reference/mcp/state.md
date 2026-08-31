@@ -63,12 +63,15 @@ saying what had moved when the act was signed:
 | `staleness` | One line: which bases were stale, whether what moved was the world they describe, and the retired acts underneath them. |
 
 It is the same note [`review`](review.md) writes into a verdict and
-`gs merge` writes into a receipt. If your call already supplies a
-`staleness` note of its own, yours is kept. A basis still live when you
-signed but stale by the time the act was sequenced lands with no note at
-all, because the note is written into the body you sign. Recording
-staleness neither repairs it nor grants anything: [`status`](status.md)
-shows the fold's own mark on the row either way.
+`gs merge` writes into a receipt. Both fields are admission's, not yours:
+they are written from the bases this act actually rests on, and a `stale` or
+`staleness` value you supply is discarded and replaced. You can therefore
+neither suppress the note by sending one of your own nor claim staleness that
+nothing under the act supports — where no basis is stale, neither field
+appears. A basis still live when you signed but stale by the time the act was
+sequenced lands with no note at all, because the note is written into the body
+you sign. Recording staleness neither repairs it nor grants anything:
+[`status`](status.md) shows the fold's own mark on the row either way.
 
 ## Body fields the fold reads
 

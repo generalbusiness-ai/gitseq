@@ -106,8 +106,10 @@ A basis that is **retired** refuses the write: the record was withdrawn and
 nothing stands there to rest on. `--allow-dead-basis` is the way past it. A
 basis that is merely **stale** still stands, so the write is admitted and the
 staleness is written onto the row as `body.stale=true` with a one-line
-`body.staleness` note — the same fields `gs merge` puts in a receipt. A note
-you supply yourself is kept as you wrote it.
+`body.staleness` note — the same fields `gs merge` puts in a receipt. Both
+fields belong to the admission boundary: a `stale` or `staleness` value you
+supply is discarded and replaced by what admission found, and where no basis
+is stale neither field appears.
 
 Required edges, by kind:
 

@@ -583,6 +583,19 @@ type Act struct {
 	// the reserved review fields through the builder, and their contents are
 	// still judged by admission against the workroom.
 	GuardedReview bool
+
+	// InternalStaleness marks an act whose stale and staleness body fields
+	// were built by a validated in-process path that can see more than this
+	// act's own bases. A merge receipt is the case: its note covers the
+	// approval and the reviewed artifact, and the artifact is not a basis of
+	// the receipt, so admission recomputing from bases would silently drop
+	// half of it.
+	//
+	// Like GuardedReview it is process-local and never accepted as input —
+	// nothing decodes it from a batch file, a flag, or a tool argument. For
+	// every other act the two fields are admission's to write, so an ordinary
+	// caller can neither preserve, forge, nor suppress them.
+	InternalStaleness bool
 }
 
 type Submission struct {
@@ -1274,7 +1287,8 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 		// escape is part of what the path records.
 		body, err = w.AdmitState(ctx, stateAdmission{
 			Kind: act.Kind, Body: body, RestsOn: rests,
-			AllowDeadBasis: act.AllowDeadBasis || act.GuardedReview,
+			AllowDeadBasis:    act.AllowDeadBasis || act.GuardedReview,
+			InternalStaleness: act.InternalStaleness,
 		})
 		if err != nil {
 			return kernel.Request{}, err

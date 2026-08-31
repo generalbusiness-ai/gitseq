@@ -30,6 +30,10 @@ type stateAdmission struct {
 	Body           map[string]string
 	RestsOn        []string
 	AllowDeadBasis bool
+	// InternalStaleness says this body's stale and staleness fields were built
+	// by a validated in-process path that sees more than these bases. It is
+	// process-local, like the guarded-review marker, and never caller input.
+	InternalStaleness bool
 }
 
 // AdmitState evaluates one state write against the verified workroom and
@@ -76,7 +80,7 @@ func (w *Workspace) admitState(snapshot Snapshot, admission stateAdmission, fron
 			return nil, err
 		}
 	}
-	if err := w.judgeDeadBases(snapshot, admission.RestsOn, body, admission.AllowDeadBasis); err != nil {
+	if err := w.judgeDeadBases(snapshot, admission, body, guardedReview); err != nil {
 		return nil, err
 	}
 	return body, nil
@@ -175,15 +179,20 @@ func refuseUndefinedKind(vocabulary workroom.Vocabulary, kind workroom.Kind) err
 // lands — and the write boundary now draws it in the same place and records it
 // in the same shape.
 //
+// The recorded note belongs to admission, not to the caller. Two in-process
+// paths build their own and keep it — a guarded review and an act carrying the
+// internal-staleness marker — and every other write has the two fields written
+// from what admission itself found.
+//
 // An effective supersession stays advisory: citing the retirement itself can
 // be intentional. The escape for a retired basis is explicit and recorded,
 // never silent: asking for it signs body.dead_basis_override=true, and an act
 // arriving with that signature already on it honours it. Neither the refusal,
 // the override, nor the recorded note removes staleness or grants authority;
 // existing standing and staleness judgements continue unchanged.
-func (w *Workspace) judgeDeadBases(snapshot Snapshot, restsOn []string, body map[string]string, allowed bool) error {
+func (w *Workspace) judgeDeadBases(snapshot Snapshot, admission stateAdmission, body map[string]string, guardedReview bool) error {
 	var retired, stale []string
-	for basis, class := range workroom.DeadBases(snapshot.Projection, restsOn) {
+	for basis, class := range workroom.DeadBases(snapshot.Projection, admission.RestsOn) {
 		switch class {
 		case workroom.DeadBasisRetired:
 			retired = append(retired, basis)
@@ -193,31 +202,68 @@ func (w *Workspace) judgeDeadBases(snapshot Snapshot, restsOn []string, body map
 	}
 	if len(retired) != 0 && body["dead_basis_override"] != "true" {
 		sort.Strings(retired)
-		if !allowed {
+		if !admission.AllowDeadBasis {
 			return fmt.Errorf("this state rests on %d already-retired basis(es): %s; rerun with --allow-dead-basis, or allow_dead_basis=true, to sign body.dead_basis_override=true recording that you saw them",
 				len(retired), strings.Join(retired, ", "))
 		}
 		body["dead_basis_override"] = "true"
 	}
+	if guardedReview || admission.InternalStaleness {
+		// Both notes are built in process by a path that has already been
+		// validated and can see further than these bases: a verdict covers the
+		// artifact, promise and request it stands on, and a merge receipt
+		// covers the reviewed artifact, which is not a basis of the receipt at
+		// all. Recomputing here would replace an accurate account with a
+		// narrower one.
+		return nil
+	}
+	if declaresStalenessFields(snapshot.Vocabulary, admission.Kind) {
+		// The kind's own schema claims these names for something else. A
+		// kind-def carries `staleness` to declare how staleness propagates
+		// through the kind it defines, and taking that word away from it would
+		// make every vocabulary declaration malformed. The check reads the
+		// room's live vocabulary rather than naming kind-def, so a room that
+		// declares its own kind using either word keeps it too.
+		return nil
+	}
 	recordStaleness(snapshot.Projection, stale, body)
 	return nil
 }
 
-// recordStaleness stamps the merge receipt's shape onto a row admitted over a
-// basis that had already gone stale: body.stale=true, and a one-line
-// body.staleness note naming the stale bases, whether what moved was the world
-// they describe, and the retired acts underneath them. It is the same note
-// reviewguard writes into a verdict and gs merge writes into a receipt, so a
-// reader meets one wording everywhere.
+// declaresStalenessFields reports whether this kind's own definition claims
+// `stale` or `staleness` as a body field of its schema. Where it does, those
+// names belong to the kind and admission must not speak over them.
+func declaresStalenessFields(vocabulary workroom.Vocabulary, kind workroom.Kind) bool {
+	for _, definition := range vocabulary.Definitions {
+		if definition.Name != kind {
+			continue
+		}
+		for _, field := range definition.Fields {
+			if field.Name == "stale" || field.Name == "staleness" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// recordStaleness makes stale and staleness admission's own words about an
+// ordinary state write. It first removes whatever the caller sent under those
+// two names, then, if any admitted basis had already gone stale, writes
+// body.stale=true and a one-line body.staleness note naming the stale bases,
+// whether what moved was the world they describe, and the retired acts
+// underneath them. It is the canonical note reviewguard builds for a verdict
+// and gs merge builds for a receipt, so a reader meets one wording everywhere.
 //
-// A body that already carries its own note keeps it. A merge receipt knows
-// more about what moved under it than its bases alone can say, and overwriting
-// that would lose the better account. Nothing authoritative rests on this
-// field either way: the fold computes the row's own staleness from the log,
-// and a caller who suppresses the note changes what the row says about itself,
-// not what the projection says about it.
+// The removal comes first and is unconditional, so the fields say what
+// admission found and nothing else. A caller who supplies them cannot preserve
+// them past this point, cannot forge staleness on living ground, and — the
+// defect this closes — cannot suppress the real note by sending any non-empty
+// string of their own.
 func recordStaleness(projection workroom.Projection, bases []string, body map[string]string) {
-	if len(bases) == 0 || body["staleness"] != "" {
+	delete(body, "stale")
+	delete(body, "staleness")
+	if len(bases) == 0 {
 		return
 	}
 	world := make(map[string]bool, len(bases))

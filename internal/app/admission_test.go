@@ -7,6 +7,7 @@ import (
 
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -304,6 +305,98 @@ func TestAdmissionAdmitsAStaleBasisAndRecordsTheStaleness(t *testing.T) {
 	})
 	if body := bodyOf(t, ctx, workspace, clean.ID); body["stale"] != "" || body["staleness"] != "" {
 		t.Fatalf("a live basis recorded staleness: %#v", body)
+	}
+}
+
+// stale and staleness are admission's words, not the caller's. An ordinary
+// write may neither suppress the real note by sending one of its own, nor
+// forge staleness onto living ground. Both halves matter: the first is what a
+// row uses to lie about the ground it was signed over, the second is what it
+// would use to claim ground had moved when it had not.
+func TestAdmissionOwnsTheStalenessFieldsAgainstTheCaller(t *testing.T) {
+	ctx := context.Background()
+	workspace, retired, stale := deadBasisFixture(t, ctx)
+
+	// (a) Suppression. The caller sends a note of its own and denies the flag.
+	// Admission overwrites both from the bases it actually admitted.
+	spoofed := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "hiding the ground that moved",
+		Body:    map[string]string{"stale": "false", "staleness": "bogus"},
+		RestsOn: []string{stale}, IdempotencyKey: "staleness-suppression",
+	})
+	body := bodyOf(t, ctx, workspace, spoofed.ID)
+	if body["stale"] != "true" {
+		t.Fatalf("a caller suppressed the stale flag: %#v", body)
+	}
+	if strings.Contains(body["staleness"], "bogus") {
+		t.Fatalf("the caller's note survived admission: %#v", body)
+	}
+	// The canonical note, not merely some other string: it names the stale
+	// basis and walks down to the retirement underneath it.
+	if !strings.Contains(body["staleness"], stale) || !strings.Contains(body["staleness"], "retired bases: "+retired) {
+		t.Fatalf("staleness note %q is not the canonical note over %s", body["staleness"], stale)
+	}
+
+	// (b) Forgery. Nothing under this act has moved, so neither field may
+	// survive the write.
+	live := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "ground nothing has moved under",
+		IdempotencyKey: "staleness-forge-ground",
+	})
+	forged := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "claiming ground moved when it did not",
+		Body:    map[string]string{"stale": "true", "staleness": "invented"},
+		RestsOn: []string{live.ID}, IdempotencyKey: "staleness-forgery",
+	})
+	if body := bodyOf(t, ctx, workspace, forged.ID); body["stale"] != "" || body["staleness"] != "" {
+		t.Fatalf("a caller forged staleness onto living ground: %#v", body)
+	}
+}
+
+// (c) and (d): the two in-process paths that build a note covering more than
+// their own bases keep it exactly as built. A guarded review's note names the
+// artifact, promise and request it stands on; a merge receipt's names the
+// reviewed artifact, which is not a basis of the receipt at all. Recomputing
+// either from bases would replace an accurate account with a narrower one, so
+// admission must leave both alone.
+func TestAdmissionKeepsAnInternallyBuiltStalenessNote(t *testing.T) {
+	ctx := context.Background()
+	// Deliberately unlike anything admission could derive from these bases, so
+	// keeping it cannot be mistaken for recomputing it. This is the shape both
+	// real builders produce: parts named in words, not by event id.
+	const internal = "approval, artifact stale; describes a superseded world"
+	for _, test := range []struct {
+		name      string
+		admission stateAdmission
+	}{
+		{
+			name:      "guarded review",
+			admission: stateAdmission{Kind: workroom.KindReport, Body: map[string]string{"review_path": reviewguard.ReviewPath}},
+		},
+		{
+			name:      "merge receipt",
+			admission: stateAdmission{Kind: workroom.KindAssert, Body: map[string]string{}, InternalStaleness: true},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			workspace, _, stale := deadBasisFixture(t, ctx)
+			admission := test.admission
+			admission.Body["stale"] = "true"
+			admission.Body["staleness"] = internal
+			admission.RestsOn = []string{stale}
+			admission.AllowDeadBasis = true
+
+			body, err := workspace.AdmitState(ctx, admission)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if body["staleness"] != internal {
+				t.Fatalf("admission replaced an internally built note: %q, want %q", body["staleness"], internal)
+			}
+			if body["stale"] != "true" {
+				t.Fatalf("admission dropped an internally built stale flag: %#v", body)
+			}
+		})
 	}
 }
 

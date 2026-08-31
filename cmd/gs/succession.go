@@ -787,6 +787,10 @@ func successionActs(approval, candidate, targetPreHead, mergeHead, staleness str
 		Body:    receiptBody,
 		RestsOn: []string{approval}, IdempotencyKey: mergeReceiptKey(approval),
 		AllowDeadBasis: true,
+		// The receipt's staleness note covers the approval and the reviewed
+		// artifact, and the artifact is not a basis of this act, so admission
+		// must keep this note rather than recompute a narrower one.
+		internalStaleness: true,
 	}}
 	labels := make(map[string]string, len(plan.publish))
 	for index, path := range plan.publish {

@@ -2691,6 +2691,54 @@ func TestStateRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 // only on that act, now stale, carries the recorded staleness instead of an
 // override, because staleness never needed the escape. The advisory notes
 // still resolve intra-batch citations to their durable names.
+// The internal-staleness marker is process-local. It exempts an act from
+// admission's ownership of body.stale and body.staleness, so a caller who
+// could set it could go back to writing whatever it liked into those fields.
+// A batch file cannot: the field is unexported and json:"-", and the decoder
+// disallows unknown fields, so every spelling is refused rather than ignored.
+func TestBatchCannotClaimTheInternalStalenessMarker(t *testing.T) {
+	dir := t.TempDir()
+	for _, field := range []string{"internal_staleness", "internalStaleness", "InternalStaleness"} {
+		t.Run(field, func(t *testing.T) {
+			path := filepath.Join(dir, "claim.json")
+			entry := `[{"verb":"state","kind":"assert","text":"claiming the marker","` + field + `":true}]`
+			if err := os.WriteFile(path, []byte(entry), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if acts, err := readBatch(path); err == nil {
+				t.Fatalf("a batch file set %s and was accepted: %+v", field, acts)
+			}
+		})
+	}
+
+	// A well-formed entry decodes and resolves with the marker off, so the
+	// exemption is unreachable from input rather than merely unspelled.
+	path := filepath.Join(dir, "ordinary.json")
+	if err := os.WriteFile(path, []byte(`[{"verb":"state","kind":"assert","text":"ordinary","allow_dead_basis":true}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	acts, err := readBatch(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(acts) != 1 || acts[0].internalStaleness {
+		t.Fatalf("decoded batch act = %+v, want the marker off", acts)
+	}
+	if resolved := resolveBatchAct(acts[0], nil, false); resolved.InternalStaleness {
+		t.Fatalf("resolved act = %+v, want InternalStaleness false", resolved)
+	}
+
+	// The one in-process producer does set it, so the exemption is live rather
+	// than dead code the ownership rule can never meet.
+	receipt := successionActs("approval", "candidate", "pre-head", "merge-head", "approval, artifact stale", successionPlan{})
+	if len(receipt) == 0 || receipt[0].Label != "merge" || !receipt[0].internalStaleness {
+		t.Fatalf("merge receipt act = %+v, want the marker on", receipt)
+	}
+	if resolved := resolveBatchAct(receipt[0], nil, false); !resolved.InternalStaleness {
+		t.Fatalf("resolved merge receipt = %+v, want InternalStaleness true", resolved)
+	}
+}
+
 func TestBatchRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	f := newBatchFixture(t)
 	ground, _, supersedeEvent := deadWorld(t, f)
