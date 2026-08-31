@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at spike/cmd/jsonata-inventory-ui/main.go","body":{"commit":"6831b6ba8af5fee3991a29dacd2b59d4e20b8756","dead_basis_override":"true","path":"spike/cmd/jsonata-inventory-ui/main.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at spike/cmd/jsonata-inventory-ui/main_test.go","body":{"commit":"6831b6ba8af5fee3991a29dacd2b59d4e20b8756","dead_basis_override":"true","path":"spike/cmd/jsonata-inventory-ui/main_test.go"}}
