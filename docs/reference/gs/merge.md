@@ -247,7 +247,8 @@ why every other covering candidate stayed live.
 | Situation | Enforced result |
 |---|---|
 | One or more live artifacts have the exact changed-file path | One successor is published at that exact string. Every in-target predecessor at that exact string is retired; other candidates are accounted for and stay live. |
-| A directory covers a landed destination | The file successor is still published at the exact changed-file path. The wider directory stays live, is not selected for retirement by that destination, and is sealed as a sibling or abandoned candidate. |
+| A directory covers a landed destination | The file successor is still published at the exact changed-file path. The wider directory stays live and is not selected for retirement by that destination. An in-target directory is sealed as carried; a non-target directory is sealed as sibling or abandoned. |
+| An in-target wider artifact covers a landed destination | It stays live and `Gitseq-Left-Live` records it as carried, with no commitment and no retirement obligation. It is current in the landed target on its own exact path lineage, not a predecessor of the narrower file successor. |
 | A non-target candidate has an unsettled commitment naming its head or reaching its artifact | It stays live and `Gitseq-Left-Live` records it as a sibling with the protecting commitment. |
 | A non-target candidate has no unsettled commitment | It stays live and `Gitseq-Left-Live` records it as abandoned. Its author or a `ratifier` owes the bare supersession. |
 | Testimony names a settled, mismatched, or unknown commitment | The receipt remains effective and grants no extra authority. The testimony is unverified and the successor keeps its succession warning. |
@@ -272,15 +273,20 @@ an unrelated live artifact at `dir/b` part of a merge that changed only
 `dir/a`.
 
 `Gitseq-Left-Live:` carries deterministic JSON matching the durable
-`merge_left_live` body field. It maps each artifact event to either
-`{"class":"sibling","commitment":"<event id>"}` or
-`{"class":"abandoned"}`. The field grants no retirement authority. The fold
-checks both it and the sealed changed-path frontier from durable log facts at
-the receipt position and uses them only to make the published successor's
-accounting stable. The recorded classification remains historical evidence;
-the current owed-supersession count stops suppressing a sibling once its named
-commitment settles or retires. Receipts without both prospective fields parse
-and project exactly as before.
+`merge_left_live` body field. It maps each artifact event to
+`{"class":"carried"}`, `{"class":"sibling","commitment":"<event id>"}`, or
+`{"class":"abandoned"}`. The merge adapter derives carried from Git ancestry:
+the artifact is at the exact candidate or is an ancestor of the target before
+merge, but its wider exact-path lineage is not retired by a landed child path.
+The pure fold cannot read Git history; it verifies carried testimony's shape,
+liveness, changed-path coverage, and absence from the retirement plan, then
+renders it as current without cleanup debt. The field grants no retirement
+authority. The fold checks both it and the sealed changed-path frontier from
+durable log facts at the receipt position and uses them only to make the
+published successor's accounting stable. The recorded classification remains
+historical evidence; the current owed-supersession count stops suppressing a
+sibling once its named commitment settles or retires. Receipts without both
+prospective fields parse and project exactly as before.
 
 ### Citations across a merge
 

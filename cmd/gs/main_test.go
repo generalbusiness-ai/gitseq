@@ -1020,8 +1020,8 @@ func TestMergeRefusesUnrecordableReceiptBeforeMovingHead(t *testing.T) {
 		}
 	}
 	if extraArtifact == "" || !maps.Equal(plan.leftLive,
-		map[string]mergeLeftLive{extraArtifact: {Class: leftLiveAbandoned}}) {
-		t.Fatalf("oversized frontier left-live accounting = %#v, want abandoned extra tree", plan.leftLive)
+		map[string]mergeLeftLive{extraArtifact: {Class: leftLiveCarried}}) {
+		t.Fatalf("oversized frontier left-live accounting = %#v, want carried candidate tree", plan.leftLive)
 	}
 	if len(changedPaths) <= ceiling {
 		t.Fatalf("changed-path seal is %d bytes, want more than %d-byte ceiling", len(changedPaths), ceiling)
@@ -1996,7 +1996,7 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 // in the receipt. It is not a retirement, so the directional guard has no
 // reason to refuse the merge.
 func TestMergeFreshPreflightAllowsAWiderPointerAtALandedDestination(t *testing.T) {
-	f, candidate, approval, _, _ := buildNestedCrossAuthorApproval(t)
+	f, candidate, approval, wider, nested := buildNestedCrossAuthorApproval(t)
 	beforeHead := testGit(t, f.repo, "rev-parse", "HEAD")
 	before := f.snapshot(t)
 
@@ -2011,11 +2011,35 @@ func TestMergeFreshPreflightAllowsAWiderPointerAtALandedDestination(t *testing.T
 	if got := testGit(t, f.repo, "rev-parse", "HEAD"); got == beforeHead {
 		t.Fatal("exact-path merge did not move the target")
 	}
+	mergeHead := testGit(t, f.repo, "rev-parse", "HEAD")
+	receipt, ok, err := readMergeReceipt(f.ctx, f.repo, mergeHead)
+	if err != nil || !ok {
+		t.Fatalf("read carried receipt: ok=%v err=%v", ok, err)
+	}
+	var leftLive map[string]mergeLeftLive
+	if err := json.Unmarshal([]byte(receipt.LeftLive), &leftLive); err != nil {
+		t.Fatal(err)
+	}
+	if got := leftLive[wider]; got.Class != leftLiveCarried || got.Commitment != "" {
+		t.Fatalf("wider target-ancestor accounting = %+v in %#v, want carried without commitment", got, leftLive)
+	}
 	if _, err := git(f.ctx, f.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err != nil {
 		t.Fatalf("merged exact-path receipt was not sealed: %v", err)
 	}
-	if after := f.snapshot(t); after.Depth <= before.Depth {
+	after := f.snapshot(t)
+	if after.Depth <= before.Depth {
 		t.Fatalf("merged exact-path receipt did not extend durable log: depth %d/%d", after.Depth, before.Depth)
+	}
+	if artifactByEvent(t, after.Projection, wider).Retired || !artifactByEvent(t, after.Projection, nested).Retired {
+		t.Fatalf("carried/predecessor retirement = wider %+v nested %+v",
+			artifactByEvent(t, after.Projection, wider), artifactByEvent(t, after.Projection, nested))
+	}
+	if after.Projection.OmittedSupersessions != 0 {
+		t.Fatalf("carried target artifact created %d retirement debts", after.Projection.OmittedSupersessions)
+	}
+	status := string(workroom.RenderStatus(after.Projection))
+	if !strings.Contains(status, "carried current in the landed target") || strings.Contains(status, "retirement owed") {
+		t.Fatalf("carried status is misleading:\n%s", status)
 	}
 }
 

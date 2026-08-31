@@ -177,10 +177,12 @@ type Artifact struct {
 }
 
 // LeftLiveAccounting is one merge receipt's prospective testimony about an
-// artifact it did not retire. Class is sibling or abandoned. A sibling names
-// the unsettled commitment which protected the artifact at receipt time;
-// abandoned asserts that no such commitment existed. Reason is present only
-// when the fold could not verify the testimony.
+// artifact it did not retire. Class is carried, sibling, or abandoned. Carried
+// means the merge adapter found the artifact in the landed target but on a
+// wider exact-path lineage; it names no commitment and creates no retirement
+// duty. A sibling names the unsettled commitment which protected a non-target
+// candidate at receipt time; abandoned asserts that no such commitment
+// existed. Reason is present only when the fold could not verify the testimony.
 type LeftLiveAccounting struct {
 	Artifact   string `json:"artifact"`
 	Class      string `json:"class"`
@@ -1600,8 +1602,18 @@ func (f *foldState) validateMergeLeftLiveNow(receipt *parsedRecord, raw string, 
 				} else {
 					entry.Verified = true
 				}
+			case "carried":
+				if claim.Commitment != "" {
+					entry.Reason = "carried testimony must not name a commitment"
+				} else {
+					// Git ancestry is deliberately outside this pure fold. The
+					// merge adapter derives carried from the exact candidate and
+					// target history; the fold verifies the sealed claim's shape,
+					// liveness, changed-path coverage, and non-retirement.
+					entry.Verified = true
+				}
 			default:
-				entry.Reason = "class must be sibling or abandoned"
+				entry.Reason = "class must be carried, sibling, or abandoned"
 			}
 		}
 		if entry.Verified {
@@ -2883,6 +2895,9 @@ func (f *foldState) project() Projection {
 							}
 						case "abandoned":
 							receiptDebts[entry.Artifact] = true
+						case "carried":
+							// The artifact is already current in the landed target on
+							// its own exact path lineage; no retirement is owed.
 						}
 					}
 				}

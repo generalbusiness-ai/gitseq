@@ -34,6 +34,8 @@ func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
 		Artifacts: []workroom.Artifact{
 			{Event: "target-artifact", Path: "shared/file", Commit: base},
 			{Event: "candidate-artifact", Path: "shared/file", Commit: candidate},
+			{Event: "target-carried-artifact", Path: "shared", Commit: base},
+			{Event: "candidate-carried-artifact", Path: "shared", Commit: candidate},
 			{Event: "sibling-artifact", Path: "shared/file", Commit: sibling},
 			{Event: "abandoned-artifact", Path: "shared/file", Commit: abandoned},
 			{Event: "wider-sibling-artifact", Path: "shared", Commit: sibling},
@@ -72,6 +74,11 @@ func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
 			t.Errorf("%s was not classified as an in-target predecessor", event)
 		}
 	}
+	for _, event := range []string{"target-carried-artifact", "candidate-carried-artifact"} {
+		if got := classified[event]; got.predecessor || got.leftLive.Class != leftLiveCarried || got.leftLive.Commitment != "" {
+			t.Errorf("%s = %+v, want carried without predecessor or commitment", event, got)
+		}
+	}
 	if got := classified["sibling-artifact"].leftLive; got.Class != leftLiveSibling || got.Commitment != "protect" {
 		t.Errorf("protected candidate = %+v, want sibling under protect", got)
 	}
@@ -99,6 +106,8 @@ func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
 		t.Fatalf("in-target retirements = %#v", plan.retire)
 	}
 	if !reflect.DeepEqual(plan.leftLive, map[string]mergeLeftLive{
+		"target-carried-artifact":    {Class: leftLiveCarried},
+		"candidate-carried-artifact": {Class: leftLiveCarried},
 		"sibling-artifact":           {Class: leftLiveSibling, Commitment: "protect"},
 		"abandoned-artifact":         {Class: leftLiveAbandoned},
 		"wider-sibling-artifact":     {Class: leftLiveSibling, Commitment: "protect"},

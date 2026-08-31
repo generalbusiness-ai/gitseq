@@ -830,10 +830,14 @@ For an added or modified file, and a rename destination, the merge adapter
 publishes the successor at the exact changed-file path and selects only live
 predecessors at that same exact string. A wider artifact covering the landed
 destination stays live and is sealed in the receipt: it is a separate path
-lineage, not a predecessor a narrower successor may retire. Removing a rename
-source or deleted file retires its exact-file artifact with no successor there
-and changes its covering directories, so in-target directory pointers may be
-retired and the widest directory successor published.
+lineage, not a predecessor a narrower successor may retire. Target ancestry is
+decided independently of that retirement eligibility. An exact-candidate or
+target-ancestor wider artifact is sealed as carried: current in the landed
+target, naming no commitment, and creating no cleanup debt. Only non-target
+candidates are siblings or abandoned. Removing a rename source or deleted file
+retires its exact-file artifact with no successor there and changes its
+covering directories, so in-target directory pointers may be retired and the
+widest directory successor published.
 
 Merge receipts record ordinary reasoning staleness. An approval or artifact
 that already described a superseded world when the verdict was signed must be
@@ -843,15 +847,16 @@ requirement, and the same sealed receipt closes the implementation commitment
 whose reporting artifact it merges.
 
 The receipt also accounts for every other live artifact covered by the
-first-parent diff without granting authority over it: it seals whether an
+first-parent diff without granting authority over it. It seals an in-target
+wider lineage as carried; for a non-target candidate, it seals whether an
 unsettled durable commitment protects the candidate or whether the candidate
 is abandoned. The Git and durable receipts also seal the canonical exact
 old/new path set from the first-parent diff, so the fold can verify coverage
 without interpreting a Git tree or treating every artifact below a broad
-successor as changed. The fold verifies the testimony from log facts at the
-receipt's position and fixes the successor's succession warning there;
-receipts without the two prospective fields retain the historical moving,
-current-fold calculation.
+successor as changed. The fold verifies carried testimony's structural facts
+but leaves ancestry to the merge adapter, the layer which has Git. It fixes the
+successor's succession warning at the receipt position; receipts without the
+two prospective fields retain the historical moving, current-fold calculation.
 
 Before Git moves, the CLI also constructs every signed succession request and
 applies the kernel's exact genesis-ceiling measure plus the resident JSON

@@ -2846,6 +2846,39 @@ func TestMergeAccountingDeletionOmissionStaysVisibleOnReceipt(t *testing.T) {
 	}
 }
 
+func TestMergeLeftLiveCarriedIsCurrentWithoutRetirementDebt(t *testing.T) {
+	projection := Fold(reviewRecords(t,
+		event(t, "wide", operator, SchemaState, State{Kind: KindArtifact, Text: "current target tree", Body: map[string]string{"path": "dir", "commit": "base"}}, "r0"),
+		event(t, "leaf-candidate", agent, SchemaState, State{Kind: KindArtifact, Text: "reviewed leaf", Body: map[string]string{"path": "dir/file", "commit": "head1"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "leaf-candidate"}}, "reviewer-promise", "leaf-candidate"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "merge leaf under current tree", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"leaf-candidate":"dir/file"}`, "merge_successors": `["dir/file"]`,
+			"merge_changed_paths": `["dir/file"]`, "merge_left_live": `{"wide":{"class":"carried"}}`,
+		}}, "approval"),
+		event(t, "leaf-successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged leaf", Body: map[string]string{"path": "dir/file", "commit": "merged"}}, "merge"),
+		event(t, "retire-leaf", agent, SchemaSupersede, Supersede{Target: "leaf-candidate", Text: "merged"}, "leaf-candidate", "merge", "leaf-successor"),
+	))
+	accounting := statementByEvent(t, projection, "merge").MergeLeftLive
+	if len(accounting) != 1 || !accounting[0].Verified || accounting[0].Artifact != "wide" || accounting[0].Class != "carried" || accounting[0].Commitment != "" {
+		t.Fatalf("carried accounting = %+v", accounting)
+	}
+	if artifactByEvent(t, projection, "wide").Retired {
+		t.Fatal("carried artifact was retired")
+	}
+	if successor := artifactByEvent(t, projection, "leaf-successor"); successor.SuccessionUnrecorded || successor.LivePredecessors != 0 {
+		t.Fatalf("carried artifact became a predecessor: %+v", successor)
+	}
+	if projection.OmittedSupersessions != 0 {
+		t.Fatalf("carried artifact created %d retirement debts", projection.OmittedSupersessions)
+	}
+	status := string(RenderStatus(projection))
+	if !strings.Contains(status, "carried current in the landed target") || strings.Contains(status, "retirement owed") || strings.Contains(status, "supersessions still owed") {
+		t.Fatalf("carried status is misleading:\n%s", status)
+	}
+}
+
 func TestMergeLeftLiveProtectedSiblingIsNotRetirementDebt(t *testing.T) {
 	records := reviewRecords(t,
 		event(t, "sibling-request", operator, SchemaState, State{Kind: KindRequest, Text: "keep sibling live", Body: map[string]string{"to": agent, "conditions": "publish sibling"}}, "r0"),
@@ -2898,6 +2931,14 @@ func TestMergeLeftLiveWrongTestimonyWarnsWithoutChangingReceiptAuthority(t *test
 			name:       "retirement overlap",
 			testimony:  `{"r5":{"class":"abandoned"}}`,
 			wantReason: "also classified for retirement",
+		},
+		{
+			name: "carried names commitment",
+			before: []Record{
+				event(t, "left", operator, SchemaState, State{Kind: KindArtifact, Text: "current target artifact", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+			},
+			testimony:  `{"left":{"class":"carried","commitment":"candidate-promise"}}`,
+			wantReason: "carried testimony must not name a commitment",
 		},
 		{
 			name: "outside successor coverage",
