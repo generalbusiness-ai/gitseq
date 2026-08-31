@@ -42,7 +42,7 @@ const (
 // The fold version binds the exact evaluator, SQL profile, and limits here.
 var InventoryApplication = host.Application{
 	Name:        "jsonata-ddl-inventory-spike",
-	FoldVersion: "jsonata-v206-sqlite-spike@0",
+	FoldVersion: "jsonata-v206-sqlite-spike@1",
 	SourceURL:   "https://github.com/generalbusiness-ai/gitseq.git",
 }
 
@@ -50,14 +50,14 @@ var InventoryApplication = host.Application{
 var inventoryFiles embed.FS
 
 var (
-	identifier     = `[A-Za-z_][A-Za-z0-9_]*`
-	eventRE        = regexp.MustCompile(`(?is)^CREATE\s+EVENT\s+(` + identifier + `)\s*\((.*)\)$`)
-	tableRE        = regexp.MustCompile(`(?is)^CREATE\s+TABLE\s+(` + identifier + `)\b`)
-	allowedDDL     = regexp.MustCompile(`(?is)^CREATE\s+(?:TABLE|INDEX|VIEW)\b`)
-	foldRE         = regexp.MustCompile(`(?is)^CREATE\s+FOLD\s+(` + identifier + `)\s+ON\s+(` + identifier + `)\s+READ\s+(` + identifier + `)\s+(ONE|OPTIONAL\s+ONE)\s+AS\s+(.+?)\s+USING\s+'([^']+)'\s+WRITES\s+(.+)$`)
-	ambientSQL     = regexp.MustCompile(`(?i)\b(?:random|randomblob|current_date|current_time|current_timestamp|load_extension)\b|\b(?:date|time|datetime|julianday|unixepoch|strftime)\s*\(`)
-	ambientJSONata = regexp.MustCompile(`(?i)\$(?:now|millis|random|shuffle|eval)\b`)
-	foldReadRE     = regexp.MustCompile(`(?is)^SELECT\s+(` + identifier + `(?:\s*,\s*` + identifier + `)*)\s+FROM\s+(` + identifier + `)\s+WHERE\s+(` + identifier + `)\s*=\s*:event\.(` + identifier + `)$`)
+	identifier    = `[A-Za-z_][A-Za-z0-9_]*`
+	eventRE       = regexp.MustCompile(`(?is)^CREATE\s+EVENT\s+(` + identifier + `)\s*\((.*)\)$`)
+	tableRE       = regexp.MustCompile(`(?is)^CREATE\s+TABLE\s+(` + identifier + `)\b`)
+	allowedDDL    = regexp.MustCompile(`(?is)^CREATE\s+(?:TABLE|INDEX|VIEW)\b`)
+	foldRE        = regexp.MustCompile(`(?is)^CREATE\s+FOLD\s+(` + identifier + `)\s+ON\s+(` + identifier + `)\s+READ\s+(` + identifier + `)\s+(ONE|OPTIONAL\s+ONE)\s+AS\s+(.+?)\s+USING\s+'([^']+)'\s+WRITES\s+(.+)$`)
+	ambientSQL    = regexp.MustCompile(`(?i)\b(?:random|randomblob|current_date|current_time|current_timestamp|load_extension)\b|\b(?:date|time|datetime|julianday|unixepoch|strftime)\s*\(`)
+	unsafeJSONata = regexp.MustCompile(`(?im)\$(?:now|millis|random|shuffle|eval|each|keys|spread)\b|\.\s*\*{1,2}|^\s*\*{1,2}(?:\s*\.|\s*$)`)
+	foldReadRE    = regexp.MustCompile(`(?is)^SELECT\s+(` + identifier + `(?:\s*,\s*` + identifier + `)*)\s+FROM\s+(` + identifier + `)\s+WHERE\s+(` + identifier + `)\s*=\s*:event\.(` + identifier + `)$`)
 )
 
 type eventDefinition struct {
@@ -163,8 +163,8 @@ func Load(files fs.FS, root string, application host.Application) (*Profile, err
 			if len(program) == 0 || len(program) > maxProgramBytes {
 				return nil, fmt.Errorf("fold %q program is empty or too large", name)
 			}
-			if ambientJSONata.Match(program) {
-				return nil, fmt.Errorf("fold %q uses an ambient or dynamic JSONata function", name)
+			if unsafeJSONata.Match(program) {
+				return nil, fmt.Errorf("fold %q uses an ambient, dynamic, or order-dependent JSONata operation", name)
 			}
 			expression, err := jsonata.Compile(string(program), false)
 			if err != nil {
