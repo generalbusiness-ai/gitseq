@@ -368,7 +368,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	message := set.String("text", "", "statement text")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
-	deadOK := set.Bool("allow-dead-basis", false, "rest on retired or stale bases anyway, signing body.dead_basis_override=true")
+	deadOK := set.Bool("allow-dead-basis", false, "rest on retired bases anyway, signing body.dead_basis_override=true; a stale basis needs no escape")
 	var bodyValues, rests, evidence values
 	set.Var(&bodyValues, "body", "body key=value (repeatable)")
 	set.Var(&rests, "rests-on", "causal event id (repeatable)")
@@ -1495,7 +1495,7 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 	}
 	// Before the first append, build every act through the same application
 	// boundary submission uses: an undefined kind, a verdict shape, a spoofed
-	// reserved field, or a dead basis stops the batch before anything lands.
+	// reserved field, or a retired basis stops the batch before anything lands.
 	// The authoritative re-judgement still happens per act at sequencing.
 	if position, failure := preflightAdmission(ctx, workspace, serverURL, actorName, private, acts, citedOK); failure != nil {
 		report.Acts[position].Outcome = "failed"

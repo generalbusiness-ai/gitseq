@@ -28,6 +28,36 @@ func unclaimedReplacement(t testing.TB, id, retirement string) Record {
 	}, retirement)
 }
 
+// staleRequestSeed is directReportSeed with one basis under the request
+// condemned: the request still stands, nobody has claimed or completed it, and
+// something underneath it moved. That is the position the guard used to refuse
+// and now admits.
+func staleRequestSeed(t testing.TB) []Record {
+	t.Helper()
+	seeded := directReportSeed(t)
+	if last := seeded[len(seeded)-1]; last.ID != "request" {
+		t.Fatalf("directReportSeed no longer ends with the request: %s", last.ID)
+	}
+	records := append([]Record(nil), seeded[:len(seeded)-1]...)
+	return append(records,
+		event(t, "basis", operator, SchemaState, State{Kind: KindAssert, Text: "ground under the request"}, "seed"),
+		event(t, "request", operator, SchemaState, State{Kind: KindRequest, Text: "Do the thing",
+			Body: map[string]string{"to": agent, "conditions": "it is done"}}, "basis"),
+		event(t, "condemn", operator, SchemaSupersede, Supersede{Target: "basis", Text: "withdrawn with nothing in its place"}, "basis"),
+	)
+}
+
+func statementFor(t testing.TB, projection Projection, event string) Statement {
+	t.Helper()
+	for _, statement := range projection.Statements {
+		if statement.Event == event {
+			return statement
+		}
+	}
+	t.Fatalf("no statement for %s", event)
+	return Statement{}
+}
+
 func decisionFor(t testing.TB, projection Projection, event string) Decision {
 	t.Helper()
 	decision, ok := projection.Decision(event)
@@ -57,6 +87,66 @@ func TestReassignIfUnclaimedAcceptsUnrelatedInterleaving(t *testing.T) {
 	}
 	if replacement.Kind != KindRequest || replacement.Body["to"] != other {
 		t.Fatalf("replacement did not project as the new request: %+v", replacement)
+	}
+}
+
+// Staleness is not a claim. A request whose ground moved is the one nobody
+// promised, so refusing to reassign it stranded exactly the rows that needed a
+// new addressee. The guard now reads only who claimed or completed the work.
+func TestReassignIfUnclaimedReassignsAStaleUnclaimedRequest(t *testing.T) {
+	records := append(staleRequestSeed(t), unclaimedRetirement(t, "retirement"))
+	records = append(records, unclaimedReplacement(t, "replacement", "retirement"))
+	projection := Fold(records)
+
+	// Not merely a seed that folds. If the request is not stale here, the two
+	// checks below say nothing about staleness at all.
+	if request := statementFor(t, projection, "request"); !request.Stale {
+		t.Fatalf("setup did not make the request stale: %+v", request)
+	}
+	for _, id := range []string{"retirement", "replacement"} {
+		if decision := decisionFor(t, projection, id); decision.Verdict != Effective {
+			t.Fatalf("%s over a stale request = %s (%s), want effective", id, decision.Verdict, decision.Reason)
+		}
+	}
+	if replacement := statementFor(t, projection, "replacement"); replacement.Kind != KindRequest || replacement.Body["to"] != other {
+		t.Fatalf("replacement did not project as the new request: %+v", replacement)
+	}
+}
+
+// Dropping the staleness precondition drops nothing else: a stale request that
+// somebody has claimed or completed still refuses, on the claim rather than on
+// the staleness.
+func TestReassignIfUnclaimedStillRefusesAClaimedStaleRequest(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		claim Record
+		want  string
+	}{
+		{
+			name:  "promise",
+			claim: event(t, "promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "request"),
+			want:  "admitted promise",
+		},
+		{
+			name:  "direct completion",
+			claim: event(t, "completion", agent, SchemaState, State{Kind: KindReport, Text: "done"}, "request"),
+			want:  "direct completion",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			records := append(staleRequestSeed(t), test.claim, unclaimedRetirement(t, "retirement"))
+			projection := Fold(records)
+			if request := statementFor(t, projection, "request"); !request.Stale {
+				t.Fatalf("setup did not make the request stale: %+v", request)
+			}
+			decision := decisionFor(t, projection, "retirement")
+			if decision.Verdict != Ineffective || !strings.Contains(decision.Reason, test.want) {
+				t.Fatalf("guarded retirement = %+v, want ineffective naming %q", decision, test.want)
+			}
+			if strings.Contains(decision.Reason, "stale") {
+				t.Fatalf("guarded retirement refused on staleness rather than the claim: %+v", decision)
+			}
+		})
 	}
 }
 

@@ -1,6 +1,6 @@
 ---
 title: gs reassign-if-unclaimed
-summary: Reassign one request only if it is still fresh and nobody has claimed or completed it.
+summary: Reassign one request only while nobody has claimed or completed it.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9936cbb28db1642a5cdabd2f787fb881fb33dbf2
@@ -12,9 +12,14 @@ Retires one open request and publishes its replacement as a guarded pair.
 Use it when you read a request as unclaimed and want to change its addressee.
 
 The guard is request-local. Unrelated durable events may land between the two
-acts. A promise or direct completion on the old request refuses the operation,
-as does a stale or already-retired request. The replacement names the exact
-guarded retirement and refuses if the commitment changed after that retirement.
+acts. A promise or direct completion on the old request refuses the operation, as
+does an already-retired request. The replacement names the exact guarded
+retirement and refuses if the commitment changed after that retirement.
+
+Staleness does not refuse it. A basis retired under a request says nothing
+about who claimed the work, and the request whose ground moved is usually the
+one nobody promised. The replacement is an ordinary request and carries its own
+staleness from whatever it rests on.
 
 ## Flags
 

@@ -771,7 +771,9 @@ log, so it advances the fold profile to `workroom-fold@8`.
 **Unclaimed reassignment is a signed request-local compare and swap.** The
 guarded retirement schema names the exact old request and explicitly expects
 no admitted direct promise or completion. It is effective only while that
-request is live and fresh. The guarded replacement schema names both the old
+request is live with neither fact present. The request may be stale: staleness
+says a basis under it moved, not that anybody claimed it. The guarded
+replacement schema names both the old
 request and the one effective guarded retirement it follows; it refuses when a
 promise or completion appeared between the acts. Unrelated records do not
 matter. The fold reads its admitted dependency and completion facts rather
@@ -954,11 +956,13 @@ changes-requested is a review verdict and refuses on generic paths, naming the
 guarded route. Canonical review paths carry the reserved `body.review_path`
 marker, and reserved admission fields are never caller input.
 
-A state resting on an already-retired or already-stale basis refuses by
-default until the author asks for the recorded escape
-(`body.dead_basis_override=true`), while an effective supersession stays
-advisory. Neither the refusal nor the override removes staleness or grants
-authority.
+A state resting on an already-retired basis refuses by default until the author
+asks for the recorded escape (`body.dead_basis_override=true`). A state resting
+on a merely stale basis is admitted and the staleness is recorded on the row it
+lands as, in the same `stale` and `staleness` body fields a merge receipt uses
+and from the same note builder, unless the body already carries a note of its
+own. An effective supersession stays advisory. Neither the refusal, the
+override, nor the recorded note removes staleness or grants authority.
 
 The guarded verdict path owns head-news discovery — statements sequenced
 strictly after the review request that name the reviewed head or lane —
@@ -972,6 +976,17 @@ before append when its request-local expectation no longer holds; an exact
 retry replays without re-judging history that moved afterwards. The fold still
 enforces both new schemas, so an older or admission-skipping resident cannot
 grant unguarded force.
+
+The expectation the fold enforces is exactly the absent promise and the absent
+direct completion. Staleness of the request is not part of it: a basis retired
+under a request says nothing about who claimed it, and refusing there stranded
+the requests that most needed a new addressee.
+
+Guarded retirements and replacements over a stale request now fold as
+effective where they were ineffective before, so this decision change advances
+the profile to `workroom-fold@16`; a cache written under `@15` is rejected and
+the history replayed. Without that gate a cache predating the change would keep
+answering `ineffective` for reassignments the fold now admits.
 
 **Surfaces and guidance.** Workroom also owns its MCP tools and their
 application meanings; the agent practice in `SKILL.md`; connector clauses and

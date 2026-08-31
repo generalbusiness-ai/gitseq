@@ -250,7 +250,7 @@ func TestStateToolSignsTheDeadBasisEscapeWhenAllowed(t *testing.T) {
 		"kind": "assert", "text": "standing on withdrawn ground",
 		"rests_on": []any{ground}, "idempotency_key": "mcp-dead-refused",
 	}})
-	if err == nil || !strings.Contains(err.Error(), "already-dead basis") || !strings.Contains(err.Error(), "allow_dead_basis") {
+	if err == nil || !strings.Contains(err.Error(), "already-retired basis") || !strings.Contains(err.Error(), "allow_dead_basis") {
 		t.Fatalf("dead-basis state error = %v", err)
 	}
 	after, err := workspace.Snapshot(ctx)

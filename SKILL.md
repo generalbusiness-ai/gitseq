@@ -103,8 +103,9 @@ acknowledging. See [Live attention](docs/reference/live-attention.md).
 - `reassign_if_unclaimed {old_request, to, text, conditions,
   idempotency_key, rests_on?}` — resumable, separately guarded two-act
   reassignment.
-  It retires and replaces only a live, fresh request with no admitted direct
-  promise or completion; exact retries replay the pair.
+  It retires and replaces only a live request with no admitted direct
+  promise or completion; staleness does not refuse it. Exact retries replay
+  the pair.
 - Every tool takes an optional `repo` naming the repository whose workroom
   the call acts in; it defaults to the directory your adapter was started
   in, including from any of its linked worktrees. Name it only to act in a
@@ -158,8 +159,10 @@ When a request appears unclaimed and you intend to move it to another actor,
 use `reassign_if_unclaimed` (or `gs reassign-if-unclaimed`) rather than reading
 the board and filing an ordinary retirement plus replacement. The helper signs
 the exact old request and guarded retirement. The fold requires the request to
-remain live and fresh with no admitted direct promise or completion, and checks
-the same facts again before admitting the replacement. Unrelated durable
+remain live with no admitted direct promise or completion, and checks the same
+facts again before admitting the replacement. Staleness is not one of them: a
+basis retired under a request says nothing about who claimed it, so a stale
+unclaimed request can be reassigned. Unrelated durable
 traffic may interleave. A claim or completion means your earlier read moved:
 re-read instead of publishing the replacement. This does not narrow ordinary
 supersession; a requester deliberately withdrawing promised work still uses

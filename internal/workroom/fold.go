@@ -1206,6 +1206,13 @@ func (f *foldState) decideReassignIfUnclaimed(record *parsedRecord, state State)
 // swap. It intentionally does not read Commitment.Status: a retired request
 // projects as withdrawn even when a late direct completion exists. The fold's
 // admitted dependency and completion facts are the authority.
+//
+// Staleness is deliberately not one of them. The guard protects one statement
+// — nobody claimed or completed this request — and a basis retired underneath
+// a request says nothing about who claimed it. Refusing on staleness stranded
+// exactly the requests that most needed a new addressee, since the request
+// whose ground moved is the one nobody promised. Ordinary staleness travels
+// onto the replacement and stays visible there.
 func (f *foldState) unclaimedExpectationReason(record *parsedRecord, replacement bool) string {
 	expectation := record.unclaimedExpectation
 	if expectation == nil {
@@ -1221,9 +1228,6 @@ func (f *foldState) unclaimedExpectationReason(record *parsedRecord, replacement
 	}
 	if expectation.Promise != CommitmentAbsent || expectation.Completion != CommitmentAbsent {
 		return "reassign-if-unclaimed expectation must explicitly require absent promise and completion"
-	}
-	if stale, _, _ := f.stalenessNow().stalenessOf([]string{expectation.Request}, f.succeededRetirements()); stale[expectation.Request] {
-		return "reassign-if-unclaimed request is stale; re-read and refile on current bases"
 	}
 	if promises := f.directDependents(expectation.Request, LifecyclePromise); len(promises) != 0 {
 		return fmt.Sprintf("reassign-if-unclaimed request has %d admitted promise(s); re-read before changing its assignment", len(promises))

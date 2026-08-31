@@ -2620,10 +2620,11 @@ func deadWorld(t *testing.T, f batchFixture) (ground, stale, supersedeEvent stri
 	return ground, stale, supersedeEvent
 }
 
-// Resting on a retired basis refuses by default now, naming every dead basis
-// and the escape. Asking for the escape signs the override, the act lands, and
-// each of the three deaths still gets its own advisory line, named by event
-// id; a citation that is alive says nothing.
+// Resting on a retired basis refuses by default now, naming the retired basis
+// and the escape. A stale one and an effective supersession are not what the
+// refusal is about, so it does not name them. Asking for the escape signs the
+// override, the act lands, and each of the three deaths still gets its own
+// advisory line, named by event id; a citation that is alive says nothing.
 func TestStateRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	f := newBatchFixture(t)
 	ground, stale, supersedeEvent := deadWorld(t, f)
@@ -2637,14 +2638,12 @@ func TestStateRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	if !strings.Contains(err.Error(), "--allow-dead-basis") {
 		t.Errorf("refusal %q does not name the escape", err)
 	}
-	for id, reason := range map[string]string{
-		ground:         "retired",
-		stale:          "stale",
-		supersedeEvent: "supersede",
-	} {
-		want := id + " (" + reason + ")"
-		if reason != "supersede" && !strings.Contains(err.Error(), want) {
-			t.Errorf("refusal %q does not name %q", err, want)
+	if !strings.Contains(err.Error(), ground) {
+		t.Errorf("refusal %q does not name the retired basis %s", err, ground)
+	}
+	for _, admitted := range []string{stale, supersedeEvent} {
+		if strings.Contains(err.Error(), admitted) {
+			t.Errorf("refusal %q names %s, which does not refuse a write", err, admitted)
 		}
 	}
 	if got := f.snapshot().Depth; got != before {
@@ -2686,10 +2685,12 @@ func TestStateRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	}
 }
 
-// The batch preflight refuses a chain resting on dead bases before anything
-// lands; with the per-act escape the chain lands, each recorded act carries
-// dead_basis_override=true on its body, and the advisory notes still resolve
-// intra-batch citations to their durable names.
+// The batch preflight refuses a chain resting on retired ground before
+// anything lands; with the per-act escape the chain lands. The act that rested
+// on the retired ground carries dead_basis_override=true; the one that rested
+// only on that act, now stale, carries the recorded staleness instead of an
+// override, because staleness never needed the escape. The advisory notes
+// still resolve intra-batch citations to their durable names.
 func TestBatchRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	f := newBatchFixture(t)
 	ground, _, supersedeEvent := deadWorld(t, f)
@@ -2730,11 +2731,16 @@ func TestBatchRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 		t.Fatalf("batch report = %#v, want two landed acts", report)
 	}
 	projection := f.snapshot().Projection
-	for _, landedAct := range report.Acts {
-		stamped := statementByEvent(t, projection, landedAct.Event)
-		if stamped.Body["dead_basis_override"] != "true" {
-			t.Fatalf("act %s body = %#v, want dead_basis_override=true", stamped.Event, stamped.Body)
-		}
+	onRetiredGround := statementByEvent(t, projection, report.Acts[0].Event)
+	if onRetiredGround.Body["dead_basis_override"] != "true" {
+		t.Fatalf("act on retired ground body = %#v, want dead_basis_override=true", onRetiredGround.Body)
+	}
+	onStaleGround := statementByEvent(t, projection, report.Acts[1].Event)
+	if onStaleGround.Body["stale"] != "true" || !strings.Contains(onStaleGround.Body["staleness"], report.Acts[0].Event) {
+		t.Fatalf("act on stale ground body = %#v, want stale=true and a note naming %s", onStaleGround.Body, report.Acts[0].Event)
+	}
+	if onStaleGround.Body["dead_basis_override"] == "true" {
+		t.Fatalf("act on stale ground took the retired-basis escape: %#v", onStaleGround.Body)
 	}
 	resolvedStale := report.Acts[0].Event
 	for _, want := range []string{

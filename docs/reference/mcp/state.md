@@ -20,7 +20,7 @@ appends is permanent.
 | `rests_on` | required | Array of event identifiers. What this act bears on. |
 | `body` | optional | String map of structured fields. |
 | `evidence` | optional | String map of `name` to content, embedded as attachments. |
-| `allow_dead_basis` | optional | Rest on retired or stale bases anyway, signing `dead_basis_override=true`. Testimony that you saw them, not a repair of them. |
+| `allow_dead_basis` | optional | Rest on retired bases anyway, signing `dead_basis_override=true`. Testimony that you saw them, not a repair of them. A stale basis needs no escape. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 
@@ -45,6 +45,30 @@ META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelc
 printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"state","arguments":{"kind":"request","text":"Add a changelog","body":{"to":"@bot","conditions":"CHANGELOG.md exists"},"rests_on":["%s"]},%s}}\n' "$SEED" "$META" \
   | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 ```
+
+## Retired bases and stale ones
+
+The two are different facts and the boundary treats them differently. A
+`rests_on` naming a **retired** record is refused before signing: that
+record was withdrawn and nothing stands there to rest on. The refusal names
+each retired basis, and `allow_dead_basis` is the way past it.
+
+A `rests_on` naming a merely **stale** record is admitted. The record still
+stands; something underneath it moved. The body you sign carries two fields
+saying what had moved when the act was signed:
+
+| Field | Says |
+|---|---|
+| `stale` | `true` when a basis this act rested on had already gone stale. |
+| `staleness` | One line: which bases were stale, whether what moved was the world they describe, and the retired acts underneath them. |
+
+It is the same note [`review`](review.md) writes into a verdict and
+`gs merge` writes into a receipt. If your call already supplies a
+`staleness` note of its own, yours is kept. A basis still live when you
+signed but stale by the time the act was sequenced lands with no note at
+all, because the note is written into the body you sign. Recording
+staleness neither repairs it nor grants anything: [`status`](status.md)
+shows the fold's own mark on the row either way.
 
 ## Body fields the fold reads
 

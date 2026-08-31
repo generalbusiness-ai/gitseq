@@ -207,10 +207,11 @@ historical transfer.
 If the requester read the request as unclaimed and wants to change its
 addressee, the read can race a promise or direct completion. The guarded
 `reassign_if_unclaimed` / `gs reassign-if-unclaimed` path signs the exact old
-request, retires it only while it is live and fresh with neither fact present,
-then publishes a replacement naming that exact retirement only if the facts
-remain unchanged. Unrelated log traffic is allowed. A commitment change
-refuses and requires a fresh read. Ordinary supersession remains the route for
+request, retires it only while it is live with neither fact present, then
+publishes a replacement naming that exact retirement only if the facts remain
+unchanged. A stale request qualifies: staleness says a basis under it moved,
+not that anybody claimed it. Unrelated log traffic is allowed. A commitment
+change refuses and requires a fresh read. Ordinary supersession remains the route for
 a requester who knowingly withdraws promised work.
 
 ## Bridging work to code

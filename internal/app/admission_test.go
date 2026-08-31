@@ -196,52 +196,52 @@ func deadBasisFixture(t *testing.T, ctx context.Context) (*Workspace, string, st
 	return workspace, retired.ID, stale.ID
 }
 
-// A state resting on an already-retired or already-stale basis refuses by
-// default; asking for the escape signs the override; citing an effective
-// supersession stays advisory.
-func TestAdmissionRefusesDeadBasesUntilTheEscapeIsAskedFor(t *testing.T) {
+// bodyOf reads back the body the fold projects for one landed event, which is
+// the only place a stamp admission made is observable.
+func bodyOf(t *testing.T, ctx context.Context, workspace *Workspace, event string) map[string]string {
+	t.Helper()
+	for _, statement := range workspace.mustSnapshot(t, ctx).Projection.Statements {
+		if statement.Event == event {
+			return statement.Body
+		}
+	}
+	t.Fatalf("no projected statement for %s", event)
+	return nil
+}
+
+// A state resting on an already-retired basis refuses by default: the record
+// was withdrawn and nothing stands there to rest on.
+func TestAdmissionRefusesARetiredBasisUntilTheEscapeIsAskedFor(t *testing.T) {
 	ctx := context.Background()
 	workspace, retired, stale := deadBasisFixture(t, ctx)
 
-	refused := func(name, basis string) {
-		t.Helper()
-		before := workspace.mustSnapshot(t, ctx)
-		err := func() error {
-			_, err := workspace.Act(ctx, "human", Act{
-				Verb: VerbState, Kind: workroom.KindAssert, Text: "standing on " + name,
-				RestsOn: []string{basis}, IdempotencyKey: "dead-refused-" + name,
-			})
-			return err
-		}()
-		if err == nil || !strings.Contains(err.Error(), "already-dead basis") || !strings.Contains(err.Error(), "--allow-dead-basis") {
-			t.Fatalf("%s basis error = %v", name, err)
-		}
-		after := workspace.mustSnapshot(t, ctx)
-		if after.Head != before.Head {
-			t.Fatalf("refused %s basis changed workroom", name)
-		}
+	before := workspace.mustSnapshot(t, ctx)
+	_, err := workspace.Act(ctx, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "standing on withdrawn ground",
+		RestsOn: []string{retired}, IdempotencyKey: "dead-refused-retired",
+	})
+	if err == nil || !strings.Contains(err.Error(), "already-retired basis") || !strings.Contains(err.Error(), "--allow-dead-basis") {
+		t.Fatalf("retired basis error = %v, want the retired-basis refusal", err)
 	}
-	refused("retired", retired)
-	refused("stale", stale)
+	if !strings.Contains(err.Error(), retired) {
+		t.Fatalf("refusal %q does not name the retired basis %s", err, retired)
+	}
+	after := workspace.mustSnapshot(t, ctx)
+	if after.Head != before.Head {
+		t.Fatalf("refused retired basis changed workroom: %s -> %s", before.Head, after.Head)
+	}
 
 	allowed := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindAssert, Text: "I saw the dead bases",
 		RestsOn: []string{stale, retired}, AllowDeadBasis: true, IdempotencyKey: "dead-override-signed",
 	})
-	snapshot := workspace.mustSnapshot(t, ctx)
-	var body map[string]string
-	for _, statement := range snapshot.Projection.Statements {
-		if statement.Event == allowed.ID {
-			body = statement.Body
-		}
-	}
-	if body["dead_basis_override"] != "true" {
+	if body := bodyOf(t, ctx, workspace, allowed.ID); body["dead_basis_override"] != "true" {
 		t.Fatalf("allowed escape did not sign the override: %#v", body)
 	}
 
 	// An effective supersession remains advisory: citing the retirement act
 	// itself refuses nothing and records no override.
-	snapshot = workspace.mustSnapshot(t, ctx)
+	snapshot := workspace.mustSnapshot(t, ctx)
 	retirement := ""
 	for _, act := range snapshot.Projection.Acts {
 		if act.Type == "supersede" && act.Target == retired {
@@ -259,6 +259,51 @@ func TestAdmissionRefusesDeadBasesUntilTheEscapeIsAskedFor(t *testing.T) {
 		if statement.Event == citing.ID && statement.Body["dead_basis_override"] == "true" {
 			t.Fatalf("advisory supersession citation recorded an override: %#v", statement.Body)
 		}
+	}
+}
+
+// A merely stale basis is admitted, and the row that lands carries the merge
+// receipt's record of it: body.stale=true and a note naming the stale basis
+// and the retired act underneath it. Nobody has to ask for an escape, because
+// nothing was withdrawn — the record still stands and something under it
+// moved.
+func TestAdmissionAdmitsAStaleBasisAndRecordsTheStaleness(t *testing.T) {
+	ctx := context.Background()
+	workspace, retired, stale := deadBasisFixture(t, ctx)
+
+	landed := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "standing on ground that still stands",
+		RestsOn: []string{stale}, IdempotencyKey: "stale-admitted",
+	})
+	body := bodyOf(t, ctx, workspace, landed.ID)
+	if body["stale"] != "true" {
+		t.Fatalf("admitted row did not record staleness: %#v", body)
+	}
+	// Not merely non-empty. The note has to name the stale basis it was
+	// admitted over and walk down to the retirement that caused it, which is
+	// exactly what a merge receipt's note does.
+	if !strings.Contains(body["staleness"], stale) || !strings.Contains(body["staleness"], "stale") {
+		t.Fatalf("staleness note %q does not name the stale basis %s", body["staleness"], stale)
+	}
+	if !strings.Contains(body["staleness"], "retired bases: "+retired) {
+		t.Fatalf("staleness note %q does not name the retirement %s underneath it", body["staleness"], retired)
+	}
+	if body["dead_basis_override"] == "true" {
+		t.Fatalf("a stale basis demanded the retired-basis escape: %#v", body)
+	}
+
+	// A live basis records nothing, so the mark stays a signal rather than
+	// decoration on every row.
+	live := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "ground nothing has moved under",
+		IdempotencyKey: "stale-live-ground",
+	})
+	clean := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "standing on ground nothing has moved under",
+		RestsOn: []string{live.ID}, IdempotencyKey: "stale-not-contagious",
+	})
+	if body := bodyOf(t, ctx, workspace, clean.ID); body["stale"] != "" || body["staleness"] != "" {
+		t.Fatalf("a live basis recorded staleness: %#v", body)
 	}
 }
 
@@ -312,7 +357,7 @@ func TestAdmissionReplaysExactRetriesWithoutRejudging(t *testing.T) {
 		})
 		return err
 	}()
-	if fresh == nil || !strings.Contains(fresh.Error(), "already-dead basis") {
+	if fresh == nil || !strings.Contains(fresh.Error(), "already-retired basis") {
 		t.Fatalf("fresh submission onto the moved ground = %v, want the dead-basis refusal", fresh)
 	}
 }

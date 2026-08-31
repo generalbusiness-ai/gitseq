@@ -76,7 +76,7 @@ func (w *Workspace) admitState(snapshot Snapshot, admission stateAdmission, fron
 			return nil, err
 		}
 	}
-	if err := w.refuseDeadBases(snapshot, admission.RestsOn, body, admission.AllowDeadBasis); err != nil {
+	if err := w.judgeDeadBases(snapshot, admission.RestsOn, body, admission.AllowDeadBasis); err != nil {
 		return nil, err
 	}
 	return body, nil
@@ -163,35 +163,85 @@ func refuseUndefinedKind(vocabulary workroom.Vocabulary, kind workroom.Kind) err
 	return fmt.Errorf("state kind %q is not defined in this workroom and no override exists. %s. A ratified kind-def must establish a new kind before state can use it", kind, defined)
 }
 
-// refuseDeadBases refuses a state resting on a basis the projection already
-// shows to be retired or stale. An effective supersession stays advisory:
-// citing the retirement itself can be intentional. The escape is explicit and
-// recorded, never silent: asking for it signs body.dead_basis_override=true,
-// and an act arriving with that signature already on it honours it. Neither
-// the refusal nor the override removes staleness or grants authority;
+// judgeDeadBases separates the two facts the projection keeps about a basis an
+// act rests on. Retired means the cited record was itself withdrawn and
+// nothing stands there to rest on, so the write is refused. Stale means the
+// record still stands and something underneath it moved, which is a reason to
+// re-read rather than a reason nothing may be said: the write is admitted and
+// the staleness is recorded on the row it lands as.
+//
+// That is where gs merge already draws the line — it refuses a retired
+// approval and writes the staleness of a merely stale one into the receipt it
+// lands — and the write boundary now draws it in the same place and records it
+// in the same shape.
+//
+// An effective supersession stays advisory: citing the retirement itself can
+// be intentional. The escape for a retired basis is explicit and recorded,
+// never silent: asking for it signs body.dead_basis_override=true, and an act
+// arriving with that signature already on it honours it. Neither the refusal,
+// the override, nor the recorded note removes staleness or grants authority;
 // existing standing and staleness judgements continue unchanged.
-func (w *Workspace) refuseDeadBases(snapshot Snapshot, restsOn []string, body map[string]string, allowed bool) error {
-	dead := workroom.DeadBases(snapshot.Projection, restsOn)
-	var blocking []string
-	for basis, class := range dead {
-		if class == workroom.DeadBasisSupersede {
-			continue
+func (w *Workspace) judgeDeadBases(snapshot Snapshot, restsOn []string, body map[string]string, allowed bool) error {
+	var retired, stale []string
+	for basis, class := range workroom.DeadBases(snapshot.Projection, restsOn) {
+		switch class {
+		case workroom.DeadBasisRetired:
+			retired = append(retired, basis)
+		case workroom.DeadBasisStale:
+			stale = append(stale, basis)
 		}
-		blocking = append(blocking, fmt.Sprintf("%s (%s)", basis, class))
 	}
-	if len(blocking) == 0 {
-		return nil
+	if len(retired) != 0 && body["dead_basis_override"] != "true" {
+		sort.Strings(retired)
+		if !allowed {
+			return fmt.Errorf("this state rests on %d already-retired basis(es): %s; rerun with --allow-dead-basis, or allow_dead_basis=true, to sign body.dead_basis_override=true recording that you saw them",
+				len(retired), strings.Join(retired, ", "))
+		}
+		body["dead_basis_override"] = "true"
 	}
-	if body["dead_basis_override"] == "true" {
-		return nil
-	}
-	sort.Strings(blocking)
-	if !allowed {
-		return fmt.Errorf("this state rests on %d already-dead basis(es): %s; rerun with --allow-dead-basis, or allow_dead_basis=true, to sign body.dead_basis_override=true recording that you saw them",
-			len(blocking), strings.Join(blocking, ", "))
-	}
-	body["dead_basis_override"] = "true"
+	recordStaleness(snapshot.Projection, stale, body)
 	return nil
+}
+
+// recordStaleness stamps the merge receipt's shape onto a row admitted over a
+// basis that had already gone stale: body.stale=true, and a one-line
+// body.staleness note naming the stale bases, whether what moved was the world
+// they describe, and the retired acts underneath them. It is the same note
+// reviewguard writes into a verdict and gs merge writes into a receipt, so a
+// reader meets one wording everywhere.
+//
+// A body that already carries its own note keeps it. A merge receipt knows
+// more about what moved under it than its bases alone can say, and overwriting
+// that would lose the better account. Nothing authoritative rests on this
+// field either way: the fold computes the row's own staleness from the log,
+// and a caller who suppresses the note changes what the row says about itself,
+// not what the projection says about it.
+func recordStaleness(projection workroom.Projection, bases []string, body map[string]string) {
+	if len(bases) == 0 || body["staleness"] != "" {
+		return
+	}
+	world := make(map[string]bool, len(bases))
+	for _, statement := range projection.Statements {
+		if statement.DescribesSupersededWorld {
+			world[statement.Event] = true
+		}
+	}
+	for _, artifact := range projection.Artifacts {
+		if artifact.DescribesSupersededWorld {
+			world[artifact.Event] = true
+		}
+	}
+	sort.Strings(bases)
+	parts := make([]reviewguard.Part, 0, len(bases))
+	for _, basis := range bases {
+		parts = append(parts, reviewguard.Part{Name: basis, Event: basis, Stale: true, World: world[basis]})
+	}
+	note := reviewguard.StalenessNote(projection, parts)
+	if note == "" {
+		return
+	}
+	body["stale"] = "true"
+	body["staleness"] = note
 }
 
 // admitApplication is the post-dedup half of admission, scheduled by the

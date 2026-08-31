@@ -8,8 +8,9 @@ rests_on:
 
 # `reassign_if_unclaimed`
 
-Retires one fresh request and publishes a replacement only while the old
-request has no admitted promise or direct completion. The two durable acts
+Retires one request and publishes a replacement only while the old request has
+no admitted promise or direct completion. A stale request qualifies: staleness
+says a basis moved, not that somebody claimed the work. The two durable acts
 carry signed Workroom guards; the fold remains the final authority even when
 the adapter talks to a resident running different code.
 

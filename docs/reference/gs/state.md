@@ -26,7 +26,7 @@ the only two acts it cannot make.
 | `--body` | | `key=value`, repeatable. Structured fields. |
 | `--rests-on` | | An event identifier, repeatable. What this act bears on. |
 | `--evidence` | | `name=path`, repeatable. Files embedded as attachments. |
-| `--allow-dead-basis` | `false` | Rest on retired or stale bases anyway. Asking for it signs `dead_basis_override=true`: testimony that you saw them, not a repair of them. Citing an effective supersession stays advisory. |
+| `--allow-dead-basis` | `false` | Rest on retired bases anyway. Asking for it signs `dead_basis_override=true`: testimony that you saw them, not a repair of them. A stale basis needs no escape, and citing an effective supersession stays advisory. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 
@@ -101,6 +101,13 @@ from the emitted event — see
 A statement with an empty `rests_on` is almost always wrong. It is
 accepted, and then nothing can ever make it stale; the fold marks
 artifacts in that state `unable to flare`.
+
+A basis that is **retired** refuses the write: the record was withdrawn and
+nothing stands there to rest on. `--allow-dead-basis` is the way past it. A
+basis that is merely **stale** still stands, so the write is admitted and the
+staleness is written onto the row as `body.stale=true` with a one-line
+`body.staleness` note — the same fields `gs merge` puts in a receipt. A note
+you supply yourself is kept as you wrote it.
 
 Required edges, by kind:
 

@@ -35,6 +35,25 @@ refused. The narrower `describes a superseded world` fact in the table
 below is the exception: `merge` refuses that, because the behaviour the
 record describes has been replaced.
 
+The write boundary draws the same line. A state resting on a retired basis
+is refused before signing, because the record was withdrawn and nothing
+stands there to rest on; the escape is
+[`--allow-dead-basis`](../reference/gs/state.md), which signs
+`dead_basis_override=true` as testimony that you saw it. A state resting on
+a merely stale basis is admitted, and the row that lands carries
+`stale=true` and a one-line `staleness` note naming the stale basis and the
+retirement underneath it — the same fields, written the same way, that
+`gs merge` puts in a receipt. Recording it is not repairing it: the note
+says what had moved when the act was signed.
+
+The guarded reassignment helper reads the same way.
+[`gs reassign-if-unclaimed`](../reference/gs/reassign-if-unclaimed.md)
+protects one statement — nobody claimed or completed this request — so it
+refuses on a promise or a direct completion and no longer refuses on
+staleness. A request whose ground moved is usually the one nobody
+promised, and refusing there stranded the rows that most needed a new
+addressee.
+
 `gs status` marks them separately:
 
 | Mark | Meaning |
