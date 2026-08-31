@@ -61,13 +61,12 @@ export function TopBar({
   // rule, asked again by the dialog's submit gate and by the signing boundary
   // in `App.tsx`, so this control cannot drift from what actually decides.
   //
-  // The claim made here is about this control only. `isLiveParticipant` is not
-  // the one predicate every state-writing affordance asks: its own comment in
-  // `lib/authority.ts` lists what asks it today — `publishRefusal` on this
-  // path, `mayRatify` for the originating-requester case, and `signingRefusal`
-  // at the boundaries that sign — the seven Toolbar controls that are still
-  // drawn without asking it, and why own-author `withdraw` is deliberately
-  // outside it.
+  // The claim made here is about this control's full two-part refusal. The
+  // shared `isLiveParticipant` predicate also withholds the seven Toolbar
+  // routes that open ordinary state composers. Direct ratification instead
+  // follows `mayRatify` and the target's admitted satisfier, while own-author
+  // `withdraw` remains deliberately outside the participant rule because it
+  // signs supersession rather than state.
   //
   // Opening the dialog is not the last chance to refuse, and this control is
   // not the guarantee: authority can be lost while the dialog is open, so the

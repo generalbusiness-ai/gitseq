@@ -186,6 +186,71 @@ test("a ratification is offered only to an actor the fold would let ratify", asy
   }
 });
 
+test("a non-participant ratifier keeps direct ratification but no ordinary state route", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { semanticActions } = await vite.ssrLoadModule("/src/components/Toolbar.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const viewer = "departed-ratifier-fingerprint";
+    const actors = {
+      [viewer]: { name: "departed ratifier", kind: "human", roles: ["ratifier"], retired: true, role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} },
+    };
+    const decision = (event) => ({ event, verdict: "effective", reason: "recorded" });
+    const labels = ({ statement, commitment, statements = [statement], provenance = {} }) => {
+      const decisions = statements.map(({ event }) => decision(event));
+      const projection = { decisions, acts: [], statements, commitments: commitment ? [commitment] : [], artifacts: [], actors, provenance };
+      return semanticActions({
+        statement,
+        commitment,
+        decision: decisions.find(({ event }) => event === statement.event),
+        projection,
+        index: buildRecordIndex(projection),
+        me: viewer,
+        onRoute() {},
+        doAct() {},
+      }).map(({ label }) => label);
+    };
+
+    const proposal = admitted({ event: "proposal", actor: "author", kind: "propose", text: "Adopt this.", timestamp: 1 });
+    const request = admitted({ event: "request", actor: "author", kind: "request", text: "Ratify or deny.", body: { to: viewer }, timestamp: 2 });
+    assert.deepEqual(labels({ statement: proposal }), ["agree"], "agree follows admitted ratifier authority; disagree needs participant membership");
+    assert.deepEqual(
+      labels({
+        statement: request,
+        commitment: { request: request.event, requester: request.actor, addressed_to: viewer, status: "open" },
+        statements: [request, proposal],
+        provenance: { [request.event]: [proposal.event], [proposal.event]: [] },
+      }),
+      ["ratify yes"],
+      "direct requested ratification remains available; deny needs participant membership",
+    );
+
+    const reportTarget = admitted({ event: "report-target", actor: "author", kind: "assert", text: "The work item.", timestamp: 3 });
+    // The admitted satisfier travels with the record and may differ from the
+    // current vocabulary. This captured role rule is the exact case in which
+    // participant-gating the direct report ratification would invent a refusal.
+    const report = { ...admitted({ event: "report", actor: "performer", kind: "report", text: "Finished.", timestamp: 4 }), satisfier: "role:ratifier" };
+    assert.deepEqual(
+      labels({
+        statement: reportTarget,
+        commitment: { request: "request", requester: viewer, performer: report.actor, report: report.event, status: "reported" },
+        statements: [reportTarget, report],
+      }),
+      ["accept"],
+      "report acceptance follows its admitted ratifier authority; needs work needs participant membership",
+    );
+
+    const ordinaryRequest = admitted({ event: "ordinary-request", actor: "author", kind: "request", text: "Please do this.", body: { to: viewer }, timestamp: 5 });
+    assert.deepEqual(
+      labels({ statement: ordinaryRequest, commitment: { request: ordinaryRequest.event, requester: ordinaryRequest.actor, addressed_to: viewer, status: "open" } }),
+      [],
+      "ratifier authority does not reopen an ordinary state composer",
+    );
+  } finally {
+    await vite.close();
+  }
+});
+
 test("every Toolbar state route withholds its composer from a departed participant", async () => {
   const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
   try {

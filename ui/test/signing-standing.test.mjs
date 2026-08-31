@@ -195,10 +195,10 @@ test("a live participant's reply does reach the wire", async () => {
   });
 });
 
-// Membership moves under an open composer. The seven toolbar affordances are
-// offered on authorship and commitment role with no membership test -- that is
-// deliberate, they only open the composer -- so the boundary is the only thing
-// standing between a departed signer and a permanently ineffective row.
+// Membership moves under an open composer. The seven ordinary Toolbar routes
+// ask membership before opening it; this test withdraws membership after that
+// offer, so the signing boundary is the last thing standing between a departed
+// signer and a permanently ineffective row.
 test("membership lost after the control is offered files nothing", async () => {
   await withPane(async (vite, root) => {
     const send = await compose(vite, root, room({ roles: ["participant"] }));
