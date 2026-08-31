@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9a653aaa3161f4edcec3c084023616bfae0d1f52","text":"Retired the stale design-review request because its governing request and artifact chain moved. A fresh Claude review request will cite the unchanged exact head through the current request and newly published artifact."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:52ea1e2821703d09e9b6310f789050a2b6023151"}
