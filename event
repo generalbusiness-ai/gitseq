@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ec45ce3fe12cfe05ed63c25c87b0a39aede39bcb"}
+{"kind":"artifact","text":"Current-main outcome-map projection source: bounded, deterministic thread cards retain direct recorded relations, keep a 160-card total bound and a 96-card direct-context allowance, and select focal roots by fold sequence.","body":{"commit":"0ca13d4fb6c5ff47c356e9ee4cf052e9e57096ea","path":"ui/src/lib/outcomeMap.ts"}}
