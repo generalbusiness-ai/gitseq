@@ -1,1 +1,1 @@
-{"kind":"propose","text":"Adopt the corrected thread-actions design at notes/2026-08-22-thread-actions.md, as recorded by artifact #15240 at exact head 194059b666eb52890f5d51cc9f6a2fd06b4b89ec."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:acf063710632ef737e820147a02b56b2b44a5768","text":"Replaced by corrected adoption proposal #15242, which names the successor artifact at the amended exact head."}
