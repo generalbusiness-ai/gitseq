@@ -156,7 +156,7 @@ test("a ratification is offered by the satisfier admitted with the statement, no
     // The kind has NARROWED since admission: admitted as role:steward, now
     // published as role:rider. The viewer holds steward, so the fold would
     // record their ratification as effective.
-    await mount(vite, root, room({ admitted: "role:steward", live: "role:rider", roles: ["steward"] }), "prop");
+    await mount(vite, root, room({ admitted: "role:steward", live: "role:rider", roles: ["participant", "steward"] }), "prop");
     assert.ok(
       labelled("agree"),
       "false denial: the fold would accept this ratification on the satisfier admitted with the statement, but the screen offered no control at all",
@@ -166,7 +166,7 @@ test("a ratification is offered by the satisfier admitted with the statement, no
     // The mirror. The kind has WIDENED since admission: admitted as
     // role:rider, now published as role:steward. The viewer holds only
     // steward, so the fold would refuse — permanently, in an append-only log.
-    await mount(vite, root, room({ admitted: "role:rider", live: "role:steward", roles: ["steward"] }), "prop");
+    await mount(vite, root, room({ admitted: "role:rider", live: "role:steward", roles: ["participant", "steward"] }), "prop");
     assert.equal(
       labelled("agree"),
       null,
@@ -176,13 +176,13 @@ test("a ratification is offered by the satisfier admitted with the statement, no
 
     // The two cases where the answer does not depend on the disagreement, kept
     // so the fix cannot be mistaken for "always offer".
-    await mount(vite, root, room({ admitted: "role:steward", live: "role:steward", roles: [] }), "prop");
+    await mount(vite, root, room({ admitted: "role:steward", live: "role:steward", roles: ["participant"] }), "prop");
     assert.equal(labelled("agree"), null, "no role, no ratification");
 
     // Nothing admitted means nothing proved. A client shown no satisfier for a
     // statement does not know what the fold requires, and guessing is how the
     // ineffective rows got written in the first place.
-    await mount(vite, root, room({ admitted: undefined, live: "role:steward", roles: ["steward"] }), "prop");
+    await mount(vite, root, room({ admitted: undefined, live: "role:steward", roles: ["participant", "steward"] }), "prop");
     assert.equal(labelled("agree"), null, "no admitted satisfier, no proof of authority");
   });
 });
@@ -264,7 +264,7 @@ test("a departed requester is not offered the ratification the fold refuses them
 // this test the composer submitted `rests_on` the operator had never seen.
 test("the composer shows every citation it will sign before the send control can be used", async () => {
   await withPane(async (vite, root) => {
-    await mount(vite, root, room({ admitted: "role:steward", live: "role:steward", roles: ["steward"] }), "art");
+    await mount(vite, root, room({ admitted: "role:steward", live: "role:steward", roles: ["participant", "steward"] }), "art");
 
     // The composer's own region, not the whole document: these events also
     // appear in the rail above, so a document-wide match would pass without
