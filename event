@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ca35eba9322c96cf5dadb732e50d9294fe0eb56a","text":"Superseded by the same-path successor at 3ac1557f25492f704909492b2007b3b10e49e7fd, the child repair descendant of 50cffa6a."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fbf069a2c50abdfc78584e6e37801ade6544dcbe","text":"Retracted: this supersession staled child request dab36850, which rests on the artifact it retired; the 50cffa6a artifact stays live beside its 3ac1557f successor until the head merges and succession retires it."}
