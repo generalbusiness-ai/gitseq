@@ -1686,6 +1686,11 @@ func preflightAdmission(ctx context.Context, workspace *app.Workspace, serverURL
 	minted := make(map[string]string, len(acts))
 	for position, entry := range acts {
 		act := resolveBatchAct(entry, minted, citedOK)
+		if act.Verb == app.VerbState && act.Kind == workroom.KindArtifact && act.Body["commit"] != "" {
+			if err := validateArtifactCommit(ctx, workspace.Repo, act.Body["commit"]); err != nil {
+				return position, batchFail("admission", "%v", err)
+			}
+		}
 		request, err := workspace.BuildActRequest(ctx, private, actorName, act)
 		if err != nil {
 			return position, batchFail("admission", "%v", err)
