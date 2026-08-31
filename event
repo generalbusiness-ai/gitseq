@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Board presentation selector at 23642b5b: Table and Graph share the existing population and search selection, while Table remains the default.","body":{"commit":"23642b5b71ee49164d4a06dd34f7212f1c270fb7","path":"ui/src/components/RequestList.tsx"}}
+{"kind":"artifact","text":"Deterministic horizontal outcome-map card layout and attached edge geometry at 23642b5b, including stable multi-root layers and cycle-safe arrow endpoints.","body":{"commit":"23642b5b71ee49164d4a06dd34f7212f1c270fb7","path":"ui/src/lib/outcomeMapLayout.ts"}}
