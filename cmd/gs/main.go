@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -658,23 +656,24 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return fmt.Errorf("workroom frontier moved after planning: planned %s at depth %d, now %s at depth %d",
 			prospective.Frontier.Head, prospective.Frontier.Depth, snapshot.Head, snapshot.Depth)
 	}
-	plan := successionPlan{
-		publish:      append([]string(nil), prospective.Successors...),
-		retire:       make(map[string]string, len(prospective.Retirements)),
-		changedPaths: append([]string(nil), prospective.ChangedPaths...),
-		leftLive:     make(map[string]mergeLeftLive),
+	sharedPlan := mergeplan.Succession{
+		Publish:      append([]string(nil), prospective.Successors...),
+		Retire:       make(map[string]string, len(prospective.Retirements)),
+		ChangedPaths: append([]string(nil), prospective.ChangedPaths...),
+		LeftLive:     make(map[string]mergeplan.LeftLive),
 	}
 	for _, retirement := range prospective.Retirements {
-		plan.retire[retirement.Artifact] = retirement.Successor
+		sharedPlan.Retire[retirement.Artifact] = retirement.Successor
 	}
 	for _, artifact := range prospective.CoveringArtifacts {
 		switch artifact.Class {
 		case mergeplan.ClassProtectedSibling:
-			plan.leftLive[artifact.Event] = mergeLeftLive{Class: leftLiveSibling, Commitment: artifact.Commitment}
+			sharedPlan.LeftLive[artifact.Event] = mergeplan.LeftLive{Class: leftLiveSibling, Commitment: artifact.Commitment}
 		case mergeplan.ClassAbandoned:
-			plan.leftLive[artifact.Event] = mergeLeftLive{Class: leftLiveAbandoned}
+			sharedPlan.LeftLive[artifact.Event] = mergeplan.LeftLive{Class: leftLiveAbandoned}
 		}
 	}
+	plan := localSuccessionPlan(sharedPlan)
 	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
 	}
@@ -765,38 +764,10 @@ func mergePlanCommand(ctx context.Context, arguments []string) error {
 	}))
 }
 
-type mergeReceipt struct {
-	Approval            string
-	Candidate           string
-	TargetPreHead       string
-	MergeHead           string
-	Retirements         string
-	Successors          string
-	LeftLive            string
-	LeftLivePresent     bool
-	ChangedPaths        string
-	ChangedPathsPresent bool
-	Staleness           string
-}
-
-const (
-	mergeApprovalTrailer     = "Gitseq-Approval: "
-	mergeCandidateTrailer    = "Gitseq-Candidate: "
-	mergeTargetTrailer       = "Gitseq-Target-Pre-Head: "
-	mergeRetirementsTrailer  = "Gitseq-Retirements: "
-	mergeSuccessorsTrailer   = "Gitseq-Successors: "
-	mergeLeftLiveTrailer     = "Gitseq-Left-Live: "
-	mergeChangedPathsTrailer = "Gitseq-Changed-Paths: "
-	mergeStalenessTrailer    = "Gitseq-Staleness: "
-)
-
-func mergeReceiptKey(approval string) string {
-	sum := sha256.Sum256([]byte(approval))
-	return "merge-receipt-" + hex.EncodeToString(sum[:])
-}
+type mergeReceipt = mergeplan.Receipt
 
 func mergeReceiptRef(approval string) string {
-	return "refs/gitseq/merge-receipts/" + strings.TrimPrefix(mergeReceiptKey(approval), "merge-receipt-")
+	return mergeplan.ReceiptRef(approval)
 }
 
 func mergeReceiptMessage(text, approval, candidate, targetPreHead, staleness string, plan successionPlan) (string, error) {
@@ -812,24 +783,24 @@ func mergeReceiptMessage(text, approval, candidate, targetPreHead, staleness str
 		return "", err
 	}
 	message := fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
-		mergeApprovalTrailer, approval, mergeCandidateTrailer, candidate, mergeTargetTrailer, targetPreHead,
-		mergeRetirementsTrailer, retirements, mergeSuccessorsTrailer, successors)
+		mergeplan.ApprovalTrailer, approval, mergeplan.CandidateTrailer, candidate, mergeplan.TargetTrailer, targetPreHead,
+		mergeplan.RetirementsTrailer, retirements, mergeplan.SuccessorsTrailer, successors)
 	if plan.leftLive != nil {
 		leftLive, err := json.Marshal(plan.leftLive)
 		if err != nil {
 			return "", err
 		}
-		message += "\n" + mergeLeftLiveTrailer + string(leftLive)
+		message += "\n" + mergeplan.LeftLiveTrailer + string(leftLive)
 	}
 	if plan.changedPaths != nil {
 		changedPaths, err := json.Marshal(plan.changedPaths)
 		if err != nil {
 			return "", err
 		}
-		message += "\n" + mergeChangedPathsTrailer + string(changedPaths)
+		message += "\n" + mergeplan.ChangedPathsTrailer + string(changedPaths)
 	}
 	if staleness != "" {
-		message += "\n" + mergeStalenessTrailer + staleness
+		message += "\n" + mergeplan.StalenessTrailer + staleness
 	}
 	return message, nil
 }
@@ -840,47 +811,7 @@ func mergeReceiptMessage(text, approval, candidate, targetPreHead, staleness str
 // replayed old approval report a parse failure instead of the intended
 // already-used refusal. A false ok is that ordinary fact, not an error.
 func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt, bool, error) {
-	message, err := git(ctx, checkout, "show", "-s", "--format=%B", head)
-	if err != nil {
-		return mergeReceipt{}, false, err
-	}
-	receipt := mergeReceipt{MergeHead: head}
-	for _, line := range strings.Split(message, "\n") {
-		switch {
-		case strings.HasPrefix(line, mergeApprovalTrailer):
-			receipt.Approval = strings.TrimPrefix(line, mergeApprovalTrailer)
-		case strings.HasPrefix(line, mergeCandidateTrailer):
-			receipt.Candidate = strings.TrimPrefix(line, mergeCandidateTrailer)
-		case strings.HasPrefix(line, mergeTargetTrailer):
-			receipt.TargetPreHead = strings.TrimPrefix(line, mergeTargetTrailer)
-		case strings.HasPrefix(line, mergeRetirementsTrailer):
-			receipt.Retirements = strings.TrimPrefix(line, mergeRetirementsTrailer)
-		case strings.HasPrefix(line, mergeSuccessorsTrailer):
-			receipt.Successors = strings.TrimPrefix(line, mergeSuccessorsTrailer)
-		case line == strings.TrimSpace(mergeLeftLiveTrailer):
-			receipt.LeftLivePresent = true
-		case strings.HasPrefix(line, mergeLeftLiveTrailer):
-			receipt.LeftLive = strings.TrimPrefix(line, mergeLeftLiveTrailer)
-			receipt.LeftLivePresent = true
-		case line == strings.TrimSpace(mergeChangedPathsTrailer):
-			receipt.ChangedPathsPresent = true
-		case strings.HasPrefix(line, mergeChangedPathsTrailer):
-			receipt.ChangedPaths = strings.TrimPrefix(line, mergeChangedPathsTrailer)
-			receipt.ChangedPathsPresent = true
-		case strings.HasPrefix(line, mergeStalenessTrailer):
-			receipt.Staleness = strings.TrimPrefix(line, mergeStalenessTrailer)
-		}
-	}
-	parents, err := git(ctx, checkout, "rev-list", "--parents", "-n", "1", head)
-	if err != nil {
-		return mergeReceipt{}, false, err
-	}
-	fields := strings.Fields(parents)
-	if receipt.Approval == "" || receipt.Candidate == "" || receipt.TargetPreHead == "" || receipt.Retirements == "" || receipt.Successors == "" || len(fields) != 3 ||
-		fields[0] != head || fields[1] != receipt.TargetPreHead || fields[2] != receipt.Candidate {
-		return mergeReceipt{}, false, nil
-	}
-	return receipt, true, nil
+	return mergeplan.ReadReceipt(ctx, checkout, head)
 }
 
 // existingGitMergeReceipt looks for a complete receipt for this approval. A
@@ -888,7 +819,7 @@ func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt,
 // older merge, not a failure: it is skipped so the durable receipt check gives
 // the already-used refusal that actually describes the situation.
 func existingGitMergeReceipt(ctx context.Context, checkout, approval string) (mergeReceipt, bool, error) {
-	heads, err := git(ctx, checkout, "log", "--all", "--fixed-strings", "--grep="+mergeApprovalTrailer+approval, "--format=%H")
+	heads, err := git(ctx, checkout, "log", "--all", "--fixed-strings", "--grep="+mergeplan.ApprovalTrailer+approval, "--format=%H")
 	if err != nil {
 		return mergeReceipt{}, false, err
 	}
@@ -964,37 +895,6 @@ func validateCheckout(ctx context.Context, workroomRepo, checkout, commit string
 	return mergeplan.ValidateCheckout(ctx, workroomRepo, checkout, commit, requireHead)
 }
 
-func canonicalCommit(ctx context.Context, repo, commit string) (string, error) {
-	format, err := git(ctx, repo, "rev-parse", "--show-object-format")
-	if err != nil {
-		return "", err
-	}
-	wantBytes := 20
-	if strings.TrimSpace(format) == "sha256" {
-		wantBytes = 32
-	}
-	decoded, err := hex.DecodeString(commit)
-	if err != nil || len(decoded) != wantBytes || strings.ToLower(commit) != commit {
-		return "", errors.New("candidate must be a full lowercase commit object ID")
-	}
-	resolved, err := git(ctx, repo, "rev-parse", "--verify", "--end-of-options", commit+"^{commit}")
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(resolved), nil
-}
-
-func canonicalPath(path string) string {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return filepath.Clean(path)
-	}
-	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
-		absolute = resolved
-	}
-	return filepath.Clean(absolute)
-}
-
 // standingArtifact returns an artifact that may still be acted on. Retirement
 // withdraws the pointer and is a refusal; being judged ineffective means the
 // pointer was never conferred. Staleness is neither: it says a basis moved
@@ -1048,19 +948,6 @@ func liveArtifactAsOf(projection workroom.Projection, event string, verdict int)
 // reviewed.
 func worldMovedAfterVerdict(artifact workroom.Artifact, verdict int) bool {
 	return worldDatedAfter(artifact.WorldSupersededAt, verdict)
-}
-
-// verdictSequence is where a verdict sits in the log, or the end of the log if
-// the projection cannot place it. An unplaceable verdict dates nothing, so it
-// is treated as later than every retirement and the world staleness it was
-// shown keeps refusing.
-func verdictSequence(projection workroom.Projection, approval string) int {
-	for _, decision := range projection.Decisions {
-		if decision.Event == approval {
-			return decision.Sequence
-		}
-	}
-	return math.MaxInt
 }
 
 // standingStatement is the same judgement for a statement: refuse what was

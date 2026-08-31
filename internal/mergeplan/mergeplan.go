@@ -732,7 +732,7 @@ func protectionIndex(projection workroom.Projection, artifacts []workroom.Artifa
 
 func unsettledCommitment(status string) bool {
 	switch status {
-	case "open", "promised", "reported", "stale":
+	case "open", "promised", "reported", "awaiting-merge", "stale":
 		return true
 	default:
 		return false
@@ -770,97 +770,139 @@ type sealedReceipt struct {
 }
 
 const (
-	approvalTrailer    = "Gitseq-Approval: "
-	candidateTrailer   = "Gitseq-Candidate: "
-	targetTrailer      = "Gitseq-Target-Pre-Head: "
-	retirementsTrailer = "Gitseq-Retirements: "
-	successorsTrailer  = "Gitseq-Successors: "
-	leftLiveTrailer    = "Gitseq-Left-Live: "
-	changedTrailer     = "Gitseq-Changed-Paths: "
+	ApprovalTrailer     = "Gitseq-Approval: "
+	CandidateTrailer    = "Gitseq-Candidate: "
+	TargetTrailer       = "Gitseq-Target-Pre-Head: "
+	RetirementsTrailer  = "Gitseq-Retirements: "
+	SuccessorsTrailer   = "Gitseq-Successors: "
+	LeftLiveTrailer     = "Gitseq-Left-Live: "
+	ChangedPathsTrailer = "Gitseq-Changed-Paths: "
+	StalenessTrailer    = "Gitseq-Staleness: "
 )
 
-func receiptRef(approval string) string {
-	sum := sha256.Sum256([]byte(approval))
-	return "refs/gitseq/merge-receipts/" + hex.EncodeToString(sum[:])
+// Receipt is the canonical, lossless projection of a Git merge receipt. The
+// JSON fields stay encoded because merge recording checks their exact bytes
+// against the durable receipt before admitting succession acts.
+type Receipt struct {
+	Approval            string
+	Candidate           string
+	TargetPreHead       string
+	MergeHead           string
+	Retirements         string
+	Successors          string
+	LeftLive            string
+	LeftLivePresent     bool
+	ChangedPaths        string
+	ChangedPathsPresent bool
+	Staleness           string
 }
 
-func readReceipt(ctx context.Context, checkout, head string) (sealedReceipt, bool, error) {
+func ReceiptKey(approval string) string {
+	sum := sha256.Sum256([]byte(approval))
+	return "merge-receipt-" + hex.EncodeToString(sum[:])
+}
+
+func ReceiptRef(approval string) string {
+	return "refs/gitseq/merge-receipts/" + strings.TrimPrefix(ReceiptKey(approval), "merge-receipt-")
+}
+
+// ReadReceipt separates an ordinary or historical merge commit from a
+// complete Gitseq receipt. It owns the trailer vocabulary and parent check for
+// both the mutating merge command and the read-only merge plan.
+func ReadReceipt(ctx context.Context, checkout, head string) (Receipt, bool, error) {
 	message, err := git(ctx, checkout, "show", "-s", "--format=%B", head)
 	if err != nil {
-		return sealedReceipt{}, false, err
+		return Receipt{}, false, err
 	}
-	receipt := sealedReceipt{MergeHead: head}
-	var retirements, successors, leftLive, changed string
+	receipt := Receipt{MergeHead: head}
 	for _, line := range strings.Split(message, "\n") {
 		switch {
-		case strings.HasPrefix(line, approvalTrailer):
-			receipt.Approval = strings.TrimPrefix(line, approvalTrailer)
-		case strings.HasPrefix(line, candidateTrailer):
-			receipt.Candidate = strings.TrimPrefix(line, candidateTrailer)
-		case strings.HasPrefix(line, targetTrailer):
-			receipt.TargetPreHead = strings.TrimPrefix(line, targetTrailer)
-		case strings.HasPrefix(line, retirementsTrailer):
-			retirements = strings.TrimPrefix(line, retirementsTrailer)
-		case strings.HasPrefix(line, successorsTrailer):
-			successors = strings.TrimPrefix(line, successorsTrailer)
-		case strings.HasPrefix(line, leftLiveTrailer):
-			leftLive = strings.TrimPrefix(line, leftLiveTrailer)
-		case strings.HasPrefix(line, changedTrailer):
-			changed = strings.TrimPrefix(line, changedTrailer)
+		case strings.HasPrefix(line, ApprovalTrailer):
+			receipt.Approval = strings.TrimPrefix(line, ApprovalTrailer)
+		case strings.HasPrefix(line, CandidateTrailer):
+			receipt.Candidate = strings.TrimPrefix(line, CandidateTrailer)
+		case strings.HasPrefix(line, TargetTrailer):
+			receipt.TargetPreHead = strings.TrimPrefix(line, TargetTrailer)
+		case strings.HasPrefix(line, RetirementsTrailer):
+			receipt.Retirements = strings.TrimPrefix(line, RetirementsTrailer)
+		case strings.HasPrefix(line, SuccessorsTrailer):
+			receipt.Successors = strings.TrimPrefix(line, SuccessorsTrailer)
+		case line == strings.TrimSpace(LeftLiveTrailer):
+			receipt.LeftLivePresent = true
+		case strings.HasPrefix(line, LeftLiveTrailer):
+			receipt.LeftLive = strings.TrimPrefix(line, LeftLiveTrailer)
+			receipt.LeftLivePresent = true
+		case line == strings.TrimSpace(ChangedPathsTrailer):
+			receipt.ChangedPathsPresent = true
+		case strings.HasPrefix(line, ChangedPathsTrailer):
+			receipt.ChangedPaths = strings.TrimPrefix(line, ChangedPathsTrailer)
+			receipt.ChangedPathsPresent = true
+		case strings.HasPrefix(line, StalenessTrailer):
+			receipt.Staleness = strings.TrimPrefix(line, StalenessTrailer)
 		}
 	}
 	parents, err := git(ctx, checkout, "rev-list", "--parents", "-n", "1", head)
 	if err != nil {
-		return sealedReceipt{}, false, err
+		return Receipt{}, false, err
 	}
 	fields := strings.Fields(parents)
-	if receipt.Approval == "" || receipt.Candidate == "" || receipt.TargetPreHead == "" || retirements == "" || successors == "" ||
-		len(fields) != 3 || fields[0] != head || fields[1] != receipt.TargetPreHead || fields[2] != receipt.Candidate {
-		return sealedReceipt{}, false, nil
-	}
-	if err := json.Unmarshal([]byte(retirements), &receipt.Retire); err != nil {
-		return sealedReceipt{}, false, fmt.Errorf("decode Git receipt retirements: %w", err)
-	}
-	if err := json.Unmarshal([]byte(successors), &receipt.Publish); err != nil {
-		return sealedReceipt{}, false, fmt.Errorf("decode Git receipt successors: %w", err)
-	}
-	if leftLive != "" {
-		if err := json.Unmarshal([]byte(leftLive), &receipt.LeftLive); err != nil {
-			return sealedReceipt{}, false, fmt.Errorf("decode Git receipt left-live accounting: %w", err)
-		}
-	}
-	if changed != "" {
-		if err := json.Unmarshal([]byte(changed), &receipt.ChangedPaths); err != nil {
-			return sealedReceipt{}, false, fmt.Errorf("decode Git receipt changed paths: %w", err)
-		}
+	if receipt.Approval == "" || receipt.Candidate == "" || receipt.TargetPreHead == "" || receipt.Retirements == "" || receipt.Successors == "" || len(fields) != 3 ||
+		fields[0] != head || fields[1] != receipt.TargetPreHead || fields[2] != receipt.Candidate {
+		return Receipt{}, false, nil
 	}
 	return receipt, true, nil
 }
 
+func decodeReceipt(receipt Receipt) (sealedReceipt, error) {
+	decoded := sealedReceipt{
+		Approval: receipt.Approval, Candidate: receipt.Candidate,
+		TargetPreHead: receipt.TargetPreHead, MergeHead: receipt.MergeHead,
+	}
+	if err := json.Unmarshal([]byte(receipt.Retirements), &decoded.Retire); err != nil {
+		return sealedReceipt{}, fmt.Errorf("decode Git receipt retirements: %w", err)
+	}
+	if err := json.Unmarshal([]byte(receipt.Successors), &decoded.Publish); err != nil {
+		return sealedReceipt{}, fmt.Errorf("decode Git receipt successors: %w", err)
+	}
+	if receipt.LeftLivePresent {
+		if err := json.Unmarshal([]byte(receipt.LeftLive), &decoded.LeftLive); err != nil {
+			return sealedReceipt{}, fmt.Errorf("decode Git receipt left-live accounting: %w", err)
+		}
+	}
+	if receipt.ChangedPathsPresent {
+		if err := json.Unmarshal([]byte(receipt.ChangedPaths), &decoded.ChangedPaths); err != nil {
+			return sealedReceipt{}, fmt.Errorf("decode Git receipt changed paths: %w", err)
+		}
+	}
+	return decoded, nil
+}
+
 func existingReceipt(ctx context.Context, checkout, approval string) (sealedReceipt, bool, bool, error) {
-	ref := receiptRef(approval)
+	ref := ReceiptRef(approval)
 	if head, err := git(ctx, checkout, "rev-parse", "--verify", ref); err == nil {
 		head = strings.TrimSpace(head)
-		receipt, ok, readErr := readReceipt(ctx, checkout, head)
+		raw, ok, readErr := ReadReceipt(ctx, checkout, head)
 		if readErr != nil {
 			return sealedReceipt{}, false, true, readErr
 		}
-		if ok && receipt.Approval == approval {
-			return receipt, true, true, nil
+		if ok && raw.Approval == approval {
+			receipt, err := decodeReceipt(raw)
+			return receipt, err == nil, true, err
 		}
 		return sealedReceipt{}, false, true, nil
 	}
-	heads, err := git(ctx, checkout, "log", "--all", "--fixed-strings", "--grep="+approvalTrailer+approval, "--format=%H")
+	heads, err := git(ctx, checkout, "log", "--all", "--fixed-strings", "--grep="+ApprovalTrailer+approval, "--format=%H")
 	if err != nil {
 		return sealedReceipt{}, false, false, err
 	}
 	for _, head := range strings.Fields(heads) {
-		receipt, ok, err := readReceipt(ctx, checkout, head)
+		raw, ok, err := ReadReceipt(ctx, checkout, head)
 		if err != nil {
 			return sealedReceipt{}, false, false, err
 		}
-		if ok && receipt.Approval == approval {
-			return receipt, true, false, nil
+		if ok && raw.Approval == approval {
+			receipt, err := decodeReceipt(raw)
+			return receipt, err == nil, false, err
 		}
 	}
 	return sealedReceipt{}, false, false, nil
@@ -895,11 +937,6 @@ func renderReceipt(result *Result, projection workroom.Projection, receipt seale
 	}
 	sort.Slice(result.Retirements, func(i, j int) bool { return result.Retirements[i].Artifact < result.Retirements[j].Artifact })
 	sort.Slice(result.CoveringArtifacts, func(i, j int) bool { return result.CoveringArtifacts[i].Event < result.CoveringArtifacts[j].Event })
-}
-
-func mergeReceiptKey(approval string) string {
-	sum := sha256.Sum256([]byte(approval))
-	return "merge-receipt-" + hex.EncodeToString(sum[:])
 }
 
 func successionKey(approval, class, value string) string {
@@ -945,7 +982,7 @@ func SuccessionActs(approval, candidate, targetPreHead, mergeHead, staleness str
 	}
 	acts := []ProspectiveAct{{Label: "merge", Act: app.Act{
 		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "approved candidate merged",
-		Body: receiptBody, RestsOn: []string{approval}, IdempotencyKey: mergeReceiptKey(approval), AllowDeadBasis: true,
+		Body: receiptBody, RestsOn: []string{approval}, IdempotencyKey: ReceiptKey(approval), AllowDeadBasis: true,
 	}}}
 	labels := make(map[string]string, len(plan.Publish))
 	for index, path := range plan.Publish {

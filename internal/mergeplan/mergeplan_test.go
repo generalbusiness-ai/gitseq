@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -113,6 +114,125 @@ func TestReviewedCandidateAllowsSamePathCrossAuthorMainPredecessor(t *testing.T)
 	if err := ValidateReach(projection, plan, "approval", "implementer"); err != nil {
 		t.Fatalf("same-path cross-author predecessor was refused: %v", err)
 	}
+}
+
+func TestAllAndOnlyUnsettledCommitmentStatusesProtectCoveringArtifacts(t *testing.T) {
+	statuses := []string{
+		"open", "promised", "reported", "awaiting-merge", "stale",
+		"superseded", "satisfied", "cancelled", "reneged", "withdrawn",
+	}
+	protectedStatuses := map[string]bool{
+		"open": true, "promised": true, "reported": true,
+		"awaiting-merge": true, "stale": true,
+	}
+	projection := workroom.Projection{Provenance: make(map[string][]string)}
+	for _, status := range statuses {
+		request := "request-" + status
+		artifact := "artifact-" + status
+		projection.Statements = append(projection.Statements,
+			workroom.Statement{Event: request, Lifecycle: workroom.LifecycleRequest},
+		)
+		projection.Commitments = append(projection.Commitments,
+			workroom.Commitment{Request: request, Status: status},
+		)
+		projection.Artifacts = append(projection.Artifacts,
+			workroom.Artifact{Event: artifact, Path: "shared", Commit: ""},
+		)
+		projection.Provenance[artifact] = []string{request}
+	}
+
+	changes := []Change{{Status: "M", New: "shared/file.go"}}
+	classified := Classify(context.Background(), "", projection, changes, "target", "candidate", nil)
+	plan := PlanSuccession(projection, changes, classified)
+	for _, status := range statuses {
+		request := "request-" + status
+		artifact := "artifact-" + status
+		got := classified[artifact]
+		left := plan.LeftLive[artifact]
+		if protectedStatuses[status] {
+			if got.Class != ClassProtectedSibling || got.LeftLive.Class != "sibling" || got.LeftLive.Commitment != request {
+				t.Errorf("status %q classified as %+v, want protected sibling under %s", status, got, request)
+			}
+			if left.Class != "sibling" || left.Commitment != request {
+				t.Errorf("status %q covering artifact sealed as %+v, want protected sibling under %s", status, left, request)
+			}
+			continue
+		}
+		if got.Class != ClassAbandoned || got.LeftLive.Class != "abandoned" || got.LeftLive.Commitment != "" {
+			t.Errorf("status %q classified as %+v, want abandoned", status, got)
+		}
+		if left.Class != "abandoned" || left.Commitment != "" {
+			t.Errorf("status %q covering artifact sealed as %+v, want abandoned", status, left)
+		}
+	}
+}
+
+func TestChangedPathsAreTheCanonicalOldAndNewDiffSet(t *testing.T) {
+	changes := []Change{
+		{Status: "M", New: "z.txt"},
+		{Status: "R100", Old: "old/name.go", New: "new/name.go"},
+		{Status: "D", Old: "gone.txt"},
+		{Status: "C100", Old: "old/name.go", New: "copy/name.go"},
+		{Status: "M", New: "z.txt"},
+	}
+	want := []string{"copy/name.go", "gone.txt", "new/name.go", "old/name.go", "z.txt"}
+	if got := ChangedPaths(changes); !reflect.DeepEqual(got, want) {
+		t.Fatalf("changed paths = %#v, want %#v", got, want)
+	}
+	if got := ChangedPaths(nil); got == nil || len(got) != 0 {
+		t.Fatalf("empty changed paths = %#v, want a sealed empty array", got)
+	}
+}
+
+func TestPlanSuccessionKeepsExactPathRules(t *testing.T) {
+	t.Run("wider path wins", func(t *testing.T) {
+		narrow := workroom.Artifact{Event: "narrow", Path: "internal/workroom", Commit: "old"}
+		wide := workroom.Artifact{Event: "wide", Path: "internal", Commit: "old"}
+		for _, order := range [][]workroom.Artifact{{narrow, wide}, {wide, narrow}} {
+			candidates := map[string]Candidate{
+				"narrow": {Class: ClassInTargetPredecessor},
+				"wide":   {Class: ClassInTargetPredecessor},
+			}
+			plan := PlanSuccession(workroom.Projection{Artifacts: order},
+				[]Change{{Status: "M", New: "internal/workroom/fold.go"}}, candidates)
+			if !reflect.DeepEqual(plan.Publish, []string{"internal"}) {
+				t.Fatalf("published paths = %#v for %s first", plan.Publish, order[0].Path)
+			}
+			if plan.Retire["wide"] != "internal" || plan.Retire["narrow"] != "internal" {
+				t.Fatalf("retirements = %#v for %s first", plan.Retire, order[0].Path)
+			}
+		}
+	})
+	t.Run("first artifact", func(t *testing.T) {
+		plan := PlanSuccession(workroom.Projection{Artifacts: []workroom.Artifact{
+			{Event: "elsewhere", Path: "cmd/gs", Commit: "old"},
+		}}, []Change{{Status: "A", New: "internal/workroom/fold.go"}}, nil)
+		if !reflect.DeepEqual(plan.Publish, []string{"internal/workroom/fold.go"}) || len(plan.Retire) != 0 {
+			t.Fatalf("uncovered plan = %+v", plan)
+		}
+	})
+	t.Run("rename", func(t *testing.T) {
+		projection := workroom.Projection{Artifacts: []workroom.Artifact{{Event: "old-file", Path: "old/name.go", Commit: "old"}}}
+		plan := PlanSuccession(projection, []Change{{Status: "R100", Old: "old/name.go", New: "new/name.go"}},
+			map[string]Candidate{"old-file": {Class: ClassInTargetPredecessor}})
+		if !reflect.DeepEqual(plan.Publish, []string{"new/name.go"}) {
+			t.Fatalf("published paths = %#v", plan.Publish)
+		}
+		if successor, exists := plan.Retire["old-file"]; !exists || successor != "" {
+			t.Fatalf("old-path retirement = %q, exists %v", successor, exists)
+		}
+	})
+	t.Run("delete", func(t *testing.T) {
+		projection := workroom.Projection{Artifacts: []workroom.Artifact{{Event: "deleted", Path: "gone.go", Commit: "old"}}}
+		plan := PlanSuccession(projection, []Change{{Status: "D", Old: "gone.go"}},
+			map[string]Candidate{"deleted": {Class: ClassInTargetPredecessor}})
+		if len(plan.Publish) != 0 {
+			t.Fatalf("deletion published %#v", plan.Publish)
+		}
+		if successor, exists := plan.Retire["deleted"]; !exists || successor != "" {
+			t.Fatalf("deleted-path retirement = %q, exists %v", successor, exists)
+		}
+	})
 }
 
 func runGit(t *testing.T, repo string, arguments ...string) string {
