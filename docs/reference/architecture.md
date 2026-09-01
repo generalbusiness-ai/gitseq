@@ -833,6 +833,34 @@ instead. The explicitly ratified review approval remains a pre-merge
 requirement, and the same sealed receipt closes the implementation commitment
 whose reporting artifact it merges.
 
+The `cmd/gs` composition surface also owns phase-one merge authorization. An
+optional `--authorization` names an ordinary ratified Workroom report that
+closes an authorization request and binds the exact candidate, ratified
+approval, original implementation request, and measured target head. The CLI
+identifies the exact implementation and authorization commitments and admits
+only a report signed by the original implementation requester, the live actor
+named exactly `planner`, or a live actor carrying `ratifier`. It checks those
+facts and bindings twice before Git moves. A newer target is accepted only
+under an explicit `disjoint-paths` remeasurement whose candidate and target
+path sets do not intersect.
+
+The Git receipt seals both the authorization report and its exact
+sequencer-admitted `RatifiedBy` event. Embedding that unpredictable event ID in
+the later Git commit is the temporal witness that the report had force before
+Git moved. Recovery requires the pair, revalidates the commitments, signer,
+bindings and target measurement against the sealed pre-head, and appends no
+durable suffix if the current ratification differs. A receipt with neither
+field is legacy; one with authorization but no witness fails closed. The
+durable receipt preserves the same pair, so later ratification cannot rewrite
+the order in which a merge occurred. This changes no kernel guarantee,
+Workroom vocabulary, fold rule, projection, or cache profile.
+
+Phase two should use a declared application seam rather than search request
+prose. A future `workroom/state@3` request field
+`merge_authorization=required`, projected under `workroom-fold@16`, can make
+the flag mandatory after every resident and adapter restarts on that binding.
+Until then omission warns and preserves the in-flight phase-one migration.
+
 The receipt also accounts for every other live artifact covered by the
 first-parent diff without granting authority over it: it seals whether an
 unsettled durable commitment protects the candidate or whether the candidate
@@ -1472,7 +1500,7 @@ the same result.
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it opens the repository's configured actor and sequencer key custody, builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. The trusted resident may invoke this local custody for several actors; the nexus credential does not alter key files, kernel verification or fold authority. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. |
-| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff and composes the Workroom receipt, successor artifacts, and retirements, and it asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Its publication adapter reads the head an ordinary remote accepted and the watch globs tracked at that head, and records app-validated publication asserts — never artifacts, which merge succession alone mints at source paths. Command grouping must not move Workroom concepts into the kernel packages. |
+| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff, validates optional structured merge authorization and target-path remeasurement, composes the Workroom receipt, successor artifacts, and retirements, and asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Its publication adapter reads the head an ordinary remote accepted and the watch globs tracked at that head, and records app-validated publication asserts — never artifacts, which merge succession alone mints at source paths. Command grouping must not move Workroom concepts into the kernel packages. |
 | `cmd/gitseq-mcp` | Surface | Adapts MCP calls to Workroom and nexus operations. Protocol compatibility and fold compatibility are separate. |
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |

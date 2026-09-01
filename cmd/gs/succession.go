@@ -663,7 +663,7 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 	if err := preflightSuccession(ctx, workspace, checkout, plan); err != nil {
 		return err
 	}
-	acts := successionActs(receipt.Approval, receipt.Candidate, receipt.TargetPreHead, receipt.MergeHead, receipt.Staleness, plan)
+	acts := successionActs(receipt.Approval, receipt.Authorization, receipt.AuthorizationRatification, receipt.Candidate, receipt.TargetPreHead, receipt.MergeHead, receipt.Staleness, plan)
 	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
 		return fmt.Errorf("merge succession admission preflight: %w", err)
 	}
@@ -679,6 +679,12 @@ func recordedSuccessionPlan(projection workroom.Projection, receipt mergeReceipt
 	for _, statement := range projection.Statements {
 		if statement.Kind != workroom.KindAssert || statement.Body["merge_approval"] != receipt.Approval || statement.Body["merge_head"] != receipt.MergeHead {
 			continue
+		}
+		if statement.Body["merge_authorization"] != receipt.Authorization {
+			return successionPlan{}, false, errors.New("recorded merge authorization does not match the sealed Git receipt")
+		}
+		if statement.Body["merge_authorization_ratification"] != receipt.AuthorizationRatification {
+			return successionPlan{}, false, errors.New("recorded merge authorization ratification does not match the sealed Git receipt")
 		}
 		var plan successionPlan
 		if err := json.Unmarshal([]byte(statement.Body["merge_retirements"]), &plan.retire); err != nil {
@@ -742,7 +748,7 @@ func successionKey(approval, class, value string) string {
 	return "merge-succession-" + hex.EncodeToString(sum[:])
 }
 
-func successionActs(approval, candidate, targetPreHead, mergeHead, staleness string, plan successionPlan) []batchAct {
+func successionActs(approval, authorization, authorizationRatification, candidate, targetPreHead, mergeHead, staleness string, plan successionPlan) []batchAct {
 	if (plan.leftLive != nil) != (plan.changedPaths != nil) {
 		return nil
 	}
@@ -758,6 +764,10 @@ func successionActs(approval, candidate, targetPreHead, mergeHead, staleness str
 		"merge_approval": approval, "merge_candidate": candidate,
 		"merge_target_pre_head": targetPreHead, "merge_head": mergeHead,
 		"merge_retirements": string(retirements), "merge_successors": string(successors),
+	}
+	if authorization != "" {
+		receiptBody["merge_authorization"] = authorization
+		receiptBody["merge_authorization_ratification"] = authorizationRatification
 	}
 	if plan.leftLive != nil {
 		leftLive, err := json.Marshal(plan.leftLive)
@@ -781,11 +791,15 @@ func successionActs(approval, candidate, targetPreHead, mergeHead, staleness str
 	// moved underneath it while it was reviewed; validateMerge has already
 	// judged that movement and the receipt records it. Dead bases here are
 	// expected, so every act asks for the recorded escape.
+	receiptBases := []string{approval}
+	if authorization != "" {
+		receiptBases = append(receiptBases, authorization, authorizationRatification)
+	}
 	acts := []batchAct{{
 		Label: "merge", Verb: app.VerbState, Kind: workroom.KindAssert,
 		Text:    "approved candidate merged",
 		Body:    receiptBody,
-		RestsOn: []string{approval}, IdempotencyKey: mergeReceiptKey(approval),
+		RestsOn: receiptBases, IdempotencyKey: mergeReceiptKey(approval),
 		AllowDeadBasis: true,
 	}}
 	labels := make(map[string]string, len(plan.publish))
