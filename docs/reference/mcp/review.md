@@ -36,10 +36,10 @@ admission refuses it and names this tool.
 
 Anything sequenced after the review request that carries the reviewed
 object ID in a structured `head` or `commit` field, or rests directly on
-the request, the promise, a cited artifact, or another effective artifact
-standing at that head, is news to the reviewer. Matched records are shown
-whatever force they have — ineffective, retired, and undefined-kind rows
-included — because the guard directs attention; it does not judge.
+the request, the promise, or an effective artifact standing at that head,
+is news to the reviewer. Matched records are shown whatever force they
+have — ineffective, retired, and undefined-kind rows included — because
+the guard directs attention; it does not judge.
 
 Missing, duplicate, or extraneous acknowledgments refuse with the full set
 named. The signed body records `head_news_acknowledged` as the canonical

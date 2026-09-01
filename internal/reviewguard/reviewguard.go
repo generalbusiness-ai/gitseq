@@ -85,21 +85,21 @@ type News struct {
 	Reason   string
 }
 
-// Target names what one guarded review is about. Artifacts are the co-signed
-// artifact events standing at Head; the first is the primary the verdict
-// names.
+// Target names what one guarded review is about: the exact reviewed head and
+// the request and promise that make up its lane. The co-signed artifacts are
+// not listed here, because every one of them is an effective artifact standing
+// at Head, and discovery already reads any such artifact as part of the lane.
 type Target struct {
-	Head      string
-	Request   string
-	Promise   string
-	Artifacts []string
+	Head    string
+	Request string
+	Promise string
 }
 
 // Discover returns the head news for one review: every state statement
 // sequenced strictly after the review request that either carries the full
 // reviewed object ID in a structured body.head or body.commit field, or whose
-// direct rests_on names the review request, the review promise, a supplied
-// artifact, or an effective artifact standing at the reviewed head. Matched
+// direct rests_on names the review request, the review promise, or an
+// effective artifact standing at the reviewed head. Matched
 // records are returned in sequence order and include ineffective, retired,
 // and undefined-kind records, each with its fold decision.
 //
@@ -133,7 +133,7 @@ func matches(statement workroom.Statement, projection workroom.Projection, targe
 		return true
 	}
 	for _, basis := range projection.Provenance[statement.Event] {
-		if basis == target.Request || basis == target.Promise || slices.Contains(target.Artifacts, basis) {
+		if basis == target.Request || basis == target.Promise {
 			return true
 		}
 		if effectiveArtifactAt(projection, basis, target.Head) {
@@ -360,16 +360,11 @@ func EvaluateVerdict(projection workroom.Projection, body map[string]string, res
 	if err != nil {
 		return err
 	}
-	target := Target{Head: head, Request: request, Promise: promise}
-	for _, reference := range restsOn {
-		for _, artifact := range projection.Artifacts {
-			if artifact.Event == reference {
-				target.Artifacts = append(target.Artifacts, reference)
-				break
-			}
-		}
-	}
-	news := Discover(projection, target)
+	// The target is the lane the filing surface read, and nothing the verdict
+	// acknowledged: an acknowledged artifact at another commit is a citation,
+	// not part of the lane, and reading it in would demand acknowledgment of
+	// its own dependents, which the surface never showed.
+	news := Discover(projection, Target{Head: head, Request: request, Promise: promise})
 	var uncited []string
 	for _, item := range news {
 		if !slices.Contains(restsOn, item.Event) {
@@ -464,10 +459,7 @@ func ReviewBasis(read Read, artifactEvent, promiseEvent string) (Basis, []News, 
 		}),
 		Frontier: read.FrontierEvent,
 	}
-	news := Discover(projection, Target{
-		Head: basis.Head, Request: basis.Request, Promise: basis.Promise,
-		Artifacts: []string{artifact.Event},
-	})
+	news := Discover(projection, Target{Head: basis.Head, Request: basis.Request, Promise: basis.Promise})
 	return basis, news, nil
 }
 
