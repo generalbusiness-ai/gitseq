@@ -12,6 +12,7 @@ import { Avatar } from "./components/Avatar";
 import { publishRefusal, signingRefusal } from "./lib/authority";
 import { reconciledPendingIDs, RetryKeys } from "./lib/interaction";
 import { firstLine } from "./lib/util";
+import { tabTitle } from "./lib/title";
 
 // Two screens. The list is the default and answers the whole question; the
 // thread answers "what does this one wait on?". There is no third
@@ -22,6 +23,9 @@ type Screen = { kind: "list" } | { kind: "thread"; event: string; focus?: string
 
 export default function App() {
   const workroom = useWorkroom();
+  useEffect(() => {
+    document.title = tabTitle(workroom.project);
+  }, [workroom.project]);
   const session = useSession();
   const { frames } = useFrames(workroom);
   const [screen, setScreen] = useState<Screen>({ kind: "list" });
