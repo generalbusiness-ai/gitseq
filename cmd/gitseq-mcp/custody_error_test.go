@@ -20,6 +20,7 @@ import (
 // class into the other on the fingerprint, status, wait, or work path fails
 // this test by name.
 func TestDegradedCustodySurfacesIOFailureApartFromUnknownActor(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace, _ := signedWorkspace(t, 1)
 	for _, name := range []string{"status", "wait", "work"} {

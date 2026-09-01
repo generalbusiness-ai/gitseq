@@ -13,6 +13,7 @@ import (
 // that actor. A refused selection never seeds the binding cache, so the next
 // call takes the cold validation path and sees the new custody record.
 func TestAdapterResolvesActorAddedAfterSessionStart(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace, _ := signedWorkspace(t, 1)
 	server := newServer("late", workspace.Repo)
@@ -43,6 +44,7 @@ func TestAdapterResolvesActorAddedAfterSessionStart(t *testing.T) {
 // refusing a live actor as unknown. Reverting the request path to the cached
 // view alone fails this test by name.
 func TestAdapterStateRequestDeliversToActorAddedAfterSessionStart(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace, genesis := signedWorkspace(t, 1)
 	server := newServer("human", workspace.Repo)

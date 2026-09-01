@@ -11,6 +11,7 @@ import (
 )
 
 func TestMCPReassignIfUnclaimedOwnsAndReplaysTheGuardedPair(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace := initRepository(t, "reassign-mcp")
 	if _, _, err := workspace.AddActor(ctx, "human", "worker", "agent"); err != nil {

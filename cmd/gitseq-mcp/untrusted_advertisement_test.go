@@ -82,6 +82,7 @@ func untrustedAdvertisements() []untrustedAdvertisement {
 // about, so refusing every read would strand a session over a file it can
 // repair without ever seeing the room.
 func TestUntrustedAdvertisementStillLetsAReadAnswerLocally(t *testing.T) {
+	parallelTest(t)
 	for _, testCase := range untrustedAdvertisements() {
 		t.Run(testCase.name, func(t *testing.T) {
 			workspace := initRepository(t, "repo")
@@ -109,6 +110,7 @@ func TestUntrustedAdvertisementStillLetsAReadAnswerLocally(t *testing.T) {
 // caused it. The refusal names which of the six failures it is and the way
 // out, and nothing is appended.
 func TestUntrustedAdvertisementRefusesADurableAct(t *testing.T) {
+	parallelTest(t)
 	for _, testCase := range untrustedAdvertisements() {
 		t.Run(testCase.name, func(t *testing.T) {
 			workspace := initRepository(t, "repo")
@@ -144,6 +146,7 @@ func TestUntrustedAdvertisementRefusesADurableAct(t *testing.T) {
 // untrustworthy record keeps its attachment: repairing the file is enough to
 // carry on, with no reconnection.
 func TestAbsentAdvertisementStillActsLocallyAfterARefusal(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	writeAdvertisement(t, workspace, []byte("{"))
 	server := newServer("human", workspace.Repo)
@@ -181,6 +184,7 @@ func TestAbsentAdvertisementStillActsLocallyAfterARefusal(t *testing.T) {
 // tampering unmentioned, which is exactly the silent whole-log rebuild the
 // refusal exists to prevent.
 func TestUntrustedAdvertisementRefusesADurableActAfterAGoodOneWasCached(t *testing.T) {
+	parallelTest(t)
 	refuseAfterAGoodAdvertisementWasCached(t, false)
 }
 
@@ -190,6 +194,7 @@ func TestUntrustedAdvertisementRefusesADurableActAfterAGoodOneWasCached(t *testi
 // an act locally, so this is the case where a guard that only ran while the
 // address was unknown would hand the act to the local fold and say nothing.
 func TestUntrustedAdvertisementRefusesRatherThanFoldingLocallyWhenTheResidentAlsoStops(t *testing.T) {
+	parallelTest(t)
 	refuseAfterAGoodAdvertisementWasCached(t, true)
 }
 
@@ -265,6 +270,7 @@ func refuseAfterAGoodAdvertisementWasCached(t *testing.T, stopResident bool) {
 // one place a tamper could still arrive too late to be seen — so the record is
 // read once more before anything is folded.
 func TestAdvertisementRewrittenDuringACallRefusesTheLocalFallback(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	workroomServer, err := service.New(workspace)
 	if err != nil {
@@ -326,6 +332,7 @@ func TestAdvertisementRewrittenDuringACallRefusesTheLocalFallback(t *testing.T) 
 // is corrupt. Only the resolution running first can produce the record's
 // reason; resolve second and the key's failure answers instead.
 func TestUntrustedAdvertisementRefusesBeforeTheSigningKeyIsRead(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	writeAdvertisement(t, workspace, []byte("{"))
 
