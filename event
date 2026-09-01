@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b49be7ed81ab7bbc7c1fcba35abd59bed9b2995b","text":"Withdrawn because the operator rejected this design in favor of a narrow SKILL.md current-target-branch rule."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6a67c4cf343b464d25edac35a660b32ef5600cd9","text":"Cancelled because the operator replaced the external-PR handoff design with the narrower current-target-branch SKILL.md request."}
