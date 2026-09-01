@@ -81,9 +81,10 @@ proposal's captured satisfier and carries its author, kind, text, satisfier,
 and staleness qualifier. Ratification, supersession, or standing direct
 dissent removes it.
 
-An artifact completion has status `awaiting-merge` and no `waiting_on` actor.
+An artifact completion has status `awaiting-merge` and waits on its performer.
 Its kind has satisfier `none`, so requester ratification is not an admissible
-closing act; an independently approved exact-head merge closes it.
+closing act; the performer merges the independently approved exact head, and
+that merge closes it.
 
 A rejected implementation parent has terminal status `superseded` only after
 an explicit qualifying linked supersession. Its JSON row carries
