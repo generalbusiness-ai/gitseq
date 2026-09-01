@@ -1,0 +1,1 @@
+discussion: we need a way to cleanly perform work in a large repository where 'main' is not the target of the work (merge into main uses a PR that is outside the scope of the gitseq process). Review and propose a process that will achieve that, and use gitseq to track that work.
