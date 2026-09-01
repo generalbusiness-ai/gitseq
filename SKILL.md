@@ -312,6 +312,14 @@ working in. Artifacts never live in the workroom — they are files,
 branches, commits, and PRs, exactly as always. Your git work does not
 change; the workroom carries the why.
 
+Each group of related activities has one current target branch. Name it in
+the group's durable request or governing decision; if neither names one, it is
+`main`. Child requests and other follow-up work inherit it. Base worktrees on
+that branch, judge current bases against its head, recut or refresh work onto
+it, and pass its checkout to `gs merge`. Moving the result onward to another
+branch, including through an external pull request, is a separate process and
+does not change the group's current target branch.
+
 - Cite artifacts as `path@commit`. Never copy a document into an event.
 - Use `request/<slug>` for a new implementation branch unless the durable
   request records a better prefix. Existing historical branch names do not
