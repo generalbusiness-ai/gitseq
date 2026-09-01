@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will make the narrow SKILL.md current-target-branch change, verify it, and carry the exact head through independent review and merge."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4dfedab4348f4ea607429d09ec0b70b7049116e6","text":"Withdrawn because the operator replaced the external-handoff design with the narrower current-target-branch instruction."}
