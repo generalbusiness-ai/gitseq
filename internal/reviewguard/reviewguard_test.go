@@ -67,7 +67,7 @@ func reviewLane(commit string, after ...workroom.Statement) workroom.Projection 
 }
 
 func quietTarget(head string) Target {
-	return Target{Head: head, Request: "request", Promise: "promise", Artifacts: []string{"artifact"}}
+	return Target{Head: head, Request: "request", Promise: "promise"}
 }
 
 // The first failure mode this guard closes: news sequenced after the review
@@ -139,9 +139,9 @@ func TestDiscoverMatchesStructuredHeadCommitAndDirectBasesForBothFormats(t *test
 			for _, item := range news {
 				events = append(events, item.Event)
 			}
-			// cites-late-artifact matches because its direct basis carries the
-			// reviewed head in a structured commit field. A basis the fold
-			// judged ineffective matches nothing through the artifact clause.
+			// cites-late-artifact matches because its direct basis is an
+			// effective artifact standing at the reviewed head. A basis the
+			// fold judged ineffective matches nothing through that clause.
 			want := "promise,artifact,by-head,by-commit,cites-request,cites-artifact,cites-late-artifact,refused-artifact"
 			if got := strings.Join(events, ","); got != want {
 				t.Fatalf("news = [%s], want [%s]", got, want)
@@ -226,34 +226,6 @@ func TestDiscoverFollowsTheNewsSetThroughEveryPosition(t *testing.T) {
 				t.Fatalf("news with a statement at #%d = [%s], want [%s]", test.sequence, got, test.want)
 			}
 		})
-	}
-}
-
-// A supplied artifact is named by ID, so a statement citing it is news whatever
-// standing the fold gave that artifact. Only the fourth rule, citing an
-// artifact nobody supplied, asks the fold for effectiveness first.
-func TestMatchesNamesSuppliedArtifactsWhateverTheirStanding(t *testing.T) {
-	fixture := reviewLane(head,
-		workroom.Statement{Event: "cites-withdrawn", Actor: "stranger", Kind: workroom.KindAssert},
-		workroom.Statement{Event: "withdrawn-pointer", Actor: "implementer", Kind: workroom.KindArtifact, Body: map[string]string{"path": "feature.txt", "commit": head}},
-	)
-	fixture.Provenance["cites-withdrawn"] = []string{"withdrawn-pointer"}
-	fixture.Decisions[len(fixture.Decisions)-1] = workroom.Decision{
-		Event: "withdrawn-pointer", Sequence: len(fixture.Statements), Verdict: workroom.Ineffective, Reason: "pointer withdrawn",
-	}
-	var cited workroom.Statement
-	for _, statement := range fixture.Statements {
-		if statement.Event == "cites-withdrawn" {
-			cited = statement
-		}
-	}
-	supplied := Target{Head: head, Request: "request", Promise: "promise", Artifacts: []string{"withdrawn-pointer"}}
-	if !matches(cited, fixture, supplied) {
-		t.Fatal("a statement citing the supplied artifact was not read as news")
-	}
-	unmarked := Target{Head: head, Request: "request", Promise: "promise"}
-	if matches(cited, fixture, unmarked) {
-		t.Fatal("an unsupplied ineffective artifact matched through the effective-artifact clause")
 	}
 }
 
@@ -556,5 +528,115 @@ func TestErrorSitesBoundCallerSuppliedValues(t *testing.T) {
 	err = EvaluateVerdict(quietReview(), body, restsOn, "frontier")
 	if err == nil || !strings.Contains(err.Error(), "review_frontier") || len(err.Error()) > 300 {
 		t.Fatalf("frontier error not bounded and diagnostic: %v", err)
+	}
+}
+
+// otherCommit is a head no review names; artifacts standing there are lane
+// news when they rest on the reviewed artifact, and nothing more.
+const otherCommit = "3333333333333333333333333333333333333333"
+
+// readOf serves one fixed world to Confirm exactly as the filing surfaces
+// do: the basis and news come from ReviewBasis over the same projection the
+// resident will judge, so the two halves are compared on one world.
+func readOf(projection workroom.Projection) ReadFunc {
+	return func() (Basis, []News, workroom.Projection, error) {
+		basis, news, err := ReviewBasis(Read{
+			Projection: projection, ReviewerFingerprint: "reviewer",
+			FrontierEvent: "frontier", NoCheckout: true,
+		}, "artifact", "promise")
+		return basis, news, projection, err
+	}
+}
+
+// reportedShape is the lane from the 2026-09-01 bug report: a note artifact
+// at another commit rests on the reviewed artifact, and a later statement
+// rests on that note. The note is news; the statement under it is not.
+func reportedShape() workroom.Projection {
+	fixture := reviewLane(head,
+		workroom.Statement{Event: "note", Actor: "stranger", Kind: workroom.KindArtifact, Body: map[string]string{"path": "notes/review.md", "commit": otherCommit}},
+		workroom.Statement{Event: "downstream", Actor: "stranger", Kind: workroom.KindAssert, Body: map[string]string{"note": "rests on the note only"}},
+	)
+	fixture.Provenance["note"] = []string{"artifact"}
+	fixture.Provenance["downstream"] = []string{"note"}
+	fixture.Artifacts = []workroom.Artifact{
+		{Event: "artifact", Path: "feature.txt", Commit: head},
+		{Event: "note", Path: "notes/review.md", Commit: otherCommit},
+	}
+	return fixture
+}
+
+// The regression for that report. The client computes exactly one
+// acknowledgment, the note, and refuses more as extraneous; the verdict it
+// builds must then be the verdict the resident admits. Before the fix the
+// resident read the acknowledged note into the lane, counted `downstream` as
+// unacknowledged news, and refused a verdict no acknowledgment set could
+// repair.
+func TestEvaluateVerdictAdmitsTheClientSetWhenArtifactNewsRestsOnTheReviewedArtifact(t *testing.T) {
+	fixture := reportedShape()
+	read := readOf(fixture)
+	_, _, err := Confirm(read, []string{"artifact"}, []string{"note", "downstream"}, VerdictApproved, "approved")
+	if err == nil || !strings.Contains(err.Error(), `extraneous: "downstream"`) {
+		t.Fatalf("the client accepted a statement under the note as news: %v", err)
+	}
+	body, restsOn, err := Confirm(read, []string{"artifact"}, []string{"note"}, VerdictApproved, "approved exact head")
+	if err != nil {
+		t.Fatalf("the client refused its own required set: %v", err)
+	}
+	if got := strings.Join(restsOn, ","); got != "promise,request,artifact,note" {
+		t.Fatalf("rests_on = [%s], want the note acknowledged as a citation and nothing under it", got)
+	}
+	if err := EvaluateVerdict(fixture, body, restsOn, "frontier"); err != nil {
+		t.Fatalf("the resident refused the verdict the client built: %v", err)
+	}
+}
+
+// Both halves must derive one news set for one world, whatever shape the
+// lane has taken since the request: the client's required acknowledgments
+// are then exactly what the resident demands, and the canonical array the
+// client signed is the array the resident re-derives.
+func TestClientAndResidentDeriveTheSameNewsSet(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		fixture func() workroom.Projection
+		acks    []string
+	}{
+		{name: "quiet lane", fixture: quietReview},
+		{name: "assert naming the head", fixture: func() workroom.Projection {
+			fixture := quietReview()
+			fixture.Statements = append(fixture.Statements, workroom.Statement{Event: "late", Sequence: 5, Actor: "stranger", Kind: workroom.KindAssert, Body: map[string]string{"head": head}})
+			fixture.Decisions = append(fixture.Decisions, workroom.Decision{Event: "late", Sequence: 5, Verdict: workroom.Effective, Reason: "statement recorded"})
+			return fixture
+		}, acks: []string{"late"}},
+		{name: "artifact news at another commit with a dependent", fixture: reportedShape, acks: []string{"note"}},
+		{name: "artifact news at the reviewed head with a dependent", fixture: func() workroom.Projection {
+			fixture := reviewLane(head,
+				workroom.Statement{Event: "sibling", Actor: "implementer", Kind: workroom.KindArtifact, Body: map[string]string{"path": "other.txt", "commit": head}},
+				workroom.Statement{Event: "under-sibling", Actor: "stranger", Kind: workroom.KindAssert},
+			)
+			fixture.Provenance["sibling"] = []string{"request"}
+			fixture.Provenance["under-sibling"] = []string{"sibling"}
+			fixture.Artifacts = []workroom.Artifact{
+				{Event: "artifact", Path: "feature.txt", Commit: head},
+				{Event: "sibling", Path: "other.txt", Commit: head},
+			}
+			return fixture
+		}, acks: []string{"sibling", "under-sibling"}},
+		{name: "statement resting on the promise", fixture: func() workroom.Projection {
+			fixture := reviewLane(head, workroom.Statement{Event: "on-promise", Actor: "stranger", Kind: workroom.KindAssert})
+			fixture.Provenance["on-promise"] = []string{"promise"}
+			fixture.Artifacts = []workroom.Artifact{{Event: "artifact", Path: "feature.txt", Commit: head}}
+			return fixture
+		}, acks: []string{"on-promise"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := test.fixture()
+			body, restsOn, err := Confirm(readOf(fixture), []string{"artifact"}, test.acks, VerdictApproved, "approved exact head")
+			if err != nil {
+				t.Fatalf("client refused acknowledgments %v: %v", test.acks, err)
+			}
+			if err := EvaluateVerdict(fixture, body, restsOn, "frontier"); err != nil {
+				t.Fatalf("resident refused the client-built verdict: %v", err)
+			}
+		})
 	}
 }
