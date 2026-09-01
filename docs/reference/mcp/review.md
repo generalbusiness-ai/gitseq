@@ -31,6 +31,7 @@ admission refuses it and names this tool.
 | `ack_head_news` | optional | Array of event identifiers. Durable statements sequenced after the review request that name this head or lane are head news: the call refuses until you acknowledge exactly that set, once each. News the verdict already cites counts once. Every acknowledged event becomes a citation of the verdict. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. |
+| `agent` | optional | The reviewer whose existing accessible key signs this verdict; defaults to startup `--actor`. |
 
 ## Head news
 

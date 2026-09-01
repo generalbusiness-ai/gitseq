@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 )
 
 // The two ways a fingerprint resolution can miss stay apart on every adapter
@@ -57,31 +58,18 @@ func TestDegradedCustodySurfacesIOFailureApartFromUnknownActor(t *testing.T) {
 		t.Fatalf("custody I/O failure invented a fingerprint %q", fingerprint)
 	}
 
-	// The tool surfaces carry the same distinction end to end. With healthy
-	// custody the degraded digests still answer; with the unreadable one each
-	// of status, wait, and work refuses with the custody failure instead of
-	// silently answering a digest that matches nothing.
+	// Tool calls are stricter than the internal digest helper: even readable
+	// custody must not let an unknown selected actor degrade into an empty
+	// identity. Every tool refuses before attaching or falling back.
 	dead := httptest.NewServer(nil)
-	baseURL, client := dead.URL, dead.Client()
+	client := dead.Client()
 	dead.Close()
-	digesting, attached := attachedServer(t, workspace, "nobody", baseURL, client)
-	value, _, err := digesting.call(ctx, toolCall{Name: "status"})
-	if err != nil {
-		t.Fatalf("degraded status refused on a readable custody record: %v", err)
-	}
-	if _, ok := value.(actorStatus); !ok {
-		t.Fatalf("degraded status answered %#v, want an actor digest", value)
-	}
-
-	attached.workspace.MetaDir = blocked
+	digesting := newServer("nobody", workspace.Repo)
+	digesting.client = residentclient.NewWithHTTP(client, residentHTTPTimeout)
 	for _, name := range []string{"status", "wait", "work"} {
 		_, _, err := digesting.call(ctx, toolCall{Name: name})
 		if err == nil {
-			t.Fatalf("%s swallowed the custody I/O failure and answered anyway", name)
-		}
-		if errors.Is(err, app.ErrUnknownActor) {
-			t.Fatalf("%s classified the custody I/O failure as unknown actor: %v", name, err)
+			t.Fatalf("%s answered for an unknown selected actor", name)
 		}
 	}
-	attached.workspace.MetaDir = saved
 }

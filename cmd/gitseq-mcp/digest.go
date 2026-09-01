@@ -67,8 +67,8 @@ func liveLabel(live liveView) string   { return statusview.LiveLabel(live) }
 // that. Every other failure, chiefly the custody I/O error a fresh re-read
 // can hit, is returned as itself, so a digest can never dress a broken
 // custody read up as an unknown actor or the reverse.
-func (s *mcpServer) fingerprint(current *room) (string, error) {
-	actor, err := current.workspace.ResolveActor(s.actor)
+func (s *mcpServer) fingerprint(current *room, identities ...*selectedIdentity) (string, error) {
+	actor, err := s.resolvedActor(current, identities...)
 	if err != nil {
 		if errors.Is(err, app.ErrUnknownActor) {
 			return "", nil
@@ -78,12 +78,12 @@ func (s *mcpServer) fingerprint(current *room) (string, error) {
 	return actor.Fingerprint, nil
 }
 
-func (s *mcpServer) digest(current *room, status service.Status, degraded bool) (actorStatus, error) {
-	fingerprint, err := s.fingerprint(current)
+func (s *mcpServer) digest(current *room, status service.Status, degraded bool, identities ...*selectedIdentity) (actorStatus, error) {
+	fingerprint, err := s.fingerprint(current, identities...)
 	if err != nil {
 		return actorStatus{}, err
 	}
-	return digestStatus(status, fingerprint, s.actor, degraded), nil
+	return digestStatus(status, fingerprint, current.actor, degraded), nil
 }
 
 func remarshal(value any, target any) error {
