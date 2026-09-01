@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review the exact awaiting-merge waiting-party fix, including all cited artifacts and the required Architecture, Security, and Simplification conclusions."}
+{"kind":"assert","text":"This request is not yet actionable because its own sequencing condition places it after backlog-disposition request 4b12b30f, which is promised and still in progress. I will revisit it when that umbrella commitment closes."}
