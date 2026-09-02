@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
@@ -69,7 +71,7 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 	if result["resultType"] != "complete" {
 		t.Fatalf("tool list has no complete result type: %#v", result)
 	}
-	if got := len(result["tools"].([]any)); got != 14 {
+	if got := len(result["tools"].([]any)); got != 15 {
 		t.Fatalf("got %d tools", got)
 	}
 	listed := make(map[string]map[string]any)
@@ -85,7 +87,7 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 			t.Fatalf("tool %q omits the common repo/agent selectors: %#v", definition["name"], properties)
 		}
 	}
-	for _, name := range []string{"work", "artifacts", "inspect"} {
+	for _, name := range []string{"work", "artifacts", "inspect", "merge_plan"} {
 		if listed[name] == nil {
 			t.Fatalf("selective tool %q is missing: %#v", name, listed)
 		}
@@ -189,8 +191,8 @@ func TestEveryToolDeclaresAnOutputSchemaItsOwnResponsesSatisfy(t *testing.T) {
 		}
 		declared[name] = schema
 	}
-	if len(declared) != 14 {
-		t.Fatalf("got %d tools carrying an output schema, want 14: %#v", len(declared), declared)
+	if len(declared) != 15 {
+		t.Fatalf("got %d tools carrying an output schema, want 15: %#v", len(declared), declared)
 	}
 	for index, call := range exercised {
 		var response map[string]any
@@ -545,6 +547,27 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("offline durable state did not project: %+v", projection.Projection.Decisions)
+	}
+}
+
+func TestMergePlanToolMatchesSharedRefusal(t *testing.T) {
+	workspace := initRepository(t, "merge-plan-refusal")
+	server, _ := attachedServer(t, workspace, "human", "", http.DefaultClient)
+	candidate := strings.Repeat("0", 40)
+	arguments := map[string]any{"candidate": candidate, "approval": "unknown-approval", "checkout": workspace.Repo}
+	value, _, err := server.call(context.Background(), toolCall{Name: "merge_plan", Arguments: arguments})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := mergeplan.Build(context.Background(), workspace, workspace.Repo, candidate, "unknown-approval", actor.Fingerprint,
+		mergeplan.Signer{Name: "human", Private: private})
+	got, ok := value.(mergeplan.Result)
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("MCP and shared refusal differ\nMCP: %#v\nshared: %#v", value, want)
 	}
 }
 

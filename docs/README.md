@@ -69,6 +69,7 @@ Read in this order if you are new:
   [publish](reference/gs/publish.md),
   [review](reference/gs/review.md),
   [merge](reference/gs/merge.md),
+  [merge-plan](reference/gs/merge-plan.md),
   [ratify](reference/gs/ratify.md),
   [supersede](reference/gs/supersede.md),
   [reassign-if-unclaimed](reference/gs/reassign-if-unclaimed.md),
@@ -97,7 +98,8 @@ Read in this order if you are new:
   [reassign_if_unclaimed](reference/mcp/reassign_if_unclaimed.md),
   [work](reference/mcp/work.md),
   [artifacts](reference/mcp/artifacts.md),
-  [inspect](reference/mcp/inspect.md).
+  [inspect](reference/mcp/inspect.md),
+  [merge plan](reference/mcp/merge_plan.md).
 - [Live attention](reference/live-attention.md) — the advisory adjunct
   every MCP tool result carries.
 - [Event identifiers](reference/event-identifiers.md) — the one name
