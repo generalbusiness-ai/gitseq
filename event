@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f696644249e9f5de819743a25012b3d5d1585ab9","text":"Retire the internal/app report on stale promise e92c4a84; same head 8d30745d republished on fresh promise 17fd9588 as c3c9aa5f."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fd5baa2edbc96236339178d1fec6ea6e1269cb4","text":"Retire the internal/workroom artifact on stale promise e92c4a84; republished on fresh promise 17fd9588 as ba6120b0."}
