@@ -28,6 +28,7 @@ import (
 )
 
 func TestValidateSubmissionRequestSizeMatchesResidentJSONCap(t *testing.T) {
+	t.Parallel()
 	if err := ValidateSubmissionRequestSize(kernel.Request{Payload: []byte("small")}); err != nil {
 		t.Fatalf("small resident request rejected: %v", err)
 	}
@@ -71,6 +72,7 @@ func announceCredential(t *testing.T, server *Server, input presenceRequest) (st
 // Deleting it was the alternative review offered to threading numbers through
 // it, and it is the better one: a surface with no readers earns no maintenance.
 func TestTheUnreachableDemoSurfaceIsGone(t *testing.T) {
+	t.Parallel()
 	source, err := os.ReadFile("server.go")
 	if err != nil {
 		t.Fatal(err)
@@ -83,6 +85,7 @@ func TestTheUnreachableDemoSurfaceIsGone(t *testing.T) {
 }
 
 func TestResidentCredentialNeverAppearsOutsideCreationResponse(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	newServer := func(name string) (*Server, *app.Workspace) {
 		repo := filepath.Join(t.TempDir(), name)
@@ -171,6 +174,7 @@ func TestResidentCredentialNeverAppearsOutsideCreationResponse(t *testing.T) {
 }
 
 func TestTrustedHostAndOriginGuardsRunBeforeRouting(t *testing.T) {
+	t.Parallel()
 	var called atomic.Int64
 	handler := TrustedHostHandler(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
@@ -227,6 +231,7 @@ func TestTrustedHostAndOriginGuardsRunBeforeRouting(t *testing.T) {
 }
 
 func TestTrustedHostAllowsLoopbackReadAndMutationClients(t *testing.T) {
+	t.Parallel()
 	for _, host := range []string{
 		"127.0.0.1:7777",
 		"[::1]:7777",
@@ -267,6 +272,7 @@ func TestTrustedHostAllowsLoopbackReadAndMutationClients(t *testing.T) {
 }
 
 func TestLoopbackRequestHostRefusesDNSNameWithoutResolver(t *testing.T) {
+	t.Parallel()
 	resolverCalls := 0
 	resolveToLoopback := func(host string) ([]net.IP, error) {
 		resolverCalls++
@@ -285,6 +291,7 @@ func TestLoopbackRequestHostRefusesDNSNameWithoutResolver(t *testing.T) {
 }
 
 func TestLoopbackRequestHostRefusesMalformedAndPortlessValues(t *testing.T) {
+	t.Parallel()
 	for _, host := range []string{
 		"",
 		"localhost",
@@ -306,6 +313,7 @@ func TestLoopbackRequestHostRefusesMalformedAndPortlessValues(t *testing.T) {
 }
 
 func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -433,6 +441,7 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 }
 
 func TestSelectiveWorkAndInspectionEndpoints(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -516,6 +525,7 @@ func TestSelectiveWorkAndInspectionEndpoints(t *testing.T) {
 }
 
 func TestPresenceActivityUsesTheLeaseAndCompositeWait(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -611,6 +621,7 @@ func TestPresenceActivityUsesTheLeaseAndCompositeWait(t *testing.T) {
 }
 
 func TestGraphEndpointDisclosesItsNewestEightyWindow(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -648,6 +659,7 @@ func TestGraphEndpointDisclosesItsNewestEightyWindow(t *testing.T) {
 }
 
 func TestConversationIsForgottenWhenItsLastParticipantDeparts(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -716,6 +728,7 @@ func TestConversationIsForgottenWhenItsLastParticipantDeparts(t *testing.T) {
 }
 
 func TestExpiredCredentialCannotRenewAndDoesNotBlockNewLease(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -754,6 +767,7 @@ func TestExpiredCredentialCannotRenewAndDoesNotBlockNewLease(t *testing.T) {
 }
 
 func TestWatchSurfaceIsRemoved(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -776,6 +790,7 @@ func TestWatchSurfaceIsRemoved(t *testing.T) {
 }
 
 func TestMutationGuardRejectsBrowserCrossOriginAndSafelistedContent(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		contentType string
@@ -807,6 +822,7 @@ func TestMutationGuardRejectsBrowserCrossOriginAndSafelistedContent(t *testing.T
 }
 
 func TestActEndpointUsesSessionCustodyAndReplaysSameIdempotencyKey(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -863,6 +879,7 @@ func TestActEndpointUsesSessionCustodyAndReplaysSameIdempotencyKey(t *testing.T)
 }
 
 func TestSayValidatesAndPreservesExactReplyTarget(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -920,6 +937,7 @@ func TestSayValidatesAndPreservesExactReplyTarget(t *testing.T) {
 }
 
 func TestAddressedSayAppearsInPrivateStatusAndWaitUntilAcknowledged(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -1044,6 +1062,7 @@ func TestAddressedSayAppearsInPrivateStatusAndWaitUntilAcknowledged(t *testing.T
 }
 
 func TestMentionResolutionUsesOnlyUniqueEffectiveParticipantNames(t *testing.T) {
+	t.Parallel()
 	for _, testCase := range []struct {
 		text string
 		want bool
@@ -1080,6 +1099,7 @@ func TestMentionResolutionUsesOnlyUniqueEffectiveParticipantNames(t *testing.T) 
 // key. Testing this only at the nexus level would have covered speech and
 // departure while leaving the durable path unexamined.
 func TestPublishedHandleCannotAuthorizeDurableActs(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -1123,6 +1143,7 @@ func TestPublishedHandleCannotAuthorizeDurableActs(t *testing.T) {
 }
 
 func TestPresenceCountReturnsOnlyTheActorAggregate(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -1159,6 +1180,7 @@ func TestPresenceCountReturnsOnlyTheActorAggregate(t *testing.T) {
 // request. The first reader may leave; another reader still joins the same
 // fold and receives the exact projection only after it is ready.
 func TestCheckpointProjectionRebuildIsSingleFlightAndPublishesAtomically(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -1324,6 +1346,7 @@ func TestCheckpointProjectionRebuildIsSingleFlightAndPublishesAtomically(t *test
 // audit through /v0/rebuild. Concurrent status readers join that audit and no
 // reader receives a projection until the verified fold is complete.
 func TestColdAuditProgressIsSingleFlightAndPublishesAtomically(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -1457,6 +1480,7 @@ func getJSON(url string, into any) error {
 // other people's leases, because refusing the whole read when half of it is
 // unavailable would turn an advisory extra into a precondition.
 func TestAttentionAnswersAndDegradesWithoutRefusing(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -1560,6 +1584,7 @@ func TestAttentionAnswersAndDegradesWithoutRefusing(t *testing.T) {
 // that job: it says which workroom answers here and nothing else, it needs no
 // credential, it changes nothing, and it grants no cross-origin authority.
 func TestIdentitySaysWhichWorkroomAnswersAndNothingElse(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -1618,6 +1643,7 @@ func TestIdentitySaysWhichWorkroomAnswersAndNothingElse(t *testing.T) {
 // on the mainline is reported absent rather than landed, and that the answer
 // carries the branch it is about.
 func TestLandedEndpointAnswersFromTheMainlineItResolves(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	git := func(args ...string) string {
@@ -1691,6 +1717,7 @@ func TestLandedEndpointAnswersFromTheMainlineItResolves(t *testing.T) {
 // the happy path runs is not a cap, and the failure path is the easier one to
 // reach.
 func TestLandedEndpointBoundsTheBatchWithNoMainline(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	// Deliberately neither main nor master, so no mainline ref resolves.

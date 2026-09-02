@@ -33,6 +33,7 @@ func blockAt(name string, release <-chan struct{}) (func(string), <-chan struct{
 }
 
 func TestSubmitRefusesAtCapacityBeforeChaining(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 
@@ -125,6 +126,7 @@ func TestSubmitRefusesAtCapacityBeforeChaining(t *testing.T) {
 // refusals are distinguishable: reached the guard first means capacity, reached
 // the parser first means malformed, and only one of them is ErrBackPressure.
 func TestSubmitRefusesAtCapacityBeforeParsing(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 
@@ -191,6 +193,7 @@ func TestSubmitRefusesAtCapacityBeforeParsing(t *testing.T) {
 }
 
 func TestZeroMaxQueueDepthLeavesTheQueueUnbounded(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 
@@ -239,6 +242,7 @@ func TestZeroMaxQueueDepthLeavesTheQueueUnbounded(t *testing.T) {
 }
 
 func TestExhaustedRetryLimitIsBackPressureNotAnonymousFailure(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 

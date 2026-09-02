@@ -241,6 +241,7 @@ func TestCustodyRereadRefusesDivergentChangeAndLeavesTheViewUntouched(t *testing
 // one on adoption, and an equal-depth marker naming a different head is the
 // established conflict — refused, not resolved by order of arrival.
 func TestCustodyRereadFrontierFollowsTheEstablishedMergeRule(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, genesis, err := Init(ctx, testRepo(t), "operator", 1<<20)
 	if err != nil {
@@ -450,6 +451,7 @@ func TestCustodyRereadKeepsFreshDeletionWhileLiveUnchanged(t *testing.T) {
 // taken once, and an agreed deletion preserves absence instead of inserting
 // a zero Actor.
 func TestReconcileCustodyResolvesDivergentNameByTheDocumentedRule(t *testing.T) {
+	t.Parallel()
 	baseline := &apphost.Config{Actors: map[string]apphost.Actor{
 		"contested": {Name: "contested", Fingerprint: strings.Repeat("0", 40), KeyFile: "keys/contested-base"},
 		"bystander": {Name: "bystander", Fingerprint: strings.Repeat("9", 40), KeyFile: "keys/bystander"},
@@ -530,6 +532,7 @@ func TestReconcileCustodyResolvesDivergentNameByTheDocumentedRule(t *testing.T) 
 // of the fresh record is still reconciled in. Dereferencing the absent
 // marker, or dropping the live one, fails this test by name.
 func TestCustodyRereadWithNilFreshFrontierKeepsLiveMonotonic(t *testing.T) {
+	t.Parallel()
 	held := &apphost.VerifiedFrontier{Head: strings.Repeat("c", 40), Depth: 11}
 
 	got, changed, err := mergeVerifiedFrontier(held, nil)

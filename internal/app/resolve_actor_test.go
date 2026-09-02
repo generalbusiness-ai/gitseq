@@ -15,6 +15,7 @@ import (
 // adopted so later hits cost nothing. Removing the re-read alone fails this
 // test by name.
 func TestResolveActorFindsActorAddedAfterOpen(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "operator", 1<<20)
 	if err != nil {
@@ -59,6 +60,7 @@ func TestResolveActorFindsActorAddedAfterOpen(t *testing.T) {
 // actor for an unknown one. Collapsing either branch into the other fails
 // this test by name.
 func TestResolveActorErrorCasesStayApart(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "operator", 1<<20)
 	if err != nil {
@@ -94,6 +96,7 @@ func TestResolveActorErrorCasesStayApart(t *testing.T) {
 // under errors.Is rather than message matching. Reverting the address path to
 // the cached view alone fails this test by name.
 func TestResolveActorAddressRereadsCustodyBeforeConcludingUnknown(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "operator", 1<<20)
 	if err != nil {
