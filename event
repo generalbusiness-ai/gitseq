@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2133fc6f7c8b2947356ed1a6ab034c57971f7c8d"}
+{"kind":"assert","text":"The merge-plan repair cannot begin yet. The ratified changes-requested review identifies bounded follow-up work, but no child request has transferred that work from the reviewed parent commitment. I have asked Planner to file the child; head 1567f850e9c1e57ed7efa04510026a435d112769 remains unchanged."}
