@@ -161,7 +161,7 @@ test("a ratification is offered by the satisfier admitted with the statement, no
       labelled("agree"),
       "false denial: the fold would accept this ratification on the satisfier admitted with the statement, but the screen offered no control at all",
     );
-    assert.ok(labelled("disagree"), "dissent needs no authority and must stay offered");
+    assert.ok(labelled("disagree"), "dissent needs participant standing, not the admitted satisfier role");
 
     // The mirror. The kind has WIDENED since admission: admitted as
     // role:rider, now published as role:steward. The viewer holds only
@@ -172,7 +172,7 @@ test("a ratification is offered by the satisfier admitted with the statement, no
       null,
       "false offer: the screen offered a ratification the fold refuses on the satisfier admitted with the statement",
     );
-    assert.ok(labelled("disagree"), "dissent needs no authority and must stay offered");
+    assert.ok(labelled("disagree"), "dissent needs participant standing, not the admitted satisfier role");
 
     // The two cases where the answer does not depend on the disagreement, kept
     // so the fix cannot be mistaken for "always offer".

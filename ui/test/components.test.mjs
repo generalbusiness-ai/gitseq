@@ -187,12 +187,12 @@ test("a ratification is offered only to an actor the fold would let ratify", asy
   }
 });
 
-// A role satisfier is deliberately different from `originating-requester`:
-// the fold accepts it from the holder of the admitted role without requiring
-// participant membership. This must fail if `isLiveParticipant` is added to
-// `mayRatify` or `canRatify`; that tempting change would silently hide work the
-// fold accepts. The matching composer routes remain withheld below because
-// those sign state, which does require participant membership.
+// This synthetic departed-ratifier shape is not emitted by the fold: an active
+// role grant rests on active membership. It pins the browser's direct
+// ratification dispatch to `decideRatify`, without adding the ordinary state
+// composer's participant gate to `mayRatify` or `canRatify`. The matching
+// composer routes remain withheld below because those sign state, which does
+// require participant membership.
 test("a departed ratifier keeps all direct ratifications and no composer routes", async () => {
   const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
   try {
