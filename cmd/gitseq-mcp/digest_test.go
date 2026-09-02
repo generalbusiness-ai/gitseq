@@ -75,6 +75,7 @@ func sampleStatus(events int) service.Status {
 }
 
 func TestStatusDigestIsActorOrientedAndBounded(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(400)
 	digest := digestStatus(status, mine, "me", false)
 
@@ -139,6 +140,7 @@ func TestStatusDigestIsActorOrientedAndBounded(t *testing.T) {
 }
 
 func TestStatusDigestReportsDegradedWithoutInventingLiveState(t *testing.T) {
+	parallelTest(t)
 	digest := digestStatus(sampleStatus(3), mine, "me", true)
 	if !digest.Live.Degraded {
 		t.Fatal("degraded status did not say so")
@@ -155,6 +157,7 @@ func TestStatusDigestReportsDegradedWithoutInventingLiveState(t *testing.T) {
 }
 
 func TestStatusAndWaitLeadWithBoundedPriorityEphemeralChat(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(3)
 	status.Inbox = &nexus.Inbox{Skipped: 2, Frames: []nexus.InboxFrame{{
 		Actor: theirs, Text: strings.Repeat("review this ", 40), About: "event:1",
@@ -177,6 +180,7 @@ func TestStatusAndWaitLeadWithBoundedPriorityEphemeralChat(t *testing.T) {
 }
 
 func TestWaitDeltaCarriesOnlyWhatIsNewAfterTheCursor(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(20)
 	depth := status.Durable.Depth
 	// The caller has read everything except the last three events.
@@ -198,6 +202,7 @@ func TestWaitDeltaCarriesOnlyWhatIsNewAfterTheCursor(t *testing.T) {
 }
 
 func TestWaitDeltaBoundsAFarBehindCursorAndSaysWhatItSkipped(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(500)
 	requested := service.Cursor{Frontier: []service.Frontier{{Genesis: "genesis", Depth: 0}}}
 	delta := digestWait(service.WaitResponse{Status: status}, requested, mine, "me", false)
@@ -214,6 +219,7 @@ func TestWaitDeltaBoundsAFarBehindCursorAndSaysWhatItSkipped(t *testing.T) {
 }
 
 func TestWaitDeltaPreservesResetAndDegraded(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(5)
 	requested := service.Cursor{Frontier: []service.Frontier{{Genesis: "genesis", Depth: status.Durable.Depth}}}
 	delta := digestWait(service.WaitResponse{Status: status, Reset: true}, requested, mine, "me", false)
@@ -229,6 +235,7 @@ func TestWaitDeltaPreservesResetAndDegraded(t *testing.T) {
 // The text block used to be a second copy of the structured payload, which
 // doubled every response. It must stay a summary.
 func TestSummaryDoesNotRestateTheStructuredPayload(t *testing.T) {
+	parallelTest(t)
 	digest := digestStatus(sampleStatus(200), mine, "me", false)
 	text := summarize("status", digest)
 	structured, err := json.Marshal(digest)
@@ -249,6 +256,7 @@ func TestSummaryDoesNotRestateTheStructuredPayload(t *testing.T) {
 // and supersede are not statements, and joining only through statements hid
 // exactly the authority failures an agent most needs to see.
 func TestAttentionCoversRatifyAndSupersedeNotJustStatements(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(5)
 	projection := &status.Durable.Projection
 	projection.Acts = append(projection.Acts,
@@ -281,6 +289,7 @@ func TestAttentionCoversRatifyAndSupersedeNotJustStatements(t *testing.T) {
 // A commitment nobody can discharge is not work waiting on someone. Reporting
 // it as such is the projection lying in the quiet direction.
 func TestNonActionableCommitmentsAreSeparatedFromWaiting(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(5)
 	projection := &status.Durable.Projection
 	projection.Commitments = append(projection.Commitments,
@@ -346,6 +355,7 @@ func TestNonActionableCommitmentsAreSeparatedFromWaiting(t *testing.T) {
 // Pinning that here means a later change which quietly starts filtering — or
 // quietly stops — has to come past this test and say so.
 func TestWaitCommitmentListsAreCurrentStateAndOnlyDurableIsCut(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(30)
 	depth := status.Durable.Depth
 	projection := &status.Durable.Projection
@@ -442,6 +452,7 @@ func sampleTerminalStatus(terminal int) service.Status {
 // answer stays the same size, which is the exact cost this view exists to
 // remove.
 func TestTerminalCommitmentsAndFailedActsAreBounded(t *testing.T) {
+	parallelTest(t)
 	// Under the cap, everything is listed and nothing is claimed skipped.
 	small := digestStatus(sampleTerminalStatus(5), mine, "me", false)
 	if len(small.NotActionable) != 5 || small.NotActionableSkipped != 0 {
@@ -515,6 +526,7 @@ func TestTerminalCommitmentsAndFailedActsAreBounded(t *testing.T) {
 }
 
 func TestAvailableWorkIsBoundedInStatusAndWait(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(4)
 	projection := &status.Durable.Projection
 	// sampleStatus contributes one available request of its own.
@@ -544,6 +556,7 @@ func TestAvailableWorkIsBoundedInStatusAndWait(t *testing.T) {
 // status view was repaired for this; the delta was not, and a blank actor and
 // kind is the same omission in the surface an agent polls most.
 func TestWaitDeltaResolvesActsNotOnlyStatements(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(4)
 	projection := &status.Durable.Projection
 	projection.Acts = append(projection.Acts, workroom.Act{
@@ -567,6 +580,7 @@ func TestWaitDeltaResolvesActsNotOnlyStatements(t *testing.T) {
 // Ineffective and disputed are distinct verdicts; the totals must not collapse
 // a distinction the fold keeps deliberately.
 func TestTotalsKeepIneffectiveAndDisputedApart(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(3)
 	projection := &status.Durable.Projection
 	projection.Decisions = append(projection.Decisions,
@@ -588,6 +602,7 @@ func TestTotalsKeepIneffectiveAndDisputedApart(t *testing.T) {
 // list as the terminal commitments, and it was missed because the obvious
 // reading of "roles" is the three or four the room's practice uses.
 func TestYourOwnRolesAreBounded(t *testing.T) {
+	parallelTest(t)
 	status := sampleStatus(4)
 	roles := make([]string, 0, 2001)
 	for index := range 2001 {
@@ -633,6 +648,7 @@ func containsRole(roles []string, want string) bool {
 // completely. Role names are submitter-chosen, so the roles that carry
 // authority have to be named rather than inferred from an ordering.
 func TestRoleCapKeepsTheRolesThatCarryAuthority(t *testing.T) {
+	parallelTest(t)
 	roles := []string{}
 	for index := range 20 {
 		roles = append(roles, fmt.Sprintf("aaa-%04d", index))

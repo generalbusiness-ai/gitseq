@@ -10,6 +10,7 @@ import (
 )
 
 func TestFileCheckpointPointerRejectsOversizedAndNoncanonicalJSON(t *testing.T) {
+	t.Parallel()
 	valid, err := json.Marshal(checkpointPointer{
 		Schema: checkpointPointerSchema,
 		Commit: strings.Repeat("a", 40),

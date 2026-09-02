@@ -27,6 +27,7 @@ import (
 // detached and nothing about the workspace under real mutation; this one
 // mutates the workspace itself.
 func TestConfigViewUnderRealConcurrentMutation(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {

@@ -22,6 +22,7 @@ resumable batch.
 | `--checkout` | *(required)* | The working tree receiving the merge. |
 | `--candidate` | *(required)* | The full, lowercase, approved commit object ID. |
 | `--approval` | *(required)* | The ratified approval report event. |
+| `--authorization` | | A ratified merge-authorization report carrying the exact structured bindings described below. Phase one validates it when present; omission emits a compatibility warning and still proceeds. |
 | `--text` | *(required)* | A plain-language description of the change and its impact. This begins the merge commit message. |
 | `--server` | | Submit the durable merge receipt through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
@@ -63,8 +64,22 @@ APPROVAL=$(gs review --repo "$REPO" --as carol --checkout "$REPO" \
 gs ratify --repo "$REPO" --as bot "$APPROVAL" >/dev/null
 
 git -C "$REPO" switch -q "$BASE"
+TARGET_PRE_HEAD=$(git -C "$REPO" rev-parse HEAD)
+AUTH_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
+  --text 'Authorize this exact approved merge' --body to=@alice \
+  --body conditions='lift do-not-merge only for the structured bindings below' \
+  --rests-on "$REQUEST" --rests-on "$APPROVAL")
+AUTHORIZATION=$(gs state --repo "$REPO" --as alice --kind report \
+  --text 'Authorize only this candidate and approval on the measured target' \
+  --body authorizes_candidate="$HEAD_COMMIT" \
+  --body authorizes_approval="$APPROVAL" \
+  --body authorizes_request="$REQUEST" \
+  --body target_pre_head="$TARGET_PRE_HEAD" \
+  --rests-on "$AUTH_REQUEST")
+gs ratify --repo "$REPO" --as bot "$AUTHORIZATION" >/dev/null
 gs merge --repo "$REPO" --as bot --checkout "$REPO" \
   --candidate "$HEAD_COMMIT" --approval "$APPROVAL" \
+  --authorization "$AUTHORIZATION" \
   --text 'Merge the approved changelog and make it available on main.'
 ```
 
@@ -104,6 +119,14 @@ world is a projection this command cannot date, not a permission to land.
 | Situation | Why |
 |---|---|
 | The approval is ineffective, unratified, retired, or already described a superseded world when it was signed | An approval that no longer stands approves nothing. Ordinary staleness is not on this list; see below, and a world that moved after the verdict is recorded rather than refused. |
+| `--authorization` names an ineffective, unratified, retired, or world-stale report | The report has not been durably adopted, has been withdrawn, or already described a replaced implementation world when it gained force. |
+| The authorization's `authorizes_candidate`, `authorizes_approval`, or `authorizes_request` differs from the merge | Authorization is exact and cannot float to another head, verdict, or implementation lane. |
+| The authorization report does not close an authorization request | A free-standing report is not the governed act the requester adopted. |
+| The authorization report signer is not the original implementation requester, the live actor named exactly `planner`, or a live actor carrying `ratifier` | Ordinary participants cannot authorize their own merge by creating, answering, and ratifying a separate request with copied bindings. |
+| Its ratification is not sequenced before the prospective receipt | A later ratification cannot retroactively order an earlier merge. |
+| A Git receipt carries `Gitseq-Authorization` without the exact `Gitseq-Authorization-Ratification` witness, or the report's current `ratified_by` differs | Recovery cannot prove that the authorization had force before the Git commit. |
+| `target_pre_head` differs from the current target without `remeasure=disjoint-paths` | The authorization was measured against another target world. |
+| Disjoint-path remeasurement finds a path changed by both the candidate and current target since `target_pre_head` | The newer target may affect the authorized merge and needs a fresh authorization. |
 | The approved artifact is ineffective, retired, or already described a superseded world when the verdict was signed | Same, from the other side of the chain. A world that moved *after* the verdict is recorded, not refused; see below. |
 | The verdict is not `approved` | `changes-requested` is not a merge authorization. |
 | `--candidate` differs from the approved head | The reviewer looked at a different commit. |
@@ -119,6 +142,61 @@ world is a projection this command cannot date, not a permission to land.
 | The retirement plan reaches another actor's artifact outside every path the approval reviewed | Re-file the approval so it covers that path, or ask the artifact's author or an actor holding `ratifier` to retire it. The refusal names the event, path, reviewed paths, and this page. |
 
 Every check runs twice, immediately before git is invoked.
+
+### Structured merge authorization
+
+`--authorization` names a Workroom `report`, not a new kernel or fold kind.
+The report must be ratified by the requester of the authorization work and
+must carry these exact body fields:
+
+| field | value |
+|---|---|
+| `authorizes_candidate` | The full commit passed as `--candidate`. |
+| `authorizes_approval` | The ratified implementation approval passed as `--approval`. |
+| `authorizes_request` | The original implementation request whose reporting artifact the approval names. |
+| `target_pre_head` | The full commit at which the authorization measured the target. |
+| `remeasure` | Optional. The only accepted value is `disjoint-paths`. |
+
+The approval's named artifact must project as the report of exactly one
+implementation request. This is how the command checks
+`authorizes_request`; shared prose, branch names, and actor names do not stand
+in for that lane. The authorization report must likewise close exactly one
+authorization commitment. Its signer must be the original implementation
+requester, the live actor whose durable name is exactly `planner`, or a live
+actor carrying `ratifier`. The authorization request's own requester choosing
+to ratify does not widen that signer set.
+
+Normally `target_pre_head` must still equal the checkout's `HEAD`. With
+`remeasure=disjoint-paths`, a newer `HEAD` is accepted only when the measured
+head is its ancestor and the exact old/new paths changed by the candidate do
+not intersect those changed on the target since the measurement. Rename and
+delete sources count, as do copy and addition destinations.
+
+Phase one is deliberately compatible with work already in flight. Omitting
+`--authorization` prints a warning on standard error and proceeds under the
+existing approval guard. When the flag is present, every binding is enforced.
+The merge commit records both `Gitseq-Authorization:` and
+`Gitseq-Authorization-Ratification:`. The second trailer is the exact event ID
+of the sequencer-admitted ratification that gave the report force. Because
+that unpredictable ID is already inside the later Git commit, it is the
+temporal witness that ratification existed before Git moved. The durable
+receipt records matching `merge_authorization` and
+`merge_authorization_ratification` fields and rests on both events.
+
+Historical receipts with both authorization fields absent remain valid legacy
+receipts. A receipt carrying authorization without its ratification witness
+fails closed. On recovery, the command revalidates the report, both exact
+commitments, every binding, the governing signer, and target measurement
+against the sealed target pre-head; it also requires the report's current
+`ratified_by` to equal the sealed witness before appending any durable suffix.
+Passing a later authorization while resuming a legacy receipt is refused:
+ordering is fixed when the merge commit is written.
+
+Phase two should not infer policy from prose. Introduce a structured
+`merge_authorization=required` request field under `workroom/state@3`, project
+it under the next fold profile, and make omission a refusal only after every
+resident and adapter has restarted on that binding. The profile transition is
+the exact activation seam; until it lands, this command remains in phase one.
 
 ### Staleness is recorded, not refused
 
@@ -204,13 +282,14 @@ Concurrent callers first reserve
 Only one caller can proceed. A successful merge leaves three matching
 records, followed by the artifact succession authorized by that receipt:
 
-- merge commit trailers naming `Gitseq-Approval`, `Gitseq-Candidate`,
+- merge commit trailers naming `Gitseq-Approval`, `Gitseq-Candidate`, optional
+  paired `Gitseq-Authorization` and `Gitseq-Authorization-Ratification`,
   `Gitseq-Target-Pre-Head`, `Gitseq-Changed-Paths`, and
   `Gitseq-Left-Live`;
 - the repository receipt ref, advanced from the target's pre-merge head
   to the merge head; and
 - a signed workroom assertion naming the approval, candidate, target
-  pre-head, and merge head.
+  pre-head, merge head, and optional paired authorization and ratification.
 
 Git receipts are checked across all refs. The signed workroom assertion
 also prevents replay if local refs and the branch carrying the merge are

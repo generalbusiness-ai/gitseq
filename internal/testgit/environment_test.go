@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -51,6 +52,41 @@ func TestIsolateClearsCommandScopedConfigInjection(t *testing.T) {
 	git(t, "init", "-q", repo)
 	git(t, "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
 		"commit", "--allow-empty", "-qm", "candidate")
+}
+
+// Every repository created after Isolate, plain or bare, in either object
+// format, starts without fsync and without automatic gc at repository-local
+// scope, the scope the store's hermetic Git environment keeps.
+func TestIsolateTemplatesTestConfigurationIntoNewRepositories(t *testing.T) {
+	if err := Isolate(); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	var repos []string
+	for _, format := range []string{"sha1", "sha256"} {
+		plain := filepath.Join(root, "plain-"+format)
+		git(t, "init", "-q", "--object-format="+format, plain)
+		bare := filepath.Join(root, "bare-"+format+".git")
+		git(t, "init", "-q", "--bare", "--object-format="+format, bare)
+		repos = append(repos, plain, bare)
+		if got := git(t, "--git-dir", bare, "rev-parse", "--show-object-format"); got != format+"\n" {
+			t.Fatalf("template overwrote init's own keys: object format of %s = %q", bare, got)
+		}
+	}
+	for _, repo := range repos {
+		for key, want := range map[string]string{"core.fsync": "local\tnone\n", "gc.auto": "local\t0\n"} {
+			if got := git(t, "--git-dir", gitDir(repo), "config", "--show-scope", "--get", key); got != want {
+				t.Fatalf("%s in %s = %q, want %q", key, repo, got, want)
+			}
+		}
+	}
+}
+
+func gitDir(repo string) string {
+	if strings.HasSuffix(repo, ".git") {
+		return repo
+	}
+	return filepath.Join(repo, ".git")
 }
 
 func git(t *testing.T, arguments ...string) string {

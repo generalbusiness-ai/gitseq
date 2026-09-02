@@ -77,29 +77,39 @@ type Basis struct {
 // matched records are shown with the decision the fold gave them, whatever
 // that decision was.
 type News struct {
-	Event    string
-	Sequence int
-	Actor    string
-	Kind     workroom.Kind
-	Verdict  workroom.Verdict
-	Reason   string
+	Event     string
+	Sequence  int
+	Actor     string
+	Kind      workroom.Kind
+	Lifecycle workroom.Lifecycle
+	Verdict   workroom.Verdict
+	Reason    string
 }
 
-// Target names what one guarded review is about. Artifacts are the co-signed
-// artifact events standing at Head; the first is the primary the verdict
-// names.
+// commitmentBasis reports whether the fold would read a verdict resting on
+// this news as answering a second commitment: a request or a promise. Such
+// news is still acknowledged in body.head_news_acknowledged, where the guard
+// checks it, but it is not appended to rests_on, which a report may spend on
+// exactly one promise and one governing request.
+func commitmentBasis(item News) bool {
+	return item.Lifecycle == workroom.LifecycleRequest || item.Lifecycle == workroom.LifecyclePromise
+}
+
+// Target names what one guarded review is about: the exact reviewed head and
+// the request and promise that make up its lane. The co-signed artifacts are
+// not listed here, because every one of them is an effective artifact standing
+// at Head, and discovery already reads any such artifact as part of the lane.
 type Target struct {
-	Head      string
-	Request   string
-	Promise   string
-	Artifacts []string
+	Head    string
+	Request string
+	Promise string
 }
 
 // Discover returns the head news for one review: every state statement
 // sequenced strictly after the review request that either carries the full
 // reviewed object ID in a structured body.head or body.commit field, or whose
-// direct rests_on names the review request, the review promise, a supplied
-// artifact, or an effective artifact standing at the reviewed head. Matched
+// direct rests_on names the review request, the review promise, or an
+// effective artifact standing at the reviewed head. Matched
 // records are returned in sequence order and include ineffective, retired,
 // and undefined-kind records, each with its fold decision.
 //
@@ -118,7 +128,7 @@ func Discover(projection workroom.Projection, target Target) []News {
 		}
 		news = append(news, News{
 			Event: statement.Event, Sequence: statement.Sequence,
-			Actor: statement.Actor, Kind: statement.Kind,
+			Actor: statement.Actor, Kind: statement.Kind, Lifecycle: statement.Lifecycle,
 			Verdict: decisionOf(projection, statement.Event),
 			Reason:  reasonOf(projection, statement.Event),
 		})
@@ -133,7 +143,7 @@ func matches(statement workroom.Statement, projection workroom.Projection, targe
 		return true
 	}
 	for _, basis := range projection.Provenance[statement.Event] {
-		if basis == target.Request || basis == target.Promise || slices.Contains(target.Artifacts, basis) {
+		if basis == target.Request || basis == target.Promise {
 			return true
 		}
 		if effectiveArtifactAt(projection, basis, target.Head) {
@@ -307,9 +317,11 @@ func SplitVerdictBases(projection workroom.Projection, restsOn []string) (promis
 
 // Build constructs the guarded verdict act: its signed body and its causal
 // references. Acknowledged news beyond the verdict's own citations is appended
-// to rests_on, so acknowledgment means resting on what was seen. The whole
-// reference list must stay within intent.MaxCausalReferences; overflow refuses
-// rather than truncating.
+// to rests_on, so acknowledgment means resting on what was seen, except news
+// that is itself a request or a promise: the fold reads a report's request and
+// promise bases as the commitment it answers, so that news is acknowledged in
+// the body array alone. The whole reference list must stay within
+// intent.MaxCausalReferences; overflow refuses rather than truncating.
 func Build(basis Basis, verdict, text string, artifacts []string, news []News) (map[string]string, []string, error) {
 	if !IsVerdictWord(verdict) {
 		return nil, nil, fmt.Errorf("review --verdict must be %s or %s", VerdictApproved, VerdictChangesRequested)
@@ -334,11 +346,23 @@ func Build(basis Basis, verdict, text string, artifacts []string, news []News) (
 		body["staleness"] = basis.Staleness
 	}
 	citations := append([]string{basis.Promise, basis.Request}, artifacts...)
-	restsOn := append(citations, RequiredAcknowledgments(news, citations)...)
+	restsOn := append(citations, RequiredAcknowledgments(citedNews(news), citations)...)
 	if len(restsOn) > intent.MaxCausalReferences {
 		return nil, nil, fmt.Errorf("promise, request, artifacts, and acknowledgments total %d references, over the %d a signed act may carry; refuse without truncation", len(restsOn), intent.MaxCausalReferences)
 	}
 	return body, restsOn, nil
+}
+
+// citedNews keeps the news a verdict cites in rests_on: everything except
+// request- and promise-lifecycle statements.
+func citedNews(news []News) []News {
+	var cited []News
+	for _, item := range news {
+		if !commitmentBasis(item) {
+			cited = append(cited, item)
+		}
+	}
+	return cited
 }
 
 // EvaluateVerdict is the authoritative judgement of a verdict-shaped report at
@@ -360,18 +384,16 @@ func EvaluateVerdict(projection workroom.Projection, body map[string]string, res
 	if err != nil {
 		return err
 	}
-	target := Target{Head: head, Request: request, Promise: promise}
-	for _, reference := range restsOn {
-		for _, artifact := range projection.Artifacts {
-			if artifact.Event == reference {
-				target.Artifacts = append(target.Artifacts, reference)
-				break
-			}
-		}
-	}
-	news := Discover(projection, target)
+	// The target is the lane the filing surface read, and nothing the verdict
+	// acknowledged: an acknowledged artifact at another commit is a citation,
+	// not part of the lane, and reading it in would demand acknowledgment of
+	// its own dependents, which the surface never showed.
+	news := Discover(projection, Target{Head: head, Request: request, Promise: promise})
+	// Request- and promise-lifecycle news is acknowledged in the canonical
+	// array checked below and deliberately absent from rests_on; every other
+	// news item must be cited there.
 	var uncited []string
-	for _, item := range news {
+	for _, item := range citedNews(news) {
 		if !slices.Contains(restsOn, item.Event) {
 			uncited = append(uncited, item.Event)
 		}
@@ -464,10 +486,7 @@ func ReviewBasis(read Read, artifactEvent, promiseEvent string) (Basis, []News, 
 		}),
 		Frontier: read.FrontierEvent,
 	}
-	news := Discover(projection, Target{
-		Head: basis.Head, Request: basis.Request, Promise: basis.Promise,
-		Artifacts: []string{artifact.Event},
-	})
+	news := Discover(projection, Target{Head: basis.Head, Request: basis.Request, Promise: basis.Promise})
 	return basis, news, nil
 }
 

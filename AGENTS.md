@@ -10,7 +10,7 @@ The project should build using its own discipline.
 
 ## Repository work
 
-Use gitseq requests instead of GitHub issues.
+Use gitseq requests to track all tasks in this project.
 
 User-facing notes, documentation and other communications prefer plain English,
 per ISO 24495-1, for a technical audience.
@@ -121,6 +121,15 @@ preconditions and the gate that proves it finished are in
 Talk and routine progress stay ephemeral. Promote a breakdown only when it
 changes scope, a condition of satisfaction, or creates follow-up work. Never
 sign as another actor.
+
+## Worktree discipline
+
+All feature work must be done on its own worktree.
+
+When work is completed and merged, its original worktree and branch must be deleted.
+
+NEVER leave stale worktrees lying around.  You are responsible for finishing
+work that you undertake, including all necessary reviews, until completion.
 
 ## Leased activity
 

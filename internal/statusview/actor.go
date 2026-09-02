@@ -73,6 +73,19 @@ type EventView struct {
 	Text    string `json:"text,omitempty"`
 }
 
+// RatificationView is attention owed by a role holder, not a commitment.
+// Event names the proposal itself; no request, performer, promise, or waiting
+// party is manufactured around it.
+type RatificationView struct {
+	Event            string `json:"event"`
+	Kind             string `json:"kind"`
+	Actor            string `json:"actor"`
+	Text             string `json:"text,omitempty"`
+	Satisfier        string `json:"satisfier"`
+	Stale            bool   `json:"stale,omitempty"`
+	actorFingerprint string
+}
+
 type ActorTotals struct {
 	Depth       int            `json:"depth"`
 	Commitments map[string]int `json:"commitments,omitempty"`
@@ -120,39 +133,43 @@ type InboxView struct {
 }
 
 type ActorStatus struct {
-	You                   ActorView        `json:"you"`
-	Frontier              []Frontier       `json:"frontier"`
-	Cursor                Cursor           `json:"cursor"`
-	AvailableToYou        []CommitmentView `json:"available_to_you"`
-	AvailableToYouSkipped int              `json:"available_to_you_skipped,omitempty"`
-	WaitingOnYou          []CommitmentView `json:"waiting_on_you"`
-	WaitingOnYouSkipped   int              `json:"waiting_on_you_skipped,omitempty"`
-	YouAreWaiting         []CommitmentView `json:"you_are_waiting_on"`
-	YouAreWaitingSkipped  int              `json:"you_are_waiting_on_skipped,omitempty"`
-	NotActionable         []CommitmentView `json:"not_actionable,omitempty"`
-	NotActionableSkipped  int              `json:"not_actionable_skipped,omitempty"`
-	YourAttention         []EventView      `json:"needs_your_attention,omitempty"`
-	YourAttentionSkipped  int              `json:"needs_your_attention_skipped,omitempty"`
-	Totals                ActorTotals      `json:"totals"`
-	Live                  LiveView         `json:"live"`
-	PriorityChat          InboxView        `json:"priority_ephemeral_chat"`
-	FollowWithWait        string           `json:"follow_with_wait"`
+	You                         ActorView          `json:"you"`
+	Frontier                    []Frontier         `json:"frontier"`
+	Cursor                      Cursor             `json:"cursor"`
+	AvailableToYou              []CommitmentView   `json:"available_to_you"`
+	AvailableToYouSkipped       int                `json:"available_to_you_skipped,omitempty"`
+	WaitingOnYou                []CommitmentView   `json:"waiting_on_you"`
+	WaitingOnYouSkipped         int                `json:"waiting_on_you_skipped,omitempty"`
+	YouAreWaiting               []CommitmentView   `json:"you_are_waiting_on"`
+	YouAreWaitingSkipped        int                `json:"you_are_waiting_on_skipped,omitempty"`
+	NotActionable               []CommitmentView   `json:"not_actionable,omitempty"`
+	NotActionableSkipped        int                `json:"not_actionable_skipped,omitempty"`
+	AwaitingRatification        []RatificationView `json:"awaiting_ratification"`
+	AwaitingRatificationSkipped int                `json:"awaiting_ratification_skipped,omitempty"`
+	YourAttention               []EventView        `json:"needs_your_attention,omitempty"`
+	YourAttentionSkipped        int                `json:"needs_your_attention_skipped,omitempty"`
+	Totals                      ActorTotals        `json:"totals"`
+	Live                        LiveView           `json:"live"`
+	PriorityChat                InboxView          `json:"priority_ephemeral_chat"`
+	FollowWithWait              string             `json:"follow_with_wait"`
 }
 
 type WaitDelta struct {
-	Cursor                      Cursor           `json:"cursor"`
-	Reset                       bool             `json:"reset,omitempty"`
-	Durable                     []EventView      `json:"durable,omitempty"`
-	Skipped                     int              `json:"durable_skipped,omitempty"`
-	CurrentAvailableToYou       []CommitmentView `json:"current_available_to_you,omitempty"`
-	CurrentAvailableToSkipped   int              `json:"current_available_to_you_skipped,omitempty"`
-	CurrentWaitingOnYou         []CommitmentView `json:"current_waiting_on_you,omitempty"`
-	CurrentWaitingSkipped       int              `json:"current_waiting_on_you_skipped,omitempty"`
-	CurrentNotActionable        []CommitmentView `json:"current_not_actionable,omitempty"`
-	CurrentNotActionableSkipped int              `json:"current_not_actionable_skipped,omitempty"`
-	Live                        []nexus.Change   `json:"live,omitempty"`
-	PriorityChat                InboxView        `json:"priority_ephemeral_chat"`
-	Totals                      ActorTotals      `json:"totals"`
+	Cursor                             Cursor             `json:"cursor"`
+	Reset                              bool               `json:"reset,omitempty"`
+	Durable                            []EventView        `json:"durable,omitempty"`
+	Skipped                            int                `json:"durable_skipped,omitempty"`
+	CurrentAvailableToYou              []CommitmentView   `json:"current_available_to_you,omitempty"`
+	CurrentAvailableToSkipped          int                `json:"current_available_to_you_skipped,omitempty"`
+	CurrentWaitingOnYou                []CommitmentView   `json:"current_waiting_on_you,omitempty"`
+	CurrentWaitingSkipped              int                `json:"current_waiting_on_you_skipped,omitempty"`
+	CurrentNotActionable               []CommitmentView   `json:"current_not_actionable,omitempty"`
+	CurrentNotActionableSkipped        int                `json:"current_not_actionable_skipped,omitempty"`
+	CurrentAwaitingRatification        []RatificationView `json:"current_awaiting_ratification,omitempty"`
+	CurrentAwaitingRatificationSkipped int                `json:"current_awaiting_ratification_skipped,omitempty"`
+	Live                               []nexus.Change     `json:"live,omitempty"`
+	PriorityChat                       InboxView          `json:"priority_ephemeral_chat"`
+	Totals                             ActorTotals        `json:"totals"`
 }
 
 var semanticRoles = map[string]bool{"operator": true, "participant": true, "ratifier": true}
@@ -299,6 +316,59 @@ func addressedTo(commitment workroom.Commitment, fingerprint string) bool {
 	return isUnclaimedRequest(commitment) && commitment.AddressedTo == fingerprint
 }
 
+func hasRole(actor workroom.ActorState, role string) bool {
+	if actor.Retired {
+		return false
+	}
+	for _, held := range actor.Roles {
+		if held == role {
+			return true
+		}
+	}
+	return false
+}
+
+// awaitingRatifications selects effective proposals whose captured satisfier
+// names a role the actor currently holds. It deliberately reads Statement.
+// Satisfier rather than today's vocabulary: the fold judges ratification under
+// the definition captured when the proposal was admitted.
+//
+// A standing direct dissent answers the proposal without conferring force, so
+// it clears this attention lane just as ratification or supersession does.
+func awaitingRatifications(projection workroom.Projection, fingerprint string) []RatificationView {
+	actor, ok := projection.Actors[fingerprint]
+	if !ok || actor.Retired {
+		return nil
+	}
+	effective := make(map[string]bool, len(projection.Decisions))
+	for _, decision := range projection.Decisions {
+		if decision.Verdict == workroom.Effective {
+			effective[decision.Event] = true
+		}
+	}
+	dissented := make(map[string]bool)
+	for _, statement := range projection.Statements {
+		if statement.Kind != workroom.KindDissent || statement.Retired || !effective[statement.Event] {
+			continue
+		}
+		for _, basis := range projection.Provenance[statement.Event] {
+			dissented[basis] = true
+		}
+	}
+	var views []RatificationView
+	for _, statement := range projection.Statements {
+		role, roleSatisfier := strings.CutPrefix(statement.Satisfier, "role:")
+		if statement.Kind != workroom.KindPropose || !roleSatisfier || !hasRole(actor, role) ||
+			statement.Ratified || statement.Retired || !effective[statement.Event] || dissented[statement.Event] {
+			continue
+		}
+		views = append(views, RatificationView{Event: statement.Event, Kind: string(statement.Kind),
+			Actor: Text(ActorName(projection, statement.Actor)), Text: Text(statement.Text),
+			Satisfier: statement.Satisfier, Stale: statement.Stale, actorFingerprint: statement.Actor})
+	}
+	return views
+}
+
 func inboxView(projection workroom.Projection, inbox *nexus.Inbox, degraded bool) InboxView {
 	view := InboxView{Available: !degraded, Frames: []AddressedFrame{}}
 	if degraded || inbox == nil {
@@ -386,10 +456,12 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 		}
 	}
 	digest.YourAttention = actorAttention(projection, fingerprint, actorName)
+	digest.AwaitingRatification = awaitingRatifications(projection, fingerprint)
 	digest.AvailableToYou, digest.AvailableToYouSkipped = Cap(digest.AvailableToYou, ListCap)
 	digest.WaitingOnYou, digest.WaitingOnYouSkipped = Cap(digest.WaitingOnYou, ListCap)
 	digest.YouAreWaiting, digest.YouAreWaitingSkipped = Cap(digest.YouAreWaiting, ListCap)
 	digest.NotActionable, digest.NotActionableSkipped = Cap(digest.NotActionable, ListCap)
+	digest.AwaitingRatification, digest.AwaitingRatificationSkipped = Cap(digest.AwaitingRatification, ListCap)
 	digest.YourAttention, digest.YourAttentionSkipped = Cap(digest.YourAttention, ListCap)
 	fillCommitmentDetails(projection, digest.AvailableToYou, digest.WaitingOnYou, digest.YouAreWaiting, digest.NotActionable)
 	return digest
@@ -474,6 +546,8 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 	delta.CurrentAvailableToYou, delta.CurrentAvailableToSkipped = Cap(delta.CurrentAvailableToYou, ListCap)
 	delta.CurrentWaitingOnYou, delta.CurrentWaitingSkipped = Cap(delta.CurrentWaitingOnYou, ListCap)
 	delta.CurrentNotActionable, delta.CurrentNotActionableSkipped = Cap(delta.CurrentNotActionable, ListCap)
+	delta.CurrentAwaitingRatification = awaitingRatifications(projection, fingerprint)
+	delta.CurrentAwaitingRatification, delta.CurrentAwaitingRatificationSkipped = Cap(delta.CurrentAwaitingRatification, ListCap)
 	fillCommitmentDetails(projection, delta.CurrentAvailableToYou, delta.CurrentWaitingOnYou, delta.CurrentNotActionable)
 	if degraded {
 		delta.Cursor.Live = nexus.Cursor{Generation: "degraded"}
@@ -490,8 +564,9 @@ func Summarize(tool string, value any) string {
 		} else if shaped.PriorityChat.Skipped > 0 {
 			priority += fmt.Sprintf(", %d additional pending", shaped.PriorityChat.Skipped)
 		}
-		return fmt.Sprintf("%s; depth %d, you hold %s roles, %s addressed to you, %s waiting on you, %s you are waiting on, %s not actionable, %s of your acts did not take force; live %s", priority,
+		return fmt.Sprintf("%s; depth %d, you hold %s roles, %s awaiting your ratification, %s addressed to you, %s waiting on you, %s you are waiting on, %s not actionable, %s of your acts did not take force; live %s", priority,
 			shaped.Totals.Depth, Shown(len(shaped.You.Roles), shaped.You.RolesSkipped),
+			Shown(len(shaped.AwaitingRatification), shaped.AwaitingRatificationSkipped),
 			Shown(len(shaped.AvailableToYou), shaped.AvailableToYouSkipped),
 			Shown(len(shaped.WaitingOnYou), shaped.WaitingOnYouSkipped), Shown(len(shaped.YouAreWaiting), shaped.YouAreWaitingSkipped),
 			Shown(len(shaped.NotActionable), shaped.NotActionableSkipped), Shown(len(shaped.YourAttention), shaped.YourAttentionSkipped), LiveLabel(shaped.Live))
@@ -509,8 +584,9 @@ func Summarize(tool string, value any) string {
 		} else if shaped.PriorityChat.Skipped > 0 {
 			priority += fmt.Sprintf(", %d additional pending", shaped.PriorityChat.Skipped)
 		}
-		return fmt.Sprintf("%s; depth %d, %d new durable events%s%s; currently %s addressed to you, %s waiting on you, %s not actionable", priority,
+		return fmt.Sprintf("%s; depth %d, %d new durable events%s%s; currently %s awaiting your ratification, %s addressed to you, %s waiting on you, %s not actionable", priority,
 			shaped.Totals.Depth, len(shaped.Durable), skipped, reset,
+			Shown(len(shaped.CurrentAwaitingRatification), shaped.CurrentAwaitingRatificationSkipped),
 			Shown(len(shaped.CurrentAvailableToYou), shaped.CurrentAvailableToSkipped),
 			Shown(len(shaped.CurrentWaitingOnYou), shaped.CurrentWaitingSkipped), Shown(len(shaped.CurrentNotActionable), shaped.CurrentNotActionableSkipped))
 	case WorkPage:

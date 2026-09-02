@@ -79,7 +79,7 @@ promised ───────────┤
 | `withdrawn` | The request was retired before anyone promised. | the requester, or a ratifier |
 | `promised` | Claimed, not yet reported. | the promisor |
 | `reported` | Completion claimed by an explicit report, awaiting requester ratification. | the promisor |
-| `awaiting-merge` | Completion claimed by an artifact, awaiting an independently approved exact-head merge and naming no waiting actor. | the promisor |
+| `awaiting-merge` | Completion claimed by an artifact, awaiting the independently approved exact-head merge the performer signs; waits on the performer. | the promisor |
 | `superseded` | A ratified `changes-requested` verdict rejected the reporting artifact, and an explicit linked supersession moved the required repair to `successor_request`. | the requester, or a ratifier |
 | `satisfied` | The approved exact head merged, or the requester accepted an explicit report. | the merge or the requester |
 | `cancelled` | The request was retired after a promise existed. | the requester, or a ratifier |
@@ -185,9 +185,10 @@ trusting a green projection to catch a bad one.
 ## Honest states
 
 A completion artifact before merge, or an unratified explicit report, is
-**honest status**, not failure. The artifact reads `awaiting-merge` without a
-waiting actor; the explicit report reads `reported` and waits on its requester.
-Do not treat either as a gap to be chased.
+**honest status**, not failure. The artifact reads `awaiting-merge` and waits
+on its performer, who signs the merge once the approval is ratified; the
+explicit report reads `reported` and waits on its requester. Do not treat
+either as a gap to be chased.
 
 Superseding your own promise is **reneging**, and it stays visible
 forever. Do it as early as you know you cannot keep it: early reneging is

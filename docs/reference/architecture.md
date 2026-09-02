@@ -263,7 +263,10 @@ Before routing a request, it requires the Host to contain an explicit numeric
 port and either a literal loopback IP or `localhost`, compared without case and
 with one optional trailing dot. It never resolves request hostnames, so an
 attacker cannot win admission by changing a DNS answer to point at loopback. It
-also checks every mutation's browser provenance.
+also checks every mutation's browser provenance, and every response it gives a
+browser carries one policy set in one place: a Content-Security-Policy that
+admits only the service's own origin and denies framing, `X-Frame-Options`,
+`X-Content-Type-Options: nosniff` and a no-referrer policy.
 
 Within that boundary, the resident can open several actor keys, and every
 process running as the account is trusted to ask it to act as any of them.
@@ -833,6 +836,34 @@ instead. The explicitly ratified review approval remains a pre-merge
 requirement, and the same sealed receipt closes the implementation commitment
 whose reporting artifact it merges.
 
+The `cmd/gs` composition surface also owns phase-one merge authorization. An
+optional `--authorization` names an ordinary ratified Workroom report that
+closes an authorization request and binds the exact candidate, ratified
+approval, original implementation request, and measured target head. The CLI
+identifies the exact implementation and authorization commitments and admits
+only a report signed by the original implementation requester, the live actor
+named exactly `planner`, or a live actor carrying `ratifier`. It checks those
+facts and bindings twice before Git moves. A newer target is accepted only
+under an explicit `disjoint-paths` remeasurement whose candidate and target
+path sets do not intersect.
+
+The Git receipt seals both the authorization report and its exact
+sequencer-admitted `RatifiedBy` event. Embedding that unpredictable event ID in
+the later Git commit is the temporal witness that the report had force before
+Git moved. Recovery requires the pair, revalidates the commitments, signer,
+bindings and target measurement against the sealed pre-head, and appends no
+durable suffix if the current ratification differs. A receipt with neither
+field is legacy; one with authorization but no witness fails closed. The
+durable receipt preserves the same pair, so later ratification cannot rewrite
+the order in which a merge occurred. This changes no kernel guarantee,
+Workroom vocabulary, fold rule, projection, or cache profile.
+
+Phase two should use a declared application seam rather than search request
+prose. A future `workroom/state@3` request field
+`merge_authorization=required`, projected under the next fold profile, can make
+the flag mandatory after every resident and adapter restarts on that binding.
+Until then omission warns and preserves the in-flight phase-one migration.
+
 The receipt also accounts for every other live artifact covered by the
 first-parent diff without granting authority over it: it seals whether an
 unsettled durable commitment protects the candidate or whether the candidate
@@ -905,18 +936,21 @@ ratification would be silently withheld from actors entitled to make it.
 artifact have different closing authority, so the fold projects different
 states. An explicit report is `reported` and waits on its originating
 requester, whose ratification can satisfy it. An artifact is
-`awaiting-merge` and names no `waiting_on` actor: its admitted satisfier is
-`none`, and only an independently approved exact-head merge closes the
-implementation commitment. The application write boundary reads that same
+`awaiting-merge` and waits on its performer: its admitted satisfier is
+`none`, so the requester cannot ratify it, and only an independently approved
+exact-head merge, which the performer signs, closes the implementation
+commitment. The application write boundary reads that same
 admission-time satisfier before signing a ratification. When it is `none`, it
 refuses and names the target kind, the satisfier, and the applicable workflow
 act, rather than adding an ineffective attempt to the permanent log.
 
 The browser and bounded status/query projections preserve `awaiting-merge` as
-unfinished work while showing no invented waiting party. This changes the
-application projection bytes and lifecycle meaning, so it advances the profile
-to `workroom-fold@15`; a cache written under `@14` is rejected and history is
-replayed.
+unfinished work. Naming no waiting party at all, as `@15` did, left approved
+heads in nobody's queue; naming the performer puts each one in the lane of the
+actor who must sign its merge. Each of those projection changes altered the
+application projection bytes and lifecycle meaning, so each advanced the
+profile: `@14` to `@15`, then `@15` to `workroom-fold@16`; a cache written
+under an older profile is rejected and history is replayed.
 
 **Rejected-round successor transfer.** A ratified `changes-requested` verdict
 rejects an implementation head but does not say where its required repair went.
@@ -931,10 +965,10 @@ The qualification is sealed on the supersession, so retiring or failing the
 child later changes only the child row. Retiring the supersession itself
 restores the ordinary parent state.
 
-This also changes projection bytes and lifecycle meaning. It is included in
-the same unpublished `workroom-fold@15` candidate described above, so the
-deployed transition remains one step from `@14` to `@15`; there is no
-intermediate `@15` cache contract to invalidate again.
+This also changes projection bytes and lifecycle meaning. It shipped in the
+same `workroom-fold@15` candidate as the empty-waiting-party projection, so
+that deployed transition was one step from `@14` to `@15`; the later step to
+`@16` names the performer and is described above.
 
 **Write-boundary guards.** One Workroom admission evaluation serves every
 state surface — `gs state`, `gs batch`, the MCP state and review tools, and
@@ -1124,6 +1158,19 @@ Work and status rows include the request, report, exact-head, and
 latest-review facts needed for routine action. Write surfaces return the fold
 decision after an append rather than previewing application force.
 
+Pending ratification is a separate attention lane, not a commitment state.
+`internal/statusview` selects effective, unratified, live proposals whose
+captured `role:<name>` satisfier is held by the actor being viewed. It reads the
+satisfier projected on each statement, never the current vocabulary, because
+the fold admits a ratification under the definition captured with that
+statement. Ratification, proposal supersession, or a standing effective direct
+dissent removes the row; ordinary staleness remains a qualifier on it. Status,
+wait, and work expose the same bounded selection. Work uses an `event` field
+for these rows and leaves `request` empty, so the query does not manufacture a
+request, performer, promise, or waiting party around a proposal. The browser's
+awaiting-ratification population applies the same standing and captured-role
+rules to the full projection.
+
 `internal/app` opens a repository, joins the kernel records to the interpreter
 the repository is bound to, and exposes the resulting durable snapshot.
 Readers must report an unbound or unavailable interpreter instead of
@@ -1234,9 +1281,20 @@ a projection it may merge on. This carries the fold profile to
   The `work` tool's `stale` enum admits `summary`, `include`, `only` and
   `exclude`, and `summary` is what a call that names no policy receives. The
   tool schema is the surface contract for that default; the selection it names
-  belongs to the projection above. The adapter holds one resident-minted
-  credential per exact repository, renews or replaces it internally, and never
-  returns it through MCP.
+  belongs to the projection above. Every tool call may select `repo` and
+  `agent`; omitted values use startup defaults. The pair selects a repository
+  and an existing accessible actor key. It never creates a key or grants an
+  identity, and a missing key, fingerprint mismatch, absent roster actor or
+  unavailable repository refuses instead of falling back to either default.
+  This is custody routing, not a new trust grant: the development key model
+  still derives keys from actor names, so access becomes a real boundary only
+  when deployments protect actor keys as secrets.
+
+  The adapter holds one resident-minted credential per validated repository
+  and actor selection, renews or replaces it internally, and never returns it
+  through MCP. A configuration or roster change invalidates the old lease;
+  cached repository state cannot turn an obsolete selector into signing
+  authority.
   Its `reassign_if_unclaimed` tool owns the same guarded pair and retry
   choreography as the CLI, rather than asking callers to construct a
   commitment expectation from generic state and supersede tools.
@@ -1459,8 +1517,8 @@ the same result.
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it opens the repository's configured actor and sequencer key custody, builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. The trusted resident may invoke this local custody for several actors; the nexus credential does not alter key files, kernel verification or fold authority. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. |
-| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff and composes the Workroom receipt, successor artifacts, and retirements, and it asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Its publication adapter reads the head an ordinary remote accepted and the watch globs tracked at that head, and records app-validated publication asserts — never artifacts, which merge succession alone mints at source paths. Command grouping must not move Workroom concepts into the kernel packages. |
-| `cmd/gitseq-mcp` | Surface | Adapts MCP calls to Workroom and nexus operations. Protocol compatibility and fold compatibility are separate. |
+| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff, validates optional structured merge authorization and target-path remeasurement, composes the Workroom receipt, successor artifacts, and retirements, and asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Its publication adapter reads the head an ordinary remote accepted and the watch globs tracked at that head, and records app-validated publication asserts — never artifacts, which merge succession alone mints at source paths. Command grouping must not move Workroom concepts into the kernel packages. |
+| `cmd/gitseq-mcp` | Surface | Adapts MCP calls to Workroom and nexus operations. Per-call `repo` and `agent` values select an existing accessible key and effective roster actor, fail closed without changing either startup default, and keep resident leases scoped to that validated pair. Protocol compatibility and fold compatibility are separate. |
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |
 | `SKILL.md` | Application guidance | Governs agent conduct in Workroom. It is not a kernel protocol specification. |

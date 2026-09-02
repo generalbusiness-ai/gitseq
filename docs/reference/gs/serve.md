@@ -156,6 +156,18 @@ when every returned address is loopback. Each mutation also checks its HTTP
 content-type guards before it decodes input or changes state. There is no
 permissive CORS route.
 
+Every response also carries the browser policy stated once in
+`internal/service`: a `Content-Security-Policy` that admits only the
+service's own origin for scripts, styles, fonts, images and fetches and
+denies framing with `frame-ancestors 'none'`, `X-Frame-Options: DENY` for
+older agents, `X-Content-Type-Options: nosniff`, and
+`Referrer-Policy: no-referrer`. The embedded UI is built to load under that
+policy, so a page that embeds the board, a script injected beside it, or a
+mislabelled asset is refused by the browser rather than by hope. The style
+rule refuses style attributes and elements written into markup and any
+stylesheet from another origin; it does not govern styles a script sets
+through the CSSOM, which is how the UI applies its few inline styles.
+
 The service is a trusted local custodian for several actors: it holds their
 signing keys and signs on behalf of whichever trusted process asks. Its
 posture is trusted processes only: every process inside this resident boundary

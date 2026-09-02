@@ -19,6 +19,7 @@ the named frames from subsequent `status` and `wait` answers.
 |---|---|---|
 | `threads` | required | Up to 20 exact `<conversation>:<sequence>` handles from `priority_ephemeral_chat`. |
 | `repo` | optional | The repository whose workroom this call acts in. |
+| `agent` | optional | The actor whose existing accessible key selects this session; defaults to startup `--actor`. |
 
 A well-formed handle that was already acknowledged, expired, or never belonged
 to this session is harmless. A malformed handle is refused. Acknowledging in

@@ -26,7 +26,7 @@ review of nothing in particular, because the branch can move afterwards.
 | `--promise` | *(required)* | The reviewer's own promise to review. |
 | `--verdict` | *(required)* | `approved` or `changes-requested`. |
 | `--text` | *(required)* | The review itself. |
-| `--ack-head-news` | | An event identifier, repeatable. Durable statements sequenced after the review request that name this head or lane are head news: the command refuses until you acknowledge exactly that set, once each, and every acknowledged event becomes a citation of the verdict. News the verdict already cites counts once and needs no separate flag. |
+| `--ack-head-news` | | An event identifier, repeatable. Durable statements sequenced after the review request that name this head or lane are head news: the command refuses until you acknowledge exactly that set, once each. Every acknowledgment is recorded in the signed body, and every acknowledged event other than a request or a promise also becomes a citation of the verdict; a request or promise is acknowledged in the body alone, because a report's request and promise bases name the one commitment it answers. News the verdict already cites counts once and needs no separate flag. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 

@@ -376,6 +376,7 @@ func TestSupersessionPlanProducesCompleteBatchInput(t *testing.T) {
 }
 
 func TestSupersessionPlanRefusesAPlannedSubset(t *testing.T) {
+	t.Parallel()
 	page := statusview.ArtifactPage{MatchingTotal: 2, Returned: 1, Remaining: 1,
 		Artifacts: []statusview.ArtifactRow{{Event: "first", Path: "."}}}
 	if plan, err := buildSupersessionPlan(page, "retire", "key-"); err == nil || plan != nil {
@@ -387,6 +388,7 @@ func TestSupersessionPlanRefusesAPlannedSubset(t *testing.T) {
 // guessed query language. Each assertion compares the new bounded capability
 // to the exact population the old program selected.
 func TestFiveRunbookProgramsHaveCommandParity(t *testing.T) {
+	t.Parallel()
 	effective := func(event string) workroom.Decision {
 		return workroom.Decision{Event: event, Verdict: workroom.Effective}
 	}
@@ -470,6 +472,7 @@ func TestInspectJSONIsTheSharedInspection(t *testing.T) {
 }
 
 func TestHumanInspectionExplainsDanglingPromiseRefusal(t *testing.T) {
+	t.Parallel()
 	rendered := renderInspection(statusview.ItemInspection{
 		Event:    "promise",
 		Decision: &workroom.Decision{Verdict: workroom.Ineffective, Reason: "dangling promise has no request"},
@@ -530,6 +533,7 @@ func TestReviewsIsQuietWithNothingOutstanding(t *testing.T) {
 // either "not an ancestor" or "the check never ran", and reading the second as
 // the first states a fact nobody measured.
 func TestApprovedHeadsAreSplitThreeWaysNotTwo(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	testGit(t, "", "init", "-q", "-b", "main", repo)
@@ -631,6 +635,7 @@ func TestApprovedHeadsAreSplitThreeWaysNotTwo(t *testing.T) {
 // Asking about a branch Git cannot resolve would report every head as out of
 // it. That is a confident wrong answer, and a refusal is the only honest one.
 func TestAnUnresolvableBranchIsRefusedRatherThanAnswered(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	testGit(t, "", "init", "-q", "-b", "main", repo)
@@ -645,6 +650,7 @@ func TestAnUnresolvableBranchIsRefusedRatherThanAnswered(t *testing.T) {
 // local read must not be presented as a fallback from a resident nobody asked.
 // Three states, three words.
 func TestTheFrontierLineNamesWhereTheAnswerCameFrom(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		asked, answered bool
 		want            string
@@ -740,6 +746,7 @@ func TestAncestryCostsTheSameWhateverTheNumberOfHeads(t *testing.T) {
 // difference, so --state succeeded returned the right artifacts and reported
 // every one of them as merely retired.
 func TestASucceededArtifactDoesNotReportAsMerelyRetired(t *testing.T) {
+	t.Parallel()
 	succeeded := statusview.ArtifactRow{Retired: true, Succeeded: true}
 	retired := statusview.ArtifactRow{Retired: true}
 	if artifactRowState(succeeded) == artifactRowState(retired) {

@@ -206,6 +206,7 @@ func TestServerDashForcesTheLocalFold(t *testing.T) {
 // inputs, while the explicit local sentinel remains the deliberate escape
 // hatch.
 func TestAuthorityCommandsRefuseAnAdvertisedResidentBeforeLocalMutation(t *testing.T) {
+	t.Parallel()
 	binary := buildGS(t)
 	commands := []struct {
 		name  string
@@ -475,6 +476,7 @@ func TestUnreachableAdvertisementRefusesWriteAndNamesRecovery(t *testing.T) {
 // validation the advertisement gets, so one rule governs a hand-typed URL and
 // a published one.
 func TestResolveServerURLValidatesExplicitServer(t *testing.T) {
+	t.Parallel()
 	tests := map[string]bool{
 		"http://127.0.0.1:7777":   true,
 		"http://[::1]:7777":       true,

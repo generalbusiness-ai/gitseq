@@ -52,14 +52,47 @@ jobs:
         shell: bash
         run: go install golang.org/x/perf/cmd/benchstat@v0.0.0-20260709024250-82a0b07e230d
 
+      - name: Resolve manual comparison refs
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          PERF_BASE_INPUT: ${{ inputs.base }}
+          PERF_CANDIDATE_INPUT: ${{ inputs.candidate }}
+        run: |
+          set -euo pipefail
+          resolve_ref() {
+            local input=$1
+            case "$input" in
+              HEAD)
+                git rev-parse --verify --end-of-options HEAD^{commit}
+                ;;
+              *)
+                if [[ "$input" =~ ^[0-9a-fA-F]{40}$ ]]; then
+                  git rev-parse --verify --end-of-options "$input^{commit}" || return
+                  return
+                fi
+                git check-ref-format "refs/heads/$input" >/dev/null || return
+                git fetch --no-tags origin "refs/heads/$input:refs/remotes/origin/$input" || return
+                git rev-parse --verify --end-of-options \
+                  "refs/remotes/origin/$input^{commit}"
+                ;;
+            esac
+          }
+          resolved=$(resolve_ref "$PERF_BASE_INPUT")
+          printf 'PERF_BASE=%s\n' "$resolved" >> "$GITHUB_ENV"
+          resolved=$(resolve_ref "$PERF_CANDIDATE_INPUT")
+          printf 'PERF_CANDIDATE=%s\n' "$resolved" >> "$GITHUB_ENV"
+
       - name: Run the bounded comparison
         shell: bash
         env:
-          PERF_BASE: ${{ github.event_name == 'workflow_dispatch' && inputs.base || 'HEAD^' }}
-          PERF_CANDIDATE: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate || 'HEAD' }}
           PERF_TIER: ${{ github.event_name == 'workflow_dispatch' && inputs.tier || 'smoke' }}
         run: |
           set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != workflow_dispatch ]]; then
+            PERF_BASE=HEAD^
+            PERF_CANDIDATE=HEAD
+          fi
           go run ./cmd/gitseq-perf compare \
             --base "$PERF_BASE" \
             --candidate "$PERF_CANDIDATE" \

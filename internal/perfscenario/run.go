@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -547,9 +548,8 @@ func prepareSubmitWait(ctx context.Context, options RunOptions, telemetryRuntime
 	if telemetryRuntime != nil {
 		handler = telemetryRuntime.Handler(handler)
 	}
-	if _, err := request(handler, http.MethodPost, "/v0/presence", mustJSON(map[string]any{
-		"actor": "operator", "session": "performance-session", "ttl_ms": 30000,
-	})); err != nil {
+	credential, err := openPerformanceCredential(handler)
+	if err != nil {
 		return nil, err
 	}
 	statusBody, err := request(handler, http.MethodGet, "/v0/status", nil)
@@ -566,7 +566,7 @@ func prepareSubmitWait(ctx context.Context, options RunOptions, telemetryRuntime
 		return nil, err
 	}
 	act := mustJSON(map[string]any{
-		"session": "performance-session", "act": "state", "kind": "assert",
+		"credential": credential, "act": "state", "kind": "assert",
 		"text": "performance waiter notification", "rests_on": []string{manifest.SeedEvent},
 		"idempotency_key": "performance-submit-wait",
 	})
@@ -615,9 +615,8 @@ func prepareConcurrentReadWrite(ctx context.Context, options RunOptions, telemet
 	if telemetryRuntime != nil {
 		handler = telemetryRuntime.Handler(handler)
 	}
-	if _, err := request(handler, http.MethodPost, "/v0/presence", mustJSON(map[string]any{
-		"actor": "operator", "session": "performance-session", "ttl_ms": 30000,
-	})); err != nil {
+	credential, err := openPerformanceCredential(handler)
+	if err != nil {
 		return nil, err
 	}
 	return func() (operationResult, int, error) {
@@ -635,7 +634,7 @@ func prepareConcurrentReadWrite(ctx context.Context, options RunOptions, telemet
 				return request(handler, http.MethodGet, "/v0/status-summary", nil)
 			})
 			act := mustJSON(map[string]any{
-				"session": "performance-session", "act": "state", "kind": "assert",
+				"credential": credential, "act": "state", "kind": "assert",
 				"text":            fmt.Sprintf("concurrent operation %d", index),
 				"rests_on":        []string{manifest.SeedEvent},
 				"idempotency_key": fmt.Sprintf("performance-concurrent-%d", index),
@@ -725,6 +724,39 @@ func openServerObserved(ctx context.Context, repository string, observer observe
 	}
 	server, err := service.NewObserved(workspace, observer)
 	return workspace, server, err
+}
+
+// openPerformanceCredential follows the same trust boundary as an attached
+// client: the resident, not the performance harness, chooses the credential.
+// Keep the response decoder strict so service-contract drift fails the normal
+// test suite before it can strand the scheduled evidence lane.
+func openPerformanceCredential(handler http.Handler) (string, error) {
+	body, err := request(handler, http.MethodPost, "/v0/presence", mustJSON(struct {
+		Actor string `json:"actor"`
+		TTLMS int    `json:"ttl_ms"`
+	}{Actor: "operator", TTLMS: 30000}))
+	if err != nil {
+		return "", err
+	}
+	var opened struct {
+		Credential string       `json:"credential"`
+		Change     nexus.Change `json:"change"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&opened); err != nil {
+		return "", fmt.Errorf("decode resident presence response: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return "", errors.New("decode resident presence response: multiple JSON values")
+		}
+		return "", fmt.Errorf("decode resident presence response: %w", err)
+	}
+	if opened.Credential == "" {
+		return "", errors.New("resident presence response omitted credential")
+	}
+	return opened.Credential, nil
 }
 
 func request(handler http.Handler, method, path string, body []byte) ([]byte, error) {

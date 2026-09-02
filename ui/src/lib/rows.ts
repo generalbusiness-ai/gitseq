@@ -334,22 +334,31 @@ export function ratificationRows(
   vocabulary: Vocabulary,
   context: RowContext,
 ): RatificationView {
-  const owed = new Set(
-    vocabulary.definitions.filter(awaitsRatification).map((definition) => definition.name),
-  );
+  const owed = new Set(vocabulary.definitions.filter(awaitsRatification).map((definition) => definition.name));
   const effective = new Set(
     projection.decisions
       .filter((decision) => decision.verdict === "effective")
       .map((decision) => decision.event),
   );
-  const ratifiers = Object.entries(context.actors)
-    .filter(([, actor]) => actor.roles?.includes("ratifier"))
-    .map(([fingerprint]) => fingerprint);
-  // Only when exactly one actor can act is there one actor to name. With none
-  // the rows are owed to nobody in the room, and with several the next mover
-  // is not determined — in both cases the column stays empty rather than
-  // picking one, and the caller says which case it is.
-  const waitsOn = ratifiers.length === 1 ? ratifiers[0] : "";
+  const dissentTargets = new Set<string>();
+  for (const statement of projection.statements) {
+    if (statement.kind !== "dissent" || statement.retired || !effective.has(statement.event)) continue;
+    for (const basis of projection.provenance[statement.event] ?? []) dissentTargets.add(basis);
+  }
+  // Keep the room's current satisfier roster visible even when the queue is
+  // empty, so an empty queue is not described as an undischargeable one. A
+  // historical statement may add another captured role below.
+  const currentRoles = new Set(
+    vocabulary.definitions
+      .filter(awaitsRatification)
+      .map((definition) => definition.satisfier.startsWith("role:") ? definition.satisfier.slice("role:".length) : "")
+      .filter(Boolean),
+  );
+  const eligibleActors = new Set(
+    Object.entries(context.actors)
+      .filter(([, actor]) => !actor.retired && actor.roles?.some((role) => currentRoles.has(role)))
+      .map(([fingerprint]) => fingerprint),
+  );
   const rows: WorkRow[] = [];
   for (const statement of projection.statements) {
     if (!owed.has(statement.kind)) continue;
@@ -364,8 +373,21 @@ export function ratificationRows(
     if (isFoundingSeed(statement)) continue;
     // A retired statement asks for nothing and an ineffective one never took
     // hold, so neither is waiting on anybody.
-    if (statement.ratified || statement.retired) continue;
+    if (statement.ratified || statement.retired || dissentTargets.has(statement.event)) continue;
     if (!effective.has(statement.event)) continue;
+    // Satisfier is the definition captured when this statement was admitted.
+    // The live vocabulary is used only for presentation class above; using
+    // its current satisfier here can hide an act the fold would accept after a
+    // kind is redefined.
+    const role = statement.satisfier?.startsWith("role:") ? statement.satisfier.slice("role:".length) : "";
+    if (!role) continue;
+    const candidates = Object.entries(context.actors)
+      .filter(([, actor]) => !actor.retired && actor.roles?.includes(role))
+      .map(([fingerprint]) => fingerprint);
+    for (const candidate of candidates) eligibleActors.add(candidate);
+    // Only when exactly one actor can act is there one actor to name. With
+    // none or several, the column stays empty rather than guessing.
+    const waitsOn = candidates.length === 1 ? candidates[0] : "";
     const title = firstLine(statement.text);
     rows.push({
       event: statement.event,
@@ -382,5 +404,5 @@ export function ratificationRows(
       search: `${title} ${statement.kind} ${context.nameOf(statement.actor)}`.toLowerCase(),
     });
   }
-  return { rows, ratifiers };
+  return { rows, ratifiers: [...eligibleActors] };
 }

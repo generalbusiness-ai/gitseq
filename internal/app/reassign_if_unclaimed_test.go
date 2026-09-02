@@ -51,6 +51,7 @@ func (f reassignFixture) replacementAct(retirement string) Act {
 }
 
 func TestApplicationReassignIfUnclaimedAllowsUnrelatedTraffic(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	fixture := newReassignFixture(t)
 	retirement, err := fixture.workspace.Act(ctx, "human", fixture.retireAct())
@@ -72,6 +73,7 @@ func TestApplicationReassignIfUnclaimedAllowsUnrelatedTraffic(t *testing.T) {
 }
 
 func TestApplicationReassignIfUnclaimedRefusesBothRaceWindowsBeforeAppend(t *testing.T) {
+	t.Parallel()
 	t.Run("promise before retirement", func(t *testing.T) {
 		ctx := context.Background()
 		fixture := newReassignFixture(t)
@@ -121,6 +123,7 @@ func TestApplicationReassignIfUnclaimedRefusesBothRaceWindowsBeforeAppend(t *tes
 }
 
 func TestApplicationReassignIfUnclaimedExactRetriesReplayWithoutRejudging(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	fixture := newReassignFixture(t)
 	retirementAct := fixture.retireAct()
@@ -167,6 +170,7 @@ func TestApplicationReassignIfUnclaimedExactRetriesReplayWithoutRejudging(t *tes
 }
 
 func TestGuardedRequestHistoricalFallbackDoesNotMaskCustodyFailure(t *testing.T) {
+	t.Parallel()
 	fixture := newReassignFixture(t)
 	blocked := filepath.Join(t.TempDir(), "occupied")
 	if err := os.WriteFile(blocked, []byte("not a metadata directory"), 0o600); err != nil {
@@ -182,6 +186,7 @@ func TestGuardedRequestHistoricalFallbackDoesNotMaskCustodyFailure(t *testing.T)
 }
 
 func TestGuardedRetirementPostDedupCitationObservationAndOverride(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	fixture := newReassignFixture(t)
 	page := filepath.Join(fixture.workspace.Repo, "docs", "reference", "cited-request.md")

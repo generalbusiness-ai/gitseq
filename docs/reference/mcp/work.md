@@ -1,6 +1,6 @@
 ---
 title: MCP work
-summary: Page through the configured actor's durable work through a bounded resident-side selection.
+summary: Page through the selected actor's durable work through a bounded resident-side selection.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f5b22ae0cf87ec8004cf367f1f234d846fd0b17d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
@@ -9,7 +9,7 @@ rests_on:
 
 # `work`
 
-Queries the configured actor's durable work. Selection happens at the
+Queries the selected actor's durable work. Selection happens at the
 resident, before any transfer: the tool calls `POST /v0/work-query` and
 never fetches the complete `/v0/status` projection.
 
@@ -17,20 +17,22 @@ never fetches the complete `/v0/status` projection.
 
 | argument | required | meaning |
 |---|---|---|
-| `lanes` | optional | Typed relationship lanes: `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Default is all four. |
-| `statuses` | optional | Lifecycle statuses to include: `open`, `promised`, `reported`, `awaiting-merge`, `superseded`, `satisfied`, `stale`, `cancelled`, `reneged`, `withdrawn`. An unknown status is an error, not a guess. |
+| `lanes` | optional | Typed relationship lanes: `awaiting_ratification`, `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Default is all five. |
+| `statuses` | optional | Row states to include: commitment lifecycle states plus `awaiting-ratification` for the non-commitment proposal lane. An unknown state is an error, not a guess. |
 | `stale` | optional | One staleness policy: `summary` (default), `include`, `only`, or `exclude`. |
 | `limit` | optional | Page size, 1 to 50. Default 20. |
 | `cursor` | optional | The opaque continuation from a previous page. |
 | `repo` | optional | The repository whose workroom this call acts in. |
+| `agent` | optional | The actor whose durable work is selected; defaults to startup `--actor`. The actor's key must already be accessible. |
 
 Filters are finite, typed choices, not an expression language.
 
 ## What comes back
 
-The default page is the work still owed: current `open`, `promised`,
+The default page is the work still owed: effective proposals whose captured
+role satisfier the configured actor holds, plus current `open`, `promised`,
 `reported`, and `awaiting-merge` commitments — including unclaimed requests addressed to the
-configured actor, even when their bases moved and their status became `stale`
+selected actor, even when their bases moved and their status became `stale`
 — plus commitments the fold left in a `stale`,
 `cancelled` or `reneged` state, which nobody has closed.
 
@@ -56,6 +58,12 @@ unknown policy is an error, not a guess.
 
 Every returned row still carries its own `stale` field. The default
 changes which rows are listed, never what a listed row says.
+
+An `awaiting_ratification` row is attention, not a commitment. It carries the
+proposal in `event`, with `kind`, `author`, `satisfier`, `text`, and `stale`;
+`request` is empty and no performer, promise, or waiting party is invented.
+Ratification, proposal supersession, or a standing effective direct dissent
+clears it. Use state `awaiting-ratification` when selecting only these rows.
 
 Every response gives the exact durable frontier, the matching total,
 the returned count, the preceding count, the remaining count, and a

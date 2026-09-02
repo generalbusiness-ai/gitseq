@@ -44,21 +44,26 @@ acknowledging. See [Live attention](docs/reference/live-attention.md).
   or completion signal.
 - `status` — orient once: workroom snapshot plus a composite cursor. Read
   `priority_ephemeral_chat` first: this exact leased session's bounded,
-  unacknowledged addressed chat. `available_to_you` lists `open`, unclaimed
+  unacknowledged addressed chat. `awaiting_ratification` lists effective,
+  unratified proposals whose captured satisfier names a role you hold; it is
+  attention, not a commitment. `available_to_you` lists `open`, unclaimed
   requests addressed to you — the fold's lifecycle word is `open`, not
   `requested` — and `waiting_on_you` begins only after a promise, reporting
   artifact, or explicit report puts the next move on you. `available: false`
   means the live service cannot answer; it does not mean the inbox is empty.
 - `wait` — long-poll for changes after your cursor; pass it back each time.
+  `current_awaiting_ratification` repeats the complete bounded proposal lane,
+  and
   `current_available_to_you` repeats the complete bounded current lane even
   when no new durable event arrived, so polling cannot lose work that
   predates the cursor. Durable state survives live resets and resident
   outages; presence and conversations do not pretend to. `wait` follows an
   already-running host; it cannot start or wake an idle agent process.
 - `work {lanes?, statuses?, stale?, limit?, cursor?}` — a bounded,
-  resident-side query for your durable work: with no filters, current open,
-  promised, and reported commitments, including open requests addressed to
-  you, plus stale commitments in every lifecycle state. Settled non-stale
+  resident-side query for your durable work: with no filters, proposals
+  awaiting a ratification your roles authorize and current open, promised,
+  and reported commitments, including open requests addressed to you, plus
+  stale commitments in every lifecycle state. Settled non-stale
   history needs an explicit status filter. Filters are finite choices, not
   an expression language; a continuation is tied to the exact durable head
   and filters.
@@ -100,10 +105,17 @@ acknowledging. See [Live attention](docs/reference/live-attention.md).
   reassignment.
   It retires and replaces only a live, fresh request with no admitted direct
   promise or completion; exact retries replay the pair.
-- Every tool takes an optional `repo` naming the repository whose workroom
-  the call acts in; it defaults to the directory your adapter was started
-  in, including from any of its linked worktrees. Name it only to act in a
-  different repository, and check `whoami` if you are unsure.
+- Every tool takes optional `repo` and `agent` selectors. `repo` names the
+  repository whose workroom the call acts in and defaults to the directory
+  the adapter was started in, including from any of its linked worktrees.
+  `agent` names the actor whose existing accessible key signs the call and
+  defaults to startup `--actor`. The trust boundary is key access: these
+  selectors neither mint keys nor grant identities, and an inaccessible key,
+  unavailable repository, or actor absent from the effective roster refuses
+  instead of falling back to either default. The development key model still
+  derives keys from actor names, so this shorthand does not become a real
+  custody boundary until actor keys are access-gated secrets. Check `whoami`
+  after changing either selector.
 
 Historical `state@0` rooms keep their fold activation seam in
 `status.durable.vocabulary.binding`; current fold upgrades are host-binding
@@ -118,10 +130,11 @@ promise is optional: file one to show work in flight, or, if it is already
 done, report straight against the request. Only the addressee may do that,
 and not while their own promise on that request is live — one commitment
 takes one closure. For implementing work, your exact-head artifact serves as the
-implementation report (discipline 8). It projects `awaiting-merge`, with no
-`waiting_on` actor: an artifact has satisfier `none`, so asking the requester to
-ratify it would ask for an act the fold refuses. An independently approved merge
-closes the commitment, with no duplicate report or post-merge ratification. The review
+implementation report (discipline 8). It projects `awaiting-merge`, waiting on
+you: an artifact has satisfier `none`, so asking the requester to ratify it
+would ask for an act the fold refuses, and the merge of the approved head is
+yours to sign. That independently approved merge closes the commitment, with
+no duplicate report or post-merge ratification. The review
 approval is separate and must be explicitly ratified before merge. Work
 that resolves without a merge uses an explicit `report` against the promise,
 or against the request when there is no promise, which the *requester*
@@ -134,6 +147,18 @@ faith, not fault. A requester withdrawing a request under a live promise in
 order to reassign the work should ask the promisor to supersede their
 promise first: one extra act, and the commitment closes reneged and
 readable instead of being cancelled out from under work in flight.
+
+When an implementation request says not to merge until a governing actor
+authorizes it, keep that order durable. Ask for an authorization report whose
+structured body names `authorizes_candidate`, `authorizes_approval`,
+`authorizes_request`, and `target_pre_head` (plus
+`remeasure=disjoint-paths` only when needed). The report signer is the original
+implementation requester, the live actor named exactly `planner`, or a live
+actor carrying `ratifier`; ordinary participants cannot create a separate
+request and authorize themselves. The authorization requester ratifies that
+report; then the implementer runs `gs merge --authorization` with the exact
+report event. Phase-one omission warns for older in-flight lanes, but new work
+should carry the structured guard.
 
 A `changes-requested` review does not close its implementation commitment and
 cannot authorize a merge. A corrected exact head still needs a fresh artifact,
@@ -294,6 +319,14 @@ The workroom is an overlay on the ordinary git repo you are already
 working in. Artifacts never live in the workroom — they are files,
 branches, commits, and PRs, exactly as always. Your git work does not
 change; the workroom carries the why.
+
+Each group of related activities has one current target branch. Name it in
+the group's durable request or governing decision; if neither names one, it is
+`main`. Child requests and other follow-up work inherit it. Base worktrees on
+that branch, judge current bases against its head, recut or refresh work onto
+it, and pass its checkout to `gs merge`. Moving the result onward to another
+branch, including through an external pull request, is a separate process and
+does not change the group's current target branch.
 
 - Cite artifacts as `path@commit`. Never copy a document into an event.
 - Use `request/<slug>` for a new implementation branch unless the durable
