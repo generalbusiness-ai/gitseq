@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at docs/reference/mcp/work.md","body":{"commit":"b883c2d9300743473f106529de305d39b2aa7726","path":"docs/reference/mcp/work.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:05b4fed8b952b62beaea31f5dfca98d2d2947b6f","text":"Merge retired a covered predecessor; the successor is at docs/reference/mcp/status.md."}
