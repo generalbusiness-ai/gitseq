@@ -263,7 +263,10 @@ Before routing a request, it requires the Host to contain an explicit numeric
 port and either a literal loopback IP or `localhost`, compared without case and
 with one optional trailing dot. It never resolves request hostnames, so an
 attacker cannot win admission by changing a DNS answer to point at loopback. It
-also checks every mutation's browser provenance.
+also checks every mutation's browser provenance, and every response it gives a
+browser carries one policy set in one place: a Content-Security-Policy that
+admits only the service's own origin and denies framing, `X-Frame-Options`,
+`X-Content-Type-Options: nosniff` and a no-referrer policy.
 
 Within that boundary, the resident can open several actor keys, and every
 process running as the account is trusted to ask it to act as any of them.
