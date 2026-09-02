@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e1b23cc465ed89a1711dea28da4891701bc1f9a1","text":"Retire the docs/reference/gs/state.md candidate at b1caf459; replaced by the remerged head 8d30745d (artifact 28966c5f)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:071c11119073204050d0850c042c9f0e51bba27f","text":"Retire the docs/reference/mcp/reassign_if_unclaimed.md candidate at b1caf459; replaced by the remerged head 8d30745d (artifact 385301f0)."}
