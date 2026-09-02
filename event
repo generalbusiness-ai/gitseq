@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c6f93574357676378727e82ee6b0d1ea69e8c45a"}
+{"kind":"promise","text":"Claiming e578bc01, the fresh successor to d8b2b7a6. The work is already built and gated at exact clean pushed head 8d30745d1643c7323191420c9dfc789ee7930204 on request/stale-bases-admissible (Rests-On d8b2b7a6 trailer accepted by the request, no recut). Next: republish the per-path artifacts on this promise, retire the ones on the old promise e92c4a84, and file codex a fresh review request."}
