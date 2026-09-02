@@ -1251,13 +1251,25 @@ func (w *Workspace) Act(ctx context.Context, actorName string, act Act) (Submiss
 }
 
 func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act) (kernel.Request, error) {
+	return w.buildActRequest(ctx, private, actorName, act, nil)
+}
+
+// BuildActRequestReadOnly constructs and admits a request against an immutable
+// snapshot supplied by a diagnostic caller. It uses the same normalization,
+// admission, lifecycle, citation, encoding, and signing path as
+// BuildActRequest, but never asks a reader to publish acceleration state.
+func (w *Workspace) BuildActRequestReadOnly(ctx context.Context, snapshot Snapshot, private ed25519.PrivateKey, actorName string, act Act) (kernel.Request, error) {
+	return w.buildActRequest(ctx, private, actorName, act, &snapshot)
+}
+
+func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act, snapshot *Snapshot) (kernel.Request, error) {
 	var schema string
 	var payload any
 	guardedRetirement := false
 	rests := append([]string(nil), act.RestsOn...)
 	switch act.Verb {
 	case VerbState:
-		body, err := w.normalizeRequestShape(ctx, act.Kind, act.Body)
+		body, err := w.normalizeRequestShape(ctx, snapshot, act.Kind, act.Body)
 		if err != nil {
 			return kernel.Request{}, err
 		}
@@ -1272,17 +1284,22 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 		// A guarded review answers a moved world instead of refusing it: its
 		// staleness goes into the signed verdict words, so the dead-basis
 		// escape is part of what the path records.
-		body, err = w.AdmitState(ctx, stateAdmission{
+		admission := stateAdmission{
 			Kind: act.Kind, Body: body, RestsOn: rests,
 			AllowDeadBasis: act.AllowDeadBasis || act.GuardedReview,
-		})
+		}
+		if snapshot == nil {
+			body, err = w.AdmitState(ctx, admission)
+		} else {
+			body, err = w.admitState(*snapshot, admission, snapshot.Head)
+		}
 		if err != nil {
 			return kernel.Request{}, err
 		}
 		lifecycle, starter := workroom.StarterLifecycle(act.Kind)
 		if !starter || lifecycle == workroom.LifecycleReport {
 			reporter := intent.ActorFingerprint(private.Public().(ed25519.PublicKey))
-			if err := w.validateReportBasis(ctx, reporter, act.Kind, body, rests); err != nil {
+			if err := w.validateReportBasis(ctx, snapshot, reporter, act.Kind, body, rests); err != nil {
 				return kernel.Request{}, err
 			}
 		}
@@ -1451,15 +1468,19 @@ func (w *Workspace) normalizeGuardedRequestShape(ctx context.Context, body map[s
 // log moves after this check. The active vocabulary matters: a declared kind
 // can participate in the request lifecycle just as the starter request kind
 // does.
-func (w *Workspace) normalizeRequestShape(ctx context.Context, kind workroom.Kind, body map[string]string) (map[string]string, error) {
+func (w *Workspace) normalizeRequestShape(ctx context.Context, snapshot *Snapshot, kind workroom.Kind, body map[string]string) (map[string]string, error) {
 	lifecycle, starter := workroom.StarterLifecycle(kind)
 	if !starter {
-		snapshot, err := w.Snapshot(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("validate request shape: %w", err)
+		current := snapshot
+		if current == nil {
+			loaded, err := w.Snapshot(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("validate request shape: %w", err)
+			}
+			current = &loaded
 		}
 		lifecycle = workroom.LifecycleNone
-		for _, definition := range snapshot.Vocabulary.Definitions {
+		for _, definition := range current.Vocabulary.Definitions {
 			if definition.Name == kind {
 				lifecycle = definition.Lifecycle
 				break
@@ -1520,10 +1541,16 @@ func (w *Workspace) validateDirectReport(request workroom.Statement, reporter st
 // request is signed. The fold remains authoritative, including when the log
 // moves after this snapshot, but locally constructed reports should not append
 // when their lifecycle edge is already known to be ineffective or disputed.
-func (w *Workspace) validateReportBasis(ctx context.Context, reporter string, kind workroom.Kind, body map[string]string, rests []string) error {
-	snapshot, err := w.Snapshot(ctx)
-	if err != nil {
-		return fmt.Errorf("validate report basis: %w", err)
+func (w *Workspace) validateReportBasis(ctx context.Context, supplied *Snapshot, reporter string, kind workroom.Kind, body map[string]string, rests []string) error {
+	var snapshot Snapshot
+	if supplied == nil {
+		loaded, err := w.Snapshot(ctx)
+		if err != nil {
+			return fmt.Errorf("validate report basis: %w", err)
+		}
+		snapshot = loaded
+	} else {
+		snapshot = *supplied
 	}
 	// The kind being written is classified by the current vocabulary, because
 	// that is the definition it will be decided under. Every record already in
@@ -2181,6 +2208,39 @@ func (w *Workspace) SetProjectionRebuildTestGate(gate func(int)) {
 func (w *Workspace) Snapshot(ctx context.Context) (Snapshot, error) {
 	result, err := w.SnapshotWithSource(ctx)
 	return result.Snapshot, err
+}
+
+// ReadOnlySnapshot verifies and folds the complete workroom without publishing
+// a checkpoint, advancing the verified-frontier rollback witness, or changing
+// this Workspace's reader and projection caches. It is for diagnostic surfaces
+// whose contract says that even local acceleration state must remain unchanged.
+func (w *Workspace) ReadOnlySnapshot(ctx context.Context) (Snapshot, error) {
+	selected, refusal := w.interpreter()
+	reader := kernel.NewReader(w.Store)
+	folder := selected.newFolder(nil)
+	loaded, err := reader.LoadWithProgressStream(ctx, w.config.Genesis, nil, func(event kernel.Event) error {
+		folder.Append(w.record(event))
+		return nil
+	})
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if refusal != nil {
+		return Snapshot{}, refusal
+	}
+	if len(loaded.Events) > 0 {
+		folder = selected.newFolder(nil)
+		for _, event := range loaded.Events {
+			folder.Append(w.record(event))
+		}
+	}
+	return Snapshot{
+		Genesis:    loaded.Verification.Genesis,
+		Head:       loaded.Verification.Head,
+		Depth:      loaded.Verification.Depth,
+		Projection: folder.Projection(),
+		Vocabulary: folder.Vocabulary(),
+	}, nil
 }
 
 // SnapshotWithSource verifies and folds the workroom exactly as Snapshot does,
