@@ -144,6 +144,11 @@ type room struct {
 	credential string
 	announced  bool
 	inbox      bool
+	// validatedHead is the exact durable frontier at which this actor's live
+	// participant standing was last proved. A stable head keeps later calls
+	// off the projection; movement requires one fresh bounded orientation (or
+	// the verified local fallback) before the binding can be reused.
+	validatedHead string
 	// identityNoticeChecked records that this process has already looked for
 	// other live sessions using its actor identity in this workroom. The check
 	// runs before this session announces itself; repeating it afterwards would
@@ -162,6 +167,7 @@ type roomSelection struct {
 	genesis     string
 	actor       string
 	fingerprint string
+	keyFile     string
 }
 
 // selectedIdentity is one call's custody proof. The key is loaded once,
@@ -175,6 +181,17 @@ type selectedIdentity struct {
 	orientation *service.Orientation
 	local       *app.SourcedSnapshot
 }
+
+// selectionError preserves the underlying error class for callers that need
+// to distinguish unknown custody from unreadable custody without disclosing a
+// configured key path in the adapter's public error text.
+type selectionError struct {
+	message string
+	cause   error
+}
+
+func (e *selectionError) Error() string { return e.message }
+func (e *selectionError) Unwrap() error { return e.cause }
 
 // resolveEndpoint names the service to use, re-reading the repository's
 // published address whenever the last one is gone, so a service started or
@@ -329,6 +346,18 @@ func (r *room) markSharedIdentityNoticeChecked() {
 	r.identityNoticeChecked = true
 }
 
+func (r *room) standingIsCurrent(head string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return head != "" && r.validatedHead == head
+}
+
+func (r *room) rememberValidatedHead(head string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.validatedHead = head
+}
+
 type mcpServer struct {
 	era       protocolEra
 	actor     string
@@ -336,6 +365,7 @@ type mcpServer struct {
 	client    *residentclient.Client
 	notices   io.Writer
 	deadlines residentDeadlinePolicy
+	open      func(context.Context, string) (*app.Workspace, error)
 
 	roomsMu     sync.Mutex
 	byPath      map[roomSelection]*room
@@ -389,6 +419,7 @@ func newServer(actor, repo string) *mcpServer {
 		client:      newResidentClient(),
 		notices:     os.Stderr,
 		deadlines:   defaultResidentDeadlines,
+		open:        app.Open,
 		byPath:      map[roomSelection]*room{},
 		byCommonDir: map[roomSelection]*room{},
 	}
@@ -779,7 +810,7 @@ func (s *mcpServer) attachAs(ctx context.Context, repo, actor string) (*room, er
 	if strings.TrimSpace(repo) != "" {
 		path = absolute(repo)
 	}
-	workspace, err := app.Open(ctx, path)
+	workspace, err := s.open(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("no gitseq workroom for %s: %w", path, err)
 	}
@@ -793,8 +824,8 @@ func (s *mcpServer) attachAs(ctx context.Context, repo, actor string) (*room, er
 func (s *mcpServer) attachIdentity(path string, identity *selectedIdentity) *room {
 	commonDir := identity.workspace.CommonDir
 	genesis := identity.workspace.View().Genesis
-	selection := roomSelection{path: path, commonDir: commonDir, genesis: genesis, actor: identity.selector, fingerprint: identity.actor.Fingerprint}
-	commonSelection := roomSelection{commonDir: commonDir, genesis: genesis, actor: identity.selector, fingerprint: identity.actor.Fingerprint}
+	selection := roomSelection{path: path, commonDir: commonDir, genesis: genesis, actor: identity.selector, fingerprint: identity.actor.Fingerprint, keyFile: identity.actor.KeyFile}
+	commonSelection := roomSelection{commonDir: commonDir, genesis: genesis, actor: identity.selector, fingerprint: identity.actor.Fingerprint, keyFile: identity.actor.KeyFile}
 	s.roomsMu.Lock()
 	defer s.roomsMu.Unlock()
 	// A selector remapped to another fingerprint starts a new custody session.
@@ -806,17 +837,18 @@ func (s *mcpServer) attachIdentity(path string, identity *selectedIdentity) *roo
 	// custody boundary this cache is meant to enforce.
 	for held, current := range s.byPath {
 		if held.path == selection.path && held.actor == selection.actor &&
-			(held.commonDir != selection.commonDir || held.genesis != selection.genesis || held.fingerprint != selection.fingerprint) {
+			(held.commonDir != selection.commonDir || held.genesis != selection.genesis || held.fingerprint != selection.fingerprint || held.keyFile != selection.keyFile) {
 			current.clearLease()
 		}
 	}
 	for held, current := range s.byCommonDir {
 		if held.commonDir == commonSelection.commonDir && held.actor == commonSelection.actor &&
-			(held.genesis != commonSelection.genesis || held.fingerprint != commonSelection.fingerprint) {
+			(held.genesis != commonSelection.genesis || held.fingerprint != commonSelection.fingerprint || held.keyFile != commonSelection.keyFile) {
 			current.clearLease()
 		}
 	}
 	if existing, ok := s.byPath[selection]; ok {
+		existing.rememberValidatedHead(identityValidatedHead(identity))
 		return existing
 	}
 	// A linked worktree is a checkout of a repository, not a second workroom:
@@ -824,11 +856,62 @@ func (s *mcpServer) attachIdentity(path string, identity *selectedIdentity) *roo
 	// fingerprint still match.
 	current, ok := s.byCommonDir[commonSelection]
 	if !ok {
-		current = &room{workspace: identity.workspace, actor: identity.selector, fingerprint: identity.actor.Fingerprint}
+		current = &room{workspace: identity.workspace, actor: identity.selector, fingerprint: identity.actor.Fingerprint, validatedHead: identityValidatedHead(identity)}
 		s.byCommonDir[commonSelection] = current
+	} else {
+		current.rememberValidatedHead(identityValidatedHead(identity))
 	}
 	s.byPath[selection] = current
 	return current
+}
+
+func identityValidatedHead(identity *selectedIdentity) string {
+	if identity == nil {
+		return ""
+	}
+	if identity.orientation != nil {
+		return identity.orientation.Frontier.Head
+	}
+	if identity.local != nil {
+		return identity.local.Snapshot.Head
+	}
+	return ""
+}
+
+// cachedRoom resolves only the repository and its small custody record. It
+// deliberately does not reopen the application workspace: Open verifies the
+// immutable host binding by walking the first-parent log, which is correct on
+// the first attachment but an O(depth) tax on every later tool call. The
+// generation, configured fingerprint, and key path make a cache hit exact;
+// changing any of them takes the cold validation path and clears the old
+// lease in attachIdentity.
+func (s *mcpServer) cachedRoom(ctx context.Context, path, actorName string) (*room, bool, error) {
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, path)
+	if err != nil {
+		return nil, false, fmt.Errorf("no gitseq workroom for %s: %w", path, err)
+	}
+	config, err := apphost.LoadConfig(apphost.MetaDir(commonDir))
+	if err != nil {
+		return nil, false, fmt.Errorf("no gitseq workroom for %s: %w", path, err)
+	}
+	configured, ok := config.Actors[actorName]
+	if !ok {
+		return nil, false, nil
+	}
+	pathSelection := roomSelection{path: path, commonDir: commonDir, genesis: config.Genesis, actor: actorName, fingerprint: configured.Fingerprint, keyFile: configured.KeyFile}
+	commonSelection := pathSelection
+	commonSelection.path = ""
+
+	s.roomsMu.Lock()
+	defer s.roomsMu.Unlock()
+	if current := s.byPath[pathSelection]; current != nil {
+		return current, true, nil
+	}
+	if current := s.byCommonDir[commonSelection]; current != nil {
+		s.byPath[pathSelection] = current
+		return current, true, nil
+	}
+	return nil, false, nil
 }
 
 // selectedActor returns the startup actor only when the call omitted agent.
@@ -863,9 +946,9 @@ func selectedRepo(call toolCall) (string, bool, error) {
 // bounded orientation avoids a full local replay when available; verified
 // local state is the degraded fallback.
 func (s *mcpServer) validateSelection(ctx context.Context, workspace *app.Workspace, actorName string) (*selectedIdentity, error) {
-	actor, private, err := workspace.Actor(actorName)
+	actor, private, err := selectedActorCustody(workspace, actorName)
 	if err != nil {
-		return nil, fmt.Errorf("cannot use selected agent %q in %s: existing actor key is not accessible", actorName, workspace.CommonDir)
+		return nil, err
 	}
 	actual := intent.ActorFingerprint(private.Public().(ed25519.PublicKey))
 	if actual != actor.Fingerprint {
@@ -873,7 +956,7 @@ func (s *mcpServer) validateSelection(ctx context.Context, workspace *app.Worksp
 	}
 	probe := &room{workspace: workspace, actor: actorName, fingerprint: actor.Fingerprint}
 	s.roomsMu.Lock()
-	if existing := s.byCommonDir[roomSelection{commonDir: workspace.CommonDir, genesis: workspace.View().Genesis, actor: actorName, fingerprint: actor.Fingerprint}]; existing != nil {
+	if existing := s.byCommonDir[roomSelection{commonDir: workspace.CommonDir, genesis: workspace.View().Genesis, actor: actorName, fingerprint: actor.Fingerprint, keyFile: actor.KeyFile}]; existing != nil {
 		probe = existing
 	}
 	s.roomsMu.Unlock()
@@ -901,6 +984,72 @@ func (s *mcpServer) validateSelection(ctx context.Context, workspace *app.Worksp
 	return &selectedIdentity{workspace: workspace, selector: actorName, actor: actor, private: private, local: &durable}, nil
 }
 
+// selectedActorCustody reads the accessible key while keeping its path out of
+// public failures. errors.Is still sees ErrUnknownActor on a real miss and the
+// underlying filesystem error on broken custody.
+func selectedActorCustody(workspace *app.Workspace, actorName string) (apphost.Actor, ed25519.PrivateKey, error) {
+	actor, private, err := workspace.Actor(actorName)
+	if err == nil {
+		return actor, private, nil
+	}
+	message := fmt.Sprintf("cannot use selected agent %q in %s: existing actor key is not accessible", actorName, workspace.CommonDir)
+	if errors.Is(err, app.ErrUnknownActor) {
+		message = fmt.Sprintf("cannot use selected agent %q in %s: actor is not configured", actorName, workspace.CommonDir)
+	}
+	return apphost.Actor{}, nil, &selectionError{message: message, cause: err}
+}
+
+// revalidateSelection is the hot cache-hit path. It re-reads the selected key
+// for every call and proves that it still matches the exact cached binding.
+// An unchanged workroom head reuses the standing proof; movement triggers one
+// bounded resident orientation or the verified local fallback. Neither path
+// reopens or replays the immutable application binding.
+func (s *mcpServer) revalidateSelection(ctx context.Context, current *room) (*selectedIdentity, error) {
+	actor, private, err := selectedActorCustody(current.workspace, current.actor)
+	if err != nil {
+		return nil, err
+	}
+	actual := intent.ActorFingerprint(private.Public().(ed25519.PublicKey))
+	if actor.Fingerprint != current.fingerprint || actual != current.fingerprint {
+		return nil, fmt.Errorf("cannot use selected agent %q in %s: accessible key fingerprint %s does not match cached configured fingerprint %s", current.actor, current.workspace.CommonDir, actual, current.fingerprint)
+	}
+	identity := &selectedIdentity{workspace: current.workspace, selector: current.actor, actor: actor, private: private}
+	head, err := current.workspace.Store.Head(ctx, kernel.Ref(current.workspace.View().Genesis))
+	if err != nil {
+		return nil, fmt.Errorf("cannot validate selected agent %q in %s: %w", current.actor, current.workspace.CommonDir, err)
+	}
+	if current.standingIsCurrent(head) {
+		return identity, nil
+	}
+
+	residentContext, cancel := context.WithTimeout(ctx, orientationTimeout)
+	var orientation service.Orientation
+	var residentErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		orientation, residentErr = s.currentResidentOrientation(residentContext, current, actor.Fingerprint)
+		if residentErr == nil || residentContext.Err() != nil {
+			break
+		}
+	}
+	cancel()
+	if residentErr == nil {
+		identity.orientation = &orientation
+		current.rememberValidatedHead(orientation.Frontier.Head)
+		return identity, nil
+	}
+	durable, err := current.workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("cannot validate selected agent %q in %s: %w", current.actor, current.workspace.CommonDir, err)
+	}
+	roster, ok := durable.Snapshot.Projection.Actors[actor.Fingerprint]
+	if !ok || roster.Retired || !containsString(roster.Roles, "participant") {
+		return nil, fmt.Errorf("cannot use selected agent %q in %s: actor is not a live participant in the effective durable roster", current.actor, current.workspace.CommonDir)
+	}
+	identity.local = &durable
+	current.rememberValidatedHead(durable.Snapshot.Head)
+	return identity, nil
+}
+
 // call selects the room this invocation acts in, then dispatches. It returns
 // that exact room alongside the result, including on error paths, because the
 // attention adjunct must read the room the call used and no other.
@@ -923,9 +1072,18 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, *room, error)
 	if repo != "" {
 		path = absolute(repo)
 	}
-	workspace, err := app.Open(ctx, path)
+	current, cached, err := s.cachedRoom(ctx, path, actor)
 	if err != nil {
-		return nil, nil, fmt.Errorf("no gitseq workroom for %s: %w", path, err)
+		return nil, nil, err
+	}
+	var workspace *app.Workspace
+	if cached {
+		workspace = current.workspace
+	} else {
+		workspace, err = s.open(ctx, path)
+		if err != nil {
+			return nil, nil, fmt.Errorf("no gitseq workroom for %s: %w", path, err)
+		}
 	}
 	// A durable mutation must refuse an untrusted resident advertisement before
 	// it reads any signing key. Besides preserving the fail-closed transport
@@ -939,11 +1097,18 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, *room, error)
 			return nil, nil, untrustedAdvertisementRefusal(err)
 		}
 	}
-	identity, err := s.validateSelection(ctx, workspace, actor)
+	var identity *selectedIdentity
+	if cached {
+		identity, err = s.revalidateSelection(ctx, current)
+	} else {
+		identity, err = s.validateSelection(ctx, workspace, actor)
+		if err == nil {
+			current = s.attachIdentity(path, identity)
+		}
+	}
 	if err != nil {
 		return nil, nil, err
 	}
-	current := s.attachIdentity(path, identity)
 	if call.Name != "whoami" {
 		if err := s.attendRoom(ctx, current); err != nil {
 			return nil, current, err
@@ -1028,7 +1193,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 			if localErr != nil {
 				return nil, localErr
 			}
-			fingerprint, err := s.fingerprint(current, identity)
+			fingerprint, err := s.fingerprint(identity)
 			if err != nil {
 				return nil, err
 			}
@@ -1046,7 +1211,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 		if err := remarshal(arguments, &input); err != nil {
 			return nil, err
 		}
-		fingerprint, err := s.fingerprint(current, identity)
+		fingerprint, err := s.fingerprint(identity)
 		if err != nil {
 			return nil, err
 		}
@@ -1142,10 +1307,9 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 	}
 }
 
-func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call toolCall, identities ...*selectedIdentity) (any, error) {
-	var identity *selectedIdentity
-	if len(identities) > 0 {
-		identity = identities[0]
+func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call toolCall, identity *selectedIdentity) (any, error) {
+	if identity == nil {
+		return nil, errors.New("selected identity is required")
 	}
 	oldRequest := stringValue(call.Arguments["old_request"])
 	key := stringValue(call.Arguments["idempotency_key"])
@@ -1212,32 +1376,29 @@ func laneResponseLimit(current *room, base int64, rows int) int64 {
 	return base + int64(ceiling*uint64(rows))
 }
 
-func (s *mcpServer) whoami(ctx context.Context, current *room, identities ...*selectedIdentity) (any, error) {
-	actor, err := s.resolvedActor(current, identities...)
-	if err != nil {
-		return nil, err
+func (s *mcpServer) whoami(ctx context.Context, current *room, identity *selectedIdentity) (any, error) {
+	if identity == nil {
+		return nil, errors.New("selected identity is required")
 	}
+	actor := identity.actor
 	view := current.workspace.View()
-	if len(identities) > 0 && identities[0] != nil {
-		identity := identities[0]
-		if identity.orientation != nil {
-			return map[string]any{
-				"actor": publicActor(actor), "durable": identity.orientation.You, "protocol": protocolVersion,
-				"repo": current.workspace.CommonDir, "genesis": view.Genesis,
-				"frontier": identity.orientation.Frontier, "source": residentOrientationSource, "degraded": false,
-			}, nil
+	if identity.orientation != nil {
+		return map[string]any{
+			"actor": publicActor(actor), "durable": identity.orientation.You, "protocol": protocolVersion,
+			"repo": current.workspace.CommonDir, "genesis": view.Genesis,
+			"frontier": identity.orientation.Frontier, "source": residentOrientationSource, "degraded": false,
+		}, nil
+	}
+	if identity.local != nil {
+		orientation, ok := statusview.BuildOrientation(identity.local.Snapshot, actor.Fingerprint, actor.Name)
+		if !ok {
+			return nil, errors.New("configured actor is not in the effective durable roster")
 		}
-		if identity.local != nil {
-			orientation, ok := statusview.BuildOrientation(identity.local.Snapshot, actor.Fingerprint, actor.Name)
-			if !ok {
-				return nil, errors.New("configured actor is not in the effective durable roster")
-			}
-			return map[string]any{
-				"actor": publicActor(actor), "durable": orientation.You, "protocol": protocolVersion,
-				"repo": current.workspace.CommonDir, "genesis": view.Genesis,
-				"frontier": orientation.Frontier, "source": string(identity.local.Source), "degraded": true,
-			}, nil
-		}
+		return map[string]any{
+			"actor": publicActor(actor), "durable": orientation.You, "protocol": protocolVersion,
+			"repo": current.workspace.CommonDir, "genesis": view.Genesis,
+			"frontier": orientation.Frontier, "source": string(identity.local.Source), "degraded": true,
+		}, nil
 	}
 	residentContext, cancel := context.WithTimeout(ctx, orientationTimeout)
 	defer cancel()
@@ -1302,15 +1463,11 @@ func publicActor(actor apphost.Actor) map[string]string {
 	return map[string]string{"name": actor.Name, "fingerprint": actor.Fingerprint}
 }
 
-func (s *mcpServer) resolvedActor(current *room, identities ...*selectedIdentity) (apphost.Actor, error) {
-	if len(identities) > 0 && identities[0] != nil {
-		return identities[0].actor, nil
+func (s *mcpServer) resolvedActor(identity *selectedIdentity) (apphost.Actor, error) {
+	if identity == nil {
+		return apphost.Actor{}, errors.New("selected identity is required")
 	}
-	name := current.actor
-	if name == "" {
-		name = s.actor
-	}
-	return current.workspace.ResolveActor(name)
+	return identity.actor, nil
 }
 
 func containsString(values []string, wanted string) bool {
@@ -1328,10 +1485,9 @@ func containsString(values []string, wanted string) bool {
 // again at sequencing against the frontier this surface confirmed. The MCP
 // surface holds no working tree, so the reviewed head comes from the durable
 // artifact row rather than from a checkout.
-func (s *mcpServer) review(ctx context.Context, current *room, call toolCall, identities ...*selectedIdentity) (any, error) {
-	var identity *selectedIdentity
-	if len(identities) > 0 {
-		identity = identities[0]
+func (s *mcpServer) review(ctx context.Context, current *room, call toolCall, identity *selectedIdentity) (any, error) {
+	if identity == nil {
+		return nil, errors.New("selected identity is required")
 	}
 	cited, err := reviewguard.CheckCitations(stringSlice(call.Arguments["artifacts"]))
 	if err != nil {
@@ -1350,15 +1506,12 @@ func (s *mcpServer) review(ctx context.Context, current *room, call toolCall, id
 	// three-read choreography with its exact-set, same-read, acknowledgment,
 	// and build checks, exactly as the command line runs it.
 	read := func() (reviewguard.Basis, []reviewguard.News, workroom.Projection, error) {
-		workspace := current.workspace
-		if identity != nil {
-			workspace = identity.workspace
-		}
+		workspace := identity.workspace
 		snapshot, err := workspace.Snapshot(ctx)
 		if err != nil {
 			return reviewguard.Basis{}, nil, workroom.Projection{}, err
 		}
-		actor, err := s.resolvedActor(current, identity)
+		actor, err := s.resolvedActor(identity)
 		if err != nil {
 			return reviewguard.Basis{}, nil, workroom.Projection{}, err
 		}
@@ -1400,32 +1553,24 @@ func untrustedAdvertisementRefusal(reason error) error {
 // refuses. The refusal is per call: the room, its attachment and its session
 // survive it, and the next call resolves the record again, so repairing or
 // removing it is all it takes to carry on.
-func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act, identities ...*selectedIdentity) (any, error) {
+func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act, identity *selectedIdentity) (any, error) {
+	if identity == nil {
+		return nil, errors.New("selected identity is required")
+	}
 	base, err := current.durableEndpoint()
 	if err != nil {
 		return nil, untrustedAdvertisementRefusal(err)
 	}
-	actorName := current.actor
-	workspace := current.workspace
-	var private ed25519.PrivateKey
-	if len(identities) > 0 && identities[0] != nil {
-		actorName = identities[0].selector
-		private = identities[0].private
-		workspace = identities[0].workspace
-	} else {
-		_, loaded, err := current.workspace.Actor(current.actor)
-		if err != nil {
-			return nil, err
-		}
-		private = loaded
+	if len(identity.private) == 0 {
+		return nil, errors.New("selected identity has no signing key")
 	}
-	request, err := workspace.BuildActRequest(ctx, private, actorName, act)
+	request, err := identity.workspace.BuildActRequest(ctx, identity.private, identity.selector, act)
 	if err != nil {
 		return nil, err
 	}
 	if base != "" {
 		requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor("/v0/submit"))
-		submission, err := s.client.Submit(requestContext, workspace, base, request)
+		submission, err := s.client.Submit(requestContext, identity.workspace, base, request)
 		cancel()
 		if err == nil {
 			value := map[string]any{"result": submission.Result, "record": submission.Record}
@@ -1447,7 +1592,7 @@ func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act, iden
 			return nil, fmt.Errorf("the resident did not answer this act (%v), and the local fold is not an honest substitute for it: %w; repair or remove that record and act again, or fold locally on purpose with `gs` and --server -", err, recheck)
 		}
 	}
-	submission, err := workspace.AcceptSubmission(ctx, request)
+	submission, err := identity.workspace.AcceptSubmission(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -1797,7 +1942,7 @@ func (s *mcpServer) heartbeat(ctx context.Context, errorsTo io.Writer) {
 			return
 		case <-ticker.C:
 			for _, current := range s.attended() {
-				identity, err := s.validateSelection(ctx, current.workspace, current.actor)
+				identity, err := s.revalidateSelection(ctx, current)
 				if err != nil || identity.actor.Fingerprint != current.fingerprint {
 					s.revokeLease(ctx, current)
 					fmt.Fprintln(errorsTo, "gitseq-mcp: presence renewal stopped; selected identity is no longer valid")

@@ -78,6 +78,94 @@ func TestPerCallSelectorsChooseRepositoryAndAccessibleAgent(t *testing.T) {
 	}
 }
 
+func TestRepeatedSelectionReusesValidatedApplicationBinding(t *testing.T) {
+	ctx := context.Background()
+	workspace, genesis := signedWorkspace(t, 1)
+	residentService, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(residentService.Handler())
+	defer httpServer.Close()
+	if _, err := workspace.PublishResident(httpServer.URL); err != nil {
+		t.Fatal(err)
+	}
+
+	server := newServer("human", workspace.Repo)
+	server.client = residentclient.NewWithHTTP(httpServer.Client(), residentHTTPTimeout)
+	productionOpen := server.open
+	var opens atomic.Int64
+	server.open = func(ctx context.Context, repo string) (*app.Workspace, error) {
+		opens.Add(1)
+		return productionOpen(ctx, repo)
+	}
+
+	first, _, err := server.call(ctx, toolCall{Name: "whoami"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Act(ctx, "human", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "move the durable frontier",
+		RestsOn: []string{genesis.ID}, IdempotencyKey: "binding-cache-frontier",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := server.call(ctx, toolCall{Name: "whoami"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opens.Load() != 1 {
+		t.Fatalf("repeated selector opened the application workspace %d times, want one binding validation", opens.Load())
+	}
+	var firstWho, secondWho struct {
+		Frontier struct {
+			Depth int `json:"depth"`
+		} `json:"frontier"`
+	}
+	if err := remarshal(first, &firstWho); err != nil {
+		t.Fatal(err)
+	}
+	if err := remarshal(second, &secondWho); err != nil {
+		t.Fatal(err)
+	}
+	if secondWho.Frontier.Depth <= firstWho.Frontier.Depth {
+		t.Fatalf("cached binding hid durable movement: depths %d then %d", firstWho.Frontier.Depth, secondWho.Frontier.Depth)
+	}
+}
+
+func TestCachedSelectionRechecksStandingWhenTheHeadMoves(t *testing.T) {
+	ctx := context.Background()
+	workspace, _ := signedWorkspace(t, 1)
+	_, membership, err := workspace.AddActor(ctx, "human", "builder", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	residentService, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(residentService.Handler())
+	defer httpServer.Close()
+	if _, err := workspace.PublishResident(httpServer.URL); err != nil {
+		t.Fatal(err)
+	}
+
+	server := newServer("builder", workspace.Repo)
+	server.client = residentclient.NewWithHTTP(httpServer.Client(), residentHTTPTimeout)
+	if _, _, err := server.call(ctx, toolCall{Name: "whoami"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Act(ctx, "human", app.Act{
+		Verb: app.VerbSupersede, Target: membership[0].ID, Text: "retire builder",
+		RestsOn: []string{membership[0].ID}, IdempotencyKey: "retire-cached-builder",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, acted, err := server.call(ctx, toolCall{Name: "status"}); err == nil || !strings.Contains(err.Error(), "not a live participant") || acted != nil {
+		t.Fatalf("cached retired selector = acted=%+v err=%v", acted, err)
+	}
+}
+
 func TestSelectedAgentDrivesDegradedStatusWorkAndWait(t *testing.T) {
 	ctx := context.Background()
 	workspace, genesis := signedWorkspace(t, 1)

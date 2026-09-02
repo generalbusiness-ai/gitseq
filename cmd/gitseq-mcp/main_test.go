@@ -22,6 +22,7 @@ import (
 	nexus "github.com/generalbusiness-ai/gitseq/host/live"
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
@@ -640,13 +641,12 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	mu.Lock()
 	gotPaths := append([]string(nil), paths...)
 	mu.Unlock()
-	fingerprint := workspace.View().Actors["human"].Fingerprint
 	wantPaths := []string{
-		"/v0/orientation/" + fingerprint, "/v0/work-query",
-		"/v0/orientation/" + fingerprint, "/v0/artifact-query",
-		"/v0/orientation/" + fingerprint, "/v0/artifact-query",
-		"/v0/orientation/" + fingerprint, "/v0/artifact-query",
-		"/v0/orientation/" + fingerprint, "/v0/inspect",
+		"/v0/work-query",
+		"/v0/artifact-query",
+		"/v0/artifact-query",
+		"/v0/artifact-query",
+		"/v0/inspect",
 	}
 	if strings.Join(gotPaths, ",") != strings.Join(wantPaths, ",") {
 		t.Fatalf("selective tools used the wrong resident routes: %v", gotPaths)
@@ -715,8 +715,7 @@ func TestStatusAndWaitUseBoundedResidentViews(t *testing.T) {
 	mu.Lock()
 	gotPaths := append([]string(nil), paths...)
 	mu.Unlock()
-	fingerprint := workspace.View().Actors["human"].Fingerprint
-	wantPaths := []string{"/v0/orientation/" + fingerprint, "/v0/actor-status", "/v0/orientation/" + fingerprint, "/v0/actor-wait"}
+	wantPaths := []string{"/v0/actor-status", "/v0/actor-wait"}
 	if strings.Join(gotPaths, ",") != strings.Join(wantPaths, ",") {
 		t.Fatalf("status or wait used an unbounded resident route: %v", gotPaths)
 	}
@@ -732,10 +731,14 @@ func attachedServer(t testing.TB, workspace *app.Workspace, actor, baseURL strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	attached := &room{workspace: workspace, actor: actor, fingerprint: configured.Fingerprint, baseURL: strings.TrimRight(baseURL, "/")}
+	head, err := workspace.Store.Head(context.Background(), kernel.Ref(workspace.View().Genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attached := &room{workspace: workspace, actor: actor, fingerprint: configured.Fingerprint, baseURL: strings.TrimRight(baseURL, "/"), validatedHead: head}
 	genesis := workspace.View().Genesis
-	server.byPath[roomSelection{path: server.repo, commonDir: workspace.CommonDir, genesis: genesis, actor: actor, fingerprint: configured.Fingerprint}] = attached
-	server.byCommonDir[roomSelection{commonDir: workspace.CommonDir, genesis: genesis, actor: actor, fingerprint: configured.Fingerprint}] = attached
+	server.byPath[roomSelection{path: server.repo, commonDir: workspace.CommonDir, genesis: genesis, actor: actor, fingerprint: configured.Fingerprint, keyFile: configured.KeyFile}] = attached
+	server.byCommonDir[roomSelection{commonDir: workspace.CommonDir, genesis: genesis, actor: actor, fingerprint: configured.Fingerprint, keyFile: configured.KeyFile}] = attached
 	return server, attached
 }
 
@@ -1269,10 +1272,11 @@ func TestOneAdapterSharesRoomAcrossLinkedWorktrees(t *testing.T) {
 	}
 	fingerprint := mainRoom.fingerprint
 	genesis := mainRoom.workspace.View().Genesis
-	if len(server.byCommonDir) != 1 || server.byCommonDir[roomSelection{commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint}] != mainRoom {
+	keyFile := mainRoom.workspace.View().Actors["human"].KeyFile
+	if len(server.byCommonDir) != 1 || server.byCommonDir[roomSelection{commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint, keyFile: keyFile}] != mainRoom {
 		t.Fatalf("common-directory cache does not hold the shared room: %+v", server.byCommonDir)
 	}
-	if server.byPath[roomSelection{path: absolute(repo), commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint}] != mainRoom || server.byPath[roomSelection{path: absolute(linked), commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint}] != mainRoom {
+	if server.byPath[roomSelection{path: absolute(repo), commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint, keyFile: keyFile}] != mainRoom || server.byPath[roomSelection{path: absolute(linked), commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint, keyFile: keyFile}] != mainRoom {
 		t.Fatalf("checkout paths do not resolve to the shared room: %+v", server.byPath)
 	}
 }
@@ -2683,10 +2687,10 @@ func TestAttentionReadsTheRoomTheCallActedIn(t *testing.T) {
 	secondFingerprint := second.View().Actors["human"].Fingerprint
 	firstRoom := &room{workspace: first, actor: "human", fingerprint: firstFingerprint, baseURL: "http://first.invalid"}
 	secondRoom := &room{workspace: second, actor: "human", fingerprint: secondFingerprint, baseURL: "http://second.invalid"}
-	server.byPath[roomSelection{path: first.Repo, commonDir: first.CommonDir, genesis: first.View().Genesis, actor: "human", fingerprint: firstFingerprint}] = firstRoom
-	server.byPath[roomSelection{path: second.Repo, commonDir: second.CommonDir, genesis: second.View().Genesis, actor: "human", fingerprint: secondFingerprint}] = secondRoom
-	server.byCommonDir[roomSelection{commonDir: first.CommonDir, genesis: first.View().Genesis, actor: "human", fingerprint: firstFingerprint}] = firstRoom
-	server.byCommonDir[roomSelection{commonDir: second.CommonDir, genesis: second.View().Genesis, actor: "human", fingerprint: secondFingerprint}] = secondRoom
+	server.byPath[roomSelection{path: first.Repo, commonDir: first.CommonDir, genesis: first.View().Genesis, actor: "human", fingerprint: firstFingerprint, keyFile: first.View().Actors["human"].KeyFile}] = firstRoom
+	server.byPath[roomSelection{path: second.Repo, commonDir: second.CommonDir, genesis: second.View().Genesis, actor: "human", fingerprint: secondFingerprint, keyFile: second.View().Actors["human"].KeyFile}] = secondRoom
+	server.byCommonDir[roomSelection{commonDir: first.CommonDir, genesis: first.View().Genesis, actor: "human", fingerprint: firstFingerprint, keyFile: first.View().Actors["human"].KeyFile}] = firstRoom
+	server.byCommonDir[roomSelection{commonDir: second.CommonDir, genesis: second.View().Genesis, actor: "human", fingerprint: secondFingerprint, keyFile: second.View().Actors["human"].KeyFile}] = secondRoom
 
 	// The adapter default is the first repository. A call naming the second
 	// must still be answered about the second.
