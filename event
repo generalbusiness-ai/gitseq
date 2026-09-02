@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:361dac67f43b8bed3bf1f593376dcd5a69ea30bd","text":"Retire the cmd/gs artifact on stale promise e92c4a84; republished on fresh promise 17fd9588 as 840d59ea."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:28365a9bad0eaa417e925ede1b20250853141c6a","text":"Retire the cmd/gitseq-mcp artifact on stale promise e92c4a84; republished on fresh promise 17fd9588 as 4a1311f7."}
