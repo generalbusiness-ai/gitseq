@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func residentWorkspace(t *testing.T) *Workspace {
@@ -264,17 +265,17 @@ func TestWithdrawalLeavesALaterServiceAdvertised(t *testing.T) {
 
 // probeSaying answers the same way about every claim.
 func probeSaying(answer Liveness) Prober {
-	return func(context.Context, ResidentClaim) Liveness { return answer }
+	return func(context.Context, ResidentClaim) ResidentProbe { return ResidentProbe{Liveness: answer} }
 }
 
 // probeDeadOnly is what an honest probe does once one specific process has
 // died: that claim's address refuses a dial, and anything else answers.
 func probeDeadOnly(nonce string) Prober {
-	return func(_ context.Context, claim ResidentClaim) Liveness {
+	return func(_ context.Context, claim ResidentClaim) ResidentProbe {
 		if claim.Nonce == nonce {
-			return Dead
+			return ResidentProbe{Liveness: Dead}
 		}
-		return Alive
+		return ResidentProbe{Liveness: Alive}
 	}
 }
 
@@ -339,13 +340,119 @@ func TestASecondStarterRefusesAndNamesTheIncumbent(t *testing.T) {
 	t.Parallel()
 	workspace := residentWorkspace(t)
 	mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
-	_, err := workspace.ClaimResident(context.Background(), "http://127.0.0.1:7802", probeSaying(Alive))
+	answering := func(context.Context, ResidentClaim) ResidentProbe {
+		return ResidentProbe{Liveness: Alive, PID: 4242}
+	}
+	_, err := workspace.ClaimResident(context.Background(), "http://127.0.0.1:7802", answering)
 	var held *ResidentHeldError
 	if !errors.As(err, &held) {
 		t.Fatalf("a second starter beside a live resident got %v", err)
 	}
 	if held.URL != "http://127.0.0.1:7801" {
 		t.Fatalf("refusal named %q, not the incumbent", held.URL)
+	}
+	if held.PID != 4242 || !strings.Contains(err.Error(), "pid 4242") {
+		t.Fatalf("refusal did not name the answering process: %+v / %v", held, err)
+	}
+	if strings.Contains(err.Error(), "update-ref -d") || strings.Contains(err.Error(), "remove the claim") {
+		t.Fatalf("live-service refusal offered claim deletion: %v", err)
+	}
+}
+
+// The pre-bind check exists so a requested port already held by the incumbent
+// still produces an ownership answer. It is deliberately read-only: even a
+// dead answer cannot transfer the claim until the caller has bound and wins
+// ClaimResident's compare-and-swap.
+func TestResidentPreflightReportsAnIncumbentWithoutMovingItsClaim(t *testing.T) {
+	workspace := residentWorkspace(t)
+	mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
+	held, present := claimRef(t, workspace)
+	if !present {
+		t.Fatal("fixture holds no claim")
+	}
+
+	answering := func(context.Context, ResidentClaim) ResidentProbe {
+		return ResidentProbe{Liveness: Alive, PID: 4242}
+	}
+	_, err := workspace.CheckResident(context.Background(), answering)
+	var refusal *ResidentHeldError
+	if !errors.As(err, &refusal) || refusal.PID != 4242 {
+		t.Fatalf("live preflight = %+v / %v", refusal, err)
+	}
+
+	vacancy, err := workspace.CheckResident(context.Background(), probeSaying(Dead))
+	if err != nil {
+		t.Fatalf("dead preflight refused: %v", err)
+	}
+	if after, stillPresent := claimRef(t, workspace); !stillPresent || after != held {
+		t.Fatalf("read-only preflight moved the claim: before=%s after=%s present=%v", held, after, stillPresent)
+	}
+	unexpectedProbe := func(context.Context, ResidentClaim) ResidentProbe {
+		t.Fatal("unchanged vacancy proof should take the exact claim without probing again")
+		return ResidentProbe{}
+	}
+	copyOfVacancy := *vacancy
+	successor, err := workspace.ClaimResidentAfter(context.Background(), "http://127.0.0.1:7802", unexpectedProbe, vacancy)
+	if err != nil {
+		t.Fatalf("claim after dead preflight: %v", err)
+	}
+	if reclaimed, ok := successor.Reclaimed(); !ok || reclaimed.URL != "http://127.0.0.1:7801" {
+		t.Fatalf("preflight proof lost its reclaimed claim: %+v ok=%v", reclaimed, ok)
+	}
+	if err := successor.Release(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.ClaimResidentAfter(context.Background(), "http://127.0.0.1:7803", probeSaying(Alive), &copyOfVacancy); err == nil || !strings.Contains(err.Error(), "already consumed") {
+		t.Fatalf("a copy replayed the one-use vacancy proof: %v", err)
+	}
+}
+
+// An ambiguous answer is not a vacancy proof. In particular, a resident that
+// accepts connections but never answers must keep its exact claim: handing the
+// caller a proof here would let the post-bind CAS start a second resident.
+func TestResidentPreflightRejectsAmbiguousIncumbentWithoutVacancy(t *testing.T) {
+	workspace := residentWorkspace(t)
+	mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
+	before, present := claimRef(t, workspace)
+	if !present {
+		t.Fatal("fixture holds no claim")
+	}
+
+	vacancy, err := workspace.CheckResident(context.Background(), probeSaying(Ambiguous))
+	if vacancy != nil {
+		t.Fatal("ambiguous preflight issued a vacancy proof")
+	}
+	var refusal *ResidentHeldError
+	if !errors.As(err, &refusal) {
+		t.Fatalf("ambiguous preflight = %T %v, want *ResidentHeldError", err, err)
+	}
+	if after, stillPresent := claimRef(t, workspace); !stillPresent || after != before {
+		t.Fatalf("ambiguous preflight moved the claim: before=%s after=%s present=%v", before, after, stillPresent)
+	}
+}
+
+// A vacancy proof is not a lease. If another process takes the ref between
+// preflight and the post-bind CAS, the miss spends the proof and the ordinary
+// loop probes the new owner instead of displacing it.
+func TestResidentPreflightCASMissFallsBackToTheCurrentOwner(t *testing.T) {
+	workspace := residentWorkspace(t)
+	vacancy, err := workspace.CheckResident(context.Background(), probeSaying(Ambiguous))
+	if err != nil {
+		t.Fatal(err)
+	}
+	incumbent := mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
+	held, _ := claimRef(t, workspace)
+
+	_, err = workspace.ClaimResidentAfter(context.Background(), "http://127.0.0.1:7802", probeSaying(Alive), vacancy)
+	var refusal *ResidentHeldError
+	if !errors.As(err, &refusal) || refusal.URL != incumbent.Claim().URL {
+		t.Fatalf("CAS miss did not fall back to the current incumbent: %+v / %v", refusal, err)
+	}
+	if after, present := claimRef(t, workspace); !present || after != held {
+		t.Fatalf("preflight CAS miss displaced the incumbent: before=%s after=%s present=%v", held, after, present)
+	}
+	if _, err := workspace.ClaimResidentAfter(context.Background(), "http://127.0.0.1:7803", probeSaying(Alive), vacancy); err == nil || !strings.Contains(err.Error(), "already consumed") {
+		t.Fatalf("CAS-missed vacancy proof was reusable: %v", err)
 	}
 }
 
@@ -399,6 +506,9 @@ func TestAStaleClaimIsTakenOverAfterADefinitiveNegative(t *testing.T) {
 	if successor.Claim().URL != "http://127.0.0.1:7802" {
 		t.Fatalf("the successor claim names %q", successor.Claim().URL)
 	}
+	if reclaimed, ok := successor.Reclaimed(); !ok || reclaimed.Nonce != dead.Claim().Nonce {
+		t.Fatalf("takeover did not report the reclaimed claim: %+v ok=%v", reclaimed, ok)
+	}
 }
 
 // A hung incumbent that accepts connections and never answers, a timeout, and
@@ -409,8 +519,12 @@ func TestAnAmbiguousProbeLeavesTheIncumbentClaimAlone(t *testing.T) {
 	workspace := residentWorkspace(t)
 	mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
 	before, _ := claimRef(t, workspace)
-	if _, err := workspace.ClaimResident(context.Background(), "http://127.0.0.1:7802", probeSaying(Ambiguous)); err == nil {
+	_, err := workspace.ClaimResident(context.Background(), "http://127.0.0.1:7802", probeSaying(Ambiguous))
+	if err == nil {
 		t.Fatal("an ambiguous probe authorized a takeover")
+	}
+	if !strings.Contains(err.Error(), "last-resort override") || !strings.Contains(err.Error(), "race the log") {
+		t.Fatalf("ambiguous refusal omitted its safety warning: %v", err)
 	}
 	if after, present := claimRef(t, workspace); !present || after != before {
 		t.Fatalf("an ambiguous probe moved the claim: before=%s after=%s", before, after)
@@ -462,20 +576,22 @@ func TestADelayedTakerCannotDisplaceTheNewOwner(t *testing.T) {
 
 	var successor *ResidentOwnership
 	var displaced sync.Once
-	delayed := func(_ context.Context, claim ResidentClaim) Liveness {
+	delayed := func(_ context.Context, claim ResidentClaim) ResidentProbe {
 		if claim.Nonce != original.Claim().Nonce {
 			// B has contested again and is looking at whoever holds the claim
 			// now. That process is serving.
-			return Alive
+			return ResidentProbe{Liveness: Alive}
 		}
 		// B has read the original claim and is about to swap. Move the world
 		// underneath it first: the original owner leaves and a new one takes
 		// the repository.
 		displaced.Do(func() {
-			original.Release(ctx)
+			if err := original.Release(ctx); err != nil {
+				t.Errorf("release original claim: %v", err)
+			}
 			successor = mustClaim(t, workspace, "http://127.0.0.1:7803", probeSaying(Alive))
 		})
-		return Dead
+		return ResidentProbe{Liveness: Dead}
 	}
 
 	_, err := workspace.ClaimResident(ctx, "http://127.0.0.1:7802", delayed)
@@ -505,7 +621,9 @@ func TestATakerRacingACleanShutdownYieldsOneOwnerInEitherOrder(t *testing.T) {
 		workspace := residentWorkspace(t)
 		departing := mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
 		successor := mustClaim(t, workspace, "http://127.0.0.1:7802", probeDeadOnly(departing.Claim().Nonce))
-		departing.Release(ctx)
+		if err := departing.Release(ctx); err != nil {
+			t.Fatal(err)
+		}
 		value, present := claimRef(t, workspace)
 		if !present || value != successor.blob {
 			t.Fatalf("a departing process removed its successor's claim: %q present=%v", value, present)
@@ -515,7 +633,9 @@ func TestATakerRacingACleanShutdownYieldsOneOwnerInEitherOrder(t *testing.T) {
 	t.Run("release first", func(t *testing.T) {
 		workspace := residentWorkspace(t)
 		departing := mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
-		departing.Release(ctx)
+		if err := departing.Release(ctx); err != nil {
+			t.Fatal(err)
+		}
 		if _, present := claimRef(t, workspace); present {
 			t.Fatal("release left the claim behind")
 		}
@@ -545,7 +665,46 @@ func TestEveryAcquisitionCarriesAFreshNonce(t *testing.T) {
 			t.Fatalf("nonce %q was reused between acquisitions", nonce)
 		}
 		seen[nonce] = true
-		ownership.Release(ctx)
+		if err := ownership.Release(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// A clean stop must wait out more than the acquisition loop's old ~80 ms
+// contention window. Git owns the lock file and removes it with the process
+// doing the ref update; this fixture models that process completing late.
+func TestReleaseWaitsForItsTransientRefLockAndRemovesTheClaim(t *testing.T) {
+	workspace := residentWorkspace(t)
+	ownership := mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
+	lock := filepath.Join(workspace.CommonDir, filepath.FromSlash(ResidentRef(workspace.config.Genesis))+".lock")
+	file, err := os.OpenFile(lock, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatalf("hold resident ref lock: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	released := make(chan error, 1)
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		released <- os.Remove(lock)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	started := time.Now()
+	if err := ownership.Release(ctx); err != nil {
+		t.Fatalf("release after transient lock: %v", err)
+	}
+	if err := <-released; err != nil {
+		t.Fatalf("release fixture lock: %v", err)
+	}
+	if time.Since(started) < 100*time.Millisecond {
+		t.Fatal("release did not wait for the transient lock")
+	}
+	if _, present := claimRef(t, workspace); present {
+		t.Fatal("release left its claim after the transient lock cleared")
 	}
 }
 
