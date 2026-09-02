@@ -16,10 +16,11 @@ import type { ActorState, Decision, Statement } from "./api.ts";
 // ineffective row to an append-only log, which is what this predicate exists
 // to prevent.
 //
-// WHAT IT COVERS TODAY, stated exactly rather than aspirationally. Three
+// WHAT IT COVERS TODAY, stated exactly rather than aspirationally. Four
 // functions call this predicate: `publishRefusal` below, `mayRatify` below for
-// the originating-requester case, and `signingRefusal` below on its `state`
-// branch. `publishRefusal` is in turn asked at three points on the publish
+// the originating-requester case, `signingRefusal` below on its `state`
+// branch, and `semanticActions` in `components/Toolbar.tsx` for every route
+// that opens ordinary state composition. `publishRefusal` is in turn asked at three points on the publish
 // path — the top bar's `publish` control (`components/TopBar.tsx`), the
 // artifact dialog's submit gate (`components/Publish.tsx`, given the answer as
 // a prop), and the signing boundary in `App.tsx`'s `publish`, which is the one
@@ -29,22 +30,12 @@ import type { ActorState, Decision, Statement } from "./api.ts";
 // other two boundaries that sign — `doAct` in `App.tsx` and `send` in
 // `components/Thread.tsx` — so no act reaches the log from this browser
 // without being held either to this predicate or to the fold's rule for that
-// act's own kind.
-//
-// WHAT IT DOES NOT COVER YET, which is the control rather than the signature.
-// Seven affordances in `components/Toolbar.tsx` are offered on authorship or
-// commitment role with no membership test: `deny` and `accept` on a request
-// addressed to you, `disagree` on a proposal, `propose adoption` and `request
-// review` on an artifact, `mark done` as performer, and `needs work` as
-// requester. None of the seven signs anything itself. Each calls `onRoute`,
-// which only opens the composer with a reply type, and `send` in `Thread.tsx`
-// is the single site that signs act `state` for all seven — so
-// `signingRefusal` does refuse them from a departed signer, and no ineffective
-// row is filed. What is missing is the courtesy the publish control has: the
-// button is still drawn, and the refusal arrives only after the operator has
-// written the record and pressed send. That gap has its own request; it is
-// described here so the next reader does not have to rediscover it, and so
-// this comment cannot be mistaken for a claim that the surface is covered.
+// act's own kind. The toolbar asks it before showing its seven ordinary-state
+// routes: `deny` and request `accept`, `disagree`, `propose adoption`,
+// `request review`, `mark done`, and `needs work`. None signs itself; each
+// calls `onRoute`, and `send` in `Thread.tsx` signs act `state`. The toolbar
+// check is a courtesy; `signingRefusal` remains the guarantee if authority
+// moves after rendering.
 //
 // The toolbar's three other yes-buttons are a different family and are already
 // gated: `ratify yes` on a direct proposal, `agree` on a proposal, and the

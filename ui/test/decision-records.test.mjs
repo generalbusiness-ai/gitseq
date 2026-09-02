@@ -157,7 +157,10 @@ test("an artifact row offers both acts and gates neither on an adoption it canno
     const routed = [];
     const labels = (records, provenance) => {
       routed.length = 0;
-      const projection = projectionOf(records, provenance);
+      const projection = {
+        ...projectionOf(records, provenance),
+        actors: { hugh: { name: "hugh", kind: "human", roles: ["participant"] } },
+      };
       return semanticActions({
         statement: records[0],
         projection,

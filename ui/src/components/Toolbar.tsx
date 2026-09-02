@@ -1,6 +1,6 @@
 import type { ActInput, Commitment, Decision, Projection, Statement } from "../lib/api";
 import type { RecordIndex } from "../lib/records";
-import { isRosterGovernance, mayRatify } from "../lib/authority";
+import { isLiveParticipant, isRosterGovernance, mayRatify } from "../lib/authority";
 import { activeRatification } from "../lib/ratification";
 import { cn } from "../lib/util";
 
@@ -112,6 +112,10 @@ export function semanticActions({
   // ratifier role, whose act the fold then recorded as ineffective for ever.
   const canRatify = (target: Statement, originatingRequester?: string) =>
     mayRatify(target, { actors: projection.actors, me, originatingRequester });
+  // These routes all reach the one `state` signing site in Thread. Hold them
+  // to the fold's participant rule before opening the composer, while the
+  // signing boundary remains the final check if the projection moves later.
+  const mayComposeState = isLiveParticipant(projection.actors, me);
   if (statement.kind === "request" && commitment && !commitment.promise && me && statement.body?.to === me) {
     const directProposal = (projection.provenance[statement.event] ?? [])
       .map((basis) => ({
@@ -126,15 +130,18 @@ export function semanticActions({
       const target = proposal.event;
       if (!ratifiedByMe(proposal) && canRatify(proposal))
         actions.push({ label: "ratify yes", symbol: "👍", tone: "ok", run: () => doAct(key("ratify", target), { act: "ratify", target }) });
-      actions.push({ label: "deny", symbol: "👎", tone: "danger", run: () => onRoute("dissent", [target], "") });
+      if (mayComposeState)
+        actions.push({ label: "deny", symbol: "👎", tone: "danger", run: () => onRoute("dissent", [target], "") });
     } else {
-      actions.push({ label: "accept", symbol: "👍", tone: "ok", run: () => onRoute("promise", [statement.event], "I will do this.") });
+      if (mayComposeState)
+        actions.push({ label: "accept", symbol: "👍", tone: "ok", run: () => onRoute("promise", [statement.event], "I will do this.") });
     }
   }
   if (statement.kind === "propose") {
     if (!ratifiedByMe(statement) && canRatify(statement))
       actions.push({ label: "agree", symbol: "👍", tone: "ok", run: () => doAct(key("ratify"), { act: "ratify", target: statement.event }) });
-    actions.push({ label: "disagree", symbol: "👎", tone: "danger", run: () => onRoute("dissent", [statement.event], "") });
+    if (mayComposeState)
+      actions.push({ label: "disagree", symbol: "👎", tone: "danger", run: () => onRoute("dissent", [statement.event], "") });
   }
   // The two acts of the decision-records loop, offered on an artifact row.
   //
@@ -151,7 +158,7 @@ export function semanticActions({
   // should retype by hand is not retyped by hand. They are read from the
   // fold's own provenance, ordered by the fold's own sequence and bounded, and
   // they are visible in the composer before anything is signed.
-  if (statement.kind === "artifact") {
+  if (statement.kind === "artifact" && mayComposeState) {
     const path = statement.body?.path ?? "";
     const named = path || "this artifact";
     actions.push({
@@ -170,13 +177,13 @@ export function semanticActions({
         onRoute("request", [statement.event, ...index.citableProposals(statement.event)], `Review ${named} at its exact head`, body),
     });
   }
-  if (commitment?.promise && me === commitment.performer && commitment.status === "promised")
+  if (mayComposeState && commitment?.promise && me === commitment.performer && commitment.status === "promised")
     actions.push({ label: "mark done", symbol: "✓", tone: "ok", run: () => onRoute("report", [commitment.promise!], "") });
   if (commitment?.report && commitment.status === "reported") {
     const report = index.statement(commitment.report);
     if (report && canRatify(report, commitment.requester))
       actions.push({ label: "accept", symbol: "👍", tone: "ok", run: () => doAct(key("satisfy"), { act: "ratify", target: commitment.report! }) });
-    if (me === commitment.requester)
+    if (mayComposeState && me === commitment.requester)
       actions.push({ label: "needs work", symbol: "👎", tone: "danger", run: () => onRoute("dissent", [commitment.report!], "") });
   }
   // Withdraw, on authorship — which is the fold's rule for an ordinary record
