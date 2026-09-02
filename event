@@ -1,1 +1,1 @@
-{"kind":"promise","text":"Claiming the independent review of the toolbar live-participant current-main recut at exact clean pushed head 9301a3ad7c8bcea2e70d754bf33db585812a93e8 on request/toolbar-live-participant-recut (branch tip confirmed, merges cleanly onto main c8e84040, eleven artifacts cited). Running the full gate including npm test and a clean npm build diff, plus a fresh adversarial pass; guarded verdict to follow; no merge."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9054d6e13e9ce14df5dd87069fd0be1946579a3b"}
