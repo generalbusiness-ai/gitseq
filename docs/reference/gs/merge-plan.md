@@ -27,6 +27,12 @@ configuration, verified-frontier witness, or checkpoint state.
 
 It takes no positional arguments.
 
+Structured merge authorization is outside this read-only surface. There is no
+`--authorization` flag: an allowed plan says that approval, succession, reach,
+and admission checks passed without authorization fields in the prospective
+receipt. `gs merge` evaluates `--authorization` separately and may still refuse
+the same candidate, including when the implementation request requires it.
+
 This minimal call deliberately names an unknown approval. It exits normally
 with `allowed: false` and an `approval_refused` reason, which lets automation
 inspect a refusal without parsing stderr.
@@ -50,9 +56,10 @@ artifact. Each covering artifact is classified as `reviewed candidate`,
 `in-target predecessor`, `protected sibling`, or `abandoned`. The plan then
 lists the proposed retirements, successor paths, and stable reason codes.
 Before allowing a fresh plan, it also encodes the exact durable receipt,
-successor, and retirement suffix through the same application request builder
-that `merge` uses and checks the applicable local and resident admission
-ceilings.
+successor, and retirement suffix without structured authorization through the
+same application request builder that `merge` uses and checks the applicable
+local and resident admission ceilings. This proves the un-authorized shape and
+size of the suffix; it does not pre-authorize the merge.
 
 `allowed` says whether the exact preflight permits the action. A refusal stays
 a normal structured result and names the exact failed check. Results are sorted

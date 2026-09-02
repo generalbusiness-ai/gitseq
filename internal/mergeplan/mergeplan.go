@@ -73,21 +73,22 @@ type Retirement struct {
 }
 
 type Result struct {
-	Frontier           Frontier            `json:"frontier"`
-	Mode               string              `json:"mode"`
-	Approval           string              `json:"approval"`
-	ExactHead          string              `json:"exact_head"`
-	Implementer        string              `json:"implementer,omitempty"`
-	TargetPreHead      string              `json:"target_pre_head,omitempty"`
-	MergeHead          string              `json:"merge_head,omitempty"`
-	CandidateArtifacts []CandidateArtifact `json:"candidate_artifacts"`
-	ReviewedPaths      []string            `json:"reviewed_paths"`
-	ChangedPaths       []string            `json:"changed_paths"`
-	CoveringArtifacts  []CoveringArtifact  `json:"covering_artifacts"`
-	Retirements        []Retirement        `json:"retirements"`
-	Successors         []string            `json:"successors"`
-	Allowed            bool                `json:"allowed"`
-	Reasons            []Reason            `json:"reasons"`
+	Frontier            Frontier            `json:"frontier"`
+	Mode                string              `json:"mode"`
+	Approval            string              `json:"approval"`
+	ExactHead           string              `json:"exact_head"`
+	Implementer         string              `json:"implementer,omitempty"`
+	TargetPreHead       string              `json:"target_pre_head,omitempty"`
+	MergeHead           string              `json:"merge_head,omitempty"`
+	CandidateArtifacts  []CandidateArtifact `json:"candidate_artifacts"`
+	ReviewedPaths       []string            `json:"reviewed_paths"`
+	ChangedPaths        []string            `json:"changed_paths"`
+	CoveringArtifacts   []CoveringArtifact  `json:"covering_artifacts"`
+	Retirements         []Retirement        `json:"retirements"`
+	Successors          []string            `json:"successors"`
+	Allowed             bool                `json:"allowed"`
+	Reasons             []Reason            `json:"reasons"`
+	validatedSuccession *Succession
 }
 
 type Change struct {
@@ -111,6 +112,37 @@ type Succession struct {
 	Retire       map[string]string
 	ChangedPaths []string
 	LeftLive     map[string]LeftLive
+}
+
+// ValidatedSuccession returns the exact succession that Build checked for
+// reach, local safety, and durable admission. It is deliberately absent from
+// the JSON result: the public fields explain the plan, while merge consumes
+// this lossless internal handoff instead of reconstructing authority-bearing
+// receipt data from that explanation.
+func (result Result) ValidatedSuccession() (Succession, bool) {
+	if result.validatedSuccession == nil {
+		return Succession{}, false
+	}
+	plan := *result.validatedSuccession
+	if plan.Publish != nil {
+		plan.Publish = append([]string{}, plan.Publish...)
+	}
+	if plan.ChangedPaths != nil {
+		plan.ChangedPaths = append([]string{}, plan.ChangedPaths...)
+	}
+	if plan.Retire != nil {
+		plan.Retire = make(map[string]string, len(result.validatedSuccession.Retire))
+		for event, successor := range result.validatedSuccession.Retire {
+			plan.Retire[event] = successor
+		}
+	}
+	if plan.LeftLive != nil {
+		plan.LeftLive = make(map[string]LeftLive, len(result.validatedSuccession.LeftLive))
+		for event, left := range result.validatedSuccession.LeftLive {
+			plan.LeftLive[event] = left
+		}
+	}
+	return plan, true
 }
 
 type Approval struct {
@@ -1237,6 +1269,7 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 	if err := ValidateAdmission(ctx, workspace, snapshot, signer, acts); err != nil {
 		return fail("admission", err)
 	}
+	result.validatedSuccession = &plan
 	result.Allowed = true
 	result.Reasons = append(result.Reasons,
 		Reason{Code: "approval_allowed", Check: "approval", Allowed: true, Reason: "ratified independent approval names the exact candidate head"},

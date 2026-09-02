@@ -798,22 +798,9 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return fmt.Errorf("workroom frontier moved after planning: planned %s at depth %d, now %s at depth %d",
 			prospective.Frontier.Head, prospective.Frontier.Depth, snapshot.Head, snapshot.Depth)
 	}
-	sharedPlan := mergeplan.Succession{
-		Publish:      append([]string(nil), prospective.Successors...),
-		Retire:       make(map[string]string, len(prospective.Retirements)),
-		ChangedPaths: append([]string(nil), prospective.ChangedPaths...),
-		LeftLive:     make(map[string]mergeplan.LeftLive),
-	}
-	for _, retirement := range prospective.Retirements {
-		sharedPlan.Retire[retirement.Artifact] = retirement.Successor
-	}
-	for _, artifact := range prospective.CoveringArtifacts {
-		switch artifact.Class {
-		case mergeplan.ClassProtectedSibling:
-			sharedPlan.LeftLive[artifact.Event] = mergeplan.LeftLive{Class: leftLiveSibling, Commitment: artifact.Commitment}
-		case mergeplan.ClassAbandoned:
-			sharedPlan.LeftLive[artifact.Event] = mergeplan.LeftLive{Class: leftLiveAbandoned}
-		}
+	sharedPlan, ok := prospective.ValidatedSuccession()
+	if !ok {
+		return errors.New("allowed merge plan did not preserve its validated succession")
 	}
 	plan := localSuccessionPlan(sharedPlan)
 	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {

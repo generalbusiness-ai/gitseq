@@ -99,6 +99,14 @@ type successionPlan struct {
 // localSuccessionPlan adapts the shared mergeplan value to the historical CLI
 // receipt shape. It contains no classification or planning policy.
 func localSuccessionPlan(shared mergeplan.Succession) successionPlan {
+	publish := append([]string(nil), shared.Publish...)
+	if shared.Publish != nil && publish == nil {
+		publish = []string{}
+	}
+	changedPaths := append([]string(nil), shared.ChangedPaths...)
+	if shared.ChangedPaths != nil && changedPaths == nil {
+		changedPaths = []string{}
+	}
 	leftLive := make(map[string]mergeLeftLive, len(shared.LeftLive))
 	for event, left := range shared.LeftLive {
 		leftLive[event] = mergeLeftLive{Class: left.Class, Commitment: left.Commitment}
@@ -107,8 +115,8 @@ func localSuccessionPlan(shared mergeplan.Succession) successionPlan {
 		leftLive = nil
 	}
 	return successionPlan{
-		publish: append([]string(nil), shared.Publish...),
-		retire:  maps.Clone(shared.Retire), changedPaths: append([]string(nil), shared.ChangedPaths...),
+		publish: publish,
+		retire:  maps.Clone(shared.Retire), changedPaths: changedPaths,
 		leftLive: leftLive,
 	}
 }
