@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gs","body":{"commit":"45e061f8cc5ec598d4d18a6a797f1a896d2cef28","path":"cmd/gs"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/app","body":{"commit":"45e061f8cc5ec598d4d18a6a797f1a896d2cef28","path":"internal/app"}}
