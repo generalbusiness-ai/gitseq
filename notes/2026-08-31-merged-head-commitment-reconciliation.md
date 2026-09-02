@@ -125,19 +125,20 @@ the fold:
    `report` resting on the promise, or on the request when there was no promise.
    The report's visible signed text states the exact integration ref, resolved
    full commit ID and why the incorporated implementation satisfies the
-   conditions. The convenience adds no invented verdict, status or private
-   body fields.
+   conditions. The convenience adds no `body.head`, `body.commit`,
+   `body.verdict`, `body.status`, or other invented body field.
 3. If that basis is stale, the performer uses the existing dead-basis override.
    The override records that the stale basis was seen; it does not make it
    current.
 4. The original requester ratifies the report. The fold then projects the
    commitment as `satisfied`, retaining its independent stale flag.
 
-When a commitment already has an earlier completion report, a later effective
-report becomes its latest completion for presentation and ratification; the
-earlier report remains immutable history. The implementation must test that
-replacement explicitly so reconciliation never leaves a repaired report
-hidden behind the one it was meant to supersede.
+When a commitment already has an earlier completion artifact or report, a
+later effective report becomes its latest completion for presentation and
+ratification; the earlier completion remains immutable history. The
+implementation must test that replacement explicitly so reconciliation never
+leaves a repaired report hidden behind the completion it was meant to
+supersede.
 
 This is the same shape planner used on 2026-08-30: performer report on the stale
 promise with a dead-basis override, then requester ratification. It is the
@@ -194,7 +195,9 @@ design does not reinterpret old events or change their lifecycle labels.
 
 Roll out in three bounded steps:
 
-1. implement and test the repository-aware detector plus CLI read view;
+1. extend the existing `Landings`, `/v0/landed`, thread landed-marker and
+   review-gate head classifiers into the repository-aware detector, and add
+   the CLI read view;
 2. compose the bounded qualifier into existing status, work, MCP and browser
    rows; and
 3. add the CLI one-row reporting convenience and post-merge warning.
