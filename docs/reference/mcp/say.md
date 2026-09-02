@@ -26,6 +26,7 @@ the permanent record.
 | `conversation` | optional | An existing conversation to speak in. Omit it and one is opened at `about` if none is. |
 | `re` | optional | Exact `<conversation>:<sequence>` handle of the parent frame. The parent must exist in this conversation. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `agent` | optional | The actor whose existing accessible key signs this frame; defaults to startup `--actor`. |
 
 The service resolves `@name` and `@"name with spaces"` against the current
 effective Workroom roster immediately before publication. Exactly one effective

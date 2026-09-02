@@ -1281,9 +1281,20 @@ a projection it may merge on. This carries the fold profile to
   The `work` tool's `stale` enum admits `summary`, `include`, `only` and
   `exclude`, and `summary` is what a call that names no policy receives. The
   tool schema is the surface contract for that default; the selection it names
-  belongs to the projection above. The adapter holds one resident-minted
-  credential per exact repository, renews or replaces it internally, and never
-  returns it through MCP.
+  belongs to the projection above. Every tool call may select `repo` and
+  `agent`; omitted values use startup defaults. The pair selects a repository
+  and an existing accessible actor key. It never creates a key or grants an
+  identity, and a missing key, fingerprint mismatch, absent roster actor or
+  unavailable repository refuses instead of falling back to either default.
+  This is custody routing, not a new trust grant: the development key model
+  still derives keys from actor names, so access becomes a real boundary only
+  when deployments protect actor keys as secrets.
+
+  The adapter holds one resident-minted credential per validated repository
+  and actor selection, renews or replaces it internally, and never returns it
+  through MCP. A configuration or roster change invalidates the old lease;
+  cached repository state cannot turn an obsolete selector into signing
+  authority.
   Its `reassign_if_unclaimed` tool owns the same guarded pair and retry
   choreography as the CLI, rather than asking callers to construct a
   commitment expectation from generic state and supersede tools.
@@ -1507,7 +1518,7 @@ the same result.
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. |
 | `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff, validates optional structured merge authorization and target-path remeasurement, composes the Workroom receipt, successor artifacts, and retirements, and asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Its publication adapter reads the head an ordinary remote accepted and the watch globs tracked at that head, and records app-validated publication asserts — never artifacts, which merge succession alone mints at source paths. Command grouping must not move Workroom concepts into the kernel packages. |
-| `cmd/gitseq-mcp` | Surface | Adapts MCP calls to Workroom and nexus operations. Protocol compatibility and fold compatibility are separate. |
+| `cmd/gitseq-mcp` | Surface | Adapts MCP calls to Workroom and nexus operations. Per-call `repo` and `agent` values select an existing accessible key and effective roster actor, fail closed without changing either startup default, and keep resident leases scoped to that validated pair. Protocol compatibility and fold compatibility are separate. |
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |
 | `SKILL.md` | Application guidance | Governs agent conduct in Workroom. It is not a kernel protocol specification. |
