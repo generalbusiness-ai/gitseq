@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4f68f08a6f69dbe70fbc9de5793436698003701","text":"Replaced by the current-basis exact-head design artifact."}
+{"kind":"propose","text":"Adopt the thread-actions design recorded at notes/2026-08-22-thread-actions.md at exact head 10d8dd3205da0cdf325ea34a5b191da3ae9e0fc6. The content is unchanged from the historically approved design; this proposal restores a live current-basis adoption decision and authorizes no implementation by itself."}
