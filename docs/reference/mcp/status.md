@@ -51,7 +51,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 | `awaiting_ratification` | Effective, unratified, live proposals whose captured role satisfier you currently hold. |
 | `available_to_you` | Unclaimed requests addressed to you, including requests whose bases have become stale. |
 | `waiting_on_you` | Commitments where you have an admissible next act. |
-| `you_are_waiting_on` | Commitments involving you where no admissible next act is assigned to you, including artifact completions awaiting merge. |
+| `you_are_waiting_on` | Commitments involving you where the next move is another actor's, including artifact completions awaiting the performer's merge. |
 | `not_actionable` | Commitments involving you that nobody can currently advance. |
 | `needs_your_attention` | Your own acts that did not take force, and events that concern you. |
 | `totals` | Depth, commitment counts by status with a stale count beside each, artifact counts split into stale, retired and superseded-world, and ineffective and disputed acts. |
@@ -78,9 +78,10 @@ is normally `open`. If the request's bases moved before anyone claimed it, its
 status is `stale` and its `stale` flag is `true`, but the unfinished request
 remains in this lane. `waiting_on_you` begins only after a promise or explicit
 report gives you an admissible next act. A reporting artifact instead projects
-`awaiting-merge` with no `waiting_on`: artifacts have satisfier `none`, so the
-requester cannot ratify one. The implementation commitment closes only when an
-independently approved exact head merges.
+`awaiting-merge` waiting on its performer: artifacts have satisfier `none`, so
+the requester cannot ratify one, and the performer signs the merge. The
+implementation commitment closes only when an independently approved exact
+head merges.
 
 `awaiting_ratification` is also not a commitment. Each row names the proposal
 in `event`, its author, kind, text, captured satisfier, and staleness qualifier;

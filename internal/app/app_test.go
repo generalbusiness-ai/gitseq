@@ -2410,7 +2410,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 		unsatisfied.Projection.Statements[position].Satisfier = ""
 	}
 	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@13"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@15"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@16"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &unsatisfied
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2469,15 +2469,14 @@ func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	if position < 0 {
 		t.Fatal("artifact completion is absent from the current projection")
 	}
-	if got := old.Projection.Commitments[position]; got.Status != "awaiting-merge" || got.WaitingOn != "" {
+	if got := old.Projection.Commitments[position]; got.Status != "awaiting-merge" || got.WaitingOn != agent.Fingerprint {
 		t.Fatalf("current artifact completion = %+v", got)
 	}
-	// @14 projected the artifact like an explicit report and sent the
-	// requester toward a ratification the fold necessarily refused.
-	old.Projection.Commitments[position].Status = "reported"
-	old.Projection.Commitments[position].WaitingOn = old.Projection.Commitments[position].Requester
-	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@14"
-	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@15"
+	// @15 projected the artifact as awaiting merge with no waiting party, so
+	// a served cache would keep the approved head out of every actor's queue.
+	old.Projection.Commitments[position].WaitingOn = ""
+	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@15"
+	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@16"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &old
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2492,7 +2491,7 @@ func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
 		if commitment.Report != artifact.ID {
 			continue
 		}
-		if commitment.Status != "awaiting-merge" || commitment.WaitingOn != "" {
+		if commitment.Status != "awaiting-merge" || commitment.WaitingOn != agent.Fingerprint {
 			t.Fatalf("rebuilt artifact completion = %+v; the %q cache was served instead of replayed", commitment, oldProfile)
 		}
 		if workspace.snapshotProfile != wantProfile {
@@ -2553,7 +2552,7 @@ func TestReassignSchemasRebuildAnOlderProfileCache(t *testing.T) {
 			t.Fatalf("rebuilt guarded decision %s = %+v, found=%v", event, decision, ok)
 		}
 	}
-	want := apphost.DefaultApplication + "\x00workroom-fold@15"
+	want := apphost.DefaultApplication + "\x00workroom-fold@16"
 	if fixture.workspace.snapshotProfile != want {
 		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
 	}
