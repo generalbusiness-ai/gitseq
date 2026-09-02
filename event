@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:407573cdda87bc209b6f4e8d7ff0fccb5d8ad469"}
+{"kind":"artifact","text":"Exact clean pushed repaired head acaaa747ff5727bd1031c3b5a5f6ad9c793f18c4 preserves the reviewed resident startup, takeover, and cleanup behavior in cmd/gs/main.go; the focused race reproduction now passes.","body":{"commit":"acaaa747ff5727bd1031c3b5a5f6ad9c793f18c4","path":"cmd/gs/main.go"}}
