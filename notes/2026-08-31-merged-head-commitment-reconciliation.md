@@ -64,7 +64,7 @@ cannot tell whether a commit landed.
 The detector reads one explicit integration ref and peels it with
 `git rev-parse --verify <ref>^{commit}`. Only the resulting full object ID is
 reported or signed; abbreviated hashes, unpeeled tags and symbolic names are
-not evidence by themselves. Standing status and work views use
+not evidence. Standing status and work views use
 `refs/heads/main` until Gitseq has a structured integration-target setting;
 callers may name another full ref explicitly. The post-merge warning is
 different: it examines the checked-out target branch immediately after that
@@ -82,6 +82,11 @@ evidence classes:
 | `head-hint-reachable` | A promise or explicit report body carries advisory head `H`, and `H` is an ancestor of the integration head, but no reporting artifact proves it. | No. It is a prompt to investigate, not completion evidence. |
 
 The detector does not parse request conditions, infer that two requests are the
+same, or search commit messages for ticket numbers.
+
+`gs merge` refuses a candidate already contained in the target. The
+`fe36ff06` awaiting-merge prose therefore needs the clause “or report if the
+head already landed”; the thread-actions lane carries that wording repair.
 
 ## Where the result appears
 
