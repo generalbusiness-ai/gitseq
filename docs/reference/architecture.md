@@ -1010,8 +1010,10 @@ promises and zero admitted direct completions. A stale request is reassignable,
 because a basis moving under it does not claim it.
 
 Admitting reassignment of a stale request changes what the fold decides about
-existing histories, so it advances the profile to `workroom-fold@16`; a cache
-written under `@15` is rejected and history is replayed.
+existing histories, so it advances the profile again, to `workroom-fold@17`; a
+cache written under `@16` is rejected and history is replayed. Two fold changes
+landed in sequence and each took its own step: the waiting party on
+awaiting-merge commitments at `@16`, and admissible stale bases at `@17`.
 
 **Surfaces and guidance.** Workroom also owns its MCP tools and their
 application meanings; the agent practice in `SKILL.md`; connector clauses and
