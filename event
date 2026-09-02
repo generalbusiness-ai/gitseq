@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:589098ca6e2dc6d7899b621ea67dc29ee8b76df9","text":"Merge retired a covered predecessor; the successor is at docs/reference/mcp/reassign_if_unclaimed.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:594d1a9b524c7b79db4ed85bf97cf7a333b0d158","text":"Merge retired a covered predecessor; the successor is at cmd/gitseq-mcp."}
