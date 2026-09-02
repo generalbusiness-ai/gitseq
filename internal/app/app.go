@@ -572,9 +572,10 @@ type Act struct {
 	CitedOK bool
 
 	// AllowDeadBasis is the explicit escape for a state resting on a basis
-	// that admission already shows to be retired or stale. Asking for it
-	// signs body.dead_basis_override=true: testimony that the author saw the
-	// dead bases, not a repair of them.
+	// that admission already shows to be retired. Asking for it signs
+	// body.dead_basis_override=true: testimony that the author saw the dead
+	// bases, not a repair of them. A basis that is merely stale needs no
+	// escape; admission records it on the act instead.
 	AllowDeadBasis bool
 
 	// GuardedReview marks an act whose body was built by internal/reviewguard.

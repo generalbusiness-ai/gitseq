@@ -8,10 +8,14 @@ rests_on:
 
 # `reassign_if_unclaimed`
 
-Retires one fresh request and publishes a replacement only while the old
-request has no admitted promise or direct completion. The two durable acts
-carry signed Workroom guards; the fold remains the final authority even when
-the adapter talks to a resident running different code.
+Retires one request and publishes a replacement only while the old request has
+no admitted promise or direct completion. The two durable acts carry signed
+Workroom guards; the fold remains the final authority even when the adapter
+talks to a resident running different code.
+
+The guard is about claims, not freshness: a request that went stale because a
+basis under it was retired can still be reassigned, because nobody has claimed
+or completed it.
 
 ## Arguments
 

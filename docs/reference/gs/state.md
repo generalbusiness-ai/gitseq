@@ -26,7 +26,7 @@ the only two acts it cannot make.
 | `--body` | | `key=value`, repeatable. Structured fields. |
 | `--rests-on` | | An event identifier, repeatable. What this act bears on. |
 | `--evidence` | | `name=path`, repeatable. Files embedded as attachments. |
-| `--allow-dead-basis` | `false` | Rest on retired or stale bases anyway. Asking for it signs `dead_basis_override=true`: testimony that you saw them, not a repair of them. Citing an effective supersession stays advisory. |
+| `--allow-dead-basis` | `false` | Rest on a retired basis anyway. Asking for it signs `dead_basis_override=true`: testimony that you saw it, not a repair of it. A merely stale basis needs no flag; see below. Citing an effective supersession stays advisory. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 
@@ -71,9 +71,23 @@ Implementation requests, promises and reports may also carry `branch` and
 checkout. They claim nothing about that checkout being clean or current;
 the `artifact` is the durable pointer.
 
+## Retired bases and stale bases
+
+A **retired** basis is withdrawn ground: nothing stands there any more, so
+resting on it is refused. The escape is `--allow-dead-basis`, which signs
+`dead_basis_override=true` on the act.
+
+A **stale** basis still stands exactly where it stood; only something
+underneath it moved. That act is admitted, and the boundary writes what moved
+into `body.stale_bases` — the same one-line note
+[`gs merge`](merge.md) puts in a receipt, naming the stale basis, whether it
+describes a superseded world, and the retired acts beneath it. This is the
+merge rule applied at the write boundary: refuse the retired one, land the
+stale one and record it.
+
 ## Reserved fields you cannot write
 
-Four body keys are reserved for the admission boundary, and a plain
+Five body keys are reserved for the admission boundary, and a plain
 `gs state` call is refused if it supplies any of them:
 
 | Field | Belongs to | Ask for it with |
@@ -82,6 +96,7 @@ Four body keys are reserved for the admission boundary, and a plain
 | `head_news_acknowledged` | The guarded review path | [`gs review`](review.md) |
 | `review_frontier` | The guarded review path | [`gs review`](review.md) |
 | `dead_basis_override` | The dead-basis escape | `--allow-dead-basis` |
+| `stale_bases` | The recorded staleness note | *(nothing; the boundary writes it)* |
 
 The refusal names the field and quotes back the value you sent, so a
 `review_path` of `x` is refused as `body.review_path="x" is a reserved
@@ -94,7 +109,9 @@ different: it records a deliberate escape, and the way to ask for that
 escape is `--allow-dead-basis`, which signs the field for you. Setting it
 by hand is refused because a reserved field means the same thing wherever
 it appears, and a caller that writes it directly is claiming an
-authorisation the boundary never granted.
+authorisation the boundary never granted. `stale_bases` has no flag at all:
+it is the boundary's own testimony about what the act rested on, and an
+author who could write it could make an act look freshly grounded.
 
 ## Citing
 

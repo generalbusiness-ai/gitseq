@@ -192,3 +192,68 @@ func TestOrdinaryRequesterWithdrawalStillPermitsALivePromise(t *testing.T) {
 		t.Fatalf("ordinary requester withdrawal = %+v", decision)
 	}
 }
+
+// staleRequestSeed is directReportSeed with one act of ground between the seed
+// and the request, and that ground then withdrawn. The request still stands
+// and still names its addressee; only something underneath it moved.
+func staleRequestSeed(t testing.TB) []Record {
+	t.Helper()
+	records := directReportSeed(t)
+	if last := records[len(records)-1]; last.ID != "request" {
+		t.Fatalf("directReportSeed no longer ends with the request: %s", last.ID)
+	}
+	return append(records[:len(records)-1],
+		event(t, "ground", operator, SchemaState, State{Kind: KindAssert, Text: "ground under the request"}, "seed"),
+		event(t, "request", operator, SchemaState, State{Kind: KindRequest, Text: "Do the thing",
+			Body: map[string]string{"to": agent, "conditions": "it is done"}}, "ground"),
+		event(t, "withdraw-ground", operator, SchemaSupersede, Supersede{Target: "ground", Text: "the ground moved"}, "ground"),
+	)
+}
+
+func statementFor(t testing.TB, projection Projection, event string) Statement {
+	t.Helper()
+	for _, statement := range projection.Statements {
+		if statement.Event == event {
+			return statement
+		}
+	}
+	t.Fatalf("no statement projected for %s", event)
+	return Statement{}
+}
+
+// Staleness is not a claim. A request nobody promised and nobody completed can
+// be reassigned even after a basis moved under it — and the claim guard is
+// untouched by that, so the same stale request refuses once it is promised.
+func TestReassignIfUnclaimedActsOnAStaleUnclaimedRequest(t *testing.T) {
+	t.Run("stale and unclaimed reassigns", func(t *testing.T) {
+		records := staleRequestSeed(t)
+		if !statementFor(t, Fold(records), "request").Stale {
+			t.Fatal("the fixture request is not stale; this test would prove nothing")
+		}
+		records = append(records,
+			unclaimedRetirement(t, "retirement"),
+			unclaimedReplacement(t, "replacement", "retirement"),
+		)
+		projection := Fold(records)
+		for _, id := range []string{"retirement", "replacement"} {
+			if decision := decisionFor(t, projection, id); decision.Verdict != Effective {
+				t.Fatalf("%s = %s (%s), want effective", id, decision.Verdict, decision.Reason)
+			}
+		}
+		replacement := statementFor(t, projection, "replacement")
+		if replacement.Kind != KindRequest || replacement.Body["to"] != other {
+			t.Fatalf("replacement did not project as the new request: %+v", replacement)
+		}
+	})
+
+	t.Run("stale and promised still refuses", func(t *testing.T) {
+		records := append(staleRequestSeed(t),
+			event(t, "promise", agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, "request"),
+			unclaimedRetirement(t, "retirement"),
+		)
+		decision := decisionFor(t, Fold(records), "retirement")
+		if decision.Verdict != Ineffective || !strings.Contains(decision.Reason, "admitted promise") {
+			t.Fatalf("guarded retirement of a promised request = %+v", decision)
+		}
+	})
+}

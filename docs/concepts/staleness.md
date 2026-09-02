@@ -35,6 +35,21 @@ refused. The narrower `describes a superseded world` fact in the table
 below is the exception: `merge` refuses that, because the behaviour the
 record describes has been replaced.
 
+The write boundary makes the same distinction about what a new act may
+rest on. Resting on a retired basis is refused, because nothing stands
+there any more; the escape is explicit and signed
+(see [`gs state`](../reference/gs/state.md)). Resting on a merely stale
+basis is admitted, and the boundary writes what had moved into the act's
+`body.stale_bases`, in the same line a merge receipt would carry. The
+staleness is recorded rather than argued with, and it is still a flare:
+someone has to look.
+
+The guarded [`gs reassign-if-unclaimed`](../reference/gs/reassign-if-unclaimed.md)
+reads staleness the same way. It protects one statement — nobody has
+claimed or completed this request — and a basis moving under the request
+leaves that statement as true as it was, so a stale unclaimed request can
+still be given a new owner.
+
 `gs status` marks them separately:
 
 | Mark | Meaning |

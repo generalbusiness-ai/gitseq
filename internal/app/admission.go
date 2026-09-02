@@ -18,8 +18,14 @@ import (
 // them directly would let the act describe its own admission. The guarded
 // review path stamps three of them onto every verdict it builds;
 // dead_basis_override is stamped by this builder when the author asks for the
-// dead-basis escape.
-var ReservedBodyFields = []string{"dead_basis_override", "review_path", "head_news_acknowledged", "review_frontier"}
+// dead-basis escape, and StaleBasesField whenever it admits a stale basis.
+var ReservedBodyFields = []string{"dead_basis_override", "review_path", "head_news_acknowledged", "review_frontier", StaleBasesField}
+
+// StaleBasesField is where admission records that this state rests on a basis
+// something under which had already been withdrawn. The value is the same
+// one-line staleness note gs merge writes into a receipt. It is testimony, not
+// authority: it neither repairs the staleness nor changes what the act may do.
+const StaleBasesField = "stale_bases"
 
 // stateAdmission is one state write offered to Workroom admission: what it
 // says, what it rests on, and whether the author asked for the explicit
@@ -106,13 +112,15 @@ func refuseClientReservedFields(body map[string]string) error {
 // refuseReservedFields rejects a body that tries to speak for admission. A
 // write outside the guarded review path may supply none of the review fields
 // at all; a guarded review carries the two its path stamps and nothing else.
-// dead_basis_override is deliberately absent here: it is honoured wherever it
-// is found, because it records an escape this builder itself writes and
-// grants nothing on its own.
+// dead_basis_override and stale_bases are deliberately absent here: both are
+// honoured wherever they are found, because this builder writes them itself
+// and re-judges the same body at sequencing, and neither grants anything on
+// its own. Caller input carrying either is refused earlier, by
+// refuseClientReservedFields.
 func refuseReservedFields(body map[string]string, guardedReview bool) error {
 	for _, field := range ReservedBodyFields {
 		value, present := body[field]
-		if !present || field == "dead_basis_override" {
+		if !present || field == "dead_basis_override" || field == StaleBasesField {
 			continue
 		}
 		switch {
@@ -163,21 +171,35 @@ func refuseUndefinedKind(vocabulary workroom.Vocabulary, kind workroom.Kind) err
 	return fmt.Errorf("state kind %q is not defined in this workroom and no override exists. %s. A ratified kind-def must establish a new kind before state can use it", kind, defined)
 }
 
-// refuseDeadBases refuses a state resting on a basis the projection already
-// shows to be retired or stale. An effective supersession stays advisory:
-// citing the retirement itself can be intentional. The escape is explicit and
-// recorded, never silent: asking for it signs body.dead_basis_override=true,
-// and an act arriving with that signature already on it honours it. Neither
-// the refusal nor the override removes staleness or grants authority;
-// existing standing and staleness judgements continue unchanged.
+// refuseDeadBases judges the bases a state rests on the way gs merge judges
+// the bases of an approval. A retired basis is withdrawn ground and refuses:
+// nothing stands there any more. A basis whose only problem is staleness
+// stands exactly where it stood, so the state is admitted and the staleness is
+// written onto it, in the one line a merge receipt would have carried. An
+// effective supersession stays advisory: citing the retirement itself can be
+// intentional.
+//
+// The escape for a retired basis is explicit and recorded, never silent:
+// asking for it signs body.dead_basis_override=true, and an act arriving with
+// that signature already on it honours it. Neither the refusal, the override,
+// nor the recorded note removes staleness or grants authority; existing
+// standing and staleness judgements continue unchanged.
 func (w *Workspace) refuseDeadBases(snapshot Snapshot, restsOn []string, body map[string]string, allowed bool) error {
 	dead := workroom.DeadBases(snapshot.Projection, restsOn)
-	var blocking []string
+	var blocking, stale []string
 	for basis, class := range dead {
-		if class == workroom.DeadBasisSupersede {
+		switch class {
+		case workroom.DeadBasisSupersede:
 			continue
+		case workroom.DeadBasisStale:
+			stale = append(stale, basis)
+		default:
+			blocking = append(blocking, fmt.Sprintf("%s (%s)", basis, class))
 		}
-		blocking = append(blocking, fmt.Sprintf("%s (%s)", basis, class))
+	}
+	sort.Strings(stale)
+	if note := staleBasisNote(snapshot.Projection, stale); note != "" {
+		body[StaleBasesField] = note
 	}
 	if len(blocking) == 0 {
 		return nil
@@ -192,6 +214,41 @@ func (w *Workspace) refuseDeadBases(snapshot Snapshot, restsOn []string, body ma
 	}
 	body["dead_basis_override"] = "true"
 	return nil
+}
+
+// staleBasisNote renders what moved under these bases, in the shape a merge
+// receipt records: the stale bases themselves, whether any of them describes a
+// superseded world, and the retired acts underneath them that a reader can act
+// on. Bases arrive sorted, so the same world always produces the same line.
+func staleBasisNote(projection workroom.Projection, bases []string) string {
+	if len(bases) == 0 {
+		return ""
+	}
+	parts := make([]reviewguard.Part, 0, len(bases))
+	for _, basis := range bases {
+		parts = append(parts, reviewguard.Part{
+			Name: basis, Event: basis, Stale: true,
+			World: describesSupersededWorld(projection, basis),
+		})
+	}
+	return reviewguard.StalenessNote(projection, parts)
+}
+
+// describesSupersededWorld answers the narrower staleness fact about one
+// event. A basis is a statement or an artifact; anything else the projection
+// does not keep the fact about, and reports the plain staleness alone.
+func describesSupersededWorld(projection workroom.Projection, event string) bool {
+	for _, statement := range projection.Statements {
+		if statement.Event == event {
+			return statement.DescribesSupersededWorld
+		}
+	}
+	for _, artifact := range projection.Artifacts {
+		if artifact.Event == event {
+			return artifact.DescribesSupersededWorld
+		}
+	}
+	return false
 }
 
 // admitApplication is the post-dedup half of admission, scheduled by the

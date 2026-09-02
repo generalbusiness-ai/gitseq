@@ -103,8 +103,9 @@ acknowledging. See [Live attention](docs/reference/live-attention.md).
 - `reassign_if_unclaimed {old_request, to, text, conditions,
   idempotency_key, rests_on?}` — resumable, separately guarded two-act
   reassignment.
-  It retires and replaces only a live, fresh request with no admitted direct
-  promise or completion; exact retries replay the pair.
+  It retires and replaces only a live request with no admitted direct promise
+  or completion. Staleness is no bar, because a basis moving under a request
+  claims nothing. Exact retries replay the pair.
 - Every tool takes an optional `repo` naming the repository whose workroom
   the call acts in; it defaults to the directory your adapter was started
   in, including from any of its linked worktrees. Name it only to act in a
@@ -292,9 +293,11 @@ artifact it names.
     did not. Confirm the live successor changed none of the conditions, the
     addressee's availability, or the governing decision; then the request's
     author replaces the stale request on that current basis. Do not replace
-    a promise or report for ordinary staleness alone: exact-head review and
-    `gs merge` already record it. Do not file a request asking whether the
-    work is still wanted. Re-ask only when something that bears on the
+    a promise or report for ordinary staleness alone: exact-head review,
+    `gs merge`, and the write boundary already record it — an act resting on
+    a stale basis is admitted, with the staleness written into its
+    `body.stale_bases`. Do not file a request asking whether the work is
+    still wanted. Re-ask only when something that bears on the
     decision actually changed: a condition of satisfaction, the addressee's
     availability, or the governing decision itself retired with no
     successor.

@@ -20,7 +20,7 @@ appends is permanent.
 | `rests_on` | required | Array of event identifiers. What this act bears on. |
 | `body` | optional | String map of structured fields. |
 | `evidence` | optional | String map of `name` to content, embedded as attachments. |
-| `allow_dead_basis` | optional | Rest on retired or stale bases anyway, signing `dead_basis_override=true`. Testimony that you saw them, not a repair of them. |
+| `allow_dead_basis` | optional | Rest on a retired basis anyway, signing `dead_basis_override=true`. Testimony that you saw it, not a repair of it. A merely stale basis needs no argument; see below. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 
@@ -67,9 +67,22 @@ promisor, it names the exact implementation commit, and its bases contain
 exactly one effective promise: the promise it fulfils. This adds no required
 artifact field and does not change ordinary artifacts.
 
+## Retired bases and stale bases
+
+A **retired** basis is withdrawn ground: nothing stands there any more, so
+resting on it is refused. The escape is `allow_dead_basis`, which signs
+`dead_basis_override=true` on the act.
+
+A **stale** basis still stands exactly where it stood; only something
+underneath it moved. That act is admitted, and the boundary writes what moved
+into `body.stale_bases` — the same one-line note a merge receipt carries,
+naming the stale basis, whether it describes a superseded world, and the
+retired acts beneath it. This is the merge rule applied at the write
+boundary: refuse the retired one, land the stale one and record it.
+
 ## Reserved fields you cannot write
 
-Four body keys are reserved for the admission boundary, and a plain
+Five body keys are reserved for the admission boundary, and a plain
 `state` call is refused if it supplies any of them:
 
 | Field | Belongs to | Ask for it with |
@@ -78,6 +91,7 @@ Four body keys are reserved for the admission boundary, and a plain
 | `head_news_acknowledged` | The guarded review path | [`review`](review.md) |
 | `review_frontier` | The guarded review path | [`review`](review.md) |
 | `dead_basis_override` | The dead-basis escape | `allow_dead_basis` |
+| `stale_bases` | The recorded staleness note | *(nothing; the boundary writes it)* |
 
 The refusal names the field and quotes back the value you sent, so a
 `review_path` of `x` is refused as `body.review_path="x" is a reserved
@@ -91,6 +105,9 @@ the way to ask for that escape is the `allow_dead_basis` argument, which
 signs the field for you. Setting it by hand is refused because a reserved
 field means the same thing wherever it appears, and a caller that writes
 it directly is claiming an authorisation the boundary never granted.
+`stale_bases` has no argument at all: it is the boundary's own testimony
+about what the act rested on, and a caller who could write it could make an
+act look freshly grounded.
 
 ## Evidence
 

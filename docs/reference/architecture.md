@@ -857,8 +857,9 @@ Workroom vocabulary, fold rule, projection, or cache profile.
 
 Phase two should use a declared application seam rather than search request
 prose. A future `workroom/state@3` request field
-`merge_authorization=required`, projected under `workroom-fold@16`, can make
-the flag mandatory after every resident and adapter restarts on that binding.
+`merge_authorization=required`, projected under whichever profile version is
+current when it lands, can make the flag mandatory after every resident and
+adapter restarts on that binding.
 Until then omission warns and preserves the in-flight phase-one migration.
 
 The receipt also accounts for every other live artifact covered by the
@@ -982,10 +983,13 @@ changes-requested is a review verdict and refuses on generic paths, naming the
 guarded route. Canonical review paths carry the reserved `body.review_path`
 marker, and reserved admission fields are never caller input.
 
-A state resting on an already-retired or already-stale basis refuses by
-default until the author asks for the recorded escape
-(`body.dead_basis_override=true`), while an effective supersession stays
-advisory. Neither the refusal nor the override removes staleness or grants
+A state resting on an already-retired basis refuses by default until the
+author asks for the recorded escape (`body.dead_basis_override=true`), while
+an effective supersession stays advisory. A basis whose only problem is
+staleness stands where it stood, so the state is admitted and the boundary
+stamps the reserved `body.stale_bases` field with the same one-line staleness
+note a merge receipt carries. That field is never caller input. Neither the
+refusal, the override, nor the recorded note removes staleness or grants
 authority.
 
 The guarded verdict path owns head-news discovery — statements sequenced
@@ -999,7 +1003,13 @@ after kernel idempotency replay detection. A genuinely new act is refused
 before append when its request-local expectation no longer holds; an exact
 retry replays without re-judging history that moved afterwards. The fold still
 enforces both new schemas, so an older or admission-skipping resident cannot
-grant unguarded force.
+grant unguarded force. The expectation is about claims alone — zero admitted
+promises and zero admitted direct completions. A stale request is reassignable,
+because a basis moving under it does not claim it.
+
+Admitting reassignment of a stale request changes what the fold decides about
+existing histories, so it advances the profile to `workroom-fold@16`; a cache
+written under `@15` is rejected and history is replayed.
 
 **Surfaces and guidance.** Workroom also owns its MCP tools and their
 application meanings; the agent practice in `SKILL.md`; connector clauses and
