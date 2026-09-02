@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fdf5586573ee2de43b1b3aefeaa17c1c1ab91f91","text":"Retired because its predecessor basis made it stale at birth; live replacement artifact dac843cd reports the same exact head on the current promise."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cf3f6dc0ed5c6e2bd75df7ffac4dd3776361b11e","text":"This review request was stale at filing because it cited the stale artifact fdf55865. Refiled on live artifact dac843cd with the conditions unchanged."}
