@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6c7102737a6400a55acd7c2866eb567f2ddab975","text":"Retire the internal/app candidate at b1caf459: that head conflicts with main b265e44e and is replaced by the same work remerged at 8d30745d (artifact f6966442)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8b907a6709a9104dc0bfc07e3544930683743dab","text":"Retire the internal/workroom candidate at b1caf459; replaced by the remerged head 8d30745d (artifact 2fd5baa2)."}
