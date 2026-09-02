@@ -35,6 +35,7 @@ func assertCacheReleased(t *testing.T, cache *checkpointEventCache) {
 }
 
 func TestCheckpointCacheDefaultLimitIsMarshalLimit(t *testing.T) {
+	t.Parallel()
 	if got := (&checkpointEventCache{}).byteLimit(); got != maxCheckpointBytes {
 		t.Fatalf("default cache byte limit = %d, want %d", got, maxCheckpointBytes)
 	}
@@ -44,6 +45,7 @@ func TestCheckpointCacheDefaultLimitIsMarshalLimit(t *testing.T) {
 }
 
 func TestCheckpointCacheBoundsTailAccumulation(t *testing.T) {
+	t.Parallel()
 	cache := checkpointEventCache{limit: 2048}
 	for index := 0; index < 3; index++ {
 		cache.append(Event{Payload: incompressiblePayload(t, 300, int64(index))})
@@ -80,6 +82,7 @@ func TestCheckpointCacheBoundsTailAccumulation(t *testing.T) {
 // production charges coherently in every place at once, cannot move this
 // expectation with it.
 func TestCheckpointCacheTailGrowthChargesOldArray(t *testing.T) {
+	t.Parallel()
 	const entries = 8
 	const payloadBytes = 16
 	events := make([]Event, entries)
@@ -133,6 +136,7 @@ func TestCheckpointCacheTailGrowthChargesOldArray(t *testing.T) {
 // array a growth copy briefly holds — so the two limits sit exactly at
 // and one byte below that bound.
 func TestCheckpointCacheOwnedTailFlushPeakBudget(t *testing.T) {
+	t.Parallel()
 	events := make([]Event, checkpointChunkEvents)
 	for index := range events {
 		events[index] = Event{Payload: incompressiblePayload(t, 48, int64(index))}
@@ -192,6 +196,7 @@ func TestCheckpointCacheOwnedTailFlushPeakBudget(t *testing.T) {
 // legitimately retains more capacity than content, and the accounting must
 // charge what is retained, not what is used.
 func TestCheckpointCacheCountsChunkCapacityNotLength(t *testing.T) {
+	t.Parallel()
 	cache := checkpointEventCache{limit: 1 << 20}
 	events := make([]Event, checkpointChunkEvents)
 	for index := range events {
@@ -217,6 +222,7 @@ func TestCheckpointCacheCountsChunkCapacityNotLength(t *testing.T) {
 // never retains capacity past the content ceiling. The true peak — reserve,
 // old array, new array — therefore never exceeds the limit.
 func TestCheckpointChunkWriterBoundsRetainedCapacity(t *testing.T) {
+	t.Parallel()
 	var output bytes.Buffer
 	writer := &checkpointChunkWriter{output: &output, limit: 1000, reserve: func() int { return 0 }}
 	for index := 0; index < 500; index++ {
@@ -255,6 +261,7 @@ func TestCheckpointChunkWriterBoundsRetainedCapacity(t *testing.T) {
 }
 
 func TestCheckpointCacheBoundsSingleOversizedEvent(t *testing.T) {
+	t.Parallel()
 	cache := checkpointEventCache{limit: 1024}
 	cache.append(Event{
 		Payload:     incompressiblePayload(t, 500, 1),
@@ -273,6 +280,7 @@ func TestCheckpointCacheBoundsSingleOversizedEvent(t *testing.T) {
 // would be refused by the post-failure whole-limit reservation, which
 // TestCheckpointCacheWriterRefusesAfterFail pins as the load-bearing guard.
 func TestCheckpointCacheBoundsBorrowedChunkWhileBuilding(t *testing.T) {
+	t.Parallel()
 	cache := checkpointEventCache{limit: 4096}
 	events := make([]Event, checkpointChunkEvents)
 	for index := range events {
@@ -286,6 +294,7 @@ func TestCheckpointCacheBoundsBorrowedChunkWhileBuilding(t *testing.T) {
 }
 
 func TestCheckpointCacheBoundsCumulativeChunks(t *testing.T) {
+	t.Parallel()
 	// Roomy enough for the first chunk's content and growth headroom
 	// (~312 KB encoded against a 400 KB content ceiling), far too small
 	// once that chunk's retained capacity is charged against the second.
@@ -302,6 +311,7 @@ func TestCheckpointCacheBoundsCumulativeChunks(t *testing.T) {
 }
 
 func TestCheckpointCacheOverflowIsTerminalUntilVerifiedFullRebuild(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointEnabled: true})
@@ -377,6 +387,7 @@ func TestCheckpointCacheOverflowIsTerminalUntilVerifiedFullRebuild(t *testing.T)
 }
 
 func TestStreamedFullRebuildCheckpointCacheIsBounded(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	for index := 0; index < 4; index++ {
@@ -419,6 +430,7 @@ func TestStreamedFullRebuildCheckpointCacheIsBounded(t *testing.T) {
 // source. The same tail must still flush once the budget honestly covers
 // the encoded output and its growth headroom on top of the charges.
 func TestCheckpointCacheOwnedTailFlushRefusesSkewedTailBeyondBudget(t *testing.T) {
+	t.Parallel()
 	events := make([]Event, checkpointChunkEvents)
 	events[0] = Event{Payload: incompressiblePayload(t, 512<<10, 424242)}
 	for index := 1; index < len(events); index++ {
@@ -467,6 +479,7 @@ func TestCheckpointCacheOwnedTailFlushRefusesSkewedTailBeyondBudget(t *testing.T
 // entry's output, crediting the entry before its write would admit the
 // flush; keeping it charged through the write must refuse and release.
 func TestCheckpointCacheFlushKeepsInHandEntryCharged(t *testing.T) {
+	t.Parallel()
 	events := []Event{
 		{Payload: incompressiblePayload(t, 512<<10, 7)},
 		{Payload: incompressiblePayload(t, 16, 8)},
@@ -494,6 +507,7 @@ func TestCheckpointCacheFlushKeepsInHandEntryCharged(t *testing.T) {
 // bytes sits off the allocator's size classes, so an append-based clone
 // here would retain more capacity than length and fail this test.
 func TestCheckpointCacheClonesAtExactSourceLength(t *testing.T) {
+	t.Parallel()
 	cache := checkpointEventCache{limit: 1 << 20}
 	event := Event{
 		Payload:     incompressiblePayload(t, 300, 1),
@@ -558,6 +572,7 @@ func TestCheckpointCacheRefusesOversizedEventBeforeCloning(t *testing.T) {
 // that freed budget while the dropped material is still reachable. A
 // failed cache reserves its entire budget.
 func TestCheckpointCacheWriterRefusesAfterFail(t *testing.T) {
+	t.Parallel()
 	cache := checkpointEventCache{limit: 4096}
 	var output bytes.Buffer
 	writer := cache.boundedWriter(&output)
@@ -584,6 +599,7 @@ func TestCheckpointCacheWriterRefusesAfterFail(t *testing.T) {
 // Dropping either node precharge, or shrinking the measured node size,
 // breaks the equality.
 func TestCheckpointCacheChunkListChargesEachNode(t *testing.T) {
+	t.Parallel()
 	cache := checkpointEventCache{limit: 4 << 20}
 	borrowed := make([]Event, 2*checkpointChunkEvents)
 	for index := range borrowed {
@@ -621,6 +637,7 @@ func TestCheckpointCacheChunkListChargesEachNode(t *testing.T) {
 // exactly the blob's own size proves the blob — necessarily larger than
 // half that limit — is admitted, and one byte less refuses.
 func TestCheckpointMarshalUsesFullSizeLimit(t *testing.T) {
+	t.Parallel()
 	stored := checkpoint{
 		Schema: checkpointSchema, ObjectFormat: "sha1", Genesis: "genesis", Head: "head",
 		Depth: 1, EventCount: 1,
@@ -650,6 +667,7 @@ func TestCheckpointMarshalUsesFullSizeLimit(t *testing.T) {
 // directions must refuse before anything is encoded, and the agreeing list
 // must still marshal.
 func TestCheckpointMarshalRefusesChunkCountDivergence(t *testing.T) {
+	t.Parallel()
 	events := make([]Event, checkpointChunkEvents)
 	for index := range events {
 		events[index] = Event{Payload: []byte{byte(index)}}
@@ -697,6 +715,7 @@ func TestCheckpointMarshalRefusesChunkCountDivergence(t *testing.T) {
 // exact budget — reservation, scratch, twice the retained capacity —
 // must admit, and one byte short must refuse.
 func TestCheckpointCacheScratchPreflightCountsRetainedOutput(t *testing.T) {
+	t.Parallel()
 	// Incompressible payloads force the compressor to emit blocks into
 	// the bounded writer, growing the production output buffer before any
 	// scratch exists.

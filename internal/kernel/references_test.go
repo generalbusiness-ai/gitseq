@@ -36,6 +36,7 @@ func eventID(format, genesis, commit string) string {
 const fabricated = "0123456789abcdef0123456789abcdef01234567"
 
 func TestSubmitRefusesFabricatedInLogReference(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 
@@ -68,6 +69,7 @@ func TestSubmitRefusesFabricatedInLogReference(t *testing.T) {
 // cached verified frontier rather than a fresh scan. It must refuse the same
 // record, and must still be usable afterwards.
 func TestSubmitterRefusesFabricatedInLogReference(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
@@ -90,6 +92,7 @@ func TestSubmitterRefusesFabricatedInLogReference(t *testing.T) {
 // like any other and is the usual first basis in a new workroom, so a rule that
 // refused it would refuse every roster record ever written.
 func TestSubmitAdmitsResolvedInLogReferences(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	options := Options{SigningKey: f.signingKey}
@@ -116,6 +119,7 @@ func TestSubmitAdmitsResolvedInLogReferences(t *testing.T) {
 // sequencer has admitted it. The refusal is the same one — there is no position
 // in the sequence with that name.
 func TestSubmitRefusesSelfReference(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	options := Options{SigningKey: f.signingKey}
@@ -147,6 +151,7 @@ func TestSubmitRefusesSelfReference(t *testing.T) {
 // citing one as an event identifier is exactly the confusion the reference
 // documentation warns about.
 func TestSubmitRefusesCommitOutsideTheLog(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 
@@ -167,6 +172,7 @@ func TestSubmitRefusesCommitOutsideTheLog(t *testing.T) {
 // kernel has no way to resolve another workroom's identifier, and no business
 // interpreting a string that is not an identifier at all.
 func TestSubmitCarriesReferencesItCannotResolve(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 
@@ -201,6 +207,7 @@ func TestSubmitCarriesReferencesItCannotResolve(t *testing.T) {
 // before this check existed; they are history, and a verifier that refused them
 // now would make the whole existing log unreadable rather than repair anything.
 func TestVerifyAcceptsHistoricalDanglingReference(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 

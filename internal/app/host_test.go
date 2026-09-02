@@ -54,6 +54,7 @@ func selectedBy(t *testing.T, ctx context.Context, repo string) (host, error) {
 }
 
 func TestWorkroomRepositoryRecordsNoBindingAndSelectsWorkroom(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -91,6 +92,7 @@ func TestWorkroomRepositoryRecordsNoBindingAndSelectsWorkroom(t *testing.T) {
 }
 
 func TestInitRecordsTheBindingOfAnApplicationAbsenceDoesNotName(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := initHosted(ctx, repo, "human", 1<<20, testHost())
@@ -116,6 +118,7 @@ func TestInitRecordsTheBindingOfAnApplicationAbsenceDoesNotName(t *testing.T) {
 }
 
 func TestBoundRepositoryIsVerifiableWithoutItsInterpreter(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	// A build that does not hold the application: the log is unchanged, only
@@ -140,6 +143,7 @@ func TestBoundRepositoryIsVerifiableWithoutItsInterpreter(t *testing.T) {
 }
 
 func TestBoundRepositoryRefusesAnotherFoldVersion(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -159,6 +163,7 @@ func TestBoundRepositoryRefusesAnotherFoldVersion(t *testing.T) {
 }
 
 func TestLaterBindingByTheInitializingKeyReplacesTheOneInForce(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, seed, err := Init(ctx, repo, "human", 1<<20)
@@ -190,6 +195,7 @@ func TestLaterBindingByTheInitializingKeyReplacesTheOneInForce(t *testing.T) {
 // same workspace would mean one thing before a replacement landed and another
 // after, without reopening.
 func TestSelectionIsFixedAtOpenAgainstALaterReplacement(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -224,6 +230,7 @@ func TestSelectionIsFixedAtOpenAgainstALaterReplacement(t *testing.T) {
 // exists to prevent, and folding with the interpreter it never selected would
 // dereference nothing at all.
 func TestAWorkspaceThatNeverOpenedHasNoInterpreter(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -244,6 +251,7 @@ func TestAWorkspaceThatNeverOpenedHasNoInterpreter(t *testing.T) {
 // and an attacker who can write the ref could otherwise dress an unverifiable
 // history up as a missing interpreter.
 func TestAnUnverifiableChainOutranksTheInterpreterRefusal(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -313,6 +321,7 @@ func TestAnUnverifiableChainOutranksTheInterpreterRefusal(t *testing.T) {
 }
 
 func TestTheLastAuthorizedBindingWinsInEitherDirection(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -336,6 +345,7 @@ func TestTheLastAuthorizedBindingWinsInEitherDirection(t *testing.T) {
 }
 
 func TestARollbackToAnAlreadyRecordedBindingTakesForce(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -360,6 +370,7 @@ func TestARollbackToAnAlreadyRecordedBindingTakesForce(t *testing.T) {
 }
 
 func TestBindingFromAnotherKeyHasNoForce(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -394,6 +405,7 @@ func TestBindingFromAnotherKeyHasNoForce(t *testing.T) {
 // between the two questions, and a replacement recorded in between would decide
 // what a workspace means on the strength of a frontier nobody verified.
 func TestBindingInForceAnswersForTheRevisionNamed(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -428,6 +440,7 @@ func TestBindingInForceAnswersForTheRevisionNamed(t *testing.T) {
 }
 
 func TestAMalformedBindingLeavesTheOneInForceStanding(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -464,6 +477,7 @@ func TestAMalformedBindingLeavesTheOneInForceStanding(t *testing.T) {
 }
 
 func TestABindingShapedRecordGetsNoForceFromTheWorkroomFold(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -495,6 +509,7 @@ func TestABindingShapedRecordGetsNoForceFromTheWorkroomFold(t *testing.T) {
 }
 
 func TestLegacyStateCannotRecordANewFoldActivation(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -556,6 +571,7 @@ func TestLegacyStateCannotRecordANewFoldActivation(t *testing.T) {
 }
 
 func TestRetryingOneBindingSubmissionAppendsOnce(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -584,6 +600,7 @@ func TestRetryingOneBindingSubmissionAppendsOnce(t *testing.T) {
 }
 
 func TestBindingPayloadsAreCanonicalAndComplete(t *testing.T) {
+	t.Parallel()
 	for name, payload := range map[string]string{
 		"no application":               `{"fold_version":"workroom-fold@3"}`,
 		"no fold version":              `{"application":"workroom"}`,

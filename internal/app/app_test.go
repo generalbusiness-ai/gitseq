@@ -51,6 +51,7 @@ func eventCommit(t *testing.T, format, event string) string {
 }
 
 func TestSubmissionAndReloadPreserveEventTimestamp(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -95,6 +96,7 @@ func TestSubmissionAndReloadPreserveEventTimestamp(t *testing.T) {
 }
 
 func TestBuildActRequestHashesPayloadTreeUntilAdmissionWritesIt(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -268,6 +270,7 @@ func BenchmarkColdVersusResidentDeltaAtRealDepth(b *testing.B) {
 }
 
 func TestWorkspaceLifecycle(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, seed, err := Init(ctx, repo, "human", 1<<20)
@@ -303,6 +306,7 @@ func TestWorkspaceLifecycle(t *testing.T) {
 // which is now a legitimate shape -- the addressee may answer directly. The
 // point survives with a reporter who was never asked, which no shape admits.
 func TestReportFromAStrangerIsRefusedBeforeAppend(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -340,6 +344,7 @@ func TestReportFromAStrangerIsRefusedBeforeAppend(t *testing.T) {
 }
 
 func TestReportPreflightRequiresExactlyOnePromiseFromTheReporter(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -397,6 +402,7 @@ func TestReportPreflightRequiresExactlyOnePromiseFromTheReporter(t *testing.T) {
 }
 
 func TestApprovedReportMustRestOnItsNamedArtifactBeforeSigning(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -499,6 +505,7 @@ func TestApprovedReportMustRestOnItsNamedArtifactBeforeSigning(t *testing.T) {
 }
 
 func TestReportPreflightUsesDeclaredLifecycleKinds(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -585,6 +592,7 @@ func TestReportPreflightUsesDeclaredLifecycleKinds(t *testing.T) {
 }
 
 func TestOversizedCausalReferenceDoesNotPoisonSnapshot(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, _, err := Init(ctx, repo, "human", 1<<20)
@@ -616,6 +624,7 @@ func TestOversizedCausalReferenceDoesNotPoisonSnapshot(t *testing.T) {
 }
 
 func TestLinkedWorktreeSharesRepositoryWorkroom(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed").CombinedOutput(); err != nil {
@@ -665,6 +674,7 @@ func TestLinkedWorktreeSharesRepositoryWorkroom(t *testing.T) {
 }
 
 func TestLocalWorktreesNamesTheServedCheckoutAndHidesTheOthers(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed").CombinedOutput(); err != nil {
@@ -777,6 +787,7 @@ func TestLocalWorktreesNamesTheServedCheckoutAndHidesTheOthers(t *testing.T) {
 }
 
 func TestLocalWorktreesDistinguishesDetachedLockedPrunableAndBare(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "ordinary seed").CombinedOutput(); err != nil {
@@ -843,6 +854,7 @@ func TestLocalWorktreesDistinguishesDetachedLockedPrunableAndBare(t *testing.T) 
 }
 
 func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -874,6 +886,7 @@ func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {
 }
 
 func TestRequestPreflightRefusesMissingFieldsBeforeSigning(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -908,6 +921,7 @@ func TestRequestPreflightRefusesMissingFieldsBeforeSigning(t *testing.T) {
 }
 
 func TestAcceptSubmissionRefusesLegacyCustomArtifactPath(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -965,6 +979,7 @@ func TestAcceptSubmissionRefusesLegacyCustomArtifactPath(t *testing.T) {
 }
 
 func TestIdempotencyNamespaceIsStableAndLegacySafe(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -998,6 +1013,7 @@ func TestIdempotencyNamespaceIsStableAndLegacySafe(t *testing.T) {
 }
 
 func TestAgentRatifierAuthorityLifecycle(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1089,6 +1105,7 @@ func TestAgentRatifierAuthorityLifecycle(t *testing.T) {
 // while the two lists drifted apart, which is the duplication this seam exists
 // to remove. Adding a kind in one place and not the other fails this.
 func TestAddActorKindsFollowWorkroomVocabulary(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1115,6 +1132,7 @@ func TestAddActorKindsFollowWorkroomVocabulary(t *testing.T) {
 }
 
 func TestValidateAuthorityRoleUsesRosterKindClassification(t *testing.T) {
+	t.Parallel()
 	for _, role := range []string{"", "participant", "agent", "human", "service"} {
 		if err := validateAuthorityRole(role); err == nil {
 			t.Errorf("validateAuthorityRole(%q) accepted a non-authority", role)
@@ -1128,6 +1146,7 @@ func TestValidateAuthorityRoleUsesRosterKindClassification(t *testing.T) {
 }
 
 func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1160,6 +1179,7 @@ func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
 }
 
 func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1233,6 +1253,7 @@ func TestSnapshotCachesTheVerifiedHead(t *testing.T) {
 }
 
 func TestProjectionProfileChangeRebuildsFromTheSameKernelCheckpoint(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1349,6 +1370,7 @@ func TestColdStreamPublishesOnlyTheCompleteProjection(t *testing.T) {
 }
 
 func TestVerifiedFrontierPersistenceIsPassiveWhenUnchangedAndFailClosedWhenAdvancing(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1414,6 +1436,7 @@ func TestVerifiedFrontierPersistenceIsPassiveWhenUnchangedAndFailClosedWhenAdvan
 }
 
 func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
+	t.Parallel()
 	t.Run("rewind then sibling advance is refused", func(t *testing.T) {
 		ctx := context.Background()
 		workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
@@ -1545,6 +1568,7 @@ func TestAcceptSnapshotGuardsPreserveColdProjection(t *testing.T) {
 }
 
 func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1690,6 +1714,7 @@ func TestCheckpointOffForcesColdAuditWithoutChangingPersistentSelectors(t *testi
 }
 
 func TestGenesisIsValidatedBeforeCheckpointPathSelection(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1724,6 +1749,7 @@ func TestGenesisIsValidatedBeforeCheckpointPathSelection(t *testing.T) {
 // Retirement ends both halves of an identity: the durable membership and the
 // local key. What it must not end is the record that the principal acted.
 func TestRetireActorEndsMembershipAndCustodyWhileKeepingThePrincipalVisible(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1763,6 +1789,7 @@ func TestRetireActorEndsMembershipAndCustodyWhileKeepingThePrincipalVisible(t *t
 // following an act that changed nothing, leaving a live roster member with no
 // key anyone can sign for and a command that called it a success.
 func TestIneffectiveRetirementLeavesMembershipAndCustodyAlone(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1804,6 +1831,7 @@ func TestIneffectiveRetirementLeavesMembershipAndCustodyAlone(t *testing.T) {
 // A retired principal holds no authority and can be given none: the roster
 // must not fill with names a projection cannot distinguish from live ones.
 func TestRetiredActorCannotBeAddressedOrGrantedAuthority(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1872,6 +1900,7 @@ func statementActor(t *testing.T, workspace *Workspace, ctx context.Context, eve
 // This asserts the resident's own posture, so dropping the bound fails here
 // rather than silently restoring the unbounded queue.
 func TestResidentSequencerIsBounded(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1899,6 +1928,7 @@ func TestResidentSequencerIsBounded(t *testing.T) {
 // record eleven pages named and took main red. The CLI test for the same rule
 // passed throughout, because the CLI was never the hole.
 func TestBuildActRequestRefusesRetiringACitedRecord(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, seed, err := Init(ctx, repo, "human", 1<<20)
@@ -1943,6 +1973,7 @@ func TestBuildActRequestRefusesRetiringACitedRecord(t *testing.T) {
 }
 
 func TestBuildActRequestRefusesRatifyingAnArtifactAndNamesTheClosingAct(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -1997,6 +2028,7 @@ func TestBuildActRequestRefusesRatifyingAnArtifactAndNamesTheClosingAct(t *testi
 // opinion of one, because the question is whether a direct report can be
 // written at all.
 func TestADirectReportCanActuallyBeBuilt(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -2037,6 +2069,7 @@ func TestADirectReportCanActuallyBeBuilt(t *testing.T) {
 // refuses work the fold would accept, or signs and appends a record the fold
 // will rule ineffective — spending depth to record a refusal.
 func TestTheWriteBoundaryAsksWhatTheFoldAsks(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -2156,6 +2189,7 @@ func TestTheWriteBoundaryAsksWhatTheFoldAsks(t *testing.T) {
 // boundary signs and appends a record the fold then rules ineffective —
 // spending depth to record a refusal, from a mismatch that was locally known.
 func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -2279,6 +2313,7 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 // fixture reproduced. Keeping the scaffolding would restate a settled rule
 // inside a test about something else.
 func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -2396,6 +2431,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 }
 
 func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
 	if err != nil {
@@ -2433,14 +2469,13 @@ func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	if position < 0 {
 		t.Fatal("artifact completion is absent from the current projection")
 	}
-	if got := old.Projection.Commitments[position]; got.Status != "awaiting-merge" || got.WaitingOn != "" {
+	if got := old.Projection.Commitments[position]; got.Status != "awaiting-merge" || got.WaitingOn != agent.Fingerprint {
 		t.Fatalf("current artifact completion = %+v", got)
 	}
-	// @14 projected the artifact like an explicit report and sent the
-	// requester toward a ratification the fold necessarily refused.
-	old.Projection.Commitments[position].Status = "reported"
-	old.Projection.Commitments[position].WaitingOn = old.Projection.Commitments[position].Requester
-	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@14"
+	// @15 projected the artifact as awaiting merge with no waiting party, so
+	// a served cache would keep the approved head out of every actor's queue.
+	old.Projection.Commitments[position].WaitingOn = ""
+	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@15"
 	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@16"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &old
@@ -2456,7 +2491,7 @@ func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
 		if commitment.Report != artifact.ID {
 			continue
 		}
-		if commitment.Status != "awaiting-merge" || commitment.WaitingOn != "" {
+		if commitment.Status != "awaiting-merge" || commitment.WaitingOn != agent.Fingerprint {
 			t.Fatalf("rebuilt artifact completion = %+v; the %q cache was served instead of replayed", commitment, oldProfile)
 		}
 		if workspace.snapshotProfile != wantProfile {
@@ -2473,6 +2508,7 @@ func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
 // enforcing their signed commitment tuple. Serving the old cache would thus
 // erase a reassignment that the durable history actually contains.
 func TestReassignSchemasRebuildAnOlderProfileCache(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	fixture := newReassignFixture(t)
 	retirement := actRecord(t, ctx, fixture.workspace, "human", fixture.retireAct())

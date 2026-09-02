@@ -66,9 +66,10 @@ fallback`. Then a line of totals, and six sections:
 Superseded, satisfied, and withdrawn commitments are finished, and are counted in the
 totals rather than listed.
 
-`awaiting-merge` names an artifact-backed completion. It has no `waiting_on`
-actor because the artifact's satisfier is `none`; the closing act is an
-independently approved exact-head merge, not requester ratification.
+`awaiting-merge` names an artifact-backed completion. Its `waiting_on` actor is
+the performer, because the artifact's satisfier is `none` and the closing act
+is the independently approved exact-head merge the performer signs, not
+requester ratification.
 
 `superseded` names a rejected implementation parent whose required repair was
 explicitly transferred to one qualifying child. Its JSON row carries
