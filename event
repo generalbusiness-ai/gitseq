@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5453042c5807e22020e9e0004abf3810fa19f1fd","text":"Retire the docs/concepts/staleness.md artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact 73591f96)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c5a72ec1e2cdd91a35a6bfb503abc0a15dd99b72","text":"Retire the docs/reference/architecture.md artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact 81f10386)."}
