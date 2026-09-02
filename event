@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact clean pushed head 76e5aee0d4be76e2ee898b2dd1871420002d5fe4 preserves the reviewed participant-standing toolbar behavior in ui/src/components/Toolbar.tsx.","body":{"commit":"76e5aee0d4be76e2ee898b2dd1871420002d5fe4","path":"ui/src/components/Toolbar.tsx"}}
+{"kind":"artifact","text":"Exact clean pushed head 76e5aee0d4be76e2ee898b2dd1871420002d5fe4 preserves the reviewed participant-standing top-bar behavior in ui/src/components/TopBar.tsx.","body":{"commit":"76e5aee0d4be76e2ee898b2dd1871420002d5fe4","path":"ui/src/components/TopBar.tsx"}}
