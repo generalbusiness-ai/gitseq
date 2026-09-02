@@ -31,6 +31,7 @@ type auditObserver struct {
 }
 
 func TestCheckpointEventCacheCompressesDepthAndRoundTrips(t *testing.T) {
+	t.Parallel()
 	events := make([]Event, checkpointChunkEvents+3)
 	for index := range events {
 		events[index].Payload = bytes.Repeat([]byte{byte(index)}, 32+index%3)
@@ -76,6 +77,7 @@ func TestCheckpointEventCacheCompressesDepthAndRoundTrips(t *testing.T) {
 }
 
 func TestCheckpointEventCacheOwnsTailAcrossBorrowedChunkBoundary(t *testing.T) {
+	t.Parallel()
 	const prefix = 3
 	first := make([]Event, prefix)
 	second := make([]Event, checkpointChunkEvents-prefix+checkpointChunkEvents+2)
@@ -199,6 +201,7 @@ func newFixtureWithCeiling(t testing.TB, format string, payloadCeiling uint64) f
 }
 
 func TestGenesisDescriptorRoundTripsOnlyCanonicalSequencerKey(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	desc, err := Descriptor(f.ctx, f.store, f.genesis)
 	if err != nil {
@@ -237,6 +240,7 @@ func TestGenesisDescriptorRoundTripsOnlyCanonicalSequencerKey(t *testing.T) {
 }
 
 func TestInjectedGenesisSignerCannotVerifyASequence(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	root := t.TempDir()
 	store, err := gitstore.InitBare(ctx, filepath.Join(root, "domain.git"), "sha1")
@@ -303,6 +307,7 @@ func TestInjectedGenesisSignerCannotVerifyASequence(t *testing.T) {
 }
 
 func TestVerificationIgnoresReplacementGenesisAndEventObjects(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	result, err := Submit(f.ctx, f.store, f.request(t, private, "honest", []byte("honest"), nil), Options{SigningKey: f.signingKey})
@@ -379,6 +384,7 @@ func TestVerificationIgnoresReplacementGenesisAndEventObjects(t *testing.T) {
 }
 
 func TestReaderIgnoresReplacementCheckpointObjects(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	if _, err := Submit(f.ctx, f.store, f.request(t, actor(t), "one", []byte("one"), nil), Options{SigningKey: f.signingKey}); err != nil {
 		t.Fatal(err)
@@ -652,6 +658,7 @@ func rawTree(t *testing.T, store gitstore.Store, listing string) string {
 }
 
 func TestCreateRejectsSigningKeyThatDoesNotMatchDescriptor(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	root := t.TempDir()
 	store, err := gitstore.InitBare(ctx, filepath.Join(root, "domain.git"), "sha1")
@@ -677,6 +684,7 @@ func TestCreateRejectsSigningKeyThatDoesNotMatchDescriptor(t *testing.T) {
 }
 
 func TestCreateSubmitReplayVerifyObjectFormats(t *testing.T) {
+	t.Parallel()
 	for _, format := range []string{"sha1", "sha256"} {
 		t.Run(format, func(t *testing.T) {
 			f := newFixture(t, format)
@@ -704,6 +712,7 @@ func TestCreateSubmitReplayVerifyObjectFormats(t *testing.T) {
 }
 
 func TestSubmitRefusesWrongSequencerKeyBeforeCAS(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	wrongKey := filepath.Join(t.TempDir(), "wrong-sequencer")
 	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
@@ -727,6 +736,7 @@ func TestSubmitRefusesWrongSequencerKeyBeforeCAS(t *testing.T) {
 }
 
 func TestSequencerKeyRotationAcrossFullAndIncrementalVerification(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	reader := NewReader(f.store)
@@ -784,6 +794,7 @@ func TestSequencerKeyRotationAcrossFullAndIncrementalVerification(t *testing.T) 
 }
 
 func TestRetiredSequencerKeyIsRefusedAfterRotation(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
 	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
@@ -813,6 +824,7 @@ func TestRetiredSequencerKeyIsRefusedAfterRotation(t *testing.T) {
 }
 
 func TestRotationMustBeSignedByCurrentSequencerKey(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	nextKey := filepath.Join(t.TempDir(), "next-sequencer")
 	nextPublic, err := gitstore.GenerateSSHKey(f.ctx, nextKey)
@@ -845,6 +857,7 @@ func TestRotationMustBeSignedByCurrentSequencerKey(t *testing.T) {
 }
 
 func TestVerifierRejectsWrongSequencerSignatureOnColdAudit(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	wrongKey := filepath.Join(t.TempDir(), "wrong-sequencer")
 	if _, err := gitstore.GenerateSSHKey(f.ctx, wrongKey); err != nil {
@@ -857,6 +870,7 @@ func TestVerifierRejectsWrongSequencerSignatureOnColdAudit(t *testing.T) {
 }
 
 func TestSubmitterReusesExactHeadAndRebuildsAfterExternalAdvance(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
@@ -911,6 +925,7 @@ func TestSubmitterReusesExactHeadAndRebuildsAfterExternalAdvance(t *testing.T) {
 }
 
 func TestSubmitterRebuildsAndRetriesAfterCASLoss(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	arrived := make(chan struct{})
@@ -960,6 +975,7 @@ func TestSubmitterRebuildsAndRetriesAfterCASLoss(t *testing.T) {
 }
 
 func TestPostDedupRunsOncePerNewSubmissionAndNeverForAReplay(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	var seen []Application
@@ -1011,6 +1027,7 @@ func TestPostDedupRunsOncePerNewSubmissionAndNeverForAReplay(t *testing.T) {
 }
 
 func TestCheckReplayDistinguishesAbsentExactAndConflictingIntents(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	request := f.request(t, private, "check-replay", []byte("first"), nil)
@@ -1033,6 +1050,7 @@ func TestCheckReplayDistinguishesAbsentExactAndConflictingIntents(t *testing.T) 
 // the head read and the ref update makes it judge the newer world before the
 // retried commit is written against it.
 func TestPostDedupReevaluatesAgainstTheNewHeadAfterCASLoss(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	var mu sync.Mutex
@@ -1161,6 +1179,7 @@ func BenchmarkColdAudit(b *testing.B) {
 }
 
 func TestColdAuditUsesConstantGitProcesses(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
@@ -1199,6 +1218,7 @@ func TestColdAuditUsesConstantGitProcesses(t *testing.T) {
 }
 
 func TestDeltaAuditUsesConstantGitProcesses(t *testing.T) {
+	t.Parallel()
 	for _, listed := range []bool{false, true} {
 		route := "streamed"
 		if listed {
@@ -1278,6 +1298,7 @@ func TestDeltaAuditUsesConstantGitProcesses(t *testing.T) {
 }
 
 func TestListedDeltaUsesOnlyEnumeratedObjectIDs(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
@@ -1522,6 +1543,7 @@ func BenchmarkCompactCheckpointSerializationAtDepth500000(b *testing.B) {
 }
 
 func TestConcurrentCASProducesOneLinearChain(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	requests := []Request{
@@ -1576,6 +1598,7 @@ func TestConcurrentCASProducesOneLinearChain(t *testing.T) {
 }
 
 func TestCrashBoundariesRecoverFromLog(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 
@@ -1613,6 +1636,7 @@ func panicAt(selected string) func(string) {
 }
 
 func TestIdempotencyConflict(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	first := f.request(t, private, "same", []byte("first"), nil)
@@ -1626,6 +1650,7 @@ func TestIdempotencyConflict(t *testing.T) {
 }
 
 func TestSizeCeilingAndEnvelopeOnlyAdmissionHook(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	tooLarge := f.request(t, private, "large", make([]byte, (1<<20)+1), nil)
@@ -1665,6 +1690,7 @@ func TestSizeCeilingAndEnvelopeOnlyAdmissionHook(t *testing.T) {
 }
 
 func TestSubmitChargesPayloadAndAllAttachmentsToOneCeiling(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	payload := make([]byte, 600<<10)
@@ -1694,6 +1720,7 @@ func TestSubmitChargesPayloadAndAllAttachmentsToOneCeiling(t *testing.T) {
 }
 
 func TestValidateRequestSizeMatchesSubmitAccountingWithoutWriting(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	request := f.request(t, actor(t), "validate-size", []byte("payload"), nil)
 	decoded, err := intent.Verify(request.Signed)
@@ -1724,6 +1751,7 @@ func TestValidateRequestSizeMatchesSubmitAccountingWithoutWriting(t *testing.T) 
 }
 
 func TestOversizedEnvelopeIsRefusedWithoutPoisoningTheLog(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	ref := strings.Repeat("r", intent.MaxStringBytes)
@@ -1758,6 +1786,7 @@ func TestOversizedEnvelopeIsRefusedWithoutPoisoningTheLog(t *testing.T) {
 }
 
 func TestVerifierAppliesCeilingToEnvelopeAndPayloadTogether(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	ref := strings.Repeat("r", intent.MaxStringBytes)
@@ -1791,6 +1820,7 @@ func TestVerifierAppliesCeilingToEnvelopeAndPayloadTogether(t *testing.T) {
 }
 
 func TestVerifierRejectsIntentReboundToAnotherLog(t *testing.T) {
+	t.Parallel()
 	fA := newFixture(t, "sha1")
 	fB := newFixture(t, "sha1")
 	private := actor(t)
@@ -1830,6 +1860,7 @@ func TestVerifierRejectsIntentReboundToAnotherLog(t *testing.T) {
 }
 
 func TestVerifierRejectsAlteredCausalTrailersWithFreshIdentity(t *testing.T) {
+	t.Parallel()
 	fA := newFixture(t, "sha1")
 	private := actor(t)
 	request := fA.request(t, private, "altered-trailers-fresh", []byte("claim"), []string{"git:sha1:external#git:sha1:event"})
@@ -1860,6 +1891,7 @@ func TestVerifierRejectsAlteredCausalTrailersWithFreshIdentity(t *testing.T) {
 }
 
 func TestSequenceBoundsPinNamedGenesisAndHeadIndependently(t *testing.T) {
+	t.Parallel()
 	commits := []string{"genesis", "event", "head"}
 	if err := validateSequenceBounds(commits, "genesis", "head"); err != nil {
 		t.Fatalf("valid sequence bounds rejected: %v", err)
@@ -1873,6 +1905,7 @@ func TestSequenceBoundsPinNamedGenesisAndHeadIndependently(t *testing.T) {
 }
 
 func TestMetadataScanPreservesEstablishedCommitMessageNormalization(t *testing.T) {
+	t.Parallel()
 	const ceiling = uint64(4096)
 	f := newFixtureWithCeiling(t, "sha1", ceiling)
 	reader := NewReader(f.store)
@@ -1932,6 +1965,7 @@ func TestMetadataScanPreservesEstablishedCommitMessageNormalization(t *testing.T
 }
 
 func TestChainParentGuardsPinGenesisAndEventsIndependently(t *testing.T) {
+	t.Parallel()
 	if err := validateChainParents(0, nil, ""); err != nil {
 		t.Fatalf("parentless genesis rejected: %v", err)
 	}
@@ -1950,6 +1984,7 @@ func TestChainParentGuardsPinGenesisAndEventsIndependently(t *testing.T) {
 }
 
 func TestVerifierRejectsSequencerSignedEventWithInvalidActorSignature(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	request := f.request(t, actor(t), "invalid-actor-signature", []byte("payload"), nil)
 	decoded := mustVerifyIntent(t, request.Signed)
@@ -1973,6 +2008,7 @@ func TestVerifierRejectsSequencerSignedEventWithInvalidActorSignature(t *testing
 }
 
 func TestVerifierRejectsCommitTreeDifferentFromSignedPayloadTree(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	request := f.request(t, actor(t), "tree-substitution", []byte("signed"), nil)
 	decoded := mustVerifyIntent(t, request.Signed)
@@ -1995,6 +2031,7 @@ func TestVerifierRejectsCommitTreeDifferentFromSignedPayloadTree(t *testing.T) {
 }
 
 func TestVerifierRejectsExtraPayloadTreeEntry(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	eventOID, err := f.store.WriteBlob(f.ctx, []byte("event"))
@@ -2023,6 +2060,7 @@ func TestVerifierRejectsExtraPayloadTreeEntry(t *testing.T) {
 }
 
 func TestVerifierRejectsInvalidAttachmentName(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	eventOID, err := f.store.WriteBlob(f.ctx, []byte("event"))
@@ -2052,6 +2090,7 @@ func TestVerifierRejectsInvalidAttachmentName(t *testing.T) {
 }
 
 func TestVerifierRejectsExternallySequencedDedupConflict(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	first, err := Submit(f.ctx, f.store, f.request(t, private, "conflict", []byte("first"), nil), Options{SigningKey: f.signingKey})
@@ -2065,6 +2104,7 @@ func TestVerifierRejectsExternallySequencedDedupConflict(t *testing.T) {
 }
 
 func TestVerifierRejectsSequencerSignedMergeEvent(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	first, err := Submit(f.ctx, f.store, f.request(t, private, "first-parent", []byte("first"), nil), Options{SigningKey: f.signingKey})
@@ -2087,6 +2127,7 @@ func TestVerifierRejectsSequencerSignedMergeEvent(t *testing.T) {
 }
 
 func TestLoadReturnsVerifiedPayloadAndAttachments(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	request := f.request(t, private, "load", []byte("payload"), nil)
@@ -2117,6 +2158,7 @@ func TestLoadReturnsVerifiedPayloadAndAttachments(t *testing.T) {
 }
 
 func TestReaderLoadsColdThenVerifiesDescendantDeltas(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey})
@@ -2170,6 +2212,7 @@ func TestReaderLoadsColdThenVerifiesDescendantDeltas(t *testing.T) {
 }
 
 func TestReaderRestartsFromSignedCheckpointAndAuditsDescendantDelta(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	for index := 0; index < 3; index++ {
@@ -2230,6 +2273,7 @@ func TestReaderRestartsFromSignedCheckpointAndAuditsDescendantDelta(t *testing.T
 }
 
 func TestReaderPersistsSignedCheckpointPointerAcrossRestart(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "persisted", []byte("persisted"), nil), Options{SigningKey: f.signingKey}); err != nil {
@@ -2262,6 +2306,7 @@ func TestReaderPersistsSignedCheckpointPointerAcrossRestart(t *testing.T) {
 }
 
 func TestCheckpointPointerFailureStillPublishesReachableRef(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	_, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -2294,6 +2339,7 @@ func TestCheckpointPointerFailureStillPublishesReachableRef(t *testing.T) {
 }
 
 func TestReaderRejectsTamperedLocalCheckpointPointerAndUsesSignedRef(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "pointer-fallback", []byte("pointer-fallback"), nil), Options{SigningKey: f.signingKey}); err != nil {
@@ -2324,6 +2370,7 @@ func TestReaderRejectsTamperedLocalCheckpointPointerAndUsesSignedRef(t *testing.
 }
 
 func TestReaderCheckpointContinuationCarriesRotatedSequencerKey(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "before-rotation", []byte("before-rotation"), nil), Options{SigningKey: f.signingKey}); err != nil {
@@ -2370,6 +2417,7 @@ func TestReaderCheckpointContinuationCarriesRotatedSequencerKey(t *testing.T) {
 }
 
 func TestReaderRestartsFromCheckpointWrittenAfterRotation(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "before-rotation-checkpoint", []byte("before"), nil), Options{SigningKey: f.signingKey}); err != nil {
@@ -2445,6 +2493,7 @@ func TestReaderRestartsFromCheckpointWrittenAfterRotation(t *testing.T) {
 }
 
 func TestCheckpointCannotTrustSuccessorFromUnverifiedRotation(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	first, err := Submit(f.ctx, f.store, f.request(t, private, "before-forged-rotation-checkpoint", []byte("before"), nil), Options{SigningKey: f.signingKey})
@@ -2489,6 +2538,7 @@ func TestCheckpointCannotTrustSuccessorFromUnverifiedRotation(t *testing.T) {
 }
 
 func TestCheckpointWriterRejectsRetiredSigningKeyAfterRotation(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "before-retired-checkpoint-writer", []byte("before"), nil), Options{SigningKey: f.signingKey}); err != nil {
@@ -2522,6 +2572,7 @@ func TestCheckpointWriterRejectsRetiredSigningKeyAfterRotation(t *testing.T) {
 }
 
 func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T) {
+	t.Parallel()
 	t.Run("application profile is not kernel identity", func(t *testing.T) {
 		f := newFixture(t, "sha1")
 		private := actor(t)
@@ -2660,6 +2711,7 @@ func TestReaderCheckpointMismatchCorruptionAndNonDescendantFallBack(t *testing.T
 }
 
 func TestCheckpointEnvelopeGuardsFallBackToFullAudit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		publish func(*testing.T, fixtureState, checkpoint)
@@ -2711,6 +2763,7 @@ func TestCheckpointEnvelopeGuardsFallBackToFullAudit(t *testing.T) {
 }
 
 func TestCheckpointIdentityAndCachedEventGuardsFallBackToFullAudit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*testing.T, fixtureState, ed25519.PrivateKey, *checkpoint)
@@ -2799,6 +2852,7 @@ func TestCheckpointIdentityAndCachedEventGuardsFallBackToFullAudit(t *testing.T)
 }
 
 func TestCheckpointMetadataRequiresOneExactParentAtEveryPosition(t *testing.T) {
+	t.Parallel()
 	f, _, _, stored := checkpointState(t, 3)
 	sequence, err := f.store.RevListMetadata(f.ctx, stored.Head)
 	if err != nil {
@@ -2815,6 +2869,7 @@ func TestCheckpointMetadataRequiresOneExactParentAtEveryPosition(t *testing.T) {
 }
 
 func TestCheckpointSequencePositionGuards(t *testing.T) {
+	t.Parallel()
 	t.Run("named head", func(t *testing.T) {
 		f, _, _, stored := checkpointState(t, 1)
 		sequence, err := f.store.RevListMetadata(f.ctx, stored.Head)
@@ -2879,6 +2934,7 @@ func TestCheckpointSequencePositionGuards(t *testing.T) {
 }
 
 func TestCheckpointMetadataRejectsSelfConsistentDuplicateDedupKeys(t *testing.T) {
+	t.Parallel()
 	f, private, _, original := checkpointState(t, 2)
 	originalSequence, err := f.store.RevListMetadata(f.ctx, original.Head)
 	if err != nil {
@@ -2922,6 +2978,7 @@ func TestCheckpointMetadataRejectsSelfConsistentDuplicateDedupKeys(t *testing.T)
 }
 
 func TestCheckpointObjectIDValidationCoversBothFormats(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		format string
 		length int
@@ -2939,6 +2996,7 @@ func TestCheckpointObjectIDValidationCoversBothFormats(t *testing.T) {
 }
 
 func TestCheckpointDecoderRejectsTrailingJSONAtItsBoundary(t *testing.T) {
+	t.Parallel()
 	stored := checkpoint{Schema: legacyCheckpointSchema, Profile: "fold@1"}
 	data, err := json.Marshal(stored)
 	if err != nil {
@@ -2953,6 +3011,7 @@ func TestCheckpointDecoderRejectsTrailingJSONAtItsBoundary(t *testing.T) {
 }
 
 func TestCompactCheckpointRoundTripIsDeterministicAndBounded(t *testing.T) {
+	t.Parallel()
 	stored := checkpoint{
 		Schema: checkpointSchema, ObjectFormat: "sha1",
 		Genesis: strings.Repeat("a", 40), Head: strings.Repeat("b", 40),
@@ -2989,6 +3048,7 @@ func TestCompactCheckpointRoundTripIsDeterministicAndBounded(t *testing.T) {
 }
 
 func TestOversizedCheckpointDoesNotRetryOnEveryAppend(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointEnabled: true})
@@ -3021,6 +3081,7 @@ func TestOversizedCheckpointDoesNotRetryOnEveryAppend(t *testing.T) {
 }
 
 func TestOversizedCheckpointRetriesOnceAfterFullRebuild(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	submitter := NewSubmitter(f.store, Options{SigningKey: f.signingKey, CheckpointEnabled: true})
@@ -3078,6 +3139,7 @@ func TestOversizedCheckpointRetriesOnceAfterFullRebuild(t *testing.T) {
 }
 
 func TestReaderAcceptsLegacyCheckpointAfterCompactUpgrade(t *testing.T) {
+	t.Parallel()
 	f, _, _, stored := checkpointState(t, 3)
 	publishStoredCheckpoint(t, f, stored)
 	reader := NewReader(f.store, CheckpointOptions{Enabled: true})
@@ -3091,6 +3153,7 @@ func TestReaderAcceptsLegacyCheckpointAfterCompactUpgrade(t *testing.T) {
 }
 
 func TestCompactCheckpointAuthenticatesBeforeDecompression(t *testing.T) {
+	t.Parallel()
 	f, _, _, _ := checkpointState(t, 1)
 	checkpointCommit := mustHead(t, f.store, CheckpointRef(f.genesis))
 	data, err := f.store.ReadFileLimit(f.ctx, checkpointCommit, checkpointFile, maxCheckpointBytes)
@@ -3126,6 +3189,7 @@ func TestCompactCheckpointAuthenticatesBeforeDecompression(t *testing.T) {
 }
 
 func TestCompactCheckpointRejectsAuthenticatedPayloadCorruption(t *testing.T) {
+	t.Parallel()
 	f, _, _, _ := checkpointState(t, 1)
 	checkpointCommit := mustHead(t, f.store, CheckpointRef(f.genesis))
 	data, err := f.store.ReadFileLimit(f.ctx, checkpointCommit, checkpointFile, maxCheckpointBytes)
@@ -3142,6 +3206,7 @@ func TestCompactCheckpointRejectsAuthenticatedPayloadCorruption(t *testing.T) {
 }
 
 func TestCompactCheckpointBindsPayloadsToSequenceOrder(t *testing.T) {
+	t.Parallel()
 	f, _, _, stored := checkpointState(t, 2)
 	stored.Schema = checkpointSchema
 	stored.Profile = ""
@@ -3156,6 +3221,7 @@ func TestCompactCheckpointBindsPayloadsToSequenceOrder(t *testing.T) {
 }
 
 func TestCheckpointManifestBoundsCannotOverflowSequenceIndex(t *testing.T) {
+	t.Parallel()
 	stored := checkpoint{
 		Schema: checkpointSchema, Genesis: strings.Repeat("a", 40),
 		Head: strings.Repeat("a", 40), Depth: maxIntValue(), EventCount: 0,
@@ -3167,6 +3233,7 @@ func TestCheckpointManifestBoundsCannotOverflowSequenceIndex(t *testing.T) {
 }
 
 func TestCompactCheckpointRejectsTrailingCompressedBytes(t *testing.T) {
+	t.Parallel()
 	stored := checkpoint{
 		Schema: checkpointSchema, ObjectFormat: "sha1",
 		Genesis: strings.Repeat("a", 40), Head: strings.Repeat("b", 40),
@@ -3183,6 +3250,7 @@ func TestCompactCheckpointRejectsTrailingCompressedBytes(t *testing.T) {
 }
 
 func TestCheckpointCachedPayloadSharesEnvelopeCeiling(t *testing.T) {
+	t.Parallel()
 	f, _, _, stored := checkpointState(t, 1)
 	sequence, err := f.store.RevListMetadata(f.ctx, stored.Head)
 	if err != nil {
@@ -3203,6 +3271,7 @@ func TestCheckpointCachedPayloadSharesEnvelopeCeiling(t *testing.T) {
 }
 
 func TestCheckpointPayloadAndAttachmentsShareOneCeiling(t *testing.T) {
+	t.Parallel()
 	payload := []byte("1234")
 	attachments := map[string][]byte{"first": []byte("123"), "second": []byte("456")}
 	if err := payloadWithinCeiling(payload, attachments, 10); err != nil {
@@ -3214,6 +3283,7 @@ func TestCheckpointPayloadAndAttachmentsShareOneCeiling(t *testing.T) {
 }
 
 func TestCheckpointMarshalEnforcesDocumentedSizeLimit(t *testing.T) {
+	t.Parallel()
 	if maxCheckpointBytes != 256<<20 {
 		t.Fatalf("checkpoint limit = %d, want 256 MiB", maxCheckpointBytes)
 	}
@@ -3231,6 +3301,7 @@ func TestCheckpointMarshalEnforcesDocumentedSizeLimit(t *testing.T) {
 }
 
 func TestWrittenCheckpointContainsOnlyKernelVerifiedMaterial(t *testing.T) {
+	t.Parallel()
 	f, _, _, _ := checkpointState(t, 1)
 	commit := mustHead(t, f.store, CheckpointRef(f.genesis))
 	data, err := f.store.ReadFileLimit(f.ctx, commit, checkpointFile, maxCheckpointBytes)
@@ -3265,6 +3336,7 @@ func TestWrittenCheckpointContainsOnlyKernelVerifiedMaterial(t *testing.T) {
 }
 
 func TestCheckpointMetadataBindsEnvelopeTrailersAndTreeIndependently(t *testing.T) {
+	t.Parallel()
 	f, private, _, original := checkpointState(t, 1)
 	originalSequence, err := f.store.RevListMetadata(f.ctx, original.Head)
 	if err != nil {
@@ -3324,6 +3396,7 @@ func TestCheckpointMetadataBindsEnvelopeTrailersAndTreeIndependently(t *testing.
 }
 
 func TestTruncatedCheckpointCannotPoisonSubmitterDedup(t *testing.T) {
+	t.Parallel()
 	f, _, requests, stored := checkpointState(t, 3)
 	stored.Events = append([]checkpointEvent(nil), stored.Events[1:]...)
 	stored.Depth = len(stored.Events)
@@ -3343,6 +3416,7 @@ func TestTruncatedCheckpointCannotPoisonSubmitterDedup(t *testing.T) {
 }
 
 func TestStatelessSubmitIgnoresCheckpointEnablementWithoutWritingOrPanicking(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	request := f.request(t, actor(t), "stateless-profile", []byte("stateless-profile"), nil)
 	result, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey, CheckpointEnabled: true})
@@ -3358,6 +3432,7 @@ func TestStatelessSubmitIgnoresCheckpointEnablementWithoutWritingOrPanicking(t *
 }
 
 func TestReaderRetriesCheckpointWriteAfterFailure(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "one", []byte("one"), nil), Options{SigningKey: f.signingKey}); err != nil {
@@ -3391,6 +3466,7 @@ func TestReaderRetriesCheckpointWriteAfterFailure(t *testing.T) {
 }
 
 func TestSubmitterColdStartUsesSignedCheckpointDedup(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	prior := f.request(t, private, "prior", []byte("prior"), nil)
@@ -3411,6 +3487,7 @@ func TestSubmitterColdStartUsesSignedCheckpointDedup(t *testing.T) {
 }
 
 func TestSubmitterRefreshesCheckpointOnBoundedCadence(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	prior := f.request(t, private, "prior", []byte("prior"), nil)
@@ -3455,6 +3532,7 @@ func TestSubmitterRefreshesCheckpointOnBoundedCadence(t *testing.T) {
 }
 
 func TestSubmitterDefersDueCheckpointUntilItsCASAppend(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	prior := f.request(t, private, "prior", []byte("prior"), nil)
@@ -3490,6 +3568,7 @@ func TestSubmitterDefersDueCheckpointUntilItsCASAppend(t *testing.T) {
 }
 
 func TestReaderFallsBackToFullAuditAfterRefRewind(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	reader := NewReader(f.store)
@@ -3523,6 +3602,7 @@ func TestReaderFallsBackToFullAuditAfterRefRewind(t *testing.T) {
 }
 
 func TestReaderFallsBackToFullAuditAfterSiblingAdvance(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	first, err := Submit(f.ctx, f.store, f.request(t, private, "fork-first", []byte("first"), nil), Options{SigningKey: f.signingKey})
@@ -3554,6 +3634,7 @@ func TestReaderFallsBackToFullAuditAfterSiblingAdvance(t *testing.T) {
 }
 
 func TestReaderDeltaRejectsExternalReplayLikeColdAudit(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	request := f.request(t, private, "external-replay", []byte("once"), nil)
@@ -3578,6 +3659,7 @@ func TestReaderDeltaRejectsExternalReplayLikeColdAudit(t *testing.T) {
 }
 
 func TestFailedMultiCommitDeltaDoesNotLeakDedupAdditions(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	base, err := Submit(f.ctx, f.store, f.request(t, private, "leak-base", []byte("base"), nil), Options{SigningKey: f.signingKey})
@@ -3614,6 +3696,7 @@ func TestFailedMultiCommitDeltaDoesNotLeakDedupAdditions(t *testing.T) {
 }
 
 func TestReaderRejectsInvalidDeltaWithoutMutatingVerifiedCache(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	reader := NewReader(f.store)
@@ -3667,6 +3750,7 @@ func TestReaderRejectsInvalidDeltaWithoutMutatingVerifiedCache(t *testing.T) {
 }
 
 func TestReaderRejectsWrongSequencerDeltaWithoutMutatingVerifiedCache(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	reader := NewReader(f.store)
@@ -3723,6 +3807,7 @@ func TestReaderRejectsWrongSequencerDeltaWithoutMutatingVerifiedCache(t *testing
 }
 
 func TestContinuationBindsVerifiedSealedFrontier(t *testing.T) {
+	t.Parallel()
 	predecessor := newFixture(t, "sha1")
 	request := predecessor.request(t, actor(t), "seal", []byte("seal"), nil)
 	if _, err := Submit(predecessor.ctx, predecessor.store, request, Options{SigningKey: predecessor.signingKey}); err != nil {
@@ -3756,6 +3841,7 @@ func TestContinuationBindsVerifiedSealedFrontier(t *testing.T) {
 }
 
 func TestScanHeadPinsTheApprovedFrontier(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "one", []byte("one"), nil), Options{SigningKey: f.signingKey}); err != nil {
@@ -3805,6 +3891,7 @@ func mustSignIntent(t *testing.T, decoded intent.Intent, private ed25519.Private
 // block there for the whole audit, and joining would turn a wrong design into
 // a hung test instead of a failing one.
 func TestColdAuditReportsItsProgressWhileHoldingTheLock(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	for index := range 12 {
@@ -3860,6 +3947,7 @@ func TestColdAuditReportsItsProgressWhileHoldingTheLock(t *testing.T) {
 }
 
 func TestMatchingCheckpointDoesNotStartColdAuditProgress(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	if _, err := Submit(f.ctx, f.store, f.request(t, private, "checkpoint-progress", []byte("value"), nil), Options{SigningKey: f.signingKey}); err != nil {
@@ -3881,6 +3969,7 @@ func TestMatchingCheckpointDoesNotStartColdAuditProgress(t *testing.T) {
 }
 
 func TestReaderStreamsColdFullLoadWithoutRetainingTransportEvents(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	want := make([]string, 6)
@@ -3924,6 +4013,7 @@ func TestReaderStreamsColdFullLoadWithoutRetainingTransportEvents(t *testing.T) 
 }
 
 func TestReaderStreamFailureDoesNotPublishVerifiedCache(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	for index := range 4 {
@@ -3962,6 +4052,7 @@ func TestReaderStreamFailureDoesNotPublishVerifiedCache(t *testing.T) {
 }
 
 func TestReaderStreamsAuthenticatedCheckpointAndVerifiedSuffix(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	want := make([]string, 6)
@@ -4003,6 +4094,7 @@ func TestReaderStreamsAuthenticatedCheckpointAndVerifiedSuffix(t *testing.T) {
 }
 
 func TestCheckpointStreamFailureDoesNotRetryOrPublishVerifiedCache(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
 	for index := range 4 {

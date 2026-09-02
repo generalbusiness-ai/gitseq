@@ -12,6 +12,7 @@ import (
 // a second opening records actor custody, and the first persists an unrelated
 // field from its stale memory. The second opening's custody must survive.
 func TestStaleWorkspaceSavePreservesConcurrentCustody(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	first, _, err := Init(ctx, repo, "human", 1<<20)

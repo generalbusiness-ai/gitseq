@@ -30,6 +30,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestPublicationMintsNoArtifactAndCarriesPathHeadAndRemote(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -75,6 +76,7 @@ func TestPublicationMintsNoArtifactAndCarriesPathHeadAndRemote(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestPublicationPrefersAnArtifactAtTheExactPathAndHead(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -131,6 +133,7 @@ func TestPublicationPrefersAnArtifactAtTheExactPathAndHead(t *testing.T) {
 // A retired artifact at the exact path and head is not a basis: nothing may
 // rest on a withdrawn pointer, so the fact falls back to the governing basis.
 func TestPublicationWillNotRestOnARetiredArtifact(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -154,6 +157,7 @@ func TestPublicationWillNotRestOnARetiredArtifact(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestPublicationSuccessorRestsOnAndSupersedesItsPredecessor(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -223,6 +227,7 @@ func TestPublicationSuccessorRestsOnAndSupersedesItsPredecessor(t *testing.T) {
 // Condition 4, third clause: dropping a path from the watch globs bare-retires
 // its final fact — no successor is named, because there is none.
 func TestWatchRemovalBareRetiresTheFinalFact(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -273,6 +278,7 @@ func TestWatchRemovalBareRetiresTheFinalFact(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestPublicationRefusesTheWholeBatchOverAForeignPredecessor(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -347,6 +353,7 @@ func TestPublicationRefusesTheWholeBatchOverAForeignPredecessor(t *testing.T) {
 // another actor's fact, but doing it inside publication would end one author's
 // wire and begin another's in a single unreviewed step.
 func TestAPublisherHoldingRatifierIsAlsoRefused(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -388,6 +395,7 @@ func TestAPublisherHoldingRatifierIsAlsoRefused(t *testing.T) {
 
 // A path nobody has published carries no wire, so any actor may begin one.
 func TestADifferentActorMayPublishANeverPublishedPath(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -425,6 +433,7 @@ func TestADifferentActorMayPublishANeverPublishedPath(t *testing.T) {
 // Once no live fact stands there, the next actor begins a fresh chain rather
 // than continuing someone else's.
 func TestANewActorStartsFreshAfterATerminalOrphanRetirement(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -484,6 +493,7 @@ func TestANewActorStartsFreshAfterATerminalOrphanRetirement(t *testing.T) {
 // predecessor that is still live. Visibility is not completion: the recovering
 // run owes the retirement, and the shared frontier waits for it.
 func TestARecoveredVisibleSuccessorStillRetiresItsPredecessor(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -559,6 +569,7 @@ func TestARecoveredVisibleSuccessorStillRetiresItsPredecessor(t *testing.T) {
 // the batch is kept and the frontier stays where it was. Nothing is presented
 // as published.
 func TestAnUnfinishedRetirementHoldsTheBatchAndTheFrontier(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	report, outbox, state, submissions := f.reconcileAgainstRetirementVerdict(t, nil)
 	if report.err == nil {
@@ -586,6 +597,7 @@ func TestAnUnfinishedRetirementHoldsTheBatchAndTheFrontier(t *testing.T) {
 // it refuses. The successor stands, the succession does not, and the path is
 // never presented as published.
 func TestAnIneffectiveRetirementRefuses(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	report, outbox, _, _ := f.reconcileAgainstRetirementVerdict(t, &workroom.Decision{
 		Event: publicationFixtureRetirement, Verdict: workroom.Ineffective, Reason: "the fold refused this retirement"})
@@ -675,6 +687,7 @@ func (f *publicationFixture) reconcileAgainstRetirementVerdict(t *testing.T, ret
 // ---------------------------------------------------------------------------
 
 func TestPublicationIdempotencyKeysAreLiteral(t *testing.T) {
+	t.Parallel()
 	assertKey := publicationAssertKey("origin", "refs/heads/main", "notes/one.md", strings.Repeat("a", 40))
 	wantAssert := "publication:" + publicationDigest("origin", "refs/heads/main", "notes/one.md", strings.Repeat("a", 40))
 	if assertKey != wantAssert {
@@ -748,6 +761,7 @@ func TestPublicationReplaysARecoveredSubmissionRatherThanDuplicatingIt(t *testin
 // ---------------------------------------------------------------------------
 
 func TestPublicationSuppressesAlreadyPublishedPathsOnANonEmptyDiff(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -819,6 +833,7 @@ func TestPublicationSuppressesAlreadyPublishedPathsOnANonEmptyDiff(t *testing.T)
 // answers that query with one well-formed line naming a different branch.
 // Only the exact ref equality separates the two.
 func TestRemoteBranchHeadRequiresExactRefEquality(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write("a.txt", "a\n")
 	head := f.commit("only commit")
@@ -845,6 +860,7 @@ func TestRemoteBranchHeadRequiresExactRefEquality(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestPublishRefusesMoreThanTheBatchCeilingBeforeQueueing(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	for index := 0; index <= publicationBatchLimit; index++ {
@@ -913,6 +929,7 @@ func (r *countingReader) Read(buffer []byte) (int, error) {
 }
 
 func TestReadBoundedAppliesTheBoundBeforeReading(t *testing.T) {
+	t.Parallel()
 	const limit = 1 << 10
 	source := &countingReader{remaining: limit * 64}
 	if _, err := readBounded(source, limit, "publication outbox"); err == nil {
@@ -935,6 +952,7 @@ func TestReadBoundedAppliesTheBoundBeforeReading(t *testing.T) {
 
 // The bound is the one the file loaders actually use, end to end.
 func TestPublicationOutboxRefusesAnOversizedFile(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "outbox.json")
 	if err := os.WriteFile(path, make([]byte, publicationOutboxLimit+1), 0o600); err != nil {
 		t.Fatal(err)
@@ -953,6 +971,7 @@ func TestPublicationOutboxRefusesAnOversizedFile(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestPublicationDecisionRequiresTheResidentToAnswerTheQuestion(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	asked := "git:sha1:" + strings.Repeat("a", 40) + "#git:sha1:" + strings.Repeat("b", 40)
 	other := "git:sha1:" + strings.Repeat("a", 40) + "#git:sha1:" + strings.Repeat("c", 40)
@@ -1002,6 +1021,7 @@ func TestPublicationDecisionRequiresTheResidentToAnswerTheQuestion(t *testing.T)
 // below is genuinely in this repository's own projection, and a resident that
 // refuses to answer for it still leaves the entry pending.
 func TestPublicationDecisionNeverFallsBackToTheLocalProjection(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	event := f.act(app.Act{Verb: app.VerbState, Kind: workroom.KindAssert, Text: "locally visible", RestsOn: []string{f.basis}})
 	if _, judged, err := localPublicationDecision(context.Background(), f.workspace, event); err != nil || !judged {
@@ -1019,6 +1039,7 @@ func TestPublicationDecisionNeverFallsBackToTheLocalProjection(t *testing.T) {
 // A refusing resident leaves the entry pending and reports a failure. It never
 // reports success, and it never marks the entry done.
 func TestPublicationRefusalIsNeverReportedAsSuccess(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	event := "git:sha1:" + strings.Repeat("a", 40) + "#git:sha1:" + strings.Repeat("b", 40)
 	var submissions atomic.Int32
@@ -1067,6 +1088,7 @@ func TestPublicationRefusalIsNeverReportedAsSuccess(t *testing.T) {
 // so no replay could reach a different verdict; it is abandoned, reported, and
 // stops holding the shared frontier.
 func TestPublicationAbandonsAnIneffectiveActAndReleasesTheFrontier(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	event := "git:sha1:" + strings.Repeat("a", 40) + "#git:sha1:" + strings.Repeat("b", 40)
 	head := strings.Repeat("c", 40)
@@ -1106,6 +1128,7 @@ func TestPublicationAbandonsAnIneffectiveActAndReleasesTheFrontier(t *testing.T)
 // Transport failures retry, but not forever. After the attempt ceiling the
 // entry is abandoned with the reason it kept failing for.
 func TestPublicationRetriesAreBoundedByTheAttemptCeiling(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		http.Error(writer, "resident is down", http.StatusServiceUnavailable)
@@ -1146,6 +1169,7 @@ func TestPublicationRetriesAreBoundedByTheAttemptCeiling(t *testing.T) {
 // required. That file must reload and settle, or publication is wedged by its
 // own bounded-abandonment path.
 func TestATerminalAbandonmentWithNoEventReloadsAndSettles(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		http.Error(writer, "resident is down", http.StatusServiceUnavailable)
@@ -1242,6 +1266,7 @@ func TestATerminalAbandonmentWithNoEventReloadsAndSettles(t *testing.T) {
 // abandonment that has attempts left, because the only way to abandon with no
 // event at all is to exhaust them.
 func TestAnEntryWithoutAnEventIsRefusedUnlessItExhaustedItsAttempts(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		entry   publicationEntry
@@ -1309,6 +1334,7 @@ func TestAnEntryWithoutAnEventIsRefusedUnlessItExhaustedItsAttempts(t *testing.T
 // A foreign queue blocks only when it shares this run's remote and ref, and
 // only when its actor is still able to drain it.
 func TestForeignPublicationBatchesBlockOnlyLiveActorsOnTheSameFrontier(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	current := filepath.Join(directory, "current.json")
 	foreign := filepath.Join(directory, "other.json")
@@ -1376,6 +1402,7 @@ func TestForeignPublicationBatchesBlockOnlyLiveActorsOnTheSameFrontier(t *testin
 // ---------------------------------------------------------------------------
 
 func TestPublishRefusesAnUntrustworthyAdvertisement(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -1417,6 +1444,7 @@ func TestPublishRefusesAnUntrustworthyAdvertisement(t *testing.T) {
 // would put two unrelatable live facts on one file. The decision is to refuse
 // the shape, on both the paths and the globs that select them.
 func TestPathTraversalIsRefusedSoNoShadowChainCanForm(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{
 		"notes/../one.md", "../one.md", "./one.md", "notes/./one.md",
 		"notes//one.md", "/notes/one.md", "notes/one.md/", "..", ".",
@@ -1468,6 +1496,7 @@ func TestPathTraversalIsRefusedSoNoShadowChainCanForm(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestPublicationHostilePathsRefuseOnlyTheBadNames(t *testing.T) {
+	t.Parallel()
 	patterns, err := parsePublicationConfig([]byte("watch notes/**\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -1511,6 +1540,7 @@ func TestPublicationHostilePathsRefuseOnlyTheBadNames(t *testing.T) {
 }
 
 func TestPublicationConfigContainsWatchGlobsAndNothingElse(t *testing.T) {
+	t.Parallel()
 	patterns, err := parsePublicationConfig([]byte("# decisions\nwatch notes/**.md\nwatch docs/decisions/**.md\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -1541,6 +1571,7 @@ func TestPublicationConfigContainsWatchGlobsAndNothingElse(t *testing.T) {
 }
 
 func TestPublicationRejectsInvalidUTF8BeforeQueueOrSigning(t *testing.T) {
+	t.Parallel()
 	invalid := string([]byte{'r', 'e', 'f', 0xff})
 	if err := validatePublicationRef("refs/heads/" + invalid); err == nil {
 		t.Fatal("accepted an invalid UTF-8 ref")
@@ -1575,6 +1606,7 @@ func TestPublicationRejectsInvalidUTF8BeforeQueueOrSigning(t *testing.T) {
 }
 
 func TestPublicationBadPathStillPublishesGoodPathAndReportsRefusal(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**\n")
 	f.write("notes/good.md", "good\n")
@@ -1597,6 +1629,7 @@ func TestPublicationBadPathStillPublishesGoodPathAndReportsRefusal(t *testing.T)
 }
 
 func TestChangedPublicationPathsPublishesRenameDestinationAndNotDeletion(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write("old.md", "old\n")
 	f.write("deleted.md", "delete me\n")
@@ -1626,6 +1659,7 @@ func TestChangedPublicationPathsPublishesRenameDestinationAndNotDeletion(t *test
 // ---------------------------------------------------------------------------
 
 func TestPublicationReadsTheRemoteAndNotTheLocalCheckout(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
@@ -1693,6 +1727,7 @@ func TestPublicationQueuesDurablyBeforeTheFirstAct(t *testing.T) {
 // The shared frontier belongs to the repository, not to an actor: handing the
 // next push to a different actor must not republish unchanged paths.
 func TestPublicationBaselineSurvivesActorHandoff(t *testing.T) {
+	t.Parallel()
 	f := newPublicationFixture(t)
 	f.write(".gitseq", "watch notes/**.md\n")
 	f.write("notes/one.md", "one\n")
