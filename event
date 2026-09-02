@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:631c354a1936e55e2e13984dded69e379e06ddcd","text":"Retire the docs/reference/architecture.md candidate at b1caf459; replaced by the remerged head 8d30745d (artifact fc962c8f)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4486e92ad91ff018bc182df58d2de8eb63c44849","text":"Retire the docs/reference/gs/reassign-if-unclaimed.md candidate at b1caf459; replaced by the remerged head 8d30745d (artifact e301afce)."}
