@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eaadcd0f4e877ca6f0fd4d0bec143c17e3472e1c","text":"Replaced by the exact-head architecture artifact."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:73e6b400138a94f991a12bb20cd4779404f806bf","text":"Retired with no successor: this path is the removed rename source, and the current head's destination is recorded separately."}
