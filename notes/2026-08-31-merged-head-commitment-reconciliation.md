@@ -15,10 +15,10 @@ invent the second.
 
 Add a repository-aware reconciliation view that finds unresolved commitments
 whose implementation evidence is already present in the configured integration
-head. Surface those rows as attention immediately after a merge and in normal
-status reads. Keep the existing closure rule: the performer files a report and
-the requester ratifies it. This drains rows without letting a Git ancestry test
-declare somebody else's conditions satisfied.
+head. Qualify the existing commitment rows immediately after a merge and in
+normal status reads. Keep the existing closure rule: the performer files a
+report and the requester ratifies it. This drains rows without letting a Git
+ancestry test declare somebody else's conditions satisfied.
 
 This design intentionally does not add an eleventh commitment status, a new
 durable kind, or automatic artifact retirement.
@@ -46,18 +46,31 @@ The three earlier candidates are not safe or sufficient as stated.
    promise. The eleven 2026-08-30 repairs demonstrate that omission.
 
 Choose a fourth shape: **machine-detected, authority-preserving
-reconciliation**. Repository reachability and content equality produce
-advisory evidence. The current lifecycle acts turn that evidence into a
+reconciliation**. Repository reachability produces advisory evidence. The
+current lifecycle acts turn that evidence into a
 closure. Existing rows become visible automatically, but they do not become
 satisfied automatically.
 
+This is an extension of existing landing evidence, not a second ancestry
+system. `internal/gitstore` already exposes `Landings`; the resident already
+serves `/v0/landed`; thread presentation already marks landed heads; and the
+review gate already resolves exact reviewed commits. The detector reuses those
+interfaces and their object-verification rules, then joins the result to
+commitment rows. The problem here is that the join is absent, not that Gitseq
+cannot tell whether a commit landed.
+
 ## What the detector says
 
-The detector reads one explicit integration ref, resolving it to an exact
-commit for each result. The repository default is `refs/heads/main`; callers
-may name another full ref. Output always includes both `integration_ref` and
-`integration_head`, so a later ref move cannot silently change what an earlier
-result claimed.
+The detector reads one explicit integration ref and peels it with
+`git rev-parse --verify <ref>^{commit}`. Only the resulting full object ID is
+reported or signed; abbreviated hashes, unpeeled tags and symbolic names are
+not evidence by themselves. Standing status and work views use
+`refs/heads/main` until Gitseq has a structured integration-target setting;
+callers may name another full ref explicitly. The post-merge warning is
+different: it examines the checked-out target branch immediately after that
+merge, so merging into a non-main branch cannot accidentally report main.
+Output always includes both `integration_ref` and `integration_head`, so a
+later ref move cannot silently change what an earlier result claimed.
 
 It considers commitments in `promised`, `stale`, `reported`, and
 `awaiting-merge`. Terminal rows are excluded. Each candidate has one of these
@@ -66,45 +79,40 @@ evidence classes:
 | Evidence | Meaning | May it close the row? |
 | --- | --- | --- |
 | `reported-head-reachable` | A live or stale reporting artifact names commit `H`, and `H` is an ancestor of the resolved integration head. | No. It supports a performer report. |
-| `reported-paths-equal` | The reporting artifacts' exact paths have equal Git object kind and object ID at their reported head and the integration head. This is the bounded byte-identical-recut case. | No. It supports a performer report and must not be called reachability. |
 | `head-hint-reachable` | A promise or explicit report body carries advisory head `H`, and `H` is an ancestor of the integration head, but no reporting artifact proves it. | No. It is a prompt to investigate, not completion evidence. |
 
-`reported-paths-equal` requires every reporting artifact belonging to that
-completion to match. A missing path, directory/file kind change, submodule
-change, unreadable object, invalid commit, or partial match produces no equality
-claim. Exact path strings are used; there is no cleaning, prefix inference, or
-glob expansion.
-
 The detector does not parse request conditions, infer that two requests are the
-same, or search commit messages for ticket numbers. It does not treat a tree
-hash match as proof that tests, deployment, review, or another non-file
-condition was met.
 
 ## Where the result appears
 
-Add `merge_reconciliation` beside, not inside, the durable Workroom projection.
-It is a repository-aware host view over the projection and ordinary Git
-storage. Each bounded row contains:
+Add an `incorporated` qualifier to the existing repository-aware host rendering
+of a commitment row, not a new top-level `merge_reconciliation` collection.
+The fold remains unchanged; layer 7 joins ordinary Git evidence to the row it
+already places in `waiting_on_you`, `you_are_waiting_on`, or another existing
+lane. The qualifier never changes the lane, waiting party, status, count or
+action ownership. Each bounded qualifier contains:
 
 - request, promise and completion event identifiers already projected by the
   fold;
 - current commitment status and ordinary staleness;
 - performer and requester fingerprints;
 - evidence class and the exact reported or hinted head;
-- exact artifact paths used for a content comparison;
-- integration ref and resolved head; and
-- `next_actor`: the performer until a report exists, then the requester.
+- integration ref and resolved full commit ID.
 
 The normal `gs status`, `gs work`, MCP `status`, MCP `work`, and browser work
-board show a count and bounded rows. The resident recomputes the host view when
-either the durable frontier or integration ref moves. The fold and its
-checkpoints remain independent of the application repository.
+board show the qualifier on their already bounded rows. They do not add a
+second count. The resident recomputes the host view when either the durable
+frontier or integration ref moves. The fold and its checkpoints remain
+independent of the application repository. Waiting-party wording stays the
+wording of the underlying lane; incorporation evidence is an explanation, not
+a reassignment.
 
 After `gs merge` updates the integration ref, it runs the same detector against
 the new exact head and prints any newly qualifying unresolved rows. This is a
 warning after the merge, not another merge gate and not a durable receipt
 field. A warning failure must not make an already completed Git merge look as
-though it did not happen.
+though it did not happen. The warning prints at most the existing work-row cap
+and states the omitted count, so one merge cannot produce unbounded output.
 
 ## How a row closes
 
@@ -115,13 +123,21 @@ the fold:
    evidence.
 2. If those conditions are in fact met, the performer files an explicit
    `report` resting on the promise, or on the request when there was no promise.
-   The report states the exact integration ref and resolved head it checked and
-   why the incorporated implementation satisfies the conditions.
+   The report's visible signed text states the exact integration ref, resolved
+   full commit ID and why the incorporated implementation satisfies the
+   conditions. The convenience adds no invented verdict, status or private
+   body fields.
 3. If that basis is stale, the performer uses the existing dead-basis override.
    The override records that the stale basis was seen; it does not make it
    current.
 4. The original requester ratifies the report. The fold then projects the
    commitment as `satisfied`, retaining its independent stale flag.
+
+When a commitment already has an earlier completion report, a later effective
+report becomes its latest completion for presentation and ratification; the
+earlier report remains immutable history. The implementation must test that
+replacement explicitly so reconciliation never leaves a repaired report
+hidden behind the one it was meant to supersede.
 
 This is the same shape planner used on 2026-08-30: performer report on the stale
 promise with a dead-basis override, then requester ratification. It is the
@@ -143,20 +159,26 @@ write flag it lists bounded candidates. With `--request <event> --report` it:
 - requires the current actor to be the projected performer;
 - resolves and prints the exact integration head again;
 - repeats the request conditions and evidence class;
-- refuses a partial path match or a moved integration head;
+- refuses a moved integration head;
 - requires `--text` describing why all conditions are met;
 - requires `--allow-dead-basis` when the promise or request is stale; and
 - appends one ordinary report with an idempotency key derived from request,
   promise, integration ref and resolved head.
 
+The command composes the integration ref, full resolved commit ID and supplied
+reason into the visible report text before signing. It uses only the existing
+report body shape and ordinary projection rules.
+
 It never ratifies. The requester uses the existing `ratify` command after
 reading the report. There is no `--all --report`: bulk inference is the failure
 this design is avoiding.
 
-The MCP adapter exposes the same read and one-row report operation, including
-per-call actor and repository selectors under the existing selector contract.
-The browser offers the normal report and ratify actions only when the durable
-projection says the signed-in actor may take them.
+The MCP adapter exposes the qualifier through existing `status` and `work`
+reads, including per-call actor and repository selectors under the existing
+selector contract. It adds no reconciliation write operation. Agents use the
+existing `state` tool to file the ordinary report. The browser likewise uses
+its normal report and ratify actions only when the durable projection says the
+signed-in actor may take them.
 
 ## Existing rows and rollout
 
@@ -173,8 +195,9 @@ design does not reinterpret old events or change their lifecycle labels.
 Roll out in three bounded steps:
 
 1. implement and test the repository-aware detector plus CLI read view;
-2. compose bounded results into status, work, MCP and browser attention; and
-3. add the one-row reporting convenience and post-merge warning.
+2. compose the bounded qualifier into existing status, work, MCP and browser
+   rows; and
+3. add the CLI one-row reporting convenience and post-merge warning.
 
 Each implementation request must rest on the ratified adoption of this note
 and identify the architecture layers it changes.
@@ -196,10 +219,11 @@ that incorporation evidence is not satisfaction.
 
 ## Security and failure posture
 
-- Merger-authored receipt fields confer no new authority. A forged ancestry or
-  equality claim cannot close a row or retire an artifact.
-- Git revisions are resolved to object IDs before comparison. Symbolic refs,
-  abbreviated hashes, replace refs and working-tree contents are not evidence.
+- Merger-authored receipt fields confer no new authority. A forged ancestry
+  claim cannot close a row or retire an artifact.
+- Git revisions are peeled with `git rev-parse --verify <ref>^{commit}` and
+  recorded as full object IDs before comparison. Symbolic refs, abbreviated
+  hashes, replace refs and working-tree contents are not evidence.
 - Missing and malformed objects fail closed for the affected row. Other rows
   remain readable.
 - Result counts and rows use the existing status/work bounds. Path and error
@@ -208,13 +232,11 @@ that incorporation evidence is not satisfaction.
   trust a remote ref implicitly.
 - A moved integration ref invalidates a pending write preflight. The reporting
   command recomputes before append and signs the exact head it observed.
-- Content equality never crosses an exact artifact path and never grants
-  retirement authority at that path.
 
 ## Simplification
 
-One derived view and one thin convenience command reuse the existing report,
-ratification, staleness and commitment rules. Adding a durable `included`
-kind, a new lifecycle status, automatic request acceptance, or merge-wide
-artifact retirement would duplicate those rules while weakening their
-authority boundary. Leave them out.
+One qualifier and one thin CLI convenience reuse the existing landing,
+report, ratification, staleness and commitment rules. There is no second row
+collection, content-equality engine, MCP write method, durable `included` kind,
+new lifecycle status, automatic request acceptance, or merge-wide artifact
+retirement. Leave them out.
