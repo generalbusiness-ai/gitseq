@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:33def2532b0c3ecf6421b16a3e03346284689ef1","text":"Retire the born-stale refile; replaced by 6a9fd2fa resting only on fresh bases."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:10c5aacd1c1d4e84c961119c46ca8c8b0fc49fdf","text":"Retire the stale bounded child; its whole scope continues in successor 6a9fd2fa on fresh bases (same head b8163735, same conditions)."}
