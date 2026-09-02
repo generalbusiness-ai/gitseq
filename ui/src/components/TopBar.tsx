@@ -104,13 +104,12 @@ export function TopBar({
   // rule, asked again by the dialog's submit gate and by the signing boundary
   // in `App.tsx`, so this control cannot drift from what actually decides.
   //
-  // The claim made here is about this control only. `isLiveParticipant` is not
-  // the one predicate every state-writing affordance asks: its own comment in
-  // `lib/authority.ts` lists what asks it today — `publishRefusal` on this
-  // path, `mayRatify` for the originating-requester case, and `signingRefusal`
-  // at the boundaries that sign — the seven Toolbar controls that are still
-  // drawn without asking it, and why own-author `withdraw` is deliberately
-  // outside it.
+  // The claim made here is about this control only. `isLiveParticipant` does
+  // not govern every Toolbar affordance: the seven ordinary state-composer
+  // routes are withheld for a departed actor, while the three direct
+  // ratifications are governed by their admitted ratifier authority. An
+  // own-author `withdraw` instead signs supersession and remains governed by
+  // that act's authorship rule. `lib/authority.ts` names each boundary.
   //
   // Opening the dialog is not the last chance to refuse, and this control is
   // not the guarantee: authority can be lost while the dialog is open, so the

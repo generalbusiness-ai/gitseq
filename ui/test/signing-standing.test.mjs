@@ -195,10 +195,10 @@ test("a live participant's reply does reach the wire", async () => {
   });
 });
 
-// Membership moves under an open composer. The seven toolbar affordances are
-// offered on authorship and commitment role with no membership test -- that is
-// deliberate, they only open the composer -- so the boundary is the only thing
-// standing between a departed signer and a permanently ineffective row.
+// Membership moves under an open composer. The Toolbar withholds its seven
+// ordinary state-composer affordances from a departed actor; a composer opened
+// before that change can still be on screen, so the signing boundary remains
+// the only thing standing between that actor and a permanently ineffective row.
 test("membership lost after the control is offered files nothing", async () => {
   await withPane(async (vite, root) => {
     const send = await compose(vite, root, room({ roles: ["participant"] }));

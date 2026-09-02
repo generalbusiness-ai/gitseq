@@ -24,8 +24,9 @@ const ADMITTED = {
 };
 const admitted = (statement) => ({ ...statement, satisfier: ADMITTED[statement.kind] });
 
-const ratifier = (name) => ({ name, kind: "human", roles: ["ratifier"], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} });
-const bystander = (name) => ({ name, kind: "human", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} });
+const ratifier = (name) => ({ name, kind: "human", roles: ["participant", "ratifier"], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} });
+const bystander = (name) => ({ name, kind: "human", roles: ["participant"], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} });
+const departedRatifier = (name) => ({ name, kind: "human", roles: ["ratifier"], retired: true, role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} });
 
 function workroom(presence, suppliedProjection) {
   const projection = suppliedProjection ?? {
@@ -171,7 +172,7 @@ test("a ratification is offered only to an actor the fold would let ratify", asy
 
     assert.deepEqual(labels(proposal, { [viewer]: ratifier("hugh") }), ["agree", "disagree"]);
     assert.deepEqual(labels(proposal, { [viewer]: bystander("hugh") }), ["disagree"], "no ratifier role, no agree button");
-    assert.deepEqual(labels(proposal, {}), ["disagree"], "an actor the roster does not carry holds no role at all");
+    assert.deepEqual(labels(proposal, {}), [], "an actor the roster does not carry has no ordinary state route");
     // A statement carrying no satisfier proves nothing about who may ratify
     // it: either the fold bound it no definition, or the projection is too old
     // to say. Layer 6 already refuses to present a partial projection as
@@ -180,6 +181,149 @@ test("a ratification is offered only to an actor the fold would let ratify", asy
       labels({ ...proposal, satisfier: undefined }, { [viewer]: ratifier("hugh") }),
       ["disagree"],
       "no admitted satisfier, no proof",
+    );
+  } finally {
+    await vite.close();
+  }
+});
+
+// This synthetic departed-ratifier shape is not emitted by the fold: an active
+// role grant rests on active membership. It pins the browser's direct
+// ratification dispatch to `decideRatify`, without adding the ordinary state
+// composer's participant gate to `mayRatify` or `canRatify`. The matching
+// composer routes remain withheld below because those sign state, which does
+// require participant membership.
+test("a departed ratifier keeps all direct ratifications and no composer routes", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { semanticActions } = await vite.ssrLoadModule("/src/components/Toolbar.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const viewer = "departed-ratifier";
+    const actors = { [viewer]: departedRatifier("departed ratifier") };
+    const decision = (event) => ({ event, verdict: "effective", reason: "recorded" });
+    const labels = ({ statement, commitment, statements = [statement], decisions = statements.map(({ event }) => decision(event)), provenance = {} }) => {
+      const projection = { decisions, acts: [], statements, commitments: commitment ? [commitment] : [], artifacts: [], actors, provenance };
+      return semanticActions({
+        statement,
+        commitment,
+        decision: decisions.find(({ event }) => event === statement.event),
+        projection,
+        index: buildRecordIndex(projection),
+        me: viewer,
+        onRoute() {},
+        doAct() {},
+      }).map(({ label }) => label);
+    };
+
+    const proposal = admitted({ event: "proposal", actor: "author", kind: "propose", text: "Adopt this.", timestamp: 1 });
+    const request = admitted({ event: "request", actor: "author", kind: "request", text: "Ratify or deny.", body: { to: viewer }, timestamp: 2 });
+    const reportTarget = admitted({ event: "report-target", actor: "author", kind: "assert", text: "Work item.", timestamp: 3 });
+    const report = { event: "report", actor: "performer", kind: "report", text: "Finished.", satisfier: "role:ratifier", timestamp: 4 };
+    const artifact = admitted({ event: "artifact", actor: "author", kind: "artifact", text: "Candidate.", body: { path: "notes/decision.md" }, timestamp: 5 });
+
+    assert.deepEqual(labels({ statement: proposal }), ["agree"], "role-authorized agreement must not gain a participant gate");
+    assert.deepEqual(
+      labels({
+        statement: request,
+        commitment: { request: request.event, requester: request.actor, addressed_to: viewer, status: "open" },
+        statements: [proposal, request],
+        decisions: [decision(proposal.event), decision(request.event)],
+        provenance: { [proposal.event]: [], [request.event]: [proposal.event] },
+      }),
+      ["ratify yes"],
+      "the addressed direct proposal ratification must not gain a participant gate",
+    );
+    assert.deepEqual(
+      labels({
+        statement: reportTarget,
+        commitment: { request: "request", requester: "author", performer: report.actor, report: report.event, status: "reported" },
+        statements: [reportTarget, report],
+        decisions: [decision(reportTarget.event), decision(report.event)],
+      }),
+      ["accept"],
+      "the report ratification must not gain a participant gate",
+    );
+    assert.deepEqual(labels({ statement: artifact }), [], "a departed ratifier must not open ordinary state composition");
+  } finally {
+    await vite.close();
+  }
+});
+
+test("every Toolbar state route withholds its composer from a departed participant", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { semanticActions } = await vite.ssrLoadModule("/src/components/Toolbar.tsx");
+    const { buildRecordIndex } = await vite.ssrLoadModule("/src/lib/records.ts");
+    const viewer = "departed-fingerprint";
+    const live = { [viewer]: bystander("departed") };
+    const departed = { [viewer]: departedRatifier("departed") };
+    const decision = (event) => ({ event, verdict: "effective", reason: "recorded" });
+    const labels = ({ statement, commitment, statements = [statement], decisions = statements.map(({ event }) => decision(event)), provenance = {} }, actors) => {
+      const projection = { decisions, acts: [], statements, commitments: commitment ? [commitment] : [], artifacts: [], actors, provenance };
+      return semanticActions({
+        statement,
+        commitment,
+        decision: decisions.find(({ event }) => event === statement.event),
+        projection,
+        index: buildRecordIndex(projection),
+        me: viewer,
+        onRoute() {},
+        doAct() {},
+      }).map(({ label }) => label);
+    };
+
+    const request = admitted({ event: "request", actor: "author", kind: "request", text: "Please do this.", body: { to: viewer }, timestamp: 1 });
+    const proposal = admitted({ event: "proposal", actor: "author", kind: "propose", text: "Adopt this.", timestamp: 2 });
+    const artifact = admitted({ event: "artifact", actor: "author", kind: "artifact", text: "The candidate.", body: { path: "notes/decision.md" }, timestamp: 3 });
+    const promiseTarget = admitted({ event: "promise-target", actor: "author", kind: "assert", text: "Work is underway.", timestamp: 4 });
+    const reportTarget = admitted({ event: "report-target", actor: "author", kind: "assert", text: "The work item.", timestamp: 5 });
+    const report = admitted({ event: "report", actor: "performer", kind: "report", text: "Finished.", timestamp: 6 });
+
+    const routes = [
+      ["request accept", { statement: request, commitment: { request: request.event, requester: request.actor, addressed_to: viewer, status: "open" } }, ["accept"], []],
+      [
+        "deny",
+        {
+          statement: request,
+          commitment: { request: request.event, requester: request.actor, addressed_to: viewer, status: "open" },
+          statements: [request, proposal],
+          decisions: [decision(request.event), decision(proposal.event)],
+          provenance: { [request.event]: [proposal.event], [proposal.event]: [] },
+        },
+        ["deny"],
+        ["ratify yes"],
+      ],
+      ["disagree", { statement: proposal }, ["disagree"], ["agree"]],
+      ["artifact proposal and review", { statement: artifact }, ["propose adoption", "request review"], []],
+      [
+        "mark done",
+        { statement: promiseTarget, commitment: { request: "request", performer: viewer, promise: "promise", status: "promised" } },
+        ["mark done"],
+        [],
+      ],
+      [
+        "needs work",
+        {
+          statement: reportTarget,
+          commitment: { request: "request", requester: viewer, performer: report.actor, report: report.event, status: "reported" },
+          statements: [reportTarget, report],
+          decisions: [decision(reportTarget.event), decision(report.event)],
+        },
+        ["accept", "needs work"],
+        [],
+      ],
+    ];
+
+    for (const [name, input, whenLive, whenDeparted] of routes) {
+      assert.deepEqual(labels(input, live), whenLive, `${name}: live participant still sees the route`);
+      assert.deepEqual(labels(input, departed), whenDeparted, `${name}: departed viewer does not open ordinary state composition`);
+    }
+
+    const ownRecord = admitted({ event: "own-record", actor: viewer, kind: "assert", text: "Withdrawable.", timestamp: 7 });
+    assert.deepEqual(
+      labels({ statement: ownRecord }, departed),
+      ["withdraw"],
+      "own-authored withdraw stays available to a departed actor because it signs supersede, not state",
     );
   } finally {
     await vite.close();
