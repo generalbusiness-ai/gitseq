@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8b907a6709a9104dc0bfc07e3544930683743dab","text":"Retire the internal/workroom candidate at b1caf459; replaced by the remerged head 8d30745d (artifact 2fd5baa2)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a70b35de74d95235bea3efaadf60326592f8d007","text":"Retire the cmd/gs candidate at b1caf459; replaced by the remerged head 8d30745d (artifact 361dac67)."}
