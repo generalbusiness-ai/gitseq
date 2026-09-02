@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9f5990756df8d2e13dfea753bd3637e8c9511fcc"}
+{"kind":"promise","text":"I will repair the current merge-plan implementation within the bounded review scope, restore the named regression proofs, document and pin the authorization boundary, publish the exact head, and obtain fresh independent review before merge.","body":{"branch":"request/merge-plan-current-repair","head":"1567f850e9c1e57ed7efa04510026a435d112769"}}
