@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a63bed5a3e8004a512e33940756b2d0c0005d9f1"}
+{"kind":"promise","text":"Claiming the independent review of the carried-accounting current-main recut at exact clean pushed head 0ce9e0dbb9fae8abee4ef622faeaefc137936a58 on request/carried-accounting-current (branch tip confirmed, merges cleanly onto main c8e84040, twelve fresh artifacts cited). Running the full gate at the head myself and a fresh adversarial pass; guarded verdict to follow; no merge."}
