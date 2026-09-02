@@ -59,10 +59,28 @@ func (w *Workspace) AdmitState(ctx context.Context, admission stateAdmission) (m
 	return w.admitState(snapshot, admission, head)
 }
 
-// admitState is the one Workroom admission evaluation, over a projection the
+// admitState is the pre-signing half: it returns the body to sign, with the
+// testimony admission owns written onto it.
+func (w *Workspace) admitState(snapshot Snapshot, admission stateAdmission, frontierCommit string) (map[string]string, error) {
+	return w.judgeState(snapshot, admission, frontierCommit, false)
+}
+
+// admitSignedState is the sequencing half: it judges a body a signature
+// already covers, so it returns no body at all. Nothing may be amended after
+// signing, and the testimony admission would otherwise have written is
+// verified against this world instead.
+func (w *Workspace) admitSignedState(snapshot Snapshot, admission stateAdmission, frontierCommit string) error {
+	_, err := w.judgeState(snapshot, admission, frontierCommit, true)
+	return err
+}
+
+// judgeState is the one Workroom admission evaluation, over a projection the
 // caller has already read. frontierCommit names the tip that projection was
 // read at, which is what a guarded verdict's recorded frontier must equal.
-func (w *Workspace) admitState(snapshot Snapshot, admission stateAdmission, frontierCommit string) (map[string]string, error) {
+// signed says which half is asking: the pre-signing half writes admission's
+// own fields, the sequencing half requires the signed ones to be exactly what
+// this world computes.
+func (w *Workspace) judgeState(snapshot Snapshot, admission stateAdmission, frontierCommit string, signed bool) (map[string]string, error) {
 	body := cloneBody(admission.Body)
 	if body == nil {
 		body = make(map[string]string)
@@ -82,7 +100,7 @@ func (w *Workspace) admitState(snapshot Snapshot, admission stateAdmission, fron
 			return nil, err
 		}
 	}
-	if err := w.refuseDeadBases(snapshot, admission.RestsOn, body, admission.AllowDeadBasis); err != nil {
+	if err := w.judgeDeadBases(snapshot, admission.RestsOn, body, admission.AllowDeadBasis, signed); err != nil {
 		return nil, err
 	}
 	return body, nil
@@ -171,22 +189,15 @@ func refuseUndefinedKind(vocabulary workroom.Vocabulary, kind workroom.Kind) err
 	return fmt.Errorf("state kind %q is not defined in this workroom and no override exists. %s. A ratified kind-def must establish a new kind before state can use it", kind, defined)
 }
 
-// refuseDeadBases judges the bases a state rests on the way gs merge judges
-// the bases of an approval. A retired basis is withdrawn ground and refuses:
-// nothing stands there any more. A basis whose only problem is staleness
-// stands exactly where it stood, so the state is admitted and the staleness is
-// written onto it, in the one line a merge receipt would have carried. An
-// effective supersession stays advisory: citing the retirement itself can be
-// intentional.
-//
-// The escape for a retired basis is explicit and recorded, never silent:
-// asking for it signs body.dead_basis_override=true, and an act arriving with
-// that signature already on it honours it. Neither the refusal, the override,
-// nor the recorded note removes staleness or grants authority; existing
-// standing and staleness judgements continue unchanged.
-func (w *Workspace) refuseDeadBases(snapshot Snapshot, restsOn []string, body map[string]string, allowed bool) error {
-	dead := workroom.DeadBases(snapshot.Projection, restsOn)
-	var blocking, stale []string
+// deadBasisVerdict is what one world says about the bases of one act: the
+// retired ones that block it, and the one line of testimony its stale ones
+// earn. It is a pure function of the projection and the bases, so the
+// pre-signing half and the sequencing half compute the same answer from the
+// same world — which is what lets one of them write the note and the other
+// check it.
+func deadBasisVerdict(projection workroom.Projection, restsOn []string) (blocking []string, note string) {
+	dead := workroom.DeadBases(projection, restsOn)
+	var stale []string
 	for basis, class := range dead {
 		switch class {
 		case workroom.DeadBasisSupersede:
@@ -198,8 +209,49 @@ func (w *Workspace) refuseDeadBases(snapshot Snapshot, restsOn []string, body ma
 		}
 	}
 	sort.Strings(stale)
-	if note := staleBasisNote(snapshot.Projection, stale); note != "" {
+	sort.Strings(blocking)
+	return blocking, staleBasisNote(projection, stale)
+}
+
+// judgeDeadBases judges the bases a state rests on the way gs merge judges the
+// bases of an approval. A retired basis is withdrawn ground and refuses:
+// nothing stands there any more. A basis whose only problem is staleness
+// stands exactly where it stood, so the state is admitted and the staleness is
+// written onto it, in the one line a merge receipt would have carried. An
+// effective supersession stays advisory: citing the retirement itself can be
+// intentional.
+//
+// The two reserved fields a caller can see on a landed act are treated
+// differently on purpose. body.dead_basis_override is a request the author is
+// entitled to make: it says only that they saw the dead ground, it grants
+// nothing, and an act arriving already carrying that signature is honoured.
+// body.stale_bases is not a request but an assertion about the world, so it is
+// never taken on trust: the pre-signing half writes exactly the note this
+// world computes and omits the field entirely on fresh ground, and the
+// sequencing half recomputes it and refuses anything else. Otherwise a writer
+// that skipped the friendly client surface could hand-sign whatever staleness
+// story it liked. Neither the refusal, the override, nor the recorded note
+// removes staleness or grants authority; existing standing and staleness
+// judgements continue unchanged.
+func (w *Workspace) judgeDeadBases(snapshot Snapshot, restsOn []string, body map[string]string, allowed, signed bool) error {
+	blocking, note := deadBasisVerdict(snapshot.Projection, restsOn)
+	// Presence and value are separate facts. On fresh ground the boundary
+	// writes no field at all, so a signed body carrying the key with an empty
+	// value is testimony the boundary never wrote, however harmless the value
+	// looks. The cases below the two unsigned ones are reached only when
+	// signed, because those two answer every unsigned act.
+	signedNote, present := body[StaleBasesField]
+	switch {
+	case !signed && note != "":
 		body[StaleBasesField] = note
+	case !signed:
+		delete(body, StaleBasesField)
+	case note == "" && present:
+		return fmt.Errorf("body.%s is present on an act whose bases are all fresh; the write boundary omits that field entirely when nothing has moved, so it must be absent here — re-sign this act against the current world",
+			StaleBasesField)
+	case signedNote != note:
+		return fmt.Errorf("body.%s was signed as %q but this world computes %q; that field is the write boundary's own testimony, not the caller's, so re-sign this act against the current world",
+			StaleBasesField, signedNote, note)
 	}
 	if len(blocking) == 0 {
 		return nil
@@ -207,7 +259,6 @@ func (w *Workspace) refuseDeadBases(snapshot Snapshot, restsOn []string, body ma
 	if body["dead_basis_override"] == "true" {
 		return nil
 	}
-	sort.Strings(blocking)
 	if !allowed {
 		return fmt.Errorf("this state rests on %d already-dead basis(es): %s; rerun with --allow-dead-basis, or allow_dead_basis=true, to sign body.dead_basis_override=true recording that you saw them",
 			len(blocking), strings.Join(blocking, ", "))
@@ -272,10 +323,9 @@ func (w *Workspace) admitApplication(ctx context.Context, application kernel.App
 		if err != nil {
 			return err
 		}
-		_, err = w.admitState(snapshot, stateAdmission{
+		return w.admitSignedState(snapshot, stateAdmission{
 			Kind: state.Kind, Body: state.Body, RestsOn: application.Intent.RestsOn,
 		}, application.Head)
-		return err
 	case workroom.SchemaRetireUnclaimed:
 		decoded, err := workroom.Decode(application.Intent.Schema, application.Payload)
 		if err != nil {
@@ -301,10 +351,9 @@ func (w *Workspace) admitApplication(ctx context.Context, application kernel.App
 		if err != nil {
 			return err
 		}
-		_, err = w.admitState(snapshot, stateAdmission{
+		return w.admitSignedState(snapshot, stateAdmission{
 			Kind: workroom.KindRequest, Body: guard.Body, RestsOn: application.Intent.RestsOn,
 		}, application.Head)
-		return err
 	default:
 		return nil
 	}

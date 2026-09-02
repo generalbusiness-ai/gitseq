@@ -1325,6 +1325,17 @@ func (w *Workspace) BuildActRequest(ctx context.Context, private ed25519.Private
 			return kernel.Request{}, err
 		}
 		rests = append([]string{act.Retirement}, rests...)
+		// Sequencing runs the whole state admission over this body against the
+		// exact frontier, testimony included. Running it here too keeps the
+		// two halves saying the same thing, so a replacement whose extra bases
+		// went stale carries the note it earns instead of being refused at
+		// sequencing for not carrying one.
+		body, err = w.AdmitState(ctx, stateAdmission{
+			Kind: workroom.KindRequest, Body: body, RestsOn: rests,
+		})
+		if err != nil {
+			return kernel.Request{}, err
+		}
 		schema = workroom.SchemaReassignRequest
 		payload = workroom.ReassignIfUnclaimed{
 			Text: act.Text, Body: body,

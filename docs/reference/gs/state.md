@@ -83,7 +83,11 @@ into `body.stale_bases` — the same one-line note
 [`gs merge`](merge.md) puts in a receipt, naming the stale basis, whether it
 describes a superseded world, and the retired acts beneath it. This is the
 merge rule applied at the write boundary: refuse the retired one, land the
-stale one and record it.
+stale one and record it. The note is checked as well as written: when the act
+is sequenced, the boundary computes the note again from the world the act
+would join and refuses any act whose signed `body.stale_bases` differs, or
+that carries the field at all on fresh ground. If your world moved between
+signing and sequencing, re-run the command to sign the current note.
 
 ## Reserved fields you cannot write
 
@@ -111,7 +115,10 @@ by hand is refused because a reserved field means the same thing wherever
 it appears, and a caller that writes it directly is claiming an
 authorisation the boundary never granted. `stale_bases` has no flag at all:
 it is the boundary's own testimony about what the act rested on, and an
-author who could write it could make an act look freshly grounded.
+author who could write it could make an act look freshly grounded. Refusing
+it here protects only this command, so the sequencing boundary recomputes the
+note and refuses any signed value that is not exactly its own: hand-signing
+one gains nothing.
 
 ## Citing
 

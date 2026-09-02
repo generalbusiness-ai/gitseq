@@ -42,7 +42,10 @@ there any more; the escape is explicit and signed
 basis is admitted, and the boundary writes what had moved into the act's
 `body.stale_bases`, in the same line a merge receipt would carry. The
 staleness is recorded rather than argued with, and it is still a flare:
-someone has to look.
+someone has to look. The note belongs to the boundary in both halves: it
+is written before signing, and when the act is sequenced the boundary
+computes the note again and refuses any act whose signed `stale_bases` is
+not exactly that, so nobody can sign a staleness story of their own.
 
 The guarded [`gs reassign-if-unclaimed`](../reference/gs/reassign-if-unclaimed.md)
 reads staleness the same way. It protects one statement — nobody has

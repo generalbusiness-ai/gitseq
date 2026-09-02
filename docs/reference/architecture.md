@@ -993,9 +993,15 @@ author asks for the recorded escape (`body.dead_basis_override=true`), while
 an effective supersession stays advisory. A basis whose only problem is
 staleness stands where it stood, so the state is admitted and the boundary
 stamps the reserved `body.stale_bases` field with the same one-line staleness
-note a merge receipt carries. That field is never caller input. Neither the
-refusal, the override, nor the recorded note removes staleness or grants
-authority.
+note a merge receipt carries. That field is never caller input, and the
+authoritative half does not trust a signature over it: it computes the same
+note from the pre-sequence frontier and refuses any act whose signed
+`body.stale_bases` is not exactly that, absence included on fresh ground, so a
+writer that skipped the client surface cannot sign testimony of its own.
+`body.dead_basis_override` is deliberately unlike it — a request the author is
+entitled to make, recorded and granting nothing — and is honoured wherever it
+is found. Neither the refusal, the override, nor the recorded note removes
+staleness or grants authority.
 
 The guarded verdict path owns head-news discovery — statements sequenced
 strictly after the review request that name the reviewed head or lane —
