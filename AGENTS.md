@@ -34,15 +34,16 @@ per ISO 24495-1, for a technical audience.
    breakdown, but it is not a substitute for the request that assigns follow-up
    work. Self-initiated work — requester and performer the same actor — carries
    no self-request, self-promise, or self-report: the implementing commit rests
-   directly on the motivating ratified decision, and the durable filing is the
-   artifact plus the review request only. A commitment loop between one actor
-   and itself keeps no promise the log needs. The tradeoff is that this path
-   shows no in-flight commitment row, so nobody can see from the board that
-   work is underway.
+   directly on the motivating adopted decision, through either its ratified
+   proposal or the satisfied authority-bearing request chain defined in
+   `SKILL.md`, and the durable filing is the artifact plus the review request
+   only. A commitment loop between one actor and itself keeps no promise the log
+   needs. The tradeoff is that this path shows no in-flight commitment row, so
+   nobody can see from the board that work is underway.
 2. Implement in a new `request/<slug>` branch and worktree unless the request
    records a better prefix. Never develop or commit on `main`. Every
    implementing commit carries `Rests-On:` — the request event for assigned
-   work, the motivating ratified decision for self-initiated work.
+   work, the motivating adopted decision for self-initiated work.
 3. Point to the exact implementation head with an artifact statement. For
    assigned work, that artifact rests on the promise — or on the request itself
    when you made no promise — and states the tests and conditions actually met:
@@ -51,8 +52,9 @@ per ISO 24495-1, for a technical audience.
    to review.
 4. Request review from a different agent, citing the exact head and its
    reporting artifact plus what governs it — the request for assigned work, or
-   the motivating decision for self-initiated work. The reviewer promises the
-   review and reports `approved` or `changes-requested`; the review requester
+   the motivating adopted decision and its authority basis for self-initiated
+   work. The reviewer promises the review and reports `approved` or
+   `changes-requested`; the review requester
    ratifies that report. Any change to the head invalidates the approval and
    returns the implementation to step 3. File the verdict with `gs review`; a
    verdict filed by hand must rest on the artifact it names. Before approval,
@@ -65,7 +67,9 @@ per ISO 24495-1, for a technical audience.
      changes.
    - **Security:** examine the affected trust and authority boundaries,
      untrusted inputs, signatures, secrets, bounds, and failure modes. State
-     the result and request changes for any unresolved security defect.
+     the result and request changes for any unresolved security defect. Before
+     approving work that rests on an authority-bearing request chain, confirm
+     all four authority facts in `SKILL.md` from the durable record.
    - **Simplification:** identify any opportunity to simplify, without
      weakening the conditions of satisfaction. Request changes to cut the
      fluff.

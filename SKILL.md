@@ -207,13 +207,18 @@ yourself, where you would be both requester and performer, carries no
 self-request, self-promise or self-report: a commitment loop between one
 actor and itself keeps no promise the log needs, and ratifying your own
 report would be declaring your own work complete by another route. Rest the
-implementing commit on the motivating ratified decision, file the artifact,
-and go straight to review — the review is still by a different agent. Its
-ratified approval authorizes the merge of that exact head; the merge
-artifact closes the work. The tradeoff: this path has no in-flight
-commitment row, so nobody can see from the board that the work is underway.
-File a verdict with `gs review`; a verdict filed by hand must rest on the
-artifact it names.
+implementing commit on the motivating adopted decision — either its ratified
+proposal or the authority-bearing request chain described under Notes and
+decisions — file the artifact, and go straight to review. The review is still
+by a different agent. Its ratified approval authorizes the merge of that exact
+head; the merge artifact closes the work. The tradeoff: this path has no
+in-flight commitment row, so nobody can see from the board that the work is
+underway. File a verdict with `gs review`; a verdict filed by hand must rest on
+the artifact it names.
+
+Before approving work that rests on an authority-bearing request chain, the
+independent reviewer confirms all four authority facts under Notes and decisions
+from the durable record.
 
 ## Discipline
 
@@ -233,8 +238,8 @@ artifact it names.
    working alongside others. Fetch the full status again only when you need
    a new orientation rather than one work item.
 8. **Bridge real work.** An implementing source commit carries `Rests-On:`
-   naming what governs it — the assigned request, or the motivating
-   ratified decision for work you began yourself; then
+   naming what governs it — the assigned request, or the motivating adopted
+   decision for work you began yourself; then
    `state {kind: artifact}` cites the commit and its governing decisions.
    For assigned implementation, it also rests on the promise it fulfils —
    or on the request when you made no promise — and serves as the
@@ -368,34 +373,75 @@ does not change the group's current target branch.
 ## Notes and decisions
 
 Notes — feature discussions, position papers, decisions — are ordinary
-Markdown files in git, and the workroom records only the relationships
-around them. A published revision is an artifact statement at
-`path@commit`, like any other. A decision is a note whose adoption somebody
-ratified, and the thing ratified is a proposal, never the artifact: nothing
-satisfies an artifact, so adopt by filing a `propose` — one or two
-sentences, "adopt the decision recorded at `notes/…` at commit `…`" —
-resting on the artifact, which an actor holding `ratifier` then ratifies.
+Markdown files in git, and the workroom records only the relationships around
+them. A published revision is an artifact statement at `path@commit`, like any
+other.
 
-Order matters, because provenance is what the record is for. Propose and
-ratify **before** requesting review, and rest the review request on the
-ratified proposal as well as the artifact. The verdict rests on the
-request, the merge consumes the verdict, and the receipt and successor
-artifact continue the chain — so all of them reach the adoption through
-that one edge, where adoption filed beside the review connects to nothing
-and the decision cannot prove it was adopted. The verdict itself is
-ratified by the review requester, and only by them, before the merge — as
-in any review.
+A decision has two adoption paths. The ordinary path ratifies a proposal, never
+the artifact: nothing satisfies an artifact. File a `propose` — one or two
+sentences, "adopt the decision recorded at `notes/…` at commit `…`" — resting
+on the artifact, and have an actor holding `ratifier` ratify it.
+
+The narrower path is an authority-bearing request chain. It applies only when
+all of these facts are in the durable record:
+
+- the requester held, when they signed the governing request, the same authority
+  that would have been required to ratify the adoption proposal;
+- the request conditions explicitly commissioned the decision and authorized
+  the work that follows it, rather than merely asking for research or a draft;
+- the decision artifact was delivered through that request chain, independently
+  approved, and merged so the request is satisfied; and
+- the request chain and the merged decision artifact are effective, not stale
+  and unretired when the follow-on work begins.
+
+The independent reviewer confirms all four facts from the durable record before
+approving work that rests on this chain. Ordinary staleness arising after the
+follow-on work begins is recorded at merge under the existing rules; it does not
+reopen adoption.
+
+That chain is already the authority act. Do not restate it in a proposal and ask
+the same authority holder to ratify it again. If any fact is missing — including
+a different required ratifier, an ordinary participant requester, a request
+that commissioned only advice, or a stale or retired basis — use the ordinary
+proposal-and-ratification path. A later change to the decision is a new decision
+and needs authority again; a successor artifact does not inherit adoption merely
+by occupying the same path.
+
+Order matters, because provenance is what the record is for. On the ordinary
+path, propose and ratify **before** requesting review, and rest the review
+request on the ratified proposal as well as the artifact. On the
+authority-bearing request path, rest the decision review request on the
+governing request chain and the artifact. In either path, the verdict rests on
+the review request, the merge consumes the verdict, and the receipt and
+successor artifact continue the chain. The verdict itself is ratified by the
+review requester, and only by them, before the merge — as in any review.
 
 The merge message is the one place the action log reaches readers without
 keys. Write `gs merge --text` in plain English from the action log — who
 proposed, who ratified, who reviewed, what was raised and how it was
 resolved — for a reader who will never see an event id. The log stays the
 authority; the message is a render, and a wrong render corrupts nothing.
-Implementation then reaches the decision by ordinary provenance: assigned
-work through a request authorized on the merged decision artifact, with the
-implementing commit resting on that request; self-initiated work resting
-directly on the ratified proposal (discipline 8). Neither rests on the
-merged artifact alone.
+Implementation then reaches the decision by ordinary provenance. Assigned work
+uses a request resting on the merged decision artifact and on whichever adoption
+basis governs it: the ratified proposal or the satisfied authority-bearing
+request chain. The implementing commit rests on that assigned request. When the
+same actor would otherwise be both requester and performer, create no
+self-request: rest the implementing commit directly on the merged decision
+artifact and its adoption basis, then file its artifact and request independent
+review (discipline 8). In neither case does the merged artifact alone confer
+authority. If any governing basis becomes stale before implementation starts,
+the author of the assigned request must refile it on current bases; the
+self-initiating actor must obtain current adoption before committing.
+
+For example, Mara holds `ratifier` and files request `R`, whose conditions ask
+for a retention decision and explicitly authorize its implementation. The
+decision artifact `D` is delivered through `R`, independently approved and
+merged, satisfying `R`. If Mara assigns the implementation to Pat, the new
+request rests on both `R` and `D`, and Pat's commit rests on that new request.
+If Mara performs the implementation herself, she files no request to herself:
+her commit rests on `R` and `D`, her artifact cites the same governing bases,
+and her review request cites `R`, `D` and that artifact. Neither route needs a
+proposal that merely repeats `R`.
 
 Revising and replacing are different facts, and one sentence separates
 them: amend in place while it is the same decision; when the decision
