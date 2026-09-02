@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:840d59ea8c6e09f101514034eec437c5bd002b9b","text":"Retire the cmd/gs artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact 67063d9c)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4a1311f718ac1676c559db54b81ee338d8c726b3","text":"Retire the cmd/gitseq-mcp artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact 4b270d69)."}
