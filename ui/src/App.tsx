@@ -13,6 +13,7 @@ import { publishRefusal, signingRefusal } from "./lib/authority";
 import { reconciledPendingIDs, RetryKeys } from "./lib/interaction";
 import { firstLine } from "./lib/util";
 import { tabTitle } from "./lib/title";
+import { formatAddress, parseAddress, type Address } from "./lib/address";
 
 // Two screens. The list is the default and answers the whole question; the
 // thread answers "what does this one wait on?". There is no third
@@ -21,6 +22,18 @@ import { tabTitle } from "./lib/title";
 // commitment, so arrival can name what was asked for.
 type Screen = { kind: "list" } | { kind: "thread"; event: string; focus?: string };
 
+function screenOf(address: Address): Screen {
+  return address.kind === "thread" ? { kind: "thread", event: address.event, focus: address.focus } : { kind: "list" };
+}
+
+// The reader arrives at the screen the address names, so a reload or a
+// shared link lands where it says. Outside a browser there is no address to
+// read and the list answers.
+function initialAddress(): Address {
+  if (typeof window === "undefined") return { kind: "list" };
+  return parseAddress(window.location.hash);
+}
+
 export default function App() {
   const workroom = useWorkroom();
   useEffect(() => {
@@ -28,8 +41,11 @@ export default function App() {
   }, [workroom.project]);
   const session = useSession();
   const { frames } = useFrames(workroom);
-  const [screen, setScreen] = useState<Screen>({ kind: "list" });
-  const [listView, setListView] = useState<ListView>(defaultListView);
+  const [screen, setScreen] = useState<Screen>(() => screenOf(initialAddress()));
+  const [listView, setListView] = useState<ListView>(() => {
+    const address = initialAddress();
+    return address.kind === "list" && address.population ? { ...defaultListView, population: address.population } : defaultListView;
+  });
   // Optimistic say echoes: appended on send, reconciled when the frame lands.
   const [pending, setPending] = useState<PendingSay[]>([]);
 
@@ -40,14 +56,63 @@ export default function App() {
   // a record belonging to no commitment — a proposal, a free-standing
   // assert — opens as itself. The clicked record rides along as focus.
   const index = useMemo(() => (projection ? buildRecordIndex(projection) : undefined), [projection]);
+
+  // Every screen change is a history entry, so the address always names what
+  // is on the screen and back and forward walk the visit as it happened. The
+  // browser owns back and forward: one listener re-derives the screen from
+  // wherever the address now stands, tab included.
+  const navigate = useCallback((address: Address) => {
+    const target = formatAddress(address);
+    // Re-choosing the screen already on show is not a step in the visit.
+    if (window.location.hash !== target) window.history.pushState({}, "", target);
+    setScreen(screenOf(address));
+  }, []);
+  useEffect(() => {
+    const arrive = () => {
+      const address = parseAddress(window.location.hash);
+      setScreen(screenOf(address));
+      if (address.kind === "list" && address.population) {
+        const population = address.population;
+        setListView((view) => (view.population === population ? view : { ...view, population }));
+      }
+    };
+    window.addEventListener("popstate", arrive);
+    return () => window.removeEventListener("popstate", arrive);
+  }, []);
+
   const openThread = useCallback(
     (event: string) => {
       const root = index ? index.threadRoot(event) : event;
-      setScreen({ kind: "thread", event: root, focus: root === event ? undefined : event });
+      navigate({ kind: "thread", event: root, focus: root === event ? undefined : event });
     },
-    [index],
+    [index, navigate],
   );
-  const showList = useCallback(() => setScreen({ kind: "list" }), []);
+  const showList = useCallback(() => navigate({ kind: "list", population: listView.population }), [listView.population, navigate]);
+
+  // Typing a filter is not navigation; choosing a tab is, and the tab rides in
+  // the address so a link names the queue it shows. replaceState keeps one
+  // address per tab without a history entry per keystroke.
+  const changeView = useCallback(
+    (view: ListView) => {
+      setListView(view);
+      if (view.population !== listView.population) {
+        window.history.replaceState({}, "", formatAddress({ kind: "list", population: view.population }));
+        // Choosing a tab from the unknown-address fallback leaves that
+        // address behind: the screen is now the list the bar names.
+        setScreen({ kind: "list" });
+      }
+    },
+    [listView.population],
+  );
+
+  // An address naming a record the projection does not carry degrades to the
+  // board with the address left in the bar, so a stale or mistyped link never
+  // shows a blank screen and the reader can still see what it named.
+  const unknownAddress = screen.kind === "thread" && index !== undefined && !index.has(screen.event) ? screen.event : undefined;
+  // A hand-typed address may name a record inside a thread rather than its
+  // root; it opens the thread a click on that record would open.
+  const threadRoot = screen.kind === "thread" && index ? index.threadRoot(screen.event) : undefined;
+  const threadFocus = screen.kind === "thread" ? (threadRoot !== undefined && threadRoot !== screen.event ? screen.event : screen.focus) : undefined;
 
   const echoSay = useCallback((text: string, re?: string, about?: string) => {
     const id = crypto.randomUUID();
@@ -195,17 +260,24 @@ export default function App() {
         selectedEvent={screen.kind === "thread" ? screen.event : undefined}
       />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {screen.kind === "list" || !index ? (
-          <RequestList workroom={workroom} onOpenThread={openThread} view={listView} onView={setListView} />
+        {screen.kind === "list" || !index || unknownAddress ? (
+          <>
+            {unknownAddress && (
+              <p className="border-b border-border px-4 py-2 text-xs text-faint" data-testid="unknown-address">
+                No record at this address: <span className="font-mono break-all">{unknownAddress}</span>
+              </p>
+            )}
+            <RequestList workroom={workroom} onOpenThread={openThread} view={listView} onView={changeView} />
+          </>
         ) : (
           <Thread
             index={index}
-            key={`${screen.event}:${screen.focus ?? ""}`}
+            key={`${threadRoot ?? screen.event}:${threadFocus ?? ""}`}
             workroom={workroom}
             session={session}
             frames={frames}
-            root={screen.event}
-            focus={screen.focus}
+            root={threadRoot ?? screen.event}
+            focus={threadFocus}
             pending={pending}
             onBack={showList}
             onOpenThread={openThread}
