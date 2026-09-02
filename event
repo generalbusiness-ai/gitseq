@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ea33697add9d56ca792a9062a0deac9ca6179efd","text":"Retire the cmd/gitseq-mcp candidate at b1caf459; replaced by the remerged head 8d30745d (artifact 28365a9b)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4f83e8a26a0c7075df572cb91bc4c846afbe994b","text":"Retire the SKILL.md candidate at b1caf459; replaced by the remerged head 8d30745d (artifact 156c117e)."}
