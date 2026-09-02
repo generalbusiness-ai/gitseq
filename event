@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ba6120b05f0ee16f122ebe96d106a68c09c616be","text":"Retire the internal/workroom artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact eada9c16)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:840d59ea8c6e09f101514034eec437c5bd002b9b","text":"Retire the cmd/gs artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact 67063d9c)."}
