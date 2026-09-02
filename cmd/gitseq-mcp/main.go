@@ -866,9 +866,6 @@ func (s *mcpServer) attachIdentity(path string, identity *selectedIdentity) *roo
 }
 
 func identityValidatedHead(identity *selectedIdentity) string {
-	if identity == nil {
-		return ""
-	}
 	if identity.orientation != nil {
 		return identity.orientation.Frontier.Head
 	}
@@ -1168,11 +1165,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 			if localErr != nil {
 				return nil, localErr
 			}
-			digest, err := s.digest(current, local, true, identity)
-			if err != nil {
-				return nil, err
-			}
-			return digest, nil
+			return s.digest(current, local, true, identity), nil
 		}
 		if err != nil {
 			return nil, err
@@ -1193,11 +1186,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 			if localErr != nil {
 				return nil, localErr
 			}
-			fingerprint, err := s.fingerprint(identity)
-			if err != nil {
-				return nil, err
-			}
-			return digestWait(local, requested, fingerprint, current.actor, true), nil
+			return digestWait(local, requested, identity.actor.Fingerprint, current.actor, true), nil
 		}
 		if err != nil {
 			return nil, err
@@ -1211,11 +1200,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 		if err := remarshal(arguments, &input); err != nil {
 			return nil, err
 		}
-		fingerprint, err := s.fingerprint(identity)
-		if err != nil {
-			return nil, err
-		}
-		input.Actor = fingerprint
+		input.Actor = identity.actor.Fingerprint
 		var page statusview.WorkPage
 		if err := s.postBoundedJSON(ctx, current, "/v0/work-query", input, laneResponseLimit(current, workResponseLimit, statusview.WorkPageMax), &page); err != nil {
 			if !isTransportError(err) {
@@ -1308,9 +1293,6 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 }
 
 func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call toolCall, identity *selectedIdentity) (any, error) {
-	if identity == nil {
-		return nil, errors.New("selected identity is required")
-	}
 	oldRequest := stringValue(call.Arguments["old_request"])
 	key := stringValue(call.Arguments["idempotency_key"])
 	if oldRequest == "" || stringValue(call.Arguments["to"]) == "" || stringValue(call.Arguments["text"]) == "" || stringValue(call.Arguments["conditions"]) == "" || key == "" {
@@ -1377,9 +1359,6 @@ func laneResponseLimit(current *room, base int64, rows int) int64 {
 }
 
 func (s *mcpServer) whoami(ctx context.Context, current *room, identity *selectedIdentity) (any, error) {
-	if identity == nil {
-		return nil, errors.New("selected identity is required")
-	}
 	actor := identity.actor
 	view := current.workspace.View()
 	if identity.orientation != nil {
@@ -1463,13 +1442,6 @@ func publicActor(actor apphost.Actor) map[string]string {
 	return map[string]string{"name": actor.Name, "fingerprint": actor.Fingerprint}
 }
 
-func (s *mcpServer) resolvedActor(identity *selectedIdentity) (apphost.Actor, error) {
-	if identity == nil {
-		return apphost.Actor{}, errors.New("selected identity is required")
-	}
-	return identity.actor, nil
-}
-
 func containsString(values []string, wanted string) bool {
 	for _, value := range values {
 		if value == wanted {
@@ -1486,9 +1458,6 @@ func containsString(values []string, wanted string) bool {
 // surface holds no working tree, so the reviewed head comes from the durable
 // artifact row rather than from a checkout.
 func (s *mcpServer) review(ctx context.Context, current *room, call toolCall, identity *selectedIdentity) (any, error) {
-	if identity == nil {
-		return nil, errors.New("selected identity is required")
-	}
 	cited, err := reviewguard.CheckCitations(stringSlice(call.Arguments["artifacts"]))
 	if err != nil {
 		return nil, err
@@ -1511,13 +1480,9 @@ func (s *mcpServer) review(ctx context.Context, current *room, call toolCall, id
 		if err != nil {
 			return reviewguard.Basis{}, nil, workroom.Projection{}, err
 		}
-		actor, err := s.resolvedActor(identity)
-		if err != nil {
-			return reviewguard.Basis{}, nil, workroom.Projection{}, err
-		}
 		basis, news, err := reviewguard.ReviewBasis(reviewguard.Read{
 			Projection:          snapshot.Projection,
-			ReviewerFingerprint: actor.Fingerprint,
+			ReviewerFingerprint: identity.actor.Fingerprint,
 			FrontierEvent:       workspace.EventID(snapshot.Head),
 			NoCheckout:          true,
 		}, cited[0], promise)
@@ -1554,9 +1519,6 @@ func untrustedAdvertisementRefusal(reason error) error {
 // survive it, and the next call resolves the record again, so repairing or
 // removing it is all it takes to carry on.
 func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act, identity *selectedIdentity) (any, error) {
-	if identity == nil {
-		return nil, errors.New("selected identity is required")
-	}
 	base, err := current.durableEndpoint()
 	if err != nil {
 		return nil, untrustedAdvertisementRefusal(err)

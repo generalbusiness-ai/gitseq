@@ -55,3 +55,40 @@ func TestDegradedCustodySurfacesIOFailureApartFromUnknownActor(t *testing.T) {
 		}
 	}
 }
+
+// A configured actor whose key cannot be read is a custody I/O failure, not
+// an unknown actor. Keep config.json readable while breaking only the key so
+// the tool surface cannot pass this test by failing repository discovery
+// first.
+func TestToolSurfacePreservesUnreadableActorKeyError(t *testing.T) {
+	ctx := context.Background()
+	workspace, _ := signedWorkspace(t, 1)
+	keyFile := workspace.View().Actors["human"].KeyFile
+	saved := keyFile + ".saved"
+	if _, err := os.ReadFile(filepath.Join(workspace.MetaDir, "config.json")); err != nil {
+		t.Fatalf("config.json is not readable before the key-only fault: %v", err)
+	}
+	if err := os.Rename(keyFile, saved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(keyFile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Remove(keyFile)
+		_ = os.Rename(saved, keyFile)
+	})
+
+	server := newServer("human", workspace.Repo)
+	_, _, err := server.call(ctx, toolCall{Name: "status"})
+	if err == nil {
+		t.Fatal("status swallowed the unreadable actor-key failure")
+	}
+	if errors.Is(err, app.ErrUnknownActor) {
+		t.Fatalf("status classified an unreadable configured key as unknown actor: %v", err)
+	}
+	var pathError *os.PathError
+	if !errors.As(err, &pathError) {
+		t.Fatalf("status error = %T %v, want the actor key filesystem error", err, err)
+	}
+}
