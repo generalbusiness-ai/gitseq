@@ -481,7 +481,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	message := set.String("text", "", "statement text")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
-	deadOK := set.Bool("allow-dead-basis", false, "rest on retired or stale bases anyway, signing body.dead_basis_override=true")
+	deadOK := set.Bool("allow-dead-basis", false, "rest on a retired basis anyway, signing body.dead_basis_override=true; a merely stale basis is admitted and recorded without it")
 	var bodyValues, rests, evidence values
 	set.Var(&bodyValues, "body", "body key=value (repeatable)")
 	set.Var(&rests, "rests-on", "causal event id (repeatable)")

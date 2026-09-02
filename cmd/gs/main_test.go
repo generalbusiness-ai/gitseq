@@ -3248,10 +3248,11 @@ func deadWorld(t *testing.T, f batchFixture) (ground, stale, supersedeEvent stri
 	return ground, stale, supersedeEvent
 }
 
-// Resting on a retired basis refuses by default now, naming every dead basis
-// and the escape. Asking for the escape signs the override, the act lands, and
-// each of the three deaths still gets its own advisory line, named by event
-// id; a citation that is alive says nothing.
+// Resting on a retired basis refuses by default now, naming the retired basis
+// and the escape. A merely stale basis is not part of that refusal: it is
+// admitted and recorded. Asking for the escape signs the override, the act
+// lands, and each of the three deaths still gets its own advisory line, named
+// by event id; a citation that is alive says nothing.
 func TestStateRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	f := newBatchFixture(t)
 	ground, stale, supersedeEvent := deadWorld(t, f)
@@ -3265,14 +3266,18 @@ func TestStateRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	if !strings.Contains(err.Error(), "--allow-dead-basis") {
 		t.Errorf("refusal %q does not name the escape", err)
 	}
-	for id, reason := range map[string]string{
-		ground:         "retired",
-		stale:          "stale",
-		supersedeEvent: "supersede",
+	for _, dead := range []struct {
+		id     string
+		reason string
+		named  bool
+	}{
+		{id: ground, reason: "retired", named: true},
+		{id: stale, reason: "stale", named: false},
+		{id: supersedeEvent, reason: "supersede", named: false},
 	} {
-		want := id + " (" + reason + ")"
-		if reason != "supersede" && !strings.Contains(err.Error(), want) {
-			t.Errorf("refusal %q does not name %q", err, want)
+		want := dead.id + " (" + dead.reason + ")"
+		if named := strings.Contains(err.Error(), want); named != dead.named {
+			t.Errorf("refusal %q names %q = %v, want %v", err, want, named, dead.named)
 		}
 	}
 	if got := f.snapshot().Depth; got != before {
@@ -3288,8 +3293,14 @@ func TestStateRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	if len(lines) != 1 || !strings.Contains(lines[0], "#git:") {
 		t.Fatalf("stdout = %q, want exactly one event id line", stdout)
 	}
-	if stamped := statementByEvent(t, f.snapshot().Projection, strings.TrimSpace(stdout)); stamped.Body["dead_basis_override"] != "true" {
+	stamped := statementByEvent(t, f.snapshot().Projection, strings.TrimSpace(stdout))
+	if stamped.Body["dead_basis_override"] != "true" {
 		t.Fatalf("override act body = %#v, want dead_basis_override=true", stamped.Body)
+	}
+	// The stale basis needed no escape, and the boundary wrote what had moved
+	// under it onto the act instead of refusing it.
+	if !strings.Contains(stamped.Body["stale_bases"], stale) {
+		t.Fatalf("override act body = %#v, want stale_bases naming %s", stamped.Body, stale)
 	}
 	for id, reason := range map[string]string{
 		ground:         "retired",
@@ -3314,10 +3325,11 @@ func TestStateRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	}
 }
 
-// The batch preflight refuses a chain resting on dead bases before anything
-// lands; with the per-act escape the chain lands, each recorded act carries
-// dead_basis_override=true on its body, and the advisory notes still resolve
-// intra-batch citations to their durable names.
+// The batch preflight refuses a chain resting on a retired basis before
+// anything lands; with the per-act escape the chain lands, the act that needed
+// the escape carries dead_basis_override=true, the act resting on merely stale
+// ground carries the recorded staleness instead, and the advisory notes still
+// resolve intra-batch citations to their durable names.
 func TestBatchRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 	f := newBatchFixture(t)
 	ground, _, supersedeEvent := deadWorld(t, f)
@@ -3358,11 +3370,19 @@ func TestBatchRefusesADeadRestOnBasisUntilTheOverrideSignsIt(t *testing.T) {
 		t.Fatalf("batch report = %#v, want two landed acts", report)
 	}
 	projection := f.snapshot().Projection
-	for _, landedAct := range report.Acts {
-		stamped := statementByEvent(t, projection, landedAct.Event)
-		if stamped.Body["dead_basis_override"] != "true" {
-			t.Fatalf("act %s body = %#v, want dead_basis_override=true", stamped.Event, stamped.Body)
-		}
+	// The first act rests on retired ground, so it records the escape it
+	// needed. The second rests on ground that is merely stale, which needs no
+	// escape: the boundary admits it and records what had moved.
+	first := statementByEvent(t, projection, report.Acts[0].Event)
+	if first.Body["dead_basis_override"] != "true" {
+		t.Fatalf("act %s body = %#v, want dead_basis_override=true", first.Event, first.Body)
+	}
+	second := statementByEvent(t, projection, report.Acts[1].Event)
+	if second.Body["dead_basis_override"] != "" {
+		t.Fatalf("act %s signed an escape it did not need: %#v", second.Event, second.Body)
+	}
+	if !strings.Contains(second.Body["stale_bases"], first.Event) {
+		t.Fatalf("act %s body = %#v, want stale_bases naming %s", second.Event, second.Body, first.Event)
 	}
 	resolvedStale := report.Acts[0].Event
 	for _, want := range []string{

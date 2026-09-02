@@ -302,7 +302,9 @@ func TestStateToolRefusesReservedBodyFieldSpoofing(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "reserved admission field") {
 		t.Fatalf("spoofed verdict-shaped report error = %v", err)
 	}
-	for _, field := range []string{"head_news_acknowledged", "review_frontier"} {
+	// Named literally, not read from app.ReservedBodyFields: the point is that
+	// this exact field cannot be supplied, whatever that list says.
+	for _, field := range []string{"head_news_acknowledged", "review_frontier", "stale_bases"} {
 		_, _, err = server.call(ctx, toolCall{Name: "state", Arguments: map[string]any{
 			"kind": "assert", "text": "speaking for admission",
 			"body": map[string]any{field: "true"}, "rests_on": []any{genesisOf(t, workspace)},

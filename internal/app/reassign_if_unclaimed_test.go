@@ -19,6 +19,19 @@ type reassignFixture struct {
 
 func newReassignFixture(t *testing.T) reassignFixture {
 	t.Helper()
+	return reassignFixtureOn(t, false)
+}
+
+// staleReassignFixture is the same room with one act of ground under the
+// request, then withdrawn. The request stands unclaimed and still names its
+// addressee; only something underneath it moved.
+func staleReassignFixture(t *testing.T) reassignFixture {
+	t.Helper()
+	return reassignFixtureOn(t, true)
+}
+
+func reassignFixtureOn(t *testing.T, stale bool) reassignFixture {
+	t.Helper()
 	ctx := context.Background()
 	workspace, seed := admissionWorkspace(t, ctx)
 	if _, _, err := workspace.AddActor(ctx, "human", "agent", "agent"); err != nil {
@@ -27,11 +40,27 @@ func newReassignFixture(t *testing.T) reassignFixture {
 	if _, _, err := workspace.AddActor(ctx, "human", "other", "agent"); err != nil {
 		t.Fatal(err)
 	}
+	basis := seed.ID
+	if stale {
+		basis = actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "ground under the request",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "request-ground",
+		}).ID
+	}
 	request := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "do it",
 		Body:    map[string]string{"to": "@agent", "conditions": "finish"},
-		RestsOn: []string{seed.ID}, IdempotencyKey: "original-request",
+		RestsOn: []string{basis}, IdempotencyKey: "original-request",
 	})
+	if stale {
+		actRecord(t, ctx, workspace, "human", Act{
+			Verb: VerbSupersede, Target: basis, Text: "the ground moved",
+			IdempotencyKey: "withdraw-ground",
+		})
+		if !statementRow(t, workspace.mustSnapshot(t, ctx), request.ID).Stale {
+			t.Fatal("the fixture request did not go stale")
+		}
+	}
 	return reassignFixture{workspace: workspace, request: request}
 }
 
@@ -234,4 +263,45 @@ func TestGuardedRetirementPostDedupCitationObservationAndOverride(t *testing.T) 
 	if !ok || decision.Verdict != workroom.Effective {
 		t.Fatalf("override decision = %+v, found=%v", decision, ok)
 	}
+}
+
+// The whole write boundary, not just the fold: a stale unclaimed request is
+// reassigned, and the same request refuses once someone has promised it.
+func TestApplicationReassignIfUnclaimedActsOnAStaleUnclaimedRequest(t *testing.T) {
+	t.Run("stale and unclaimed reassigns", func(t *testing.T) {
+		ctx := context.Background()
+		fixture := staleReassignFixture(t)
+		retirement, err := fixture.workspace.Act(ctx, "human", fixture.retireAct())
+		if err != nil {
+			t.Fatalf("guarded retirement of a stale unclaimed request: %v", err)
+		}
+		replacement, err := fixture.workspace.Act(ctx, "human", fixture.replacementAct(retirement.Record.ID))
+		if err != nil {
+			t.Fatalf("guarded replacement of a stale unclaimed request: %v", err)
+		}
+		projection := fixture.workspace.mustSnapshot(t, ctx).Projection
+		for _, event := range []string{retirement.Record.ID, replacement.Record.ID} {
+			decision, ok := projection.Decision(event)
+			if !ok || decision.Verdict != workroom.Effective {
+				t.Fatalf("decision %s = %+v, found=%v", event, decision, ok)
+			}
+		}
+	})
+
+	t.Run("stale and promised still refuses", func(t *testing.T) {
+		ctx := context.Background()
+		fixture := staleReassignFixture(t)
+		actRecord(t, ctx, fixture.workspace, "agent", Act{
+			Verb: VerbState, Kind: workroom.KindPromise, Text: "I will",
+			RestsOn: []string{fixture.request.ID}, IdempotencyKey: "promise-on-stale",
+		})
+		before := fixture.workspace.mustSnapshot(t, ctx)
+		_, err := fixture.workspace.Act(ctx, "human", fixture.retireAct())
+		if err == nil || !strings.Contains(err.Error(), "admitted promise") {
+			t.Fatalf("retirement of a promised stale request = %v", err)
+		}
+		if after := fixture.workspace.mustSnapshot(t, ctx); after.Depth != before.Depth {
+			t.Fatalf("refusal appended: depth %d -> %d", before.Depth, after.Depth)
+		}
+	})
 }

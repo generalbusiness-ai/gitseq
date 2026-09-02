@@ -1222,9 +1222,11 @@ func (f *foldState) unclaimedExpectationReason(record *parsedRecord, replacement
 	if expectation.Promise != CommitmentAbsent || expectation.Completion != CommitmentAbsent {
 		return "reassign-if-unclaimed expectation must explicitly require absent promise and completion"
 	}
-	if stale, _, _ := f.stalenessNow().stalenessOf([]string{expectation.Request}, f.succeededRetirements()); stale[expectation.Request] {
-		return "reassign-if-unclaimed request is stale; re-read and refile on current bases"
-	}
+	// Staleness is not a precondition here. The guard protects one statement —
+	// nobody has claimed or completed this request — and a basis moving under
+	// the request leaves that statement exactly as true as it was. A stale
+	// unclaimed request is precisely the one most likely to need a new owner,
+	// and refusing it left it with no way to be reassigned at all.
 	if promises := f.directDependents(expectation.Request, LifecyclePromise); len(promises) != 0 {
 		return fmt.Sprintf("reassign-if-unclaimed request has %d admitted promise(s); re-read before changing its assignment", len(promises))
 	}

@@ -173,7 +173,31 @@ func TestAdmissionRejectsReservedFieldSpoofing(t *testing.T) {
 	}
 }
 
-func deadBasisFixture(t *testing.T, ctx context.Context) (*Workspace, string, string) {
+// The recorded-staleness field is named here rather than read from
+// ReservedBodyFields, because a list the test reads from cannot prove the list
+// still contains it: dropping stale_bases from the list would let a caller
+// hand admission a note of its own about how fresh its ground was.
+func TestAdmissionRejectsCallerSuppliedStaleBases(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed := admissionWorkspace(t, ctx)
+	before := workspace.mustSnapshot(t, ctx)
+	_, err := workspace.Act(ctx, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "vouching for my own ground",
+		Body:    map[string]string{"stale_bases": "nothing moved under this"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "spoof-stale-bases-literal",
+	})
+	if err == nil || !strings.Contains(err.Error(), "reserved admission field") {
+		t.Fatalf("caller-supplied body.stale_bases error = %v, want the reserved-field refusal", err)
+	}
+	if after := workspace.mustSnapshot(t, ctx); after.Head != before.Head {
+		t.Fatalf("refused spoof changed workroom: %s -> %s", before.Head, after.Head)
+	}
+}
+
+// deadBasisFixture builds one workroom holding the three kinds of ground an
+// act can rest on: the live seed, a retired statement, and a statement that is
+// stale only because that retirement moved under it.
+func deadBasisFixture(t *testing.T, ctx context.Context) (workspace *Workspace, seedID, retiredID, staleID string) {
 	t.Helper()
 	workspace, seed := admissionWorkspace(t, ctx)
 	retired := actRecord(t, ctx, workspace, "human", Act{
@@ -197,16 +221,34 @@ func deadBasisFixture(t *testing.T, ctx context.Context) (*Workspace, string, st
 			t.Fatalf("%s did not go stale in setup", stale.ID)
 		}
 	}
-	return workspace, retired.ID, stale.ID
+	return workspace, seed.ID, retired.ID, stale.ID
 }
 
-// A state resting on an already-retired or already-stale basis refuses by
-// default; asking for the escape signs the override; citing an effective
-// supersession stays advisory.
+// statementRow returns one projected statement, so a test can name the exact
+// field admission stamped on the row that landed.
+func statementRow(t *testing.T, snapshot Snapshot, event string) workroom.Statement {
+	t.Helper()
+	for _, statement := range snapshot.Projection.Statements {
+		if statement.Event == event {
+			return statement
+		}
+	}
+	t.Fatalf("no statement projected for %s", event)
+	return workroom.Statement{}
+}
+
+func statementBody(t *testing.T, snapshot Snapshot, event string) map[string]string {
+	t.Helper()
+	return statementRow(t, snapshot, event).Body
+}
+
+// A state resting on an already-retired basis refuses by default; asking for
+// the escape signs the override; citing an effective supersession stays
+// advisory.
 func TestAdmissionRefusesDeadBasesUntilTheEscapeIsAskedFor(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	workspace, retired, stale := deadBasisFixture(t, ctx)
+	workspace, _, retired, stale := deadBasisFixture(t, ctx)
 
 	refused := func(name, basis string) {
 		t.Helper()
@@ -227,7 +269,6 @@ func TestAdmissionRefusesDeadBasesUntilTheEscapeIsAskedFor(t *testing.T) {
 		}
 	}
 	refused("retired", retired)
-	refused("stale", stale)
 
 	allowed := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindAssert, Text: "I saw the dead bases",
@@ -264,6 +305,37 @@ func TestAdmissionRefusesDeadBasesUntilTheEscapeIsAskedFor(t *testing.T) {
 		if statement.Event == citing.ID && statement.Body["dead_basis_override"] == "true" {
 			t.Fatalf("advisory supersession citation recorded an override: %#v", statement.Body)
 		}
+	}
+}
+
+// A basis that is merely stale is admitted with no escape asked for, and the
+// staleness is recorded on the row that landed on it. A live basis records
+// nothing, so the field says what it says and only when it is true.
+func TestAdmissionAdmitsAStaleBasisAndRecordsTheStaleness(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, retired, stale := deadBasisFixture(t, ctx)
+
+	landed := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "standing on ground that moved",
+		RestsOn: []string{stale}, IdempotencyKey: "stale-admitted",
+	})
+	body := statementBody(t, workspace.mustSnapshot(t, ctx), landed.ID)
+	// The exact line, not merely a non-empty one: it names the stale basis and
+	// the retirement underneath it, which is what a reader has to act on.
+	want := stale + " stale; retired bases: " + retired
+	if body[StaleBasesField] != want {
+		t.Fatalf("body.%s = %q, want %q", StaleBasesField, body[StaleBasesField], want)
+	}
+	if body["dead_basis_override"] != "" {
+		t.Fatalf("a merely stale basis signed the dead-basis escape: %#v", body)
+	}
+
+	living := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "standing on living ground",
+		RestsOn: []string{seed}, IdempotencyKey: "live-admitted",
+	})
+	if body := statementBody(t, workspace.mustSnapshot(t, ctx), living.ID); body[StaleBasesField] != "" {
+		t.Fatalf("a live basis recorded body.%s = %q", StaleBasesField, body[StaleBasesField])
 	}
 }
 
@@ -363,5 +435,141 @@ func TestAdmissionRefusesWhenItsWorldAndTheFrontierDisagree(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "moved under admission") {
 		t.Fatalf("mismatched-frontier admission error = %v", err)
+	}
+}
+
+// signedApplication builds one already-signed state submission the way a
+// writer that never went near the friendly client surface would. The body
+// reaches the authoritative sequencing judgement exactly as handed here, so a
+// test can forge the fields the pre-signing half refuses or writes itself.
+func signedApplication(t *testing.T, ctx context.Context, workspace *Workspace, body map[string]string, restsOn []string, key string) kernel.Application {
+	t.Helper()
+	payload, err := workroom.Encode(workroom.State{Kind: workroom.KindAssert, Text: "hand-signed", Body: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signedApplicationPayload(t, ctx, workspace, payload, restsOn, key)
+}
+
+// signedApplicationPayload is the same, over payload bytes the caller wrote
+// itself, so a test can sign a body workroom.Encode would have refused.
+func signedApplicationPayload(t *testing.T, ctx context.Context, workspace *Workspace, payload []byte, restsOn []string, key string) kernel.Application {
+	t.Helper()
+	tree, err := workspace.Store.WritePayloadTree(ctx, payload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := workspace.View()
+	_, private, err := workspace.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version,
+		Target:  "git:" + view.ObjectFormat + ":" + view.Genesis,
+		Schema:  workroom.SchemaState, PayloadTree: "git:" + view.ObjectFormat + ":" + tree,
+		RestsOn:        restsOn,
+		IdempotencyNS:  view.IdempotencyNamespace,
+		IdempotencyKey: key,
+	}, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := intent.Verify(signed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head, err := workspace.Store.Head(ctx, kernel.Ref(workspace.config.Genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return kernel.Application{Intent: decoded, ActorKey: signed.ActorKey, Payload: payload, Head: head}
+}
+
+// The write boundary owns body.stale_bases, so the authoritative sequencing
+// judgement recomputes it instead of trusting the signature over it. Refusing
+// caller input before signing protects only the surface that asks politely; an
+// admission-skipping writer signs whatever it likes and arrives here. Both
+// directions are checked, because a forged note on fresh ground and a wrong
+// note on stale ground are the two ways the testimony can lie.
+func TestAdmissionRecomputesSignedStaleBasesAtSequencing(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	workspace, seed, retired, stale := deadBasisFixture(t, ctx)
+	canonical := stale + " stale; retired bases: " + retired
+
+	for _, test := range []struct {
+		name    string
+		body    map[string]string
+		restsOn []string
+		refused bool
+	}{
+		{name: "forged-note-on-fresh-ground", body: map[string]string{StaleBasesField: canonical}, restsOn: []string{seed}, refused: true},
+		{name: "wrong-note-on-stale-ground", body: map[string]string{StaleBasesField: stale + " stale"}, restsOn: []string{stale}, refused: true},
+		{name: "note-missing-on-stale-ground", restsOn: []string{stale}, refused: true},
+		{name: "canonical-note-on-stale-ground", body: map[string]string{StaleBasesField: canonical}, restsOn: []string{stale}},
+		{name: "no-note-on-fresh-ground", restsOn: []string{seed}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			application := signedApplication(t, ctx, workspace, test.body, test.restsOn, "sequenced-"+test.name)
+			err := workspace.admitApplication(ctx, application)
+			if !test.refused {
+				if err != nil {
+					t.Fatalf("truthful testimony refused: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("signed body %#v on %v was admitted", test.body, test.restsOn)
+			}
+			if !strings.Contains(err.Error(), StaleBasesField) || !strings.Contains(err.Error(), "re-sign this act") {
+				t.Fatalf("refusal = %v, want one naming body.%s and asking for a re-signature", err, StaleBasesField)
+			}
+		})
+	}
+}
+
+// Presence and value are separate facts: on fresh ground the boundary writes no
+// key at all, so a signed body carrying the key is testimony it never wrote,
+// however empty the value looks.
+//
+// An empty value cannot reach admission through a submission, because the
+// payload schema validates every state body on the way in and refuses an empty
+// one; that is asserted here so the claim is checked rather than assumed. The
+// admission judgement is then exercised directly, because the rule about what
+// this field may say belongs to admission and must not depend on a neighbouring
+// layer that happens to refuse first.
+func TestAdmissionRefusesAnEmptyStaleBasesKeyOnFreshGround(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	workspace, seed := admissionWorkspace(t, ctx)
+
+	application := signedApplicationPayload(t, ctx, workspace,
+		[]byte(`{"kind":"assert","text":"hand-signed","body":{"`+StaleBasesField+`":""}}`),
+		[]string{seed.ID}, "empty-stale-bases")
+	if err := workspace.admitApplication(ctx, application); err == nil {
+		t.Fatal("a submission carrying an empty body value was admitted")
+	}
+
+	head, err := workspace.Store.Head(ctx, kernel.Ref(workspace.config.Genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.admissionWorld(ctx, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = workspace.admitSignedState(snapshot, stateAdmission{
+		Kind: workroom.KindAssert, Body: map[string]string{StaleBasesField: ""}, RestsOn: []string{seed.ID},
+	}, head)
+	if err == nil || !strings.Contains(err.Error(), StaleBasesField) || !strings.Contains(err.Error(), "must be absent") {
+		t.Fatalf("empty body.%s on fresh ground = %v, want a refusal requiring absence", StaleBasesField, err)
+	}
+	// The same act with the key genuinely absent is admitted, so the refusal
+	// is about the key being there and not about anything else in the act.
+	if err := workspace.admitSignedState(snapshot, stateAdmission{
+		Kind: workroom.KindAssert, Body: map[string]string{}, RestsOn: []string{seed.ID},
+	}, head); err != nil {
+		t.Fatalf("absent body.%s on fresh ground = %v, want admission", StaleBasesField, err)
 	}
 }
