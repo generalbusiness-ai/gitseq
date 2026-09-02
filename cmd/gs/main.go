@@ -2762,7 +2762,9 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	}
 	defer withdraw()
 	fmt.Fprintf(os.Stderr, "gitseq workroom http://%s\n%s\n", listener.Addr(), service.TrustedProcessPosture)
-	httpServer := residentHTTPServer(residentHTTPHandler(telemetryRuntime.Handler(service.TrustedHostHandler(server.Handler()))))
+	// The browser policy sits outermost so the refusals composed around the
+	// server carry it as well as everything the server itself answers.
+	httpServer := residentHTTPServer(service.BrowserHeaders(residentHTTPHandler(telemetryRuntime.Handler(service.TrustedHostHandler(server.Handler())))))
 	// The watcher retires with the command it serves, so a serving call that
 	// ends some other way does not leave a goroutine holding the server.
 	finished := make(chan struct{})

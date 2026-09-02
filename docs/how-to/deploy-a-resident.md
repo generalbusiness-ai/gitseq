@@ -99,8 +99,9 @@ another there.
 The listener host is resolved and every result must be loopback. Each HTTP
 mutation separately rejects a Host that is not wholly loopback, then enforces
 same-origin browser provenance and JSON content type before routing or
-decoding. These guards narrow accidental exposure; they are not shared-host
-authentication.
+decoding, and every response carries a Content-Security-Policy confined to
+the service's own origin with framing denied. These guards narrow accidental
+exposure; they are not shared-host authentication.
 
 The resident, not the client, mints each private credential from 256 bits of
 system randomness. It binds the credential to one repository and actor.
