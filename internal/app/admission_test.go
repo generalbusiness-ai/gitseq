@@ -22,6 +22,7 @@ func admissionWorkspace(t *testing.T, ctx context.Context) (*Workspace, workroom
 // An undefined kind is refused before anything is signed, whatever surface
 // asks, and the refusal points at the route that does exist.
 func TestAdmissionRefusesUndefinedStateKindsWithoutOverride(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed := admissionWorkspace(t, ctx)
 	for _, test := range []struct {
@@ -59,6 +60,7 @@ func TestAdmissionRefusesUndefinedStateKindsWithoutOverride(t *testing.T) {
 // A custom kind a ratified kind-def established stays exactly as writable as
 // it was.
 func TestAdmissionKeepsDeclaredCustomKindsValid(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed := admissionWorkspace(t, ctx)
 	actRecord(t, ctx, workspace, "human", Act{
@@ -97,6 +99,7 @@ func TestAdmissionKeepsDeclaredCustomKindsValid(t *testing.T) {
 // Both verdict-shaped fields route to the guarded path, on either spelling,
 // while an ordinary verdict word on a report stays a plain report.
 func TestAdmissionRefusesVerdictShapedReportsOnEveryField(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, _ := admissionWorkspace(t, ctx)
 	promise := actRecord(t, ctx, workspace, "human", Act{
@@ -145,6 +148,7 @@ func TestAdmissionRefusesVerdictShapedReportsOnEveryField(t *testing.T) {
 
 // Reserved admission fields are never caller input.
 func TestAdmissionRejectsReservedFieldSpoofing(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed := admissionWorkspace(t, ctx)
 	for _, field := range ReservedBodyFields {
@@ -200,6 +204,7 @@ func deadBasisFixture(t *testing.T, ctx context.Context) (*Workspace, string, st
 // default; asking for the escape signs the override; citing an effective
 // supersession stays advisory.
 func TestAdmissionRefusesDeadBasesUntilTheEscapeIsAskedFor(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, retired, stale := deadBasisFixture(t, ctx)
 
@@ -265,6 +270,7 @@ func TestAdmissionRefusesDeadBasesUntilTheEscapeIsAskedFor(t *testing.T) {
 // An exact retry replays without re-judgement even after the world moved:
 // idempotency-replay detection answers before admission ever looks.
 func TestAdmissionReplaysExactRetriesWithoutRejudging(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed := admissionWorkspace(t, ctx)
 	live := actRecord(t, ctx, workspace, "human", Act{
@@ -320,6 +326,7 @@ func TestAdmissionReplaysExactRetriesWithoutRejudging(t *testing.T) {
 // The sequencing-time guard judges against the head the kernel named and
 // refuses when its own verified read of the log stands somewhere else.
 func TestAdmissionRefusesWhenItsWorldAndTheFrontierDisagree(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace, seed := admissionWorkspace(t, ctx)
 	payload, err := workroom.Encode(workroom.State{Kind: workroom.KindAssert, Text: "judged against nowhere"})

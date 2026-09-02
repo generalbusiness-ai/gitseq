@@ -590,6 +590,62 @@ func TestEvaluateVerdictAdmitsTheClientSetWhenArtifactNewsRestsOnTheReviewedArti
 	}
 }
 
+// lifecycleNewsShape is the lane from codex's 2026-09-02 report: a request
+// resting on an effective artifact at the reviewed head, sequenced after the
+// review request, as a child request filed against in-flight work is. A
+// second promise on the review request is the promise-kind variant.
+func lifecycleNewsShape(kind workroom.Kind, lifecycle workroom.Lifecycle, basis string) workroom.Projection {
+	fixture := reviewLane(head,
+		workroom.Statement{Event: "child", Actor: "stranger", Kind: kind, Lifecycle: lifecycle, Body: map[string]string{"to": "worker", "conditions": "later"}},
+		workroom.Statement{Event: "under-child", Actor: "stranger", Kind: workroom.KindAssert},
+	)
+	fixture.Provenance["child"] = []string{basis}
+	fixture.Provenance["under-child"] = []string{"child"}
+	fixture.Artifacts = []workroom.Artifact{{Event: "artifact", Path: "feature.txt", Commit: head}}
+	return fixture
+}
+
+// Request- and promise-kind news is acknowledged in the signed array but not
+// cited in rests_on, so the verdict still names one promise and one request
+// and both halves accept the one acknowledgment the client computes. Before
+// this, the client demanded the acknowledgment, appended it to rests_on, and
+// the resident refused the verdict for citing a second request or promise.
+func TestLifecycleKindNewsIsAcknowledgedWithoutBecomingACommitmentBasis(t *testing.T) {
+	for _, shape := range []struct {
+		name      string
+		kind      workroom.Kind
+		lifecycle workroom.Lifecycle
+		basis     string
+	}{
+		{name: "child request on the reviewed artifact", kind: workroom.KindRequest, lifecycle: workroom.LifecycleRequest, basis: "artifact"},
+		{name: "second promise on the review request", kind: workroom.KindPromise, lifecycle: workroom.LifecyclePromise, basis: "request"},
+	} {
+		t.Run(shape.name, func(t *testing.T) {
+			fixture := lifecycleNewsShape(shape.kind, shape.lifecycle, shape.basis)
+			read := readOf(fixture)
+			if _, _, err := Confirm(read, []string{"artifact"}, nil, VerdictApproved, "approved"); err == nil || !strings.Contains(err.Error(), `missing: "child"`) {
+				t.Fatalf("the child was not demanded as news: %v", err)
+			}
+			body, restsOn, err := Confirm(read, []string{"artifact"}, []string{"child"}, VerdictApproved, "approved exact head")
+			if err != nil {
+				t.Fatalf("the client refused its own required set: %v", err)
+			}
+			if got := strings.Join(restsOn, ","); got != "promise,request,artifact" {
+				t.Fatalf("rests_on = [%s], want the lane only, with the child acknowledged in the body", got)
+			}
+			if body["head_news_acknowledged"] != `["promise","artifact","child"]` {
+				t.Fatalf("acknowledged array = %s, want the child recorded", body["head_news_acknowledged"])
+			}
+			if err := EvaluateVerdict(fixture, body, restsOn, "frontier"); err != nil {
+				t.Fatalf("the resident refused the verdict the client built: %v", err)
+			}
+			if _, _, _, err := SplitVerdictBases(fixture, restsOn); err != nil {
+				t.Fatalf("the verdict no longer names one promise, one request and the artifact: %v", err)
+			}
+		})
+	}
+}
+
 // Both halves must derive one news set for one world, whatever shape the
 // lane has taken since the request: the client's required acknowledgments
 // are then exactly what the resident demands, and the canonical array the
@@ -621,6 +677,9 @@ func TestClientAndResidentDeriveTheSameNewsSet(t *testing.T) {
 			}
 			return fixture
 		}, acks: []string{"sibling", "under-sibling"}},
+		{name: "child request resting on the reviewed artifact", fixture: func() workroom.Projection {
+			return lifecycleNewsShape(workroom.KindRequest, workroom.LifecycleRequest, "artifact")
+		}, acks: []string{"child"}},
 		{name: "statement resting on the promise", fixture: func() workroom.Projection {
 			fixture := reviewLane(head, workroom.Statement{Event: "on-promise", Actor: "stranger", Kind: workroom.KindAssert})
 			fixture.Provenance["on-promise"] = []string{"promise"}

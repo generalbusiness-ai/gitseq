@@ -3201,12 +3201,11 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 						entry.WaitingOn = requestRecord.record.Actor
 					} else {
 						// An artifact cannot be ratified: its declared satisfier is
-						// none. The independently approved exact head has to merge.
-						// Naming the requester here told them to make an act the fold
-						// necessarily refuses, so preserve the unfinished work without
-						// inventing a waiting party.
+						// none, so the requester is not the waiting party. The
+						// independently approved exact head has to merge, and the
+						// performer signs that merge, so the move is theirs.
 						entry.Status = "awaiting-merge"
-						entry.WaitingOn = ""
+						entry.WaitingOn = completion.record.Actor
 					}
 					entry.Stale = stale[requestRecord.record.ID] || stale[completion.record.ID]
 					if completion.definition.Lifecycle == LifecycleReport && f.ratified(completion.record.ID) {
@@ -3250,8 +3249,10 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 						entry.Status = "reported"
 						entry.WaitingOn = requestRecord.record.Actor
 					} else {
+						// The performer merges their approved head; see the
+						// direct-completion branch above.
 						entry.Status = "awaiting-merge"
-						entry.WaitingOn = ""
+						entry.WaitingOn = promiseRecord.record.Actor
 					}
 					entry.Stale = stale[requestRecord.record.ID] || stale[promiseRecord.record.ID] || stale[completion.record.ID]
 					if completion.definition.Lifecycle == LifecycleReport && f.ratified(completion.record.ID) {

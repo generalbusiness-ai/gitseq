@@ -19,6 +19,7 @@ import (
 // no-remote case must serialise exactly as it did before the field existed: the
 // key is absent, not present and empty.
 func TestWorktreesResponseCarriesOnlyALinkableRemote(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {

@@ -164,35 +164,53 @@ func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *te
 	}
 }
 
-func TestArtifactCompletionDoesNotInventAWaitingActor(t *testing.T) {
-	projection := workroom.Projection{
-		Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},
-		Statements: []workroom.Statement{
-			{Event: "request:implementation", Actor: me, Kind: workroom.KindRequest, Text: "implement it"},
-			{Event: "artifact:implementation", Actor: them, Kind: workroom.KindArtifact, Text: "exact head"},
-		},
-		Commitments: []workroom.Commitment{{
-			Request: "request:implementation", Requester: me, Performer: them,
-			Report: "artifact:implementation", Status: "awaiting-merge",
-		}},
-	}
-	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 2, Projection: projection}
+// An artifact completion waits on its performer, who signs the merge of the
+// approved head. Both fold shapes are covered: a direct completion with no
+// promise, and a promised one. The row lands in the performer's waiting_on_you
+// lane and the requester's you_are_waiting_on lane, identically in gs status
+// and gs work, and names the performer as the waiting party.
+func TestArtifactCompletionWaitsOnItsPerformer(t *testing.T) {
+	for _, shape := range []struct {
+		name    string
+		promise string
+	}{{name: "direct completion"}, {name: "promised", promise: "promise:implementation"}} {
+		t.Run(shape.name, func(t *testing.T) {
+			projection := workroom.Projection{
+				Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},
+				Statements: []workroom.Statement{
+					{Event: "request:implementation", Actor: me, Kind: workroom.KindRequest, Text: "implement it"},
+					{Event: "promise:implementation", Actor: them, Kind: workroom.KindPromise, Text: "I will"},
+					{Event: "artifact:implementation", Actor: them, Kind: workroom.KindArtifact, Text: "exact head"},
+				},
+				Commitments: []workroom.Commitment{{
+					Request: "request:implementation", Requester: me, Performer: them, Promise: shape.promise,
+					Report: "artifact:implementation", Status: "awaiting-merge", WaitingOn: them,
+				}},
+			}
+			snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 3, Projection: projection}
 
-	digest := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
-	if len(digest.WaitingOnYou) != 0 {
-		t.Fatalf("artifact completion was assigned to the requester: %#v", digest.WaitingOnYou)
-	}
-	row := findCommitmentView(digest.YouAreWaiting, "request:implementation")
-	if row == nil || row.Status != "awaiting-merge" {
-		t.Fatalf("artifact completion was hidden instead of awaiting merge: %#v", digest.YouAreWaiting)
-	}
+			performer := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, them, "them", true)
+			if row := findCommitmentView(performer.WaitingOnYou, "request:implementation"); row == nil || row.Status != "awaiting-merge" {
+				t.Fatalf("artifact completion is not in the performer's queue: %#v", performer.WaitingOnYou)
+			}
+			requester := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
+			if len(requester.WaitingOnYou) != 0 {
+				t.Fatalf("artifact completion was assigned to the requester: %#v", requester.WaitingOnYou)
+			}
+			if row := findCommitmentView(requester.YouAreWaiting, "request:implementation"); row == nil || row.Status != "awaiting-merge" || row.Performer != "them" {
+				t.Fatalf("requester is not shown waiting on the performer: %#v", requester.YouAreWaiting)
+			}
 
-	page, err := BuildWorkPage(snapshot, WorkQuery{Actor: me, Statuses: []string{"awaiting-merge"}, Limit: 10}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 1 || page.Items[0].Lane != LaneYouAreWaitingOn || page.Items[0].WaitingOn != nil {
-		t.Fatalf("work query invented a closing actor: %#v", page.Items)
+			for actor, want := range map[string]WorkLane{them: LaneWaitingOnYou, me: LaneYouAreWaitingOn} {
+				page, err := BuildWorkPage(snapshot, WorkQuery{Actor: actor, Statuses: []string{"awaiting-merge"}, Limit: 10}, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(page.Items) != 1 || page.Items[0].Lane != want || page.Items[0].WaitingOn == nil || page.Items[0].WaitingOn.Fingerprint != them {
+					t.Fatalf("work lane for %s = %#v, want %s waiting on the performer", actor, page.Items, want)
+				}
+			}
+		})
 	}
 }
 

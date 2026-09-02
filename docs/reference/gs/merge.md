@@ -194,7 +194,7 @@ ordering is fixed when the merge commit is written.
 
 Phase two should not infer policy from prose. Introduce a structured
 `merge_authorization=required` request field under `workroom/state@3`, project
-it under `workroom-fold@16`, and make omission a refusal only after every
+it under the next fold profile, and make omission a refusal only after every
 resident and adapter has restarted on that binding. The profile transition is
 the exact activation seam; until it lands, this command remains in phase one.
 

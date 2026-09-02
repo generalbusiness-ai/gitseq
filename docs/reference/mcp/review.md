@@ -28,7 +28,7 @@ admission refuses it and names this tool.
 | `promise` | required | The reviewer's own promise to review. |
 | `verdict` | required | `approved` or `changes-requested`. |
 | `text` | required | The review itself. Acknowledgment means seen; judgment lives here in words. |
-| `ack_head_news` | optional | Array of event identifiers. Durable statements sequenced after the review request that name this head or lane are head news: the call refuses until you acknowledge exactly that set, once each. News the verdict already cites counts once. Every acknowledged event becomes a citation of the verdict. |
+| `ack_head_news` | optional | Array of event identifiers. Durable statements sequenced after the review request that name this head or lane are head news: the call refuses until you acknowledge exactly that set, once each. News the verdict already cites counts once. Every acknowledgment is recorded in the signed body, and every acknowledged event other than a request or a promise also becomes a citation of the verdict; a request or promise is acknowledged in the body alone, because a report's request and promise bases name the one commitment it answers. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. |
 

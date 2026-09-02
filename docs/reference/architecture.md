@@ -263,7 +263,10 @@ Before routing a request, it requires the Host to contain an explicit numeric
 port and either a literal loopback IP or `localhost`, compared without case and
 with one optional trailing dot. It never resolves request hostnames, so an
 attacker cannot win admission by changing a DNS answer to point at loopback. It
-also checks every mutation's browser provenance.
+also checks every mutation's browser provenance, and every response it gives a
+browser carries one policy set in one place: a Content-Security-Policy that
+admits only the service's own origin and denies framing, `X-Frame-Options`,
+`X-Content-Type-Options: nosniff` and a no-referrer policy.
 
 Within that boundary, the resident can open several actor keys, and every
 process running as the account is trusted to ask it to act as any of them.
@@ -857,7 +860,7 @@ Workroom vocabulary, fold rule, projection, or cache profile.
 
 Phase two should use a declared application seam rather than search request
 prose. A future `workroom/state@3` request field
-`merge_authorization=required`, projected under `workroom-fold@16`, can make
+`merge_authorization=required`, projected under the next fold profile, can make
 the flag mandatory after every resident and adapter restarts on that binding.
 Until then omission warns and preserves the in-flight phase-one migration.
 
@@ -933,18 +936,21 @@ ratification would be silently withheld from actors entitled to make it.
 artifact have different closing authority, so the fold projects different
 states. An explicit report is `reported` and waits on its originating
 requester, whose ratification can satisfy it. An artifact is
-`awaiting-merge` and names no `waiting_on` actor: its admitted satisfier is
-`none`, and only an independently approved exact-head merge closes the
-implementation commitment. The application write boundary reads that same
+`awaiting-merge` and waits on its performer: its admitted satisfier is
+`none`, so the requester cannot ratify it, and only an independently approved
+exact-head merge, which the performer signs, closes the implementation
+commitment. The application write boundary reads that same
 admission-time satisfier before signing a ratification. When it is `none`, it
 refuses and names the target kind, the satisfier, and the applicable workflow
 act, rather than adding an ineffective attempt to the permanent log.
 
 The browser and bounded status/query projections preserve `awaiting-merge` as
-unfinished work while showing no invented waiting party. This changes the
-application projection bytes and lifecycle meaning, so it advances the profile
-to `workroom-fold@15`; a cache written under `@14` is rejected and history is
-replayed.
+unfinished work. Naming no waiting party at all, as `@15` did, left approved
+heads in nobody's queue; naming the performer puts each one in the lane of the
+actor who must sign its merge. Each of those projection changes altered the
+application projection bytes and lifecycle meaning, so each advanced the
+profile: `@14` to `@15`, then `@15` to `workroom-fold@16`; a cache written
+under an older profile is rejected and history is replayed.
 
 **Rejected-round successor transfer.** A ratified `changes-requested` verdict
 rejects an implementation head but does not say where its required repair went.
@@ -959,10 +965,10 @@ The qualification is sealed on the supersession, so retiring or failing the
 child later changes only the child row. Retiring the supersession itself
 restores the ordinary parent state.
 
-This also changes projection bytes and lifecycle meaning. It is included in
-the same unpublished `workroom-fold@15` candidate described above, so the
-deployed transition remains one step from `@14` to `@15`; there is no
-intermediate `@15` cache contract to invalidate again.
+This also changes projection bytes and lifecycle meaning. It shipped in the
+same `workroom-fold@15` candidate as the empty-waiting-party projection, so
+that deployed transition was one step from `@14` to `@15`; the later step to
+`@16` names the performer and is described above.
 
 **Write-boundary guards.** One Workroom admission evaluation serves every
 state surface — `gs state`, `gs batch`, the MCP state and review tools, and

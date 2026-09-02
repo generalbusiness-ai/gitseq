@@ -10,6 +10,7 @@ import (
 )
 
 func TestConcurrentLocalSavesUseUniqueTemporaryFiles(t *testing.T) {
+	t.Parallel()
 	workspace := residentWorkspace(t)
 
 	// Occupy the two fixed names used by the old implementation. Unique

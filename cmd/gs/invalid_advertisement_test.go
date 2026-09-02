@@ -59,6 +59,7 @@ func writeAdvertisement(t *testing.T, workspace *app.Workspace, content []byte) 
 
 // The path the tests below write is the path a real publication writes.
 func TestTheAdvertisementPathIsTheOneTheRepositoryWrites(t *testing.T) {
+	t.Parallel()
 	workspace, _ := statusSummaryFixture(t)
 	if _, err := workspace.PublishResident("http://127.0.0.1:7788"); err != nil {
 		t.Fatal(err)

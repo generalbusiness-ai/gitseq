@@ -182,8 +182,8 @@ func TestADirectArtifactClosesTheRequestTheSameWay(t *testing.T) {
 		if commitment.Request != "request" {
 			continue
 		}
-		if commitment.Status != "awaiting-merge" || commitment.Report != "artifact" || commitment.Performer != agent || commitment.WaitingOn != "" {
-			t.Fatalf("commitment = %+v, want the artifact awaiting merge with no invented waiting party", commitment)
+		if commitment.Status != "awaiting-merge" || commitment.Report != "artifact" || commitment.Performer != agent || commitment.WaitingOn != agent {
+			t.Fatalf("commitment = %+v, want the artifact awaiting merge and waiting on its performer", commitment)
 		}
 		return
 	}
