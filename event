@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c5a72ec1e2cdd91a35a6bfb503abc0a15dd99b72","text":"Retire the docs/reference/architecture.md artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact 81f10386)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8a0532c9ceb8cb11fd802d4416fa6821e5c82887","text":"Retire the docs/reference/gs/reassign-if-unclaimed.md artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact cc7db62a)."}
