@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/service","body":{"commit":"6770e35b2ccd1949203d96b97807e860e7b66e02","path":"internal/service"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:05f0e0e0986da81d72fe6c1f100c859f4c821aaf","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
