@@ -2597,7 +2597,7 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 // reason to refuse the merge.
 func TestMergeFreshPreflightAllowsAWiderPointerAtALandedDestination(t *testing.T) {
 	t.Parallel()
-	f, candidate, approval, _, _ := buildNestedCrossAuthorApproval(t)
+	f, candidate, approval, wider, _ := buildNestedCrossAuthorApproval(t)
 	beforeHead := testGit(t, f.repo, "rev-parse", "HEAD")
 	before := f.snapshot(t)
 
@@ -2615,8 +2615,41 @@ func TestMergeFreshPreflightAllowsAWiderPointerAtALandedDestination(t *testing.T
 	if _, err := git(f.ctx, f.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err != nil {
 		t.Fatalf("merged exact-path receipt was not sealed: %v", err)
 	}
-	if after := f.snapshot(t); after.Depth <= before.Depth {
+	mergeHead := testGit(t, f.repo, "rev-parse", "HEAD")
+	receipt, ok, err := readMergeReceipt(f.ctx, f.repo, mergeHead)
+	if err != nil || !ok {
+		t.Fatalf("read carried receipt: ok=%v err=%v", ok, err)
+	}
+	var gitLeftLive map[string]mergeLeftLive
+	if err := json.Unmarshal([]byte(receipt.LeftLive), &gitLeftLive); err != nil {
+		t.Fatal(err)
+	}
+	if got := gitLeftLive[wider]; got.Class != leftLiveCarried || got.Commitment != "" {
+		t.Fatalf("Git receipt carried accounting for %s = %+v", wider, got)
+	}
+	after := f.snapshot(t)
+	if after.Depth <= before.Depth {
 		t.Fatalf("merged exact-path receipt did not extend durable log: depth %d/%d", after.Depth, before.Depth)
+	}
+	var durable workroom.Statement
+	for _, statement := range after.Projection.Statements {
+		if statement.Body["merge_approval"] == approval {
+			durable = statement
+		}
+	}
+	var durableLeftLive map[string]mergeLeftLive
+	if err := json.Unmarshal([]byte(durable.Body["merge_left_live"]), &durableLeftLive); err != nil {
+		t.Fatal(err)
+	}
+	if got := durableLeftLive[wider]; got.Class != leftLiveCarried || got.Commitment != "" {
+		t.Fatalf("durable receipt carried accounting for %s = %+v", wider, got)
+	}
+}
+
+func TestMergePlanLeavesStructuredAuthorizationToMerge(t *testing.T) {
+	err := mergePlanCommand(context.Background(), []string{"--authorization", "report"})
+	if err == nil || !strings.Contains(err.Error(), "flag provided but not defined") {
+		t.Fatalf("merge-plan authorization flag error = %v", err)
 	}
 }
 

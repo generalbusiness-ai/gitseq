@@ -100,6 +100,10 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 	if artifactProperties["paths"] == nil || artifactProperties["limit"] == nil || artifactProperties["cursor"] == nil {
 		t.Fatalf("artifact schema does not expose exact paths and continuation: %#v", artifactProperties)
 	}
+	mergePlanProperties := listed["merge_plan"]["inputSchema"].(map[string]any)["properties"].(map[string]any)
+	if mergePlanProperties["authorization"] != nil {
+		t.Fatalf("read-only merge_plan unexpectedly exposes structured merge authorization: %#v", mergePlanProperties)
+	}
 	var callResponse map[string]any
 	if err := json.Unmarshal([]byte(lines[2]), &callResponse); err != nil {
 		t.Fatal(err)
@@ -553,6 +557,10 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 func TestMergePlanToolMatchesSharedRefusal(t *testing.T) {
 	workspace := initRepository(t, "merge-plan-refusal")
 	server, _ := attachedServer(t, workspace, "human", "", http.DefaultClient)
+	before, err := workspace.ReadOnlySnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 	candidate := strings.Repeat("0", 40)
 	arguments := map[string]any{"candidate": candidate, "approval": "unknown-approval", "checkout": workspace.Repo}
 	value, _, err := server.call(context.Background(), toolCall{Name: "merge_plan", Arguments: arguments})
@@ -568,6 +576,13 @@ func TestMergePlanToolMatchesSharedRefusal(t *testing.T) {
 	got, ok := value.(mergeplan.Result)
 	if !ok || !reflect.DeepEqual(got, want) {
 		t.Fatalf("MCP and shared refusal differ\nMCP: %#v\nshared: %#v", value, want)
+	}
+	after, err := workspace.ReadOnlySnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("MCP merge_plan appended durable state: before=%s/%d after=%s/%d", before.Head, before.Depth, after.Head, after.Depth)
 	}
 }
 

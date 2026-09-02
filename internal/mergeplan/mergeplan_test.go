@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -30,6 +31,41 @@ func TestResultCeilingRefusesWithoutPartialPlan(t *testing.T) {
 	}
 	if len(encoded) > OutputLimit {
 		t.Fatalf("bounded refusal encoded to %d bytes, ceiling %d", len(encoded), OutputLimit)
+	}
+}
+
+func TestValidatedSuccessionIsAnInternalLosslessClone(t *testing.T) {
+	result := Result{validatedSuccession: &Succession{
+		Publish:      []string{"shared/file"},
+		Retire:       map[string]string{"old": "shared/file"},
+		ChangedPaths: []string{"shared/file"},
+		LeftLive:     map[string]LeftLive{"wide": {Class: "carried"}},
+	}}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "validatedSuccession") || strings.Contains(string(encoded), "LeftLive") {
+		t.Fatalf("internal validated succession leaked into JSON: %s", encoded)
+	}
+	first, ok := result.ValidatedSuccession()
+	if !ok {
+		t.Fatal("validated succession was not available")
+	}
+	first.Publish[0] = "changed"
+	first.Retire["old"] = "changed"
+	first.ChangedPaths[0] = "changed"
+	first.LeftLive["wide"] = LeftLive{Class: "abandoned"}
+	second, ok := result.ValidatedSuccession()
+	if !ok || second.Publish[0] != "shared/file" || second.Retire["old"] != "shared/file" ||
+		second.ChangedPaths[0] != "shared/file" || second.LeftLive["wide"].Class != "carried" {
+		t.Fatalf("validated succession was mutable through its clone: %+v", second)
+	}
+	empty, ok := (Result{validatedSuccession: &Succession{
+		Publish: []string{}, Retire: map[string]string{}, ChangedPaths: []string{}, LeftLive: map[string]LeftLive{},
+	}}).ValidatedSuccession()
+	if !ok || empty.Publish == nil || empty.Retire == nil || empty.ChangedPaths == nil || empty.LeftLive == nil {
+		t.Fatalf("validated succession lost non-nil empty receipt fields: %+v", empty)
 	}
 }
 
@@ -113,6 +149,73 @@ func TestReviewedCandidateAllowsSamePathCrossAuthorMainPredecessor(t *testing.T)
 	}
 	if err := ValidateReach(projection, plan, "approval", "implementer"); err != nil {
 		t.Fatalf("same-path cross-author predecessor was refused: %v", err)
+	}
+}
+
+func TestValidateReachPreservesDirectionalCrossAuthorProofs(t *testing.T) {
+	projection := workroom.Projection{
+		Reviews: []workroom.Review{{Report: "approval", Head: "head1", Implementer: "implementer", Verdict: "approved"}},
+		Provenance: map[string][]string{
+			"approval": {"approved-artifact", "second-reviewed"},
+		},
+		Statements: []workroom.Statement{
+			{Event: "approved-artifact", Sequence: 1, Actor: "implementer"},
+			{Event: "second-reviewed", Sequence: 2, Actor: "implementer"},
+			{Event: "approval", Sequence: 3, Actor: "reviewer"},
+			{Event: "uncited", Sequence: 4, Actor: "implementer"},
+			{Event: "covering", Sequence: 5, Actor: "stranger"},
+			{Event: "elsewhere", Sequence: 6, Actor: "stranger"},
+			{Event: "in-second", Sequence: 7, Actor: "stranger"},
+			{Event: "in-uncited", Sequence: 8, Actor: "stranger"},
+		},
+		Artifacts: []workroom.Artifact{
+			{Event: "approved-artifact", Path: "cmd/gs", Commit: "head1"},
+			{Event: "second-reviewed", Path: "internal/kernel", Commit: "head1"},
+			{Event: "uncited", Path: "ui", Commit: "head1"},
+			{Event: "covering", Path: "cmd"},
+			{Event: "elsewhere", Path: "docs"},
+			{Event: "in-second", Path: "internal/kernel/fold.go"},
+			{Event: "in-uncited", Path: "ui/src"},
+		},
+		Actors: map[string]workroom.ActorState{
+			"implementer": {Name: "implementer", Roles: []string{"participant"}},
+			"keeper":      {Name: "keeper", Roles: []string{"participant", "ratifier"}},
+		},
+	}
+	tests := []struct {
+		name     string
+		approval string
+		actor    string
+		retire   map[string]string
+		want     string
+	}{
+		{name: "ratifier remains bounded", approval: "approval", actor: "keeper", retire: map[string]string{"elsewhere": "docs"}, want: "outside the reviewed paths"},
+		{name: "uncited candidate path", approval: "approval", actor: "implementer", retire: map[string]string{"in-uncited": "ui"}, want: "outside the reviewed paths"},
+		{name: "above reviewed path", approval: "approval", actor: "implementer", retire: map[string]string{"covering": "cmd"}, want: "outside the reviewed paths"},
+		{name: "approval bounds no retirement", approval: "missing", actor: "implementer", retire: map[string]string{}, want: "bounds no retirement"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateReach(projection, Succession{Retire: test.retire}, test.approval, test.actor)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("ValidateReach error = %v, want %q", err, test.want)
+			}
+		})
+	}
+	t.Run("second reviewed path", func(t *testing.T) {
+		plan := Succession{Retire: map[string]string{"in-second": "internal/kernel"}}
+		if err := ValidateReach(projection, plan, "approval", "implementer"); err != nil {
+			t.Fatalf("second reviewed path was refused: %v", err)
+		}
+	})
+}
+
+func TestValidateSuccessionRefusesInvalidGeneratedArtifactPaths(t *testing.T) {
+	for _, path := range []string{".", "cmd/gs,internal/app"} {
+		err := ValidateSuccession(context.Background(), nil, "", Succession{Publish: []string{path}})
+		if err == nil || !strings.Contains(err.Error(), "invalid artifact path") {
+			t.Errorf("path %q error = %v", path, err)
+		}
 	}
 }
 
@@ -337,6 +440,13 @@ func TestPlanSuccessionKeepsExactPathRules(t *testing.T) {
 		}}, []Change{{Status: "A", New: "internal/workroom/fold.go"}}, nil)
 		if !reflect.DeepEqual(plan.Publish, []string{"internal/workroom/fold.go"}) || len(plan.Retire) != 0 {
 			t.Fatalf("uncovered plan = %+v", plan)
+		}
+	})
+	t.Run("nil candidates retire exact path", func(t *testing.T) {
+		projection := workroom.Projection{Artifacts: []workroom.Artifact{{Event: "exact", Path: "internal/workroom/fold.go", Commit: "old"}}}
+		plan := PlanSuccession(projection, []Change{{Status: "M", New: "internal/workroom/fold.go"}}, nil)
+		if !reflect.DeepEqual(plan.Publish, []string{"internal/workroom/fold.go"}) || plan.Retire["exact"] != "internal/workroom/fold.go" {
+			t.Fatalf("nil-candidate exact-path plan = %+v", plan)
 		}
 	})
 	t.Run("rename", func(t *testing.T) {

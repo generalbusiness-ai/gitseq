@@ -22,6 +22,11 @@ from status rows or maintain a second set of merge rules.
 | `repo` | optional | The repository whose workroom this call acts in. |
 | `agent` | optional | The actor whose existing accessible key selects this call; defaults to startup `--actor`. |
 
+The tool deliberately has no `authorization` argument. Structured merge
+authorization belongs to the mutating `gs merge` boundary. An allowed result
+therefore does not say that a required authorization exists or is valid, and
+`gs merge` may still refuse the candidate on that separate check.
+
 ## Result
 
 The structured result names the durable frontier, receipt mode, approval,
@@ -32,9 +37,11 @@ successors; and stable allow or refusal reasons. The four classifications are
 `abandoned`.
 
 Before allowing a fresh plan, the evaluator encodes the exact durable receipt,
-successor, and retirement suffix through the same application request builder
-that merge uses. It checks the local admission ceiling and, when this MCP room
-has a resident endpoint, the resident submission ceiling.
+successor, and retirement suffix without structured authorization through the
+same application request builder that merge uses. It checks the local admission
+ceiling and, when this MCP room has a resident endpoint, the resident submission
+ceiling. This proves the un-authorized suffix shape and size, not authority to
+merge it.
 
 The tool is read-only even on a cold workroom whose local verified-frontier or
 checkpoint state could be repaired. It does not announce completion, reserve
