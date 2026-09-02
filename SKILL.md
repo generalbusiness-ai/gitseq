@@ -250,15 +250,21 @@ from the durable record.
    behaviour**, rest on the artifacts for the implementation you describe,
    not only on the request that produced the document: ask whether retiring
    a basis would mean the prose needs re-checking, and a request alone never
-   does. **Changing behaviour**, retire the predecessors in the target's
-   world and publish the successor at the path the area keeps. The sealed
-   receipt pairs the canonical `merge_changed_paths` frontier with
-   `merge_left_live`, classifying every other live candidate that covers the
-   change as a protected sibling when an unsettled commitment reaches it, or
-   as abandoned otherwise. Protected siblings stay live. An abandoned
-   candidate still requires bare supersession by its author or a `ratifier`;
-   the merge gains no authority over it. A first artifact has no predecessor
-   and needs none retired. The projection marks what you skip — *unable to
+   does. **Changing behaviour**, publish each added, modified, or renamed
+   destination at its exact changed path and retire every live in-target
+   predecessor at that exact string. A pointer wider than a landed destination
+   stays live and is not selected for retirement by that destination. Removing
+   a rename source or deleted file also changes its covering directories, so
+   the plan may retire in-target directory pointers and publish the widest
+   directory successor. The sealed receipt pairs the canonical
+   `merge_changed_paths` frontier with `merge_left_live`, classifying every
+   other live candidate that covers the change three ways: an in-target wider
+   pointer is carried; an outside-target candidate is a protected sibling when
+   an unsettled commitment reaches it, or abandoned otherwise. Carried
+   pointers and protected siblings stay live with no cleanup obligation. Only
+   an abandoned classification prompts bare supersession by its author or a
+   `ratifier`; the merge gains no authority over it. A first artifact has no
+   predecessor and needs none retired. The projection marks what you skip — *unable to
    flare*, or *succession not recorded* with the count;
    [docs/concepts/staleness.md](docs/concepts/staleness.md) says which
    condition produces which — and a flare means re-check this, not this is
@@ -281,18 +287,22 @@ from the durable record.
     `internal/workroom` never reaches one at `internal/workroom/fold.go`,
     so reuse the exact string the area already uses, and never join paths
     into one — `AGENTS.md,SKILL.md` is a string no predecessor can equal.
-    Retiring, accounting, and publishing are separate duties. Retire every
-    in-target predecessor covering the change; account for every other live
-    covering candidate in the paired receipt fields; publish a successor
-    only at the stable path the area keeps. Where no live artifact covers
-    the change, pick a stable package or document path for the first
-    artifact. Where a directory and something inside it are both live over
-    one changed file, the wider path wins: publish there and retire the
-    narrower artifact by a bare `supersede` naming the surviving path. A
-    receipt's abandoned classification is the durable prompt for cleanup,
-    not authority for the merge to do it. A renamed or deleted file's old
-    path is retired the same way and never published at again; a rename opens
-    a first artifact at the new path, a deletion opens nothing. A bare
+    Retiring, accounting, and publishing are separate duties. For an added or
+    modified file, and for a rename destination, publish a successor at its
+    exact changed path and retire every live in-target predecessor at that
+    exact string. Account for every other candidate covering a landed path in
+    the paired receipt fields, but keep wider paths live: an in-target wider
+    pointer is carried with no cleanup obligation, while an outside-target
+    candidate is a protected sibling when an unsettled commitment reaches it,
+    or abandoned otherwise. A narrower successor does not select or retire its
+    parent. Where no live artifact exists at the changed path, publish a first
+    artifact there. Only an abandoned classification is the durable prompt for
+    cleanup, not authority for the merge to do it. A renamed or deleted file's
+    old exact path is retired with no successor there and never published at
+    again; a rename opens a first artifact at the new path, and a deletion
+    opens nothing at the removed path. Removing either a rename source or a
+    deleted file changes its covering directories, so the plan may retire
+    in-target covering pointers and publish the widest directory successor. A bare
     `supersede` is admitted only from the target's own author or an actor
     holding `ratifier`, so ask that actor when the artifact to retire is not
     yours. Never record an artifact at `.`: it claims the whole repository,

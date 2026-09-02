@@ -864,16 +864,29 @@ prose. A future `workroom/state@3` request field
 the flag mandatory after every resident and adapter restarts on that binding.
 Until then omission warns and preserves the in-flight phase-one migration.
 
+For an added or modified file, and a rename destination, the merge adapter
+publishes the successor at the exact changed-file path and selects only live
+predecessors at that same exact string. A wider artifact covering the landed
+destination stays live and is sealed in the receipt: it is a separate path
+lineage, not a predecessor a narrower successor may retire. Removing a rename
+source or deleted file retires its exact-file artifact with no successor there
+and changes its covering directories, so in-target directory pointers may be
+retired and the widest directory successor published.
+
 The receipt also accounts for every other live artifact covered by the
-first-parent diff without granting authority over it: it seals whether an
-unsettled durable commitment protects the candidate or whether the candidate
-is abandoned. The Git and durable receipts also seal the canonical exact
-old/new path set from the first-parent diff, so the fold can verify coverage
-without interpreting a Git tree or treating every artifact below a broad
-successor as changed. The fold verifies the testimony from log facts at the
-receipt's position and fixes the successor's succession warning there;
-receipts without the two prospective fields retain the historical moving,
-current-fold calculation.
+first-parent diff without granting authority over it: it seals a wider pointer
+already current in the target world as carried, or records an outside-world
+candidate as protected by an unsettled durable commitment or abandoned. A
+carried pointer has no cleanup duty. Accepting and rendering this class changes
+the deterministic projection for a fixed log, so it advances the profile from
+`workroom-fold@17` to `workroom-fold@18`; a cache written under `@17` is
+rejected and history is replayed. The Git and durable receipts also seal the
+canonical exact old/new path set from the first-parent diff, so the fold can
+verify coverage without interpreting a Git tree or treating every artifact
+below a broad successor as changed. The fold verifies the testimony from log
+facts at the receipt's position and fixes the successor's succession warning
+there; receipts without the two prospective fields retain the historical
+moving, current-fold calculation.
 
 Before Git moves, the CLI also constructs every signed succession request and
 applies the kernel's exact genesis-ceiling measure plus the resident JSON

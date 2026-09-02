@@ -2867,6 +2867,43 @@ func TestMergeLeftLiveProtectedSiblingIsNotRetirementDebt(t *testing.T) {
 	}
 }
 
+func TestMergeLeftLiveCarriedWiderPointerIsCurrentWithoutRetirementDebt(t *testing.T) {
+	records := reviewRecords(t)
+	records[5] = event(t, "r5", agent, SchemaState, State{Kind: KindArtifact, Text: "implementation", Body: map[string]string{"path": "docs/how-to/page.md", "commit": "head1"}}, "r0")
+	records = append(records,
+		event(t, "carried", operator, SchemaState, State{Kind: KindArtifact, Text: "current directory pointer", Body: map[string]string{"path": "docs", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"r5":"docs/how-to/page.md"}`, "merge_successors": `["docs/how-to/page.md"]`,
+			"merge_changed_paths": `["docs/how-to/page.md"]`, "merge_left_live": `{"carried":{"class":"carried"}}`,
+		}}, "approval"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "merged implementation", Body: map[string]string{"path": "docs/how-to/page.md", "commit": "merged"}}, "merge"),
+		event(t, "retire-r5", agent, SchemaSupersede, Supersede{Target: "r5", Text: "merged"}, "r5", "merge", "successor"),
+	)
+	projection := Fold(records)
+	successor := artifactByEvent(t, projection, "successor")
+	if successor.SuccessionUnrecorded || successor.LivePredecessors != 0 {
+		t.Fatalf("carried pointer left the landed path unaccounted: %+v", successor)
+	}
+	accounting := statementByEvent(t, projection, "merge").MergeLeftLive
+	if len(accounting) != 1 {
+		t.Fatalf("carried receipt accounting = %+v", accounting)
+	}
+	entry := accounting[0]
+	if !entry.Verified || entry.Class != "carried" || entry.Commitment != "" {
+		t.Fatalf("carried accounting = %+v", entry)
+	}
+	if projection.OmittedSupersessions != 0 {
+		t.Fatalf("carried pointer became retirement debt: %d", projection.OmittedSupersessions)
+	}
+	status := string(RenderStatus(projection))
+	if !strings.Contains(status, "carried current artifact "+name("carried", projection.sequences())) || strings.Contains(status, "retirement owed by") {
+		t.Fatalf("carried pointer rendered as cleanup work:\n%s", status)
+	}
+}
+
 func TestMergeLeftLiveWrongTestimonyWarnsWithoutChangingReceiptAuthority(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -2895,6 +2932,22 @@ func TestMergeLeftLiveWrongTestimonyWarnsWithoutChangingReceiptAuthority(t *test
 			name:       "retirement overlap",
 			testimony:  `{"r5":{"class":"abandoned"}}`,
 			wantReason: "also classified for retirement",
+		},
+		{
+			name: "carried names commitment",
+			before: []Record{
+				event(t, "left", operator, SchemaState, State{Kind: KindArtifact, Text: "claimed carried pointer", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+			},
+			testimony:  `{"left":{"class":"carried","commitment":"promise"}}`,
+			wantReason: "carried testimony must not name a commitment",
+		},
+		{
+			name: "carried exact path",
+			before: []Record{
+				event(t, "left", operator, SchemaState, State{Kind: KindArtifact, Text: "claimed carried pointer", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+			},
+			testimony:  `{"left":{"class":"carried"}}`,
+			wantReason: "not wider",
 		},
 		{
 			name: "outside successor coverage",
