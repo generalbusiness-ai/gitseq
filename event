@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact clean pushed head 76e5aee0d4be76e2ee898b2dd1871420002d5fe4 preserves the reviewed layer-7 participant-standing contract in docs/reference/architecture.md and rests on the behavior artifacts it describes.","body":{"commit":"76e5aee0d4be76e2ee898b2dd1871420002d5fe4","path":"docs/reference/architecture.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8ed8d13317ad7a3612cd5b6ff8d4343ddb9ec1ef","text":"Replaced by the exact-head Toolbar artifact."}
