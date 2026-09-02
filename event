@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:28966c5fb81a0cd38f43056f2aa3b90d78c909b3","text":"Retire the docs/reference/gs/state.md artifact on stale promise e92c4a84; republished on fresh promise 17fd9588 as 657a016b."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:385301f0001a9cbfd76e7a748cdef825ecd5f161","text":"Retire the docs/reference/mcp/reassign_if_unclaimed.md artifact on stale promise e92c4a84; republished on fresh promise 17fd9588 as f2ec1291."}
