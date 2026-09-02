@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f2ec1291ff2b7637091e4bd1ceab516346e22512","text":"Retire the docs/reference/mcp/reassign_if_unclaimed.md artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact 3e403761)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ecbceff47c77ea3860dca0729ee734a405862d7","text":"Retire the docs/reference/mcp/state.md artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact 83bf843a)."}
