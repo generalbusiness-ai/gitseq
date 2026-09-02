@@ -2,13 +2,13 @@
 title: Limits
 summary: The sizes and counts a call is refused for exceeding.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cadb3875bb56fc359f4b96b167a35d13b29d8dda
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:baf0fe4b855ba94003b7c663c343a8ac9089ea84
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:341d731227ff3ac09c017ab181e7e6e0516318dc
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48bd5acfe51abd4146197a48b0f7674f5676cc5c
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aea9521daff999b6b5f6a1ec97f85994cdfea4aa
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35a8c246effe4f81fe54aac7ebd260f8fb3888d4
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a5bb9becc97d3ae601879a02b19923a2194811e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cae4cb65017feffac75c4cba88dccda021a640de
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
 ---
 
 # Limits
@@ -62,6 +62,29 @@ unnamed exhaustion error and is not part of this.
 The bound belongs to Gitseq's resident. A program embedding the kernel
 directly may leave it unset, which means an unbounded queue; that is the
 embedding opt-out, not a posture Gitseq takes.
+
+## Published paths
+
+`gs publish` applies separate bounds before it queues a new batch of
+publication facts:
+
+| Limit | Value |
+|---|---|
+| Tracked `.gitseq` file | 64 KiB and valid UTF-8 |
+| Watch globs | 64 |
+| Branch ref | 1,024 bytes, valid UTF-8, with no control bytes |
+| Governing basis | 1,024 bytes, valid UTF-8, with no control bytes |
+| Published path | 4,096 bytes, valid UTF-8, with no control bytes |
+| Watched paths in one published head | 256 |
+| Attempts before an entry is abandoned | 3 |
+| Batches in one actor's outbox | 16 |
+
+A bad ref, basis, or configuration refuses the command. One bad path is
+reported while the other watched paths publish; exceeding the 256-path ceiling
+refuses the whole new batch before any act is queued and before an outbox file
+exists. The repository-private outbox and frontier are each bounded to 4 MiB,
+applied before the file is read rather than after. See
+[`gs publish`](gs/publish.md) for the derivation and reconciliation rules.
 
 ## Genesis sequencer key
 

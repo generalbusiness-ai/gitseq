@@ -2,8 +2,8 @@
 title: Anchoring
 summary: How each page names the acts that govern it, and the four gates that keep the set honest.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3bfc1b838622bbb1b9e698ecbe0e241989ada5df
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e11a0d9e8061998f3e1b95f41242d7da5be20d2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
 ---
 
 # Anchoring

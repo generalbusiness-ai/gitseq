@@ -41,6 +41,7 @@ func writeAdvertisement(t *testing.T, workspace *Workspace, content []byte) stri
 }
 
 func TestResidentAddressIsPublishedBesideTheWorkroomAndWithdrawn(t *testing.T) {
+	t.Parallel()
 	workspace := residentWorkspace(t)
 	if advertisement := workspace.ResidentAdvertisement(); advertisement.State != NoAdvertisement {
 		t.Fatalf("a repository with no service read as state %d (%q)", advertisement.State, advertisement.URL)
@@ -65,6 +66,7 @@ func TestResidentAddressIsPublishedBesideTheWorkroomAndWithdrawn(t *testing.T) {
 // as absence is what let a durable act fold locally in silence. This test used
 // to assert that absence, and asserts the refusal now.
 func TestResidentAddressForAnotherWorkroomIsUnusableRatherThanAbsent(t *testing.T) {
+	t.Parallel()
 	workspace := residentWorkspace(t)
 	if _, err := workspace.PublishResident("http://127.0.0.1:7788"); err != nil {
 		t.Fatal(err)
@@ -92,6 +94,7 @@ func TestResidentAddressForAnotherWorkroomIsUnusableRatherThanAbsent(t *testing.
 // asserts its own guard's reason, so a case cannot pass because a different
 // check happened to catch it.
 func TestResidentAdvertisementSeparatesAbsenceFromEveryInvalidRecord(t *testing.T) {
+	t.Parallel()
 	valid := func(t *testing.T, workspace *Workspace) []byte {
 		t.Helper()
 		content, err := json.Marshal(Resident{URL: "http://127.0.0.1:7788", Genesis: workspace.config.Genesis, PID: os.Getpid()})
@@ -212,6 +215,7 @@ func TestResidentAdvertisementSeparatesAbsenceFromEveryInvalidRecord(t *testing.
 // A record exactly at the bound still parses. The limit refuses what is larger
 // than a record may be, not what is merely large.
 func TestAResidentRecordAtTheBoundStillReads(t *testing.T) {
+	t.Parallel()
 	workspace := residentWorkspace(t)
 	head := append([]byte(`{"url":"http://127.0.0.1:7788","genesis":`), []byte(strconv.Quote(workspace.config.Genesis))...)
 	head = append(head, []byte(`,"pad":"`)...)
@@ -234,6 +238,7 @@ func TestAResidentRecordAtTheBoundStillReads(t *testing.T) {
 // repository over is still serving it, and clearing its record would send
 // clients into degraded mode for no reason.
 func TestWithdrawalLeavesALaterServiceAdvertised(t *testing.T) {
+	t.Parallel()
 	workspace := residentWorkspace(t)
 	withdraw, err := workspace.PublishResident("http://127.0.0.1:7788")
 	if err != nil {
@@ -294,6 +299,7 @@ func mustClaim(t *testing.T, workspace *Workspace, url string, probe Prober) *Re
 // Two starters, one repository, one winner. The loser probes the winner, finds
 // it answering, and refuses; it never becomes a second resident.
 func TestOnlyOneOfManySimultaneousStartersOwnsTheResident(t *testing.T) {
+	t.Parallel()
 	workspace := residentWorkspace(t)
 	const starters = 12
 	var owners atomic.Int64
@@ -330,6 +336,7 @@ func TestOnlyOneOfManySimultaneousStartersOwnsTheResident(t *testing.T) {
 // The refusal names the incumbent, because an operator reading it needs to know
 // which service to stop rather than that something went wrong.
 func TestASecondStarterRefusesAndNamesTheIncumbent(t *testing.T) {
+	t.Parallel()
 	workspace := residentWorkspace(t)
 	mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
 	_, err := workspace.ClaimResident(context.Background(), "http://127.0.0.1:7802", probeSaying(Alive))
@@ -347,6 +354,7 @@ func TestASecondStarterRefusesAndNamesTheIncumbent(t *testing.T) {
 // even that must not turn an unreadable claim into an opening, because the
 // alternative is a corrupt file silently authorizing a second resident.
 func TestAnUnreadableClaimIsRefusedRatherThanTreatedAsVacant(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for name, content := range map[string][]byte{
 		"not json":         []byte("this is not a claim"),
@@ -379,6 +387,7 @@ func TestAnUnreadableClaimIsRefusedRatherThanTreatedAsVacant(t *testing.T) {
 // Stale-owner recovery. Only a definitive negative authorizes the transfer, and
 // then the claim changes hands in one compare-and-swap.
 func TestAStaleClaimIsTakenOverAfterADefinitiveNegative(t *testing.T) {
+	t.Parallel()
 	workspace := residentWorkspace(t)
 	dead := mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
 	before, _ := claimRef(t, workspace)
@@ -396,6 +405,7 @@ func TestAStaleClaimIsTakenOverAfterADefinitiveNegative(t *testing.T) {
 // an unparseable reply all arrive here as Ambiguous. None of them may take the
 // repository: not shown to be gone is not gone.
 func TestAnAmbiguousProbeLeavesTheIncumbentClaimAlone(t *testing.T) {
+	t.Parallel()
 	workspace := residentWorkspace(t)
 	mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
 	before, _ := claimRef(t, workspace)
@@ -410,6 +420,7 @@ func TestAnAmbiguousProbeLeavesTheIncumbentClaimAlone(t *testing.T) {
 // Two takers observe one dead claim. Exactly one wins the swap; the other finds
 // the winner in place, probes it alive, and refuses.
 func TestTwoTakersRacingOneStaleClaimYieldOneOwner(t *testing.T) {
+	t.Parallel()
 	workspace := residentWorkspace(t)
 	dead := mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
 	probe := probeDeadOnly(dead.Claim().Nonce)
@@ -444,6 +455,7 @@ func TestTwoTakersRacingOneStaleClaimYieldOneOwner(t *testing.T) {
 // The pause is driven from inside the probe rather than by timing, so the
 // ordering is exact on every run.
 func TestADelayedTakerCannotDisplaceTheNewOwner(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace := residentWorkspace(t)
 	original := mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))
@@ -486,6 +498,7 @@ func TestADelayedTakerCannotDisplaceTheNewOwner(t *testing.T) {
 // A departing process withdraws only its own claim. Whichever way the takeover
 // and the shutdown interleave, one owner is left holding the repository.
 func TestATakerRacingACleanShutdownYieldsOneOwnerInEitherOrder(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	t.Run("takeover first", func(t *testing.T) {
@@ -518,6 +531,7 @@ func TestATakerRacingACleanShutdownYieldsOneOwnerInEitherOrder(t *testing.T) {
 // against can ever come back. That is what keeps a value compare-and-swap free
 // of A-B-A.
 func TestEveryAcquisitionCarriesAFreshNonce(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace := residentWorkspace(t)
 	seen := map[string]bool{}
@@ -539,6 +553,7 @@ func TestEveryAcquisitionCarriesAFreshNonce(t *testing.T) {
 // contend. The claim is a shared ref in the common directory, so a path alias,
 // a symlink, and a linked worktree all reach the same one.
 func TestAliasesSymlinksAndLinkedWorktreesContendForOneClaim(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	workspace := residentWorkspace(t)
 	owner := mustClaim(t, workspace, "http://127.0.0.1:7801", probeSaying(Alive))

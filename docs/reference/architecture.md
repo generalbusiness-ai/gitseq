@@ -2,20 +2,20 @@
 title: Architecture layers
 summary: The boundary between Gitseq's semantic-free kernel and replaceable application profiles.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:25101623b92c3e17c4634c6a6e2dc5c48ab7abbe
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:209b923336260e75192deb934037c8a4c6fcb64e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b714309ab6aa17154b96083c9d7fc054a9218d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cb605f5622c1aa47d1b98dddaaba4f9fb164a343
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7802fc152c5d66eae7f651783d24fab7ae477605
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:507fc7fe7ef7b5f998311bce5786b03d39d573ac
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7c05c81c42d296ad0760def6480ef6d38b899fbc
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c9b1d771798efed345d1998b9fc5f1dfa27a528a
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:80ee8e168951ab2d9011da925a703944d698e502
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cae4cb65017feffac75c4cba88dccda021a640de
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a5bb9becc97d3ae601879a02b19923a2194811e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ef0bb48f6842c8f43f9aaacb6bed75584a77e48
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2556ced7f27f284fe201240aa7bed7bfc021e0b9
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66e0e12172925f497f0dde1b910e705b157c08e7
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e20de58448b1f20657a26a2465f60d80fabad210
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0d87b56bb5146f67931203a41039e3d511ce503e
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0447568fe436f046bc71619ceaafc35f4bdcc80f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f713bdb87c3ddc83f977c5388d2d771ddebbda9a
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abba189910f0cc6a1a737acca890fefe1bb07664
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:937f18e9dbadaec1f5458d84254197f42c06fd63
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35a8c246effe4f81fe54aac7ebd260f8fb3888d4
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aea9521daff999b6b5f6a1ec97f85994cdfea4aa
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
 ---
 
 # Architecture layers
@@ -263,12 +263,61 @@ Before routing a request, it requires the Host to contain an explicit numeric
 port and either a literal loopback IP or `localhost`, compared without case and
 with one optional trailing dot. It never resolves request hostnames, so an
 attacker cannot win admission by changing a DNS answer to point at loopback. It
-also checks every mutation's browser provenance.
+also checks every mutation's browser provenance, and every response it gives a
+browser carries one policy set in one place: a Content-Security-Policy that
+admits only the service's own origin and denies framing, `X-Frame-Options`,
+`X-Content-Type-Options: nosniff` and a no-referrer policy.
 
 Within that boundary, the resident can open several actor keys, and every
 process running as the account is trusted to ask it to act as any of them.
 Direct local `gs` key access and malicious same-account processes remain
 outside the resident's protection.
+
+The operator's ambient Git environment is trusted on the same footing.
+`GIT_DIR`, `GIT_WORK_TREE` and `GIT_COMMON_DIR`, which decide which
+repository Git resolves; `GIT_CONFIG`, `GIT_CONFIG_GLOBAL`,
+`GIT_CONFIG_SYSTEM` and the rest of the `GIT_CONFIG_*` family, which decide
+what configuration it reads; and `HOME` and `XDG_CONFIG_HOME`, which locate
+several of those files — all are outside the threat model. Gitseq trusts the
+environment of the operator who runs it, and defending a hostile
+operator-controlled environment is a non-goal.
+
+The reason a defence there would buy little is worth stating exactly, because
+the sweeping version of it is false. Some of these variables name a program
+Git will run: `core.fsmonitor`, `core.pager` and `diff.external` are commands,
+and an include can reach a configuration file outside the repository. Setting
+one of those, and then reaching a Git invocation that consults it, gets code
+run as the operator — which is the account the resident's keys already live
+in, so such an attacker gains nothing they could not reach another way. Others
+only route or select configuration, and whether they lead to anything depends
+on a relevant Git invocation existing at all. So the claim is not that anyone
+who can set any of these variables can already execute code; it is that this
+boundary is not where gitseq stops an attacker who is already inside the
+operator's account.
+
+Two different things follow, and the page keeps them apart because they are
+not the same kind of claim.
+
+Where the code bounds the environment for **determinism**, it is not making a
+security claim: a read that ignores the invoking shell answers for the
+repository it was pointed at, whoever started the process. `internal/app`
+states the environment for the Git commands behind `/v0/worktrees` on that
+basis, and that is all it is doing.
+
+`internal/gitstore`'s `hermeticGitEnvironment` is **defence in depth, and a
+control that exists rather than a convenience**. It strips `GIT_CONFIG` and
+every `GIT_CONFIG_*` variable from the inherited environment, then pins
+`GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_SYSTEM` and `GIT_CONFIG_GLOBAL` at a
+location that can hold nothing. It is applied on the paths that sign and
+verify — `SignedCommit` and SSH commit verification run through
+`runHermetic` — so operator configuration cannot redirect `gpg.ssh.program`
+and substitute the program that signs or checks a signature. A test in
+`internal/gitstore` sets a hostile `gpg.ssh.program` through both
+`GIT_CONFIG_GLOBAL` and the `GIT_CONFIG_COUNT` family and asserts that
+signing and verification are unchanged and the planted program is never
+invoked. Describing this as determinism would erase a control the code
+actually provides, and would tell the next maintainer that weakening the
+signing and verification quarantine is free. It is not.
 
 #### Live credentials
 
@@ -314,9 +363,17 @@ and cannot be trusted. Only a genuinely missing file is absence. Unreadable,
 larger than the 8 KiB bound, not a record, carrying no address, or naming
 another workroom are all the third answer, and it carries the reason.
 
-`internal/app` owns that read. `cmd/gs` turns the third answer into a refusal
-before it reads a signing key or appends anything, and names `--server -` as
-the way out. `cmd/gitseq-mcp` decides separately, and treats it as no resident
+`internal/app` owns that read, and `internal/residentclient` owns the clause
+naming which of the six failures it is — not each surface's complete sentence,
+whose remainder is the way out that surface offers. That is what keeps the two
+from drifting into separate accounts of the same record. `cmd/gs` turns the
+third answer into a refusal of the whole command before it reads a signing key
+or appends anything, and names `--server -` as the way out. `cmd/gitseq-mcp`
+refuses the durable call for the same reason and before the same work, while
+leaving the attachment and the session intact, and still lets a read answer
+from the verified local fold. It judges the record on every durable act rather
+than once per session, and again before any fall back to the local fold, so a
+remembered address never stands in for a record that has since been rewritten
 — see [`gs serve`](gs/serve.md).
 
 Ownership authorizes serving; binding a listener does not. A resident binds
@@ -517,6 +574,13 @@ prevents torn reads, not lost updates. The lock lives in a dedicated
 cannot leave a lock dangling: the kernel drops it when the process dies. Where
 no advisory locking exists, updates refuse loudly rather than lose updates
 silently, while creating a first configuration stays available.
+
+**The lock is one named, application-neutral primitive.** Its acquisition is
+exported and takes a bare lock-file name in the metadata directory. A surface
+above with its own read-modify-write to serialize — `gs publish` and its
+outboxes — takes its own name through the same code rather than growing a
+second answer to the same crash-safety question. Each name is a separate lock,
+so a caller holding one may still update its configuration inside it.
 
 **The two paths do not accept the same filesystems.** Creation requires hard
 links within the metadata directory — a refused link is reported as the
@@ -796,7 +860,7 @@ Workroom vocabulary, fold rule, projection, or cache profile.
 
 Phase two should use a declared application seam rather than search request
 prose. A future `workroom/state@3` request field
-`merge_authorization=required`, projected under `workroom-fold@16`, can make
+`merge_authorization=required`, projected under the next fold profile, can make
 the flag mandatory after every resident and adapter restarts on that binding.
 Until then omission warns and preserves the in-flight phase-one migration.
 
@@ -872,18 +936,21 @@ ratification would be silently withheld from actors entitled to make it.
 artifact have different closing authority, so the fold projects different
 states. An explicit report is `reported` and waits on its originating
 requester, whose ratification can satisfy it. An artifact is
-`awaiting-merge` and names no `waiting_on` actor: its admitted satisfier is
-`none`, and only an independently approved exact-head merge closes the
-implementation commitment. The application write boundary reads that same
+`awaiting-merge` and waits on its performer: its admitted satisfier is
+`none`, so the requester cannot ratify it, and only an independently approved
+exact-head merge, which the performer signs, closes the implementation
+commitment. The application write boundary reads that same
 admission-time satisfier before signing a ratification. When it is `none`, it
 refuses and names the target kind, the satisfier, and the applicable workflow
 act, rather than adding an ineffective attempt to the permanent log.
 
 The browser and bounded status/query projections preserve `awaiting-merge` as
-unfinished work while showing no invented waiting party. This changes the
-application projection bytes and lifecycle meaning, so it advances the profile
-to `workroom-fold@15`; a cache written under `@14` is rejected and history is
-replayed.
+unfinished work. Naming no waiting party at all, as `@15` did, left approved
+heads in nobody's queue; naming the performer puts each one in the lane of the
+actor who must sign its merge. Each of those projection changes altered the
+application projection bytes and lifecycle meaning, so each advanced the
+profile: `@14` to `@15`, then `@15` to `workroom-fold@16`; a cache written
+under an older profile is rejected and history is replayed.
 
 **Rejected-round successor transfer.** A ratified `changes-requested` verdict
 rejects an implementation head but does not say where its required repair went.
@@ -898,10 +965,10 @@ The qualification is sealed on the supersession, so retiring or failing the
 child later changes only the child row. Retiring the supersession itself
 restores the ordinary parent state.
 
-This also changes projection bytes and lifecycle meaning. It is included in
-the same unpublished `workroom-fold@15` candidate described above, so the
-deployed transition remains one step from `@14` to `@15`; there is no
-intermediate `@15` cache contract to invalidate again.
+This also changes projection bytes and lifecycle meaning. It shipped in the
+same `workroom-fold@15` candidate as the empty-waiting-party projection, so
+that deployed transition was one step from `@14` to `@15`; the later step to
+`@16` names the performer and is described above.
 
 **Write-boundary guards.** One Workroom admission evaluation serves every
 state surface — `gs state`, `gs batch`, the MCP state and review tools, and
@@ -1091,6 +1158,19 @@ Work and status rows include the request, report, exact-head, and
 latest-review facts needed for routine action. Write surfaces return the fold
 decision after an append rather than previewing application force.
 
+Pending ratification is a separate attention lane, not a commitment state.
+`internal/statusview` selects effective, unratified, live proposals whose
+captured `role:<name>` satisfier is held by the actor being viewed. It reads the
+satisfier projected on each statement, never the current vocabulary, because
+the fold admits a ratification under the definition captured with that
+statement. Ratification, proposal supersession, or a standing effective direct
+dissent removes the row; ordinary staleness remains a qualifier on it. Status,
+wait, and work expose the same bounded selection. Work uses an `event` field
+for these rows and leaves `request` empty, so the query does not manufacture a
+request, performer, promise, or waiting party around a proposal. The browser's
+awaiting-ratification population applies the same standing and captured-role
+rules to the full projection.
+
 `internal/app` opens a repository, joins the kernel records to the interpreter
 the repository is bound to, and exposes the resulting durable snapshot.
 Readers must report an unbound or unavailable interpreter instead of
@@ -1177,14 +1257,44 @@ a projection it may merge on. This carries the fold profile to
   retirement's signed `cited_ok` is an explicit checkout/admission escape
   carried across remote sequencing and replay; it is not part of the
   `UnclaimedExpectation` compare-and-swap tuple and grants no fold authority.
+
+  Its publication adapter joins two facts that deliberately live in different
+  layers: the exact head an ordinary Git remote already accepted, and the
+  repository-owned watch globs read from the tracked `.gitseq` at that head.
+  It records **no artifact**. Merge succession above already lands an
+  artifact at every changed path, so a second live artifact minted per push
+  at a source path would be an accounting row the merger did not create and
+  often cannot lawfully retire. What it records instead is an app-validated
+  `assert` per changed watched path, carrying the path, the accepted head and
+  the remote under `publication_`-prefixed fields, which no governed kind
+  requires and this surface therefore validates itself. Asserts never enter
+  the artifact map, so publication changes nothing about succession or
+  left-live accounting. The adapter holds one operating-system-released
+  advisory lock across the repository-wide remote/ref frontier and the
+  actor-specific durable outboxes, queues the derived acts before submission,
+  and verifies each against the decision of the sequencer that accepted it —
+  never against a different frontier. This is a CLI reconciliation contract:
+  it adds no file meaning to the kernel and no Git or outbox access to the
+  Workroom fold.
 - `cmd/gitseq-mcp` exposes Workroom tools and live coordination over an MCP
   transport. The MCP protocol is a surface contract, not the Workroom fold.
   The `work` tool's `stale` enum admits `summary`, `include`, `only` and
   `exclude`, and `summary` is what a call that names no policy receives. The
   tool schema is the surface contract for that default; the selection it names
-  belongs to the projection above. The adapter holds one resident-minted
-  credential per exact repository, renews or replaces it internally, and never
-  returns it through MCP.
+  belongs to the projection above. Every tool call may select `repo` and
+  `agent`; omitted values use startup defaults. The pair selects a repository
+  and an existing accessible actor key. It never creates a key or grants an
+  identity, and a missing key, fingerprint mismatch, absent roster actor or
+  unavailable repository refuses instead of falling back to either default.
+  This is custody routing, not a new trust grant: the development key model
+  still derives keys from actor names, so access becomes a real boundary only
+  when deployments protect actor keys as secrets.
+
+  The adapter holds one resident-minted credential per validated repository
+  and actor selection, renews or replaces it internally, and never returns it
+  through MCP. A configuration or roster change invalidates the old lease;
+  cached repository state cannot turn an obsolete selector into signing
+  authority.
   Its `reassign_if_unclaimed` tool owns the same guarded pair and retry
   choreography as the CLI, rather than asking callers to construct a
   commitment expectation from generic state and supersede tools.
@@ -1401,14 +1511,14 @@ the same result.
 | `internal/custody` | Example application interpreter | Folds opaque offer, acceptance and settlement records into asset-custody state. It manages no local signing keys and defines no kernel policy. |
 | `host/live` | Live runtime, public surface | Owns the single process-local coordination runtime. It opens public-key leases only after an expiring single-use possession proof, exposes a separate trusted-only custodial entry point, prepares deterministic application-neutral frame drafts, verifies actor signatures made outside the runtime, binds conversations to exact scopes, supplies runtime ordering, and retains bounded live state. Its optional composition helper keeps caller-owned durable frontiers separate from live cursors. It imports no application profile and is independent of the durable Workroom fold. |
 | `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
-| `internal/apphost` | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and the binding in force shared by every host, together with the repository configuration a checkout needs to reopen its own log. It imports no application profile and has no application ontology. |
+| `internal/apphost` | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and the binding in force shared by every host, together with the repository configuration a checkout needs to reopen its own log, and the one advisory-lock primitive that serializes a read-modify-write on a named file in that directory. It imports no application profile and has no application ontology. |
 | `host` | Durable application host, public surface | Exports binding at init, configured and attached-clone opening against a declared application, local-custody append, prepare/submit for externally actor-signed acts, and the verified record stream — and no projection, because the outside application owns its fold. It delegates canonical signing-byte construction to `internal/intent`, so no public host API names the kernel's domain tag. Attached opening receives a genesis and sequencer-key path through public fields, verifies before interpreting, and never initializes or exposes `internal/apphost.Config`. It depends on the kernel and `internal/apphost`, never on an application profile. |
 | `host/identity` | Application host, public surface | Holds the host identity vocabulary an application inherits rather than reinvents: witness declarations, witnessed GitHub and self-signed Nostr anchors, withdrawal, and two-axis resolution with a plain display at an exact verified record position. It imports `host` and no application profile, gates no append, and reads no clock. Nostr BIP-340 verification stays in this host interpreter, outside the Ed25519 kernel. The provider check that turns a GitHub login into an identity runs outside the fold, and only its result is recorded. Endorsement has two entry points over one validation and encoding site: `Endorse` signs with a held actor key, and `PrepareEndorsement` fills the genesis, validates the anchor, BIP-340-verifies any carried Nostr proof, and returns a `host.PreparedAct` for an actor to sign outside the process, taking and retaining no actor private key and writing nothing. |
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it opens the repository's configured actor and sequencer key custody, builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. The trusted resident may invoke this local custody for several actors; the nexus credential does not alter key files, kernel verification or fold authority. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. |
-| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff, validates optional structured merge authorization and target-path remeasurement, composes the Workroom receipt, successor artifacts, and retirements, and asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Command grouping must not move Workroom concepts into the kernel packages. |
-| `cmd/gitseq-mcp` | Surface | Adapts MCP calls to Workroom and nexus operations. Protocol compatibility and fold compatibility are separate. |
+| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff, validates optional structured merge authorization and target-path remeasurement, composes the Workroom receipt, successor artifacts, and retirements, and asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Its publication adapter reads the head an ordinary remote accepted and the watch globs tracked at that head, and records app-validated publication asserts — never artifacts, which merge succession alone mints at source paths. Command grouping must not move Workroom concepts into the kernel packages. |
+| `cmd/gitseq-mcp` | Surface | Adapts MCP calls to Workroom and nexus operations. Per-call `repo` and `agent` values select an existing accessible key and effective roster actor, fail closed without changing either startup default, and keep resident leases scoped to that validated pair. Protocol compatibility and fold compatibility are separate. |
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |
 | `SKILL.md` | Application guidance | Governs agent conduct in Workroom. It is not a kernel protocol specification. |

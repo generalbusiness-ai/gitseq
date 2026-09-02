@@ -2,11 +2,9 @@
 title: MCP status
 summary: Project durable work, live presence, and this session's priority ephemeral chat.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:25101623b92c3e17c4634c6a6e2dc5c48ab7abbe
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7802fc152c5d66eae7f651783d24fab7ae477605
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cadb3875bb56fc359f4b96b167a35d13b29d8dda
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cae4cb65017feffac75c4cba88dccda021a640de
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aea9521daff999b6b5f6a1ec97f85994cdfea4aa
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
 ---
 
@@ -25,11 +23,11 @@ the caller.
 | argument | required | meaning |
 |---|---|---|
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `agent` | optional | The actor whose current work is projected; defaults to startup `--actor`. The actor's key must already be accessible. |
 
-Every tool takes `repo`. Naming a different repository acts in that
-repository's workroom instead; the adapter is installed once and serves
-whatever repository a call names. Linked worktrees of one repository are
-one workroom, not several.
+Every tool takes both selectors. Naming a different repository acts in that
+workroom; naming a different agent selects that actor's existing key and
+durable lane. Linked worktrees of one repository are one workroom, not several.
 
 ## Example
 
@@ -50,9 +48,10 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 |---|---|
 | `you` | Your name, fingerprint and current roles. |
 | `frontier` | The genesis, head and depth this answer was folded at. |
+| `awaiting_ratification` | Effective, unratified, live proposals whose captured role satisfier you currently hold. |
 | `available_to_you` | Unclaimed requests addressed to you, including requests whose bases have become stale. |
 | `waiting_on_you` | Commitments where you have an admissible next act. |
-| `you_are_waiting_on` | Commitments involving you where no admissible next act is assigned to you, including artifact completions awaiting merge. |
+| `you_are_waiting_on` | Commitments involving you where the next move is another actor's, including artifact completions awaiting the performer's merge. |
 | `not_actionable` | Commitments involving you that nobody can currently advance. |
 | `needs_your_attention` | Your own acts that did not take force, and events that concern you. |
 | `totals` | Depth, commitment counts by status with a stale count beside each, artifact counts split into stale, retired and superseded-world, and ineffective and disputed acts. |
@@ -69,7 +68,7 @@ state the trusted-process boundary under which that credential is meaningful.
 There is also a one-line text summary, which is usually enough:
 
 ```text
-priority ephemeral chat: 0 unacknowledged; depth 1, you hold 3 roles, 0 addressed to you, 0 waiting on you, 0 you are waiting on,
+priority ephemeral chat: 0 unacknowledged; depth 1, you hold 3 roles, 0 awaiting your ratification, 0 addressed to you, 0 waiting on you, 0 you are waiting on,
 0 not actionable, 0 of your acts did not take force; live alice (1fb980b1de47)
 ```
 
@@ -79,9 +78,18 @@ is normally `open`. If the request's bases moved before anyone claimed it, its
 status is `stale` and its `stale` flag is `true`, but the unfinished request
 remains in this lane. `waiting_on_you` begins only after a promise or explicit
 report gives you an admissible next act. A reporting artifact instead projects
-`awaiting-merge` with no `waiting_on`: artifacts have satisfier `none`, so the
-requester cannot ratify one. The implementation commitment closes only when an
-independently approved exact head merges.
+`awaiting-merge` waiting on its performer: artifacts have satisfier `none`, so
+the requester cannot ratify one, and the performer signs the merge. The
+implementation commitment closes only when an independently approved exact
+head merges.
+
+`awaiting_ratification` is also not a commitment. Each row names the proposal
+in `event`, its author, kind, text, captured satisfier, and staleness qualifier;
+it has no request, performer, promise, or waiting party. The row is present
+only while the proposal is effective, unratified, unsuperseded, and has no
+standing direct dissent. It is selected for every actor who currently holds
+the role named by the proposal's captured satisfier. Ratification,
+supersession, or dissent clears it. Ordinary staleness does not hide it.
 
 A rejected implementation parent closes as terminal `superseded` only after an
 explicit qualifying linked supersession. Its row carries `successor_request`

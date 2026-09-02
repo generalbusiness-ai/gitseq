@@ -1,10 +1,9 @@
 # JSONata and DDL application spike
 
-This spike loads one application profile from exactly two application files:
-[`inventory/application.sql`](inventory/application.sql) declares events,
-tables, named fold reads and write authority; and
-[`inventory/folds/inventory.jsonata`](inventory/folds/inventory.jsonata)
-defines the fold.
+This spike loads one application profile from one SQL file and its fold
+programs: [`inventory/application.sql`](inventory/application.sql) declares
+events, tables, views, named fold reads and write authority; the JSONata
+files under [`inventory/folds/`](inventory/folds/) define the folds.
 
 It demonstrates a deliberately small end-to-end path:
 
@@ -18,10 +17,31 @@ It demonstrates a deliberately small end-to-end path:
   variable and VDBE-op limits bound the surface;
 - the canonical `{meta,event,rows}` JSON encoding is capped at 24 KiB before
   the pinned JSONata 2.0.6 evaluator sees it;
-- validated inserts and upserts, decisions, facts and the interpreted frontier
-  commit atomically into a file-backed SQLite WAL database; and
+- validated inserts, upserts and deletes, their hidden per-table row
+  versions, decisions, facts and the interpreted frontier commit atomically
+  into a file-backed SQLite WAL database;
 - a read-only, authorizer-limited SQL connection returns bounded rows together
-  with the exact verified and interpreted frontiers.
+  with the exact verified and interpreted frontiers; and
+- a historical read runs the same application SQL — including nested declared
+  views — at any interpreted position, through a dedicated read-only
+  connection whose temporary schema shadows the application tables and views
+  with the row versions visible at that position; and
+- a same-origin HTTP spike discovers event and relational schemas, accepts an
+  authenticated event submission, waits for the rebuilt projection frontier,
+  and repeats a bounded SQL query against that exact frontier.
+
+Crash recovery is tested by sweep: a recording VFS captures every durable
+mutation the projection writer makes, each write boundary (and each half
+write) is replayed onto fresh files, and every recovered image must be
+exactly one clean prefix projection whose frontier names that prefix.
+[`RECOVERY.md`](RECOVERY.md) states the interruption points, their observed
+recovery behaviour, and the crash model's limits.
+
+[`CORPUS.md`](CORPUS.md) records the live JSONata 2.0.6 comparison. It names
+the four object-order expressions whose Go results differ or vary and the
+three ambient expressions whose values depend on the environment. Those
+operations are refused at profile load, and that language change is bound in
+fold version `jsonata-v206-sqlite-spike@1`.
 
 Run the focused proof with `go test ./spike/jsonataddl`. Given a repository
 already bound to the fixture's application identity, the small query program
@@ -34,6 +54,30 @@ go run ./spike/cmd/jsonata-inventory -repo REPOSITORY -database NEW.sqlite \
 
 The projection database is disposable and the command refuses to overwrite
 one. The Git sequence remains the source of truth.
+
+To serve the tiny browser UI on loopback:
+
+```text
+go run ./spike/cmd/jsonata-inventory-ui -repo REPOSITORY \
+  -database-dir NEW-DIRECTORY
+```
+
+The command prints a random session credential. Enter it in the page before
+submitting. The browser first reads `/api/metadata`, which carries the
+application identity, event fields, relational schema, views, and exact
+frontier. It submits to `/api/events`, waits on `/api/wait`, then repeats its
+`/api/query` call with the returned frontier as an expectation.
+
+The wait observes the verified head of the active, readable projection. Its
+comparison and notification registration share one mutex, so an advance
+cannot land between the check and sleep. Event submission does not publish an
+advance until replay reaches the newly verified log head. If that never
+happens, the wait returns HTTP 204 after its bounded timeout and names the
+unchanged head in `Gitseq-Frontier`. A crash after append is recovered by a
+fresh full replay at server start; a failed live rebuild returns an explicit
+"appended but not projected" error, and the same idempotency key can be
+retried. Query pagination or repetition with an old expected frontier gets
+HTTP 409 instead of mixed-frontier rows.
 
 The fold-read authority is not a blacklist. Mutable connection functions such
 as `changes()`, `total_changes()` and `last_insert_rowid()`, PRAGMAs, physical
@@ -51,11 +95,11 @@ could expand much further, but that profile is outside this closed spike.
 ## Deliberate omissions
 
 This is not the resident or the general application platform. It does not
-implement a general SQL parser, `MANY` or historical reads, typed version
-relations, projection-cache reuse or suffix replay, crash failpoints, HTTP/UI
-or event submission, query concurrency slots, a general query-work budget, or
-the complete JSONata compatibility corpus. The evaluator wrapper excludes the
-known ambient functions and bounds depth, ranges, encoded input and output,
-but it does not yet provide deterministic evaluation-step and allocation
-bounds or settle all map-order and numeric edge cases. Those omitted contracts
-must be resolved before this profile can interpret production history.
+implement a general SQL parser, `MANY` reads, projection-cache reuse or
+suffix replay, query concurrency slots, a general query-work budget, remote
+authentication, persistent actor custody, or the complete JSONata language.
+The evaluator wrapper excludes the known ambient and object-order operations
+and bounds depth, ranges, encoded input and output, but it does not yet provide
+deterministic evaluation-step and allocation bounds or settle every numeric
+edge case. Those omitted contracts must be resolved before this profile can
+interpret production history.

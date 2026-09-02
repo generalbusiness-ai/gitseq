@@ -122,6 +122,7 @@ func waitForSlots(t *testing.T, server *Server, want int, within time.Duration) 
 // every slot. The fill count is written as a literal on purpose: if the
 // default moves, this test must move with it.
 func TestWaitBudgetOfSixtyFourIsSharedAcrossBothWaitRoutes(t *testing.T) {
+	t.Parallel()
 	server, httpServer := newWaitBoundServer(t)
 	credential, _ := announceCredential(t, server, presenceRequest{Actor: "human"})
 	cursor := waitBoundCursor(t, httpServer.URL)
@@ -147,6 +148,7 @@ func TestWaitBudgetOfSixtyFourIsSharedAcrossBothWaitRoutes(t *testing.T) {
 // on their own clock. The budget is narrowed to two through the channel seam
 // so the test exercises the bound, not sixty-four goroutines.
 func TestActorWaitSaturatesTheBudgetAndCompletionRestoresIt(t *testing.T) {
+	t.Parallel()
 	server, httpServer := newWaitBoundServer(t)
 	server.waitSlots = make(chan struct{}, 2)
 	credential, _ := announceCredential(t, server, presenceRequest{Actor: "human"})
@@ -176,6 +178,7 @@ func TestActorWaitSaturatesTheBudgetAndCompletionRestoresIt(t *testing.T) {
 // A client that abandons its long poll gives its slot back: capacity must
 // follow the request's lifetime, not its happy path.
 func TestCancelledWaitReturnsItsSlot(t *testing.T) {
+	t.Parallel()
 	server, httpServer := newWaitBoundServer(t)
 	server.waitSlots = make(chan struct{}, 1)
 	cursor := waitBoundCursor(t, httpServer.URL)

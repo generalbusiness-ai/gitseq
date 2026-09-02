@@ -2,7 +2,7 @@
 title: MCP state
 summary: Append a durable attributed utterance.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
 ---
 
 # `state`
@@ -23,6 +23,7 @@ appends is permanent.
 | `allow_dead_basis` | optional | Rest on retired or stale bases anyway, signing `dead_basis_override=true`. Testimony that you saw them, not a repair of them. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `agent` | optional | The actor whose existing accessible key signs this statement; defaults to startup `--actor`. |
 
 `rests_on` is required by the schema — an act citing nothing is almost
 always a mistake, and requiring the field makes that a decision rather

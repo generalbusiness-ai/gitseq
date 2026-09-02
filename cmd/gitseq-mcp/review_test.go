@@ -75,6 +75,7 @@ func reviewFixture(t *testing.T) (*app.Workspace, string, string) {
 }
 
 func TestReviewToolFilesAGuardedVerdict(t *testing.T) {
+	parallelTest(t)
 	workspace, artifact, promise := reviewFixture(t)
 	server, _ := attachedServer(t, workspace, "reviewer", "", nil)
 
@@ -122,6 +123,7 @@ func TestReviewToolFilesAGuardedVerdict(t *testing.T) {
 }
 
 func TestReviewToolRefusesUnacknowledgedHeadNewsAndTakesExactAcks(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace, artifact, promise := reviewFixture(t)
 	server, _ := attachedServer(t, workspace, "reviewer", "", nil)
@@ -195,6 +197,7 @@ func TestReviewToolRefusesUnacknowledgedHeadNewsAndTakesExactAcks(t *testing.T) 
 // surfaces run the same reviewguard.Confirm choreography over their own
 // reads.
 func TestReviewToolRefusalsBoundCallerSuppliedValues(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace, artifact, promise := reviewFixture(t)
 	server, _ := attachedServer(t, workspace, "reviewer", "", nil)
@@ -221,6 +224,7 @@ func TestReviewToolRefusalsBoundCallerSuppliedValues(t *testing.T) {
 }
 
 func TestStateToolSignsTheDeadBasisEscapeWhenAllowed(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace := initRepository(t, "dead-basis")
 	server, _ := attachedServer(t, workspace, "human", "", nil)
@@ -281,6 +285,7 @@ func TestStateToolSignsTheDeadBasisEscapeWhenAllowed(t *testing.T) {
 // guarded-review marker, a verdict word, or any other reserved field refuses
 // before anything is signed, whatever kind it claims.
 func TestStateToolRefusesReservedBodyFieldSpoofing(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace := initRepository(t, "spoofing")
 	server, _ := attachedServer(t, workspace, "human", "", nil)
@@ -319,6 +324,7 @@ func TestStateToolRefusesReservedBodyFieldSpoofing(t *testing.T) {
 // The undefined-kind refusal closes the door with directions, not just a no:
 // a command-shaped kind names the dedicated command or tool that does exist.
 func TestStateToolRefusesCommandShapedKindsByNamingTheirRoute(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace := initRepository(t, "routes")
 	server, _ := attachedServer(t, workspace, "human", "", nil)

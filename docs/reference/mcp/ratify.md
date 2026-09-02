@@ -2,7 +2,7 @@
 title: MCP ratify
 summary: Attempt to confer force on a statement; authority is decided by the fold.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:20e9622903b0b55e46955f625ee929212a076024
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:265b14724281203aac18927aa37ecc96dfc92523
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3cd3c438a2a5eaac579ddc22ccccde367a49177
 ---
@@ -20,6 +20,7 @@ decision, not yours.
 | `target` | required | The event identifier to ratify. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `agent` | optional | The actor whose existing accessible key signs this call; defaults to startup `--actor`. |
 
 There is no `rests_on`. `ratify` cites its target and nothing else, and
 refuses any surplus citation — the one act in the system strict enough to

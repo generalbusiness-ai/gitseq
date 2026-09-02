@@ -2,11 +2,11 @@
 title: Use gitseq in a repository you already have
 summary: What gitseq touches inside an existing clone, how it behaves across worktrees, what push and pull do with the log, what a central resident changes, and what becomes permanent.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9141779ce5de63132cdbfd0498ef22730e280d1f
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:44a260205b00e793c8350419a71438dc599d2cbc
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0baadffc9ea51e7d3f31d7a1ea4a6ae210322c4c
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b09c0e250a2eea6d310236fdd4077662785c06d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4288e38f53f8e0df705089e0cec337aa26a39084
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b714309ab6aa17154b96083c9d7fc054a9218d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eb696dc813fe4f2f438312c0ba96ae5153bc9ae9
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66f0c0b0dd991a3edfffb161a3b9fbc9777281e0
 ---
 
 <!-- The rests_on identifiers above are the live behaviour artifacts, as of
@@ -447,11 +447,11 @@ gs state --repo "$TAMPER" --as alice --kind assert \
 test "$(depth)" = "$((SETTLED + 2))"
 ```
 
-The [MCP adapter decides this differently](../reference/gs/serve.md) and
-treats an untrustworthy record as no resident, because a long-lived
-session has no per-call way to refuse an attachment. The two surfaces
-disagree knowingly; `gs`, which has you watching its standard error,
-fails closed.
+The [MCP adapter refuses the same way](../reference/gs/serve.md): a
+durable call through it stops with the same reason, and a read still
+answers from the verified local fold. It refuses the call rather than the
+attachment, so a long-lived session survives a record it can repair, and
+deleting the record is the whole recovery there too.
 
 Now the ordinary case. Start a resident and keep working exactly as
 before:

@@ -2,10 +2,10 @@
 title: Getting started
 summary: Build the binaries, create a workroom with three agent actors, bind a signing MCP identity to each, and start a coding session per actor polling for work.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6c760162df2d42d89a795276ec4121b85f06b834
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:926644bd9ec30efe540af5d6cc4ba7f22ab5a75e
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e8b63808aa799a06985f98bffcc23306d6fff882
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aae95c638b523c978f7e3ffe3ba7c0c10b8eee40
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b714309ab6aa17154b96083c9d7fc054a9218d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bb117399b2a7d82b67cd09243bde69038b26242f
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cae4cb65017feffac75c4cba88dccda021a640de
 ---
 
 # Getting started
@@ -37,6 +37,12 @@ steps use `$GITSEQ` to find the binaries and the skill file:
 export PATH="$PWD/bin:$PATH"
 export GITSEQ="$PWD"
 ```
+
+The command line carries its own flag reference. Run `gs --help` for the
+command list and `gs help <command>` for one command's flags. For a complete
+CLI-only work loop, from an empty repository through review and merge, use
+[End-to-end on the command line](how-to/end-to-end.md). The pages under
+[`docs/reference/gs/`](reference/gs/) describe each command in detail.
 
 ## Create a workroom
 
@@ -171,6 +177,12 @@ agent records carries its fingerprint, so the roster is how you tell
 which actor you are talking to — and how everyone else tells, later,
 who did what.
 
+At any later point, `gs whoami --repo "$REPO"` shows the signing actor selected
+by `GITSEQ_ACTOR` and all actor keys this checkout holds. Pass `--as NAME` to
+show an explicit selection. `gs work` gives the same custody list when it
+cannot resolve an identity, so a CLI-only session can choose an actor without
+guessing from the roster JSON.
+
 ## Start the resident
 
 The resident service sequences concurrent appends, holds presence and
@@ -218,12 +230,13 @@ The service prints that sentence next to its address on every start.
 
 ## Give each agent its own identity
 
-`gitseq-mcp` is one process per client session, and it signs everything
-that session does as the one actor named by `--actor`. Register one MCP
-server per actor, named after the actor, so a session that uses the
-`builder` MCP signs as `builder` and nothing else. Use the full path to
-`gitseq-mcp` — the client launches it outside your current shell, so it
-cannot rely on the `PATH` you exported above.
+`gitseq-mcp` is one process per client session. `--repo` and `--actor`
+provide safe defaults; every tool call may instead name `repo` and `agent`.
+Register one MCP server for the workroom. A multi-agent harness can then use
+the same adapter for `planner`, `builder` and `checker`, while a simple client
+can omit both selectors and keep the startup defaults. Use the full path to
+`gitseq-mcp` — the client launches it outside your current shell, so it cannot
+rely on the `PATH` you exported above.
 
 ### claude-code
 
@@ -233,17 +246,13 @@ this directory only). `$GITSEQ` is the checkout path you exported after
 
 ```text
 cd "$REPO"
-claude mcp add planner -- "$GITSEQ/bin/gitseq-mcp" --actor planner --repo "$REPO"
-claude mcp add builder -- "$GITSEQ/bin/gitseq-mcp" --actor builder --repo "$REPO"
-claude mcp add checker -- "$GITSEQ/bin/gitseq-mcp" --actor checker --repo "$REPO"
+claude mcp add workroom -- "$GITSEQ/bin/gitseq-mcp" --actor planner --repo "$REPO"
 ```
 
-`claude mcp list` confirms all three connect:
+`claude mcp list` confirms it connects:
 
 ```text
-planner: …/bin/gitseq-mcp --actor planner --repo …/project - ✔ Connected
-builder: …/bin/gitseq-mcp --actor builder --repo …/project - ✔ Connected
-checker: …/bin/gitseq-mcp --actor checker --repo …/project - ✔ Connected
+workroom: …/bin/gitseq-mcp --actor planner --repo …/project - ✔ Connected
 ```
 
 Claude Code loads skills from the project, so give it the workroom
@@ -256,23 +265,21 @@ cp "$GITSEQ/SKILL.md" "$REPO/.claude/skills/workroom/SKILL.md"
 
 ### codex
 
-The same three registrations. Codex records them in
-`~/.codex/config.toml`, so they are global to your account rather than
+The same single registration. Codex records it in
+`~/.codex/config.toml`, so it is global to your account rather than
 scoped to the project:
 
 ```text
-codex mcp add planner -- "$GITSEQ/bin/gitseq-mcp" --actor planner --repo "$REPO"
-codex mcp add builder -- "$GITSEQ/bin/gitseq-mcp" --actor builder --repo "$REPO"
-codex mcp add checker -- "$GITSEQ/bin/gitseq-mcp" --actor checker --repo "$REPO"
+codex mcp add workroom -- "$GITSEQ/bin/gitseq-mcp" --actor planner --repo "$REPO"
 ```
 
 `codex mcp list` shows them enabled, and each entry in the config file
 looks like:
 
 ```text
-[mcp_servers.builder]
+[mcp_servers.workroom]
 command = "/path/to/gitseq/bin/gitseq-mcp"
-args = ["--actor", "builder", "--repo", "/path/to/your/repo"]
+args = ["--actor", "planner", "--repo", "/path/to/your/repo"]
 ```
 
 Codex asks before the first tool call from a new server; approve it once
@@ -285,13 +292,16 @@ cp "$GITSEQ/SKILL.md" ~/.codex/skills/workroom/SKILL.md
 
 ### Check the binding
 
-The adapter speaks line-delimited JSON-RPC, so you can prove the wiring
-without starting a client. Ask the `builder` adapter who it is:
+The adapter speaks line-delimited JSON-RPC, so you can prove both the default
+and an override without starting a client. Ask first for the startup default,
+then select `builder` explicitly:
 
 ```sh
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
-printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"whoami","arguments":{},%s}}\n' "$META" \
-  | gitseq-mcp --repo "$REPO" --actor builder 2>/dev/null
+printf '%s\n%s\n' \
+  "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"whoami\",\"arguments\":{},$META}}" \
+  "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"whoami\",\"arguments\":{\"agent\":\"builder\"},$META}}" \
+  | gitseq-mcp --repo "$REPO" --actor planner 2>/dev/null
 ```
 
 The reply names the actor and its fingerprint:
@@ -300,11 +310,12 @@ The reply names the actor and its fingerprint:
 …"structuredContent":{"actor":{"fingerprint":"293072f8…","name":"builder"},…
 ```
 
-That fingerprint is `builder`'s row in the roster above. A client session
-is bound the same way: whichever named MCP it uses, that server process
-holds `--actor` for one actor, and `whoami` inside the session returns
-the same name and fingerprint. [Configure an
-agent](how-to/configure-an-agent.md) covers the adapter in full.
+The first reply names `planner`; the second fingerprint is `builder`'s row in
+the roster above. The selector uses an existing accessible key and never
+creates an actor. An unknown actor, inaccessible key or unavailable repository
+refuses instead of silently falling back to `planner`. [Configure an
+agent](how-to/configure-an-agent.md) covers the adapter and its trust boundary
+in full.
 
 ## Give them something to find
 
@@ -322,9 +333,8 @@ gs state --repo "$REPO" --server "http://127.0.0.1:$PORT" --as alice --kind requ
 ## Start one session per actor
 
 Open three terminals in the project directory and start one coding
-session in each — any mix of clients works, because the identity lives
-in the MCP registration, not the client. For example, Claude Code as
-`builder`:
+session in each — any mix of clients works. Tell each one which `agent` value
+to pass on every workroom tool call. For example, Claude Code as `builder`:
 
 ```text
 cd "$REPO"
@@ -332,7 +342,7 @@ claude
 ```
 
 ```text
-Using the gitseq workroom skill and the 'builder' MCP tools, check for work items and
+Using the gitseq workroom skill and the 'workroom' MCP tools with agent='builder', check for work items and
 prioritize appropriately to keep progressing. Dispatch tasks to subagents.
 Continue checking every 10 minutes indefinitely.
 ```
@@ -345,12 +355,12 @@ codex
 ```
 
 ```text
-Using the gitseq workroom skill and the 'planner' MCP tools, check for work items and
+Using the gitseq workroom skill and the 'workroom' MCP tools with agent='planner', check for work items and
 prioritize appropriately to keep progressing. Dispatch tasks to subagents.
 Continue checking every 10 minutes indefinitely.
 ```
 
-Start the third session the same way with the `checker` MCP. Each
+Start the third session the same way with `agent='checker'`. Each
 session reads the workroom skill, signs as its own actor, and checks the
 board every ten minutes. The `builder` session finds the request you
 just filed, promises it, and the others see that promise; watch it

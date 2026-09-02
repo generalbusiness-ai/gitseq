@@ -2,7 +2,7 @@
 title: Connectors
 summary: How a workroom exchanges work with GitHub without either system lying about the other.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e260ca50fcfd04c96f2af70bbf3196a9e9e649b9
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8a446fa7fc174547b967d1676ed0844d569b5eb0
 ---
 
 # Connectors

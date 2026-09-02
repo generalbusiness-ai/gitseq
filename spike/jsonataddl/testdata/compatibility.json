@@ -1,0 +1,181 @@
+{
+  "reference": "jsonata-js 2.0.6",
+  "port": "github.com/jsonata-go/jsonata/v206 at 599f35f32e5f",
+  "reference_divergences": "No standalone deterministic reference divergences were found in the focused corpus; every deterministic result is checked against live jsonata-js 2.0.6 on every test run.",
+  "cases": [
+    {
+      "name": "fold arithmetic",
+      "expression": "event.qty + rows.stock_row.available",
+      "input": {"event":{"qty":2},"rows":{"stock_row":{"available":5}}},
+      "reference": 7,
+      "class": "portable"
+    },
+    {
+      "name": "array map",
+      "expression": "$map([1,2,3], function($v){$v*$v})",
+      "input": {},
+      "reference": [1,4,9],
+      "class": "portable"
+    },
+    {
+      "name": "array range",
+      "expression": "[1..5]",
+      "input": {},
+      "reference": [1,2,3,4,5],
+      "class": "portable"
+    },
+    {
+      "name": "decimal sum",
+      "expression": "$sum([0.1,0.2])",
+      "input": {},
+      "reference": 0.30000000000000004,
+      "class": "portable"
+    },
+    {
+      "name": "decimal round",
+      "expression": "$round(2.675,2)",
+      "input": {},
+      "reference": 2.68,
+      "class": "portable"
+    },
+    {
+      "name": "object key order",
+      "expression": "$keys({\"b\":1,\"a\":2})",
+      "input": {},
+      "reference": ["b","a"],
+      "class": "order-dependent",
+      "reason": "The language exposes object insertion order through $keys; this fold profile must not use that order as authority."
+    },
+    {
+      "name": "object each order",
+      "expression": "$each({\"b\":1,\"a\":2}, function($v,$k){$k})",
+      "input": {},
+      "reference": ["b","a"],
+      "class": "order-dependent",
+      "reason": "The reference follows insertion order, while the Go port exposes map iteration order; the fold profile rejects $each."
+    },
+    {
+      "name": "object spread order",
+      "expression": "$spread({\"b\":1,\"a\":2})",
+      "input": {},
+      "reference": [{"b":1},{"a":2}],
+      "class": "order-dependent",
+      "reason": "The reference spreads in insertion order, while the Go port exposes map iteration order; the fold profile rejects $spread."
+    },
+    {
+      "name": "object wildcard order",
+      "expression": "{\"b\":1,\"a\":2}.*",
+      "input": {},
+      "reference": [1,2],
+      "class": "order-dependent",
+      "reason": "Object wildcard traversal exposes implementation map order; the fold profile rejects object wildcard syntax."
+    },
+    {
+      "name": "bare object wildcard order",
+      "expression": "*",
+      "input": {
+        "b": 1,
+        "a": 2
+      },
+      "reference": [
+        1,
+        2
+      ],
+      "class": "order-dependent",
+      "reason": "A bare object wildcard exposes implementation map order; the fold profile rejects leading wildcard syntax."
+    },
+    {
+      "name": "leading descendant order",
+      "expression": "**.id",
+      "input": {
+        "b": {
+          "id": "b"
+        },
+        "a": {
+          "id": "a"
+        }
+      },
+      "reference": [
+        "b",
+        "a"
+      ],
+      "class": "order-dependent",
+      "reason": "Leading descendant traversal exposes implementation map order; the fold profile rejects leading descendant syntax."
+    },
+    {
+      "name": "parenthesized wildcard order",
+      "expression": "(*)",
+      "input": {
+        "b": 1,
+        "a": 2
+      },
+      "reference": [
+        1,
+        2
+      ],
+      "class": "admitted-order-dependent",
+      "reason": "Parenthesizing a wildcard re-admits it; the Go port exposes map iteration order, so this spelling cannot be authority."
+    },
+    {
+      "name": "indexed wildcard order",
+      "expression": "*[0]",
+      "input": {
+        "b": ["b"],
+        "a": ["a"]
+      },
+      "reference": "b",
+      "go_values": ["a", "b"],
+      "class": "admitted-order-dependent",
+      "reason": "Indexing a leading wildcard re-admits it; the selected Go value follows map iteration order."
+    },
+    {
+      "name": "indexed descendant remains admitted",
+      "expression": "**[0]",
+      "input": {
+        "b": ["b"],
+        "a": ["a"]
+      },
+      "reference": {
+        "b": ["b"],
+        "a": ["a"]
+      },
+      "class": "admitted-portable",
+      "reason": "The indexed descendant spelling is admitted by the narrow guard; this focused input remains deterministic in the Go evaluator."
+    },
+    {
+      "name": "assigned wildcard order",
+      "expression": "($x := *; $x)",
+      "input": {
+        "b": 1,
+        "a": 2
+      },
+      "reference": [
+        1,
+        2
+      ],
+      "class": "admitted-order-dependent",
+      "reason": "Assigning a wildcard result re-admits it; the Go port exposes map iteration order, so this spelling cannot be authority."
+    },
+    {
+      "name": "wall clock",
+      "expression": "$now()",
+      "input": {},
+      "class": "environment-dependent",
+      "reason": "The reference reads wall-clock time; profile loading rejects $now."
+    },
+    {
+      "name": "random number",
+      "expression": "$random()",
+      "input": {},
+      "class": "environment-dependent",
+      "reason": "The reference reads process randomness; profile loading rejects $random."
+    },
+    {
+      "name": "random order",
+      "expression": "$shuffle([1,2,3,4])",
+      "input": {},
+      "class": "environment-dependent",
+      "reason": "The reference randomises array order; profile loading rejects $shuffle."
+    }
+  ]
+}

@@ -16,6 +16,7 @@ import (
 // return. A scheme nobody has thought of belongs in neither list and must still
 // be refused, which is what an allowlist buys and a denylist does not.
 func TestWebRemoteURLAdmitsOnlyHTTPAndHTTPS(t *testing.T) {
+	t.Parallel()
 	admitted := map[string]string{
 		"https://github.com/org/repo.git":          "https://github.com/org/repo.git",
 		"http://git.example.invalid/org/repo":      "http://git.example.invalid/org/repo",
@@ -90,6 +91,7 @@ func TestWebRemoteURLAdmitsOnlyHTTPAndHTTPS(t *testing.T) {
 // name. Filtering runs afterwards on that single choice, so an unlinkable
 // origin means no link rather than a link to some other remote.
 func TestLinkableRemoteSelectsOriginThenTheFirstNameAlphabetically(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		remotes map[string]string
@@ -186,6 +188,7 @@ func TestGitRemotesReadsRepositoryLocalConfigurationOnly(t *testing.T) {
 // under the same stated environment must see the remote, or a green result here
 // would mean only that the fixture never configured one.
 func TestTheRemoteReadDoesNotSeeWorktreeOrIncludedConfiguration(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, testCase := range []struct {
 		name  string
@@ -289,6 +292,7 @@ func TestLocalWorktreesIgnoresOutOfRepositoryRemoteConfiguration(t *testing.T) {
 // bounded amount on every uncached worktree read and answers "no link" rather
 // than a partial parse when a repository exceeds them.
 func TestGitRemotesFailsClosedOnOversizedConfiguration(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	tooMany := testRepo(t)
@@ -840,6 +844,7 @@ func TestNoInheritedVariableReachesTheGitCommands(t *testing.T) {
 // this package does that today, which is why it is worth pinning: the cost of
 // the copy is one allocation and the cost of losing it is invisible.
 func TestEachGitCommandGetsItsOwnEnvironment(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := seededRepoNamed(t, "victim", "https://real.invalid/org/repo.git")
 
@@ -1017,6 +1022,7 @@ func TestCitingDocumentsIgnoresInheritedGitRoutingVariables(t *testing.T) {
 // citation refusal wearing a disguise: before the configuration is broken the
 // same act builds cleanly.
 func TestRetirementIsRefusedWhenTheCitationLookupCannotRun(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, seed, err := Init(ctx, repo, "human", 1<<20)
@@ -1056,6 +1062,7 @@ func TestRetirementIsRefusedWhenTheCitationLookupCannotRun(t *testing.T) {
 // walks a candidate file and really finds nothing, rather than exiting early on
 // a pathspec that matches no tracked file at all.
 func TestCitationLookupFindingNothingStillPermitsTheRetirement(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	workspace, seed, err := Init(ctx, repo, "human", 1<<20)
@@ -1180,6 +1187,7 @@ func setRemoteURL(t *testing.T, repo, name, value string) {
 // worktrees response serialises. A repository with no remote must serialise
 // exactly as it did before this field existed.
 func TestLocalWorktreesCarriesOnlyALinkableRemote(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	repo := testRepo(t)
 	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "seed").CombinedOutput(); err != nil {

@@ -2,8 +2,8 @@
 title: gs merge
 summary: Merge an approved exact head and publish its artifact succession.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9936cbb28db1642a5cdabd2f787fb881fb33dbf2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
 ---
 
 # `gs merge`
@@ -139,6 +139,7 @@ world is a projection this command cannot date, not a permission to land.
 | The checkout is dirty | The merge result would contain unreviewed work. |
 | The checkout belongs to another repository | The workroom does not govern it. |
 | `--candidate` is not a full lowercase object ID | An abbreviation could become ambiguous later. |
+| The retirement plan reaches another actor's artifact outside every path the approval reviewed | Re-file the approval so it covers that path, or ask the artifact's author or an actor holding `ratifier` to retire it. The refusal names the event, path, reviewed paths, and this page. |
 
 Every check runs twice, immediately before git is invoked.
 
@@ -193,7 +194,7 @@ ordering is fixed when the merge commit is written.
 
 Phase two should not infer policy from prose. Introduce a structured
 `merge_authorization=required` request field under `workroom/state@3`, project
-it under `workroom-fold@16`, and make omission a refusal only after every
+it under the next fold profile, and make omission a refusal only after every
 resident and adapter has restarted on that binding. The profile transition is
 the exact activation seam; until it lands, this command remains in phase one.
 

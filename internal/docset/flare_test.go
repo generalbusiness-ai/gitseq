@@ -26,7 +26,7 @@ func TestGateRetiringOneActFlaresExactlyItsPages(t *testing.T) {
 	for _, act := range acts {
 		t.Run(shortAct(act), func(t *testing.T) {
 			t.Parallel()
-			built := modelCopy(t, pages)
+			built := buildModel(t, pages)
 			built.retire(t, act)
 			artifacts := built.artifacts(t)
 
@@ -72,7 +72,7 @@ func TestGateVerifyPageCanFlareAlone(t *testing.T) {
 		t.Fatalf("no act governs %s alone, so retiring one could never flare it by itself", verifyPage)
 	}
 
-	built := modelCopy(t, pages)
+	built := buildModel(t, pages)
 	built.retire(t, sole)
 	artifacts := built.artifacts(t)
 	var flared []string

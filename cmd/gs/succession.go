@@ -488,7 +488,7 @@ func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, pla
 		if authors[target] == actor || withinReviewedPaths(reviewed, path) {
 			continue
 		}
-		return fmt.Errorf("merge would retire %s at %q, which belongs to another actor and lies outside the reviewed paths %s:\nhave the approval cover it, or ask its author or an actor holding ratifier to retire it",
+		return fmt.Errorf("merge would retire %s at %q, which belongs to another actor and lies outside the reviewed paths %s:\nhave the approval cover it, or ask its author or an actor holding ratifier to retire it. See docs/reference/gs/merge.md#approval-scope-and-receipt",
 			target, path, strings.Join(reviewed, ", "))
 	}
 	return nil

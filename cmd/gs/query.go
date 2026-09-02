@@ -191,7 +191,11 @@ func renderWorkPage(page statusview.WorkPage, source string) string {
 	}
 	out.WriteString(".\n")
 	for _, item := range page.Items {
-		fmt.Fprintf(&out, "%-10s %-18s %s\n", item.Status, item.Lane, short(item.Request))
+		event := item.Request
+		if event == "" {
+			event = item.Event
+		}
+		fmt.Fprintf(&out, "%-21s %-23s %s\n", item.Status, item.Lane, event)
 		if item.Text != "" {
 			fmt.Fprintf(&out, "    %s\n", item.Text)
 		}
@@ -298,10 +302,11 @@ func renderInspection(inspection statusview.ItemInspection, source string) strin
 		fmt.Fprintf(&out, "  act %s\n", inspection.Act.Type)
 	}
 	if inspection.Decision != nil {
-		fmt.Fprintf(&out, "  decision %s: %s\n", inspection.Decision.Verdict, statusview.Text(inspection.Decision.Reason))
+		reason := explainLifecycleRefusal(errors.New(inspection.Decision.Reason)).Error()
+		fmt.Fprintf(&out, "  decision %s: %s\n", inspection.Decision.Verdict, statusview.Text(reason))
 	}
 	if inspection.Commitment != nil {
-		fmt.Fprintf(&out, "  commitment %s on request %s\n", inspection.Commitment.Status, short(inspection.Commitment.Request))
+		fmt.Fprintf(&out, "  commitment %s on request %s\n", inspection.Commitment.Status, inspection.Commitment.Request)
 	}
 	fmt.Fprintf(&out, "  rests on %d bases", len(inspection.ProvenanceBases))
 	if inspection.ProvenanceBasesOmitted > 0 {
@@ -309,10 +314,10 @@ func renderInspection(inspection statusview.ItemInspection, source string) strin
 	}
 	out.WriteString("\n")
 	for _, basis := range inspection.ProvenanceBases {
-		fmt.Fprintf(&out, "    %s\n", short(basis))
+		fmt.Fprintf(&out, "    %s\n", basis)
 	}
 	for _, artifact := range inspection.RelatedArtifacts {
-		fmt.Fprintf(&out, "  artifact %s at %s\n", short(artifact.Event), artifact.Path)
+		fmt.Fprintf(&out, "  artifact %s at %s\n", artifact.Event, artifact.Path)
 	}
 	for _, review := range inspection.RelatedReviews {
 		fmt.Fprintf(&out, "  review %s of head %s\n", review.Verdict, short(review.Head))

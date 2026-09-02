@@ -117,6 +117,51 @@ func TestPublicRepositorySurface(t *testing.T) {
 	}
 }
 
+// A manual performance dispatch starts from the branch selected in GitHub's
+// UI, which does not make a separately named base or candidate branch a local
+// ref. Keep the workflow's resolver explicit: the old direct pass-through let
+// base=main and a feature candidate reach gitseq-perf with only one checkout,
+// so the documented default was not a truthful contract.
+func TestPerformanceWorkflowResolvesManualRefs(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate performance workflow test")
+	}
+	content, err := os.ReadFile(filepath.Join(filepath.Dir(filename), ".github", "workflows", "performance.yml"))
+	if err != nil {
+		t.Fatalf("read performance workflow: %v", err)
+	}
+	workflow := strings.Join(strings.Fields(string(content)), " ")
+	for _, fragment := range []string{
+		"name: Resolve manual comparison refs",
+		"if: github.event_name == 'workflow_dispatch'",
+		"PERF_BASE_INPUT: ${{ inputs.base }}",
+		"PERF_CANDIDATE_INPUT: ${{ inputs.candidate }}",
+		"resolve_ref()",
+		"if [[ \"$input\" =~ ^[0-9a-fA-F]{40}$ ]]; then",
+		"git rev-parse --verify --end-of-options \"$input^{commit}\" || return",
+		"git check-ref-format \"refs/heads/$input\" >/dev/null || return",
+		"git fetch --no-tags origin \"refs/heads/$input:refs/remotes/origin/$input\" || return",
+		"resolved=$(resolve_ref \"$PERF_BASE_INPUT\")",
+		"printf 'PERF_BASE=%s\\n' \"$resolved\" >> \"$GITHUB_ENV\"",
+		"resolved=$(resolve_ref \"$PERF_CANDIDATE_INPUT\")",
+		"printf 'PERF_CANDIDATE=%s\\n' \"$resolved\" >> \"$GITHUB_ENV\"",
+		"PERF_BASE=HEAD^",
+		"PERF_CANDIDATE=HEAD",
+	} {
+		if !strings.Contains(workflow, strings.Join(strings.Fields(fragment), " ")) {
+			t.Errorf("performance workflow does not resolve manual refs with %q", fragment)
+		}
+	}
+	if strings.Contains(workflow, "PERF_BASE: ${{ github.event_name == 'workflow_dispatch'") ||
+		strings.Contains(workflow, "PERF_CANDIDATE: ${{ github.event_name == 'workflow_dispatch'") {
+		t.Error("performance workflow still passes unverified manual refs straight to gitseq-perf")
+	}
+	if strings.Contains(workflow, "git fetch --no-tags origin \"$input\"") {
+		t.Error("performance workflow fetches exact SHA input instead of verifying the full checkout")
+	}
+}
+
 var inlineMarkdownLink = regexp.MustCompile(`\[[^]]*\]\(([^)[:space:]]+)\)`)
 
 // TestLocalMarkdownLinks keeps file links and their heading anchors checkable

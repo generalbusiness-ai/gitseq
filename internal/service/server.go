@@ -108,7 +108,9 @@ func NewObserved(workspace *app.Workspace, observer observe.Observer) (*Server, 
 	return server, nil
 }
 
-func (s *Server) Handler() http.Handler { return observe.HTTPHandler(s.observer, s.mux) }
+func (s *Server) Handler() http.Handler {
+	return observe.HTTPHandler(s.observer, BrowserHeaders(s.mux))
+}
 
 func (s *Server) routes() {
 	s.mux.Handle("GET /", uiHandler())

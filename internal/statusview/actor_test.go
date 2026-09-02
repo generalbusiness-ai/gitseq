@@ -45,6 +45,87 @@ func findCommitmentView(items []CommitmentView, request string) *CommitmentView 
 	return nil
 }
 
+func ratificationSnapshot() app.Snapshot {
+	projection := workroom.Projection{
+		Actors: map[string]workroom.ActorState{
+			me:   {Name: "me", Roles: []string{"participant", "ratifier"}},
+			them: {Name: "them", Roles: []string{"participant"}},
+		},
+		Statements: []workroom.Statement{
+			{Event: "proposal:open", Sequence: 1, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier", Text: "adopt open"},
+			{Event: "proposal:stale", Sequence: 2, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier", Text: "adopt stale", Stale: true},
+			{Event: "proposal:ratified", Sequence: 3, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier", Ratified: true},
+			{Event: "proposal:retired", Sequence: 4, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier", Retired: true},
+			{Event: "proposal:other-role", Sequence: 5, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:steward"},
+			{Event: "proposal:refused", Sequence: 6, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier"},
+			{Event: "proposal:dissented", Sequence: 7, Actor: them, Kind: workroom.KindPropose, Satisfier: "role:ratifier"},
+			{Event: "dissent", Sequence: 8, Actor: me, Kind: workroom.KindDissent, Satisfier: workroom.SatisfierNone},
+		},
+		Provenance: map[string][]string{"dissent": {"proposal:dissented"}},
+	}
+	for _, statement := range projection.Statements {
+		verdict := workroom.Effective
+		if statement.Event == "proposal:refused" {
+			verdict = workroom.Ineffective
+		}
+		projection.Decisions = append(projection.Decisions, workroom.Decision{Event: statement.Event, Sequence: statement.Sequence, Verdict: verdict})
+	}
+	return app.Snapshot{Genesis: "genesis", Head: "head", Depth: len(projection.Decisions), Projection: projection}
+}
+
+func TestActorStatusWaitAndWorkExposeOnlyStandingRoleRatifications(t *testing.T) {
+	snapshot := ratificationSnapshot()
+	digest := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
+	if len(digest.AwaitingRatification) != 2 || digest.AwaitingRatification[0].Event != "proposal:open" ||
+		digest.AwaitingRatification[1].Event != "proposal:stale" || !digest.AwaitingRatification[1].Stale {
+		t.Fatalf("awaiting ratification = %#v", digest.AwaitingRatification)
+	}
+	if summary := Summarize("status", digest); !strings.Contains(summary, "2 awaiting your ratification") {
+		t.Fatalf("status summary hides ratification duty: %q", summary)
+	}
+
+	delta := BuildWait(snapshot, Cursor{}, nil, false, Cursor{}, nil, me, "me", true)
+	if len(delta.CurrentAwaitingRatification) != 2 || delta.CurrentAwaitingRatification[1].Event != "proposal:stale" {
+		t.Fatalf("wait ratification lane = %#v", delta.CurrentAwaitingRatification)
+	}
+	if summary := Summarize("wait", delta); !strings.Contains(summary, "2 awaiting your ratification") {
+		t.Fatalf("wait summary hides ratification duty: %q", summary)
+	}
+
+	page, err := BuildWorkPage(snapshot, WorkQuery{Actor: me, Lanes: []WorkLane{LaneAwaitingRatification}, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 2 || page.Items[0].Event != "proposal:stale" || page.Items[0].Request != "" ||
+		page.Items[0].Lane != LaneAwaitingRatification || page.Items[0].Status != "awaiting-ratification" || page.Items[0].Author == nil || page.Items[0].Author.Fingerprint != them {
+		t.Fatalf("work ratification lane invented commitment fields or lost proposal fields: %#v", page.Items)
+	}
+	fresh, err := BuildWorkPage(snapshot, WorkQuery{Actor: me, Lanes: []WorkLane{LaneAwaitingRatification},
+		Statuses: []string{"awaiting-ratification"}, Stale: StaleExclude, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fresh.Items) != 1 || fresh.Items[0].Event != "proposal:open" {
+		t.Fatalf("stale exclusion did not preserve only the current proposal: %#v", fresh.Items)
+	}
+	moved, err := BuildWorkPage(snapshot, WorkQuery{Actor: me, Lanes: []WorkLane{LaneAwaitingRatification},
+		Stale: StaleOnly, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(moved.Items) != 1 || moved.Items[0].Event != "proposal:stale" || !moved.Items[0].Stale {
+		t.Fatalf("stale-only ratification selection = %#v", moved.Items)
+	}
+
+	current, err := BuildWorkPage(snapshot, WorkQuery{Actor: them, Lanes: []WorkLane{LaneAwaitingRatification}, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.MatchingTotal != 0 {
+		t.Fatalf("actor without satisfier role received ratification work: %#v", current.Items)
+	}
+}
+
 func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *testing.T) {
 	projection := workroom.Projection{
 		Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},
@@ -83,35 +164,53 @@ func TestActorStatusAndWaitExposeOpenAddressedWorkWithoutInventingAPromise(t *te
 	}
 }
 
-func TestArtifactCompletionDoesNotInventAWaitingActor(t *testing.T) {
-	projection := workroom.Projection{
-		Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},
-		Statements: []workroom.Statement{
-			{Event: "request:implementation", Actor: me, Kind: workroom.KindRequest, Text: "implement it"},
-			{Event: "artifact:implementation", Actor: them, Kind: workroom.KindArtifact, Text: "exact head"},
-		},
-		Commitments: []workroom.Commitment{{
-			Request: "request:implementation", Requester: me, Performer: them,
-			Report: "artifact:implementation", Status: "awaiting-merge",
-		}},
-	}
-	snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 2, Projection: projection}
+// An artifact completion waits on its performer, who signs the merge of the
+// approved head. Both fold shapes are covered: a direct completion with no
+// promise, and a promised one. The row lands in the performer's waiting_on_you
+// lane and the requester's you_are_waiting_on lane, identically in gs status
+// and gs work, and names the performer as the waiting party.
+func TestArtifactCompletionWaitsOnItsPerformer(t *testing.T) {
+	for _, shape := range []struct {
+		name    string
+		promise string
+	}{{name: "direct completion"}, {name: "promised", promise: "promise:implementation"}} {
+		t.Run(shape.name, func(t *testing.T) {
+			projection := workroom.Projection{
+				Actors: map[string]workroom.ActorState{me: {Name: "me"}, them: {Name: "them"}},
+				Statements: []workroom.Statement{
+					{Event: "request:implementation", Actor: me, Kind: workroom.KindRequest, Text: "implement it"},
+					{Event: "promise:implementation", Actor: them, Kind: workroom.KindPromise, Text: "I will"},
+					{Event: "artifact:implementation", Actor: them, Kind: workroom.KindArtifact, Text: "exact head"},
+				},
+				Commitments: []workroom.Commitment{{
+					Request: "request:implementation", Requester: me, Performer: them, Promise: shape.promise,
+					Report: "artifact:implementation", Status: "awaiting-merge", WaitingOn: them,
+				}},
+			}
+			snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 3, Projection: projection}
 
-	digest := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
-	if len(digest.WaitingOnYou) != 0 {
-		t.Fatalf("artifact completion was assigned to the requester: %#v", digest.WaitingOnYou)
-	}
-	row := findCommitmentView(digest.YouAreWaiting, "request:implementation")
-	if row == nil || row.Status != "awaiting-merge" {
-		t.Fatalf("artifact completion was hidden instead of awaiting merge: %#v", digest.YouAreWaiting)
-	}
+			performer := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, them, "them", true)
+			if row := findCommitmentView(performer.WaitingOnYou, "request:implementation"); row == nil || row.Status != "awaiting-merge" {
+				t.Fatalf("artifact completion is not in the performer's queue: %#v", performer.WaitingOnYou)
+			}
+			requester := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
+			if len(requester.WaitingOnYou) != 0 {
+				t.Fatalf("artifact completion was assigned to the requester: %#v", requester.WaitingOnYou)
+			}
+			if row := findCommitmentView(requester.YouAreWaiting, "request:implementation"); row == nil || row.Status != "awaiting-merge" || row.Performer != "them" {
+				t.Fatalf("requester is not shown waiting on the performer: %#v", requester.YouAreWaiting)
+			}
 
-	page, err := BuildWorkPage(snapshot, WorkQuery{Actor: me, Statuses: []string{"awaiting-merge"}, Limit: 10}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 1 || page.Items[0].Lane != LaneYouAreWaitingOn || page.Items[0].WaitingOn != nil {
-		t.Fatalf("work query invented a closing actor: %#v", page.Items)
+			for actor, want := range map[string]WorkLane{them: LaneWaitingOnYou, me: LaneYouAreWaitingOn} {
+				page, err := BuildWorkPage(snapshot, WorkQuery{Actor: actor, Statuses: []string{"awaiting-merge"}, Limit: 10}, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(page.Items) != 1 || page.Items[0].Lane != want || page.Items[0].WaitingOn == nil || page.Items[0].WaitingOn.Fingerprint != them {
+					t.Fatalf("work lane for %s = %#v, want %s waiting on the performer", actor, page.Items, want)
+				}
+			}
+		})
 	}
 }
 

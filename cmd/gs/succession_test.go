@@ -12,6 +12,7 @@ import (
 )
 
 func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
+	t.Parallel()
 	repo := filepath.Join(t.TempDir(), "repo")
 	testGit(t, "", "init", "-q", "-b", "main", repo)
 	write := func(name, content, message string) string {
@@ -100,6 +101,7 @@ func TestMergeClassifiesEveryCoveredLiveArtifact(t *testing.T) {
 }
 
 func TestMergeChangedPathsAreTheCanonicalOldAndNewDiffSet(t *testing.T) {
+	t.Parallel()
 	changes := []mergeChange{
 		{status: "M", new: "z.txt"},
 		{status: "R100", old: "old/name.go", new: "new/name.go"},
@@ -117,6 +119,7 @@ func TestMergeChangedPathsAreTheCanonicalOldAndNewDiffSet(t *testing.T) {
 }
 
 func TestMergeDoesNotProtectThroughIneffectiveProvenance(t *testing.T) {
+	t.Parallel()
 	projection := workroom.Projection{
 		Artifacts: []workroom.Artifact{{Event: "candidate-artifact", Path: "shared", Commit: "candidate-head"}},
 		Statements: []workroom.Statement{
@@ -147,6 +150,7 @@ func TestMergeDoesNotProtectThroughIneffectiveProvenance(t *testing.T) {
 // comparison that is never reached still passes whichever order happens to be
 // right.
 func TestMergeWiderPathWinsOverNestedArtifact(t *testing.T) {
+	t.Parallel()
 	narrow := workroom.Artifact{Event: "narrow", Path: "internal/workroom", Commit: "old"}
 	wide := workroom.Artifact{Event: "wide", Path: "internal", Commit: "old"}
 	for _, order := range [][]workroom.Artifact{{narrow, wide}, {wide, narrow}} {
@@ -163,6 +167,7 @@ func TestMergeWiderPathWinsOverNestedArtifact(t *testing.T) {
 
 // The fallback is only for a changed file no live artifact covers at all.
 func TestMergePublishesAFirstArtifactAtAnUncoveredPath(t *testing.T) {
+	t.Parallel()
 	plan := planSuccession(workroom.Projection{Artifacts: []workroom.Artifact{
 		{Event: "elsewhere", Path: "cmd/gs", Commit: "old"},
 	}}, []mergeChange{{status: "A", new: "internal/workroom/fold.go"}}, nil)
@@ -175,6 +180,7 @@ func TestMergePublishesAFirstArtifactAtAnUncoveredPath(t *testing.T) {
 }
 
 func TestMergeRenameRetiresOldPathAndPublishesNewPath(t *testing.T) {
+	t.Parallel()
 	projection := workroom.Projection{Artifacts: []workroom.Artifact{
 		{Event: "old-file", Path: "old/name.go", Commit: "old"},
 	}}
@@ -188,6 +194,7 @@ func TestMergeRenameRetiresOldPathAndPublishesNewPath(t *testing.T) {
 }
 
 func TestMergeDeleteRetiresOldPathWithoutSuccessor(t *testing.T) {
+	t.Parallel()
 	projection := workroom.Projection{Artifacts: []workroom.Artifact{
 		{Event: "deleted", Path: "gone.go", Commit: "old"},
 	}}
@@ -206,6 +213,7 @@ func TestMergeDeleteRetiresOldPathWithoutSuccessor(t *testing.T) {
 // head or read a diff, so the reviewer's signed choice of artifact is the only
 // fact about the merger that the merger did not write.
 func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *testing.T) {
+	t.Parallel()
 	// The command reads the same three facts the fold does, so the fixture
 	// carries them: the implementer's artifacts at the approved head, standing
 	// before the verdict. `late` is the same implementer at the same head but
@@ -246,7 +254,9 @@ func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *te
 	}
 	unrelated := successionPlan{retire: map[string]string{"elsewhere": "docs"}}
 	err := refuseUnreachableCrossAuthorRetirements(projection, unrelated, "approval", "implementer")
-	if err == nil || !strings.Contains(err.Error(), "outside the reviewed paths") {
+	if err == nil || !strings.Contains(err.Error(), "outside the reviewed paths") ||
+		!strings.Contains(err.Error(), "have the approval cover it") ||
+		!strings.Contains(err.Error(), "docs/reference/gs/merge.md#approval-scope-and-receipt") {
 		t.Fatalf("cross-author retirement outside the approved tree error = %v", err)
 	}
 	// Not even for a ratifier, though the fold would let one retire anything.
@@ -305,6 +315,7 @@ func TestMergePreflightRefusesACrossAuthorRetirementOutsideTheApprovedTree(t *te
 }
 
 func TestMergePreflightRefusesInvalidGeneratedArtifactPaths(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{".", "cmd/gs,internal/app"} {
 		err := preflightSuccession(context.Background(), nil, "", successionPlan{publish: []string{path}})
 		if err == nil || !strings.Contains(err.Error(), "invalid artifact path") {

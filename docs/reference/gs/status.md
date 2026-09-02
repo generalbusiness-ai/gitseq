@@ -2,11 +2,10 @@
 title: gs status
 summary: Project the current state of the workroom, bounded by default.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9936cbb28db1642a5cdabd2f787fb881fb33dbf2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35a8c246effe4f81fe54aac7ebd260f8fb3888d4
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a1055e9d1a044c420c25d249f91c79988cfcda4d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
 ---
 
 # `gs status`
@@ -67,9 +66,10 @@ fallback`. Then a line of totals, and six sections:
 Superseded, satisfied, and withdrawn commitments are finished, and are counted in the
 totals rather than listed.
 
-`awaiting-merge` names an artifact-backed completion. It has no `waiting_on`
-actor because the artifact's satisfier is `none`; the closing act is an
-independently approved exact-head merge, not requester ratification.
+`awaiting-merge` names an artifact-backed completion. Its `waiting_on` actor is
+the performer, because the artifact's satisfier is `none` and the closing act
+is the independently approved exact-head merge the performer signs, not
+requester ratification.
 
 `superseded` names a rejected implementation parent whose required repair was
 explicitly transferred to one qualifying child. Its JSON row carries

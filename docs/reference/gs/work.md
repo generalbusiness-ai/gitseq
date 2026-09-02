@@ -3,12 +3,12 @@ title: gs work
 summary: Select the work one actor still owes or is owed, bounded and paged.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a1055e9d1a044c420c25d249f91c79988cfcda4d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0d87b56bb5146f67931203a41039e3d511ce503e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35a8c246effe4f81fe54aac7ebd260f8fb3888d4
 ---
 
 # `gs work`
 
-Selects one actor's commitments by relationship lane, lifecycle status
+Selects one actor's commitments and pending ratification attention by relationship lane, row state
 and staleness policy, and pages through the result.
 
 This is the same selection the MCP [`work`](../mcp/work.md) tool and the
@@ -22,8 +22,8 @@ filters, the caps and the cursor mean one thing on every surface, and
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | | The actor whose work is selected. Required; falls back to `GITSEQ_ACTOR`. |
-| `--lane` | all four | Relationship lane: `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Repeat to name several. |
-| `--status` | | Lifecycle status: `open`, `promised`, `reported`, `awaiting-merge`, `superseded`, `satisfied`, `stale`, `cancelled`, `reneged`, `withdrawn`. Repeat to name several. |
+| `--lane` | all five | Relationship lane: `awaiting_ratification`, `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Repeat to name several. |
+| `--status` | | Row state: the commitment lifecycle states or `awaiting-ratification`. Repeat to name several. |
 | `--stale` | `summary` | Staleness policy: `summary`, `include`, `only`, or `exclude`. |
 | `--limit` | `20` | Page size, 1 to 50. |
 | `--cursor` | | The opaque continuation from a previous page. |
@@ -33,6 +33,9 @@ filters, the caps and the cursor mean one thing on every surface, and
 There is no default actor, for the same reason there is none on a write:
 a default was a name several concurrent instances shared, and a lane read
 under the wrong identity is the wrong answer rather than a slower one.
+If neither `--as` nor `GITSEQ_ACTOR` selects an actor, the refusal names the
+non-retired actors whose keys this checkout holds. Use [`gs whoami`](whoami.md)
+to inspect the same custody view directly.
 
 ## Example
 
@@ -71,14 +74,26 @@ second call. An unclaimed request addressed to the selected actor stays in
 flag is `true`, and its full conditions remain present. Claimed and closed
 stale commitments keep their existing lanes.
 
-An artifact completion has status `awaiting-merge` and no `waiting_on` actor.
+The exception to the commitment-shaped row is `awaiting_ratification`. It
+names the proposal in `event` and leaves `request` empty, because a proposal is
+not a commitment. The row appears to every actor holding the role in the
+proposal's captured satisfier and carries its author, kind, text, satisfier,
+and staleness qualifier. Ratification, supersession, or standing direct
+dissent removes it.
+
+An artifact completion has status `awaiting-merge` and waits on its performer.
 Its kind has satisfier `none`, so requester ratification is not an admissible
-closing act; an independently approved exact-head merge closes it.
+closing act; the performer merges the independently approved exact head, and
+that merge closes it.
 
 A rejected implementation parent has terminal status `superseded` only after
 an explicit qualifying linked supersession. Its JSON row carries
 `successor_request`, the exact repair child; request that status explicitly to
 read the historical transfer.
+
+The human view prints the request's full canonical event ID. `#N` remains a
+useful display index in one workroom, but it is not accepted in `--rests-on`,
+targets, or `Rests-On:` trailers. `--json` also carries every event ID in full.
 
 `--stale summary`, which is what a call naming no policy receives, answers
 *what is still owed*. A superseded, satisfied, or withdrawn commitment carrying only

@@ -429,11 +429,10 @@ func BenchmarkWarmDepth20000Summary(b *testing.B) {
 // path it does not walk.
 //
 // So this pins the bounded surface directly, and is mutation-sensitive: swap
-// name() back to short() in either renderCommitments or renderArtifacts and it
-// fails. Git commits stay abbreviated and are asserted to, because that
-// asymmetry is the point rather than an oversight — git resolves an abbreviated
-// commit, and nothing resolves an abbreviated event.
-func TestBoundedStatusNamesEventsByNumber(t *testing.T) {
+// Event rows keep the readable workroom sequence and the canonical ID a CLI
+// command accepts. Git commits stay abbreviated because Git resolves those;
+// neither #N nor an abbreviated event ID resolves at the durable boundary.
+func TestBoundedStatusNamesEventsByNumberAndCanonicalID(t *testing.T) {
 	const request = "git:sha1:genesis#git:sha1:requestevent000000000000000000000000000"
 	const artifact = "git:sha1:genesis#git:sha1:artifactevent00000000000000000000000000"
 	const commit = "0123456789abcdef0123456789abcdef01234567"
@@ -462,6 +461,11 @@ func TestBoundedStatusNamesEventsByNumber(t *testing.T) {
 			t.Errorf("bounded status omits %s:\n%s", want, rendered)
 		}
 	}
+	for _, want := range []string{request, artifact} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("bounded status omits canonical event %s:\n%s", want, rendered)
+		}
+	}
 	for _, forbidden := range []string{short(request), short(artifact)} {
 		if strings.Contains(rendered, forbidden) {
 			t.Errorf("bounded status abbreviates an event as %q instead of naming it:\n%s", forbidden, rendered)
@@ -470,6 +474,16 @@ func TestBoundedStatusNamesEventsByNumber(t *testing.T) {
 	// The commit is a git object and must still be abbreviated.
 	if !strings.Contains(rendered, short(commit)) {
 		t.Errorf("bounded status stopped abbreviating a git commit:\n%s", rendered)
+	}
+}
+
+func TestBoundedStatusExplainsDanglingPromiseRefusal(t *testing.T) {
+	summary := Summary{Attempts: []Attempt{{Event: "promise", Sequence: 8, Verdict: string(workroom.Ineffective), Reason: "dangling promise has no request"}}}
+	rendered := string(Render(summary, "test"))
+	for _, want := range []string{"dangling promise has no request", "Add exactly one live request event with --rests-on", "docs/reference/gs/state.md#citing"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered refusal omits %q:\n%s", want, rendered)
+		}
 	}
 }
 

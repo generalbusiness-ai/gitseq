@@ -34,7 +34,8 @@ const VOCABULARY = {
 // not because it borrowed the seed's position.
 let nextSequence = 2;
 function statement(event, kind, extra = {}) {
-  return { event, sequence: nextSequence++, timestamp: 1, actor: CODEX, kind, text: `${kind} ${event}`, ...extra };
+  const satisfier = kind === "propose" || kind === "assert" || kind === "roster" ? "role:ratifier" : "none";
+  return { event, sequence: nextSequence++, timestamp: 1, actor: CODEX, kind, satisfier, text: `${kind} ${event}`, ...extra };
 }
 
 function projectionOf(statements, actors) {
@@ -103,6 +104,37 @@ test("a ratified or retired act is no longer owed", async () => {
       actors,
     );
     assert.deepEqual(ratificationRows(projection, VOCABULARY, { ...CONTEXT, actors }).rows.map((r) => r.event), ["open"]);
+  } finally {
+    await close();
+  }
+});
+
+test("standing dissent clears a proposal and withdrawing the dissent restores it", async () => {
+  const [{ ratificationRows }, close] = await rowsModule();
+  try {
+    const actors = { [HUGH]: { name: "hugh", kind: "human", roles: ["ratifier"], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} } };
+    const proposal = statement("proposal", "propose");
+    const dissent = statement("no", "dissent");
+    const projection = projectionOf([proposal, dissent], actors);
+    projection.provenance[dissent.event] = [proposal.event];
+    assert.deepEqual(ratificationRows(projection, VOCABULARY, { ...CONTEXT, actors }).rows, []);
+
+    dissent.retired = true;
+    assert.deepEqual(ratificationRows(projection, VOCABULARY, { ...CONTEXT, actors }).rows.map((row) => row.event), [proposal.event]);
+  } finally {
+    await close();
+  }
+});
+
+test("captured role satisfier and staleness survive into the queue", async () => {
+  const [{ ratificationRows }, close] = await rowsModule();
+  try {
+    const actors = { [CODEX]: { name: "codex", kind: "agent", roles: ["steward"], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} } };
+    const proposal = statement("moved", "propose", { satisfier: "role:steward", stale: true });
+    const view = ratificationRows(projectionOf([proposal], actors), VOCABULARY, { ...CONTEXT, actors });
+    assert.equal(view.rows[0].event, proposal.event);
+    assert.equal(view.rows[0].waitsOn, CODEX);
+    assert.equal(view.rows[0].stale, true);
   } finally {
     await close();
   }

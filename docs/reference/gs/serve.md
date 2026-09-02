@@ -2,17 +2,14 @@
 title: gs serve
 summary: Run the resident service: sequencing, presence, change notification, and the browser view.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:25101623b92c3e17c4634c6a6e2dc5c48ab7abbe
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:209b923336260e75192deb934037c8a4c6fcb64e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9936cbb28db1642a5cdabd2f787fb881fb33dbf2
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cb605f5622c1aa47d1b98dddaaba4f9fb164a343
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7802fc152c5d66eae7f651783d24fab7ae477605
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:507fc7fe7ef7b5f998311bce5786b03d39d573ac
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48bd5acfe51abd4146197a48b0f7674f5676cc5c
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbe37f00315605cfc6d6306cc9d815650a7589d8
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cadb3875bb56fc359f4b96b167a35d13b29d8dda
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:baf0fe4b855ba94003b7c663c343a8ac9089ea84
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cae4cb65017feffac75c4cba88dccda021a640de
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a5bb9becc97d3ae601879a02b19923a2194811e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aea9521daff999b6b5f6a1ec97f85994cdfea4aa
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:05dccd875ac20804b78e3de4dcf80dbe25835a44
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3991ed3d5f102a963671e45cfb1fa5aef0d3d5fd
 ---
@@ -104,26 +101,48 @@ mode for nothing.
 Interrupt and terminate both count as being told to stop, so Ctrl-C and
 an ordinary supervisor shutdown both withdraw the advertisement and both
 exit reporting success. Only a hard kill leaves a record behind, and that
-costs a client one refused connection: reads fall back to the verified local
-fold as before, while durable acts refuse and name the way out, either
-starting the resident again or passing `--server -`.
+record still reads as a good one: what is gone is the service, not the
+record. So it costs a client one refused connection, and the two surfaces
+answer that differently. Reads fall back to the verified local fold as
+before. `gs` refuses the durable act and names the way out, either starting
+the resident again or passing `--server -`. `cmd/gitseq-mcp` folds the act
+into the local fold and marks the result `degraded`, which is what it does
+for any resident that stops answering.
 
 Two limits are worth naming now that the advertisement is what `gs` uses by
 default. A resident that accepts an act and then stalls past the client
 deadline leaves the outcome unknown, and a retry mints a fresh idempotency
 key that can append twice; that was true before, but only for somebody who
-deliberately passed `--server`. And `gs` treats a published record it cannot
-trust as a refusal, while `cmd/gitseq-mcp` treats the same record as no
-resident and acts locally. `gs` fails closed on purpose, and the two
-surfaces disagree knowingly.
+deliberately passed `--server`. And a published record that cannot be
+trusted stops durable acts in the repository until somebody repairs or
+removes it: `gs` refuses the command, and `cmd/gitseq-mcp` refuses the one
+call, leaving its attachment and its session intact so the repair is the
+whole recovery. Both fail closed on purpose. The one way past it is to ask
+for the local fold deliberately with `gs --server -`, which reads no record
+at all. Neither surface refuses a read: a read answers through the resident
+when one is answering and from the verified local fold when none is.
 
-A record `gs` will not trust is one that is unreadable, larger than the
+A record that will not be trusted is one that is unreadable, larger than the
 8 KiB a record may be, not a record at all, carrying no address, naming
 another workroom, or carrying an address that is not a bare `http` loopback
-origin. Each refusal names which of those it is and offers `--server -`, and
-each happens before the command reads a signing key or appends anything.
-Only a record that is not there at all is absence, and a repository with
-none acts locally exactly as it did before residents existed.
+origin. `internal/residentclient` owns the clause naming which of those it
+is, so the two surfaces cannot drift into separate accounts of the same six
+failures; each adds its own way out, which is the part that honestly
+differs. `gs` offers `--server -`. The adapter has no flags of its own, so
+it says to repair or remove the record, or to fold that one act locally on
+purpose with `gs` and `--server -`. Each refusal happens before the caller
+reads a signing key or appends anything.
+
+The record is judged on every durable act, not once per session. An adapter
+that found a good resident an hour ago still refuses the next act if the
+record has been rewritten since, and when a resident stops answering it
+reads the record once more before folding locally. A rewrite landing
+mid-call refuses the local fallback only when that re-read cannot be
+trusted; a record that was removed, or replaced with one that still reads
+and names this workroom, leaves the transport loss an honest reason to fold
+locally, marked `degraded`. Only a record that is not there at all is
+absence, and a repository with none acts locally exactly as it did before
+residents existed.
 
 ## Loopback only
 
@@ -136,6 +155,18 @@ when every returned address is loopback. Each mutation also checks its HTTP
 `Host` before routing, then applies the same-origin, fetch-site and JSON
 content-type guards before it decodes input or changes state. There is no
 permissive CORS route.
+
+Every response also carries the browser policy stated once in
+`internal/service`: a `Content-Security-Policy` that admits only the
+service's own origin for scripts, styles, fonts, images and fetches and
+denies framing with `frame-ancestors 'none'`, `X-Frame-Options: DENY` for
+older agents, `X-Content-Type-Options: nosniff`, and
+`Referrer-Policy: no-referrer`. The embedded UI is built to load under that
+policy, so a page that embeds the board, a script injected beside it, or a
+mislabelled asset is refused by the browser rather than by hope. The style
+rule refuses style attributes and elements written into markup and any
+stylesheet from another origin; it does not govern styles a script sets
+through the CSSOM, which is how the UI applies its few inline styles.
 
 The service is a trusted local custodian for several actors: it holds their
 signing keys and signs on behalf of whichever trusted process asks. Its

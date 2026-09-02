@@ -2,8 +2,8 @@
 title: gs inspect
 summary: Read one exact durable event with its decision, commitment chain, direct bases and related review evidence.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a1055e9d1a044c420c25d249f91c79988cfcda4d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0d87b56bb5146f67931203a41039e3d511ce503e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9936cbb28db1642a5cdabd2f787fb881fb33dbf2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35a8c246effe4f81fe54aac7ebd260f8fb3888d4
 ---
 
 # `gs inspect`
@@ -67,6 +67,14 @@ An event the durable projection does not hold is a refusal naming that
 fact, not an empty inspection. An empty page for a mistyped identifier
 would read like a real answer about a real event that happens to have
 nothing on it.
+
+The refusal also names the required form:
+`git:sha1:<genesis>#git:sha1:<event>` for a SHA-1 workroom, or the equivalent
+for the repository's object format. `#N` is a display index only; this command
+does not resolve it, a prefix, or an ellipsis-truncated value. Copy the full ID
+from `gs work --json`, another `--json` answer, or a command that printed the
+event when it was filed. The human inspection prints its event and direct
+event bases in full for the same reason.
 
 ## See also
 

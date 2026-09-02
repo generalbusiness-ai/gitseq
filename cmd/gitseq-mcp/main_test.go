@@ -22,6 +22,7 @@ import (
 	nexus "github.com/generalbusiness-ai/gitseq/host/live"
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
@@ -29,14 +30,8 @@ import (
 )
 
 func TestStatelessDiscoverAndToolList(t *testing.T) {
-	repo := filepath.Join(t.TempDir(), "repo")
-	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v: %s", err, output)
-	}
-	workspace, _, err := app.Init(context.Background(), repo, "human", 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
+	parallelTest(t)
+	workspace := initRepository(t, "repo")
 	workroomServer, err := service.New(workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -85,6 +80,10 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 		if properties, exists := schema["properties"]; exists && properties == nil {
 			t.Fatalf("tool schema contains properties:null: %#v", tool)
 		}
+		properties := schema["properties"].(map[string]any)
+		if properties["repo"] == nil || properties["agent"] == nil {
+			t.Fatalf("tool %q omits the common repo/agent selectors: %#v", definition["name"], properties)
+		}
 	}
 	for _, name := range []string{"work", "artifacts", "inspect"} {
 		if listed[name] == nil {
@@ -121,6 +120,9 @@ func TestStatelessDiscoverAndToolList(t *testing.T) {
 // gitseq success payload encodes as a JSON object, and an object schema is the
 // shape older protocol revisions understand too.
 func TestEveryToolDeclaresAnOutputSchemaItsOwnResponsesSatisfy(t *testing.T) {
+	// This end-to-end schema proof needs live resident responses. Keep it in
+	// the sequential phase so package-local Git and HTTP saturation cannot
+	// turn a success-shape assertion into a degraded fallback assertion.
 	workspace := initRepository(t, "repo")
 	workroomServer, err := service.New(workspace)
 	if err != nil {
@@ -229,6 +231,7 @@ func schemaRejects(schema map[string]any, payload map[string]any) error {
 }
 
 func TestMissingPerRequestMetadataIsRejected(t *testing.T) {
+	parallelTest(t)
 	server := &mcpServer{}
 	input := strings.NewReader("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}\n")
 	var output bytes.Buffer
@@ -248,6 +251,7 @@ func TestMissingPerRequestMetadataIsRejected(t *testing.T) {
 // halves matter: rejecting either one leaves such a client unable to attach,
 // with no fall-forward mechanism of its own.
 func TestLegacyHandshakeServesToolsWithoutPerRequestMetadata(t *testing.T) {
+	parallelTest(t)
 	server := &mcpServer{}
 	input := strings.NewReader(
 		"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"legacy\",\"version\":\"1\"}}}\n" +
@@ -294,6 +298,7 @@ func TestLegacyHandshakeServesToolsWithoutPerRequestMetadata(t *testing.T) {
 // renegotiate the version mid-stream and change what the client was already
 // told the connection is speaking.
 func TestSecondInitializeIsRejectedAndDoesNotChangeTheNegotiatedVersion(t *testing.T) {
+	parallelTest(t)
 	server := &mcpServer{}
 	open := func(version string) string {
 		return "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"" + version +
@@ -331,6 +336,7 @@ func TestSecondInitializeIsRejectedAndDoesNotChangeTheNegotiatedVersion(t *testi
 // not be able to hand itself back to the legacy handshake, because doing so
 // would shed the per-request metadata the modern revision requires.
 func TestInitializeAfterModernRequestIsRejectedAndDoesNotChangeEra(t *testing.T) {
+	parallelTest(t)
 	server := &mcpServer{}
 	meta := `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}`
 	input := strings.NewReader(
@@ -373,6 +379,7 @@ func TestInitializeAfterModernRequestIsRejectedAndDoesNotChangeEra(t *testing.T)
 // Latching the era is a commitment for the whole connection, so it must not be
 // made on a handshake that never established what the client speaks.
 func TestMalformedInitializeIsRejectedAndLeavesEraUndetermined(t *testing.T) {
+	parallelTest(t)
 	for name, params := range map[string]string{
 		"empty object":               `{}`,
 		"missing capabilities":       `{"protocolVersion":"2025-06-18","clientInfo":{"name":"x"}}`,
@@ -415,6 +422,7 @@ func TestMalformedInitializeIsRejectedAndLeavesEraUndetermined(t *testing.T) {
 // server/discover belongs to the modern revision; a legacy connection must not
 // receive the modern envelope through it.
 func TestDiscoverIsUnavailableOnALegacyConnection(t *testing.T) {
+	parallelTest(t)
 	server := &mcpServer{}
 	input := strings.NewReader(
 		"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"legacy\",\"version\":\"1\"}}}\n" +
@@ -439,6 +447,7 @@ func TestDiscoverIsUnavailableOnALegacyConnection(t *testing.T) {
 // A modern client that names a version we do not speak must be told what we do
 // speak, so it can retry rather than give up.
 func TestUnsupportedModernVersionNamesSupportedVersions(t *testing.T) {
+	parallelTest(t)
 	server := &mcpServer{}
 	input := strings.NewReader("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"1900-01-01\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}\n")
 	var output bytes.Buffer
@@ -464,14 +473,8 @@ func TestUnsupportedModernVersionNamesSupportedVersions(t *testing.T) {
 }
 
 func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
-	repo := filepath.Join(t.TempDir(), "repo")
-	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v: %s", err, output)
-	}
-	workspace, genesis, err := app.Init(context.Background(), repo, "human", 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
+	parallelTest(t)
+	workspace, genesis := signedWorkspace(t, 1)
 	dead := httptest.NewServer(nil)
 	baseURL := dead.URL
 	client := dead.Client()
@@ -546,6 +549,7 @@ func TestDurableToolsDegradeWithoutResidentService(t *testing.T) {
 }
 
 func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	snapshot, err := workspace.Snapshot(context.Background())
 	if err != nil {
@@ -636,7 +640,14 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	mu.Lock()
 	gotPaths := append([]string(nil), paths...)
 	mu.Unlock()
-	if strings.Join(gotPaths, ",") != "/v0/work-query,/v0/artifact-query,/v0/artifact-query,/v0/artifact-query,/v0/inspect" {
+	wantPaths := []string{
+		"/v0/work-query",
+		"/v0/artifact-query",
+		"/v0/artifact-query",
+		"/v0/artifact-query",
+		"/v0/inspect",
+	}
+	if strings.Join(gotPaths, ",") != strings.Join(wantPaths, ",") {
 		t.Fatalf("selective tools used the wrong resident routes: %v", gotPaths)
 	}
 }
@@ -647,6 +658,7 @@ func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 // that too, after paying for /v0/status in full. Blocking both full routes
 // makes this test fail if either transport regresses.
 func TestStatusAndWaitUseBoundedResidentViews(t *testing.T) {
+	parallelTest(t)
 	if actorStatusResponseLimit != 1<<20 {
 		t.Fatalf("bounded actor response limit = %d, want 1 MiB", actorStatusResponseLimit)
 	}
@@ -703,7 +715,8 @@ func TestStatusAndWaitUseBoundedResidentViews(t *testing.T) {
 	mu.Lock()
 	gotPaths := append([]string(nil), paths...)
 	mu.Unlock()
-	if strings.Join(gotPaths, ",") != "/v0/actor-status,/v0/actor-wait" {
+	wantPaths := []string{"/v0/actor-status", "/v0/actor-wait"}
+	if strings.Join(gotPaths, ",") != strings.Join(wantPaths, ",") {
 		t.Fatalf("status or wait used an unbounded resident route: %v", gotPaths)
 	}
 }
@@ -714,22 +727,24 @@ func attachedServer(t testing.TB, workspace *app.Workspace, actor, baseURL strin
 	t.Helper()
 	server := newServer(actor, workspace.Repo)
 	server.client = residentclient.NewWithHTTP(client, residentHTTPTimeout)
-	attached := &room{workspace: workspace, baseURL: strings.TrimRight(baseURL, "/")}
-	server.byPath[server.repo] = attached
-	server.byCommonDir[workspace.CommonDir] = attached
+	configured, err := workspace.ResolveActor(actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head, err := workspace.Store.Head(context.Background(), kernel.Ref(workspace.View().Genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attached := &room{workspace: workspace, actor: actor, fingerprint: configured.Fingerprint, baseURL: strings.TrimRight(baseURL, "/"), validatedHead: head}
+	genesis := workspace.View().Genesis
+	server.byPath[roomSelection{path: server.repo, commonDir: workspace.CommonDir, genesis: genesis, actor: actor, fingerprint: configured.Fingerprint, keyFile: configured.KeyFile}] = attached
+	server.byCommonDir[roomSelection{commonDir: workspace.CommonDir, genesis: genesis, actor: actor, fingerprint: configured.Fingerprint, keyFile: configured.KeyFile}] = attached
 	return server, attached
 }
 
 func initRepository(t *testing.T, name string) *app.Workspace {
 	t.Helper()
-	repo := filepath.Join(t.TempDir(), name)
-	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v: %s", err, output)
-	}
-	workspace, _, err := app.Init(context.Background(), repo, "human", 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
+	workspace, _ := templateAtDepth(1).copy(t, name)
 	return workspace
 }
 
@@ -756,6 +771,7 @@ func depth(t *testing.T, workspace *app.Workspace) int {
 }
 
 func TestStateToolRefusesMalformedRequestBeforeAppend(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace := initRepository(t, "repo")
 	if _, _, err := workspace.AddActor(ctx, "human", "worker", "agent"); err != nil {
@@ -790,6 +806,7 @@ func TestStateToolRefusesMalformedRequestBeforeAppend(t *testing.T) {
 // repo is an adapter selector, not a resident wait field. Cover both forms so
 // stripping it cannot make the named call fall back to the default room.
 func TestResidentWaitKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {
+	parallelTest(t)
 	here := initRepository(t, "here")
 	elsewhere := initRepository(t, "elsewhere")
 	serveRepository(t, here)
@@ -829,6 +846,7 @@ func TestResidentWaitKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {
 }
 
 func TestResidentSayKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {
+	parallelTest(t)
 	here := initRepository(t, "here")
 	elsewhere := initRepository(t, "elsewhere")
 	serveRepository(t, here)
@@ -863,6 +881,7 @@ func TestResidentSayKeepsRepositorySelectionOutOfTheRequestBody(t *testing.T) {
 }
 
 func TestAdapterInjectsItsPrivateSessionForPriorityChatAndAck(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "priority-chat")
 	if _, _, err := workspace.AddActor(context.Background(), "human", "other", "agent"); err != nil {
 		t.Fatal(err)
@@ -948,6 +967,7 @@ func TestAdapterInjectsItsPrivateSessionForPriorityChatAndAck(t *testing.T) {
 }
 
 func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "legacy-resident")
 	var sayCalls atomic.Int64
 	legacy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -1010,6 +1030,7 @@ func TestNewAdapterDegradesHonestlyAgainstLegacyResidentInboxProtocol(t *testing
 }
 
 func TestAddressedSayFailsClosedWhenResidentDowngradesDuringSessionRepair(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "downgraded-resident")
 	var sayCalls atomic.Int64
 	var opaquePublishes atomic.Int64
@@ -1037,6 +1058,8 @@ func TestAddressedSayFailsClosedWhenResidentDowngradesDuringSessionRepair(t *tes
 			_ = json.NewEncoder(writer).Encode(map[string]any{"opaque": true})
 		case request.Method == http.MethodPost && request.URL.Path == "/v0/presence":
 			_ = json.NewEncoder(writer).Encode(map[string]any{"credential": "credential:" + strings.Repeat("b", 64), "change": map[string]any{}})
+		case request.Method == http.MethodPost && request.URL.Path == "/v0/actor-status":
+			_ = json.NewEncoder(writer).Encode(actorStatus{You: statusview.ActorView{Fingerprint: workspace.View().Actors["human"].Fingerprint}})
 		case request.Method == http.MethodPost && request.URL.Path == "/v0/inbox/register":
 			http.NotFound(writer, request)
 		default:
@@ -1070,6 +1093,7 @@ func TestAddressedSayFailsClosedWhenResidentDowngradesDuringSessionRepair(t *tes
 }
 
 func TestFallbackWaitPreservesDefaultAndNamedRepositorySelection(t *testing.T) {
+	parallelTest(t)
 	here := initRepository(t, "here")
 	elsewhere := initRepository(t, "elsewhere")
 	server := newServer("human", here.Repo)
@@ -1111,6 +1135,7 @@ func TestFallbackWaitPreservesDefaultAndNamedRepositorySelection(t *testing.T) {
 // configured for the common case, and an act must land in the workroom the
 // call named rather than in whichever one the adapter happened to open first.
 func TestCallsActInTheRepositoryTheyName(t *testing.T) {
+	parallelTest(t)
 	here := initRepository(t, "here")
 	elsewhere := initRepository(t, "elsewhere")
 	server := newServer("human", here.Repo)
@@ -1143,6 +1168,7 @@ func TestCallsActInTheRepositoryTheyName(t *testing.T) {
 }
 
 func TestAdapterStartsFromMainAndLinkedWorktreeInOneWorkroom(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
@@ -1205,6 +1231,7 @@ func TestAdapterStartsFromMainAndLinkedWorktreeInOneWorkroom(t *testing.T) {
 }
 
 func TestOneAdapterSharesRoomAcrossLinkedWorktrees(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
@@ -1246,10 +1273,13 @@ func TestOneAdapterSharesRoomAcrossLinkedWorktrees(t *testing.T) {
 	if mainRoom != linkedRoom {
 		t.Fatal("one adapter allocated separate room and projection caches for linked checkouts")
 	}
-	if len(server.byCommonDir) != 1 || server.byCommonDir[mainCommonDir] != mainRoom {
+	fingerprint := mainRoom.fingerprint
+	genesis := mainRoom.workspace.View().Genesis
+	keyFile := mainRoom.workspace.View().Actors["human"].KeyFile
+	if len(server.byCommonDir) != 1 || server.byCommonDir[roomSelection{commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint, keyFile: keyFile}] != mainRoom {
 		t.Fatalf("common-directory cache does not hold the shared room: %+v", server.byCommonDir)
 	}
-	if server.byPath[absolute(repo)] != mainRoom || server.byPath[absolute(linked)] != mainRoom {
+	if server.byPath[roomSelection{path: absolute(repo), commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint, keyFile: keyFile}] != mainRoom || server.byPath[roomSelection{path: absolute(linked), commonDir: mainCommonDir, genesis: genesis, actor: "human", fingerprint: fingerprint, keyFile: keyFile}] != mainRoom {
 		t.Fatalf("checkout paths do not resolve to the shared room: %+v", server.byPath)
 	}
 }
@@ -1258,6 +1288,7 @@ func TestOneAdapterSharesRoomAcrossLinkedWorktrees(t *testing.T) {
 // to refuse the connection: the adapter is installed once and pointed at many
 // repositories, most of which are not workrooms.
 func TestCallOutsideAWorkroomIsReportedWithoutFailingTheConnection(t *testing.T) {
+	parallelTest(t)
 	server := newServer("human", t.TempDir())
 	_, _, err := server.call(context.Background(), toolCall{Name: "status"})
 	if err == nil || !strings.Contains(err.Error(), "no gitseq workroom for") {
@@ -1273,6 +1304,7 @@ func TestCallOutsideAWorkroomIsReportedWithoutFailingTheConnection(t *testing.T)
 // that was told nothing still joins the live workroom, and one that was told
 // about a service holding another workroom does not act through it.
 func TestResidentServiceIsFoundInTheRepository(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	workroomServer, err := service.New(workspace)
 	if err != nil {
@@ -1321,6 +1353,7 @@ func TestResidentServiceIsFoundInTheRepository(t *testing.T) {
 // Whoami establishes bounded durable orientation before the session joins a
 // live room. Ordinary tools still attend the selected repository normally.
 func TestWhoamiDoesNotAttendBeforeOrdinaryTool(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	workroomServer, err := service.New(workspace)
 	if err != nil {
@@ -1348,6 +1381,7 @@ func TestWhoamiDoesNotAttendBeforeOrdinaryTool(t *testing.T) {
 }
 
 func TestPresenceToolUpdatesOnlyItsOwnBoundedLease(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	if _, _, err := workspace.AddActor(context.Background(), "human", "other", "agent"); err != nil {
 		t.Fatal(err)
@@ -1418,6 +1452,9 @@ func TestPresenceToolUpdatesOnlyItsOwnBoundedLease(t *testing.T) {
 }
 
 func TestCredentialsArePerRepositoryAndAbsentFromToolResultsAndURLs(t *testing.T) {
+	// This test needs two independent resident departure observations. Keep it
+	// sequential so package-local load cannot turn transport scheduling into a
+	// missing credential-bound request.
 	first := initRepository(t, "first")
 	second := initRepository(t, "second")
 	type observedRequest struct {
@@ -1497,6 +1534,7 @@ func TestCredentialsArePerRepositoryAndAbsentFromToolResultsAndURLs(t *testing.T
 // forever, so a service restarted on another port is picked up without
 // reconnecting the client.
 func TestAServiceThatStopsAnsweringIsLookedUpAgain(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	dead := httptest.NewServer(nil)
 	deadURL := dead.URL
@@ -1532,6 +1570,7 @@ func TestAServiceThatStopsAnsweringIsLookedUpAgain(t *testing.T) {
 // A defined kind is ordinary work: it lands, carries no warning, and the fold
 // ruling still rides in the result.
 func TestStateToolRefusesUndefinedKindsOnBothPaths(t *testing.T) {
+	parallelTest(t)
 	for _, testCase := range []struct {
 		name     string
 		resident bool
@@ -1615,6 +1654,7 @@ func genesisOf(t *testing.T, workspace *app.Workspace) string {
 // Presence renewal runs beside whatever call is in flight and reads the same
 // attachment, so the two must not race over where the service is.
 func TestPresenceRenewalRunsBesideCalls(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	workroomServer, err := service.New(workspace)
 	if err != nil {
@@ -1664,6 +1704,7 @@ func TestPresenceRenewalRunsBesideCalls(t *testing.T) {
 // identity, while making the review-authority and coordination consequences
 // visible to the operator.
 func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	if _, _, err := workspace.AddActor(context.Background(), "human", "claude.2", "agent"); err != nil {
 		t.Fatal(err)
@@ -1758,6 +1799,7 @@ func TestCrashRestartSharesALiveIdentityWithAWarning(t *testing.T) {
 // The check is only as good as the resident service, and a stopped service
 // must not stop the work. Starting anyway is the stated limit, not an oversight.
 func TestSharedIdentityWarningIsSkippedWhenPresenceCannotBeRead(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	dead := httptest.NewServer(nil)
 	baseURL := dead.URL
@@ -1776,24 +1818,7 @@ func TestSharedIdentityWarningIsSkippedWhenPresenceCannotBeRead(t *testing.T) {
 
 func signedWorkspace(tb testing.TB, depth int) (*app.Workspace, workroom.Record) {
 	tb.Helper()
-	ctx := context.Background()
-	repo := filepath.Join(tb.TempDir(), "repo")
-	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
-		tb.Fatalf("git init: %v: %s", err, output)
-	}
-	workspace, genesis, err := app.Init(ctx, repo, "human", 1<<20)
-	if err != nil {
-		tb.Fatal(err)
-	}
-	for index := 1; index < depth; index++ {
-		if _, err := workspace.Act(ctx, "human", app.Act{
-			Verb: app.VerbState, Kind: workroom.KindAssert, Text: "signed orientation history",
-			RestsOn: []string{genesis.ID}, IdempotencyKey: fmt.Sprintf("orientation-history-%d", index),
-		}); err != nil {
-			tb.Fatal(err)
-		}
-	}
-	return workspace, genesis
+	return templateAtDepth(depth).copy(tb, "repo")
 }
 
 func callWhoami(t testing.TB, workspace *app.Workspace, baseURL string, client *http.Client) map[string]any {
@@ -1807,6 +1832,7 @@ func callWhoami(t testing.TB, workspace *app.Workspace, baseURL string, client *
 }
 
 func TestWhoamiUsesBoundedEffectiveResidentOrientationWithoutLocalReplay(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace, genesis := signedWorkspace(t, 2)
 	warm, err := app.Open(ctx, workspace.Repo)
@@ -1863,6 +1889,7 @@ func TestWhoamiUsesBoundedEffectiveResidentOrientationWithoutLocalReplay(t *test
 }
 
 func TestWhoamiDisclosesCheckpointAndFullAuditFallbacks(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace, _ := signedWorkspace(t, 3)
 	checkpointWriter, err := app.Open(ctx, workspace.Repo)
@@ -1904,6 +1931,7 @@ func TestWhoamiDisclosesCheckpointAndFullAuditFallbacks(t *testing.T) {
 }
 
 func TestWhoamiRejectsUntrustedOrUnboundedResidentAnswers(t *testing.T) {
+	parallelTest(t)
 	ctx := context.Background()
 	workspace, _ := signedWorkspace(t, 1)
 	snapshot, err := workspace.Snapshot(ctx)
@@ -1979,6 +2007,9 @@ func TestWhoamiRejectsUntrustedOrUnboundedResidentAnswers(t *testing.T) {
 }
 
 func TestWhoamiRetriesOneConcurrentFrontierMove(t *testing.T) {
+	// This test coordinates a frontier move between two resident reads. Keep
+	// it sequential so package-local load cannot delay the move past the
+	// deliberately narrow retry window it is proving.
 	ctx := context.Background()
 	workspace, genesis := signedWorkspace(t, 1)
 	first, err := workspace.Snapshot(ctx)
@@ -2010,6 +2041,10 @@ func TestWhoamiRetriesOneConcurrentFrontierMove(t *testing.T) {
 	}
 }
 
+// These four elapsed-time tests deliberately stay sequential. Go pauses every
+// top-level test that called t.Parallel until all sequential top-level tests
+// have returned, so none of the package's parallel Git and HTTP fixture work
+// can interleave with these bounds.
 func TestWhoamiBoundsStallsAndRejectsRedirects(t *testing.T) {
 	if orientationTimeout != 2*time.Second {
 		t.Fatalf("orientation timeout = %s, want 2s", orientationTimeout)
@@ -2236,6 +2271,7 @@ func BenchmarkWhoamiColdFullAuditAtActualSignedDepth(b *testing.B) {
 // each is asserted on its own rather than through a table that would let one
 // quietly stop firing.
 func TestProjectionNotesSayHowTheFoldReadTheAct(t *testing.T) {
+	parallelTest(t)
 	const event = "git:sha1:g#git:sha1:report"
 	report := app.Act{Kind: workroom.KindReport, RestsOn: []string{"git:sha1:g#git:sha1:promise"}}
 	// Existence is read from decisions now, because there is one per durable
@@ -2312,6 +2348,7 @@ func TestProjectionNotesSayHowTheFoldReadTheAct(t *testing.T) {
 // review, and the fold ruled it "supersede target is unknown" while the tool
 // result said only that the act had landed.
 func TestNotesReportATargetNamingNothing(t *testing.T) {
+	parallelTest(t)
 	const event = "git:sha1:g#git:sha1:act"
 	known := workroom.Projection{
 		Statements: []workroom.Statement{{Event: "git:sha1:g#git:sha1:real"}},
@@ -2341,6 +2378,7 @@ func TestNotesReportATargetNamingNothing(t *testing.T) {
 // catch invented names, reporting valid ones as invented. That is worse than no
 // check, because a warning that cries wolf is a warning people learn to skip.
 func TestCitationsResolveThroughEveryDurableRecordNotOnlyStatements(t *testing.T) {
+	parallelTest(t)
 	const supersession = "git:sha1:g#git:sha1:supersede"
 	const statement = "git:sha1:g#git:sha1:promise"
 	const event = "git:sha1:g#git:sha1:new"
@@ -2381,6 +2419,7 @@ func TestCitationsResolveThroughEveryDurableRecordNotOnlyStatements(t *testing.T
 // submission result otherwise: the record lands, the verdict reads effective,
 // and only the projection knows the ground moved before the act stood on it.
 func TestNotesNameARestOnBasisThatWasAlreadyDead(t *testing.T) {
+	parallelTest(t)
 	const event = "git:sha1:g#git:sha1:new"
 	const retired = "git:sha1:g#git:sha1:retired"
 	const stale = "git:sha1:g#git:sha1:stale"
@@ -2421,6 +2460,7 @@ func TestNotesNameARestOnBasisThatWasAlreadyDead(t *testing.T) {
 // something that is not wrong, while the real reason sits in the verdict note
 // beside it. The live log holds exactly this shape.
 func TestARefusedReportIsNotDescribedAsMissingItsVerdict(t *testing.T) {
+	parallelTest(t)
 	const event = "git:sha1:g#git:sha1:report"
 	projection := workroom.Projection{
 		Decisions: []workroom.Decision{{Event: event, Verdict: workroom.Ineffective, Reason: "report has no promise"}},
@@ -2453,7 +2493,11 @@ func TestARefusedReportIsNotDescribedAsMissingItsVerdict(t *testing.T) {
 // where the fold looked and found nothing worth saying. That is the exact
 // failure this disclosure exists to prevent, arriving through the disclosure.
 func TestEveryVerbIsToldWhenTheProjectionCouldNotBeRead(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "unreadable")
+	if _, _, err := workspace.AddActor(context.Background(), "human", "claude", "agent"); err != nil {
+		t.Fatal(err)
+	}
 	server, attached := attachedServer(t, workspace, "claude", "", nil)
 
 	// Break the repository underneath so Snapshot genuinely fails, rather than
@@ -2487,6 +2531,7 @@ func TestEveryVerbIsToldWhenTheProjectionCouldNotBeRead(t *testing.T) {
 // make it safe to ignore: it must never fail a call, never invent a
 // relationship, and never be invisible to a client that reads only text.
 func TestLiveAttentionIsAdvisoryAndFailsSoft(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 
 	t.Run("an unreachable resident yields unavailable, not an error", func(t *testing.T) {
@@ -2518,6 +2563,7 @@ func TestLiveAttentionIsAdvisoryAndFailsSoft(t *testing.T) {
 // exact canonical identifiers out of what the call said and what it returned,
 // and nothing else: no prefixes, no bare hashes, no words that look like refs.
 func TestAttentionEventsAreExactAndBounded(t *testing.T) {
+	parallelTest(t)
 	const real = "git:sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#git:sha1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	const other = "git:sha1:cccccccccccccccccccccccccccccccccccccccc#git:sha1:dddddddddddddddddddddddddddddddddddddddd"
 
@@ -2558,6 +2604,7 @@ func TestAttentionEventsAreExactAndBounded(t *testing.T) {
 // still sees. If an interruption exists only in structuredContent it is
 // invisible to a reader of the transcript, which defeats the purpose.
 func TestAttentionSummaryStatesTheInterruptionInText(t *testing.T) {
+	parallelTest(t)
 	summary := attentionSummary(map[string]any{
 		"available": true,
 		"pending":   float64(3),
@@ -2595,6 +2642,7 @@ func TestAttentionSummaryStatesTheInterruptionInText(t *testing.T) {
 // real JSON-RPC loop rather than the helper, because the property is about the
 // envelope the client actually receives.
 func TestToolErrorResultStillCarriesLiveAttention(t *testing.T) {
+	parallelTest(t)
 	workspace := initRepository(t, "repo")
 	server := newServer("human", workspace.Repo)
 	defer server.depart(context.Background())
@@ -2649,16 +2697,19 @@ func TestToolErrorResultStillCarriesLiveAttention(t *testing.T) {
 // another workroom's addressed inbox and leased focus: a disclosure across a
 // boundary the caller drew deliberately with arguments.repo.
 func TestAttentionReadsTheRoomTheCallActedIn(t *testing.T) {
+	parallelTest(t)
 	first := initRepository(t, "first")
 	second := initRepository(t, "second")
 
 	server := newServer("human", first.Repo)
-	firstRoom := &room{workspace: first, baseURL: "http://first.invalid"}
-	secondRoom := &room{workspace: second, baseURL: "http://second.invalid"}
-	server.byPath[first.Repo] = firstRoom
-	server.byPath[second.Repo] = secondRoom
-	server.byCommonDir[first.CommonDir] = firstRoom
-	server.byCommonDir[second.CommonDir] = secondRoom
+	firstFingerprint := first.View().Actors["human"].Fingerprint
+	secondFingerprint := second.View().Actors["human"].Fingerprint
+	firstRoom := &room{workspace: first, actor: "human", fingerprint: firstFingerprint, baseURL: "http://first.invalid"}
+	secondRoom := &room{workspace: second, actor: "human", fingerprint: secondFingerprint, baseURL: "http://second.invalid"}
+	server.byPath[roomSelection{path: first.Repo, commonDir: first.CommonDir, genesis: first.View().Genesis, actor: "human", fingerprint: firstFingerprint, keyFile: first.View().Actors["human"].KeyFile}] = firstRoom
+	server.byPath[roomSelection{path: second.Repo, commonDir: second.CommonDir, genesis: second.View().Genesis, actor: "human", fingerprint: secondFingerprint, keyFile: second.View().Actors["human"].KeyFile}] = secondRoom
+	server.byCommonDir[roomSelection{commonDir: first.CommonDir, genesis: first.View().Genesis, actor: "human", fingerprint: firstFingerprint, keyFile: first.View().Actors["human"].KeyFile}] = firstRoom
+	server.byCommonDir[roomSelection{commonDir: second.CommonDir, genesis: second.View().Genesis, actor: "human", fingerprint: secondFingerprint, keyFile: second.View().Actors["human"].KeyFile}] = secondRoom
 
 	// The adapter default is the first repository. A call naming the second
 	// must still be answered about the second.
@@ -2703,6 +2754,7 @@ func TestAttentionReadsTheRoomTheCallActedIn(t *testing.T) {
 // and the adjunct would report actors focused on an event the caller never
 // named — inference dressed as observation.
 func TestAttentionEventsRequireTokenBoundaries(t *testing.T) {
+	parallelTest(t)
 	const real = "git:sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#git:sha1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 	for _, embedded := range []string{

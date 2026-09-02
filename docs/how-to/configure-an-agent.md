@@ -2,20 +2,18 @@
 title: Configure an agent
 summary: Attach an MCP client to a workroom, and check that it can really act.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:25101623b92c3e17c4634c6a6e2dc5c48ab7abbe
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cb605f5622c1aa47d1b98dddaaba4f9fb164a343
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7802fc152c5d66eae7f651783d24fab7ae477605
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:db34afe2f1c6b4033d1d0bdbce0c4d7278bcb94d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cadb3875bb56fc359f4b96b167a35d13b29d8dda
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cae4cb65017feffac75c4cba88dccda021a640de
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b714309ab6aa17154b96083c9d7fc054a9218d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aea9521daff999b6b5f6a1ec97f85994cdfea4aa
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35a8c246effe4f81fe54aac7ebd260f8fb3888d4
 ---
 
 # Configure an agent
 
-`gitseq-mcp` is one process per client session, one actor per process. It
-signs everything that session does as that actor.
+`gitseq-mcp` is one process per client session. Each call selects a repository
+and actor; startup flags supply the defaults when a call omits either one.
 
 ## Register the command
 
@@ -27,7 +25,7 @@ gitseq-mcp --actor bot
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--actor` | *(required, or `GITSEQ_ACTOR`)* | A configured actor whose key the repository holds. |
+| `--actor` | *(required, or `GITSEQ_ACTOR`)* | The default actor for calls that do not name `agent`. Its key must already be accessible. |
 | `--repo` | *(working directory)* | The default repository for calls that do not name one. |
 
 There is no default actor name. When `--actor` is absent the adapter
@@ -44,11 +42,23 @@ distinct actors only when they need independent authority or review; a second
 device, a planner and worker acting as one principal, or a replacement process
 during the prior session's 30-second lease may reuse the actor intentionally.
 
-Register it **once**. The repository is a parameter of the call, not of
-the installation: a call with no `repo` acts in the working directory the
-adapter was started in, or in `--repo` when that was given, and any call
-may name another repository instead. Linked worktrees of one repository
-are one workroom, not several.
+Register it **once**. Every tool accepts optional `repo` and `agent`
+selectors. A call with no `repo` acts in the working directory the adapter was
+started in, or in `--repo` when that was given. A call with no `agent` uses
+startup `--actor`. Any call may name another accessible repository, another
+actor with an accessible key, or both. Linked worktrees of one repository are
+one workroom, not several.
+
+These values select custody the process already has; they do not assert an
+identity, mint a key or grant authority. The adapter loads the named key,
+checks its fingerprint against local configuration, and confirms the actor is
+a current participant in the selected workroom. If any check fails, the call
+refuses. It never retries as the startup actor or in the startup repository.
+
+That is the intended trust model, but the current development key model still
+derives keys from actor names. Until actor keys are access-gated secrets,
+`agent` is useful routing rather than a security boundary. Do not describe the
+selector itself as protection between same-account processes.
 
 There is no service URL to configure. The adapter reads the address the
 resident published in the repository it is acting in, and uses it only
@@ -59,7 +69,7 @@ service started later is picked up without reconnecting the client.
 
 When a resident is available, it mints a private credential for this adapter
 and binds it to the selected repository and actor. The adapter keeps one such
-credential per repository in process memory, renews it, and replaces it after
+credential per `(repo, agent)` selection in process memory, renews it, and replaces it after
 resident restart. It never places the credential in `whoami`, another MCP tool
 result, a URL, a durable event, a log or a diagnostic. Do not ask an agent to
 print or persist it; the MCP surface deliberately gives it no value to print.
@@ -73,11 +83,12 @@ not protect the keys from another process running under the same account:
 anything running as that account can ask the resident to act as any actor
 whose key the repository holds.
 
-The actor must exist and its key must be in the repository being acted
-in — `gs actor-add` puts it there. A repository with no workroom, or one
-where the actor is not configured, **fails that call and says so**. It
-does not stop the adapter, because one installation serves many
-repositories and one bad target should not strand the session.
+The actor must be a live roster participant and its key must be accessible in
+the repository being acted in — `gs actor-add` provisions both in the
+development model. A repository with no workroom, an actor absent from the
+roster, or a missing or mismatched key **fails that call and says so**. It does
+not stop the adapter, because one installation serves many selections and one
+bad target should not strand the session.
 
 Before an agent acts, it should read [`SKILL.md`](../../SKILL.md). That
 is the normative contract for working in a workroom; this documentation
@@ -101,9 +112,9 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{%s}}\n' "$META" 
   | gitseq-mcp --repo "$REPO" --actor bot 2>/dev/null
 ```
 
-Eleven tools come back: `whoami`, `presence`, `status`, `wait`, `work`,
-`inspect`, `say`, `ack`, `state`, `ratify`, `supersede`. Every one of them
-accepts an optional `repo`.
+Fourteen tools come back: `whoami`, `presence`, `status`, `wait`, `work`,
+`artifacts`, `inspect`, `say`, `ack`, `state`, `review`, `ratify`, `supersede`
+and `reassign_if_unclaimed`. Every one accepts optional `repo` and `agent`.
 
 Confirm the adapter is signing as the actor you meant:
 
@@ -111,6 +122,17 @@ Confirm the adapter is signing as the actor you meant:
 printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"whoami","arguments":{},%s}}\n' "$META" \
   | gitseq-mcp --repo "$REPO" --actor bot 2>/dev/null
 ```
+
+Confirm an override through the same adapter:
+
+```sh
+printf '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"whoami","arguments":{"repo":"%s","agent":"bot"},%s}}\n' "$REPO" "$META" \
+  | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
+```
+
+Use the same two arguments on `status`, `work` and every later act. Calling
+`whoami` after changing either selector is the quickest end-to-end check that
+the client will read and sign in the intended lane.
 
 ## Client compatibility
 
