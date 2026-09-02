@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:611d740d5b4684d56bedc9ad39a3aa759a4c739f","text":"Retire the SKILL.md artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact aa6c6ff5)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5453042c5807e22020e9e0004abf3810fa19f1fd","text":"Retire the docs/concepts/staleness.md artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact 73591f96)."}
