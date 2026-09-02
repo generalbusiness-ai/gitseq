@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -4426,25 +4427,46 @@ func TestServePublishesWhereItListensAndWithdrawsOnExit(t *testing.T) {
 // asks for it. What a person does is press Ctrl-C, and the whole point of the
 // advertisement is that it must not outlive the process it names. These tests
 // therefore run the real binary and stop it the real way.
-func TestServeWithdrawsWhenTheProcessIsInterrupted(t *testing.T) {
-	t.Parallel()
+func TestServeWithdrawsItsClaimOnSignalsAndRestartsCleanly(t *testing.T) {
 	binary := buildGS(t)
-	repo, workspace := servableRepository(t)
+	for name, signal := range map[string]os.Signal{
+		"SIGINT":  os.Interrupt,
+		"SIGTERM": syscall.SIGTERM,
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, workspace := servableRepository(t)
+			ref := app.ResidentRef(workspace.View().Genesis)
 
-	serving := startServing(t, binary, repo)
-	url := awaitPublication(t, workspace, "")
-	response, err := http.Get(url + "/v0/presence")
-	if err != nil {
-		t.Fatalf("the published address does not answer: %v", err)
-	}
-	response.Body.Close()
+			serving := startServing(t, binary, repo)
+			url := awaitPublication(t, workspace, "")
+			response, err := http.Get(url + "/v0/presence")
+			if err != nil {
+				t.Fatalf("the published address does not answer: %v", err)
+			}
+			response.Body.Close()
 
-	interrupt(t, serving)
-	if err := serving.Wait(); err != nil {
-		t.Fatalf("stopping normally was reported as a failure: %v", err)
-	}
-	if published, ok := advertised(workspace); ok {
-		t.Fatalf("an interrupted service is still advertised at %q", published)
+			signalServing(t, serving, signal)
+			if err := serving.Wait(); err != nil {
+				t.Fatalf("stopping normally was reported as a failure: %v", err)
+			}
+			if published, ok := advertised(workspace); ok {
+				t.Fatalf("a stopped service is still advertised at %q", published)
+			}
+			if _, present, err := workspace.Store.RefValue(context.Background(), ref); err != nil || present {
+				t.Fatalf("a stopped service left its claim behind: present=%v err=%v", present, err)
+			}
+
+			// No manual repair lies between shutdown and restart.
+			restarted := startServing(t, binary, repo)
+			next := awaitPublication(t, workspace, url)
+			if next == "" {
+				t.Fatal("the repository did not restart after clean shutdown")
+			}
+			signalServing(t, restarted, signal)
+			if err := restarted.Wait(); err != nil {
+				t.Fatalf("stopping the restarted service: %v", err)
+			}
+		})
 	}
 }
 
@@ -4474,12 +4496,21 @@ func TestASecondServeProcessRefusesAndLeavesTheIncumbentUntouched(t *testing.T) 
 		t.Fatalf("a serving process holds no claim: present=%v err=%v", present, err)
 	}
 
-	output, err := exec.Command(binary, "serve", "--repo", repo, "--listen", "127.0.0.1:0").CombinedOutput()
+	// Ask for the incumbent's exact port. The ownership preflight must run
+	// before bind, or this would lose the precise service-is-answering refusal
+	// behind an opaque address-in-use error.
+	output, err := exec.Command(binary, "serve", "--repo", repo, "--listen", strings.TrimPrefix(url, "http://")).CombinedOutput()
 	if err == nil {
 		t.Fatalf("a second gs serve started beside the one holding the repository: %s", output)
 	}
 	if !strings.Contains(string(output), url) {
 		t.Fatalf("the refusal does not name the incumbent %q: %s", url, output)
+	}
+	if !strings.Contains(string(output), "pid ") {
+		t.Fatalf("the refusal does not name the answering process: %s", output)
+	}
+	if strings.Contains(string(output), "update-ref -d") || strings.Contains(string(output), "remove the claim") {
+		t.Fatalf("the live-service refusal offered claim deletion: %s", output)
 	}
 	if value, _, err := workspace.Store.RefValue(ctx, ref); err != nil || value != held {
 		t.Fatalf("the refused process disturbed the claim: %q (was %q) err=%v", value, held, err)
@@ -4677,8 +4708,13 @@ func awaitPublication(t *testing.T, workspace *app.Workspace, previous string) s
 
 func interrupt(t *testing.T, serving *exec.Cmd) {
 	t.Helper()
-	if err := serving.Process.Signal(os.Interrupt); err != nil {
-		t.Fatalf("interrupting gs serve: %v", err)
+	signalServing(t, serving, os.Interrupt)
+}
+
+func signalServing(t *testing.T, serving *exec.Cmd, signal os.Signal) {
+	t.Helper()
+	if err := serving.Process.Signal(signal); err != nil {
+		t.Fatalf("signalling gs serve with %v: %v", signal, err)
 	}
 }
 
@@ -4961,7 +4997,7 @@ func TestASecondServeRefusesWhileTheFirstHoldsTheRepository(t *testing.T) {
 		t.Fatalf("a serving process holds no claim: present=%v err=%v", present, err)
 	}
 
-	second := serveCommand(context.Background(), []string{"--repo", repo, "--listen", "127.0.0.1:0"})
+	second := serveCommand(context.Background(), []string{"--repo", repo, "--listen", strings.TrimPrefix(url, "http://")})
 	var refusal *app.ResidentHeldError
 	if !errors.As(second, &refusal) {
 		stop()
@@ -5017,7 +5053,6 @@ func TestASecondServeRefusesWhileTheFirstHoldsTheRepository(t *testing.T) {
 // the repository. The next start probes the address, finds nothing listening,
 // and takes the claim over in one compare-and-swap.
 func TestServeRecoversAClaimLeftByADeadOwner(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	repo := filepath.Join(t.TempDir(), "repo")
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -5055,11 +5090,26 @@ func TestServeRecoversAClaimLeftByADeadOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	errReader, errWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousStderr := os.Stderr
+	os.Stderr = errWriter
+	defer func() {
+		os.Stderr = previousStderr
+		_ = errWriter.Close()
+		_ = errReader.Close()
+	}()
+
 	serving, stop := context.WithCancel(ctx)
 	defer stop()
 	served := make(chan error, 1)
+	started := time.Now()
 	go func() {
-		served <- serveCommand(serving, []string{"--repo", repo, "--listen", "127.0.0.1:0"})
+		// Restart on the exact stale port. The post-bind acquisition must consume
+		// the pre-bind proof rather than probing its own unserved listener.
+		served <- serveCommand(serving, []string{"--repo", repo, "--listen", address})
 	}()
 	var url string
 	for attempt := 0; attempt < 300 && url == ""; attempt++ {
@@ -5072,11 +5122,25 @@ func TestServeRecoversAClaimLeftByADeadOwner(t *testing.T) {
 	if url == "" {
 		t.Fatal("a claim left by a dead owner wedged the repository")
 	}
+	if elapsed := time.Since(started); elapsed >= residentProbeTimeout {
+		t.Fatalf("connection-refused recovery took %s; it should not wait for the probe timeout", elapsed)
+	}
 	if value, present, err := workspace.Store.RefValue(ctx, ref); err != nil || !present || value == blob {
 		t.Fatalf("the abandoned claim was not taken over: %q present=%v err=%v", value, present, err)
 	}
 	stop()
 	if err := <-served; err != nil && !errors.Is(err, http.ErrServerClosed) {
 		t.Fatalf("serving failed: %v", err)
+	}
+	os.Stderr = previousStderr
+	if err := errWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	warned, err := io.ReadAll(errReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(warned, []byte("reclaimed stale resident claim after http://"+address+" refused the liveness probe")) {
+		t.Fatalf("automatic recovery was not logged: %s", warned)
 	}
 }

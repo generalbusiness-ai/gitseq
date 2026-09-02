@@ -2700,7 +2700,7 @@ func checkpointClearCommand(ctx context.Context, arguments []string) error {
 	return printJSON(map[string]any{"genesis": workspace.View().Genesis, "checkpoint": "cleared"})
 }
 
-func serveCommand(ctx context.Context, arguments []string) error {
+func serveCommand(ctx context.Context, arguments []string) (serveErr error) {
 	set, repo := flags("serve", arguments)
 	listen := set.String("listen", "127.0.0.1:7777", "HTTP listen address")
 	otlpEndpoint := set.String("otel-endpoint", "", "OTLP/HTTP Collector endpoint; disabled when empty")
@@ -2717,6 +2717,14 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	}
 	if workspace.View().ReadOnly {
 		return errors.New("cannot serve a read-only attachment")
+	}
+	// Probe before binding so a live incumbent on the requested port produces
+	// the ownership refusal, not an opaque address-in-use error. A vacancy proof
+	// authorizes one exact CAS after binding; on a miss ClaimResidentAfter
+	// re-reads and probes. Only returned ownership authorizes serving.
+	vacancy, err := checkResidency(ctx, workspace)
+	if err != nil {
+		return err
 	}
 	telemetryRuntime, err := telemetry.NewOTLP(ctx, *otlpEndpoint)
 	if err != nil {
@@ -2740,7 +2748,7 @@ func serveCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	ownership, err := claimResidency(ctx, workspace, "http://"+listener.Addr().String())
+	ownership, err := claimResidency(ctx, workspace, "http://"+listener.Addr().String(), vacancy)
 	if err != nil {
 		// Nothing was served and the port does not stay held. A refusing
 		// process must leave the repository exactly as it found it.
@@ -2754,8 +2762,13 @@ func serveCommand(ctx context.Context, arguments []string) error {
 		_ = listener.Close()
 		release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
-		ownership.Release(release)
+		if err := ownership.Release(release); err != nil {
+			serveErr = errors.Join(serveErr, err)
+		}
 	}()
+	if reclaimed, ok := ownership.Reclaimed(); ok {
+		fmt.Fprintf(os.Stderr, "gs: reclaimed stale resident claim after %s refused the liveness probe\n", reclaimed.URL)
+	}
 	withdraw, err := workspace.PublishResident("http://" + listener.Addr().String())
 	if err != nil {
 		return err
@@ -2830,13 +2843,21 @@ func residentHTTPHandler(handler http.Handler) http.Handler {
 // served. The probe that decides whether an existing claim still has a service
 // behind it lives in the resident client, which is the one place that knows how
 // to speak to a resident and which addresses are safe to dial at all.
-func claimResidency(ctx context.Context, workspace *app.Workspace, url string) (*app.ResidentOwnership, error) {
+func claimResidency(ctx context.Context, workspace *app.Workspace, url string, vacancy *app.ResidentVacancy) (*app.ResidentOwnership, error) {
+	return workspace.ClaimResidentAfter(ctx, url, residentProber(), vacancy)
+}
+
+func checkResidency(ctx context.Context, workspace *app.Workspace) (*app.ResidentVacancy, error) {
+	return workspace.CheckResident(ctx, residentProber())
+}
+
+func residentProber() app.Prober {
 	client := residentclient.New(residentProbeTimeout)
-	return workspace.ClaimResident(ctx, url, func(parent context.Context, claim app.ResidentClaim) app.Liveness {
+	return func(parent context.Context, claim app.ResidentClaim) app.ResidentProbe {
 		probe, cancel := context.WithTimeout(parent, residentProbeTimeout)
 		defer cancel()
 		return client.ProbeResident(probe, claim)
-	})
+	}
 }
 
 func serveProfiler(ctx context.Context, address string) (func(), error) {

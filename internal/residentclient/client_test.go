@@ -143,13 +143,13 @@ func TestProbeResidentTreatsOnlyARefusedDialAsDefinitive(t *testing.T) {
 		if request.Method != http.MethodGet {
 			t.Errorf("probe used %s", request.Method)
 		}
-		_ = json.NewEncoder(writer).Encode(map[string]string{"genesis": "abc123"})
+		_ = json.NewEncoder(writer).Encode(map[string]any{"genesis": "abc123", "pid": 4242})
 	}))
 	defer alive.Close()
-	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: alive.URL, Genesis: "abc123"}); got != app.Alive {
+	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: alive.URL, Genesis: "abc123"}); got.Liveness != app.Alive || got.PID != 4242 {
 		t.Fatalf("a resident answering for this workroom probed %v", got)
 	}
-	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: alive.URL, Genesis: "another"}); got != app.Ambiguous {
+	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: alive.URL, Genesis: "another"}); got.Liveness != app.Ambiguous {
 		t.Fatalf("a port answering for another workroom probed %v; it must not authorize a takeover", got)
 	}
 
@@ -157,7 +157,7 @@ func TestProbeResidentTreatsOnlyARefusedDialAsDefinitive(t *testing.T) {
 		_, _ = writer.Write([]byte("this is not the identity answer"))
 	}))
 	defer silent.Close()
-	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: silent.URL, Genesis: "abc123"}); got != app.Ambiguous {
+	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: silent.URL, Genesis: "abc123"}); got.Liveness != app.Ambiguous {
 		t.Fatalf("an unparseable answer probed %v", got)
 	}
 
@@ -179,7 +179,7 @@ func TestProbeResidentTreatsOnlyARefusedDialAsDefinitive(t *testing.T) {
 	}()
 	brief, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 	defer cancel()
-	if got := client.ProbeResident(brief, app.ResidentClaim{URL: "http://" + hung.Addr().String(), Genesis: "abc123"}); got != app.Ambiguous {
+	if got := client.ProbeResident(brief, app.ResidentClaim{URL: "http://" + hung.Addr().String(), Genesis: "abc123"}); got.Liveness != app.Ambiguous {
 		t.Fatalf("a hung listener probed %v", got)
 	}
 
@@ -192,8 +192,44 @@ func TestProbeResidentTreatsOnlyARefusedDialAsDefinitive(t *testing.T) {
 	if err := dead.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: "http://" + address, Genesis: "abc123"}); got != app.Dead {
+	if got := client.ProbeResident(ctx, app.ResidentClaim{URL: "http://" + address, Genesis: "abc123"}); got.Liveness != app.Dead {
 		t.Fatalf("a refused dial probed %v; stale-owner recovery depends on it", got)
+	}
+}
+
+func TestProbeResidentAcceptsFutureIdentityFieldsButRetainsFailureBoundaries(t *testing.T) {
+	ctx := context.Background()
+	for name, fixture := range map[string]struct {
+		status  int
+		body    string
+		want    app.Liveness
+		wantPID int
+	}{
+		"future field":       {body: `{"genesis":"abc123","pid":4242,"future":{"enabled":true}}`, want: app.Alive, wantPID: 4242},
+		"malformed JSON":     {body: `{"genesis":`, want: app.Ambiguous},
+		"trailing JSON":      {body: `{"genesis":"abc123"} {}`, want: app.Ambiguous},
+		"empty genesis":      {body: `{"genesis":"","pid":4242}`, want: app.Ambiguous},
+		"mismatched genesis": {body: `{"genesis":"another","pid":4242}`, want: app.Ambiguous},
+		"HTTP refusal":       {status: http.StatusServiceUnavailable, body: `{"error":"not ready"}`, want: app.Ambiguous},
+		"oversized response": {body: `{"genesis":"abc123","padding":"` + strings.Repeat("x", int(IdentityLimit)) + `"}`, want: app.Ambiguous},
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.Method != http.MethodGet || request.URL.Path != "/v0/identity" {
+					t.Errorf("probe request = %s %s", request.Method, request.URL.Path)
+				}
+				if fixture.status != 0 {
+					writer.WriteHeader(fixture.status)
+				}
+				_, _ = writer.Write([]byte(fixture.body))
+			}))
+			defer server.Close()
+
+			got := NewWithHTTP(server.Client(), time.Second).ProbeResident(ctx, app.ResidentClaim{URL: server.URL, Genesis: "abc123"})
+			if got.Liveness != fixture.want || got.PID != fixture.wantPID {
+				t.Fatalf("probe = %+v, want liveness %v pid %d", got, fixture.want, fixture.wantPID)
+			}
+		})
 	}
 }
 
@@ -210,7 +246,7 @@ func TestProbeResidentRefusesToDialAnythingButLoopback(t *testing.T) {
 		"http://127.0.0.1:7777/v0/act",
 		"",
 	} {
-		if got := client.ProbeResident(context.Background(), app.ResidentClaim{URL: url, Genesis: "abc123"}); got != app.Ambiguous {
+		if got := client.ProbeResident(context.Background(), app.ResidentClaim{URL: url, Genesis: "abc123"}); got.Liveness != app.Ambiguous {
 			t.Errorf("claim URL %q probed %v; it must not be dialled or believed", url, got)
 		}
 	}

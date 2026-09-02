@@ -33,7 +33,8 @@ const (
 	SubmissionResponseLimit int64 = 2 << 20
 
 	// IdentityLimit bounds the liveness answer. The whole reply is one short
-	// hex string, so anything larger is not a resident answering.
+	// hex string and an optional process id, so anything larger is not a
+	// resident answering.
 	IdentityLimit int64 = 4 << 10
 )
 
@@ -189,6 +190,18 @@ func (c *Client) Delete(ctx context.Context, baseURL, path string) error {
 }
 
 func (c *Client) doJSON(ctx context.Context, method, baseURL, path string, value any, limit int64, target any) error {
+	return c.decodeJSON(ctx, method, baseURL, path, value, limit, target, true)
+}
+
+// identityJSON is deliberately the only forward-compatible object decoder.
+// The liveness endpoint is shared by independently deployed binaries, so a
+// newer resident may add facts that an older starter does not need. All other
+// resident response schemas remain strict.
+func (c *Client) identityJSON(ctx context.Context, baseURL string, target any) error {
+	return c.decodeJSON(ctx, http.MethodGet, baseURL, "/v0/identity", nil, IdentityLimit, target, false)
+}
+
+func (c *Client) decodeJSON(ctx context.Context, method, baseURL, path string, value any, limit int64, target any, rejectUnknown bool) error {
 	data, response, err := c.read(ctx, method, baseURL, path, value, limit)
 	if err != nil {
 		return err
@@ -197,7 +210,9 @@ func (c *Client) doJSON(ctx context.Context, method, baseURL, path string, value
 		return responseError(response, data)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
+	if rejectUnknown {
+		decoder.DisallowUnknownFields()
+	}
 	if err := decoder.Decode(target); err != nil {
 		return err
 	}
@@ -301,24 +316,25 @@ func responseError(response *http.Response, data []byte) error {
 // repository can put a URL into, so the address is untrusted input and goes
 // through the same loopback validation as every other resident call. Dialing
 // whatever it named would turn starting a service into a request forgery.
-func (c *Client) ProbeResident(ctx context.Context, claim app.ResidentClaim) app.Liveness {
+func (c *Client) ProbeResident(ctx context.Context, claim app.ResidentClaim) app.ResidentProbe {
 	base, err := ValidateURL(claim.URL)
 	if err != nil {
-		return app.Ambiguous
+		return app.ResidentProbe{Liveness: app.Ambiguous}
 	}
 	var identity struct {
 		Genesis string `json:"genesis"`
+		PID     int    `json:"pid"`
 	}
-	if err := c.GetJSON(ctx, base, "/v0/identity", IdentityLimit, &identity); err != nil {
+	if err := c.identityJSON(ctx, base, &identity); err != nil {
 		if errors.Is(err, syscall.ECONNREFUSED) {
-			return app.Dead
+			return app.ResidentProbe{Liveness: app.Dead}
 		}
-		return app.Ambiguous
+		return app.ResidentProbe{Liveness: app.Ambiguous}
 	}
 	if identity.Genesis == "" || identity.Genesis != claim.Genesis {
-		return app.Ambiguous
+		return app.ResidentProbe{Liveness: app.Ambiguous}
 	}
-	return app.Alive
+	return app.ResidentProbe{Liveness: app.Alive, PID: identity.PID}
 }
 
 // Submit sequences a fully signed request through the named resident, or

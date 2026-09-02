@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 )
@@ -183,6 +185,11 @@ const (
 	// moving under us is a repository other processes are starting on, and
 	// spinning there would trade a clear refusal for an unbounded wait.
 	claimAttempts = 8
+
+	// releaseRetryDelay gives a transient update-ref lock time to clear during
+	// orderly shutdown. Release has a different purpose from acquisition
+	// contention, so it retries until the caller's cleanup context expires.
+	releaseRetryDelay = 25 * time.Millisecond
 )
 
 // ResidentClaim is the ownership record a serving process holds. The nonce is
@@ -210,13 +217,20 @@ const (
 	Dead
 )
 
+// ResidentProbe is one bounded liveness answer. PID is advisory and is set
+// only when the service itself returned it; it never authorizes takeover.
+type ResidentProbe struct {
+	Liveness Liveness
+	PID      int
+}
+
 // Prober answers whether the resident a claim names is still serving. It is
 // supplied by the caller rather than reached from here: the client that knows
 // how to speak to a resident is built on this package, and it also owns the
 // duty to refuse any address that is not loopback, because a claim is an
 // ordinary file that any local process able to write the repository can put
 // a URL into.
-type Prober func(context.Context, ResidentClaim) Liveness
+type Prober func(context.Context, ResidentClaim) ResidentProbe
 
 // ResidentOwnership is a held claim. It carries the exact object id this
 // process wrote, which is the only thing that can withdraw it.
@@ -225,10 +239,20 @@ type ResidentOwnership struct {
 	ref       string
 	blob      string
 	claim     ResidentClaim
+	reclaimed *ResidentClaim
 }
 
 // Claim reports what this process published as its ownership record.
 func (o *ResidentOwnership) Claim() ResidentClaim { return o.claim }
+
+// Reclaimed reports the dead claim this acquisition replaced. The serving
+// command uses it to make automatic recovery visible to its operator.
+func (o *ResidentOwnership) Reclaimed() (ResidentClaim, bool) {
+	if o == nil || o.reclaimed == nil {
+		return ResidentClaim{}, false
+	}
+	return *o.reclaimed, true
+}
 
 // ResidentHeldError refuses to serve because ownership could not be taken
 // safely. Serving anyway would split leased presence and ephemeral
@@ -237,6 +261,7 @@ func (o *ResidentOwnership) Claim() ResidentClaim { return o.claim }
 type ResidentHeldError struct {
 	Ref      string
 	URL      string
+	PID      int
 	Reason   string
 	Recovery string
 }
@@ -244,12 +269,93 @@ type ResidentHeldError struct {
 func (e *ResidentHeldError) Error() string {
 	message := "refusing to serve: " + e.Reason
 	if e.URL != "" {
-		message += " (" + e.URL + ")"
+		message += " (" + e.URL
+		if e.PID > 0 {
+			message += fmt.Sprintf(", pid %d", e.PID)
+		}
+		message += ")"
+	} else if e.PID > 0 {
+		message += fmt.Sprintf(" (pid %d)", e.PID)
 	}
 	if e.Recovery != "" {
 		message += "; " + e.Recovery
 	}
 	return message
+}
+
+func residentRecovery(ref string) string {
+	return "last-resort override: first prove no service is answering; deleting a live service's claim can start a second resident and race the log; only then remove the claim with `git update-ref -d " + ref + "`"
+}
+
+func unreadableResident(ref, observed string, err error) error {
+	return &ResidentHeldError{
+		Ref:      ref,
+		Reason:   fmt.Sprintf("the ownership claim at %s (%s) cannot be read as a claim: %v", ref, observed, err),
+		Recovery: residentRecovery(ref),
+	}
+}
+
+func heldResident(ref string, incumbent ResidentClaim, answer ResidentProbe) error {
+	switch answer.Liveness {
+	case Alive:
+		return &ResidentHeldError{
+			Ref: ref, URL: incumbent.URL, PID: answer.PID,
+			Reason: "another service already holds this repository's workroom and is answering",
+		}
+	default:
+		return &ResidentHeldError{
+			Ref: ref, URL: incumbent.URL,
+			Reason:   "the service holding this repository could not be shown to be gone, so its claim is left alone",
+			Recovery: residentRecovery(ref),
+		}
+	}
+}
+
+// ResidentVacancy is a one-use liveness proof bound to one repository and one
+// exact claim position. Its private pointer makes copies share the consumed
+// bit: only CheckResident can produce one, and only one ClaimResidentAfter CAS
+// attempt can spend it.
+type ResidentVacancy struct {
+	proof *residentVacancyProof
+}
+
+type residentVacancyProof struct {
+	commonDir string
+	ref       string
+	observed  string
+	reclaimed *ResidentClaim
+	consumed  atomic.Bool
+}
+
+// CheckResident is the read-only pre-bind half of starting a resident. It
+// makes a live or ambiguous incumbent visible before binding the requested
+// port, which matters when the incumbent already owns that same port. On a
+// vacancy it returns a proof authorizing one exact post-bind CAS attempt.
+// Neither that proof nor a bound listener authorizes serving; only the
+// ownership returned by ClaimResidentAfter does.
+func (w *Workspace) CheckResident(ctx context.Context, probe Prober) (*ResidentVacancy, error) {
+	if probe == nil {
+		return nil, errors.New("checking a resident needs a prober; without one no incumbent could ever be tested")
+	}
+	ref := ResidentRef(w.config.Genesis)
+	observed, present, err := w.Store.RefValue(ctx, ref)
+	if err != nil {
+		return nil, fmt.Errorf("read resident claim %s: %w", ref, err)
+	}
+	if !present {
+		return &ResidentVacancy{proof: &residentVacancyProof{commonDir: w.CommonDir, ref: ref}}, nil
+	}
+	incumbent, err := w.readResidentClaim(ctx, observed)
+	if err != nil {
+		return nil, unreadableResident(ref, observed, err)
+	}
+	answer := probe(ctx, incumbent)
+	if answer.Liveness == Dead {
+		return &ResidentVacancy{proof: &residentVacancyProof{
+			commonDir: w.CommonDir, ref: ref, observed: observed, reclaimed: &incumbent,
+		}}, nil
+	}
+	return nil, heldResident(ref, incumbent, answer)
 }
 
 // ClaimResident takes exclusive ownership of this repository's resident, and
@@ -266,6 +372,19 @@ func (e *ResidentHeldError) Error() string {
 // costs one operator a message naming the recovery step; starting anyway costs
 // everybody a silently divided room.
 func (w *Workspace) ClaimResident(ctx context.Context, url string, probe Prober) (*ResidentOwnership, error) {
+	return w.claimResident(ctx, url, probe, nil)
+}
+
+// ClaimResidentAfter consumes one pre-bind vacancy proof. It attempts exactly
+// one compare-and-swap against the position CheckResident observed. If that
+// position moved, the proof is spent and acquisition falls back to the normal
+// read, probe, and CAS loop. Holding the returned ownership, not the proof,
+// authorizes serving.
+func (w *Workspace) ClaimResidentAfter(ctx context.Context, url string, probe Prober, vacancy *ResidentVacancy) (*ResidentOwnership, error) {
+	return w.claimResident(ctx, url, probe, vacancy)
+}
+
+func (w *Workspace) claimResident(ctx context.Context, url string, probe Prober, vacancy *ResidentVacancy) (*ResidentOwnership, error) {
 	if w.config.ReadOnly {
 		return nil, errors.New("a read-only attachment cannot own a resident")
 	}
@@ -277,7 +396,22 @@ func (w *Workspace) ClaimResident(ctx context.Context, url string, probe Prober)
 		return nil, errors.New("a resident claim needs the address it is serving")
 	}
 	ref := ResidentRef(w.config.Genesis)
-	recovery := "if you are certain no service is running, remove the claim with `git update-ref -d " + ref + "`"
+	if vacancy != nil {
+		if vacancy.proof == nil || vacancy.proof.commonDir != w.CommonDir || vacancy.proof.ref != ref {
+			return nil, errors.New("resident vacancy proof belongs to another repository")
+		}
+		if !vacancy.proof.consumed.CompareAndSwap(false, true) {
+			return nil, errors.New("resident vacancy proof was already consumed")
+		}
+		ownership, taken, err := w.takeResident(ctx, ref, address, vacancy.proof.observed)
+		if err != nil {
+			return nil, err
+		}
+		if taken {
+			ownership.reclaimed = vacancy.proof.reclaimed
+			return ownership, nil
+		}
+	}
 	for attempt := 0; attempt < claimAttempts; attempt++ {
 		observed, present, err := w.Store.RefValue(ctx, ref)
 		if err != nil {
@@ -295,35 +429,24 @@ func (w *Workspace) ClaimResident(ctx context.Context, url string, probe Prober)
 		}
 		incumbent, err := w.readResidentClaim(ctx, observed)
 		if err != nil {
-			return nil, &ResidentHeldError{
-				Ref:      ref,
-				Reason:   fmt.Sprintf("the ownership claim at %s (%s) cannot be read as a claim: %v", ref, observed, err),
-				Recovery: recovery,
-			}
+			return nil, unreadableResident(ref, observed, err)
 		}
-		switch probe(ctx, incumbent) {
+		answer := probe(ctx, incumbent)
+		switch answer.Liveness {
 		case Alive:
-			return nil, &ResidentHeldError{
-				Ref:    ref,
-				URL:    incumbent.URL,
-				Reason: "another service already holds this repository's workroom and is answering",
-			}
+			return nil, heldResident(ref, incumbent, answer)
 		case Dead:
 			ownership, taken, err := w.takeResident(ctx, ref, address, observed)
 			if err != nil {
 				return nil, err
 			}
 			if taken {
+				ownership.reclaimed = &incumbent
 				return ownership, nil
 			}
 			continue
 		default:
-			return nil, &ResidentHeldError{
-				Ref:      ref,
-				URL:      incumbent.URL,
-				Reason:   "the service holding this repository could not be shown to be gone, so its claim is left alone",
-				Recovery: recovery,
-			}
+			return nil, heldResident(ref, incumbent, answer)
 		}
 	}
 	return nil, &ResidentHeldError{
@@ -392,11 +515,31 @@ func (w *Workspace) readResidentClaim(ctx context.Context, oid string) (Resident
 // a correctness requirement — a claim left behind by a crash costs the next
 // starter one refused dial, because no claim is ever trusted as live without a
 // probe.
-func (o *ResidentOwnership) Release(ctx context.Context) {
+func (o *ResidentOwnership) Release(ctx context.Context) error {
 	if o == nil {
-		return
+		return nil
 	}
-	_ = o.workspace.Store.DeleteRef(ctx, o.ref, o.blob)
+	var last error
+	for {
+		if err := o.workspace.Store.DeleteRef(ctx, o.ref, o.blob); err == nil {
+			return nil
+		} else {
+			last = err
+		}
+		current, present, err := o.workspace.Store.RefValue(ctx, o.ref)
+		if err != nil {
+			last = err
+		} else if !present || current != o.blob {
+			// Absence means the delete landed despite a lost reply. A different
+			// object belongs to a successor and must be left in place.
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("release resident claim %s: %w", o.ref, errors.Join(last, ctx.Err()))
+		case <-time.After(releaseRetryDelay):
+		}
+	}
 }
 
 func newResidentNonce() (string, error) {
