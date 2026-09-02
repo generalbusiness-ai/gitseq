@@ -177,10 +177,11 @@ type Artifact struct {
 }
 
 // LeftLiveAccounting is one merge receipt's prospective testimony about an
-// artifact it did not retire. Class is sibling or abandoned. A sibling names
-// the unsettled commitment which protected the artifact at receipt time;
-// abandoned asserts that no such commitment existed. Reason is present only
-// when the fold could not verify the testimony.
+// artifact it did not retire. Class is carried, sibling, or abandoned. A
+// carried artifact is a wider current pointer in the target world; a sibling
+// names the unsettled commitment which protected an outside-world candidate;
+// abandoned asserts that no such candidate protection existed. Reason is
+// present only when the fold could not verify the testimony.
 type LeftLiveAccounting struct {
 	Artifact   string `json:"artifact"`
 	Class      string `json:"class"`
@@ -1584,6 +1585,14 @@ func (f *foldState) validateMergeLeftLiveNow(receipt *parsedRecord, raw string, 
 			entry.path = path
 			entry.successor = f.leftLiveSuccessor(receipt, path)
 			switch claim.Class {
+			case "carried":
+				if claim.Commitment != "" {
+					entry.Reason = "carried testimony must not name a commitment"
+				} else if entry.successor != "" && (path == entry.successor || !pathCovers(path, entry.successor)) {
+					entry.Reason = "carried artifact is not wider than its landed successor"
+				} else {
+					entry.Verified = true
+				}
 			case "sibling":
 				if claim.Commitment == "" {
 					entry.Reason = "sibling testimony names no commitment"
@@ -1603,7 +1612,7 @@ func (f *foldState) validateMergeLeftLiveNow(receipt *parsedRecord, raw string, 
 					entry.Verified = true
 				}
 			default:
-				entry.Reason = "class must be sibling or abandoned"
+				entry.Reason = "class must be carried, sibling, or abandoned"
 			}
 		}
 		if entry.Verified {

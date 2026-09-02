@@ -326,8 +326,10 @@ live.
 
 | Situation | Enforced result |
 |---|---|
-| One live path covers the change | One successor is published at that exact string. In-target predecessors are retired; other candidates are accounted for and stay live. |
-| A directory and something inside it both cover one changed file | The wider directory wins. One successor is published there; every covered artifact is retired or accounted for. |
+| One live exact path covers an added or modified file, or a rename destination | One successor is published at that exact changed string. In-target predecessors at that string are retired; other candidates are accounted for and stay live. |
+| A directory and something inside it both cover a landed path | The exact changed path receives the successor. An in-target wider pointer stays live as carried, with no cleanup obligation; outside-target candidates are siblings or abandoned. |
+| A rename source or deleted file is removed | Its exact old path is retired with no successor there. Because removal changes covering directories, in-target directory pointers may be retired and the widest directory successor published. |
+| An in-target wider pointer covers a landed destination | It stays live and `Gitseq-Left-Live` records it as carried. It creates no cleanup obligation. |
 | A non-target candidate has an unsettled commitment naming its head or reaching its artifact | It stays live and `Gitseq-Left-Live` records it as a sibling with the protecting commitment. |
 | A non-target candidate has no unsettled commitment | It stays live and `Gitseq-Left-Live` records it as abandoned. Its author or a `ratifier` owes the bare supersession. |
 | Testimony names a settled, mismatched, or unknown commitment | The receipt remains effective and grants no extra authority. The testimony is unverified and the successor keeps its succession warning. |
@@ -352,15 +354,16 @@ an unrelated live artifact at `dir/b` part of a merge that changed only
 `dir/a`.
 
 `Gitseq-Left-Live:` carries deterministic JSON matching the durable
-`merge_left_live` body field. It maps each artifact event to either
-`{"class":"sibling","commitment":"<event id>"}` or
+`merge_left_live` body field. It maps each artifact event to
+`{"class":"carried"}`, `{"class":"sibling","commitment":"<event id>"}`, or
 `{"class":"abandoned"}`. The field grants no retirement authority. The fold
 checks both it and the sealed changed-path frontier from durable log facts at
 the receipt position and uses them only to make the published successor's
 accounting stable. The recorded classification remains historical evidence;
 the current owed-supersession count stops suppressing a sibling once its named
-commitment settles or retires. Receipts without both prospective fields parse
-and project exactly as before.
+commitment settles or retires. A carried pointer remains current and never
+enters that cleanup count. Receipts without both prospective fields parse and
+project exactly as before.
 
 ### Citations across a merge
 
@@ -479,8 +482,10 @@ claim.
 whatever stands beneath it, and nothing above it. An approval reviewing
 `docs/how-to/x.md` reaches another actor's pointer at that exact path and not
 one at bare `docs`, because the wider pointer speaks for trees the head never
-put in front of the reviewer. Reaching upward was the older reading, and it let
-a merge that reviewed a leaf claim the tree containing it. The fold's own
+put in front of the reviewer. The wider in-target pointer is carried and needs
+no retirement authority; a wider outside-target candidate remains with its
+author. Reaching upward was the older reading, and it let a merge that reviewed
+a leaf claim the tree containing it. The fold's own
 lineage test is unchanged and still reads both directions; this is the command
 holding itself to the narrower rule while the target is still where it was. It
 governs merges run from here on. No sealed receipt is reinterpreted.

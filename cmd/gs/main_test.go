@@ -1579,8 +1579,19 @@ func TestMergeRefusesUnrecordableReceiptBeforeMovingHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.changedPaths) != 181 || len(plan.publish) != 2 || len(plan.retire) != 2 || len(plan.leftLive) != 0 {
+	if len(plan.changedPaths) != 181 || len(plan.publish) != 181 || len(plan.retire) != 1 || len(plan.leftLive) != 1 {
 		t.Fatalf("oversized frontier plan = changed %d publish %d retire %d left-live %d", len(plan.changedPaths), len(plan.publish), len(plan.retire), len(plan.leftLive))
+	}
+	var extraArtifact string
+	for _, artifact := range before.Projection.Artifacts {
+		if artifact.Path == "extra" {
+			extraArtifact = artifact.Event
+			break
+		}
+	}
+	if extraArtifact == "" || !maps.Equal(plan.leftLive,
+		map[string]mergeLeftLive{extraArtifact: {Class: leftLiveCarried}}) {
+		t.Fatalf("oversized frontier left-live accounting = %#v, want carried target tree", plan.leftLive)
 	}
 	if len(changedPaths) <= ceiling {
 		t.Fatalf("changed-path seal is %d bytes, want more than %d-byte ceiling", len(changedPaths), ceiling)
@@ -2424,6 +2435,70 @@ func buildNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, stri
 	return f, candidate, approval, stranger.Record.ID, nested.Record.ID
 }
 
+func buildRemovedNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, string) {
+	t.Helper()
+	f := newWorkflowFixture(t)
+	removedPath := filepath.Join("docs", "how-to", "x.md")
+	if err := os.MkdirAll(filepath.Join(f.repo, "docs", "how-to"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.repo, removedPath), []byte("remove me\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, f.repo, "add", removedPath)
+	testGit(t, f.repo, "commit", "-m", "add the page that the candidate removes")
+	targetPreHead := testGit(t, f.repo, "rev-parse", "HEAD")
+	testGit(t, f.feature, "merge", "--no-edit", "main")
+	if err := os.Remove(filepath.Join(f.feature, removedPath)); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, f.feature, "add", "-u", "--", removedPath)
+	testGit(t, f.feature, "commit", "-m", "remove the nested page")
+	candidate := testGit(t, f.feature, "rev-parse", "HEAD")
+
+	if _, err := f.workspace.Act(f.ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "another actor's covering pointer",
+		Body:    map[string]string{"path": "docs", "commit": targetPreHead},
+		RestsOn: []string{f.workspace.EventID(f.workspace.View().Genesis)}, IdempotencyKey: "stranger-covering-removed-docs",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "implementation removes the nested page",
+		Body:    map[string]string{"path": removedPath, "commit": candidate},
+		RestsOn: []string{f.ground}, IdempotencyKey: "removed-nested-reviewed-artifact",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review the nested deletion",
+		Body:    map[string]string{"to": f.workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head"},
+		RestsOn: []string{removed.Record.ID}, IdempotencyKey: "removed-nested-review-request",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	promise, err := f.workspace.Act(f.ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "I will review the exact nested deletion head",
+		RestsOn: []string{request.Record.ID}, IdempotencyKey: "removed-nested-review-promise",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reviewCommand(f.ctx, []string{
+		"--repo", f.repo, "--as", "reviewer", "--checkout", f.feature,
+		"--artifact", removed.Record.ID, "--promise", promise.Record.ID,
+		"--verdict", "approved", "--text", "APPROVED exact deletion head",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	statements := f.snapshot(t).Projection.Statements
+	approval := statements[len(statements)-1].Event
+	f.ratify(t, approval)
+	return f, candidate, approval
+}
+
 // The regression this repair fixes, end to end in the direction the reviewer
 // filed it. A receipt sealed while reach read both directions — here, one
 // whose plan naturally retires another actor's pointer at bare `docs` above
@@ -2433,7 +2508,7 @@ func buildNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, stri
 // re-merging would reinterpret what was sealed instead of resuming it.
 func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t *testing.T) {
 	t.Parallel()
-	f, candidate, approval, stranger, nested := buildNestedCrossAuthorApproval(t)
+	f, candidate, approval, _, nested := buildNestedCrossAuthorApproval(t)
 	targetPreHead := testGit(t, f.repo, "rev-parse", "HEAD")
 	changes, err := mergeChangesBetween(f.ctx, f.repo, targetPreHead, candidate)
 	if err != nil {
@@ -2443,12 +2518,12 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 	predecessors := successionPredecessors(f.ctx, f.repo, snapshot.Projection, changes, targetPreHead, candidate)
 	sealed := planSuccession(snapshot.Projection, changes, predecessors)
 	// The exact shape the receipt owes: one successor at each published path
-	// and a supersession per retired predecessor, both cross-author pointers
-	// above the reviewed leaf retiring to the wider `docs` path.
-	if !slices.Equal(sealed.publish, []string{"docs", "feature.txt"}) {
-		t.Fatalf("sealed publish paths = %v, want [docs feature.txt]", sealed.publish)
+	// and a supersession only for the exact-path predecessor. The wider pointer
+	// above the reviewed leaf is carried rather than retired.
+	if !slices.Equal(sealed.publish, []string{"docs/how-to/x.md", "feature.txt"}) {
+		t.Fatalf("sealed publish paths = %v, want [docs/how-to/x.md feature.txt]", sealed.publish)
 	}
-	wantRetire := map[string]string{stranger: "docs", nested: "docs"}
+	wantRetire := map[string]string{nested: "docs/how-to/x.md"}
 	if !maps.Equal(sealed.retire, wantRetire) {
 		t.Fatalf("sealed retirements = %v, want %v", sealed.retire, wantRetire)
 	}
@@ -2463,9 +2538,8 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 	// What was sealed really does sit outside today's prospective reach, so
 	// only the fold's unchanged authority can carry it.
 	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, sealed, approval,
-		f.workspace.View().Actors["operator"].Fingerprint); err == nil ||
-		!strings.Contains(err.Error(), "outside the reviewed paths") {
-		t.Fatalf("sealed plan against the current guard error = %v, want a refusal", err)
+		f.workspace.View().Actors["operator"].Fingerprint); err != nil {
+		t.Fatalf("sealed exact-path plan against the current guard: %v", err)
 	}
 
 	before := f.snapshot(t).Depth
@@ -2504,13 +2578,10 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 	}
 }
 
-// The other half, through the command itself rather than the guard function:
-// a fresh merge whose natural plan reaches above the reviewed path is refused
-// in preflight — after the temporary receipt reservation and tentative merge
-// staging, but before HEAD moves and before any durable workroom record is
-// appended — leaving HEAD and the durable log unchanged and cleaning the
-// temporary reservation up.
-func TestMergeFreshPreflightRefusesACrossAuthorPointerAboveTheReviewedPath(t *testing.T) {
+// A wider pointer covering only a landed destination stays live and is sealed
+// in the receipt. It is not a retirement, so the directional guard has no
+// reason to refuse the merge.
+func TestMergeFreshPreflightAllowsAWiderPointerAtALandedDestination(t *testing.T) {
 	t.Parallel()
 	f, candidate, approval, _, _ := buildNestedCrossAuthorApproval(t)
 	beforeHead := testGit(t, f.repo, "rev-parse", "HEAD")
@@ -2519,20 +2590,52 @@ func TestMergeFreshPreflightRefusesACrossAuthorPointerAboveTheReviewedPath(t *te
 	err := mergeCommand(f.ctx, []string{
 		"--repo", f.repo, "--as", "operator", "--checkout", f.repo,
 		"--candidate", candidate, "--approval", approval,
-		"--text", "The reviewed leaf must not claim the directory holding it.",
+		"--text", "Merge the reviewed leaf without retiring its wider directory.",
+	})
+	if err != nil {
+		t.Fatalf("fresh exact-path merge: %v", err)
+	}
+	if got := testGit(t, f.repo, "rev-parse", "HEAD"); got == beforeHead {
+		t.Fatal("exact-path merge did not move the target")
+	}
+	if _, err := git(f.ctx, f.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err != nil {
+		t.Fatalf("merged exact-path receipt was not sealed: %v", err)
+	}
+	if after := f.snapshot(t); after.Depth <= before.Depth {
+		t.Fatalf("merged exact-path receipt did not extend durable log: depth %d/%d", after.Depth, before.Depth)
+	}
+}
+
+// Removing a file changes its covering directory, so the plan retires and
+// republishes the widest covering pointer. Another actor's directory above the
+// reviewed path remains outside the directional authority bound.
+func TestMergeFreshPreflightRefusesACrossAuthorPointerAboveARemovedSource(t *testing.T) {
+	t.Parallel()
+	f, candidate, approval := buildRemovedNestedCrossAuthorApproval(t)
+	beforeHead := testGit(t, f.repo, "rev-parse", "HEAD")
+	before := f.snapshot(t)
+	if _, err := git(f.ctx, f.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
+		t.Fatal("receipt reservation existed before the merge attempt")
+	}
+
+	err := mergeCommand(f.ctx, []string{
+		"--repo", f.repo, "--as", "operator", "--checkout", f.repo,
+		"--candidate", candidate, "--approval", approval,
+		"--text", "Attempt to merge a reviewed deletion under another actor's directory.",
 	})
 	if err == nil || !strings.Contains(err.Error(), "outside the reviewed paths") {
-		t.Fatalf("fresh merge reaching above the reviewed path error = %v, want a refusal", err)
+		t.Fatalf("fresh deletion merge error = %v, want reviewed-path refusal", err)
 	}
 	if got := testGit(t, f.repo, "rev-parse", "HEAD"); got != beforeHead {
-		t.Fatalf("refused merge moved the target to %s, want %s", got, beforeHead)
+		t.Fatalf("refused deletion merge moved HEAD to %s, want %s", got, beforeHead)
+	}
+	after := f.snapshot(t)
+	if after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("refused deletion merge changed workroom: before=%s/%d after=%s/%d",
+			before.Head, before.Depth, after.Head, after.Depth)
 	}
 	if _, err := git(f.ctx, f.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
-		t.Fatal("refused fresh merge left its temporary receipt reservation behind")
-	}
-	if after := f.snapshot(t); after.Head != before.Head || after.Depth != before.Depth {
-		t.Fatalf("refused fresh merge changed the durable log: head %s/%s depth %d/%d",
-			after.Head, before.Head, after.Depth, before.Depth)
+		t.Fatal("refused deletion merge left the receipt reservation behind")
 	}
 }
 
