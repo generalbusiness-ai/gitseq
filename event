@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c3c9aa5f1b9f3530e9335fff6b9852d21948c7f8","text":"Retire the internal/app report at 8d30745d (changes requested at de2a3d70); replaced by the repaired head dc2965fa (artifact 00ded1b2)."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ba6120b05f0ee16f122ebe96d106a68c09c616be","text":"Retire the internal/workroom artifact at 8d30745d; replaced by the repaired head dc2965fa (artifact eada9c16)."}
