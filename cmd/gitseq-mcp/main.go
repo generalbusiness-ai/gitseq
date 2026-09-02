@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -23,6 +24,7 @@ import (
 	nexus "github.com/generalbusiness-ai/gitseq/host/live"
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
@@ -133,19 +135,63 @@ type protocolMeta struct {
 // and the presence heartbeat reads them while a call is in flight, so they are
 // held behind a lock that is never kept across a request.
 type room struct {
-	workspace *app.Workspace
+	workspace   *app.Workspace
+	actor       string
+	fingerprint string
 
 	mu         sync.Mutex
 	baseURL    string
 	credential string
 	announced  bool
 	inbox      bool
+	// validatedHead is the exact durable frontier at which this actor's live
+	// participant standing was last proved. A stable head keeps later calls
+	// off the projection; movement requires one fresh bounded orientation (or
+	// the verified local fallback) before the binding can be reused.
+	validatedHead string
 	// identityNoticeChecked records that this process has already looked for
 	// other live sessions using its actor identity in this workroom. The check
 	// runs before this session announces itself; repeating it afterwards would
 	// count this session in its own warning.
 	identityNoticeChecked bool
 }
+
+// roomSelection keeps repository generation and actor selection together. A
+// selected path can be a symlink that later points elsewhere, and a common Git
+// directory can be reinitialised under a new genesis, so neither path alone is
+// a room identity. Resident state is reusable only across checkouts with the
+// same freshly opened common directory, genesis, selector, and fingerprint.
+type roomSelection struct {
+	path        string
+	commonDir   string
+	genesis     string
+	actor       string
+	fingerprint string
+	keyFile     string
+}
+
+// selectedIdentity is one call's custody proof. The key is loaded once,
+// matched to the configured fingerprint, and then carried to every mutation
+// in that call so validation and signing cannot observe different key files.
+type selectedIdentity struct {
+	workspace   *app.Workspace
+	selector    string
+	actor       apphost.Actor
+	private     ed25519.PrivateKey
+	orientation *service.Orientation
+	local       *app.SourcedSnapshot
+}
+
+// selectionError preserves the underlying error class for callers that need
+// to distinguish unknown custody from unreadable custody without disclosing a
+// configured key path in the adapter's public error text.
+type selectionError struct {
+	message string
+	cause   error
+}
+
+func (e *selectionError) Error() string { return e.message }
+func (e *selectionError) Unwrap() error { return e.cause }
 
 // resolveEndpoint names the service to use, re-reading the repository's
 // published address whenever the last one is gone, so a service started or
@@ -300,6 +346,18 @@ func (r *room) markSharedIdentityNoticeChecked() {
 	r.identityNoticeChecked = true
 }
 
+func (r *room) standingIsCurrent(head string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return head != "" && r.validatedHead == head
+}
+
+func (r *room) rememberValidatedHead(head string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.validatedHead = head
+}
+
 type mcpServer struct {
 	era       protocolEra
 	actor     string
@@ -307,10 +365,11 @@ type mcpServer struct {
 	client    *residentclient.Client
 	notices   io.Writer
 	deadlines residentDeadlinePolicy
+	open      func(context.Context, string) (*app.Workspace, error)
 
 	roomsMu     sync.Mutex
-	byPath      map[string]*room
-	byCommonDir map[string]*room
+	byPath      map[roomSelection]*room
+	byCommonDir map[roomSelection]*room
 }
 
 // actorEnvironment is how a concurrent instance is told which provisioned
@@ -360,8 +419,9 @@ func newServer(actor, repo string) *mcpServer {
 		client:      newResidentClient(),
 		notices:     os.Stderr,
 		deadlines:   defaultResidentDeadlines,
-		byPath:      map[string]*room{},
-		byCommonDir: map[string]*room{},
+		open:        app.Open,
+		byPath:      map[roomSelection]*room{},
+		byCommonDir: map[roomSelection]*room{},
 	}
 }
 
@@ -615,43 +675,44 @@ func tools() []map[string]any {
 	stringField := map[string]string{"type": "string"}
 	enum := func(values ...string) map[string]any { return map[string]any{"type": "string", "enum": values} }
 	arrayOf := func(item map[string]any) map[string]any { return map[string]any{"type": "array", "items": item} }
-	// Every tool names the workroom it acts in the same way, because the
-	// adapter serves whatever repository it is pointed at rather than one
-	// repository chosen when it was installed.
+	// Every tool names the workroom and signing identity it acts through in the
+	// same way. Both are selectors over resources the process can already
+	// access; neither grants access or creates an identity.
 	repoField := map[string]string{"type": "string", "description": "Repository whose workroom this call acts in; defaults to the working directory the adapter was started in."}
-	withRepo := func(properties map[string]any) map[string]any {
-		fields := map[string]any{"repo": repoField}
+	agentField := map[string]string{"type": "string", "description": "Actor whose existing accessible key signs this call; defaults to startup --actor."}
+	withSelection := func(properties map[string]any) map[string]any {
+		fields := map[string]any{"repo": repoField, "agent": agentField}
 		for name, schema := range properties {
 			fields[name] = schema
 		}
 		return fields
 	}
 	definitions := []map[string]any{
-		{"name": "whoami", "description": "Show the configured durable actor and selected workroom without disclosing the resident credential.", "inputSchema": object(withRepo(nil))},
-		{"name": "presence", "description": "Inspect leased presence, or update this session's advisory activity. Focus does not claim or complete work.", "inputSchema": object(withRepo(map[string]any{
+		{"name": "whoami", "description": "Show the selected durable actor and workroom without disclosing its key or resident credential.", "inputSchema": object(withSelection(nil))},
+		{"name": "presence", "description": "Inspect leased presence, or update this session's advisory activity. Focus does not claim or complete work.", "inputSchema": object(withSelection(map[string]any{
 			"status": map[string]any{"type": "string", "enum": []string{"available", "busy", "waiting", "blocked"}},
 			"focus":  map[string]any{"type": "array", "items": stringField, "maxItems": nexus.MaxFocusEvents},
 			"note":   map[string]any{"type": "string", "maxLength": nexus.MaxActivityNoteBytes},
 		}))},
-		{"name": "status", "description": "Project durable work and this session's priority ephemeral chat; awaiting_ratification contains standing proposals this actor's roles may ratify, and available_to_you contains open unclaimed requests addressed to this actor.", "inputSchema": object(withRepo(nil))},
-		{"name": "wait", "description": "Long-poll after a composite cursor; repeats unacknowledged priority ephemeral chat until ack is called.", "inputSchema": object(withRepo(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
-		{"name": "work", "description": "Query the current actor's durable work through a bounded resident-side projection. Defaults return work still owed, including standing proposals this actor may ratify and addressed unclaimed requests; closed commitments carrying only ordinary staleness are counted in closed_stale_omitted instead of listed. Pass stale=include or name statuses to list them.", "inputSchema": object(withRepo(map[string]any{
+		{"name": "status", "description": "Project durable work and this session's priority ephemeral chat; awaiting_ratification contains standing proposals this actor's roles may ratify, and available_to_you contains open unclaimed requests addressed to this actor.", "inputSchema": object(withSelection(nil))},
+		{"name": "wait", "description": "Long-poll after a composite cursor; repeats unacknowledged priority ephemeral chat until ack is called.", "inputSchema": object(withSelection(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
+		{"name": "work", "description": "Query the current actor's durable work through a bounded resident-side projection. Defaults return work still owed, including standing proposals this actor may ratify and addressed unclaimed requests; closed commitments carrying only ordinary staleness are counted in closed_stale_omitted instead of listed. Pass stale=include or name statuses to list them.", "inputSchema": object(withSelection(map[string]any{
 			"lanes":    arrayOf(enum("available_to_you", "awaiting_ratification", "waiting_on_you", "you_are_waiting_on", "not_actionable")),
 			"statuses": arrayOf(enum("open", "promised", "reported", "awaiting-merge", "awaiting-ratification", "superseded", "satisfied", "stale", "cancelled", "reneged", "withdrawn")),
 			"stale":    enum("summary", "include", "only", "exclude"),
 			"limit":    map[string]any{"type": "integer", "minimum": 1, "maximum": statusview.WorkPageMax},
 			"cursor":   stringField,
 		}))},
-		{"name": "artifacts", "description": "Page through live artifact bases at exact path strings without fetching the full projection.", "inputSchema": object(withRepo(map[string]any{
+		{"name": "artifacts", "description": "Page through live artifact bases at exact path strings without fetching the full projection.", "inputSchema": object(withSelection(map[string]any{
 			"paths":  map[string]any{"type": "array", "items": stringField, "minItems": 1, "maxItems": statusview.ArtifactPathMax},
 			"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": statusview.ArtifactPageMax},
 			"cursor": stringField,
 		}), "paths")},
-		{"name": "inspect", "description": "Inspect one exact canonical durable event with its decision, commitment chain, direct provenance, and related review artifacts.", "inputSchema": object(withRepo(map[string]any{"event": stringField}), "event")},
-		{"name": "say", "description": "Publish signed ephemeral chat. Unique @name mentions and exact replies address live recipient sessions for priority delivery.", "inputSchema": object(withRepo(map[string]any{"about": stringField, "text": stringField, "conversation": stringField, "re": stringField}), "about", "text")},
-		{"name": "ack", "description": "Acknowledge exact priority-chat thread handles for this leased session. This is not a durable read receipt.", "inputSchema": object(withRepo(map[string]any{"threads": map[string]any{"type": "array", "items": stringField, "maxItems": nexus.MaxInboxFrames}}), "threads")},
-		{"name": "state", "description": "Append a durable attributed utterance. Evidence values are embedded attachments. A request body addresses its performer as name, @name, or fingerprint; the signed event stores the fingerprint. allow_dead_basis rests on a retired basis anyway, signing body.dead_basis_override=true; a merely stale basis is admitted without it, with the staleness recorded in body.stale_bases.", "inputSchema": object(withRepo(map[string]any{"kind": stringField, "text": stringField, "body": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "rests_on": map[string]any{"type": "array", "items": stringField}, "evidence": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "allow_dead_basis": map[string]string{"type": "boolean"}, "idempotency_key": stringField}), "kind", "text", "rests_on")},
-		{"name": "review", "description": "File a guarded review verdict against an exact head. ack_head_news acknowledges durable statements sequenced after the review request that name this head or lane; missing, duplicate, or extraneous acknowledgments refuse.", "inputSchema": object(withRepo(map[string]any{
+		{"name": "inspect", "description": "Inspect one exact canonical durable event with its decision, commitment chain, direct provenance, and related review artifacts.", "inputSchema": object(withSelection(map[string]any{"event": stringField}), "event")},
+		{"name": "say", "description": "Publish signed ephemeral chat. Unique @name mentions and exact replies address live recipient sessions for priority delivery.", "inputSchema": object(withSelection(map[string]any{"about": stringField, "text": stringField, "conversation": stringField, "re": stringField}), "about", "text")},
+		{"name": "ack", "description": "Acknowledge exact priority-chat thread handles for this leased session. This is not a durable read receipt.", "inputSchema": object(withSelection(map[string]any{"threads": map[string]any{"type": "array", "items": stringField, "maxItems": nexus.MaxInboxFrames}}), "threads")},
+		{"name": "state", "description": "Append a durable attributed utterance. Evidence values are embedded attachments. A request body addresses its performer as name, @name, or fingerprint; the signed event stores the fingerprint. allow_dead_basis rests on a retired basis anyway, signing body.dead_basis_override=true; a merely stale basis is admitted without it, with the staleness recorded in body.stale_bases.", "inputSchema": object(withSelection(map[string]any{"kind": stringField, "text": stringField, "body": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "rests_on": map[string]any{"type": "array", "items": stringField}, "evidence": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "allow_dead_basis": map[string]string{"type": "boolean"}, "idempotency_key": stringField}), "kind", "text", "rests_on")},
+		{"name": "review", "description": "File a guarded review verdict against an exact head. ack_head_news acknowledges durable statements sequenced after the review request that name this head or lane; missing, duplicate, or extraneous acknowledgments refuse.", "inputSchema": object(withSelection(map[string]any{
 			"artifacts":       map[string]any{"type": "array", "items": stringField, "minItems": 1},
 			"promise":         stringField,
 			"verdict":         enum("approved", "changes-requested"),
@@ -659,9 +720,9 @@ func tools() []map[string]any {
 			"ack_head_news":   map[string]any{"type": "array", "items": stringField},
 			"idempotency_key": stringField,
 		}), "artifacts", "promise", "verdict", "text")},
-		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(withRepo(map[string]any{"target": stringField, "idempotency_key": stringField}), "target")},
-		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(withRepo(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}), "target", "text")},
-		{"name": "reassign_if_unclaimed", "description": "Retire one live, unclaimed request and publish its replacement as a guarded, resumable pair. Staleness is no bar; unrelated durable traffic is allowed; any promise or direct completion refuses.", "inputSchema": object(withRepo(map[string]any{
+		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(withSelection(map[string]any{"target": stringField, "idempotency_key": stringField}), "target")},
+		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(withSelection(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}), "target", "text")},
+		{"name": "reassign_if_unclaimed", "description": "Retire one live, unclaimed request and publish its replacement as a guarded, resumable pair. Staleness is no bar; unrelated durable traffic is allowed; any promise or direct completion refuses.", "inputSchema": object(withSelection(map[string]any{
 			"old_request":     stringField,
 			"to":              stringField,
 			"text":            stringField,
@@ -711,13 +772,24 @@ func absolute(repo string) string {
 // names, and the resident service is read from that repository, so an act can
 // never be posted to a service holding a different workroom.
 func (s *mcpServer) attend(ctx context.Context, repo string) (*room, error) {
-	current, err := s.attach(ctx, repo)
+	return s.attendAs(ctx, repo, s.actor)
+}
+
+func (s *mcpServer) attendAs(ctx context.Context, repo, actor string) (*room, error) {
+	current, err := s.attachAs(ctx, repo, actor)
 	if err != nil {
 		return nil, err
 	}
+	if err := s.attendRoom(ctx, current); err != nil {
+		return nil, err
+	}
+	return current, nil
+}
+
+func (s *mcpServer) attendRoom(ctx context.Context, current *room) error {
 	if !current.sharedIdentityNoticeChecked() {
 		if err := s.warnSharedIdentity(ctx, current); err != nil {
-			return nil, err
+			return err
 		}
 		current.markSharedIdentityNoticeChecked()
 	}
@@ -726,40 +798,253 @@ func (s *mcpServer) attend(ctx context.Context, repo string) (*room, error) {
 			current.joined()
 		}
 	}
-	return current, nil
+	return nil
 }
 
 func (s *mcpServer) attach(ctx context.Context, repo string) (*room, error) {
+	return s.attachAs(ctx, repo, s.actor)
+}
+
+func (s *mcpServer) attachAs(ctx context.Context, repo, actor string) (*room, error) {
 	path := s.repo
 	if strings.TrimSpace(repo) != "" {
 		path = absolute(repo)
 	}
-	s.roomsMu.Lock()
-	defer s.roomsMu.Unlock()
-	if existing, ok := s.byPath[path]; ok {
-		return existing, nil
-	}
-	workspace, err := app.Open(ctx, path)
+	workspace, err := s.open(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("no gitseq workroom for %s: %w", path, err)
 	}
-	// An actor another process adds after this session started must still be
-	// addressable here, so a name nobody knows yet does not refuse the
-	// session; it resolves per call. Only an unreadable custody record is a
-	// reason to refuse outright.
-	if _, err := workspace.ResolveActor(s.actor); err != nil && !errors.Is(err, app.ErrUnknownActor) {
-		return nil, fmt.Errorf("cannot address actor %q in the workroom for %s: %w", s.actor, path, err)
+	identity, err := s.validateSelection(ctx, workspace, actor)
+	if err != nil {
+		return nil, err
+	}
+	return s.attachIdentity(path, identity), nil
+}
+
+func (s *mcpServer) attachIdentity(path string, identity *selectedIdentity) *room {
+	commonDir := identity.workspace.CommonDir
+	genesis := identity.workspace.View().Genesis
+	selection := roomSelection{path: path, commonDir: commonDir, genesis: genesis, actor: identity.selector, fingerprint: identity.actor.Fingerprint, keyFile: identity.actor.KeyFile}
+	commonSelection := roomSelection{commonDir: commonDir, genesis: genesis, actor: identity.selector, fingerprint: identity.actor.Fingerprint, keyFile: identity.actor.KeyFile}
+	s.roomsMu.Lock()
+	defer s.roomsMu.Unlock()
+	// A selector remapped to another fingerprint starts a new custody session.
+	// Clear every older generation before either reusing or creating the newly
+	// validated room, including when configuration later rotates back. Rooms
+	// never hold a private key, and clearLease drops the only locally usable
+	// credential. The old advisory resident row may remain until its bounded
+	// lease expires; retaining a signer merely to depart it would cross the
+	// custody boundary this cache is meant to enforce.
+	for held, current := range s.byPath {
+		if held.path == selection.path && held.actor == selection.actor &&
+			(held.commonDir != selection.commonDir || held.genesis != selection.genesis || held.fingerprint != selection.fingerprint || held.keyFile != selection.keyFile) {
+			current.clearLease()
+		}
+	}
+	for held, current := range s.byCommonDir {
+		if held.commonDir == commonSelection.commonDir && held.actor == commonSelection.actor &&
+			(held.genesis != commonSelection.genesis || held.fingerprint != commonSelection.fingerprint || held.keyFile != commonSelection.keyFile) {
+			current.clearLease()
+		}
+	}
+	if existing, ok := s.byPath[selection]; ok {
+		existing.rememberValidatedHead(identityValidatedHead(identity))
+		return existing
 	}
 	// A linked worktree is a checkout of a repository, not a second workroom:
-	// two paths that share a common git directory share one attachment and one
-	// cached projection.
-	current, ok := s.byCommonDir[workspace.CommonDir]
+	// two paths share a room only while both the selected name and validated
+	// fingerprint still match.
+	current, ok := s.byCommonDir[commonSelection]
 	if !ok {
-		current = &room{workspace: workspace}
-		s.byCommonDir[workspace.CommonDir] = current
+		current = &room{workspace: identity.workspace, actor: identity.selector, fingerprint: identity.actor.Fingerprint, validatedHead: identityValidatedHead(identity)}
+		s.byCommonDir[commonSelection] = current
+	} else {
+		current.rememberValidatedHead(identityValidatedHead(identity))
 	}
-	s.byPath[path] = current
-	return current, nil
+	s.byPath[selection] = current
+	return current
+}
+
+func identityValidatedHead(identity *selectedIdentity) string {
+	if identity.orientation != nil {
+		return identity.orientation.Frontier.Head
+	}
+	if identity.local != nil {
+		return identity.local.Snapshot.Head
+	}
+	return ""
+}
+
+// cachedRoom resolves only the repository and its small custody record. It
+// deliberately does not reopen the application workspace: Open verifies the
+// immutable host binding by walking the first-parent log, which is correct on
+// the first attachment but an O(depth) tax on every later tool call. The
+// generation, configured fingerprint, and key path make a cache hit exact;
+// changing any of them takes the cold validation path and clears the old
+// lease in attachIdentity.
+func (s *mcpServer) cachedRoom(ctx context.Context, path, actorName string) (*room, bool, error) {
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, path)
+	if err != nil {
+		return nil, false, fmt.Errorf("no gitseq workroom for %s: %w", path, err)
+	}
+	config, err := apphost.LoadConfig(apphost.MetaDir(commonDir))
+	if err != nil {
+		return nil, false, fmt.Errorf("no gitseq workroom for %s: %w", path, err)
+	}
+	configured, ok := config.Actors[actorName]
+	if !ok {
+		return nil, false, nil
+	}
+	pathSelection := roomSelection{path: path, commonDir: commonDir, genesis: config.Genesis, actor: actorName, fingerprint: configured.Fingerprint, keyFile: configured.KeyFile}
+	commonSelection := pathSelection
+	commonSelection.path = ""
+
+	s.roomsMu.Lock()
+	defer s.roomsMu.Unlock()
+	if current := s.byPath[pathSelection]; current != nil {
+		return current, true, nil
+	}
+	if current := s.byCommonDir[commonSelection]; current != nil {
+		s.byPath[pathSelection] = current
+		return current, true, nil
+	}
+	return nil, false, nil
+}
+
+// selectedActor returns the startup actor only when the call omitted agent.
+// An explicitly empty or non-string selector is malformed, not permission to
+// fall back and sign as somebody else.
+func (s *mcpServer) selectedActor(call toolCall) (string, bool, error) {
+	raw, present := call.Arguments["agent"]
+	if !present {
+		return s.actor, false, nil
+	}
+	actor, ok := raw.(string)
+	if !ok || strings.TrimSpace(actor) == "" {
+		return "", true, errors.New("agent must name a configured actor; refusing to fall back to the startup actor")
+	}
+	return actor, true, nil
+}
+
+func selectedRepo(call toolCall) (string, bool, error) {
+	raw, present := call.Arguments["repo"]
+	if !present {
+		return "", false, nil
+	}
+	repo, ok := raw.(string)
+	if !ok || strings.TrimSpace(repo) == "" {
+		return "", true, errors.New("repo must name an accessible Gitseq workroom; refusing to fall back to the startup repository")
+	}
+	return repo, true, nil
+}
+
+// validateSelection loads one existing key, binds it to configuration, and
+// proves the same fingerprint is a current participant. The resident's
+// bounded orientation avoids a full local replay when available; verified
+// local state is the degraded fallback.
+func (s *mcpServer) validateSelection(ctx context.Context, workspace *app.Workspace, actorName string) (*selectedIdentity, error) {
+	actor, private, err := selectedActorCustody(workspace, actorName)
+	if err != nil {
+		return nil, err
+	}
+	actual := intent.ActorFingerprint(private.Public().(ed25519.PublicKey))
+	if actual != actor.Fingerprint {
+		return nil, fmt.Errorf("cannot use selected agent %q in %s: accessible key fingerprint %s does not match configured fingerprint %s", actorName, workspace.CommonDir, actual, actor.Fingerprint)
+	}
+	probe := &room{workspace: workspace, actor: actorName, fingerprint: actor.Fingerprint}
+	s.roomsMu.Lock()
+	if existing := s.byCommonDir[roomSelection{commonDir: workspace.CommonDir, genesis: workspace.View().Genesis, actor: actorName, fingerprint: actor.Fingerprint, keyFile: actor.KeyFile}]; existing != nil {
+		probe = existing
+	}
+	s.roomsMu.Unlock()
+	residentContext, cancel := context.WithTimeout(ctx, orientationTimeout)
+	var orientation service.Orientation
+	var residentErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		orientation, residentErr = s.currentResidentOrientation(residentContext, probe, actor.Fingerprint)
+		if residentErr == nil || residentContext.Err() != nil {
+			break
+		}
+	}
+	cancel()
+	if residentErr == nil {
+		return &selectedIdentity{workspace: workspace, selector: actorName, actor: actor, private: private, orientation: &orientation}, nil
+	}
+	durable, err := workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("cannot validate selected agent %q in %s: %w", actorName, workspace.CommonDir, err)
+	}
+	roster, ok := durable.Snapshot.Projection.Actors[actor.Fingerprint]
+	if !ok || roster.Retired || !containsString(roster.Roles, "participant") {
+		return nil, fmt.Errorf("cannot use selected agent %q in %s: actor is not a live participant in the effective durable roster", actorName, workspace.CommonDir)
+	}
+	return &selectedIdentity{workspace: workspace, selector: actorName, actor: actor, private: private, local: &durable}, nil
+}
+
+// selectedActorCustody reads the accessible key while keeping its path out of
+// public failures. errors.Is still sees ErrUnknownActor on a real miss and the
+// underlying filesystem error on broken custody.
+func selectedActorCustody(workspace *app.Workspace, actorName string) (apphost.Actor, ed25519.PrivateKey, error) {
+	actor, private, err := workspace.Actor(actorName)
+	if err == nil {
+		return actor, private, nil
+	}
+	message := fmt.Sprintf("cannot use selected agent %q in %s: existing actor key is not accessible", actorName, workspace.CommonDir)
+	if errors.Is(err, app.ErrUnknownActor) {
+		message = fmt.Sprintf("cannot use selected agent %q in %s: actor is not configured", actorName, workspace.CommonDir)
+	}
+	return apphost.Actor{}, nil, &selectionError{message: message, cause: err}
+}
+
+// revalidateSelection is the hot cache-hit path. It re-reads the selected key
+// for every call and proves that it still matches the exact cached binding.
+// An unchanged workroom head reuses the standing proof; movement triggers one
+// bounded resident orientation or the verified local fallback. Neither path
+// reopens or replays the immutable application binding.
+func (s *mcpServer) revalidateSelection(ctx context.Context, current *room) (*selectedIdentity, error) {
+	actor, private, err := selectedActorCustody(current.workspace, current.actor)
+	if err != nil {
+		return nil, err
+	}
+	actual := intent.ActorFingerprint(private.Public().(ed25519.PublicKey))
+	if actor.Fingerprint != current.fingerprint || actual != current.fingerprint {
+		return nil, fmt.Errorf("cannot use selected agent %q in %s: accessible key fingerprint %s does not match cached configured fingerprint %s", current.actor, current.workspace.CommonDir, actual, current.fingerprint)
+	}
+	identity := &selectedIdentity{workspace: current.workspace, selector: current.actor, actor: actor, private: private}
+	head, err := current.workspace.Store.Head(ctx, kernel.Ref(current.workspace.View().Genesis))
+	if err != nil {
+		return nil, fmt.Errorf("cannot validate selected agent %q in %s: %w", current.actor, current.workspace.CommonDir, err)
+	}
+	if current.standingIsCurrent(head) {
+		return identity, nil
+	}
+
+	residentContext, cancel := context.WithTimeout(ctx, orientationTimeout)
+	var orientation service.Orientation
+	var residentErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		orientation, residentErr = s.currentResidentOrientation(residentContext, current, actor.Fingerprint)
+		if residentErr == nil || residentContext.Err() != nil {
+			break
+		}
+	}
+	cancel()
+	if residentErr == nil {
+		identity.orientation = &orientation
+		current.rememberValidatedHead(orientation.Frontier.Head)
+		return identity, nil
+	}
+	durable, err := current.workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("cannot validate selected agent %q in %s: %w", current.actor, current.workspace.CommonDir, err)
+	}
+	roster, ok := durable.Snapshot.Projection.Actors[actor.Fingerprint]
+	if !ok || roster.Retired || !containsString(roster.Roles, "participant") {
+		return nil, fmt.Errorf("cannot use selected agent %q in %s: actor is not a live participant in the effective durable roster", current.actor, current.workspace.CommonDir)
+	}
+	identity.local = &durable
+	current.rememberValidatedHead(durable.Snapshot.Head)
+	return identity, nil
 }
 
 // call selects the room this invocation acts in, then dispatches. It returns
@@ -772,27 +1057,77 @@ func (s *mcpServer) attach(ctx context.Context, repo string) (*room, error) {
 // could hand back another repository's addressed inbox and leased focus. That
 // is a disclosure across a boundary the caller drew deliberately.
 func (s *mcpServer) call(ctx context.Context, call toolCall) (any, *room, error) {
-	var current *room
-	var err error
-	// Whoami's resident read has an explicit two-second bound. Attaching the
-	// selected repository is local; announcing presence is an independent live
-	// side effect and must not move outside that bound by stalling first.
-	if call.Name == "whoami" {
-		current, err = s.attach(ctx, stringValue(call.Arguments["repo"]))
+	repo, _, err := selectedRepo(call)
+	if err != nil {
+		return nil, nil, err
+	}
+	actor, _, err := s.selectedActor(call)
+	if err != nil {
+		return nil, nil, err
+	}
+	path := s.repo
+	if repo != "" {
+		path = absolute(repo)
+	}
+	current, cached, err := s.cachedRoom(ctx, path, actor)
+	if err != nil {
+		return nil, nil, err
+	}
+	var workspace *app.Workspace
+	if cached {
+		workspace = current.workspace
 	} else {
-		current, err = s.attend(ctx, stringValue(call.Arguments["repo"]))
+		workspace, err = s.open(ctx, path)
+		if err != nil {
+			return nil, nil, fmt.Errorf("no gitseq workroom for %s: %w", path, err)
+		}
+	}
+	// A durable mutation must refuse an untrusted resident advertisement before
+	// it reads any signing key. Besides preserving the fail-closed transport
+	// boundary, that ordering means a malformed record cannot be mistaken for a
+	// selected-actor custody failure. submit rechecks the same record after the
+	// validated room is attached and again before a local fallback, so this is a
+	// precedence check rather than a cached authorization.
+	if durableTool(call.Name) {
+		probe := &room{workspace: workspace, actor: actor}
+		if _, err := probe.durableEndpoint(); err != nil {
+			return nil, nil, untrustedAdvertisementRefusal(err)
+		}
+	}
+	var identity *selectedIdentity
+	if cached {
+		identity, err = s.revalidateSelection(ctx, current)
+	} else {
+		identity, err = s.validateSelection(ctx, workspace, actor)
+		if err == nil {
+			current = s.attachIdentity(path, identity)
+		}
 	}
 	if err != nil {
 		return nil, nil, err
 	}
-	value, err := s.dispatch(ctx, call, current)
+	if call.Name != "whoami" {
+		if err := s.attendRoom(ctx, current); err != nil {
+			return nil, current, err
+		}
+	}
+	value, err := s.dispatch(ctx, call, current, identity)
 	return value, current, err
 }
 
-func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) (any, error) {
+func durableTool(name string) bool {
+	switch name {
+	case "state", "review", "ratify", "supersede", "reassign_if_unclaimed":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, identity *selectedIdentity) (any, error) {
 	switch call.Name {
 	case "whoami":
-		return s.whoami(ctx, current)
+		return s.whoami(ctx, current, identity)
 	case "presence":
 		update := map[string]any{}
 		for _, field := range []string{"status", "focus", "note"} {
@@ -830,14 +1165,14 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 			if localErr != nil {
 				return nil, localErr
 			}
-			digest, err := s.digest(current, local, true)
-			if err != nil {
-				return nil, err
-			}
-			return digest, nil
+			return s.digest(current, local, true, identity), nil
 		}
 		if err != nil {
 			return nil, err
+		}
+		if status.You.Fingerprint != current.fingerprint {
+			s.revokeLease(ctx, current)
+			return nil, errors.New("resident status identity does not match the validated actor fingerprint")
 		}
 		return status, nil
 	case "wait":
@@ -851,11 +1186,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 			if localErr != nil {
 				return nil, localErr
 			}
-			fingerprint, err := s.fingerprint(current)
-			if err != nil {
-				return nil, err
-			}
-			return digestWait(local, requested, fingerprint, s.actor, true), nil
+			return digestWait(local, requested, identity.actor.Fingerprint, current.actor, true), nil
 		}
 		if err != nil {
 			return nil, err
@@ -865,14 +1196,11 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		var input statusview.WorkQuery
 		arguments := clone(call.Arguments)
 		delete(arguments, "repo")
+		delete(arguments, "agent")
 		if err := remarshal(arguments, &input); err != nil {
 			return nil, err
 		}
-		fingerprint, err := s.fingerprint(current)
-		if err != nil {
-			return nil, err
-		}
-		input.Actor = fingerprint
+		input.Actor = identity.actor.Fingerprint
 		var page statusview.WorkPage
 		if err := s.postBoundedJSON(ctx, current, "/v0/work-query", input, laneResponseLimit(current, workResponseLimit, statusview.WorkPageMax), &page); err != nil {
 			if !isTransportError(err) {
@@ -889,6 +1217,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 		var input statusview.ArtifactQuery
 		arguments := clone(call.Arguments)
 		delete(arguments, "repo")
+		delete(arguments, "agent")
 		if err := remarshal(arguments, &input); err != nil {
 			return nil, err
 		}
@@ -947,23 +1276,23 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room) 
 			evidence[name] = []byte(content)
 		}
 		allowDead, _ := call.Arguments["allow_dead_basis"].(bool)
-		return s.submit(ctx, current, app.Act{Verb: app.VerbState, Kind: workroom.Kind(kind), Text: text, Body: body, RestsOn: rests, Attachments: evidence, IdempotencyKey: stringValue(call.Arguments["idempotency_key"]), AllowDeadBasis: allowDead})
+		return s.submit(ctx, current, app.Act{Verb: app.VerbState, Kind: workroom.Kind(kind), Text: text, Body: body, RestsOn: rests, Attachments: evidence, IdempotencyKey: stringValue(call.Arguments["idempotency_key"]), AllowDeadBasis: allowDead}, identity)
 	case "review":
-		return s.review(ctx, current, call)
+		return s.review(ctx, current, call, identity)
 	case "ratify":
 		target := stringValue(call.Arguments["target"])
-		return s.submit(ctx, current, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
+		return s.submit(ctx, current, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: stringValue(call.Arguments["idempotency_key"])}, identity)
 	case "supersede":
 		target := stringValue(call.Arguments["target"])
-		return s.submit(ctx, current, app.Act{Verb: app.VerbSupersede, Target: target, Text: stringValue(call.Arguments["text"]), RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: stringValue(call.Arguments["idempotency_key"])})
+		return s.submit(ctx, current, app.Act{Verb: app.VerbSupersede, Target: target, Text: stringValue(call.Arguments["text"]), RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: stringValue(call.Arguments["idempotency_key"])}, identity)
 	case "reassign_if_unclaimed":
-		return s.reassignIfUnclaimed(ctx, current, call)
+		return s.reassignIfUnclaimed(ctx, current, call, identity)
 	default:
 		return nil, fmt.Errorf("unknown tool %q", call.Name)
 	}
 }
 
-func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call toolCall) (any, error) {
+func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call toolCall, identity *selectedIdentity) (any, error) {
 	oldRequest := stringValue(call.Arguments["old_request"])
 	key := stringValue(call.Arguments["idempotency_key"])
 	if oldRequest == "" || stringValue(call.Arguments["to"]) == "" || stringValue(call.Arguments["text"]) == "" || stringValue(call.Arguments["conditions"]) == "" || key == "" {
@@ -976,7 +1305,7 @@ func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call
 	retirement, err := s.submit(ctx, current, app.Act{
 		Verb: app.VerbRetireIfUnclaimed, Target: oldRequest, Text: retirementText,
 		IdempotencyKey: key + "/retirement",
-	})
+	}, identity)
 	if err != nil {
 		return nil, err
 	}
@@ -991,7 +1320,7 @@ func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call
 			"to": stringValue(call.Arguments["to"]), "conditions": stringValue(call.Arguments["conditions"]),
 		},
 		RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: key + "/request",
-	})
+	}, identity)
 	if err != nil {
 		return nil, fmt.Errorf("guarded retirement %s landed or replayed, but its replacement was refused: %w; re-read the old request before retrying", retirementRecord.ID, err)
 	}
@@ -1029,12 +1358,27 @@ func laneResponseLimit(current *room, base int64, rows int) int64 {
 	return base + int64(ceiling*uint64(rows))
 }
 
-func (s *mcpServer) whoami(ctx context.Context, current *room) (any, error) {
-	actor, err := current.workspace.ResolveActor(s.actor)
-	if err != nil {
-		return nil, err
-	}
+func (s *mcpServer) whoami(ctx context.Context, current *room, identity *selectedIdentity) (any, error) {
+	actor := identity.actor
 	view := current.workspace.View()
+	if identity.orientation != nil {
+		return map[string]any{
+			"actor": publicActor(actor), "durable": identity.orientation.You, "protocol": protocolVersion,
+			"repo": current.workspace.CommonDir, "genesis": view.Genesis,
+			"frontier": identity.orientation.Frontier, "source": residentOrientationSource, "degraded": false,
+		}, nil
+	}
+	if identity.local != nil {
+		orientation, ok := statusview.BuildOrientation(identity.local.Snapshot, actor.Fingerprint, actor.Name)
+		if !ok {
+			return nil, errors.New("configured actor is not in the effective durable roster")
+		}
+		return map[string]any{
+			"actor": publicActor(actor), "durable": orientation.You, "protocol": protocolVersion,
+			"repo": current.workspace.CommonDir, "genesis": view.Genesis,
+			"frontier": orientation.Frontier, "source": string(identity.local.Source), "degraded": true,
+		}, nil
+	}
 	residentContext, cancel := context.WithTimeout(ctx, orientationTimeout)
 	defer cancel()
 	for attempt := 0; attempt < 2; attempt++ {
@@ -1113,7 +1457,7 @@ func containsString(values []string, wanted string) bool {
 // again at sequencing against the frontier this surface confirmed. The MCP
 // surface holds no working tree, so the reviewed head comes from the durable
 // artifact row rather than from a checkout.
-func (s *mcpServer) review(ctx context.Context, current *room, call toolCall) (any, error) {
+func (s *mcpServer) review(ctx context.Context, current *room, call toolCall, identity *selectedIdentity) (any, error) {
 	cited, err := reviewguard.CheckCitations(stringSlice(call.Arguments["artifacts"]))
 	if err != nil {
 		return nil, err
@@ -1131,18 +1475,15 @@ func (s *mcpServer) review(ctx context.Context, current *room, call toolCall) (a
 	// three-read choreography with its exact-set, same-read, acknowledgment,
 	// and build checks, exactly as the command line runs it.
 	read := func() (reviewguard.Basis, []reviewguard.News, workroom.Projection, error) {
-		snapshot, err := current.workspace.Snapshot(ctx)
-		if err != nil {
-			return reviewguard.Basis{}, nil, workroom.Projection{}, err
-		}
-		actor, err := current.workspace.ResolveActor(s.actor)
+		workspace := identity.workspace
+		snapshot, err := workspace.Snapshot(ctx)
 		if err != nil {
 			return reviewguard.Basis{}, nil, workroom.Projection{}, err
 		}
 		basis, news, err := reviewguard.ReviewBasis(reviewguard.Read{
 			Projection:          snapshot.Projection,
-			ReviewerFingerprint: actor.Fingerprint,
-			FrontierEvent:       current.workspace.EventID(snapshot.Head),
+			ReviewerFingerprint: identity.actor.Fingerprint,
+			FrontierEvent:       workspace.EventID(snapshot.Head),
 			NoCheckout:          true,
 		}, cited[0], promise)
 		return basis, news, snapshot.Projection, err
@@ -1155,7 +1496,7 @@ func (s *mcpServer) review(ctx context.Context, current *room, call toolCall) (a
 		Verb: app.VerbState, Kind: workroom.KindReport, Text: text,
 		Body: body, RestsOn: restsOn, GuardedReview: true,
 		IdempotencyKey: stringValue(call.Arguments["idempotency_key"]),
-	})
+	}, identity)
 }
 
 // untrustedAdvertisementRefusal is what a durable call says when it will not
@@ -1177,22 +1518,21 @@ func untrustedAdvertisementRefusal(reason error) error {
 // refuses. The refusal is per call: the room, its attachment and its session
 // survive it, and the next call resolves the record again, so repairing or
 // removing it is all it takes to carry on.
-func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any, error) {
+func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act, identity *selectedIdentity) (any, error) {
 	base, err := current.durableEndpoint()
 	if err != nil {
 		return nil, untrustedAdvertisementRefusal(err)
 	}
-	_, private, err := current.workspace.Actor(s.actor)
-	if err != nil {
-		return nil, err
+	if len(identity.private) == 0 {
+		return nil, errors.New("selected identity has no signing key")
 	}
-	request, err := current.workspace.BuildActRequest(ctx, private, s.actor, act)
+	request, err := identity.workspace.BuildActRequest(ctx, identity.private, identity.selector, act)
 	if err != nil {
 		return nil, err
 	}
 	if base != "" {
 		requestContext, cancel := context.WithTimeout(ctx, s.deadlineFor("/v0/submit"))
-		submission, err := s.client.Submit(requestContext, current.workspace, base, request)
+		submission, err := s.client.Submit(requestContext, identity.workspace, base, request)
 		cancel()
 		if err == nil {
 			value := map[string]any{"result": submission.Result, "record": submission.Record}
@@ -1214,7 +1554,7 @@ func (s *mcpServer) submit(ctx context.Context, current *room, act app.Act) (any
 			return nil, fmt.Errorf("the resident did not answer this act (%v), and the local fold is not an honest substitute for it: %w; repair or remove that record and act again, or fold locally on purpose with `gs` and --server -", err, recheck)
 		}
 	}
-	submission, err := current.workspace.AcceptSubmission(ctx, request)
+	submission, err := identity.workspace.AcceptSubmission(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -1427,12 +1767,12 @@ func reviewOf(projection workroom.Projection, event string) (workroom.Review, bo
 //
 // It is made once per workroom, before this session announces itself there.
 func (s *mcpServer) warnSharedIdentity(ctx context.Context, current *room) error {
-	actor, err := current.workspace.ResolveActor(s.actor)
+	actor, err := current.workspace.ResolveActor(current.actor)
 	if err != nil {
 		fmt.Fprintln(s.noticeWriter(), "gitseq-mcp: shared-identity check skipped:", err)
 		return nil
 	}
-	value, err := s.get(ctx, current, "/v0/presence-count?actor="+url.QueryEscape(s.actor))
+	value, err := s.get(ctx, current, "/v0/presence-count?actor="+url.QueryEscape(current.actor))
 	if isTransportError(err) {
 		fmt.Fprintln(s.noticeWriter(), "gitseq-mcp: shared-identity check skipped; the resident service is unavailable:", err)
 		return nil
@@ -1491,7 +1831,7 @@ func (s *mcpServer) registerInbox(ctx context.Context, current *room) error {
 // HTTP creation response is consumed here and the credential never enters an
 // MCP tool result, diagnostic, log, URL or cross-repository field.
 func (s *mcpServer) announceUpdate(ctx context.Context, current *room, update map[string]any) (any, error) {
-	request := map[string]any{"actor": s.actor, "ttl_ms": 30000}
+	request := map[string]any{"actor": current.actor, "ttl_ms": 30000}
 	for name, value := range update {
 		request[name] = value
 	}
@@ -1519,17 +1859,30 @@ func (s *mcpServer) announceUpdate(ctx context.Context, current *room, update ma
 		}
 		current.setCredential(credential)
 	}
+	var status actorStatus
+	if err := s.postBoundedJSON(ctx, current, "/v0/actor-status", map[string]any{"credential": current.credentialValue()}, laneResponseLimit(current, actorStatusResponseLimit, statusview.ListCap), &status); err != nil || status.You.Fingerprint != current.fingerprint {
+		s.revokeLease(ctx, current)
+		return nil, errors.New("resident credential identity does not match the validated actor fingerprint")
+	}
 	current.joined()
 	return response["change"], nil
+}
+
+func (s *mcpServer) revokeLease(ctx context.Context, current *room) {
+	credential := current.credentialValue()
+	if credential != "" {
+		_, _ = s.post(ctx, current, "/v0/presence/depart", map[string]any{"credential": credential})
+	}
+	current.clearLease()
 }
 
 func sayNeedsInbox(arguments map[string]any) bool {
 	return stringValue(arguments["re"]) != "" || service.HasMentionToken(stringValue(arguments["text"]))
 }
 
-// attended lists the workrooms this session has joined. Presence is a property
-// of a workroom, so a session that has acted in two of them must be renewed
-// and withdrawn in both.
+// attended lists the repository-and-actor rooms this adapter has joined. Each
+// selection owns a distinct lease, so all of them must be renewed and
+// withdrawn independently.
 func (s *mcpServer) attended() []*room {
 	s.roomsMu.Lock()
 	defer s.roomsMu.Unlock()
@@ -1551,6 +1904,12 @@ func (s *mcpServer) heartbeat(ctx context.Context, errorsTo io.Writer) {
 			return
 		case <-ticker.C:
 			for _, current := range s.attended() {
+				identity, err := s.revalidateSelection(ctx, current)
+				if err != nil || identity.actor.Fingerprint != current.fingerprint {
+					s.revokeLease(ctx, current)
+					fmt.Fprintln(errorsTo, "gitseq-mcp: presence renewal stopped; selected identity is no longer valid")
+					continue
+				}
 				if err := s.announce(ctx, current); err != nil {
 					fmt.Fprintln(errorsTo, "gitseq-mcp: presence renewal degraded:", err)
 				}
@@ -1803,11 +2162,13 @@ func clone(input map[string]any) map[string]any {
 	return output
 }
 
-// repo selects the adapter attachment. It is not part of any resident service
-// request, whose strict decoders accept only the endpoint's own wire fields.
+// repo and agent select the adapter attachment. They are not part of any
+// resident service request, whose strict decoders accept only the endpoint's
+// own wire fields.
 func residentArguments(input map[string]any) map[string]any {
 	output := clone(input)
 	delete(output, "repo")
+	delete(output, "agent")
 	return output
 }
 
@@ -1887,7 +2248,10 @@ const maxAttentionEvents = 32
 // two ways a caller comes to be looking at it.
 func attentionEvents(call toolCall, result any) []string {
 	var scanned []byte
-	if encoded, err := json.Marshal(call.Arguments); err == nil {
+	arguments := clone(call.Arguments)
+	delete(arguments, "repo")
+	delete(arguments, "agent")
+	if encoded, err := json.Marshal(arguments); err == nil {
 		scanned = append(scanned, encoded...)
 	}
 	if result != nil {

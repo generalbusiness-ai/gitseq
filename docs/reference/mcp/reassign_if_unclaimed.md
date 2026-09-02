@@ -29,6 +29,7 @@ or completed it.
 | `rests_on` | optional | Additional current bases for the replacement request. |
 | `idempotency_key` | required | Stable base key used to derive resumable keys for both acts. |
 | `repo` | optional | The repository whose workroom this call acts in. |
+| `agent` | optional | The actor whose existing accessible key signs both guarded acts; defaults to startup `--actor`. |
 
 ## Example
 

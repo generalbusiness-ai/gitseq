@@ -85,15 +85,24 @@ export function ticketsOf(projection?: Projection): Map<string, number> {
   return map;
 }
 
-// "For you": durable effective acts addressed to me — a mention in
-// body.mentions or a request whose body.to is my fingerprint — newer than
-// the given watermark ticket, oldest first. My own acts are not news to me.
 export interface ForYouItem {
   event: string;
   ticket: number;
+  /** Who addressed you, as a fingerprint; the caller knows how to name it. */
+  actor: string;
+  kind: string;
+  text: string;
+  /** Why this is yours: a request put to you, or a mention of you. */
+  reason: "request" | "mention";
 }
 
-export function forYouItems(projection: Projection | undefined, me: string | undefined, watermark: number): ForYouItem[] {
+// "For you": every effective durable act addressed to me, a request whose
+// body.to is my fingerprint or an act whose body.mentions names me, newest
+// first. My own acts are not news to me. Every such act is returned, read or
+// not: read position is a browser-local opinion and belongs to whoever is
+// displaying the list, so one function answers "what was addressed to me"
+// and another answers "what have I looked at".
+export function forYouItems(projection: Projection | undefined, me: string | undefined): ForYouItem[] {
   if (!projection || !me) return [];
   const effective = new Set(projection.decisions.filter((d) => d.verdict === "effective").map((d) => d.event));
   const tickets = ticketsOf(projection);
@@ -104,8 +113,57 @@ export function forYouItems(projection: Projection | undefined, me: string | und
     const requested = statement.kind === "request" && statement.body?.to === me;
     if (!mentioned && !requested) continue;
     const ticket = tickets.get(statement.event);
-    if (!ticket || ticket <= watermark) continue;
-    items.push({ event: statement.event, ticket });
+    if (!ticket) continue;
+    items.push({
+      event: statement.event,
+      ticket,
+      actor: statement.actor,
+      kind: statement.kind,
+      text: statement.text,
+      // A request addressed to you is owed work; a mention is only a pointer.
+      // When an act is both, the heavier reading is the true one.
+      reason: requested ? "request" : "mention",
+    });
   }
-  return items.sort((a, b) => a.ticket - b.ticket);
+  return items.sort((a, b) => b.ticket - a.ticket);
+}
+
+// A read position is a watermark plus the tickets read out of order above
+// it. A single watermark cannot say "I opened the third one and not the first
+// two" without silently burying the first two, and a list the reader can see
+// is exactly where that would be a lie. Storage stays small because any
+// contiguous run of read tickets collapses back into the watermark.
+export interface ForYouRead {
+  watermark: number;
+  read: number[];
+}
+
+export const NOTHING_READ: ForYouRead = { watermark: 0, read: [] };
+
+// What is still unread, given a read position. Kept next to forYouItems so
+// the two cannot drift about what a ticket means.
+export function unreadForYou(items: ForYouItem[], read: ForYouRead): ForYouItem[] {
+  const individually = new Set(read.read);
+  return items.filter((item) => item.ticket > read.watermark && !individually.has(item.ticket));
+}
+
+function collapse(all: number[], watermark: number, read: Set<number>): ForYouRead {
+  let mark = watermark;
+  for (const ticket of [...all].sort((a, b) => a - b)) {
+    if (ticket <= mark) continue;
+    if (!read.has(ticket)) break;
+    mark = ticket;
+    read.delete(ticket);
+  }
+  return { watermark: mark, read: [...read].sort((a, b) => a - b) };
+}
+
+export function markForYouRead(all: number[], read: ForYouRead, ticket: number): ForYouRead {
+  if (ticket <= read.watermark) return read;
+  return collapse(all, read.watermark, new Set([...read.read, ticket]));
+}
+
+export function markAllForYouRead(all: number[], read: ForYouRead): ForYouRead {
+  const highest = all.reduce((max, ticket) => Math.max(max, ticket), read.watermark);
+  return { watermark: highest, read: [] };
 }

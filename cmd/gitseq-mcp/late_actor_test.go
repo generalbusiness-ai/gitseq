@@ -2,25 +2,22 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
-// A session that opened its workspace before an actor existed addresses that
-// actor once another process adds it: fingerprint resolution goes through
-// ResolveActor, so the fresh custody record is consulted on the miss and the
-// adapter answers with the new actor's fingerprint instead of the empty
-// string that means "matches nothing". Reverting the adapter to read the
-// cached view alone fails this test by name.
+// A selector that initially names no actor succeeds after another process adds
+// that actor. A refused selection never seeds the binding cache, so the next
+// call takes the cold validation path and sees the new custody record.
 func TestAdapterResolvesActorAddedAfterSessionStart(t *testing.T) {
 	ctx := context.Background()
 	workspace, _ := signedWorkspace(t, 1)
 	server := newServer("late", workspace.Repo)
-	room := &room{workspace: workspace}
-	if got, err := server.fingerprint(room); got != "" || err != nil {
-		t.Fatalf("fingerprint before the actor exists = (%q, %v), want empty with no error", got, err)
+	if _, _, err := server.call(ctx, toolCall{Name: "whoami"}); !errors.Is(err, app.ErrUnknownActor) {
+		t.Fatalf("whoami before the actor exists = %v, want unknown actor", err)
 	}
 	external, err := app.Open(ctx, workspace.Repo)
 	if err != nil {
@@ -30,8 +27,13 @@ func TestAdapterResolvesActorAddedAfterSessionStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := server.fingerprint(room); got != added.Fingerprint || err != nil {
-		t.Fatalf("fingerprint after the actor was added = (%q, %v), want %s", got, err, added.Fingerprint)
+	value, _, err := server.call(ctx, toolCall{Name: "whoami"})
+	if err != nil {
+		t.Fatalf("whoami after the actor was added: %v", err)
+	}
+	actor := value.(map[string]any)["actor"].(map[string]string)
+	if actor["fingerprint"] != added.Fingerprint {
+		t.Fatalf("whoami after the actor was added = %v, want %s", actor, added.Fingerprint)
 	}
 }
 

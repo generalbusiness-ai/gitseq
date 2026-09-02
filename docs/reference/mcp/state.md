@@ -23,6 +23,7 @@ appends is permanent.
 | `allow_dead_basis` | optional | Rest on a retired basis anyway, signing `dead_basis_override=true`. Testimony that you saw it, not a repair of it. A merely stale basis needs no argument; see below. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `agent` | optional | The actor whose existing accessible key signs this statement; defaults to startup `--actor`. |
 
 `rests_on` is required by the schema — an act citing nothing is almost
 always a mistake, and requiring the field makes that a decision rather
