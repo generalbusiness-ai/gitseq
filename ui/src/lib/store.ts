@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, type Actor, type Cursor, type Projection, type Status } from "./api";
+import { projectName } from "./title";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
 
 export interface Workroom {
   status?: Status;
   repo?: string; // absolute path of the checkout this service is serving
+  project?: string; // the repository's folder name, for the tab title
   repoRemote?: string; // that repository's remote, when one is safe to link
   actors: Actor[];
   offline: boolean;
@@ -22,6 +24,7 @@ export interface Workroom {
 export function useWorkroom(): Workroom {
   const [status, setStatus] = useState<Status>();
   const [repo, setRepo] = useState<string>();
+  const [project, setProject] = useState<string>();
   const [repoRemote, setRepoRemote] = useState<string>();
   const [actors, setActors] = useState<Actor[]>([]);
   const [offline, setOffline] = useState(false);
@@ -44,6 +47,7 @@ export function useWorkroom(): Workroom {
         .then((local) => {
           if (stopped) return;
           setRepo(local.repo || undefined);
+          setProject(projectName(local));
           setRepoRemote(local.remote || undefined);
         })
         .catch(() => {});
@@ -67,7 +71,7 @@ export function useWorkroom(): Workroom {
     };
   }, []);
 
-  return { status, repo, repoRemote, actors, offline };
+  return { status, repo, project, repoRemote, actors, offline };
 }
 
 // Ticket numbers: every durable event's 1-based position in log order.
