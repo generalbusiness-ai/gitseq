@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact repaired merge-plan MCP tests at cmd/gitseq-mcp/main_test.go, carried onto current main basis with all requested gates passing.","body":{"commit":"b424b752e0d822d32c316306f0ac03fe32a5cdaf","path":"cmd/gitseq-mcp/main_test.go"}}
+{"kind":"artifact","text":"Exact repaired documentation index at docs/README.md, carried onto current main basis with the merge-plan references verified.","body":{"commit":"b424b752e0d822d32c316306f0ac03fe32a5cdaf","path":"docs/README.md"}}
