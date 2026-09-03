@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact-head application-boundary artifact for read-only snapshot and request construction used by merge planning.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"internal/app/app.go"}}
+{"kind":"artifact","text":"Exact-head application-boundary regression artifact for read-only merge-plan support.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"internal/app/app_test.go"}}
