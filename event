@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact-head MCP adapter artifact for the repaired read-only merge-plan surface. The MCP schema keeps structured authorization outside this tool.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"cmd/gitseq-mcp/main.go"}}
+{"kind":"artifact","text":"Exact-head MCP regression artifact. It pins the absent authorization argument and proves merge_plan appends no durable act.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"cmd/gitseq-mcp/main_test.go"}}
