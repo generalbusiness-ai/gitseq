@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fb55b46254bb924afe0e16beffe20198fb121210","text":"Merge retired a covered predecessor; the successor is at cmd/gs/succession.go."}
+{"kind":"promise","text":"I will implement the bounded post-merge hardening: disable hooks in the disposable evaluator clone with a marker regression, add mutation-sensitive mergeplan liveness tests, remove dead uniqueStandingBasis, run the required gates, publish exact-head artifacts, and obtain independent review before merge."}
