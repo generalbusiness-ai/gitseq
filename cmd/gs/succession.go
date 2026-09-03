@@ -9,34 +9,13 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
-type mergeChange struct {
-	status string
-	old    string
-	new    string
-}
-
-func sharedChanges(changes []mergeChange) []mergeplan.Change {
-	shared := make([]mergeplan.Change, len(changes))
-	for index, change := range changes {
-		shared[index] = mergeplan.Change{Status: change.status, Old: change.old, New: change.new}
-	}
-	return shared
-}
-
-func localChanges(changes []mergeplan.Change) []mergeChange {
-	local := make([]mergeChange, len(changes))
-	for index, change := range changes {
-		local[index] = mergeChange{status: change.Status, old: change.Old, new: change.New}
-	}
-	return local
-}
+type mergeChange = mergeplan.Change
 
 // mergeChanges reads the merge commit rather than the candidate branch. That
 // distinction matters when Git's merge result includes a conflict resolution:
@@ -63,68 +42,21 @@ func stagedMergeChanges(ctx context.Context, checkout string) ([]mergeChange, er
 
 var readStagedMergeChanges = stagedMergeChanges
 
-func validateMergeChangePaths(changes []mergeChange) error {
-	for _, change := range changes {
-		for _, path := range []string{change.old, change.new} {
-			if path != "" && !utf8.ValidString(path) {
-				return fmt.Errorf("merge diff path is not valid UTF-8: %q", path)
-			}
-		}
-	}
-	return nil
-}
-
 func parseMergeChanges(raw string) ([]mergeChange, error) {
 	shared, err := mergeplan.ParseChanges(raw)
 	if err != nil {
 		return nil, errMalformedDiff
 	}
-	return localChanges(shared), nil
+	return shared, nil
 }
 
 var errMalformedDiff = errors.New("malformed NUL-delimited merge diff")
 
-type successionPlan struct {
-	publish      []string
-	retire       map[string]string // predecessor event -> successor path, empty when gone
-	changedPaths []string
-	// leftLive accounts for covered live artifacts that this merge does not
-	// retire. A carried artifact is already in the target world but is wider
-	// than a landed exact path; siblings and abandoned artifacts are candidates
-	// outside that world. A nil map marks a historical receipt which predates
-	// this accounting.
-	leftLive map[string]mergeLeftLive
-}
-
-// localSuccessionPlan adapts the shared mergeplan value to the historical CLI
-// receipt shape. It contains no classification or planning policy.
-func localSuccessionPlan(shared mergeplan.Succession) successionPlan {
-	publish := append([]string(nil), shared.Publish...)
-	if shared.Publish != nil && publish == nil {
-		publish = []string{}
-	}
-	changedPaths := append([]string(nil), shared.ChangedPaths...)
-	if shared.ChangedPaths != nil && changedPaths == nil {
-		changedPaths = []string{}
-	}
-	leftLive := make(map[string]mergeLeftLive, len(shared.LeftLive))
-	for event, left := range shared.LeftLive {
-		leftLive[event] = mergeLeftLive{Class: left.Class, Commitment: left.Commitment}
-	}
-	if shared.LeftLive == nil {
-		leftLive = nil
-	}
-	return successionPlan{
-		publish: publish,
-		retire:  maps.Clone(shared.Retire), changedPaths: changedPaths,
-		leftLive: leftLive,
-	}
-}
-
-type mergeLeftLive struct {
-	Class      string `json:"class"`
-	Commitment string `json:"commitment,omitempty"`
-}
+// The command, Git receipt and shared evaluator use one lossless succession
+// value. Aliases keep the historical command names readable without another
+// authority-bearing representation or converter.
+type successionPlan = mergeplan.Succession
+type mergeLeftLive = mergeplan.LeftLive
 
 const (
 	leftLiveCarried   = "carried"
@@ -137,7 +69,7 @@ const (
 // addition or modification. A set makes repeated paths harmless; sorting makes
 // the JSON stable across Git's output order and retries.
 func mergeChangedPaths(changes []mergeChange) []string {
-	return mergeplan.ChangedPaths(sharedChanges(changes))
+	return mergeplan.ChangedPaths(changes)
 }
 
 // preflightSuccession refuses the two retirements that cannot be repaired
@@ -155,9 +87,7 @@ func mergeChangedPaths(changes []mergeChange) []string {
 // so a bare retirement, which orphans whatever cites it, is still refused here
 // and still needs a deliberate `gs supersede --cited-ok` after the pages move.
 func preflightSuccession(ctx context.Context, workspace *app.Workspace, checkout string, plan successionPlan) error {
-	return mergeplan.ValidateSuccession(ctx, workspace, checkout, mergeplan.Succession{
-		Publish: plan.publish, Retire: plan.retire, ChangedPaths: plan.changedPaths,
-	})
+	return mergeplan.ValidateSuccession(ctx, workspace, checkout, plan)
 }
 
 // refuseUnreachableCrossAuthorRetirements states the command's own reach bound
@@ -181,7 +111,7 @@ func preflightSuccession(ctx context.Context, workspace *app.Workspace, checkout
 // recoverable and costs a caller nothing; discovering it afterwards leaves the
 // target moved and the succession half-done.
 func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, plan successionPlan, approval, actor string) error {
-	return mergeplan.ValidateReach(projection, mergeplan.Succession{Publish: plan.publish, Retire: plan.retire, ChangedPaths: plan.changedPaths}, approval, actor)
+	return mergeplan.ValidateReach(projection, plan, approval, actor)
 }
 
 // reviewedPaths reads which artifacts an approval puts within reach the way
@@ -268,19 +198,19 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 		if receipt.Retirements == "" || receipt.Successors == "" {
 			return errors.New("merge receipt has no sealed succession plan")
 		}
-		if err := json.Unmarshal([]byte(receipt.Retirements), &plan.retire); err != nil {
+		if err := json.Unmarshal([]byte(receipt.Retirements), &plan.Retire); err != nil {
 			return fmt.Errorf("decode Git receipt retirements: %w", err)
 		}
-		if err := json.Unmarshal([]byte(receipt.Successors), &plan.publish); err != nil {
+		if err := json.Unmarshal([]byte(receipt.Successors), &plan.Publish); err != nil {
 			return fmt.Errorf("decode Git receipt successors: %w", err)
 		}
-		plan.leftLive = gitLeftLive
-		plan.changedPaths = gitChangedPaths
+		plan.LeftLive = gitLeftLive
+		plan.ChangedPaths = gitChangedPaths
 	} else {
-		if receipt.LeftLivePresent != (plan.leftLive != nil) || (receipt.LeftLivePresent && !maps.Equal(gitLeftLive, plan.leftLive)) {
+		if receipt.LeftLivePresent != (plan.LeftLive != nil) || (receipt.LeftLivePresent && !maps.Equal(gitLeftLive, plan.LeftLive)) {
 			return errors.New("recorded merge left-live accounting does not match the sealed Git receipt")
 		}
-		if receipt.ChangedPathsPresent != (plan.changedPaths != nil) || (receipt.ChangedPathsPresent && !slices.Equal(gitChangedPaths, plan.changedPaths)) {
+		if receipt.ChangedPathsPresent != (plan.ChangedPaths != nil) || (receipt.ChangedPathsPresent && !slices.Equal(gitChangedPaths, plan.ChangedPaths)) {
 			return errors.New("recorded merge changed paths do not match the sealed Git receipt")
 		}
 	}
@@ -311,23 +241,23 @@ func recordedSuccessionPlan(projection workroom.Projection, receipt mergeReceipt
 			return successionPlan{}, false, errors.New("recorded merge authorization ratification does not match the sealed Git receipt")
 		}
 		var plan successionPlan
-		if err := json.Unmarshal([]byte(statement.Body["merge_retirements"]), &plan.retire); err != nil {
+		if err := json.Unmarshal([]byte(statement.Body["merge_retirements"]), &plan.Retire); err != nil {
 			return successionPlan{}, false, fmt.Errorf("decode recorded merge retirements: %w", err)
 		}
-		if err := json.Unmarshal([]byte(statement.Body["merge_successors"]), &plan.publish); err != nil {
+		if err := json.Unmarshal([]byte(statement.Body["merge_successors"]), &plan.Publish); err != nil {
 			return successionPlan{}, false, fmt.Errorf("decode recorded merge successors: %w", err)
 		}
 		if encoded, present := statement.Body["merge_left_live"]; present {
-			if err := json.Unmarshal([]byte(encoded), &plan.leftLive); err != nil {
+			if err := json.Unmarshal([]byte(encoded), &plan.LeftLive); err != nil {
 				return successionPlan{}, false, fmt.Errorf("decode recorded merge left-live accounting: %w", err)
 			}
-			if plan.leftLive == nil {
+			if plan.LeftLive == nil {
 				return successionPlan{}, false, errors.New("decode recorded merge left-live accounting: expected a JSON object, got null")
 			}
 		}
 		if encoded, present := statement.Body["merge_changed_paths"]; present {
 			var err error
-			plan.changedPaths, err = decodeChangedPaths(encoded, "recorded merge receipt")
+			plan.ChangedPaths, err = decodeChangedPaths(encoded, "recorded merge receipt")
 			if err != nil {
 				return successionPlan{}, false, err
 			}
@@ -364,19 +294,10 @@ func decodeChangedPaths(raw, source string) ([]string, error) {
 }
 
 func successionActs(approval, authorization, authorizationRatification, candidate, targetPreHead, mergeHead, staleness string, plan successionPlan) []batchAct {
-	if (plan.leftLive != nil) != (plan.changedPaths != nil) {
+	if (plan.LeftLive != nil) != (plan.ChangedPaths != nil) {
 		return nil
 	}
-	var leftLive map[string]mergeplan.LeftLive
-	if plan.leftLive != nil {
-		leftLive = make(map[string]mergeplan.LeftLive, len(plan.leftLive))
-		for event, left := range plan.leftLive {
-			leftLive[event] = mergeplan.LeftLive{Class: left.Class, Commitment: left.Commitment}
-		}
-	}
-	shared := mergeplan.SuccessionActs(approval, authorization, authorizationRatification, candidate, targetPreHead, mergeHead, staleness, mergeplan.Succession{
-		Publish: plan.publish, Retire: plan.retire, ChangedPaths: plan.changedPaths, LeftLive: leftLive,
-	})
+	shared := mergeplan.SuccessionActs(approval, authorization, authorizationRatification, candidate, targetPreHead, mergeHead, staleness, plan)
 	acts := make([]batchAct, 0, len(shared))
 	for _, entry := range shared {
 		act := entry.Act
@@ -394,13 +315,13 @@ func verifySuccession(ctx context.Context, workspace *app.Workspace, receipt mer
 	if err != nil {
 		return err
 	}
-	for target := range plan.retire {
+	for target := range plan.Retire {
 		artifact, err := standingArtifact(snapshot.Projection, target)
 		if err == nil || !strings.Contains(err.Error(), "retired") {
 			return fmt.Errorf("merge succession did not retire predecessor %s (artifact %+v, error %v)", target, artifact, err)
 		}
 	}
-	for _, path := range plan.publish {
+	for _, path := range plan.Publish {
 		live := 0
 		for _, artifact := range snapshot.Projection.Artifacts {
 			if artifact.Path == path && artifact.Commit == receipt.MergeHead && !artifact.Retired && !artifact.DescribesSupersededWorld {

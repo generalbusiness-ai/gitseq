@@ -1283,11 +1283,12 @@ a projection it may merge on. This carries the fold profile to
   approved head is an ancestor of a branch — that join happens here, because
   Git remains outside the Workroom interpreter.
 
-  Its merge command adds one prospective surface rule the fold does not hold:
+  Its shared merge-plan evaluator adds one prospective surface rule the fold does not hold:
   a reviewed path bounds cross-author retirement at itself and beneath it,
-  never above it. That rule is checked once, in fresh-merge preflight: after
-  Git reserves the receipt ref and stages the tentative merge, but before the
-  target moves and before any durable workroom record is appended.
+  never above it. That rule is checked once for a fresh merge, before Git
+  reserves the receipt ref. The evaluator stages the exact candidate in a
+  disposable clone, while the governed target, refs, index, verified-frontier
+  witness, and checkpoint remain unchanged.
 
   Succession recording never re-applies that guard. Resuming an already-sealed
   receipt appends its recorded suffix without replanning, so the symmetric

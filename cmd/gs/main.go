@@ -725,7 +725,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		fmt.Println(existing.MergeHead)
 		return nil
 	}
-	prospective := mergeplan.Build(ctx, workspace, *checkout, *candidate, *approval, merger, mergeplan.Signer{
+	prospective := buildMergePlan(ctx, workspace, *checkout, *candidate, *approval, merger, mergeplan.Signer{
 		Name: actor, Private: private, CheckResidentCeiling: serverURL != "",
 	})
 	if !prospective.Allowed {
@@ -743,23 +743,11 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if targetPreHead != prospective.TargetPreHead {
 		return fmt.Errorf("merge target moved after planning: planned %s, now %s", prospective.TargetPreHead, targetPreHead)
 	}
-	if _, err := git(ctx, *checkout, "merge-base", "--is-ancestor", *candidate, targetPreHead); err == nil {
-		return errors.New("approved candidate is already contained in the target")
-	}
-	// Repeat the durable and local checks directly before invoking Git. The
-	// merge argument remains the approved object ID, never a movable ref.
+	// Resolve the structured authorization immediately before invoking Git.
+	// Build already checked candidate ancestry and the signing implementer;
+	// target and frontier coherence below prove those facts did not move.
 	validation, err := validateMerge(ctx, workspace, *checkout, *candidate, *approval, *authorization, false)
 	if err != nil {
-		return err
-	}
-	// The last check before Git is touched: the signer. Nothing has been
-	// reserved and nothing has moved, so this refusal costs the caller nothing
-	// and leaves the approval unspent for the actor whose work it is.
-	preMerge, err := workspace.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	if err := requireApprovedImplementer(preMerge.Projection, *approval, merger); err != nil {
 		return err
 	}
 	receiptRef := mergeReceiptRef(*approval)
@@ -784,7 +772,7 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return fmt.Errorf("read tentative merge changes: %w", err)
 	}
-	if err := validateMergeChangePaths(changes); err != nil {
+	if err := mergeplan.ValidateChangePaths(changes); err != nil {
 		return err
 	}
 	if actual := mergeChangedPaths(changes); !slices.Equal(actual, prospective.ChangedPaths) {
@@ -802,18 +790,8 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if !ok {
 		return errors.New("allowed merge plan did not preserve its validated succession")
 	}
-	plan := localSuccessionPlan(sharedPlan)
+	plan := sharedPlan
 	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
-		return fmt.Errorf("merge succession preflight: %w", err)
-	}
-	// The prospective directional reviewed-path guard lives here, in fresh
-	// preflight: after the temporary receipt reservation and the tentative
-	// merge staging, but before HEAD moves and before any durable workroom
-	// record is appended. It runs nowhere else — succession recording never
-	// re-judges reach, so neither a fresh merge overtaken by concurrent
-	// admissions nor a sealed receipt is stranded against a policy adopted
-	// after the plan was authorized.
-	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, *approval, merger); err != nil {
 		return fmt.Errorf("merge succession preflight: %w", err)
 	}
 	message, err := mergeReceiptMessage(*mergeText, *approval, *authorization, validation.AuthorizationRatification, *candidate, targetPreHead, validation.Staleness, plan)
@@ -888,10 +866,12 @@ func mergePlanCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	return printJSON(mergeplan.Build(ctx, workspace, *checkout, *candidate, *approval, resolved.Fingerprint, mergeplan.Signer{
+	return printJSON(buildMergePlan(ctx, workspace, *checkout, *candidate, *approval, resolved.Fingerprint, mergeplan.Signer{
 		Name: actor, Private: private, CheckResidentCeiling: serverURL != "",
 	}))
 }
+
+var buildMergePlan = mergeplan.Build
 
 type mergeReceipt = mergeplan.Receipt
 
@@ -900,17 +880,17 @@ func mergeReceiptRef(approval string) string {
 }
 
 func mergeReceiptMessage(text, approval, authorization, authorizationRatification, candidate, targetPreHead, staleness string, plan successionPlan) (string, error) {
-	if (plan.leftLive != nil) != (plan.changedPaths != nil) {
+	if (plan.LeftLive != nil) != (plan.ChangedPaths != nil) {
 		return "", errors.New("prospective merge receipt requires both left-live accounting and changed paths")
 	}
 	if (authorization != "") != (authorizationRatification != "") {
 		return "", errors.New("prospective merge receipt requires authorization and its ratification witness together")
 	}
-	retirements, err := json.Marshal(plan.retire)
+	retirements, err := json.Marshal(plan.Retire)
 	if err != nil {
 		return "", err
 	}
-	successors, err := json.Marshal(plan.publish)
+	successors, err := json.Marshal(plan.Publish)
 	if err != nil {
 		return "", err
 	}
@@ -921,15 +901,15 @@ func mergeReceiptMessage(text, approval, authorization, authorizationRatificatio
 		message += "\n" + mergeplan.AuthorizationTrailer + authorization
 		message += "\n" + mergeplan.AuthorizationRatificationTrailer + authorizationRatification
 	}
-	if plan.leftLive != nil {
-		leftLive, err := json.Marshal(plan.leftLive)
+	if plan.LeftLive != nil {
+		leftLive, err := json.Marshal(plan.LeftLive)
 		if err != nil {
 			return "", err
 		}
 		message += "\n" + mergeplan.LeftLiveTrailer + string(leftLive)
 	}
-	if plan.changedPaths != nil {
-		changedPaths, err := json.Marshal(plan.changedPaths)
+	if plan.ChangedPaths != nil {
+		changedPaths, err := json.Marshal(plan.ChangedPaths)
 		if err != nil {
 			return "", err
 		}
