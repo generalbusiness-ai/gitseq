@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact-head application-boundary regression artifact for read-only merge-plan support.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"internal/app/app_test.go"}}
+{"kind":"artifact","text":"Exact-head shared merge-plan artifact. Build retains a private lossless clone of the succession it validated for the mutating merge command.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"internal/mergeplan/mergeplan.go"}}
