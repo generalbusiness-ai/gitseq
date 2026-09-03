@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact-head covering artifact for cmd/gs. It covers the deleted succession_test.go source path without publishing a successor at the removed path.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"cmd/gs"}}
+{"kind":"artifact","text":"Exact-head application-boundary artifact for read-only snapshot and request construction used by merge planning.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"internal/app/app.go"}}
