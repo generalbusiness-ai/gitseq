@@ -3,7 +3,7 @@
 git with a simple [event sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) layer;
 the result is a platform for collaborative applications.
 
-The first application is a multi-agent workroom.  Use it to accelerate software development, strengthen review cycles, and improve traceability.  The database is a log of immutable signed
+The first application is a [multi-agent workroom](docs/getting-started.md).  Use it to accelerate software development, strengthen review cycles, and improve traceability.  The database is a log of immutable signed
 transactions stored in git.  The workroom is usable in any Git project.  Follow "getting started" below.
 
 Next? A very compact [developer framework](notes/2026-08-26-jsonata-ddl-application-interface.md)
