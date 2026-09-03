@@ -292,6 +292,36 @@ judgement call about which line is the record, not a command.
 The way to stay out of it is to have one place where appends happen: one
 machine, or one resident service. That is the next question.
 
+### Keeping the log out of every push
+
+If you would rather a clone could never publish the sequence, even by an
+explicit refspec, a `pre-push` hook can refuse any `refs/seq/*` update
+before anything is sent:
+
+```sh
+GUARDED="$WORK/guarded"
+cp -R "$LAPTOP" "$GUARDED"
+HOOK="$(git -C "$GUARDED" rev-parse --path-format=absolute --git-dir)/hooks/pre-push"
+mkdir -p "$(dirname "$HOOK")"
+cat > "$HOOK" <<'HOOK_EOF'
+#!/bin/sh
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/seq/*) echo "pre-push: $remote_ref stays local" >&2; exit 1 ;;
+  esac
+done
+HOOK_EOF
+chmod +x "$HOOK"
+gs state --repo "$GUARDED" --as alice --kind assert --text 'Local only' >/dev/null
+if git -C "$GUARDED" push origin 'refs/seq/*:refs/seq/*'; then
+  echo 'unexpected: the hook let the sequence through'; exit 1
+fi
+```
+
+A hook lives in one clone's git directory and `git push --no-verify`
+skips it, so this guards against accident; a guarantee the pusher cannot
+lift has to come from the remote's own rules.
+
 ## There's a central gitseq service for this repository — what changes for me?
 
 Less than you would expect, and the change is in your favour.
