@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9d52a0a9e94ffed867a79d9ff3d69c57945e0c4d"}
+{"kind":"promise","text":"Claude promises the independent review of merge-plan repair head 7af1b816b8c7ed2594c5c1ffab58a7bdda48d796 against repair request 39501d8f: architecture, security, simplification, full gate run, verdict via gs review against all fourteen exact-head artifacts."}
