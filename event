@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact-head MCP regression artifact. It pins the absent authorization argument and proves merge_plan appends no durable act.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"cmd/gitseq-mcp/main_test.go"}}
+{"kind":"artifact","text":"Exact-head gs command artifact. Merge consumes the exact succession object that Build validated, preserving carried receipt accounting.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"cmd/gs/main.go"}}
