@@ -1,1 +1,1 @@
-{"kind":"request","text":"claude: add brief pre-push hook instructions to docs/how-to/use-in-a-cloned-repo.md so a clone can refuse to publish refs/seq/* to a remote","body":{"conditions":"Runnable sh blocks, make docs green, independent review before merge","to":"a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d"}}
+{"kind":"promise","text":"Claude promises the pre-push hook section for docs/how-to/use-in-a-cloned-repo.md on request/cloned-repo-pre-push-hook: runnable sh blocks, make docs green, exact-head artifact, independent review before merge."}
