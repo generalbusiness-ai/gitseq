@@ -139,9 +139,12 @@ world is a projection this command cannot date, not a permission to land.
 | The checkout is dirty | The merge result would contain unreviewed work. |
 | The checkout belongs to another repository | The workroom does not govern it. |
 | `--candidate` is not a full lowercase object ID | An abbreviation could become ambiguous later. |
-| The retirement plan reaches another actor's artifact outside every path the approval reviewed | Re-file the approval so it covers that path, or ask the artifact's author or an actor holding `ratifier` to retire it. The refusal names the event, path, reviewed paths, and this page. |
+| The retirement plan reaches another actor's artifact outside every path the approval reviewed | Re-file the approval so it covers that path, or ask the artifact's author or an actor holding `ratifier` to retire it. The refusal names the event, path, and reviewed paths. |
 
-Every check runs twice, immediately before git is invoked.
+The shared read-only evaluator runs before any receipt reservation. `merge`
+then resolves structured authorization and proves that the target head, staged
+changed paths, and verified Workroom frontier still equal that evaluated plan
+before it moves `HEAD`.
 
 ### Structured merge authorization
 
@@ -386,11 +389,15 @@ The documentation gate reads the same distinction. A citation of a retired
 artifact whose retirement names a covering successor is reported as a flare; a
 citation of a retirement that names nothing still fails the set.
 
-Before moving `HEAD`, `merge` runs this check on the tracked tree that will
-receive the merge. Git prepares the merge with `--no-commit`, the command checks
-the actual staged result, and a refusal aborts the tentative merge with the
-target unchanged. Only then does it create the receipt commit and publish the
-durable succession.
+Before reserving the approval or moving `HEAD`, the shared evaluator prepares
+the exact merge in a disposable clone and runs this check on that staged result.
+The governed checkout therefore cannot hide a citation the candidate adds or
+retain one the candidate deletes. `merge` consumes the validated succession,
+then stages the candidate in the governed checkout and verifies that its
+changed-path frontier still matches the plan. It does not repeat the same
+pre-commit citation scan against a second checkout. Only then does it create
+the receipt commit and publish the durable succession; retry-safe succession
+recording still validates the landed checkout before appending its suffix.
 
 ### Who may retire another actor's pointer
 
@@ -490,10 +497,12 @@ lineage test is unchanged and still reads both directions; this is the command
 holding itself to the narrower rule while the target is still where it was. It
 governs merges run from here on. No sealed receipt is reinterpreted.
 
-The check belongs to fresh merges only, and runs once. It runs in preflight,
-after Git has reserved the receipt ref and staged the tentative merge, but
-before the merge commit exists, before `HEAD` moves, and before any durable
-workroom record is appended; succession recording never re-applies it.
+The check belongs to fresh merges only, and runs once in the shared read-only
+evaluator, before Git reserves the receipt ref and before any durable Workroom
+record is appended. The evaluator stages the exact candidate against the exact
+target in a disposable clone, so classification uses the same prospective
+changed paths without touching the governed checkout. Succession recording
+never re-applies the guard.
 Resuming an interrupted merge instead finds the immutable Git receipt and
 appends its recorded suffix without replanning and without this guard, so a
 receipt sealed under an older reading of reach keeps exactly the authority it

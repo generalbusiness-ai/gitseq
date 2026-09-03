@@ -4,14 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"math"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -25,8 +22,8 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
-	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
@@ -119,6 +116,8 @@ func main() {
 		err = reviewCommand(ctx, os.Args[2:])
 	case "merge":
 		err = mergeCommand(ctx, os.Args[2:])
+	case "merge-plan":
+		err = mergePlanCommand(ctx, os.Args[2:])
 	case "ratify":
 		err = ratifyCommand(ctx, os.Args[2:])
 	case "supersede":
@@ -170,7 +169,7 @@ func main() {
 
 func usage(output io.Writer) {
 	fmt.Fprintln(output, "usage: gs <command> [flags]")
-	fmt.Fprintln(output, "commands: init, actor-add, actor-retire, role-grant, role-revoke, actors, whoami, state, review, merge, ratify, supersede, reassign-if-unclaimed, batch, publish, status, work, artifacts, supersession-plan, staleness-wave, inspect, reviews, provenance, verify, checkpoint-clear, serve, attach")
+	fmt.Fprintln(output, "commands: init, actor-add, actor-retire, role-grant, role-revoke, actors, whoami, state, review, merge, merge-plan, ratify, supersede, reassign-if-unclaimed, batch, publish, status, work, artifacts, supersession-plan, staleness-wave, inspect, reviews, provenance, verify, checkpoint-clear, serve, attach")
 	fmt.Fprintln(output, "run `gs help <command>` for command flags")
 	fmt.Fprintln(output, "CLI walkthrough: docs/how-to/end-to-end.md")
 	fmt.Fprintln(output, "command reference: docs/reference/gs/")
@@ -657,11 +656,12 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if !found {
+		// Validate before planning so invalid approvals and authorizations fail
+		// without staging even a disposable merge. The later validation is a
+		// deliberate remeasurement after planning: authorization and the target
+		// may have moved while Build inspected the prospective result.
 		if _, err := validateMerge(ctx, workspace, *checkout, *candidate, *approval, *authorization, false); err != nil {
 			return err
-		}
-		if *authorization == "" {
-			fmt.Fprintln(os.Stderr, "warning: merge has no structured authorization; phase-one compatibility permits this merge")
 		}
 	}
 	if strings.TrimSpace(*mergeText) == "" {
@@ -725,29 +725,33 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		fmt.Println(existing.MergeHead)
 		return nil
 	}
+	prospective := buildMergePlan(ctx, workspace, *checkout, *candidate, *approval, merger, mergeplan.Signer{
+		Name: actor, Private: private, CheckResidentCeiling: serverURL != "",
+	})
+	if !prospective.Allowed {
+		if len(prospective.Reasons) == 0 {
+			return errors.New("merge plan refused without a reason")
+		}
+		refusal := prospective.Reasons[len(prospective.Reasons)-1]
+		return fmt.Errorf("merge plan %s: %s", refusal.Check, refusal.Reason)
+	}
 	targetPreHead, err := git(ctx, *checkout, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
 		return err
 	}
 	targetPreHead = strings.TrimSpace(targetPreHead)
-	if _, err := git(ctx, *checkout, "merge-base", "--is-ancestor", *candidate, targetPreHead); err == nil {
-		return errors.New("approved candidate is already contained in the target")
+	if targetPreHead != prospective.TargetPreHead {
+		return fmt.Errorf("merge target moved after planning: planned %s, now %s", prospective.TargetPreHead, targetPreHead)
 	}
-	// Repeat the durable and local checks directly before invoking Git. The
-	// merge argument remains the approved object ID, never a movable ref.
+	// Resolve the structured authorization immediately before invoking Git.
+	// Build already checked candidate ancestry and the signing implementer;
+	// target and frontier coherence below prove those facts did not move.
 	validation, err := validateMerge(ctx, workspace, *checkout, *candidate, *approval, *authorization, false)
 	if err != nil {
 		return err
 	}
-	// The last check before Git is touched: the signer. Nothing has been
-	// reserved and nothing has moved, so this refusal costs the caller nothing
-	// and leaves the approval unspent for the actor whose work it is.
-	preMerge, err := workspace.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	if err := requireApprovedImplementer(preMerge.Projection, *approval, merger); err != nil {
-		return err
+	if *authorization == "" {
+		fmt.Fprintln(os.Stderr, "warning: merge has no structured authorization; phase-one compatibility permits this merge")
 	}
 	receiptRef := mergeReceiptRef(*approval)
 	if _, err := git(ctx, *checkout, "update-ref", receiptRef, targetPreHead, ""); err != nil {
@@ -771,28 +775,25 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return fmt.Errorf("read tentative merge changes: %w", err)
 	}
-	if err := validateMergeChangePaths(changes); err != nil {
+	if err := mergeplan.ValidateChangePaths(changes); err != nil {
 		return err
+	}
+	if actual := mergeChangedPaths(changes); !slices.Equal(actual, prospective.ChangedPaths) {
+		return fmt.Errorf("tentative merge changed paths %q do not equal the read-only merge plan %q", actual, prospective.ChangedPaths)
 	}
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
 		return err
 	}
-	predecessors := successionPredecessors(ctx, *checkout, snapshot.Projection, changes, targetPreHead, *candidate)
-	plan := planSuccession(snapshot.Projection, changes, predecessors)
-	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
-		return fmt.Errorf("merge succession preflight: %w", err)
+	if snapshot.Head != prospective.Frontier.Head || snapshot.Depth != prospective.Frontier.Depth {
+		return fmt.Errorf("workroom frontier moved after planning: planned %s at depth %d, now %s at depth %d",
+			prospective.Frontier.Head, prospective.Frontier.Depth, snapshot.Head, snapshot.Depth)
 	}
-	// The prospective directional reviewed-path guard lives here, in fresh
-	// preflight: after the temporary receipt reservation and the tentative
-	// merge staging, but before HEAD moves and before any durable workroom
-	// record is appended. It runs nowhere else — succession recording never
-	// re-judges reach, so neither a fresh merge overtaken by concurrent
-	// admissions nor a sealed receipt is stranded against a policy adopted
-	// after the plan was authorized.
-	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, *approval, merger); err != nil {
-		return fmt.Errorf("merge succession preflight: %w", err)
+	sharedPlan, ok := prospective.ValidatedSuccession()
+	if !ok {
+		return errors.New("allowed merge plan did not preserve its validated succession")
 	}
+	plan := sharedPlan
 	message, err := mergeReceiptMessage(*mergeText, *approval, *authorization, validation.AuthorizationRatification, *candidate, targetPreHead, validation.Staleness, plan)
 	if err != nil {
 		return err
@@ -831,82 +832,91 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-type mergeReceipt struct {
-	Approval                  string
-	Authorization             string
-	AuthorizationRatification string
-	Candidate                 string
-	TargetPreHead             string
-	MergeHead                 string
-	Retirements               string
-	Successors                string
-	LeftLive                  string
-	LeftLivePresent           bool
-	ChangedPaths              string
-	ChangedPathsPresent       bool
-	Staleness                 string
+// mergePlanCommand exposes fresh-merge preflight without reserving an
+// approval, touching the governed checkout, or appending a durable act.
+func mergePlanCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("merge-plan", arguments)
+	as := set.String("as", "", "actor who would record the merge receipt")
+	checkout := set.String("checkout", "", "checkout that would receive the merge")
+	candidate := set.String("candidate", "", "full approved commit ID")
+	approval := set.String("approval", "", "ratified approval report event")
+	serverFlag := set.String("server", "", "resident sequencer URL")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return errors.New("merge-plan takes no positional arguments")
+	}
+	if *checkout == "" || *candidate == "" || *approval == "" {
+		return errors.New("merge-plan requires --checkout, --candidate, and --approval")
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	actor, err := signingActor(*as)
+	if err != nil {
+		return err
+	}
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
+	resolved, private, err := workspace.Actor(actor)
+	if err != nil {
+		return err
+	}
+	return printJSON(buildMergePlan(ctx, workspace, *checkout, *candidate, *approval, resolved.Fingerprint, mergeplan.Signer{
+		Name: actor, Private: private, CheckResidentCeiling: serverURL != "",
+	}))
 }
 
-const (
-	mergeApprovalTrailer                  = "Gitseq-Approval: "
-	mergeAuthorizationTrailer             = "Gitseq-Authorization: "
-	mergeAuthorizationRatificationTrailer = "Gitseq-Authorization-Ratification: "
-	mergeCandidateTrailer                 = "Gitseq-Candidate: "
-	mergeTargetTrailer                    = "Gitseq-Target-Pre-Head: "
-	mergeRetirementsTrailer               = "Gitseq-Retirements: "
-	mergeSuccessorsTrailer                = "Gitseq-Successors: "
-	mergeLeftLiveTrailer                  = "Gitseq-Left-Live: "
-	mergeChangedPathsTrailer              = "Gitseq-Changed-Paths: "
-	mergeStalenessTrailer                 = "Gitseq-Staleness: "
-)
+var buildMergePlan = mergeplan.Build
 
-func mergeReceiptKey(approval string) string {
-	sum := sha256.Sum256([]byte(approval))
-	return "merge-receipt-" + hex.EncodeToString(sum[:])
-}
+type mergeReceipt = mergeplan.Receipt
 
 func mergeReceiptRef(approval string) string {
-	return "refs/gitseq/merge-receipts/" + strings.TrimPrefix(mergeReceiptKey(approval), "merge-receipt-")
+	return mergeplan.ReceiptRef(approval)
 }
 
 func mergeReceiptMessage(text, approval, authorization, authorizationRatification, candidate, targetPreHead, staleness string, plan successionPlan) (string, error) {
-	if (plan.leftLive != nil) != (plan.changedPaths != nil) {
+	if (plan.LeftLive != nil) != (plan.ChangedPaths != nil) {
 		return "", errors.New("prospective merge receipt requires both left-live accounting and changed paths")
 	}
 	if (authorization != "") != (authorizationRatification != "") {
 		return "", errors.New("prospective merge receipt requires authorization and its ratification witness together")
 	}
-	retirements, err := json.Marshal(plan.retire)
+	retirements, err := json.Marshal(plan.Retire)
 	if err != nil {
 		return "", err
 	}
-	successors, err := json.Marshal(plan.publish)
+	successors, err := json.Marshal(plan.Publish)
 	if err != nil {
 		return "", err
 	}
 	message := fmt.Sprintf("%s\n\n%s%s\n%s%s\n%s%s\n%s%s\n%s%s", strings.TrimSpace(text),
-		mergeApprovalTrailer, approval, mergeCandidateTrailer, candidate, mergeTargetTrailer, targetPreHead,
-		mergeRetirementsTrailer, retirements, mergeSuccessorsTrailer, successors)
+		mergeplan.ApprovalTrailer, approval, mergeplan.CandidateTrailer, candidate, mergeplan.TargetTrailer, targetPreHead,
+		mergeplan.RetirementsTrailer, retirements, mergeplan.SuccessorsTrailer, successors)
 	if authorization != "" {
-		message += "\n" + mergeAuthorizationTrailer + authorization
-		message += "\n" + mergeAuthorizationRatificationTrailer + authorizationRatification
+		message += "\n" + mergeplan.AuthorizationTrailer + authorization
+		message += "\n" + mergeplan.AuthorizationRatificationTrailer + authorizationRatification
 	}
-	if plan.leftLive != nil {
-		leftLive, err := json.Marshal(plan.leftLive)
+	if plan.LeftLive != nil {
+		leftLive, err := json.Marshal(plan.LeftLive)
 		if err != nil {
 			return "", err
 		}
-		message += "\n" + mergeLeftLiveTrailer + string(leftLive)
+		message += "\n" + mergeplan.LeftLiveTrailer + string(leftLive)
 	}
-	if plan.changedPaths != nil {
-		changedPaths, err := json.Marshal(plan.changedPaths)
+	if plan.ChangedPaths != nil {
+		changedPaths, err := json.Marshal(plan.ChangedPaths)
 		if err != nil {
 			return "", err
 		}
-		message += "\n" + mergeChangedPathsTrailer + string(changedPaths)
+		message += "\n" + mergeplan.ChangedPathsTrailer + string(changedPaths)
 	}
 	if staleness != "" {
-		message += "\n" + mergeStalenessTrailer + staleness
+		message += "\n" + mergeplan.StalenessTrailer + staleness
 	}
 	return message, nil
 }
@@ -917,51 +927,7 @@ func mergeReceiptMessage(text, approval, authorization, authorizationRatificatio
 // replayed old approval report a parse failure instead of the intended
 // already-used refusal. A false ok is that ordinary fact, not an error.
 func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt, bool, error) {
-	message, err := git(ctx, checkout, "show", "-s", "--format=%B", head)
-	if err != nil {
-		return mergeReceipt{}, false, err
-	}
-	receipt := mergeReceipt{MergeHead: head}
-	for _, line := range strings.Split(message, "\n") {
-		switch {
-		case strings.HasPrefix(line, mergeApprovalTrailer):
-			receipt.Approval = strings.TrimPrefix(line, mergeApprovalTrailer)
-		case strings.HasPrefix(line, mergeAuthorizationTrailer):
-			receipt.Authorization = strings.TrimPrefix(line, mergeAuthorizationTrailer)
-		case strings.HasPrefix(line, mergeAuthorizationRatificationTrailer):
-			receipt.AuthorizationRatification = strings.TrimPrefix(line, mergeAuthorizationRatificationTrailer)
-		case strings.HasPrefix(line, mergeCandidateTrailer):
-			receipt.Candidate = strings.TrimPrefix(line, mergeCandidateTrailer)
-		case strings.HasPrefix(line, mergeTargetTrailer):
-			receipt.TargetPreHead = strings.TrimPrefix(line, mergeTargetTrailer)
-		case strings.HasPrefix(line, mergeRetirementsTrailer):
-			receipt.Retirements = strings.TrimPrefix(line, mergeRetirementsTrailer)
-		case strings.HasPrefix(line, mergeSuccessorsTrailer):
-			receipt.Successors = strings.TrimPrefix(line, mergeSuccessorsTrailer)
-		case line == strings.TrimSpace(mergeLeftLiveTrailer):
-			receipt.LeftLivePresent = true
-		case strings.HasPrefix(line, mergeLeftLiveTrailer):
-			receipt.LeftLive = strings.TrimPrefix(line, mergeLeftLiveTrailer)
-			receipt.LeftLivePresent = true
-		case line == strings.TrimSpace(mergeChangedPathsTrailer):
-			receipt.ChangedPathsPresent = true
-		case strings.HasPrefix(line, mergeChangedPathsTrailer):
-			receipt.ChangedPaths = strings.TrimPrefix(line, mergeChangedPathsTrailer)
-			receipt.ChangedPathsPresent = true
-		case strings.HasPrefix(line, mergeStalenessTrailer):
-			receipt.Staleness = strings.TrimPrefix(line, mergeStalenessTrailer)
-		}
-	}
-	parents, err := git(ctx, checkout, "rev-list", "--parents", "-n", "1", head)
-	if err != nil {
-		return mergeReceipt{}, false, err
-	}
-	fields := strings.Fields(parents)
-	if receipt.Approval == "" || receipt.Candidate == "" || receipt.TargetPreHead == "" || receipt.Retirements == "" || receipt.Successors == "" || len(fields) != 3 ||
-		fields[0] != head || fields[1] != receipt.TargetPreHead || fields[2] != receipt.Candidate {
-		return mergeReceipt{}, false, nil
-	}
-	return receipt, true, nil
+	return mergeplan.ReadReceipt(ctx, checkout, head)
 }
 
 // existingGitMergeReceipt looks for a complete receipt for this approval. A
@@ -969,7 +935,7 @@ func readMergeReceipt(ctx context.Context, checkout, head string) (mergeReceipt,
 // older merge, not a failure: it is skipped so the durable receipt check gives
 // the already-used refusal that actually describes the situation.
 func existingGitMergeReceipt(ctx context.Context, checkout, approval string) (mergeReceipt, bool, error) {
-	heads, err := git(ctx, checkout, "log", "--all", "--fixed-strings", "--grep="+mergeApprovalTrailer+approval, "--format=%H")
+	heads, err := git(ctx, checkout, "log", "--all", "--fixed-strings", "--grep="+mergeplan.ApprovalTrailer+approval, "--format=%H")
 	if err != nil {
 		return mergeReceipt{}, false, err
 	}
@@ -1012,18 +978,7 @@ func existingGitMergeReceipt(ctx context.Context, checkout, approval string) (me
 // path for anyone else needs an authorization that survives concurrent
 // revocation, and that is a design, not a clause.
 func requireApprovedImplementer(projection workroom.Projection, approvalEvent, merger string) error {
-	if merger == "" {
-		return errors.New("merge needs the signing actor's fingerprint")
-	}
-	review, found := projection.Review(approvalEvent)
-	if !found || review.Implementer == "" {
-		return errors.New("the record cannot say who implemented this approved head, so nobody may merge it on that approval")
-	}
-	if review.Implementer != merger {
-		return fmt.Errorf("merge must be signed by the actor whose approved work is landing (%s); --as names %s",
-			review.Implementer, merger)
-	}
-	return nil
+	return mergeplan.RequireImplementer(projection, approvalEvent, merger)
 }
 
 type mergeValidation struct {
@@ -1046,22 +1001,13 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	}
 	projection := snapshot.Projection
 	for _, statement := range projection.Statements {
-		if statement.Body["merge_approval"] == approvalEvent && decisionEffective(projection, statement.Event) {
+		if statement.Body["merge_approval"] == approvalEvent && mergeplan.DecisionEffective(projection, statement.Event) {
 			return mergeValidation{}, fmt.Errorf("approval already has durable merge receipt %s", statement.Event)
 		}
 	}
-	approval, err := liveStatementAsOf(projection, approvalEvent, workroom.KindReport, verdictSequence(projection, approvalEvent))
+	approved, err := mergeplan.ValidateApproval(projection, candidate, approvalEvent)
 	if err != nil {
-		return mergeValidation{}, fmt.Errorf("approval: %w", err)
-	}
-	if !approval.Ratified {
-		return mergeValidation{}, errors.New("approval report is not ratified by its requester")
-	}
-	if approval.Body["verdict"] != "approved" {
-		return mergeValidation{}, errors.New("review verdict is not approved")
-	}
-	if approval.Body["head"] != candidate {
-		return mergeValidation{}, fmt.Errorf("candidate %s does not equal approved head %s", candidate, approval.Body["head"])
+		return mergeValidation{}, err
 	}
 	targetHead, err := git(ctx, checkout, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
@@ -1072,44 +1018,20 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	if err != nil {
 		return mergeValidation{}, fmt.Errorf("authorization: %w", err)
 	}
-	artifactEvent := approval.Body["artifact"]
-	if artifactEvent == "" || !slices.Contains(projection.Provenance[approvalEvent], artifactEvent) {
-		return mergeValidation{}, errors.New("approval does not rest on its named artifact")
-	}
-	artifact, err := liveArtifactAsOf(projection, artifactEvent, approval.Sequence)
-	if err != nil {
-		return mergeValidation{}, fmt.Errorf("approval artifact: %w", err)
-	}
-	if artifact.Commit != candidate {
-		return mergeValidation{}, fmt.Errorf("approved artifact head %s does not equal candidate %s", artifact.Commit, candidate)
-	}
-	// The rule that review comes from a different agent is checked here rather
-	// than assumed. An approval the projection cannot call independent does not
-	// merge, whether because the reviewer implemented the head or because the
-	// record cannot say who did.
-	review, found := projection.Review(approvalEvent)
-	if !found {
-		return mergeValidation{}, errors.New("approval is not projected as a review")
-	}
-	switch review.Independence {
-	case workroom.IndependenceSelfReview:
-		return mergeValidation{}, errors.New("approval was signed by the actor who implemented this head; an independent review is required")
-	case workroom.IndependenceIndependent:
+	staleness := approved.Staleness
+	if authorizationEvent != "" {
 		parts := []reviewguard.Part{
-			{Name: "approval", Event: approval.Event, Stale: approval.Stale, World: approval.DescribesSupersededWorld},
-			{Name: "artifact", Event: artifact.Event, Stale: artifact.Stale, World: artifact.DescribesSupersededWorld},
+			{Name: "approval", Event: approved.Statement.Event, Stale: approved.Statement.Stale, World: approved.Statement.DescribesSupersededWorld},
+			{Name: "artifact", Event: approved.Artifact.Event, Stale: approved.Artifact.Stale, World: approved.Artifact.DescribesSupersededWorld},
 		}
-		if authorizationEvent != "" {
-			authorization, _ := standingStatement(projection, authorizationEvent, workroom.KindReport)
-			parts = append(parts, reviewguard.Part{
-				Name: "authorization", Event: authorization.Event, Stale: authorization.Stale,
-				World: authorization.DescribesSupersededWorld,
-			})
-		}
-		return mergeValidation{Staleness: reviewguard.StalenessNote(projection, parts), AuthorizationRatification: authorizationRatification}, nil
-	default:
-		return mergeValidation{}, errors.New("the record cannot say whether this approval was independent; name the reviewed artifact in the review report")
+		authorization, _ := mergeplan.StandingStatement(projection, authorizationEvent, workroom.KindReport)
+		parts = append(parts, reviewguard.Part{
+			Name: "authorization", Event: authorization.Event, Stale: authorization.Stale,
+			World: authorization.DescribesSupersededWorld,
+		})
+		staleness = reviewguard.StalenessNote(projection, parts)
 	}
+	return mergeValidation{Staleness: staleness, AuthorizationRatification: authorizationRatification}, nil
 }
 
 // validateMergeAuthorization is the phase-one application guard. It reads
@@ -1122,7 +1044,7 @@ func validateMergeAuthorization(ctx context.Context, projection workroom.Project
 		}
 		return "", nil
 	}
-	authorization, err := standingStatement(projection, authorizationEvent, workroom.KindReport)
+	authorization, err := mergeplan.StandingStatement(projection, authorizationEvent, workroom.KindReport)
 	if err != nil {
 		return "", err
 	}
@@ -1130,7 +1052,7 @@ func validateMergeAuthorization(ctx context.Context, projection workroom.Project
 		return "", errors.New("report is not ratified by its requester")
 	}
 	ratificationSequence := eventSequence(projection, authorization.RatifiedBy)
-	if ratificationSequence == 0 || !decisionEffective(projection, authorization.RatifiedBy) {
+	if ratificationSequence == 0 || !mergeplan.DecisionEffective(projection, authorization.RatifiedBy) {
 		return "", errors.New("ratification is not an effective sequenced event")
 	}
 	if sealedRatification != "" && authorization.RatifiedBy != sealedRatification {
@@ -1139,7 +1061,7 @@ func validateMergeAuthorization(ctx context.Context, projection workroom.Project
 	if ratificationSequence >= receiptSequence {
 		return "", fmt.Errorf("ratification sequence %d is not before merge receipt sequence %d", ratificationSequence, receiptSequence)
 	}
-	if _, err := liveStatementAsOf(projection, authorizationEvent, workroom.KindReport, ratificationSequence); err != nil {
+	if _, err := mergeplan.LiveStatementAsOf(projection, authorizationEvent, workroom.KindReport, ratificationSequence); err != nil {
 		return "", err
 	}
 	if got := authorization.Body["authorizes_candidate"]; got != candidate {
@@ -1165,7 +1087,7 @@ func validateMergeAuthorization(ctx context.Context, projection workroom.Project
 	if measuredHead == "" {
 		return "", errors.New("target_pre_head is missing")
 	}
-	canonical, err := canonicalCommit(ctx, checkout, measuredHead)
+	canonical, err := mergeplan.CanonicalCommit(ctx, checkout, measuredHead)
 	if err != nil {
 		return "", fmt.Errorf("target_pre_head: %w", err)
 	}
@@ -1212,7 +1134,7 @@ func eventSequence(projection workroom.Projection, event string) int {
 }
 
 func approvalImplementationCommitment(projection workroom.Projection, approvalEvent string) (workroom.Commitment, error) {
-	approval, err := standingStatement(projection, approvalEvent, workroom.KindReport)
+	approval, err := mergeplan.StandingStatement(projection, approvalEvent, workroom.KindReport)
 	if err != nil {
 		return workroom.Commitment{}, fmt.Errorf("approval: %w", err)
 	}
@@ -1241,61 +1163,7 @@ func authorizedMergeAuthorizer(projection workroom.Projection, signer, implement
 }
 
 func validateCheckout(ctx context.Context, workroomRepo, checkout, commit string, requireHead bool) error {
-	want, err := canonicalCommit(ctx, checkout, commit)
-	if err != nil {
-		return err
-	}
-	if want != commit {
-		return fmt.Errorf("commit must be the full canonical object ID: got %s, resolved %s", commit, want)
-	}
-	_, workroomCommon, err := apphost.ResolveGitDirs(ctx, workroomRepo)
-	if err != nil {
-		return err
-	}
-	_, checkoutCommon, err := apphost.ResolveGitDirs(ctx, checkout)
-	if err != nil {
-		return err
-	}
-	if canonicalPath(workroomCommon) != canonicalPath(checkoutCommon) {
-		return errors.New("checkout does not belong to the workroom repository")
-	}
-	status, err := git(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=normal")
-	if err != nil {
-		return err
-	}
-	if status != "" {
-		return errors.New("checkout is dirty")
-	}
-	if requireHead {
-		head, err := git(ctx, checkout, "rev-parse", "HEAD")
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(head) != commit {
-			return fmt.Errorf("checkout HEAD %s does not equal artifact head %s", strings.TrimSpace(head), commit)
-		}
-	}
-	return nil
-}
-
-func canonicalCommit(ctx context.Context, repo, commit string) (string, error) {
-	format, err := git(ctx, repo, "rev-parse", "--show-object-format")
-	if err != nil {
-		return "", err
-	}
-	wantBytes := 20
-	if strings.TrimSpace(format) == "sha256" {
-		wantBytes = 32
-	}
-	decoded, err := hex.DecodeString(commit)
-	if err != nil || len(decoded) != wantBytes || strings.ToLower(commit) != commit {
-		return "", errors.New("candidate must be a full lowercase commit object ID")
-	}
-	resolved, err := git(ctx, repo, "rev-parse", "--verify", "--end-of-options", commit+"^{commit}")
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(resolved), nil
+	return mergeplan.ValidateCheckout(ctx, workroomRepo, checkout, commit, requireHead)
 }
 
 func validateArtifactCommit(ctx context.Context, repo, commit string) error {
@@ -1310,146 +1178,10 @@ func validateArtifactCommit(ctx context.Context, repo, commit string) error {
 	return nil
 }
 
-func canonicalPath(path string) string {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return filepath.Clean(path)
-	}
-	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
-		absolute = resolved
-	}
-	return filepath.Clean(absolute)
-}
-
-// standingArtifact returns an artifact that may still be acted on. Retirement
-// withdraws the pointer and is a refusal; being judged ineffective means the
-// pointer was never conferred. Staleness is neither: it says a basis moved
-// under the artifact, while the commit it names is immutable and still names
-// exactly what it named. Callers that want the strict reading say so.
-func standingArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
-	if !decisionEffective(projection, event) {
-		return workroom.Artifact{}, errors.New("artifact is not effective")
-	}
-	for _, artifact := range projection.Artifacts {
-		if artifact.Event == event {
-			if artifact.Retired {
-				return workroom.Artifact{}, errors.New("artifact is retired")
-			}
-			return artifact, nil
-		}
-	}
-	return workroom.Artifact{}, errors.New("artifact event is unknown")
-}
-
-// liveArtifact is merge-live: standing, and not describing a superseded world.
-// Ordinary reasoning staleness is recorded by the merge receipt. It judges the
-// world as of now, which is what a reviewer signing an artifact needs.
-func liveArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
-	return liveArtifactAsOf(projection, event, math.MaxInt)
-}
-
-// liveArtifactAsOf is liveArtifact with the verdict's position in the log. A
-// reviewer can only answer for the world they were shown: an artifact that
-// already described a superseded world when they looked is a judgement that
-// cannot be repaired by repeating it, and still refuses. A retirement landing
-// afterwards is news, and news belongs in the receipt beside ordinary
-// staleness, not in a refusal of a verdict that was sound when it was made.
-//
-// The date is the fold's, taken across every basis. Deriving it here would be a
-// second copy of a rule the fold already owns, and the copy is what drifts.
-func liveArtifactAsOf(projection workroom.Projection, event string, verdict int) (workroom.Artifact, error) {
-	artifact, err := standingArtifact(projection, event)
-	if err != nil {
-		return workroom.Artifact{}, err
-	}
-	if artifact.DescribesSupersededWorld && !worldMovedAfterVerdict(artifact, verdict) {
-		return workroom.Artifact{}, errors.New("artifact describes a superseded world")
-	}
-	return artifact, nil
-}
-
-// worldMovedAfterVerdict reads the fold's date and fails closed on its absence.
-// Zero means the fold accounted for no active cause, and reading that as "after
-// the verdict" would turn every projection this cannot date into a merge nobody
-// reviewed.
-func worldMovedAfterVerdict(artifact workroom.Artifact, verdict int) bool {
-	return worldDatedAfter(artifact.WorldSupersededAt, verdict)
-}
-
-// verdictSequence is where a verdict sits in the log, or the end of the log if
-// the projection cannot place it. An unplaceable verdict dates nothing, so it
-// is treated as later than every retirement and the world staleness it was
-// shown keeps refusing.
-func verdictSequence(projection workroom.Projection, approval string) int {
-	for _, decision := range projection.Decisions {
-		if decision.Event == approval {
-			return decision.Sequence
-		}
-	}
-	return math.MaxInt
-}
-
-// standingStatement is the same judgement for a statement: refuse what was
-// retired or judged ineffective, and report staleness rather than refuse it.
-func standingStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
-	if !decisionEffective(projection, event) {
-		return workroom.Statement{}, errors.New("statement is not effective")
-	}
-	for _, statement := range projection.Statements {
-		if statement.Event == event {
-			if statement.Kind != kind {
-				return workroom.Statement{}, fmt.Errorf("statement is %s, want %s", statement.Kind, kind)
-			}
-			if statement.Retired {
-				return workroom.Statement{}, errors.New("statement is retired")
-			}
-			return statement, nil
-		}
-	}
-	return workroom.Statement{}, errors.New("statement event is unknown")
-}
-
-// liveStatement is merge-live: standing, and not describing a superseded
-// world. Ordinary reasoning staleness is recorded by the merge receipt. It
-// judges the world as of now, which is what a caller with no verdict to date
-// against needs.
-func liveStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
-	return liveStatementAsOf(projection, event, kind, math.MaxInt)
-}
-
-// liveStatementAsOf dates an approval's own superseded world the way
-// liveArtifactAsOf dates the artifact's. An approval is a statement, so it
-// carries the same published date, and refusing it undated while the artifact
-// beside it is dated would refuse exactly the verdicts this change exists to
-// admit: the approval and its artifact move together when a basis under both
-// is retired after the verdict.
-//
-// A verdict cannot date itself, so the caller supplies the position. For the
-// approval that position is its own, which is what makes a world that moved
-// afterwards news rather than grounds for refusal.
-func liveStatementAsOf(projection workroom.Projection, event string, kind workroom.Kind, verdict int) (workroom.Statement, error) {
-	statement, err := standingStatement(projection, event, kind)
-	if err != nil {
-		return workroom.Statement{}, err
-	}
-	if statement.DescribesSupersededWorld && !worldDatedAfter(statement.WorldSupersededAt, verdict) {
-		return workroom.Statement{}, errors.New("statement describes a superseded world")
-	}
-	return statement, nil
-}
-
-// worldDatedAfter reads the fold's date and fails closed on its absence. Zero
-// means the fold accounted for no active cause, and reading that as "after the
-// verdict" would turn every projection this cannot date into a merge nobody
-// reviewed.
-func worldDatedAfter(datedAt, verdict int) bool {
-	return datedAt != 0 && datedAt > verdict
-}
-
 func uniqueStandingBasis(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
 	var found []workroom.Statement
 	for _, basis := range projection.Provenance[event] {
-		statement, err := standingStatement(projection, basis, kind)
+		statement, err := mergeplan.StandingStatement(projection, basis, kind)
 		if err == nil {
 			found = append(found, statement)
 		}
@@ -1458,15 +1190,6 @@ func uniqueStandingBasis(projection workroom.Projection, event string, kind work
 		return workroom.Statement{}, fmt.Errorf("expected one standing %s basis, found %d", kind, len(found))
 	}
 	return found[0], nil
-}
-
-func decisionEffective(projection workroom.Projection, event string) bool {
-	for _, decision := range projection.Decisions {
-		if decision.Event == event {
-			return decision.Verdict == workroom.Effective
-		}
-	}
-	return false
 }
 
 func ratifyCommand(ctx context.Context, arguments []string) error {

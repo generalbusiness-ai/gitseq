@@ -24,14 +24,63 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/testgit"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
+
+func mustClassify(t testing.TB, ctx context.Context, checkout string, projection workroom.Projection, changes []mergeplan.Change, targetPreHead, candidate string, reviewed map[string]bool) map[string]mergeplan.Candidate {
+	t.Helper()
+	classified, err := mergeplan.Classify(ctx, checkout, projection, changes, targetPreHead, candidate, reviewed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return classified
+}
+
+type mergePlanReadOnlyState struct {
+	GitHead          string
+	WorkroomHead     string
+	Depth            int
+	VerifiedFrontier string
+	CheckpointRef    string
+	CheckpointFile   string
+	Config           string
+}
+
+func captureMergePlanReadOnlyState(t *testing.T, workspace *app.Workspace) mergePlanReadOnlyState {
+	t.Helper()
+	snapshot, err := workspace.ReadOnlySnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	frontier, err := json.Marshal(workspace.View().VerifiedFrontier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := workspace.Store.Head(context.Background(), kernel.CheckpointRef(workspace.View().Genesis))
+	if err != nil {
+		checkpoint = "absent: " + err.Error()
+	}
+	pointer, err := os.ReadFile(filepath.Join(workspace.MetaDir, "checkpoints", workspace.View().Genesis+".json"))
+	if err != nil {
+		pointer = []byte("absent: " + err.Error())
+	}
+	config, err := os.ReadFile(filepath.Join(workspace.MetaDir, apphost.ConfigFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mergePlanReadOnlyState{
+		GitHead: testGit(t, workspace.Repo, "rev-parse", "HEAD"), WorkroomHead: snapshot.Head, Depth: snapshot.Depth,
+		VerifiedFrontier: string(frontier), CheckpointRef: checkpoint, CheckpointFile: string(pointer), Config: string(config),
+	}
+}
 
 func TestValidateLoopbackListen(t *testing.T) {
 	t.Parallel()
@@ -1394,8 +1443,9 @@ func TestResumeRefusesSealedUnratifiedAuthorizationBeforeDurableSuffix(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
-	plan := planSuccession(snapshot.Projection, changes, predecessors)
+	sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
+		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
+	plan := sharedPlan
 	message, err := mergeReceiptMessage("Seal a receipt whose authorization was never ratified.", approval,
 		authorization, approval, fixture.candidate, targetPreHead, "", plan)
 	if err != nil {
@@ -1435,14 +1485,15 @@ func TestResumeRefusesAuthorizationWithoutRatificationWitness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
-	plan := planSuccession(snapshot.Projection, changes, predecessors)
+	sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
+		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
+	plan := sharedPlan
 	message, err := mergeReceiptMessage("Seal an incomplete authorization receipt.", approval, authorization,
 		authorizationStatement.RatifiedBy, fixture.candidate, targetPreHead, "", plan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	message = strings.Replace(message, "\n"+mergeAuthorizationRatificationTrailer+authorizationStatement.RatifiedBy, "", 1)
+	message = strings.Replace(message, "\n"+mergeplan.AuthorizationRatificationTrailer+authorizationStatement.RatifiedBy, "", 1)
 	testGit(t, fixture.repo, "merge", "--no-ff", "--no-commit", "--", fixture.candidate)
 	testGit(t, fixture.repo, "commit", "-m", message)
 	mergeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
@@ -1477,7 +1528,9 @@ func TestResumeRefusesSealedAuthorizationRatificationMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := planSuccession(snapshot.Projection, changes, successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate))
+	sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
+		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
+	plan := sharedPlan
 	message, err := mergeReceiptMessage("Seal the first authorization witness.", approval, authorization, sealed, fixture.candidate, targetPreHead, "", plan)
 	if err != nil {
 		t.Fatal(err)
@@ -1551,7 +1604,7 @@ func TestMergeRefusesUnrecordableReceiptBeforeMovingHead(t *testing.T) {
 	const ceiling = 8 << 10
 	root := t.TempDir()
 	template := &workflowTemplate{}
-	if err := template.buildWorkflow(root, false, ceiling, 180); err != nil {
+	if err := template.buildWorkflow(root, false, workflowNoCitation, ceiling, 180); err != nil {
 		t.Fatal(err)
 	}
 	repo := filepath.Join(root, "repo")
@@ -1574,14 +1627,15 @@ func TestMergeRefusesUnrecordableReceiptBeforeMovingHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidates := successionPredecessors(fixture.ctx, repo, before.Projection, changes, beforeHead, fixture.candidate)
-	plan := planSuccession(before.Projection, changes, candidates)
-	changedPaths, err := json.Marshal(plan.changedPaths)
+	sharedPlan := mergeplan.PlanSuccession(before.Projection, changes,
+		mustClassify(t, fixture.ctx, repo, before.Projection, changes, beforeHead, fixture.candidate, nil))
+	plan := sharedPlan
+	changedPaths, err := json.Marshal(plan.ChangedPaths)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.changedPaths) != 181 || len(plan.publish) != 181 || len(plan.retire) != 1 || len(plan.leftLive) != 1 {
-		t.Fatalf("oversized frontier plan = changed %d publish %d retire %d left-live %d", len(plan.changedPaths), len(plan.publish), len(plan.retire), len(plan.leftLive))
+	if len(plan.ChangedPaths) != 181 || len(plan.Publish) != 181 || len(plan.Retire) != 1 || len(plan.LeftLive) != 1 {
+		t.Fatalf("oversized frontier plan = changed %d publish %d retire %d left-live %d", len(plan.ChangedPaths), len(plan.Publish), len(plan.Retire), len(plan.LeftLive))
 	}
 	var extraArtifact string
 	for _, artifact := range before.Projection.Artifacts {
@@ -1590,9 +1644,9 @@ func TestMergeRefusesUnrecordableReceiptBeforeMovingHead(t *testing.T) {
 			break
 		}
 	}
-	if extraArtifact == "" || !maps.Equal(plan.leftLive,
-		map[string]mergeLeftLive{extraArtifact: {Class: leftLiveCarried}}) {
-		t.Fatalf("oversized frontier left-live accounting = %#v, want carried target tree", plan.leftLive)
+	if extraArtifact == "" || !maps.Equal(plan.LeftLive,
+		map[string]mergeLeftLive{extraArtifact: {Class: mergeplan.LeftLiveCarried}}) {
+		t.Fatalf("oversized frontier left-live accounting = %#v, want carried target tree", plan.LeftLive)
 	}
 	if len(changedPaths) <= ceiling {
 		t.Fatalf("changed-path seal is %d bytes, want more than %d-byte ceiling", len(changedPaths), ceiling)
@@ -1705,12 +1759,12 @@ func TestMergeReceiptLeftLiveRoundTripAndLegacyCompatibility(t *testing.T) {
 		fixture := newWorkflowFixture(t)
 		targetPreHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
 		plan := successionPlan{
-			publish:      []string{"feature.txt"},
-			retire:       map[string]string{"predecessor": "feature.txt"},
-			changedPaths: []string{"feature.txt"},
-			leftLive: map[string]mergeLeftLive{
-				"z-artifact": {Class: leftLiveAbandoned},
-				"a-artifact": {Class: leftLiveSibling, Commitment: "promise"},
+			Publish:      []string{"feature.txt"},
+			Retire:       map[string]string{"predecessor": "feature.txt"},
+			ChangedPaths: []string{"feature.txt"},
+			LeftLive: map[string]mergeLeftLive{
+				"z-artifact": {Class: mergeplan.LeftLiveAbandoned},
+				"a-artifact": {Class: mergeplan.LeftLiveSibling, Commitment: "promise"},
 			},
 		}
 		message, err := mergeReceiptMessage("Merge with complete accounting.", "approval", "", "", fixture.candidate, targetPreHead, "", plan)
@@ -1718,7 +1772,7 @@ func TestMergeReceiptLeftLiveRoundTripAndLegacyCompatibility(t *testing.T) {
 			t.Fatal(err)
 		}
 		wantLeftLive := `{"a-artifact":{"class":"sibling","commitment":"promise"},"z-artifact":{"class":"abandoned"}}`
-		if !strings.Contains(message, mergeLeftLiveTrailer+wantLeftLive) {
+		if !strings.Contains(message, mergeplan.LeftLiveTrailer+wantLeftLive) {
 			t.Fatalf("merge message did not carry deterministic left-live JSON:\n%s", message)
 		}
 		testGit(t, fixture.repo, "merge", "--no-ff", "-m", message, fixture.candidate)
@@ -1739,8 +1793,8 @@ func TestMergeReceiptLeftLiveRoundTripAndLegacyCompatibility(t *testing.T) {
 		fixture := newWorkflowFixture(t)
 		targetPreHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
 		message := fmt.Sprintf("Historical merge.\n\n%s%s\n%s%s\n%s%s\n%s{}\n%s[]",
-			mergeApprovalTrailer, "old-approval", mergeCandidateTrailer, fixture.candidate,
-			mergeTargetTrailer, targetPreHead, mergeRetirementsTrailer, mergeSuccessorsTrailer)
+			mergeplan.ApprovalTrailer, "old-approval", mergeplan.CandidateTrailer, fixture.candidate,
+			mergeplan.TargetTrailer, targetPreHead, mergeplan.RetirementsTrailer, mergeplan.SuccessorsTrailer)
 		testGit(t, fixture.repo, "merge", "--no-ff", "-m", message, fixture.candidate)
 		head := testGit(t, fixture.repo, "rev-parse", "HEAD")
 		receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, head)
@@ -1764,35 +1818,37 @@ func TestMergeRetryRejectsMalformedOrForgedProspectiveAccounting(t *testing.T) {
 	}{
 		"null left-live": {
 			mutate: func(message string) string {
-				return strings.Replace(message, mergeLeftLiveTrailer+"{}", mergeLeftLiveTrailer+"null", 1)
+				return strings.Replace(message, mergeplan.LeftLiveTrailer+"{}", mergeplan.LeftLiveTrailer+"null", 1)
 			},
 			want: "expected a JSON object, got null",
 		},
 		"empty left-live": {
 			mutate: func(message string) string {
-				return strings.Replace(message, mergeLeftLiveTrailer+"{}", mergeLeftLiveTrailer, 1)
+				return strings.Replace(message, mergeplan.LeftLiveTrailer+"{}", mergeplan.LeftLiveTrailer, 1)
 			},
 			want: "unexpected end of JSON input",
 		},
 		"left-live only": {
 			mutate: func(message string) string {
-				return strings.Replace(message, "\n"+mergeChangedPathsTrailer+`["feature.txt"]`, "", 1)
+				return strings.Replace(message, "\n"+mergeplan.ChangedPathsTrailer+`["feature.txt"]`, "", 1)
 			},
 			want: "must carry Gitseq-Left-Live and Gitseq-Changed-Paths together",
 		},
 		"changed-paths only": {
-			mutate: func(message string) string { return strings.Replace(message, "\n"+mergeLeftLiveTrailer+"{}", "", 1) },
-			want:   "must carry Gitseq-Left-Live and Gitseq-Changed-Paths together",
+			mutate: func(message string) string {
+				return strings.Replace(message, "\n"+mergeplan.LeftLiveTrailer+"{}", "", 1)
+			},
+			want: "must carry Gitseq-Left-Live and Gitseq-Changed-Paths together",
 		},
 		"noncanonical changed paths": {
 			mutate: func(message string) string {
-				return strings.Replace(message, mergeChangedPathsTrailer+`["feature.txt"]`, mergeChangedPathsTrailer+`["feature.txt","feature.txt"]`, 1)
+				return strings.Replace(message, mergeplan.ChangedPathsTrailer+`["feature.txt"]`, mergeplan.ChangedPathsTrailer+`["feature.txt","feature.txt"]`, 1)
 			},
 			want: "paths must be sorted and unique",
 		},
 		"forged changed paths": {
 			mutate: func(message string) string {
-				return strings.Replace(message, mergeChangedPathsTrailer+`["feature.txt"]`, mergeChangedPathsTrailer+`["other.txt"]`, 1)
+				return strings.Replace(message, mergeplan.ChangedPathsTrailer+`["feature.txt"]`, mergeplan.ChangedPathsTrailer+`["other.txt"]`, 1)
 			},
 			want: "do not equal merge first-parent diff paths",
 		},
@@ -1808,8 +1864,9 @@ func TestMergeRetryRejectsMalformedOrForgedProspectiveAccounting(t *testing.T) {
 				t.Fatal(err)
 			}
 			snapshot := fixture.snapshot(t)
-			classified := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
-			plan := planSuccession(snapshot.Projection, changes, classified)
+			sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
+				mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
+			plan := sharedPlan
 			message, err := mergeReceiptMessage("Merge a deliberately malformed receipt.", approval, "", "", fixture.candidate, targetPreHead, "", plan)
 			if err != nil {
 				t.Fatal(err)
@@ -1890,7 +1947,7 @@ func TestMergeRefusesANonUTF8DiffPathBeforeCreatingTheMergeCommit(t *testing.T) 
 			return nil, err
 		}
 		for _, change := range changes {
-			if change.old == invalid || change.new == invalid {
+			if change.Old == invalid || change.New == invalid {
 				sawRawPath = true
 			}
 		}
@@ -1922,6 +1979,105 @@ func TestMergeRefusesANonUTF8DiffPathBeforeCreatingTheMergeCommit(t *testing.T) 
 	}
 	if _, err := git(fixture.ctx, fixture.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
 		t.Fatal("refused merge left its receipt reservation behind")
+	}
+}
+
+func TestMergeRefusesWhenTargetMovesAfterReadOnlyPlanning(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	beforeDepth := fixture.snapshot(t).Depth
+	previous := buildMergePlan
+	buildMergePlan = func(ctx context.Context, workspace *app.Workspace, checkout, candidate, approval, merger string, signer mergeplan.Signer) mergeplan.Result {
+		result := previous(ctx, workspace, checkout, candidate, approval, merger, signer)
+		if result.Allowed {
+			testGit(t, checkout, "commit", "--allow-empty", "-m", "move target after planning")
+		}
+		return result
+	}
+	t.Cleanup(func() { buildMergePlan = previous })
+
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Refuse a plan whose target moved before reservation.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "merge target moved after planning") {
+		t.Fatalf("moving-target merge error = %v", err)
+	}
+	if after := fixture.snapshot(t).Depth; after != beforeDepth {
+		t.Fatalf("moving-target refusal changed workroom depth %d -> %d", beforeDepth, after)
+	}
+	if _, err := git(fixture.ctx, fixture.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
+		t.Fatal("moving-target refusal left a receipt reservation")
+	}
+}
+
+func TestMergeRefusesWhenStagedPathsDifferFromReadOnlyPlan(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	beforeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	beforeDepth := fixture.snapshot(t).Depth
+	previous := readStagedMergeChanges
+	readStagedMergeChanges = func(ctx context.Context, checkout string) ([]mergeChange, error) {
+		changes, err := previous(ctx, checkout)
+		return append(changes, mergeChange{Status: "A", New: "unexpected.txt"}), err
+	}
+	t.Cleanup(func() { readStagedMergeChanges = previous })
+
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Refuse staged paths that differ from the read-only plan.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "do not equal the read-only merge plan") {
+		t.Fatalf("changed-path coherence error = %v", err)
+	}
+	if after := testGit(t, fixture.repo, "rev-parse", "HEAD"); after != beforeHead {
+		t.Fatalf("changed-path refusal moved HEAD %s -> %s", beforeHead, after)
+	}
+	if after := fixture.snapshot(t).Depth; after != beforeDepth {
+		t.Fatalf("changed-path refusal changed workroom depth %d -> %d", beforeDepth, after)
+	}
+	if _, err := git(fixture.ctx, fixture.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
+		t.Fatal("changed-path refusal left a receipt reservation")
+	}
+}
+
+func TestMergeRefusesWhenWorkroomFrontierMovesAfterPlanning(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	beforeHead := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	previous := buildMergePlan
+	buildMergePlan = func(ctx context.Context, workspace *app.Workspace, checkout, candidate, approval, merger string, signer mergeplan.Signer) mergeplan.Result {
+		result := previous(ctx, workspace, checkout, candidate, approval, merger, signer)
+		if result.Allowed {
+			if _, err := workspace.Act(ctx, "operator", app.Act{
+				Verb: app.VerbState, Kind: workroom.KindAssert, Text: "durable event after planning",
+				RestsOn: []string{workspace.EventID(workspace.View().Genesis)}, IdempotencyKey: "move-frontier-after-planning",
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return result
+	}
+	t.Cleanup(func() { buildMergePlan = previous })
+
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Refuse a plan whose verified workroom frontier moved.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "workroom frontier moved after planning") {
+		t.Fatalf("moving-frontier merge error = %v", err)
+	}
+	if after := testGit(t, fixture.repo, "rev-parse", "HEAD"); after != beforeHead {
+		t.Fatalf("moving-frontier refusal moved HEAD %s -> %s", beforeHead, after)
+	}
+	if _, err := git(fixture.ctx, fixture.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
+		t.Fatal("moving-frontier refusal left a receipt reservation")
 	}
 }
 
@@ -1965,7 +2121,7 @@ func TestMergeLeavesAnUnrelatedCandidateArtifactLive(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("read receipt with abandoned candidate: ok=%v err=%v", ok, err)
 	}
-	want, err := json.Marshal(map[string]mergeLeftLive{unrelated.Record.ID: {Class: leftLiveAbandoned}})
+	want, err := json.Marshal(map[string]mergeLeftLive{unrelated.Record.ID: {Class: mergeplan.LeftLiveAbandoned}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2104,9 +2260,9 @@ func TestMergeUnreachableRetirementLeavesEverythingUnchanged(t *testing.T) {
 	before := testGit(t, fixture.repo, "rev-parse", "HEAD")
 	beforeDepth := fixture.snapshot(t).Depth
 	snapshot := fixture.snapshot(t)
-	plan := successionPlan{publish: []string{"elsewhere.txt"},
-		retire: map[string]string{stranger.Record.ID: "elsewhere.txt"}}
-	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, plan, approval,
+	plan := successionPlan{Publish: []string{"elsewhere.txt"},
+		Retire: map[string]string{stranger.Record.ID: "elsewhere.txt"}}
+	if err := mergeplan.ValidateReach(snapshot.Projection, plan, approval,
 		fixture.workspace.View().Actors["operator"].Fingerprint); err == nil ||
 		!strings.Contains(err.Error(), "outside the reviewed paths") {
 		t.Fatalf("unreachable retirement error = %v", err)
@@ -2174,19 +2330,38 @@ func TestMergeAuthoritySignerIsExactlyTheApprovedImplementer(t *testing.T) {
 // moves and still leaves no reservation behind.
 func TestMergeBareRetirementOfACitedPredecessorLeavesTargetUnchanged(t *testing.T) {
 	t.Parallel()
-	fixture := newWorkflowFixtureRemoving(t, true)
+	fixture := newWorkflowFixtureWithCitation(t, workflowCandidateAddsCitation)
 	approval := fixture.review(t)
 	fixture.ratify(t, approval)
-	writeCitingPage(t, fixture.repo, "docs/reference/base.md", fixture.ground)
-	testGit(t, fixture.repo, "commit", "-m", "cite the live base artifact")
+	page := "docs/reference/base.md"
+	if _, err := os.Stat(filepath.Join(fixture.repo, page)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("target citation exists before planning: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(fixture.feature, page)); err != nil {
+		t.Fatalf("candidate citation is absent: %v", err)
+	}
 	before := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	actor, private, err := fixture.workspace.Actor("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prospective := mergeplan.Build(fixture.ctx, fixture.workspace, fixture.repo, fixture.candidate, approval,
+		actor.Fingerprint, mergeplan.Signer{Name: "operator", Private: private})
+	if prospective.Allowed || len(prospective.Reasons) == 0 ||
+		prospective.Reasons[len(prospective.Reasons)-1].Code != "succession_refused" ||
+		!strings.Contains(prospective.Reasons[len(prospective.Reasons)-1].Reason, page) {
+		t.Fatalf("read-only cited-retirement plan = %+v, want refusal naming the staged page", prospective)
+	}
+	if _, err := git(fixture.ctx, fixture.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
+		t.Fatal("read-only cited-retirement plan reserved the approval")
+	}
 
-	err := mergeCommand(fixture.ctx, []string{
+	err = mergeCommand(fixture.ctx, []string{
 		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
 		"--candidate", fixture.candidate, "--approval", approval,
 		"--text", "This merge must be refused before it changes the target.",
 	})
-	if err == nil || !strings.Contains(err.Error(), "docs/reference/base.md") {
+	if err == nil || !strings.Contains(err.Error(), page) {
 		t.Fatalf("cited bare retirement merge error = %v", err)
 	}
 	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != before {
@@ -2194,6 +2369,32 @@ func TestMergeBareRetirementOfACitedPredecessorLeavesTargetUnchanged(t *testing.
 	}
 	if _, err := git(fixture.ctx, fixture.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
 		t.Fatal("refused merge left a receipt reservation")
+	}
+}
+
+func TestMergePlanAllowsCandidateThatDeletesTheSoleCitation(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixtureWithCitation(t, workflowCandidateDeletesCitation)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	page := "docs/reference/base.md"
+	if _, err := os.Stat(filepath.Join(fixture.repo, page)); err != nil {
+		t.Fatalf("target citation is absent: %v", err)
+	}
+	if _, err := git(fixture.ctx, fixture.feature, "cat-file", "-e", fixture.candidate+":"+page); err == nil {
+		t.Fatal("candidate kept the sole citing page")
+	}
+	actor, private, err := fixture.workspace.Actor("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prospective := mergeplan.Build(fixture.ctx, fixture.workspace, fixture.repo, fixture.candidate, approval,
+		actor.Fingerprint, mergeplan.Signer{Name: "operator", Private: private})
+	if !prospective.Allowed {
+		t.Fatalf("read-only plan refused after the candidate deleted the sole citation: %+v", prospective)
+	}
+	if !contains(prospective.ChangedPaths, page) {
+		t.Fatalf("changed paths %v do not include deleted citation %s", prospective.ChangedPaths, page)
 	}
 }
 
@@ -2206,24 +2407,24 @@ func TestMergePreflightSeparatesSucceededRetirementFromOrphaning(t *testing.T) {
 	writeCitingPage(t, fixture.repo, "docs/reference/feature.md", fixture.artifact)
 	testGit(t, fixture.repo, "commit", "-m", "cite the live feature artifact")
 
-	succeeded := successionPlan{publish: []string{"feature.txt"},
-		retire: map[string]string{fixture.artifact: "feature.txt"}}
-	if err := preflightSuccession(fixture.ctx, fixture.workspace, fixture.repo, succeeded); err != nil {
+	succeeded := successionPlan{Publish: []string{"feature.txt"},
+		Retire: map[string]string{fixture.artifact: "feature.txt"}}
+	if err := mergeplan.ValidateSuccession(fixture.ctx, fixture.workspace, fixture.repo, succeeded); err != nil {
 		t.Fatalf("succeeded retirement of a cited predecessor was refused: %v", err)
 	}
-	wider := successionPlan{publish: []string{"docs"},
-		retire: map[string]string{fixture.artifact: "docs"}}
-	if err := preflightSuccession(fixture.ctx, fixture.workspace, fixture.repo, wider); err != nil {
+	wider := successionPlan{Publish: []string{"docs"},
+		Retire: map[string]string{fixture.artifact: "docs"}}
+	if err := mergeplan.ValidateSuccession(fixture.ctx, fixture.workspace, fixture.repo, wider); err != nil {
 		t.Fatalf("succession to a covering directory was refused: %v", err)
 	}
-	bare := successionPlan{retire: map[string]string{fixture.artifact: ""}}
-	if err := preflightSuccession(fixture.ctx, fixture.workspace, fixture.repo, bare); err == nil ||
+	bare := successionPlan{Retire: map[string]string{fixture.artifact: ""}}
+	if err := mergeplan.ValidateSuccession(fixture.ctx, fixture.workspace, fixture.repo, bare); err == nil ||
 		!strings.Contains(err.Error(), "docs/reference/feature.md") {
 		t.Fatalf("bare retirement of a cited predecessor error = %v", err)
 	}
-	unpublished := successionPlan{publish: []string{"docs"},
-		retire: map[string]string{fixture.artifact: "feature.txt"}}
-	if err := preflightSuccession(fixture.ctx, fixture.workspace, fixture.repo, unpublished); err == nil ||
+	unpublished := successionPlan{Publish: []string{"docs"},
+		Retire: map[string]string{fixture.artifact: "feature.txt"}}
+	if err := mergeplan.ValidateSuccession(fixture.ctx, fixture.workspace, fixture.repo, unpublished); err == nil ||
 		!strings.Contains(err.Error(), "does not publish") {
 		t.Fatalf("successor this merge never publishes error = %v", err)
 	}
@@ -2240,8 +2441,9 @@ func TestMergeRetryResumesPartlyLandedSuccessionWithoutRemerging(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot := fixture.snapshot(t)
-	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
-	message, err := mergeReceiptMessage("Merge the approved feature.", approval, "", "", fixture.candidate, targetPreHead, "", planSuccession(snapshot.Projection, changes, predecessors))
+	sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
+		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
+	message, err := mergeReceiptMessage("Merge the approved feature.", approval, "", "", fixture.candidate, targetPreHead, "", sharedPlan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2254,8 +2456,9 @@ func TestMergeRetryResumesPartlyLandedSuccessionWithoutRemerging(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot = fixture.snapshot(t)
-	predecessors = successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
-	plan := planSuccession(snapshot.Projection, changes, predecessors)
+	sharedPlan = mergeplan.PlanSuccession(snapshot.Projection, changes,
+		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
+	plan := sharedPlan
 	acts := successionActs(approval, "", "", fixture.candidate, targetPreHead, mergeHead, "", plan)
 	if len(acts) < 3 {
 		t.Fatalf("succession acts = %d, want receipt, successor, and retirement", len(acts))
@@ -2298,9 +2501,10 @@ func TestMergeRetryBeforeDurableReceiptUsesTheSealedGitPlan(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	approval := fixture.review(t)
 	fixture.ratify(t, approval)
+	outside := testGit(t, fixture.repo, "commit-tree", testGit(t, fixture.repo, "rev-parse", "HEAD^{tree}"), "-m", "unlanded sibling")
 	leftBehind, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "unlanded candidate present when the merge was sealed",
-		Body:    map[string]string{"path": "feature.txt", "commit": strings.Repeat("a", 40)},
+		Body:    map[string]string{"path": "feature.txt", "commit": outside},
 		RestsOn: []string{fixture.workspace.EventID(fixture.workspace.View().Genesis)}, IdempotencyKey: "pre-merge-left-live-artifact",
 	})
 	if err != nil {
@@ -2312,8 +2516,9 @@ func TestMergeRetryBeforeDurableReceiptUsesTheSealedGitPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot := fixture.snapshot(t)
-	predecessors := successionPredecessors(fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate)
-	sealed := planSuccession(snapshot.Projection, changes, predecessors)
+	sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
+		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
+	sealed := sharedPlan
 	message, err := mergeReceiptMessage("Merge the approved feature.", approval, "", "", fixture.candidate, targetPreHead, "", sealed)
 	if err != nil {
 		t.Fatal(err)
@@ -2353,7 +2558,7 @@ func TestMergeRetryBeforeDurableReceiptUsesTheSealedGitPlan(t *testing.T) {
 	if artifactByEvent(t, snapshot.Projection, leftBehind.Record.ID).Retired {
 		t.Fatal("sealed left-live candidate was retired during retry")
 	}
-	wantLeftLive, err := json.Marshal(map[string]mergeLeftLive{leftBehind.Record.ID: {Class: leftLiveAbandoned}})
+	wantLeftLive, err := json.Marshal(map[string]mergeLeftLive{leftBehind.Record.ID: {Class: mergeplan.LeftLiveAbandoned}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2516,17 +2721,18 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 		t.Fatal(err)
 	}
 	snapshot := f.snapshot(t)
-	predecessors := successionPredecessors(f.ctx, f.repo, snapshot.Projection, changes, targetPreHead, candidate)
-	sealed := planSuccession(snapshot.Projection, changes, predecessors)
+	sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
+		mustClassify(t, f.ctx, f.repo, snapshot.Projection, changes, targetPreHead, candidate, nil))
+	sealed := sharedPlan
 	// The exact shape the receipt owes: one successor at each published path
 	// and a supersession only for the exact-path predecessor. The wider pointer
 	// above the reviewed leaf is carried rather than retired.
-	if !slices.Equal(sealed.publish, []string{"docs/how-to/x.md", "feature.txt"}) {
-		t.Fatalf("sealed publish paths = %v, want [docs/how-to/x.md feature.txt]", sealed.publish)
+	if !slices.Equal(sealed.Publish, []string{"docs/how-to/x.md", "feature.txt"}) {
+		t.Fatalf("sealed publish paths = %v, want [docs/how-to/x.md feature.txt]", sealed.Publish)
 	}
 	wantRetire := map[string]string{nested: "docs/how-to/x.md"}
-	if !maps.Equal(sealed.retire, wantRetire) {
-		t.Fatalf("sealed retirements = %v, want %v", sealed.retire, wantRetire)
+	if !maps.Equal(sealed.Retire, wantRetire) {
+		t.Fatalf("sealed retirements = %v, want %v", sealed.Retire, wantRetire)
 	}
 	message, err := mergeReceiptMessage("Merge the approved nested guide.", approval, "", "", candidate, targetPreHead, "", sealed)
 	if err != nil {
@@ -2538,7 +2744,7 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 
 	// What was sealed really does sit outside today's prospective reach, so
 	// only the fold's unchanged authority can carry it.
-	if err := refuseUnreachableCrossAuthorRetirements(snapshot.Projection, sealed, approval,
+	if err := mergeplan.ValidateReach(snapshot.Projection, sealed, approval,
 		f.workspace.View().Actors["operator"].Fingerprint); err != nil {
 		t.Fatalf("sealed exact-path plan against the current guard: %v", err)
 	}
@@ -2557,16 +2763,16 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 	after := f.snapshot(t)
 	// One receipt assertion plus one durable act per publish and per
 	// retirement in the sealed suffix.
-	wantDepth := before + 1 + len(sealed.publish) + len(sealed.retire)
+	wantDepth := before + 1 + len(sealed.Publish) + len(sealed.Retire)
 	if after.Depth != wantDepth {
 		t.Fatalf("resume depth = %d, want %d: the sealed receipt plus its publish and retirement acts", after.Depth, wantDepth)
 	}
-	for target := range sealed.retire {
+	for target := range sealed.Retire {
 		if !artifactByEvent(t, after.Projection, target).Retired {
 			t.Fatalf("resume did not append the sealed retirement of %s", target)
 		}
 	}
-	for _, path := range sealed.publish {
+	for _, path := range sealed.Publish {
 		live := 0
 		for _, artifact := range after.Projection.Artifacts {
 			if artifact.Path == path && artifact.Commit == mergeHead && !artifact.Retired {
@@ -2584,7 +2790,7 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 // reason to refuse the merge.
 func TestMergeFreshPreflightAllowsAWiderPointerAtALandedDestination(t *testing.T) {
 	t.Parallel()
-	f, candidate, approval, _, _ := buildNestedCrossAuthorApproval(t)
+	f, candidate, approval, wider, _ := buildNestedCrossAuthorApproval(t)
 	beforeHead := testGit(t, f.repo, "rev-parse", "HEAD")
 	before := f.snapshot(t)
 
@@ -2602,8 +2808,75 @@ func TestMergeFreshPreflightAllowsAWiderPointerAtALandedDestination(t *testing.T
 	if _, err := git(f.ctx, f.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err != nil {
 		t.Fatalf("merged exact-path receipt was not sealed: %v", err)
 	}
-	if after := f.snapshot(t); after.Depth <= before.Depth {
+	mergeHead := testGit(t, f.repo, "rev-parse", "HEAD")
+	receipt, ok, err := readMergeReceipt(f.ctx, f.repo, mergeHead)
+	if err != nil || !ok {
+		t.Fatalf("read carried receipt: ok=%v err=%v", ok, err)
+	}
+	var gitLeftLive map[string]mergeLeftLive
+	if err := json.Unmarshal([]byte(receipt.LeftLive), &gitLeftLive); err != nil {
+		t.Fatal(err)
+	}
+	if got := gitLeftLive[wider]; got.Class != mergeplan.LeftLiveCarried || got.Commitment != "" {
+		t.Fatalf("Git receipt carried accounting for %s = %+v", wider, got)
+	}
+	after := f.snapshot(t)
+	if after.Depth <= before.Depth {
 		t.Fatalf("merged exact-path receipt did not extend durable log: depth %d/%d", after.Depth, before.Depth)
+	}
+	var durable workroom.Statement
+	for _, statement := range after.Projection.Statements {
+		if statement.Body["merge_approval"] == approval {
+			durable = statement
+		}
+	}
+	var durableLeftLive map[string]mergeLeftLive
+	if err := json.Unmarshal([]byte(durable.Body["merge_left_live"]), &durableLeftLive); err != nil {
+		t.Fatal(err)
+	}
+	if got := durableLeftLive[wider]; got.Class != mergeplan.LeftLiveCarried || got.Commitment != "" {
+		t.Fatalf("durable receipt carried accounting for %s = %+v", wider, got)
+	}
+}
+
+func TestMergePlanLeavesStructuredAuthorizationToMerge(t *testing.T) {
+	err := mergePlanCommand(context.Background(), []string{"--authorization", "report"})
+	if err == nil || !strings.Contains(err.Error(), "flag provided but not defined") {
+		t.Fatalf("merge-plan authorization flag error = %v", err)
+	}
+}
+
+func TestMergePlanAllowedResultLeavesGitAndWorkroomAccelerationStateUnchanged(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	before := captureMergePlanReadOnlyState(t, fixture.workspace)
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout := os.Stdout
+	os.Stdout = writer
+	commandErr := mergePlanCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+	})
+	os.Stdout = stdout
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	printed, readErr := io.ReadAll(reader)
+	reader.Close()
+	if commandErr != nil || readErr != nil {
+		t.Fatalf("allowed merge-plan: command=%v read=%v", commandErr, readErr)
+	}
+	var result mergeplan.Result
+	if err := json.Unmarshal(printed, &result); err != nil || !result.Allowed {
+		t.Fatalf("allowed merge-plan output = %q, result=%+v, err=%v", printed, result, err)
+	}
+	after := captureMergePlanReadOnlyState(t, fixture.workspace)
+	if after != before {
+		t.Fatalf("allowed merge-plan mutated governed or acceleration state\nbefore: %+v\nafter:  %+v", before, after)
 	}
 }
 
@@ -2841,11 +3114,11 @@ func TestReviewWorldMovedAfterDoesNotHideOlderNestedRetirement(t *testing.T) {
 				DescribesSupersededWorld: true, WorldSupersededAt: 10},
 		},
 	}
-	if _, err := liveArtifactAsOf(projection, "candidate", 50); err == nil {
+	if _, err := mergeplan.LiveArtifactAsOf(projection, "candidate", 50); err == nil {
 		t.Fatal("a cause older than the verdict was admitted")
 	}
 	projection.Artifacts[0].WorldSupersededAt = 60
-	if _, err := liveArtifactAsOf(projection, "candidate", 50); err != nil {
+	if _, err := mergeplan.LiveArtifactAsOf(projection, "candidate", 50); err != nil {
 		t.Fatalf("a cause later than the verdict refused the merge: %v", err)
 	}
 }
@@ -2859,7 +3132,7 @@ func TestReviewRefusesAnUndatedSupersededWorld(t *testing.T) {
 		Artifacts:  []workroom.Artifact{{Event: "candidate", Path: "candidate", Commit: "head", Stale: true, DescribesSupersededWorld: true}},
 		Statements: []workroom.Statement{{Event: "candidate", Kind: workroom.KindArtifact, Actor: "implementer", Stale: true, DescribesSupersededWorld: true}},
 	}
-	if _, err := liveArtifactAsOf(projection, "candidate", math.MaxInt); err == nil {
+	if _, err := mergeplan.LiveArtifactAsOf(projection, "candidate", math.MaxInt); err == nil {
 		t.Fatal("an undated superseded world was admitted")
 	}
 }
@@ -2907,19 +3180,19 @@ func TestMergeLivenessSeparatesReasoningStaleFromSupersededWorld(t *testing.T) {
 		Reviews:    []workroom.Review{{Report: "approval", Implementer: "implementer", Head: "head"}},
 		Provenance: map[string][]string{"approval": {"ordinary-artifact", "world-artifact"}},
 	}
-	if _, err := liveArtifact(projection, "ordinary-artifact"); err != nil {
+	if _, err := mergeplan.LiveArtifactAsOf(projection, "ordinary-artifact", math.MaxInt); err != nil {
 		t.Fatalf("ordinary reasoning-stale artifact was refused: %v", err)
 	}
-	if _, err := liveStatement(projection, "ordinary-report", workroom.KindReport); err != nil {
+	if _, err := mergeplan.LiveStatementAsOf(projection, "ordinary-report", workroom.KindReport, math.MaxInt); err != nil {
 		t.Fatalf("ordinary reasoning-stale report was refused: %v", err)
 	}
-	if _, err := liveArtifact(projection, "world-artifact"); err == nil || !strings.Contains(err.Error(), "superseded world") {
+	if _, err := mergeplan.LiveArtifactAsOf(projection, "world-artifact", math.MaxInt); err == nil || !strings.Contains(err.Error(), "superseded world") {
 		t.Fatalf("world-stale artifact error = %v", err)
 	}
-	if _, err := liveStatement(projection, "world-report", workroom.KindReport); err == nil || !strings.Contains(err.Error(), "superseded world") {
+	if _, err := mergeplan.LiveStatementAsOf(projection, "world-report", workroom.KindReport, math.MaxInt); err == nil || !strings.Contains(err.Error(), "superseded world") {
 		t.Fatalf("world-stale report error = %v", err)
 	}
-	if paths := reviewedPaths(projection, "approval"); !slices.Equal(paths, []string{"ordinary"}) {
+	if _, paths := mergeplan.ReviewedScope(projection, "approval"); !slices.Equal(paths, []string{"ordinary"}) {
 		t.Fatalf("reviewed paths = %v, want only the ordinary-stale artifact", paths)
 	}
 }
@@ -3570,7 +3843,11 @@ func buildBatchTemplate(root string) error {
 // them.
 func TestMain(m *testing.M) {
 	code := testgit.Run(m)
-	for _, template := range []*fixtureTemplate{&batchTemplate, &workflowTemplates[0].fixtureTemplate, &workflowTemplates[1].fixtureTemplate} {
+	templates := []*fixtureTemplate{&batchTemplate}
+	for _, workflow := range workflowTemplates {
+		templates = append(templates, &workflow.fixtureTemplate)
+	}
+	for _, template := range templates {
 		if template.root != "" {
 			os.RemoveAll(template.root)
 		}
@@ -3970,6 +4247,34 @@ func newWorkflowFixtureRemoving(t *testing.T, removeBase bool) workflowFixture {
 	}
 }
 
+type workflowCitation int
+
+const (
+	workflowNoCitation workflowCitation = iota
+	workflowCandidateAddsCitation
+	workflowCandidateDeletesCitation
+)
+
+func newWorkflowFixtureWithCitation(t *testing.T, citation workflowCitation) workflowFixture {
+	t.Helper()
+	ctx := context.Background()
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	feature := filepath.Join(root, "feature")
+	template := workflowTemplateWithCitation(citation)
+	template.copyRepo(t, repo)
+	workspace, err := app.Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, repo, "worktree", "add", feature, "feature")
+	return workflowFixture{
+		t: t, ctx: ctx, repo: repo, feature: feature, workspace: workspace,
+		candidate: template.candidate, artifact: template.artifact, ground: template.ground,
+		request: template.request, promise: template.promise, implementationRequest: template.implementationRequest,
+	}
+}
+
 // A workflow template also remembers the durable event ids its workroom
 // holds. Every copy shares the template's log byte for byte, so the ids are
 // the same in every copy.
@@ -3983,11 +4288,16 @@ type workflowTemplate struct {
 	implementationRequest string
 }
 
-var workflowTemplates = [2]*workflowTemplate{newWorkflowTemplate(false), newWorkflowTemplate(true)}
+var workflowTemplates = [4]*workflowTemplate{
+	newWorkflowTemplate(false, workflowNoCitation),
+	newWorkflowTemplate(true, workflowNoCitation),
+	newWorkflowTemplate(true, workflowCandidateAddsCitation),
+	newWorkflowTemplate(true, workflowCandidateDeletesCitation),
+}
 
-func newWorkflowTemplate(removeBase bool) *workflowTemplate {
+func newWorkflowTemplate(removeBase bool, citation workflowCitation) *workflowTemplate {
 	template := &workflowTemplate{}
-	template.build = func(root string) error { return template.buildWorkflow(root, removeBase, 1<<20, 0) }
+	template.build = func(root string) error { return template.buildWorkflow(root, removeBase, citation, 1<<20, 0) }
 	return template
 }
 
@@ -3998,7 +4308,18 @@ func workflowTemplateRemoving(removeBase bool) *workflowTemplate {
 	return workflowTemplates[0]
 }
 
-func (template *workflowTemplate) buildWorkflow(root string, removeBase bool, ceiling uint64, extraPaths int) error {
+func workflowTemplateWithCitation(citation workflowCitation) *workflowTemplate {
+	switch citation {
+	case workflowCandidateAddsCitation:
+		return workflowTemplates[2]
+	case workflowCandidateDeletesCitation:
+		return workflowTemplates[3]
+	default:
+		return workflowTemplates[0]
+	}
+}
+
+func (template *workflowTemplate) buildWorkflow(root string, removeBase bool, citation workflowCitation, ceiling uint64, extraPaths int) error {
 	ctx := context.Background()
 	repo := filepath.Join(root, "repo")
 	feature := filepath.Join(root, "feature")
@@ -4025,38 +4346,6 @@ func (template *workflowTemplate) buildWorkflow(root string, removeBase bool, ce
 		return err
 	}
 	if _, _, err := workspace.AddActor(ctx, "operator", "reviewer", "agent"); err != nil {
-		return err
-	}
-	if _, err := gitCommand(repo, "worktree", "add", "-b", "feature", feature); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(feature, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
-		return err
-	}
-	if extraPaths > 0 {
-		if err := os.MkdirAll(filepath.Join(feature, "extra"), 0o755); err != nil {
-			return err
-		}
-		for index := 0; index < extraPaths; index++ {
-			name := fmt.Sprintf("%04d-%s.txt", index, strings.Repeat("x", 48))
-			if err := os.WriteFile(filepath.Join(feature, "extra", name), []byte("x\n"), 0o644); err != nil {
-				return err
-			}
-		}
-	}
-	if _, err := gitCommand(feature, "add", "."); err != nil {
-		return err
-	}
-	if removeBase {
-		if _, err := gitCommand(feature, "rm", "-q", "base.txt"); err != nil {
-			return err
-		}
-	}
-	if _, err := gitCommand(feature, "commit", "-m", "feature"); err != nil {
-		return err
-	}
-	candidate, err := gitCommand(feature, "rev-parse", "HEAD")
-	if err != nil {
 		return err
 	}
 	base, err := gitCommand(repo, "rev-parse", "HEAD")
@@ -4089,6 +4378,68 @@ func (template *workflowTemplate) buildWorkflow(root string, removeBase bool, ce
 		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "implement exact feature head",
 		RestsOn: []string{implementationRequest.Record.ID}, IdempotencyKey: "implementation-promise",
 	})
+	if err != nil {
+		return err
+	}
+	citationPath := filepath.Join("docs", "reference", "base.md")
+	if citation == workflowCandidateDeletesCitation {
+		full := filepath.Join(repo, citationPath)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(full, []byte("---\nbasis:\n  - "+groundSubmission.Record.ID+"\n---\n\nprose\n"), 0o600); err != nil {
+			return err
+		}
+		if _, err := gitCommand(repo, "add", citationPath); err != nil {
+			return err
+		}
+		if _, err := gitCommand(repo, "commit", "-m", "cite the live base artifact"); err != nil {
+			return err
+		}
+	}
+	if _, err := gitCommand(repo, "worktree", "add", "-b", "feature", feature); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(feature, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
+		return err
+	}
+	if extraPaths > 0 {
+		if err := os.MkdirAll(filepath.Join(feature, "extra"), 0o755); err != nil {
+			return err
+		}
+		for index := 0; index < extraPaths; index++ {
+			name := fmt.Sprintf("%04d-%s.txt", index, strings.Repeat("x", 48))
+			if err := os.WriteFile(filepath.Join(feature, "extra", name), []byte("x\n"), 0o644); err != nil {
+				return err
+			}
+		}
+	}
+	if citation == workflowCandidateAddsCitation {
+		full := filepath.Join(feature, citationPath)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(full, []byte("---\nbasis:\n  - "+groundSubmission.Record.ID+"\n---\n\nprose\n"), 0o600); err != nil {
+			return err
+		}
+	}
+	if _, err := gitCommand(feature, "add", "."); err != nil {
+		return err
+	}
+	if removeBase {
+		if _, err := gitCommand(feature, "rm", "-q", "base.txt"); err != nil {
+			return err
+		}
+	}
+	if citation == workflowCandidateDeletesCitation {
+		if _, err := gitCommand(feature, "rm", "-q", citationPath); err != nil {
+			return err
+		}
+	}
+	if _, err := gitCommand(feature, "commit", "-m", "feature"); err != nil {
+		return err
+	}
+	candidate, err := gitCommand(feature, "rev-parse", "HEAD")
 	if err != nil {
 		return err
 	}

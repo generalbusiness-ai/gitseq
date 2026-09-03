@@ -26,6 +26,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
@@ -709,6 +710,11 @@ func tools() []map[string]any {
 			"cursor": stringField,
 		}), "paths")},
 		{"name": "inspect", "description": "Inspect one exact canonical durable event with its decision, commitment chain, direct provenance, and related review artifacts.", "inputSchema": object(withSelection(map[string]any{"event": stringField}), "event")},
+		{"name": "merge_plan", "description": "Explain whether an exact approved head may merge and how every covered live artifact would be accounted for, without changing Git or the workroom.", "inputSchema": object(withSelection(map[string]any{
+			"checkout":  map[string]any{"type": "string", "description": "Checkout that would receive the merge; defaults to repo."},
+			"candidate": stringField,
+			"approval":  stringField,
+		}), "candidate", "approval")},
 		{"name": "say", "description": "Publish signed ephemeral chat. Unique @name mentions and exact replies address live recipient sessions for priority delivery.", "inputSchema": object(withSelection(map[string]any{"about": stringField, "text": stringField, "conversation": stringField, "re": stringField}), "about", "text")},
 		{"name": "ack", "description": "Acknowledge exact priority-chat thread handles for this leased session. This is not a durable read receipt.", "inputSchema": object(withSelection(map[string]any{"threads": map[string]any{"type": "array", "items": stringField, "maxItems": nexus.MaxInboxFrames}}), "threads")},
 		{"name": "state", "description": "Append a durable attributed utterance. Evidence values are embedded attachments. A request body addresses its performer as name, @name, or fingerprint; the signed event stores the fingerprint. allow_dead_basis rests on a retired basis anyway, signing body.dead_basis_override=true; a merely stale basis is admitted without it, with the staleness recorded in body.stale_bases.", "inputSchema": object(withSelection(map[string]any{"kind": stringField, "text": stringField, "body": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "rests_on": map[string]any{"type": "array", "items": stringField}, "evidence": map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}}, "allow_dead_basis": map[string]string{"type": "boolean"}, "idempotency_key": stringField}), "kind", "text", "rests_on")},
@@ -1247,6 +1253,15 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 			return statusview.BuildItemInspection(durable, input.Event, true)
 		}
 		return inspection, nil
+	case "merge_plan":
+		checkout := stringValue(call.Arguments["checkout"])
+		if strings.TrimSpace(checkout) == "" {
+			checkout = current.workspace.Repo
+		}
+		_, resident := current.endpoint()
+		return mergeplan.Build(ctx, current.workspace, checkout,
+			stringValue(call.Arguments["candidate"]), stringValue(call.Arguments["approval"]), identity.actor.Fingerprint,
+			mergeplan.Signer{Name: identity.selector, Private: identity.private, CheckResidentCeiling: resident}), nil
 	case "say":
 		arguments := residentArguments(call.Arguments)
 		arguments["credential"] = current.credentialValue()

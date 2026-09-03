@@ -95,6 +95,63 @@ func TestSubmissionAndReloadPreserveEventTimestamp(t *testing.T) {
 	assertTimestamp("reloaded", reloaded)
 }
 
+func TestReadOnlySnapshotDoesNotRepairLaggingFrontierOrPublishCheckpoint(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Act(ctx, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "beyond the stored frontier",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "read-only-snapshot-frontier",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeFrontier(workspace.MetaDir, &apphost.VerifiedFrontier{Head: workspace.View().Genesis, Depth: 1}); err != nil {
+		t.Fatal(err)
+	}
+	cold, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := readOnlySnapshotRepositoryState(t, cold)
+	snapshot, err := cold.ReadOnlySnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Depth != 2 {
+		t.Fatalf("read-only snapshot depth = %d, want 2", snapshot.Depth)
+	}
+	after := readOnlySnapshotRepositoryState(t, cold)
+	if before != after {
+		t.Fatalf("read-only snapshot repaired local state\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	if frontier := cold.View().VerifiedFrontier; frontier == nil || frontier.Head != workspace.View().Genesis || frontier.Depth != 1 {
+		t.Fatalf("in-memory frontier moved to %+v", frontier)
+	}
+}
+
+func readOnlySnapshotRepositoryState(t *testing.T, workspace *Workspace) string {
+	t.Helper()
+	read := func(arguments ...string) string {
+		args := append([]string{"--no-optional-locks", "--no-replace-objects", "-C", workspace.Repo}, arguments...)
+		output, err := exec.Command("git", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", arguments, err, output)
+		}
+		return string(output)
+	}
+	config, err := os.ReadFile(filepath.Join(workspace.MetaDir, apphost.ConfigFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join([]string{
+		read("for-each-ref", "--format=%(refname) %(objectname)"),
+		read("cat-file", "--batch-all-objects", "--batch-check=%(objectname)"),
+		fmt.Sprintf("config:%x\n", config),
+	}, "")
+}
+
 func TestBuildActRequestHashesPayloadTreeUntilAdmissionWritesIt(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
