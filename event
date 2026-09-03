@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact-head documentation index artifact for the merge-plan references.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"docs/README.md"}}
+{"kind":"artifact","text":"Exact-head architecture artifact for the shared merge-plan evaluator and its CLI/MCP consumers. The repair preserves the existing layer contracts.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"docs/reference/architecture.md"}}
