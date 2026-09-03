@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -657,11 +656,12 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if !found {
+		// Validate before planning so invalid approvals and authorizations fail
+		// without staging even a disposable merge. The later validation is a
+		// deliberate remeasurement after planning: authorization and the target
+		// may have moved while Build inspected the prospective result.
 		if _, err := validateMerge(ctx, workspace, *checkout, *candidate, *approval, *authorization, false); err != nil {
 			return err
-		}
-		if *authorization == "" {
-			fmt.Fprintln(os.Stderr, "warning: merge has no structured authorization; phase-one compatibility permits this merge")
 		}
 	}
 	if strings.TrimSpace(*mergeText) == "" {
@@ -750,6 +750,9 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	if *authorization == "" {
+		fmt.Fprintln(os.Stderr, "warning: merge has no structured authorization; phase-one compatibility permits this merge")
+	}
 	receiptRef := mergeReceiptRef(*approval)
 	if _, err := git(ctx, *checkout, "update-ref", receiptRef, targetPreHead, ""); err != nil {
 		return errors.New("approval is already reserved or used by another merge")
@@ -791,9 +794,6 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return errors.New("allowed merge plan did not preserve its validated succession")
 	}
 	plan := sharedPlan
-	if err := preflightSuccession(ctx, workspace, *checkout, plan); err != nil {
-		return fmt.Errorf("merge succession preflight: %w", err)
-	}
 	message, err := mergeReceiptMessage(*mergeText, *approval, *authorization, validation.AuthorizationRatification, *candidate, targetPreHead, validation.Staleness, plan)
 	if err != nil {
 		return err
@@ -1001,7 +1001,7 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	}
 	projection := snapshot.Projection
 	for _, statement := range projection.Statements {
-		if statement.Body["merge_approval"] == approvalEvent && decisionEffective(projection, statement.Event) {
+		if statement.Body["merge_approval"] == approvalEvent && mergeplan.DecisionEffective(projection, statement.Event) {
 			return mergeValidation{}, fmt.Errorf("approval already has durable merge receipt %s", statement.Event)
 		}
 	}
@@ -1024,7 +1024,7 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 			{Name: "approval", Event: approved.Statement.Event, Stale: approved.Statement.Stale, World: approved.Statement.DescribesSupersededWorld},
 			{Name: "artifact", Event: approved.Artifact.Event, Stale: approved.Artifact.Stale, World: approved.Artifact.DescribesSupersededWorld},
 		}
-		authorization, _ := standingStatement(projection, authorizationEvent, workroom.KindReport)
+		authorization, _ := mergeplan.StandingStatement(projection, authorizationEvent, workroom.KindReport)
 		parts = append(parts, reviewguard.Part{
 			Name: "authorization", Event: authorization.Event, Stale: authorization.Stale,
 			World: authorization.DescribesSupersededWorld,
@@ -1044,7 +1044,7 @@ func validateMergeAuthorization(ctx context.Context, projection workroom.Project
 		}
 		return "", nil
 	}
-	authorization, err := standingStatement(projection, authorizationEvent, workroom.KindReport)
+	authorization, err := mergeplan.StandingStatement(projection, authorizationEvent, workroom.KindReport)
 	if err != nil {
 		return "", err
 	}
@@ -1052,7 +1052,7 @@ func validateMergeAuthorization(ctx context.Context, projection workroom.Project
 		return "", errors.New("report is not ratified by its requester")
 	}
 	ratificationSequence := eventSequence(projection, authorization.RatifiedBy)
-	if ratificationSequence == 0 || !decisionEffective(projection, authorization.RatifiedBy) {
+	if ratificationSequence == 0 || !mergeplan.DecisionEffective(projection, authorization.RatifiedBy) {
 		return "", errors.New("ratification is not an effective sequenced event")
 	}
 	if sealedRatification != "" && authorization.RatifiedBy != sealedRatification {
@@ -1061,7 +1061,7 @@ func validateMergeAuthorization(ctx context.Context, projection workroom.Project
 	if ratificationSequence >= receiptSequence {
 		return "", fmt.Errorf("ratification sequence %d is not before merge receipt sequence %d", ratificationSequence, receiptSequence)
 	}
-	if _, err := liveStatementAsOf(projection, authorizationEvent, workroom.KindReport, ratificationSequence); err != nil {
+	if _, err := mergeplan.LiveStatementAsOf(projection, authorizationEvent, workroom.KindReport, ratificationSequence); err != nil {
 		return "", err
 	}
 	if got := authorization.Body["authorizes_candidate"]; got != candidate {
@@ -1134,7 +1134,7 @@ func eventSequence(projection workroom.Projection, event string) int {
 }
 
 func approvalImplementationCommitment(projection workroom.Projection, approvalEvent string) (workroom.Commitment, error) {
-	approval, err := standingStatement(projection, approvalEvent, workroom.KindReport)
+	approval, err := mergeplan.StandingStatement(projection, approvalEvent, workroom.KindReport)
 	if err != nil {
 		return workroom.Commitment{}, fmt.Errorf("approval: %w", err)
 	}
@@ -1178,122 +1178,10 @@ func validateArtifactCommit(ctx context.Context, repo, commit string) error {
 	return nil
 }
 
-// standingArtifact returns an artifact that may still be acted on. Retirement
-// withdraws the pointer and is a refusal; being judged ineffective means the
-// pointer was never conferred. Staleness is neither: it says a basis moved
-// under the artifact, while the commit it names is immutable and still names
-// exactly what it named. Callers that want the strict reading say so.
-func standingArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
-	if !decisionEffective(projection, event) {
-		return workroom.Artifact{}, errors.New("artifact is not effective")
-	}
-	for _, artifact := range projection.Artifacts {
-		if artifact.Event == event {
-			if artifact.Retired {
-				return workroom.Artifact{}, errors.New("artifact is retired")
-			}
-			return artifact, nil
-		}
-	}
-	return workroom.Artifact{}, errors.New("artifact event is unknown")
-}
-
-// liveArtifact is merge-live: standing, and not describing a superseded world.
-// Ordinary reasoning staleness is recorded by the merge receipt. It judges the
-// world as of now, which is what a reviewer signing an artifact needs.
-func liveArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
-	return liveArtifactAsOf(projection, event, math.MaxInt)
-}
-
-// liveArtifactAsOf is liveArtifact with the verdict's position in the log. A
-// reviewer can only answer for the world they were shown: an artifact that
-// already described a superseded world when they looked is a judgement that
-// cannot be repaired by repeating it, and still refuses. A retirement landing
-// afterwards is news, and news belongs in the receipt beside ordinary
-// staleness, not in a refusal of a verdict that was sound when it was made.
-//
-// The date is the fold's, taken across every basis. Deriving it here would be a
-// second copy of a rule the fold already owns, and the copy is what drifts.
-func liveArtifactAsOf(projection workroom.Projection, event string, verdict int) (workroom.Artifact, error) {
-	artifact, err := standingArtifact(projection, event)
-	if err != nil {
-		return workroom.Artifact{}, err
-	}
-	if artifact.DescribesSupersededWorld && !worldMovedAfterVerdict(artifact, verdict) {
-		return workroom.Artifact{}, errors.New("artifact describes a superseded world")
-	}
-	return artifact, nil
-}
-
-// worldMovedAfterVerdict reads the fold's date and fails closed on its absence.
-// Zero means the fold accounted for no active cause, and reading that as "after
-// the verdict" would turn every projection this cannot date into a merge nobody
-// reviewed.
-func worldMovedAfterVerdict(artifact workroom.Artifact, verdict int) bool {
-	return worldDatedAfter(artifact.WorldSupersededAt, verdict)
-}
-
-// standingStatement is the same judgement for a statement: refuse what was
-// retired or judged ineffective, and report staleness rather than refuse it.
-func standingStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
-	if !decisionEffective(projection, event) {
-		return workroom.Statement{}, errors.New("statement is not effective")
-	}
-	for _, statement := range projection.Statements {
-		if statement.Event == event {
-			if statement.Kind != kind {
-				return workroom.Statement{}, fmt.Errorf("statement is %s, want %s", statement.Kind, kind)
-			}
-			if statement.Retired {
-				return workroom.Statement{}, errors.New("statement is retired")
-			}
-			return statement, nil
-		}
-	}
-	return workroom.Statement{}, errors.New("statement event is unknown")
-}
-
-// liveStatement is merge-live: standing, and not describing a superseded
-// world. Ordinary reasoning staleness is recorded by the merge receipt. It
-// judges the world as of now, which is what a caller with no verdict to date
-// against needs.
-func liveStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
-	return liveStatementAsOf(projection, event, kind, math.MaxInt)
-}
-
-// liveStatementAsOf dates an approval's own superseded world the way
-// liveArtifactAsOf dates the artifact's. An approval is a statement, so it
-// carries the same published date, and refusing it undated while the artifact
-// beside it is dated would refuse exactly the verdicts this change exists to
-// admit: the approval and its artifact move together when a basis under both
-// is retired after the verdict.
-//
-// A verdict cannot date itself, so the caller supplies the position. For the
-// approval that position is its own, which is what makes a world that moved
-// afterwards news rather than grounds for refusal.
-func liveStatementAsOf(projection workroom.Projection, event string, kind workroom.Kind, verdict int) (workroom.Statement, error) {
-	statement, err := standingStatement(projection, event, kind)
-	if err != nil {
-		return workroom.Statement{}, err
-	}
-	if statement.DescribesSupersededWorld && !worldDatedAfter(statement.WorldSupersededAt, verdict) {
-		return workroom.Statement{}, errors.New("statement describes a superseded world")
-	}
-	return statement, nil
-}
-
-// worldDatedAfter reads the fold's date and fails closed on its absence. Zero
-// means the fold accounted for no active cause, and reading that as "after the
-// verdict" would turn every projection this cannot date into a merge nobody
-// reviewed.
-func worldDatedAfter(datedAt, verdict int) bool {
-	return datedAt != 0 && datedAt > verdict
-}
-
 func uniqueStandingBasis(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
 	var found []workroom.Statement
 	for _, basis := range projection.Provenance[event] {
-		statement, err := standingStatement(projection, basis, kind)
+		statement, err := mergeplan.StandingStatement(projection, basis, kind)
 		if err == nil {
 			found = append(found, statement)
 		}
@@ -1302,15 +1190,6 @@ func uniqueStandingBasis(projection workroom.Projection, event string, kind work
 		return workroom.Statement{}, fmt.Errorf("expected one standing %s basis, found %d", kind, len(found))
 	}
 	return found[0], nil
-}
-
-func decisionEffective(projection workroom.Projection, event string) bool {
-	for _, decision := range projection.Decisions {
-		if decision.Event == event {
-			return decision.Verdict == workroom.Effective
-		}
-	}
-	return false
 }
 
 func ratifyCommand(ctx context.Context, arguments []string) error {

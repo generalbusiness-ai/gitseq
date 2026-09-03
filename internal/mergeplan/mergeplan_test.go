@@ -39,7 +39,7 @@ func TestValidatedSuccessionIsAnInternalLosslessClone(t *testing.T) {
 		Publish:      []string{"shared/file"},
 		Retire:       map[string]string{"old": "shared/file"},
 		ChangedPaths: []string{"shared/file"},
-		LeftLive:     map[string]LeftLive{"wide": {Class: "carried"}},
+		LeftLive:     map[string]LeftLive{"wide": {Class: LeftLiveCarried}},
 	}}
 	encoded, err := json.Marshal(result)
 	if err != nil {
@@ -55,7 +55,7 @@ func TestValidatedSuccessionIsAnInternalLosslessClone(t *testing.T) {
 	first.Publish[0] = "changed"
 	first.Retire["old"] = "changed"
 	first.ChangedPaths[0] = "changed"
-	first.LeftLive["wide"] = LeftLive{Class: "abandoned"}
+	first.LeftLive["wide"] = LeftLive{Class: LeftLiveAbandoned}
 	second, ok := result.ValidatedSuccession()
 	if !ok || second.Publish[0] != "shared/file" || second.Retire["old"] != "shared/file" ||
 		second.ChangedPaths[0] != "shared/file" || second.LeftLive["wide"].Class != "carried" {
@@ -74,8 +74,8 @@ func TestSuccessionActsAreDeterministic(t *testing.T) {
 		Publish: []string{"a", "b"}, ChangedPaths: []string{"a", "b"},
 		Retire: map[string]string{"second": "b", "first": "a"},
 		LeftLive: map[string]LeftLive{
-			"z": {Class: "abandoned"},
-			"y": {Class: "sibling", Commitment: "promise"},
+			"z": {Class: LeftLiveAbandoned},
+			"y": {Class: LeftLiveSibling, Commitment: "promise"},
 		},
 	}
 	first, err := json.Marshal(SuccessionActs("approval", "", "", "candidate", "target", "merge", "", plan))
@@ -426,12 +426,12 @@ func TestClassifyAndPlanPreserveExactPathCarriedAccounting(t *testing.T) {
 		t.Fatalf("exact-path succession = %+v", plan)
 	}
 	wantLeftLive := map[string]LeftLive{
-		"target-wide":    {Class: "carried"},
-		"candidate-wide": {Class: "carried"},
-		"sibling":        {Class: "sibling", Commitment: "promise"},
-		"sibling-wide":   {Class: "sibling", Commitment: "promise"},
-		"abandoned":      {Class: "abandoned"},
-		"ineffective":    {Class: "abandoned"},
+		"target-wide":    {Class: LeftLiveCarried},
+		"candidate-wide": {Class: LeftLiveCarried},
+		"sibling":        {Class: LeftLiveSibling, Commitment: "promise"},
+		"sibling-wide":   {Class: LeftLiveSibling, Commitment: "promise"},
+		"abandoned":      {Class: LeftLiveAbandoned},
+		"ineffective":    {Class: LeftLiveAbandoned},
 	}
 	if !reflect.DeepEqual(plan.LeftLive, wantLeftLive) {
 		t.Fatalf("left-live accounting = %#v, want %#v", plan.LeftLive, wantLeftLive)
@@ -461,8 +461,8 @@ func TestPlanSuccessionKeepsExactPathRules(t *testing.T) {
 		wide := workroom.Artifact{Event: "wide", Path: "internal", Commit: "old"}
 		for _, order := range [][]workroom.Artifact{{narrow, wide}, {wide, narrow}} {
 			candidates := map[string]Candidate{
-				"narrow": {Class: ClassCarried, LeftLive: LeftLive{Class: "carried"}},
-				"wide":   {Class: ClassCarried, LeftLive: LeftLive{Class: "carried"}},
+				"narrow": {Class: ClassCarried, LeftLive: LeftLive{Class: LeftLiveCarried}},
+				"wide":   {Class: ClassCarried, LeftLive: LeftLive{Class: LeftLiveCarried}},
 			}
 			plan := PlanSuccession(workroom.Projection{Artifacts: order},
 				[]Change{{Status: "M", New: "internal/workroom/fold.go"}}, candidates)

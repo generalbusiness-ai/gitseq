@@ -58,84 +58,12 @@ var errMalformedDiff = errors.New("malformed NUL-delimited merge diff")
 type successionPlan = mergeplan.Succession
 type mergeLeftLive = mergeplan.LeftLive
 
-const (
-	leftLiveCarried   = "carried"
-	leftLiveSibling   = "sibling"
-	leftLiveAbandoned = "abandoned"
-)
-
 // mergeChangedPaths seals the complete path set from the diff: both sides of
 // a rename or copy, the old side of a deletion, and the new side of every
 // addition or modification. A set makes repeated paths harmless; sorting makes
 // the JSON stable across Git's output order and retries.
 func mergeChangedPaths(changes []mergeChange) []string {
 	return mergeplan.ChangedPaths(changes)
-}
-
-// preflightSuccession refuses the two retirements that cannot be repaired
-// afterwards, and only those.
-//
-// The citation guard exists because a page resting on a withdrawn pointer has
-// nowhere to go. A merge retirement that this same plan gives a successor is a
-// different act: the supersession names the successor artifact, so the log
-// carries the reader from the old pointer to the current one at a path that
-// still covers the behaviour, and the documentation gate follows that link and
-// flares rather than failing. Refusing it was a deadlock with no legal exit —
-// the successor cannot exist until the merge lands, and the merge could not
-// land until the pages were repointed at the successor. Passing every
-// retirement through as allowed would be the other half of the same mistake,
-// so a bare retirement, which orphans whatever cites it, is still refused here
-// and still needs a deliberate `gs supersede --cited-ok` after the pages move.
-func preflightSuccession(ctx context.Context, workspace *app.Workspace, checkout string, plan successionPlan) error {
-	return mergeplan.ValidateSuccession(ctx, workspace, checkout, plan)
-}
-
-// refuseUnreachableCrossAuthorRetirements states the command's own reach bound
-// before the merge commit exists, so a plan outside the prospective policy is
-// refused while the target is still unchanged rather than discovered after
-// `HEAD` has moved and half the succession has landed. The bound is narrower
-// than the fold's symmetric lineage rule, which is unchanged and goes on
-// judging what has already been sealed.
-//
-// The bound is the approval's: a receipt reaches another actor's pointer only
-// on the path lineage of the artifact that approval names. The fold holds no
-// repository and cannot check a merge head or a diff, so the reviewer's signed
-// choice of artifact is the only fact bounding the merger that the merger did
-// not write.
-//
-// Live standing is deliberately not consulted, though the fold does grant a
-// ratifier free-standing authority to retire anything. Standing can be revoked
-// between this check and the acts it would authorize, and the fold judges each
-// supersession after `HEAD` has moved, so admitting a plan on a role is
-// admitting it on a fact that may not survive the merge. Refusing here is
-// recoverable and costs a caller nothing; discovering it afterwards leaves the
-// target moved and the succession half-done.
-func refuseUnreachableCrossAuthorRetirements(projection workroom.Projection, plan successionPlan, approval, actor string) error {
-	return mergeplan.ValidateReach(projection, plan, approval, actor)
-}
-
-// reviewedPaths reads which artifacts an approval puts within reach the way
-// the fold reads it: the artifacts the reviewer cited as bases of the verdict,
-// each standing at the exact head approved and owned by the implementer it
-// binds. That selection has to agree with the fold, or the command refuses
-// merges the fold would allow — which is what stranded a head spanning four
-// maintained trees — or admits ones the fold refuses, which strands a
-// succession after the target has moved.
-//
-// The reach of those paths does not agree, and deliberately so. The fold's own
-// lineage test still reads both directions and is unchanged; this command-side
-// guard narrows its reading to one direction, prospectively, and runs once, in
-// fresh-merge preflight while the target is still where it was. Succession
-// recording never re-applies it: a receipt sealed under the symmetric reading
-// keeps the authority it was sealed with.
-//
-// The command applies one check the fold cannot: whether a candidate describes
-// a superseded world, which is known only after the whole log is folded.
-// Ordinary reasoning staleness remains review evidence and does not erase the
-// reviewer's signed reach over this exact head.
-func reviewedPaths(projection workroom.Projection, approval string) []string {
-	_, paths := mergeplan.ReviewedScope(projection, approval)
-	return paths
 }
 
 // recordMergeSuccession appends the durable succession suffix a sealed Git
@@ -214,7 +142,7 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 			return errors.New("recorded merge changed paths do not match the sealed Git receipt")
 		}
 	}
-	if err := preflightSuccession(ctx, workspace, checkout, plan); err != nil {
+	if err := mergeplan.ValidateSuccession(ctx, workspace, checkout, plan); err != nil {
 		return err
 	}
 	acts := successionActs(receipt.Approval, receipt.Authorization, receipt.AuthorizationRatification, receipt.Candidate, receipt.TargetPreHead, receipt.MergeHead, receipt.Staleness, plan)
@@ -316,7 +244,7 @@ func verifySuccession(ctx context.Context, workspace *app.Workspace, receipt mer
 		return err
 	}
 	for target := range plan.Retire {
-		artifact, err := standingArtifact(snapshot.Projection, target)
+		artifact, err := mergeplan.StandingArtifact(snapshot.Projection, target)
 		if err == nil || !strings.Contains(err.Error(), "retired") {
 			return fmt.Errorf("merge succession did not retire predecessor %s (artifact %+v, error %v)", target, artifact, err)
 		}

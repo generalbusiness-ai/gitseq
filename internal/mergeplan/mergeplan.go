@@ -33,6 +33,9 @@ const (
 	ClassCarried             = "carried"
 	ClassProtectedSibling    = "protected sibling"
 	ClassAbandoned           = "abandoned"
+	LeftLiveCarried          = "carried"
+	LeftLiveSibling          = "sibling"
+	LeftLiveAbandoned        = "abandoned"
 )
 
 type Frontier struct {
@@ -276,7 +279,7 @@ func RequireImplementer(projection workroom.Projection, approvalEvent, merger st
 
 func ValidateApproval(projection workroom.Projection, candidate, approvalEvent string) (Approval, error) {
 	verdict := verdictSequence(projection, approvalEvent)
-	approval, err := liveStatementAsOf(projection, approvalEvent, workroom.KindReport, verdict)
+	approval, err := LiveStatementAsOf(projection, approvalEvent, workroom.KindReport, verdict)
 	if err != nil {
 		return Approval{}, fmt.Errorf("approval: %w", err)
 	}
@@ -293,7 +296,7 @@ func ValidateApproval(projection workroom.Projection, candidate, approvalEvent s
 	if artifactEvent == "" || !slices.Contains(projection.Provenance[approvalEvent], artifactEvent) {
 		return Approval{}, errors.New("approval does not rest on its named artifact")
 	}
-	artifact, err := liveArtifactAsOf(projection, artifactEvent, approval.Sequence)
+	artifact, err := LiveArtifactAsOf(projection, artifactEvent, approval.Sequence)
 	if err != nil {
 		return Approval{}, fmt.Errorf("approval artifact: %w", err)
 	}
@@ -322,7 +325,9 @@ func ValidateApproval(projection workroom.Projection, candidate, approvalEvent s
 	}
 }
 
-func decisionEffective(projection workroom.Projection, event string) bool {
+// DecisionEffective reports whether the fold admitted an event. Merge and its
+// read-only planner share this lookup so their liveness decisions cannot drift.
+func DecisionEffective(projection workroom.Projection, event string) bool {
 	for _, decision := range projection.Decisions {
 		if decision.Event == event {
 			return decision.Verdict == workroom.Effective
@@ -342,8 +347,10 @@ func verdictSequence(projection workroom.Projection, approval string) int {
 
 func worldDatedAfter(datedAt, verdict int) bool { return datedAt != 0 && datedAt > verdict }
 
-func liveStatementAsOf(projection workroom.Projection, event string, kind workroom.Kind, verdict int) (workroom.Statement, error) {
-	if !decisionEffective(projection, event) {
+// StandingStatement returns an effective, unretired statement of the requested
+// kind. Ordinary reasoning staleness does not withdraw the statement.
+func StandingStatement(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
+	if !DecisionEffective(projection, event) {
 		return workroom.Statement{}, errors.New("statement is not effective")
 	}
 	for _, statement := range projection.Statements {
@@ -356,16 +363,29 @@ func liveStatementAsOf(projection workroom.Projection, event string, kind workro
 		if statement.Retired {
 			return workroom.Statement{}, errors.New("statement is retired")
 		}
-		if statement.DescribesSupersededWorld && !worldDatedAfter(statement.WorldSupersededAt, verdict) {
-			return workroom.Statement{}, errors.New("statement describes a superseded world")
-		}
 		return statement, nil
 	}
 	return workroom.Statement{}, errors.New("statement event is unknown")
 }
 
-func liveArtifactAsOf(projection workroom.Projection, event string, verdict int) (workroom.Artifact, error) {
-	if !decisionEffective(projection, event) {
+// LiveStatementAsOf returns a standing statement unless it already described
+// a superseded world when the supplied verdict was signed. A later movement is
+// news for the merge receipt, not a retroactive veto of that verdict.
+func LiveStatementAsOf(projection workroom.Projection, event string, kind workroom.Kind, verdict int) (workroom.Statement, error) {
+	statement, err := StandingStatement(projection, event, kind)
+	if err != nil {
+		return workroom.Statement{}, err
+	}
+	if statement.DescribesSupersededWorld && !worldDatedAfter(statement.WorldSupersededAt, verdict) {
+		return workroom.Statement{}, errors.New("statement describes a superseded world")
+	}
+	return statement, nil
+}
+
+// StandingArtifact returns an effective, unretired artifact. Ordinary
+// reasoning staleness does not withdraw the immutable pointer.
+func StandingArtifact(projection workroom.Projection, event string) (workroom.Artifact, error) {
+	if !DecisionEffective(projection, event) {
 		return workroom.Artifact{}, errors.New("artifact is not effective")
 	}
 	for _, artifact := range projection.Artifacts {
@@ -375,12 +395,22 @@ func liveArtifactAsOf(projection workroom.Projection, event string, verdict int)
 		if artifact.Retired {
 			return workroom.Artifact{}, errors.New("artifact is retired")
 		}
-		if artifact.DescribesSupersededWorld && !worldDatedAfter(artifact.WorldSupersededAt, verdict) {
-			return workroom.Artifact{}, errors.New("artifact describes a superseded world")
-		}
 		return artifact, nil
 	}
 	return workroom.Artifact{}, errors.New("artifact event is unknown")
+}
+
+// LiveArtifactAsOf applies the same temporal superseded-world rule as
+// LiveStatementAsOf to an artifact.
+func LiveArtifactAsOf(projection workroom.Projection, event string, verdict int) (workroom.Artifact, error) {
+	artifact, err := StandingArtifact(projection, event)
+	if err != nil {
+		return workroom.Artifact{}, err
+	}
+	if artifact.DescribesSupersededWorld && !worldDatedAfter(artifact.WorldSupersededAt, verdict) {
+		return workroom.Artifact{}, errors.New("artifact describes a superseded world")
+	}
+	return artifact, nil
 }
 
 func ParseChanges(raw string) ([]Change, error) {
@@ -485,7 +515,7 @@ func Classify(ctx context.Context, checkout string, projection workroom.Projecti
 		}
 		if inTarget {
 			if !artifactRetiresForChanges(artifact.Path, changes) {
-				classified[artifact.Event] = Candidate{Class: ClassCarried, LeftLive: LeftLive{Class: "carried"}}
+				classified[artifact.Event] = Candidate{Class: ClassCarried, LeftLive: LeftLive{Class: LeftLiveCarried}}
 				continue
 			}
 			class := ClassInTargetPredecessor
@@ -496,9 +526,9 @@ func Classify(ctx context.Context, checkout string, projection workroom.Projecti
 			continue
 		}
 		if commitment := protected[artifact.Event]; commitment != "" {
-			classified[artifact.Event] = Candidate{Class: ClassProtectedSibling, LeftLive: LeftLive{Class: "sibling", Commitment: commitment}}
+			classified[artifact.Event] = Candidate{Class: ClassProtectedSibling, LeftLive: LeftLive{Class: LeftLiveSibling, Commitment: commitment}}
 		} else {
-			classified[artifact.Event] = Candidate{Class: ClassAbandoned, LeftLive: LeftLive{Class: "abandoned"}}
+			classified[artifact.Event] = Candidate{Class: ClassAbandoned, LeftLive: LeftLive{Class: LeftLiveAbandoned}}
 		}
 	}
 	return classified, nil
@@ -1202,7 +1232,7 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 		return result
 	}
 	for _, statement := range snapshot.Projection.Statements {
-		if statement.Body["merge_approval"] == approvalEvent && decisionEffective(snapshot.Projection, statement.Event) {
+		if statement.Body["merge_approval"] == approvalEvent && DecisionEffective(snapshot.Projection, statement.Event) {
 			result.Mode = "used"
 			return fail("approval_use", fmt.Errorf("approval already has durable merge receipt %s", statement.Event))
 		}

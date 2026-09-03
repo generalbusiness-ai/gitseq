@@ -389,11 +389,15 @@ The documentation gate reads the same distinction. A citation of a retired
 artifact whose retirement names a covering successor is reported as a flare; a
 citation of a retirement that names nothing still fails the set.
 
-Before moving `HEAD`, `merge` runs this check on the tracked tree that will
-receive the merge. Git prepares the merge with `--no-commit`, the command checks
-the actual staged result, and a refusal aborts the tentative merge with the
-target unchanged. Only then does it create the receipt commit and publish the
-durable succession.
+Before reserving the approval or moving `HEAD`, the shared evaluator prepares
+the exact merge in a disposable clone and runs this check on that staged result.
+The governed checkout therefore cannot hide a citation the candidate adds or
+retain one the candidate deletes. `merge` consumes the validated succession,
+then stages the candidate in the governed checkout and verifies that its
+changed-path frontier still matches the plan. It does not repeat the same
+pre-commit citation scan against a second checkout. Only then does it create
+the receipt commit and publish the durable succession; retry-safe succession
+recording still validates the landed checkout before appending its suffix.
 
 ### Who may retire another actor's pointer
 

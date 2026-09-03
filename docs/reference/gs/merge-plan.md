@@ -53,7 +53,7 @@ gs merge-plan --repo "$REPO" --as alice --checkout "$REPO" \
 frontier, approval, candidate head, implementer, target pre-head, candidate
 artifacts, reviewed paths, canonical changed paths, and every live covering
 artifact. Each covering artifact is classified as `reviewed candidate`,
-`in-target predecessor`, `protected sibling`, or `abandoned`. The plan then
+`in-target predecessor`, `carried`, `protected sibling`, or `abandoned`. The plan then
 lists the proposed retirements, successor paths, and stable reason codes.
 Before allowing a fresh plan, it also encodes the exact durable receipt,
 successor, and retirement suffix without structured authorization through the

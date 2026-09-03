@@ -32,9 +32,9 @@ therefore does not say that a required authorization exists or is valid, and
 The structured result names the durable frontier, receipt mode, approval,
 exact head and implementer; candidate artifacts and reviewed paths; changed
 paths; every covering artifact and its classification; retirements and
-successors; and stable allow or refusal reasons. The four classifications are
-`reviewed candidate`, `in-target predecessor`, `protected sibling`, and
-`abandoned`.
+successors; and stable allow or refusal reasons. The five classifications are
+`reviewed candidate`, `in-target predecessor`, `carried`, `protected sibling`,
+and `abandoned`.
 
 Before allowing a fresh plan, the evaluator encodes the exact durable receipt,
 successor, and retirement suffix without structured authorization through the
