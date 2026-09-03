@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact-head shared merge-plan artifact. Build retains a private lossless clone of the succession it validated for the mutating merge command.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"internal/mergeplan/mergeplan.go"}}
+{"kind":"artifact","text":"Exact-head shared merge-plan regression artifact. It restores cross-author reach, invalid-path, nil-candidate exact-path, and lossless handoff proofs.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"internal/mergeplan/mergeplan_test.go"}}
