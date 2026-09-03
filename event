@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at docs/how-to/use-in-a-cloned-repo.md","body":{"commit":"4db6084720b61016c763c037d94766d201914cc8","path":"docs/how-to/use-in-a-cloned-repo.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5150e85978056e110996c3dfea31de28d7fa8f06","text":"Merge retired a covered predecessor; the successor is at docs/how-to/use-in-a-cloned-repo.md."}
