@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact-head gs regression artifact. A real merge now proves carried accounting in both the Git receipt and durable merge_left_live.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"cmd/gs/main_test.go"}}
+{"kind":"artifact","text":"Exact-head gs succession adapter artifact. The policy-free adapter preserves the validated plan's receipt field shapes.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"cmd/gs/succession.go"}}
