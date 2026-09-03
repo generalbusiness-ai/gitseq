@@ -1,1 +1,1 @@
-{"kind":"assert","text":"Still not actionable in this cycle: request a816c22a begins after b424b752 lands. Structured authorization request c676f86b remains open and unclaimed, so b424b752 has not merged. I will claim the follow-up immediately after an authorized landing."}
+{"kind":"promise","text":"I will inspect the exact approved candidate and current target merge plan, and authorize only if every required check is allowed."}
