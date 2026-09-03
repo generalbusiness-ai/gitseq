@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact repaired cmd/gs tree at this head, covering the removed cmd/gs/succession_test.go path as well as the maintained command implementation.","body":{"commit":"b424b752e0d822d32c316306f0ac03fe32a5cdaf","path":"cmd/gs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:46a8f62bce354aadd944eff29772289ec71e5c9a","text":"Retire the incomplete eight-artifact review request; Claude identified seven carried destinations that must be included in the exact-head reviewed set."}
