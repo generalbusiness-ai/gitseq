@@ -586,6 +586,139 @@ func TestMergePlanToolMatchesSharedRefusal(t *testing.T) {
 	}
 }
 
+type mergePlanBoundaryState struct {
+	GitHead          string
+	WorkroomHead     string
+	Depth            int
+	VerifiedFrontier string
+	CheckpointRef    string
+	CheckpointFile   string
+	Config           string
+}
+
+func mergePlanTestGit(t testing.TB, repo string, arguments ...string) string {
+	t.Helper()
+	args := append([]string{"--no-optional-locks", "--no-replace-objects", "-C", repo}, arguments...)
+	output, err := exec.Command("git", args...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", arguments, err, output)
+	}
+	return strings.TrimSpace(string(output))
+}
+
+func captureMergePlanBoundaryState(t testing.TB, workspace *app.Workspace) mergePlanBoundaryState {
+	t.Helper()
+	snapshot, err := workspace.ReadOnlySnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	frontier, err := json.Marshal(workspace.View().VerifiedFrontier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := workspace.Store.Head(context.Background(), kernel.CheckpointRef(workspace.View().Genesis))
+	if err != nil {
+		checkpoint = "absent: " + err.Error()
+	}
+	pointer, err := os.ReadFile(filepath.Join(workspace.MetaDir, "checkpoints", workspace.View().Genesis+".json"))
+	if err != nil {
+		pointer = []byte("absent: " + err.Error())
+	}
+	config, err := os.ReadFile(filepath.Join(workspace.MetaDir, apphost.ConfigFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mergePlanBoundaryState{
+		GitHead: mergePlanTestGit(t, workspace.Repo, "rev-parse", "HEAD"), WorkroomHead: snapshot.Head, Depth: snapshot.Depth,
+		VerifiedFrontier: string(frontier), CheckpointRef: checkpoint, CheckpointFile: string(pointer), Config: string(config),
+	}
+}
+
+func allowedMergePlanFixture(t *testing.T) (*app.Workspace, string, string) {
+	t.Helper()
+	ctx := context.Background()
+	workspace := initRepository(t, "merge-plan-allowed")
+	mergePlanTestGit(t, workspace.Repo, "config", "user.name", "Test")
+	mergePlanTestGit(t, workspace.Repo, "config", "user.email", "test@example.invalid")
+	if err := os.WriteFile(filepath.Join(workspace.Repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mergePlanTestGit(t, workspace.Repo, "add", "base.txt")
+	mergePlanTestGit(t, workspace.Repo, "commit", "-m", "base")
+	feature := filepath.Join(t.TempDir(), "feature")
+	mergePlanTestGit(t, workspace.Repo, "worktree", "add", "-b", "merge-plan-candidate", feature)
+	if err := os.WriteFile(filepath.Join(feature, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mergePlanTestGit(t, feature, "add", "feature.txt")
+	mergePlanTestGit(t, feature, "commit", "-m", "add feature")
+	candidate := mergePlanTestGit(t, feature, "rev-parse", "HEAD")
+	if _, _, err := workspace.AddActor(ctx, "human", "reviewer", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	seed := genesisOf(t, workspace)
+	artifact, err := workspace.Act(ctx, "human", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "feature artifact",
+		Body: map[string]string{"path": "feature.txt", "commit": candidate}, RestsOn: []string{seed}, IdempotencyKey: "merge-plan-allowed-artifact",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := workspace.Act(ctx, "human", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
+		Body: map[string]string{"to": "@reviewer", "conditions": "approve the exact feature head"}, RestsOn: []string{artifact.Record.ID}, IdempotencyKey: "merge-plan-allowed-request",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	promise, err := workspace.Act(ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "review exact feature head",
+		RestsOn: []string{request.Record.ID}, IdempotencyKey: "merge-plan-allowed-promise",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewer, _ := attachedServer(t, workspace, "reviewer", "", http.DefaultClient)
+	_, _, err = reviewer.call(ctx, toolCall{Name: "review", Arguments: map[string]any{
+		"artifacts": []any{artifact.Record.ID}, "promise": promise.Record.ID, "verdict": "approved",
+		"text": "approved exact feature head", "idempotency_key": "merge-plan-allowed-review",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := snapshot.Projection.Statements[len(snapshot.Projection.Statements)-1]
+	if _, err := workspace.Act(ctx, "human", app.Act{
+		Verb: app.VerbRatify, Target: report.Event, IdempotencyKey: "merge-plan-allowed-ratification",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return workspace, candidate, report.Event
+}
+
+func TestMergePlanToolAllowedResultLeavesGitAndWorkroomAccelerationStateUnchanged(t *testing.T) {
+	workspace, candidate, approval := allowedMergePlanFixture(t)
+	server, _ := attachedServer(t, workspace, "human", "", http.DefaultClient)
+	before := captureMergePlanBoundaryState(t, workspace)
+	value, _, err := server.call(context.Background(), toolCall{Name: "merge_plan", Arguments: map[string]any{
+		"candidate": candidate, "approval": approval, "checkout": workspace.Repo,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, ok := value.(mergeplan.Result)
+	if !ok || !result.Allowed {
+		t.Fatalf("allowed MCP merge_plan result = %#v", value)
+	}
+	after := captureMergePlanBoundaryState(t, workspace)
+	if after != before {
+		t.Fatalf("allowed MCP merge_plan mutated governed or acceleration state\nbefore: %+v\nafter:  %+v", before, after)
+	}
+}
+
 func TestSelectiveToolsUseResidentSelectionWithoutFetchingStatus(t *testing.T) {
 	parallelTest(t)
 	workspace := initRepository(t, "repo")

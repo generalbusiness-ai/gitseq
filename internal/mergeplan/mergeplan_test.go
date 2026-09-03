@@ -136,7 +136,10 @@ func TestReviewedCandidateAllowsSamePathCrossAuthorMainPredecessor(t *testing.T)
 		t.Fatalf("reviewed scope = events %#v paths %#v", reviewed, paths)
 	}
 	changes := []Change{{Status: "M", New: "docs/reference/architecture.md"}}
-	classified := Classify(context.Background(), repo, projection, changes, base, head, reviewed)
+	classified, err := Classify(context.Background(), repo, projection, changes, base, head, reviewed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := classified["candidate"].Class; got != ClassReviewedCandidate {
 		t.Fatalf("candidate class = %q", got)
 	}
@@ -208,6 +211,23 @@ func TestValidateReachPreservesDirectionalCrossAuthorProofs(t *testing.T) {
 			t.Fatalf("second reviewed path was refused: %v", err)
 		}
 	})
+	t.Run("merger may retire own pointer outside reviewed paths", func(t *testing.T) {
+		plan := Succession{Retire: map[string]string{"uncited": "ui"}}
+		if err := ValidateReach(projection, plan, "approval", "implementer"); err != nil {
+			t.Fatalf("merger's own pointer was refused: %v", err)
+		}
+	})
+}
+
+func TestClassifyRefusesAnUnreadableCommitInsteadOfCallingItOutsideTarget(t *testing.T) {
+	projection := workroom.Projection{Artifacts: []workroom.Artifact{{
+		Event: "unreadable", Path: "shared/file", Commit: strings.Repeat("f", 40),
+	}}}
+	_, err := Classify(context.Background(), t.TempDir(), projection,
+		[]Change{{Status: "M", New: "shared/file"}}, strings.Repeat("a", 40), strings.Repeat("b", 40), nil)
+	if err == nil || !strings.Contains(err.Error(), "classify artifact unreadable") {
+		t.Fatalf("unreadable commit classification error = %v", err)
+	}
 }
 
 func TestValidateSuccessionRefusesInvalidGeneratedArtifactPaths(t *testing.T) {
@@ -245,7 +265,10 @@ func TestAllAndOnlyUnsettledCommitmentStatusesProtectCoveringArtifacts(t *testin
 	}
 
 	changes := []Change{{Status: "M", New: "shared/file.go"}}
-	classified := Classify(context.Background(), "", projection, changes, "target", "candidate", nil)
+	classified, err := Classify(context.Background(), "", projection, changes, "target", "candidate", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	plan := PlanSuccession(projection, changes, classified)
 	for _, status := range statuses {
 		request := "request-" + status
@@ -285,7 +308,10 @@ func TestIneffectiveProvenanceCannotProtectCoveredArtifact(t *testing.T) {
 		Decisions: []workroom.Decision{{Event: "ineffective-middle", Verdict: workroom.Ineffective}},
 	}
 	changes := []Change{{Status: "M", New: "shared/file.go"}}
-	classified := Classify(context.Background(), "", projection, changes, "target", "candidate", nil)
+	classified, err := Classify(context.Background(), "", projection, changes, "target", "candidate", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	got := classified["candidate-artifact"]
 	if got.Class != ClassAbandoned || got.LeftLive.Class != "abandoned" || got.LeftLive.Commitment != "" {
 		t.Fatalf("artifact behind ineffective provenance classified as %+v, want abandoned", got)
@@ -310,7 +336,10 @@ func TestUnrelatedPathCannotEnterCoveredClassificationOrReceipt(t *testing.T) {
 	if covered := CoveredArtifacts(projection, changes); len(covered) != 0 {
 		t.Fatalf("unrelated artifact entered covered set: %#v", covered)
 	}
-	classified := Classify(context.Background(), "", projection, changes, "target", "candidate", nil)
+	classified, err := Classify(context.Background(), "", projection, changes, "target", "candidate", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got, exists := classified["unrelated-artifact"]; exists {
 		t.Fatalf("unrelated artifact entered classification as %+v", got)
 	}
@@ -369,7 +398,10 @@ func TestClassifyAndPlanPreserveExactPathCarriedAccounting(t *testing.T) {
 		Decisions: []workroom.Decision{{Event: "ineffective-middle", Verdict: workroom.Ineffective}},
 	}
 	changes := []Change{{Status: "M", New: "shared/file"}}
-	classified := Classify(context.Background(), repo, projection, changes, base, candidate, map[string]bool{"candidate-exact": true, "candidate-wide": true})
+	classified, err := Classify(context.Background(), repo, projection, changes, base, candidate, map[string]bool{"candidate-exact": true, "candidate-wide": true})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if classified["target-exact"].Class != ClassInTargetPredecessor || classified["candidate-exact"].Class != ClassReviewedCandidate {
 		t.Fatalf("exact in-target classifications = %#v", classified)
 	}
@@ -393,8 +425,16 @@ func TestClassifyAndPlanPreserveExactPathCarriedAccounting(t *testing.T) {
 	if !reflect.DeepEqual(plan.Publish, []string{"shared/file"}) || plan.Retire["target-exact"] != "shared/file" || plan.Retire["candidate-exact"] != "shared/file" {
 		t.Fatalf("exact-path succession = %+v", plan)
 	}
-	if plan.LeftLive["target-wide"].Class != "carried" || plan.LeftLive["candidate-wide"].Class != "carried" || plan.LeftLive["sibling"].Commitment != "promise" || plan.LeftLive["ineffective"].Class != "abandoned" {
-		t.Fatalf("left-live accounting = %#v", plan.LeftLive)
+	wantLeftLive := map[string]LeftLive{
+		"target-wide":    {Class: "carried"},
+		"candidate-wide": {Class: "carried"},
+		"sibling":        {Class: "sibling", Commitment: "promise"},
+		"sibling-wide":   {Class: "sibling", Commitment: "promise"},
+		"abandoned":      {Class: "abandoned"},
+		"ineffective":    {Class: "abandoned"},
+	}
+	if !reflect.DeepEqual(plan.LeftLive, wantLeftLive) {
+		t.Fatalf("left-live accounting = %#v, want %#v", plan.LeftLive, wantLeftLive)
 	}
 }
 
@@ -443,10 +483,15 @@ func TestPlanSuccessionKeepsExactPathRules(t *testing.T) {
 		}
 	})
 	t.Run("nil candidates retire exact path", func(t *testing.T) {
-		projection := workroom.Projection{Artifacts: []workroom.Artifact{{Event: "exact", Path: "internal/workroom/fold.go", Commit: "old"}}}
-		plan := PlanSuccession(projection, []Change{{Status: "M", New: "internal/workroom/fold.go"}}, nil)
-		if !reflect.DeepEqual(plan.Publish, []string{"internal/workroom/fold.go"}) || plan.Retire["exact"] != "internal/workroom/fold.go" {
-			t.Fatalf("nil-candidate exact-path plan = %+v", plan)
+		exact := workroom.Artifact{Event: "exact", Path: "internal/workroom/fold.go", Commit: "old"}
+		narrow := workroom.Artifact{Event: "narrow", Path: "internal/workroom", Commit: "old"}
+		wide := workroom.Artifact{Event: "wide", Path: "internal", Commit: "old"}
+		for _, order := range [][]workroom.Artifact{{exact, narrow, wide}, {wide, narrow, exact}} {
+			plan := PlanSuccession(workroom.Projection{Artifacts: order}, []Change{{Status: "M", New: "internal/workroom/fold.go"}}, nil)
+			wantRetire := map[string]string{"exact": "internal/workroom/fold.go"}
+			if !reflect.DeepEqual(plan.Publish, []string{"internal/workroom/fold.go"}) || !reflect.DeepEqual(plan.Retire, wantRetire) || plan.LeftLive != nil {
+				t.Fatalf("nil-candidate exact/narrow/wide plan = %+v for %s first", plan, order[0].Path)
+			}
 		}
 	})
 	t.Run("rename", func(t *testing.T) {

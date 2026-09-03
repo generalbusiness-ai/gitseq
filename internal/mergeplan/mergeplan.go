@@ -461,7 +461,7 @@ func CoveredArtifacts(projection workroom.Projection, changes []Change) []workro
 	return covered
 }
 
-func Classify(ctx context.Context, checkout string, projection workroom.Projection, changes []Change, targetPreHead, candidate string, reviewed map[string]bool) map[string]Candidate {
+func Classify(ctx context.Context, checkout string, projection workroom.Projection, changes []Change, targetPreHead, candidate string, reviewed map[string]bool) (map[string]Candidate, error) {
 	classified := make(map[string]Candidate)
 	covered := CoveredArtifacts(projection, changes)
 	protected := protectionIndex(projection, covered)
@@ -473,6 +473,12 @@ func Classify(ctx context.Context, checkout string, projection workroom.Projecti
 			inTarget, checked = byCommit[artifact.Commit]
 			if !checked {
 				_, err := git(ctx, checkout, "merge-base", "--is-ancestor", artifact.Commit, targetPreHead)
+				if err != nil {
+					var exit *exec.ExitError
+					if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+						return nil, fmt.Errorf("classify artifact %s at %s against target %s: %w", artifact.Event, artifact.Commit, targetPreHead, err)
+					}
+				}
 				inTarget = err == nil
 				byCommit[artifact.Commit] = inTarget
 			}
@@ -495,7 +501,7 @@ func Classify(ctx context.Context, checkout string, projection workroom.Projecti
 			classified[artifact.Event] = Candidate{Class: ClassAbandoned, LeftLive: LeftLive{Class: "abandoned"}}
 		}
 	}
-	return classified
+	return classified, nil
 }
 
 func artifactRetiresForChanges(path string, changes []Change) bool {
@@ -1232,10 +1238,11 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 		result.CandidateArtifacts = append(result.CandidateArtifacts, CandidateArtifact{Event: artifact.Event, Path: artifact.Path, Commit: artifact.Commit, Author: authors[artifact.Event], Reviewed: approved.ReviewedArtifacts[artifact.Event]})
 	}
 	sort.Slice(result.CandidateArtifacts, func(i, j int) bool { return result.CandidateArtifacts[i].Event < result.CandidateArtifacts[j].Event })
-	changes, err := disposableMergeChanges(ctx, checkout, result.TargetPreHead, candidate)
+	mergeCheckout, changes, cleanup, err := disposableMergeChanges(ctx, checkout, result.TargetPreHead, candidate)
 	if err != nil {
 		return fail("tentative_merge", err)
 	}
+	defer cleanup()
 	if err := ValidateChangePaths(changes); err != nil {
 		return fail("changed_paths", err)
 	}
@@ -1243,7 +1250,10 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 		Reason{Code: "tentative_merge_allowed", Check: "tentative_merge", Allowed: true, Reason: "the exact candidate merges cleanly with the target pre-head in an isolated disposable clone"},
 		Reason{Code: "changed_paths_allowed", Check: "changed_paths", Allowed: true, Reason: "the complete staged merge path frontier is valid UTF-8 and representable"},
 	)
-	classified := Classify(ctx, checkout, snapshot.Projection, changes, result.TargetPreHead, candidate, approved.ReviewedArtifacts)
+	classified, err := Classify(ctx, checkout, snapshot.Projection, changes, result.TargetPreHead, candidate, approved.ReviewedArtifacts)
+	if err != nil {
+		return fail("classification", err)
+	}
 	plan := PlanSuccession(snapshot.Projection, changes, classified)
 	result.ChangedPaths = append(result.ChangedPaths, plan.ChangedPaths...)
 	result.Successors = append(result.Successors, plan.Publish...)
@@ -1256,7 +1266,7 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 		result.Retirements = append(result.Retirements, Retirement{Artifact: event, Path: artifactPath(snapshot.Projection, event), Successor: successor})
 	}
 	sort.Slice(result.Retirements, func(i, j int) bool { return result.Retirements[i].Artifact < result.Retirements[j].Artifact })
-	if err := ValidateSuccession(ctx, workspace, checkout, plan); err != nil {
+	if err := ValidateSuccession(ctx, workspace, mergeCheckout, plan); err != nil {
 		return fail("succession", err)
 	}
 	if err := ValidateReach(snapshot.Projection, plan, approvalEvent, merger); err != nil {
@@ -1276,7 +1286,7 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 		Reason{Code: "implementer_allowed", Check: "implementer", Allowed: true, Reason: "merger is the approved implementation artifact's author"},
 		Reason{Code: "succession_allowed", Check: "succession", Allowed: true, Reason: "every retirement has a valid successor or passes the citation guard"},
 		Reason{Code: "reviewed_scope_allowed", Check: "reviewed_scope", Allowed: true, Reason: "every cross-author retirement lies at or beneath a reviewed candidate path"},
-		Reason{Code: "admission_allowed", Check: "admission", Allowed: true, Reason: "the exact durable succession suffix is representable and within its admission ceilings"},
+		Reason{Code: "admission_allowed", Check: "admission", Allowed: true, Reason: "the authorization-independent durable succession suffix is representable and within its admission ceilings"},
 	)
 	return result
 }
@@ -1299,29 +1309,38 @@ func boundResult(result Result) Result {
 	}
 }
 
-func disposableMergeChanges(ctx context.Context, checkout, target, candidate string) ([]Change, error) {
+func disposableMergeChanges(ctx context.Context, checkout, target, candidate string) (string, []Change, func(), error) {
 	root, err := os.MkdirTemp("", "gitseq-merge-plan-")
 	if err != nil {
-		return nil, err
+		return "", nil, func() {}, err
 	}
-	defer os.RemoveAll(root)
+	cleanup := func() { _ = os.RemoveAll(root) }
 	clone := filepath.Join(root, "checkout")
 	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "--no-replace-objects", "clone", "--quiet", "--shared", "--no-checkout", "--", checkout, clone).CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("git clone read-only merge sandbox: %w: %s", err, strings.TrimSpace(string(output)))
+		cleanup()
+		return "", nil, func() {}, fmt.Errorf("git clone read-only merge sandbox: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	if _, err := git(ctx, clone, "checkout", "--quiet", "--detach", target); err != nil {
-		return nil, err
+		cleanup()
+		return "", nil, func() {}, err
 	}
 	if _, err := git(ctx, clone,
 		"-c", "user.name=gitseq merge plan",
 		"-c", "user.email=gitseq-merge-plan@invalid",
 		"merge", "--no-ff", "--no-commit", "--", candidate); err != nil {
-		return nil, err
+		cleanup()
+		return "", nil, func() {}, err
 	}
 	raw, err := git(ctx, clone, "diff", "--cached", "--name-status", "-z", "--find-renames")
 	if err != nil {
-		return nil, err
+		cleanup()
+		return "", nil, func() {}, err
 	}
-	return ParseChanges(raw)
+	changes, err := ParseChanges(raw)
+	if err != nil {
+		cleanup()
+		return "", nil, func() {}, err
+	}
+	return clone, changes, cleanup, nil
 }
