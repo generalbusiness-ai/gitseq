@@ -1346,16 +1346,17 @@ func disposableMergeChanges(ctx context.Context, checkout, target, candidate str
 	}
 	cleanup := func() { _ = os.RemoveAll(root) }
 	clone := filepath.Join(root, "checkout")
-	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "--no-replace-objects", "clone", "--quiet", "--shared", "--no-checkout", "--", checkout, clone).CombinedOutput()
+	output, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "--no-replace-objects", "-c", "core.hooksPath=", "clone", "--quiet", "--shared", "--no-checkout", "--", checkout, clone).CombinedOutput()
 	if err != nil {
 		cleanup()
 		return "", nil, func() {}, fmt.Errorf("git clone read-only merge sandbox: %w: %s", err, strings.TrimSpace(string(output)))
 	}
-	if _, err := git(ctx, clone, "checkout", "--quiet", "--detach", target); err != nil {
+	if _, err := git(ctx, clone, "-c", "core.hooksPath=", "checkout", "--quiet", "--detach", target); err != nil {
 		cleanup()
 		return "", nil, func() {}, err
 	}
 	if _, err := git(ctx, clone,
+		"-c", "core.hooksPath=",
 		"-c", "user.name=gitseq merge plan",
 		"-c", "user.email=gitseq-merge-plan@invalid",
 		"merge", "--no-ff", "--no-commit", "--", candidate); err != nil {

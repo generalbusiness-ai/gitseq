@@ -10,8 +10,211 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
+
+func TestLivenessHelpersRefuseIneffectiveRetiredAndSupersededInputs(t *testing.T) {
+	projection := workroom.Projection{
+		Decisions: []workroom.Decision{
+			{Event: "live-statement", Verdict: workroom.Effective},
+			{Event: "retired-statement", Verdict: workroom.Effective},
+			{Event: "ineffective-statement", Verdict: workroom.Ineffective},
+			{Event: "old-world-statement", Verdict: workroom.Effective},
+			{Event: "new-world-statement", Verdict: workroom.Effective},
+			{Event: "live-artifact", Verdict: workroom.Effective},
+			{Event: "retired-artifact", Verdict: workroom.Effective},
+			{Event: "ineffective-artifact", Verdict: workroom.Ineffective},
+			{Event: "old-world-artifact", Verdict: workroom.Effective},
+			{Event: "new-world-artifact", Verdict: workroom.Effective},
+		},
+		Statements: []workroom.Statement{
+			{Event: "live-statement", Kind: workroom.KindReport, Stale: true},
+			{Event: "retired-statement", Kind: workroom.KindReport, Retired: true},
+			{Event: "ineffective-statement", Kind: workroom.KindReport},
+			{Event: "old-world-statement", Kind: workroom.KindReport, DescribesSupersededWorld: true, WorldSupersededAt: 10},
+			{Event: "new-world-statement", Kind: workroom.KindReport, DescribesSupersededWorld: true, WorldSupersededAt: 30},
+		},
+		Artifacts: []workroom.Artifact{
+			{Event: "live-artifact", Path: "live", Commit: "head", Stale: true},
+			{Event: "retired-artifact", Path: "retired", Commit: "head", Retired: true},
+			{Event: "ineffective-artifact", Path: "ineffective", Commit: "head"},
+			{Event: "old-world-artifact", Path: "old", Commit: "head", DescribesSupersededWorld: true, WorldSupersededAt: 10},
+			{Event: "new-world-artifact", Path: "new", Commit: "head", DescribesSupersededWorld: true, WorldSupersededAt: 30},
+		},
+	}
+
+	if !DecisionEffective(projection, "live-statement") || DecisionEffective(projection, "ineffective-statement") || DecisionEffective(projection, "missing") {
+		t.Fatal("DecisionEffective did not distinguish effective, ineffective, and missing events")
+	}
+	if _, err := StandingStatement(projection, "live-statement", workroom.KindReport); err != nil {
+		t.Fatalf("standing reasoning-stale statement was refused: %v", err)
+	}
+	for _, event := range []string{"retired-statement", "ineffective-statement", "missing"} {
+		if _, err := StandingStatement(projection, event, workroom.KindReport); err == nil {
+			t.Fatalf("StandingStatement admitted %s", event)
+		}
+	}
+	if _, err := StandingStatement(projection, "live-statement", workroom.KindPromise); err == nil {
+		t.Fatal("StandingStatement admitted the wrong kind")
+	}
+	if _, err := LiveStatementAsOf(projection, "old-world-statement", workroom.KindReport, 20); err == nil {
+		t.Fatal("LiveStatementAsOf admitted a world superseded before the verdict")
+	}
+	if _, err := LiveStatementAsOf(projection, "new-world-statement", workroom.KindReport, 20); err != nil {
+		t.Fatalf("LiveStatementAsOf refused post-verdict world movement: %v", err)
+	}
+
+	if _, err := StandingArtifact(projection, "live-artifact"); err != nil {
+		t.Fatalf("standing reasoning-stale artifact was refused: %v", err)
+	}
+	for _, event := range []string{"retired-artifact", "ineffective-artifact", "missing"} {
+		if _, err := StandingArtifact(projection, event); err == nil {
+			t.Fatalf("StandingArtifact admitted %s", event)
+		}
+	}
+	if _, err := LiveArtifactAsOf(projection, "old-world-artifact", 20); err == nil {
+		t.Fatal("LiveArtifactAsOf admitted a world superseded before the verdict")
+	}
+	if _, err := LiveArtifactAsOf(projection, "new-world-artifact", 20); err != nil {
+		t.Fatalf("LiveArtifactAsOf refused post-verdict world movement: %v", err)
+	}
+}
+
+func TestBuildDisablesGlobalHooksInDisposableClone(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	feature := filepath.Join(root, "feature")
+	runGit(t, "", "init", "-q", "-b", "main", repo)
+	runGit(t, repo, "config", "user.name", "Test")
+	runGit(t, repo, "config", "user.email", "test@example.invalid")
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "base.txt")
+	runGit(t, repo, "commit", "-qm", "base")
+
+	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewer, _, err := workspace.AddActor(ctx, "operator", "reviewer", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := runGit(t, repo, "rev-parse", "HEAD")
+	ground, err := workspace.Act(ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "repository base",
+		Body:    map[string]string{"path": "base.txt", "commit": base},
+		RestsOn: []string{workspace.EventID(workspace.View().Genesis)}, IdempotencyKey: "ground",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := workspace.Act(ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "implement feature",
+		Body:    map[string]string{"to": workspace.View().Actors["operator"].Fingerprint, "conditions": "publish the exact feature head"},
+		RestsOn: []string{ground.Record.ID}, IdempotencyKey: "implementation-request",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	promise, err := workspace.Act(ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "implement feature",
+		RestsOn: []string{request.Record.ID}, IdempotencyKey: "implementation-promise",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "worktree", "add", "-qb", "candidate", feature)
+	if err := os.WriteFile(filepath.Join(feature, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, feature, "add", "feature.txt")
+	runGit(t, feature, "commit", "-qm", "feature")
+	candidate := runGit(t, feature, "rev-parse", "HEAD")
+	artifact, err := workspace.Act(ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "feature artifact",
+		Body:    map[string]string{"path": "feature.txt", "commit": candidate},
+		RestsOn: []string{promise.Record.ID, ground.Record.ID}, IdempotencyKey: "artifact",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewRequest, err := workspace.Act(ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
+		Body:    map[string]string{"to": reviewer.Fingerprint, "conditions": "exact head"},
+		RestsOn: []string{artifact.Record.ID}, IdempotencyKey: "review-request",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewPromise, err := workspace.Act(ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "review feature",
+		RestsOn: []string{reviewRequest.Record.ID}, IdempotencyKey: "review-promise",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() (reviewguard.Basis, []reviewguard.News, workroom.Projection, error) {
+		snapshot, readErr := workspace.Snapshot(ctx)
+		if readErr != nil {
+			return reviewguard.Basis{}, nil, workroom.Projection{}, readErr
+		}
+		basis, news, basisErr := reviewguard.ReviewBasis(reviewguard.Read{
+			Projection: snapshot.Projection, ReviewerFingerprint: reviewer.Fingerprint,
+			Checkout: feature, CommonDir: workspace.CommonDir, FrontierEvent: workspace.EventID(snapshot.Head),
+		}, artifact.Record.ID, reviewPromise.Record.ID)
+		return basis, news, snapshot.Projection, basisErr
+	}
+	body, restsOn, err := reviewguard.Confirm(read, []string{artifact.Record.ID}, nil, reviewguard.VerdictApproved, "approved")
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval, err := workspace.Act(ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindReport, Text: "approved", Body: body,
+		RestsOn: restsOn, GuardedReview: true, IdempotencyKey: "approval",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Act(ctx, "operator", app.Act{Verb: app.VerbRatify, Target: approval.Record.ID, IdempotencyKey: "ratify-approval"}); err != nil {
+		t.Fatal(err)
+	}
+
+	hooks := filepath.Join(root, "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, "post-checkout-ran")
+	hook := filepath.Join(hooks, "post-checkout")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\n: > \"$GITSEQ_HOOK_MARKER\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	globalConfig := filepath.Join(root, "global.gitconfig")
+	runGit(t, "", "config", "--file", globalConfig, "core.hooksPath", hooks)
+	t.Setenv("GIT_CONFIG_GLOBAL", globalConfig)
+	t.Setenv("GITSEQ_HOOK_MARKER", marker)
+	operator, private, err := workspace.Actor("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := Build(ctx, workspace, repo, candidate, approval.Record.ID, operator.Fingerprint, Signer{Name: "operator", Private: private})
+	reachedTentativeMerge := false
+	for _, reason := range result.Reasons {
+		if reason.Code == "tentative_merge_allowed" {
+			reachedTentativeMerge = true
+		}
+	}
+	if !reachedTentativeMerge {
+		t.Fatalf("Build did not reach the disposable checkout: %+v", result.Reasons)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("global post-checkout hook ran in the disposable clone: %v", err)
+	}
+}
 
 func TestResultCeilingRefusesWithoutPartialPlan(t *testing.T) {
 	result := Result{

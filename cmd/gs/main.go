@@ -1178,20 +1178,6 @@ func validateArtifactCommit(ctx context.Context, repo, commit string) error {
 	return nil
 }
 
-func uniqueStandingBasis(projection workroom.Projection, event string, kind workroom.Kind) (workroom.Statement, error) {
-	var found []workroom.Statement
-	for _, basis := range projection.Provenance[event] {
-		statement, err := mergeplan.StandingStatement(projection, basis, kind)
-		if err == nil {
-			found = append(found, statement)
-		}
-	}
-	if len(found) != 1 {
-		return workroom.Statement{}, fmt.Errorf("expected one standing %s basis, found %d", kind, len(found))
-	}
-	return found[0], nil
-}
-
 func ratifyCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("ratify", arguments)
 	as := set.String("as", "", "actor name")
