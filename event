@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact-head MCP merge_plan reference. It states that an allowed read-only plan does not establish structured merge authorization.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"docs/reference/mcp/merge_plan.md"}}
+{"kind":"artifact","text":"Exact-head documentation index artifact for the merge-plan references.","body":{"commit":"7af1b816b8c7ed2594c5c1ffab58a7bdda48d796","path":"docs/README.md"}}
