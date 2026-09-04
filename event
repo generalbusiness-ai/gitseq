@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Status-view carry-through and JSON-wire tests cover cause, path, exhaustion, and unchanged live bytes.","body":{"commit":"abe4b533be6d2d29459eaf60e9351cf02de389b6","path":"internal/statusview/artifacts_test.go"}}
+{"kind":"artifact","text":"Typed UI wire includes the three optional staleness-cause fields.","body":{"commit":"abe4b533be6d2d29459eaf60e9351cf02de389b6","path":"ui/src/lib/api.ts"}}
