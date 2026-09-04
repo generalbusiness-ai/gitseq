@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-08-31-merged-head-commitment-reconciliation.md","body":{"commit":"296e0fdd3a88d0ca9f9be7521666aa70f368523b","path":"notes/2026-08-31-merged-head-commitment-reconciliation.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7e5f1387d7810714ee458ac5afe594c5a5a2cf06","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-31-merged-head-commitment-reconciliation.md."}
