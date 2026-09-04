@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact pushed head 068f8dc1 carries stale-cause values through the bounded artifact view with focused regression coverage.","body":{"commit":"068f8dc145f3097b549d1c39f594c5e67690bc48","path":"internal/statusview/artifacts_test.go"}}
+{"kind":"artifact","text":"Exact pushed head 068f8dc1 computes explanations from authoritative admitted staleness edges only, with deterministic bounded BFS and no extra cause allocations outside projection.","body":{"commit":"068f8dc145f3097b549d1c39f594c5e67690bc48","path":"internal/workroom/fold.go"}}
