@@ -30,6 +30,12 @@ requested paths. Every row gives the event, path, commit, and explicit
 for every returned row; carrying it explicitly prevents callers from having to
 infer that fact from an omitted field.
 
+A stale row also gives `stale_because`, naming the nearest retired basis that
+actually propagated to it, and `stale_because_path` when that basis is an
+artifact. The explanation looks through at most four cause edges. If the cause
+is farther away, `stale_because_truncated` is true and no nearer cause is
+invented. Non-stale rows omit all three fields.
+
 The response also gives the exact frontier, sorted requested paths, matching
 total, returned count, preceding count, remaining count, and a next cursor when
 more remain. The cursor is bound to the exact durable head and path set. If the

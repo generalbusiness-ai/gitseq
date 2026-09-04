@@ -119,6 +119,11 @@ type ArtifactRow struct {
 	// the bit: Retired alone cannot distinguish replacement from withdrawal.
 	Succeeded                bool `json:"succeeded,omitempty"`
 	DescribesSupersededWorld bool `json:"describes_superseded_world"`
+	// These fields carry the fold's bounded causal explanation unchanged. They
+	// stay absent on non-stale rows, preserving their wire bytes.
+	StaleBecause          string `json:"stale_because,omitempty"`
+	StaleBecausePath      string `json:"stale_because_path,omitempty"`
+	StaleBecauseTruncated bool   `json:"stale_because_truncated,omitempty"`
 }
 
 // Lifecycle names the row using the same priority as selection. It adds no
@@ -348,7 +353,9 @@ func buildArtifactPage(durable app.Snapshot, query ArtifactSelection, filter str
 		}
 		rows = append(rows, ArtifactRow{Event: artifact.Event, Path: Text(artifact.Path), Commit: artifact.Commit,
 			Stale: artifact.Stale, Retired: artifact.Retired, Succeeded: artifact.Succeeded,
-			DescribesSupersededWorld: artifact.DescribesSupersededWorld})
+			DescribesSupersededWorld: artifact.DescribesSupersededWorld,
+			StaleBecause:             Text(artifact.StaleBecause), StaleBecausePath: Text(artifact.StaleBecausePath),
+			StaleBecauseTruncated: artifact.StaleBecauseTruncated})
 	}
 	if offset > matching {
 		return ArtifactPage{}, errors.New("artifact cursor is beyond the matching result")

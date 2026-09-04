@@ -108,6 +108,13 @@ type Statement struct {
 	// merge_left_live testimony. It lives on the receipt statement even when a
 	// malformed or dangling entry cannot be associated with an artifact path.
 	MergeLeftLive []LeftLiveAccounting `json:"merge_left_live,omitempty"`
+	// StaleBecause names the nearest retired basis that actually caused this
+	// row's staleness under the governed propagation rules. StaleBecausePath is
+	// present when that cause is an artifact. Truncated says the bounded cause
+	// walk ended before it could name a retired basis.
+	StaleBecause          string `json:"stale_because,omitempty"`
+	StaleBecausePath      string `json:"stale_because_path,omitempty"`
+	StaleBecauseTruncated bool   `json:"stale_because_truncated,omitempty"`
 }
 
 type Commitment struct {
@@ -151,6 +158,11 @@ type Artifact struct {
 	// no active cause, which for a record that describes a superseded world is
 	// a fact to fail closed on rather than read as permission.
 	WorldSupersededAt int `json:"world_superseded_at,omitempty"`
+	// StaleBecause, StaleBecausePath and StaleBecauseTruncated carry the same
+	// bounded causal answer as on Statement.
+	StaleBecause          string `json:"stale_because,omitempty"`
+	StaleBecausePath      string `json:"stale_because_path,omitempty"`
+	StaleBecauseTruncated bool   `json:"stale_because_truncated,omitempty"`
 	// UnableToFlare records that this artifact has no basis that any act could
 	// ever retire, so no supersession anywhere can make it stale. Its silence
 	// is not currency and the projection must not let it read as currency.
@@ -1495,11 +1507,11 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 	// with its own edge rules diverged three reviews running, and a divergence
 	// here either refuses a sound verdict or admits an unsound one.
 	scope := f.stalenessAsOf(approval.sequence())
-	_, world, _ := scope.stalenessOf(approval.record.RestsOn, scope.succeededRetirements())
-	if world[artifactID] {
+	result := scope.stalenessOf(approval.record.RestsOn, scope.succeededRetirements())
+	if result.world[artifactID] {
 		return nil
 	}
-	reviewed := f.reviewedPathsWith(approval, implementer, state.Body["merge_candidate"], world)
+	reviewed := f.reviewedPathsWith(approval, implementer, state.Body["merge_candidate"], result.world)
 	if len(reviewed) == 0 {
 		return nil
 	}
@@ -1761,9 +1773,9 @@ func (f *foldState) mergeSuccessorPaths(receipt *parsedRecord) []string {
 // to the receipt position and is then stored rather than recomputed.
 func (f *foldState) unsettledCommitmentEvents() map[string]bool {
 	succeeded := f.succeededRetirements()
-	stale, _, _ := f.stalenessNow().staleness(succeeded)
+	result := f.stalenessNow().staleness(succeeded)
 	active := make(map[string]bool)
-	for _, commitment := range f.projectCommitments(stale) {
+	for _, commitment := range f.projectCommitments(result.stale) {
 		switch commitment.Status {
 		case "open", "promised", "reported", "awaiting-merge", "stale":
 			active[commitment.Request] = true
@@ -2182,6 +2194,23 @@ type stalenessScope struct {
 	active map[string]int
 }
 
+// stalenessCauseEdge is one rests-on edge that the authoritative staleness
+// pass actually used. Direct is true only when retirement of Basis itself was
+// a cause on this edge. Keeping that bit matters when a successfully replaced
+// basis is both retired and stale: its retirement is settled, while staleness
+// from a different cause may still propagate through it.
+type stalenessCauseEdge struct {
+	Basis  string
+	Direct bool
+}
+
+type stalenessResult struct {
+	stale    map[string]bool
+	world    map[string]bool
+	causedAt map[string]int
+	causes   map[string][]stalenessCauseEdge
+}
+
 // stalenessNow answers with end-of-log knowledge: every active cause counts,
 // whenever it landed. math.MaxInt rather than the record count, so the scope
 // cannot quietly become position-bound if records fold after it is built.
@@ -2261,8 +2290,12 @@ func (s *stalenessScope) retired(event string) bool {
 // staleness at all is the governing definition's business: an exempt kind
 // neither catches staleness nor passes it on, and a terminal one catches it
 // without passing it on.
-func (s *stalenessScope) staleness(successors map[string]string) (map[string]bool, map[string]bool, map[string]int) {
+func (s *stalenessScope) staleness(successors map[string]string) stalenessResult {
 	return s.stalenessOf(nil, successors)
+}
+
+func (s *stalenessScope) stalenessWithCauses(successors map[string]string) stalenessResult {
+	return s.computeStaleness(nil, successors, true)
 }
 
 // stalenessOf is the same pass restricted to the ancestor closure of the given
@@ -2274,10 +2307,18 @@ func (s *stalenessScope) staleness(successors map[string]string) (map[string]boo
 // iteration. It exists because the receipt boundary asks about a handful of
 // cited artifacts per receipt, and paying a whole-log pass for each receipt
 // measured at four times the cost of the fold itself.
-func (s *stalenessScope) stalenessOf(targets []string, successors map[string]string) (map[string]bool, map[string]bool, map[string]int) {
+func (s *stalenessScope) stalenessOf(targets []string, successors map[string]string) stalenessResult {
+	return s.computeStaleness(targets, successors, false)
+}
+
+func (s *stalenessScope) computeStaleness(targets []string, successors map[string]string, explain bool) stalenessResult {
 	f := s.f
 	stale := make(map[string]bool)
 	world := make(map[string]bool)
+	var causes map[string][]stalenessCauseEdge
+	if explain {
+		causes = make(map[string][]stalenessCauseEdge)
+	}
 	// causedAt dates each world-stale record by the earliest retirement still
 	// accounting for it. A reader deciding whether a judgement predates the move
 	// needs that position, and cannot recover it from the acts, which say a
@@ -2356,6 +2397,11 @@ func (s *stalenessScope) stalenessOf(targets []string, successors map[string]str
 				continue
 			}
 			stale[record.record.ID] = true
+			if explain {
+				causes[record.record.ID] = append(causes[record.record.ID], stalenessCauseEdge{
+					Basis: basis, Direct: retiredBasis,
+				})
+			}
 			if (world[basis] && artifactProvenance) || (retiredBasis && f.isArtifact(basis)) {
 				world[record.record.ID] = true
 				// Every basis is examined. Stopping at the first world-bearing
@@ -2379,7 +2425,7 @@ func (s *stalenessScope) stalenessOf(targets []string, successors map[string]str
 			}
 		}
 	}
-	return stale, world, causedAt
+	return stalenessResult{stale: stale, world: world, causedAt: causedAt, causes: causes}
 }
 
 // closure returns the record indexes the pass visits, in sequence order:
@@ -2793,9 +2839,42 @@ func satisfierOf(record *parsedRecord) string {
 	return record.definition.Satisfier
 }
 
+// staleCauseHopLimit bounds the explanation attached to one projection row.
+// It does not bound staleness: the authoritative pass above remains unbounded.
+const staleCauseHopLimit = 4
+
+// nearestRetiredCause walks only edges the authoritative staleness pass used.
+// Breadth-first order chooses the fewest hops, and cause slices preserve the
+// signer's citation order as the deterministic tie-break. The visited set is
+// defensive: malformed or future-addressed provenance must not turn a read
+// model into an unbounded walk.
+func (s *stalenessScope) nearestRetiredCause(event string, causes map[string][]stalenessCauseEdge) (because, path string, truncated bool) {
+	visited := map[string]bool{event: true}
+	frontier := []string{event}
+	for hop := 0; hop < staleCauseHopLimit && len(frontier) != 0; hop++ {
+		var next []string
+		for _, current := range frontier {
+			for _, edge := range causes[current] {
+				if edge.Direct {
+					path, _ := s.f.artifactPath(edge.Basis)
+					return edge.Basis, path, false
+				}
+				if visited[edge.Basis] {
+					continue
+				}
+				visited[edge.Basis] = true
+				next = append(next, edge.Basis)
+			}
+		}
+		frontier = next
+	}
+	return "", "", len(frontier) != 0
+}
+
 func (f *foldState) project() Projection {
 	succeeded := f.succeededRetirements()
-	stale, world, causedAt := f.stalenessNow().staleness(succeeded)
+	staleness := f.stalenessNow()
+	result := staleness.stalenessWithCauses(succeeded)
 	// How many artifacts seen at each path are still live. project() runs over
 	// a fully folded log, so retired() is final here and one running count per
 	// path answers both questions this projection asks about succession, at
@@ -2845,17 +2924,22 @@ func (f *foldState) project() Projection {
 		// asking twice would be two implementations of one rule waiting to
 		// drift.
 		ratification := f.activeRatification(record.record.ID)
-		projection.Statements = append(projection.Statements, Statement{
+		statement := Statement{
 			Event: record.record.ID, Sequence: record.sequence(),
 			Timestamp: record.record.Timestamp, Actor: record.record.Actor, Kind: state.Kind,
 			Lifecycle: lifecycleOf(&record), Satisfier: satisfierOf(&record),
 			Text: state.Text, Body: cloneStringMap(state.Body),
 			Ratified: ratification != "", RatifiedBy: ratification,
-			Retired: f.retired(record.record.ID), Stale: stale[record.record.ID],
-			DescribesSupersededWorld: world[record.record.ID],
-			WorldSupersededAt:        causedAt[record.record.ID],
+			Retired: f.retired(record.record.ID), Stale: result.stale[record.record.ID],
+			DescribesSupersededWorld: result.world[record.record.ID],
+			WorldSupersededAt:        result.causedAt[record.record.ID],
 			MergeLeftLive:            projectLeftLive(record.mergeLeftLive, ""),
-		})
+		}
+		if statement.Stale {
+			statement.StaleBecause, statement.StaleBecausePath, statement.StaleBecauseTruncated =
+				staleness.nearestRetiredCause(record.record.ID, result.causes)
+		}
+		projection.Statements = append(projection.Statements, statement)
 		if record.decision.Verdict == UndefinedKind {
 			projection.OpaqueKinds[string(state.Kind)] = append(projection.OpaqueKinds[string(state.Kind)], record.record.ID)
 		}
@@ -2902,9 +2986,12 @@ func (f *foldState) project() Projection {
 				Event: record.record.ID, Path: path, Commit: state.Body["commit"],
 				Retired:                  f.retired(record.record.ID),
 				Succeeded:                f.retired(record.record.ID) && succeeded[record.record.ID] != "",
-				Stale:                    stale[record.record.ID],
-				DescribesSupersededWorld: world[record.record.ID],
-				WorldSupersededAt:        causedAt[record.record.ID],
+				Stale:                    result.stale[record.record.ID],
+				DescribesSupersededWorld: result.world[record.record.ID],
+				WorldSupersededAt:        result.causedAt[record.record.ID],
+				StaleBecause:             statement.StaleBecause,
+				StaleBecausePath:         statement.StaleBecausePath,
+				StaleBecauseTruncated:    statement.StaleBecauseTruncated,
 				UnableToFlare:            f.unableToFlare(record.record.RestsOn),
 				SuccessionUnrecorded:     live > 0,
 				LivePredecessors:         live,
@@ -2934,7 +3021,7 @@ func (f *foldState) project() Projection {
 				Report: record.record.ID, Timestamp: record.record.Timestamp, Reviewer: record.record.Actor,
 				Verdict: state.Body["verdict"], Head: head, Independence: IndependenceUnresolved,
 				Ratified: f.ratified(record.record.ID),
-				Retired:  f.retired(record.record.ID), Stale: stale[record.record.ID],
+				Retired:  f.retired(record.record.ID), Stale: result.stale[record.record.ID],
 			})
 			reviewBases = append(reviewBases, reviewBasis{named: state.Body["artifact"], restsOn: record.record.RestsOn})
 		}
@@ -3045,7 +3132,7 @@ func (f *foldState) project() Projection {
 		}
 		projection.Actors[fingerprint] = actor
 	}
-	projection.Commitments = f.projectCommitments(stale)
+	projection.Commitments = f.projectCommitments(result.stale)
 	if projection.Commitments == nil {
 		projection.Commitments = []Commitment{}
 	}

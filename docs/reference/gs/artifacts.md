@@ -58,6 +58,12 @@ its own `stale`, `retired` and `describes_superseded_world` fields. The
 lifecycles directly: `succeeded: true` marks succeeded, `retired: true` marks
 retired, and neither field being true marks live.
 
+When a row is stale, `stale_because` names its nearest causal retired basis
+and `stale_because_path` gives that basis's artifact path when it has one. The
+fold follows only edges that actually propagated staleness, for at most four
+hops; `stale_because_truncated` says that bound was exhausted. These fields do
+not replace the complete provenance side table or `gs provenance`.
+
 `retired` says the pointer was withdrawn and `succeeded` says a successor was
 named. Reading `retired` alone cannot tell a replaced artifact from a
 withdrawn one,

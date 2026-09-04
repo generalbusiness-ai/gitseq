@@ -182,7 +182,8 @@ func hostileSnapshot() (app.Snapshot, nexus.Snapshot, *nexus.Inbox) {
 		AddressedTo: "attacker", Status: "open",
 	})
 	projection.Artifacts = append(projection.Artifacts, workroom.Artifact{
-		Event: "artifact", Path: hostileText, Commit: "commit",
+		Event: "artifact", Path: hostileText, Commit: "commit", Stale: true,
+		StaleBecause: hostileText, StaleBecausePath: hostileText,
 	})
 	projection.Decisions = append(projection.Decisions,
 		workroom.Decision{Event: "request", Verdict: workroom.Effective, Reason: hostileText},
