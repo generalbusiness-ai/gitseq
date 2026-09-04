@@ -987,17 +987,17 @@ ratification would be silently withheld from actors entitled to make it.
 **Truthful artifact completion.** An explicit report and an implementation
 artifact have different closing authority, so the fold projects different
 states. An explicit report is `reported` and waits on its originating
-requester, whose ratification can satisfy it. An artifact is
-`awaiting-merge` and waits on its performer: its admitted satisfier is
-`none`, so the requester cannot ratify it, and only an independently approved
-exact-head merge, which the performer signs, closes the implementation
-commitment. The application write boundary reads that same
+requester, whose ratification can satisfy it. An artifact waits on its
+performer: its admitted satisfier is `none`, so the requester cannot ratify
+it, and only an independently approved exact-head merge, which the performer
+signs, closes the implementation commitment. The landing obligation below
+splits that one state into three. The application write boundary reads that same
 admission-time satisfier before signing a ratification. When it is `none`, it
 refuses and names the target kind, the satisfier, and the applicable workflow
 act, rather than adding an ineffective attempt to the permanent log.
 
-The browser and bounded status/query projections preserve `awaiting-merge` as
-unfinished work. Naming no waiting party at all, as `@15` did, left approved
+The browser and bounded status/query projections preserve an artifact
+completion as unfinished work. Naming no waiting party at all, as `@15` did, left approved
 heads in nobody's queue; naming the performer puts each one in the lane of the
 actor who must sign its merge. Each of those projection changes altered the
 application projection bytes and lifecycle meaning, so each advanced the
@@ -1074,7 +1074,93 @@ Admitting reassignment of a stale request changes what the fold decides about
 existing histories, so it advances the profile again, to `workroom-fold@17`; a
 cache written under `@16` is rejected and history is replayed. Two fold changes
 landed in sequence and each took its own step: the waiting party on
-awaiting-merge commitments at `@16`, and admissible stale bases at `@17`.
+artifact-completion commitments at `@16`, and admissible stale bases at `@17`.
+
+**The landing obligation.** An implementation request owes a Git artifact to a
+named destination, and this layer holds that obligation. A `workroom/state@3`
+request must state exactly one result: the target triple `target_repo`,
+`target_ref` and `target_head` by value; `target=inherit`; or
+`no_git_artifact=true`. None of the three refuses, more than one refuses, and a
+partial triple refuses. The fold resolves no refs — it has no repository — so
+it checks only that `target_repo` is this workroom's own genesis id, that
+`target_ref` names a branch under `refs/heads/`, and that `target_head` is a
+full lowercase object id, which is advisory in any case.
+
+`target=inherit` is resolved by one bounded walk: from the request, over
+`rests_on` edges that point at request statements, breadth first in recorded
+edge order, stopping at depth eight. The nearest value triples are those found
+at the smallest depth at which any is found, and nothing deeper is read. One
+triple, or several agreeing, is inherited; several disagreeing refuse; none
+refuses. A request stating `no_git_artifact=true` blocks the walk for its own
+descendants, so a review or authorization request sits under a landing parent
+without acquiring its obligation.
+
+A request that owes a landing may carry `landing=held`, whose owner is the
+requester unless `hold_owner` names another live actor. That naming changes one
+signing rule, and it is the only signing rule this design changes: a structured
+authorization report for a held landing request — one carrying
+`authorizes_request` — is admitted from exactly the hold owner and from nobody
+else. The three-way merge-authorization list of original requester, the actor
+named `planner`, and any live `ratifier` does not reach a held landing; a
+ratifier who wants the landing anyway supersedes the request, which stays
+visible as an act of authority.
+
+On a request that owes a landing, an explicit report cannot close the
+commitment. A plain report and a verdict-carrying report are refused; a report
+carrying `resolution` is admitted as nonterminal evidence, projected as
+`latest_resolution`, and changes neither the status nor the waiting party nor
+the completion, so it can never be ratified into `satisfied`. Completion
+precedence on such a commitment is therefore a sealed merge receipt, then the
+newest live reporting artifact at an approved head, then the newest live
+reporting artifact — no report is in that list. A request that owes no Git
+artifact keeps the report-and-ratification closure it always had.
+
+The one artifact-completion state becomes three, with no alias for the word
+they replace, so every enumeration site moves in the same head.
+`awaiting-review` is a live reporting artifact no ratified approval names,
+waiting on the performer. `awaiting-authorization` is an approved artifact on a
+held request with no effective release, waiting on the hold owner.
+`awaiting-landing` is an approved artifact that is unheld or released, waiting
+on the performer. `abandoned` joins the terminal states: it says an approved
+head was deliberately dropped, which `cancelled` does not say, and it beats
+`cancelled` when a supersession declares it. Superseding a request that holds a
+live reporting artifact at an approved head is admitted only when a successor
+request resting on that artifact carries the head, or when the supersession
+body — a `workroom/supersede@1` payload, since a `@0` payload has no body —
+states `disposition=abandoned` with its reason in the text. Any other such
+supersession is refused, which makes losing an approved head an explicit act
+rather than a side effect of refiling.
+
+`approved_not_landed` is projected per commitment relative to the destination,
+never relative to `main`: true when a ratified approval names a reporting
+artifact, the request owes a landing, no sealed receipt names that artifact
+with a matching target repository and ref, and the commitment is not
+`abandoned`. A receipt carrying neither `merge_target_repo` nor
+`merge_target_ref` reads as `refs/heads/main` of this workroom's own
+repository.
+
+Admission is keyed by statement schema, which is what keeps older logs reading
+as they did: every one of these names on a `state@2` or earlier record is
+opaque body text and confers nothing. Requests admitted under those schemas are
+read from their own admitted history instead — a commitment that ever carried a
+reporting artifact owed a landing to `refs/heads/main` here and says so as
+`legacy`, one that never did owed no Git artifact — and that reading changes
+the status word an artifact completion gets without changing which record
+completes it or whether it is satisfied. The fold also gains one narrow
+staleness exception, which does change what it decides about existing logs: when
+a retirement's successor is the retired request's own rejected-round
+`successor_request`, the direct edge from that successor to the retired request
+does not carry the retirement. It is keyed to that one edge and that one
+relation, and reaches neither carried nor abandoned successions.
+
+Layer 7 fills `target_head` at filing time and refuses to file when the ref
+does not resolve; the receipt fields, the merge refusals, the authorization
+guard bindings, and the status, work, inspect and worktree surfaces are their
+own later work. This head admits `state@3` and `supersede@1` in the fold and
+leaves every filer on `state@2` and `supersede@0`, so no request already in
+flight acquires an obligation nobody stated. These admission and projection
+changes advance the profile to `workroom-fold@19`; a cache written under `@18`
+is rejected and history replayed.
 
 **Surfaces and guidance.** Workroom also owns its MCP tools and their
 application meanings; the agent practice in `SKILL.md`; connector clauses and

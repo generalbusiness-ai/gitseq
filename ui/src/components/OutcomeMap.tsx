@@ -17,7 +17,8 @@ const RELATION_STYLE: Record<OutcomeRelationFamily, { dash?: string; className: 
 
 function statusClass(state: string): string {
   if (state === "needs attention") return "border-danger/60 bg-danger/10 text-danger";
-  if (state === "in progress" || state === "awaiting merge") return "border-accent/60 bg-accent/10 text-accent";
+  if (state === "in progress" || state === "awaiting review" || state === "awaiting authorization" || state === "awaiting landing")
+    return "border-accent/60 bg-accent/10 text-accent";
   if (state === "reported") return "border-muted/60 bg-muted/10 text-muted";
   return "border-border bg-surface/70 text-muted";
 }

@@ -310,7 +310,7 @@ func describesSupersededWorld(projection workroom.Projection, event string) bool
 // whose schema carries no state payload are outside this policy.
 func (w *Workspace) admitApplication(ctx context.Context, application kernel.Application) error {
 	switch application.Intent.Schema {
-	case workroom.SchemaStateLegacy, workroom.SchemaStateV1, workroom.SchemaState:
+	case workroom.SchemaStateLegacy, workroom.SchemaStateV1, workroom.SchemaState, workroom.SchemaStateV3:
 		decoded, err := workroom.Decode(application.Intent.Schema, application.Payload)
 		if err != nil {
 			return fmt.Errorf("admission decode: %w", err)

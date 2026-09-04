@@ -78,8 +78,10 @@ is normally `open`. If the request's bases moved before anyone claimed it, its
 status is `stale` and its `stale` flag is `true`, but the unfinished request
 remains in this lane. `waiting_on_you` begins only after a promise or explicit
 report gives you an admissible next act. A reporting artifact instead projects
-`awaiting-merge` waiting on its performer: artifacts have satisfier `none`, so
-the requester cannot ratify one, and the performer signs the merge. The
+`awaiting-review` waiting on its performer, and `awaiting-landing` once a
+ratified approval names it — or `awaiting-authorization`, waiting on the hold
+owner, when the request is held. Artifacts have satisfier `none`, so the
+requester cannot ratify one, and the performer signs the merge. The
 implementation commitment closes only when an independently approved exact
 head merges.
 

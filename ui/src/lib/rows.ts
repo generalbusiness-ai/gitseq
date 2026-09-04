@@ -20,13 +20,16 @@ export type RowState =
   | "unclaimed"
   | "in progress"
   | "reported"
-  | "awaiting merge"
+  | "awaiting review"
+  | "awaiting authorization"
+  | "awaiting landing"
   | "stale"
   | "superseded"
   | "satisfied"
   | "cancelled"
   | "reneged"
   | "withdrawn"
+  | "abandoned"
   | "awaiting ratification";
 
 // Which population the list is showing. Each is one tab, and each replaces
@@ -80,8 +83,8 @@ export interface WorkRow {
 
 // The lifecycle states that are work in flight. Everything else is history or
 // a queue that is no longer moving.
-const LIVE_STATUSES = ["open", "promised", "reported", "awaiting-merge"];
-const CLOSED_STATUSES = ["superseded", "cancelled", "reneged", "withdrawn"];
+const LIVE_STATUSES = ["open", "promised", "reported", "awaiting-review", "awaiting-authorization", "awaiting-landing"];
+const CLOSED_STATUSES = ["superseded", "cancelled", "reneged", "withdrawn", "abandoned"];
 
 function inPopulation(commitment: Commitment, population: Population): boolean {
   switch (population) {
@@ -161,7 +164,9 @@ function rowState(commitment: Commitment, attention: boolean, population: Popula
   // at once rather than either one swallowing the other.
   if (population === "stale" || population === "done" || population === "closed") return commitment.status as RowState;
   if (attention) return "needs attention";
-  if (commitment.status === "awaiting-merge") return "awaiting merge";
+  if (commitment.status === "awaiting-review") return "awaiting review";
+  if (commitment.status === "awaiting-authorization") return "awaiting authorization";
+  if (commitment.status === "awaiting-landing") return "awaiting landing";
   if (commitment.status === "reported") return "reported";
   if (commitment.promise) return "in progress";
   return "unclaimed";
@@ -231,7 +236,14 @@ function priorityGroup(row: WorkRow): number {
   // Every lifecycle-stale row shares one state, so the group only breaks ties.
   // It sits with the oldest-first groups because age is the only signal left
   // in a queue that stopped moving.
-  if (row.state !== "in progress" && row.state !== "reported" && row.state !== "awaiting merge") return 1;
+  if (
+    row.state !== "in progress" &&
+    row.state !== "reported" &&
+    row.state !== "awaiting review" &&
+    row.state !== "awaiting authorization" &&
+    row.state !== "awaiting landing"
+  )
+    return 1;
   if (row.waitsOnHuman) return 2;
   return 3;
 }
@@ -258,13 +270,16 @@ const STATE_ORDER: Record<RowState, number> = {
   unclaimed: 1,
   "in progress": 2,
   reported: 3,
-  "awaiting merge": 3,
+  "awaiting review": 3,
+  "awaiting authorization": 3,
+  "awaiting landing": 3,
   stale: 4,
   superseded: 5,
   satisfied: 5,
   cancelled: 6,
   reneged: 6,
   withdrawn: 6,
+  abandoned: 6,
 };
 
 // A sort reorders the rows that are there; a filter decides which rows exist.

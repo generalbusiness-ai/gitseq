@@ -444,12 +444,12 @@ func TestValidateSuccessionRefusesInvalidGeneratedArtifactPaths(t *testing.T) {
 
 func TestAllAndOnlyUnsettledCommitmentStatusesProtectCoveringArtifacts(t *testing.T) {
 	statuses := []string{
-		"open", "promised", "reported", "awaiting-merge", "stale",
-		"superseded", "satisfied", "cancelled", "reneged", "withdrawn",
+		"open", "promised", "reported", "awaiting-review", "awaiting-authorization", "awaiting-landing", "stale",
+		"superseded", "satisfied", "abandoned", "cancelled", "reneged", "withdrawn",
 	}
 	protectedStatuses := map[string]bool{
 		"open": true, "promised": true, "reported": true,
-		"awaiting-merge": true, "stale": true,
+		"awaiting-review": true, "awaiting-authorization": true, "awaiting-landing": true, "stale": true,
 	}
 	projection := workroom.Projection{Provenance: make(map[string][]string)}
 	for _, status := range statuses {

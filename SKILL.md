@@ -138,10 +138,11 @@ promise is optional: file one to show work in flight, or, if it is already
 done, report straight against the request. Only the addressee may do that,
 and not while their own promise on that request is live — one commitment
 takes one closure. For implementing work, your exact-head artifact serves as the
-implementation report (discipline 8). It projects `awaiting-merge`, waiting on
-you: an artifact has satisfier `none`, so asking the requester to ratify it
-would ask for an act the fold refuses, and the merge of the approved head is
-yours to sign. That independently approved merge closes the commitment, with
+implementation report (discipline 8). It projects `awaiting-review`, waiting on
+you until an independent approval names the exact head, and then
+`awaiting-landing`, still waiting on you: an artifact has satisfier `none`, so
+asking the requester to ratify it would ask for an act the fold refuses, and
+the merge of the approved head is yours to sign. That independently approved merge closes the commitment, with
 no duplicate report or post-merge ratification. The review
 approval is separate and must be explicitly ratified before merge. Work
 that resolves without a merge uses an explicit `report` against the promise,

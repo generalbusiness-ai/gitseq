@@ -2469,7 +2469,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 		unsatisfied.Projection.Statements[position].Satisfier = ""
 	}
 	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@13"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@18"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@19"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &unsatisfied
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2489,7 +2489,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	}
 }
 
-func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
+func TestAwaitingReviewStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
@@ -2503,16 +2503,16 @@ func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	request := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "Implement it",
 		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "approved head merges"},
-		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-awaiting-merge-request",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-awaiting-review-request",
 	})
 	promise := actRecord(t, ctx, workspace, "agent", Act{
 		Verb: VerbState, Kind: workroom.KindPromise, Text: "I will",
-		RestsOn: []string{request.ID}, IdempotencyKey: "profile-awaiting-merge-promise",
+		RestsOn: []string{request.ID}, IdempotencyKey: "profile-awaiting-review-promise",
 	})
 	artifact := actRecord(t, ctx, workspace, "agent", Act{
 		Verb: VerbState, Kind: workroom.KindArtifact, Text: "Exact implementation head",
 		Body:    map[string]string{"path": "internal/workroom", "commit": "abc123"},
-		RestsOn: []string{promise.ID}, IdempotencyKey: "profile-awaiting-merge-artifact",
+		RestsOn: []string{promise.ID}, IdempotencyKey: "profile-awaiting-review-artifact",
 	})
 
 	current := workspace.mustSnapshot(t, ctx)
@@ -2528,14 +2528,15 @@ func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	if position < 0 {
 		t.Fatal("artifact completion is absent from the current projection")
 	}
-	if got := old.Projection.Commitments[position]; got.Status != "awaiting-merge" || got.WaitingOn != agent.Fingerprint {
+	if got := old.Projection.Commitments[position]; got.Status != "awaiting-review" || got.WaitingOn != agent.Fingerprint {
 		t.Fatalf("current artifact completion = %+v", got)
 	}
-	// @15 projected the artifact as awaiting merge with no waiting party, so
-	// a served cache would keep the approved head out of every actor's queue.
+	// @18 projected one word over both the pre-approval and the approved case,
+	// and projected it with no waiting party at @15, so a served older cache
+	// would keep the approved head out of every actor's queue.
 	old.Projection.Commitments[position].WaitingOn = ""
-	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@15"
-	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@18"
+	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@18"
+	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@19"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &old
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2550,7 +2551,7 @@ func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
 		if commitment.Report != artifact.ID {
 			continue
 		}
-		if commitment.Status != "awaiting-merge" || commitment.WaitingOn != agent.Fingerprint {
+		if commitment.Status != "awaiting-review" || commitment.WaitingOn != agent.Fingerprint {
 			t.Fatalf("rebuilt artifact completion = %+v; the %q cache was served instead of replayed", commitment, oldProfile)
 		}
 		if workspace.snapshotProfile != wantProfile {
@@ -2611,7 +2612,7 @@ func TestReassignSchemasRebuildAnOlderProfileCache(t *testing.T) {
 			t.Fatalf("rebuilt guarded decision %s = %+v, found=%v", event, decision, ok)
 		}
 	}
-	want := apphost.DefaultApplication + "\x00workroom-fold@18"
+	want := apphost.DefaultApplication + "\x00workroom-fold@19"
 	if fixture.workspace.snapshotProfile != want {
 		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
 	}

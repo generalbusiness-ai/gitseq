@@ -184,25 +184,25 @@ func TestArtifactCompletionWaitsOnItsPerformer(t *testing.T) {
 				},
 				Commitments: []workroom.Commitment{{
 					Request: "request:implementation", Requester: me, Performer: them, Promise: shape.promise,
-					Report: "artifact:implementation", Status: "awaiting-merge", WaitingOn: them,
+					Report: "artifact:implementation", Status: "awaiting-landing", WaitingOn: them,
 				}},
 			}
 			snapshot := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 3, Projection: projection}
 
 			performer := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, them, "them", true)
-			if row := findCommitmentView(performer.WaitingOnYou, "request:implementation"); row == nil || row.Status != "awaiting-merge" {
+			if row := findCommitmentView(performer.WaitingOnYou, "request:implementation"); row == nil || row.Status != "awaiting-landing" {
 				t.Fatalf("artifact completion is not in the performer's queue: %#v", performer.WaitingOnYou)
 			}
 			requester := BuildActorStatus(snapshot, nexus.Snapshot{}, Cursor{}, nil, me, "me", true)
 			if len(requester.WaitingOnYou) != 0 {
 				t.Fatalf("artifact completion was assigned to the requester: %#v", requester.WaitingOnYou)
 			}
-			if row := findCommitmentView(requester.YouAreWaiting, "request:implementation"); row == nil || row.Status != "awaiting-merge" || row.Performer != "them" {
+			if row := findCommitmentView(requester.YouAreWaiting, "request:implementation"); row == nil || row.Status != "awaiting-landing" || row.Performer != "them" {
 				t.Fatalf("requester is not shown waiting on the performer: %#v", requester.YouAreWaiting)
 			}
 
 			for actor, want := range map[string]WorkLane{them: LaneWaitingOnYou, me: LaneYouAreWaitingOn} {
-				page, err := BuildWorkPage(snapshot, WorkQuery{Actor: actor, Statuses: []string{"awaiting-merge"}, Limit: 10}, false)
+				page, err := BuildWorkPage(snapshot, WorkQuery{Actor: actor, Statuses: []string{"awaiting-landing"}, Limit: 10}, false)
 				if err != nil {
 					t.Fatal(err)
 				}

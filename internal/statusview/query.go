@@ -136,7 +136,8 @@ type workCursor struct {
 }
 
 var knownStatuses = map[string]bool{
-	"open": true, "promised": true, "reported": true, "awaiting-merge": true, "superseded": true, "satisfied": true,
+	"open": true, "promised": true, "reported": true, "superseded": true, "satisfied": true,
+	"awaiting-review": true, "awaiting-authorization": true, "awaiting-landing": true, "abandoned": true,
 	"stale": true, "cancelled": true, "reneged": true, "withdrawn": true, "awaiting-ratification": true,
 }
 

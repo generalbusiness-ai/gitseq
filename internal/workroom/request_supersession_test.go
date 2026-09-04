@@ -210,18 +210,18 @@ func TestCanonicalRejectedRoundMigrationEvidenceAtFrontier554fe63a(t *testing.T)
 						t.Fatalf("non-qualifying 7e55339e transfer = %+v", after)
 					}
 					child := commitmentForRequest(t, Fold(records), row.child)
-					if child.Status != "awaiting-merge" || child.Report != row.childArtifact {
+					if child.Status != "awaiting-review" || child.Report != row.childArtifact {
 						t.Fatalf("separately reported 467ad483 child = %+v", child)
 					}
 					return
 				}
-				if before.Status != "awaiting-merge" {
+				if before.Status != "awaiting-review" {
 					t.Fatalf("excluded current parent = %+v (%s)", before, row.exclusion)
 				}
 				return
 			}
 
-			if before.Status != "awaiting-merge" || before.Report != row.artifact {
+			if before.Status != "awaiting-review" || before.Report != row.artifact {
 				t.Fatalf("qualifying current parent evidence = %+v", before)
 			}
 			records = append(records, event(t, row.request+":prospective-transfer", operator, SchemaSupersede,
@@ -285,7 +285,7 @@ func TestLinkedRequestSupersessionSealsTheHistoricalTransfer(t *testing.T) {
 		event(t, "transfer-retired", operator, SchemaSupersede, Supersede{Target: fixture.transfer, Text: "Restore the parent transfer"}, fixture.transfer),
 	)
 	commitment = commitmentForRequest(t, Fold(records), fixture.request)
-	if commitment.Status != "awaiting-merge" || commitment.SuccessorRequest != "" || commitment.Report != fixture.artifact {
+	if commitment.Status != "awaiting-review" || commitment.SuccessorRequest != "" || commitment.Report != fixture.artifact {
 		t.Fatalf("retired transfer did not restore the rejected parent = %+v", commitment)
 	}
 }
@@ -389,7 +389,7 @@ func TestLinkedRequestSupersessionRequiresEveryRatifiedCondition(t *testing.T) {
 				return replaceFixtureRecord(t, base.records, base.transfer,
 					event(t, base.transfer, operator, SchemaSupersede, Supersede{Target: base.request, Text: "Out-of-order transfer"}, base.child, base.request))
 			},
-			wantStatus: "awaiting-merge",
+			wantStatus: "awaiting-review",
 		},
 		{
 			name: "target is cited twice",
@@ -433,7 +433,7 @@ func TestLinkedRequestSupersessionRequiresEveryRatifiedCondition(t *testing.T) {
 				return replaceFixtureRecord(t, base.records, base.transfer,
 					event(t, base.transfer, agent, SchemaSupersede, Supersede{Target: base.request, Text: "Unauthorized transfer"}, base.request, base.child))
 			},
-			wantStatus: "awaiting-merge",
+			wantStatus: "awaiting-review",
 		},
 	}
 	for _, test := range cases {

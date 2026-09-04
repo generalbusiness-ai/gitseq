@@ -31,12 +31,13 @@ Filters are finite, typed choices, not an expression language.
 
 The default page is the work still owed: effective proposals whose captured
 role satisfier the configured actor holds, plus current `open`, `promised`,
-`reported`, and `awaiting-merge` commitments — including unclaimed requests addressed to the
+`reported`, `awaiting-review`, `awaiting-authorization`, and `awaiting-landing`
+commitments — including unclaimed requests addressed to the
 selected actor, even when their bases moved and their status became `stale`
 — plus commitments the fold left in a `stale`,
 `cancelled` or `reneged` state, which nobody has closed.
 
-A `superseded`, `satisfied`, or `withdrawn` commitment is finished, and the default
+A `superseded`, `satisfied`, `withdrawn`, or `abandoned` commitment is finished, and the default
 leaves it out. Ordinary reasoning staleness does not bring it back: a
 basis moving under a closed commitment is the normal condition of an
 append-only log, it blocks nothing, and listing every one of them buried

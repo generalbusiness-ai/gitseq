@@ -584,16 +584,16 @@ test("a row says state, waits-on, age, title and ticket, and nothing else", () =
   assert.equal(row.attention, false);
 });
 
-test("an artifact completion stays visible as awaiting merge and waits on its performer", () => {
+test("an artifact completion stays visible as awaiting review and waits on its performer", () => {
   const projection = room(
     [
       { event: "request", kind: "request", actor: "hugh", ts: NOW - DAY, text: "Implement the change" },
       { event: "artifact", kind: "artifact", actor: "codex", ts: NOW - HOUR, parent: "request" },
     ],
-    { commitments: [{ request: "request", requester: "hugh", performer: "codex", report: "artifact", status: "awaiting-merge", waiting_on: "codex" }] },
+    { commitments: [{ request: "request", requester: "hugh", performer: "codex", report: "artifact", status: "awaiting-review", waiting_on: "codex" }] },
   );
   const [row] = workRows(projection, context(projection));
-  assert.equal(row.state, "awaiting merge");
+  assert.equal(row.state, "awaiting review");
   assert.equal(row.waitsOn, "codex");
   assert.equal(row.waitsOnName, "codex");
 });
