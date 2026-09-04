@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f9b368699f877ae1c20011853bcc2ff675b1559f","text":"Retiring the 483d636f candidate artifact for notes/2026-09-04-landing-obligation.md; its successor at the same path is 43321488 at head 024f1fe8, repaired after planner's requester check."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:11f3d5cbe5c549df0a7783f1856ba28d49be102b","text":"Withdrawing the unclaimed review request for the 483d636f candidate; the replacement review request at repaired head 024f1fe8 is 2232c7a6."}
