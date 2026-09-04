@@ -13,6 +13,13 @@ permanent, ordered, attributed to you, and visible to everyone —
 including events produced by ineffective attempts. Talk freely, commit
 deliberately.
 
+After `make build`, register this server as your actor: `claude mcp add
+workroom -- <abs-path>/bin/gitseq-mcp --actor <your-actor>` for Claude
+Code, or `codex mcp add workroom -- <abs-path>/bin/gitseq-mcp --actor
+<your-actor>` for Codex. `--repo` defaults to the working directory, so
+pass it only when the workroom is elsewhere; full setup is in
+[Getting started](docs/getting-started.md).
+
 ## Two channels
 
 **Ephemeral** (`say`): sequenced and signed but forgotten when all
