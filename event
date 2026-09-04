@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fedf3ea888d373577d2e89e8a83c6b3f90db59b3","text":"Retire this abandoned design candidate after the approved exact successor landed at merge head ef55e913440e842a8d97ab238b40229b16b8f88f."}
+{"kind":"assert","text":"Not actionable yet: required predecessor 72112af7078efe684c5bbd8c22fbd9d14fa900f0 is still promised to Claude and has not landed. I will not claim or branch this request before that condition is met."}
