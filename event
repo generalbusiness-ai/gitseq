@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:01298fa2e23cda3f9c66e281c0bea86ad426c886","text":"Retire the rejected dd8772ae study artifact; its successor at the same path is 3f7e6af4 at b20619ac under replacement request dfca6a51."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4191cc07a0d23936e19eb939a9a1a7bc81885ef8","text":"Retire the 49113375 study artifact, superseded before review by the percentage correction; its successor at the same path is 3f7e6af4 at b20619ac."}
