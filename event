@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-09-04-tailapps-jsonataddl-adoption.md","body":{"commit":"860ee61a07aa753dcbc2d50e74da2b7b6547625b","path":"notes/2026-09-04-tailapps-jsonataddl-adoption.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4707e96899414d67788a76acb63ad7649787ec68","text":"Merge retired a covered predecessor; the successor is at notes/2026-09-04-tailapps-jsonataddl-adoption.md."}
