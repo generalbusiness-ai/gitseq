@@ -4930,3 +4930,184 @@ func TestABasisMaterialisedAfterTheVerdictDoesNotServeAsASuccessorAtIt(t *testin
 		t.Fatalf("a basis filed after the verdict completed the chain at it, rescued the condemned plan, and minted receipt authority from a fact the reviewer could not have seen: %+v", decision)
 	}
 }
+
+func TestStaleRowsNameTheNearestCausalRetirement(t *testing.T) {
+	records := []Record{
+		event(t, "w0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+		event(t, "ground", operator, SchemaState, State{Kind: KindArtifact, Text: "the implementation", Body: map[string]string{"path": "docs/ground.md", "commit": "c0"}}, "w0"),
+		event(t, "page", operator, SchemaState, State{Kind: KindAssert, Text: "a page describing it"}, "ground"),
+		event(t, "doc", operator, SchemaState, State{Kind: KindArtifact, Text: "another page", Body: map[string]string{"path": "docs/page.md", "commit": "c1"}}, "ground"),
+		event(t, "retire-ground", operator, SchemaSupersede, Supersede{Target: "ground", Text: "the implementation moved"}, "ground"),
+	}
+	projection := Fold(records)
+
+	page := statementByEvent(t, projection, "page")
+	if !page.Stale || page.StaleBecause != "ground" || page.StaleBecausePath != "docs/ground.md" || page.StaleBecauseTruncated {
+		t.Fatalf("stale statement cause = %q path=%q truncated=%v stale=%v, want ground/docs/ground.md/false/true",
+			page.StaleBecause, page.StaleBecausePath, page.StaleBecauseTruncated, page.Stale)
+	}
+	doc := artifactByEvent(t, projection, "doc")
+	if !doc.Stale || doc.StaleBecause != "ground" || doc.StaleBecausePath != "docs/ground.md" || doc.StaleBecauseTruncated {
+		t.Fatalf("stale artifact cause = %q path=%q truncated=%v stale=%v, want ground/docs/ground.md/false/true",
+			doc.StaleBecause, doc.StaleBecausePath, doc.StaleBecauseTruncated, doc.Stale)
+	}
+	for _, id := range []string{"w0", "ground"} {
+		row := statementByEvent(t, projection, id)
+		if row.StaleBecause != "" || row.StaleBecausePath != "" || row.StaleBecauseTruncated {
+			t.Fatalf("non-stale row %s carried a stale cause: %+v", id, row)
+		}
+	}
+	encoded, err := json.Marshal(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"stale_because":"ground"`, `"stale_because_path":"docs/ground.md"`} {
+		if !bytes.Contains(encoded, []byte(field)) {
+			t.Fatalf("stale statement wire is missing %s: %s", field, encoded)
+		}
+	}
+}
+
+func TestNearestCausalRetirementUsesHopCountThenCitationOrder(t *testing.T) {
+	records := []Record{
+		event(t, "w0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+		event(t, "far", operator, SchemaState, State{Kind: KindAssert, Text: "far cause"}, "w0"),
+		event(t, "far-1", operator, SchemaState, State{Kind: KindAssert, Text: "far link one"}, "far"),
+		event(t, "far-2", operator, SchemaState, State{Kind: KindAssert, Text: "far link two"}, "far-1"),
+		event(t, "near-first", operator, SchemaState, State{Kind: KindAssert, Text: "first equal cause"}, "w0"),
+		event(t, "near-second", operator, SchemaState, State{Kind: KindAssert, Text: "second equal cause"}, "w0"),
+		event(t, "first-link", operator, SchemaState, State{Kind: KindAssert, Text: "first link"}, "near-first"),
+		event(t, "second-link", operator, SchemaState, State{Kind: KindAssert, Text: "second link"}, "near-second"),
+		event(t, "retire-far", operator, SchemaSupersede, Supersede{Target: "far", Text: "withdrawn"}, "far"),
+		event(t, "retire-first", operator, SchemaSupersede, Supersede{Target: "near-first", Text: "withdrawn"}, "near-first"),
+		event(t, "retire-second", operator, SchemaSupersede, Supersede{Target: "near-second", Text: "withdrawn"}, "near-second"),
+		// The farther branch is cited first; the equal-distance branches then
+		// prove that citation order, not map order, breaks the tie.
+		event(t, "reader", operator, SchemaState, State{Kind: KindAssert, Text: "reader"}, "far-2", "first-link", "second-link"),
+	}
+	reader := statementByEvent(t, Fold(records), "reader")
+	if reader.StaleBecause != "near-first" || reader.StaleBecauseTruncated {
+		t.Fatalf("nearest cause = %q truncated=%v, want first equal-distance citation near-first", reader.StaleBecause, reader.StaleBecauseTruncated)
+	}
+}
+
+// A successfully replaced artifact is retired, but that retirement does not
+// make a reasoning row stale. The old unrestricted provenance walk named it
+// anyway because it happened to be cited first.
+func TestStaleCauseIgnoresACompetingUnrelatedRetirement(t *testing.T) {
+	records := []Record{
+		event(t, "w0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+		event(t, "real", operator, SchemaState, State{Kind: KindAssert, Text: "real cause"}, "w0"),
+		event(t, "real-link", operator, SchemaState, State{Kind: KindAssert, Text: "real link"}, "real"),
+		event(t, "old-pointer", operator, SchemaState, State{Kind: KindArtifact, Text: "old pointer", Body: map[string]string{"path": "pkg", "commit": "old"}}, "w0"),
+		event(t, "new-pointer", operator, SchemaState, State{Kind: KindArtifact, Text: "new pointer", Body: map[string]string{"path": "pkg", "commit": "new"}}, "w0"),
+		event(t, "move-pointer", operator, SchemaSupersede, Supersede{Target: "old-pointer", Text: "moved"}, "old-pointer", "new-pointer"),
+		event(t, "retire-real", operator, SchemaSupersede, Supersede{Target: "real", Text: "withdrawn"}, "real"),
+		event(t, "reader", operator, SchemaState, State{Kind: KindAssert, Text: "reader"}, "old-pointer", "real-link"),
+	}
+	reader := statementByEvent(t, Fold(records), "reader")
+	if !reader.Stale || reader.StaleBecause != "real" {
+		t.Fatalf("cause = %q stale=%v, want real; the settled old-pointer retirement is unrelated", reader.StaleBecause, reader.Stale)
+	}
+}
+
+func TestSettledRetirementIsNotReintroducedAsAPropagatedCause(t *testing.T) {
+	records := []Record{
+		event(t, "w0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+		event(t, "underlying", operator, SchemaState, State{Kind: KindAssert, Text: "the cause that still propagates"}, "w0"),
+		event(t, "old-pointer", operator, SchemaState, State{Kind: KindArtifact, Text: "old pointer", Body: map[string]string{"path": "pkg", "commit": "old"}}, "underlying"),
+		event(t, "new-pointer", operator, SchemaState, State{Kind: KindArtifact, Text: "new pointer", Body: map[string]string{"path": "pkg", "commit": "new"}}, "w0"),
+		event(t, "move-pointer", operator, SchemaSupersede, Supersede{Target: "old-pointer", Text: "moved"}, "old-pointer", "new-pointer"),
+		event(t, "retire-underlying", operator, SchemaSupersede, Supersede{Target: "underlying", Text: "withdrawn"}, "underlying"),
+		event(t, "reader", operator, SchemaState, State{Kind: KindAssert, Text: "reader"}, "old-pointer"),
+	}
+	reader := statementByEvent(t, Fold(records), "reader")
+	if !reader.Stale || reader.StaleBecause != "underlying" {
+		t.Fatalf("cause = %q stale=%v, want underlying; old-pointer's own successful retirement was settled", reader.StaleBecause, reader.Stale)
+	}
+}
+
+func TestStaleCauseUsesTheGovernedPropagationRules(t *testing.T) {
+	exempt := stalenessModeDefinition("cause-exempt", StalenessExempt)
+	terminal := stalenessModeDefinition("cause-terminal", StalenessTerminal)
+	records := []Record{
+		event(t, "w0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+		event(t, "def-exempt", operator, SchemaState, kindDefinitionState(t, exempt), "w0"),
+		event(t, "ratify-exempt", operator, SchemaRatify, Ratify{Target: "def-exempt"}, "def-exempt"),
+		event(t, "def-terminal", operator, SchemaState, kindDefinitionState(t, terminal), "w0"),
+		event(t, "ratify-terminal", operator, SchemaRatify, Ratify{Target: "def-terminal"}, "def-terminal"),
+		event(t, "blocked-root", operator, SchemaState, State{Kind: KindAssert, Text: "blocked root"}, "w0"),
+		event(t, "terminal", operator, SchemaState, State{Kind: "cause-terminal", Text: "terminal", Body: map[string]string{"path": "terminal", "commit": "t"}}, "blocked-root"),
+		event(t, "exempt", operator, SchemaState, State{Kind: "cause-exempt", Text: "exempt", Body: map[string]string{"path": "exempt", "commit": "e"}}, "w0"),
+		event(t, "real", operator, SchemaState, State{Kind: KindAssert, Text: "real root"}, "w0"),
+		event(t, "real-link", operator, SchemaState, State{Kind: KindAssert, Text: "real link"}, "real"),
+		event(t, "retire-blocked", operator, SchemaSupersede, Supersede{Target: "blocked-root", Text: "withdrawn"}, "blocked-root"),
+		event(t, "retire-exempt", operator, SchemaSupersede, Supersede{Target: "exempt", Text: "withdrawn"}, "exempt"),
+		event(t, "retire-real", operator, SchemaSupersede, Supersede{Target: "real", Text: "withdrawn"}, "real"),
+		event(t, "reader", operator, SchemaState, State{Kind: KindAssert, Text: "reader"}, "exempt", "terminal", "real-link"),
+	}
+	folder := NewFolder(records)
+	projection := folder.Projection()
+	if !statementByEvent(t, projection, "terminal").Stale {
+		t.Fatal("fixture wrong: terminal did not catch the cause it is meant to stop")
+	}
+	reader := statementByEvent(t, projection, "reader")
+	if reader.StaleBecause != "real" {
+		t.Fatalf("cause = %q, want real; exempt retirement and stopped terminal cause must not propagate", reader.StaleBecause)
+	}
+	scope := folder.state.stalenessNow()
+	result := scope.stalenessWithCauses(scope.succeededRetirements())
+	if got := result.causes["reader"]; len(got) != 1 || got[0].Basis != "real-link" || got[0].Direct {
+		t.Fatalf("authoritative reader cause edges = %+v, want only inherited real-link", got)
+	}
+}
+
+func TestNearestRetiredCauseTerminatesOnACycle(t *testing.T) {
+	scope := &stalenessScope{f: &foldState{}}
+	causes := map[string][]stalenessCauseEdge{
+		"reader": {{Basis: "a"}},
+		"a":      {{Basis: "b"}},
+		"b":      {{Basis: "a"}},
+	}
+	because, path, truncated := scope.nearestRetiredCause("reader", causes)
+	if because != "" || path != "" || truncated {
+		t.Fatalf("closed cycle produced because=%q path=%q truncated=%v, want a finite empty answer", because, path, truncated)
+	}
+}
+
+func TestStaleCauseReportsHopLimitExhaustion(t *testing.T) {
+	records := []Record{
+		event(t, "w0", operator, SchemaState, State{Kind: KindRoster, Text: "seed", Body: map[string]string{"actor": operator, "kind": "human", "name": "Operator", "role": "operator"}}),
+		event(t, "root", operator, SchemaState, State{Kind: KindAssert, Text: "deep cause"}, "w0"),
+	}
+	previous := "root"
+	for index := 1; index <= staleCauseHopLimit; index++ {
+		id := fmt.Sprintf("chain-%d", index)
+		records = append(records, event(t, id, operator, SchemaState, State{Kind: KindAssert, Text: "link"}, previous))
+		previous = id
+	}
+	records = append(records,
+		event(t, "retire-root", operator, SchemaSupersede, Supersede{Target: "root", Text: "withdrawn"}, "root"),
+		event(t, "tip", operator, SchemaState, State{Kind: KindAssert, Text: "tip"}, previous),
+	)
+	projection := Fold(records)
+	tip := statementByEvent(t, projection, "tip")
+	if !tip.Stale || tip.StaleBecause != "" || tip.StaleBecausePath != "" || !tip.StaleBecauseTruncated {
+		t.Fatalf("out-of-range cause = %q path=%q truncated=%v stale=%v, want explicit exhaustion", tip.StaleBecause, tip.StaleBecausePath, tip.StaleBecauseTruncated, tip.Stale)
+	}
+	within := statementByEvent(t, projection, fmt.Sprintf("chain-%d", staleCauseHopLimit))
+	if within.StaleBecause != "root" || within.StaleBecauseTruncated {
+		t.Fatalf("cause exactly at the bound = %q truncated=%v, want root/false", within.StaleBecause, within.StaleBecauseTruncated)
+	}
+}
+
+func TestLiveStatementWireBytesAreUnchangedByStaleCauseFields(t *testing.T) {
+	row := Statement{Event: "live", Sequence: 1, Actor: "actor", Kind: KindAssert, Text: "current"}
+	encoded, err := json.Marshal(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(encoded), `{"event":"live","sequence":1,"actor":"actor","kind":"assert","text":"current"}`; got != want {
+		t.Fatalf("live statement wire bytes = %s, want %s", got, want)
+	}
+}

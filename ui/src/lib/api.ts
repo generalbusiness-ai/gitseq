@@ -47,6 +47,11 @@ export interface Statement {
   describes_superseded_world?: boolean;
   world_superseded_at?: number;
   merge_left_live?: LeftLiveAccounting[];
+  // The nearest retired basis reached only through edges that actually made
+  // this row stale, plus its artifact path and bounded-walk exhaustion flag.
+  stale_because?: string;
+  stale_because_path?: string;
+  stale_because_truncated?: boolean;
 }
 
 export interface LeftLiveAccounting {
@@ -90,6 +95,11 @@ export interface Artifact {
   // world moved rather than a pointer being withdrawn.
   describes_superseded_world?: boolean;
   world_superseded_at?: number;
+  // The fold's bounded causal explanation; this is not a second provenance
+  // graph in the client.
+  stale_because?: string;
+  stale_because_path?: string;
+  stale_because_truncated?: boolean;
   // No basis under this artifact can ever be retired, so no supersession can
   // make it stale. Its silence is not evidence that it is current.
   unable_to_flare?: boolean;

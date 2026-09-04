@@ -149,7 +149,8 @@
       "lifecycle": "promise",
       "satisfier": "none",
       "text": "I will build it",
-      "stale": true
+      "stale": true,
+      "stale_because": "e3"
     },
     {
       "event": "e5",
@@ -164,7 +165,8 @@
       },
       "ratified": true,
       "ratified_by": "e7",
-      "stale": true
+      "stale": true,
+      "stale_because": "e3"
     },
     {
       "event": "e8",
@@ -178,7 +180,8 @@
         "commit": "abc123",
         "path": "internal/workroom"
       },
-      "stale": true
+      "stale": true,
+      "stale_because": "e3"
     }
   ],
   "commitments": [
@@ -196,7 +199,8 @@
       "event": "e8",
       "path": "internal/workroom",
       "commit": "abc123",
-      "stale": true
+      "stale": true,
+      "stale_because": "e3"
     }
   ],
   "actors": {

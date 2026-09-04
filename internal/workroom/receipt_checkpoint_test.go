@@ -317,7 +317,7 @@ func TestReceiptCheckpointRequiresAnAuthorizedPlan(t *testing.T) {
 
 	state := NewFolder(records).state
 	scope := state.stalenessAsOf(math.MaxInt)
-	stale, _, _ := scope.staleness(scope.succeededRetirements())
+	stale := scope.staleness(scope.succeededRetirements()).stale
 	receipt, successor := state.byID["merge"], state.byID["successor"]
 	if receipt.mergePlan != nil {
 		t.Fatal("the receipt earned a plan after all, so the forced flags below test nothing")
@@ -341,7 +341,7 @@ func TestReceiptCheckpointRefusesACauseItCannotDate(t *testing.T) {
 	records := checkpointRecords(t, prospectiveReceipt(t, `{}`), []Record{oldCause(t)})
 	state := NewFolder(records).state
 	scope := state.stalenessAsOf(math.MaxInt)
-	stale, _, _ := scope.staleness(scope.succeededRetirements())
+	stale := scope.staleness(scope.succeededRetirements()).stale
 
 	receipt := state.byID["merge"]
 	successor := state.byID["successor"]

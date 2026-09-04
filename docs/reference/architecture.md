@@ -848,6 +848,13 @@ governed reasoning edges, while the narrower `describes_superseded_world` fact
 crosses direct retired-artifact edges and artifact-to-artifact provenance
 only.
 
+For a stale statement or artifact, the projection also carries a four-hop
+`stale_because` explanation: the nearest retired basis reached through the
+same edges the authoritative staleness pass actually used, with artifact path
+where applicable and an explicit exhaustion flag. Fewest hops wins, then the
+original citation order. General provenance remains the top-level side table;
+the row carries one answer for diagnosis, not a second copy of that graph.
+
 A retirement is read for what its own act rested on. A supersession resting on
 an artifact covering the same path is succession, and carries no staleness
 across reasoning edges. One naming no covering successor is condemnation, and

@@ -1,6 +1,7 @@
 package statusview
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -83,6 +84,41 @@ func TestArtifactQueryReturnsLiveExactPathRowsWithExplicitState(t *testing.T) {
 		if row.Path != "ui" || row.Event == "ui:retired" || row.Event == "nested:unrelated" {
 			t.Fatalf("query normalized, prefix-matched, or included retired state: %+v", row)
 		}
+	}
+}
+
+func TestArtifactRowCarriesTheFoldedStaleCause(t *testing.T) {
+	snapshot := artifactSnapshot()
+	snapshot.Projection.Artifacts[1].StaleBecause = "ui:ground"
+	snapshot.Projection.Artifacts[1].StaleBecausePath = "ui/source"
+	page, err := BuildArtifactPage(snapshot, ArtifactQuery{Paths: []string{"ui"}, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := page.Artifacts[1]
+	if row.Event != "ui:stale" || !row.Stale {
+		t.Fatalf("fixture wrong: expected stale ui row, got %+v", row)
+	}
+	if row.StaleBecause != "ui:ground" || row.StaleBecausePath != "ui/source" || row.StaleBecauseTruncated {
+		t.Fatalf("status view changed cause=%q path=%q truncated=%v",
+			row.StaleBecause, row.StaleBecausePath, row.StaleBecauseTruncated)
+	}
+	snapshot.Projection.Artifacts[1].StaleBecause = ""
+	snapshot.Projection.Artifacts[1].StaleBecausePath = ""
+	snapshot.Projection.Artifacts[1].StaleBecauseTruncated = true
+	page, err = BuildArtifactPage(snapshot, ArtifactQuery{Paths: []string{"ui"}, Limit: 10}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !page.Artifacts[1].StaleBecauseTruncated {
+		t.Fatal("status view dropped the fold's stale-cause exhaustion flag")
+	}
+	encoded, err := json.Marshal(page.Artifacts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !json.Valid(encoded) || !bytes.Contains(encoded, []byte(`"stale_because_truncated":true`)) {
+		t.Fatalf("status-view stale-cause wire field missing: %s", encoded)
 	}
 }
 
